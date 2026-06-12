@@ -3,8 +3,6 @@
  * Handles loading music tracks from songs.json and managing track metadata
  */
 
-import songsManifest from '../../public/assets/music/songs.json';
-
 /**
  * Global storage for available songs
  * @type {Array<Object>}
@@ -17,6 +15,8 @@ let availableSongs = [];
  */
 export async function loadSongs() {
     try {
+        const response = await fetch('/assets/music/songs.json');
+        const songsManifest = await response.json();
         const songs = Array.isArray(songsManifest)
             ? songsManifest.map((song) => ({ ...song }))
             : [];

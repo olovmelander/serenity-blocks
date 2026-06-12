@@ -61,10 +61,10 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         // Strengthened from the first pass (still read too top-down on capture):
         // near-eliminate the downward look and lean the aim forward + up so the
         // magma-horizon band (added in the Earth Core set-piece pass) reads ahead.
-        downLookScale: 0.26,
-        lookForward: 6.0,
-        lookUp: 2.0,
-        camUp: 3.4,
+        downLookScale: 0.65,
+        lookForward: 4.0,
+        lookUp: 0.5,
+        camUp: 1.4,
         camForward: -2.2,
     }),
     // 2 — Deep Ocean (origin) 🏆 FLAGSHIP: REVEAL the true vertical so the dive
@@ -141,11 +141,41 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
 // Exponential blend rate (per second) for easing between per-chapter framings.
 const FRAMING_BLEND_RATE = 2.4;
 
+const FRAMING_KEYS = Object.freeze([
+    'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
+]);
+
 function resolveChapterFraming(chapterId) {
     return {
         ...DEFAULT_CHAPTER_FRAMING,
         ...(CHAPTER_FRAMING_OVERRIDES[chapterId] || {}),
     };
+}
+
+// Chapter 1 opens as a legible "above the Level 1 orb" lava-floor view, then settles
+// back into the established upward core-shaft framing as the journey starts moving.
+const CHAPTER_1_BASE = CHAPTER_FRAMING_OVERRIDES[1];
+const CHAPTER_1_START_FRAMING = Object.freeze({
+    ...DEFAULT_CHAPTER_FRAMING,
+    downLookScale: 1.05,
+    lookForward: 1.8,
+    lookUp: -2.8,
+    camUp: 4.8,
+    camForward: -4.0,
+});
+const CHAPTER_1_SETTLE_START = 0.12;
+const CHAPTER_1_SETTLE_END = 0.34;
+
+function resolveChapter1Framing(t) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    const settle = THREE.MathUtils.smoothstep(clamped, CHAPTER_1_SETTLE_START, CHAPTER_1_SETTLE_END);
+    const base = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_1_BASE };
+    const out = { ...DEFAULT_CHAPTER_FRAMING };
+    for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
+        const key = FRAMING_KEYS[i];
+        out[key] = THREE.MathUtils.lerp(CHAPTER_1_START_FRAMING[key], base[key], settle);
+    }
+    return out;
 }
 
 // ── Chapter 2 Deep Ocean — three-act vertical-reveal arc ──────────────────────────
@@ -177,10 +207,6 @@ const CHAPTER_2_ARC = Object.freeze({
     }),
 });
 
-const CHAPTER_2_FRAMING_KEYS = Object.freeze([
-    'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
-]);
-
 /**
  * Resolve the chapter-2 framing for an in-chapter progress (0=entry, 1=exit) by
  * crossfading the early/mid/late acts. Returns a full framing record (no allocation of
@@ -194,8 +220,8 @@ function resolveChapter2Framing(t) {
     const toMid = THREE.MathUtils.smoothstep(clamped, 0.0, 0.5);
     const toLate = THREE.MathUtils.smoothstep(clamped, 0.5, 1.0);
     const out = { ...DEFAULT_CHAPTER_FRAMING };
-    for (let i = 0; i < CHAPTER_2_FRAMING_KEYS.length; i += 1) {
-        const key = CHAPTER_2_FRAMING_KEYS[i];
+    for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
+        const key = FRAMING_KEYS[i];
         const earlyToMid = THREE.MathUtils.lerp(CHAPTER_2_ARC.early[key], CHAPTER_2_ARC.mid[key], toMid);
         out[key] = THREE.MathUtils.lerp(earlyToMid, CHAPTER_2_ARC.late[key], toLate);
     }
@@ -220,6 +246,23 @@ function resolveChapter3Framing(t) {
     return out;
 }
 
+// ── Chapter 4 Mountains — SADDLE-APPROACH intimacy ─────────────────────────────────
+// Creative plan ch4 item 2 ("not close enough to peaks... HUD camera distance ~30
+// throughout, so the notch barely grows"): through local progress 0.6→0.9 the camera
+// closes on the V-notch — eye pushed forward and threaded toward the LEFT wall so the
+// saddle crossing grazes the foreground cornice — while the aim lifts so the summit
+// visibly GROWS in frame. Returns a full framing record so the lerp is total.
+const CHAPTER_4_BASE = CHAPTER_FRAMING_OVERRIDES[4];
+function resolveChapter4Framing(t) {
+    const approach = THREE.MathUtils.smoothstep(t, 0.6, 0.9);
+    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_4_BASE };
+    out.camForward = (CHAPTER_4_BASE.camForward ?? 0) + 4.6 * approach; // close on the notch
+    out.camRight = (CHAPTER_4_BASE.camRight ?? 0) - 1.8 * approach; // thread near the left wall
+    out.camUp = (CHAPTER_4_BASE.camUp ?? 0) + 0.6 * approach; // graze over the cornice
+    out.lookUp = (CHAPTER_4_BASE.lookUp ?? 0) + 1.2 * approach; // the summit grows in frame
+    return out;
+}
+
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
 // Chapter 8's static override is the mid-act baseline. Over the LAST ~18% of the chapter
 // the camera CRANES up the igniting megastructure spire to reveal it firing past the top
@@ -234,6 +277,15 @@ function resolveChapter8Framing(t) {
     out.camUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.camUp ?? 0, 6.0, crane);
     out.lookUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.lookUp ?? 0, 7.0, crane);
     return out;
+}
+
+function resolveChapterFramingForProgress(chapterId, inChapterProgress = 0) {
+    if (chapterId === 1) return resolveChapter1Framing(inChapterProgress);
+    if (chapterId === 2) return resolveChapter2Framing(inChapterProgress);
+    if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
+    if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
+    if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
+    return resolveChapterFraming(chapterId);
 }
 
 function buildChapterBoundaryPositions(chapterPositions) {
@@ -321,7 +373,11 @@ export class OdysseyCameraController {
         // toward the resolved framing of the chapter under the camera so boundary
         // changes never snap. Seeded from the start chapter so the first frame is
         // already framed correctly.
-        this._activeFraming = resolveChapterFraming(this._getChapterAtProgress(this.currentPosition));
+        const startChapterId = this._getChapterAtProgress(this.currentPosition);
+        this._activeFraming = resolveChapterFramingForProgress(
+            startChapterId,
+            this._getInChapterProgress(startChapterId),
+        );
         this._framingInitialized = false;
 
         // Configuration
@@ -1068,16 +1124,10 @@ export class OdysseyCameraController {
         //   • ch3 Surface     — hero-tree lookAt strengthening at the mid-chapter beat
         //   • ch8 Urban        — finale CRANE up the igniting spire over the last ~18%
         // Every other chapter uses its static override.
-        let target;
-        if (chapterId === 2) {
-            target = resolveChapter2Framing(this._getInChapterProgress(2));
-        } else if (chapterId === 3) {
-            target = resolveChapter3Framing(this._getInChapterProgress(3));
-        } else if (chapterId === 8) {
-            target = resolveChapter8Framing(this._getInChapterProgress(8));
-        } else {
-            target = resolveChapterFraming(chapterId);
-        }
+        const target = resolveChapterFramingForProgress(
+            chapterId,
+            this._getInChapterProgress(chapterId),
+        );
         const active = this._activeFraming;
 
         // Snap on the very first frame (avoids a visible ease-in from defaults on load).

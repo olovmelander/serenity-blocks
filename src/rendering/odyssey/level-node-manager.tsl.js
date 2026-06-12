@@ -71,7 +71,7 @@ import { hash21, snoise3 } from './chapter-environments/shared/odyssey-tsl-noise
 import { billboardWorld, makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
 
 // Geometry constants mirror LevelNodeManager.js so the pilot reproduces orb sizes.
-const GLASS_ORB_SCALE = 1.12;
+const GLASS_ORB_SCALE = 1.4;
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
 const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
@@ -624,7 +624,7 @@ export function createFluidInnerTSL(map = null, chapterColor = new THREE.Color(0
     material.colorNode = colorNode;
     material.side = THREE.FrontSide;
     material.transparent = false;
-    material.toneMapped = false;
+    material.toneMapped = true;
 
     const geometry = new THREE.SphereGeometry(GLASS_INNER_RADIUS, 32, 32);
     return {

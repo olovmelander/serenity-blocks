@@ -21,6 +21,7 @@ import {
     ODYSSEY_NODE_STYLES,
     getChapterProfile,
 } from './chapter-environments/shared/chapter-profile.js';
+import { getActiveOdysseyChapterPositions } from './path-utils.js';
 import {
     createGlassShellTSL,
     createGlowHaloTSL,
@@ -61,7 +62,7 @@ export function resolveOdysseyNodeShellStyle(chapter, levelId = 1) {
         seed: seed / 997,
     };
 }
-const GLASS_ORB_SCALE = 1.12; // Slight size bump for better readability on the board
+const GLASS_ORB_SCALE = 1.4; // Slightly larger for better visibility and premium feel
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
 const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
@@ -71,11 +72,14 @@ const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
 // Kept large enough (radius ≈0.70) to still cover the path line passing ≈0.45 behind centre.
 const INNER_CORE_DISPLAY_SCALE = 0.66;
 const CHAPTER_NODE_BASE_SCALE = Object.freeze({
-    1: 0.78,
+    1: 1.0,
 });
 // Inner-fluid flow/wobble strengths now live in the TSL builder (createFluidInnerTSL).
 const UPDATE_PROXIMITY_THRESHOLD = 0.15; // Only fully update nodes within this path-distance of the camera
-const NODE_PATH_SURFACE_OFFSET_Z = 0.45;
+const NODE_PATH_SURFACE_OFFSET_Z = 1.8; // Increased from 0.45 so level nodes float clearly outside the spline path (radius 0.6)
+const CHAPTER_1_NODE_QUENCH_START = 0.58;
+const CHAPTER_1_NODE_QUENCH_END = 0.74;
+const CHAPTER_1_NODE_MIN_SCALE = 0.0;
 // QW11: below this per-frame camera-progress delta the instanced/particle GPU buffers
 // are treated as unchanged, so update() skips the ~7040-particle + instance re-upload
 // (the time-driven sparkle/iridescence still animates in-shader via uTime). Small enough
@@ -222,6 +226,21 @@ export class LevelNodeManager {
         this.cameraProgress = progress;
     }
 
+    _getChapterOneNodeQuench(node) {
+        if ((node?.config?.chapter ?? 1) !== 1) {
+            return 0;
+        }
+        const chapterPositions = getActiveOdysseyChapterPositions();
+        const start = chapterPositions[0] ?? 0;
+        const end = chapterPositions[1] ?? 0.093;
+        const span = Math.max(end - start, 1e-4);
+        const local = THREE.MathUtils.clamp((this.cameraProgress - start) / span, 0, 1);
+        return Math.max(
+            THREE.MathUtils.smoothstep(local, CHAPTER_1_NODE_QUENCH_START, CHAPTER_1_NODE_QUENCH_END),
+            THREE.MathUtils.smoothstep(this.cameraProgress, 0.078, 0.083),
+        );
+    }
+
     _createSharedLockTextures() {
         // Lock icon texture
         const canvas = document.createElement('canvas');
@@ -312,7 +331,11 @@ export class LevelNodeManager {
                 // Initialize instance matrix
                 const idx = this.instanceIdMap.get(level.id);
                 const matrix = new THREE.Matrix4();
-                matrix.setPosition(node.group.position);
+                matrix.compose(
+                    node.group.position,
+                    node.group.quaternion,
+                    node.group.scale,
+                );
                 this.glassInstancedMesh.setMatrixAt(idx, matrix);
                 this.glowInstancedMesh.setMatrixAt(idx, matrix);
 
@@ -529,17 +552,10 @@ export class LevelNodeManager {
         const themeId = levelConfig.iconThemeId
             || levelConfig.theme?.pathIcon
             || levelConfig.theme?.primary;
-        // Earth Core nodes should read as clean round magma balls. Texture-wrapped
-        // theme icons made them look like cracked/faceted geode tokens in the scene.
-        const useRoundMagmaCore = chapter === 1;
-        const themeTex = useRoundMagmaCore ? null : await this.getOrLoadThemeTexture(themeId);
+        const themeTex = await this.getOrLoadThemeTexture(themeId);
 
         // Inner sphere acts as the solid core, hiding the path line that passes through
         const innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
-        if (useRoundMagmaCore && innerMat.uniforms) {
-            innerMat.uniforms.uFlowStrength.value = 0.18;
-            innerMat.uniforms.uWobbleStrength.value = 0.0;
-        }
         const innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
         // Suspend a smaller themed core inside the clear glass shell (snow-globe read).
         innerMesh.scale.setScalar(INNER_CORE_DISPLAY_SCALE);
@@ -1033,9 +1049,11 @@ export class LevelNodeManager {
             const levelId = node.config.id;
             const idx = this.instanceIdMap.get(levelId);
             const distance = Math.abs(node.pathPosition - this.cameraProgress);
+            const chapterOneQuench = this._getChapterOneNodeQuench(node);
 
             // Strict visibility culling
-            const isVisible = distance < (UPDATE_PROXIMITY_THRESHOLD * 1.5);
+            const isVisible = distance < (UPDATE_PROXIMITY_THRESHOLD * 1.5)
+                && chapterOneQuench < 0.98;
             node.group.visible = isVisible;
 
             if (!isVisible) {
@@ -1054,11 +1072,24 @@ export class LevelNodeManager {
 
             const isNear = distance < UPDATE_PROXIMITY_THRESHOLD;
 
-            // Floating animation
+            // Floating animation: bob on X, Y, Z slowly and organically around base position
             const basePos = this.cachedBasePositions.get(levelId);
             if (basePos) {
-                const floatY = Math.sin(this.time * 2 + levelId) * 0.1;
-                node.group.position.y = basePos.y + floatY;
+                const floatX = Math.sin(this.time * 0.8 + levelId * 1.5) * 0.12;
+                const floatY = Math.sin(this.time * 1.2 + levelId * 2.2) * 0.12;
+                const floatZ = Math.cos(this.time * 0.9 + levelId * 0.7) * 0.12;
+                node.group.position.set(
+                    basePos.x + floatX,
+                    basePos.y + floatY,
+                    basePos.z + floatZ
+                );
+            }
+            const baseScale = node.group.userData.baseScale ?? 1.0;
+            const hoverScale = this.hoveredNode === levelId ? 1.16 : 1.0;
+            const quenchScale = THREE.MathUtils.lerp(1.0, CHAPTER_1_NODE_MIN_SCALE, chapterOneQuench);
+            node.group.scale.setScalar(baseScale * hoverScale * quenchScale);
+            if (node.innerMesh) {
+                node.innerMesh.visible = chapterOneQuench < 0.92;
             }
 
             // Sync instance matrices

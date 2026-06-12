@@ -31,6 +31,8 @@ import {
     clamp,
     float,
     fract,
+    oneMinus,
+    sin,
     smoothstep,
     uniform,
     uv,
@@ -51,6 +53,8 @@ import {
     createWetReflectionPlaneTSL,
     createGroundHazeTSL,
     createNeonHazeStackTSL,
+    createSkylineSilhouetteTSL,
+    createHorizonHazeTSL,
 } from './urban-dreams.tsl.js';
 
 export const URBAN_DREAMS_CONFIG = {
@@ -429,6 +433,66 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(sun);
     group.userData.sun = sun;
 
+    // SKYLINE SILHOUETTE CARDS + HORIZON HAZE (creative plan ch8 item 2): two layered
+    // near-black roofline ranks between the Retrosun and the last towers, so the disc
+    // is PARTIALLY OCCLUDED and reads distant + enormous, plus the magenta-violet haze
+    // band that supplies the chapter's missing mid-value layer.
+    const skylineFar = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 31, lift: 0 });
+    skylineFar.mesh.position.set(40, -55, -1145);
+    skylineFar.mesh.scale.set(1.08, 0.9, 1);
+    skylineFar.mesh.renderOrder = -88;
+    corridor.add(skylineFar.mesh);
+    const skylineNear = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 0, lift: 0.012 });
+    skylineNear.mesh.position.set(0, -45, -1120);
+    skylineNear.mesh.renderOrder = -86;
+    corridor.add(skylineNear.mesh);
+    group.userData.skyline = [skylineNear.mesh, skylineFar.mesh];
+    const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
+    horizonHaze.mesh.position.set(0, -20, -1162);
+    horizonHaze.mesh.renderOrder = -90;
+    corridor.add(horizonHaze.mesh);
+    group.userData.horizonHaze = horizonHaze.mesh;
+
+    // GATE BRIDGE landmark (creative plan ch8 item 4): a horizontal sky-bridge spanning
+    // the canyon at the mid-corridor station; the camera passes UNDER it — the
+    // compression-and-release beat that breaks the duplicate mid-chapter frames. One
+    // oversized magenta holo-billboard hangs from the deck.
+    const gateBridge = new THREE.Group();
+    gateBridge.name = 'gate-bridge';
+    const bridgeMaterial = new THREE.MeshBasicMaterial({ color: 0x07060f });
+    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(190, 9, 16), bridgeMaterial);
+    bridgeDeck.position.y = 42;
+    gateBridge.add(bridgeDeck);
+    [-88, 88].forEach((pylonX) => {
+        const pylon = new THREE.Mesh(new THREE.BoxGeometry(10, 110, 12), bridgeMaterial);
+        pylon.position.set(pylonX, -8, 0);
+        gateBridge.add(pylon);
+    });
+    const holoMaterial = new THREE.MeshBasicNodeMaterial();
+    const holoUv = uv();
+    const holoScan = sin(holoUv.y.mul(60.0).add(uniforms.uTime.mul(3.0))).mul(0.5).add(0.5);
+    const holoFlick = sin(uniforms.uTime.mul(9.0)).mul(0.06).add(0.94);
+    holoMaterial.colorNode = vec3(1.0, 0.247, 0.706)
+        .mul(holoScan.mul(0.35).add(0.65))
+        .mul(holoFlick);
+    const holoEdge = smoothstep(0.0, 0.06, holoUv.x)
+        .mul(oneMinus(smoothstep(0.94, 1.0, holoUv.x)))
+        .mul(smoothstep(0.0, 0.1, holoUv.y))
+        .mul(oneMinus(smoothstep(0.9, 1.0, holoUv.y)));
+    holoMaterial.opacityNode = holoEdge.mul(0.75);
+    holoMaterial.transparent = true;
+    holoMaterial.depthWrite = false;
+    holoMaterial.side = THREE.DoubleSide;
+    holoMaterial.blending = THREE.AdditiveBlending;
+    holoMaterial.userData.emitsBloom = true;
+    const holoBillboard = new THREE.Mesh(new THREE.PlaneGeometry(64, 22), holoMaterial);
+    holoBillboard.position.y = 24;
+    gateBridge.add(holoBillboard);
+    gateBridge.position.set(0, 0, -300);
+    gateBridge.traverse((child) => { child.frustumCulled = false; });
+    corridor.add(gateBridge);
+    group.userData.gateBridge = gateBridge;
+
     corridor.add(createCityBlocks(uniforms));
 
     const rails = createNeonRails();
@@ -550,10 +614,22 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
         group.userData.uReveal.value = easedReveal;
     }
 
-    // SYNTHWAVE SUN heats up / swells with the same finale ignition as the spire conduit.
+    // SYNTHWAVE SUN heats up / swells with the same finale ignition as the spire
+    // conduit — but with a VISIBILITY FLOOR (creative plan ch8 item 1: the disc never
+    // landed on screen because the pre-ignition reveal drove its gain toward zero).
+    // The sun now idles ALIVE at 0.45 and heats to full at the finale.
     const { sun } = group.userData;
     if (sun?.userData?.uReveal) {
-        sun.userData.uReveal.value = easedReveal;
+        sun.userData.uReveal.value = 0.45 + easedReveal * 0.55;
+    }
+
+    // EXIT DIMMING (creative plan Transition Out): across the journey's very end the
+    // city gutters out — windows and signs dim through the shared energy uniform while
+    // the reveal-driven sun stays the LAST THING LIT, its ember sinking as the encore
+    // resolves (the hint of descent back toward the core).
+    if (uniforms?.uEnergy && Number.isFinite(cameraProgress)) {
+        const dimT = THREE.MathUtils.smoothstep(cameraProgress, 0.965, 1.0);
+        uniforms.uEnergy.value *= (1 - dimT * 0.85);
     }
 
     const { spire } = group.userData;

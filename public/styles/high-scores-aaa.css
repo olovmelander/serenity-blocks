@@ -248,6 +248,9 @@ body.electron-app #high-scores-modal .modal-content {
 }
 
 #high-scores-modal .hs-rank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-family: 'Space Mono', monospace;
     font-size: 18px;
     font-weight: 700;
@@ -259,6 +262,11 @@ body.electron-app #high-scores-modal .modal-content {
 #high-scores-modal .hs-row--silver .hs-rank,
 #high-scores-modal .hs-row--bronze .hs-rank {
     font-size: 22px;
+}
+
+#high-scores-modal .hs-rank-icon {
+    color: rgb(var(--medal));
+    filter: drop-shadow(0 0 14px rgba(var(--medal), 0.32));
 }
 
 #high-scores-modal .hs-main {

@@ -30,15 +30,18 @@
 import * as THREE from 'three/webgpu';
 import {
     abs,
+    cameraPosition,
     clamp,
     dot,
     float,
     floor,
     fract,
+    length,
     max,
     min,
     mix,
     normalView,
+    positionWorld,
     pow,
     sin,
     smoothstep,
@@ -520,6 +523,12 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
 
     // AAA: per-chapter glow halo tinted by the chapter emissive colour. glowAlphaPeak
     // (0.14) keeps the additive halo from stacking into a white bloom over the ribbon.
+    //
+    // CAMERA-PROXIMITY FADE (creative plan ch7 item 4 — the frame-15 blowout): when the
+    // camera sat INSIDE the glow tube, the unfeathered additive volume filled ~35% of
+    // frame as a flat banded cone. The glow now fades to zero within a small radius of
+    // the lens, so the camera can never clip into unfeathered glow (all chapters).
+    const nearClipFade = smoothstep(2.5, 9.0, length(positionWorld.sub(cameraPosition)));
     const { emisCol } = chapterAt(chapter, vUv.x);
     const alpha = clamp(
         lit.mul(pulse).mul(ODYSSEY_PATH_CROSS_SECTION.glowAlphaPeak)
@@ -527,7 +536,7 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
             .add(uBeat.mul(0.06).mul(lit)),
         0.0,
         0.5,
-    );
+    ).mul(nearClipFade);
 
     const color = mix(emisCol, uTransitionColor, transitionBand.mul(uTransitionMix));
 

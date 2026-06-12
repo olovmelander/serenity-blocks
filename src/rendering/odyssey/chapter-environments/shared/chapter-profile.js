@@ -114,6 +114,11 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '1-2',
         transition: {
             id: '1-2',
+            // Creative plan (Ch1 Transition Out): widen the Steam Quench pre-roll
+            // (0.018 default → 0.03, the 3→4 model) so the ember→steam veils and the
+            // orange→cyan transformation play across multiple frames instead of
+            // popping at the 16→17 equivalent.
+            seamWidth: 0.03,
             stinger: 'steam-quench',
             crossfadeDurationMs: 3000,
         },
@@ -169,7 +174,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // daytime sky and lets the vegetation/clouds register against it.
             skyColor: 0x6ba3d8,
             fogColor: 0x6f9ec4,
-            fogDensity: 0.004,
+            // Creative plan Ch3 item 1 (value restoration): the fog lift was the enemy —
+            // 0.004 → 0.0024 so the dark foreground layer does the luminosity work and
+            // the pastels read luminous instead of washed.
+            fogDensity: 0.0024,
             ambientLight: 0xfff8e7,
             ambientIntensity: 0.8,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
@@ -182,7 +190,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         path: {
             style: ODYSSEY_PATH_STYLES.LEY_LINE,
             baseColor: 0x1d4a22,
-            emissiveColor: 0x9be84f,
+            // Creative plan Ch3 item 7: a sun-warmed chlorophyll leyline (the old lime
+            // 0x9be84f clashed with the golden hour instead of belonging to it).
+            emissiveColor: 0xc9cf52,
             flowSpeed: 0.7,
             widthScale: 0.98,
         },

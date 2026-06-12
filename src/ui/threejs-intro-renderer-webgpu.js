@@ -33,6 +33,14 @@ import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
 import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
 import { createIntroNebulaSky } from './intro-nebula-sky.js';
+import {
+    INTRO_TETROMINO_BLOCK_RADIUS,
+    INTRO_TETROMINO_CLICK_IMPULSE,
+    INTRO_TETROMINO_PICK_PADDING,
+    computeImpulseAwayFromRay,
+    findClosestTetrominoRayHit,
+    getPointerNdcFromClient,
+} from './intro-tetromino-interactions.js';
 
 const SHAPE_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 
@@ -55,6 +63,21 @@ const {
     MeshBasicNodeMaterial,
     MeshStandardNodeMaterial,
 } = THREE;
+
+function toPlainRay(ray) {
+    return {
+        origin: {
+            x: ray.origin.x,
+            y: ray.origin.y,
+            z: ray.origin.z,
+        },
+        direction: {
+            x: ray.direction.x,
+            y: ray.direction.y,
+            z: ray.direction.z,
+        },
+    };
+}
 
 function isWindowsPlatform() {
     if (typeof navigator === 'undefined') return false;
@@ -90,6 +113,8 @@ export default class ThreeJSIntroRendererWebGPU {
         this.clock = new THREE.Clock();
         this.lastSpawnTime = 0;
         this.spawnAccumulator = 0;
+        this.raycaster = new THREE.Raycaster();
+        this.tetrominoClickReadbackInFlight = false;
 
         // Pointer-driven camera parallax (cursor arcs the camera around the scene).
         this.cameraParallax = new IntroCameraParallax();
@@ -1007,6 +1032,73 @@ export default class ThreeJSIntroRendererWebGPU {
             this.setPhase(INTRO_PHASES.IDLE);
         }
         this.applyQualitySettings();
+    }
+
+    async triggerTetrominoBounceAt(clientX, clientY) {
+        if (!this.renderer
+            || !this.camera
+            || !this.tetrominoCompute
+            || typeof this.renderer.getArrayBufferAsync !== 'function'
+            || this.tetrominoClickReadbackInFlight) {
+            return false;
+        }
+
+        const ndc = getPointerNdcFromClient(this.canvas, clientX, clientY);
+        if (!ndc) {
+            return false;
+        }
+
+        this.raycaster.setFromCamera(ndc, this.camera);
+        const ray = toPlainRay(this.raycaster.ray);
+        this.tetrominoClickReadbackInFlight = true;
+
+        try {
+            const [
+                positionBuffer,
+                velocityBuffer,
+                rotationBuffer,
+                rotSpeedBuffer,
+            ] = await Promise.all([
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getPositionBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getVelocityBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotationBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotSpeedBuffer()),
+            ]);
+
+            if (!this.renderer || !this.tetrominoCompute) {
+                return false;
+            }
+
+            const positions = new Float32Array(positionBuffer);
+            const velocities = new Float32Array(velocityBuffer);
+            const rotations = new Float32Array(rotationBuffer);
+            const rotSpeeds = new Float32Array(rotSpeedBuffer);
+            const hit = findClosestTetrominoRayHit({
+                ray,
+                positions,
+                velocities,
+                rotations,
+                maxSlots: IntroTetrominoCompute.MAX_TETROMINOS,
+                pickRadius: INTRO_TETROMINO_BLOCK_RADIUS + INTRO_TETROMINO_PICK_PADDING,
+            });
+
+            if (!hit) {
+                return false;
+            }
+
+            const impulse = computeImpulseAwayFromRay(ray, hit.center, INTRO_TETROMINO_CLICK_IMPULSE);
+            return this.tetrominoCompute.applyClickImpulseToSlot(hit.slot, {
+                positions,
+                velocities,
+                rotations,
+                rotSpeeds,
+            }, impulse);
+        } catch (error) {
+            console.warn('[IntroWebGPU] Tetromino click readback failed:', error);
+            return false;
+        } finally {
+            this.tetrominoClickReadbackInFlight = false;
+        }
     }
 
     startWarpDismiss(duration = 1.2) {

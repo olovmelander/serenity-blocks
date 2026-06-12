@@ -10,6 +10,7 @@ import {
     formatNumber,
     formatSeconds,
 } from './components/steam-leaderboard-panel.js';
+import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 
 /**
@@ -164,7 +165,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         let rankingHTML = '';
         let rankingBadge = '';
         if (rank === 1) {
-            rankingHTML = '🏆 NEW HIGH SCORE!';
+            rankingHTML = `<span class="ranking-line">${csIcon('trophy', 16, 'ranking-icon-svg')}<span>New High Score!</span></span>`;
             rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
         } else if (rank <= 10) {
             rankingHTML = `Rank #${rank}`;
@@ -409,7 +410,9 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
     const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
 
     // Calculate duration
-    const duration = startTime ? Date.now() - startTime : 0;
+    const duration = Number.isFinite(gameState?.simTimeMs)
+        ? gameState.simTimeMs
+        : startTime ? Date.now() - startTime : 0;
     const minutes = Math.floor(duration / 60000);
     const seconds = Math.floor((duration % 60000) / 1000);
     const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -442,7 +445,7 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
     let rankingHTML = '';
     let rankingBadge = '';
     if (rank === 1) {
-        rankingHTML = '🏆 NEW HIGH SCORE!';
+        rankingHTML = `<span class="ranking-line">${csIcon('trophy', 16, 'ranking-icon-svg')}<span>New High Score!</span></span>`;
         rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
     } else if (rank > 0 && rank <= 10) {
         rankingHTML = `Rank #${rank}`;
@@ -560,9 +563,18 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
     const buttonsContainer = document.getElementById('demo-complete-buttons');
     if (buttonsContainer) {
         buttonsContainer.innerHTML = `
-            <button id="demo-watch-again" class="demo-btn primary">▶ Watch Again</button>
-            <button id="demo-browse-replays" class="demo-btn secondary">📁 Browse Replays</button>
-            <button id="demo-main-menu" class="demo-btn tertiary">🏠 Main Menu</button>
+            <button id="demo-watch-again" class="demo-btn primary">
+                ${csIcon('play', 16, 'btn-icon-svg')}
+                <span>Watch Again</span>
+            </button>
+            <button id="demo-browse-replays" class="demo-btn secondary">
+                ${csIcon('folder', 16, 'btn-icon-svg')}
+                <span>Browse Replays</span>
+            </button>
+            <button id="demo-main-menu" class="demo-btn tertiary">
+                ${csIcon('home', 16, 'btn-icon-svg')}
+                <span>Main Menu</span>
+            </button>
         `;
 
         // Wire up button event listeners
@@ -618,14 +630,15 @@ export async function showHighScoresModal(modalManager, highScoreManager, onPlay
                 const date = new Date(score.timestamp);
                 const dateStr = date.toLocaleDateString();
                 const medal = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
-                const rankLabel = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
+                const rankIcon = index === 0 ? 'crown' : index === 1 ? 'trophy' : index === 2 ? 'gem' : '';
+                const rankLabel = rankIcon ? csIcon(rankIcon, 18, `hs-rank-icon hs-rank-icon--${medal}`) : `${index + 1}`;
                 const rowClass = `hs-row${medal ? ` hs-row--${medal}` : ''}`;
 
                 // Play button for scores with linked demos (placeholder keeps rows aligned)
                 let playHTML = '';
                 if (hasAnyDemos) {
                     if (score.demoId && onPlayDemo) {
-                        playHTML = `<button class="play-demo-btn hs-play" data-demo-id="${score.demoId}" title="Watch replay" aria-label="Watch replay">▶</button>`;
+                        playHTML = `<button class="play-demo-btn hs-play" data-demo-id="${score.demoId}" title="Watch replay" aria-label="Watch replay">${csIcon('play', 16, 'btn-icon-svg')}</button>`;
                     } else {
                         playHTML = '<span class="hs-play hs-play--empty" aria-hidden="true">—</span>';
                     }

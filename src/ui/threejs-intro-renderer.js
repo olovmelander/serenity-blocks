@@ -8,6 +8,13 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
+import {
+    INTRO_TETROMINO_CLICK_IMPULSE,
+    INTRO_TETROMINO_MAX_SPEED,
+    clampVectorMagnitude,
+    computeImpulseAwayFromRay,
+    getPointerNdcFromClient,
+} from './intro-tetromino-interactions.js';
 
 // Camera idle-drift amplitudes — must match the values used in update().
 // Used (together with the pointer-parallax orbit amplitudes) to compute how far
@@ -21,6 +28,21 @@ const SPAWN_CLEARANCE = 6;
 // Minimum inward drift so pieces cross the (now larger) off-screen margin in a
 // few seconds instead of crawling in.
 const SPAWN_INWARD_DRIFT = 0.05;
+
+function toPlainRay(ray) {
+    return {
+        origin: {
+            x: ray.origin.x,
+            y: ray.origin.y,
+            z: ray.origin.z,
+        },
+        direction: {
+            x: ray.direction.x,
+            y: ray.direction.y,
+            z: ray.direction.z,
+        },
+    };
+}
 
 export default class ThreeJSIntroRenderer {
     constructor(canvas) {
@@ -1109,7 +1131,7 @@ export default class ThreeJSIntroRenderer {
         // Simple physics step with collision detection
 
         // Settings
-        const MAX_SPEED = 0.2;
+        const MAX_SPEED = INTRO_TETROMINO_MAX_SPEED;
         const RESTITUTION = 0.8; // Bounciness (1 = perfectly elastic, < 1 = loses energy)
 
         for (let i = this.activeTetrominos.length - 1; i >= 0; i--) {
@@ -1365,6 +1387,41 @@ export default class ThreeJSIntroRenderer {
         if (this.nebulaSkyUniforms) {
             this.nebulaSkyUniforms.uIntensity.value = enabled ? 0.5 : 1.0;
         }
+    }
+
+    triggerTetrominoBounceAt(clientX, clientY) {
+        if (!this.canvas || !this.camera || !this.raycaster || this.activeTetrominos.length === 0) {
+            return false;
+        }
+
+        const ndc = getPointerNdcFromClient(this.canvas, clientX, clientY);
+        if (!ndc) {
+            return false;
+        }
+
+        this.scene?.updateMatrixWorld?.(true);
+        this.raycaster.setFromCamera(ndc, this.camera);
+        const intersections = this.raycaster.intersectObjects(this.activeTetrominos, false);
+        const hit = intersections.find(({ object }) => object?.userData?.velocity);
+
+        if (!hit) {
+            return false;
+        }
+
+        const mesh = hit.object;
+        const ray = toPlainRay(this.raycaster.ray);
+        const impulse = computeImpulseAwayFromRay(ray, mesh.position, INTRO_TETROMINO_CLICK_IMPULSE);
+        const velocity = clampVectorMagnitude({
+            x: mesh.userData.velocity.x + impulse.x,
+            y: mesh.userData.velocity.y + impulse.y,
+            z: mesh.userData.velocity.z + impulse.z,
+        }, INTRO_TETROMINO_MAX_SPEED);
+
+        mesh.userData.velocity.set(velocity.x, velocity.y, velocity.z);
+        this.perturbRotation(mesh);
+        this.createCollisionEffect(hit.point.x, hit.point.y, hit.point.z);
+
+        return true;
     }
 
     destroy() {

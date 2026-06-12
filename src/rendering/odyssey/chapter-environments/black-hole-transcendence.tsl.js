@@ -369,7 +369,10 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
     const vNormal = normalView;
     const vView = positionViewDirection;
     const fres = pow(oneMinus(max(0.0, dot(vNormal, vView))), 1.4);
-    const view = fres.mul(0.7).add(0.55); // rim-biased but with a solid centre floor
+    // Creative plan ch7 item 1 (the capture contradicts the code — AMPLIFY): centre
+    // floor lifted 0.55 → 0.68 so frames 07–14 genuinely sit at the #120A21 violet
+    // floor instead of falling back to RGB-black between motifs.
+    const view = fres.mul(0.7).add(0.68); // rim-biased but with a solid centre floor
 
     // Drifting pocketed FBM filaments so the wash has internal structure that actually
     // reads as nebula (bright clumps), not a flat band. The ridged term carves brighter
@@ -386,10 +389,10 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = tint.mul(intensity);
-    // Hard cap the alpha so the additive wash stays a faint ambience (never a wall), but
-    // raised to 0.38 (B2 stop-the-crush) so the deep-violet structure is present in every
-    // frame — still well below a haze wall, and ACES + threshold bloom are downstream.
-    material.opacityNode = clamp(intensity, 0.0, 0.38).mul(uOpacity);
+    // Hard cap the alpha so the additive wash stays a faint ambience (never a wall) —
+    // raised again 0.38 → 0.5 (creative plan amplification) so the violet floor holds
+    // in every frame; still well below a haze wall, ACES + threshold bloom downstream.
+    material.opacityNode = clamp(intensity, 0.0, 0.5).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.BackSide;
@@ -416,8 +419,10 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
  * .js update() re-centres the field on the camera so the camera is always inside it.
  * @param {object} uTime shared time uniform
  */
-export function createCorridorDustTSL(uTime = uniform(0)) {
-    const count = 460;
+export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) {
+    // Creative plan ch7 item 1: density raised toward 3× through the dead 07–23
+    // midsection (the .js scales off the quality preset); hard-capped for fill-rate.
+    const count = Math.max(120, Math.min(Math.floor(requestedCount), 1100));
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -480,9 +485,10 @@ export function createCorridorDustTSL(uTime = uniform(0)) {
     // distance) — still fully feathered to 0 at the edge, no hard ring.
     const d = length(uv().sub(0.5));
     const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 2.0);
-    // Gentle breathing alpha — raised so the drifting dust+ember field reads as parallax
-    // depth, still capped well below a haze wall.
-    const breathe = sin(uTime.mul(0.3).add(aPhase)).mul(0.08).add(0.22);
+    // Gentle breathing alpha — raised again (0.22 → 0.3 base, creative plan: the bokeh
+    // field needs 3–4× perceived density/brightness through the midsection) while
+    // staying capped well below a haze wall.
+    const breathe = sin(uTime.mul(0.3).add(aPhase)).mul(0.1).add(0.3);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
@@ -776,7 +782,10 @@ export function createLensingStarfieldTSL(uTime = uniform(0)) {
         colors[stride] = hot ? 1.0 : 0.6;
         colors[stride + 1] = hot ? 0.66 : 0.8;
         colors[stride + 2] = 1.0;
-        sizes[index] = 1.2 + Math.random() * 1.8;
+        // MAGNITUDE VARIANCE (creative plan, DNEG discipline): power-law sizing — most
+        // stars tiny, a few bright giants — so the tangential lensing smear reads as
+        // distorted STARLIGHT of varied magnitude, never a uniform blur.
+        sizes[index] = 0.8 + Math.random() * Math.random() * 4.2;
         twinkles[index] = Math.random() * Math.PI * 2;
     }
 

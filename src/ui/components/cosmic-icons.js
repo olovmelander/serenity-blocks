@@ -33,6 +33,8 @@ const PATHS = {
     burst: '<path class="cs-burst-core" d="M12 8.5 14 11l3.2-.6-1.4 2.9 1.9 2.6-3.2.3-1.6 2.8-1.9-2.6-3.2.5 1.4-2.9-1.9-2.6 3.2-.3L12 8.5Z"/><path class="cs-burst-rays" d="M12 2.8v3M12 18.2v3M3.2 12h3M17.8 12h3M5.7 5.7l2.1 2.1M16.2 16.2l2.1 2.1M18.3 5.7l-2.1 2.1M7.8 16.2l-2.1 2.1"/>',
     inbox: '<path class="cs-inbox-tray" d="M4.5 12.5 6.4 5.5h11.2l1.9 7v5.2a1.8 1.8 0 0 1-1.8 1.8H6.3a1.8 1.8 0 0 1-1.8-1.8v-5.2Z"/><path class="cs-inbox-slot" d="M4.8 12.5h4.1l1.2 2.3h3.8l1.2-2.3h4.1"/><path class="cs-inbox-arrow" d="M12 4.2v6.2M9.4 8l2.6 2.6L14.6 8"/>',
     chain: '<path class="cs-chain-a" d="M9.8 7.3 11 6.1a4.1 4.1 0 0 1 5.8 5.8l-1.8 1.8a4.1 4.1 0 0 1-5.8 0"/><path class="cs-chain-b" d="M14.2 16.7 13 17.9a4.1 4.1 0 0 1-5.8-5.8L9 10.3a4.1 4.1 0 0 1 5.8 0"/>',
+    folder: '<path d="M3.5 7.5h6l1.7 2h9.3v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"/><path d="M3.5 7.5V6a2 2 0 0 1 2-2h4.2l1.7 2h7.1a2 2 0 0 1 2 2v1.5"/>',
+    home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/>',
     potato: '<path class="cs-potato-body" d="M8 18.4c-2.6-1.8-3.3-5.8-1.6-9.1s5.3-4.9 8.6-3.9c3.6 1.1 5.3 4.8 3.8 8.3-1.7 4.1-7 6.8-10.8 4.7Z"/><path class="cs-potato-eye" d="M9.2 10.3h.01M13.9 8.5h.01M15.2 13.6h.01M10.8 15.2h.01"/><path class="cs-potato-spark" d="M18 4.2l1.2-1.7M20 6.2l2-.2"/>',
     bomb: '<circle class="cs-bomb-body" cx="11" cy="13" r="6.2"/><path class="cs-bomb-fuse" d="M15.2 8.8 17.5 6.5M17.5 6.5c1.3-1.3 2.5-1.3 3.7 0"/><path class="cs-bomb-spark" d="M21.3 3.4v2.1M20.2 4.5h2.1"/>',
 

@@ -38,9 +38,12 @@ import {
     max,
     min,
     mix,
+    normalView,
+    normalWorld,
     normalize,
     oneMinus,
     positionLocal,
+    positionViewDirection,
     positionWorld,
     pow,
     sin,
@@ -58,12 +61,19 @@ import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
 
 // ── Deep-sea gradient sphere (-100 backstop; must NOT bloom) ─────────────────────
 
-export function createOceanGradientTSL() {
+export function createOceanGradientTSL(options = {}) {
     // FLAGSHIP REMAKE: "The Sunlit Descent into the Abyss." Strong vertical depth
     // gradient — a more saturated sunlit teal near the surface, a richer mid blue, and
     // a DEEPER velvet indigo abyss (pulled toward 0x020510 so the lower frame can fall
     // into real darkness and the ch2 toe/vignette finally engage). This is the single
     // biggest cohesion cue — the frame must read top=light, bottom=dark.
+    //
+    // CREATIVE PLAN (Ch2 depth ladder): the chapter gets DARKER BEFORE IT GETS LIGHTER.
+    // uDepth (0 at the chapter foot → 1 at the breach) scripts the ascent: progress
+    // 0–0.35 plays in abyssal twilight (the upper palette dimmed), then the water
+    // column brightens toward the sunlit teal ceiling across the climb — the light
+    // narrates the ascent rather than a static gradient the camera happens to sit in.
+    const uDepth = options.uDepth ?? uniform(0);
     const uColorTop = uniform(new THREE.Color(0x149aae)); // sunlit teal near surface
     const uColorMid = uniform(new THREE.Color(0x062a53)); // saturated mid blue
     const uColorBottom = uniform(new THREE.Color(0x020510)); // deep velvet indigo abyss
@@ -81,16 +91,21 @@ export function createOceanGradientTSL() {
     // makes the descent feel deep rather than evenly split.
     const upMix = smoothstep(0.0, 0.85, t);
     const downMix = smoothstep(0.0, 0.62, t.negate());
-    const up = mix(uColorMid, uColorTop, upMix);
-    const down = mix(uColorMid, uColorBottom, downMix);
+    // Progress-mapped light: at the chapter foot the whole upper column is dimmed to
+    // abyssal twilight; the sunlit read is EARNED across the climb.
+    const ascent = smoothstep(0.05, 0.75, uDepth);
+    const lightScale = mix(float(0.5), float(1.0), ascent);
+    const up = mix(uColorMid, uColorTop, upMix).mul(lightScale);
+    const down = mix(uColorMid.mul(lightScale.mul(0.4).add(0.6)), uColorBottom, downMix);
     let color = mix(down, up, step(0.0, t));
 
     // Soft surface light-disc: a feathered brightening toward the apex so the eye reads
     // "the surface is far above". Concentrated near +Y. The additive lift is REDUCED
     // (was 0.10,0.26,0.30) and tinted cool so the top stays bright-but-teal — never
-    // near-white (the old pale wash) once ACES + threshold bloom act downstream.
+    // near-white (the old pale wash) once ACES + threshold bloom act downstream. The
+    // disc strengthens with ascent so the promise of the surface grows on approach.
     const surfaceGlow = pow(smoothstep(0.5, 0.98, t), 2.0);
-    color = color.add(vec3(0.06, 0.17, 0.21).mul(surfaceGlow));
+    color = color.add(vec3(0.06, 0.17, 0.21).mul(surfaceGlow).mul(ascent.mul(0.7).add(0.3)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -116,7 +131,9 @@ function gerstnerWave(dir, steep, wlen, p, t) {
     return vec3(d.x.mul(a).mul(cos(f)), a.mul(sin(f)), d.y.mul(a).mul(cos(f)));
 }
 
-export function createWaterSurfaceTSL(uTime, surfaceOffsetY = 20) {
+export function createWaterSurfaceTSL(uTime, surfaceOffsetY = 20, options = {}) {
+    const uDepth = options.uDepth ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
     const uSurfaceColor = uniform(new THREE.Color(0x0a9bb8)); // brighter teal at the surface
     const uDeepColor = uniform(new THREE.Color(0x062a55)); // deeper indigo trough
 
@@ -142,11 +159,14 @@ export function createWaterSurfaceTSL(uTime, surfaceOffsetY = 20) {
     // (higher contrast, less of a flat wash on the ceiling).
     const caustics = pow(c1.add(c2).mul(0.5).add(0.5), 4.0);
 
+    // The caustic ceiling BRIGHTENS AND LOWERS into the final act (the plan's
+    // surface-breach approach): from ~85% progress the bright ceiling fills the frame.
+    const approach = smoothstep(0.5, 0.95, uDepth);
     let color = mix(uDeepColor, uSurfaceColor, vElev.mul(0.1).add(0.5));
-    color = color.add(vec3(0.55, 0.95, 1.0).mul(caustics).mul(0.7));
+    color = color.add(vec3(0.55, 0.95, 1.0).mul(caustics).mul(approach.mul(0.45).add(0.42)));
 
     const dist = length(vUv.sub(0.5)).mul(2.0);
-    const alpha = oneMinus(smoothstep(0.8, 1.0, dist)).mul(0.8);
+    const alpha = oneMinus(smoothstep(0.8, 1.0, dist)).mul(0.8).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = displaced;
@@ -157,6 +177,7 @@ export function createWaterSurfaceTSL(uTime, surfaceOffsetY = 20) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
     const geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
     geometry.rotateX(Math.PI / 2);
@@ -186,8 +207,10 @@ function causticProjection(planarUv, time, freq = 0.15) {
 
 // ── Volumetric god-ray cones (additive, bloom-eligible) — HERO of the chapter ─────
 
-export function createGodRaysTSL(uTime) {
+export function createGodRaysTSL(uTime, options = {}) {
     const time = uTime ?? uniform(0);
+    const uDepth = options.uDepth ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
     const vUv = uv();
     const vPos = positionLocal;
 
@@ -218,12 +241,18 @@ export function createGodRaysTSL(uTime) {
     const shimmer = sin(vPos.y.mul(0.28).add(time.mul(1.6))).mul(0.16).add(0.84);
     // Brighter than before (0.30 -> 0.45) so the rays carry the frame as the hero, but
     // still soft-feathered and capped well below blowout (ACES + bloom act downstream).
+    // CREATIVE PLAN: light density narrates the ascent — the shafts strengthen with
+    // chapter progress (sparse at the abyssal foot, multiplying toward the breach).
+    const ascentLight = smoothstep(0.1, 0.85, uDepth).mul(0.5).add(0.5);
     const alphaBase = verticalFade.mul(edgeFade).mul(volume);
-    const alpha = alphaBase.mul(shimmer).mul(shaftCaustic).mul(0.45);
+    const alpha = alphaBase.mul(shimmer).mul(shaftCaustic).mul(0.45).mul(ascentLight)
+        .mul(uOpacity);
 
     // Cool teal-blue shaft (kept well off pure white) so the rays read as filtered sea
-    // light rather than an over-exposed highlight.
-    const topColor = vec3(0.42, 0.80, 0.94);
+    // light rather than an over-exposed highlight. On the final approach (the breach)
+    // the shafts warm slightly toward the daylight they are about to become.
+    const breachWarm = smoothstep(0.85, 1.0, uDepth);
+    const topColor = mix(vec3(0.42, 0.80, 0.94), vec3(0.62, 0.84, 0.82), breachWarm.mul(0.6));
     const bottomColor = vec3(0.10, 0.34, 0.60);
     const color = mix(bottomColor, topColor, verticalFade);
 
@@ -235,6 +264,7 @@ export function createGodRaysTSL(uTime) {
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
     // TALLER cones (150 -> 220) so the shafts plunge from far above all the way through
     // the mid-frame — reads as light raining down, not a local glow.
@@ -264,8 +294,9 @@ export function createGodRaysTSL(uTime) {
 
 // ── Far seabed silhouette — dune ridges fading into murk (backstop-ish) ───────────
 
-export function createSeabedTSL(uTime) {
+export function createSeabedTSL(uTime, options = {}) {
     const time = uTime ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     // Vertex displacement: gentle rolling dunes from ridged FBM so the seabed has a
     // silhouette ridgeline rather than a flat plate. Cheap (the plane is low-res).
@@ -306,18 +337,29 @@ export function createSeabedTSL(uTime) {
     color = color.add(reefColor.mul(reefGlow));
 
     // Distance murk: fade the far edges of the seabed into the water so it does not end
-    // with a hard line — uses world distance from the camera-corridor axis (approx via
-    // |x| in the seabed's own space mapped through world).
+    // with a hard line — world |x| for the corridor sides, PLUS a uv-based feather on
+    // both plane axes so no straight geometry edge can ever read as a dark panel (the
+    // placeholder-kill audit from the creative plan's screenshot diagnosis).
     const fade = oneMinus(smoothstep(80.0, 160.0, abs(vWorld.x)));
+    const seabedUv = uv();
+    const edgeFeatherX = smoothstep(0.0, 0.12, seabedUv.x)
+        .mul(oneMinus(smoothstep(0.88, 1.0, seabedUv.x)));
+    const edgeFeatherY = smoothstep(0.0, 0.12, seabedUv.y)
+        .mul(oneMinus(smoothstep(0.88, 1.0, seabedUv.y)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = displaced;
     material.colorNode = color;
-    material.opacityNode = clamp(fade, 0.0, 1.0).mul(0.92);
+    material.opacityNode = clamp(fade, 0.0, 1.0)
+        .mul(edgeFeatherX)
+        .mul(edgeFeatherY)
+        .mul(0.92)
+        .mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.fog = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
     // Wide, shallow plane laid flat; subdivided enough for the dune displacement.
     const geometry = new THREE.PlaneGeometry(360, 200, 64, 32);
@@ -335,11 +377,14 @@ export function createSeabedTSL(uTime) {
  *   shape 0 → whale (long body + tail flukes)
  *   shape 1 → manta ray (wide flat wings)
  *   shape 2 → jellyfish (dome + trailing tendrils)
- *   shape 3 → COLOSSAL leviathan (long sinuous body + tail + dorsal hump) — the hero
+ *   shape 3 → COLOSSAL leviathan (long sinuous body + tail + dorsal hump)
+ *   shape 4 → HERO MANTA (true diamond, swept wingtips, live wingbeat) — the trio that
+ *             carries the chapter (creative plan asset 1)
  * The mask is intentionally SOFT and low-contrast so the creatures read as distant
  * silhouettes/glows, not crisp sprites. Returns the alpha mask in [0,1].
+ * `time`/`phase` drive the hero manta's wingbeat; other shapes ignore them.
  */
-function creatureMask(p, shape) {
+function creatureMask(p, shape, time = float(0), phase = float(0)) {
     // p in [-0.5, 0.5] quad space; centred coords read naturally for the masks.
     const { x, y } = p;
 
@@ -378,15 +423,33 @@ function creatureMask(p, shape) {
         .mul(oneMinus(smoothstep(0.0, 0.32, abs(x.add(0.05)))));
     const leviathan = max(max(levBody, levTail), dorsal.mul(0.6));
 
+    // --- HERO MANTA: a true diamond silhouette with swept-back wingtips and a live
+    // wingbeat. The wing centreline droops toward the tips (sweep) and the wingbeat
+    // term flaps the tips far more than the body, so the silhouette visibly FLIES.
+    // Width tapers hard toward |x|≈0.5 so the tips end in points, not a blunt ellipse
+    // (the old shape-1 read as "unreadable black speck"). ---
+    const mAx = abs(x);
+    const flap = sin(time.mul(1.1).add(phase)).mul(pow(mAx.mul(2.0), 1.5)).mul(0.16);
+    const mYc = mAx.mul(-0.22).add(flap); // swept centreline + wingbeat
+    const mHalfW = max(float(0.02), float(0.16).mul(oneMinus(mAx.mul(1.9))));
+    const mantaBody = oneMinus(smoothstep(0.55, 1.0, abs(y.sub(mYc)).div(mHalfW)));
+    // Cephalic head bump at the centre + a thin trailing tail filament off the left.
+    const mantaHead = oneMinus(smoothstep(0.0, 0.12, length(vec2(x.sub(0.02), y.sub(mYc).sub(0.02)))));
+    const mantaTail = oneMinus(smoothstep(0.0, 0.02, abs(y.sub(mYc))))
+        .mul(smoothstep(0.3, 0.48, x.negate()));
+    const manta = max(max(mantaBody, mantaHead.mul(0.9)), mantaTail.mul(0.8));
+
     // Select by shape index (step gates).
     const isWhale = oneMinus(step(0.5, shape));
     const isRay = step(0.5, shape).mul(oneMinus(step(1.5, shape)));
     const isJelly = step(1.5, shape).mul(oneMinus(step(2.5, shape)));
-    const isLev = step(2.5, shape);
+    const isLev = step(2.5, shape).mul(oneMinus(step(3.5, shape)));
+    const isManta = step(3.5, shape);
     return whale.mul(isWhale)
         .add(ray.mul(isRay))
         .add(jelly.mul(isJelly))
-        .add(leviathan.mul(isLev));
+        .add(leviathan.mul(isLev))
+        .add(manta.mul(isManta));
 }
 
 /**
@@ -401,26 +464,48 @@ function creatureMask(p, shape) {
  * surface) → darker / more indigo, so multiple creatures at different depths read as a
  * layered descent. Bioluminescent rim keeps the silhouettes alive without blowing out.
  */
-export function createCreatureSilhouetteMaterial(uTime) {
+export function createCreatureSilhouetteMaterial(uTime, options = {}) {
     const time = uTime ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     const center = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aShape = attribute('aShape', 'float');
     const aTint = attribute('aTint', 'vec3');
+    const aPhase = attribute('aPhase', 'float');
 
     const isJelly = step(1.5, aShape).mul(oneMinus(step(2.5, aShape)));
-    const isLev = step(2.5, aShape); // the colossal hero leviathan
+    const isLev = step(2.5, aShape).mul(oneMinus(step(3.5, aShape))); // background leviathan
+    const isManta = step(3.5, aShape); // the hero manta trio (creative plan asset 1)
 
     // Gentle vertical bob per-instance (phase from center.x so they desync).
     const bob = sin(time.mul(0.4).add(center.x.mul(0.2))).mul(1.4);
-    // HERO traverse: the leviathan slides slowly across the corridor (X) on a dedicated
-    // slow time term so it reads as one deliberate crossing; other creatures hold place.
+    // Leviathan traverse: slides slowly across the corridor (X) on a dedicated slow
+    // time term so it reads as one deliberate extreme-distance crossing.
     const levTraverse = sin(time.mul(0.06)).mul(48.0).mul(isLev);
-    const animCenter = vec3(center.x.add(levTraverse), center.y.add(bob), center.z);
+    // HERO MANTA banked arcs: each manta crosses the corridor on a lateral-PLUS-
+    // vertical ellipse (~39s period → one full crossing every ~20s, per the plan's
+    // choreography), desynced by aPhase so the three passes never coincide.
+    const mantaPhase = time.mul(0.16).add(aPhase);
+    const mantaTravX = sin(mantaPhase).mul(46.0).mul(isManta);
+    const mantaTravY = cos(mantaPhase).mul(9.0).mul(isManta);
+    const animCenter = vec3(
+        center.x.add(levTraverse).add(mantaTravX),
+        center.y.add(bob).add(mantaTravY),
+        center.z,
+    );
 
-    const localUv = positionLocal.xy;
-    const mask = creatureMask(localUv, aShape);
+    // Banking: roll the quad-space mask with the arc velocity so the manta leans into
+    // its turn (cos of the traverse phase). Identity for every other shape.
+    const bank = cos(mantaPhase).mul(0.38).mul(isManta);
+    const cb = cos(bank);
+    const sb = sin(bank);
+    const rawUv = positionLocal.xy;
+    const localUv = vec2(
+        rawUv.x.mul(cb).sub(rawUv.y.mul(sb)),
+        rawUv.x.mul(sb).add(rawUv.y.mul(cb)),
+    );
+    const mask = creatureMask(localUv, aShape, time, aPhase);
 
     // Depth tint by the instance's LOCAL corridor Y (the group is anchored ~209 units up
     // the path, so positionWorld.y saturates the old +40/90 band to 1.0 everywhere and
@@ -445,6 +530,20 @@ export function createCreatureSilhouetteMaterial(uTime) {
     const levMarks = levMarkRow.mul(levStripes).mul(mask).mul(isLev).mul(levPulse);
     const levCyan = vec3(0.21, 0.88, 1.0); // 0x35e0ff
 
+    // HERO MANTA photophores: two rows of pulsing bioluminescent dots tracing the
+    // ventral wing line (the plan's "ventral cyan rim + two photophore lines"), plus a
+    // cyan rim biased to the underside so the silhouette reads lit-from-below by the
+    // bio key #2ef0ff even when it crosses the dark column.
+    const bioCyan = vec3(0.18, 0.94, 1.0); // #2ef0ff bio key
+    const phAx = abs(localUv.x);
+    const phFlap = sin(time.mul(1.1).add(aPhase)).mul(pow(phAx.mul(2.0), 1.5)).mul(0.16);
+    const phYc = phAx.mul(-0.22).add(phFlap);
+    const phDots = pow(sin(localUv.x.mul(34.0)).mul(0.5).add(0.5), 3.0);
+    const phRowA = oneMinus(smoothstep(0.0, 0.022, abs(localUv.y.sub(phYc).add(0.045))));
+    const phRowB = oneMinus(smoothstep(0.0, 0.022, abs(localUv.y.sub(phYc).add(0.08))));
+    const photophores = phRowA.add(phRowB).mul(phDots).mul(mask).mul(isManta);
+    const ventral = smoothstep(0.0, -0.1, localUv.y.sub(phYc));
+
     let color = aTint.mul(depthDarken);
     // Faint cool rimlight on all creatures; stronger glow on jellies.
     color = color.add(vec3(0.10, 0.30, 0.42).mul(edge).mul(0.5));
@@ -452,26 +551,31 @@ export function createCreatureSilhouetteMaterial(uTime) {
     // Leviathan: a soft cool body rim + the pulsing flank markings (capped under 1.0).
     color = color.add(levCyan.mul(0.4).mul(edge).mul(isLev));
     color = color.add(levCyan.mul(levMarks).mul(0.7));
+    // Hero manta: ventral cyan rim + the two photophore rows, pulsing.
+    color = color.add(bioCyan.mul(edge).mul(ventral).mul(isManta).mul(0.55));
+    color = color.add(bioCyan.mul(photophores).mul(pulse).mul(0.85));
 
-    // Silhouettes are mostly opaque-dark; jellies + leviathan glow via stronger alpha at
-    // the lit areas. Keep overall opacity moderate so they sit "in" the water.
+    // Silhouettes are mostly opaque-dark; jellies + leviathan + manta glow via stronger
+    // alpha at the lit areas. Keep overall opacity moderate so they sit "in" the water.
     const alpha = mask.mul(0.78)
         .add(edge.mul(isJelly).mul(0.4))
-        .add(levMarks.mul(0.5));
+        .add(levMarks.mul(0.5))
+        .add(photophores.mul(0.5));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(animCenter, aSize);
     material.colorNode = color;
-    material.opacityNode = clamp(alpha, 0.0, 1.0);
+    material.opacityNode = clamp(alpha, 0.0, 1.0).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     // NormalBlending for the dark silhouette bodies (additive would erase them); the
-    // jelly/leviathan glow is folded into colour so it still reads bright on the deep
-    // gradient.
+    // jelly/leviathan/manta glow is folded into colour so it still reads bright on the
+    // deep gradient.
     material.blending = THREE.NormalBlending;
     material.fog = true;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     return material;
 }
 
@@ -538,8 +642,9 @@ function jellyfishImpostor(coord, time, phase) {
  * jellyfish group or touches per-jelly transforms — eliminating ~72 draws and a
  * per-frame scene-walk + per-jelly JS loop.
  */
-export function createJellyfishMaterial(uTime) {
+export function createJellyfishMaterial(uTime, options = {}) {
     const time = uTime ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     const center = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
@@ -572,21 +677,31 @@ export function createJellyfishMaterial(uTime) {
     color = color.add(aColor.mul(halo).mul(0.5)); // wider, softer ambient glow halo
 
     // Alpha mirrors the old layered opacities but folded into one additive quad so the
-    // silhouette stays soft + luminous; the wider halo feathers the bigger bells out to 0
-    // well before the quad edge (the shared billboard radial feather convention).
+    // silhouette stays soft + luminous.
+    //
+    // PLACEHOLDER KILL (creative plan item 4): the tendril band reached the quad's
+    // bottom edge at non-zero alpha, printing the "pink rectangles" of frames 11–15.
+    // A hard quad-edge feather on BOTH axes (additive blending shows color, so it
+    // multiplies color AND alpha) guarantees every term reaches exactly zero before
+    // the geometry edge.
+    const edgeFeather = oneMinus(smoothstep(0.40, 0.5, abs(coord.x.sub(0.5))))
+        .mul(oneMinus(smoothstep(0.40, 0.5, abs(coord.y.sub(0.5)))));
+    color = color.mul(edgeFeather);
     const alpha = mask.mul(0.46)
         .add(core.mul(0.85).mul(corePulse))
-        .add(halo.mul(0.55));
+        .add(halo.mul(0.55))
+        .mul(edgeFeather);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(animCenter, size);
     material.colorNode = color;
-    material.opacityNode = clamp(alpha, 0.0, 1.0);
+    material.opacityNode = clamp(alpha, 0.0, 1.0).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     return material;
 }
 
@@ -629,8 +744,9 @@ function kelpMask(coord) {
  * world Y so deeper clusters sink into shadow. Anchored to the base (not centre) so
  * they appear rooted to the seabed.
  */
-export function createKelpClusterMaterial(uTime) {
+export function createKelpClusterMaterial(uTime, options = {}) {
     const time = uTime ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     const center = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
@@ -668,13 +784,165 @@ export function createKelpClusterMaterial(uTime) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = worldPos;
     material.colorNode = color;
-    material.opacityNode = clamp(mask, 0.0, 1.0).mul(0.85);
+    material.opacityNode = clamp(mask, 0.0, 1.0).mul(0.85).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.NormalBlending;
     material.fog = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     return material;
+}
+
+// ── Hydrothermal vent glow (1→2 carried element, entry only) ──────────────────────
+//
+// Creative plan asset 9 / Transition In: Chapter 1's First Heart does not pop out —
+// it survives as a refracted, wobbling amber glow seen through water below the camera
+// for the chapter's first few percent, then dies as the thermocline passes. This is
+// the SAME light source Ch1's Transition Out drowns (#7a1500 oxblood with the amber
+// memory of #ffb35c at the core), so the two chapters describe one continuous handoff.
+export function createVentGlowTSL(uTime, options = {}) {
+    const time = uTime ?? uniform(0);
+    const uDepth = options.uDepth ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
+    const uEmber = uniform(new THREE.Color(0x7a1500)); // drowned oxblood body
+    const uAmber = uniform(new THREE.Color(0xffb35c)); // warm amber core memory
+
+    const p = uv().sub(0.5);
+    // Refraction wobble: ripple the radial distance with slow noise so the drowned
+    // glow shimmers like light seen through moving water.
+    const ripple = snoise3(vec3(p.x.mul(4.0), p.y.mul(4.0), time.mul(0.5))).mul(0.09);
+    const d = clamp(length(p).mul(2.0).add(ripple), 0.0, 1.0);
+    const glow = pow(oneMinus(d), 1.8);
+    const core = pow(oneMinus(d), 4.0);
+
+    const flicker = sin(time.mul(1.7)).mul(0.12).add(0.88);
+    // Entry-only: full at the chapter foot, gone by ~13% of the climb.
+    const entryFade = oneMinus(smoothstep(0.05, 0.13, uDepth));
+
+    let color = uEmber.mul(glow).mul(0.8).add(uAmber.mul(core).mul(0.7));
+    color = color.mul(flicker).mul(entryFade);
+    color = min(color, vec3(0.8, 0.5, 0.3));
+
+    const material = new THREE.SpriteNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = glow.mul(entryFade).mul(0.85).mul(uOpacity);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+    material.userData.uniforms = { uEmber, uAmber };
+
+    const mesh = new THREE.Sprite(material);
+    mesh.name = 'hydrothermal-vent-glow';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -65;
+    return { mesh, material };
+}
+
+// ── Fractured skylight panes (2→3 surface-breach approach) ────────────────────────
+//
+// Creative plan Transition Out: from ~85% progress, bright refracted patches of the
+// Chapter 3 sky — its mid azure #2F86D8 shot through with hints of the warm horizon
+// gold #F0B878 — fade in just under the wave surface over ~8 seconds, REPLACING the
+// popping white slabs of the old frame 20. Instanced billboard quads; geometry built
+// in deep-ocean.js with aBase/aSize/aSeed.
+export function createSkylightPaneMaterial(uTime, options = {}) {
+    const time = uTime ?? uniform(0);
+    const uDepth = options.uDepth ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
+    const uAzure = uniform(new THREE.Color(0x2f86d8)); // Ch3 mid azure
+    const uGold = uniform(new THREE.Color(0xf0b878)); // Ch3 warm horizon gold
+
+    const center = attribute('aBase', 'vec3');
+    const aSize = attribute('aSize', 'float');
+    const aSeed = attribute('aSeed', 'float');
+
+    const p = uv().sub(0.5);
+    // Fractured refraction patches: a sharp-ish noise mask so each pane reads as a
+    // broken pane of sky seen through the wave surface, not a uniform disc.
+    const patchNoise = snoise3(vec3(
+        p.x.mul(5.0).add(aSeed.mul(13.0)),
+        p.y.mul(5.0).add(aSeed.mul(7.0)),
+        time.mul(0.25),
+    ));
+    const patch = smoothstep(0.05, 0.5, patchNoise);
+    const goldMask = pow(
+        snoise3(vec3(p.x.mul(2.4).add(aSeed.mul(31.0)), p.y.mul(2.4), time.mul(0.15)))
+            .mul(0.5).add(0.5),
+        2.0,
+    );
+    const feather = oneMinus(smoothstep(0.3, 0.5, length(p)));
+
+    // The ~8-second buildup: panes only exist across the last ~12% of the climb.
+    const reveal = smoothstep(0.85, 0.97, uDepth);
+
+    let color = mix(uAzure, uGold, goldMask.mul(0.5)).mul(patch.mul(0.8).add(0.2));
+    color = color.mul(reveal);
+    color = min(color, vec3(0.85, 0.88, 0.92));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = billboardWorld(center, aSize);
+    material.colorNode = color;
+    material.opacityNode = patch.mul(feather).mul(reveal).mul(0.75).mul(uOpacity);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+    material.userData.uniforms = { uAzure, uGold };
+    return material;
+}
+
+// ── The Pearl Gate — nacreous rail threshold (creative plan asset 4) ──────────────
+//
+// The ring the camera passes through at ~0.68 progress becomes grown nacre instead of
+// an unlit torus: a deep blue-green base with an iridescent thin-film fresnel sweep
+// (cyan → magenta → pearl-white at grazing angles), a soft interior caustic shimmer,
+// and a top-light response keyed to the god-rays above. Grazing pearl highlights are
+// authored to just cross the bloom threshold so the gate reads as lit nacre.
+export function createPearlGateTSL(uTime, options = {}) {
+    const time = uTime ?? uniform(0);
+    const uOpacity = options.uOpacity ?? uniform(1);
+    const uBase = uniform(new THREE.Color(0x0d3a44)); // deep blue-green nacre body
+
+    const fres = pow(oneMinus(abs(dot(normalize(normalView), positionViewDirection))), 1.6);
+
+    // Thin-film sweep: hue cycles across the fresnel band (cyan → magenta → pearl).
+    const irid = cos(fres.mul(6.0).add(time.mul(0.3)).add(vec3(0.0, 2.09, 4.19)))
+        .mul(0.5).add(0.5);
+
+    // Interior caustic shimmer so the nacre looks grown, responding to the water light.
+    const shimmer = snoise3(positionLocal.mul(0.9).add(vec3(0.0, time.mul(0.4), 0.0)))
+        .mul(0.5).add(0.5);
+
+    // God-ray key response: the gate is lit from above by the descending shafts.
+    const topLight = clamp(normalWorld.y, 0.0, 1.0);
+
+    let color = uBase.add(irid.mul(vec3(0.32, 0.45, 0.5)).mul(fres.mul(0.8).add(0.2)));
+    color = color.add(vec3(0.25, 0.5, 0.55).mul(pow(shimmer, 3.0)).mul(0.4));
+    color = color.add(vec3(0.35, 0.75, 0.85).mul(topLight).mul(0.35));
+    // Pearl-white grazing highlight — the only part that crosses the bloom threshold.
+    color = color.add(vec3(0.6, 0.68, 0.7).mul(pow(fres, 3.0)));
+    color = min(color, vec3(0.92, 0.96, 0.97));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = uOpacity;
+    material.transparent = true; // authored at build (QW5) so the ecotone fade can act
+    material.depthWrite = true;
+    material.side = THREE.FrontSide;
+    material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+    material.userData.uniforms = { uBase };
+
+    const geometry = new THREE.TorusGeometry(7.5, 0.55, 24, 96);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'pearl-gate';
+    mesh.frustumCulled = false;
+    return { mesh, material, geometry };
 }
 
 /**

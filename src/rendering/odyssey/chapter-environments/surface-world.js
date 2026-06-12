@@ -22,12 +22,16 @@ import * as THREE from 'three/webgpu';
 import {
     attribute,
     cos as tslCos,
+    float as tslFloat,
+    max as tslMax,
     mod as tslMod,
     oneMinus,
     sin as tslSin,
+    smoothstep as tslSmoothstep,
     step as tslStep,
     uniform,
     uv,
+    vec2 as tslVec2,
     vec3,
 } from 'three/tsl';
 import {
@@ -62,6 +66,10 @@ import {
     createPollenTSL,
     createBirdsTSL,
     createSunDiscTSL,
+    createSpruceTreesTSL,
+    createCabinTSL,
+    createForegroundPassByTSL,
+    createSnowMotesTSL,
 } from './surface-world.tsl.js';
 
 /**
@@ -194,9 +202,10 @@ export function resolveSurfaceWorldAlpineRampState(
         return { rampOpacity: 1, rampVisible: true };
     }
 
-    // Begin the fade-in around the midpoint of Chapter 3 and reach full just before the
-    // Mountains boundary, so the range "rises" as the camera approaches the peaks.
-    const rampStart = ch3Start + (ch4Start - ch3Start) * 0.5;
+    // Begin the fade-in just past a third of Chapter 3 (creative plan asset 10: the
+    // destination landmark must be faintly present from mid-chapter onward, not a
+    // frame-26 surprise) and reach full just before the Mountains boundary.
+    const rampStart = ch3Start + (ch4Start - ch3Start) * 0.32;
     const rampEnd = ch4Start;
     const rampOpacity = THREE.MathUtils.smoothstep(progress, rampStart, rampEnd);
 
@@ -214,6 +223,34 @@ export function resolveSurfaceWorldAlpineRampState(
 // Pure arithmetic, no allocation. Outside the band (or with no progress) it returns 1 so the
 // chapter reads fully when standalone / mid-chapter.
 const SURFACE_SEAM_RECEDE_BAND = 0.42; // fraction of Ch3 span before the boundary to recede over
+
+/**
+ * ENTRY RAMP (creative plan Transition In): the landscape slab popped into frame 01–02
+ * and petals leaked through the breach because the surface elements appeared at full
+ * presence the moment the camera crossed the waterline. This ramps everything 0→1 from
+ * just inside the 2→3 ecotone to ~7% into the chapter, so the first held composition
+ * RISES into frame instead of popping.
+ */
+export function resolveSurfaceWorldEntryRampState(
+    progress,
+    chapterPositions = getActiveOdysseyChapterPositions(),
+) {
+    if (!Number.isFinite(progress)) {
+        return { entryOpacity: 1 };
+    }
+    const ch3Start = chapterPositions?.[2];
+    const ch4Start = chapterPositions?.[3] ?? 1;
+    if (!Number.isFinite(ch3Start) || ch4Start <= ch3Start) {
+        return { entryOpacity: 1 };
+    }
+    const span = ch4Start - ch3Start;
+    const entryOpacity = THREE.MathUtils.smoothstep(
+        progress,
+        ch3Start - span * 0.02,
+        ch3Start + span * 0.07,
+    );
+    return { entryOpacity };
+}
 
 export function resolveSurfaceWorldSeamRecedeState(
     progress,
@@ -248,8 +285,14 @@ export function createSurfaceWorldEnvironment() {
     // Shared time clock. On WebGPU this is a TSL uniform node (it still exposes `.value`,
     // so the update() loop ticks it exactly as before); it is passed into every .tsl.js
     // builder so all converted materials share one clock.
+    //
+    // uSeason (creative plan item 6): ONE scalar, 0 at the surface breach → 1 at the
+    // Mountains seam, scripting the spring→autumn→winter arc THROUGH LIGHT — the sky
+    // bands, sun disc, key light, god-ray density, tree recolor, and the one-at-a-time
+    // particle stories (petals → pollen → leaves → snow) all ride it.
     const uTime = uniform(0);
-    const uniforms = { uTime };
+    const uSeason = uniform(0);
+    const uniforms = { uTime, uSeason };
     group.userData.uniforms = uniforms;
 
     const chapterRange = getChapterPathRange(3);
@@ -363,6 +406,14 @@ export function createSurfaceWorldEnvironment() {
     group.add(trees);
     group.userData.trees = trees;
 
+    // Spruce stands — the second species (creative plan item 5): mixed stands with the
+    // deciduous rounds so the forest reads as forest, never uniform stamping.
+    const spruces = createSpruces(uniforms, 22);
+    spruces.name = 'spruce-trees';
+    spruces.position.y = terrainOffsetY;
+    group.add(spruces);
+    group.userData.spruces = spruces;
+
     // Mid-distance tree LINE (2nd instanced pass) — layers the hill silhouette in depth.
     const treeLine = createTreeLine(uniforms, 44);
     treeLine.name = 'tree-line';
@@ -395,11 +446,62 @@ export function createSurfaceWorldEnvironment() {
         z: greatTreeAnchor.z,
     };
 
-    const fallingLeaves = createFallingLeaves(uniforms, 60);
+    // Corridor sampling for the foreground pass-by layer + the corridor-wide autumn
+    // leaves (chapter-local spline stations; create-time only, zero per-frame cost).
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    const ch3Start = chapterPositions?.[2];
+    const ch4Start = chapterPositions?.[3];
+    group.userData.chapterTStart = ch3Start ?? 0.25;
+    group.userData.chapterTEnd = ch4Start ?? 0.41;
+    const fgPlacements = [];
+    const leafPlacements = [];
+    if (chapterRange?.center && Number.isFinite(ch3Start) && Number.isFinite(ch4Start)) {
+        for (let i = 0; i < 120; i += 1) {
+            const t = THREE.MathUtils.lerp(ch3Start, ch4Start, i / 119);
+            const pt = getOdysseyPathPointAt(t);
+            const side = i % 2 === 0 ? 1 : -1;
+            const local = {
+                x: pt.x - chapterRange.center.x + side * (2 + Math.random() * 6),
+                y: pt.y - chapterCenterY - 1.6 + Math.random() * 1.4,
+                z: pt.z - chapterRange.center.z + (Math.random() - 0.5) * 3,
+            };
+            fgPlacements.push(local);
+            if (i % 2 === 0) {
+                leafPlacements.push({
+                    x: local.x + side * (3 + Math.random() * 14),
+                    y: local.y + 6,
+                    z: local.z,
+                });
+            }
+        }
+    }
+
+    // Foreground PASS-BY layer (creative plan asset 7): the near-silhouette dark anchor
+    // flanking the spline the whole chapter — speed, intimacy, and the darkest value in
+    // every frame.
+    const foregroundLayer = createForegroundLayer(uniforms, fgPlacements);
+    foregroundLayer.name = 'foreground-pass-by';
+    group.add(foregroundLayer);
+    group.userData.foregroundLayer = foregroundLayer;
+
+    const fallingLeaves = createFallingLeaves(uniforms, 120, leafPlacements);
     fallingLeaves.name = 'falling-leaves';
     fallingLeaves.position.y += terrainOffsetY;
     group.add(fallingLeaves);
     group.userData.fallingLeaves = fallingLeaves;
+
+    // Falu-red cabin (creative plan asset 3): the human-scale cue at the treeline,
+    // promoted from hazed speck to landmark.
+    const cabin = createCabin(uniforms);
+    cabin.position.y += terrainOffsetY;
+    group.add(cabin);
+    group.userData.cabin = cabin;
+
+    // Winter snow motes (creative plan asset 9): the final act's particle story.
+    const snowMotes = createSnowMotes(uniforms, 220);
+    snowMotes.name = 'snow-motes';
+    group.add(snowMotes);
+    group.userData.snowMotes = snowMotes;
 
     // Second beat: a tiered cliff waterfall feeding the lake further down-corridor.
     const waterfall = createWaterfall(uniforms);
@@ -429,6 +531,18 @@ export function createSurfaceWorldEnvironment() {
     const sunLight = new THREE.DirectionalLight(0xffcf7a, 0.7); // Low warm golden key
     sunLight.position.set(-90, 38, -120); // low raking angle from the left
     group.add(sunLight);
+    // Creative plan item 6: the season MOVES the key — spring gold → autumn amber →
+    // winter pale-blue. Colors precomputed (no per-frame allocation); the update loop
+    // rewrites color/intensity every frame per the QW4 light-rig rule.
+    group.userData.sunKey = sunLight;
+    group.userData.skyFill = ambient;
+    group.userData.seasonLight = {
+        springKey: new THREE.Color(0xffcf7a),
+        autumnKey: new THREE.Color(0xffb070),
+        winterKey: new THREE.Color(0xdce8ff),
+        springFill: new THREE.Color(0xacc6e6),
+        winterFill: new THREE.Color(0xc9d6ee),
+    };
 
     // Store references to surface-only elements for visibility toggling (visible from
     // above the water). The alpine pieces (foothillBridge, distantMountains) are NOT here
@@ -445,11 +559,15 @@ export function createSurfaceWorldEnvironment() {
         butterflies,
         grassTufts,
         trees,
+        spruces,
         treeLine,
         reeds,
         greatTree,
         fallingLeaves,
         waterfall,
+        cabin,
+        foregroundLayer,
+        snowMotes,
         pollen,
         birds,
     ];
@@ -468,6 +586,9 @@ export function createSurfaceWorldEnvironment() {
             clouds,
             petals,
             butterflies,
+            cabin,
+            foregroundLayer,
+            snowMotes,
             pollen,
         ],
         'uOpacity',
@@ -513,7 +634,9 @@ export function createSurfaceWorldEnvironment() {
 // builder (graded sky + sun-glow bleed). Same SphereGeometry(2500,64,48), BackSide,
 // renderOrder -100. uTime shared in; returned uOpacity tagged for the fade collectors.
 function createSkyBackground(uniforms) {
-    const { mesh, uniforms: builderUniforms } = createSkyBackgroundTSL(uniforms.uTime);
+    const { mesh, uniforms: builderUniforms } = createSkyBackgroundTSL(uniforms.uTime, {
+        uSeason: uniforms.uSeason,
+    });
     return tagUniforms(mesh, builderUniforms);
 }
 
@@ -560,7 +683,7 @@ function createGrassTufts(uniforms, count) {
 }
 
 function createTrees(uniforms, count) {
-    const { mesh } = createTreesTSL(uniforms.uTime, count);
+    const { mesh } = createTreesTSL(uniforms.uTime, count, { uSeason: uniforms.uSeason });
     return mesh;
 }
 
@@ -582,9 +705,12 @@ function createGreatTree(uniforms) {
     return mesh;
 }
 
-// WebGPU/TSL: falling-leaf billboards drifting off the Great Tree canopy. Returns the mesh.
-function createFallingLeaves(uniforms, count) {
-    const { mesh } = createFallingLeavesTSL(uniforms.uTime, count);
+// WebGPU/TSL: falling-leaf billboards — near-tree halo + corridor-wide autumn story.
+function createFallingLeaves(uniforms, count, corridorPlacements) {
+    const { mesh } = createFallingLeavesTSL(uniforms.uTime, count, {
+        uSeason: uniforms.uSeason,
+        corridorPlacements,
+    });
     return mesh;
 }
 
@@ -598,21 +724,63 @@ function createWaterfall(uniforms) {
 // WebGPU/TSL: warm-amber pollen motes (instanced billboard quads, radial feather). uOpacity
 // is tagged so the surface fade collector drives it like the other surface elements.
 function createPollen(uniforms, count) {
-    const { mesh, uniforms: builderUniforms } = createPollenTSL(uniforms.uTime, count);
+    const { mesh, uniforms: builderUniforms } = createPollenTSL(uniforms.uTime, count, {
+        uSeason: uniforms.uSeason,
+    });
     return tagUniforms(mesh, builderUniforms);
 }
 
 // WebGPU/TSL: drifting low-poly bird silhouettes (animated in update via userData.birds).
+// Creative plan asset 8: the first two birds become LOW FAST CROSSERS cutting the
+// corridor at height 8–14 — small fast shapes across the travel vector are the
+// cheapest "alive" signal the chapter can render.
 function createBirds(count) {
     const { group } = createBirdsTSL(count);
+    group.children.slice(0, 2).forEach((bird, i) => {
+        bird.userData.crosser = true;
+        bird.userData.lane = -30 - i * 26;
+        bird.userData.height = 8 + i * 5;
+        bird.userData.speed = 0.9 + i * 0.3;
+    });
     return group;
+}
+
+// Spruce stands — second species, evergreen (no autumn recolor).
+function createSpruces(uniforms, count) {
+    const { mesh } = createSpruceTreesTSL(uniforms.uTime, count);
+    return mesh;
+}
+
+// Falu-red cabin landmark; uOpacity tagged for the surface fade collectors.
+function createCabin(uniforms) {
+    const { group, uniforms: builderUniforms } = createCabinTSL(uniforms.uTime);
+    return tagUniforms(group, builderUniforms);
+}
+
+// Foreground pass-by silhouettes; uOpacity tagged for the surface fade collectors.
+function createForegroundLayer(uniforms, placements) {
+    const { mesh, uniforms: builderUniforms } = createForegroundPassByTSL(
+        uniforms.uTime,
+        placements,
+    );
+    return tagUniforms(mesh, builderUniforms);
+}
+
+// Winter snow motes; uOpacity tagged for the surface fade collectors.
+function createSnowMotes(uniforms, count) {
+    const { mesh, uniforms: builderUniforms } = createSnowMotesTSL(uniforms.uTime, count, {
+        uSeason: uniforms.uSeason,
+    });
+    return tagUniforms(mesh, builderUniforms);
 }
 
 // WebGPU/TSL: visible golden SUN disc + soft halo delegated to createSunDiscTSL (a single
 // camera-facing additive billboard, capped below white). Returns the group; uOpacity tagged
 // on the group for the surface fade collectors.
 function createSunDisc(uniforms) {
-    const { group, uniforms: builderUniforms } = createSunDiscTSL(uniforms.uTime);
+    const { group, uniforms: builderUniforms } = createSunDiscTSL(uniforms.uTime, {
+        uSeason: uniforms.uSeason,
+    });
     return tagUniforms(group, builderUniforms);
 }
 
@@ -620,7 +788,9 @@ function createSunDisc(uniforms) {
 // builder owns the 5-beam group + bloom-eligible additive material). Returns the group;
 // uOpacity tagged on the group for the fade collectors.
 function createSunRays(uniforms) {
-    const { group, uniforms: builderUniforms } = createSunRaysTSL(uniforms.uTime);
+    const { group, uniforms: builderUniforms } = createSunRaysTSL(uniforms.uTime, {
+        uSeason: uniforms.uSeason,
+    });
     return tagUniforms(group, builderUniforms);
 }
 
@@ -723,18 +893,30 @@ function createPetals(uniforms, count) {
     const size = aSize.mul(1.1);
     const positionNode = billboardWorld(center, size);
 
-    // Round disc mask via the quad uv (matches the old gl_PointCoord r > 0.5 discard):
-    // step(r, 0.5) is 1 inside the disc, 0 outside.
-    const r = uv().sub(0.5).length();
-    const discAlpha = tslStep(r, 0.5);
+    // TUMBLING PETAL alpha (creative plan item 4 — no more hard discs/squares): rotate
+    // the quad uv over time, then mask a teardrop petal whose width tapers toward the
+    // tip, feathered to zero inside the quad edge (sakura petal technique).
+    const spin = uTime.mul(aRandom.mul(1.8).add(0.9)).add(aRandom.mul(17.0));
+    const ca = tslCos(spin);
+    const sa = tslSin(spin);
+    const p0 = uv().sub(0.5);
+    const pr = tslVec2(p0.x.mul(ca).sub(p0.y.mul(sa)), p0.x.mul(sa).add(p0.y.mul(ca)));
+    const widthTaper = tslMax(tslFloat(0.34).mul(oneMinus(pr.y.mul(1.0))), tslFloat(0.08));
+    const petalR = tslVec2(pr.x.div(widthTaper), pr.y.div(0.44)).length();
+    const petalMask = oneMinus(tslSmoothstep(0.6, 1.0, petalR));
+
+    // Spring's particle story: the petals belong to the breach act and hand off to the
+    // summer pollen (one story at a time).
+    const springGate = oneMinus(tslSmoothstep(0.24, 0.42, uniforms.uSeason));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = aColor;
-    material.opacityNode = discAlpha.mul(0.8).mul(uOpacity);
-    material.alphaTest = 0.5;
+    material.opacityNode = petalMask.mul(0.85).mul(springGate).mul(uOpacity);
+    material.alphaTest = 0.15;
     material.transparent = true;
     material.depthWrite = false;
+    material.side = THREE.DoubleSide;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
@@ -769,6 +951,37 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         uniforms.uTime.value = time;
     }
 
+    // Season scalar (creative plan item 6): chapter-local progress 0→1 scripts the
+    // spring→autumn→winter arc through light. Drives the in-shader season gates AND the
+    // JS-side key-light lerp below.
+    if (uniforms?.uSeason && Number.isFinite(cameraProgress)) {
+        const tStart = group.userData.chapterTStart ?? 0.25;
+        const tEnd = group.userData.chapterTEnd ?? 0.41;
+        const span = Math.max(tEnd - tStart, 1e-4);
+        uniforms.uSeason.value = THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1);
+    }
+
+    // Season-lerped raking key + sky fill (rewritten every frame per the QW4 light-rig
+    // rule; colors precomputed at create — zero per-frame allocation). Spring gold
+    // #FFCF7A → autumn amber #FFB070 → winter pale #DCE8FF at lower intensity, so
+    // autumn frames measure warmer-lit and winter frames cooler-lit (acceptance check).
+    const seasonValue = uniforms?.uSeason ? uniforms.uSeason.value : 0;
+    const { seasonLight, sunKey } = group.userData;
+    if (sunKey && seasonLight) {
+        const autumnT = THREE.MathUtils.smoothstep(seasonValue, 0.38, 0.6)
+            * (1 - THREE.MathUtils.smoothstep(seasonValue, 0.72, 0.92));
+        const winterT = THREE.MathUtils.smoothstep(seasonValue, 0.68, 0.92);
+        sunKey.color.copy(seasonLight.springKey)
+            .lerp(seasonLight.autumnKey, autumnT)
+            .lerp(seasonLight.winterKey, winterT);
+        sunKey.intensity = 0.7 + autumnT * 0.05 - winterT * 0.15;
+        const { skyFill } = group.userData;
+        if (skyFill) {
+            skyFill.color.copy(seasonLight.springFill).lerp(seasonLight.winterFill, winterT);
+            skyFill.intensity = 0.32 - winterT * 0.06;
+        }
+    }
+
     const waterSurfaceY = group.userData.waterSurfaceY || 35;
     const cameraY = camera?.position?.y ?? 100; // Default to above water
     const surfaceProbeY = Number.isFinite(cameraProgress)
@@ -790,9 +1003,13 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // range cross-dissolves with the rising Mountains peaks rather than swapping shape hard.
     const seamRecedeState = resolveSurfaceWorldSeamRecedeState(cameraProgress);
     const { recedeOpacity } = seamRecedeState;
+    // ENTRY RAMP (frames 01–02 slab pop + petal leak fix): every surface element rises
+    // into presence across the breach instead of appearing fully formed.
+    const { entryOpacity } = resolveSurfaceWorldEntryRampState(cameraProgress);
+    const surfaceGate = surfaceOpacity * entryOpacity;
     // The alpine pieces are gated by BOTH the underwater surface fade AND the
     // Surface→Mountains ramp, then receded across the seam so they cross-dissolve out.
-    const alpineOpacity = surfaceOpacity * alpineRampState.rampOpacity * recedeOpacity;
+    const alpineOpacity = surfaceGate * alpineRampState.rampOpacity * recedeOpacity;
 
     const { snowTransition } = group.userData;
     const snowBlend = snowTransition
@@ -814,7 +1031,7 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (surfaceElements) {
         surfaceElements.forEach((element) => {
             if (element) {
-                element.visible = surfaceOpacity > 0;
+                element.visible = surfaceGate > 0;
             }
         });
     }
@@ -824,7 +1041,7 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
             ? target.__odysseyBaseOpacity
             : target.value;
-        target.value = baseOpacity * surfaceOpacity;
+        target.value = baseOpacity * surfaceGate;
     });
 
     // SEAM 3->4: waterfall recedes (fades) across the seam in addition to the surface fade.
@@ -833,7 +1050,7 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
             ? target.__odysseyBaseOpacity
             : target.value;
-        target.value = baseOpacity * surfaceOpacity * recedeOpacity;
+        target.value = baseOpacity * surfaceGate * recedeOpacity;
     });
 
     // Alpine pieces: toggle on the combined gate + drive their dedicated opacity targets.
@@ -864,7 +1081,7 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
             ? target.__odysseyBaseOpacity
             : target.value;
-        target.value = baseOpacity * surfaceOpacity * auroraPreviewState.previewOpacity;
+        target.value = baseOpacity * surfaceGate * auroraPreviewState.previewOpacity;
     });
 
     const bridge = group.userData.foothillBridge;
@@ -905,6 +1122,18 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (birds && !isUnderwater) {
         birds.children.forEach((bird) => {
             const ud = bird.userData;
+            // LOW FAST CROSSERS (creative plan asset 8): straight passes across the
+            // corridor at height 8–14, wrapping — motion aimed across the travel vector.
+            if (ud.crosser) {
+                const span = 240;
+                const tx = ((time * ud.speed * 40 + ud.offset * 60) % span) - span / 2;
+                bird.position.set(tx, ud.height + Math.sin(time * 2 + ud.offset) * 1.5, ud.lane);
+                const crossFlap = 0.6 + Math.abs(Math.sin(time * (ud.flap + 2))) * 0.8;
+                bird.scale.set(1.25, 1.25 * crossFlap, 1.25);
+                bird.rotation.y = Math.PI / 2;
+                bird.rotation.z = 0;
+                return;
+            }
             const t = time * ud.speed + ud.offset;
             bird.position.set(
                 Math.cos(t) * ud.radius,

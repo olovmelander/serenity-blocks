@@ -330,10 +330,16 @@ export class OdysseyPathRenderer {
 
             const point = this.pathCurve.getPointAt(pos);
 
-            // Create ring marker
+            // Create ring marker. SELF-LIT via emissive: the body color is black so
+            // the ring never depends on chapter lights (several chapters — Deep Ocean
+            // among them — run with no local lights at all, which made the lit body
+            // render as the "unlit black torus" flagged by the creative plan's Ch2
+            // diagnosis). The emissive term renders without lights, and the seam code
+            // animates material.emissive/emissiveIntensity, so the material MUST stay
+            // MeshStandardMaterial (updateChapterTransition writes those every frame).
             const geometry = new THREE.TorusGeometry(1.5, 0.1, 8, 32);
             const material = new THREE.MeshStandardMaterial({
-                color: chapterColor,
+                color: 0x000000,
                 emissive: chapterColor,
                 emissiveIntensity: 0.5,
             });

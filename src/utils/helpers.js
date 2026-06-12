@@ -19,11 +19,21 @@ export function random(min, max) {
  * @returns {Function} Function that returns pseudo-random numbers
  */
 export function seededRandom(seed) {
-    let state = seed;
-    return function () {
+    let state = Number.isFinite(Number(seed)) ? Number(seed) : 1;
+    const rng = function () {
         state = (state * 9301 + 49297) % 233280;
         return state / 233280;
     };
+
+    rng.getState = () => state;
+    rng.setState = (nextState) => {
+        if (Number.isFinite(Number(nextState))) {
+            state = Number(nextState);
+        }
+    };
+    rng.seed = seed;
+
+    return rng;
 }
 
 /**

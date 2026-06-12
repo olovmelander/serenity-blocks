@@ -41,6 +41,34 @@ function waitForAnimationFrame(durationMs) {
     });
 }
 
+function advanceReplaySimulationClock(gameState, durationMs) {
+    if (!gameState?.isReplay) return;
+
+    const delay = Math.max(0, Number(durationMs) || 0);
+    if (delay <= 0) return;
+
+    const currentSimTime = Number.isFinite(gameState.simTimeMs)
+        ? gameState.simTimeMs
+        : (Number.isFinite(gameState.lastTime) ? gameState.lastTime : 0);
+    gameState.simTimeMs = currentSimTime + delay;
+    gameState.lastTime = gameState.simTimeMs;
+
+    const tickMs = Number(gameState.simTickMs) || (1000 / 60);
+    gameState.simFrame = Math.max(0, Math.round(gameState.simTimeMs / tickMs));
+
+    if (gameState.hitStopRemaining > 0) {
+        gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delay);
+    }
+}
+
+async function waitForPhysicsDelay(gameState, durationMs) {
+    advanceReplaySimulationClock(gameState, durationMs);
+
+    if (!gameState?.isSeeking) {
+        await waitForAnimationFrame(durationMs);
+    }
+}
+
 /**
  * Determines if a specific board position is part of a given piece
  * @param {number} boardX - X coordinate on the board
@@ -281,9 +309,11 @@ export async function applyGravity(
             // Use requestAnimationFrame-based timing for smooth, consistent gravity
             if (!gameState.isSeeking) {
                 const startTime = performance.now();
-                await waitForAnimationFrame(gravityDelay);
+                await waitForPhysicsDelay(gameState, gravityDelay);
                 const actualDelay = performance.now() - startTime;
                 physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
+            } else {
+                await waitForPhysicsDelay(gameState, gravityDelay);
             }
         }
     }
@@ -846,9 +876,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(30 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 30 * speedMultiplier);
 
         // Stage 2: Keep original colors, slightly dimmed - smooth transition
         fullLines.forEach((y) => {
@@ -860,9 +888,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(20 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
 
         // Stage 3: Keep original colors, fade to transparent - smooth final fade
         fullLines.forEach((y) => {
@@ -874,9 +900,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(20 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);

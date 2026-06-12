@@ -30,6 +30,7 @@ import {
     uv,
     vec3,
 } from 'three/tsl';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -41,12 +42,15 @@ import {
     createGodRayConeTSL,
     createVolcanoBackgroundTSL,
     createMagmaCloudCanopyTSL,
-    createRockClusterTSL,
+    createRockClusterMaterialTSL,
     createObsidianColumnTSL,
     createMagmaHorizonTSL,
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
+    createMoltenPocketMaterialTSL,
     createContactShadowDecalTSL,
+    createFirstHeartTSL,
+    createSeleniteCrystalsTSL,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
@@ -92,6 +96,70 @@ const EMBER_COLORS = [
 // world-space billboard size).
 
 const TAU = Math.PI * 2;
+const EARTH_CORE_WORLD_UP = new THREE.Vector3(0, 1, 0);
+const EARTH_CORE_FALLBACK_FORWARD = new THREE.Vector3(0, 0, 1);
+
+function createEarthCoreStaging(groupCenter, localT) {
+    const sample = (ft) => {
+        const p = getOdysseyPathPointAt(localT(THREE.MathUtils.clamp(ft, 0, 1)));
+        return new THREE.Vector3(
+            p.x - groupCenter.x,
+            p.y - groupCenter.y,
+            p.z - groupCenter.z,
+        );
+    };
+
+    const frame = (ft) => {
+        const center = sample(ft);
+        const ahead = sample(Math.min(1, ft + 0.06));
+        const behind = sample(Math.max(0, ft - 0.06));
+        const tangent = ahead.clone().sub(behind).normalize();
+        const forward = new THREE.Vector3(tangent.x, 0, tangent.z);
+        if (forward.lengthSq() < 1e-4) {
+            forward.copy(EARTH_CORE_FALLBACK_FORWARD);
+        } else {
+            forward.normalize();
+        }
+        const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
+        return {
+            center,
+            tangent,
+            forward,
+            right,
+            up: EARTH_CORE_WORLD_UP,
+        };
+    };
+
+    const at = (ft, {
+        lateral = 0,
+        forward = 0,
+        up = 0,
+    } = {}) => {
+        const f = frame(ft);
+        return f.center.clone()
+            .addScaledVector(f.right, lateral)
+            .addScaledVector(f.forward, forward)
+            .addScaledVector(EARTH_CORE_WORLD_UP, up);
+    };
+
+    const lakeAt = (ft, {
+        lateral = 0,
+        forward = 0,
+        lift = 0,
+    } = {}) => {
+        const p = at(ft, { lateral, forward });
+        p.y = LAVA_LAKE_Y + lift;
+        return p;
+    };
+
+    return {
+        sample,
+        frame,
+        at,
+        lakeAt,
+        localT,
+    };
+}
 
 /** Radial soft-glow sprite mask (0 at edge, 1 at center) from the quad uv. */
 function spriteGlowMask(exponent) {
@@ -108,14 +176,17 @@ function spriteGlowMask(exponent) {
  * @param {number} colorHex tint color
  * @param {number} opacity constant opacity multiplier
  */
-function makeGlowSpriteMaterial(map, colorHex, opacity) {
+function makeGlowSpriteMaterial(map, colorHex, opacity, uOpacity = null) {
     const material = new THREE.SpriteNodeMaterial();
     const sprite = texture(map, uv());
     material.colorNode = sprite.rgb.mul(vec3(new THREE.Color(colorHex)));
-    material.opacityNode = sprite.a.mul(opacity);
+    material.opacityNode = uOpacity
+        ? sprite.a.mul(opacity).mul(uOpacity)
+        : sprite.a.mul(opacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    if (uOpacity) material.uniforms = { uOpacity }; // ecotone crossfade bridge
     return material;
 }
 
@@ -124,18 +195,29 @@ function makeGlowSpriteMaterial(map, colorHex, opacity) {
  * Mirrors the old smoke Points (position + aRandom/aSize/aSpeed), animated entirely
  * from uTime so the update loop is unchanged.
  */
-function createVolcanicSmoke(uniforms, count) {
+function createVolcanicSmoke(uniforms, count, staging = null) {
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
     const speeds = new Float32Array(count);
 
-    const columns = [
-        { x: 24, z: 3 - 116, spread: 18 }, // lava-fall splash plume
-        { x: -22, z: 3 - 55, spread: 15 }, // near path shelf
-        { x: 18, z: 3 - 32, spread: 18 }, // forward corridor smoke
-        { x: -48, z: 3 - 96, spread: 22 }, // side-wall smoke bank
-    ];
+    const columns = staging
+        ? [
+            { point: staging.lakeAt(0.78, { lateral: 0, forward: 0 }), spread: 18 },
+            { point: staging.lakeAt(0.30, { lateral: -14, forward: 5 }), spread: 15 },
+            { point: staging.lakeAt(0.14, { lateral: 8, forward: 4 }), spread: 18 },
+            { point: staging.lakeAt(0.58, { lateral: -24, forward: 10 }), spread: 22 },
+        ].map((entry) => ({
+            x: entry.point.x,
+            z: entry.point.z,
+            spread: entry.spread,
+        }))
+        : [
+            { x: 24, z: 3 - 116, spread: 18 }, // lava-fall splash plume
+            { x: -22, z: 3 - 55, spread: 15 }, // near path shelf
+            { x: 18, z: 3 - 32, spread: 18 }, // forward corridor smoke
+            { x: -48, z: 3 - 96, spread: 22 }, // side-wall smoke bank
+        ];
     for (let i = 0; i < count; i++) {
         const col = columns[i % columns.length];
         const angle = Math.random() * TAU;
@@ -179,14 +261,19 @@ function createVolcanicSmoke(uniforms, count) {
     material.positionNode = billboardWorld(center, worldSize);
     const smokeBase = mix(vec3(0.035, 0.028, 0.038), vec3(0.13, 0.055, 0.034), aRandom);
     const lavaTint = vec3(0.38, 0.095, 0.025).mul(pow(oneMinus(lifeProgress), 2.2));
-    material.colorNode = smokeBase.add(lavaTint);
+    // Seam: the ash whitens into rising STEAM as the waterline nears (1→2 Steam Quench).
+    const smokeColor = smokeBase.add(lavaTint);
+    material.colorNode = mix(smokeColor, vec3(0.32, 0.4, 0.44), uniforms.uSeam.mul(0.75));
     const glow = spriteGlowMask(0.72);
     const fadeIn = smoothstep(0.02, 0.16, lifeProgress);
-    material.opacityNode = glow.mul(oneMinus(lifeProgress).mul(0.46).add(0.04)).mul(fadeIn);
+    material.opacityNode = glow.mul(oneMinus(lifeProgress).mul(0.46).add(0.04))
+        .mul(fadeIn)
+        .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const smoke = new THREE.Mesh(geometry, material);
     smoke.name = 'volcanic-smoke';
@@ -258,13 +345,15 @@ function createEmberStars(uniforms, count) {
     const glow = pow(clamp(oneMinus(dist), 0.0, 1.0), 1.5);
     const core = smoothstep(0.2, 0.0, dist.mul(0.5));
     const hotColor = mix(aColor, vec3(1.0, 0.95, 0.85), core.mul(0.5));
-    material.colorNode = hotColor.mul(glow).mul(brightness);
-    material.opacityNode = glow.mul(brightness);
+    const steamColor = vec3(0.72, 0.88, 0.95).mul(glow).mul(brightness.mul(0.72));
+    material.colorNode = mix(hotColor.mul(glow).mul(brightness), steamColor, uniforms.uSeam.mul(0.92));
+    material.opacityNode = glow.mul(brightness).mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const stars = new THREE.Mesh(geometry, material);
     stars.name = 'ember-stars';
@@ -278,18 +367,29 @@ function createEmberStars(uniforms, count) {
  * splash + node shelves), giving directional shafts of rising sparks. Spiraling, fading
  * additive billboards animated from uTime so the update loop is unchanged.
  */
-function createRisingEmbers(uniforms, count) {
+function createRisingEmbers(uniforms, count, staging = null) {
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
 
     // Column centres: lava-fall splash, node-shelf clusters, and side smoke banks.
-    const columns = [
-        { x: 24, z: 3 - 116, spread: 14 }, // lava-fall splash
-        { x: -22, z: 3 - 55, spread: 11 }, // left node shelf cluster
-        { x: 12, z: 3 - 20, spread: 12 }, // near corridor cluster
-        { x: -48, z: 3 - 96, spread: 16 }, // side smoke bank
-    ];
+    const columns = staging
+        ? [
+            { point: staging.lakeAt(0.78, { lateral: 0, forward: 0 }), spread: 14 },
+            { point: staging.lakeAt(0.28, { lateral: -14, forward: 4 }), spread: 11 },
+            { point: staging.lakeAt(0.12, { lateral: 8, forward: 3 }), spread: 12 },
+            { point: staging.lakeAt(0.56, { lateral: -22, forward: 8 }), spread: 16 },
+        ].map((entry) => ({
+            x: entry.point.x,
+            z: entry.point.z,
+            spread: entry.spread,
+        }))
+        : [
+            { x: 24, z: 3 - 116, spread: 14 }, // lava-fall splash
+            { x: -22, z: 3 - 55, spread: 11 }, // left node shelf cluster
+            { x: 12, z: 3 - 20, spread: 12 }, // near corridor cluster
+            { x: -48, z: 3 - 96, spread: 16 }, // side smoke bank
+        ];
     for (let i = 0; i < count; i++) {
         const i3 = i * 3;
         const col = columns[i % columns.length];
@@ -346,13 +446,18 @@ function createRisingEmbers(uniforms, count) {
     const core = smoothstep(0.2, 0.0, dist.mul(0.5));
     const hotColor = mix(baseColor, vec3(1.0, 0.95, 0.85), core.mul(0.5));
     const alpha = oneMinus(normalizedY).mul(aRandom.mul(0.4).add(0.6));
-    material.colorNode = hotColor.mul(glow);
-    material.opacityNode = glow.mul(alpha);
+    // Seam: the ember columns thin and WHITEN into rising steam (1→2 Steam Quench).
+    const steamColor = vec3(0.72, 0.86, 0.9).mul(glow).mul(0.55);
+    material.colorNode = mix(hotColor.mul(glow), steamColor, uniforms.uSeam.mul(0.85));
+    material.opacityNode = glow.mul(alpha)
+        .mul(oneMinus(uniforms.uSeam.mul(0.35)))
+        .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const embers = new THREE.Mesh(geometry, material);
     embers.name = 'rising-embers';
@@ -428,13 +533,18 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     const core = smoothstep(0.18, 0.0, dist.mul(0.5));
     const hotColor = mix(rampColor, vec3(1.0, 0.97, 0.9), core.mul(0.6));
 
-    material.colorNode = hotColor.mul(glow);
-    material.opacityNode = glow.mul(life.mul(0.7).add(0.3));
+    // Seam: near sparks whiten into steam flecks with the rest of the quench.
+    const steamSpark = vec3(0.75, 0.88, 0.92).mul(glow).mul(0.6);
+    material.colorNode = mix(hotColor.mul(glow), steamSpark, uniforms.uSeam.mul(0.85));
+    material.opacityNode = glow.mul(life.mul(0.7).add(0.3))
+        .mul(oneMinus(uniforms.uSeam.mul(0.3)))
+        .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
     material.userData.emitsBloom = true; // brightest near sparks bloom (capped by glow)
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const sparks = new THREE.Mesh(geometry, material);
     sparks.name = 'near-camera-embers';
@@ -479,7 +589,11 @@ function createMoltenHaze(uniforms, count, yLow, yHigh) {
         aSize: { array: sizes, itemSize: 1 },
     });
 
-    const { material } = createMoltenHazeMaterialTSL(uniforms.uTime, uniforms.uPulseIntensity);
+    const { material } = createMoltenHazeMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        { uOpacity: uniforms.uOpacity },
+    );
     const haze = new THREE.Mesh(geometry, material);
     haze.name = 'molten-haze';
     haze.frustumCulled = false;
@@ -554,11 +668,14 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     material.colorNode = aColor
         .add(vec3(0.42, 0.10, 0.025).mul(hotPocket).mul(0.42))
         .mul(uPulseIntensity.mul(0.08).add(1.0));
-    material.opacityNode = sprite.a.mul(0.18).mul(sin(driftT.mul(0.5)).mul(0.12).add(0.88));
+    material.opacityNode = sprite.a.mul(0.18)
+        .mul(sin(driftT.mul(0.5)).mul(0.12).add(0.88))
+        .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const deck = new THREE.Mesh(geometry, material);
     deck.name = 'magma-cloud-deck';
@@ -576,6 +693,7 @@ export function createEarthCoreEnvironment(options = {}) {
     const chapterRange = getChapterPathRange(1);
     const fallbackCenterY = (EARTH_CORE_CONFIG.yStart + EARTH_CORE_CONFIG.yEnd) / 2;
     const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
+    const chapterAnchorY = chapterRange?.start.y ?? chapterCenterY;
     if (chapterRange) {
         group.userData.yStart = chapterRange.start.y;
         group.userData.yEnd = chapterRange.end.y;
@@ -588,6 +706,15 @@ export function createEarthCoreEnvironment(options = {}) {
         uTime: uniform(0),
         uPulseIntensity: uniform(0),
         uDescent: uniform(0),
+        // Seam choreography (0 until ~86% of the chapter, 1 at the 1→2 boundary):
+        // drives the lake-vein quench, ember→steam shift, geode sink-and-fade, and the
+        // First Heart's blackbody walk-down. Chapter-authored, distinct from uOpacity.
+        uSeam: uniform(0),
+        // Manager-driven ecotone crossfade bridge: every fading material multiplies its
+        // opacityNode by this ONE shared uniform and exposes it via material.uniforms,
+        // so _collectOpacityTargets reaches TSL materials (fixes the 16→17 confetti pop
+        // and the magma assets bleeding into frames 17–19).
+        uOpacity: uniform(1),
         // PERF (QW9): baked-bounce strength for the lit rock material. The 4 crater
         // accents + per-cluster magma-bounce PointLights were cut; this drives a baked
         // warm emissive floor on the molten-pocket/column material so the rock still
@@ -600,30 +727,65 @@ export function createEarthCoreEnvironment(options = {}) {
     // Storage for elements
     const elements = {
         rockClusters: [],
+        moltenPockets: [],
         filaments: [],
+        seamBoulders: [],
     };
     group.userData.elements = elements;
+
+    // The chapter group is anchored at the path centre; derive the corridor's
+    // local-space frame EARLY so the lake basins, colonnade walls, geode chapel, and
+    // the First Heart all line up with the spline the camera follows.
+    const groupCenter = chapterRange?.center
+        ? new THREE.Vector3(chapterRange.center.x, chapterAnchorY, chapterRange.center.z)
+        : new THREE.Vector3(0, chapterAnchorY, 0);
+    const corridorLow = (chapterRange ? chapterRange.start.y - groupCenter.y : -77) - 5;
+    const corridorHigh = (chapterRange ? chapterRange.end.y - groupCenter.y : 77) + 20;
+    const [chapterTStart, chapterTEnd] = getActiveOdysseyChapterPositions();
+    const localT = (ft) => THREE.MathUtils.lerp(chapterTStart ?? 0, chapterTEnd ?? 0.125, ft);
+    const staging = createEarthCoreStaging(groupCenter, localT);
+    group.userData.stagingFrames = Array.from({ length: 19 }, (_, i) => ({
+        frame: i + 1,
+        global: Number((i * 0.005).toFixed(3)),
+        local: Number((i * 0.005 / Math.max((chapterTEnd ?? 0.125) - (chapterTStart ?? 0), 1e-4)).toFixed(3)),
+    }));
 
     // 1. Create background sphere (enhanced with lava glow)
     const background = createVolcanoBackground(uniforms);
     group.add(background);
-    const magmaCloudCanopy = createMagmaCloudCanopyTSL(uniforms.uTime, uniforms.uPulseIntensity);
+    const magmaCloudCanopy = createMagmaCloudCanopyTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        { uOpacity: uniforms.uOpacity },
+    );
     group.add(magmaCloudCanopy.mesh);
     group.userData.magmaCloudCanopy = magmaCloudCanopy.mesh;
 
-    // 2. Create animated lava floor - THE MAIN FEATURE
-    const lavaFloor = createLavaFloor(uniforms);
+    // 2. Create animated lava floor - THE MAIN FEATURE. The molten BASINS (plan:
+    // legacy-floor revival) are sampled from the path so the "lava surf" beats sit
+    // under the camera corridor: one at the entry breach, one under the mid-chapter
+    // beat, one on the final approach.
+    const basins = [0.05, 0.42, 0.8].map((ft, i) => {
+        const pt = staging.lakeAt(ft, { forward: [2, 4, 6][i] });
+        return {
+            x: THREE.MathUtils.clamp(pt.x, -150, 150),
+            z: THREE.MathUtils.clamp(pt.z, -150, 150),
+            r: [30, 38, 34][i],
+        };
+    });
+    const lavaFloor = createLavaFloor(uniforms, basins);
     group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
     // 3. Create volcanic crater rim - VOLUMETRIC PARTICLE SYSTEM
-    const craterRim = createParticleCraterRim();
+    const craterRim = createParticleCraterRim(uniforms);
     group.add(craterRim);
 
-    // 4. Background magma spheres are SUPPORT ONLY. Keep them small, off-path, and
-    // sparse so level nodes + boulders stop competing with the lava-fall hero.
-    const clusterCount = Math.min(options.particleCount ? Math.floor(options.particleCount / 180) : 2, 2);
-    createVolcanicRockClusters(group, uniforms, elements, clusterCount);
+    // 4. Geode CLUSTERS (plan item 4): small/medium/large grading with satellites and
+    // tether-streams replaces the old two-sphere repetition. Cap raised 2→6 under the
+    // quality-preset budget; every seat is pushed clear of the spline (frame-07 fix).
+    const clusterCount = Math.min(options.particleCount ? Math.floor(options.particleCount / 110) : 5, 6);
+    createVolcanicRockClusters(group, uniforms, elements, clusterCount, groupCenter, staging);
 
     // 5. Ember STARS as background sparkle — cut 6000→1200, radius pulled to 25–60 so
     //    they read as a sparse depth field, not an orange soup.
@@ -634,46 +796,40 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
-    const risingEmbers = createRisingEmbers(uniforms, 760);
+    const risingEmbers = createRisingEmbers(uniforms, 760, staging);
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
 
     // 7. Create volcanic smoke/ash particles (trimmed 300→200 for the value cuts).
-    const smoke = createVolcanicSmoke(uniforms, 320);
+    const smoke = createVolcanicSmoke(uniforms, 320, staging);
     group.add(smoke);
     group.userData.smoke = smoke;
-
-    // The chapter group is anchored at the path centre below; derive the corridor's
-    // local-space frame from that centre so the new corridor content (horizon band,
-    // molten haze, level-node pockets) lines up with the spline the camera follows.
-    const groupCenter = chapterRange?.center
-        ? new THREE.Vector3(chapterRange.center.x, chapterCenterY, chapterRange.center.z)
-        : new THREE.Vector3(0, chapterCenterY, 0);
 
     // 8. Magma horizon — §3.1: the 3 bands now read as the lake's FAR SHORE, aligned so
     //    their bright rim line sits at the lake surface (LAVA_LAKE_Y) instead of floating
     //    mid-air. The magma-horizon's bright rim is at uv.y≈0.32 of a 200-unit plane, so
     //    a band whose rim aligns to the lake has centerY = LAVA_LAKE_Y + 36*scaleY. This
     //    turns the bands into a continuous far-shore line under the assets.
-    const corridorLow = (chapterRange ? chapterRange.start.y - groupCenter.y : -77) - 5;
-    const corridorHigh = (chapterRange ? chapterRange.end.y - groupCenter.y : 77) + 20;
     const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.8) : 170, 220);
     const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
     group.add(magmaCloudDeck);
     group.userData.magmaCloudDeck = magmaCloudDeck;
     const horizonRimY = (scaleY) => LAVA_LAKE_Y + 36 * scaleY; // align rim to lake surface
-    const farHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity);
-    farHorizon.mesh.position.set(-1.5, horizonRimY(1), 3 - 150);
+    const farHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
+    const farHorizonPos = staging.at(0.86, { lateral: 0, forward: 20 });
+    farHorizon.mesh.position.set(farHorizonPos.x, horizonRimY(1), farHorizonPos.z);
     group.add(farHorizon.mesh);
-    const lowHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity);
-    lowHorizon.mesh.position.set(-60, horizonRimY(0.55), 3 - 95);
+    const lowHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
+    const lowHorizonPos = staging.at(0.52, { lateral: -34, forward: 12 });
+    lowHorizon.mesh.position.set(lowHorizonPos.x, horizonRimY(0.55), lowHorizonPos.z);
     lowHorizon.mesh.scale.set(0.7, 0.55, 1);
     group.add(lowHorizon.mesh);
     // A MID-DEPTH magma glow band biased off-centre-left, aligned to the same far-shore
     // line so it reads as the lake's far edge sweeping behind the columns rather than a
     // floating wall. Cheap: reuses the horizon builder (one extra draw call).
-    const midHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity);
-    midHorizon.mesh.position.set(60, horizonRimY(0.7), 3 - 118);
+    const midHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
+    const midHorizonPos = staging.at(0.66, { lateral: 32, forward: 16 });
+    midHorizon.mesh.position.set(midHorizonPos.x, horizonRimY(0.7), midHorizonPos.z);
     midHorizon.mesh.scale.set(0.85, 0.7, 1);
     group.add(midHorizon.mesh);
     group.userData.horizons = [farHorizon.mesh, lowHorizon.mesh, midHorizon.mesh];
@@ -686,58 +842,109 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this
     //     chapter so nodes frame mid-frame on a platform instead of floating in void.
-    createMoltenPockets(group, uniforms, groupCenter);
+    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter);
+    elements.moltenPockets.push(...moltenPockets);
+    elements.seamBoulders.push(...moltenPockets);
 
     // 11. LAVA-FALL hero — staged as the chapter landmark, not another orange strip.
     // Two crossed planes form one volumetric fall so it reads from the moving camera,
     // seated into a horizontal splash decal on the lifted lake.
-    const fallX = 24;
-    const fallZ = 3 - 116;
-    const fallScale = 2.75;
+    const fallStation = 0.72;
+    const fallFrame = staging.frame(fallStation);
+    const fallBase = staging.lakeAt(fallStation, { lateral: 8, forward: 10 });
+    const fallScale = 0.28;
     const fallHeight = 220 * fallScale;
     const lavaFallGroup = new THREE.Group();
     lavaFallGroup.name = 'lava-fall-hero';
 
-    const lavaFall = createLavaFallTSL(uniforms.uTime, uniforms.uPulseIntensity, uniforms.uDescent);
+    const lavaFall = createLavaFallTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uDescent,
+        { uOpacity: uniforms.uOpacity },
+    );
     lavaFall.mesh.scale.set(fallScale, fallScale, 1);
     lavaFall.mesh.position.set(0, fallHeight * 0.5, 0);
     lavaFall.mesh.renderOrder = -4;
     lavaFallGroup.add(lavaFall.mesh);
 
-    const lavaFallCross = createLavaFallTSL(uniforms.uTime, uniforms.uPulseIntensity, uniforms.uDescent);
+    const lavaFallCross = createLavaFallTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uDescent,
+        { uOpacity: uniforms.uOpacity },
+    );
     lavaFallCross.mesh.scale.set(fallScale * 0.52, fallScale, 1);
     lavaFallCross.mesh.position.set(0, fallHeight * 0.5, 0);
     lavaFallCross.mesh.rotation.y = Math.PI / 2;
     lavaFallCross.mesh.renderOrder = -4;
     lavaFallGroup.add(lavaFallCross.mesh);
 
-    lavaFallGroup.position.set(fallX, LAVA_LAKE_Y, fallZ);
+    lavaFallGroup.position.copy(fallBase);
+    lavaFallGroup.rotation.y = Math.atan2(fallFrame.forward.x, fallFrame.forward.z);
+    lavaFallGroup.visible = false;
     group.add(lavaFallGroup);
     group.userData.lavaFall = lavaFallGroup;
 
-    const fallSplash = createLavaSplashDecal(92, 42, 0.42);
-    fallSplash.position.set(fallX, LAVA_LAKE_Y + 0.55, fallZ);
+    const fallSplash = createLavaSplashDecal(72, 34, 0.44);
+    fallSplash.position.set(fallBase.x, LAVA_LAKE_Y + 0.55, fallBase.z);
     fallSplash.rotation.z = -0.18;
+    fallSplash.visible = false;
     group.add(fallSplash);
     group.userData.lavaFallSplash = fallSplash;
 
     // 12. God-ray shafts — 3–4 large low-opacity vertical cones above the lake, biased
     //     toward the lava-fall splash so the ember-storm reads as rising through light.
     const godRayConfigs = [
-        { x: fallX + 2, z: fallZ + 6, scale: 1.35 }, // over the lava-fall splash
-        { x: -34, z: 3 - 70, scale: 1.0 },
-        { x: 14, z: 3 - 110, scale: 1.4 },
-        { x: -8, z: 3 - 40, scale: 0.9 },
+        { pos: staging.lakeAt(fallStation, { lateral: 0, forward: 0 }), scale: 1.15 },
+        { pos: staging.lakeAt(0.42, { lateral: -18, forward: 8 }), scale: 1.0 },
+        { pos: staging.lakeAt(0.62, { lateral: 14, forward: 10 }), scale: 1.4 },
+        { pos: staging.lakeAt(0.18, { lateral: -8, forward: 5 }), scale: 0.9 },
     ];
     const godRays = godRayConfigs.map((cfg) => {
-        const cone = createGodRayConeTSL(uniforms.uTime, uniforms.uPulseIntensity);
-        cone.mesh.position.set(cfg.x, LAVA_LAKE_Y + 60, cfg.z);
+        const cone = createGodRayConeTSL(
+            uniforms.uTime,
+            uniforms.uPulseIntensity,
+            { uOpacity: uniforms.uOpacity },
+        );
+        cone.mesh.position.set(cfg.pos.x, LAVA_LAKE_Y + 60, cfg.pos.z);
         cone.mesh.scale.set(cfg.scale, cfg.scale * 1.1, cfg.scale);
         cone.mesh.frustumCulled = false;
         group.add(cone.mesh);
         return cone.mesh;
     });
     group.userData.godRays = godRays;
+    group.userData.lavaFallRevealables = [lavaFallGroup, fallSplash, godRays[0]];
+
+    // 12b. THE FIRST HEART — the chapter's hero / destination landmark (plan item 1):
+    // a white-hot caldera fissure seated past the chapter's end, dead on the rail's
+    // vanishing line, visible from frame 01 and growing across the whole descent. The
+    // white-hot #ffe6b0 tier belongs to it exclusively (palette law).
+    const heart = createFirstHeartTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uDescent,
+        { uSeam: uniforms.uSeam, uOpacity: uniforms.uOpacity },
+    );
+    heart.mesh.position.copy(staging.at(1.0, { lateral: 0, forward: 86, up: 42 }));
+    const heartBaseScale = 6;
+    heart.mesh.scale.set(heartBaseScale, heartBaseScale, 1);
+    group.add(heart.mesh);
+    group.userData.firstHeart = heart.mesh;
+    group.userData.firstHeartBaseScale = heartBaseScale;
+
+    // 12c. Basalt colonnade WALLS (plan asset 3): 6–8 clustered hex-column groups per
+    // side, 55–90 units off-path, size-graded 60→160, continuous along the corridor —
+    // the cavern walls that fix the 08–13 emptiness. ONE merged geometry / draw call
+    // (Fingal's Cave colonnade grammar; respects the <100 draw-call budget).
+    const colonnade = createColonnadeWalls(uniforms, staging);
+    group.add(colonnade);
+    group.userData.colonnade = colonnade;
+
+    // 12d. Selenite geode CHAPEL (plan asset 4) — the mid-chapter beat filling the
+    // 08–11 dead zone: translucent crystal beams off the right of the rail, backlit by
+    // a molten pocket beneath, framed by a dark basalt shell.
+    createSeleniteChamber(group, uniforms, staging);
 
     // 13. Silhouetted obsidian COLUMNS — §3.2/§3.3 staged repoussoir framing. The
     //     columns are now placed to BRACKET each frame edge ACROSS the descent: the
@@ -749,31 +956,35 @@ export function createEarthCoreEnvironment(options = {}) {
     //     column base rests AT the lake surface (base seated, not centred through it) and
     //     gets a contact-shadow AO decal (§5.1) so it grounds into the lake.
     const columnSpecs = [];
-    const [chTStartForCols, chTEndForCols] = getActiveOdysseyChapterPositions();
-    const bracketTs = [0.18, 0.62]; // fewer, cleaner brackets for open composition
-    bracketTs.forEach((ftLocal, bi) => {
-        const tGlobal = THREE.MathUtils.lerp(
-            chTStartForCols ?? 0,
-            chTEndForCols ?? 0.125,
-            ftLocal,
-        );
-        const pt = getOdysseyPathPointAt(tGlobal);
-        const localX = pt.x - groupCenter.x;
-        const localZ = pt.z - groupCenter.z;
-        // Push pillars OUT past the corridor edge so they frame, not clip, the camera.
-        const edge = 50 + bi * 12;
-        // Left edge: a framing pillar pushed outside the playable sightline.
-        columnSpecs.push({
-            x: localX - edge, z: localZ - 12 - bi * 24, r: 7.5 + bi, h: bi === 1 ? 142 : 104, giant: bi === 1,
+    const columnStations = [0.14, 0.42, 0.70, 0.86];
+    columnStations.forEach((ftLocal, bi) => {
+        const left = staging.lakeAt(ftLocal, {
+            lateral: -(22 + bi * 3.5),
+            forward: bi % 2 === 0 ? 2 : 7,
         });
-        // Right edge: counter-framing pillar, still outside the path/node silhouette.
+        const right = staging.lakeAt(ftLocal, {
+            lateral: 24 + bi * 4,
+            forward: bi % 2 === 0 ? 8 : 1,
+        });
         columnSpecs.push({
-            x: localX + edge, z: localZ + 6 - bi * 22, r: 8 + bi, h: bi === 0 ? 132 : 108, giant: bi === 0,
+            x: left.x,
+            z: left.z,
+            r: 6.8 + bi * 0.7,
+            h: bi === 1 ? 142 : 96 + bi * 8,
+            giant: bi === 1,
+        });
+        columnSpecs.push({
+            x: right.x,
+            z: right.z,
+            r: 7.2 + bi * 0.65,
+            h: bi === 0 ? 132 : 98 + bi * 6,
+            giant: bi === 0,
         });
     });
     // One far filler only: depth cue without re-cluttering the middle of the screen.
+    const fillerColumn = staging.lakeAt(0.78, { lateral: -34, forward: 16 });
     columnSpecs.push({
-        x: -66, z: 3 - 118, r: 7.5, h: 112, giant: false,
+        x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 112, giant: false,
     });
 
     const columns = columnSpecs.map((spec) => {
@@ -791,7 +1002,7 @@ export function createEarthCoreEnvironment(options = {}) {
         group.add(col.mesh);
 
         // §5.1 contact-shadow AO decal at the lake line under the column base.
-        const decal = createContactShadowDecalTSL(spec.r * 3.2);
+        const decal = createContactShadowDecalTSL(spec.r * 3.2, uniforms.uOpacity);
         decal.mesh.position.set(spec.x, LAVA_LAKE_Y + 0.4, spec.z);
         decal.mesh.frustumCulled = false;
         group.add(decal.mesh);
@@ -805,10 +1016,14 @@ export function createEarthCoreEnvironment(options = {}) {
     //      contact decal (they hang from the ceiling, not the lake).
     const ceilingSpecs = [
         {
-            x: -48, z: 3 - 70, r: 14, h: 22, // side ceiling mass, not over the node
+            pos: staging.at(0.34, { lateral: -28, forward: 10, up: 0 }),
+            r: 14,
+            h: 22,
         },
         {
-            x: 54, z: 3 - 130, r: 16, h: 24, // far side ceiling mass
+            pos: staging.at(0.72, { lateral: 30, forward: 14, up: 0 }),
+            r: 16,
+            h: 24,
         },
     ];
     const ceilingSlabs = ceilingSpecs.map((spec) => {
@@ -821,7 +1036,7 @@ export function createEarthCoreEnvironment(options = {}) {
         );
         // Hang from the top of the corridor (well above the lake), inverted so the wide
         // end reads as a ceiling vault pressing down.
-        slab.mesh.position.set(spec.x, corridorHigh - spec.h * 0.4, spec.z);
+        slab.mesh.position.set(spec.pos.x, corridorHigh - spec.h * 0.4, spec.pos.z);
         slab.mesh.rotation.z = Math.PI; // flare the wide end downward (ceiling vault)
         slab.mesh.frustumCulled = false;
         slab.mesh.name = 'ceiling-slab';
@@ -847,14 +1062,22 @@ export function createEarthCoreEnvironment(options = {}) {
     const chapterPositions = getActiveOdysseyChapterPositions();
     group.userData.chapterTStart = chapterPositions[0] ?? 0;
     group.userData.chapterTEnd = chapterPositions[1] ?? 0.125;
+    group.userData.visibilityTargets = {
+        firstHeart: group.userData.firstHeart,
+        lavaFall: group.userData.lavaFall,
+        seleniteChapel: group.userData.seleniteChamber,
+        geodeClusters: elements.rockClusters,
+        seamBoulders: elements.seamBoulders,
+    };
 
-    // Position the environment — anchor to the path's FULL centre (x, y, z), not
-    // just Y, so the lava vault sits around the path and the path doesn't clip
-    // through chapter geometry (mirrors mountain-peaks.js).
+    // Position the environment: X/Z stay centered on the chapter, but Y is anchored to
+    // the chapter ENTRY. The fixed Odyssey camera starts near the first node; anchoring
+    // the lava lake to the chapter midpoint put the lake and column bases ~70 units above
+    // frame 01, so the player saw undersides instead of the lake.
     if (chapterRange?.center) {
-        group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
+        group.position.set(chapterRange.center.x, chapterAnchorY, chapterRange.center.z);
     } else {
-        group.position.y = chapterCenterY;
+        group.position.y = chapterAnchorY;
     }
 
     return group;
@@ -865,37 +1088,60 @@ export function createEarthCoreEnvironment(options = {}) {
  * lowered, low-displacement opaque lake the camera looks ACROSS (validated TSL
  * builder). Glow sprites are dimmed/shrunk for the value hierarchy (~70% dark rock).
  */
-function createLavaFloor(uniforms) {
+function createLavaFloor(uniforms, basins = []) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
 
     // Main lava LAKE — wide (360 square), lifted (y=-10), opaque, NormalBlending lake the
-    // camera looks across (not the old shard-y additive floor seen edge-on). Pass the
-    // shared uTime/uPulseIntensity/uDescent TSL uniforms so animation ticks unchanged.
+    // camera looks across. The basin list revives the legacy floor's molten-sea reads
+    // (rolling swells, #ffffaa vein cores, pulse-reactive hot spots) inside designated
+    // pools only; uSeam quenches every vein silvery-blue→teal across the 1→2 boundary.
     const { mesh: lavaSurface } = createLavaLakeTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uDescent,
+        { basins, uSeam: uniforms.uSeam },
     );
     group.add(lavaSurface);
 
-    // Dim, shrunk glow layers beneath (value hierarchy: scales 180/100→120/70,
-    // opacity 0.35/0.5→0.18/0.28). Seated beneath the y=-10 lake.
+    // Dim, shrunk glow layers beneath (value hierarchy: opacity 0.18/0.28 globally) —
+    // the legacy 0.35/0.5 under-glow radiance returns only over the molten basins.
     const glowTexture = createLavaGlowTexture();
 
-    const ambientGlow = new THREE.Sprite(makeGlowSpriteMaterial(glowTexture, 0xff4400, 0.18));
-    ambientGlow.scale.set(120, 120, 1);
+    const ambientGlow = new THREE.Sprite(
+        makeGlowSpriteMaterial(glowTexture, 0xff4400, 0.18, uniforms.uOpacity),
+    );
+    ambientGlow.userData.baseScale = 120;
     ambientGlow.position.y = LAVA_LAKE_Y - 2;
-    ambientGlow.rotation.x = -Math.PI / 2;
     group.add(ambientGlow);
 
-    const innerGlow = new THREE.Sprite(makeGlowSpriteMaterial(glowTexture, 0xffaa00, 0.28));
-    innerGlow.scale.set(70, 70, 1);
+    const innerGlow = new THREE.Sprite(
+        makeGlowSpriteMaterial(glowTexture, 0xffaa00, 0.28, uniforms.uOpacity),
+    );
+    innerGlow.userData.baseScale = 70;
     innerGlow.position.y = LAVA_LAKE_Y - 1;
-    innerGlow.rotation.x = -Math.PI / 2;
     group.add(innerGlow);
 
-    group.userData.glows = [ambientGlow, innerGlow];
+    const glows = [ambientGlow, innerGlow];
+
+    // Basin corona glows — the legacy radiance over each molten pool: a warm heat-haze
+    // halo hovering just ABOVE the surface line (camera-facing, so it reads over the
+    // opaque lake instead of being depth-culled beneath it).
+    basins.forEach((basin) => {
+        const basinGlow = new THREE.Sprite(
+            makeGlowSpriteMaterial(glowTexture, 0xffb347, 0.34, uniforms.uOpacity),
+        );
+        basinGlow.userData.baseScale = basin.r * 2.2;
+        basinGlow.position.set(basin.x, LAVA_LAKE_Y + 1.6, basin.z);
+        group.add(basinGlow);
+        glows.push(basinGlow);
+    });
+
+    glows.forEach((sprite) => {
+        sprite.scale.set(sprite.userData.baseScale, sprite.userData.baseScale, 1);
+    });
+
+    group.userData.glows = glows;
     group.userData.surface = lavaSurface;
 
     return group;
@@ -907,9 +1153,9 @@ function createLavaFloor(uniforms) {
  * lake surface.
  */
 function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
-    const texture = createLavaGlowTexture();
+    const splashTexture = createLavaGlowTexture();
     const material = new THREE.MeshBasicMaterial({
-        map: texture,
+        map: splashTexture,
         color: 0xff6a18,
         transparent: true,
         opacity,
@@ -935,7 +1181,7 @@ function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
  * Create volcanic crater rim using Volumetric Particles
  * Replaces the mesh-based rim to avoid hard edges and lighting artifacts.
  */
-function createParticleCraterRim() {
+function createParticleCraterRim(uniforms) {
     const group = new THREE.Group();
     group.name = 'crater-rim-particles';
 
@@ -948,8 +1194,8 @@ function createParticleCraterRim() {
     const baseColor = new THREE.Color(0x5a1208); // Deep charred red
     const glowColor = new THREE.Color(0xb83208); // Muted orange-red
 
-    const radiusBase = 55;
-    const tubeRadius = 9;
+    const radiusBase = 95;
+    const tubeRadius = 14;
 
     for (let i = 0; i < particleCount; i++) {
         // Distribute in a torus volume
@@ -992,20 +1238,21 @@ function createParticleCraterRim() {
     const aBase = attribute('aBase', 'vec3');
     const aColor = attribute('aColor', 'vec3');
 
-    // Old constant point size of 25px -> a large world-space puff.
-    const worldSize = float(14.0);
+    // Keep the crater rim as distant haze, not camera-near magma boulders.
+    const worldSize = float(5.5);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(aBase, worldSize);
     // Sample the soft cloud sprite; tint by per-particle color, fade at low opacity.
     const sprite = texture(cloudMap, uv());
     material.colorNode = aColor;
-    material.opacityNode = sprite.a.mul(0.08);
+    material.opacityNode = sprite.a.mul(0.055).mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
     material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const particles = new THREE.Mesh(geometry, material);
     particles.name = 'crater-rim-cloud';
@@ -1054,28 +1301,54 @@ function createVolcanoBackground(uniforms) {
  * line (§5.1). Lit geodes take the lake bounce + distance falloff so they ground with
  * depth. Count stays small (value hierarchy: ~70% dark rock).
  */
-function createVolcanicRockClusters(group, uniforms, elements, count) {
-    // Near / mid / far seats along the corridor (on the lake, off the path centreline so
-    // the glowing path tube passes cleanly between them).
+function createVolcanicRockClusters(group, uniforms, elements, count, groupCenter, staging) {
+    // SMALL/MEDIUM/LARGE-graded seats along the corridor (plan: radii ~2/4/6) so no two
+    // consecutive encounters repeat the old small-left/large-right two-sphere
+    // composition. Seats rest on the lake, off the path centreline, and are pushed
+    // clear of the spline (the frame-07 near-clip fix).
     const seats = [
-        { x: -42, z: 3 - 72, depth: 'mid' },
-        { x: 48, z: 3 - 132, depth: 'far' },
-        { x: -58, z: 3 - 146, depth: 'far' },
+        { ft: 0.10, side: -1, lateral: 38, forward: 10, size: 0.7 },
+        { ft: 0.24, side: 1, lateral: 44, forward: 11, size: 0.9 },
+        { ft: 0.38, side: -1, lateral: 48, forward: 14, size: 0.8 },
+        { ft: 0.60, side: 1, lateral: 56, forward: 16, size: 1.2 },
+        { ft: 0.74, side: -1, lateral: 52, forward: 14, size: 0.9, seam: true },
+        { ft: 0.84, side: 1, lateral: 64, forward: 18, size: 0.6, seam: true },
     ];
-    const sizeByDepth = { mid: 3.8, far: 3.0 };
-    const jitterByDepth = { mid: 1.2, far: 0.9 };
+    // ONE shared material for every cluster (same node graph → one pipeline), carrying
+    // the seam fade + camera-proximity fade + manager ecotone bridge.
+    const { material } = createRockClusterMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        { uSeam: uniforms.uSeam, uOpacity: uniforms.uOpacity },
+    );
     for (let i = 0; i < count; i++) {
-        const seat = seats[i % seats.length];
-        const size = sizeByDepth[seat.depth] + Math.random() * jitterByDepth[seat.depth];
+        const spec = seats[i % seats.length];
+        const size = spec.size + (i % 2) * 0.15;
+        const stagedSeat = staging.lakeAt(spec.ft, {
+            lateral: spec.side * spec.lateral,
+            forward: spec.forward,
+        });
+        const seat = {
+            x: stagedSeat.x,
+            z: stagedSeat.z,
+        };
+        pushSeatClearOfPath(seat, size, groupCenter);
         // Base tangent to the lake: center y = lake + size (boulder rests ON the lake).
         const position = new THREE.Vector3(seat.x, LAVA_LAKE_Y + size, seat.z);
 
-        const cluster = createRockCluster(uniforms, position, size);
+        const cluster = createRockCluster(uniforms, position, size, material);
+        cluster.name = `volcanic-geode-cluster-${i}`;
+        cluster.userData.stageFt = spec.ft;
+        cluster.userData.seamRemnant = Boolean(spec.seam);
         group.add(cluster);
         elements.rockClusters.push(cluster);
+        if (spec.seam) {
+            elements.seamBoulders.push(cluster);
+        }
 
         // §5.1 contact-shadow AO decal at the lake line under the boulder.
-        const decal = createContactShadowDecalTSL(size * 2.6);
+        const decal = createContactShadowDecalTSL(size * 2.6, uniforms.uOpacity);
         decal.mesh.position.set(seat.x, LAVA_LAKE_Y + 0.3, seat.z);
         decal.mesh.frustumCulled = false;
         group.add(decal.mesh);
@@ -1083,29 +1356,221 @@ function createVolcanicRockClusters(group, uniforms, elements, count) {
 }
 
 /**
- * Create a single grounded geode: a solid LIT obsidian boulder with ONE small dim glow
- * sprite. Seated on the lake; the lit material takes the lake bounce + distance falloff.
- * @param {object} uniforms shared chapter uniforms
- * @param {THREE.Vector3} position world-local seat (center already tangent to the lake)
- * @param {number} size sphere radius (defaults preserved for back-compat callers)
+ * Plan item 5 (frame-07 near-clip fix): enforce a minimum radial clearance between an
+ * asset seat and the camera spline. Samples the chapter's path span once at placement
+ * time (create-time only — zero per-frame cost) and pushes the seat outward along the
+ * offending direction if it sits closer than radius + margin.
  */
-function createRockCluster(uniforms, position, size = 4 + Math.random() * 6) {
-    const ballGroup = new THREE.Group();
+function pushSeatClearOfPath(seat, radius, groupCenter) {
+    const [tStart, tEnd] = getActiveOdysseyChapterPositions();
+    let nearestD2 = Infinity;
+    let nx = 0;
+    let nz = 0;
+    for (let i = 0; i <= 24; i += 1) {
+        const pt = getOdysseyPathPointAt(THREE.MathUtils.lerp(tStart ?? 0, tEnd ?? 0.125, i / 24));
+        const dx = seat.x - (pt.x - groupCenter.x);
+        const dz = seat.z - (pt.z - groupCenter.z);
+        const d2 = dx * dx + dz * dz;
+        if (d2 < nearestD2) {
+            nearestD2 = d2;
+            nx = dx;
+            nz = dz;
+        }
+    }
+    const clearance = radius + 9;
+    const d = Math.sqrt(nearestD2);
+    if (d < clearance && d > 1e-3) {
+        const push = (clearance - d) / d;
+        seat.x += nx * push;
+        seat.z += nz * push;
+    }
+}
 
-    // Solid LIT obsidian boulder — validated TSL builder (smooth sphere silhouette,
-    // dark albedo + emissive veins, lake-distance bounce), sharing the chapter uniforms
-    // incl. uBakedBounce so it grounds with depth like the columns/shelves.
-    const { mesh: coreMesh } = createRockClusterTSL(
+/**
+ * Plan asset 3 — basalt colonnade WALLS: clustered 5–7-sided hex prisms (Fingal's Cave
+ * jointing) at seven stations per side along the corridor, size-graded 60→160, bases
+ * seated at the lake. Every prism merges into ONE geometry so the entire colonnade
+ * costs a single draw call under the column material (charred silhouette, lake-lit
+ * fresnel rim + emissive veining).
+ */
+function createColonnadeWalls(uniforms, staging) {
+    const stations = [0.06, 0.18, 0.32, 0.46, 0.62, 0.74, 0.85];
+    const prismGeometries = [];
+    stations.forEach((ft, si) => {
+        [-1, 1].forEach((side) => {
+            const edge = 55 + ((si * 7 + (side > 0 ? 11 : 0)) % 36); // 55–90 off-path
+            const visibleEdge = Math.min(edge, 46);
+            const base = staging.lakeAt(ft, {
+                lateral: side * visibleEdge,
+                forward: (side > 0 ? 8 : -2) + si * 1.5,
+            });
+            const clusterHeight = 60 + (si / (stations.length - 1)) * 100; // 60→160
+            const prismCount = 3 + (si % 2);
+            for (let pi = 0; pi < prismCount; pi += 1) {
+                const h = clusterHeight * (0.55 + Math.random() * 0.5);
+                const r = 4.5 + Math.random() * 3.5;
+                const sides = 5 + Math.floor(Math.random() * 3); // 5–7-sided jointing
+                const prism = new THREE.CylinderGeometry(r * 0.85, r, h, sides, 1);
+                prism.translate(
+                    base.x + (Math.random() - 0.5) * r * 4.0,
+                    LAVA_LAKE_Y + h * 0.5, // base seated at the lake surface
+                    base.z + (Math.random() - 0.5) * r * 4.0,
+                );
+                prismGeometries.push(prism);
+            }
+        });
+    });
+    const merged = mergeGeometries(prismGeometries, false);
+    prismGeometries.forEach((g) => g.dispose());
+    const { material } = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
-        size,
         uniforms.uBakedBounce,
+        true, // column treatment: charred silhouette + lake-lit rim/veins
     );
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.name = 'basalt-colonnade-walls';
+    mesh.frustumCulled = false;
+    return mesh;
+}
+
+/**
+ * Plan asset 4 — the selenite geode CHAPEL: translucent crystal beams off the right of
+ * the rail at the mid-chapter dead zone, backlit by a molten pocket beneath, framed by
+ * a dark basalt shell, with one warm corona so it reads from across the cavern.
+ */
+function createSeleniteChamber(group, uniforms, staging) {
+    const station = 0.45;
+    const frame = staging.frame(station);
+    const chapelPosition = staging.at(station, { lateral: 16, forward: -2, up: 32 });
+
+    const chamber = new THREE.Group();
+    chamber.name = 'selenite-geode-chamber';
+
+    const crystals = createSeleniteCrystalsTSL(uniforms.uTime, uniforms.uPulseIntensity, {
+        uSeam: uniforms.uSeam,
+        uOpacity: uniforms.uOpacity,
+        beamCount: 12,
+    });
+    crystals.mesh.scale.set(1.55, 1.9, 1.55);
+    chamber.add(crystals.mesh);
+
+    // Molten pocket beneath — the warm backlight that makes the selenite glow.
+    const pocket = createMoltenPocketTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        4.4,
+        uniforms.uBakedBounce,
+        { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+    );
+    pocket.mesh.position.y = -3.2;
+    chamber.add(pocket.mesh);
+
+    // Dark basalt SHELL framing the chapel (a broken arc of hex prisms, one draw).
+    const shellGeometries = [];
+    for (let i = 0; i < 5; i += 1) {
+        const h = 18 + i * 4.5;
+        const shellPrism = new THREE.CylinderGeometry(3.8, 4.8, h, 6, 1);
+        const angle = -1.05 + i * 0.52;
+        shellPrism.translate(
+            Math.cos(angle) * 11,
+            h * 0.5 - 3,
+            Math.sin(angle) * 8 - 3,
+        );
+        shellGeometries.push(shellPrism);
+    }
+    const shellGeometry = mergeGeometries(shellGeometries, false);
+    shellGeometries.forEach((g) => g.dispose());
+    const { material: shellMaterial } = createMoltenPocketMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        true,
+    );
+    const shell = new THREE.Mesh(shellGeometry, shellMaterial);
+    shell.name = 'selenite-chamber-shell';
+    chamber.add(shell);
+
+    // One warm corona so the chapel reads from across the cavern.
+    const glow = new THREE.Sprite(
+        makeGlowSpriteMaterial(createGlowTexture(), 0xff8a3a, 0.28, uniforms.uOpacity),
+    );
+    glow.scale.set(38, 38, 1);
+    glow.position.set(0, 4, 0);
+    chamber.add(glow);
+
+    chamber.position.copy(chapelPosition);
+    chamber.rotation.y = Math.atan2(frame.forward.x, frame.forward.z);
+    chamber.userData.stageFt = station;
+    chamber.traverse((child) => { child.frustumCulled = false; });
+    group.add(chamber);
+    group.userData.seleniteChamber = chamber;
+}
+
+/**
+ * Create a single grounded geode CLUSTER: a solid LIT obsidian boulder (plus, for the
+ * larger seats, merged satellite shards and one thin magma tether-stream) with ONE
+ * small dim glow sprite. Seated on the lake; the shared cluster material takes the
+ * lake bounce + distance falloff + seam/proximity fades.
+ * @param {object} uniforms shared chapter uniforms
+ * @param {THREE.Vector3} position world-local seat (center already tangent to the lake)
+ * @param {number} size core sphere radius (small ~2 / medium ~4 / large ~6)
+ * @param {THREE.Material} material shared cluster material (one pipeline for all seats)
+ */
+function createRockCluster(uniforms, position, size, material) {
+    const ballGroup = new THREE.Group();
+
+    // Merged geode: the core boulder plus (for the larger seats) 3–4 small satellite
+    // shards orbiting it — one geometry, one draw call, ONE shared cluster material
+    // (dark albedo + emissive veins + lake bounce + seam/proximity fades).
+    const partGeometries = [new THREE.SphereGeometry(size, 36, 36)];
+    const satelliteCount = size >= 4.5 ? 3 + Math.floor(Math.random() * 2) : 0;
+    let firstSatellite = null;
+    for (let s = 0; s < satelliteCount; s += 1) {
+        const satSize = 0.8 + Math.random() * 0.8;
+        const angle = (s / satelliteCount) * TAU + Math.random() * 0.8;
+        const orbit = size * (1.7 + Math.random() * 0.9);
+        const sat = new THREE.SphereGeometry(satSize, 18, 18);
+        const sx = Math.cos(angle) * orbit;
+        const sy = -size * 0.35 + Math.random() * size * 0.9;
+        const sz = Math.sin(angle) * orbit;
+        sat.translate(sx, sy, sz);
+        partGeometries.push(sat);
+        if (!firstSatellite) firstSatellite = new THREE.Vector3(sx, sy, sz);
+    }
+    const geometry = partGeometries.length > 1
+        ? mergeGeometries(partGeometries, false)
+        : partGeometries[0];
+    if (partGeometries.length > 1) partGeometries.forEach((g) => g.dispose());
+    const coreMesh = new THREE.Mesh(geometry, material);
     ballGroup.add(coreMesh);
+
+    // Thin ropy magma TETHER-STREAM connecting the core to its nearest satellite —
+    // a scaled-down lava-fall ribbon, per the plan's cluster grammar.
+    if (firstSatellite) {
+        const tether = createLavaFallTSL(
+            uniforms.uTime,
+            uniforms.uPulseIntensity,
+            uniforms.uDescent,
+            { uOpacity: uniforms.uOpacity },
+        );
+        const from = new THREE.Vector3(0, size * 0.4, 0);
+        const tetherDir = new THREE.Vector3().subVectors(firstSatellite, from);
+        const dist = tetherDir.length();
+        tether.mesh.position.copy(from).addScaledVector(tetherDir, 0.5);
+        tether.mesh.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            tetherDir.normalize(),
+        );
+        tether.mesh.scale.set(0.045, dist / 220, 1);
+        ballGroup.add(tether.mesh);
+    }
 
     // One small, dim corona glow only (was three stacked sprites — clutter).
     const glowTexture = createGlowTexture();
-    const innerGlow = new THREE.Sprite(makeGlowSpriteMaterial(glowTexture, 0xff5a14, 0.055));
+    const innerGlow = new THREE.Sprite(
+        makeGlowSpriteMaterial(glowTexture, 0xff5a14, 0.055, uniforms.uOpacity),
+    );
     innerGlow.scale.set(size * 2.1, size * 2.1, 1);
     ballGroup.add(innerGlow);
 
@@ -1117,25 +1582,31 @@ function createRockCluster(uniforms, position, size = 4 + Math.random() * 6) {
 }
 
 /**
- * Create radial glow texture
+ * Create radial glow texture. The canvas raster is memoized at module scope (startup
+ * micro-win: this is called from multiple build sites); the THREE.CanvasTexture itself
+ * is fresh per call so per-environment disposal can never poison a later session.
  */
+let _glowCanvas = null;
 function createGlowTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
+    if (!_glowCanvas) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
 
-    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 200, 100, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(255, 120, 50, 0.8)');
-    gradient.addColorStop(0.4, 'rgba(200, 50, 20, 0.4)');
-    gradient.addColorStop(0.7, 'rgba(100, 20, 10, 0.15)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(255, 200, 100, 1.0)');
+        gradient.addColorStop(0.2, 'rgba(255, 120, 50, 0.8)');
+        gradient.addColorStop(0.4, 'rgba(200, 50, 20, 0.4)');
+        gradient.addColorStop(0.7, 'rgba(100, 20, 10, 0.15)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 128, 128);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+        _glowCanvas = canvas;
+    }
 
-    return new THREE.CanvasTexture(canvas);
+    return new THREE.CanvasTexture(_glowCanvas);
 }
 
 /**
@@ -1181,34 +1652,42 @@ function createMoltenPockets(group, uniforms, groupCenter) {
             pt.y - groupCenter.y,
             pt.z - groupCenter.z,
         );
-        const size = 5 + (i % 3) * 1.5;
+        const size = [2.35, 2.75, 2.2, 2.9, 2.35, 2.05][i] ?? 2.4;
         const { mesh } = createMoltenPocketTSL(
             uniforms.uTime,
             uniforms.uPulseIntensity,
             size,
             uniforms.uBakedBounce,
+            { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
         );
         // Seat the shelf as a LEDGE clearly to one side of and below the node. The side
         // offset (1.35×) exceeds the shelf radius, so the shelf never crosses the on-path
         // x≈0 line — the glowing path tube passes cleanly past it instead of skewering it.
         const sideSign = i % 2 === 0 ? 1 : -1;
-        const shelfX = local.x + sideSign * (size * 1.35);
-        const shelfY = local.y - size * 0.7;
-        mesh.position.set(shelfX, shelfY, local.z);
+        const shelfX = local.x + sideSign * (size * 2.7 + 2.0);
+        const shelfY = local.y - size * 1.05 - 0.9;
+        mesh.position.set(shelfX, shelfY, local.z + sideSign * 0.6);
+        mesh.scale.set(1.0, 0.66, 0.82);
         mesh.rotation.y = (i * 1.31) % TAU;
         mesh.name = `molten-pocket-${i}`;
         mesh.frustumCulled = false;
+        mesh.userData.size = size;
+        mesh.userData.nodePocket = true;
+        mesh.userData.seamRemnant = true;
+        mesh.userData.seamSinkDepth = size * 3.4 + 6;
+        mesh.userData.baseScale = mesh.scale.clone();
         group.add(mesh);
         pockets.push(mesh);
 
         // §5.1 contact-shadow AO decal nested on/under the shelf so the node reads as
         // resting on a grounded ledge, not floating.
-        const decal = createContactShadowDecalTSL(size * 2.4);
+        const decal = createContactShadowDecalTSL(size * 2.4, uniforms.uOpacity);
         decal.mesh.position.set(shelfX, shelfY - size * 0.18, local.z);
         decal.mesh.frustumCulled = false;
         group.add(decal.mesh);
     });
     group.userData.pockets = pockets;
+    return pockets;
 }
 
 /**
@@ -1281,12 +1760,22 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
 
     // Descent drama — map the GLOBAL camera progress to this chapter's local 0→1 so the
     // lava lake + lava-fall emission intensify as the camera falls toward the lake.
+    // The last ~22% of the chapter is the authored SEAM band (uSeam): lake-vein quench,
+    // ember→steam shift, geode sink, and the First Heart's blackbody walk-down.
     if (uniforms?.uDescent && cameraProgress != null) {
         const tStart = group.userData.chapterTStart ?? 0;
         const tEnd = group.userData.chapterTEnd ?? 0.125;
         const span = Math.max(tEnd - tStart, 1e-4);
         const local = THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1);
+        group.userData.localProgress = local;
+        group.userData.cameraProgress = cameraProgress;
         uniforms.uDescent.value = local;
+        if (uniforms.uSeam) {
+            uniforms.uSeam.value = Math.max(
+                THREE.MathUtils.smoothstep(local, 0.70, 0.86),
+                THREE.MathUtils.smoothstep(cameraProgress, 0.074, 0.086),
+            );
+        }
     }
 
     if (uniforms?.uPulseIntensity) {
@@ -1299,15 +1788,62 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         );
     }
 
-    // Animate lava lake glow sprites (shrunk: scales 120/70 for the value hierarchy).
+    // Animate lava lake glow sprites (per-sprite base scales incl. the basin coronas).
     const { lavaFloor } = group.userData;
     if (lavaFloor?.userData.glows) {
         const pulse = 1 + Math.sin(time * 1.2) * 0.15;
-        const baseScales = [120, 70];
-        lavaFloor.userData.glows.forEach((sprite, i) => {
-            sprite.scale.setScalar((baseScales[i] ?? baseScales[0]) * pulse);
+        lavaFloor.userData.glows.forEach((sprite) => {
+            sprite.scale.setScalar((sprite.userData.baseScale ?? 100) * pulse);
         });
     }
+
+    // The First Heart breathes at 0.2 Hz and gutters down across the seam band (its
+    // color walk-down happens in-shader; the scale settles as the waterline rises).
+    const heart = group.userData.firstHeart;
+    if (heart) {
+        const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
+        const localProgress = group.userData.localProgress ?? 0;
+        const cameraProgressNow = group.userData.cameraProgress ?? 0;
+        const tEnd = group.userData.chapterTEnd ?? 0.093;
+        const globalQuench = Math.max(
+            THREE.MathUtils.smoothstep(cameraProgressNow, tEnd - 0.018, tEnd - 0.010),
+            THREE.MathUtils.smoothstep(cameraProgressNow, 0.078, 0.083),
+        );
+        const heartQuench = Math.max(
+            seam,
+            globalQuench,
+            THREE.MathUtils.smoothstep(localProgress, 0.78, 0.84),
+        );
+        const base = group.userData.firstHeartBaseScale ?? 44;
+        const breathe = 1 + Math.sin(time * 1.2566) * 0.06;
+        heart.scale.setScalar(base * breathe * (1 - heartQuench * 0.92));
+        heart.visible = heartQuench < 0.98;
+    }
+
+    const lavaFallRevealables = group.userData.lavaFallRevealables;
+    if (lavaFallRevealables?.length) {
+        const localProgress = group.userData.localProgress ?? 0;
+        const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
+        const reveal = THREE.MathUtils.smoothstep(localProgress, 0.45, 0.61);
+        const visible = reveal > 0.04 && seam < 0.98;
+        lavaFallRevealables.forEach((object, i) => {
+            if (!object) return;
+            object.visible = visible;
+            if (i === 0) {
+                object.scale.setScalar(THREE.MathUtils.lerp(0.72, 1, reveal));
+            }
+        });
+    }
+
+    const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
+    const occluderVisible = seam < 0.94;
+    if (group.userData.colonnade) group.userData.colonnade.visible = occluderVisible;
+    group.userData.columns?.forEach((column) => {
+        column.visible = occluderVisible;
+    });
+    group.userData.ceilingSlabs?.forEach((slab) => {
+        slab.visible = occluderVisible;
+    });
 
     // Animate lava lights
     const { lavaLight } = group.userData;
@@ -1340,11 +1876,36 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         });
     }
 
-    // Slow rotation of the (now sparse, distant) background geodes.
+    // Slow rotation of the geode clusters + the seam SINK: across the out-transition
+    // every boulder settles into the lake while its material fades in-shader, so no
+    // magma sphere survives past the frame-18 equivalent.
     const { elements } = group.userData;
     if (elements?.rockClusters) {
-        elements.rockClusters.forEach((cluster, i) => {
+        const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
+        const localProgress = group.userData.localProgress ?? 0;
+        const sinkables = [
+            ...(elements.rockClusters ?? []),
+            ...(elements.moltenPockets ?? []),
+        ];
+        sinkables.forEach((cluster, i) => {
             cluster.rotation.y += delta * 0.03 * ((i % 2) * 2 - 1);
+            if (cluster.userData.baseY === undefined) {
+                cluster.userData.baseY = cluster.position.y;
+            }
+            const sinkDepth = cluster.userData.seamSinkDepth ?? ((cluster.userData.size ?? 4) * 2 + 5);
+            const seamSink = cluster.userData.seamRemnant
+                ? Math.max(
+                    seam,
+                    THREE.MathUtils.smoothstep(localProgress, 0.55, 0.76),
+                    THREE.MathUtils.smoothstep(group.userData.cameraProgress ?? 0, 0.078, 0.083),
+                )
+                : seam;
+            cluster.position.y = cluster.userData.baseY - seamSink * sinkDepth;
+            if (cluster.userData.baseScale) {
+                cluster.scale.copy(cluster.userData.baseScale)
+                    .multiplyScalar(THREE.MathUtils.lerp(1, 0.08, seamSink));
+            }
+            cluster.visible = seamSink < 0.98;
 
             // Pulse the single dim corona glow sprite.
             if (cluster.userData.glows) {

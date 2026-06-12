@@ -78,8 +78,11 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         name: 'Atmosphere Edge',
         kind: 4,
         stinger: 'atmosphere-edge',
-        primary: 0x9fd0ff,
-        secondary: 0x1d2254,
+        // Creative plan (6→ Transition In, beat 2): the veil is the thin olive-green
+        // AIRGLOW membrane (#7FBF6A over #2B3D1F) the camera punches through — the
+        // real last shell of atmosphere. The lens-bubble particle color stays cool.
+        primary: 0x7fbf6a,
+        secondary: 0x2b3d1f,
         particle: 0xbddcff,
         ringScale: 1.35,
         veilScale: 1.3,

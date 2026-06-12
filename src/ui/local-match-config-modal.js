@@ -219,8 +219,16 @@ export class LocalMatchConfigModal {
 
                 <div class="form-group">
                   <label for="start-level">Starting Level (1-9)</label>
-                  <input type="number" id="start-level" name="startLevel"
-                         min="1" max="9" value="1" placeholder="1" />
+                  <div class="lmc-number-stepper" data-stepper-for="start-level">
+                    <input type="number" id="start-level" name="startLevel"
+                           min="1" max="9" value="1" placeholder="1" inputmode="numeric" />
+                    <div class="lmc-number-stepper__controls">
+                      <button type="button" class="lmc-number-stepper__button lmc-number-stepper__button--up"
+                              data-start-level-step="1" aria-label="Increase starting level"></button>
+                      <button type="button" class="lmc-number-stepper__button lmc-number-stepper__button--down"
+                              data-start-level-step="-1" aria-label="Decrease starting level"></button>
+                    </div>
+                  </div>
                   <small class="form-help">Higher level = faster pieces</small>
                 </div>
 
@@ -292,7 +300,37 @@ export class LocalMatchConfigModal {
             this.renderSlotCards();
         });
 
+        this.setupStartingLevelStepper();
         this.setupScrollPerformanceMode();
+    }
+
+    setupStartingLevelStepper() {
+        const input = this.container.querySelector('#start-level');
+        const buttons = this.container.querySelectorAll('[data-start-level-step]');
+        if (!input || buttons.length === 0) return;
+
+        const min = parseInt(input.min, 10) || 1;
+        const max = parseInt(input.max, 10) || 9;
+        const clamp = (value) => Math.min(max, Math.max(min, value));
+        const emitValueChange = () => {
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const normalize = () => {
+            const parsed = parseInt(input.value, 10);
+            input.value = String(clamp(Number.isFinite(parsed) ? parsed : min));
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const step = parseInt(button.dataset.startLevelStep, 10) || 0;
+                const current = parseInt(input.value, 10);
+                input.value = String(clamp((Number.isFinite(current) ? current : min) + step));
+                emitValueChange();
+            });
+        });
+
+        input.addEventListener('blur', normalize);
     }
 
     setupScrollPerformanceMode() {
@@ -516,8 +554,8 @@ export class LocalMatchConfigModal {
         const endCondition = this.container.querySelector('#end-condition');
         const valueGroup = this.container.querySelector('#end-value-group');
         const infinityRowsGroup = this.container.querySelector('#infinity-rows-group');
-        const startLevelGroup = this.container.querySelector('#start-level')?.parentElement;
-        const levelProgressionGroup = this.container.querySelector('#level-progression')?.parentElement;
+        const startLevelGroup = this.container.querySelector('#start-level')?.closest('.form-group');
+        const levelProgressionGroup = this.container.querySelector('#level-progression')?.closest('.form-group');
         if (!matchMode) return;
 
         const isInfinity = matchMode.value === 'infinity-lms';

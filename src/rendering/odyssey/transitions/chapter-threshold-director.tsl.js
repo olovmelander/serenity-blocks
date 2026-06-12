@@ -138,14 +138,33 @@ export function createVeilMaterialTSL(uTime = uniform(0), u = makeThresholdUnifo
     const split = smoothstep(0.08, 0.85, abs(uvc.x).add(uProgress.mul(0.55)));
     const band3 = oneMinus(split).mul(0.7).add(pow(oneMinus(smoothstep(0.1, 1.05, r)), 2.0));
 
-    // ── kind 4: atmosphere rim ──
-    const rim = oneMinus(smoothstep(0.02, 0.16, abs(r.sub(uProgress.mul(0.38).add(0.34)))));
-    const sparkle4 = step(0.955, hash21(floor(vUv.mul(70.0)))).mul(0.55);
-    const band4 = rim.add(sparkle4);
+    // ── kind 4: AIRGLOW MEMBRANE (5->6, creative plan rework) ── the real ~90km
+    // airglow shell seen edge-on: a THIN horizontal olive-green luminous band (not a
+    // radial rim) that sweeps past as the camera punches through the last shell of
+    // atmosphere — a designed under-a-second event. The faint sparkle is the first
+    // stars igniting beyond the membrane (gated to the back half of the breach). The
+    // profile's lens-bubble PARTICLE component is untouched and fades across the seam
+    // beats exactly as Chapter 5's Transition Out specifies.
+    const membraneY = uProgress.mul(1.6).sub(0.8); // sweeps bottom→top across the breach
+    const membraneCore = oneMinus(
+        smoothstep(0.0, 0.05, abs(uvc.y.sub(membraneY).sub(mist.mul(0.03)))),
+    );
+    const membraneGlow = oneMinus(smoothstep(0.0, 0.22, abs(uvc.y.sub(membraneY)))).mul(0.4);
+    const sparkle4 = step(0.955, hash21(floor(vUv.mul(70.0))))
+        .mul(0.45)
+        .mul(smoothstep(0.4, 0.9, uProgress));
+    const band4 = membraneCore.add(membraneGlow).add(sparkle4);
 
-    // ── kind 5: lensing ──
-    const lens = oneMinus(smoothstep(0.02, 0.18, abs(r.sub(uProgress.mul(0.52).add(0.28)))));
-    const band5 = lens.mul(wave.mul(0.2).add(0.8)).add(mist.mul(0.22));
+    // ── kind 5: GRAVITATIONAL SHEAR (6->7, creative plan rework) ── the old tight
+    // expanding interference ring buried the portal eye in moiré. Replaced by 3–5
+    // BROAD, SLOW shear arcs bowing around the eye — the first hint of lensing —
+    // expanding with progress and decaying with the seam envelope (the director's
+    // position-driven intensity is the decay tail). Chapter 7's screen-space lens warp
+    // inherits the same arc geometry, so the hand-off reads as one physics intensifying.
+    const arcPhase = r.mul(6.0).sub(uProgress.mul(2.6)).sub(time.mul(0.18));
+    const arcs = pow(sin(arcPhase).mul(0.5).add(0.5), 3.0);
+    const arcMask = smoothstep(0.16, 0.42, r).mul(oneMinus(smoothstep(0.6, 1.05, r)));
+    const band5 = arcs.mul(arcMask).mul(0.9).add(mist.mul(0.12));
 
     // ── kind 6: neon scan ──
     const scan = step(0.5, fract(vUv.y.mul(38.0).sub(time.mul(6.0))));
