@@ -607,6 +607,24 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
                 if (o.isMesh && o.material) {
                     const src = Array.isArray(o.material) ? o.material[0] : o.material;
                     const isWall = src.name && src.name.startsWith('Falu');
+                    const isRoof = src.name && src.name.includes('Roof');
+                    if (isRoof) {
+                        // Firewatch-style roof: drop the busy baked pantile texture for a
+                        // clean FLAT-FACETED terracotta — each roof slope renders as one
+                        // solid tone (the sunlit slope lighter, the shaded slope darker),
+                        // with faint, perfectly regular world-aligned tile courses. Reads
+                        // bold + tidy at lake distance, matching the scene's low-poly look.
+                        const rmat = track(new T.MeshBasicNodeMaterial());
+                        const rbase = cv(0xc0512e);
+                        const tone = max(dot(faceN, uSunDir), float(0.0)).mul(0.42).add(0.66);
+                        const course = sin(positionWorld.y.mul(9.0)).mul(0.5).add(0.5);
+                        const line = smoothstep(0.80, 0.98, course).mul(0.13);
+                        rmat.colorNode = rbase.mul(tone).mul(float(1.0).sub(line));
+                        rmat.side = T.DoubleSide;
+                        o.material = rmat;
+                        o.frustumCulled = false;
+                        return;
+                    }
                     const map = isWall ? faluTex : (src.map || null);
                     const basic = new T.MeshBasicMaterial({
                         map,

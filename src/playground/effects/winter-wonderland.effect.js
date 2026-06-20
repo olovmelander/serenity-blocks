@@ -77,9 +77,9 @@ const FRAMING_SPRUCES = [
     // [x, z, worldHeight, variantIndex] (0 slim / 1 full / 2 classic) — mixed per
     // side so the wings don't look like clones. Left: full near hero + tall slim set
     // back. Right: classic near hero + tall slim set back.
-    [-380, 230, 600, 1], [-620, 40, 820, 0],
+    [-520, 230, 600, 1], [-740, 40, 800, 0],
     // Right side
-    [400, 250, 560, 2], [645, 60, 800, 0],
+    [520, 250, 600, 1], [740, 60, 800, 0],
 ];
 // Treeline on the FAR lakeshore — a fuller mid-ground forest BAND (per reference):
 // more trees, an extra row, taller, brought slightly forward of the (now lower)
@@ -617,7 +617,7 @@ export function create({ scene, renderer, camera }) {
     // De-blued ambient: 0x6a82a0@1.3 was the strongest blue contributor, washing the
     // foliage toward teal on every facet. A desaturated green-gray (R~G>B) at 1.0 keeps
     // the cold night feel without the blue dominance, so the green reads green.
-    const ambientLight = new THREE.AmbientLight(0x586a64, 1.0);
+    const ambientLight = new THREE.AmbientLight(0x6c8088, 1.3);
     scene.add(ambientLight);
     const treeMoonLight = new THREE.DirectionalLight(0xdce8ff, 1.7);
     treeMoonLight.position.copy(MOON_POS);
@@ -630,7 +630,7 @@ export function create({ scene, renderer, camera }) {
     // green a cool spruce-green — matching the scene's cold palette (a warm fill made the
     // trees pop warm against the cold lake / mountains). Kept just below the moon key so
     // form still reads; the cool moon backlight rims the snow (classic snow-tree look).
-    const treeFillLight = new THREE.DirectionalLight(0xe2ecf6, 1.35);
+    const treeFillLight = new THREE.DirectionalLight(0xf2eee6, 2.0);
     treeFillLight.position.set(200, 460, 1500);
     scene.add(treeFillLight);
     // One snow-laden summer-spruce GLB → the close-camera framing wings + the

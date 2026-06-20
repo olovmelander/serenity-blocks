@@ -125,9 +125,11 @@ export function createSkyGradientTSL(options = {}) {
     const lowBand = mix(horizon, midSky, smoothstep(0.0, 0.30, t));
     let color = mix(lowBand, zenith, smoothstep(0.30, 1.0, t));
 
-    // Painterly FBM break (sky-children sky-dome discipline) so the gradient never
-    // reads as a clean ramp — a faint cloudy mottle riding the dome.
-    const domeBreak = fbm2(vec2(dir.x.mul(3.2).add(dir.z.mul(1.7)), dir.y.mul(4.1)));
+    // Painterly FBM break (sky-children sky-dome discipline) so the gradient never reads as a
+    // clean ramp — a faint cloudy mottle riding the dome. 3 octaves (was the default 5): this is
+    // a near-invisible 0.035-amplitude tint on a fullscreen backstop dome, so the fine octaves
+    // are imperceptible while their per-pixel cost over the whole frame is not.
+    const domeBreak = fbm2(vec2(dir.x.mul(3.2).add(dir.z.mul(1.7)), dir.y.mul(4.1)), 3);
     color = color.add(vec3(0.035, 0.032, 0.05).mul(domeBreak));
 
     // Mie sun (the Act I HERO): forward-scatter halo + a soft capped disc + a broad
@@ -285,8 +287,12 @@ export function createCloudSheetTSL(uTime, {
     // Two-scale FBM, drifting in opposite directions → billowing, evolving cloud.
     const p = vUv.mul(scale);
     const t = uTime.mul(drift);
-    const base = fbm2(p.add(vec2(t, t.mul(0.4))), 4);
-    const detail = fbm2(p.mul(2.1).sub(vec2(t.mul(0.7), 0.0)));
+    // Octaves trimmed 4→3 (base) and 5→3 (detail): the `field` feeds a coverage threshold +
+    // feather below, which clips the octave-4/5 high-frequency wiggle almost entirely, so the
+    // puffy cloud shape is ~unchanged while each of the 6 co-visible sheets drops from ~9 to ~6
+    // FBM octaves — a direct cut to this chapter's dominant per-fragment scroll-fill cost.
+    const base = fbm2(p.add(vec2(t, t.mul(0.4))), 3);
+    const detail = fbm2(p.mul(2.1).sub(vec2(t.mul(0.7), 0.0)), 3);
     const field = base.mul(0.65).add(detail.mul(0.45));
 
     // Coverage threshold → puffy clumps with feathered edges. Higher coverage lowers

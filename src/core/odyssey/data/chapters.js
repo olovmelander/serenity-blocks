@@ -104,7 +104,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall', 'meadow'],
+            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall'],
             supporting: [],
         },
 

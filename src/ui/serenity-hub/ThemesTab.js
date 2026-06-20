@@ -351,7 +351,6 @@ export class ThemesTab {
             Galaxy: 'galaxy',
             'Rainy Window': 'rain',
             'Koi Pond': 'fish',
-            Meadow: 'flower',
             'Cosmic Chimes': 'chime',
             'Singing Bowl': 'bowl',
             Starlight: 'star',

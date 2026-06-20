@@ -1327,7 +1327,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.333,
 
         theme: {
-            primary: 'meadow',
+            primary: 'summer',
             overlays: ['forest'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,

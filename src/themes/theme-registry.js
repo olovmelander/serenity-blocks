@@ -133,13 +133,6 @@ const RAW_THEME_REGISTRY = [
         icon: './koi-pond/koi-pond-theme-icon.png',
     },
     {
-        id: 'meadow',
-        displayName: 'Meadow',
-        module: './meadow/meadow-theme.js',
-        group: 'biomes',
-        icon: './meadow/meadow-theme-icon.png',
-    },
-    {
         id: 'verdant-hills',
         displayName: 'Verdant Hills',
         module: './verdant-hills/verdant-hills-theme.js',

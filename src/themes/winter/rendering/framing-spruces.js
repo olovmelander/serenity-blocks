@@ -1,55 +1,117 @@
-/* eslint-disable import/no-unresolved */
 import * as THREE from 'three/webgpu';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import spruce1Url from '../assets/snowy_spruce_1.glb?url';
-import spruce2Url from '../assets/snowy_spruce_2.glb?url';
-import spruce3Url from '../assets/snowy_spruce_3.glb?url';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FramingSpruces — snow-laden low-poly spruces for the Winter Wonderland scene.
+// FramingSpruces — Firewatch-style snow-laden spruces, built procedurally.
 //
-// THREE Blender-authored variants so the forest doesn't read as clones:
-//   1 (slim)    — tall narrow spire, long leader, lighter snow
-//   2 (full)    — broad dense pyramid, heavy snow
-//   3 (classic) — balanced medium spruce
-// Each is built from MANY individual, irregular drooping branch fronds (free3d
-// low-poly-spruce style — NOT smooth cones) with soft snow settling on the
-// upper-facing boughs; 3 primitives (green/trunk/snow), normalised to unit height.
-// Organic randomness (varied branch length / droop / angle + gaps) keeps them from
-// reading as clones or as a machined object.
+// Built as STACKED faceted drooping cone-tiers (the classic low-poly spruce: distinct
+// skirt tiers with chunky polygonal drooping rims, stacked + tapering to a pointed
+// spire) — matching the user's reference. Each green tier gets a smaller white snow
+// cone resting on its upper part (the green rim pokes out below); a thin trunk at the
+// base. Flat-shaded + matte for the bold low-poly read; per-vertex radius/height jitter
+// gives the chunky organic rim. All procedural BufferGeometry — no GLBs.
 //
-// Two placements from the same set:
-//   • placeFraming() — a few CLOSE-camera hero spruces hugging the LEFT & RIGHT
-//                      screen edges (cloned, varied variant + yaw, subtle sway).
-//   • placeTreeline() — the mid-ground belt behind the lake, the 3 variants spread
-//                      across the placements as instanced draw calls.
+// 3 parametric variants (slim / full / classic) so the forest isn't clones. All
+// geometry is unit-height (base at y=0) → world height is just the instance scale.
 //
-// Lit by the scene's moon key + cool fill; SMOOTH-shaded + fully MATTE so they feel
-// natural (flat facets / specular read as "metal" on a conifer), colour-matched to
-// the cold palette (soft white snow, muted cool spruce green). See the effect.
+//   • placeFraming() — close-camera hero spruces framing the LEFT & RIGHT edges
+//                      (cloned, varied variant + yaw + subtle sway).
+//   • placeTreeline() — the mid-ground belt, variants spread across instanced draws.
+//
+// Lit by the scene's moon key + cool fill; colour-matched to the cold palette (soft
+// cool-white snow, bold cool spruce green). Tune the profile params + COLOURS below
+// and HMR shows it instantly — no asset round-trip.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VARIANT_URLS = [spruce1Url, spruce2Url, spruce3Url];
+// NOTE: these are OVERSHOT bright/warm on purpose. In-game the whole frame is graded
+// through WinterPipeline (exposure 0.82 + ACES + cold tint cutting red / boosting blue)
+// which crushes a "correct" dark green to near-black — so the albedo must be much
+// brighter here than it looks right in the flat playground. Tune against the in-game
+// (full-screen) render, not the playground.
+const GREEN = 0x4a7a4f; // deep spruce green (overshot a bit so it survives the grade)
+const SNOW = 0xe6eef4; // bright soft cool-white snow
+const TRUNK = 0x2c241d;
 
-function tuneMaterial(mat) {
-    // Low-poly FACETED read (flat shading) but kept fully MATTE so it stays natural
-    // — the earlier "metal" feel came from steely-blue snow + specular, NOT from flat
-    // facets. Fully diffuse (roughness 1, metalness 0) + soft snow keeps it stylised
-    // low-poly without the machined look.
-    mat.flatShading = true;
-    mat.metalness = 0.0;
-    mat.roughness = 1.0;
-    mat.side = THREE.DoubleSide;
-    // Colour-match the cold scene but keep it soft/natural: soft white snow (not steely
-    // blue) + a muted natural spruce green. The frame is graded uniformly in-game, so
-    // matching here holds after the grade.
-    const name = (mat.name || '').toLowerCase();
-    if (name.includes('snow')) {
-        mat.color.set(0xe0e8ee);
-    } else if (name.includes('green') || name.includes('mid') || name.includes('foliage')) {
-        mat.color.set(0x44553d);
+// Per-variant shape: STACKED faceted drooping cone-tiers (the reference low-poly
+// spruce). `tiers` = number of skirts, `Rbase` = bottom radius, `taper` = how fast they
+// shrink to the top, `segs` = facets per tier (low = chunky/low-poly).
+const VARIANTS = [
+    {
+        key: 'slim', Rbase: 0.30, tiers: 5, segs: 9, taper: 0.86, trunkR: 0.05, folBase: 0.10, leader: 0.10, seed: 11,
+    },
+    {
+        key: 'full', Rbase: 0.46, tiers: 8, segs: 11, taper: 0.80, trunkR: 0.065, folBase: 0.08, leader: 0.03, seed: 23,
+    },
+    {
+        key: 'classic', Rbase: 0.37, tiers: 6, segs: 10, taper: 0.84, trunkR: 0.058, folBase: 0.10, leader: 0.06, seed: 7,
+    },
+];
+
+// Tiny deterministic RNG (Park–Miller LCG, no bitwise) so a variant's silhouette is
+// stable across reloads.
+function makeRng(seed) {
+    let s = seed % 2147483647;
+    if (s <= 0) s += 2147483646;
+    return () => {
+        s = (s * 16807) % 2147483647;
+        return (s - 1) / 2147483646;
+    };
+}
+
+// One faceted drooping cone tier: an apex at the top-centre + a polygonal rim that
+// sags down & out (per-vertex radius/height jitter → the chunky pointed low-poly rim).
+function addTier(pos, idx, apexY, baseY, R, N, rotOff, rng, rJit, yJit) {
+    const a0 = pos.length / 3;
+    pos.push(0, apexY, 0);
+    for (let k = 0; k < N; k += 1) {
+        const a = rotOff + (k / N) * Math.PI * 2;
+        const rr = R * (1 + (rng() - 0.5) * rJit);
+        const yy = baseY - rng() * yJit;
+        pos.push(Math.cos(a) * rr, yy, Math.sin(a) * rr);
     }
-    mat.needsUpdate = true;
+    for (let k = 0; k < N; k += 1) {
+        idx.push(a0, a0 + 1 + ((k + 1) % N), a0 + 1 + k);
+    }
+}
+
+function makeGeo(pos, idx) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildVariant(p) {
+    const rng = makeRng(p.seed);
+    const T = p.tiers;
+    const top = 1.0;
+    const step = (top - p.folBase) / T;
+    const tierH = step * 1.85; // each skirt droops ~1.85 steps → overlaps the one below
+    const N = p.segs;
+    const gp = []; const gi = []; const sp = []; const si = [];
+    for (let i = 0; i < T; i += 1) {
+        const tt = i / (T - 1);
+        const apexY = p.folBase + (i + 1) * step;
+        const baseY = apexY - tierH;
+        const R = p.Rbase * (1 - tt * p.taper) + 0.02;
+        const rot = i * 0.7;
+        addTier(gp, gi, apexY, baseY, R, N, rot, rng, 0.16, tierH * 0.32);
+        // snow cap: a smaller white cone resting on the upper part of this tier; the
+        // green drooping rim pokes out below it.
+        addTier(sp, si, apexY + 0.006, apexY - tierH * 0.52, R * 0.66, N, rot + 0.35, rng, 0.20, tierH * 0.18);
+    }
+    // sharp top spire (+ its snow)
+    addTier(gp, gi, top + p.leader, top - step * 0.7, p.Rbase * 0.06 + 0.02, N, 0, rng, 0.1, step * 0.2);
+    addTier(sp, si, top + p.leader + 0.008, top - step * 0.45, p.Rbase * 0.05 + 0.015, N, 0.3, rng, 0.1, step * 0.12);
+
+    const trunkH = p.folBase + 0.05;
+    const trunkGeo = new THREE.CylinderGeometry(p.trunkR * 0.55, p.trunkR, trunkH, 6);
+    trunkGeo.translate(0, trunkH / 2, 0);
+    return [
+        { geometry: makeGeo(gp, gi), key: 'green' },
+        { geometry: makeGeo(sp, si), key: 'snow' },
+        { geometry: trunkGeo, key: 'trunk' },
+    ];
 }
 
 export function createFramingSpruces(scene, { feetY = -260 } = {}) {
@@ -57,50 +119,64 @@ export function createFramingSpruces(scene, { feetY = -260 } = {}) {
     group.name = 'winter-framing-spruces';
     scene.add(group);
 
-    const loader = new GLTFLoader();
-    /** @type {Array<{ srcScene: THREE.Group, parts: Array<{geometry,material}> }>} */
+    // Bold flat, fully MATTE materials (roughness 1 / metalness 0 → no metallic
+    // specular), flat-shaded for the Firewatch low-poly block-colour read.
+    const mats = {
+        green: new THREE.MeshStandardMaterial({
+            color: GREEN, flatShading: true, roughness: 1, metalness: 0, side: THREE.DoubleSide,
+        }),
+        snow: new THREE.MeshStandardMaterial({
+            color: SNOW, flatShading: true, roughness: 1, metalness: 0, side: THREE.DoubleSide,
+        }),
+        trunk: new THREE.MeshStandardMaterial({
+            color: TRUNK, flatShading: true, roughness: 1, metalness: 0,
+        }),
+    };
+
+    /** @type {Array<{ parts: Array<{geometry, material, key}> }>} */
     let variants = [];
     const heroes = []; // { obj, swayAmp, swaySpeed, phase }
     const instMeshes = []; // InstancedMesh list (treeline)
 
-    async function load() {
-        const gltfs = await Promise.all(VARIANT_URLS.map((u) => loader.loadAsync(u)
-            .catch((e) => { console.warn('[FramingSpruces] failed to load', u, e); return null; })));
-        variants = gltfs.filter(Boolean).map((g) => {
-            const parts = [];
-            g.scene.traverse((o) => {
-                if (!o.isMesh) return;
-                tuneMaterial(o.material);
-                o.frustumCulled = false;
-                parts.push({ geometry: o.geometry, material: o.material });
-            });
-            return { srcScene: g.scene, parts };
-        });
-        console.log(`[FramingSpruces] loaded ${variants.length} spruce variants.`);
+    function load() {
+        variants = VARIANTS.map((p) => ({
+            parts: buildVariant(p).map(({ geometry, key }) => ({ geometry, material: mats[key], key })),
+        }));
+        console.log(`[FramingSpruces] built ${variants.length} procedural Firewatch spruce variants.`);
+        return Promise.resolve();
     }
 
-    // ── CLOSE-camera framing wings (cloned; few) ────────────────────────────────
-    // positions: [x, z, worldHeight] or [x, z, worldHeight, variantIndex]. Base
-    // sits at feetY; the GLB is unit-height so worldHeight is the scale.
+    function makeTree(parts) {
+        const g = new THREE.Group();
+        parts.forEach(({ geometry, material }) => {
+            const m = new THREE.Mesh(geometry, material);
+            m.frustumCulled = false;
+            g.add(m);
+        });
+        return g;
+    }
+
+    // ── CLOSE-camera framing wings (few) ───────────────────────────────────────
+    // positions: [x, z, worldHeight] or [x, z, worldHeight, variantIndex].
     function placeFraming(positions = []) {
         if (!variants.length) return;
         positions.forEach(([x, z, h, vi], i) => {
             const v = variants[(vi == null ? i : vi) % variants.length];
-            const obj = v.srcScene.clone(true);
+            const obj = makeTree(v.parts);
             obj.position.set(x, feetY, z);
             obj.rotation.y = (i * 2.3) % (Math.PI * 2);
             obj.scale.setScalar(h);
             group.add(obj);
             heroes.push({
                 obj,
-                swayAmp: 0.012 + (i % 3) * 0.004,
-                swaySpeed: 0.30 + (i % 4) * 0.05,
+                swayAmp: 0.022 + (i % 3) * 0.006,
+                swaySpeed: 0.42 + (i % 4) * 0.06,
                 phase: i * 1.3,
             });
         });
     }
 
-    // ── Mid-ground conifer belt (instanced; many) ───────────────────────────────
+    // ── Mid-ground belt (instanced) ────────────────────────────────────────────
     // placements: [{ x, y, z, h, rotY }]. The 3 variants are spread across the belt.
     function placeTreeline(placements = []) {
         if (!variants.length || !placements.length) return;
@@ -111,10 +187,10 @@ export function createFramingSpruces(scene, { feetY = -260 } = {}) {
             v.parts.forEach(({ geometry, material }) => {
                 const inst = new THREE.InstancedMesh(geometry, material, list.length);
                 inst.frustumCulled = false;
-                list.forEach((p, i) => {
-                    dummy.position.set(p.x, p.y, p.z);
-                    dummy.rotation.set(0, p.rotY ?? 0, 0);
-                    dummy.scale.setScalar(p.h); // GLB is unit-height → h is world height
+                list.forEach((q, i) => {
+                    dummy.position.set(q.x, q.y, q.z);
+                    dummy.rotation.set(0, q.rotY ?? 0, 0);
+                    dummy.scale.setScalar(q.h);
                     dummy.updateMatrix();
                     inst.setMatrixAt(i, dummy.matrix);
                 });
@@ -127,16 +203,21 @@ export function createFramingSpruces(scene, { feetY = -260 } = {}) {
     }
 
     function update(dt) {
-        // Subtle idle sway on the close hero trees only (instanced belt stays still).
+        // Gentle breeze: the close hero trees sway by tilting at the base (top moves
+        // most). Two harmonics + a small cross-axis wobble keep it organic, not a
+        // metronome. Subtle on purpose. (Instanced belt stays still — it's distant.)
         for (const h of heroes) {
             h.phase += dt * h.swaySpeed;
-            h.obj.rotation.z = Math.sin(h.phase) * h.swayAmp;
+            h.obj.rotation.z = Math.sin(h.phase) * h.swayAmp
+                + Math.sin(h.phase * 2.3 + 1.0) * h.swayAmp * 0.3;
+            h.obj.rotation.x = Math.cos(h.phase * 0.8 + 0.5) * h.swayAmp * 0.4;
         }
     }
 
     function dispose() {
-        instMeshes.forEach((m) => { m.geometry?.dispose?.(); m.dispose?.(); });
-        variants.forEach((v) => v.parts.forEach((p) => p.material?.dispose?.()));
+        instMeshes.forEach((m) => m.dispose?.());
+        variants.forEach((v) => v.parts.forEach((p) => p.geometry?.dispose?.()));
+        Object.values(mats).forEach((m) => m.dispose?.());
         instMeshes.length = 0;
         heroes.length = 0;
         variants = [];
