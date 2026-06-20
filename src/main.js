@@ -5146,6 +5146,12 @@ let app = null;
 async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
+        // Cold-boot KPI anchor: the single number that matters for a Steam
+        // player's first impression is bootstrap-start → interactive menu.
+        // Recorded at the first-usable-frame marker below (remediation Phase 8).
+        const bootstrapStartedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : 0;
         await resolveDesktopRuntimeConfig();
         if (typeof window !== 'undefined') {
             desktopBootCoordinator = createBootStageCoordinator({
@@ -5269,6 +5275,17 @@ async function bootstrap() {
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,
         });
+        // Derived cold-boot KPI: one aggregate number for regression tracking,
+        // rather than leaving the scattered per-phase markers un-summarised.
+        if (bootstrapStartedAt && typeof performance !== 'undefined' && performance.now) {
+            const timeToInteractiveMenuMs = Math.round(performance.now() - bootstrapStartedAt);
+            performanceMonitor.recordEvent('startup_time_to_interactive_menu', {
+                timeToInteractiveMenuMs,
+                windowsProfile: desktopRuntimeConfig.windowsProfile,
+                safeMode,
+            });
+            console.log(`⏱️  Cold boot → interactive menu: ${timeToInteractiveMenuMs}ms`);
+        }
         app?.markBootStage?.('menu-ready', {
             safeMode,
         });

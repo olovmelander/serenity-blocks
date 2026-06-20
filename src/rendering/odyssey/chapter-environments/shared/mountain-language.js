@@ -111,12 +111,20 @@ export const MOUNTAIN_PALETTE = Object.freeze({
 export const MOUNTAIN_DISPLACEMENT = Object.freeze({
     coneExponent: 1.5, // (1 - normDist)^coneExponent radial cone falloff
     coneRadiusFrac: 0.45, // cone reaches zero at size * coneRadiusFrac
+    coneWeight: 0.8, // base cone mass leads the silhouette; ridges add relief ABOVE it
     octaves: 5, // value-noise FBM octaves
     baseFreq: 0.01, // first FBM sample frequency
-    detailFreq: 0.04, // second (finer) FBM sample frequency
-    baseWeight: 0.7, // weight of the coarse FBM
-    detailWeight: 0.3, // weight of the fine FBM
-    detailAmplitude: 0.4, // detail scaled to height * detailAmplitude
+    detailFreq: 0.04, // fine surface-texture FBM frequency
+    baseWeight: 0.7, // (legacy) weight of the coarse FBM
+    detailWeight: 0.3, // (legacy) weight of the fine FBM
+    detailAmplitude: 0.2, // fine detail scaled to height * detailAmplitude
+    // Ridged-multifractal crests — the alpine silhouette: ridgelines, spurs, sub-summits.
+    ridgeOctaves: 5,
+    ridgeFreq: 0.0075, // ridge cell frequency (lower = fewer, broader spurs — fits the mesh res)
+    ridgeAmplitude: 0.42, // crest height as a fraction of `height`
+    ridgeFeatherStart: 0.82, // keep ridge energy until this normDist, then taper to the rim
+    warpFreq: 0.006, // domain-warp frequency (meandering, non-radial ridgelines)
+    warpStrength: 0.75, // domain-warp magnitude (in FBM cells) — asymmetric shoulders
 });
 
 /**
@@ -217,38 +225,72 @@ function mixCpu(a, b, t) {
     return a * (1 - t) + b * t;
 }
 
+function smoothstepCpu(edge0, edge1, x) {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+}
+
+/** One hashed lattice value in [0,1) for integer cell (i,j) + seed. */
+function hashCpu(i, j, seed) {
+    return fractCpu(Math.sin(i * 12.9898 + j * 78.233 + seed) * 43758.5453);
+}
+
+/** Smooth value noise on the shared lattice (so FBM + ridged read the SAME field). */
+function valueNoise2(nx, ny, seed) {
+    const i = Math.floor(nx);
+    const j = Math.floor(ny);
+    const f = fractCpu(nx);
+    const g = fractCpu(ny);
+    const u = f * f * (3.0 - 2.0 * f);
+    const v = g * g * (3.0 - 2.0 * g);
+    return mixCpu(
+        mixCpu(hashCpu(i, j, seed), hashCpu(i + 1, j, seed), u),
+        mixCpu(hashCpu(i, j + 1, seed), hashCpu(i + 1, j + 1, seed), u),
+        v,
+    );
+}
+
 /**
- * The canonical CPU value-noise + FBM lattice (mirrors the chapters' previous inline
- * `hash`/`noise`/`fbm`). Kept here so every alpine bake (Surface distant range,
- * Mountains heroes, foothill apron) is sculpted by the identical noise field.
+ * The canonical CPU value-noise + FBM lattice. Output is byte-identical to the previous
+ * inline version (same lattice/hash) so existing bakes (Surface distant range, foothill
+ * apron) are unchanged; ridged crests are layered in separately by mountainCpuDisplacement.
  */
 export function mountainFbm(x, y, seed = 0) {
-    const rand = (i, j) => Math.sin(i * 12.9898 + j * 78.233 + seed) * 43758.5453;
-    const noise = (nx, ny) => {
-        const i = Math.floor(nx);
-        const j = Math.floor(ny);
-        const f = fractCpu(nx);
-        const g = fractCpu(ny);
-        const u = f * f * (3.0 - 2.0 * f);
-        const v = g * g * (3.0 - 2.0 * g);
-        return mixCpu(
-            mixCpu(fractCpu(rand(i, j)), fractCpu(rand(i + 1, j)), u),
-            mixCpu(fractCpu(rand(i, j + 1)), fractCpu(rand(i + 1, j + 1)), u),
-            v,
-        );
-    };
-
     let sampleX = x;
     let sampleY = y;
     let value = 0.0;
     let amp = 0.5;
     for (let i = 0; i < MOUNTAIN_DISPLACEMENT.octaves; i += 1) {
-        value += amp * noise(sampleX, sampleY);
+        value += amp * valueNoise2(sampleX, sampleY, seed);
         sampleX *= 2.0;
         sampleY *= 2.0;
         amp *= 0.5;
     }
     return value;
+}
+
+/**
+ * Ridged multifractal on the same lattice: each octave is folded to a ridge
+ * (1 - |2n-1|) then squared, and weighted by the previous octave so crest lines stay
+ * sharp where the terrain is already high. Returns ~[0,1] — high along ridgelines.
+ */
+function mountainRidged(x, y, seed, octaves) {
+    let sampleX = x;
+    let sampleY = y;
+    let sum = 0.0;
+    let amp = 0.5;
+    let prev = 1.0;
+    for (let i = 0; i < octaves; i += 1) {
+        let n = valueNoise2(sampleX, sampleY, seed + i * 19.0);
+        n = 1.0 - Math.abs((2.0 * n) - 1.0);
+        n *= n;
+        sum += n * amp * prev;
+        prev = n;
+        sampleX *= 2.0;
+        sampleY *= 2.0;
+        amp *= 0.5;
+    }
+    return sum;
 }
 
 /**
@@ -264,18 +306,33 @@ export function mountainCpuDisplacement(x, z, { size, height, seed = 0 }) {
     if (dist > maxDist) return 0;
 
     const normDist = dist / maxDist;
-    const cone = (1.0 - normDist) ** MOUNTAIN_DISPLACEMENT.coneExponent * height;
+    // Base mass cone (weighted) — gives bulk + a clean closing footprint.
+    const cone = (1.0 - normDist) ** MOUNTAIN_DISPLACEMENT.coneExponent
+        * height * MOUNTAIN_DISPLACEMENT.coneWeight;
 
-    const n = mountainFbm(x * MOUNTAIN_DISPLACEMENT.baseFreq, z * MOUNTAIN_DISPLACEMENT.baseFreq, seed);
+    // Domain warp so ridgelines meander (non-radial) and peaks grow asymmetric shoulders
+    // and subsidiary summits instead of a single smooth radial dome.
+    const wf = MOUNTAIN_DISPLACEMENT.warpFreq;
+    const ws = MOUNTAIN_DISPLACEMENT.warpStrength;
+    const wx = (mountainFbm(x * wf, z * wf, seed + 31.0) - 0.5) * ws;
+    const wz = (mountainFbm((x * wf) + 5.2, (z * wf) + 1.7, seed + 67.0) - 0.5) * ws;
+
+    // Ridged-multifractal crests — the alpine silhouette. Keep ridge energy almost to the
+    // rim (so the outline is jagged, not a clean cone), then feather the last ~20%.
+    const rf = MOUNTAIN_DISPLACEMENT.ridgeFreq;
+    const ridge = mountainRidged((x * rf) + wx, (z * rf) + wz, seed, MOUNTAIN_DISPLACEMENT.ridgeOctaves);
+    const ridgeFeather = 1.0 - smoothstepCpu(MOUNTAIN_DISPLACEMENT.ridgeFeatherStart, 1.0, normDist);
+    const crest = ridge * height * MOUNTAIN_DISPLACEMENT.ridgeAmplitude * ridgeFeather;
+
+    // Fine high-freq surface texture (still calms toward the feet).
     const n2 = mountainFbm(
         x * MOUNTAIN_DISPLACEMENT.detailFreq,
         z * MOUNTAIN_DISPLACEMENT.detailFreq,
         seed + 10.0,
     );
-    const detail = (n * MOUNTAIN_DISPLACEMENT.baseWeight + n2 * MOUNTAIN_DISPLACEMENT.detailWeight)
-        * height * MOUNTAIN_DISPLACEMENT.detailAmplitude * (1.0 - normDist);
+    const detail = n2 * height * MOUNTAIN_DISPLACEMENT.detailAmplitude * (1.0 - (normDist * 0.6));
 
-    return cone + detail;
+    return cone + crest + detail;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

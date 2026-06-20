@@ -1,0 +1,42 @@
+html, body { margin: 0; height: 100%; background: #05060a; overflow: hidden; }
+body { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; color: #cfe9ff; }
+#stage, #stage canvas { position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
+
+/* Reference overlay */
+.ref-wrap { position: fixed; top: 0; height: 100%; pointer-events: none; z-index: 5; display: none; }
+.ref-img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ref-split-handle {
+    position: fixed; top: 0; height: 100%; width: 14px; margin-left: -7px; background: transparent;
+    pointer-events: auto; cursor: ew-resize; z-index: 6;
+}
+.ref-split-handle::after {
+    content: ''; position: absolute; left: 6px; top: 0; width: 2px; height: 100%;
+    background: #9fe9ff; box-shadow: 0 0 8px #000;
+}
+
+/* HUD */
+#hud {
+    position: fixed; top: 10px; left: 12px; z-index: 10;
+    background: rgba(8, 12, 20, 0.72); border: 1px solid rgba(159, 233, 255, 0.18);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.5;
+    backdrop-filter: blur(6px); max-width: min(92vw, 560px);
+}
+#hud .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; flex-wrap: wrap; }
+#hud strong { color: #9fe9ff; letter-spacing: 0.04em; }
+#hud .tag { color: #8fffc8; opacity: 0.9; }
+#hud .mono { font-variant-numeric: tabular-nums; color: #9fe9ff; }
+#hud .hint { opacity: 0.55; font-size: 11px; margin-top: 4px; }
+#hud select, #hud button, #hud input[type="range"] {
+    background: #0c1320; color: #cfe9ff; border: 1px solid rgba(159, 233, 255, 0.25);
+    border-radius: 5px; font: inherit; padding: 2px 6px;
+}
+#hud button { cursor: pointer; }
+#hud input[type="range"] { padding: 0; min-width: 120px; }
+
+#err {
+    position: fixed; bottom: 10px; left: 12px; right: 12px; z-index: 10; display: none;
+    color: #ff9a9a; font-size: 12px; line-height: 1.4; white-space: pre-wrap;
+    max-height: 38%; overflow: auto; text-shadow: 0 0 4px #000;
+    background: rgba(20, 6, 6, 0.7); border: 1px solid rgba(255, 154, 154, 0.3);
+    border-radius: 8px; padding: 8px 10px;
+}

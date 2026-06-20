@@ -106,7 +106,7 @@ export class OnlineChat {
                 `;
             }
 
-            const nameColor = msg.color || '#a78bfa';
+            const nameColor = this._sanitizeColor(msg.color);
             return `
                 <div class="player-message">
                     <span class="color-indicator" style="background:${nameColor};"></span>
@@ -135,6 +135,23 @@ export class OnlineChat {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+    }
+
+    /**
+     * Restrict a peer-supplied color to a safe CSS color token before it is
+     * interpolated into a style attribute. Without this, a crafted color string
+     * could break out of the attribute (CSS injection). Falls back to the
+     * default when the value is not a plain hex / rgb() / hsl() / named color.
+     */
+    _sanitizeColor(color) {
+        const fallback = '#a78bfa';
+        if (typeof color !== 'string') return fallback;
+        const value = color.trim();
+        const safe = /^#[0-9a-fA-F]{3,8}$/.test(value)
+            || /^rgba?\([\d.,\s%]+\)$/.test(value)
+            || /^hsla?\([\d.,\s%]+\)$/.test(value)
+            || /^[a-zA-Z]{1,32}$/.test(value);
+        return safe ? value : fallback;
     }
 
     

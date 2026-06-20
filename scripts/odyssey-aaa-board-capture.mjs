@@ -204,7 +204,7 @@ async function capturePng(win, filename, metrics = {}) {
     const image = await win.webContents.capturePage();
     await writeFile(path.join(ARTIFACT_DIR, filename), image.toPNG());
     await writeFile(
-        path.join(ARTIFACT_DIR, filename.replace(/\\.png$/, '.json')),
+        path.join(ARTIFACT_DIR, filename.replace(/\.png$/, '.json')),
         JSON.stringify(metrics, null, 2),
         'utf8',
     );

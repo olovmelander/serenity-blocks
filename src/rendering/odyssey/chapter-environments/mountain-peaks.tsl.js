@@ -112,7 +112,7 @@ function fbmValue2(p, octaves = 4) {
 // CPU heightfield bake (identical to mountain-peaks.js createFBMMountain)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function buildMountainGeometry(config) {
+export function buildMountainGeometry(config) {
     // LOD (perf §3b): the displaced peak silhouette barely changes between 128 and 64
     // segments (the FBM cone falloff is low-frequency at this on-screen size), but 64×64
     // sheds ~75% of the verts per peak — ~116k → ~28k across the 7 hero+ridge planes.
@@ -203,7 +203,7 @@ export function createMountainSkyTSL(uTransition) {
     material.depthWrite = false;
     material.transparent = true;
 
-    const geometry = new THREE.SphereGeometry(6000, 64, 48);
+    const geometry = new THREE.SphereGeometry(6000, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
     return {
@@ -264,9 +264,9 @@ export function createCloudSeaDeckTSL({
     material.depthWrite = false;
 
     // LOD (perf §3b): the cloud-sea is a flat radial disc shaded entirely in the fragment
-    // stage (billow FBM + fog edge), so its silhouette is a circle — 64 segments are
-    // visually indistinguishable from 128 here while halving the disc's vert/triangle cost.
-    const geometry = new THREE.CircleGeometry(radius, 64);
+    // stage (billow FBM + fog edge), so its silhouette is a circle — 48 segments are
+    // visually indistinguishable from 128 here while cutting the disc's vert/triangle cost.
+    const geometry = new THREE.CircleGeometry(radius, 48);
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(0, y, -400);
@@ -399,7 +399,15 @@ export function createFBMMountainTSL(config = {}) {
 
     // Base fade — hide the hard plane edge at low heights.
     const baseFade = smoothstep(uBaseFadeStart, uBaseFadeEnd, vHeight);
-    const alpha = uOpacity.mul(baseFade);
+    const mountainUv = uv();
+    const uvEdgeNoise = fbmValue2(vWorldPosition.xz.mul(0.013), 3).sub(0.5).mul(0.035);
+    const noisyUvX = mountainUv.x.add(uvEdgeNoise);
+    const noisyUvY = mountainUv.y.add(uvEdgeNoise.mul(0.55));
+    const sideFade = smoothstep(0.0, 0.16, noisyUvX)
+        .mul(oneMinus(smoothstep(0.84, 1.0, noisyUvX)))
+        .mul(smoothstep(0.0, 0.1, noisyUvY))
+        .mul(oneMinus(smoothstep(0.9, 1.0, noisyUvY)));
+    const alpha = uOpacity.mul(baseFade).mul(sideFade);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -427,9 +435,9 @@ export function createFBMMountainTSL(config = {}) {
 function buildSnowFloorGeometry() {
     const radius = 3000;
     // LOD (perf §3b): the floor's low-amplitude sine displacement (±~11 units over a
-    // 3000-radius disc) reads the same at 64 radial segments as at 128; halve the apron's
+    // 3000-radius disc) reads the same at 48 radial segments as at 128; cut the apron's
     // vert count. computeVertexNormals still runs on the coarser grid.
-    const segments = 64;
+    const segments = 48;
     const geometry = new THREE.CircleGeometry(radius, segments);
     geometry.rotateX(-Math.PI / 2);
 
@@ -557,7 +565,7 @@ export function createMountainSunTSL({
     // World placement: low on the gilt horizon band, biased toward lightDir, off dead-centre.
     distance = 2400,
     discSize = 360,
-    rayCount = 7,
+    rayCount = 5,
 } = {}) {
     const uTrans = uTransition ?? uniform(0);
     const uSummitGlow = summitGlow ?? uniform(0);

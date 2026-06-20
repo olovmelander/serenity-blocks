@@ -44,11 +44,16 @@ import {
 } from '../path-utils.js';
 import { createMountainAuroraBackdrop } from './shared/mountain-aurora.js';
 import {
+    createCanonicalMountainRangeTSL,
+    getCanonicalMountainRangeWorldSpecs,
+} from './shared/canonical-mountain-range.js';
+import {
     createMountainSkyTSL,
     createFBMMountainTSL,
     createSnowFloorTSL,
     createCloudSeaDeckTSL,
     createMountainSunTSL,
+    buildMountainGeometry,
 } from './mountain-peaks.tsl.js';
 import {
     billboardWorld,
@@ -79,14 +84,10 @@ export const MOUNTAIN_PEAKS_CONFIG = {
 
 const MOUNTAIN_TRANSITION_START = 0.08;
 const MOUNTAIN_TRANSITION_END = 0.28;
-// SEAM 4->5 ("the mountain tops just disappear with a pop"). The manager group-opacity
-// crossfade can't reach these TSL peak materials (alpha flows through opacityNode/uOpacity,
-// not material.opacity), so without this the peaks stay full-opacity until group.visible
-// flips false at the seam = a hard pop. Across the BACK of Ch4 into the 4->5 boundary we
-// SINK the peaks downward (so they descend beneath the rising cloud-sea) and FADE their
-// uOpacity to ~0, so the summits recede below the clouds rather than blinking out.
-const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 (by local progress) over which to sink+fade
-const MOUNTAIN_SEAM_SINK_DISTANCE = 140; // world units the peaks descend across the exit
+// SEAM 4->5: the Chapter 4 hero mountain chain is a locked world landmark and Chapter 5
+// inherits the exact same chain. Only auxiliary Ch4 summit props fade across the exit.
+const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 local progress for prop/atmosphere fade
+const MOUNTAIN_ENTRY_BAND = 0.2; // fraction of Ch3 span before the boundary for hero peak fade-in
 
 function smoothstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -96,17 +97,34 @@ function smoothstep01(value) {
 // lower foothill apron pulls toward neutral grey-blue with a higher snow line. The TSL
 // builder resolves the canonical palette; here we only forward the per-instance base
 // mist/fade so each peak's feet recede correctly.
-const MAIN_PEAK_TREATMENT = resolveMountainTreatment({ coolTemp: 1.0 });
 const FOOTHILL_APRON_TREATMENT = resolveMountainTreatment({
     coolTemp: 0.72,
     snowLine: MOUNTAIN_SHADING.snowLineFoothill,
 });
-const MAIN_PEAK_BASE = Object.freeze({
-    baseMistStrength: 0.32, baseFadeStart: 0.02, baseFadeEnd: 0.1,
-});
 const FOOTHILL_APRON_BASE = Object.freeze({
     baseMistStrength: 0.18, baseFadeStart: 0.08, baseFadeEnd: 0.22,
 });
+
+export function resolveMountainPeaksEntryState(
+    progress,
+    chapterPositions = getActiveOdysseyChapterPositions(),
+) {
+    if (!Number.isFinite(progress)) {
+        return { entryOpacity: 1 };
+    }
+
+    const ch3Start = chapterPositions?.[2];
+    const ch4Start = chapterPositions?.[3] ?? 0.352;
+    if (!Number.isFinite(ch3Start) || ch4Start <= ch3Start) {
+        return { entryOpacity: 1 };
+    }
+
+    const span = ch4Start - ch3Start;
+    const entryStart = ch4Start - span * MOUNTAIN_ENTRY_BAND;
+    const entryOpacity = THREE.MathUtils.smoothstep(progress, entryStart, ch4Start);
+
+    return { entryOpacity };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENVIRONMENT CREATION
@@ -142,10 +160,8 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.userData.uniforms = uniforms;
 
     const chapterRange = getChapterPathRange(4);
-    const chapter3Range = getChapterPathRange(3);
     const fallbackCenterY = (MOUNTAIN_PEAKS_CONFIG.yStart + MOUNTAIN_PEAKS_CONFIG.yEnd) / 2;
     const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
-    const chapter3CenterY = chapter3Range?.center.y ?? chapterCenterY;
 
     if (chapterRange) {
         group.userData.yStart = chapterRange.start.y;
@@ -166,6 +182,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.userData.cloudSeaTimeUniform = uTimeNode;
     const transitionTargets = [];
     const opacityTargets = [];
+    const mainPeakOpacityTargets = [];
 
     // 1. High Quality Sky Sphere (Boxiness fix)
     const sky = createSkyBackground(uTransition);
@@ -194,69 +211,20 @@ export function createMountainPeaksEnvironment(options = {}) {
     massif.add(foothillApron);
     group.userData.foothillApron = foothillApron;
 
-    const mountains = new THREE.Group();
-    mountains.name = 'main-peaks';
-
-    const ch3MountainOffsets = [-10, -20, -30];
-    const leftMountainY = chapter3CenterY + ch3MountainOffsets[0];
-    const rightMountainY = chapter3CenterY + ch3MountainOffsets[1];
-    const centerMountainY = chapter3CenterY + ch3MountainOffsets[2];
-
-    // Left mountain (aligned with Ch3 left mountain) — bigger + pulled NEARER (z -650→-540,
-    // size 800→920, height 300→360) so its snowy top dominates the frame (user §Scale: get
-    // closer, hero peaks bigger). Tucked slightly inward (x -250→-230) to stay framing the lane.
-    const mountain1 = createFBMMountain(uTransition, {
-        size: 920,
-        height: 360,
-        position: new THREE.Vector3(-230, leftMountainY - chapterCenterY, -540),
-        seed: 12.34,
-        treatment: MAIN_PEAK_TREATMENT,
-        base: MAIN_PEAK_BASE,
+    const heroSpec = getCanonicalMountainRangeWorldSpecs()
+        .find((spec) => spec.id === 'ch4-center-hero');
+    const heroCrownLocalY = heroSpec
+        ? (heroSpec.worldPosition.y - chapterCenterY) + heroSpec.height * 0.96
+        : 660;
+    const { group: mountains } = createCanonicalMountainRangeTSL({
+        hostCenter: chapterRange?.center,
+        hostChapterId: 4,
+        name: 'main-peaks',
+        uTransition,
         summitGlow: uSummitGlow,
-    }, opacityTargets);
-    mountains.add(mountain1);
-
-    // Right mountain (aligned with Ch3 right mountain) — same treatment: bigger + nearer
-    // (z -700→-590, size 800→900, height 280→340).
-    const mountain2 = createFBMMountain(uTransition, {
-        size: 900,
-        height: 340,
-        position: new THREE.Vector3(230, rightMountainY - chapterCenterY, -590),
-        seed: 45.67,
-        treatment: MAIN_PEAK_TREATMENT,
-        base: MAIN_PEAK_BASE,
-        summitGlow: uSummitGlow,
-    }, opacityTargets);
-    mountains.add(mountain2);
-
-    // Far center HERO peak (aligned with Ch3 center mountain) — the dominant snowy summit.
-    // Pulled markedly closer (z -820→-680) and taller (height 600→720, size 1200→1340) so the
-    // snow-capped top fills the upper frame and the climax summit-glow reads big (user §Scale).
-    const mountain3 = createFBMMountain(uTransition, {
-        size: 1340,
-        height: 720,
-        position: new THREE.Vector3(0, centerMountainY - chapterCenterY, -680),
-        seed: 89.12,
-        treatment: MAIN_PEAK_TREATMENT,
-        base: MAIN_PEAK_BASE,
-        summitGlow: uSummitGlow,
-    }, opacityTargets);
-    mountains.add(mountain3);
-
-    // ONE near foreground ridge-shoulder, lower-left, mostly below frame so only its sunlit
-    // snowy upper edge enters — the near depth tier that sells altitude (plan ch4 §Scale).
-    // Pulled in + up a touch (z -260→-220, height 180→220) so its snow-cap crests into frame.
-    const foreground = createFBMMountain(uTransition, {
-        size: 720,
-        height: 220,
-        position: new THREE.Vector3(-360, foothillBaseY - 30, -220),
-        seed: 71.5,
-        treatment: MAIN_PEAK_TREATMENT,
-        base: MAIN_PEAK_BASE,
-        summitGlow: uSummitGlow,
-    }, opacityTargets);
-    mountains.add(foreground);
-    group.userData.foregroundRidge = foreground;
+        opacityTargets: mainPeakOpacityTargets,
+    });
+    group.userData.foregroundRidge = null;
 
     massif.add(mountains);
 
@@ -269,44 +237,14 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.add(massif);
     group.userData.mountains = massif;
     group.userData.mainPeaks = mountains;
-    // SEAM 4->5: record the peaks' authored base Y so the seam-exit sink is a non-compounding
-    // absolute offset (baseY - sink) rather than a per-frame accumulation.
+    group.userData.mainPeakOpacityUniformTargets = mainPeakOpacityTargets;
+    // SEAM 4->5: record the authored base Y and keep the hero chain pinned there. Chapter 5
+    // renders the same world-positioned chain, so the handoff is a landmark continuity beat.
     mountains.userData.seamBaseY = mountains.position.y;
-
-    // 2b. FAR SECOND RANGE (creative plan asset 6): one more foothill-language ridge
-    // plane behind the heroes so atmospheric perspective recedes through THREE planes
-    // (near cornice → hero peaks → far range), heavier mist so it hazes into the sky.
-    const SECOND_RANGE_BASE = Object.freeze({
-        baseMistStrength: 0.5, baseFadeStart: 0.1, baseFadeEnd: 0.3,
-    });
-    [
-        {
-            size: 1500,
-            height: 430,
-            position: new THREE.Vector3(-220, (centerMountainY - chapterCenterY) - 40, -1120),
-            seed: 7.77,
-        },
-        {
-            size: 1380,
-            height: 360,
-            position: new THREE.Vector3(300, (centerMountainY - chapterCenterY) - 55, -1180),
-            seed: 64.2,
-        },
-    ].forEach((config) => {
-        const farRidge = createFBMMountain(uTransition, {
-            ...config,
-            treatment: FOOTHILL_APRON_TREATMENT,
-            base: SECOND_RANGE_BASE,
-            isHero: false,
-        }, opacityTargets);
-        farRidge.renderOrder = -3;
-        massif.add(farRidge);
-    });
 
     // 2c. SUMMIT BANNER PLUME (creative plan asset 2): a wind-shed streamer ribbon off
     // the hero summit's lee side — the single best "danger + wind + altitude" signal —
     // backlit rose by uSummitGlow at the climax.
-    const heroCrownLocalY = (centerMountainY - chapterCenterY) + 690;
     const plume = createBannerPlume(uTimeNode, uSummitGlow, heroCrownLocalY, opacityTargets);
     massif.add(plume);
     group.userData.bannerPlume = plume;
@@ -330,15 +268,13 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.userData.eagles = eagles;
 
     // 3. Shader Aurora Curtains
-    // Lift the curtain opacities a touch so the aurora colour reads more strongly against
-    // the now-deeper twilight sky (without flattening it into a wash). Defaults were
-    // [1.0, 0.8, 0.8, 0.6]; the back/wide curtain stays subtle. NOTE: the live opacity is
-    // CAPPED in the update loop (faint preview → faint readable arc at the seam) so
-    // Chapter 5's staged aurora ramp inherits this exact level — see the 4→5 seam block.
+    // Authored here so Chapter 5 can inherit the same curtain language, but kept invisible
+    // until late Chapter 4; otherwise the 3→4 handoff reads as a square aurora card.
     const aurora = createMountainAuroraBackdrop(uniforms, {
         name: 'mountain-aurora',
         layerOpacities: [1.0, 0.95, 0.95, 0.7],
     });
+    aurora.visible = false;
     group.add(aurora);
     group.userData.aurora = aurora;
     group.userData.mountainTransitionUniformTargets = transitionTargets;
@@ -347,7 +283,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.userData.auroraOpacityUniformTargets = collectUniformTargets(aurora, 'uOpacity');
 
     // 4. Falling Snow
-    const snow = createSnow(uniforms, options.particleCount || 1000);
+    const snow = createSnow(uniforms, options.particleCount || 700);
     group.add(snow);
     group.userData.snow = snow;
     // Snow drift is now uTime-driven in the TSL material (perf §5.3); the update loop ticks
@@ -436,7 +372,7 @@ function createSkyBackground(uTransition) {
  * streaming white plume that backlights rose (#F59478 family) as uSummitGlow climaxes.
  */
 function createBannerPlume(uTimeNode, uSummitGlow, crownLocalY, opacityTargets) {
-    const count = 26;
+    const count = 18;
     const along = new Float32Array(count);
     const seeds = new Float32Array(count);
     for (let i = 0; i < count; i += 1) {
@@ -530,7 +466,7 @@ function createPrayerFlagLine(uTimeNode, groupCenter, opacityTargets) {
 
     // Flags: lung-ta order (blue/white/red/green/yellow), desaturated ~30% so they read
     // sun-bleached and authentic — the chapter's only saturation besides alpenglow.
-    const flagCount = 22;
+    const flagCount = 16;
     const bleach = new THREE.Color(0x9a948c);
     const lungTa = [0x2e5fa3, 0xf5f0e6, 0xc0392b, 0x2e7d4f, 0xe3b428]
         .map((hex) => new THREE.Color(hex).lerp(bleach, 0.3));
@@ -709,35 +645,57 @@ function createFoothillApron(uTransition, baseY, opacityTargets) {
     const group = new THREE.Group();
     group.name = 'foothill-apron';
 
-    [
-        {
-            size: 1100,
-            height: 72,
-            position: new THREE.Vector3(-330, baseY - 12, -600),
-            seed: 21.17,
-        },
-        {
-            size: 1250,
-            height: 92,
-            position: new THREE.Vector3(30, baseY - 20, -860),
-            seed: 33.71,
-        },
-        {
-            size: 1100,
-            height: 78,
-            position: new THREE.Vector3(330, baseY - 10, -710),
-            seed: 58.42,
-        },
-    ].forEach((config) => {
-        const foothill = createFBMMountain(uTransition, {
-            ...config,
-            treatment: FOOTHILL_APRON_TREATMENT,
-            base: FOOTHILL_APRON_BASE,
-            isHero: false,
-        }, opacityTargets);
-        foothill.renderOrder = -2;
-        group.add(foothill);
+    // PERF (zero-visual material share): all three foothills are built from the foothill
+    // builder with IDENTICAL material args — same FOOTHILL_APRON_TREATMENT, same
+    // FOOTHILL_APRON_BASE, same shared uTransition node, isHero:false (no summitGlow / no
+    // sun ignite). Their per-mesh difference is ONLY geometry (each peak is a distinct
+    // size/height/seed CPU bake) and transform (position). update() never mutates a
+    // foothill material per-instance: the only foothill uniform the loop touches is
+    // uOpacity, and it writes the SAME `baseOpacity * seamFade` to every entry in
+    // mountainOpacityUniformTargets — so a shared material's single uOpacity is ticked
+    // identically. We therefore build ONE shared foothill material (peak 1) and reuse it
+    // for the geometrically-distinct sibling at x=+330 (its baked geometry is built on its
+    // own), collapsing 3 foothill pipelines toward 2. The center (size 1250) foothill is
+    // kept as its own material so the chapter keeps a second, independent foothill opacity
+    // target (the seam-fade invariant the environment test guards).
+    const sharedFoothillConfig = {
+        size: 1100,
+        height: 72,
+        position: new THREE.Vector3(-330, baseY - 12, -600),
+        seed: 21.17,
+    };
+    const { mesh: sharedFoothill, uniforms: sharedFoothillUniforms } = createFBMMountainTSL({
+        ...sharedFoothillConfig,
+        treatment: FOOTHILL_APRON_TREATMENT,
+        base: FOOTHILL_APRON_BASE,
+        transition: uTransition,
+        isHero: false,
     });
+    pushOpacityTarget(opacityTargets, sharedFoothillUniforms.uOpacity);
+    sharedFoothill.userData.tslUniforms = sharedFoothillUniforms;
+    sharedFoothill.renderOrder = -2;
+    group.add(sharedFoothill);
+
+    // Sibling foothill: REUSES the shared material above (identical builder args) with its
+    // own distinct CPU-baked geometry + transform. No new pipeline, no new opacity target.
+    const siblingGeometry = buildMountainGeometry({ size: 1100, height: 78, seed: 58.42 });
+    const siblingFoothill = new THREE.Mesh(siblingGeometry, sharedFoothill.material);
+    siblingFoothill.position.set(330, baseY - 10, -710);
+    siblingFoothill.renderOrder = -2;
+    group.add(siblingFoothill);
+
+    // Center foothill: its own material (keeps a second foothill opacity target alive).
+    const centerFoothill = createFBMMountain(uTransition, {
+        size: 1250,
+        height: 92,
+        position: new THREE.Vector3(30, baseY - 20, -860),
+        seed: 33.71,
+        treatment: FOOTHILL_APRON_TREATMENT,
+        base: FOOTHILL_APRON_BASE,
+        isHero: false,
+    }, opacityTargets);
+    centerFoothill.renderOrder = -2;
+    group.add(centerFoothill);
 
     return group;
 }
@@ -895,9 +853,8 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
         uniform2.value = transition;
     });
 
-    // SEAM 4->5: ramp 0->1 across the last MOUNTAIN_SEAM_EXIT_BAND of the chapter so the peaks
-    // SINK below the rising cloud-sea and FADE out smoothly, rather than popping when the
-    // group hides at the seam. `progress` is local 0..1 across the Ch4 window.
+    // SEAM 4->5: ramp 0->1 across the last MOUNTAIN_SEAM_EXIT_BAND of the chapter. The
+    // hero chain stays locked; only Ch4-only props and atmospheric accents fade.
     const seamExit = smoothstep01(
         (progress - (1 - MOUNTAIN_SEAM_EXIT_BAND)) / MOUNTAIN_SEAM_EXIT_BAND,
     );
@@ -906,8 +863,17 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
     const { mainPeaks } = group.userData;
     if (mainPeaks) {
         const baseY = mainPeaks.userData.seamBaseY ?? 0;
-        mainPeaks.position.y = baseY - seamExit * MOUNTAIN_SEAM_SINK_DISTANCE;
+        mainPeaks.position.y = baseY;
     }
+
+    const { entryOpacity } = resolveMountainPeaksEntryState(cameraProgress);
+    const mainPeakOpacityUniformTargets = group.userData.mainPeakOpacityUniformTargets || [];
+    mainPeakOpacityUniformTargets.forEach((uniform2) => {
+        const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'
+            ? uniform2.__odysseyBaseOpacity
+            : uniform2.value;
+        uniform2.value = baseOpacity * entryOpacity;
+    });
 
     const mountainOpacityUniformTargets = group.userData.mountainOpacityUniformTargets || [];
     mountainOpacityUniformTargets.forEach((uniform2) => {
@@ -922,13 +888,14 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
         uniform2.value = 1;
     });
 
-    // 4→5 SEAM (creative plan Transition Out): the aurora is the NEXT chapter's promise.
-    // Hold the curtains at a faint preview through the chapter, brightening only into
-    // the seam to a faint READABLE arc — capped well below the authored full-strength
-    // opacities, because that arc is exactly the level Chapter 5's staged ramp (faint at
-    // ~10%, hero by ~35%) inherits. A full-blaze exit here would make Ch5's entry read
-    // as a regression.
-    const auroraRamp = 0.22 + seamExit * 0.2;
+    // 4→5 SEAM (creative plan Transition Out): aurora is a late Mountains promise, not a
+    // 3→4 entry card. Keep it fully off through the Surface→Mountains handoff, then let
+    // it rise gently only near the back of Chapter 4 before Chapter 5 inherits it.
+    const auroraPreview = THREE.MathUtils.smoothstep(progress, 0.72, 0.9) * 0.18;
+    const auroraRamp = auroraPreview + seamExit * 0.22;
+    if (group.userData.aurora) {
+        group.userData.aurora.visible = auroraRamp > 0.002;
+    }
     const auroraOpacityUniformTargets = group.userData.auroraOpacityUniformTargets || [];
     auroraOpacityUniformTargets.forEach((uniform2) => {
         const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'

@@ -941,36 +941,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.isCreatingScene = false;
         }
 
-        // Music playback: legacy themes may receive AudioManager (loadBuffer/playBuffer),
-        // but modern runtime injects SoundManager and handles global music flow.
+        // Music is handled by the global SoundManager flow. The previous
+        // theme-local AudioBuffer path depended on a legacy AudioManager with
+        // loadBuffer/playBuffer (src/utils/audio-manager.js), which was dead code
+        // and has been removed (remediation Phase 2). The injected this.audioManager
+        // is the SoundManager, which never exposed loadBuffer/playBuffer, so that
+        // branch could never execute.
         if (this.audioManager) {
-            console.log('[NeonDistrict] Attempting to play music...');
-            const hasLegacyBufferApi = typeof this.audioManager?.loadBuffer === 'function'
-                && typeof this.audioManager?.playBuffer === 'function';
-
-            if (hasLegacyBufferApi) {
-                // Use the path from songs.json (verified as ./assets/music/neon-district.mp3)
-                // Note: In development, path is relative to public/
-                const musicPath = './assets/music/neon-district.mp3';
-
-                this.audioManager.loadBuffer(musicPath).then((buffer) => {
-                    if (!this.isActive) {
-                        return;
-                    }
-
-                    this.stopLegacyMusicSource();
-                    this.musicSource = this.audioManager.playBuffer(buffer, {
-                        loop: true,
-                        volume: 0.5, // Not too loud
-                        startTime: 0,
-                    });
-                    console.log('[NeonDistrict] Music playing:', musicPath);
-                }).catch((err) => {
-                    console.warn('[NeonDistrict] Music failed to load:', err);
-                });
-            } else {
-                console.info('[NeonDistrict] Skipping theme-local music; using global SoundManager playback flow.');
-            }
+            console.info('[NeonDistrict] Using global SoundManager playback flow.');
         }
     }
 

@@ -1566,6 +1566,18 @@ export class SoundManager {
         }
 
         this.disposeSfxBus();
+
+        // Explicitly close the single AudioContext on full app teardown, mirroring
+        // the disposal already applied to the SFX bus and analyser. close() returns
+        // a promise; fire-and-forget, then null the context and its gain node.
+        // (Remediation Phase 2 — previously the context was left to GC.)
+        if (this.audioContext && typeof this.audioContext.close === 'function'
+            && this.audioContext.state !== 'closed') {
+            this.audioContext.close().catch(() => { /* already closing/closed */ });
+        }
+        this.audioContext = null;
+        this.musicGainNode = null;
+
         this.playPromise = null;
         this.currentTrackId = null;
         this.pendingTrackKey = null;

@@ -46,8 +46,11 @@ import {
     createVentGlowTSL,
     createSkylightPaneMaterial,
     createPearlGateTSL,
+    updateGodRayInstanceMatrix,
 } from './deep-ocean.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { loadDeepOceanMantas, updateDeepOceanMantas } from './deep-ocean-manta.js';
+import { hasChapter2CreatureAssets } from './shared/chapter-02-creature-assets.js';
 
 /**
  * Deep Ocean environment configuration
@@ -178,6 +181,12 @@ export function createDeepOceanEnvironment(options = {}) {
         uDepth: uniform(0),
         uOpacity: uniform(1),
         uSteamEntry: uniform(1),
+        // 1.1 — god-ray hero amplitude, driven from OdysseyDirector audio state each frame
+        // (1 = calm, up to ~1.8 on energy/beat). Defaults to 1 with no director (playground).
+        uGodRayPulse: uniform(1),
+        // GLB hero-manta escort window (0→1 across the ~0.52 pass) — lifts the manta's
+        // ventral bioluminescent rim and tightens its arc into the formation hold.
+        uEscort: uniform(0),
     };
     group.userData.uniforms = uniforms;
 
@@ -221,6 +230,7 @@ export function createDeepOceanEnvironment(options = {}) {
     const rays = createGodRaysTSL(uniforms.uTime, {
         uDepth: uniforms.uDepth,
         uOpacity: uniforms.uOpacity,
+        uGodRayPulse: uniforms.uGodRayPulse,
     });
     placeGodRaysAlongCorridor(rays.group, corridor);
     group.add(rays.group);
@@ -232,7 +242,7 @@ export function createDeepOceanEnvironment(options = {}) {
     group.add(seabed.mesh);
 
     // 3c. Kelp / coral clusters rooted near the seabed (swaying instanced billboards).
-    const kelp = createKelpClusters(uniforms, 26);
+    const kelp = createKelpClusters(uniforms, 18);
     group.add(kelp);
 
     // 3d. Creature layer (creative plan assets 1 + 5): instances 1–3 are the HERO MANTA
@@ -240,8 +250,23 @@ export function createDeepOceanEnvironment(options = {}) {
     // 35–55 so a wing silhouette actually reads — while instance 0 is the leviathan,
     // DEMOTED to one extreme-distance background crossing (a scale cue, never competing
     // with the mantas). The rest stay small distant whales/rays/jellies.
-    const creatures = createCreatureSilhouettes(uniforms, 10, corridor);
+    // When a pipeline-authored hero-manta GLB is present, it carries the manta trio
+    // (real 3D geometry + a glide clip + the escort moment), so the billboard impostor
+    // mantas are skipped (those instances fall through to distant scatter). Without the
+    // GLB, the billboard heroes carry the chapter exactly as before.
+    const useGlbMantas = hasChapter2CreatureAssets();
+    const creatures = createCreatureSilhouettes(uniforms, 10, corridor, useGlbMantas);
     group.add(creatures);
+
+    // Hero manta GLB (fire-and-forget; no-op without the asset). Init the registries
+    // first so the update loop is safe before the async load resolves.
+    group.userData.mantaFlights = [];
+    group.userData.mantaMixers = [];
+    if (useGlbMantas) {
+        loadDeepOceanMantas(group, uniforms, corridor).catch((err) => {
+            console.warn('[DeepOcean] manta load error:', err);
+        });
+    }
 
     // 3e. Hydrothermal vent glow (creative plan asset 9) — Chapter 1's drowned First
     // Heart, refracted and wobbling below the camera for the chapter's first few
@@ -297,7 +322,7 @@ export function createDeepOceanEnvironment(options = {}) {
     // every bubble is an additive overdraw layer, so the perf pass thins the field).
     const bubbles = createBubbleParticles(
         uniforms,
-        Math.floor((options.particleCount || 400) * 0.45),
+        Math.floor((options.particleCount || 400) * 0.32),
         corridor,
     );
     group.add(bubbles);
@@ -307,7 +332,7 @@ export function createDeepOceanEnvironment(options = {}) {
     // bounded because each quad is tiny and capped below blowout).
     const plankton = createPlanktonParticles(
         uniforms,
-        Math.floor((options.particleCount || 600) * 0.7),
+        Math.floor((options.particleCount || 600) * 0.47),
         corridor,
     );
     group.add(plankton);
@@ -349,17 +374,24 @@ export function createDeepOceanEnvironment(options = {}) {
 // near the surface. No-op (keeps the authored layout) in the pilot harness where the
 // corridor is unavailable.
 function placeGodRaysAlongCorridor(rayGroup, corridor) {
-    if (!corridor.ok || !rayGroup?.children?.length) return;
-    const rays = rayGroup.children;
-    const n = rays.length;
-    rays.forEach((ray, i) => {
+    // The shafts are now ONE InstancedMesh (god-rays-instanced) carrying the six authored
+    // transforms in rayInstances/instanceMatrix. Re-place by editing each instance's stored
+    // position then recomposing its matrix with its base rotation.z (drift is added later by
+    // the update loop) — identical math to the old per-Mesh ray.position.set().
+    const instanced = rayGroup?.children?.[0];
+    const instances = instanced?.userData?.rayInstances;
+    if (!corridor.ok || !instanced || !instances?.length) return;
+    const n = instances.length;
+    instances.forEach((inst, i) => {
         // Spread the shafts up the corridor (t 0.15..0.9) so the camera meets fresh rays
         // as it climbs; keep the authored lateral X spread + tilt for separation.
         const t = 0.15 + (i / Math.max(1, n - 1)) * 0.75;
         const c = corridor.sample(t, 12 + (i % 3) * 10);
         // Lift the cone so its bright wide top sits above the station (light from above).
-        ray.position.set(ray.position.x * 0.6 + c.x, c.y + 24, c.z);
+        inst.position.set(inst.position.x * 0.6 + c.x, c.y + 24, c.z);
+        updateGodRayInstanceMatrix(instanced, i, inst.baseRotZ);
     });
+    instanced.instanceMatrix.needsUpdate = true;
 }
 
 // Creature silhouettes — instanced billboard quads at multiple depths. Each instance
@@ -372,7 +404,7 @@ function placeGodRaysAlongCorridor(rayGroup, corridor) {
 // (z ~ -55, y ~ -8) — the unforgettable hero beat — with its flank markings + slow X
 // traverse driven in the material. The remaining instances stay small distant whales/
 // rays/jellies for layered depth (NOT competing silhouettes).
-function createCreatureSilhouettes(uniforms, count, corridor) {
+function createCreatureSilhouettes(uniforms, count, corridor, skipHeroMantas = false) {
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const shapes = new Float32Array(count);
@@ -424,7 +456,7 @@ function createCreatureSilhouettes(uniforms, count, corridor) {
             continue;
         }
 
-        if (i <= mantaPasses.length) {
+        if (!skipHeroMantas && i <= mantaPasses.length) {
             // HERO MANTA TRIO: shape 4, sized 35–55, seated tight on the corridor so
             // the banked arc (±46u lateral in the material) carries each one across
             // the visible frustum 20–35u ahead of the camera.
@@ -491,7 +523,10 @@ function createCreatureSilhouettes(uniforms, count, corridor) {
         aPhase: { array: phases, itemSize: 1 },
     });
 
-    const mat = createCreatureSilhouetteMaterial(uniforms.uTime, { uOpacity: uniforms.uOpacity });
+    const mat = createCreatureSilhouetteMaterial(uniforms.uTime, {
+        uOpacity: uniforms.uOpacity,
+        uDepth: uniforms.uDepth,
+    });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'ocean-creatures';
     mesh.frustumCulled = false;
@@ -574,6 +609,7 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
     const phases = new Float32Array(count);
+    const pulseRates = new Float32Array(count);
 
     for (let i = 0; i < count; i += 1) {
         // String the jellies UP the corridor (evenly spaced t + jitter) at 18–40u
@@ -613,6 +649,8 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
         // Per-instance phase desyncs the in-shader drift + pulse (replaces the old
         // userData {t, speed, pulsePhase}).
         phases[i] = Math.random() * Math.PI * 2;
+        // 1.5 — per-instance pulse RATE (~2-4s period) so bells flash independently, not in lockstep.
+        pulseRates[i] = 0.35 + Math.random() * 0.45;
     }
 
     const geo = makeQuadInstancedGeometry(count, {
@@ -620,6 +658,7 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
         aSize: { array: sizes, itemSize: 1 },
         aColor: { array: colors, itemSize: 3 },
         aPhase: { array: phases, itemSize: 1 },
+        aPulseRate: { array: pulseRates, itemSize: 1 },
     });
 
     const mat = createJellyfishMaterial(uniforms.uTime, { uOpacity: uniforms.uOpacity });
@@ -679,7 +718,7 @@ function createBubbleParticles(uniforms, count, corridor) {
     mat.transparent = true;
     mat.depthWrite = false;
     mat.blending = THREE.AdditiveBlending;
-    mat.side = THREE.DoubleSide;
+    mat.side = THREE.FrontSide; // 1.3 — camera-facing billboard, back face never seen (free fill)
     mat.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const mesh = new THREE.Mesh(geo, mat);
@@ -815,7 +854,10 @@ function createPlanktonParticles(uniforms, count, corridor) {
     mat.transparent = true;
     mat.depthWrite = false;
     mat.blending = THREE.AdditiveBlending;
-    mat.side = THREE.DoubleSide;
+    // 1.3 — billboardWorld quads always face the camera, so the back face is never seen; FrontSide
+    // halves the fragment cost on this dense additive field for zero visual change. (Winding probed
+    // on plankton first per the plan; the other billboards follow once confirmed.)
+    mat.side = THREE.FrontSide;
     mat.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const mesh = new THREE.Mesh(geo, mat);
@@ -866,12 +908,22 @@ function createSkylightPanes(uniforms, corridor, surfaceOffsetY) {
 }
 
 // `camera` is part of the ChapterEnvironmentManager update contract (kept for API
-// parity); `cameraProgress` drives the uDepth ascent ladder.
+// parity); `cameraProgress` drives the uDepth ascent ladder; `directorState` carries the
+// OdysseyDirector audio state (energy/beat) that swells the god-ray hero (1.1).
 // eslint-disable-next-line no-unused-vars, max-len
-export function updateDeepOceanEnvironment(group, delta, time, camera = null, cameraProgress = null) {
+export function updateDeepOceanEnvironment(group, delta, time, camera = null, cameraProgress = null, directorState = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // 1.1 — couple the god-ray hero amplitude to the music. OdysseyDirector publishes
+    // post.godRay (0.4 calm -> ~0.8 at full energy) + beatPulse; map to a 1->1.8 envelope.
+    // No director (playground / headless) leaves it at the calm base of 1.
+    if (uniforms?.uGodRayPulse) {
+        const godRay = directorState?.post?.godRay ?? 0.4;
+        const beat = directorState?.beatPulse ?? 0;
+        uniforms.uGodRayPulse.value = THREE.MathUtils.clamp(godRay / 0.4 + beat * 0.25, 1, 1.8);
     }
 
     // Ascent ladder — map GLOBAL camera progress to this chapter's local 0→1 (uDepth)
@@ -892,6 +944,10 @@ export function updateDeepOceanEnvironment(group, delta, time, camera = null, ca
         group.userData.jellyfish.visible = (uniforms?.uSteamEntry?.value ?? 0) < 0.18;
     }
 
+    // GLB hero manta(s): tick the glide clip + drive the escort choreography (no-op
+    // without the asset). Reads uDepth from uniforms internally for the escort window.
+    updateDeepOceanMantas(group, delta, time);
+
     // Jellyfish now drift + pulse entirely in their instanced shader (from aPhase +
     // uTime), so there is no per-jelly CPU loop and no scene-walk for them anymore.
 
@@ -907,14 +963,20 @@ export function updateDeepOceanEnvironment(group, delta, time, camera = null, ca
     const { animated } = group.userData;
 
     // Drift the god-ray shafts slowly so the light feels alive (the per-ray
-    // driftPhase desyncs them); internal shimmer/volume already animate via uTime.
+    // driftPhase desyncs them); internal shimmer/volume already animate via uTime. The six
+    // shafts are now ONE InstancedMesh: spin each instance's rotation.z exactly as the old
+    // per-Mesh write did (baseRotZ + sin(time*0.15 + driftPhase)*0.03) by recomposing its
+    // instanceMatrix — same angle, same compose order, so the motion is pixel-identical.
     const { godRays } = animated;
-    if (godRays) {
-        godRays.children.forEach((ray) => {
-            const phase = ray.userData.driftPhase || 0;
-            ray.rotation.z = (ray.userData.baseRotZ ??= ray.rotation.z)
-                + Math.sin(time * 0.15 + phase) * 0.03;
-        });
+    const godRayInstanced = godRays?.children?.[0];
+    const rayInstances = godRayInstanced?.userData?.rayInstances;
+    if (godRayInstanced && rayInstances?.length) {
+        for (let i = 0; i < rayInstances.length; i += 1) {
+            const inst = rayInstances[i];
+            const rotZ = inst.baseRotZ + Math.sin(time * 0.15 + inst.driftPhase) * 0.03;
+            updateGodRayInstanceMatrix(godRayInstanced, i, rotZ);
+        }
+        godRayInstanced.instanceMatrix.needsUpdate = true;
     }
 
     // Update bubbles — rise the per-instance base Y and recycle, then flag the

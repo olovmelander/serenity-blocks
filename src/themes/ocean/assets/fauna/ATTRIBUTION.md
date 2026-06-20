@@ -11,6 +11,11 @@ Selected CC-BY source candidates for a future replacement pass:
 - Great White Shark by Sealife Fan 3: https://sketchfab.com/3d-models/great-white-shark-bf81b64f0121443da38112f706b7356f
 - Shark by jwg15f: https://sketchfab.com/3d-models/shark-3794246d9021403aa7cc9377466cc526
 
+## Self-Generated TRELLIS.2 Assets
+
+- `rare-mantaray-self.glb` — Manta ray, generated from `artifacts/manta-whale/manta-source.png` using the TRELLIS.2-4B pipeline via ComfyUI. Auto-rigged in Blender with centerline spine, cephalic stubs, and a 3-bone pectoral fin chain per wing, with a custom distance-based skinning weight assignment and a 48-frame traveling-wave wingbeat undulation animation. License: MIT-project-local.
+- `rare-whale-self.glb` — Blue/humpback whale, generated from `artifacts/manta-whale/whale-source.png` using the TRELLIS.2-4B pipeline via ComfyUI. Auto-rigged in Blender with a 5-bone spine chain and 2-bone pectoral fin chains, with custom distance-based skinning weights and a 60-frame vertical tail fluke undulation animation. License: MIT-project-local.
+
 ## Self-Generated TripoSR Assets
 
 `reef-seahorse-triposr.glb` — Seahorse reef-dweller, generated from `artifacts/triposr/seahorse-source.png` using the TripoSR image-to-3D pipeline (`scripts/triposr-gen.sh`, mc-resolution 96, chunk-size 4096). Vertex-color output, no texture baking. License: MIT-project-local.

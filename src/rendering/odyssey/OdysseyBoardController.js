@@ -20,9 +20,10 @@ import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/ody
 import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
+import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
 import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
-import { buildJourneyWarmSamples } from './odyssey-warmup-plan.js';
+import { buildChapterWarmSamples, buildJourneyWarmSamples } from './odyssey-warmup-plan.js';
 import {
     applyOdysseyLayoutToLevels,
     buildOdysseyPresentationLayout,
@@ -77,6 +78,41 @@ const QUALITY_PRESETS = {
 const ODYSSEY_WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 const ODYSSEY_WHEEL_CAPTURE_OPTIONS = { capture: true, passive: false };
 const ODYSSEY_WHEEL_LOCK_ATTRIBUTES = [ODYSSEY_WHEEL_LOCK_ATTRIBUTE, 'data-wheel-lock'];
+
+function getUrlSearchParams() {
+    if (typeof window === 'undefined') return null;
+    try {
+        return new URLSearchParams(window.location?.search || '');
+    } catch {
+        return null;
+    }
+}
+
+function parseChapterIdList(value, totalChapters = 8) {
+    return [...new Set(
+        String(value || '')
+            .split(',')
+            .map((entry) => Number.parseInt(entry.trim(), 10))
+            .filter((entry) => Number.isInteger(entry) && entry >= 1 && entry <= totalChapters),
+    )].sort((left, right) => left - right);
+}
+
+function readCaptureChapterIdsFromUrl(totalChapters = 8) {
+    const search = getUrlSearchParams();
+    return parseChapterIdList(search?.get('odysseyCaptureChapters'), totalChapters);
+}
+
+function readPixelRatioOverrideFromUrl() {
+    const search = getUrlSearchParams();
+    const value = Number.parseFloat(search?.get('odysseyPixelRatio'));
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return Math.min(2, Math.max(0.5, value));
+}
+
+function readBooleanUrlFlag(name) {
+    const value = getUrlSearchParams()?.get(name);
+    return value === '1' || value === 'true';
+}
 
 function derivePresentationLayout(levelData = [], presentationLayout = null, layoutOverride = null) {
     const fallbackLevelPositionsById = Object.fromEntries(
@@ -194,8 +230,38 @@ export class OdysseyBoardController {
         // settings toggle) can pass `adaptiveQuality:false` to pin the preset quality and let
         // the user's manual quality choice stand untouched. The Tier-1/2 post knobs only make
         // sense with the cinematic post stack, so the loop also gates on cinematicJourneyActive.
-        this.adaptiveQualityEnabled = options.adaptiveQuality !== false;
+        this.adaptiveQualityEnabled = options.adaptiveQuality !== false
+            && !readBooleanUrlFlag('odysseyDisableAdaptiveQuality');
         this.debugOverlayActive = false;
+        this.captureChapterIds = parseChapterIdList(
+            options.captureChapterIds || readCaptureChapterIdsFromUrl(),
+        );
+        this.restrictStartupChapterLoading = this.captureChapterIds.length > 0;
+        // Cold-start: only CREATE + COMPILE this window of chapters before reveal (the
+        // player's reachable neighbourhood); the rest load + compile in the background.
+        // compileAsync is kicked per created chapter, and that async GPU compile is the
+        // bulk of cold start — so loading 3 chapters instead of 8 is the real lever.
+        // null = load all (full pre-reveal warm). Disable via ?odysseyEagerWindow=0.
+        this.startupChapterWindow = (Array.isArray(options.startupChapters) && options.startupChapters.length > 0
+            && !readBooleanUrlFlag('odysseyEagerWindowOff'))
+            ? options.startupChapters.slice()
+            : null;
+        // Fast-start (now DEFAULT ON; opt-out ?odysseyFastStartOff=1): reveal the board after
+        // warming only the player's current chapter (focusChapter); the rest warm in the
+        // post-reveal background render-warm (and, failing that, on first scroll-in). The full
+        // pre-reveal journey warm took ~21s (~5.5s/chapter through the post MRT), which is the
+        // dominant cold-start cost — far too long for the player to wait before scrolling. The
+        // recent material-share pass (~−44 pipeline variants) shrinks each chapter's first-visit
+        // compile, so the fast-start trade (a small first-scroll hitch for a ~15s faster reveal)
+        // is now clearly worth it. Restore the full pre-reveal warm with ?odysseyFastStartOff=1.
+        this._fastStart = !readBooleanUrlFlag('odysseyFastStartOff');
+        this.focusChapter = Number.isFinite(options.focusChapter) ? options.focusChapter : null;
+        this.backgroundChapterLoadingEnabled = options.backgroundChapterLoading !== false
+            && !this.restrictStartupChapterLoading
+            && !readBooleanUrlFlag('odysseyDisableBackgroundLoading');
+        this.pixelRatioOverride = Number.isFinite(options.pixelRatioOverride)
+            ? Math.min(2, Math.max(0.5, options.pixelRatioOverride))
+            : readPixelRatioOverrideFromUrl();
         const globalSoundManager = typeof window !== 'undefined' ? window.soundManager : null;
         this.soundManager = options.soundManager || globalSoundManager || null;
 
@@ -248,8 +314,6 @@ export class OdysseyBoardController {
 
         // Background elements
         this.stars = null;
-        this.nebulaMesh = null;
-        this.ambientParticles = null;
 
         // Interaction/performance tracking
         this.lastInteractionAt = performance.now();
@@ -363,6 +427,9 @@ export class OdysseyBoardController {
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
         trace.begin('renderer');
         await this.initRenderer();
+        // Detect the GPU's KTX2 transcode target now that the renderer exists, so chapter
+        // GLBs with KTX2 textures load (no-op for the current uncompressed assets).
+        setOdysseyGltfRenderer(this.renderer);
         this.initScene();
         this.initCamera();
         this.createStarfield();
@@ -378,35 +445,51 @@ export class OdysseyBoardController {
         // Yield — let the loading overlay render & animate smoothly
         await this._yieldToMain();
 
-        // ─── Steps 2+3: Create ALL chapter environments, compiling in PARALLEL ───
-        // Everything-upfront contract: all 8 chapters are created + shader-warmed before
-        // the board is shown (no on-demand loads during scroll). The old serial chain
-        // awaited each chapter's compileAsync before starting the next — the #1 startup
-        // cost. compileAsync snapshots its renderables and restores shared renderer state
-        // synchronously BEFORE its only await, so launches can overlap safely: the GPU
-        // driver compiles chapter N's pipelines on its own threads while the main thread
-        // bakes chapter N+1's geometry (and then builds path/nodes/post below). The pool
-        // barrier sits just before the warm-up replay.
+        // ─── Steps 2+3: Create chapter environments, compiling in PARALLEL ───
+        // Default startup creates and warms the whole journey to prevent first-visit hitches.
+        // Capture sessions can pass ?odysseyCaptureChapters=... to load only a local chapter
+        // window and keep weak GPUs out of the TDR danger zone. compileAsync snapshots its
+        // renderables and restores shared renderer state synchronously BEFORE its only await,
+        // so launches can overlap safely; the pool barrier sits before the warm-up replay.
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
             chapterPositions: this.presentationLayout.chapterPositions,
         });
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
         trace.begin('creates');
-        await this.environmentManager.initialize([1], {
+        this.environmentManager.qualitySettings = {
+            ...this.environmentManager.qualitySettings,
             particleCount: this.qualityPreset.particleCount,
-        });
-        if (serialInit) {
-            await this._prewarmChapterEnvironment(1);
-        } else {
-            compilePool.push(this._prewarmChapterEnvironment(1));
+        };
+        const chapterPositions = this.presentationLayout.chapterPositions || [];
+        const totalChapters = Math.max(
+            1,
+            chapterPositions.length > 0 && chapterPositions[chapterPositions.length - 1] >= 0.999
+                ? chapterPositions.length - 1
+                : (chapterPositions.length || 8),
+        );
+        const allChapterIds = Array.from({ length: totalChapters }, (_, index) => index + 1);
+        let startupChapterIds = allChapterIds;
+        let startupScopeLabel = '';
+        // When restricted to a subset, the warm-up must also restrict to it (else it scrolls
+        // into deferred chapters and lazily creates them). null = warm the full journey.
+        this._activeStartupChapterIds = null;
+        if (this.restrictStartupChapterLoading) {
+            startupChapterIds = parseChapterIdList(this.captureChapterIds, totalChapters);
+            startupScopeLabel = ' (capture scoped)';
+        } else if (this.startupChapterWindow && this.backgroundChapterLoadingEnabled) {
+            // Only window when background loading is on, so the deferred chapters WILL load.
+            const windowed = this.startupChapterWindow
+                .filter((id) => Number.isFinite(id) && id >= 1 && id <= totalChapters);
+            if (windowed.length > 0 && windowed.length < allChapterIds.length) {
+                startupChapterIds = Array.from(new Set(windowed)).sort((a, b) => a - b);
+                startupScopeLabel = ` (eager window; ${allChapterIds.length - startupChapterIds.length} deferred to background)`;
+                this._activeStartupChapterIds = startupChapterIds;
+            }
         }
-
-        await this._yieldToMain();
-
-        const totalChapters = this.presentationLayout.chapterPositions?.length || 8;
+        console.log(`[OdysseyBoard] Startup chapter set: ${startupChapterIds.join(', ')}${startupScopeLabel}`);
         /* eslint-disable no-await-in-loop */
-        for (let ch = 2; ch <= totalChapters; ch++) {
+        for (const ch of startupChapterIds) {
             const createStart = performance.now();
             await this.environmentManager.createChapterEnvironment(ch);
             const createMs = performance.now() - createStart;
@@ -423,6 +506,7 @@ export class OdysseyBoardController {
             await this._yieldToMain();
         }
         /* eslint-enable no-await-in-loop */
+        this.environmentManager.updateVisibility(this.environmentManager.cameraProgress, { mode: 'progress' });
         trace.end('creates');
 
         // ─── Step 4: Build path ───
@@ -528,15 +612,24 @@ export class OdysseyBoardController {
 
         this.isActive = true;
         this.animate();
-        this._queueChapterPrewarm(2);
+        if (this.backgroundChapterLoadingEnabled) {
+            this._queueChapterPrewarm(2);
 
-        // Load remaining chapters in background (idle time, one at a time)
-        this.environmentManager.loadChaptersInBackground([1, 2], {
-            canRunTask: () => this._canRunBackgroundTask(),
-            onEnvironmentCreated: (chapterId) => {
-                this._queueChapterPrewarm(chapterId);
-            },
-        });
+            // Load remaining chapters in background (idle time, one at a time)
+            this.environmentManager.loadChaptersInBackground(startupChapterIds, {
+                canRunTask: () => this._canRunBackgroundTask(),
+                onEnvironmentCreated: (chapterId) => {
+                    this._queueChapterPrewarm(chapterId);
+                },
+            });
+        }
+
+        // After reveal, render-warm every chapter we did NOT warm pre-reveal — OFFSCREEN,
+        // during idle — so the first live scroll-in never compiles on a visible frame. This
+        // is what actually removes the first-visit hitch (the prewarm queue above only does
+        // compileAsync, which does not pay the real first-render compile + GPU upload). Fixes
+        // the hitch for chapters 4-8 in every mode, and for the deferred chapters in fast-start.
+        this._startBackgroundRenderWarm();
 
         trace.summary();
         console.log('[OdysseyBoard] Initialized successfully');
@@ -634,6 +727,148 @@ export class OdysseyBoardController {
         if (this.prewarmQueue.length > 0) {
             this._schedulePrewarmDrain(60);
         }
+    }
+
+    /**
+     * After reveal, render-warm every chapter not warmed pre-reveal — OFFSCREEN, one at a
+     * time during idle, nearest the player first — so the first live scroll-in never compiles
+     * on a visible frame (the first-visit hitch). Disable with ?odysseyBgWarm=0.
+     * @private
+     */
+    _startBackgroundRenderWarm() {
+        if (this._bgRenderWarmStarted) return;
+        this._bgRenderWarmStarted = true;
+        // Default ON; opt out with ?odysseyBgWarm=0.
+        if (typeof window !== 'undefined') {
+            try {
+                const v = new URLSearchParams(window.location?.search || '').get('odysseyBgWarm');
+                if (v === '0' || v === 'false' || v === 'off') return;
+            } catch { /* default on */ }
+        }
+
+        const total = this.presentationLayout?.chapterPositions?.length || 8;
+        const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
+        const order = [];
+        for (let ch = 1; ch <= total; ch += 1) order.push(ch);
+        // Warm the chapters nearest the player's position first.
+        order.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
+
+        let idx = 0;
+        const step = () => {
+            if (!this.isActive || this.isRenderingPaused) {
+                setTimeout(step, 500);
+                return;
+            }
+            if (idx >= order.length) {
+                console.log('[OdysseyWarmup] background render-warm complete');
+                return;
+            }
+            if (!this._canRunBackgroundTask()) {
+                setTimeout(step, 200);
+                return;
+            }
+            const ch = order[idx];
+            const env = this.environmentManager?.environments?.get(ch);
+            if (!env) {
+                // Not created yet (still background-loading) — wait, don't advance.
+                setTimeout(step, 300);
+                return;
+            }
+            idx += 1;
+            if (!env._renderWarmed) {
+                this._renderWarmChapterOffscreen(ch, env);
+                env._renderWarmed = true;
+            }
+            setTimeout(step, 120);
+        };
+        setTimeout(step, 900); // let the reveal settle before stealing GPU time
+    }
+
+    /**
+     * Render one chapter's group OFFSCREEN (to the post scene-pass target, not the canvas) so
+     * its real pipelines compile + geometry/textures upload now. No camera move — just force
+     * the group visible — so this never triggers chapter-change/music side effects or a flash.
+     * @private
+     */
+    _renderWarmChapterOffscreen(chapterId, env) {
+        const group = env?.group;
+        if (!group || !this.renderer || !this.scene || !this.camera) return;
+        // Bind the offscreen post scene-pass target FIRST; if post is inactive (null), skip —
+        // rendering would otherwise hit the canvas and FLASH the warming chapter's full-screen
+        // sky dome (BackSide, renderOrder -100) for a frame. The live loop warms it in the
+        // no-post fallback instead.
+        const saved = this._beginPostTargetCompile();
+        if (!saved) return;
+        const prevVisible = group.visible;
+        const frustumOverrides = [];
+        group.traverse((child) => {
+            if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
+                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
+                child.frustumCulled = false;
+            }
+        });
+        try {
+            group.visible = true;
+            this.renderer.render(this.scene, this.camera);
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Background render-warm failed for chapter ${chapterId}:`, error?.message || error);
+            // DIAGNOSTIC (once per failing chapter): the full-scene render threw an invalid
+            // pipeline for THIS chapter's content. Probe each of the chapter's meshes in
+            // isolation to name the exact culprit material/geometry so it can be fixed (the
+            // background warm then works for every chapter). Runs only on the rare failure path.
+            if (!this._warmProbedChapters) this._warmProbedChapters = new Set();
+            if (!this._warmProbedChapters.has(chapterId)) {
+                this._warmProbedChapters.add(chapterId);
+                this._probeWarmFailure(chapterId, group);
+            }
+        } finally {
+            this._endPostTargetCompile(saved);
+            group.visible = prevVisible;
+            frustumOverrides.forEach(({ child, frustumCulled }) => {
+                child.frustumCulled = frustumCulled;
+            });
+        }
+    }
+
+    /**
+     * DIAGNOSTIC: a chapter's render-warm threw an invalid-pipeline error. Find the exact
+     * culprit by hiding all of the chapter's drawables, then revealing them ONE at a time and
+     * re-rendering — the reveal that re-throws names the offending mesh/material/geometry. Runs
+     * once per failing chapter on the rare failure path; renders the scene N times (N = chapter
+     * drawables) so it is deliberately gated to that path only. Saves+restores each mesh's
+     * visibility. The post target is still bound by the caller. @private
+     */
+    _probeWarmFailure(chapterId, group) {
+        const meshes = [];
+        group.traverse((child) => {
+            if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) meshes.push(child);
+        });
+        const savedVisible = meshes.map((m) => m.visible);
+        meshes.forEach((m) => { m.visible = false; });
+        let culprits = 0;
+        for (let i = 0; i < meshes.length; i += 1) {
+            const mesh = meshes[i];
+            mesh.visible = true;
+            try {
+                this.renderer.render(this.scene, this.camera);
+            } catch (err) {
+                culprits += 1;
+                const attrs = mesh.geometry?.attributes ? Object.keys(mesh.geometry.attributes) : [];
+                const mat = mesh.material;
+                console.warn(
+                    `[OdysseyBoard][WARM-PROBE] ch${chapterId} CULPRIT #${culprits}: name="${mesh.name || '(unnamed)'}" `
+                    + `objType=${mesh.type} matType=${mat?.type} blending=${mat?.blending} side=${mat?.side} `
+                    + `transparent=${mat?.transparent} hasPositionNode=${!!mat?.positionNode} `
+                    + `attrs(${attrs.length})=[${attrs.join(',')}] instanced=${!!mesh.geometry?.isInstancedBufferGeometry}`,
+                    err?.message || err,
+                );
+                mesh.visible = false; // remove the bad mesh and keep probing for more
+            }
+        }
+        if (culprits === 0) {
+            console.warn(`[OdysseyBoard][WARM-PROBE] ch${chapterId}: no single chapter mesh reproduced the error in isolation — culprit is likely a shared/non-chapter object or an inter-object state.`);
+        }
+        meshes.forEach((m, i) => { m.visible = savedVisible[i]; });
     }
 
     /**
@@ -770,7 +1005,7 @@ export class OdysseyBoardController {
     }
 
     async initRenderer() {
-        const pixelRatio = computeScenePixelRatio({
+        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
             renderScale: this._drs.renderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO, // QW3: 1.5 -> 1.2.
@@ -788,8 +1023,10 @@ export class OdysseyBoardController {
             forceWebGL,
             powerPreference: 'high-performance',
             // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
-            // populated (resolved after each render below). Harmless if the backend lacks it.
-            trackTimestamp: true,
+            // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
+            // active — otherwise the query pool fills and overflows (the renderer tracks queries
+            // that nothing resolves once the per-frame resolve is gated to the overlay too).
+            trackTimestamp: isOdysseyAAADebugEnabled(),
         });
         await this.renderer.init();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
@@ -1001,76 +1238,13 @@ export class OdysseyBoardController {
         this.scene.add(this.stars);
     }
 
-    createNebula() {
-        // Simple gradient plane for nebula background
-        const geometry = new THREE.PlaneGeometry(500, 500);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uColor1: { value: new THREE.Color(0x1a0a2e) },
-                uColor2: { value: new THREE.Color(0x0a1a2e) },
-                uColor3: { value: new THREE.Color(0x2e0a1a) },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                uniform vec3 uColor1;
-                uniform vec3 uColor2;
-                uniform vec3 uColor3;
-                varying vec2 vUv;
-
-                void main() {
-                    vec2 uv = vUv;
-                    float wave = sin(uv.y * 3.0 + uTime * 0.1) * 0.5 + 0.5;
-                    vec3 color = mix(uColor1, uColor2, uv.y);
-                    color = mix(color, uColor3, wave * 0.3);
-                    gl_FragColor = vec4(color, 0.5);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-
-        this.nebulaMesh = new THREE.Mesh(geometry, material);
-        this.nebulaMesh.position.z = -150;
-        this.scene.add(this.nebulaMesh);
-    }
-
-    createAmbientParticles() {
-        const count = this.qualityPreset.particleCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-            positions[i3] = (Math.random() - 0.5) * 100;
-            positions[i3 + 1] = Math.random() * 200 - 50; // Along the vertical path
-            positions[i3 + 2] = (Math.random() - 0.5) * 50;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            size: 0.8, // Increased size for texture
-            color: 0x8888ff,
-            transparent: true,
-            opacity: 0.4,
-            blending: THREE.AdditiveBlending,
-            map: this.createGlobalParticleTexture(),
-            depthWrite: false,
-        });
-
-        this.ambientParticles = new THREE.Points(geometry, material);
-        this.scene.add(this.ambientParticles);
-    }
+    // NOTE (remediation Phase 2): createNebula() and createAmbientParticles()
+    // were removed here. createNebula() was the lone remaining raw
+    // THREE.ShaderMaterial in the entire odyssey/ tree (a GLSL gradient plane),
+    // which the WebGPU backend cannot compile — but it was never called from the
+    // live init path (only createStarfield() above is). Both were dead code that
+    // falsely signalled an incomplete WebGPU migration. The odyssey render path
+    // is now verifiably NodeMaterial/TSL-only.
 
     // =============================
     // Interaction
@@ -1209,7 +1383,7 @@ export class OdysseyBoardController {
     onResize() {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
-        const pixelRatio = computeScenePixelRatio({
+        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
             renderScale: this._drs.renderScale, // respect the live DRS scale (QW2/QW3).
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
@@ -1242,7 +1416,7 @@ export class OdysseyBoardController {
         this._drs.renderScale = renderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;
-        const pixelRatio = computeScenePixelRatio({
+        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
             renderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
@@ -1409,7 +1583,11 @@ export class OdysseyBoardController {
 
         this.animationFrameId = requestAnimationFrame(() => this.animate());
 
-        const delta = this.clock.getDelta();
+        // Frame-pacing guard: clamp the rAF delta so a long frame (compile/transition/GC spike —
+        // the board logs p99 ~8s cold-start spikes) cannot lurch the camera/director/grade by a
+        // multi-second time step on the NEXT frame. 0.05s = 3 frames @60fps; anything longer is a
+        // hitch we never want to integrate. Zero visual cost in steady state (delta << 0.05).
+        const delta = Math.min(this.clock.getDelta(), 0.05);
         this.renderFrame(delta);
     }
 
@@ -1540,7 +1718,12 @@ export class OdysseyBoardController {
         }
 
         // Batch0: resolve GPU timestamps so the debug overlay can read render.info.timestamp.
-        this._resolveRenderTimestamps();
+        // ONLY when the overlay is active (?odysseyAAA=1) — otherwise this scheduled an async GPU
+        // timestamp readback + allocated a Promise + a .catch closure EVERY frame for data that
+        // nothing reads (per-frame GC the board never needed in normal play). Zero visual effect.
+        if (this.debugOverlayActive) {
+            this._resolveRenderTimestamps();
+        }
 
         // Wave 2: feed this frame's wall-clock time into the adaptive-quality controller. It
         // records every frame and self-throttles its evaluation to ~1Hz; the resolution policy's
@@ -1589,22 +1772,68 @@ export class OdysseyBoardController {
             // chapters co-present, ecotone overlap, breach assets, crossfade lights) + the
             // journey ends. ~17 renders instead of ~64. If a seam ever regresses, widen
             // ONLY that boundary to a ±0.02 triplet.
-            const steps = buildJourneyWarmSamples({
-                chapterPositions: this.presentationLayout?.chapterPositions || [],
-            });
+            // Restrict the warm-up to the chapters we actually CREATED. Sampling the full
+            // journey scrolls the camera into deferred chapters, which triggers their lazy
+            // creation+compile DURING the warm-up (serially) — defeating the eager window.
+            let warmChapterIds = this.restrictStartupChapterLoading
+                ? this.captureChapterIds
+                : (this._activeStartupChapterIds || null);
+            // Fast-start (opt-in ?odysseyFastStart=1): warm ONLY the chapter the player reveals
+            // into. Other chapters warm on first scroll-in (a brief hitch). Reveals several
+            // seconds sooner — trades the warm-up's hitch-prevention for cold-start speed.
+            if (this._fastStart && Number.isFinite(this.focusChapter)) {
+                warmChapterIds = [this.focusChapter];
+            }
+            const steps = warmChapterIds
+                ? buildChapterWarmSamples({
+                    chapterPositions: this.presentationLayout?.chapterPositions || [],
+                    chapterIds: warmChapterIds,
+                })
+                : buildJourneyWarmSamples({
+                    chapterPositions: this.presentationLayout?.chapterPositions || [],
+                });
+
+            // The warm-up renders the whole journey, but only chapters that were actually
+            // CREATED have a backdrop to compile/upload — uncreated (deferred) chapters'
+            // samples are cheap. So the startup chapter WINDOW (see startupChapterIds) is the
+            // real cold-start lever, not truncating samples here.
             for (let i = 0; i < steps.length; i += 1) {
                 cc.currentPosition = steps[i];
                 cc.targetPosition = steps[i];
+                // Phase 0 instrumentation: time each warm-up render so the next capture
+                // attributes the (currently ~22s) warm-up to specific samples/chapters.
+                const sampleStart = performance.now();
                 this.renderFrame(1 / 60);
+                const sampleMs = Math.round(performance.now() - sampleStart);
+                if (sampleMs > 120) {
+                    const where = typeof steps[i] === 'number' ? steps[i].toFixed(3) : `${i}`;
+                    console.log(`[OdysseyWarmup] sample ${i} @progress ${where} took ${sampleMs}ms`);
+                }
                 if (i % 2 === 0) {
                     // eslint-disable-next-line no-await-in-loop
                     await this._yieldToMain();
                 }
             }
-            // Warm every post output-quad variant (lean/ch7-lens × bloom/no-bloom) so the
-            // edge-triggered variant swaps (ch7 entry, dark-chapter bloom detach) never
-            // compile on a live frame.
-            await this.postProcessingStack?.warmOutputVariants?.(this._yieldToMain.bind(this));
+            // Mark the chapters this pre-reveal warm covered, so the post-reveal background
+            // render-warm skips them (no redundant re-render).
+            for (const ch of (warmChapterIds || [])) {
+                const warmedEnv = this.environmentManager?.environments?.get(ch);
+                if (warmedEnv) warmedEnv._renderWarmed = true;
+            }
+            // Warm every post output-quad variant (lean/ch7-lens × bloom/no-bloom) BEFORE
+            // reveal so they never compile on a live frame. (Deferring this for the NORMAL
+            // path only moved the multi-second compile onto the first camera-travel frames,
+            // which the overlay dismiss waits for — making board-visible WORSE. Keep it
+            // pre-reveal there.) Fast-start intentionally skips the full matrix: the focus
+            // sample already warmed the ACTIVE variant, and the far variants (ch7 lens /
+            // dark no-bloom) warm on first visit to those far chapters — the fast-start trade.
+            if (this._fastStart) {
+                console.log('[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit');
+            } else {
+                const variantStart = performance.now();
+                await this.postProcessingStack?.warmOutputVariants?.(this._yieldToMain.bind(this));
+                console.log(`[OdysseyWarmup] warmOutputVariants took ${Math.round(performance.now() - variantStart)}ms`);
+            }
             console.log('[OdysseyBoard] Journey warm-up complete (chapters + seams warmed through render path)');
         } catch (error) {
             console.warn('[OdysseyBoard] Journey warm-up failed:', error);
@@ -1684,6 +1913,24 @@ export class OdysseyBoardController {
         this.isActive = true;
         this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
         this.animate();
+    }
+
+    /**
+     * Phase 0 instrumentation: resident GPU resource counts from the board renderer.
+     * These are COUNTS, not bytes — cross-check chrome://gpu for true VRAM. Used to
+     * decide how aggressively the board can be kept resident during gameplay.
+     * @returns {{geometries:number, textures:number, renderCalls:number}|null}
+     */
+    getMemorySnapshot() {
+        const info = this.renderer?.info;
+        if (!info) {
+            return null;
+        }
+        return {
+            geometries: info.memory?.geometries ?? 0,
+            textures: info.memory?.textures ?? 0,
+            renderCalls: info.render?.calls ?? 0,
+        };
     }
 
     // =============================
@@ -1944,6 +2191,9 @@ export class OdysseyBoardController {
 
     async _requestChapterEnvironment(chapterId) {
         if (!Number.isFinite(chapterId) || !this.environmentManager) return false;
+        if (this.restrictStartupChapterLoading && !this.captureChapterIds.includes(chapterId)) {
+            return false;
+        }
 
         const existing = this.environmentManager.environments.get(chapterId);
         if (existing) {

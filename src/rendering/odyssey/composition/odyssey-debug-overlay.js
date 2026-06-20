@@ -35,6 +35,11 @@ export function isOdysseyAAADebugEnabled() {
     if (typeof window === 'undefined') return false;
     try {
         const search = new URLSearchParams(window.location?.search || '');
+        if (search.get('odysseyOverlay') === '0'
+            || search.get('odysseyOverlay') === 'false'
+            || search.get('odysseyNoOverlay') === '1') {
+            return false;
+        }
         return search.get('odysseyAAA') === '1';
     } catch {
         return false;

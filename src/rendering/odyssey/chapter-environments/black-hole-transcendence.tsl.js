@@ -221,7 +221,7 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
 
-    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 280, 6);
+    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 200, 6);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'accretion-disk-tsl';
     return {
@@ -266,7 +266,7 @@ export function createLensingShellTSL(uTime = uniform(0), uEnergy = uniform(0.4)
     material.side = THREE.FrontSide;
     material.userData.emitsBloom = true;
 
-    const geometry = new THREE.SphereGeometry(50, 48, 32);
+    const geometry = new THREE.SphereGeometry(50, 40, 24);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'lensing-shell-tsl';
     return {
@@ -302,7 +302,7 @@ export function createSharedMotifMaterialsTSL(uTime = uniform(0), uEnergy = unif
 
     // The motif photon ring is identical across all five (same RingGeometry + same
     // additive gold material), so share one material + geometry for it too.
-    const photonRingGeometry = new THREE.RingGeometry(39, 44, 128, 1);
+    const photonRingGeometry = new THREE.RingGeometry(39, 44, 96, 1);
     const photonRingMaterial = new THREE.MeshBasicMaterial({
         color: 0xffe6b8,
         transparent: true,
@@ -348,6 +348,15 @@ export function createSharedMotifMaterialsTSL(uTime = uniform(0), uEnergy = unif
 
 // ── Deep-violet ambient wash (additive, camera-enveloping; must NOT blow white) ──
 
+export const CH7_AMBIENT_WASH_SETTINGS = Object.freeze({
+    centerFloor: 0.86,
+    rimGain: 0.78,
+    opacityFloor: 0.42,
+    opacityCap: 0.72,
+    sphereRadius: 360,
+    floorColor: [0.17, 0.095, 0.31],
+});
+
 /**
  * A large additive inner-shell sphere of deep violet that the camera sits inside, so
  * the corridor between hero motifs never reads as dead RGB-black. The wash is a gentle
@@ -372,7 +381,8 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
     // Creative plan ch7 item 1 (the capture contradicts the code — AMPLIFY): centre
     // floor lifted 0.55 → 0.68 so frames 07–14 genuinely sit at the #120A21 violet
     // floor instead of falling back to RGB-black between motifs.
-    const view = fres.mul(0.7).add(0.68); // rim-biased but with a solid centre floor
+    const view = fres.mul(CH7_AMBIENT_WASH_SETTINGS.rimGain)
+        .add(CH7_AMBIENT_WASH_SETTINGS.centerFloor);
 
     // Drifting pocketed FBM filaments so the wash has internal structure that actually
     // reads as nebula (bright clumps), not a flat band. The ridged term carves brighter
@@ -384,32 +394,59 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
     const mottle = clouds.mul(pockets);
 
     // Deep violet -> magenta-violet across the fresnel ramp; both ends low-luminance.
-    const tint = mix(vec3(0.14, 0.06, 0.28), vec3(0.30, 0.08, 0.34), fres);
+    const floorColor = vec3(
+        CH7_AMBIENT_WASH_SETTINGS.floorColor[0],
+        CH7_AMBIENT_WASH_SETTINGS.floorColor[1],
+        CH7_AMBIENT_WASH_SETTINGS.floorColor[2],
+    );
+    const tint = mix(vec3(0.18, 0.075, 0.34), vec3(0.36, 0.10, 0.42), fres);
     const intensity = view.mul(mottle).mul(uEnergy.mul(0.35).add(0.6));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = tint.mul(intensity);
+    material.colorNode = floorColor.add(tint.mul(intensity));
     // Hard cap the alpha so the additive wash stays a faint ambience (never a wall) —
     // raised again 0.38 → 0.5 (creative plan amplification) so the violet floor holds
     // in every frame; still well below a haze wall, ACES + threshold bloom downstream.
-    material.opacityNode = clamp(intensity, 0.0, 0.5).mul(uOpacity);
+    material.opacityNode = clamp(
+        intensity.mul(0.7).add(CH7_AMBIENT_WASH_SETTINGS.opacityFloor),
+        0.0,
+        CH7_AMBIENT_WASH_SETTINGS.opacityCap,
+    ).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
+    material.depthTest = false;
     material.side = THREE.BackSide;
     material.blending = THREE.AdditiveBlending;
     // Intentionally NO emitsBloom: this is a backstop wash, not a bloom emitter.
 
-    const geometry = new THREE.SphereGeometry(300, 32, 24);
+    const geometry = new THREE.SphereGeometry(CH7_AMBIENT_WASH_SETTINGS.sphereRadius, 32, 24);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'ambient-violet-wash-tsl';
     mesh.renderOrder = -95; // just in front of the void dome (-100), behind heroes
     mesh.frustumCulled = false;
+    mesh.userData.readability = CH7_AMBIENT_WASH_SETTINGS;
     return {
         mesh, material, geometry, uniforms: { uOpacity },
     };
 }
 
 // ── Drifting violet corridor dust (instanced billboards, additive feathered) ─────
+
+export const CH7_CORRIDOR_DUST_SETTINGS = Object.freeze({
+    minCount: 160,
+    maxCount: 820,
+    spreadX: 380,
+    spreadY: 360,
+    depthNear: -55,
+    depthSpan: 560,
+    minSize: 5.5,
+    sizeSpan: 11,
+    colorGain: 1.08,
+    glowPower: 1.7,
+    breatheBase: 0.36,
+    breatheSwing: 0.11,
+    opacityCap: 0.62,
+});
 
 /**
  * Near/mid drifting violet dust motes that hug the corridor span the camera traverses,
@@ -422,7 +459,10 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
 export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) {
     // Creative plan ch7 item 1: density raised toward 3× through the dead 07–23
     // midsection (the .js scales off the quality preset); hard-capped for fill-rate.
-    const count = Math.max(120, Math.min(Math.floor(requestedCount), 1100));
+    const count = Math.max(
+        CH7_CORRIDOR_DUST_SETTINGS.minCount,
+        Math.min(Math.floor(requestedCount), CH7_CORRIDOR_DUST_SETTINGS.maxCount),
+    );
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -448,15 +488,17 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
         const stride = index * 3;
         // Spread laterally + across the full local-Y corridor travel, biased in front so
         // the camera always has near + mid motes for parallax depth.
-        positions[stride] = (Math.random() - 0.5) * 320;
-        positions[stride + 1] = (Math.random() - 0.5) * 320;
-        positions[stride + 2] = -30 - Math.random() * 460;
+        positions[stride] = (Math.random() - 0.5) * CH7_CORRIDOR_DUST_SETTINGS.spreadX;
+        positions[stride + 1] = (Math.random() - 0.5) * CH7_CORRIDOR_DUST_SETTINGS.spreadY;
+        positions[stride + 2] = CH7_CORRIDOR_DUST_SETTINGS.depthNear
+            - Math.random() * CH7_CORRIDOR_DUST_SETTINGS.depthSpan;
 
         const color = palette[index % palette.length];
         colors[stride] = color.r;
         colors[stride + 1] = color.g;
         colors[stride + 2] = color.b;
-        sizes[index] = 6.0 + Math.random() * 14.0;
+        sizes[index] = CH7_CORRIDOR_DUST_SETTINGS.minSize
+            + Math.random() * CH7_CORRIDOR_DUST_SETTINGS.sizeSpan;
         phases[index] = Math.random() * Math.PI * 2;
     }
 
@@ -484,16 +526,25 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     // brighter ember core (pow 2.0 keeps a fuller body than the old 2.2 so motes read at
     // distance) — still fully feathered to 0 at the edge, no hard ring.
     const d = length(uv().sub(0.5));
-    const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 2.0);
+    const glow = pow(
+        clamp(oneMinus(d.mul(2.0)), 0.0, 1.0),
+        CH7_CORRIDOR_DUST_SETTINGS.glowPower,
+    );
     // Gentle breathing alpha — raised again (0.22 → 0.3 base, creative plan: the bokeh
     // field needs 3–4× perceived density/brightness through the midsection) while
     // staying capped well below a haze wall.
-    const breathe = sin(uTime.mul(0.3).add(aPhase)).mul(0.1).add(0.3);
+    const breathe = sin(uTime.mul(0.3).add(aPhase))
+        .mul(CH7_CORRIDOR_DUST_SETTINGS.breatheSwing)
+        .add(CH7_CORRIDOR_DUST_SETTINGS.breatheBase);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = aColor;
-    material.opacityNode = glow.mul(breathe);
+    material.colorNode = aColor.mul(CH7_CORRIDOR_DUST_SETTINGS.colorGain);
+    material.opacityNode = clamp(
+        glow.mul(breathe),
+        0.0,
+        CH7_CORRIDOR_DUST_SETTINGS.opacityCap,
+    );
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -503,6 +554,7 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'corridor-violet-dust-tsl';
     mesh.frustumCulled = false;
+    mesh.userData.readability = CH7_CORRIDOR_DUST_SETTINGS;
     return { mesh, material, geometry };
 }
 
@@ -529,7 +581,7 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
  * @param {number} [count] instance count (capped); scale off options.particleCount in .js
  */
 export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
-    const safeCount = Math.max(48, Math.min(Math.floor(count), 900));
+    const safeCount = Math.max(48, Math.min(Math.floor(count), 620));
     const bases = new Float32Array(safeCount * 3); // x=baseRadius, y=baseAngle, z=baseZ/height
     const colors = new Float32Array(safeCount * 3);
     const sizes = new Float32Array(safeCount);
@@ -710,7 +762,7 @@ function createTwinkleMaterialTSL(uTime, options = {}) {
 // ── Transcendence shards (additive points, bloom-eligible) ───────────────────────
 
 export function createTranscendenceShardsTSL(uTime = uniform(0)) {
-    const count = 220;
+    const count = 150;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -762,7 +814,7 @@ export function createTranscendenceShardsTSL(uTime = uniform(0)) {
 // ── Lensed starfield (additive points, bloom-eligible) ───────────────────────────
 
 export function createLensingStarfieldTSL(uTime = uniform(0)) {
-    const count = 1100;
+    const count = 760;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);

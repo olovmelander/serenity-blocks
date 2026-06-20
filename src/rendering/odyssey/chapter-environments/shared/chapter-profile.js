@@ -172,29 +172,32 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // Deepened (capture review): 0x9ec6e8/0xaec8e0 were so pale that FogExp2
             // washed the upper frame near-white. A richer mid sky-blue reads as a real
             // daytime sky and lets the vegetation/clouds register against it.
-            skyColor: 0x6ba3d8,
-            fogColor: 0x6f9ec4,
+            skyColor: 0x4d95cf,
+            // Golden-hour scene fog (was cool 0x4f8fb8): a warm desaturated gold so the whole
+            // distance — meadow hills + the snow range — reads as warm atmospheric scatter
+            // (alpenglow on the peaks) instead of a cool blue veil that buried the warm rig.
+            fogColor: 0xb8a47e,
             // Creative plan Ch3 item 1 (value restoration): the fog lift was the enemy —
             // 0.004 → 0.0024 so the dark foreground layer does the luminosity work and
             // the pastels read luminous instead of washed.
-            fogDensity: 0.0024,
+            fogDensity: 0.0016,
             ambientLight: 0xfff8e7,
-            ambientIntensity: 0.8,
+            ambientIntensity: 0.58,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
             // High warm sun.
             lightDir: [0.4, 0.8, 0.45],
             lightColor: 0xfff1d0,
             lightIntensity: 1.15,
-            exposure: 1.05,
+            exposure: 0.98,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.LEY_LINE,
             baseColor: 0x1d4a22,
             // Creative plan Ch3 item 7: a sun-warmed chlorophyll leyline (the old lime
             // 0x9be84f clashed with the golden hour instead of belonging to it).
-            emissiveColor: 0xc9cf52,
+            emissiveColor: 0x96a842,
             flowSpeed: 0.7,
-            widthScale: 0.98,
+            widthScale: 0.9,
         },
         node: { style: ODYSSEY_NODE_STYLES.SEED_LANTERN },
         anchor: 'distantRange',
@@ -253,23 +256,23 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // Deepened (capture review): 0xc8b6d6/0xb9a6c8 washed the frame near-white.
             // A richer warm-violet keeps the bright/hazy daytime identity while letting
             // the cloud strata, aurora and sun read instead of a flat pale wash.
-            skyColor: 0x9a7fb5,
-            fogColor: 0x8266a0,
-            fogDensity: 0.006,
-            ambientLight: 0x4a5568,
-            ambientIntensity: 0.5,
+            skyColor: 0x4a426a,
+            fogColor: 0x303656,
+            fogDensity: 0.0035,
+            ambientLight: 0x2f3850,
+            ambientIntensity: 0.34,
             skyFeatures: ['cloudDeck', 'aurora', 'rainVeil'],
             lightDir: [0.2, 0.7, 0.5],
             lightColor: 0xcfe0ff,
             lightIntensity: 0.95,
-            exposure: 1.1,
+            exposure: 0.96,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.JET_STREAM,
-            baseColor: 0x141d33,
-            emissiveColor: 0x9fc6ff,
+            baseColor: 0x0b1426,
+            emissiveColor: 0x5f8db8,
             flowSpeed: 1.2,
-            widthScale: 1.05,
+            widthScale: 0.94,
         },
         node: { style: ODYSSEY_NODE_STYLES.CLOUD_WISP },
         anchor: 'cloudBreak',
@@ -277,11 +280,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '5-6',
         transition: {
             id: '5-6',
-            // 5->6 is the journey's WORST seam ("pink soup in space"). Widen the fog/
-            // content seam (0.018 default -> 0.03) so the violet haze dissolves toward the
-            // black vacuum EARLIER and the ecotone has room to ignite Space's stars across
-            // the last ~8% of Sky (ChapterEnvironmentManager 5->6 seam-in handling), so by
-            // Space-01 the crisp vacuum reads immediately instead of arriving late.
+            // 5->6 carries the aurora out of Sky before Space fully asserts itself.
+            // Keep the widened seam so the handoff has room, but Chapter 6 now stages its
+            // own star/hero/clutter reveal instead of pre-igniting everything in Sky.
             seamWidth: 0.03,
             preloadDistance: 0.06,
             stinger: 'atmosphere-edge',
@@ -336,11 +337,11 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.TRANSCENDENCE,
         palette: { primary: 0xff44aa, accent: 0xffc266, shadow: 0x000000 },
         atmosphere: {
-            skyColor: 0x0a0410,
-            fogColor: 0x0a0410,
-            fogDensity: 0.010,
-            ambientLight: 0x1a1a1a,
-            ambientIntensity: 0.2,
+            skyColor: 0x160c2a,
+            fogColor: 0x160c2a,
+            fogDensity: 0.012,
+            ambientLight: 0x261132,
+            ambientIntensity: 0.24,
             skyFeatures: ['accretionDisk', 'lensing', 'infall'],
             // No key — accretion glow only.
             lightDir: [0.0, 0.1, -1.0],
@@ -350,10 +351,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         path: {
             style: ODYSSEY_PATH_STYLES.HORIZON_FILAMENT,
-            baseColor: 0x180611,
-            emissiveColor: 0xff5fb0,
+            baseColor: 0x0e0310,
+            emissiveColor: 0x9a2d76,
             flowSpeed: 1.6,
-            widthScale: 0.95,
+            widthScale: 0.84,
         },
         node: { style: ODYSSEY_NODE_STYLES.LENSED_SHARD },
         anchor: 'accretionDisk',
@@ -388,10 +389,12 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         path: {
             style: ODYSSEY_PATH_STYLES.NEON_DATA_LINE,
-            baseColor: 0x0c0a1f,
-            emissiveColor: 0x00eaff,
+            baseColor: 0x080816,
+            // Wave R Ch8: keep the data line readable without letting electric cyan
+            // overpower the Retrosun/facade value hierarchy.
+            emissiveColor: 0x18b9c8,
             flowSpeed: 1.5,
-            widthScale: 1.0,
+            widthScale: 0.82,
         },
         node: { style: ODYSSEY_NODE_STYLES.NEON_SIGN },
         anchor: 'citySpire',

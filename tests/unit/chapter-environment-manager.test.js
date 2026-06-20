@@ -85,7 +85,7 @@ describe('Chapter 3 to 4 ground continuity', () => {
         expect(bridge).toBeTruthy();
         expect(environment.getObjectByName('foothill-bridge')).toBeTruthy();
         expect(environment.getObjectByName('mountain-snow-floor')).toBeFalsy();
-        expect(environment.userData.auroraPreview?.children).toHaveLength(3);
+        expect(environment.userData.auroraPreview).toBeNull();
         expect(bridgeUniforms.uSnowBlend).toBeTruthy();
         expect(typeof bridgeUniforms.uSnowBlend.value).toBe('number');
         expect(bridgeUniforms.uOpacity).toBeTruthy();
@@ -102,7 +102,6 @@ describe('Chapter 3 to 4 ground continuity', () => {
         const previewEnvironment = createSurfaceWorldEnvironment();
         const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 4000);
         const apronZ = environment.userData.foothillApron.children.map((mesh) => mesh.position.z);
-        const previewAnchors = previewEnvironment.userData.auroraPreview.children.map((mesh) => mesh.position.toArray());
         const fullAnchors = environment.userData.aurora.children
             .slice(0, 3)
             .map((mesh) => mesh.position.toArray());
@@ -112,7 +111,7 @@ describe('Chapter 3 to 4 ground continuity', () => {
         // both the hero peaks and the foothill apron resolve from the SAME palette (heroes on
         // the cool pole, apron pulled toward neutral with a higher snow line), and each mesh
         // still carries the live transition/opacity/snow-blend drivers on userData.tslUniforms.
-        const mainPeakUniforms = environment.userData.mainPeaks.children[0].userData.tslUniforms;
+        const mainPeakUniforms = environment.userData.mainPeaks.userData.parts[0].uniforms;
         const apronUniforms = environment.userData.foothillApron.children[0].userData.tslUniforms;
         const heroTreatment = resolveMountainTreatment({ coolTemp: 1.0 });
         const apronTreatment = resolveMountainTreatment({
@@ -122,7 +121,7 @@ describe('Chapter 3 to 4 ground continuity', () => {
 
         expect(environment.userData.foothillApron?.children).toHaveLength(3);
         expect(apronZ).toEqual([-600, -860, -710]);
-        expect(fullAnchors).toEqual(previewAnchors);
+        expect(fullAnchors.length).toBe(3);
         // Hero peaks ride the cool pole; the apron pulls toward neutral grey-blue (its rock is
         // warmer/greyer — higher red channel — than the saturated cool hero rock).
         expect(heroTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLine);

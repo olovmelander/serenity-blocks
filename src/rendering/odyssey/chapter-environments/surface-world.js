@@ -9,43 +9,36 @@
  * - Volumetric Golden Sun Rays
  * - Flowing "God Ray" Atmosphere
  * - Soft Procedural Clouds
- * - Fluttering Petals & Butterflies
+ * - Fluttering Butterflies
  *
  * WebGPU/TSL: this live chapter now runs on THREE.WebGPURenderer. Its GLSL
  * THREE.ShaderMaterials were replaced with the validated TSL NodeMaterial builders in
- * the sibling surface-world.tsl.js, and the canvas-point petals were rebuilt as instanced
- * billboard quads (odyssey-tsl-billboard.js). The public API (exports, group.userData
+ * the sibling surface-world.tsl.js. The public API (exports, group.userData
  * shape, update signature) is unchanged.
  */
 
 import * as THREE from 'three/webgpu';
-import {
-    attribute,
-    cos as tslCos,
-    float as tslFloat,
-    max as tslMax,
-    mod as tslMod,
-    oneMinus,
-    sin as tslSin,
-    smoothstep as tslSmoothstep,
-    step as tslStep,
-    uniform,
-    uv,
-    vec2 as tslVec2,
-    vec3,
-} from 'three/tsl';
+import { uniform } from 'three/tsl';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
     getOdysseyPathPointAt,
     ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET,
 } from '../path-utils.js';
+import { loadOdysseyGltfCached } from './shared/odyssey-gltf-loader.js';
 import {
-    createMountainAuroraBackdrop,
-    resolveMountainAuroraPreviewOpacity,
-    SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES,
-} from './shared/mountain-aurora.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+    getChapter3QuaterniusAssetById,
+    getChapter3QuaterniusAssetRecords,
+    summarizeChapter3QuaterniusAssets,
+} from './shared/chapter-03-quaternius-assets.js';
+import {
+    getChapter3FlyingBirdAssetById,
+} from './shared/chapter-03-bird-assets.js';
+import {
+    createSnowConiferBelt,
+    buildConiferBeltPlacements,
+} from './shared/snow-conifer-belt.js';
+import { createCanonicalMountainRangeTSL } from './shared/canonical-mountain-range.js';
 import {
     createSkyBackgroundTSL,
     createOceanSurfaceTSL,
@@ -54,8 +47,7 @@ import {
     createFluffyGrassTSL,
     createSunRaysTSL,
     createCloudsTSL,
-    createDistantMountainsTSL,
-    createGrassTuftsTSL,
+    createMeadowFlowersTSL,
     createTreesTSL,
     createTreeLineTSL,
     createReedsTSL,
@@ -70,6 +62,9 @@ import {
     createCabinTSL,
     createForegroundPassByTSL,
     createSnowMotesTSL,
+    CH3_BIRD_SILHOUETTE_SETTINGS,
+    getTerrainHeight,
+    foothillBridgeHeight,
 } from './surface-world.tsl.js';
 
 /**
@@ -141,6 +136,528 @@ function tagUniforms(object3d, builderUniforms) {
     return object3d;
 }
 
+const CH3_QUATERNIUS_GROUND_PLACEMENTS = Object.freeze([
+    {
+        assetId: 'tree-hero', name: 'hero-left-tree', x: -120, z: -120, scale: 1.05, rotationY: -0.35,
+    },
+    {
+        assetId: 'tree-t9kb', name: 'right-round-tree', x: 120, z: -120, scale: 0.95, rotationY: 0.7,
+    },
+    {
+        assetId: 'pine-cluster', name: 'pine-cluster-left-ridge', x: -150, z: -240, scale: 1.0, rotationY: 0.3,
+    },
+    {
+        assetId: 'pine-cluster', name: 'pine-cluster-right-ridge', x: 120, z: -240, scale: 0.96, rotationY: -0.35,
+    },
+    {
+        assetId: 'pine-igsu', name: 'individual-pine-front-right', x: 150, z: -40, scale: 0.76, rotationY: -0.55,
+    },
+    {
+        assetId: 'pine-79gm', name: 'individual-pine-left-mid', x: -80, z: -196, scale: 0.82, rotationY: 0.2,
+    },
+    {
+        assetId: 'pine-699s', name: 'individual-pine-right-mid', x: 90, z: -200, scale: 0.88, rotationY: -0.65,
+    },
+    {
+        assetId: 'twisted-edsp', name: 'twisted-left-accent', x: -150, z: -210, scale: 0.82, rotationY: 0.15,
+    },
+    {
+        assetId: 'twisted-9awl', name: 'twisted-right-accent', x: 150, z: -120, scale: 0.74, rotationY: -0.15,
+    },
+    {
+        assetId: 'tree-cluster', name: 'distant-green-tree-mass-left', x: -180, z: -280, scale: 1.0, rotationY: 0.9,
+    },
+    {
+        assetId: 'tree-cluster', name: 'distant-green-tree-mass-right', x: 90, z: -280, scale: 0.9, rotationY: -0.2,
+    },
+    {
+        assetId: 'bush-flowers', name: 'flower-bush-left', x: -120, z: -160, scale: 0.82, rotationY: 0.1,
+    },
+    {
+        assetId: 'bush-flowers', name: 'flower-bush-right', x: 120, z: -160, scale: 0.8, rotationY: -0.5,
+    },
+    {
+        assetId: 'flower-group', name: 'shore-flowers-left', x: -90, z: -160, scale: 0.7, rotationY: 0.4,
+    },
+    {
+        assetId: 'flower-group', name: 'shore-flowers-right', x: 90, z: -160, scale: 0.66, rotationY: -0.3,
+    },
+    {
+        assetId: 'fern', name: 'fern-left', x: -60, z: -200, scale: 0.7, rotationY: 0.8,
+    },
+    {
+        assetId: 'fern', name: 'fern-right', x: 60, z: -200, scale: 0.66, rotationY: -0.7,
+    },
+    {
+        assetId: 'clover', name: 'clover-left', x: -60, z: -160, scale: 0.78, rotationY: 0.25,
+    },
+    {
+        assetId: 'clover', name: 'clover-right', x: 60, z: -160, scale: 0.72, rotationY: -0.45,
+    },
+    {
+        assetId: 'rock-medium', name: 'shore-rock-left', x: -180, z: -40, scale: 0.86, rotationY: -0.25,
+    },
+    {
+        assetId: 'rock-medium', name: 'hill-foot-rock-right', x: 104, z: -126, scale: 1.05, rotationY: 0.55,
+    },
+    {
+        assetId: 'pebble-round', name: 'wet-pebble-left', x: -120, z: -120, scale: 0.52, rotationY: 0.1,
+    },
+    {
+        assetId: 'pebble-round', name: 'wet-pebble-right', x: 120, z: -80, scale: 0.5, rotationY: -0.25,
+    },
+]);
+
+// Chapter 3's flying birds: skinned, vertex-coloured goldfinch + swallow GLBs
+// (pipeline-authored, see chapter-03-bird-assets.js). They flap via their own
+// "Flap" skeletal clip, so `wingRig: false` drops the old synthetic wing
+// triangles. `modelRotationY` is the per-flight facing knob — the bird's nose
+// must lead its travel direction once the update loop applies root.rotation.y.
+const CH3_FLYING_BIRD_FLIGHTS = Object.freeze([
+    {
+        assetId: 'swallow-flying',
+        name: 'swallow-cross-left',
+        crosser: true,
+        wingRig: false,
+        modelRotationY: 0,
+        lane: -34,
+        height: 18,
+        speed: 1.05,
+        offset: 0.18,
+        scale: 0.9,
+    },
+    {
+        assetId: 'goldfinch-flying',
+        name: 'goldfinch-cross-right',
+        crosser: true,
+        wingRig: false,
+        modelRotationY: 0,
+        lane: -68,
+        height: 24,
+        speed: 0.82,
+        offset: 0.61,
+        scale: 0.78,
+    },
+    {
+        assetId: 'swallow-flying',
+        name: 'swallow-cross-high',
+        crosser: true,
+        wingRig: false,
+        modelRotationY: 0,
+        lane: -104,
+        height: 34,
+        speed: 0.62,
+        offset: 0.88,
+        scale: 0.62,
+    },
+    {
+        assetId: 'goldfinch-flying',
+        name: 'goldfinch-distant-left',
+        crosser: false,
+        wingRig: false,
+        modelRotationY: 0,
+        radius: 88,
+        height: 46,
+        speed: 0.22,
+        offset: 1.2,
+        scale: 0.82,
+    },
+    {
+        assetId: 'goldfinch-flying',
+        name: 'goldfinch-distant-right',
+        crosser: false,
+        wingRig: false,
+        modelRotationY: 0,
+        radius: 118,
+        height: 54,
+        speed: 0.18,
+        offset: 3.4,
+        scale: 0.72,
+    },
+]);
+
+function getQuaterniusOpacityTargets(group) {
+    if (!group.userData.quaterniusMaterialOpacityTargets) {
+        group.userData.quaterniusMaterialOpacityTargets = [];
+    }
+    return group.userData.quaterniusMaterialOpacityTargets;
+}
+
+function registerQuaterniusMaterial(group, material) {
+    if (!material) return;
+    const targets = getQuaterniusOpacityTargets(group);
+    if (!targets.includes(material)) {
+        material.userData.odysseyBaseOpacity = material.opacity ?? 1;
+        material.transparent = true;
+        material.depthWrite = false;
+        material.needsUpdate = true;
+        targets.push(material);
+    }
+}
+
+function resolveQuaterniusRuntimeColor(sourceMaterial, record) {
+    const name = (sourceMaterial?.name || '').toLowerCase();
+
+    if (record.role === 'bird') {
+        return 0x1e3d58;
+    }
+    if (record.role === 'animated-bird') {
+        if (name.includes('secondary')) return 0xd29b38;
+        if (name.includes('eye_white')) return 0xe8edf0;
+        if (name.includes('eye_black')) return 0x11151a;
+        return 0x6b6380;
+    }
+    if (record.role === 'shore-rock') {
+        return name.includes('path') ? 0x889083 : 0x778176;
+    }
+    if (name.includes('flower')) {
+        return 0xf2b7cf;
+    }
+    if (name.includes('wood') || name.includes('bark')) {
+        return name.includes('twisted') ? 0x4a3329 : 0x77533a;
+    }
+    if (name.includes('pine')) {
+        return 0x236d27;
+    }
+    if (name.includes('twisted')) {
+        return 0xbb4836;
+    }
+    if (name.includes('leaf') || name.includes('green') || name.includes('grass')) {
+        return record.id === 'tree-hero' ? 0x3e8f31 : 0x337f2d;
+    }
+    if (record.role === 'ground-detail') {
+        return 0x3f8f35;
+    }
+
+    return 0x4d8a35;
+}
+
+// Deterministic per-placement tint so repeated GLB props (pines, tree clusters) stop
+// reading as identical stamps. FNV-1a hash of the placement name → stable HSL jitter
+// (no per-run popping). Greens fan yellow↔blue-green; low-sat rocks barely shift.
+function placementTintFromName(name) {
+    if (!name) return null;
+    // Bitwise-free deterministic scramble: accumulate the chars into a number, then
+    // sin-fract it to a stable pseudo-random in [-1, 1] per (name, salt).
+    const unit = (salt) => {
+        let acc = salt * 127.1 + 311.7;
+        for (let i = 0; i < name.length; i += 1) {
+            acc += name.charCodeAt(i) * (i + 1) * 13.37;
+        }
+        const s = Math.sin(acc) * 43758.5453;
+        return ((s - Math.floor(s)) * 2) - 1; // fract → [-1, 1]
+    };
+    return { h: unit(1) * 0.035, s: unit(2) * 0.12, l: unit(3) * 0.09 };
+}
+
+function applyTintToColor(hex, tint) {
+    const color = new THREE.Color(hex);
+    if (!tint) return color;
+    const hsl = { h: 0, s: 0, l: 0 };
+    color.getHSL(hsl);
+    color.setHSL(
+        (hsl.h + tint.h + 1) % 1,
+        THREE.MathUtils.clamp(hsl.s + tint.s, 0, 1),
+        THREE.MathUtils.clamp(hsl.l + tint.l, 0, 1),
+    );
+    return color;
+}
+
+function createQuaterniusRuntimeMaterial(sourceMaterial, record, tint = null) {
+    const material = new THREE.MeshBasicMaterial({
+        color: applyTintToColor(resolveQuaterniusRuntimeColor(sourceMaterial, record), tint),
+        opacity: sourceMaterial?.opacity ?? 1,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+    });
+    material.name = `odyssey-${record.id}-${sourceMaterial?.name || 'material'}`;
+    material.userData.sourceMaterialName = sourceMaterial?.name || null;
+    material.userData.sourceMode = 'quaternius-runtime-color';
+    return material;
+}
+
+function createBirdWingGeometry(side = 1, span = 6.0) {
+    const geometry = new THREE.BufferGeometry();
+    const rootX = 0.16 * side;
+    const tipX = span * side;
+    const positions = new Float32Array([
+        rootX, 0.0, 0.0,
+        tipX, 0.0, -0.45,
+        side * span * 0.34, 0.0, -1.2,
+        rootX, 0.0, 0.0,
+        side * span * 0.34, 0.0, -1.2,
+        side * span * 0.58, 0.0, 0.42,
+    ]);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
+function addFlyingWingRig(root, group, flight) {
+    const wingMaterial = new THREE.MeshBasicMaterial({
+        color: 0x2b5d79,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+    });
+    wingMaterial.name = 'odyssey-cc0-bird-flight-wings';
+    registerQuaterniusMaterial(group, wingMaterial);
+
+    const span = flight.wingSpan ?? 6.0;
+    const leftWing = new THREE.Mesh(createBirdWingGeometry(-1, span), wingMaterial);
+    const rightWing = new THREE.Mesh(createBirdWingGeometry(1, span), wingMaterial);
+    leftWing.name = 'left-flight-wing';
+    rightWing.name = 'right-flight-wing';
+    leftWing.position.set(0, 0.35, 0.05);
+    rightWing.position.set(0, 0.35, 0.05);
+    leftWing.frustumCulled = false;
+    rightWing.frustumCulled = false;
+    root.add(leftWing, rightWing);
+    root.userData.flightWings = { leftWing, rightWing };
+}
+
+function prepareQuaterniusScene(scene, record, group, tint = null) {
+    scene.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = false;
+        child.receiveShadow = true;
+        child.frustumCulled = false;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const runtimeMaterials = materials.map((material) => (
+            createQuaterniusRuntimeMaterial(material, record, tint)
+        ));
+        child.material = Array.isArray(child.material) ? runtimeMaterials : runtimeMaterials[0];
+        runtimeMaterials.forEach((material) => registerQuaterniusMaterial(group, material));
+    });
+
+    scene.userData.assetRecord = record;
+    scene.userData.sourceMode = 'third-party-cc0-glb';
+}
+
+// Flying birds keep their own baked vertex colours (a goldfinch/swallow must
+// read as themselves), so we DON'T run the flat role-colour pass. We still swap
+// to a flat unlit MeshBasicMaterial to match the chapter's stylised look and to
+// register it for the shared surface opacity fade. Skinning is preserved because
+// only `.material` is replaced — geometry, skeleton, and bindings are untouched.
+function prepareFlyingBirdScene(scene, record, group) {
+    scene.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = false;
+        child.receiveShadow = false;
+        child.frustumCulled = false;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const runtimeMaterials = materials.map((source) => {
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                vertexColors: true,
+                opacity: source?.opacity ?? 1,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                toneMapped: false,
+            });
+            material.name = `odyssey-${record.id}-${source?.name || 'material'}`;
+            material.userData.sourceMaterialName = source?.name || null;
+            material.userData.sourceMode = 'flying-bird-vertex-color';
+            return material;
+        });
+        child.material = Array.isArray(child.material) ? runtimeMaterials : runtimeMaterials[0];
+        runtimeMaterials.forEach((material) => registerQuaterniusMaterial(group, material));
+    });
+
+    scene.userData.assetRecord = record;
+    scene.userData.sourceMode = 'pipeline-flying-bird-glb';
+}
+
+function applyQuaterniusMaterialOpacity(targets, opacity) {
+    targets.forEach((material) => {
+        const baseOpacity = typeof material.userData.odysseyBaseOpacity === 'number'
+            ? material.userData.odysseyBaseOpacity
+            : material.opacity ?? 1;
+        material.opacity = baseOpacity * opacity;
+        material.depthWrite = material.opacity >= 0.98;
+        material.visible = material.opacity > 0.002;
+    });
+}
+
+function resolveGroundPoint(x, z, minHeight = 3.0) {
+    const offsets = [
+        [0, 0],
+        [14, 0],
+        [-14, 0],
+        [0, 14],
+        [0, -14],
+        [18, 12],
+        [-18, 12],
+        [18, -12],
+        [-18, -12],
+        [28, 0],
+        [-28, 0],
+    ];
+    let best = { x, z, y: getTerrainHeight(x, z) };
+
+    offsets.forEach(([ox, oz]) => {
+        const px = x + ox;
+        const pz = z + oz;
+        const y = getTerrainHeight(px, pz);
+        if (y >= minHeight && best.y < minHeight) {
+            best = { x: px, z: pz, y };
+        } else if (best.y < minHeight && y > best.y) {
+            best = { x: px, z: pz, y };
+        }
+    });
+
+    return best;
+}
+
+async function addQuaterniusGroundModel(group, groundLayer, placement) {
+    const record = getChapter3QuaterniusAssetById(placement.assetId);
+    if (!record?.url) return null;
+
+    const gltf = await loadOdysseyGltfCached(record.url);
+    const model = gltf.scene;
+    model.name = `quaternius-${placement.name || record.id}`;
+    prepareQuaterniusScene(model, record, group, placementTintFromName(placement.name));
+
+    const ground = resolveGroundPoint(placement.x, placement.z, placement.minHeight ?? 4.0);
+    const scale = record.runtimeScale * (placement.scale ?? 1);
+    model.rotation.set(placement.rotationX ?? 0, placement.rotationY ?? 0, placement.rotationZ ?? 0);
+    model.scale.setScalar(scale);
+    // Seat the model's LOWEST vertex on the terrain (pivot-safe): measure the scaled/rotated
+    // bounds while the model is still un-parented (matrixWorld == local), then place so the base
+    // sits at the sampled ground height. groundLayer.position.y already applies terrainOffsetY.
+    model.position.set(ground.x, 0, ground.z);
+    model.updateMatrixWorld(true);
+    const baseY = new THREE.Box3().setFromObject(model).min.y;
+    model.position.y = ground.y + (placement.yOffset ?? 0) - baseY;
+    groundLayer.add(model);
+    return model;
+}
+
+async function addFlyingBird(group, birdLayer, flight) {
+    const record = getChapter3FlyingBirdAssetById(flight.assetId);
+    if (!record?.url) return null;
+
+    const gltf = await loadOdysseyGltfCached(record.url);
+    const model = gltf.scene;
+    model.name = `flying-bird-${flight.name || record.id}-model`;
+    prepareFlyingBirdScene(model, record, group);
+
+    const root = new THREE.Group();
+    root.name = `flying-bird-${flight.name || record.id}`;
+    root.userData.assetRecord = record;
+    root.userData.flight = { ...flight };
+    const scale = (record.runtimeScale ?? 1) * (flight.scale ?? 1);
+    model.scale.setScalar(scale);
+    // Base yaw 0 (no 180° flip): these are different models from bird-jay, so the
+    // facing is tuned per-flight via modelRotationY after a capture check.
+    model.rotation.set(
+        flight.modelRotationX ?? 0,
+        flight.modelRotationY ?? 0,
+        flight.modelRotationZ ?? 0,
+    );
+    root.add(model);
+    if (flight.wingRig !== false) {
+        addFlyingWingRig(root, group, flight);
+    }
+    birdLayer.add(root);
+
+    let mixer = null;
+    if (gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        gltf.animations.forEach((clip) => {
+            mixer.clipAction(clip).play();
+        });
+        group.userData.quaterniusAnimationMixers.push(mixer);
+    }
+
+    group.userData.quaterniusBirdFlights.push({
+        root,
+        mixer,
+        ...flight,
+    });
+
+    return root;
+}
+
+// Kept (intentionally uncalled) so the GLB vegetation loader is one line away from restoration;
+// see createQuaterniusNatureLayer (GLBs removed 2026-06-18 per user request, Ch3 being redone).
+// eslint-disable-next-line no-unused-vars
+async function loadQuaterniusNatureAssets(group, layer) {
+    const { groundLayer, birdLayer } = layer.userData;
+    const jobs = [
+        ...CH3_QUATERNIUS_GROUND_PLACEMENTS.map(
+            (placement) => addQuaterniusGroundModel(group, groundLayer, placement),
+        ),
+        ...CH3_FLYING_BIRD_FLIGHTS.map(
+            (flight) => addFlyingBird(group, birdLayer, flight),
+        ),
+    ];
+
+    const results = await Promise.allSettled(jobs);
+    const loadedCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
+    const failedCount = results.length - loadedCount;
+    layer.userData.loadedCount = loadedCount;
+    layer.userData.failedCount = failedCount;
+    layer.userData.assetsReady = loadedCount > 0;
+    layer.userData.assetStatus = loadedCount > 0 ? 'glb-loaded' : 'glb-error';
+    group.userData.quaterniusAssetsReady = loadedCount > 0;
+
+    if (failedCount > 0) {
+        console.warn(`[Odyssey][Ch3] ${failedCount} Quaternius assets failed to load`);
+    }
+}
+
+function createQuaterniusNatureLayer(group, terrainOffsetY) {
+    const layer = new THREE.Group();
+    layer.name = 'quaternius-cc0-nature-assets';
+    layer.userData.assetManifest = summarizeChapter3QuaterniusAssets();
+    layer.userData.assetRecords = getChapter3QuaterniusAssetRecords();
+    layer.userData.assetStatus = 'pending';
+
+    const groundLayer = new THREE.Group();
+    groundLayer.name = 'quaternius-ground-props';
+    // terrainOffsetY only — the GLB props sample getTerrainHeight directly and bake NO -15
+    // (unlike the procedural instancers), so the old extra -15 sank every model ~15u underground.
+    groundLayer.position.y = terrainOffsetY;
+    layer.add(groundLayer);
+
+    const birdLayer = new THREE.Group();
+    birdLayer.name = 'quaternius-birds';
+    layer.add(birdLayer);
+
+    layer.userData.groundLayer = groundLayer;
+    layer.userData.birdLayer = birdLayer;
+    group.userData.quaterniusAnimationMixers = [];
+    group.userData.quaterniusBirdFlights = [];
+    group.userData.quaterniusAssetsReady = false;
+    getQuaterniusOpacityTargets(group);
+
+    if (typeof window === 'undefined') {
+        layer.userData.assetStatus = 'deferred-non-browser';
+        return layer;
+    }
+
+    // GLB VEGETATION REMOVED (2026-06-18, per user request): all Chapter-3 Quaternius ground
+    // props (trees / flowers / bushes / ferns / clover / rocks / pebbles) AND the GLB flying
+    // birds (goldfinch + swallow, ~8.8MB) are no longer loaded — the Ch3 scene is being redone
+    // with new assets. This drops ~33MB of GLB fetch + decode + the per-placement draws/pipelines
+    // off the cold start. The empty ground/bird layers + opacity-target + mixer/flight arrays are
+    // kept so update()/opacity/visibility stays a no-op (no restructure). To restore, re-enable:
+    //   layer.userData.loadPromise = loadQuaterniusNatureAssets(group, layer).catch(...)
+    layer.userData.assetStatus = 'removed-pending-redo';
+    layer.userData.loadedCount = 0;
+    group.userData.quaterniusAssetsReady = true;
+
+    return layer;
+}
+
 export function resolveSurfaceWorldVisibilityState({
     waterSurfaceY,
     surfaceProbeY,
@@ -164,11 +681,9 @@ export function resolveSurfaceWorldVisibilityState({
 }
 
 export function resolveSurfaceWorldAuroraPreviewState(progress) {
-    const previewOpacity = resolveMountainAuroraPreviewOpacity(progress);
-
     return {
-        previewOpacity,
-        previewVisible: previewOpacity > 0,
+        previewOpacity: Number.isFinite(progress) ? 0 : 0,
+        previewVisible: false,
     };
 }
 
@@ -202,11 +717,11 @@ export function resolveSurfaceWorldAlpineRampState(
         return { rampOpacity: 1, rampVisible: true };
     }
 
-    // Begin the fade-in just past a third of Chapter 3 (creative plan asset 10: the
-    // destination landmark must be faintly present from mid-chapter onward, not a
-    // frame-26 surprise) and reach full just before the Mountains boundary.
-    const rampStart = ch3Start + (ch4Start - ch3Start) * 0.32;
-    const rampEnd = ch4Start;
+    // Begin the mountain-world reveal right after the breach: once the camera breaks
+    // through the water, Chapter 4 must already read as the far destination behind the
+    // green islands. The entry opacity gate still prevents any leak during Chapter 2.
+    const rampStart = ch3Start + (ch4Start - ch3Start) * 0.04;
+    const rampEnd = ch3Start + (ch4Start - ch3Start) * 0.52;
     const rampOpacity = THREE.MathUtils.smoothstep(progress, rampStart, rampEnd);
 
     return { rampOpacity, rampVisible: rampOpacity > 0 };
@@ -222,7 +737,13 @@ export function resolveSurfaceWorldAlpineRampState(
 //     (driven up by the manager ecotone) so the shape SWAP cross-dissolves rather than jumps.
 // Pure arithmetic, no allocation. Outside the band (or with no progress) it returns 1 so the
 // chapter reads fully when standalone / mid-chapter.
-const SURFACE_SEAM_RECEDE_BAND = 0.42; // fraction of Ch3 span before the boundary to recede over
+const SURFACE_SEAM_RECEDE_BAND = 0.22; // fraction of Ch3 span before the boundary to recede over
+const SURFACE_SEAM_SURFACE_EXIT_BAND = 0.06; // fraction of Ch3 span per side of the boundary
+// The canonical Ch4 chain is already atmospheric through its base/edge alpha; keeping the
+// preview nearly opaque prevents the live board from reading as see-through ghost peaks.
+const SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY = 1.0;
+const SURFACE_WATER_CROSSING_FADE_START = 0.28;
+const SURFACE_WATER_CROSSING_FADE_END = 0.52;
 
 /**
  * ENTRY RAMP (creative plan Transition In): the landscape slab popped into frame 01–02
@@ -252,6 +773,32 @@ export function resolveSurfaceWorldEntryRampState(
     return { entryOpacity };
 }
 
+export function resolveSurfaceWorldWaterCrossingState(
+    progress,
+    chapterPositions = getActiveOdysseyChapterPositions(),
+) {
+    if (!Number.isFinite(progress)) {
+        return { waterCrossingOpacity: 1, waterCrossingVisible: true };
+    }
+    const ch3Start = chapterPositions?.[2];
+    const ch4Start = chapterPositions?.[3] ?? 1;
+    if (!Number.isFinite(ch3Start) || ch4Start <= ch3Start) {
+        return { waterCrossingOpacity: 1, waterCrossingVisible: true };
+    }
+
+    const local = THREE.MathUtils.clamp((progress - ch3Start) / (ch4Start - ch3Start), 0, 1);
+    const waterCrossingOpacity = 1 - THREE.MathUtils.smoothstep(
+        local,
+        SURFACE_WATER_CROSSING_FADE_START,
+        SURFACE_WATER_CROSSING_FADE_END,
+    );
+
+    return {
+        waterCrossingOpacity,
+        waterCrossingVisible: waterCrossingOpacity > 0.02,
+    };
+}
+
 export function resolveSurfaceWorldSeamRecedeState(
     progress,
     chapterPositions = getActiveOdysseyChapterPositions(),
@@ -266,13 +813,64 @@ export function resolveSurfaceWorldSeamRecedeState(
         return { recedeOpacity: 1 };
     }
 
-    // Recede across the last SURFACE_SEAM_RECEDE_BAND of Ch3 up to the boundary. Smoothstep
-    // 1->0 (note the reversed edges so it falls as progress rises into the seam).
+    // Recede across the last SURFACE_SEAM_RECEDE_BAND of Ch3 up to the boundary.
+    // THREE.MathUtils.smoothstep does not support reversed edges, so invert the normal ramp.
     const span = ch4Start - ch3Start;
     const recedeStart = ch4Start - span * SURFACE_SEAM_RECEDE_BAND;
-    const recedeOpacity = THREE.MathUtils.smoothstep(progress, ch4Start, recedeStart);
+    const recedeOpacity = 1 - THREE.MathUtils.smoothstep(progress, recedeStart, ch4Start);
 
     return { recedeOpacity };
+}
+
+export function resolveSurfaceWorldSurfaceExitState(
+    progress,
+    chapterPositions = getActiveOdysseyChapterPositions(),
+) {
+    if (!Number.isFinite(progress)) {
+        return { surfaceExitOpacity: 1 };
+    }
+
+    const ch3Start = chapterPositions?.[2];
+    const ch4Start = chapterPositions?.[3] ?? 1;
+    if (!Number.isFinite(ch3Start) || ch4Start <= ch3Start) {
+        return { surfaceExitOpacity: 1 };
+    }
+
+    const span = ch4Start - ch3Start;
+    const halfWidth = span * SURFACE_SEAM_SURFACE_EXIT_BAND;
+    const fadeStart = ch4Start - halfWidth;
+    const fadeEnd = ch4Start + halfWidth;
+    const surfaceExitOpacity = 1 - THREE.MathUtils.smoothstep(progress, fadeStart, fadeEnd);
+
+    return { surfaceExitOpacity };
+}
+
+// Snow-conifer placements that climb the foothill bridge across the Ch3→Ch4 seam, thinning to
+// the tree line (none above ~70% of the climb → bare snow). Anchored to the exact bridge
+// surface (foothillBridgeHeight) and kept off the carved player corridor (around x=-18).
+function buildBridgeConiferPlacements() {
+    const out = { spruce: [], pine: [], fir: [] };
+    let placed = 0;
+    let guard = 0;
+    while (placed < 90 && guard < 90 * 18) {
+        guard += 1;
+        const x = (Math.random() - 0.5) * 560;
+        const gz = -210 - Math.random() * 520; // climb zone (-210 .. -730)
+        if (Math.abs(x + 18) < 90) continue; // off the carved corridor
+        const climb = Math.min(1, Math.max(0, (-gz - 180) / 640));
+        if (climb > 0.7) continue; // tree line ends — bare snow above
+        if (Math.random() > (1 - climb * 0.8)) continue; // thin toward the line
+        const y = foothillBridgeHeight(x, gz);
+        let species = 'fir';
+        if (climb < 0.38) species = 'spruce';
+        else if (climb < 0.6) species = 'pine';
+        const scale = (0.6 + Math.random() * 0.55) * (1 - climb * 0.4);
+        out[species].push({
+            x, y: y - 0.3, z: gz, scale, rotationY: Math.random() * Math.PI * 2,
+        });
+        placed += 1;
+    }
+    return out;
 }
 
 export function createSurfaceWorldEnvironment() {
@@ -289,7 +887,7 @@ export function createSurfaceWorldEnvironment() {
     // uSeason (creative plan item 6): ONE scalar, 0 at the surface breach → 1 at the
     // Mountains seam, scripting the spring→autumn→winter arc THROUGH LIGHT — the sky
     // bands, sun disc, key light, god-ray density, tree recolor, and the one-at-a-time
-    // particle stories (petals → pollen → leaves → snow) all ride it.
+    // particle stories (pollen → leaves → snow) all ride it.
     const uTime = uniform(0);
     const uSeason = uniform(0);
     const uniforms = { uTime, uSeason };
@@ -328,7 +926,9 @@ export function createSurfaceWorldEnvironment() {
     // 2. Ocean Surface (Bottom) - visible from above and below
     const ocean = createOceanSurface(uniforms, surfaceOffsetY);
     ocean.name = 'ocean-surface';
+    ocean.userData.kind = 'persistent-blue-sea-with-river';
     group.add(ocean);
+    group.userData.ocean = ocean;
 
     // 3. Distant Landscape/Islands - only visible above water
     const landscape = createLandscape(uniforms, surfaceWorldY);
@@ -346,19 +946,15 @@ export function createSurfaceWorldEnvironment() {
     group.userData.snowFloor = foothillBridge;
 
     // 3.75 Distant Mountains on horizon (same style as Chapter 4)
-    const distantMountains = createDistantMountains(uniforms);
+    const distantMountains = createDistantMountains(uniforms, chapterRange?.center);
     distantMountains.name = 'distant-mountains';
     group.add(distantMountains);
     group.userData.distantMountains = distantMountains;
     group.userData.foothillMist = distantMountains.userData.foothillMist;
 
-    const auroraPreview = createMountainAuroraBackdrop(uniforms, {
-        name: 'mountain-aurora-preview',
-        layerCount: 3,
-        layerOpacities: SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES,
-    });
-    group.add(auroraPreview);
-    group.userData.auroraPreview = auroraPreview;
+    // Chapter 3 should hand to Chapter 4 through mountains and mist only. Aurora belongs
+    // to Chapter 5; keeping this null avoids the old hard-edged preview curtain.
+    group.userData.auroraPreview = null;
 
     // 4. High Quality Fluffy Grass (Removed per user request due to floating artifacts)
     // const grass = createFluffyGrass(uniforms, 1000);
@@ -380,12 +976,7 @@ export function createSurfaceWorldEnvironment() {
     clouds.name = 'clouds';
     group.add(clouds);
 
-    // 7. Petals (Updated) - only visible above water
-    const petals = createPetals(uniforms, 600);
-    petals.name = 'petals';
-    group.add(petals);
-
-    // 8. Butterflies - only visible above water
+    // Butterflies - only visible above water
     const butterflies = createButterflies(20);
     butterflies.name = 'butterflies';
     group.add(butterflies);
@@ -394,11 +985,13 @@ export function createSurfaceWorldEnvironment() {
     // 9. Living Landscapes vegetation — instanced low-poly grass tufts, trees and reeds,
     // all anchored to the same getTerrainHeight() as the terrain so they sit ON the
     // ground. Capped + instanced; FrontSide solid (no flat cardboard undersides).
-    const grassTufts = createGrassTufts(uniforms, 700);
-    grassTufts.name = 'grass-tufts';
-    grassTufts.position.y = terrainOffsetY;
-    group.add(grassTufts);
-    group.userData.grassTufts = grassTufts;
+    // Wildflower meadow (replaces the old grass tufts): sky-children-style cross-card flowers
+    // in coherent color drifts, anchored to the terrain.
+    const meadowFlowers = createMeadowFlowers(uniforms, 2400);
+    meadowFlowers.name = 'meadow-flowers';
+    meadowFlowers.position.y = terrainOffsetY;
+    group.add(meadowFlowers);
+    group.userData.meadowFlowers = meadowFlowers;
 
     const trees = createTrees(uniforms, 26);
     trees.name = 'trees';
@@ -429,8 +1022,8 @@ export function createSurfaceWorldEnvironment() {
 
     // HERO landmark: the great ancient tree on a knoll off the left of the path. Plus
     // falling-leaf billboards drifting off its canopy. Anchored via getTerrainHeight in the
-    // builder (with -15 baked in like the other prop instancers), then lifted by the same
-    // terrainOffsetY the rest of the vegetation uses so it sits on the rendered ground.
+    // builder, then lifted by the same terrainOffsetY the rest of the vegetation uses so the
+    // trunk foot seats on the rendered ground.
     const greatTree = createGreatTree(uniforms);
     greatTree.name = 'great-tree';
     greatTree.position.y += terrainOffsetY;
@@ -439,6 +1032,39 @@ export function createSurfaceWorldEnvironment() {
     // HOOK for B7 (camera landmark look-bias): the Great Tree's LOCAL anchor (relative to
     // the chapter group) so the camera controller can bias its lookAt toward the hero at the
     // hero-tree beat. World position = group.position + this anchor (with the prop offset).
+    // SEAM 3→4 ECOTONE: a snow-conifer tree-line on the higher ground rising toward the
+    // mountains. The SAME vertex-coloured fir/pine/spruce appear in Ch4, so crossing the seam
+    // reads as one continuous alpine world. Density thins to the snow line; uSnowBlend whitens
+    // them with the season/altitude (shared with the terrain + mountain snow line).
+    const coniferSnowBlend = uniform(0);
+    const coniferBelt = createSnowConiferBelt({
+        uSnowBlend: coniferSnowBlend,
+        // Keep inside the rendered 400×400 landscape (±200) so the trees seat on real terrain,
+        // not the foothill-bridge zone beyond it; cluster on the FAR meadow edge (the tree line
+        // climbing toward the seam). The Ch4 side seeds its own conifers on its lower slopes.
+        placementsBySpecies: buildConiferBeltPlacements({
+            count: 170,
+            area: { x: 360, zMin: -188, zMax: -60 },
+            heightBand: { base: 6, line: 26 },
+            sampleHeight: (x, z) => getTerrainHeight(x, z),
+        }),
+    });
+    coniferBelt.position.y = terrainOffsetY;
+    group.add(coniferBelt);
+    group.userData.coniferBelt = coniferBelt;
+
+    // The tree-line CROSSES THE SEAM: conifers continue up the foothill bridge (anchored to its
+    // exact surface) and thin to nothing toward the top — so the forest gives way to bare snow
+    // exactly as the Mountains chapter takes over (a real, well-modelled tree line).
+    const bridgeConiferBelt = createSnowConiferBelt({
+        uSnowBlend: coniferSnowBlend,
+        placementsBySpecies: buildBridgeConiferPlacements(),
+    });
+    bridgeConiferBelt.name = 'snow-conifer-belt-bridge';
+    bridgeConiferBelt.position.y = terrainOffsetY;
+    group.add(bridgeConiferBelt);
+    group.userData.bridgeConiferBelt = bridgeConiferBelt;
+
     const greatTreeAnchor = getSurfaceGreatTreeAnchor();
     group.userData.greatTreeAnchor = {
         x: greatTreeAnchor.x,
@@ -484,7 +1110,7 @@ export function createSurfaceWorldEnvironment() {
     group.add(foregroundLayer);
     group.userData.foregroundLayer = foregroundLayer;
 
-    const fallingLeaves = createFallingLeaves(uniforms, 120, leafPlacements);
+    const fallingLeaves = createFallingLeaves(uniforms, 90, leafPlacements);
     fallingLeaves.name = 'falling-leaves';
     fallingLeaves.position.y += terrainOffsetY;
     group.add(fallingLeaves);
@@ -498,7 +1124,7 @@ export function createSurfaceWorldEnvironment() {
     group.userData.cabin = cabin;
 
     // Winter snow motes (creative plan asset 9): the final act's particle story.
-    const snowMotes = createSnowMotes(uniforms, 220);
+    const snowMotes = createSnowMotes(uniforms, 160);
     snowMotes.name = 'snow-motes';
     group.add(snowMotes);
     group.userData.snowMotes = snowMotes;
@@ -511,26 +1137,37 @@ export function createSurfaceWorldEnvironment() {
     group.userData.waterfall = waterfall;
 
     // 10. Warm-amber pollen motes drifting in the golden-hour light.
-    const pollen = createPollen(uniforms, 260);
+    const pollen = createPollen(uniforms, 180);
     pollen.name = 'pollen';
     group.add(pollen);
     group.userData.pollen = pollen;
 
     // 11. A couple of drifting birds (low-poly silhouettes).
-    const birds = createBirds(5);
+    const birds = createBirds(CH3_BIRD_SILHOUETTE_SETTINGS.flockCount);
     birds.name = 'birds';
     group.add(birds);
     group.userData.birds = birds;
+
+    const quaterniusNatureLayer = createQuaterniusNatureLayer(group, terrainOffsetY);
+    group.add(quaterniusNatureLayer);
+    group.userData.quaterniusNatureLayer = quaterniusNatureLayer;
+    group.userData.quaterniusProceduralFallbacks = [trees, spruces, treeLine, greatTree, birds];
 
     // Golden-hour raking key (Batch B5): a LOW warm directional sun raking from the left
     // gilds the hills with long shadows, balanced by a cool sky-fill ambient that keeps the
     // shadows from going muddy. Lower/warmer than the old near-overhead key so the relief
     // reads at the forward angle without lifting the frame toward white.
-    const ambient = new THREE.AmbientLight(0xacc6e6, 0.32); // Cool sky-fill
+    const ambient = new THREE.AmbientLight(0xacc6e6, 0.18); // Low cool flat floor
     group.add(ambient);
     const sunLight = new THREE.DirectionalLight(0xffcf7a, 0.7); // Low warm golden key
     sunLight.position.set(-90, 38, -120); // low raking angle from the left
     group.add(sunLight);
+    // Hemisphere sky/ground bounce — gives the now-LIT vegetation (MeshLambertNode trees)
+    // a natural fill so shadow sides read as lush green, not black silhouettes. Only the lit
+    // foliage responds; the unlit terrain/GLB props are unaffected, so the grade is unchanged.
+    const hemiFill = new THREE.HemisphereLight(0xcfe4ff, 0x5a7a44, 0.75);
+    group.add(hemiFill);
+    group.userData.hemiFill = hemiFill;
     // Creative plan item 6: the season MOVES the key — spring gold → autumn amber →
     // winter pale-blue. Colors precomputed (no per-frame allocation); the update loop
     // rewrites color/intensity every frame per the QW4 light-rig rule.
@@ -551,17 +1188,17 @@ export function createSurfaceWorldEnvironment() {
     group.userData.surfaceElements = [
         ocean,
         landscape,
-        auroraPreview,
         sun,
         rays,
         clouds,
-        petals,
         butterflies,
-        grassTufts,
+        meadowFlowers,
         trees,
         spruces,
         treeLine,
         reeds,
+        coniferBelt,
+        bridgeConiferBelt,
         greatTree,
         fallingLeaves,
         waterfall,
@@ -570,13 +1207,19 @@ export function createSurfaceWorldEnvironment() {
         snowMotes,
         pollen,
         birds,
+        quaterniusNatureLayer,
     ];
     group.userData.skyElement = sky;
     group.userData.waterSurfaceY = surfaceWorldY;
-    group.userData.snowBlendUniformTargets = collectUniformTargetsFromRoots(
-        [landscape, foothillBridge, distantMountains],
-        'uSnowBlend',
-    );
+    group.userData.snowBlendUniformTargets = [
+        ...collectUniformTargetsFromRoots(
+            // trees + spruces whiten toward the seam so the deciduous→conifer→snow belt blends.
+            [landscape, foothillBridge, distantMountains, trees, spruces],
+            'uSnowBlend',
+        ),
+        // The conifer belts whiten with the same season/altitude snow blend.
+        coniferBelt.userData.uSnowBlend,
+    ];
     group.userData.surfaceOpacityUniformTargets = collectUniformTargetsFromRoots(
         [
             ocean,
@@ -584,13 +1227,16 @@ export function createSurfaceWorldEnvironment() {
             sun,
             rays,
             clouds,
-            petals,
             butterflies,
             cabin,
             foregroundLayer,
             snowMotes,
             pollen,
         ],
+        'uOpacity',
+    );
+    group.userData.oceanOpacityUniformTargets = collectUniformTargetsFromRoots(
+        [ocean],
         'uOpacity',
     );
     // SEAM 3->4: the WATERFALL gets its OWN opacity target set so it can be gated by the
@@ -607,16 +1253,21 @@ export function createSurfaceWorldEnvironment() {
     // are deliberately excluded from surfaceOpacityUniformTargets above to avoid a
     // double-write of the same uOpacity node within one frame.
     group.userData.alpineOpacityUniformTargets = collectUniformTargetsFromRoots(
-        [foothillBridge, distantMountains],
+        [foothillBridge],
+        'uOpacity',
+    );
+    group.userData.distantMountainOpacityUniformTargets = collectUniformTargetsFromRoots(
+        [distantMountains],
         'uOpacity',
     );
     group.userData.auroraPreviewOpacityUniformTargets = collectUniformTargetsFromRoots(
-        [auroraPreview],
+        [],
         'uOpacity',
     );
     // The alpine pieces toggle on the combined gate (surface + ramp); the rest of the
     // surface elements toggle on surface opacity alone.
-    group.userData.alpineElements = [foothillBridge, distantMountains];
+    group.userData.alpineElements = [foothillBridge];
+    group.userData.distantMountainElements = [distantMountains];
 
     // Anchor the whole environment to the path's FULL center (x,y,z), not just Y, so the
     // terrain/ocean/mountains stay centred on the path and the forward camera never clips
@@ -677,14 +1328,16 @@ export function createFluffyGrass(uniforms, count) {
 // WebGPU/TSL: Living Landscapes vegetation. Each builder returns an instanced low-poly
 // mesh anchored to getTerrainHeight() (props sit on the ground, no floating). No uniforms
 // to tag (the sway is time-driven via the shared uTime node), so they are returned plain.
-function createGrassTufts(uniforms, count) {
-    const { mesh } = createGrassTuftsTSL(uniforms.uTime, count);
+function createMeadowFlowers(uniforms, count) {
+    const { mesh } = createMeadowFlowersTSL(uniforms.uTime, count);
     return mesh;
 }
 
 function createTrees(uniforms, count) {
-    const { mesh } = createTreesTSL(uniforms.uTime, count, { uSeason: uniforms.uSeason });
-    return mesh;
+    const { mesh, uniforms: builderUniforms } = createTreesTSL(uniforms.uTime, count, {
+        uSeason: uniforms.uSeason,
+    });
+    return tagUniforms(mesh, builderUniforms); // uSnowBlend → whitens toward the seam
 }
 
 // WebGPU/TSL: mid-distance tree LINE (2nd instanced pass). Returns the InstancedMesh.
@@ -736,19 +1389,23 @@ function createPollen(uniforms, count) {
 // cheapest "alive" signal the chapter can render.
 function createBirds(count) {
     const { group } = createBirdsTSL(count);
-    group.children.slice(0, 2).forEach((bird, i) => {
+    const crosserCount = Math.min(CH3_BIRD_SILHOUETTE_SETTINGS.crosserCount, group.children.length);
+    group.children.slice(0, crosserCount).forEach((bird, i) => {
         bird.userData.crosser = true;
-        bird.userData.lane = -30 - i * 26;
-        bird.userData.height = 8 + i * 5;
-        bird.userData.speed = 0.9 + i * 0.3;
+        bird.userData.lane = -22 - i * 24;
+        bird.userData.height = 10 + i * 4;
+        bird.userData.speed = 1.1 + i * 0.24;
+        bird.userData.closeScale = 1.55 + i * 0.12;
     });
+    group.userData.cc0Candidate = CH3_BIRD_SILHOUETTE_SETTINGS.cc0Candidate;
+    group.userData.animatedCc0Candidate = CH3_BIRD_SILHOUETTE_SETTINGS.animatedCc0Candidate;
     return group;
 }
 
 // Spruce stands — second species, evergreen (no autumn recolor).
 function createSpruces(uniforms, count) {
-    const { mesh } = createSpruceTreesTSL(uniforms.uTime, count);
-    return mesh;
+    const { mesh, uniforms: builderUniforms } = createSpruceTreesTSL(uniforms.uTime, count);
+    return tagUniforms(mesh, builderUniforms); // uSnowBlend → spruces whiten toward the seam
 }
 
 // Falu-red cabin landmark; uOpacity tagged for the surface fade collectors.
@@ -807,120 +1464,27 @@ function createClouds(uniforms) {
 // shading, and the 4-plane mist). Each peak mesh + the mist meshes are tagged with their
 // uSnowBlend/uOpacity nodes so the collectors drive snow + surface fade. The mist group is
 // exposed on userData.foothillMist for parity with the live API.
-function createDistantMountains(uniforms) {
-    const { group, parts, mist } = createDistantMountainsTSL(uniforms.uTime);
+function createDistantMountains(uniforms, hostCenter = null) {
+    const { group, parts } = createCanonicalMountainRangeTSL({
+        hostCenter,
+        hostChapterId: 3,
+        name: 'canonical-distant-mountains',
+        uTransition: uniforms.uSeason,
+        baseOpacity: 1,
+    });
     group.name = 'distant-mountains';
 
-    // parts = [leftPeak, centerPeak, rightPeak, mist]. Tag each peak mesh's uniforms.
+    // Chapter 3 now renders Chapter 4's canonical hero chain at the same world coordinates
+    // so the mountains are visible immediately and never swap silhouettes later.
     parts.forEach((part) => {
         if (part?.mesh) {
             tagUniforms(part.mesh, part.uniforms);
         }
     });
 
-    // Tag the shared mist material's uOpacity onto each mist plane so the fade collector
-    // (which traverses children) finds it.
-    if (mist?.group && mist.uniforms) {
-        mist.group.traverse((child) => {
-            if (child.isMesh) tagUniforms(child, mist.uniforms);
-        });
-    }
-
-    group.userData.foothillMist = mist?.group ?? null;
+    group.userData.foothillMist = null;
 
     return group;
-}
-
-// WebGPU/TSL: fluttering sakura petals. The live chapter drew these as THREE.Points
-// (PointsMaterial-style sized points), which render as 1px on the WebGPU backend. Rebuilt
-// as instanced billboard quads (makeQuadInstancedGeometry + billboardWorld): the falling/
-// swaying animation moves each quad's world CENTER on the GPU (same math as the old vertex
-// shader, driven off aBase/aRandom/uTime), and a round uv() mask reproduces the old
-// gl_PointCoord disc. The pixel gl_PointSize (aSize * 150/-mv.z perspective) becomes a small
-// world-space size (perspective is automatic for a world-billboarded quad).
-function createPetals(uniforms, count) {
-    const bases = new Float32Array(count * 3);
-    const randoms = new Float32Array(count);
-    const sizes = new Float32Array(count);
-    const colors = new Float32Array(count * 3);
-
-    const palette = [
-        new THREE.Color(0xffc0cb),
-        new THREE.Color(0xffe4e1),
-        new THREE.Color(0xffb7c5),
-    ];
-
-    for (let i = 0; i < count; i++) {
-        bases[i * 3] = (Math.random() - 0.5) * 120;
-        bases[i * 3 + 1] = (Math.random() - 0.5) * 80;
-        bases[i * 3 + 2] = (Math.random() - 0.5) * 60;
-
-        randoms[i] = Math.random();
-        sizes[i] = 1.0 + Math.random();
-
-        const col = palette[Math.floor(Math.random() * palette.length)];
-        colors[i * 3] = col.r;
-        colors[i * 3 + 1] = col.g;
-        colors[i * 3 + 2] = col.b;
-    }
-
-    const geometry = makeQuadInstancedGeometry(count, {
-        aBase: { array: bases, itemSize: 3 },
-        aRandom: { array: randoms, itemSize: 1 },
-        aSize: { array: sizes, itemSize: 1 },
-        aColor: { array: colors, itemSize: 3 },
-    });
-
-    const { uTime } = uniforms;
-    const uOpacity = uniform(1);
-
-    const aBase = attribute('aBase', 'vec3');
-    const aRandom = attribute('aRandom', 'float');
-    const aSize = attribute('aSize', 'float');
-    const aColor = attribute('aColor', 'vec3');
-
-    // Animate the petal CENTER — identical math to the old vertex displacement, on aBase.
-    const fallSpeed = aRandom.add(2.0);
-    const yOffset = tslMod(uTime.mul(fallSpeed).add(aRandom.mul(100.0)), 100.0).sub(50.0);
-    let py = aBase.y.sub(yOffset);
-    // if (pos.y < -40) pos.y += 80 → step(-40, py) is 1 when py >= -40, so add when it's 0.
-    py = py.add(oneMinus(tslStep(-40.0, py)).mul(80.0));
-    const px = aBase.x.add(tslSin(uTime.add(aRandom.mul(10.0))).mul(5.0));
-    const pz = aBase.z.add(tslCos(uTime.mul(0.7).add(aRandom.mul(5.0))).mul(3.0));
-    const center = vec3(px, py, pz);
-
-    // World-space billboard size (replaces the pixel gl_PointSize; perspective is automatic).
-    const size = aSize.mul(1.1);
-    const positionNode = billboardWorld(center, size);
-
-    // TUMBLING PETAL alpha (creative plan item 4 — no more hard discs/squares): rotate
-    // the quad uv over time, then mask a teardrop petal whose width tapers toward the
-    // tip, feathered to zero inside the quad edge (sakura petal technique).
-    const spin = uTime.mul(aRandom.mul(1.8).add(0.9)).add(aRandom.mul(17.0));
-    const ca = tslCos(spin);
-    const sa = tslSin(spin);
-    const p0 = uv().sub(0.5);
-    const pr = tslVec2(p0.x.mul(ca).sub(p0.y.mul(sa)), p0.x.mul(sa).add(p0.y.mul(ca)));
-    const widthTaper = tslMax(tslFloat(0.34).mul(oneMinus(pr.y.mul(1.0))), tslFloat(0.08));
-    const petalR = tslVec2(pr.x.div(widthTaper), pr.y.div(0.44)).length();
-    const petalMask = oneMinus(tslSmoothstep(0.6, 1.0, petalR));
-
-    // Spring's particle story: the petals belong to the breach act and hand off to the
-    // summer pollen (one story at a time).
-    const springGate = oneMinus(tslSmoothstep(0.24, 0.42, uniforms.uSeason));
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = positionNode;
-    material.colorNode = aColor;
-    material.opacityNode = petalMask.mul(0.85).mul(springGate).mul(uOpacity);
-    material.alphaTest = 0.15;
-    material.transparent = true;
-    material.depthWrite = false;
-    material.side = THREE.DoubleSide;
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.frustumCulled = false;
-    return tagUniforms(mesh, { uOpacity });
 }
 
 function createButterflies(count) {
@@ -978,7 +1542,7 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         const { skyFill } = group.userData;
         if (skyFill) {
             skyFill.color.copy(seasonLight.springFill).lerp(seasonLight.winterFill, winterT);
-            skyFill.intensity = 0.32 - winterT * 0.06;
+            skyFill.intensity = 0.18 - winterT * 0.04;
         }
     }
 
@@ -1003,22 +1567,33 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // range cross-dissolves with the rising Mountains peaks rather than swapping shape hard.
     const seamRecedeState = resolveSurfaceWorldSeamRecedeState(cameraProgress);
     const { recedeOpacity } = seamRecedeState;
+    const { surfaceExitOpacity } = resolveSurfaceWorldSurfaceExitState(cameraProgress);
+    const waterCrossingState = resolveSurfaceWorldWaterCrossingState(cameraProgress);
     // ENTRY RAMP (frames 01–02 slab pop + petal leak fix): every surface element rises
     // into presence across the breach instead of appearing fully formed.
     const { entryOpacity } = resolveSurfaceWorldEntryRampState(cameraProgress);
     const surfaceGate = surfaceOpacity * entryOpacity;
+    const surfaceElementOpacity = surfaceGate * surfaceExitOpacity;
     // The alpine pieces are gated by BOTH the underwater surface fade AND the
     // Surface→Mountains ramp, then receded across the seam so they cross-dissolve out.
     const alpineOpacity = surfaceGate * alpineRampState.rampOpacity * recedeOpacity;
+    const distantMountainOpacity = surfaceGate
+        * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity)
+        * recedeOpacity;
 
     const { snowTransition } = group.userData;
-    const snowBlend = snowTransition
+    const heightSnowBlend = snowTransition
         ? THREE.MathUtils.smoothstep(
             cameraY,
             snowTransition.endY - snowTransition.range,
             snowTransition.endY,
         )
         : 0;
+    // The Ch3->Ch4 terrain-edge dissolve is authored as part of the season story, not only
+    // altitude. Near the seam the chapter can be visually winter while the camera-height
+    // snow ramp still lags, so let late-season progress pull the same snow/edge uniform up.
+    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.58, 0.86);
+    const snowBlend = Math.max(heightSnowBlend, seasonSnowBlend);
 
     const snowBlendUniformTargets = group.userData.snowBlendUniformTargets || [];
     snowBlendUniformTargets.forEach((target) => {
@@ -1029,9 +1604,13 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { surfaceElements } = group.userData;
 
     if (surfaceElements) {
+        const hideProceduralFallbacks = group.userData.quaterniusAssetsReady === true;
+        const proceduralFallbacks = group.userData.quaterniusProceduralFallbacks || [];
         surfaceElements.forEach((element) => {
             if (element) {
-                element.visible = surfaceGate > 0;
+                const isRetiredFallback = hideProceduralFallbacks
+                    && proceduralFallbacks.includes(element);
+                element.visible = surfaceElementOpacity > 0 && !isRetiredFallback;
             }
         });
     }
@@ -1041,8 +1620,25 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
             ? target.__odysseyBaseOpacity
             : target.value;
-        target.value = baseOpacity * surfaceGate;
+        target.value = baseOpacity * surfaceElementOpacity;
     });
+
+    applyQuaterniusMaterialOpacity(
+        group.userData.quaterniusMaterialOpacityTargets || [],
+        surfaceElementOpacity,
+    );
+
+    const oceanOpacityUniformTargets = group.userData.oceanOpacityUniformTargets || [];
+    oceanOpacityUniformTargets.forEach((target) => {
+        const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
+            ? target.__odysseyBaseOpacity
+            : target.value;
+        target.value = baseOpacity * surfaceGate * waterCrossingState.waterCrossingOpacity;
+    });
+    const { ocean } = group.userData;
+    if (ocean) {
+        ocean.visible = surfaceGate > 0 && waterCrossingState.waterCrossingVisible;
+    }
 
     // SEAM 3->4: waterfall recedes (fades) across the seam in addition to the surface fade.
     const waterfallOpacityUniformTargets = group.userData.waterfallOpacityUniformTargets || [];
@@ -1069,6 +1665,23 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
             ? target.__odysseyBaseOpacity
             : target.value;
         target.value = baseOpacity * alpineOpacity;
+    });
+
+    const { distantMountainElements } = group.userData;
+    if (distantMountainElements) {
+        distantMountainElements.forEach((element) => {
+            if (element) {
+                element.visible = distantMountainOpacity > 0;
+            }
+        });
+    }
+
+    const distantMountainOpacityUniformTargets = group.userData.distantMountainOpacityUniformTargets || [];
+    distantMountainOpacityUniformTargets.forEach((target) => {
+        const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
+            ? target.__odysseyBaseOpacity
+            : target.value;
+        target.value = baseOpacity * distantMountainOpacity;
     });
 
     const { auroraPreview } = group.userData;
@@ -1129,7 +1742,8 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
                 const tx = ((time * ud.speed * 40 + ud.offset * 60) % span) - span / 2;
                 bird.position.set(tx, ud.height + Math.sin(time * 2 + ud.offset) * 1.5, ud.lane);
                 const crossFlap = 0.6 + Math.abs(Math.sin(time * (ud.flap + 2))) * 0.8;
-                bird.scale.set(1.25, 1.25 * crossFlap, 1.25);
+                const closeScale = ud.closeScale ?? 1.55;
+                bird.scale.set(closeScale, closeScale * crossFlap, closeScale);
                 bird.rotation.y = Math.PI / 2;
                 bird.rotation.z = 0;
                 return;
@@ -1142,9 +1756,48 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
             );
             // Flap: oscillate scale.y so the swept wing tips beat; bank + face the heading.
             const flap = 0.7 + Math.abs(Math.sin(time * ud.flap)) * 0.7;
-            bird.scale.set(1.6, 1.6 * flap, 1.6);
+            bird.scale.set(1.85, 1.85 * flap, 1.85);
             bird.rotation.y = -t + Math.PI / 2;
             bird.rotation.z = Math.sin(t) * 0.28;
+        });
+    }
+
+    const quaterniusMixers = group.userData.quaterniusAnimationMixers || [];
+    quaterniusMixers.forEach((mixer) => mixer.update(delta));
+
+    const quaterniusBirdFlights = group.userData.quaterniusBirdFlights || [];
+    if (quaterniusBirdFlights.length > 0 && !isUnderwater) {
+        quaterniusBirdFlights.forEach((flight) => {
+            const { root } = flight;
+            if (!root) return;
+            const wings = root.userData.flightWings;
+            if (wings) {
+                const beat = Math.sin(time * (flight.wingBeat ?? 6.0) + flight.offset * 9.0);
+                const lift = 0.18 + Math.abs(beat) * 0.7;
+                wings.leftWing.rotation.z = -lift;
+                wings.rightWing.rotation.z = lift;
+                wings.leftWing.rotation.x = Math.sin(time * 1.7 + flight.offset) * 0.08;
+                wings.rightWing.rotation.x = -wings.leftWing.rotation.x;
+            }
+
+            if (flight.crosser) {
+                const span = 260;
+                const tx = ((time * flight.speed * 42 + flight.offset * 120) % span) - span / 2;
+                const bob = Math.sin(time * 2.4 + flight.offset * 7) * 1.8;
+                root.position.set(tx, flight.height + bob, flight.lane);
+                root.rotation.y = Math.PI / 2;
+                root.rotation.z = Math.sin(time * 2.1 + flight.offset) * 0.08;
+                return;
+            }
+
+            const t = time * flight.speed + flight.offset;
+            root.position.set(
+                Math.cos(t) * flight.radius,
+                flight.height + Math.sin(t * 1.6) * 4.5,
+                Math.sin(t) * flight.radius - 70,
+            );
+            root.rotation.y = -t + Math.PI / 2;
+            root.rotation.z = Math.sin(t) * 0.18;
         });
     }
 }

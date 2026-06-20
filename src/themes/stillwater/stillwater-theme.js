@@ -9,9 +9,11 @@
  */
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { STILLWATER_TETROMINOS } from './stillwater-tetrominos.js';
+import trollUrl from './assets/troll.glb?url';
 import {
     waterVertexShader,
     waterFragmentShader,
@@ -178,6 +180,10 @@ export default class StillwaterTheme extends BaseTheme {
         // TROLL ANIMATION DATA
         // ═══════════════════════════════════════════════════════════════════════
         this.trollAnimations = [];
+
+        // Hero 3D troll (TRELLIS.2-generated) standing by the pool
+        this.heroTroll = null;
+        this.heroTrollState = null;
     }
 
     getTetrominoConfig() {
@@ -252,6 +258,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.createGoldenMotes();
         this.createFloatingSpores();
         this.createTrolls();
+        this.createHeroTroll();
         this.createLightBeams();
         this.createMysticalFog();
         this.createCanopyStars();
@@ -997,6 +1004,80 @@ export default class StillwaterTheme extends BaseTheme {
             this.trolls.push(troll);
             this.mainGroup.add(troll);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HERO TROLL - A real 3D troll standing by the enchanted pool
+    // Generated from a photo with TRELLIS.2, scene-lit so the moonlight + spirit
+    // glow shape it into the John Bauer mood. A gentle idle (breath + sway).
+    // Distinct from the peeking billboard trolls above.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createHeroTroll() {
+        const loader = new GLTFLoader();
+        loader.load(
+            trollUrl,
+            (gltf) => {
+                const root = gltf.scene;
+                // Pale baked colours multiplied down to a dark earthy green so the
+                // scene's moonlight + spirit glow (not the raw albedo) define its form.
+                const mat = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    color: new THREE.Color(0x6a6a52), // earthy multiplier; lit by the scene
+                    roughness: 0.95,
+                    metalness: 0.0,
+                });
+                root.traverse((o) => {
+                    if (o.isMesh) {
+                        if (o.material && o.material.dispose) o.material.dispose();
+                        o.material = mat;
+                        o.frustumCulled = false;
+                    }
+                });
+                // NOTE: the back moss hills span z < -10, so the troll must stay at
+                // z > -10 to not be buried in the terrain. Walk it in the visible
+                // mid-back and keep the patrol on-screen.
+                const SCALE = 5.0;
+                const groundY = 4.0;
+                const walkZ = -8;
+                const range = 12;
+                root.scale.setScalar(SCALE);
+                root.position.set(-range, groundY, walkZ);
+
+                let mixer = null;
+                if (gltf.animations && gltf.animations.length) {
+                    mixer = new THREE.AnimationMixer(root);
+                    mixer.clipAction(gltf.animations[0]).play();
+                }
+
+                this.heroTroll = root;
+                this.heroTrollState = {
+                    mixer, dir: 1, minX: -range, maxX: range, speed: 1.2, groundY, walkZ,
+                };
+                this.mainGroup.add(root);
+                const _bb = new THREE.Box3().setFromObject(root);
+                console.log('[Stillwater] hero troll loaded — anims:', gltf.animations.length,
+                    'bbox min', _bb.min.toArray().map((v) => +v.toFixed(1)),
+                    'max', _bb.max.toArray().map((v) => +v.toFixed(1)));
+            },
+            undefined,
+            (err) => console.warn('[Stillwater] hero troll load failed:', err),
+        );
+    }
+
+    updateHeroTroll(delta, elapsed) {
+        if (!this.heroTroll || !this.heroTrollState) return;
+        const s = this.heroTrollState;
+        if (s.mixer) s.mixer.update(delta);
+
+        // Patrol the back of the glade: amble across, turn around at each end.
+        this.heroTroll.position.x += s.dir * s.speed * delta;
+        if (this.heroTroll.position.x >= s.maxX) { this.heroTroll.position.x = s.maxX; s.dir = -1; } else if (this.heroTroll.position.x <= s.minX) { this.heroTroll.position.x = s.minX; s.dir = 1; }
+
+        // Face the direction of travel (the model faces +Z by default).
+        this.heroTroll.rotation.y = s.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        // Faint vertical drift so it doesn't feel on rails.
+        this.heroTroll.position.y = s.groundY + Math.sin(elapsed * 2.0) * 0.05;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2661,6 +2742,7 @@ export default class StillwaterTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.updateTrollAnimations(delta);
+        this.updateHeroTroll(delta, elapsed);
 
         // ─────────────────────────────────────────────────────────────────────
         // DREAMY DRIFT
@@ -2830,6 +2912,8 @@ export default class StillwaterTheme extends BaseTheme {
         this.spores = null;
         this.canopyStars = null;
         this.goldenMotes = null;
+        this.heroTroll = null;
+        this.heroTrollState = null;
 
         super.stop();
     }

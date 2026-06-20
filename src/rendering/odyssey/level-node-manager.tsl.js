@@ -74,7 +74,7 @@ import { billboardWorld, makeQuadInstancedGeometry } from './chapter-environment
 const GLASS_ORB_SCALE = 1.4;
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
-const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
+const GLASS_GLOW_RADIUS = 1.12 * GLASS_ORB_SCALE;
 const INNER_FLOW_STRENGTH = 0.28;
 const INNER_WOBBLE_STRENGTH = 0.028;
 
@@ -135,7 +135,12 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
             })
                 .ElseIf(s.lessThan(5.0), () => {
                     displacement.assign(
-                        sin(uTime.mul(0.45).add(vUv.x.mul(11.0)).add(vUv.y.mul(13.0)).add(aNodeSeed.mul(9.0))).mul(0.036),
+                        sin(
+                            uTime.mul(0.45)
+                                .add(vUv.x.mul(11.0))
+                                .add(vUv.y.mul(13.0))
+                                .add(aNodeSeed.mul(9.0)),
+                        ).mul(0.036),
                     );
                 })
                 .ElseIf(s.lessThan(6.0), () => {
@@ -231,9 +236,18 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
                     const wisps = smoothstep(
                         0.3,
                         0.95,
-                        sin(vUv.x.mul(15.0).add(vUv.y.mul(10.0)).sub(uTime.mul(0.7)).add(seed.mul(9.0))).mul(0.5).add(0.5),
+                        sin(
+                            vUv.x.mul(15.0)
+                                .add(vUv.y.mul(10.0))
+                                .sub(uTime.mul(0.7))
+                                .add(seed.mul(9.0)),
+                        ).mul(0.5).add(0.5),
                     );
-                    color.assign(mix(vec3(0.92), nc, 0.48).mul(rim.mul(0.42).add(0.58)).add(ac.mul(wisps).mul(0.12)));
+                    color.assign(
+                        mix(vec3(0.92), nc, 0.48)
+                            .mul(rim.mul(0.42).add(0.58))
+                            .add(ac.mul(wisps).mul(0.12)),
+                    );
                     // Two-tone sun/aurora rim — surgical, ch5-only (inside this branch):
                     // the upper hemisphere (facing the on-camera sun) picks up a thin
                     // WARM rim; the lower (away) picks up a COOL aurora rim. Additive +
@@ -252,7 +266,12 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
                 })
                 .ElseIf(s.lessThan(7.0), () => {
                 // lensedShard — concentric lensing rings
-                    const rings = sin(length(vUv.sub(0.5)).mul(42.0).sub(uTime.mul(2.0)).add(seed.mul(8.0))).mul(0.5).add(0.5);
+                    const rings = sin(
+                        length(vUv.sub(0.5))
+                            .mul(42.0)
+                            .sub(uTime.mul(2.0))
+                            .add(seed.mul(8.0)),
+                    ).mul(0.5).add(0.5);
                     color.assign(mix(nc.mul(0.18), ac.mul(1.2), pow(rings, 3.0)).add(nc.mul(rim).mul(0.55)));
                 })
                 .Else(() => {
@@ -261,7 +280,11 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
                     const scan = step(0.9, fract(vUv.y.add(uTime.mul(0.23)).add(seed).mul(13.0)));
                     const edge = min(min(vUv.x, oneMinus(vUv.x)), min(vUv.y, oneMinus(vUv.y)));
                     const frame = oneMinus(smoothstep(0.025, 0.09, edge));
-                    color.assign(nc.mul(rim.mul(1.35).add(0.5)).mul(flick).add(ac.mul(scan.mul(0.45).add(frame.mul(0.9)))));
+                    color.assign(
+                        nc.mul(rim.mul(1.35).add(0.5))
+                            .mul(flick)
+                            .add(ac.mul(scan.mul(0.45).add(frame.mul(0.9)))),
+                    );
                 });
         }).Else(() => {
             // ── Original white glass (default look, flag off) ──
@@ -346,7 +369,15 @@ function glassOpacityNode(
             If(s.lessThan(1.0), () => {
                 alpha.assign(0.34);
             }).ElseIf(s.lessThan(2.0), () => {
-                const caustic = pow(sin(vUv.x.add(vUv.y).mul(28.0).add(uTime).add(seed.mul(8.0))).mul(0.5).add(0.5), 3.0);
+                const caustic = pow(
+                    sin(
+                        vUv.x.add(vUv.y)
+                            .mul(28.0)
+                            .add(uTime)
+                            .add(seed.mul(8.0)),
+                    ).mul(0.5).add(0.5),
+                    3.0,
+                );
                 alpha.assign(rim.mul(0.42).add(caustic.mul(0.1)).add(0.1));
             }).ElseIf(s.lessThan(3.0), () => {
                 const ribs = pow(abs(sin(vUv.x.add(seed).mul(18.0))), 8.0);
@@ -358,7 +389,12 @@ function glassOpacityNode(
                     const wisps = smoothstep(
                         0.3,
                         0.95,
-                        sin(vUv.x.mul(15.0).add(vUv.y.mul(10.0)).sub(uTime.mul(0.7)).add(seed.mul(9.0))).mul(0.5).add(0.5),
+                        sin(
+                            vUv.x.mul(15.0)
+                                .add(vUv.y.mul(10.0))
+                                .sub(uTime.mul(0.7))
+                                .add(seed.mul(9.0)),
+                        ).mul(0.5).add(0.5),
                     );
                     alpha.assign(wisps.mul(0.15).add(rim.mul(0.26)).add(0.12));
                 })
@@ -420,13 +456,13 @@ export function createGlowHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
     // Surface/Mtn/Sky/Space. The halo COLOUR is the per-node aColor (already the chapter
     // accent fed by the manager) — no fixed-cyan to re-tint here.
     const rim = pow(oneMinus(abs(dot(vNormal, vec3(0.0, 0.0, 1.0)))), 4.0);
-    const emphasis = uHovered.mul(0.3).add(uCurrent.mul(uBeatPulse.mul(0.4).add(0.4)));
+    const emphasis = uHovered.mul(0.18).add(uCurrent.mul(uBeatPulse.mul(0.22).add(0.24)));
     // Clamp the additive halo alpha so even the focal/beat-pulsing node never stacks into
-    // a pure-white bloom (peak <= 0.6).
+    // a pure-white bloom or becomes the sustained chapter hero (peak <= 0.38).
     const alpha = clamp(
-        rim.mul(emphasis.add(0.2)).mul(oneMinus(uLocked.mul(0.7))),
+        rim.mul(emphasis.add(0.12)).mul(oneMinus(uLocked.mul(0.7))),
         0.0,
-        0.6,
+        0.38,
     );
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -444,6 +480,11 @@ export function createGlowHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
     material.userData.uTime = uTime;
 
     const geometry = new THREE.IcosahedronGeometry(GLASS_GLOW_RADIUS, 2);
+    // The halo shader reads only normalView + aColor + aState (never uv). On an
+    // InstancedMesh the vertex-buffer count is position+normal+uv(3) + instanceMatrix(4)
+    // + aColor+aState(2) = 9, which exceeds the WebGPU max of 8 and makes the pipeline
+    // invalid. Dropping the unused uv attribute brings it to 8 (valid).
+    geometry.deleteAttribute('uv');
     return {
         mesh: null, material, geometry, uniforms: { uTime, uBeatPulse },
     };
@@ -505,7 +546,7 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
     // Animated world-space CENTER of the particle (was the GLSL worldPos / gl_Position).
     const center = aNodePos.add(animatedOffset.mul(aNodeScale));
 
-    const vOpacity = varying(sin(t.mul(1.5)).mul(0.2).add(0.4));
+    const vOpacity = varying(sin(t.mul(1.5)).mul(0.12).add(0.26));
 
     // World-space billboard size (replaces gl_PointSize; perspective is automatic):
     // old (2.5 * aNodeScale) px * (300/-viewZ) maps to ~0.04 * aNodeScale world units.
@@ -546,7 +587,12 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
  * @param {number} [levelId] level id (drives the deterministic uSeed)
  * @param {object} [uTime] shared time uniform
  */
-export function createFluidInnerTSL(map = null, chapterColor = new THREE.Color(0xffffff), levelId = 1, uTime = uniform(0)) {
+export function createFluidInnerTSL(
+    map = null,
+    chapterColor = new THREE.Color(0xffffff),
+    levelId = 1,
+    uTime = uniform(0),
+) {
     const hasTexture = Boolean(map);
     const seed = ((levelId || 1) * 0.61803398875) % 1000;
 

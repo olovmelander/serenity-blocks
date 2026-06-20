@@ -1,18 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import {
+    COSMIC_ENTRY_CONTINUITY_SETTINGS,
     createCosmicExpanseEnvironment,
+    resolveCosmicEntryContinuity,
     updateCosmicExpanseEnvironment,
 } from './cosmic-expanse.js';
 
 describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
-    it('mounts the asteroid garland, aurora-filament bridge, and streak motes', () => {
+    it('mounts the asteroid garland, star tiers, and streak motes', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 200 });
 
         expect(group.userData.asteroids?.name).toBe('asteroid-garland');
         expect(group.userData.asteroids.count).toBe(12);
-        expect(group.userData.filamentBridge?.name).toBe('aurora-filament-bridge');
-        expect(group.userData.filamentBridge.children.length).toBe(3);
+        expect(group.userData.filamentBridge).toBeUndefined();
+        expect(group.userData.starsNear?.name).toBe('void-stars-near');
         expect(group.userData.streakMotes?.name).toBe('cosmic-streak-motes');
+    });
+
+    it('stages the chapter entry from carried aurora into uncluttered space', () => {
+        const entry = resolveCosmicEntryContinuity(0.05);
+        expect(entry.starReveal).toBeGreaterThan(COSMIC_ENTRY_CONTINUITY_SETTINGS.starFloor);
+        expect(entry.heroReveal).toBeLessThan(0.02);
+        expect(entry.clutterReveal).toBeLessThan(0.02);
+
+        const settledSpace = resolveCosmicEntryContinuity(0.5);
+        expect(settledSpace.starReveal).toBeGreaterThan(0.95);
+        expect(settledSpace.heroReveal).toBeGreaterThan(0.95);
+        expect(settledSpace.clutterReveal).toBeGreaterThan(0.95);
+    });
+
+    it('suppresses dense opener clutter until the aurora handoff completes', () => {
+        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        group.userData.chapterOpacity = 1;
+
+        updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.05);
+        expect(group.userData.asteroids.material.opacity).toBeLessThan(0.02);
+        expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeLessThan(0.05);
+        expect(group.userData.starsNear.material.opacity).toBeGreaterThan(0.08);
+
+        updateCosmicExpanseEnvironment(group, 0.016, 2.0, null, 0.55);
+        expect(group.userData.asteroids.material.opacity).toBeGreaterThan(0.95);
+        expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.95);
     });
 
     it('marches the black hole along the rail vanishing point (up-right)', () => {

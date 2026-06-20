@@ -504,11 +504,7 @@ export class SinglePlayerMode extends BaseGameMode {
      * @param {Object} demo - Demo object
      */
     startDemoPlayback(demo) {
-        if (!this.demoPlayer.loadDemo(demo)) {
-            console.error('Failed to load demo');
-            return;
-        }
-        this.onStart({ demo: true });
+        return this.onStart({ demo });
     }
 
     // ===== Private Methods =====
@@ -577,7 +573,11 @@ export class SinglePlayerMode extends BaseGameMode {
 
     _recordAcceptedCommand(type, value, options = {}) {
         if (options.record === false || !this.isRecording || !this.demoRecorder) return;
-        this.demoRecorder.recordCommand({ a: type, d: value }, this.gameState);
+        this.demoRecorder.recordCommand({
+            a: type,
+            d: value,
+            q: Boolean(options.queued),
+        }, this.gameState);
     }
 
     _applyCommand(command, options = {}) {
@@ -597,7 +597,7 @@ export class SinglePlayerMode extends BaseGameMode {
         if (this.gameState.isProcessingPhysics) {
             const queued = this._queueBufferedCommand(type, value);
             if (queued) {
-                this._recordAcceptedCommand(type, value, options);
+                this._recordAcceptedCommand(type, value, { ...options, queued: true });
             }
             return queued;
         }

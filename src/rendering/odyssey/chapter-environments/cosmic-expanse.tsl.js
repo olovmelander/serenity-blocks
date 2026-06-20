@@ -53,7 +53,7 @@ import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
-export function createVoidSkyTSL(uTime, uEnergy) {
+export function createVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1)) {
     const time = uTime ?? uniform(0);
     const energy = uEnergy ?? uniform(0.3);
 
@@ -95,14 +95,18 @@ export function createVoidSkyTSL(uTime, uEnergy) {
     // between a few bright clouds, instead of an even wash. smoothstep(0.50,0.82)
     // clips away the low/mid noise (the wash) and a square + extra power steepens the
     // remaining peaks into discrete pockets. (The warp now feeds richer interior shape.)
-    const dustRaw = fbm3(q);
+    // 3 octaves (was the default 5): the dust feeds a hard smoothstep(0.50,0.82) pocket
+    // threshold + pow(1.7), which clips the octave-4/5 high-frequency wiggle (amplitude
+    // ~0.06/0.03) almost entirely — so the pocketed result is ~unchanged while the dome's
+    // per-fragment noise cost drops. Verified on the playground vs the baseline.
+    const dustRaw = fbm3(q, 3);
     const pocket = smoothstep(0.50, 0.82, dustRaw);
     const dust = pow(pocket, 1.7).mul(pocket.mul(0.5).add(0.5));
 
     // Filaments: ridged crests on the SAME warped field, also thresholded, riding ALONG
     // the band lane so the brightest tendrils concentrate in the galactic plane. The
     // domain warp makes these read as twisting fibrous strands, not concentric rings.
-    const filRaw = ridged3(q.mul(0.8).add(13.0));
+    const filRaw = ridged3(q.mul(0.8).add(13.0), 3);
     const filaments = smoothstep(0.42, 0.76, filRaw).mul(band.mul(0.8).add(0.2));
 
     // FILAMENT CORES — the blood-moon "volume highlight": a tight high threshold on the
@@ -121,7 +125,7 @@ export function createVoidSkyTSL(uTime, uEnergy) {
     // different frequency means this mask gates separate regions of the sphere.
     const macroCoolRaw = fbm3(dir.mul(0.92).add(vec3(31.0, 17.0, time.mul(0.008).negate())), 4);
     const macroCool = smoothstep(0.58, 0.88, macroCoolRaw);
-    const dustCool = fbm3(q.mul(0.86).add(23.0));
+    const dustCool = fbm3(q.mul(0.86).add(23.0), 3);
     const pocketCool = smoothstep(0.48, 0.82, dustCool);
     const coolDust = pow(pocketCool, 1.6).mul(pocketCool.mul(0.5).add(0.5));
 
@@ -143,10 +147,12 @@ export function createVoidSkyTSL(uTime, uEnergy) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
+    material.opacityNode = uOpacity;
     material.side = THREE.BackSide;
     material.depthWrite = false;
+    material.transparent = true;
 
-    const geometry = new THREE.SphereGeometry(420, 48, 32);
+    const geometry = new THREE.SphereGeometry(2400, 64, 48);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
     return { mesh, material, geometry };
@@ -397,7 +403,7 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
 
-    const geometry = new THREE.SphereGeometry(28, 64, 48);
+    const geometry = new THREE.SphereGeometry(28, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-surface';
     return { mesh, material, geometry };

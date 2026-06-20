@@ -74,6 +74,14 @@ export const URBAN_DREAMS_CONFIG = {
     },
 };
 
+export const CH8_RETROSUN_STAGE = Object.freeze({
+    revealFloor: 0.62,
+    sun: [0, 28, -700],
+    skylineNear: [0, -42, -650],
+    skylineFar: [40, -54, -675],
+    horizonHaze: [0, -12, -688],
+});
+
 const CYAN = 0x00f2ff;
 const MAGENTA = 0xff3fb4;
 
@@ -89,7 +97,7 @@ function createSkyGradient(uniforms) {
 function createSynthwaveSun(uniforms) {
     // Own reveal uniform so the sun swells/heats with the finale ignition; the chapter
     // update() mirrors the eased reveal into it alongside the spire conduit's uReveal.
-    const uReveal = uniform(0.4);
+    const uReveal = uniform(CH8_RETROSUN_STAGE.revealFloor);
     const { mesh } = createSynthwaveSunTSL(uniforms.uTime, uniforms.uEnergy, { uReveal });
     mesh.userData.uReveal = uReveal;
     return mesh;
@@ -152,7 +160,7 @@ const RAIN_FALL_SPEED = 96; // world units/sec (≈ 1.6/frame × 60fps, matches 
 
 function createRainCurtain(uniforms) {
     const uTime = uniforms?.uTime ?? uniform(0);
-    const count = 480;
+    const count = 340;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     // Per-streak phase + speed jitter so the curtain doesn't fall in lockstep (replaces the
@@ -429,7 +437,7 @@ export function createUrbanDreamsEnvironment() {
     // gaps dissolve into the city skyline. Added BEFORE the city banks so the towers + spire
     // silhouette against it. It shares the finale reveal so it heats up as the journey ignites.
     const sun = createSynthwaveSun(uniforms);
-    sun.position.set(0, -10, -1180);
+    sun.position.set(...CH8_RETROSUN_STAGE.sun);
     corridor.add(sun);
     group.userData.sun = sun;
 
@@ -438,17 +446,17 @@ export function createUrbanDreamsEnvironment() {
     // is PARTIALLY OCCLUDED and reads distant + enormous, plus the magenta-violet haze
     // band that supplies the chapter's missing mid-value layer.
     const skylineFar = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 31, lift: 0 });
-    skylineFar.mesh.position.set(40, -55, -1145);
+    skylineFar.mesh.position.set(...CH8_RETROSUN_STAGE.skylineFar);
     skylineFar.mesh.scale.set(1.08, 0.9, 1);
     skylineFar.mesh.renderOrder = -88;
     corridor.add(skylineFar.mesh);
     const skylineNear = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 0, lift: 0.012 });
-    skylineNear.mesh.position.set(0, -45, -1120);
+    skylineNear.mesh.position.set(...CH8_RETROSUN_STAGE.skylineNear);
     skylineNear.mesh.renderOrder = -86;
     corridor.add(skylineNear.mesh);
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh];
     const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
-    horizonHaze.mesh.position.set(0, -20, -1162);
+    horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
     horizonHaze.mesh.renderOrder = -90;
     corridor.add(horizonHaze.mesh);
     group.userData.horizonHaze = horizonHaze.mesh;
@@ -493,7 +501,9 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(gateBridge);
     group.userData.gateBridge = gateBridge;
 
-    corridor.add(createCityBlocks(uniforms));
+    const cityBlocks = createCityBlocks(uniforms);
+    corridor.add(cityBlocks);
+    group.userData.cityBlocks = cityBlocks;
 
     const rails = createNeonRails();
     corridor.add(rails);
@@ -617,10 +627,11 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     // SYNTHWAVE SUN heats up / swells with the same finale ignition as the spire
     // conduit — but with a VISIBILITY FLOOR (creative plan ch8 item 1: the disc never
     // landed on screen because the pre-ignition reveal drove its gain toward zero).
-    // The sun now idles ALIVE at 0.45 and heats to full at the finale.
+    // The sun now idles alive at the configured floor and heats to full at the finale.
     const { sun } = group.userData;
     if (sun?.userData?.uReveal) {
-        sun.userData.uReveal.value = 0.45 + easedReveal * 0.55;
+        sun.userData.uReveal.value = CH8_RETROSUN_STAGE.revealFloor
+            + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor);
     }
 
     // EXIT DIMMING (creative plan Transition Out): across the journey's very end the

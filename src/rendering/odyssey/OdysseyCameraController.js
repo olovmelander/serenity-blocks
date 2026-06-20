@@ -50,6 +50,15 @@ const DEFAULT_CHAPTER_FRAMING = Object.freeze({
     // Earth-Core descent: scales the legacy straight-down look offset
     // (0 = forward-looking, 1 = original top-down). Only chapter 1 uses this.
     downLookScale: 1,
+    // Roll-stabilisation: blend the camera up-vector toward WORLD up (0 = the legacy
+    // path-normal/gravity blend, 1 = pure world up). On a near-vertical spline the
+    // Frenet normal twists the up-vector and rolls the horizon (Ch5 measured ~42°); a
+    // high worldUp levels it. Default 0 leaves every other chapter untouched.
+    worldUp: 0,
+    // Scales the climb-bias up-push on the look target (1 = legacy "look up the climb").
+    // Ch5 sets this low/negative so the gentle aim drops to the peak+aurora horizon
+    // instead of staring up the near-vertical rail. Default 1 = unchanged.
+    climbScale: 1,
 });
 
 const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
@@ -96,15 +105,16 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         camUp: -1.6,
         camForward: -1.0,
     }),
-    // 5 — Sky (beyond): make the on-camera Mie SUN the hero. Aim UP-and-RIGHT so the
-    // baked sun (sky-drift exposes group.userData.uniforms.uSunDir / SKY_DRIFT_SUN_DIR,
-    // realigned to read on this aim) sits upper-right of frame, with the cool aurora
-    // curtain arching the upper-left. Lift the eye so the bright/hazy cloud cathedral
-    // opens above the horizon haze band (open BEYOND beat — no down-look).
+    // 5 — Sky (beyond): mid-act baseline for the staged summit-liftoff arc in
+    // resolveChapter5Framing(). The camera begins by holding the receding mountain in
+    // the lower frame, then cranes into the aurora/sun canopy once the rail has safely
+    // cleared the peak mass.
     5: Object.freeze({
-        lookUp: 3.0,
-        lookRight: 2.0,
-        camUp: 1.5,
+        lookForward: 1.2,
+        lookUp: 1.8,
+        lookRight: -1.4,
+        camUp: 1.0,
+        camForward: -1.2,
     }),
     // 6 — Space (beyond): hero gas giant sits up-and-left of the dead-ahead black
     // hole. Bias yaw left + lift so the planet rides the left third of frame. The yaw
@@ -143,6 +153,7 @@ const FRAMING_BLEND_RATE = 2.4;
 
 const FRAMING_KEYS = Object.freeze([
     'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
+    'worldUp', 'climbScale',
 ]);
 
 function resolveChapterFraming(chapterId) {
@@ -263,6 +274,64 @@ function resolveChapter4Framing(t) {
     return out;
 }
 
+// ── Chapter 5 Sky Drift — summit-liftoff composition ─────────────────────────────
+// The rail now physically clears the canonical Ch4 hero peak; the camera needs to make
+// that legible. Entry holds a lower, wider mountain+rail composition, the middle opens
+// the aurora behind the summit, and the exit cranes into the sky/space hand-off.
+// Composition overhaul (2026-06-15): the Ch5 spline is near-vertical (load-bearing for
+// mountain clearance), so the legacy path-frame framing rolled the horizon ~42° and
+// craned the eye ~69° up at empty sky. worldUp levels the horizon; climbScale 0 kills
+// the climb up-push; a negative lookUp drops the aim to the peak+aurora HORIZON so the
+// snowy summits fill the lower frame and the aurora arcs above them the whole chapter.
+// The EXIT relaxes worldUp + cranes back up for the Sky→Space hand-off. lookUp values
+// calibrated against the live NDC projection in the playground harness.
+const CHAPTER_5_ENTRY_FRAMING = Object.freeze({
+    ...DEFAULT_CHAPTER_FRAMING,
+    worldUp: 0.92,
+    climbScale: 0,
+    lookForward: 1.0,
+    lookRight: -1.6,
+    lookUp: -40.0,
+    camUp: 0.6,
+    camForward: -1.6,
+});
+const CHAPTER_5_BASE = Object.freeze({
+    ...DEFAULT_CHAPTER_FRAMING,
+    worldUp: 0.92,
+    climbScale: 0,
+    lookForward: 1.0,
+    lookRight: -0.6,
+    lookUp: -46.0,
+    camUp: 0.9,
+    camForward: -1.2,
+});
+const CHAPTER_5_EXIT_FRAMING = Object.freeze({
+    ...DEFAULT_CHAPTER_FRAMING,
+    worldUp: 0.5,
+    climbScale: 0.5,
+    lookForward: 3.4,
+    lookRight: 1.6,
+    lookUp: 1.0,
+    camUp: 2.2,
+    camForward: -0.2,
+});
+function resolveChapter5Framing(t) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    const toCanopy = THREE.MathUtils.smoothstep(clamped, 0.12, 0.56);
+    const toExit = THREE.MathUtils.smoothstep(clamped, 0.74, 1.0);
+    const out = { ...DEFAULT_CHAPTER_FRAMING };
+    for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
+        const key = FRAMING_KEYS[i];
+        const entryToBase = THREE.MathUtils.lerp(
+            CHAPTER_5_ENTRY_FRAMING[key],
+            CHAPTER_5_BASE[key],
+            toCanopy,
+        );
+        out[key] = THREE.MathUtils.lerp(entryToBase, CHAPTER_5_EXIT_FRAMING[key], toExit);
+    }
+    return out;
+}
+
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
 // Chapter 8's static override is the mid-act baseline. Over the LAST ~18% of the chapter
 // the camera CRANES up the igniting megastructure spire to reveal it firing past the top
@@ -284,9 +353,12 @@ function resolveChapterFramingForProgress(chapterId, inChapterProgress = 0) {
     if (chapterId === 2) return resolveChapter2Framing(inChapterProgress);
     if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
     if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
+    if (chapterId === 5) return resolveChapter5Framing(inChapterProgress);
     if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
     return resolveChapterFraming(chapterId);
 }
+
+export { resolveChapterFramingForProgress };
 
 function buildChapterBoundaryPositions(chapterPositions) {
     const terminalTrimmed = chapterPositions[chapterPositions.length - 1] >= 1
@@ -387,6 +459,11 @@ export class OdysseyCameraController {
             followOffset: new THREE.Vector3(0, 7, 18),
             followLerpSpeed: 0.03,
             scrollSpeed: 0.15, // Reduced from 0.5
+            // Cap on manual scroll velocity (progress units/sec). A hard wheel flick used to
+            // build unbounded velocity and teleport across the map; this keeps the travel
+            // readable AND lets the background chapter render-warm stay ahead of the player.
+            // The gentle cinematic auto-drift is well under this, so it only bites flicks.
+            maxScrollVelocity: 0.4,
             focusDistance: 10,
             minPosition: 0, // Allow scrolling all the way to Level 1
             maxPosition: 1, // Allow scrolling all the way to the end
@@ -1122,6 +1199,7 @@ export class OdysseyCameraController {
         // THROUGH the chapter (a live act-arc), not a single static override:
         //   • ch2 Deep Ocean — three-act vertical reveal (tilt up -> level -> tilt down)
         //   • ch3 Surface     — hero-tree lookAt strengthening at the mid-chapter beat
+        //   • ch5 Sky Drift    — summit hold -> aurora canopy -> atmosphere-edge crane
         //   • ch8 Urban        — finale CRANE up the igniting spire over the last ~18%
         // Every other chapter uses its static override.
         const target = resolveChapterFramingForProgress(
@@ -1145,6 +1223,8 @@ export class OdysseyCameraController {
         active.camUp = THREE.MathUtils.lerp(active.camUp, target.camUp, lerp);
         active.camForward = THREE.MathUtils.lerp(active.camForward, target.camForward, lerp);
         active.downLookScale = THREE.MathUtils.lerp(active.downLookScale, target.downLookScale, lerp);
+        active.worldUp = THREE.MathUtils.lerp(active.worldUp ?? 0, target.worldUp ?? 0, lerp);
+        active.climbScale = THREE.MathUtils.lerp(active.climbScale ?? 1, target.climbScale ?? 1, lerp);
     }
 
     applyBaseFov(deltaTime) {
@@ -1329,6 +1409,12 @@ export class OdysseyCameraController {
         const targetVelocity = autoVelocity + this.travelModel.inputVelocity;
         const lerp = 1 - Math.exp(-dt * 2.8);
         this.travelModel.velocity = THREE.MathUtils.lerp(this.travelModel.velocity, targetVelocity, lerp);
+        // Cap the manual scroll velocity so a hard flick can't outrun the background chapter
+        // render-warm (and stays cinematically readable). autoVelocity is well under this.
+        const maxV = this.config.maxScrollVelocity;
+        if (maxV > 0) {
+            this.travelModel.velocity = THREE.MathUtils.clamp(this.travelModel.velocity, -maxV, maxV);
+        }
 
         if (Math.abs(this.travelModel.velocity) < 1e-5) {
             return;
@@ -1344,13 +1430,26 @@ export class OdysseyCameraController {
     updateFollow(deltaTime) {
         this.updateTravelCurrent(deltaTime);
 
-        // Lerp current position toward target
+        // Lerp current position toward target, then CAP the per-frame step so a far target
+        // (a hard wheel flick) can't lurch the camera across the map faster than
+        // maxScrollVelocity. This is the real bound on visible scroll speed — it keeps the
+        // travel readable and lets the background chapter render-warm stay ahead of the
+        // player. (Directed travel uses focus/path modes, not this lerp, so it stays fast.)
         const lerpFactor = 1 - (1 - this.config.followLerpSpeed) ** (deltaTime * 60);
-        this.currentPosition = THREE.MathUtils.lerp(
+        let nextPosition = THREE.MathUtils.lerp(
             this.currentPosition,
             this.targetPosition,
             lerpFactor,
         );
+        const maxV = this.config.maxScrollVelocity;
+        if (maxV > 0 && deltaTime > 0) {
+            const maxStep = maxV * deltaTime;
+            const step = nextPosition - this.currentPosition;
+            if (Math.abs(step) > maxStep) {
+                nextPosition = this.currentPosition + Math.sign(step) * maxStep;
+            }
+        }
+        this.currentPosition = nextPosition;
 
         const frameBlend = 1 - Math.exp(-Math.max(0, deltaTime) * 7.2);
         this.updateFollowPosition({
@@ -1548,6 +1647,12 @@ export class OdysseyCameraController {
 
         const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(tangent.y) * 0.45, 0.35, 0.9);
         const cameraUp = normal.clone().lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
+        // Roll-stabilisation (per-chapter): pull the up-vector toward WORLD up so a
+        // near-vertical spline can't tilt the horizon. Default worldUp 0 = unchanged.
+        const worldUpBlend = THREE.MathUtils.clamp(framing.worldUp ?? 0, 0, 1);
+        if (worldUpBlend > 0) {
+            cameraUp.lerp(PATH_FRAME_GRAVITY_UP, worldUpBlend).normalize();
+        }
         const camPos = pathPoint.clone()
             .addScaledVector(tangent, -(this.directorCamera.followDistance + vistaPullback))
             .addScaledVector(right, this.config.followOffset.x + framing.camRight)
@@ -1570,7 +1675,8 @@ export class OdysseyCameraController {
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }
-        const climbBias = THREE.MathUtils.clamp((tangent.y + 0.15) * 0.55, 0, 0.65);
+        const climbBias = THREE.MathUtils.clamp((tangent.y + 0.15) * 0.55, 0, 0.65)
+            * (framing.climbScale ?? 1);
         lookTarget.addScaledVector(cameraUp, climbBias * (2.5 + this.directorCamera.followDistance * 0.12));
 
         // UNIT A7-CAMERA: per-chapter look-target re-aim (rule-of-thirds yaw/pitch

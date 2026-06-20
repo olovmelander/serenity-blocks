@@ -824,7 +824,10 @@ export function createBaseBoardScene(
             const bs = this.blockSize;
 
             // Resolve themed color once per (type|color), with garbage special-casing.
-            const colorCache = new Map();
+            // Pooled across frames (cleared each draw) to avoid a per-frame Map allocation.
+            if (!this._poolColorCache) this._poolColorCache = new Map();
+            const colorCache = this._poolColorCache;
+            colorCache.clear();
             const resolveColor = (cell) => {
                 const cacheKey = `${cell.type}|${cell.color}`;
                 const cached = colorCache.get(cacheKey);
@@ -871,7 +874,10 @@ export function createBaseBoardScene(
             const rimFx = this._pieceFx('T');
             if (!rimFx.rim) return;
             const width = Math.max(1, bs * rimFx.rimWidthFactor);
-            const visited = new Set();
+            // Pooled across frames (cleared each draw) — avoids a per-frame Set allocation.
+            if (!this._poolVisited) this._poolVisited = new Set();
+            const visited = this._poolVisited;
+            visited.clear();
             for (let worldY = minRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
@@ -884,8 +890,16 @@ export function createBaseBoardScene(
                     const { colorInt, isGarbage } = resolveColor(cell);
                     if (isGarbage) continue; // garbage has no rim
                     // Flood-fill the connected same-color region (visible band only).
-                    const group = new Set([key]);
-                    const stack = [[worldX, worldY]];
+                    // Pooled across regions/frames (cleared per region) to kill the
+                    // per-region Set/array churn that spiked GC during big cascades.
+                    if (!this._poolGroup) this._poolGroup = new Set();
+                    const group = this._poolGroup;
+                    group.clear();
+                    group.add(key);
+                    if (!this._poolStack) this._poolStack = [];
+                    const stack = this._poolStack;
+                    stack.length = 0;
+                    stack.push([worldX, worldY]);
                     while (stack.length) {
                         const [cx, cy] = stack.pop();
                         for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
@@ -1336,7 +1350,10 @@ export function createBaseBoardScene(
             });
             if (edges.length === 0) return [];
 
-            const startMap = new Map();
+            // Pooled across calls (cleared each call) — traceLoops runs per fused region.
+            if (!this._poolStartMap) this._poolStartMap = new Map();
+            const startMap = this._poolStartMap;
+            startMap.clear();
             edges.forEach((e) => {
                 const k = `${e.fx},${e.fy}`;
                 if (!startMap.has(k)) startMap.set(k, []);
@@ -1354,7 +1371,9 @@ export function createBaseBoardScene(
                 return 3; // reverse
             };
 
-            const used = new Set();
+            if (!this._poolUsed) this._poolUsed = new Set();
+            const used = this._poolUsed;
+            used.clear();
             const loops = [];
             edges.forEach((startEdge) => {
                 if (used.has(startEdge)) return;

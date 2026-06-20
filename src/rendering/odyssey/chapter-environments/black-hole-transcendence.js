@@ -37,6 +37,7 @@ import {
     createAmbientWashTSL,
     createCorridorDustTSL,
     createInfallEmberFieldTSL,
+    CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
@@ -62,6 +63,15 @@ const _fwd = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _heroWorld = new THREE.Vector3();
 const _heroLocal = new THREE.Vector3();
+
+export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
+    opacity: 0.66,
+    sweepRatio: 0.92,
+    radius: 92,
+    tube: 8.5,
+    radialSegments: 8,
+    tubularSegments: 60,
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
@@ -101,7 +111,7 @@ function createEventHorizon(uniforms) {
 
     // Dominant dark horizon.
     const horizon = new THREE.Mesh(
-        new THREE.SphereGeometry(38, 64, 48),
+        new THREE.SphereGeometry(38, 48, 32),
         new THREE.MeshBasicMaterial({ color: 0x000000 }),
     );
     horizon.scale.set(1, 1, 0.9);
@@ -115,7 +125,7 @@ function createEventHorizon(uniforms) {
 
     // Photon ring hugging the horizon.
     const photonRing = new THREE.Mesh(
-        new THREE.RingGeometry(39, 43, 192, 1),
+        new THREE.RingGeometry(39, 43, 128, 1),
         new THREE.MeshBasicMaterial({
             // Hotter incandescent gold-white photon ring — sharpens the bright rim that
             // hugs the void and reads with more contrast against the magenta accretion.
@@ -186,7 +196,7 @@ function createDistantBackgroundHole(uniforms) {
     // photon-ring opacity) and hot gold-white so it crosses bloom threshold as the only
     // hard rim, seating the colossal void.
     const photonRing = new THREE.Mesh(
-        new THREE.RingGeometry(61, 67, 192, 1),
+        new THREE.RingGeometry(61, 67, 128, 1),
         new THREE.MeshBasicMaterial({
             color: 0xfff0c2,
             transparent: true,
@@ -228,22 +238,31 @@ function createDistantBackgroundHole(uniforms) {
     const endFeather = sin(arcU.mul(Math.PI)); // fades to 0 at both arc ends
     const foldRamp = mix(vec3(1.0, 0.957, 0.812), vec3(1.0, 0.18, 0.66), arcU);
     foldArcMaterial.colorNode = foldRamp.mul(endFeather);
-    foldArcMaterial.opacityNode = endFeather.mul(0.62);
+    foldArcMaterial.opacityNode = endFeather.mul(CH7_FOLD_ARC_SETTINGS.opacity);
     foldArcMaterial.transparent = true;
     foldArcMaterial.depthWrite = false;
     foldArcMaterial.blending = THREE.AdditiveBlending;
     foldArcMaterial.side = THREE.DoubleSide;
     foldArcMaterial.userData.emitsBloom = true;
+    foldArcMaterial.userData.foldArcOpacity = CH7_FOLD_ARC_SETTINGS.opacity;
 
-    const FOLD_SWEEP = Math.PI * 0.78;
-    const foldGeometry = new THREE.TorusGeometry(82, 5.5, 10, 64, FOLD_SWEEP);
+    const FOLD_SWEEP = Math.PI * CH7_FOLD_ARC_SETTINGS.sweepRatio;
+    const foldGeometry = new THREE.TorusGeometry(
+        CH7_FOLD_ARC_SETTINGS.radius,
+        CH7_FOLD_ARC_SETTINGS.tube,
+        CH7_FOLD_ARC_SETTINGS.radialSegments,
+        CH7_FOLD_ARC_SETTINGS.tubularSegments,
+        FOLD_SWEEP,
+    );
     const topFold = new THREE.Mesh(foldGeometry, foldArcMaterial);
     topFold.rotation.z = Math.PI / 2 - FOLD_SWEEP / 2; // bows OVER the shadow top
     topFold.name = 'lensed-fold-top';
+    topFold.userData.readability = CH7_FOLD_ARC_SETTINGS;
     group.add(topFold);
     const bottomFold = new THREE.Mesh(foldGeometry, foldArcMaterial);
     bottomFold.rotation.z = -Math.PI / 2 - FOLD_SWEEP / 2; // bows UNDER the shadow
     bottomFold.name = 'lensed-fold-bottom';
+    bottomFold.userData.readability = CH7_FOLD_ARC_SETTINGS;
     group.add(bottomFold);
     group.userData.foldArcs = [topFold, bottomFold];
 
@@ -286,7 +305,7 @@ function createSecondaryLensingMotifs(uniforms) {
     const shared = createSharedMotifMaterialsTSL(uniforms.uTime, uniforms.uEnergy);
     group.userData.sharedMotifMaterials = shared;
 
-    const horizonGeometry = new THREE.SphereGeometry(34, 32, 24);
+    const horizonGeometry = new THREE.SphereGeometry(34, 24, 16);
     const horizonMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
     // Two shared halo materials (even-index magenta, odd-index cyan) + one shared halo
@@ -313,6 +332,42 @@ function createSecondaryLensingMotifs(uniforms) {
         geometry: haloGeometry, materialEven: haloMaterialEven, materialOdd: haloMaterialOdd,
     };
 
+    // ── B-perf: INSTANCE the spin-invariant motif layers ─────────────────────────────
+    // The horizon (uniform-black z-squashed sphere), photon ring (uniform-gold FULL
+    // annulus) and halo (uniform magenta/cyan FULL annulus) are all uniform-coloured
+    // MeshBasicMaterials on fully-symmetric geometry, so the per-motif Z-spin that
+    // update() applies to the motif group is INVISIBLE to them: rotating a uniform sphere
+    // about any axis, or a full uniform ring about its own normal (Z), leaves the rendered
+    // pixels identical. (For the z-squashed sphere, S=diag(1,1,0.9) commutes with Rz, and
+    // the unit sphere is rotation-invariant; for the full rings, a 2π uniform annulus is
+    // invariant under its own-axis rotation.) We can therefore bake each motif's STATIC
+    // transform (position + tilt(Rx) + uniform scale, spin OMITTED — proven irrelevant)
+    // into an InstancedMesh per layer: 5+5+5 separate draws collapse to 1+1+2 (the halo
+    // alternates two colours → two instanced meshes). The accretion DISK and lensing
+    // SHELL stay as per-motif meshes inside the still-spinning motif group, because the
+    // disk's swirl/Doppler is angle-dependent (NOT spin-invariant) — only its safe siblings
+    // are instanced. No material is mutated per-instance (update() touches only
+    // motif.rotation.z), so this is pixel-for-pixel identical.
+    const HALO_EVEN_COUNT = specs.filter((_, i) => i % 2 === 0).length; // indices 0,2,4
+    const HALO_ODD_COUNT = specs.length - HALO_EVEN_COUNT; // indices 1,3
+    const horizonInstanced = new THREE.InstancedMesh(horizonGeometry, horizonMaterial, specs.length);
+    horizonInstanced.name = 'lensing-motif-horizons';
+    const photonGeo = shared.photonRing.geometry;
+    const photonMat = shared.photonRing.material;
+    const photonRingInstanced = new THREE.InstancedMesh(photonGeo, photonMat, specs.length);
+    photonRingInstanced.name = 'lensing-motif-photon-rings';
+    const haloEvenInstanced = new THREE.InstancedMesh(haloGeometry, haloMaterialEven, HALO_EVEN_COUNT);
+    haloEvenInstanced.name = 'lensing-motif-halos-even';
+    const haloOddInstanced = new THREE.InstancedMesh(haloGeometry, haloMaterialOdd, HALO_ODD_COUNT);
+    haloOddInstanced.name = 'lensing-motif-halos-odd';
+
+    // Scratch transforms reused across the build loop (no per-frame use — build-time only).
+    const _motifXform = new THREE.Object3D(); // composes position + tilt(Rx) + scale (spin omitted)
+    const _horizonLocal = new THREE.Matrix4().makeScale(1, 1, 0.9); // horizon's own z-squash
+    const _instanceMatrix = new THREE.Matrix4();
+    let haloEvenCursor = 0;
+    let haloOddCursor = 0;
+
     specs.forEach(([x, y, z, scale, tilt], index) => {
         const motif = new THREE.Group();
         motif.name = `lensing-motif-${index}`;
@@ -320,26 +375,29 @@ function createSecondaryLensingMotifs(uniforms) {
         motif.rotation.x = tilt;
         motif.scale.setScalar(scale);
 
-        const horizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
-        horizon.scale.set(1, 1, 0.9);
-        motif.add(horizon);
+        // Static motif matrix (spin EXCLUDED — proven irrelevant for the symmetric layers).
+        _motifXform.position.set(x, y, z);
+        _motifXform.rotation.set(tilt, 0, 0);
+        _motifXform.scale.setScalar(scale);
+        _motifXform.updateMatrix();
 
+        // Horizon instance = motif · diag(1,1,0.9) (the per-mesh z-squash it used as a child).
+        _instanceMatrix.multiplyMatrices(_motifXform.matrix, _horizonLocal);
+        horizonInstanced.setMatrixAt(index, _instanceMatrix);
+        // Photon ring + halo sat at the motif origin with no local transform → just the motif.
+        photonRingInstanced.setMatrixAt(index, _motifXform.matrix);
+        if (index % 2 === 0) {
+            haloEvenInstanced.setMatrixAt(haloEvenCursor, _motifXform.matrix);
+            haloEvenCursor += 1;
+        } else {
+            haloOddInstanced.setMatrixAt(haloOddCursor, _motifXform.matrix);
+            haloOddCursor += 1;
+        }
+
+        // The accretion disk + lensing shell still need the live per-motif spin, so they
+        // stay children of the spinning motif group (update() ticks motif.rotation.z).
         const disk = shared.makeDiskMesh(`motif-accretion-disk-${index}`);
         motif.add(disk);
-
-        // Bright incandescent photon ring hugging each motif's horizon so a glowing
-        // singularity reads even before the accretion disk resolves at distance.
-        const photonRing = shared.makePhotonRingMesh(`motif-photon-ring-${index}`);
-        motif.add(photonRing);
-
-        // Soft magenta/cyan accretion halo (a coplanar additive glow ring) so each motif
-        // carries a glowing aura that reads against the deep-violet void at distance.
-        const halo = new THREE.Mesh(
-            haloGeometry,
-            index % 2 === 0 ? haloMaterialEven : haloMaterialOdd,
-        );
-        halo.name = `motif-halo-${index}`;
-        motif.add(halo);
 
         const lensShell = shared.makeShellMesh(`motif-lensing-shell-${index}`);
         motif.add(lensShell);
@@ -348,6 +406,13 @@ function createSecondaryLensingMotifs(uniforms) {
         motif.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.05 + index * 0.015);
         group.add(motif);
     });
+
+    horizonInstanced.instanceMatrix.needsUpdate = true;
+    photonRingInstanced.instanceMatrix.needsUpdate = true;
+    haloEvenInstanced.instanceMatrix.needsUpdate = true;
+    haloOddInstanced.instanceMatrix.needsUpdate = true;
+    // The instanced layers carry no userData.spin, so update()'s spin loop no-ops on them.
+    group.add(horizonInstanced, photonRingInstanced, haloEvenInstanced, haloOddInstanced);
 
     return group;
 }
@@ -363,7 +428,7 @@ function createAccretionGlowRings() {
 
     ringColors.forEach((color, index) => {
         const ring = new THREE.Mesh(
-            new THREE.RingGeometry(140 + index * 22, 168 + index * 30, 128, 1),
+            new THREE.RingGeometry(140 + index * 22, 168 + index * 30, 96, 1),
             new THREE.MeshBasicMaterial({
                 color,
                 transparent: true,
@@ -460,7 +525,7 @@ function createInfallStreams() {
             new THREE.Vector3(0, 0, 0),
         ]);
         const mesh = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 56, 0.8, 8, false),
+            new THREE.TubeGeometry(curve, 40, 0.8, 6, false),
             streamMaterials[index % colors.length],
         );
         mesh.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.015 + index * 0.002);
@@ -471,7 +536,7 @@ function createInfallStreams() {
         // MASS, not sub-pixel wireframes. Shares the parent's spin (child of nothing —
         // added as its own mesh with the same userData.spin so both rotate in step).
         const sheath = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 56, 2.6, 8, false),
+            new THREE.TubeGeometry(curve, 40, 2.6, 6, false),
             sheathMaterials[index % colors.length],
         );
         sheath.userData.spin = mesh.userData.spin;
@@ -542,11 +607,11 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.accretionGlowRings = accretionGlowRings;
 
     // Drifting violet dust hugging the corridor (re-centred on the camera in update()).
-    // Creative plan: 3–4× perceived density through the 07–23 midsection — count scales
-    // with the quality preset (default lifted 460 → 900, capped 1100 in the builder).
+    // Count scales with the quality preset. PERF PASS (2026-06-17): trimmed ~30% to cut
+    // additive overdraw on the heaviest chapter (default 1040 → 720, builder cap 1200 → 820).
     const dustCount = options.particleCount
-        ? Math.min(1100, Math.floor(options.particleCount * 1.8))
-        : 900;
+        ? Math.min(CH7_CORRIDOR_DUST_SETTINGS.maxCount, Math.floor(options.particleCount * 2.0))
+        : 720;
     const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime, dustCount);
     corridorDust.name = 'corridor-violet-dust';
     group.add(corridorDust);
@@ -569,9 +634,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     // (default ~520, hard-capped at 900 in the builder) so high-quality tiers add density
     // and low tiers stay light — no per-frame CPU (motion is GPU-side). update() parents
     // it onto the locked hero each frame so the embers always wreathe the on-screen hole.
-    // Creative plan asset 5 ("denser infall particles"): raised toward the 900 cap on
-    // High/Ultra presets (multiplier 1.04 → 1.6, default 520 → 700).
-    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.6) : 700;
+    // PERF PASS (2026-06-17): trimmed ~30% to cut additive overdraw on the heaviest chapter
+    // (default 700 → 520, builder cap 900 → 620).
+    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.6) : 520;
     const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
     group.add(infallEmbers);
     group.userData.infallEmbers = infallEmbers;

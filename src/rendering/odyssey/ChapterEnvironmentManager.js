@@ -146,11 +146,10 @@ const ECOTONE_NEIGHBOUR_CLEARANCE = 0.45; // never reach past ~half-way to the n
 // reachable env hooks (env-group opacity boost + group.userData scalar drivers the env /
 // post can read). They are ADDITIVE: where no driver applies the legacy crossfade is used.
 //
-// 5->6 (the WORST seam): ignite Space's crisp starfield EARLY across the last ~8% of Sky so
-//   that by Space-01 the black vacuum + sharp stars read immediately (no "pink soup in
-//   space"). The fog itself dissolves via the widened 5->6 seamWidth (chapter-profile);
-//   here we pull the Space (ch6) env opacity FORWARD so the stars are already up at the seam.
-const SEAM_56_STAR_IGNITE_BAND = 0.08; // fraction of Sky's span before the boundary to pre-light Space
+// 5->6: carry Sky's aurora INTO Space, then reveal the crisp starfield locally inside
+// chapter 6. Earlier versions pulled Space fully forward across the tail of Sky, which
+// made the seam technically smooth but visually cluttered: planets, rocks, stars and
+// magenta nebula all arrived before the aurora had finished speaking.
 // 7->8 afterglow: the singularity's core glow "becomes" the first neon — pull the Urban
 //   (ch8) env opacity slightly FORWARD into the tail of Black Hole so the neon city resolves
 //   out of the BH afterglow rather than snapping in.
@@ -166,9 +165,31 @@ const JOURNEY_END_BAND = 0.18;
 // violet -> Space near-black change is crammed into ~0.06 of progress and reads as a snap.
 // For the 5->6 boundary ONLY we drive the COLOUR lerp over a WIDER, smootherstep'd window
 // centred on the boundary — WITHOUT widening the ecotone/content seam (so no extra double-
-// render cost; only the per-frame colour scalar changes). Density keeps its existing front-
-// loaded evaporation; the wider window applies to colour + ambient only.
+// render cost; only the per-frame colour scalar changes). The midpoint is a deep teal
+// aurora bridge, not lavender haze, so chapter 06 inherits chapter 05's best ending tone.
+const SEAM_34_COLOUR_HALF_WIDTH = 0.055; // per-side progress window for the 3->4 colour/fog lerp
+const SEAM_34_ALPINE_BRIDGE = Object.freeze({
+    skyColor: 0x527da2,
+    fogColor: 0x638699,
+    ambientLight: 0xd8ded0,
+    ambientIntensity: 0.56,
+    fogDensity: 0.0024,
+});
 const SEAM_56_COLOUR_HALF_WIDTH = 0.07; // per-side progress window for the 5->6 colour lerp
+const SEAM_56_AURORA_BRIDGE = Object.freeze({
+    skyColor: 0x06162f,
+    fogColor: 0x09283f,
+    ambientLight: 0x1a4b5c,
+    ambientIntensity: 0.32,
+});
+// 5→6 carry: the inherited summit chain + aurora are world-locked DEEP ahead (the camera
+// never physically passes the hero peak in Ch6 — it stays ~400u in front), so they would
+// "pop" the instant the manager flipped the Ch5 group invisible. Hold the Ch5 env fully
+// present while the peak/aurora are still prominent, then ease the whole env opacity to 0
+// over a long tail so they DISSOLVE as the camera moves on (sky-drift.js multiplies this
+// chapterOpacity into the summit-ring + aurora NodeMaterials, which the manager can't reach).
+const SEAM_56_CARRY_HOLD_BAND = 0.4; // fraction of Space span the Ch5 env stays fully present
+const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the Ch5 env has faded out
 
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -178,6 +199,24 @@ function smootherstep01(value) {
 function smoothstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
     return t * t * (3 - 2 * t);
+}
+
+function lerpColorViaBridge(out, startColor, bridgeHex, endColor, t, scratch) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    if (clamped < 0.5) {
+        const bridgeT = smootherstep01(clamped * 2);
+        return out.set(startColor).lerp(scratch.set(bridgeHex), bridgeT);
+    }
+    const spaceT = smootherstep01((clamped - 0.5) * 2);
+    return out.set(bridgeHex).lerp(scratch.set(endColor), spaceT);
+}
+
+function lerpNumberViaBridge(start, bridge, end, t) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    if (clamped < 0.5) {
+        return THREE.MathUtils.lerp(start, bridge, smootherstep01(clamped * 2));
+    }
+    return THREE.MathUtils.lerp(bridge, end, smootherstep01((clamped - 0.5) * 2));
 }
 
 /**
@@ -280,6 +319,7 @@ function resolveEcotoneOverlap(
             boundaryId: `${chapterId}-${chapterId + 1}`,
             sourceChapter: chapterId,
             targetChapter: chapterId + 1,
+            boundaryPosition,
             wN,
             wN1,
             t: tRaw,
@@ -752,9 +792,13 @@ export class ChapterEnvironmentManager {
 
         console.log('[ChapterEnvironmentManager] Background loading chapters:', remaining);
 
-        const scheduleNext = (typeof requestIdleCallback === 'function')
-            ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
-            : (fn) => setTimeout(fn, 200);
+        // Use setTimeout (NOT requestIdleCallback) so background chapter creation runs PROMPTLY
+        // even while the player is actively scrolling: rAF starves idle callbacks, so the old
+        // idle path let the player out-scroll the loader and each chapter built on-approach mid-
+        // scroll (~400ms synchronous block = a hard stutter). A short gap between builds still
+        // hands the live frame a slice. (With the all-chapters eager window this path is usually
+        // a no-op, but it stays robust if the window is reduced via ?odysseyEagerWindow=0.)
+        const scheduleNext = (fn) => setTimeout(fn, 60);
 
         let index = 0;
         const loadNext = () => {
@@ -787,12 +831,10 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * B7 — early-ignite opacity boost for a chapter near a seam where the §4 transition
-     * calls for the INCOMING biome to read BEFORE the boundary (a carried element / early
-     * reveal). Returns a 0..1 boost that is Math.max'd into the chapter's crossfade opacity
-     * so the env never DIMS — it only appears earlier. Pure arithmetic, no allocation.
+     * B7 — early-ignite opacity boost for seams where the incoming biome should read before
+     * the boundary. 5->6 is intentionally excluded: Chapter 6 now handles its own staged
+     * aurora-to-starfield reveal so the opening is not cluttered.
      *
-     *  • ch6 Space — ignite the starfield across the last ~8% of Sky (5->6, the worst seam)
      *  • ch8 Urban — seed the neon city across the last ~5% of Black Hole (7->8 afterglow)
      *
      * @param {number} chapterId incoming chapter id
@@ -812,7 +854,6 @@ export class ChapterEnvironmentManager {
             return smoothstep01((progress - start) / Math.max(1e-5, boundary - start));
         };
 
-        if (chapterId === 6) return ramp(SEAM_56_STAR_IGNITE_BAND);
         if (chapterId === 8) return ramp(SEAM_78_AFTERGLOW_BAND);
         return 0;
     }
@@ -866,15 +907,55 @@ export class ChapterEnvironmentManager {
                 && (chapterId === this._resolvedBlendState.ecotone.sourceChapter
                     || chapterId === this._resolvedBlendState.ecotone.targetChapter)) {
                 progressOpacity = ecotoneWeights[chapterId];
+                if (mode === 'progress'
+                    && chapterId === 5
+                    && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
+                    const boundary = this._resolvedBlendState.ecotone.boundaryPosition
+                        ?? this.chapterPositions[5];
+                    const end = this._resolvedBlendState.ecotone.end ?? boundary;
+                    progressOpacity = this.cameraProgress <= boundary
+                        ? 1
+                        : smoothstep01((end - this.cameraProgress) / Math.max(1e-5, end - boundary));
+                }
+                if (mode === 'progress'
+                    && chapterId === 6
+                    && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
+                    const boundary = this._resolvedBlendState.ecotone.boundaryPosition
+                        ?? this.chapterPositions[5];
+                    const end = this._resolvedBlendState.ecotone.end ?? boundary;
+                    progressOpacity = this.cameraProgress <= boundary
+                        ? 0
+                        : smoothstep01((this.cameraProgress - boundary) / Math.max(1e-5, end - boundary));
+                }
             }
 
             // B7 SEAM EARLY-IGNITE: for seams where the §4 plan wants the incoming biome to
-            // read BEFORE the boundary (5->6 Space starfield, 7->8 Urban neon afterglow),
+            // read BEFORE the boundary (7->8 Urban neon afterglow),
             // pull the incoming env opacity FORWARD. Math.max so it only ever appears EARLIER
             // (never dims the existing crossfade). Progress mode only.
             if (mode === 'progress') {
                 const seamInBoost = this._seamInBoostFor(chapterId, this.cameraProgress);
                 if (seamInBoost > progressOpacity) progressOpacity = seamInBoost;
+                if (chapterId === 5) {
+                    const boundary56 = this.chapterPositions[5];
+                    const nextBoundary = this.chapterPositions[6] ?? 1;
+                    if (Number.isFinite(boundary56)
+                        && Number.isFinite(nextBoundary)
+                        && nextBoundary > boundary56
+                        && this.cameraProgress > boundary56) {
+                        const spaceSpan = nextBoundary - boundary56;
+                        const holdEnd = boundary56 + spaceSpan * SEAM_56_CARRY_HOLD_BAND;
+                        const carryEnd = boundary56 + spaceSpan * SEAM_56_AURORA_CARRY_BAND;
+                        // Hold fully present, then ease to 0 over the tail — a long graceful
+                        // dissolve of the inherited peaks/aurora instead of a hard pop.
+                        const carry = this.cameraProgress <= holdEnd
+                            ? 1
+                            : 1 - smoothstep01(
+                                (this.cameraProgress - holdEnd) / Math.max(1e-5, carryEnd - holdEnd),
+                            );
+                        if (carry > progressOpacity) progressOpacity = carry;
+                    }
+                }
             }
 
             const opacity = mode === 'progress'
@@ -884,6 +965,7 @@ export class ChapterEnvironmentManager {
                     0,
                     1,
                 );
+            env.group.userData.chapterOpacity = opacity;
             const isVisible = opacity > 0;
             env.group.visible = isVisible;
 
@@ -1029,7 +1111,13 @@ export class ChapterEnvironmentManager {
             }
             if (env.rigLights && env.rigLights.length > 0) {
                 const weight = env.lastOpacity ?? (env.group.visible ? 1 : 0);
-                this._applyLightCrossfade(env.rigLights, weight, updated);
+                // Skip the rig-light intensity rewrite on settled, non-seam frames: re-apply
+                // only when the chapter animated this frame OR the blend weight actually moved.
+                if (updated || env._lastCrossfadeWeight === undefined
+                    || Math.abs(weight - env._lastCrossfadeWeight) > 1e-4) {
+                    this._applyLightCrossfade(env.rigLights, weight, updated);
+                    env._lastCrossfadeWeight = weight;
+                }
             }
         });
 
@@ -1078,6 +1166,11 @@ export class ChapterEnvironmentManager {
         const currentChapterId = resolved.sourceChapter;
         const nextChapterId = resolved.targetChapter;
         const t = resolved.seamProgress;
+        const environmentProgress = THREE.MathUtils.clamp(
+            Number.isFinite(progress) ? progress : this.cameraProgress,
+            0,
+            1,
+        );
 
         // ═══════════════════════════════════════════════════════════════════
         // Chapter Change Detection - Trigger callback for FOV pulse
@@ -1137,14 +1230,11 @@ export class ChapterEnvironmentManager {
             this._blendColorScratch.set(nextAmbientLight);
             ambientLight.lerp(this._blendColorScratch, blend);
 
-            // B7 5->6 (the WORST seam): the violet atmospheric "soup" must EVAPORATE into
-            // vacuum AHEAD of the colour crossfade so it doesn't read as "pink soup in
-            // space". Front-load the DENSITY blend (pow < 1) on the 5->6 boundary only so
-            // density rushes toward Space's near-zero early, while the COLOUR still lerps
-            // linearly (the lavender survives only as the first distant nebula tint, not as
-            // ambient volumetric fog). Every other seam keeps the linear density lerp.
+            // 5->6: hold a little of Sky's thin aurora atmosphere past the boundary instead
+            // of evaporating it early. Chapter 6 then reveals stars/nebula locally, so the
+            // opening breathes before becoming hard vacuum.
             const densityBlend = (currentChapterId === 5 && nextChapterId === 6)
-                ? blend ** 0.45
+                ? blend ** 1.45
                 : blend;
             fogDensity = THREE.MathUtils.lerp(currentFogDensity, nextFogDensity, densityBlend);
             ambientIntensity = THREE.MathUtils.lerp(
@@ -1154,16 +1244,71 @@ export class ChapterEnvironmentManager {
             );
         }
 
+        // SEAM 3->4 WIDE COLOUR + DENSITY LERP: bridge the warm living-world sky into
+        // cold alpine air over a wider window than the content ecotone. The midpoint stays
+        // saturated and lower-density, avoiding the pale blue fog wall seen in board shots.
+        const boundary34 = this.chapterPositions[3];
+        if (Number.isFinite(boundary34)) {
+            const colourStart = boundary34 - SEAM_34_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary34 + SEAM_34_COLOUR_HALF_WIDTH;
+            const p = environmentProgress;
+            if (p >= colourStart && p <= colourEnd) {
+                const surface3 = this.chapterEnvironmentById.get(3);
+                const mountains4 = this.chapterEnvironmentById.get(4);
+                if (surface3 && mountains4) {
+                    const colourBlend = smootherstep01(
+                        (p - colourStart) / (colourEnd - colourStart),
+                    );
+                    lerpColorViaBridge(
+                        skyColor,
+                        surface3.skyColor,
+                        SEAM_34_ALPINE_BRIDGE.skyColor,
+                        mountains4.skyColor,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    lerpColorViaBridge(
+                        fogColor,
+                        surface3.fogColor,
+                        SEAM_34_ALPINE_BRIDGE.fogColor,
+                        mountains4.fogColor,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    lerpColorViaBridge(
+                        ambientLight,
+                        surface3.ambientLight,
+                        SEAM_34_ALPINE_BRIDGE.ambientLight,
+                        mountains4.ambientLight,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    ambientIntensity = lerpNumberViaBridge(
+                        surface3.ambientIntensity,
+                        SEAM_34_ALPINE_BRIDGE.ambientIntensity,
+                        mountains4.ambientIntensity,
+                        colourBlend,
+                    );
+                    fogDensity = lerpNumberViaBridge(
+                        surface3.fogDensity,
+                        SEAM_34_ALPINE_BRIDGE.fogDensity,
+                        mountains4.fogDensity,
+                        colourBlend,
+                    );
+                }
+            }
+        }
+
         // SEAM 5->6 WIDE COLOUR LERP: override the fog/sky/ambient COLOUR with a wider,
         // smootherstep'd Sky(5)->Space(6) ramp centred on the 5-6 boundary so the violet
         // atmosphere dissolves to the near-black vacuum gradually instead of snapping inside
         // the narrow content seam. Decoupled from the ecotone (no extra double-render); the
-        // DENSITY keeps its front-loaded evaporation (driven above) so this only smooths hue.
+        // DENSITY is delayed slightly on this seam, so this bridges hue and ambience.
         const boundary56 = this.chapterPositions[5];
         if (Number.isFinite(boundary56)) {
             const colourStart = boundary56 - SEAM_56_COLOUR_HALF_WIDTH;
             const colourEnd = boundary56 + SEAM_56_COLOUR_HALF_WIDTH;
-            const p = this.cameraProgress;
+            const p = environmentProgress;
             if (p >= colourStart && p <= colourEnd) {
                 const sky5 = this.chapterEnvironmentById.get(5);
                 const space6 = this.chapterEnvironmentById.get(6);
@@ -1171,17 +1316,43 @@ export class ChapterEnvironmentManager {
                     const colourBlend = smootherstep01(
                         (p - colourStart) / (colourEnd - colourStart),
                     );
-                    skyColor.set(sky5.skyColor)
-                        .lerp(this._blendColorScratch.set(space6.skyColor), colourBlend);
-                    fogColor.set(sky5.fogColor)
-                        .lerp(this._blendColorScratch.set(space6.fogColor), colourBlend);
-                    ambientLight.set(sky5.ambientLight)
-                        .lerp(this._blendColorScratch.set(space6.ambientLight), colourBlend);
-                    ambientIntensity = THREE.MathUtils.lerp(
-                        sky5.ambientIntensity,
-                        space6.ambientIntensity,
+                    lerpColorViaBridge(
+                        skyColor,
+                        sky5.skyColor,
+                        SEAM_56_AURORA_BRIDGE.skyColor,
+                        space6.skyColor,
                         colourBlend,
+                        this._blendColorScratch,
                     );
+                    lerpColorViaBridge(
+                        fogColor,
+                        sky5.fogColor,
+                        SEAM_56_AURORA_BRIDGE.fogColor,
+                        space6.fogColor,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    lerpColorViaBridge(
+                        ambientLight,
+                        sky5.ambientLight,
+                        SEAM_56_AURORA_BRIDGE.ambientLight,
+                        space6.ambientLight,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    if (colourBlend < 0.5) {
+                        ambientIntensity = THREE.MathUtils.lerp(
+                            sky5.ambientIntensity,
+                            SEAM_56_AURORA_BRIDGE.ambientIntensity,
+                            smootherstep01(colourBlend * 2),
+                        );
+                    } else {
+                        ambientIntensity = THREE.MathUtils.lerp(
+                            SEAM_56_AURORA_BRIDGE.ambientIntensity,
+                            space6.ambientIntensity,
+                            smootherstep01((colourBlend - 0.5) * 2),
+                        );
+                    }
                 }
             }
         }

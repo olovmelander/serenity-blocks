@@ -204,7 +204,7 @@ export class DemoPlayer {
                 suppressExternalInput: true,
             });
             this.currentInputIndex = checkpoint.inputIndex || 0;
-            this.lastSimulatedTime = checkpoint.t || 0;
+            this.lastSimulatedTime = this._checkpointTime(checkpoint);
         } else {
             this._resetState();
         }
@@ -341,12 +341,16 @@ export class DemoPlayer {
         const action = input.a;
         const data = input.d;
 
-        this.gameState.simTimeMs = input.t;
-        this.gameState.simFrame = input.f;
+        this._alignReplayClockForInput(input);
 
         if (typeof callbacks.applyCommand === 'function') {
             return callbacks.applyCommand(
-                { type: action, value: data, a: action, d: data },
+                {
+                    type: action,
+                    value: data,
+                    a: action,
+                    d: data,
+                },
                 {
                     record: false,
                     muted: Boolean(options.muted),
@@ -372,6 +376,27 @@ export class DemoPlayer {
         default:
             return false;
         }
+    }
+
+    _alignReplayClockForInput(input) {
+        if (!this.gameState) return;
+
+        const inputTime = Number.isFinite(input?.t) ? input.t : 0;
+        const currentTime = Number.isFinite(this.gameState.simTimeMs)
+            ? this.gameState.simTimeMs
+            : 0;
+        const alignedTime = Math.max(currentTime, inputTime);
+        const tickMs = Number(this.gameState.simTickMs) || this.tickMs || DEMO_TICK_MS;
+        const alignedFrame = Math.round(alignedTime / tickMs);
+        const inputFrame = Number.isFinite(input?.f) ? input.f : 0;
+
+        this.gameState.simTimeMs = alignedTime;
+        this.gameState.lastTime = Math.max(
+            Number.isFinite(this.gameState.lastTime) ? this.gameState.lastTime : 0,
+            alignedTime,
+        );
+        this.gameState.simFrame = Math.max(0, inputFrame, alignedFrame);
+        this.lastSimulatedTime = Math.max(this.lastSimulatedTime || 0, alignedTime);
     }
 
     async _waitForPhysics() {
@@ -500,6 +525,16 @@ export class DemoPlayer {
         return best;
     }
 
+    _checkpointTime(checkpoint) {
+        if (Number.isFinite(checkpoint?.state?.simTimeMs)) {
+            return checkpoint.state.simTimeMs;
+        }
+        if (Number.isFinite(checkpoint?.t)) {
+            return checkpoint.t;
+        }
+        return 0;
+    }
+
     _getMutedCallbacks() {
         if (!this._mutedCallbacks) {
             const originalPhysics = this.callbacks.physicsCallbacks || {};
@@ -572,13 +607,16 @@ export class DemoPlayer {
                     const frame = Number.isFinite(checkpoint.f)
                         ? Math.max(0, Math.round(checkpoint.f))
                         : Math.max(0, Math.round((Number(checkpoint.t) || 0) / tickMs));
+                    const checkpointTime = Number.isFinite(checkpoint.state?.simTimeMs)
+                        ? checkpoint.state.simTimeMs
+                        : Math.round(frame * tickMs);
                     const inputIndex = Number.isFinite(checkpoint.inputIndex)
                         ? checkpoint.inputIndex
                         : inputs.findIndex((input) => input.f > frame);
                     return {
                         ...checkpoint,
                         f: frame,
-                        t: Math.round(frame * tickMs),
+                        t: checkpointTime,
                         inputIndex: inputIndex < 0 ? inputs.length : inputIndex,
                     };
                 })

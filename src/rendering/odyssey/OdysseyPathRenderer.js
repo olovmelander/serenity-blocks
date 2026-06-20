@@ -79,6 +79,13 @@ export class OdysseyPathRenderer {
         // call (twice/frame via updateChapterTransition). Build the targets array once
         // when the tubes are created and reuse it.
         this._transitionTargets = [];
+        // Perf (zero-visual): the steady-state (no-transition) branch of
+        // updateChapterTransition re-wrote all 8 ring materials (emissive.copy +
+        // emissiveIntensity + scale) AND the tube transition uniforms EVERY frame on the
+        // always-on path, even though every write is idempotent at rest. This latch is
+        // cleared whenever a transition branch runs, so the steady-state reset is applied
+        // exactly ONCE per return-to-rest and then skipped — byte-identical end state.
+        this._steadyStateApplied = false;
     }
 
     /**
@@ -322,6 +329,10 @@ export class OdysseyPathRenderer {
     }
 
     createChapterMarkers(chapterPositions) {
+        // Fresh rings (and, on rebuild, fresh tube uniform sets) start at the rest pose
+        // but the tube transition uniforms still need their one-time reset applied — clear
+        // the latch so updateChapterTransition re-applies the steady state once.
+        this._steadyStateApplied = false;
         chapterPositions.forEach((pos, index) => {
             if (index >= ODYSSEY_CHAPTER_PROFILES.length) {
                 return;
@@ -471,6 +482,9 @@ export class OdysseyPathRenderer {
 
     updateChapterTransition() {
         if (this.positionSeam?.active) {
+            // A transition is animating the rings/uniforms — invalidate the steady-state
+            // latch so the rest pose is re-applied once when this branch stops running.
+            this._steadyStateApplied = false;
             const seam = this.positionSeam;
             const envelope = THREE.MathUtils.clamp(seam.envelope, 0, 1);
             this.applyTransitionUniforms(
@@ -501,6 +515,14 @@ export class OdysseyPathRenderer {
         }
 
         if (!this.chapterTransition?.active) {
+            // Steady state: every write below is idempotent at rest, so apply the rest
+            // pose exactly ONCE per return-to-rest and skip it on subsequent frames. The
+            // latch is cleared by the two transition branches (and on rebuild via
+            // createChapterMarkers), so a fresh transition still re-applies the rest pose
+            // afterward — byte-identical end state, no per-frame material churn idle.
+            if (this._steadyStateApplied) {
+                return;
+            }
             this.applyTransitionUniforms(0, 0.5, 0.08, this.transitionResetColor);
             this.chapterMarkers.forEach((ring, index) => {
                 const { material } = ring;
@@ -509,9 +531,13 @@ export class OdysseyPathRenderer {
                 material.emissiveIntensity = 0.5;
                 ring.scale.setScalar(1);
             });
+            this._steadyStateApplied = true;
             return;
         }
 
+        // A transition is animating the rings/uniforms — invalidate the steady-state
+        // latch so the rest pose is re-applied once when this branch stops running.
+        this._steadyStateApplied = false;
         const elapsed = performance.now() - this.chapterTransition.startTime;
         const rawProgress = THREE.MathUtils.clamp(elapsed / this.chapterTransition.duration, 0, 1);
         const envelope = Math.sin(rawProgress * Math.PI);
@@ -604,6 +630,7 @@ export class OdysseyPathRenderer {
         this._glowUniforms = null;
         this._transitionTargets = [];
         this._chapterUniforms = null;
+        this._steadyStateApplied = false;
     }
 }
 

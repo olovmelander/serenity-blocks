@@ -28,11 +28,49 @@ import {
 const ENERGY_ATTACK_RATE = 9.0; // toward a higher audio energy (fast)
 const ENERGY_RELEASE_RATE = 2.5; // back down (slow, so it "breathes")
 const PULSE_DECAY_RATE = 6.0; // beat-pulse envelope decay
+const SEAM_34_ALPINE_COLOUR_HALF_WIDTH = 0.055;
+const SEAM_34_ALPINE_BRIDGE = Object.freeze({
+    skyColor: 0x527da2,
+    fogColor: 0x638699,
+    ambientLight: 0xd8ded0,
+    ambientIntensity: 0.56,
+    fogDensity: 0.0024,
+});
+const SEAM_56_AURORA_COLOUR_HALF_WIDTH = 0.07;
+const SEAM_56_AURORA_BRIDGE = Object.freeze({
+    skyColor: 0x06162f,
+    fogColor: 0x09283f,
+    ambientLight: 0x1a4b5c,
+    ambientIntensity: 0.32,
+});
 
 function expApproach(current, target, rate, dt) {
     if (!(dt > 0) || !(rate > 0)) return current;
     const t = 1 - Math.exp(-rate * dt);
     return current + (target - current) * t;
+}
+
+function smootherstep01(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function lerpColorViaBridge(out, startColor, bridgeHex, endColor, t, scratch) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    if (clamped < 0.5) {
+        const bridgeT = smootherstep01(clamped * 2);
+        return out.set(startColor).lerp(scratch.set(bridgeHex), bridgeT);
+    }
+    const spaceT = smootherstep01((clamped - 0.5) * 2);
+    return out.set(bridgeHex).lerp(scratch.set(endColor), spaceT);
+}
+
+function lerpNumberViaBridge(start, bridge, end, t) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    if (clamped < 0.5) {
+        return lerpNumber(start, bridge, smootherstep01(clamped * 2));
+    }
+    return lerpNumber(bridge, end, smootherstep01((clamped - 0.5) * 2));
 }
 
 export class OdysseyDirector {
@@ -211,7 +249,111 @@ export class OdysseyDirector {
         );
         if (atmo.lightDir.lengthSq() > 1e-6) atmo.lightDir.normalize();
 
+        const boundary34 = this.chapterPositions?.[3];
+        if (Number.isFinite(boundary34)) {
+            const colourStart = boundary34 - SEAM_34_ALPINE_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary34 + SEAM_34_ALPINE_COLOUR_HALF_WIDTH;
+            if (ascentProgress >= colourStart && ascentProgress <= colourEnd) {
+                const surface3 = getChapterProfile(3).atmosphere;
+                const mountains4 = getChapterProfile(4).atmosphere;
+                const alpineBlend = smootherstep01(
+                    (ascentProgress - colourStart) / (colourEnd - colourStart),
+                );
+                lerpColorViaBridge(
+                    atmo.skyColor,
+                    surface3.skyColor,
+                    SEAM_34_ALPINE_BRIDGE.skyColor,
+                    mountains4.skyColor,
+                    alpineBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.fogColor,
+                    surface3.fogColor,
+                    SEAM_34_ALPINE_BRIDGE.fogColor,
+                    mountains4.fogColor,
+                    alpineBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.ambientColor,
+                    surface3.ambientLight,
+                    SEAM_34_ALPINE_BRIDGE.ambientLight,
+                    mountains4.ambientLight,
+                    alpineBlend,
+                    this._scratchA,
+                );
+                atmo.ambientIntensity = lerpNumberViaBridge(
+                    surface3.ambientIntensity,
+                    SEAM_34_ALPINE_BRIDGE.ambientIntensity,
+                    mountains4.ambientIntensity,
+                    alpineBlend,
+                );
+                atmo.fogDensity = lerpNumberViaBridge(
+                    surface3.fogDensity,
+                    SEAM_34_ALPINE_BRIDGE.fogDensity,
+                    mountains4.fogDensity,
+                    alpineBlend,
+                );
+            }
+        }
+
         // ── Blend camera framing (act → act by seamProgress) ──
+        const boundary56 = this.chapterPositions?.[5];
+        if (Number.isFinite(boundary56)) {
+            const colourStart = boundary56 - SEAM_56_AURORA_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary56 + SEAM_56_AURORA_COLOUR_HALF_WIDTH;
+            if (ascentProgress >= colourStart && ascentProgress <= colourEnd) {
+                const sky5 = getChapterProfile(5).atmosphere;
+                const space6 = getChapterProfile(6).atmosphere;
+                const auroraBlend = smootherstep01(
+                    (ascentProgress - colourStart) / (colourEnd - colourStart),
+                );
+                lerpColorViaBridge(
+                    atmo.skyColor,
+                    sky5.skyColor,
+                    SEAM_56_AURORA_BRIDGE.skyColor,
+                    space6.skyColor,
+                    auroraBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.fogColor,
+                    sky5.fogColor,
+                    SEAM_56_AURORA_BRIDGE.fogColor,
+                    space6.fogColor,
+                    auroraBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.ambientColor,
+                    sky5.ambientLight,
+                    SEAM_56_AURORA_BRIDGE.ambientLight,
+                    space6.ambientLight,
+                    auroraBlend,
+                    this._scratchA,
+                );
+                if (auroraBlend < 0.5) {
+                    atmo.ambientIntensity = lerpNumber(
+                        sky5.ambientIntensity,
+                        SEAM_56_AURORA_BRIDGE.ambientIntensity,
+                        smootherstep01(auroraBlend * 2),
+                    );
+                } else {
+                    atmo.ambientIntensity = lerpNumber(
+                        SEAM_56_AURORA_BRIDGE.ambientIntensity,
+                        space6.ambientIntensity,
+                        smootherstep01((auroraBlend - 0.5) * 2),
+                    );
+                }
+                atmo.fogDensity = lerpNumber(
+                    sky5.fogDensity,
+                    space6.fogDensity,
+                    auroraBlend ** 1.45,
+                );
+            }
+        }
+
         const srcCam = getCameraProfileForChapter(blendState.sourceChapter);
         const tgtCam = getCameraProfileForChapter(blendState.targetChapter);
         const cam = this.state.camera;

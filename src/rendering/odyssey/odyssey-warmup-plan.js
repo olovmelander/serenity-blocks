@@ -45,4 +45,34 @@ export function buildJourneyWarmSamples({ chapterPositions = [] } = {}) {
         .sort((a, b) => a - b);
 }
 
-export default { buildJourneyWarmSamples };
+/**
+ * Build a sorted sample list for a restricted chapter window.
+ * Used by capture sessions that intentionally load only one chapter plus neighbors
+ * to avoid compiling the whole journey on weaker GPUs.
+ * @param {{chapterPositions?: number[], chapterIds?: number[]}} options
+ * @returns {number[]} progress samples in [0, 1], ascending
+ */
+export function buildChapterWarmSamples({ chapterPositions = [], chapterIds = [] } = {}) {
+    const samples = new Set();
+    const chapterCount = Math.max(0, chapterPositions.length - 1);
+    const ids = [...new Set(
+        chapterIds
+            .map((id) => Number.parseInt(id, 10))
+            .filter((id) => Number.isInteger(id) && id >= 1 && id <= chapterCount),
+    )].sort((a, b) => a - b);
+
+    ids.forEach((chapterId) => {
+        const start = chapterPositions[chapterId - 1];
+        const end = chapterPositions[chapterId] ?? 1;
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+        samples.add(start);
+        samples.add((start + end) / 2);
+        samples.add(end);
+    });
+
+    return [...samples]
+        .map((s) => Math.min(1, Math.max(0, s)))
+        .sort((a, b) => a - b);
+}
+
+export default { buildJourneyWarmSamples, buildChapterWarmSamples };

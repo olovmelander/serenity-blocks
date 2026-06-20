@@ -109,4 +109,30 @@ describe('GameModeUI Steam gating', () => {
         expect(onlineButton.title).toBe('');
         expect(gameModeUi.isOnlineMultiplayerDisabled()).toBe(false);
     });
+
+    it('does not attach Odyssey preload intent handlers before the mode starts', async () => {
+        const fakeSteamService = {
+            on: vi.fn(() => () => {}),
+            getConnectionState: vi.fn(() => 'connected'),
+        };
+
+        vi.doMock('../../src/core/steam/steam-service.js', () => ({
+            default: fakeSteamService,
+        }));
+
+        const odysseyButton = createButtonElement();
+        const documentStub = {
+            getElementById: vi.fn((id) => (id === 'odyssey-card-btn' ? odysseyButton : null)),
+        };
+        vi.stubGlobal('document', documentStub);
+
+        const { GameModeUI } = await import('../../src/ui/game-mode-ui.js');
+        new GameModeUI();
+
+        const odysseyEvents = odysseyButton.addEventListener.mock.calls.map(([eventName]) => eventName);
+        expect(odysseyEvents).toEqual(['click']);
+        expect(odysseyEvents).not.toContain('pointerenter');
+        expect(odysseyEvents).not.toContain('focus');
+        expect(odysseyEvents).not.toContain('touchstart');
+    });
 });
