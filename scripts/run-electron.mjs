@@ -1,4 +1,6 @@
+/* eslint-disable import/no-extraneous-dependencies */
 import { spawn } from 'child_process';
+import electronPath from 'electron';
 
 const args = process.argv.slice(2);
 const env = { ...process.env };
@@ -10,8 +12,7 @@ if (args[0] === '--dev') {
 
 delete env.ELECTRON_RUN_AS_NODE;
 
-const electronBin = process.platform === 'win32' ? 'electron.cmd' : 'electron';
-const child = spawn(electronBin, args, {
+const child = spawn(electronPath, args, {
     stdio: 'inherit',
     env,
 });

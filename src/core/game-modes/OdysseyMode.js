@@ -69,6 +69,28 @@ function isOdysseyLayoutEditorEnabled() {
 }
 
 /**
+ * Loading-optimization Phase 1: keep the WebGPU board resident across level
+ * entry/return instead of disposing + rebuilding it (the cold-start cost, paid twice).
+ * Default ON. Disable with ?odysseyKeepBoard=0 if VRAM/TDR pressure shows up — that
+ * restores the exact previous dispose-and-rebuild behaviour.
+ */
+function readOdysseyKeepBoardFlag() {
+    if (typeof window === 'undefined') {
+        return true;
+    }
+    try {
+        const search = new URLSearchParams(window.location?.search || '');
+        const raw = search.get('odysseyKeepBoard');
+        if (raw === '0' || raw === 'false' || raw === 'off') {
+            return false;
+        }
+    } catch {
+        // fall through to default
+    }
+    return true;
+}
+
+/**
  * OdysseyMode - Narrative-driven progression through themed levels
  */
 export class OdysseyMode extends BaseGameMode {
@@ -154,6 +176,17 @@ export class OdysseyMode extends BaseGameMode {
         this.chapterArrivalCueTimer = null;
         this.isTallBoard = false;
         this._boardBuildPromise = null;
+
+        // In-place retry: fail -> instant restart of the SAME level, reusing the
+        // live gameplay surface/theme/board (no journey-return + journey-entry round-trip).
+        this._retryVeil = null;
+        this.RETRY_VEIL_FADE_MS = 260;
+        this._levelAttemptNumber = 1;
+
+        // Loading optimization Phase 1: keep the board resident (parked) across level
+        // entry/return rather than dispose + rebuild it. See docs/ODYSSEY_LOADING_OPTIMIZATION_PLAN.md.
+        this._keepBoardAlive = readOdysseyKeepBoardFlag();
+        this._boardParked = false;
     }
 
     /**
@@ -590,6 +623,7 @@ export class OdysseyMode extends BaseGameMode {
 
         this.currentLevelId = requestedLevelId;
         this.currentLevelConfig = levelConfig;
+        this._levelAttemptNumber = 1; // fresh entry from the board -> attempt 1
         this.levelPrepared = false;
         this.levelRunStarted = false;
         this.levelStartTime = null;
@@ -677,7 +711,16 @@ export class OdysseyMode extends BaseGameMode {
                         await revealState?.uiPromise;
                         this._clearGameplayRevealState();
                         this._restoreTransitionMusicDuck(650);
-                        setTimeout(() => this._disposeOdysseyBoard(), 1200);
+                        // Phase 1: park the board (keep it resident) so returning to the map
+                        // is a resume, not a full cold-start rebuild. Falls back to full
+                        // dispose when keep-alive is disabled (?odysseyKeepBoard=0).
+                        setTimeout(() => {
+                            if (this._keepBoardAlive) {
+                                this._parkOdysseyBoard();
+                            } else {
+                                this._disposeOdysseyBoard();
+                            }
+                        }, 1200);
                     },
                     onAbort: async (abortResult) => {
                         console.warn('[Odyssey] Journey entry aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
@@ -1998,11 +2041,115 @@ export class OdysseyMode extends BaseGameMode {
         // Record attempt
         this.odysseyState.recordAttempt(this.currentLevelId);
 
-        // Show failure screen
-        await this._showLevelFailure(reason);
+        // Show failure screen and honor the player's choice.
+        const { choice, modal } = await this._showLevelFailure(reason);
 
-        // Return to board view
+        if (choice === 'retry') {
+            // Instant in-place restart of the same level — no board round-trip.
+            await this._restartLevelInPlace(modal);
+            return;
+        }
+
+        // "Back to Map" (or dismissed): tear down the modal and return to the board.
+        modal?.remove?.();
         await this.returnToBoard();
+    }
+
+    /**
+     * Restart the just-failed level instantly, in place.
+     *
+     * Reuses the gameplay surface, theme, and 3D board that are already live, so
+     * there is NO journey-return + journey-entry round-trip (the slow ~10-14s path).
+     * A short veil masks the board reset, then the standard "Ready… Go!" cue leads
+     * into the fresh run — the same hand-off the normal level entry uses.
+     * @private
+     * @param {HTMLElement|null} failureModal - Failure modal to tear down under the veil.
+     */
+    async _restartLevelInPlace(failureModal = null) {
+        if (!this.currentLevelConfig) {
+            console.warn('[Odyssey] Retry requested without an active level — returning to board');
+            failureModal?.remove?.();
+            await this.returnToBoard();
+            return;
+        }
+
+        this._levelAttemptNumber = (Number(this._levelAttemptNumber) || 1) + 1;
+        console.log(`[Odyssey] Retrying level ${this.currentLevelId} in place (attempt ${this._levelAttemptNumber})`);
+
+        this.entryPhase = 'preparing';
+
+        // Fade an opaque veil in over the failure modal so the board reset is unseen.
+        const veil = this._mountRetryVeil();
+        veil.getBoundingClientRect(); // force reflow so the opacity transition actually plays
+        veil.style.opacity = '1';
+        await this._wait(this.RETRY_VEIL_FADE_MS);
+
+        // Modal is now hidden beneath the veil — safe to remove without a flash.
+        failureModal?.remove?.();
+
+        // Rebuild gameplay state for the same level (no theme/board/shader recompile).
+        const prepared = await this.prepareLevelStart();
+        if (!prepared) {
+            console.warn('[Odyssey] Retry failed to prepare level — returning to board');
+            this._clearRetryVeil();
+            await this.returnToBoard();
+            return;
+        }
+
+        // Reveal the fresh board.
+        veil.style.opacity = '0';
+        await this._wait(this.RETRY_VEIL_FADE_MS);
+        this._clearRetryVeil();
+
+        // Standard "Ready… Go!" beat, then hand control back to the player.
+        await this.showLevelStartCue(this.currentLevelConfig, this.gameState);
+        this.beginLevelRun();
+    }
+
+    /**
+     * Mount the dark veil used to mask an in-place retry's board reset.
+     * @private
+     */
+    _mountRetryVeil() {
+        this._clearRetryVeil();
+        const veil = document.createElement('div');
+        veil.id = 'odyssey-retry-veil';
+        veil.dataset.odysseyWheelLock = 'true';
+        veil.style.cssText = `
+            position: fixed;
+            inset: 0;
+            pointer-events: auto;
+            opacity: 0;
+            z-index: 10001;
+            background:
+                radial-gradient(circle at 50% 42%, rgba(255, 150, 120, 0.05), rgba(0, 0, 0, 0) 22%),
+                radial-gradient(circle at 50% 50%, rgba(16, 10, 16, 0.94), rgba(0, 0, 0, 0.99) 72%);
+            transition: opacity ${this.RETRY_VEIL_FADE_MS}ms ease-out;
+        `;
+        document.body.appendChild(veil);
+        this._retryVeil = veil;
+        return veil;
+    }
+
+    /**
+     * Remove the retry veil if present.
+     * @private
+     */
+    _clearRetryVeil() {
+        if (this._retryVeil) {
+            this._retryVeil.remove();
+            this._retryVeil = null;
+        }
+    }
+
+    /**
+     * Resolve after `ms` milliseconds.
+     * @private
+     */
+    _wait(ms) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, Math.max(0, ms));
+        });
     }
 
     /**
@@ -2010,6 +2157,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async returnToBoard() {
         console.log('[Odyssey] Returning to board view...');
+        this._perfMark('odyssey-return-start');
         const completedLevelId = this.currentLevelId;
         const completedLevelConfig = this.currentLevelConfig;
         const departureAnchor = this._resolveJourneyReturnDepartureAnchor();
@@ -2057,6 +2205,9 @@ export class OdysseyMode extends BaseGameMode {
                         focusLevelId: completedLevelId,
                         keepBoardLocked: true,
                     });
+                    // Phase 0 metric: how long the board took to become ready on return.
+                    // Parked (kept-alive) = a few hundred ms; full rebuild = ~3.5-4.2s.
+                    this._perfMeasure('odyssey-return-board-ready', 'odyssey-return-start');
 
                     return {
                         arrivalAnchor: this._resolveJourneyReturnArrivalAnchor(completedLevelId),
@@ -3228,6 +3379,37 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
+     * Cold-start optimization: the chapter window to CREATE + COMPILE eagerly before the
+     * board reveals — the player's reachable neighbourhood (chapter 1 through one past the
+     * furthest unlocked chapter). The locked remainder loads in the background. Returns null
+     * (load everything) when progress can't be resolved, so the fallback is the old behaviour.
+     * @private
+     */
+    _computeEagerStartupChapters() {
+        try {
+            const unlocked = this.odysseyState?.unlockedLevels;
+            const furthestLevel = unlocked && unlocked.size > 0 ? Math.max(...unlocked) : 1;
+            const furthestChapter = this.levelRegistry?.getLevel?.(furthestLevel)?.chapter
+                || this.odysseyState?.currentChapter
+                || 1;
+            // Eager-CREATE the player's neighbourhood: chapters 1-2 + a small look-ahead past the
+            // furthest unlocked. (Creating ALL 8 up front was tried and REVERTED — it forced the
+            // first render to upload/draw all 8 chapters, ballooning warm-up to ~22s / board-
+            // visible to ~38s. The cheaper win is to keep this window small and create the rest
+            // PROMPTLY in the background via setTimeout — see loadChaptersInBackground — so they
+            // are ready a few seconds after reveal instead of building on-approach mid-scroll.)
+            const lastEager = Math.max(2, furthestChapter + 1);
+            const eager = [];
+            for (let ch = 1; ch <= lastEager; ch += 1) {
+                eager.push(ch);
+            }
+            return eager;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * Build the board controller exactly once; duplicate activation calls share the
      * same in-flight promise.
      * @private
@@ -3275,6 +3457,11 @@ export class OdysseyMode extends BaseGameMode {
         this.boardController = new OdysseyBoardController(boardContainer, {
             editorMode: isOdysseyLayoutEditorEnabled(),
             soundManager: this.deps?.soundManager || null,
+            // Cold-start: eagerly load only the player's reachable chapter neighbourhood
+            // (chapter 1 .. furthest-unlocked + 1); the locked rest load in the background.
+            startupChapters: this._computeEagerStartupChapters(),
+            // The chapter the board reveals into — fast-start warms only this one.
+            focusChapter: this.odysseyState?.currentChapter || 1,
         });
 
         // Prepare level data with path positions
@@ -3353,8 +3540,19 @@ export class OdysseyMode extends BaseGameMode {
     _revealOdysseyBoard() {
         const boardContainer = document.getElementById('odyssey-board-3d');
         if (boardContainer) {
+            // `display` was set to 'none' when the board was parked (or hidden for the
+            // entry transition); clear it so a kept-alive board re-appears on return.
+            boardContainer.style.display = '';
             boardContainer.style.visibility = '';
             boardContainer.style.pointerEvents = 'auto';
+        }
+
+        // Resume a parked (kept-alive) board. No-op on a freshly built board —
+        // resumeRendering() early-returns when the loop was never paused.
+        if (this._boardParked) {
+            this.boardController?.resumeRendering?.();
+            this._boardParked = false;
+            this._logBoardMemory('board-resumed');
         }
 
         if (this.deps?.soundManager?.musicTrack) {
@@ -3389,6 +3587,76 @@ export class OdysseyMode extends BaseGameMode {
 
         // Also dispose the info overlay
         this._disposeInfoOverlay();
+    }
+
+    /**
+     * Park the Odyssey board instead of disposing it (loading-optimization Phase 1).
+     *
+     * Keeps the WebGPU renderer, compiled pipelines, geometry, and textures GPU-resident
+     * (rendering is already paused + the container hidden at the entry blackout) so that
+     * returning to the map is a resume rather than a full cold-start rebuild. Only the
+     * cheap DOM info overlay is torn down here; it is recreated by _revealOdysseyBoard().
+     * @private
+     */
+    _parkOdysseyBoard() {
+        this.boardViewReadyPromise = null;
+        if (!this.boardController) {
+            return;
+        }
+
+        // Idempotent — rendering was already paused at the entry blackout (onBlackoutReached).
+        this.boardController.pauseRendering?.();
+
+        const boardContainer = document.getElementById('odyssey-board-3d');
+        if (boardContainer) {
+            boardContainer.style.display = 'none';
+        }
+
+        this._disposeInfoOverlay();
+        this._boardParked = true;
+        this._logBoardMemory('board-parked');
+    }
+
+    /**
+     * Phase 0 instrumentation: log the board's resident GPU resource counts.
+     * Counts, not bytes — cross-check chrome://gpu for true VRAM. Never throws.
+     * @private
+     */
+    _logBoardMemory(label) {
+        try {
+            const info = this.boardController?.getMemorySnapshot?.();
+            if (info) {
+                console.log(`[OdysseyPerf] ${label} — geometries=${info.geometries} textures=${info.textures} renderCalls=${info.renderCalls}`);
+            }
+        } catch {
+            // instrumentation must never break the flow
+        }
+    }
+
+    /**
+     * Phase 0 instrumentation: drop a User Timing mark. Never throws.
+     * @private
+     */
+    _perfMark(name) {
+        try {
+            performance.mark(name);
+        } catch {
+            // ignore
+        }
+    }
+
+    /**
+     * Phase 0 instrumentation: measure from a previously-set mark to now and log it.
+     * Never throws.
+     * @private
+     */
+    _perfMeasure(label, startMark) {
+        try {
+            const measure = performance.measure(label, startMark);
+            console.log(`[OdysseyPerf] ${label}: ${Math.round(measure.duration)}ms`);
+        } catch {
+            // ignore (e.g. start mark missing)
+        }
     }
 
     /**
@@ -4723,8 +4991,13 @@ export class OdysseyMode extends BaseGameMode {
         // Phase 6: Show proper failure modal
         const reasonText = reason === 'time' ? 'Time ran out!' : 'You topped out!';
 
+        // Resolve with the chosen action + the modal handle. The caller owns removing
+        // the modal so a retry can keep its dark backdrop on-screen during the reset.
         return new Promise((resolve) => {
-            const modal = this._createFailureModal(reasonText, resolve);
+            let modal = null;
+            modal = this._createFailureModal(reasonText, (choice) => {
+                resolve({ choice, modal });
+            });
             document.body.appendChild(modal);
         });
     }
@@ -4733,7 +5006,7 @@ export class OdysseyMode extends BaseGameMode {
      * Create a styled failure modal
      * @private
      */
-    _createFailureModal(reasonText, onClose) {
+    _createFailureModal(reasonText, onChoose) {
         const modal = document.createElement('div');
         modal.id = 'odyssey-failure-modal';
         modal.dataset.odysseyWheelLock = 'true';
@@ -4787,40 +5060,130 @@ export class OdysseyMode extends BaseGameMode {
         reason.style.cssText = `
             font-size: 16px;
             color: rgba(255, 200, 200, 0.8);
-            margin-bottom: 30px;
+            margin-bottom: 8px;
         `;
         content.appendChild(reason);
 
-        // Try again button
-        const button = document.createElement('button');
-        button.textContent = 'Try Again';
-        button.style.cssText = `
+        // Attempt counter (builds the "one more try" momentum)
+        if (Number.isFinite(this._levelAttemptNumber)) {
+            const attempt = document.createElement('div');
+            attempt.textContent = `Attempt ${this._levelAttemptNumber}`;
+            attempt.style.cssText = `
+                font-size: 12px;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                color: rgba(255, 200, 200, 0.45);
+                margin-bottom: 28px;
+            `;
+            content.appendChild(attempt);
+        }
+
+        // Actions: Retry (primary) + Back to Map (secondary)
+        const actions = document.createElement('div');
+        actions.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        `;
+
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = 'Retry';
+        retryBtn.style.cssText = `
             padding: 14px 40px;
             font-size: 16px;
             font-weight: 600;
             font-family: 'Orbitron', 'Segoe UI', sans-serif;
             color: #fff;
-            background: linear-gradient(135deg, rgba(255, 100, 100, 0.3) 0%, rgba(255, 150, 100, 0.3) 100%);
-            border: 1px solid rgba(255, 100, 100, 0.6);
+            background: linear-gradient(135deg, rgba(255, 100, 100, 0.35) 0%, rgba(255, 150, 100, 0.35) 100%);
+            border: 1px solid rgba(255, 120, 110, 0.7);
             border-radius: 12px;
             cursor: pointer;
             transition: all 0.2s ease;
         `;
-        button.onmouseenter = () => {
-            button.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.5) 0%, rgba(255, 150, 100, 0.5) 100%)';
-            button.style.transform = 'scale(1.05)';
+        retryBtn.onmouseenter = () => {
+            retryBtn.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.55) 0%, rgba(255, 150, 100, 0.55) 100%)';
+            retryBtn.style.transform = 'scale(1.05)';
         };
-        button.onmouseleave = () => {
-            button.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.3) 0%, rgba(255, 150, 100, 0.3) 100%)';
-            button.style.transform = 'scale(1)';
+        retryBtn.onmouseleave = () => {
+            retryBtn.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.35) 0%, rgba(255, 150, 100, 0.35) 100%)';
+            retryBtn.style.transform = 'scale(1)';
         };
-        button.onclick = () => {
-            modal.remove();
-            onClose();
+
+        const mapBtn = document.createElement('button');
+        mapBtn.textContent = 'Back to Map';
+        mapBtn.style.cssText = `
+            padding: 11px 40px;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: 'Orbitron', 'Segoe UI', sans-serif;
+            color: rgba(255, 220, 220, 0.75);
+            background: transparent;
+            border: 1px solid rgba(255, 120, 110, 0.3);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        `;
+        mapBtn.onmouseenter = () => {
+            mapBtn.style.background = 'rgba(255, 120, 110, 0.12)';
+            mapBtn.style.color = '#fff';
         };
-        content.appendChild(button);
+        mapBtn.onmouseleave = () => {
+            mapBtn.style.background = 'transparent';
+            mapBtn.style.color = 'rgba(255, 220, 220, 0.75)';
+        };
+
+        actions.appendChild(retryBtn);
+        actions.appendChild(mapBtn);
+        content.appendChild(actions);
+
+        // Keyboard hints
+        const hints = document.createElement('div');
+        hints.style.cssText = `
+            margin-top: 20px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            color: rgba(255, 200, 200, 0.4);
+        `;
+        hints.innerHTML = 'Press <b style="color: rgba(255,200,200,0.7);">Enter</b> / <b style="color: rgba(255,200,200,0.7);">R</b> to retry &middot; <b style="color: rgba(255,200,200,0.7);">Esc</b> for map';
+        content.appendChild(hints);
 
         modal.appendChild(content);
+
+        // Single-fire choice dispatch shared by buttons + keyboard. The caller owns
+        // removing the modal (a retry keeps the backdrop up while the board resets).
+        let resolved = false;
+        let onKeyDown = null;
+        const choose = (choice) => {
+            if (resolved) return;
+            resolved = true;
+            document.removeEventListener('keydown', onKeyDown, true);
+            onChoose(choice);
+        };
+        onKeyDown = (e) => {
+            switch (e.key) {
+            case 'Enter':
+            case ' ':
+            case 'r':
+            case 'R':
+                e.preventDefault();
+                e.stopPropagation();
+                choose('retry');
+                break;
+            case 'Escape':
+                e.preventDefault();
+                e.stopPropagation();
+                choose('map');
+                break;
+            default:
+                break;
+            }
+        };
+        // Capture phase so the modal wins over any still-attached gameplay key handlers.
+        document.addEventListener('keydown', onKeyDown, true);
+
+        retryBtn.addEventListener('click', () => choose('retry'));
+        mapBtn.addEventListener('click', () => choose('map'));
+
         return modal;
     }
 

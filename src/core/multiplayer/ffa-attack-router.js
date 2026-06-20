@@ -354,11 +354,19 @@ export class FFAAttackRouter {
     }
 
     /**
-     * Apply Quadra-style attack scaling - REMOVED
+     * Scale outgoing garbage by opponent count (FFA balance).
      *
-     * Quadra does NOT scale attacks based on player count directly.
-     * It uses a stamp-based handicap system instead.
-     * We return the base lines unmodified here.
+     * LIVE BEHAVIOR (the previous comment claimed this was removed — it is not):
+     * - boringRules (classic) enabled: no scaling, base lines returned unmodified.
+     * - Otherwise: garbage power is reduced 10% per extra opponent, floored at 25%.
+     *     1 opponent  -> 100%
+     *     2 opponents -> 90%
+     *     ...
+     *     7 opponents -> 40% (floor 25%)
+     *   The scaled value is rounded and clamped to >= 1 line whenever baseLines > 0.
+     *
+     * Pinned by the "applyAttackScaling" table test — keep this comment in sync
+     * with both the code and that test.
      */
     applyAttackScaling(baseLines, opponentCount, boringRules) {
         // If boring rules (classic) enabled, no scaling

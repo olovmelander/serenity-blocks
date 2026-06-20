@@ -19,12 +19,13 @@ function resolveFrame(gameState, tickMs = DEMO_TICK_MS) {
 
 function normalizeCommand(command, data = null) {
     if (typeof command === 'string') {
-        return { action: command, data };
+        return { action: command, data, queued: false };
     }
 
     return {
         action: command?.a || command?.action || command?.type,
         data: command?.d ?? command?.data ?? command?.value ?? null,
+        queued: Boolean(command?.q || command?.queued || command?.buffered),
     };
 }
 
@@ -84,7 +85,7 @@ export class DemoRecorder {
     recordCommand(command, gameState) {
         if (!this.isRecording || !this.demo) return;
 
-        const { action, data } = normalizeCommand(command);
+        const { action, data, queued } = normalizeCommand(command);
         if (!action) return;
 
         const frame = resolveFrame(gameState, this.tickMs);
@@ -96,6 +97,9 @@ export class DemoRecorder {
 
         if (data !== null && data !== undefined) {
             inputEvent.d = data;
+        }
+        if (queued) {
+            inputEvent.q = true;
         }
 
         this.demo.inputs.push(inputEvent);

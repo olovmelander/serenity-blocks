@@ -191,6 +191,28 @@ function makeGlowSpriteMaterial(map, colorHex, opacity, uOpacity = null) {
 }
 
 /**
+ * PERF (share-material): build ONE contact-shadow decal MESH from a SHARED decal
+ * material. Every decal (column / geode / pocket) was its own createContactShadowDecalTSL
+ * call — i.e. a distinct MeshBasicNodeMaterial node graph, hence a distinct cold-start
+ * pipeline (~21). The decal material is constant (colorNode = uShadow, opacityNode =
+ * pow(1-dist,2)·uOpacity from uv()) and is NEVER mutated per-mesh, so the node graph is
+ * byte-identical across every site. Reusing one material across all decals collapses
+ * those pipelines to ONE with zero pixel change: the per-mesh geometry size and transform
+ * are unchanged (the opacity feather samples uv(), independent of the world size). The
+ * geometry stays per-size — only the MATERIAL is shared, so draw order is identical.
+ * @param {number} size flat plane edge (PlaneGeometry(size,size)) — unchanged per site
+ * @param {THREE.Material} sharedMaterial the one shared decal material
+ */
+function makeSharedContactDecal(size, sharedMaterial) {
+    const geometry = new THREE.PlaneGeometry(size, size, 1, 1);
+    geometry.rotateX(-Math.PI / 2); // lay flat on the lake/ledge (matches the TSL builder)
+    const mesh = new THREE.Mesh(geometry, sharedMaterial);
+    mesh.name = 'contact-shadow';
+    mesh.renderOrder = 6; // after the lake, stable enough to read as contact AO
+    return mesh;
+}
+
+/**
  * Volcanic smoke/ash — instanced billboards rising and expanding from the lava.
  * Mirrors the old smoke Points (position + aRandom/aSize/aSpeed), animated entirely
  * from uTime so the update loop is unchanged.
@@ -288,8 +310,9 @@ function createVolcanicSmoke(uniforms, count, staging = null) {
 function createEmberStars(uniforms, count) {
     const bases = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
-    const twinklePhases = new Float32Array(count);
-    const twinkleSpeeds = new Float32Array(count);
+    // Packed [phase, speed] per instance — one vec2 attribute instead of two floats, to
+    // keep this billboard's WebGPU vertex-buffer count at 8 (the max) rather than 9.
+    const twinkle = new Float32Array(count * 2);
     const brightnesses = new Float32Array(count);
     const colors = new Float32Array(count * 3);
 
@@ -303,8 +326,8 @@ function createEmberStars(uniforms, count) {
 
         const sizeBias = Math.random() ** 2;
         sizes[i] = 0.4 + sizeBias * 2.5;
-        twinklePhases[i] = Math.random() * TAU;
-        twinkleSpeeds[i] = 2 + Math.random() * 4;
+        twinkle[i * 2] = Math.random() * TAU; // phase
+        twinkle[i * 2 + 1] = 2 + Math.random() * 4; // speed
         brightnesses[i] = 0.3 + Math.random() * 0.7;
 
         const color = new THREE.Color(
@@ -318,22 +341,20 @@ function createEmberStars(uniforms, count) {
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: bases, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
-        aTwinklePhase: { array: twinklePhases, itemSize: 1 },
-        aTwinkleSpeed: { array: twinkleSpeeds, itemSize: 1 },
+        aTwinkle: { array: twinkle, itemSize: 2 },
         aBrightness: { array: brightnesses, itemSize: 1 },
         aColor: { array: colors, itemSize: 3 },
     });
 
     const aBase = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
-    const aTwinklePhase = attribute('aTwinklePhase', 'float');
-    const aTwinkleSpeed = attribute('aTwinkleSpeed', 'float');
+    const aTwinkle = attribute('aTwinkle', 'vec2'); // x: phase, y: speed
     const aBrightness = attribute('aBrightness', 'float');
     const aColor = attribute('aColor', 'vec3');
     const { uTime, uPulseIntensity } = uniforms;
 
-    const twinkle = sin(uTime.mul(aTwinkleSpeed).add(aTwinklePhase)).mul(0.3).add(0.7);
-    const brightness = aBrightness.mul(twinkle).mul(uPulseIntensity.mul(0.5).add(1.0));
+    const twinkleOsc = sin(uTime.mul(aTwinkle.y).add(aTwinkle.x)).mul(0.3).add(0.7);
+    const brightness = aBrightness.mul(twinkleOsc).mul(uPulseIntensity.mul(0.5).add(1.0));
 
     const worldSize = aSize.mul(uPulseIntensity.mul(0.3).add(1.0)).mul(0.16);
 
@@ -733,6 +754,35 @@ export function createEarthCoreEnvironment(options = {}) {
     };
     group.userData.elements = elements;
 
+    // PERF (share-material): build ONE contact-shadow decal material reused by every
+    // column / geode / molten-pocket decal below. Each createContactShadowDecalTSL call
+    // was a distinct pipeline (~21 cold-start compiles); the decal material is a constant
+    // node graph (uShadow color + uv()-feathered opacity·uOpacity), never mutated per
+    // mesh, so one shared material renders every decal pixel-identically. (The mesh
+    // geometry stays per-size; only the material is shared — draw order is unchanged.)
+    const sharedDecalMaterial = createContactShadowDecalTSL(1, uniforms.uOpacity).material;
+
+    // PERF (share-material): build ONE lava-fall material + geometry reused by the two
+    // crossed hero planes AND every cluster tether-stream. All createLavaFallTSL call
+    // sites use byte-identical args (uTime/uPulseIntensity/uDescent/uOpacity) and the
+    // identical PlaneGeometry(96,220), and the material carries NO positionNode and is
+    // never mutated per mesh (only per-mesh transform / group .visible vary), so reuse is
+    // pixel-identical and collapses up to ~4 lava-fall pipelines to one.
+    const sharedLavaFall = createLavaFallTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uDescent,
+        { uOpacity: uniforms.uOpacity },
+    );
+
+    // PERF (share-material): ONE dim corona-glow sprite material for every geode cluster.
+    // Each cluster built its own makeGlowSpriteMaterial(0xff5a14, 0.055) SpriteNodeMaterial
+    // (identical args → identical node graph → a redundant pipeline per cluster). The
+    // material is never mutated per sprite (update() only sets sprite.scale, a transform),
+    // so sharing it across all clusters is pixel-identical.
+    const clusterGlowTexture = createGlowTexture();
+    const sharedClusterGlowMaterial = makeGlowSpriteMaterial(clusterGlowTexture, 0xff5a14, 0.055, uniforms.uOpacity);
+
     // The chapter group is anchored at the path centre; derive the corridor's
     // local-space frame EARLY so the lake basins, colonnade walls, geode chapel, and
     // the First Heart all line up with the spline the camera follows.
@@ -785,23 +835,27 @@ export function createEarthCoreEnvironment(options = {}) {
     // tether-streams replaces the old two-sphere repetition. Cap raised 2→6 under the
     // quality-preset budget; every seat is pushed clear of the spline (frame-07 fix).
     const clusterCount = Math.min(options.particleCount ? Math.floor(options.particleCount / 110) : 5, 6);
-    createVolcanicRockClusters(group, uniforms, elements, clusterCount, groupCenter, staging);
+    createVolcanicRockClusters(group, uniforms, elements, clusterCount, groupCenter, staging, {
+        sharedDecalMaterial,
+        sharedLavaFall,
+        sharedClusterGlowMaterial,
+    });
 
     // 5. Ember STARS as background sparkle — cut 6000→1200, radius pulled to 25–60 so
     //    they read as a sparse depth field, not an orange soup.
-    const starCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 2.8, 1400) : 1200);
+    const starCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 2.8, 1050) : 900);
     const stars = createEmberStars(uniforms, starCount);
     group.add(stars);
     group.userData.stars = stars;
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
-    const risingEmbers = createRisingEmbers(uniforms, 760, staging);
+    const risingEmbers = createRisingEmbers(uniforms, 570, staging);
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
 
     // 7. Create volcanic smoke/ash particles (trimmed 300→200 for the value cuts).
-    const smoke = createVolcanicSmoke(uniforms, 320, staging);
+    const smoke = createVolcanicSmoke(uniforms, 200, staging);
     group.add(smoke);
     group.userData.smoke = smoke;
 
@@ -810,7 +864,7 @@ export function createEarthCoreEnvironment(options = {}) {
     //    mid-air. The magma-horizon's bright rim is at uv.y≈0.32 of a 200-unit plane, so
     //    a band whose rim aligns to the lake has centerY = LAVA_LAKE_Y + 36*scaleY. This
     //    turns the bands into a continuous far-shore line under the assets.
-    const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.8) : 170, 220);
+    const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.8) : 140, 140);
     const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
     group.add(magmaCloudDeck);
     group.userData.magmaCloudDeck = magmaCloudDeck;
@@ -819,30 +873,34 @@ export function createEarthCoreEnvironment(options = {}) {
     const farHorizonPos = staging.at(0.86, { lateral: 0, forward: 20 });
     farHorizon.mesh.position.set(farHorizonPos.x, horizonRimY(1), farHorizonPos.z);
     group.add(farHorizon.mesh);
-    const lowHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
+    // Reuse the far-horizon material + geometry for the low/mid bands: the additive graph is
+    // byte-identical (same uniforms) and only the transform differs, so 3 magma-horizon
+    // pipelines collapse to 1 (cold-start compile win, zero visual change — the bands are
+    // static, never mutated per-material in update()).
+    const lowHorizon = new THREE.Mesh(farHorizon.geometry, farHorizon.material);
     const lowHorizonPos = staging.at(0.52, { lateral: -34, forward: 12 });
-    lowHorizon.mesh.position.set(lowHorizonPos.x, horizonRimY(0.55), lowHorizonPos.z);
-    lowHorizon.mesh.scale.set(0.7, 0.55, 1);
-    group.add(lowHorizon.mesh);
+    lowHorizon.position.set(lowHorizonPos.x, horizonRimY(0.55), lowHorizonPos.z);
+    lowHorizon.scale.set(0.7, 0.55, 1);
+    group.add(lowHorizon);
     // A MID-DEPTH magma glow band biased off-centre-left, aligned to the same far-shore
     // line so it reads as the lake's far edge sweeping behind the columns rather than a
-    // floating wall. Cheap: reuses the horizon builder (one extra draw call).
-    const midHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
+    // floating wall (shares the horizon material/geometry; one extra draw call).
+    const midHorizon = new THREE.Mesh(farHorizon.geometry, farHorizon.material);
     const midHorizonPos = staging.at(0.66, { lateral: 32, forward: 16 });
-    midHorizon.mesh.position.set(midHorizonPos.x, horizonRimY(0.7), midHorizonPos.z);
-    midHorizon.mesh.scale.set(0.85, 0.7, 1);
-    group.add(midHorizon.mesh);
-    group.userData.horizons = [farHorizon.mesh, lowHorizon.mesh, midHorizon.mesh];
+    midHorizon.position.set(midHorizonPos.x, horizonRimY(0.7), midHorizonPos.z);
+    midHorizon.scale.set(0.85, 0.7, 1);
+    group.add(midHorizon);
+    group.userData.horizons = [farHorizon.mesh, lowHorizon, midHorizon];
 
     // 9. Molten volumetric haze hugging the path along the whole corridor span.
-    const hazeCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 1.8, 340) : 300);
+    const hazeCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 1.8, 255) : 225);
     const haze = createMoltenHaze(uniforms, hazeCount, corridorLow, corridorHigh);
     group.add(haze);
     group.userData.haze = haze;
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this
     //     chapter so nodes frame mid-frame on a platform instead of floating in void.
-    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter);
+    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial);
     elements.moltenPockets.push(...moltenPockets);
     elements.seamBoulders.push(...moltenPockets);
 
@@ -857,28 +915,23 @@ export function createEarthCoreEnvironment(options = {}) {
     const lavaFallGroup = new THREE.Group();
     lavaFallGroup.name = 'lava-fall-hero';
 
-    const lavaFall = createLavaFallTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uDescent,
-        { uOpacity: uniforms.uOpacity },
-    );
+    // The hero plane IS the pre-built sharedLavaFall mesh; the crossed plane reuses its
+    // material + geometry (share-material: only transform/rotation differ, no positionNode,
+    // never mutated per mesh — the group toggles .visible, the material animates via shared
+    // uniforms). Two lava-fall pipelines collapse to one.
+    const lavaFall = sharedLavaFall;
     lavaFall.mesh.scale.set(fallScale, fallScale, 1);
     lavaFall.mesh.position.set(0, fallHeight * 0.5, 0);
     lavaFall.mesh.renderOrder = -4;
     lavaFallGroup.add(lavaFall.mesh);
 
-    const lavaFallCross = createLavaFallTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uDescent,
-        { uOpacity: uniforms.uOpacity },
-    );
-    lavaFallCross.mesh.scale.set(fallScale * 0.52, fallScale, 1);
-    lavaFallCross.mesh.position.set(0, fallHeight * 0.5, 0);
-    lavaFallCross.mesh.rotation.y = Math.PI / 2;
-    lavaFallCross.mesh.renderOrder = -4;
-    lavaFallGroup.add(lavaFallCross.mesh);
+    const lavaFallCrossMesh = new THREE.Mesh(sharedLavaFall.geometry, sharedLavaFall.material);
+    lavaFallCrossMesh.name = 'lava-fall';
+    lavaFallCrossMesh.scale.set(fallScale * 0.52, fallScale, 1);
+    lavaFallCrossMesh.position.set(0, fallHeight * 0.5, 0);
+    lavaFallCrossMesh.rotation.y = Math.PI / 2;
+    lavaFallCrossMesh.renderOrder = -4;
+    lavaFallGroup.add(lavaFallCrossMesh);
 
     lavaFallGroup.position.copy(fallBase);
     lavaFallGroup.rotation.y = Math.atan2(fallFrame.forward.x, fallFrame.forward.z);
@@ -901,17 +954,24 @@ export function createEarthCoreEnvironment(options = {}) {
         { pos: staging.lakeAt(0.62, { lateral: 14, forward: 10 }), scale: 1.4 },
         { pos: staging.lakeAt(0.18, { lateral: -8, forward: 5 }), scale: 0.9 },
     ];
-    const godRays = godRayConfigs.map((cfg) => {
-        const cone = createGodRayConeTSL(
-            uniforms.uTime,
-            uniforms.uPulseIntensity,
-            { uOpacity: uniforms.uOpacity },
-        );
-        cone.mesh.position.set(cfg.pos.x, LAVA_LAKE_Y + 60, cfg.pos.z);
-        cone.mesh.scale.set(cfg.scale, cfg.scale * 1.1, cfg.scale);
-        cone.mesh.frustumCulled = false;
-        group.add(cone.mesh);
-        return cone.mesh;
+    // Build the god-ray cone material + geometry ONCE and reuse across all 4 shafts: the
+    // additive graph is identical and only the transform / per-mesh visibility differ (the
+    // lava-fall shaft toggles .visible, never its material), so 4 god-ray pipelines collapse
+    // to 1 (cold-start compile win, zero visual change).
+    const sharedGodRay = createGodRayConeTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        { uOpacity: uniforms.uOpacity },
+    );
+    const godRays = godRayConfigs.map((cfg, index) => {
+        const mesh = index === 0
+            ? sharedGodRay.mesh
+            : new THREE.Mesh(sharedGodRay.geometry, sharedGodRay.material);
+        mesh.position.set(cfg.pos.x, LAVA_LAKE_Y + 60, cfg.pos.z);
+        mesh.scale.set(cfg.scale, cfg.scale * 1.1, cfg.scale);
+        mesh.frustumCulled = false;
+        group.add(mesh);
+        return mesh;
     });
     group.userData.godRays = godRays;
     group.userData.lavaFallRevealables = [lavaFallGroup, fallSplash, godRays[0]];
@@ -1002,10 +1062,11 @@ export function createEarthCoreEnvironment(options = {}) {
         group.add(col.mesh);
 
         // §5.1 contact-shadow AO decal at the lake line under the column base.
-        const decal = createContactShadowDecalTSL(spec.r * 3.2, uniforms.uOpacity);
-        decal.mesh.position.set(spec.x, LAVA_LAKE_Y + 0.4, spec.z);
-        decal.mesh.frustumCulled = false;
-        group.add(decal.mesh);
+        // (share-material: per-size geometry + the ONE shared decal material.)
+        const decalMesh = makeSharedContactDecal(spec.r * 3.2, sharedDecalMaterial);
+        decalMesh.position.set(spec.x, LAVA_LAKE_Y + 0.4, spec.z);
+        decalMesh.frustumCulled = false;
+        group.add(decalMesh);
         return col.mesh;
     });
     group.userData.columns = columns;
@@ -1186,7 +1247,7 @@ function createParticleCraterRim(uniforms) {
     group.name = 'crater-rim-particles';
 
     // 1. Generate Particle Data
-    const particleCount = 420;
+    const particleCount = 300;
     const bases = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
@@ -1301,7 +1362,8 @@ function createVolcanoBackground(uniforms) {
  * line (§5.1). Lit geodes take the lake bounce + distance falloff so they ground with
  * depth. Count stays small (value hierarchy: ~70% dark rock).
  */
-function createVolcanicRockClusters(group, uniforms, elements, count, groupCenter, staging) {
+function createVolcanicRockClusters(group, uniforms, elements, count, groupCenter, staging, shared = {}) {
+    const { sharedDecalMaterial, sharedLavaFall, sharedClusterGlowMaterial } = shared;
     // SMALL/MEDIUM/LARGE-graded seats along the corridor (plan: radii ~2/4/6) so no two
     // consecutive encounters repeat the old small-left/large-right two-sphere
     // composition. Seats rest on the lake, off the path centreline, and are pushed
@@ -1337,7 +1399,10 @@ function createVolcanicRockClusters(group, uniforms, elements, count, groupCente
         // Base tangent to the lake: center y = lake + size (boulder rests ON the lake).
         const position = new THREE.Vector3(seat.x, LAVA_LAKE_Y + size, seat.z);
 
-        const cluster = createRockCluster(uniforms, position, size, material);
+        const cluster = createRockCluster(uniforms, position, size, material, {
+            sharedLavaFall,
+            sharedClusterGlowMaterial,
+        });
         cluster.name = `volcanic-geode-cluster-${i}`;
         cluster.userData.stageFt = spec.ft;
         cluster.userData.seamRemnant = Boolean(spec.seam);
@@ -1348,10 +1413,11 @@ function createVolcanicRockClusters(group, uniforms, elements, count, groupCente
         }
 
         // §5.1 contact-shadow AO decal at the lake line under the boulder.
-        const decal = createContactShadowDecalTSL(size * 2.6, uniforms.uOpacity);
-        decal.mesh.position.set(seat.x, LAVA_LAKE_Y + 0.3, seat.z);
-        decal.mesh.frustumCulled = false;
-        group.add(decal.mesh);
+        // (share-material: per-size geometry + the ONE shared decal material.)
+        const decalMesh = makeSharedContactDecal(size * 2.6, sharedDecalMaterial);
+        decalMesh.position.set(seat.x, LAVA_LAKE_Y + 0.3, seat.z);
+        decalMesh.frustumCulled = false;
+        group.add(decalMesh);
     }
 }
 
@@ -1516,14 +1582,17 @@ function createSeleniteChamber(group, uniforms, staging) {
  * @param {THREE.Vector3} position world-local seat (center already tangent to the lake)
  * @param {number} size core sphere radius (small ~2 / medium ~4 / large ~6)
  * @param {THREE.Material} material shared cluster material (one pipeline for all seats)
+ * @param {object} [shared] shared sub-assets: sharedLavaFall (tether mat+geo) +
+ *   sharedClusterGlowMaterial (one corona material reused across all clusters).
  */
-function createRockCluster(uniforms, position, size, material) {
+function createRockCluster(uniforms, position, size, material, shared = {}) {
+    const { sharedLavaFall, sharedClusterGlowMaterial } = shared;
     const ballGroup = new THREE.Group();
 
     // Merged geode: the core boulder plus (for the larger seats) 3–4 small satellite
     // shards orbiting it — one geometry, one draw call, ONE shared cluster material
     // (dark albedo + emissive veins + lake bounce + seam/proximity fades).
-    const partGeometries = [new THREE.SphereGeometry(size, 36, 36)];
+    const partGeometries = [new THREE.SphereGeometry(size, 24, 24)];
     const satelliteCount = size >= 4.5 ? 3 + Math.floor(Math.random() * 2) : 0;
     let firstSatellite = null;
     for (let s = 0; s < satelliteCount; s += 1) {
@@ -1546,30 +1615,36 @@ function createRockCluster(uniforms, position, size, material) {
     ballGroup.add(coreMesh);
 
     // Thin ropy magma TETHER-STREAM connecting the core to its nearest satellite —
-    // a scaled-down lava-fall ribbon, per the plan's cluster grammar.
+    // a scaled-down lava-fall ribbon, per the plan's cluster grammar. (share-material:
+    // reuses the chapter's ONE lava-fall material + geometry; only this mesh's transform
+    // differs, the material is never mutated per mesh.)
     if (firstSatellite) {
-        const tether = createLavaFallTSL(
-            uniforms.uTime,
-            uniforms.uPulseIntensity,
-            uniforms.uDescent,
-            { uOpacity: uniforms.uOpacity },
-        );
+        const tetherMesh = sharedLavaFall
+            ? new THREE.Mesh(sharedLavaFall.geometry, sharedLavaFall.material)
+            : createLavaFallTSL(
+                uniforms.uTime,
+                uniforms.uPulseIntensity,
+                uniforms.uDescent,
+                { uOpacity: uniforms.uOpacity },
+            ).mesh;
+        tetherMesh.name = 'lava-fall';
         const from = new THREE.Vector3(0, size * 0.4, 0);
         const tetherDir = new THREE.Vector3().subVectors(firstSatellite, from);
         const dist = tetherDir.length();
-        tether.mesh.position.copy(from).addScaledVector(tetherDir, 0.5);
-        tether.mesh.quaternion.setFromUnitVectors(
+        tetherMesh.position.copy(from).addScaledVector(tetherDir, 0.5);
+        tetherMesh.quaternion.setFromUnitVectors(
             new THREE.Vector3(0, 1, 0),
             tetherDir.normalize(),
         );
-        tether.mesh.scale.set(0.045, dist / 220, 1);
-        ballGroup.add(tether.mesh);
+        tetherMesh.scale.set(0.045, dist / 220, 1);
+        ballGroup.add(tetherMesh);
     }
 
     // One small, dim corona glow only (was three stacked sprites — clutter).
-    const glowTexture = createGlowTexture();
+    // (share-material: the ONE shared cluster-corona sprite material reused per cluster.)
     const innerGlow = new THREE.Sprite(
-        makeGlowSpriteMaterial(glowTexture, 0xff5a14, 0.055, uniforms.uOpacity),
+        sharedClusterGlowMaterial
+        ?? makeGlowSpriteMaterial(createGlowTexture(), 0xff5a14, 0.055, uniforms.uOpacity),
     );
     innerGlow.scale.set(size * 2.1, size * 2.1, 1);
     ballGroup.add(innerGlow);
@@ -1638,8 +1713,9 @@ function createLavaGlowTexture() {
  * @param {THREE.Group} group chapter group
  * @param {object} uniforms shared uniforms
  * @param {THREE.Vector3} groupCenter world-space anchor the group is positioned at
+ * @param {THREE.Material} [sharedDecalMaterial] the ONE shared contact-shadow material
  */
-function createMoltenPockets(group, uniforms, groupCenter) {
+function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial = null) {
     // Level nodes for chapter 1 fall roughly within t ∈ [0, 0.10] along the spline
     // (see odyssey-layout DEFAULT_LEVEL_POSITIONS_BY_ID). Sample those and keep the
     // ones whose local Y sits inside the chapter's framed corridor.
@@ -1680,11 +1756,17 @@ function createMoltenPockets(group, uniforms, groupCenter) {
         pockets.push(mesh);
 
         // §5.1 contact-shadow AO decal nested on/under the shelf so the node reads as
-        // resting on a grounded ledge, not floating.
-        const decal = createContactShadowDecalTSL(size * 2.4, uniforms.uOpacity);
-        decal.mesh.position.set(shelfX, shelfY - size * 0.18, local.z);
-        decal.mesh.frustumCulled = false;
-        group.add(decal.mesh);
+        // resting on a grounded ledge, not floating. (share-material: per-size geometry +
+        // the ONE shared decal material.)
+        const decalMesh = sharedDecalMaterial
+            ? makeSharedContactDecal(size * 2.4, sharedDecalMaterial)
+            : (() => {
+                const d = createContactShadowDecalTSL(size * 2.4, uniforms.uOpacity);
+                return d.mesh;
+            })();
+        decalMesh.position.set(shelfX, shelfY - size * 0.18, local.z);
+        decalMesh.frustumCulled = false;
+        group.add(decalMesh);
     });
     group.userData.pockets = pockets;
     return pockets;

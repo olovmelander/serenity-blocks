@@ -15,10 +15,11 @@
  * Original 4543-line main.js backed up as main-original.js.
  */
 
-import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell, session } from 'electron';
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { appendFileSync, mkdirSync } from 'fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import { createHash } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -312,6 +313,105 @@ if (loggingEnabled) {
 }
 
 // ---------------------------------------------------------------------------
+// Content-Security-Policy
+// ---------------------------------------------------------------------------
+//
+// The renderer previously ran with NO CSP at all (allow-everything), so any
+// markup-injection bug would execute script with full renderer privileges.
+// We install a strict policy from the main process via onHeadersReceived so it
+// covers the packaged file:// load as well as the dev server.
+//
+// Key protections (both modes): no remote script origins, NO arbitrary inline
+// <script> (only the hashed first-party startup blocks below are allowed), no
+// eval of JS, no plugins/objects, no <base> hijack, no framing. We still allow
+// inline STYLES ('unsafe-inline' in style-src only — the app sets inline styles
+// pervasively) and the Google webfonts.
+//
+// Packaged note: file:// subresources must keep loading, so `file:` is allowed
+// in the resource directives. Self-hosting the two webfonts (a later phase)
+// would let style-src/font-src drop the Google origins entirely.
+//
+// Inline startup scripts: index.html ships two TRUSTED first-party inline
+// <script> blocks (the startup bridge, and the startup shell that installs the
+// global error/unhandledrejection handlers + the white-screen watchdog). A
+// no-'unsafe-inline' policy would silently block them and disable that safety
+// net, so we allow them by sha256 hash computed AT RUNTIME from the exact
+// dist/index.html Chromium loads — self-maintaining, never drifts, and still
+// blocks any INJECTED inline script. (Worst case, if hashing fails, we fall
+// back to the current behavior: blocked inline + working app.)
+//
+// Escape hatch: set SERENITY_DISABLE_CSP=1 to bypass while diagnosing a
+// CSP-related white-screen in a packaged build.
+function computeInlineScriptHashes() {
+    try {
+        const indexPath = join(app.getAppPath(), 'dist', 'index.html');
+        const html = readFileSync(indexPath, 'utf8');
+        const hashes = [];
+        // Match only attribute-less classic inline scripts (<script>...</script>).
+        // Module scripts are externalized by Vite to a `src` (covered by 'self').
+        const re = /<script>([\s\S]*?)<\/script>/g;
+        let m = re.exec(html);
+        while (m !== null) {
+            const digest = createHash('sha256').update(m[1], 'utf8').digest('base64');
+            hashes.push(`'sha256-${digest}'`);
+            m = re.exec(html);
+        }
+        return hashes;
+    } catch (err) {
+        console.warn('[Electron] Could not hash inline startup scripts for CSP:', err.message);
+        return [];
+    }
+}
+
+function installContentSecurityPolicy() {
+    if (process.env.SERENITY_DISABLE_CSP === '1') {
+        console.warn('[Electron] CSP disabled via SERENITY_DISABLE_CSP=1');
+        return;
+    }
+
+    const inlineScriptHashes = isPackaged ? computeInlineScriptHashes().join(' ') : '';
+    const packagedPolicy = [
+        "default-src 'self' file:",
+        `script-src 'self' file: 'wasm-unsafe-eval'${inlineScriptHashes ? ` ${inlineScriptHashes}` : ''}`,
+        "style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' file: data: https://fonts.gstatic.com",
+        "img-src 'self' file: data: blob:",
+        "media-src 'self' file: data: blob:",
+        "connect-src 'self' file: https://fonts.googleapis.com https://fonts.gstatic.com",
+        "worker-src 'self' file: blob:",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-src 'none'",
+    ].join('; ');
+
+    // Vite's dev server needs eval + inline + its localhost websocket for HMR.
+    const devPolicy = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:5173",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "img-src 'self' data: blob:",
+        "media-src 'self' data: blob:",
+        "connect-src 'self' http://localhost:5173 ws://localhost:5173 https://fonts.googleapis.com https://fonts.gstatic.com",
+        "worker-src 'self' blob:",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-src 'none'",
+    ].join('; ');
+
+    const policy = isPackaged ? packagedPolicy : devPolicy;
+
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [policy],
+            },
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Window creation
 // ---------------------------------------------------------------------------
 
@@ -450,6 +550,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+    installContentSecurityPolicy();
     createWindow();
 
     // Power monitor → renderer

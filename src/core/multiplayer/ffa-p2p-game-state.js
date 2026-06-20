@@ -562,7 +562,14 @@ export class FFAGameStateP2P {
         });
 
         this.network.on(MessageTypes.GAME_HOST_MIGRATION_SYNC, (msg) => {
-            console.log(`📦 Received migration sync from new host ${msg.data.newHostId}`);
+            const newHostId = msg.data?.newHostId;
+            if (!this._verifyHostReassignment(msg.from, newHostId)) {
+                console.warn(`🛑 Rejecting migration sync from ${msg.from} (claimed new host: ${newHostId})`);
+                return;
+            }
+            console.log(`📦 Received migration sync from new host ${newHostId}`);
+            // The successor is verified; adopt it as host and take its snapshot.
+            this.network.hostSteamId = newHostId;
             if (msg.data.snapshot) {
                 this.syncFromHost(msg.data.snapshot);
             }
@@ -624,11 +631,23 @@ export class FFAGameStateP2P {
         });
 
         this.network.on('game:host:migrated', (msg) => {
+            const newHost = msg.data?.newHost;
+            if (!this._verifyHostReassignment(msg.from, newHost)) {
+                console.warn(`🛑 Rejecting host:migrated from ${msg.from} (claimed new host: ${newHost})`);
+                return;
+            }
             console.log(`🔄 Host migrated to: ${msg.data.newHostName}`);
-            this.network.hostSteamId = msg.data.newHost;
+            this.network.hostSteamId = newHost;
         });
 
         this.network.on('game:host:handoff', (msg) => {
+            // A handoff request makes the receiver try to become host, so it must
+            // only be honored from the current host (a planned handoff). Otherwise
+            // any peer could trigger every peer to claim host simultaneously.
+            if (msg.from !== this.network?.hostSteamId) {
+                console.warn(`🛑 Rejecting host:handoff from non-host ${msg.from}`);
+                return;
+            }
             console.log(`🔄 Host handoff requested: ${msg.data.reason}`);
             if (!this.isHost) {
                 this.hostMigration.becomeHost();
@@ -969,7 +988,40 @@ export class FFAGameStateP2P {
         // Track input for pattern detection
         this.inputValidator.trackInput(steamId, inputType, data);
 
-        // Use different callbacks for local vs remote players:
+        // JITTER BUFFER INTEGRATION
+        // When the jitter buffer is enabled, buffer the input and let
+        // processBufferedInputs() apply it on its scheduled tick. We must NOT
+        // also apply it here: applying in both places double-applies every input
+        // (a single "move left" would travel two cells, a rotate would
+        // double-rotate), corrupting host-authoritative state and desyncing
+        // client prediction.
+        // NOTE: temporary correctness fix. The structural fix is tick-boundary
+        // input application in the fixed-tick sim refactor (see
+        // docs/ARCHITECTURAL_REMEDIATION_PLAN.md Phase 5).
+        if (this.useJitterBuffer && this.inputJitterBuffer) {
+            // Label the input with the jitter buffer's OWN per-frame clock, not
+            // hostTick / the client tick. The buffer's processCursor advances once
+            // per loop frame (advanceTick in processBufferedInputs), but hostTick
+            // only increments inside broadcastGameState (<=30Hz, gated on a
+            // significant state change) and a peer's hostTick never advances at
+            // all (peers don't broadcast) — so labeling with those clocks lets
+            // processCursor overtake the labels within a few frames and every
+            // input is then rejected as stale (tick < processCursor). Using the
+            // buffer's currentTick guarantees each input is accepted and applied
+            // exactly once, bufferDepth frames later. (Discarding data.tick also
+            // drops the broken adaptive-offset signal, which was measured against
+            // the same stale peer clock.)
+            const inputTick = this.inputJitterBuffer.currentTick;
+
+            this.inputJitterBuffer.addInput(steamId, inputTick, {
+                type: inputType,
+                data,
+                timestamp,
+            });
+            return; // Buffered — applied later by processBufferedInputs().
+        }
+
+        // No jitter buffer: apply immediately.
         // - Local player (host): full callbacks including garbage routing
         // - Remote player (peer): no garbage routing (peer sends their own game:attack:request)
         const isRemotePlayer = steamId !== this.localPlayerId;
@@ -984,30 +1036,13 @@ export class FFAGameStateP2P {
             callbacks,
         );
 
-        if (applied) {
-            // Update sequence number if provided
-            if (data.seq && data.seq > (player.lastInputSeq || 0)) {
-                player.lastInputSeq = data.seq;
-            }
-        }
-
         if (!applied) {
             return;
         }
 
-        // JITTER BUFFER INTEGRATION
-        // If enabled, buffer the input and process it later in the game loop
-        if (this.useJitterBuffer && this.inputJitterBuffer) {
-            // Use the tick provided by client, or fallback to current host tick
-            // We ensure tick is at least currentTick - bufferDepth
-            const inputTick = data.tick || this.hostTick;
-
-            this.inputJitterBuffer.addInput(steamId, inputTick, {
-                type: inputType,
-                data,
-                timestamp,
-            });
-            return; // Buffered!
+        // Update sequence number if provided
+        if (data.seq && data.seq > (player.lastInputSeq || 0)) {
+            player.lastInputSeq = data.seq;
         }
 
         // CRITICAL: Force immediate visual update after input
@@ -2258,7 +2293,49 @@ export class FFAGameStateP2P {
             return;
         }
 
-        this.hostMigration.handleHostDisconnect();
+        // Was this.hostMigration.handleHostDisconnect() — a method that does not
+        // exist on HostMigration (guaranteed TypeError). The correct entry point
+        // for "the host is gone, start a successor election" is initiateElection().
+        this.hostMigration.initiateElection();
+    }
+
+    /**
+    * Authority guard for host-reassignment messages (peer side).
+    *
+    * Returns true only when a host reassignment is legitimate:
+    *  - the message comes from the current (still-alive) host announcing a
+    *    planned handoff to a named successor, OR
+    *  - an election is in progress (THIS peer believes the host is gone) AND the
+    *    message comes from the legitimately-elected successor naming itself
+    *    (mirrors HostMigration.handleClaim's `isElectionInProgress` + candidate
+    *    checks).
+    *
+    * The election gate is essential: without it the lowest-id peer (always a
+    * valid `_getExpectedHostCandidateId`) could broadcast game:host:migrated /
+    * game:host:sync naming itself and seize a LIVE, HEALTHY host at any time,
+    * then have every subsequent host-authoritative message accepted as trusted —
+    * a full authority takeover. This is the Phase 1 quick fix; Phase 6 replaces
+    * the allowlist model with a default-deny one (see the remediation plan).
+    */
+    _verifyHostReassignment(senderId, claimedNewHostId) {
+        if (!senderId || !claimedNewHostId) return false;
+
+        const currentHost = this.network?.hostSteamId;
+        // The trusted current host may hand authority to any named successor
+        // (a planned handoff) without an election.
+        if (senderId === currentHost) return true;
+
+        // A peer may assert authority ONLY while a successor election is active
+        // — i.e. this peer's own host-liveness monitor has declared the host gone.
+        // Otherwise a healthy host cannot be displaced by a peer.
+        if (!this.hostMigration?.isElectionInProgress) return false;
+
+        // ...and only by naming itself as the expected (lowest-id) candidate. It
+        // is "expected" if it is still the lowest-id candidate (SYNC arrived
+        // before CLAIM) or if CLAIM already promoted it to current host.
+        const expectedCandidate = this.hostMigration?._getExpectedHostCandidateId?.();
+        return senderId === claimedNewHostId
+            && (claimedNewHostId === currentHost || claimedNewHostId === expectedCandidate);
     }
 
     /**

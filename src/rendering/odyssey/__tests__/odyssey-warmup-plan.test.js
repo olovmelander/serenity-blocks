@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJourneyWarmSamples } from '../odyssey-warmup-plan.js';
+import { buildChapterWarmSamples, buildJourneyWarmSamples } from '../odyssey-warmup-plan.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 
 describe('buildJourneyWarmSamples (startup warm-up slimming)', () => {
@@ -46,5 +46,23 @@ describe('buildJourneyWarmSamples (startup warm-up slimming)', () => {
     it('degrades to just the journey ends and one midpoint with no boundaries', () => {
         expect(buildJourneyWarmSamples({})).toEqual([0, 0.5, 1]);
         expect(buildJourneyWarmSamples()).toEqual([0, 0.5, 1]);
+    });
+
+    it('builds a local chapter-window sample set for capture-scoped warm-up', () => {
+        const samples = buildChapterWarmSamples({
+            chapterPositions: [0, 0.125, 0.25, 0.5, 1],
+            chapterIds: [2, 3],
+        });
+
+        expect(samples).toEqual([0.125, 0.1875, 0.25, 0.375, 0.5]);
+    });
+
+    it('filters invalid capture chapter ids', () => {
+        const samples = buildChapterWarmSamples({
+            chapterPositions: [0, 0.25, 0.5, 1],
+            chapterIds: [0, 2, 2, 99, Number.NaN],
+        });
+
+        expect(samples).toEqual([0.25, 0.375, 0.5]);
     });
 });

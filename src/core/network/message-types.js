@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Network Message Types
  * Protocol for P2P communication

@@ -7,6 +7,13 @@ const RAW_THEME_REGISTRY = [
         icon: './forest/forest-theme-icon.png',
     },
     {
+        id: 'halcyon-apex',
+        displayName: 'Halcyon Apex',
+        module: './halcyon-apex/halcyon-apex-theme.js',
+        group: 'biomes',
+        icon: './halcyon-apex/halcyon-apex-theme-icon.png',
+    },
+    {
         id: 'himalayan-peak',
         displayName: 'Himalayan Peak',
         module: './himalayan-peak/himalayan-peak-theme.js',
@@ -71,7 +78,7 @@ const RAW_THEME_REGISTRY = [
     },
     {
         id: 'summer',
-        displayName: 'Summer',
+        displayName: 'Midsommar',
         module: './summer/summer-theme.js',
         group: 'biomes',
         icon: './summer/summer-theme-icon.png',
@@ -429,6 +436,7 @@ const RAW_THEME_REGISTRY = [
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
+    'halcyon-apex',
     'ice-temple',
     'moonlit-forest',
     'wolfhour',
@@ -443,6 +451,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'rainy-window',
     'verdant-hills',
     'singing-bowl',
+    'starlight',
     'swedish-forest',
     'geode',
     'bioluminescence',

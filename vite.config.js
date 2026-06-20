@@ -1,9 +1,20 @@
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
+import { realpathSync } from 'node:fs';
 import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 
+// Resolve the project root to its real on-disk casing (canonical uppercase drive
+// letter on Windows). Without this, launching the dev server from a lowercase
+// `c:\...` cwd makes `config.root` lowercase, and Vite's html-proxy load handler
+// does a CASE-SENSITIVE `id.replace(config.root)` — so the inline renderer entry
+// (`index.html?html-proxy&index=0.js`) 500s with "No matching HTML proxy module
+// found", and the desktop shell reports "Renderer entry did not start".
+const projectRoot = realpathSync.native(__dirname);
+
 export default defineConfig({
+  // Force a canonical-cased root so dev-server module resolution is launch-cwd agnostic.
+  root: projectRoot,
   // Base public path for assets
   base: './',
   // Ensure Phaser renderer flags are set correctly during dev and build
@@ -16,7 +27,7 @@ export default defineConfig({
       },
     }),
     createThemeThumbnailAssetPlugin({
-      projectRoot: __dirname,
+      projectRoot,
     }),
   ],
 
@@ -45,8 +56,9 @@ export default defineConfig({
     // Optimize chunk size for Phaser 4
     rollupOptions: {
       input: {
-        app: path.resolve(__dirname, 'index.html'),
-        'entry-desktop': path.resolve(__dirname, 'src/entry-desktop.js'),
+        app: path.resolve(projectRoot, 'index.html'),
+        playground: path.resolve(projectRoot, 'playground.html'),
+        'entry-desktop': path.resolve(projectRoot, 'src/entry-desktop.js'),
       },
       output: {
         manualChunks(id) {
@@ -130,7 +142,7 @@ export default defineConfig({
   optimizeDeps: {
     // Keep dependency crawling scoped to the actual app entry. The vendored
     // Three.js repo ships extra HTML pages that reference optional example deps.
-    entries: ['index.html'],
+    entries: ['index.html', 'playground.html'],
     include: [
       'phaser',
       'three',
@@ -150,13 +162,13 @@ export default defineConfig({
   // Resolve configuration
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@core': path.resolve(__dirname, './src/core'),
-      '@rendering': path.resolve(__dirname, './src/rendering'),
-      '@themes': path.resolve(__dirname, './src/themes'),
-      '@ui': path.resolve(__dirname, './src/ui'),
-      '@utils': path.resolve(__dirname, './src/utils'),
-      '@events': path.resolve(__dirname, './src/events'),
+      '@': path.resolve(projectRoot, './src'),
+      '@core': path.resolve(projectRoot, './src/core'),
+      '@rendering': path.resolve(projectRoot, './src/rendering'),
+      '@themes': path.resolve(projectRoot, './src/themes'),
+      '@ui': path.resolve(projectRoot, './src/ui'),
+      '@utils': path.resolve(projectRoot, './src/utils'),
+      '@events': path.resolve(projectRoot, './src/events'),
     },
   },
 

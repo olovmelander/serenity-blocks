@@ -89,6 +89,10 @@ export function makeQuadInstancedGeometry(count, instancedAttributes = {}) {
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = quad.index;
     geo.setAttribute('position', quad.getAttribute('position'));
+    // `normal` is kept: some billboard materials DO read it (e.g. normalView), so removing
+    // it globally floods "Vertex attribute normal not found". The 9-vertex-buffer overflow
+    // is fixed per-billboard at the call site instead (see the offending 6-attribute one).
+    geo.setAttribute('normal', quad.getAttribute('normal'));
     geo.setAttribute('uv', quad.getAttribute('uv'));
     geo.instanceCount = count;
     Object.entries(instancedAttributes).forEach(([name, { array, itemSize }]) => {

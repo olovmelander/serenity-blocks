@@ -8,21 +8,21 @@ export const STARLIGHT_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#cfeaff', // Ice blue
-        O: '#fff1c1', // Starlight gold
-        T: '#d8c9ff', // Lavender glow
-        S: '#a7ffe5', // Mint aurora
-        Z: '#ffb4e0', // Pink nebula
-        J: '#7a8bff', // Indigo night
-        L: '#ffe6a3', // Warm sunrise
-        GARBAGE: '#111326', // Deep cosmos
+        I: '#cfefff', // Blue-white giant
+        O: '#fff4c7', // Warm starlight
+        T: '#c9b8ff', // Violet deep-field glint
+        S: '#93ffe8', // OIII teal
+        Z: '#ffa7d8', // H-alpha rose
+        J: '#8fa2ff', // Indigo parallax shell
+        L: '#ffd69a', // Golden dwarf
+        GARBAGE: '#070a18', // Deep cosmos
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 9,
-        glowIntensity: 0.65,
+        glowRadius: 10,
+        glowIntensity: 0.72,
         glowColor: 'auto',
 
         outline: true,
@@ -31,11 +31,11 @@ export const STARLIGHT_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.035,
-        pulseAmplitude: 0.2,
+        pulseAmplitude: 0.16,
 
         shimmer: true,
         shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
+        shimmerIntensity: 0.18,
 
         trails: true,
         trailLength: 0.14,

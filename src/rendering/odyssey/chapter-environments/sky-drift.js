@@ -39,8 +39,7 @@ import {
     createDarkWispsTSL,
     SKY_DRIFT_SUN_DIR,
 } from './sky-drift.tsl.js';
-import { createFBMMountainTSL } from './mountain-peaks.tsl.js';
-import { MOUNTAIN_SHADING, resolveMountainTreatment } from './shared/mountain-language.js';
+import { createCanonicalMountainRangeTSL } from './shared/canonical-mountain-range.js';
 
 /**
  * Sky Drift environment configuration
@@ -68,7 +67,23 @@ export const SKY_DRIFT_CONFIG = {
 // Creative plan ch5 item 3: shrunk 0.34 → 0.15 — the corona climax now peaks BEFORE
 // the portal (~80% via the staged dusk ramp), so the recede band only needs the final
 // stretch; the long fade was part of why the aurora never read mid-chapter.
-const SKY_AURORA_EXIT_BAND = 0.15; // fraction of Ch5 span before the boundary over which to recede
+// The aurora is world-locked deep ahead and the camera never passes it in Ch6, so it must
+// LINGER and dissolve as the camera moves on (not pop). Hold it fully present past the
+// boundary, then ease it out over a long tail — timed to the manager's 5→6 env carry so the
+// curtain and the inherited summit chain recede together. Bands are fractions of the SPACE
+// span (ch6→ch7) so the recede tracks the actual Ch6 travel, not the shorter Ch5 span.
+const SKY_AURORA_EXIT_HOLD_BAND = 0.4; // fraction of Space span the aurora stays full past the boundary
+const SKY_AURORA_EXIT_TAIL_BAND = 0.85; // fraction of Space span by which the aurora has receded
+// Keep the inherited Ch4 summit chain fully readable until it is genuinely outside the
+// forward composition. The old -0.08 threshold faded while the peak was still just off
+// the edge of frame during the Sky crane.
+const SUMMIT_RING_BEHIND_FADE_START_DOT = -0.25;
+const SUMMIT_RING_BEHIND_FADE_END_DOT = -0.55;
+
+const summitRingCameraPosition = new THREE.Vector3();
+const summitRingForward = new THREE.Vector3();
+const summitRingTarget = new THREE.Vector3();
+const summitRingToTarget = new THREE.Vector3();
 
 function smoothstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -88,13 +103,47 @@ export function resolveSkyDriftAuroraExitOpacity(
 ) {
     if (!Number.isFinite(progress)) return 1;
     const ch5Start = chapterPositions?.[4];
-    const ch6Start = chapterPositions?.[5] ?? 1;
-    if (!Number.isFinite(ch5Start) || ch6Start <= ch5Start) return 1;
+    const ch6Start = chapterPositions?.[5];
+    if (!Number.isFinite(ch6Start)) return 1;
+    if (progress <= ch6Start) return 1;
 
-    const span = ch6Start - ch5Start;
-    const exitStart = ch6Start - span * SKY_AURORA_EXIT_BAND;
-    // 1->0 as progress rises from exitStart to the boundary (reversed smoothstep edges).
-    return smoothstep01((ch6Start - progress) / Math.max(1e-5, ch6Start - exitStart));
+    // Recede over the SPACE span (ch6→ch7). Fall back to the Ch5 span as a proxy when the
+    // next boundary is unknown (pilot/standalone).
+    const ch7Start = chapterPositions?.[6];
+    const spaceSpan = Number.isFinite(ch7Start) && ch7Start > ch6Start
+        ? ch7Start - ch6Start
+        : Math.max(1e-5, ch6Start - (Number.isFinite(ch5Start) ? ch5Start : ch6Start - 0.1));
+
+    const holdEnd = ch6Start + spaceSpan * SKY_AURORA_EXIT_HOLD_BAND;
+    if (progress <= holdEnd) return 1;
+    const exitEnd = ch6Start + spaceSpan * SKY_AURORA_EXIT_TAIL_BAND;
+    return 1 - smoothstep01((progress - holdEnd) / Math.max(1e-5, exitEnd - holdEnd));
+}
+
+function resolveSummitRingCameraFade(summitRing, camera) {
+    if (!summitRing || !camera?.getWorldPosition || !camera?.getWorldDirection) return 1;
+
+    const focus = summitRing.getObjectByName('ch4-center-hero') || summitRing;
+    focus.getWorldPosition(summitRingTarget);
+    camera.getWorldPosition(summitRingCameraPosition);
+    camera.getWorldDirection(summitRingForward);
+
+    summitRingForward.y = 0;
+    summitRingToTarget.subVectors(summitRingTarget, summitRingCameraPosition);
+    summitRingToTarget.y = 0;
+
+    if (summitRingForward.lengthSq() < 1e-5 || summitRingToTarget.lengthSq() < 1e-5) {
+        return 1;
+    }
+
+    summitRingForward.normalize();
+    summitRingToTarget.normalize();
+    const facing = summitRingForward.dot(summitRingToTarget);
+    return THREE.MathUtils.smoothstep(
+        facing,
+        SUMMIT_RING_BEHIND_FADE_END_DOT,
+        SUMMIT_RING_BEHIND_FADE_START_DOT,
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -141,41 +190,10 @@ function createCloudBreakShaft(uniforms) {
 function createCloudDecks() {
     const group = new THREE.Group();
     group.name = 'cloud-deck-break';
-    const glowTexture = createGlowTexture();
-    // MOONLIT STRATOCUMULUS (creative plan asset 4): silver-blue tops over INK cores.
-    // Every third sprite is an ink-core shred on NORMAL blending — the additive-only
-    // deck could only ever brighten the frame; the ink sprites are the Act II horizon's
-    // dark value anchor.
-    const cloudColors = [0x8fa3c8, 0x1a2238, 0xa9bdf0];
-
-    for (let layer = 0; layer < 3; layer += 1) {
-        const radius = 95 + layer * 38;
-        const count = 24 + layer * 8;
-        for (let index = 0; index < count; index += 1) {
-            const angle = (index / count) * Math.PI * 2 + layer * 0.33;
-            const gap = Math.abs(Math.sin(angle * 0.5));
-            const colorHex = cloudColors[(index + layer) % cloudColors.length];
-            const isInkCore = colorHex === 0x1a2238;
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: colorHex,
-                transparent: true,
-                opacity: isInkCore
-                    ? 0.3 * (0.55 + gap * 0.45)
-                    : (0.12 + layer * 0.035) * (0.55 + gap * 0.45),
-                blending: isInkCore ? THREE.NormalBlending : THREE.AdditiveBlending,
-                depthWrite: false,
-            }));
-            sprite.position.set(
-                Math.cos(angle) * radius,
-                -30 + Math.sin(angle * 1.7) * 18 + layer * 8,
-                -500 - layer * 70 + Math.sin(angle) * 28,
-            );
-            const scale = 42 + Math.random() * 34 + layer * 10;
-            sprite.scale.set(scale * 1.8, scale, 1);
-            group.add(sprite);
-        }
-    }
+    // Kept as a compatibility hook for tests/scene contracts. The old canvas Sprite deck
+    // could expose large rectangular quads on WebGPU; cloud structure now lives in the
+    // TSL cloud-strata, lenticular landmark, wisps, and noctilucent veil layers.
+    group.userData.replacedBy = 'cloud-strata-tsl';
 
     return group;
 }
@@ -291,37 +309,23 @@ export function createSkyDriftEnvironment(options = {}) {
     // strata, god-ray fans, aurora curtain and near-foreground wisps.
 
     // Near-foreground cloud wisps for speed/altitude (repurposed rain veil).
-    const rainVeils = createRainVeils(options.particleCount || 380, uniforms);
+    const rainVeils = createRainVeils(options.particleCount || 280, uniforms);
     group.add(rainVeils);
     group.userData.rainVeils = rainVeils;
 
-    // RECEDING SUMMIT RING (creative plan asset 1): the world we left. Two ridge
-    // silhouettes from the shared mountain language sit below/behind the path at the
-    // chapter entry — Chapter 4's peaks still visible as anchors — then sink and fade
-    // across the first ~30% of the dusk (the chapter-authored entry handoff; no pop).
-    const summitRing = new THREE.Group();
-    summitRing.name = 'receding-summit-ring';
-    const ringTreatment = resolveMountainTreatment({
-        coolTemp: 0.9,
-        snowLine: MOUNTAIN_SHADING.snowLine,
-    });
+    // RECEDING SUMMIT RING (creative plan asset 1): the actual Chapter 4 mountain range,
+    // rendered at the same world coordinates. It stays visible while still in the camera's
+    // forward view, then fades only after the camera has actually passed it; no separate
+    // replacement mountain assets, no silhouette swap.
     const ringOpacityUniforms = [];
-    [
-        {
-            size: 860, height: 300, position: new THREE.Vector3(-160, -150, -180), seed: 12.34,
-        },
-        {
-            size: 760, height: 250, position: new THREE.Vector3(180, -170, -330), seed: 45.67,
-        },
-    ].forEach((config) => {
-        const ridge = createFBMMountainTSL({
-            ...config,
-            treatment: ringTreatment,
-            base: { baseMistStrength: 0.35, baseFadeStart: 0.04, baseFadeEnd: 0.16 },
-            transition: uniform(0.55),
-        });
-        if (ridge.uniforms?.uOpacity) ringOpacityUniforms.push(ridge.uniforms.uOpacity);
-        summitRing.add(ridge.mesh);
+    const { group: summitRing } = createCanonicalMountainRangeTSL({
+        hostCenter: chapterRange?.center,
+        hostChapterId: 5,
+        name: 'receding-summit-ring',
+        uTransition: uniform(0.55),
+        includeFarRange: false,
+        opacityTargets: ringOpacityUniforms,
+        baseOpacity: 1,
     });
     summitRing.userData.baseY = summitRing.position.y;
     group.add(summitRing);
@@ -345,10 +349,10 @@ export function createSkyDriftEnvironment(options = {}) {
 
     // ICE SPINDRIFT (creative plan asset 6) + DARK FOREGROUND WISPS (asset 8): the
     // near-field sparkle and the near-black value anchor the lavender wash never had.
-    const iceCrystals = createIceCrystalsTSL(uniforms.uTime, 160, { uDusk: uniforms.uDusk });
+    const iceCrystals = createIceCrystalsTSL(uniforms.uTime, 120, { uDusk: uniforms.uDusk });
     group.add(iceCrystals.mesh);
     group.userData.iceCrystals = iceCrystals.mesh;
-    const darkWisps = createDarkWispsTSL(uniforms.uTime, 10);
+    const darkWisps = createDarkWispsTSL(uniforms.uTime, 16);
     group.add(darkWisps.mesh);
     group.userData.darkWisps = darkWisps.mesh;
 
@@ -363,28 +367,6 @@ export function createSkyDriftEnvironment(options = {}) {
     }
 
     return group;
-}
-
-// Canvas raster memoized at module scope (startup micro-win); the CanvasTexture is
-// fresh per call so per-environment disposal can never poison a later session.
-let _glowCanvas = null;
-function createGlowTexture() {
-    if (!_glowCanvas) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-        gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.4)');
-        gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.1)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 128, 128);
-        _glowCanvas = canvas;
-    }
-    return new THREE.CanvasTexture(_glowCanvas);
 }
 
 function setupSkyLighting(group) {
@@ -419,7 +401,7 @@ function setupSkyLighting(group) {
 }
 
 export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
-    const [, cameraProgress = null, directorState = null] = updateArgs;
+    const [camera = null, cameraProgress = null, directorState = null] = updateArgs;
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -444,27 +426,35 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
         uniforms.uSunDir.value.set(0.34, elevation, -0.88).normalize();
     }
 
-    // RECEDING SUMMIT RING: the Ch4 peaks sink below frame and fog-swallow across the
-    // first ~30% of the dusk — eight beats, not one (the 01–04 silhouettes fix).
+    // SEAM 5->6: the ChapterEnvironmentManager fades the whole Ch5 env opacity (group
+    // userData.chapterOpacity) on a long HELD ease as the camera crosses into Space, but it
+    // cannot reach these NodeMaterials (alpha flows through opacityNode/uOpacity). Multiply
+    // it in here so the summit ring + aurora DISSOLVE smoothly with the rest of the chapter
+    // instead of popping when group.visible finally flips. Defaults to 1 (pilot/playground,
+    // no manager) so standalone use is unchanged.
+    const chapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+
+    // RECEDING SUMMIT RING: the same Ch4 hero chain remains visible until the camera has
+    // actually passed it. Dusk may change the sky, but it does NOT delete the mountain
+    // while the peak is still in front of the camera.
     const { summitRing } = group.userData;
     if (summitRing) {
-        const recede = THREE.MathUtils.smoothstep(dusk, 0.05, 0.32);
-        summitRing.position.y = (summitRing.userData.baseY ?? 0) - recede * 70;
-        const ringFade = 1 - recede;
+        summitRing.position.y = summitRing.userData.baseY ?? 0;
+        const ringFade = resolveSummitRingCameraFade(summitRing, camera);
         (group.userData.summitRingOpacityUniforms || []).forEach((target) => {
             if (target.__odysseyBaseOpacity === undefined) {
                 target.__odysseyBaseOpacity = target.value;
             }
-            target.value = target.__odysseyBaseOpacity * ringFade;
+            target.value = target.__odysseyBaseOpacity * ringFade * chapterOpacity;
         });
     }
 
-    // SEAM 5->6: recede the aurora curtain (1->0) across the back of Ch5 so it fades
-    // gracefully into Space rather than popping when the group hides. (The staged dusk
-    // ramp inside the ribbon material owns the in-chapter intensity; this is only the
-    // boundary hand-off, narrowed to the final 15%.)
+    // SEAM 5->6: recede the aurora curtain (1->0) across Space so it lingers then dissolves
+    // as the camera moves on (the curtain is world-locked deep ahead and never passed). The
+    // staged dusk ramp inside the ribbon material owns the in-chapter intensity; this is the
+    // boundary hand-off, held then eased and gated by chapterOpacity so it never pops.
     if (uniforms?.uAuroraOpacity) {
-        uniforms.uAuroraOpacity.value = resolveSkyDriftAuroraExitOpacity(cameraProgress);
+        uniforms.uAuroraOpacity.value = resolveSkyDriftAuroraExitOpacity(cameraProgress) * chapterOpacity;
     }
     // Autonomous energy breath (Phase 6 will drive this from the audio reactor).
     if (uniforms?.uEnergy) {

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:playground": "vite --open /playground.html",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron electron/main.js",
@@ -27,6 +29,7 @@
     "build:linux": "vite build && electron-builder --linux",
     "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
     "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
+    "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
   },
   "build": {
@@ -47,17 +50,28 @@
       {
         "from": "node_modules/steamworks.js",
         "to": "native_modules/steamworks.js",
-        "filter": ["**/*", "!dist/linux64/**", "!dist/osx/**"]
+        "filter": [
+          "**/*",
+          "!dist/linux64/**",
+          "!dist/osx/**"
+        ]
       },
       {
         "from": "node_modules/ez-steam-api",
         "to": "native_modules/ez-steam-api",
-        "filter": ["**/*", "!bin/linux-x64/**"]
+        "filter": [
+          "**/*",
+          "!bin/linux-x64/**"
+        ]
       },
       {
         "from": "node_modules/koffi",
         "to": "native_modules/ez-steam-api/node_modules/koffi",
-        "filter": ["package.json", "index.js", "build/koffi/win32_x64/**"]
+        "filter": [
+          "package.json",
+          "index.js",
+          "build/koffi/win32_x64/**"
+        ]
       }
     ],
     "extraFiles": [
@@ -101,9 +115,7 @@
   "license": "MIT",
   "dependencies": {
     "ez-steam-api": "^0.57.1",
-    "jimp": "^0.16.13",
-    "steamworks.js": "^0.4.0",
-    "three": "^0.181.2"
+    "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
@@ -113,9 +125,14 @@
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
     "node-fetch": "^3.3.2",
-    "phaser": "4.0.0-rc.5",
+    "phaser": "^4.1.0",
     "prettier": "^3.3.3",
+    "three": "^0.181.2",
+    "typescript": "^5.9.3",
     "vite": "^5.4.11",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -367,7 +367,7 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
 
     // §3.1 Widen the readable floor to 360×360 so the lake is visible ACROSS the whole
     // descent (the single highest-impact composition change).
-    const geometry = new THREE.PlaneGeometry(360, 360, 112, 112);
+    const geometry = new THREE.PlaneGeometry(360, 360, 72, 72);
     geometry.rotateX(-Math.PI / 2); // Horizontal lake
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.y = LAVA_LAKE_Y; // Lifted: the camera looks ACROSS a wide lake
@@ -485,7 +485,7 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
     material.userData.uniforms = { uTint };
 
     // Open cone (wide base at top sky, narrow toward the lake): tip down.
-    const geometry = new THREE.ConeGeometry(26, 120, 24, 1, true);
+    const geometry = new THREE.ConeGeometry(26, 120, 16, 1, true);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'god-ray-cone';
     mesh.renderOrder = -8;
@@ -542,7 +542,7 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     material.side = THREE.BackSide;
     material.depthWrite = false;
 
-    const geometry = new THREE.SphereGeometry(250, 48, 32);
+    const geometry = new THREE.SphereGeometry(250, 32, 24);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'volcano-background';
     mesh.renderOrder = -90;
@@ -609,7 +609,7 @@ export function createMagmaCloudCanopyTSL(uTime, uPulseIntensity = uniform(0), o
     material.blending = THREE.NormalBlending;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
-    const geometry = new THREE.SphereGeometry(238, 64, 32);
+    const geometry = new THREE.SphereGeometry(238, 48, 24);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'magma-cloud-canopy';
     mesh.renderOrder = -89;
@@ -726,7 +726,7 @@ export function createRockClusterTSL(
     options = {},
 ) {
     const { material } = createRockClusterMaterialTSL(uTime, uPulseIntensity, uBakedBounce, options);
-    const geometry = new THREE.SphereGeometry(size, 48, 48);
+    const geometry = new THREE.SphereGeometry(size, 32, 32);
     const mesh = new THREE.Mesh(geometry, material);
     return { mesh, material, geometry };
 }

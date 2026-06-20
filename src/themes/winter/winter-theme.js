@@ -12,7 +12,24 @@
  * - Detailed Mountains and Post-processing
  */
 
+/* eslint-disable camelcase */
 import * as THREE from 'three/webgpu';
+import {
+    float,
+    vec3,
+    uniform,
+    uv,
+    exp,
+    pow,
+    sin,
+    smoothstep,
+    mix,
+    clamp,
+    attribute,
+    normalView,
+    positionWorld,
+    mx_noise_float,
+} from 'three/tsl';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -27,6 +44,11 @@ import { createStormDebugOverlay } from './composition/storm-debug-overlay.js';
 import { WinterPipeline } from './post/winter-pipeline.js';
 import { StormField } from './sim/storm-field.js';
 import { createAuroraVolume } from './rendering/aurora-volume.js';
+import { createWinterTrees } from './rendering/winter-trees.js';
+// The complete composed winter scene lives in this one playground effect (authored
+// + screenshot-verified there, halcyon-apex style). The theme mounts it on WebGPU
+// and grades it through the WinterPipeline post.
+import { create as createWinterWonderlandScene } from '../../playground/effects/winter-wonderland.effect.js';
 import {
     createWinterStarfieldNodeMaterial,
     createWinterMoonNodeMaterial,
@@ -40,7 +62,16 @@ import {
     createWinterIceWispNodeMaterial,
     createWinterIceBurstNodeMaterial,
     createWinterFogNodeMaterial,
+    createWinterTreeFoliageNodeMaterial,
+    createWinterLakeNodeMaterial,
 } from './winter-materials.js';
+// Reuse the Odyssey Chapter 4 (Mountain Peaks) mountain language so winter peaks
+// match that AAA look (CPU FBM heightfield + 3-zone snow / rim / atmospheric fog).
+import {
+    mountainCpuDisplacement,
+    mountainColorNode,
+    resolveMountainTreatment,
+} from '../../rendering/odyssey/chapter-environments/shared/mountain-language.js';
 
 // Import enhanced shaders
 import {
@@ -70,9 +101,241 @@ import {
     frostSnapFragmentShader,
 } from './winter-shaders.js';
 
+function createReferenceAuroraCurtainMaterial(offset, strength = 1.0) {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.blending = THREE.NormalBlending;
+    material.side = THREE.DoubleSide;
+    material.toneMapped = false;
+
+    const uTime = uniform(0);
+    const uOffset = uniform(offset);
+    const uStrength = uniform(strength);
+    const vUv = uv();
+
+    const lowerGlow = smoothstep(0.0, 0.07, vUv.y);
+    const upperFade = float(1.0).sub(smoothstep(0.56, 0.98, vUv.y));
+    const vertical = lowerGlow.mul(upperFade);
+    const band = sin(vUv.x.mul(42.0).add(uOffset).add(uTime.mul(0.12))).mul(0.5).add(0.5);
+    const broad = sin(vUv.x.mul(12.0).add(uOffset.mul(0.6))).mul(0.5).add(0.5);
+    const fine = sin(vUv.x.mul(86.0).add(uOffset.mul(1.7)).sub(uTime.mul(0.08))).mul(0.5).add(0.5);
+    const column = smoothstep(0.50, 0.98, broad)
+        .mul(0.58)
+        .add(smoothstep(0.66, 0.99, band).mul(0.48))
+        .add(0.05);
+    const raggedTop = float(1.0).sub(smoothstep(0.54, 0.88, vUv.y.add(band.mul(0.045)).add(fine.mul(0.035))));
+    const alpha = vertical
+        .mul(raggedTop)
+        .mul(column)
+        .mul(float(0.42).add(fine.mul(0.15)))
+        .mul(uStrength);
+
+    const base = vec3(0.02, 0.92, 0.72);
+    const top = vec3(0.18, 0.62, 1.0);
+    const color = mix(base, top, smoothstep(0.2, 0.9, vUv.y)).mul(float(1.2).add(band.mul(0.25)));
+
+    material.colorNode = color.mul(1.7);
+    material.opacityNode = clamp(alpha, 0.0, 0.68);
+    material.emissiveNode = color.mul(alpha.mul(0.30));
+
+    return { material, uniforms: { uTime } };
+}
+
+function createFlatNodeMaterial(color, opacity = 1.0) {
+    const material = new THREE.MeshBasicNodeMaterial();
+    const c = new THREE.Color(color);
+    material.colorNode = vec3(c.r, c.g, c.b);
+    if (opacity < 1.0) {
+        material.transparent = true;
+        material.opacityNode = float(opacity);
+        material.depthWrite = false;
+    }
+    return material;
+}
+
+// Build ONE Odyssey-Chapter-4 FBM snow peak tuned for the winter night: CPU
+// heightfield bake (cone + ridged-multifractal crests) + the shared
+// mountainColorNode shading (3-zone alpine snow / rim / atmospheric fog), with the
+// warm sunset alpenglow killed so caps stay cool blue-white under the moon.
+// Prototyped + screenshot-verified as src/playground/effects/winter-mountains.effect.js.
+function buildWinterMountainPeak({
+    size, height, seed, position, coolTemp = 1.0, snowBlend = 0.35, fogNear, fogFar,
+}) {
+    const segments = 64;
+    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+    geometry.rotateX(-Math.PI / 2);
+    const posAttr = geometry.attributes.position;
+    const heights = new Float32Array(posAttr.count);
+    for (let i = 0; i < posAttr.count; i += 1) {
+        const x = posAttr.getX(i);
+        const z = posAttr.getZ(i);
+        const h = mountainCpuDisplacement(x, z, { size, height, seed });
+        posAttr.setY(i, h);
+        heights[i] = h / height;
+    }
+    geometry.computeVertexNormals();
+    geometry.setAttribute('aHeight', new THREE.BufferAttribute(heights, 1));
+
+    const t = resolveMountainTreatment({ coolTemp });
+    const uSnow = uniform(new THREE.Color(t.snow));
+    const uSnowShadow = uniform(new THREE.Color(t.snowShadow));
+    const uRock = uniform(new THREE.Color(t.rock));
+    const uShadow = uniform(new THREE.Color(t.shadow));
+    const uFog = uniform(new THREE.Color(t.fog));
+    const uAlpen = uniform(new THREE.Color(t.alpenglow));
+    const uRim = uniform(new THREE.Color(t.rim));
+    const uSnowLine = uniform(t.snowLine);
+    const uSnowBlend = uniform(snowBlend);
+    const vHeight = attribute('aHeight', 'float');
+    const snowNoise = mx_noise_float(vec3(positionWorld.xz.mul(0.05), float(0.0)))
+        .mul(0.5).add(0.5);
+
+    const color = mountainColorNode({
+        uSnow,
+        uSnowShadow,
+        uRock,
+        uShadow,
+        uFog,
+        uAlpen,
+        uRim,
+        uSnowLine,
+        uSnowBlend,
+        vNormal: normalView,
+        vWorldPosition: positionWorld,
+        vHeight,
+        snowNoise,
+        keyDir: [0.35, 0.85, 0.4],
+        alpenStrength: 0.0,
+        ...(fogNear !== undefined ? { fogNear } : {}),
+        ...(fogFar !== undefined ? { fogFar } : {}),
+    });
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = clamp(smoothstep(0.02, 0.12, vHeight), 0.0, 1.0);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.emissiveNode = vec3(0.0); // mountains must not bloom on the MRT path
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    return mesh;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+function createReferenceLandscapeBackdropMaterial() {
+    const material = new THREE.MeshBasicNodeMaterial();
+    const uTime = uniform(0);
+    const p = uv();
+    const { x } = p;
+    const { y } = p;
+    const one = float(1.0);
+
+    const peak = (center, width, height) => {
+        const dx = x.sub(center).mul(1 / width);
+        return exp(dx.mul(dx).mul(-1.0)).mul(height);
+    };
+
+    let sky = mix(
+        vec3(0.003, 0.045, 0.115),
+        vec3(0.010, 0.105, 0.205),
+        smoothstep(0.23, 0.52, y),
+    );
+    sky = mix(sky, vec3(0.001, 0.007, 0.050), smoothstep(0.58, 1.0, y));
+
+    const starA = pow(sin(x.mul(720.0).add(y.mul(1210.0))).mul(0.5).add(0.5), float(78.0));
+    const starB = pow(sin(x.mul(1510.0).sub(y.mul(860.0))).mul(0.5).add(0.5), float(96.0));
+    const starMask = starA.mul(starB).mul(smoothstep(0.44, 0.95, y)).mul(1.65);
+    let col = sky.add(vec3(0.90, 0.96, 1.0).mul(starMask));
+
+    const auroraLower = smoothstep(0.12, 0.24, y);
+    const auroraUpper = one.sub(smoothstep(0.76, 0.98, y));
+    const auroraVertical = auroraLower.mul(auroraUpper);
+    const auroraBand = sin(x.mul(43.0).add(uTime.mul(0.08))).mul(0.5).add(0.5);
+    const auroraWide = sin(x.mul(14.0).add(1.2)).mul(0.5).add(0.5);
+    const auroraFine = sin(x.mul(96.0).sub(uTime.mul(0.05))).mul(0.5).add(0.5);
+    const auroraColumn = smoothstep(0.18, 0.96, auroraWide)
+        .mul(0.42)
+        .add(smoothstep(0.52, 0.98, auroraBand).mul(0.54))
+        .add(0.10);
+    const raggedTop = one.sub(smoothstep(0.50, 0.88, y.add(auroraBand.mul(0.055)).add(auroraFine.mul(0.045))));
+    const auroraMask = clamp(auroraVertical.mul(raggedTop).mul(auroraColumn).mul(2.6), 0.0, 1.0);
+    const auroraColor = mix(vec3(0.01, 0.95, 0.75), vec3(0.18, 0.58, 1.0), smoothstep(0.40, 0.84, y));
+    col = col.add(auroraColor.mul(auroraMask).mul(0.95));
+
+    const farLine = float(0.415)
+        .add(peak(0.08, 0.12, 0.10))
+        .add(peak(0.27, 0.14, 0.05))
+        .add(peak(0.41, 0.10, 0.13))
+        .add(peak(0.62, 0.13, 0.09))
+        .add(peak(0.78, 0.12, 0.11))
+        .add(sin(x.mul(44.0)).mul(0.010));
+    const farMask = smoothstep(farLine.add(0.014), farLine.sub(0.016), y);
+    const farSnow = smoothstep(farLine.sub(0.085), farLine.add(0.008), y).mul(farMask);
+    const farColor = mix(vec3(0.060, 0.235, 0.470), vec3(0.26, 0.58, 0.86), farSnow);
+    col = mix(col, farColor, farMask);
+
+    const nearLine = float(0.335)
+        .add(peak(0.16, 0.16, 0.07))
+        .add(peak(0.34, 0.09, 0.18))
+        .add(peak(0.55, 0.12, 0.08))
+        .add(peak(0.72, 0.13, 0.11))
+        .add(peak(0.91, 0.12, 0.09))
+        .add(sin(x.mul(38.0).add(0.6)).mul(0.012));
+    const nearMask = smoothstep(nearLine.add(0.012), nearLine.sub(0.018), y);
+    const nearSnow = smoothstep(nearLine.sub(0.070), nearLine.add(0.010), y).mul(nearMask);
+    const nearColor = mix(vec3(0.030, 0.165, 0.360), vec3(0.22, 0.50, 0.78), nearSnow);
+    col = mix(col, nearColor, nearMask);
+
+    const treeTop = float(0.230)
+        .add(sin(x.mul(220.0)).mul(0.5).add(0.5).mul(0.040))
+        .add(sin(x.mul(73.0).add(2.1)).mul(0.5).add(0.5).mul(0.018));
+    const forestMask = smoothstep(treeTop.add(0.012), treeTop.sub(0.018), y)
+        .mul(smoothstep(0.145, 0.210, y))
+        .mul(one.sub(smoothstep(0.300, 0.380, y)));
+    col = mix(col, vec3(0.004, 0.030, 0.080), forestMask.mul(0.92));
+
+    const lakeX = smoothstep(0.055, 0.155, x).mul(one.sub(smoothstep(0.850, 0.965, x)));
+    const lakeY = smoothstep(0.075, 0.140, y).mul(one.sub(smoothstep(0.265, 0.330, y)));
+    const lakeMask = lakeX.mul(lakeY);
+    const lakeCore = smoothstep(0.105, 0.205, y).mul(one.sub(smoothstep(0.205, 0.305, y)));
+    const reflectedCurtain = auroraColumn.mul(smoothstep(0.155, 0.250, y)).mul(one.sub(smoothstep(0.250, 0.330, y)));
+    const crackLines = pow(sin(x.mul(78.0).add(y.mul(31.0))).mul(0.5).add(0.5), float(18.0))
+        .mul(pow(sin(x.mul(19.0).sub(y.mul(66.0))).mul(0.5).add(0.5), float(12.0)))
+        .mul(lakeMask)
+        .mul(0.24);
+    const lakeColor = mix(
+        vec3(0.015, 0.160, 0.300),
+        vec3(0.020, 0.760, 0.820),
+        clamp(lakeCore.mul(0.75).add(reflectedCurtain.mul(0.45)), 0.0, 1.0),
+    ).add(vec3(0.82, 0.96, 1.0).mul(crackLines));
+    col = mix(col, lakeColor, lakeMask.mul(0.96));
+
+    const backSnow = smoothstep(0.085, 0.175, y).mul(one.sub(smoothstep(0.175, 0.230, y)));
+    col = mix(col, vec3(0.46, 0.70, 0.93), backSnow.mul(one.sub(lakeMask)).mul(0.62));
+
+    const foregroundSnow = one.sub(smoothstep(0.030, 0.120, y));
+    const snowShade = vec3(0.36, 0.58, 0.82).add(vec3(0.12, 0.18, 0.24).mul(sin(x.mul(28.0)).mul(0.5).add(0.5)));
+    col = mix(col, snowShade, foregroundSnow.mul(0.56));
+
+    material.colorNode = col;
+    // Sky region is transparent so the volumetric aurora dome shows through above
+    // the painted ridgeline; the landscape (mountains/lake/forest/snow) stays
+    // opaque. Without this the opaque backdrop fully hides the dome aurora.
+    material.opacityNode = one.sub(smoothstep(0.30, 0.42, y));
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = true;
+    material.side = THREE.DoubleSide;
+    material.toneMapped = false;
+
+    return { material, uniforms: { uTime } };
+}
 
 function drawSnowflakeAtlasCell(ctx, cx, cy, radius, variant) {
     const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.15);
@@ -361,7 +624,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 4,
         maxBlizzardWaves: 3,
         fogLayerCount: 4,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.25,
         shaftSamples: 4,
     },
@@ -382,7 +645,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
         fogLayerCount: 3,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.25,
         shaftSamples: 4,
     },
@@ -403,7 +666,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
         fogLayerCount: 2,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.2,
         shaftSamples: 3,
     },
@@ -424,7 +687,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 2,
         maxBlizzardWaves: 1,
         fogLayerCount: 2,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.2,
         shaftSamples: 3,
     },
@@ -445,7 +708,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 1,
         fogLayerCount: 1,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.1,
         shaftSamples: 2,
     },
@@ -466,7 +729,7 @@ const WEBGPU_QUALITY_PRESETS = {
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 0,
         fogLayerCount: 0,
-        targetFps: 120,
+        targetFps: 60,
         maxPixelRatio: 1.0,
         shaftSamples: 2,
     },
@@ -820,6 +1083,9 @@ export default class WinterTheme extends BaseTheme {
         this.closeSnowflakeData = null;
         this.closeSnowflakeUniforms = null;
         this.auroraLayers = [];
+        this.referenceBackdrop = null;
+        this.referenceBackdropUniforms = null;
+        this.referenceAuroraCurtains = [];
         this.auroraVolume = null;
         this.auroraVolumeUniforms = null;
         this.ground = null;
@@ -847,6 +1113,18 @@ export default class WinterTheme extends BaseTheme {
         this.starMaxCount = 0;
 
         this.snowflakeTexture = null;
+
+        // Visual upgrade fields
+        this.lake = null;
+        this.lakeUniforms = null;
+        this.cracksTexture = null;
+        this.snowBankGroup = null;
+        this.clouds = [];
+        this.trees = [];
+        this.rocks = [];
+        this.twigs = [];
+        this.glbTrees = null;
+        this.shoreFoliageMat = null;
 
         // === NEW ENHANCED EFFECTS ===
         this.iceWisps = null;
@@ -889,7 +1167,7 @@ export default class WinterTheme extends BaseTheme {
         this.flashIntensity = 0;
         this.cameraShake = { x: 0, y: 0, intensity: 0 };
         // Base camera position for animation
-        this.baseCameraPosition = { x: 0, y: 0, z: 100 };
+        this.baseCameraPosition = { x: 0, y: 48, z: 860 };
 
         this.comboWindTimer = 0; this.pendingComboCount = 0;
         this.clock = new THREE.Clock(); this.time = 0;
@@ -1102,20 +1380,47 @@ export default class WinterTheme extends BaseTheme {
             };
             console.log('[WinterBaseline] Helpers: window.winterBaseline.capture(label), report(), reset()');
         }
-        this.createSkyBackground();
-        this.createMoon();
-        this.createMountains();
-        // The sky shell owns the stable dark gradient; curtain geometry owns the
-        // readable aurora so WebGPU post can process it without a white sky.
-        if (this.qualityPreset.enableAurora) this.createAuroraSystem();
-        this.createSnowParticles();
-        this.createCloseSnowflakes();
-        this.createIceBurstSystem();
-        this.createWindStreaks();
-
-        // === NEW ENHANCED EFFECTS ===
-        this.createIceWisps();
-        this.createFogLayers();
+        // WebGPU: mount the composed Winter Wonderland scene (one effect) and let
+        // the post pipeline grade it dark/moody. WebGL keeps the legacy build.
+        // ?winterLegacy=1 forces the old scene for comparison.
+        this.useWonderland = this.isWebGPU && !this.bare
+            && new URLSearchParams(window.location.search).get('winterLegacy') !== '1';
+        if (this.useWonderland) {
+            this.scene.fog = null; // scene materials do their own distance fog
+            this.scene.background = null; // the aurora dome covers the background
+            if (this.camera) {
+                this.camera.fov = 55;
+                this.camera.updateProjectionMatrix();
+            }
+            this.wonderland = createWinterWonderlandScene({
+                THREE,
+                scene: this.scene,
+                camera: this.camera,
+                renderer: this.renderer,
+                sizes: { width: window.innerWidth, height: window.innerHeight },
+                params: new URLSearchParams(window.location.search),
+            });
+        } else {
+            this.createSkyBackground();
+            this.createReferenceLandscapeBackdrop();
+            this.createMoon();
+            this.createMountains();
+            if (this.isWebGPU) {
+                this.createLake();
+                this.createLowPolyForest();
+                // GLB winter trees (Spruce, Pine, Fir, Birch) — Firewatch low-poly style
+                this.glbTrees = createWinterTrees(this.scene);
+                this.glbTrees.load().then(() => this.glbTrees.placeForest());
+            }
+            // WebGL fallback keeps the separate flat-plane curtain ribbons.
+            if (this.qualityPreset.enableAurora && !this.isWebGPU) this.createAuroraSystem();
+            this.createSnowParticles();
+            this.createCloseSnowflakes();
+            this.createIceBurstSystem();
+            this.createWindStreaks();
+            this.createIceWisps();
+            this.createFogLayers();
+        }
 
         if (this.mrtAuditEnabled) {
             this.auditMrtMaterials('PrePost');
@@ -1168,8 +1473,8 @@ export default class WinterTheme extends BaseTheme {
         this.scene.background = fogColor;
 
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 8000);
-        this.camera.position.set(0, 0, 100);
-        this.camera.lookAt(0, 0, -500);
+        this.camera.position.set(0, 48, 860);
+        this.camera.lookAt(0, -74, -920);
 
         this.scene.add(new THREE.AmbientLight(0x243248, 0.2));
         this.moonLight = new THREE.DirectionalLight(0x9bb8e6, 0.6);
@@ -1269,12 +1574,15 @@ export default class WinterTheme extends BaseTheme {
                 steps: auroraSteps,
                 radius: 4500,
                 accent: this.stormDirector.accentHex,
-                moonDir: new THREE.Vector3(470, 330, -1050).normalize(),
+                moonDir: new THREE.Vector3(870, 565, -1180).normalize(),
             });
             this.auroraVolumeUniforms = this.auroraVolume.uniforms;
             this.skyDome = this.auroraVolume.mesh;
             this.skyUniforms = null;
             this.scene.add(this.skyDome);
+            // The volumetric aurora dome IS the aurora now — the flat reference
+            // curtain planes are disabled so they don't double up over it.
+            // this.createReferenceAuroraCurtains();
         } else {
             const skyGeo = new THREE.SphereGeometry(4500, 32, 32);
             const skyMat = new THREE.ShaderMaterial({
@@ -1301,11 +1609,50 @@ export default class WinterTheme extends BaseTheme {
         }
     }
 
+    createReferenceAuroraCurtains() {
+        if (!this.isWebGPU) return;
+        const specs = [
+            {
+                x: 0,
+                w: 5200,
+                h: 1120,
+                y: 250,
+                z: -1760,
+                s: 2.45,
+            },
+        ];
+
+        this.referenceAuroraCurtains = specs.map((spec, i) => {
+            const { material, uniforms } = createReferenceAuroraCurtainMaterial(i * 1.73, spec.s);
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(spec.w, spec.h, 1, 1), material);
+            mesh.position.set(spec.x, spec.y, spec.z);
+            mesh.renderOrder = -910;
+            mesh.frustumCulled = false;
+            this.scene.add(mesh);
+            return { mesh, material, uniforms };
+        });
+    }
+
+    createReferenceLandscapeBackdrop() {
+        if (!this.isWebGPU) return;
+
+        const { material, uniforms } = createReferenceLandscapeBackdropMaterial();
+        this.referenceBackdropUniforms = uniforms;
+        this.referenceBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(6400, 3450, 1, 1), material);
+        this.referenceBackdrop.name = 'winter-reference-landscape-backdrop';
+        this.referenceBackdrop.position.set(0, 560, -1900);
+        this.referenceBackdrop.renderOrder = -950;
+        this.referenceBackdrop.frustumCulled = false;
+        this.scene.add(this.referenceBackdrop);
+    }
+
     createMoon() {
         const geometry = new THREE.SphereGeometry(150, 64, 64);
         let material = null;
         if (this.isWebGPU) {
-            const { material: moonMaterial, uniforms } = createWinterMoonNodeMaterial();
+            const { material: moonMaterial, uniforms } = createWinterMoonNodeMaterial({
+                color: new THREE.Color(0xf4f7ff),
+            });
             material = moonMaterial;
             this.moonUniforms = uniforms;
         } else {
@@ -1317,13 +1664,12 @@ export default class WinterTheme extends BaseTheme {
             this.moonUniforms = null;
         }
         this.moon = new THREE.Mesh(geometry, material);
-        // Lowered into the visible upper-right so it reads as the scene's anchor
-        // (was y=1000, off-frame above the camera's horizontal view).
-        this.moon.position.set(470, 330, -1050);
+        // Upper-right anchor, matching the reference composition.
+        this.moon.position.set(870, 565, -1180);
         this.moon.userData = {
-            baseX: 470,
-            baseY: 330,
-            baseZ: -1050,
+            baseX: 870,
+            baseY: 565,
+            baseZ: -1180,
         };
         this.scene.add(this.moon);
 
@@ -1402,8 +1748,8 @@ export default class WinterTheme extends BaseTheme {
             this.moonUniforms.uTime.value = this.time;
         }
         if (this.moonUniforms?.uColor?.value) {
-            this._tempColorA.setRGB(0.75, 0.84, 1.0);
-            this._tempColorB.setRGB(0.88, 0.95, 1.0);
+            this._tempColorA.setRGB(0.92, 0.94, 1.0);
+            this._tempColorB.setRGB(1.0, 0.98, 0.9);
             this.moonUniforms.uColor.value.copy(
                 this._tempColorA.lerp(this._tempColorB, Math.min(1, storm * 0.32 + whiteout * 0.45)),
             );
@@ -1463,66 +1809,136 @@ export default class WinterTheme extends BaseTheme {
         });
     }
 
-    createGlowCanvas() {
-        if (typeof document === 'undefined') return null;
-        const c = document.createElement('canvas');
-        c.width = 64; c.height = 64;
-        const ctx = c.getContext('2d');
-        const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        g.addColorStop(0, 'rgba(255,255,255,1)');
-        g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
-        return c;
+    // Layered cool-blue Odyssey-Ch4 snow peaks behind the lake. Three depth tiers
+    // haze to pale blue (atmospheric perspective); near peaks sit to the sides so
+    // the lake/centre stays open for the aurora + moon.
+    createOdysseyWinterMountains() {
+        const feetY = -250;
+        const specs = [
+            // Far range — heavy haze → pale-blue silhouettes.
+            {
+                size: 3600, height: 620, seed: 5.1, position: new THREE.Vector3(-1900, feetY, -2500), fogNear: 700, fogFar: 2400,
+            },
+            {
+                size: 3400, height: 560, seed: 9.7, position: new THREE.Vector3(1500, feetY, -2650), fogNear: 700, fogFar: 2400,
+            },
+            // Mid range.
+            {
+                size: 2500, height: 720, seed: 21.3, position: new THREE.Vector3(-650, feetY, -1850), fogNear: 1000, fogFar: 2800,
+            },
+            {
+                size: 2300, height: 640, seed: 33.9, position: new THREE.Vector3(900, feetY, -1950), fogNear: 1000, fogFar: 2800,
+            },
+            // Near range — full contrast/detail, to the sides.
+            {
+                size: 2100, height: 820, seed: 42.2, position: new THREE.Vector3(-1500, feetY, -1350), fogNear: 1300, fogFar: 3200,
+            },
+            {
+                size: 1900, height: 700, seed: 58.6, position: new THREE.Vector3(1400, feetY, -1450), fogNear: 1300, fogFar: 3200,
+            },
+        ];
+        specs.forEach((s) => {
+            const mesh = buildWinterMountainPeak(s);
+            mesh.renderOrder = -20;
+            mesh.frustumCulled = false;
+            this.mountains.push(mesh);
+            this.scene.add(mesh);
+        });
     }
 
     createMountains() {
+        // WebGPU: layered Odyssey-Ch4 FBM snow peaks (the "better mountains").
+        // WebGL keeps the simpler displaced-plane silhouette ranges below.
+        if (this.isWebGPU) {
+            this.createOdysseyWinterMountains();
+            this.createGround();
+            return;
+        }
         const ranges = [
             {
-                // Far ridge: snow-covered slopes (worldY +150 ridge down past the
-                // ground line ~−280) so there is no bare-rock void mid-frame.
-                z: -1800, color: 0x0a1526, rockHi: 0x1b2c46, height: 700, width: 5000, snowLine: 0.35, snowStart: -300, snowRange: 250,
+                z: -2800,
+                color: 0x155c9d,
+                rockHi: 0x55aee8,
+                height: 1080,
+                width: 11000,
+                snowStart: -260,
+                snowRange: 500,
+                fog: 0x1a6fa8,
+                density: 0.00002,
+                index: 0,
             },
             {
-                // Near ridge: lower top (worldY up to +25), fully snow-clad slopes.
-                z: -1100, color: 0x0b1320, rockHi: 0x16223a, height: 450, width: 4000, snowLine: 0.45, snowStart: -340, snowRange: 230,
+                z: -2000,
+                color: 0x0f4e91,
+                rockHi: 0x4fa2dc,
+                height: 760,
+                width: 8000,
+                snowStart: -280,
+                snowRange: 390,
+                fog: 0x145b94,
+                density: 0.00002,
+                index: 1,
             },
         ];
 
-        ranges.forEach((range, index) => {
-            const geometry = new THREE.PlaneGeometry(range.width, range.height, this.qualityPreset.mountainSegments, this.qualityPreset.mountainSegments / 2);
+        ranges.forEach((range) => {
+            const segs = this.isWebGPU ? 48 : 32;
+            const geometry = new THREE.PlaneGeometry(range.width, range.height, segs, segs / 2);
             const posAttr = geometry.attributes.position;
             for (let i = 0; i < posAttr.count; i++) {
                 const x = posAttr.getX(i);
-                const noise = Math.sin(x * 0.003 + index) * 150 + Math.sin(x * 0.01 + index * 2) * 80;
                 const y = posAttr.getY(i);
                 const v = (y / range.height) + 0.5;
-                if (v > 0.1) posAttr.setZ(i, noise * v);
+
+                let profile = 0;
+                if (range.index === 0) {
+                    const peaks = [
+                        { x: -3500, h: 1000, w: 1400 },
+                        { x: -1800, h: 800, w: 1000 },
+                        { x: -600, h: 650, w: 900 },
+                        { x: 250, h: 700, w: 1000 },
+                        { x: 1200, h: 650, w: 900 },
+                        { x: 2200, h: 800, w: 1100 },
+                        { x: 3500, h: 1000, w: 1300 },
+                    ];
+                    peaks.forEach((p) => {
+                        const dx = (x - p.x) / p.w;
+                        profile += p.h * Math.exp(-dx * dx);
+                    });
+                } else {
+                    const peaks = [
+                        { x: -2500, h: 650, w: 1000 },
+                        { x: -1200, h: 500, w: 700 },
+                        { x: -280, h: 900, w: 550 },
+                        { x: 450, h: 550, w: 600 },
+                        { x: 1100, h: 420, w: 600 },
+                        { x: 1900, h: 650, w: 900 },
+                    ];
+                    peaks.forEach((p) => {
+                        const dx = (x - p.x) / p.w;
+                        profile += p.h * Math.exp(-dx * dx);
+                    });
+                }
+
+                const noise = Math.sin(x * 0.008) * 35 + Math.sin(x * 0.025) * 12;
+                const totalHeight = (profile * (range.index === 0 ? 0.48 : 0.56) + noise) * v ** 1.25;
+
+                if (v > 0.05) posAttr.setY(i, y + totalHeight);
             }
-            geometry.computeVertexNormals();
+
+            const geoNonIndexed = geometry.toNonIndexed();
+            geoNonIndexed.computeVertexNormals();
 
             let material = null;
             if (this.isWebGPU) {
-                const { material: mountainMaterial } = createWinterMountainNodeMaterial({
-                    baseColor: new THREE.Color(range.color),
-                    rockHi: new THREE.Color(range.rockHi ?? 0x182438),
-                    snowColor: new THREE.Color(0xc2d4ec),
-                    snowStart: range.snowStart ?? 10,
-                    snowRange: range.snowRange ?? 200,
-                    // Dusk-blue mist (not near-black) so far slopes recede into
-                    // atmospheric haze instead of a hard black band.
-                    fogColor: new THREE.Color(0x16243c),
-                    fogDensity: this.qualityPreset.fogDensity,
-                    // Aurora-tinted moonlit rim; far ridge a touch softer.
-                    rimColor: new THREE.Color(0x9fe0c8),
-                    rimStrength: index === 0 ? 0.4 : 0.55,
-                });
-                material = mountainMaterial;
+                material = createFlatNodeMaterial(range.index === 0 ? 0x1a6aa8 : 0x104f91);
             } else {
+                // WebGL Fallback
                 material = new THREE.ShaderMaterial({
                     uniforms: {
                         uBaseColor: { value: new THREE.Color(range.color) },
-                        uSnowColor: { value: new THREE.Color(0xddeeff) }, // Warmer white for snow
-                        uSnowLine: { value: range.snowLine },
+                        uSnowColor: { value: new THREE.Color(0xddeeff) },
+                        uSnowLine: { value: range.snowLine || 0.45 },
                         uFogColor: { value: new THREE.Color(0x03060e) },
                         uFogDensity: { value: this.qualityPreset.fogDensity * 1.1 },
                     },
@@ -1539,27 +1955,21 @@ export default class WinterTheme extends BaseTheme {
                         uniform vec3 uFogColor; uniform float uFogDensity;
                         varying vec3 vPos; varying vec3 vNormal;
                         void main() {
-                            float slope = 1.0 - vNormal.y; // Steepness
+                            float slope = 1.0 - vNormal.y;
                             float h = vPos.y;
-                            
-                            // Snow logic: higher up, and flatter surfaces
                             float snowThreshold = uSnowLine * 600.0 + sin(vPos.x * 0.01) * 50.0;
                             float snowFactor = smoothstep(snowThreshold, snowThreshold + 100.0, h);
-                            snowFactor *= smoothstep(0.8, 0.3, slope); // Less snow on steep cliffs
-
+                            snowFactor *= smoothstep(0.8, 0.3, slope);
                             vec3 color = mix(uBaseColor, uSnowColor, snowFactor);
-                            
-                            // Manual fog blend for mountains to get deep atmosphere
                             float depth = length(vPos - cameraPosition);
                             float fogFactor = 1.0 - exp(-depth * depth * uFogDensity * uFogDensity);
-                            
                             gl_FragColor = vec4(mix(color, uFogColor, fogFactor), 1.0);
                         }
                     `,
                 });
             }
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(0, -200, range.z);
+            const mesh = new THREE.Mesh(geoNonIndexed, material);
+            mesh.position.set(0, range.index === 0 ? -760 : -745, range.z);
             this.mountains.push(mesh);
             this.scene.add(mesh);
         });
@@ -1570,31 +1980,452 @@ export default class WinterTheme extends BaseTheme {
     // Snowy foreground/valley floor — grounds the composition and catches
     // aurora + moonlight (WebGPU only; the WebGL fallback keeps the empty bg).
     createGround() {
-        const geometry = new THREE.PlaneGeometry(7000, 3200, 96, 48);
-        // Gentle drift undulation so it isn't a dead-flat plane.
-        const posAttr = geometry.attributes.position;
-        for (let i = 0; i < posAttr.count; i++) {
-            const x = posAttr.getX(i);
-            const y = posAttr.getY(i); // pre-rotation: y is depth
-            const drift = Math.sin(x * 0.004) * 14 + Math.sin(y * 0.006 + 1.3) * 10
-                + Math.sin(x * 0.013 + y * 0.01) * 6;
-            posAttr.setZ(i, drift);
+        const groundGeo = new THREE.PlaneGeometry(7000, 3200, 64, 32);
+        const groundPos = groundGeo.attributes.position;
+        for (let i = 0; i < groundPos.count; i++) {
+            const x = groundPos.getX(i);
+            const y = groundPos.getY(i); // pre-rotation depth
+
+            const wx = x;
+            const wz = -650 + y;
+
+            // Define Lake boundaries
+            const dx = Math.max(0, Math.abs(wx) - 1200);
+            const dz = Math.max(0, Math.abs(wz - (-700)) - 400);
+            const distToLake = Math.sqrt(dx * dx + dz * dz);
+
+            let disp = -18;
+            if (distToLake > 0) {
+                disp += Math.min(220, distToLake * 0.16); // steeper slopes outside lake
+            }
+
+            // Low-poly hills undulations
+            const noise = Math.sin(x * 0.004) * 35 + Math.sin(y * 0.006 + 1.2) * 22;
+            if (distToLake > 60) {
+                disp += noise * Math.min(1.0, (distToLake - 60) * 0.004);
+            }
+
+            groundPos.setZ(i, disp);
         }
-        geometry.computeVertexNormals();
+
+        const groundGeoNonIndexed = groundGeo.toNonIndexed();
+        groundGeoNonIndexed.computeVertexNormals();
 
         const { material, uniforms } = createWinterGroundNodeMaterial({
-            aurora: new THREE.Color(this.stormDirector?.accentHex ?? 0x33b890),
-            fogColor: new THREE.Color(0x16243c),
+            baseColor: new THREE.Color(0x12304f), // deep blue-navy base
+            snowColor: new THREE.Color(0x8fb6e0), // moonlit blue snow (a touch dimmer)
+            aurora: new THREE.Color(this.stormDirector?.accentHex ?? 0x13cad6),
+            // Lighter cool-blue distance fog so the mid-ground reads as far moonlit
+            // snow receding to the treeline — not a pure-black dead band.
+            fogColor: new THREE.Color(0x1a2c46),
         });
         this.groundUniforms = uniforms;
 
-        const mesh = new THREE.Mesh(geometry, material);
+        const mesh = new THREE.Mesh(groundGeoNonIndexed, material);
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(0, -280, -650);
         mesh.renderOrder = -50;
         mesh.frustumCulled = false;
         this.ground = mesh;
         this.scene.add(mesh);
+    }
+
+    createIceCracksTexture() {
+        const size = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, size, size);
+
+        // Draw crack lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const points = [];
+        const numNodes = 12;
+        for (let i = 0; i < numNodes; i++) {
+            points.push({
+                x: Math.random() * size,
+                y: Math.random() * size,
+            });
+        }
+
+        for (let i = 0; i < numNodes; i++) {
+            const p1 = points[i];
+            const targets = points
+                .map((p, idx) => ({ idx, dist: Math.hypot(p.x - p1.x, p.y - p1.y) }))
+                .filter((t) => t.idx !== i)
+                .sort((a, b) => a.dist - b.dist)
+                .slice(0, 2);
+
+            targets.forEach((t) => {
+                const p2 = points[t.idx];
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                const steps = 3 + Math.floor(Math.random() * 2);
+                for (let s = 1; s <= steps; s++) {
+                    const ratio = s / steps;
+                    const tx = p1.x + (p2.x - p1.x) * ratio + (Math.random() - 0.5) * 25;
+                    const ty = p1.y + (p2.y - p1.y) * ratio + (Math.random() - 0.5) * 25;
+                    ctx.lineTo(tx, ty);
+                }
+                ctx.stroke();
+            });
+        }
+
+        // Minor cracks
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.lineWidth = 1.0;
+        for (let i = 0; i < 15; i++) {
+            const startNode = points[Math.floor(Math.random() * points.length)];
+            ctx.beginPath();
+            ctx.moveTo(startNode.x, startNode.y);
+            const steps = 3;
+            const angle = Math.random() * Math.PI * 2;
+            const length = 40 + Math.random() * 50;
+            for (let s = 1; s <= steps; s++) {
+                const ratio = s / steps;
+                const dist = length * ratio;
+                const tx = startNode.x + Math.cos(angle + (Math.random() - 0.5) * 0.6) * dist;
+                const ty = startNode.y + Math.sin(angle + (Math.random() - 0.5) * 0.6) * dist;
+                ctx.lineTo(tx, ty);
+            }
+            ctx.stroke();
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    createPineTree(foliageMaterial, height = 80) {
+        const group = new THREE.Group();
+
+        // Trunk (Low-poly cylinder)
+        const trunkHeight = height * 0.22;
+        const trunkRadius = height * 0.045;
+        const trunkGeo = new THREE.CylinderGeometry(trunkRadius * 0.8, trunkRadius, trunkHeight, 5);
+        const trunkMat = new THREE.MeshBasicNodeMaterial({
+            color: new THREE.Color(0.16, 0.12, 0.09),
+        });
+        const trunk = new THREE.Mesh(trunkGeo.toNonIndexed(), trunkMat);
+        trunk.position.y = trunkHeight * 0.5;
+        group.add(trunk);
+
+        // Foliage layers (3 cones stacked)
+        const coneCount = 3;
+        const baseRadius = height * 0.28;
+        const coneHeight = height * 0.36;
+
+        for (let i = 0; i < coneCount; i++) {
+            const radius = baseRadius * 0.75 ** i;
+            const cheight = coneHeight * 0.85 ** i;
+            const coneGeo = new THREE.ConeGeometry(radius, cheight, 5);
+
+            const nonIndexedGeo = coneGeo.toNonIndexed();
+            nonIndexedGeo.computeVertexNormals();
+
+            const cone = new THREE.Mesh(nonIndexedGeo, foliageMaterial);
+            const yPos = trunkHeight + (coneHeight * 0.42) * i;
+            cone.position.y = yPos + cheight * 0.5;
+            cone.rotation.y = Math.random() * Math.PI;
+            group.add(cone);
+        }
+
+        return group;
+    }
+
+    createCloud(cloudMaterial, scale = 1.0) {
+        const group = new THREE.Group();
+        const sphereCount = 4 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < sphereCount; i++) {
+            const radius = (20 + Math.random() * 25) * scale;
+            const geo = new THREE.SphereGeometry(radius, 8, 6);
+            const mesh = new THREE.Mesh(geo.toNonIndexed(), cloudMaterial);
+
+            mesh.position.set(
+                (i - sphereCount * 0.5) * radius * 0.72 + (Math.random() - 0.5) * 12,
+                (Math.random() - 0.5) * 8,
+                (Math.random() - 0.5) * 12,
+            );
+            group.add(mesh);
+        }
+        return group;
+    }
+
+    createRock(rockMaterial, scale = 1.0) {
+        const group = new THREE.Group();
+        const count = 3;
+        for (let i = 0; i < count; i++) {
+            const radius = (18 + Math.random() * 18) * scale;
+            const geo = new THREE.DodecahedronGeometry(radius, 1);
+            const mesh = new THREE.Mesh(geo.toNonIndexed(), rockMaterial);
+            mesh.position.set(
+                (i - count * 0.5) * radius * 0.45 + (Math.random() - 0.5) * 8,
+                (Math.random() - 0.5) * 4,
+                (Math.random() - 0.5) * 8,
+            );
+            mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            group.add(mesh);
+        }
+        return group;
+    }
+
+    createTwig(scale = 1.0) {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshBasicNodeMaterial({
+            color: new THREE.Color(0.09, 0.06, 0.04),
+        });
+
+        const count = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+            const height = (15 + Math.random() * 15) * scale;
+            const geo = new THREE.CylinderGeometry(0.3, 0.8, height, 4);
+            const branch = new THREE.Mesh(geo.toNonIndexed(), mat);
+            branch.position.y = height * 0.5;
+            branch.rotation.set(
+                (Math.random() - 0.5) * 0.9,
+                Math.random() * Math.PI,
+                (Math.random() - 0.5) * 0.9,
+            );
+            group.add(branch);
+        }
+        return group;
+    }
+
+    createBareSapling(scale = 1.0) {
+        const group = new THREE.Group();
+        const mat = createFlatNodeMaterial(0x061026);
+
+        const addBranch = (length, radius, x, y, rotZ, rotX = 0) => {
+            const geo = new THREE.CylinderGeometry(radius * 0.5, radius, length, 5);
+            const branch = new THREE.Mesh(geo.toNonIndexed(), mat);
+            branch.position.set(x * scale, y * scale, 0);
+            branch.rotation.set(rotX, 0, rotZ);
+            group.add(branch);
+        };
+
+        addBranch(92 * scale, 1.6 * scale, 0, 42, -0.24, 0.1);
+        addBranch(56 * scale, 1.0 * scale, -17, 72, 0.72, -0.15);
+        addBranch(52 * scale, 0.9 * scale, 18, 62, -0.82, 0.08);
+        addBranch(38 * scale, 0.75 * scale, -28, 50, 0.95, -0.12);
+        addBranch(34 * scale, 0.7 * scale, 30, 42, -1.05, 0.16);
+
+        return group;
+    }
+
+    createLake() {
+        const lakeGeo = new THREE.PlaneGeometry(3000, 1000, 8, 8);
+        this.cracksTexture = this.createIceCracksTexture();
+        this.cracksTexture.repeat.set(1.2, 1.2);
+
+        const { material: lakeMat, uniforms } = createWinterLakeNodeMaterial({
+            baseColor: new THREE.Color(0x05202f), // dark turquoise depths (night)
+            lakeColor: new THREE.Color(0x0c6f7e), // muted turquoise centre
+            aurora: new THREE.Color(this.stormDirector?.accentHex ?? 0x2aa890),
+            moonColor: new THREE.Color(0xd2e2ff),
+            moonU: 0.79, // moon (world x≈870) reflected on the 3000-wide lake
+            fogColor: new THREE.Color(0x060e1b),
+            map: this.cracksTexture,
+        });
+        this.lakeUniforms = uniforms;
+
+        const lakeGeoNonIndexed = lakeGeo.toNonIndexed();
+        lakeGeoNonIndexed.computeVertexNormals();
+
+        this.lake = new THREE.Mesh(lakeGeoNonIndexed, lakeMat);
+        this.lake.rotation.x = -Math.PI / 2;
+        this.lake.position.set(0, -277, -700);
+        this.scene.add(this.lake);
+        this.createReferenceSnowBanks();
+    }
+
+    createReferenceSnowBanks() {
+        if (this.snowBankGroup) {
+            this.disposeGroup(this.snowBankGroup);
+        }
+
+        this.snowBankGroup = new THREE.Group();
+        this.snowBankGroup.name = 'winter-reference-snowbanks';
+        this.scene.add(this.snowBankGroup);
+
+        const lakeGlowMat = createFlatNodeMaterial(0x18c6d6, 0.06);
+        lakeGlowMat.blending = THREE.AdditiveBlending;
+        const lakeGlow = new THREE.Mesh(new THREE.PlaneGeometry(2600, 620, 1, 1), lakeGlowMat);
+        lakeGlow.rotation.x = -Math.PI / 2;
+        lakeGlow.position.set(40, -274.5, -760);
+        lakeGlow.renderOrder = 12;
+        this.snowBankGroup.add(lakeGlow);
+    }
+
+    createSkyClouds() {
+        this.cloudsGroup = new THREE.Group();
+        this.scene.add(this.cloudsGroup);
+
+        this.cloudMat = new THREE.MeshBasicNodeMaterial();
+        // Cool, faint wisps that blend into the night sky — not opaque grey blobs
+        // beside the moon (which read as a lens-flare bug).
+        this.cloudMat.colorNode = vec3(0.5, 0.62, 0.82);
+        this.cloudMat.opacityNode = float(0.22);
+        this.cloudMat.transparent = true;
+        this.cloudMat.depthWrite = false;
+
+        // Larger, fewer, spread wider + lower so they drift past the moon as a
+        // soft bank rather than a tight chain right next to it.
+        const cloud1 = this.createCloud(this.cloudMat, 2.4);
+        cloud1.position.set(360, 640, -1140);
+        this.cloudsGroup.add(cloud1);
+        this.clouds.push({ mesh: cloud1, offset: 0 });
+
+        const cloud2 = this.createCloud(this.cloudMat, 2.0);
+        cloud2.position.set(1180, 690, -1180);
+        this.cloudsGroup.add(cloud2);
+        this.clouds.push({ mesh: cloud2, offset: Math.PI });
+    }
+
+    createLowPolyForest() {
+        this.treesGroup = new THREE.Group();
+        this.rocksGroup = new THREE.Group();
+        this.twigsGroup = new THREE.Group();
+
+        this.scene.add(this.treesGroup);
+        this.scene.add(this.rocksGroup);
+        this.scene.add(this.twigsGroup);
+
+        // --- Rock material ---
+        const { material: rockMaterial } = createWinterMountainNodeMaterial({
+            baseColor: new THREE.Color(0x091c36),
+            rockHi: new THREE.Color(0x18355c),
+            snowColor: new THREE.Color(0xcae0fd),
+            snowStart: -276,
+            snowRange: 30,
+            fogColor: new THREE.Color(0x060e1b),
+            fogDensity: this.qualityPreset.fogDensity,
+            rimColor: new THREE.Color(0x13c2db),
+            rimStrength: 0.35,
+        });
+        this.rockMat = rockMaterial;
+
+        // Create rock outcrop in right foreground
+        const rockOutcrop = this.createRock(this.rockMat, 2.35);
+        rockOutcrop.position.set(780, -245, 105);
+        this.rocksGroup.add(rockOutcrop);
+
+        // (Bare twigs / saplings removed per art direction — they read as scraggly
+        // sticks poking out of the ice rather than a clean winter forest.)
+
+        // --- Forest foliage material ---
+        const { material: foliageMaterial } = createWinterTreeFoliageNodeMaterial({
+            snowColor: new THREE.Color(0x9bc5f4), // Clean blue-white snow caps
+            greenColor: new THREE.Color(0x03152d), // Deep cool blue-green foliage base
+            fogColor: new THREE.Color(0x060e1b),
+            fogDensity: this.qualityPreset.fogDensity,
+            moonDir: new THREE.Vector3(870, 565, -1180),
+        });
+        this.foliageMat = foliageMaterial;
+        this.shoreFoliageMat = createFlatNodeMaterial(0x092e5a, 0.98);
+
+        // 1. Foreground framing forest (Left & Right clusters). All placed in FRONT
+        // of the camera (z < 100) so they actually frame the shot — the old set put
+        // several behind the lens (z 105–230) which is why only two ever showed.
+        // Big trees at the sides, smaller bridging toward the shore; centre kept open
+        // for the lake / moon / aurora.
+        const fgTrees = [
+            // Left framing cluster
+            { x: -1380, z: -90, scale: 6.2 },
+            { x: -1080, z: -300, scale: 4.8 },
+            { x: -1560, z: -380, scale: 5.4 },
+            { x: -840, z: -520, scale: 3.4 },
+            { x: -1240, z: -560, scale: 3.8 },
+            // Right framing cluster
+            { x: 1360, z: -110, scale: 5.9 },
+            { x: 1090, z: -320, scale: 4.6 },
+            { x: 1540, z: -400, scale: 5.2 },
+            { x: 860, z: -540, scale: 3.2 },
+            { x: 1260, z: -580, scale: 3.7 },
+            // Mid-distance pair bridging the framing into the shoreline band
+            { x: -620, z: -780, scale: 2.6 },
+            { x: 660, z: -800, scale: 2.5 },
+        ];
+        fgTrees.forEach((t) => {
+            const tree = this.createPineTree(this.foliageMat, 85 * t.scale);
+
+            // Find ground height:
+            const dx = Math.max(0, Math.abs(t.x) - 1200);
+            const dz = Math.max(0, Math.abs(t.z - (-700)) - 400);
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            let groundY = -280 - 18;
+            if (dist > 0) {
+                groundY += Math.min(220, dist * 0.16);
+            }
+
+            tree.position.set(t.x, groundY, t.z);
+            this.treesGroup.add(tree);
+        });
+
+        // 2. Shoreline forest — a deep band of snow-capped pines wrapping the lake.
+        // Use the shaded foliage material (not a flat dark fill) so snow caps catch
+        // the moonlight and the treeline reads as forest, not a black silhouette.
+        // Back shore is 3 rows deep for density; sizes vary for a natural skyline.
+        const treeCount = 210;
+        for (let i = 0; i < treeCount; i += 1) {
+            const tree = this.createPineTree(this.foliageMat, 38 + Math.random() * 100);
+
+            let tx = 0;
+            let tz = 0;
+
+            if (i < 132) {
+                // Back shore (behind the lake) — a 3-deep band.
+                const row = i % 3;
+                tx = -2300 + (Math.floor(i / 3) / 43) * 4600 + (Math.random() - 0.5) * 120;
+                tz = -1150 - row * 130 + (Math.random() - 0.5) * 90;
+            } else if (i < 171) {
+                // Left shore line receding toward the camera.
+                tx = -1480 + (Math.random() - 0.5) * 180;
+                tz = -1080 + ((i - 132) / 39) * 1000 + (Math.random() - 0.5) * 70;
+            } else {
+                // Right shore line receding toward the camera.
+                tx = 1480 + (Math.random() - 0.5) * 180;
+                tz = -1080 + ((i - 171) / 39) * 1000 + (Math.random() - 0.5) * 70;
+            }
+
+            // Find ground height:
+            const dx = Math.max(0, Math.abs(tx) - 1200);
+            const dz = Math.max(0, Math.abs(tz - (-700)) - 400);
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            let groundY = -280 - 18;
+            if (dist > 0) {
+                groundY += Math.min(220, dist * 0.16);
+            }
+
+            tree.position.set(tx, groundY, tz);
+            tree.rotation.y = Math.random() * Math.PI * 2;
+            this.treesGroup.add(tree);
+        }
+    }
+
+    disposeGroup(group) {
+        if (!group) return;
+        this.scene?.remove?.(group);
+        group.traverse((child) => {
+            if (child.isMesh) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach((m) => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            }
+        });
     }
 
     createAuroraSystem() {
@@ -1662,7 +2493,9 @@ export default class WinterTheme extends BaseTheme {
 
     createSnowParticles() {
         if (this.noSnow) return; // diagnostic: ?winterNoSnow=1
-        const count = this.qualityPreset.snowCount;
+        // Denser snow over a much larger volume → falling flakes fill the whole
+        // frustum (near foreground to far), not just a small box over the lake.
+        const count = Math.round((this.qualityPreset.snowCount || 5000) * 1.6);
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(count * 3);
         const sizes = new Float32Array(count);
@@ -1674,11 +2507,11 @@ export default class WinterTheme extends BaseTheme {
         const velocities = new Float32Array(count * 3);
         const uvs = new Float32Array(count * 2); // stub uv to silence point-sprite warning
         const bounds = {
-            width: 900,
-            height: 540,
-            depth: 900,
-            centerY: -120,
-            centerZ: -760,
+            width: 2800,
+            height: 1700,
+            depth: 2200,
+            centerY: 160,
+            centerZ: -560,
         };
         const centerY = bounds.centerY ?? 0;
         const centerZ = bounds.centerZ ?? -200;
@@ -2396,8 +3229,8 @@ export default class WinterTheme extends BaseTheme {
         this.camera.position.z = this.baseCameraPosition.z + zDrift + dolly;
         this.camera.lookAt(
             windSway * 0.35 + Math.sin(this.time * 0.03) * 12 + parallaxX * 0.4,
-            -15 + Math.sin(this.time * 0.04 + 1.2) * 8 + this.gustIntensity * 4 + parallaxY * 0.4,
-            -500,
+            -74 + Math.sin(this.time * 0.04 + 1.2) * 7 + this.gustIntensity * 3 + parallaxY * 0.35,
+            -920,
         );
         this.camera.rotation.z = windSway * 0.0009 + Math.sin(this.time * 0.15) * 0.003;
 
@@ -2849,13 +3682,13 @@ export default class WinterTheme extends BaseTheme {
             this.post = new WinterPipeline(this.renderer, this.scene, this.camera, {
                 bloomStrength: this.qualityPreset.bloomStrength ?? 0.16,
                 bloomRadius: this.qualityPreset.bloomRadius,
-                bloomThreshold: 0.9,
+                bloomThreshold: 0.0,
                 vignetteDarkness: 0.55,
-                // The winter sky shell is texture-backed to avoid Chrome/WebGPU
-                // white-sky shader fallback. The MRT output path drops that
-                // texture shell, so use the regular scene output with a high
-                // bloom threshold; snow remains normal-blended and low-alpha.
-                useMRT: false,
+                // The aurora is now a real TSL volumetric dome (rendering/aurora-volume.js)
+                // that writes emissiveNode, so it survives the MRT path. Drive bloom from
+                // the emissive buffer → only aurora / moon / ice glints bloom (art-directed),
+                // instead of a luminance threshold on the whole tonemapped output.
+                useMRT: true,
                 bloomScale: this.qualityPreset.bloomScale ?? 0.6,
             });
             this.post.setSize(window.innerWidth, window.innerHeight);
@@ -3092,6 +3925,23 @@ export default class WinterTheme extends BaseTheme {
             if (!this.isActive) return;
             const delta = this.clock.getDelta();
             this.time += delta;
+
+            // Wonderland path: drive ONLY the composed scene + post. Skips the dozen
+            // legacy per-frame update loops (the old CPU-bound systems) entirely.
+            if (this.useWonderland && this.wonderland) {
+                this.wonderland.camera?.(this.time, this.camera);
+                this.wonderland.update?.(this.time, delta);
+                if (this.post && this.qualityPreset.enablePostProcessing && !this.disablePost) {
+                    if (typeof this.post.updateTime === 'function') this.post.updateTime(this.time);
+                    this.post.render();
+                } else {
+                    this.renderer.clear();
+                    this.renderer.render(this.scene, this.camera);
+                }
+                requestAnimationFrame(animate);
+                return;
+            }
+
             if (this.baselineEnabled) {
                 this.trackBaseline(delta);
             }
@@ -3116,6 +3966,14 @@ export default class WinterTheme extends BaseTheme {
             this.updateBlizzardWaves(delta);
             this.updateTempEffects(delta);
             this.updateMoonEffects(delta);
+
+            // GLB tree wind sway + LOD switching
+            if (this.glbTrees) this.glbTrees.update(delta, this.camera);
+
+            // Cloud drift
+            this.clouds.forEach((c) => {
+                c.mesh.position.x += Math.sin(this.time * 0.05 + c.offset) * 0.06;
+            });
 
             // Updated Uniforms
             if (this.snowParticles) {
@@ -3171,11 +4029,22 @@ export default class WinterTheme extends BaseTheme {
                     av.uAccent.value.setRGB(sd.accent.r, sd.accent.g, sd.accent.b);
                 }
             }
+            this.referenceAuroraCurtains.forEach((curtain) => {
+                if (curtain.uniforms?.uTime) curtain.uniforms.uTime.value = this.time;
+            });
+            if (this.referenceBackdropUniforms?.uTime) {
+                this.referenceBackdropUniforms.uTime.value = this.time;
+            }
             if (this.groundUniforms) {
                 this.groundUniforms.uTime.value = this.time;
                 // Ground reflects a muted version of the aurora accent.
                 const a = this.stormDirector.accent;
                 this.groundUniforms.uAurora.value.setRGB(a.r * 0.55, a.g * 0.6, a.b * 0.55);
+            }
+            if (this.lakeUniforms) {
+                this.lakeUniforms.uTime.value = this.time;
+                const a = this.stormDirector.accent;
+                this.lakeUniforms.uAurora.value.setRGB(a.r * 0.55, a.g * 0.6, a.b * 0.55);
             }
             this.auroraLayers.forEach((layer, layerIndex) => {
                 const u = layer.userData?.uniforms || layer.material.uniforms;
@@ -3837,6 +4706,10 @@ export default class WinterTheme extends BaseTheme {
     }
 
     releaseInactiveResources() {
+        if (this.wonderland) {
+            try { this.wonderland.dispose?.(); } catch (e) { /* noop */ }
+            this.wonderland = null;
+        }
         if (typeof window !== 'undefined' && window.winterBaseline) {
             delete window.winterBaseline;
         }
@@ -3854,6 +4727,19 @@ export default class WinterTheme extends BaseTheme {
             this.closeSnowflakeData = null;
             this.closeSnowflakeUniforms = null;
         }
+        if (this.referenceBackdrop) {
+            this.scene?.remove?.(this.referenceBackdrop);
+            if (this.referenceBackdrop.geometry) this.referenceBackdrop.geometry.dispose();
+            if (this.referenceBackdrop.material) this.referenceBackdrop.material.dispose();
+            this.referenceBackdrop = null;
+            this.referenceBackdropUniforms = null;
+        }
+        this.referenceAuroraCurtains.forEach((curtain) => {
+            this.scene?.remove?.(curtain.mesh);
+            if (curtain.mesh?.geometry) curtain.mesh.geometry.dispose();
+            if (curtain.material) curtain.material.dispose();
+        });
+        this.referenceAuroraCurtains = [];
         if (this.skyDome) {
             this.scene?.remove?.(this.skyDome);
             if (this.auroraVolume) {
@@ -3876,6 +4762,58 @@ export default class WinterTheme extends BaseTheme {
             this.ground = null;
             this.groundUniforms = null;
         }
+        if (this.lake) {
+            this.scene?.remove?.(this.lake);
+            if (this.lake.geometry) this.lake.geometry.dispose();
+            if (this.lake.material) this.lake.material.dispose();
+            this.lake = null;
+            this.lakeUniforms = null;
+        }
+        if (this.cracksTexture) {
+            this.cracksTexture.dispose();
+            this.cracksTexture = null;
+        }
+        if (this.snowBankGroup) {
+            this.disposeGroup(this.snowBankGroup);
+            this.snowBankGroup = null;
+        }
+        if (this.treesGroup) {
+            this.disposeGroup(this.treesGroup);
+            this.treesGroup = null;
+        }
+        if (this.rocksGroup) {
+            this.disposeGroup(this.rocksGroup);
+            this.rocksGroup = null;
+        }
+        if (this.twigsGroup) {
+            this.disposeGroup(this.twigsGroup);
+            this.twigsGroup = null;
+        }
+        if (this.cloudsGroup) {
+            this.disposeGroup(this.cloudsGroup);
+            this.cloudsGroup = null;
+        }
+        if (this.cloudMat) {
+            this.cloudMat.dispose();
+            this.cloudMat = null;
+        }
+        if (this.foliageMat) {
+            this.foliageMat.dispose();
+            this.foliageMat = null;
+        }
+        if (this.shoreFoliageMat) {
+            this.shoreFoliageMat.dispose();
+            this.shoreFoliageMat = null;
+        }
+        if (this.rockMat) {
+            this.rockMat.dispose();
+            this.rockMat = null;
+        }
+        this.clouds = [];
+        this.trees = [];
+        this.rocks = [];
+        this.twigs = [];
+
         if (this.moonLight) {
             this.scene?.remove?.(this.moonLight);
             this.moonLight = null;
@@ -3899,6 +4837,10 @@ export default class WinterTheme extends BaseTheme {
     }
 
     cleanup() {
+        if (this.glbTrees) {
+            this.glbTrees.dispose();
+            this.glbTrees = null;
+        }
         super.cleanup();
     }
 }

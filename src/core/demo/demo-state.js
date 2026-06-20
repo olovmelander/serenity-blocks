@@ -70,6 +70,11 @@ export function captureGameStateSnapshot(gameState) {
         lockedPieces: clonePlain(gameState.lockedPieces),
         currentPiece: clonePiece(gameState.currentPiece),
         nextPieces: clonePlain(gameState.nextPieces),
+        // Per-instance piece-id counter. Captured so a seek/restore does not
+        // reset it to 0 and then re-issue ids (1,2,3...) that collide with the
+        // restored pieces' ids — which would corrupt the flood-fill grouping
+        // that keys purely on piece id.
+        pieceIdCounter: gameState._pieceIdCounter,
         boardGrid: clonePlain(gameState.boardGrid),
         board: clonePlain(gameState.board),
         boardVersion: gameState.boardVersion || 0,
@@ -141,6 +146,21 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     };
 
     gameState.lockedPieces = clonePlain(snapshot.lockedPieces) || [];
+    // Restore the piece-id counter AFTER reset() (which zeroed it) and AFTER
+    // lockedPieces are in place, so subsequent locks issue ids strictly above the
+    // restored pieces. Older demos lack the field, so fall back to a high-water
+    // mark derived from the restored pieces' ids.
+    if (Number.isFinite(snapshot.pieceIdCounter)) {
+        gameState._pieceIdCounter = snapshot.pieceIdCounter;
+    } else {
+        let maxPieceId = 0;
+        for (const piece of gameState.lockedPieces) {
+            if (Number.isFinite(piece?.pieceId) && piece.pieceId > maxPieceId) {
+                maxPieceId = piece.pieceId;
+            }
+        }
+        gameState._pieceIdCounter = maxPieceId;
+    }
     gameState.currentPiece = restorePooledPiece(snapshot.currentPiece);
     gameState.nextPieces = clonePlain(snapshot.nextPieces) || [];
     gameState.boardGrid = clonePlain(snapshot.boardGrid) || createBoardGrid();

@@ -75,20 +75,20 @@ export function createSkyGradientTSL(uTime, uEnergy) {
     // Night sky: deep indigo up top for strong contrast against the neon, grading to a
     // cooler indigo-violet glow near the horizon. NEVER pure black — a faint indigo floor
     // is kept everywhere so the encore reads as a luminous city night, not a void.
-    const top = vec3(0.014, 0.013, 0.052);
-    const horizon = vec3(0.10, 0.04, 0.17);
+    const top = vec3(0.025, 0.019, 0.070);
+    const horizon = vec3(0.150, 0.055, 0.200);
     const base = mix(horizon, top, smoothstep(0.30, 0.85, h));
 
     // City light-pollution dome hugging the lower sky — a cohesive magenta↔cyan wash that
     // ties the horizon to the chapter's two-tone neon identity. Boosted ~1.5× and lifted
     // higher up the dome so the upper-frame void glows indigo-magenta instead of crushing
     // to raw black between the canyon towers (the #1 fix for the dead-black mid-frame).
-    const pollution = pow(oneMinus(h), 1.9);
+    const pollution = pow(oneMinus(h), 1.65);
     const pollutionTint = mix(
-        vec3(0.24, 0.06, 0.18),
-        vec3(0.0, 0.20, 0.27),
+        vec3(0.30, 0.07, 0.20),
+        vec3(0.0, 0.20, 0.25),
         sin(dir.x.mul(2.0)).mul(0.5).add(0.5),
-    ).mul(pollution).mul(uEnergyNode.mul(0.5).add(0.6));
+    ).mul(pollution).mul(uEnergyNode.mul(0.45).add(0.74));
 
     // HORIZON LIGHT-POLLUTION BAND: a tight, brighter neon glow ring concentrated right at
     // the horizon line (the city below throwing light up), modulated around the compass so
@@ -124,23 +124,15 @@ export function createSkyGradientTSL(uTime, uEnergy) {
         .mul(bokehTwinkle)
         .mul(lowBias);
 
-    // Fine secondary tier — smaller, fainter pinpoints that infill the dark cells so the
-    // skyline reads as a continuous luminous haze rather than a sparse dotted grid.
-    const fineCell = vec2(azimuth.mul(23.0), dir.y.mul(26.0)).floor();
-    const fineRnd = hash21(fineCell.add(vec2(11.0, 7.0)));
-    const fineLit = step(0.8, fineRnd);
-    const fineTint = mix(vec3(0.0, 0.10, 0.14), vec3(0.13, 0.03, 0.11), fract(fineRnd.mul(3.7)))
-        .mul(fineLit)
-        .mul(sin(uTimeNode.mul(2.1).add(fineRnd.mul(60.0))).mul(0.3).add(0.7))
-        .mul(lowBias)
-        .mul(0.7);
+    // Fine secondary bokeh tier dropped as a per-fragment cost trim (one hash21 noise call
+    // per pixel removed); the coarse bokeh tier + pollution wash still keep the lower dome
+    // luminous so the skyline never crushes to raw black.
 
     const color = base
         .add(pollutionTint)
         .add(bandTint)
         .add(smogTint)
-        .add(bokehTint)
-        .add(fineTint);
+        .add(bokehTint);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -149,13 +141,21 @@ export function createSkyGradientTSL(uTime, uEnergy) {
     material.transparent = true;
     material.depthWrite = false;
 
-    const geometry = new THREE.SphereGeometry(440, 40, 28);
+    const geometry = new THREE.SphereGeometry(440, 32, 20);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
     return { mesh, material, geometry };
 }
 
 // ── Synthwave sun hero backdrop (additive disc + scanlines + halo; bloom-eligible) ─
+
+export const CH8_RETROSUN_SHADER_SETTINGS = Object.freeze({
+    sunRadius: 320,
+    haloRadius: 500,
+    discAlpha: 0.92,
+    haloAlpha: 0.16,
+    alphaCap: 0.96,
+});
 
 /**
  * The iconic 80s SYNTHWAVE SUN — a large glowing disc sitting on the horizon DEAD AHEAD
@@ -190,8 +190,8 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     // instances share ONE mesh — index 0 = soft halo (wider, dimmer), index 1 = disc.
     // Creative plan ch8 item 1 (sun visibility): radius raised 240 → 320 so the disc
     // subtends ~25–30% of frame height from mid-chapter at its -1180 station.
-    const SUN_RADIUS = 320;
-    const HALO_RADIUS = 560;
+    const SUN_RADIUS = CH8_RETROSUN_SHADER_SETTINGS.sunRadius;
+    const HALO_RADIUS = CH8_RETROSUN_SHADER_SETTINGS.haloRadius;
     const count = 2;
     const bases = new Float32Array(count * 3); // both at the group origin (group is placed)
     const sizes = new Float32Array(count);
@@ -220,9 +220,9 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
 
     // VERTICAL SUN GRADIENT: hot white/yellow crown → warm orange belly → hot magenta/pink
     // base, the canonical synthwave ramp. Two mixes give the three-stop blend.
-    const hotTop = vec3(1.0, 0.96, 0.78); // near-white hot yellow
-    const mid = vec3(1.0, 0.46, 0.16); // burnt orange
-    const base = vec3(1.0, 0.16, 0.62); // hot magenta/pink
+    const hotTop = vec3(1.25, 0.84, 0.24); // laser-lemon crown
+    const mid = vec3(1.20, 0.28, 0.02); // heavy orange body
+    const base = vec3(1.10, 0.03, 0.18); // hot magenta/pink base
     const lower = mix(base, mid, smoothstep(0.0, 0.55, vTop));
     const discColor = mix(lower, hotTop, smoothstep(0.6, 1.0, vTop));
 
@@ -246,7 +246,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     // The WIDE SOFT HALO (atmospheric bloom feeder): a broad radial falloff tinted toward
     // the warm/magenta sun colours, no scanlines. Fed by index 0.
     const haloFall = pow(oneMinus(dist.mul(2.0)).max(0.0), 2.2);
-    const haloTint = mix(vec3(1.0, 0.22, 0.55), vec3(1.0, 0.52, 0.2), vTop);
+    const haloTint = mix(vec3(1.0, 0.07, 0.25), vec3(1.0, 0.32, 0.06), vTop);
 
     const isDisc = aKind; // 1 for disc, 0 for halo
     const isHalo = oneMinus(aKind);
@@ -258,16 +258,16 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
 
     // Compose: disc path (gradient × scanlines × mask, + rim) OR halo path (radial × tint).
     const discOut = discColor.add(rim).mul(scanMask).mul(discMask);
-    const haloOut = haloTint.mul(haloFall).mul(0.6);
+    const haloOut = haloTint.mul(haloFall).mul(0.48);
     const color = discOut.mul(isDisc).add(haloOut.mul(isHalo)).mul(energyGain).mul(revealGain);
 
     // Per-kind alpha so the disc reads crisp and the halo stays gossamer; both capped soft.
-    const discAlpha = scanMask.mul(discMask).mul(0.78);
-    const haloAlpha = haloFall.mul(0.3);
+    const discAlpha = scanMask.mul(discMask).mul(CH8_RETROSUN_SHADER_SETTINGS.discAlpha);
+    const haloAlpha = haloFall.mul(CH8_RETROSUN_SHADER_SETTINGS.haloAlpha);
     const alpha = clamp(
         discAlpha.mul(isDisc).add(haloAlpha.mul(isHalo)).mul(breathe).mul(revealGain),
         0.0,
-        0.9,
+        CH8_RETROSUN_SHADER_SETTINGS.alphaCap,
     );
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -277,7 +277,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     material.userData.emitsBloom = true;
 
     const geometry = makeQuadInstancedGeometry(count, {
@@ -292,6 +292,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     mesh.name = 'synthwave-sun-tsl';
     mesh.frustumCulled = true;
     mesh.renderOrder = -95; // behind the city/spire, in front of the sky dome (-100)
+    mesh.userData.readability = CH8_RETROSUN_SHADER_SETTINGS;
     return {
         mesh, material, geometry, uReveal: uRevealNode,
     };
@@ -357,15 +358,15 @@ export function createHorizonHazeTSL(uTime = uniform(0)) {
     const band = smoothstep(0.0, 0.25, vUv.y).mul(oneMinus(smoothstep(0.55, 1.0, vUv.y)));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = colorNode.mul(0.5);
-    material.opacityNode = band.mul(0.5).mul(uOpacity);
+    material.colorNode = colorNode.mul(0.68);
+    material.opacityNode = band.mul(0.66).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.NormalBlending;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
-    const geometry = new THREE.PlaneGeometry(1800, 260, 1, 1);
+    const geometry = new THREE.PlaneGeometry(1800, 340, 1, 1);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'horizon-haze-band';
     mesh.frustumCulled = false;
@@ -375,6 +376,17 @@ export function createHorizonHazeTSL(uTime = uniform(0)) {
 }
 
 // ── Procedural lit-window facade (additive-read interior glow; bloom-eligible) ────
+
+export const CH8_FACADE_VALUE_SETTINGS = Object.freeze({
+    darkCutoff: 0.35,
+    midCutoff: 0.88,
+    brightCutoff: 0.975,
+    dimGain: 0.12,
+    midGain: 0.34,
+    brightGain: 0.78,
+    colorGain: 0.52,
+    edgeSheen: 0.1,
+});
 
 /**
  * ONE shared facade NodeMaterial for the whole instanced tower canyon (QW8). The former
@@ -411,11 +423,14 @@ function createFacadeMaterial(uTime, uEnergy) {
     // ~25% dark, ~55% DIM AMBIENT at a quarter intensity (under the bloom threshold),
     // ~15% mid, and only ~5% full-bright accent rows. The facades become the dark mass
     // the Retrosun needs behind them — light as punctuation, not confetti.
-    const lit = step(0.25, r);
-    const dimBand = oneMinus(step(0.8, r)); // r in [0.25, 0.8) → dim ambient
-    const midBand = step(0.8, r).mul(oneMinus(step(0.95, r)));
-    const brightBand = step(0.95, r);
-    const on = lit.mul(dimBand.mul(0.25).add(midBand.mul(0.6)).add(brightBand));
+    const lit = step(CH8_FACADE_VALUE_SETTINGS.darkCutoff, r);
+    const dimBand = oneMinus(step(CH8_FACADE_VALUE_SETTINGS.midCutoff, r));
+    const midBand = step(CH8_FACADE_VALUE_SETTINGS.midCutoff, r)
+        .mul(oneMinus(step(CH8_FACADE_VALUE_SETTINGS.brightCutoff, r)));
+    const brightBand = step(CH8_FACADE_VALUE_SETTINGS.brightCutoff, r);
+    const on = lit.mul(dimBand.mul(CH8_FACADE_VALUE_SETTINGS.dimGain)
+        .add(midBand.mul(CH8_FACADE_VALUE_SETTINGS.midGain))
+        .add(brightBand.mul(CH8_FACADE_VALUE_SETTINGS.brightGain)));
     const flick = sin(uTime.mul(r.mul(3.0).add(0.6)).add(r.mul(40.0))).mul(0.28).add(0.72);
 
     // Window colour: cyan/magenta; the warm-cream interior demoted to ≤5% (plan).
@@ -427,12 +442,18 @@ function createFacadeMaterial(uTime, uEnergy) {
     const fres = pow(oneMinus(max(0.0, dot(normalize(normalView), positionViewDirection))), 3.0);
 
     let color = base;
-    color = color.add(wcolor.mul(pane).mul(on).mul(flick.mul(0.6).add(0.55)).mul(uEnergy.mul(0.5).add(1.0)));
-    color = color.add(mix(uColorA, uColorB, 0.5).mul(fres).mul(0.18)); // edge sheen
+    color = color.add(wcolor.mul(pane).mul(on)
+        .mul(flick.mul(0.45).add(0.45))
+        .mul(uEnergy.mul(0.32).add(0.72))
+        .mul(CH8_FACADE_VALUE_SETTINGS.colorGain));
+    color = color.add(mix(uColorA, uColorB, 0.5)
+        .mul(fres)
+        .mul(CH8_FACADE_VALUE_SETTINGS.edgeSheen));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.userData.emitsBloom = true;
+    material.userData.valueTiers = CH8_FACADE_VALUE_SETTINGS;
     return material;
 }
 
@@ -607,7 +628,7 @@ export function createCurtainWallTSL(uTime, uEnergy) {
         // Deep indigo base so the wall body is never black, plus faint windows on top.
         const baseWall = vec3(0.020, 0.018, 0.044);
         const color = baseWall.add(
-            wtint.mul(pane).mul(on).mul(flick).mul(uEnergyNode.mul(0.3).add(0.5)),
+            wtint.mul(pane).mul(on).mul(flick).mul(uEnergyNode.mul(0.22).add(0.34)),
         );
 
         const material = new THREE.MeshBasicNodeMaterial();
@@ -881,7 +902,9 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
     const acrossSigned = p.x.sub(0.5); // -0.5..0.5 across the lane
 
     // Puddle ripple distortion + along-length scroll (the road slides under the camera).
-    const ripple = fbm2(vec2(p.x.mul(7.0), p.y.mul(3.0).add(uTimeNode.mul(0.22))));
+    // Octave count trimmed by one (5→4) as a per-fragment cost reduction; the puddle
+    // ripple is a subtle distortion driver, so the finest octave is not load-bearing.
+    const ripple = fbm2(vec2(p.x.mul(7.0), p.y.mul(3.0).add(uTimeNode.mul(0.22))), 4);
 
     // NEON LANE SMEARS aligned to the tower banks: vertical bright bands at the lateral X
     // of the inner/mid/outer walls so each smear reads as a tower's reflection on the wet
@@ -910,8 +933,8 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
     const asphalt = vec3(0.012, 0.016, 0.040);
 
     const color = asphalt
-        .add(laneColor.mul(laneGlow.mul(0.5)))
-        .add(cyan.mul(centerline).mul(centerShimmer).mul(0.6));
+        .add(laneColor.mul(laneGlow.mul(0.34)))
+        .add(cyan.mul(centerline).mul(centerShimmer).mul(0.38));
 
     // Distance fade so the near road is rich and the far end dissolves into haze, plus a
     // gentle edge feather so the road edges don't read as a hard rectangle.
@@ -921,11 +944,11 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
         color.length().mul(lengthFade).mul(edgeFeather)
             .mul(uEnergyNode.mul(0.4).add(0.7)),
         0.0,
-        0.85,
+        0.62,
     );
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(uEnergyNode.mul(0.4).add(1.0));
+    material.colorNode = color.mul(uEnergyNode.mul(0.25).add(0.82));
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
@@ -949,8 +972,8 @@ function createHazeMaterial(uTime, uEnergy) {
     const c = vUv.sub(0.5);
     const fog = fbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)));
     const radial = smoothstep(0.55, 0.0, length(c));
-    const color = mix(vec3(0.0, 0.5, 0.65), vec3(0.6, 0.1, 0.45), vUv.x);
-    const a = radial.mul(fog.mul(0.18).add(0.18)).mul(uEnergy.mul(0.5).add(0.7));
+    const color = mix(vec3(0.0, 0.34, 0.48), vec3(0.48, 0.08, 0.34), vUv.x);
+    const a = radial.mul(fog.mul(0.14).add(0.12)).mul(uEnergy.mul(0.34).add(0.48));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -977,18 +1000,43 @@ export function createGroundHazeTSL(uTime, uEnergy) {
     const COUNT = 9;
     const nearZ = 40;
     const farZ = -1080;
+    // ONE InstancedMesh + ONE shared haze material for all 9 pools (~9 draws + ~9 pipelines
+    // → ~1 + ~1). The pools were already byte-identical PlaneGeometry meshes that share this
+    // single material and differ ONLY by a flat (rotation.x = -π/2) transform and a per-pool
+    // lateral/z position — pure transform variation, so collapsing them into one instanced
+    // draw is zero-visual. The shared material has no custom positionNode (standard plane
+    // verts), and update() never touches the pools (the group is added but never stored in
+    // userData), so per-instance instanceMatrix is the only state. A unit-scale PlaneGeometry
+    // (260×170, identical to the former per-pool geometry) is shared and the old per-mesh
+    // position+rotation is composed verbatim into instanceMatrix, preserving placement exactly.
+    const sharedMaterial = createHazeMaterial(uTimeNode, uEnergyNode);
+    materials.push(sharedMaterial);
+
+    const sharedPlane = new THREE.PlaneGeometry(260, 170);
+    const pools = new THREE.InstancedMesh(sharedPlane, sharedMaterial, COUNT);
+    pools.name = 'ground-neon-haze-instances-tsl';
+    // Static layout — never re-uploaded after build (drift lives in the shader via uTime).
+    pools.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+    const scratchMatrix = new THREE.Matrix4();
+    const scratchPos = new THREE.Vector3();
+    const scratchQuat = new THREE.Quaternion();
+    const scratchScale = new THREE.Vector3(1, 1, 1); // unit scale = the shared 260×170 plane
+    // Identical to the former per-mesh `haze.rotation.x = -Math.PI * 0.5` (Euler XYZ → quat).
+    scratchQuat.setFromEuler(new THREE.Euler(-Math.PI * 0.5, 0, 0));
+
     for (let index = 0; index < COUNT; index += 1) {
         const t = index / (COUNT - 1);
-        const geometry = new THREE.PlaneGeometry(260, 170);
-        const material = createHazeMaterial(uTimeNode, uEnergyNode);
-        const haze = new THREE.Mesh(geometry, material);
         const lateral = ((index % 3) - 1) * 64;
-        haze.position.set(lateral, STREET_Y + 14, nearZ + (farZ - nearZ) * t);
-        haze.rotation.x = -Math.PI * 0.5; // flat light pools on the road
-        group.add(haze);
-        geometries.push(geometry);
-        materials.push(material);
+        // Byte-identical to the old per-pool `haze.position.set(...)`.
+        scratchPos.set(lateral, STREET_Y + 14, nearZ + (farZ - nearZ) * t);
+        scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
+        pools.setMatrixAt(index, scratchMatrix);
     }
+    pools.instanceMatrix.needsUpdate = true;
+
+    group.add(pools);
+    geometries.push(sharedPlane);
 
     return {
         group, geometries, materials, material: materials[0],
@@ -1008,7 +1056,7 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
-    const COUNT = 10;
+    const COUNT = 7;
     const bases = new Float32Array(COUNT * 3);
     const sizes = new Float32Array(COUNT * 2);
     const seeds = new Float32Array(COUNT);
@@ -1043,11 +1091,11 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     // Rolling fog texture so the curtain breathes rather than reading as a flat card.
     const fog = fbm2(vec2(vUv.x.mul(3.0).add(aSeed), vUv.y.mul(2.0).add(uTimeNode.mul(0.08))));
     // Cyan low / magenta high vertical gradient — the chapter's two-tone air.
-    const hazeColor = mix(vec3(0.0, 0.55, 0.7), vec3(0.55, 0.08, 0.42), vUv.y);
+    const hazeColor = mix(vec3(0.0, 0.34, 0.52), vec3(0.50, 0.06, 0.36), vUv.y);
     const alpha = clamp(
-        radial.mul(fog.mul(0.5).add(0.5)).mul(uEnergyNode.mul(0.5).add(0.35)).mul(0.26),
+        radial.mul(fog.mul(0.45).add(0.45)).mul(uEnergyNode.mul(0.36).add(0.28)).mul(0.16),
         0.0,
-        0.4,
+        0.26,
     );
 
     const material = new THREE.MeshBasicNodeMaterial();

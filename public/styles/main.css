@@ -9622,97 +9622,18 @@ body.serenity-hub-open .theme-container.active {
 }
 
 
-/* --- Starlight Theme --- */
+/* --- Starlight Theme (WebGPU/TSL) --- */
 #starlight-theme {
-    background-color: #0c0a1a;
+    background-color: #05060f;
     overflow: hidden;
 }
 
-#starlight-nebula {
+#starlight-theme canvas {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 50% 50%, rgba(100, 120, 180, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
-    animation: slow-rotate-3d 300s linear infinite;
-}
-
-.starlight-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-}
-
-#starlights-back {
-    transform: translateZ(-200px) scale(1.5);
-    filter: blur(1px);
-    opacity: 0.7;
-}
-
-#starlights-mid {
-    transform: translateZ(-100px) scale(1.2);
-}
-
-#starlights-front {
-    transform: translateZ(0px) scale(1);
-}
-
-.starlight {
-    position: absolute;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #adc8ff;
-    animation: starlight-pulse-deep 8s ease-in-out infinite alternate;
-}
-
-@keyframes starlight-pulse-deep {
-    from {
-        opacity: 0.5;
-        transform: scale(0.8);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1.1);
-    }
-}
-
-#starlight-shooting-stars {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    transform: rotate(15deg);
-    z-index: 5;
-}
-
-.shooting-star-starlight {
-    position: absolute;
-    height: 2px;
-    background: linear-gradient(to right, white, transparent);
-    animation: shoot-starlight linear infinite;
-}
-
-@keyframes shoot-starlight {
-    from {
-        left: -50%;
-        transform: scaleX(0.3);
-        opacity: 1;
-    }
-
-    70% {
-        opacity: 1;
-    }
-
-    to {
-        left: 150%;
-        transform: scaleX(1.5);
-        opacity: 0;
-    }
 }
 
 /* --- Geode Theme --- */

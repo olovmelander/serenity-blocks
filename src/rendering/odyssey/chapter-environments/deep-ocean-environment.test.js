@@ -5,6 +5,7 @@ import {
     vi,
 } from 'vitest';
 import { createDeepOceanEnvironment, updateDeepOceanEnvironment } from './deep-ocean.js';
+import { hasChapter2CreatureAssets } from './shared/chapter-02-creature-assets.js';
 
 function stubCanvasDocument() {
     const gradient = { addColorStop: vi.fn() };
@@ -35,17 +36,25 @@ describe('Deep Ocean chapter environment (creative plan ch2)', () => {
         expect(group.userData.skylightPanes?.name).toBe('skylight-panes');
         expect(group.userData.pearlGate?.name).toBe('pearl-gate');
 
-        // Creature layer: instance 0 is the demoted leviathan (shape 3), instances
-        // 1–3 are the hero manta trio (shape 4) at trailer-read sizes 35–55.
+        // Creature layer: instance 0 is always the demoted leviathan (shape 3).
         const creatures = group.getObjectByName('ocean-creatures');
         const shapes = creatures.geometry.getAttribute('aShape').array;
         const sizes = creatures.geometry.getAttribute('aSize').array;
         expect(shapes[0]).toBe(3);
-        expect([shapes[1], shapes[2], shapes[3]]).toEqual([4, 4, 4]);
-        [1, 2, 3].forEach((i) => {
-            expect(sizes[i]).toBeGreaterThanOrEqual(35);
-            expect(sizes[i]).toBeLessThanOrEqual(55);
-        });
+
+        if (hasChapter2CreatureAssets()) {
+            // A rigged hero-manta GLB is present, so the billboard hero mantas are skipped
+            // (those instances fall through to distant scatter) and the GLB layer is registered.
+            expect(Array.isArray(group.userData.mantaFlights)).toBe(true);
+            expect([shapes[1], shapes[2], shapes[3]]).not.toEqual([4, 4, 4]);
+        } else {
+            // No GLB → the billboard manta trio (shape 4) carries the heroes at sizes 35–55.
+            expect([shapes[1], shapes[2], shapes[3]]).toEqual([4, 4, 4]);
+            [1, 2, 3].forEach((i) => {
+                expect(sizes[i]).toBeGreaterThanOrEqual(35);
+                expect(sizes[i]).toBeLessThanOrEqual(55);
+            });
+        }
     });
 
     it('exposes the ecotone uOpacity bridge on every opacityNode material', () => {

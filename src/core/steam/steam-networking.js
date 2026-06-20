@@ -414,6 +414,13 @@ export class SteamNetworking {
                     _binary: true,
                     _delta: usedDelta, // Flag to tell receiver to use decodeDeltaSnapshot
                     _data: this._arrayBufferToBase64(binaryBuffer),
+                    // Carry the host's DJB2 state digest in the JSON wrapper. The
+                    // binary codec does not serialize it, so without this the
+                    // peer's desync detection (syncFromHost) never runs on the
+                    // default binary path. The digest is the full-state digest
+                    // even for delta packets (buildStateSnapshot computes it over
+                    // all players regardless of encoding).
+                    _digest: data?.digest,
                     // Debug stats
                     _originalSize: JSON.stringify(data).length,
                     _encodedSize: binaryBuffer.byteLength,
@@ -509,6 +516,10 @@ export class SteamNetworking {
 
             // Phase 4: Decode binary payload if present (FULL or DELTA)
             let { payload } = envelope;
+            // The host's state digest rides in the JSON wrapper (the binary codec
+            // drops it); capture it before `payload` is replaced by the decoded
+            // snapshot so we can re-attach it below for desync detection.
+            const carriedDigest = payload && payload._digest;
             if (payload && payload._binary === true && payload._data) {
                 try {
                     if (!this.binaryDecoder) {
@@ -551,6 +562,14 @@ export class SteamNetworking {
                     }
                     return; // Drop corrupted packet
                 }
+            }
+
+            // Re-attach the host's state digest that travelled in the JSON
+            // wrapper, so the decoded snapshot carries it into syncFromHost's
+            // desync detection (the binary codec does not encode `digest`).
+            if (carriedDigest !== undefined && carriedDigest !== null
+                && payload && typeof payload === 'object') {
+                payload.digest = carriedDigest;
             }
 
             // Call registered message handlers (array-based)

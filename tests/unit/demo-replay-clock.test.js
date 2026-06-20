@@ -162,6 +162,21 @@ describe('Demo replay clock', () => {
         expect(demo.checkpoints.length).toBeGreaterThan(0);
     });
 
+    it('marks commands that were accepted into the post-physics input buffer', () => {
+        const recorder = new DemoRecorder();
+        const state = new GameState();
+        state.randomGenerator = seededRandom(13);
+        fillBag(state.nextPieces, state.randomGenerator);
+        spawnPiece(state);
+        state.simFrame = 12;
+        state.simTimeMs = 200;
+
+        recorder.startRecording(state, {}, 13);
+        recorder.recordCommand({ type: 'move', value: 1, queued: true }, state);
+
+        expect(recorder.getDemo().inputs).toEqual([{ f: 12, t: 200, a: 'move', d: 1, q: true }]);
+    });
+
     it('does not keep unstable mid-physics checkpoints in new recordings', () => {
         const recorder = new DemoRecorder();
         const state = new GameState();
@@ -212,6 +227,57 @@ describe('Demo replay clock', () => {
 
         expect(player.demo.checkpoints).toHaveLength(1);
         expect(player.demo.checkpoints[0].f).toBe(60);
+    });
+
+    it('keeps exact checkpoint simulation time instead of rounding it back to frame time', () => {
+        const state = new GameState();
+        state.randomGenerator = seededRandom(61);
+        fillBag(state.nextPieces, state.randomGenerator);
+        spawnPiece(state);
+        state.simFrame = 64;
+        state.simTimeMs = 1070;
+
+        const player = new DemoPlayer({});
+        player.loadDemo(makeDemo({
+            checkpoints: [{
+                f: 64,
+                t: 1067,
+                inputIndex: 0,
+                state: captureGameStateSnapshot(state),
+            }],
+        }));
+
+        expect(player.demo.checkpoints[0].t).toBe(1070);
+    });
+
+    it('does not rewind replay simulation time when applying an older buffered input', async () => {
+        const player = new DemoPlayer({});
+        const state = new GameState();
+        state.simTickMs = DEMO_TICK_MS;
+        state.simTimeMs = 1070;
+        state.lastTime = 1070;
+        state.simFrame = Math.round(1070 / DEMO_TICK_MS);
+        player.gameState = state;
+        player.lastSimulatedTime = 1070;
+
+        const callbacks = {
+            applyCommand: vi.fn(() => true),
+        };
+
+        await player._applyInput({ f: 60, t: 1000, a: 'move', d: -1, q: true }, callbacks);
+
+        expect(callbacks.applyCommand).toHaveBeenCalledWith(
+            { type: 'move', value: -1, a: 'move', d: -1 },
+            {
+                record: false,
+                muted: false,
+                callbacks,
+            },
+        );
+        expect(state.simTimeMs).toBe(1070);
+        expect(state.lastTime).toBe(1070);
+        expect(state.simFrame).toBe(Math.round(1070 / DEMO_TICK_MS));
+        expect(player.lastSimulatedTime).toBe(1070);
     });
 
     it('keeps replay timing mutations while muting replay presentation callbacks', () => {

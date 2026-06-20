@@ -60,7 +60,6 @@ function createComboState() {
 }
 
 // Pre-allocated buffers for piece lock hot path (avoids per-lock GC pressure)
-let _pieceIdCounter = 0;
 const _columnFlags = new Uint8Array(COLS); // boolean flags for occupied columns
 
 function ensureBoardCache(gameState) {
@@ -378,6 +377,10 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        // Per-instance piece-id counter (was a module global shared across every
+        // GameState, which interleaved IDs across multiplayer boards and never
+        // reset — a determinism/isolation hazard for the physics connectivity key).
+        this._pieceIdCounter = 0;
 
         // Score and level
         this.score = 0;
@@ -493,6 +496,7 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        this._pieceIdCounter = 0;
         this.score = 0;
         this.lines = 0;
         this.level = 1;
@@ -948,7 +952,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     const lockedPieceSnapshot = {
         ...lockedPiece,
         shape: lockedPiece.shape.map((row) => row.slice()),
-        pieceId: ++_pieceIdCounter,
+        pieceId: ++gameState._pieceIdCounter,
         color: themedColor,
     };
 

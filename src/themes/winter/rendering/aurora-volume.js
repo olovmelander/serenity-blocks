@@ -1,224 +1,182 @@
 /* eslint-disable import/no-unresolved */
 /**
- * Winter AAA - Living aurora sky shell.
+ * Winter AAA — Volumetric aurora sky dome (Phase 2, the hero).
  *
- * Windows Chrome WebGPU was compiling the previous TSL sky-shell path to an
- * overbright white fallback even with snow, stars, and post disabled. This
- * shell keeps the same runtime uniforms but renders the night gradient and
- * aurora curtains into a bounded canvas texture, then maps that texture onto a
- * standard sky sphere. It keeps the renderer on WebGPU while removing the
- * fragile sky-material graph from the visibility-critical background.
+ * Replaces the previous 2D CanvasTexture bake with a real GPU/TSL raymarched
+ * aurora authored entirely in a NodeMaterial colorNode + emissiveNode. The
+ * curtains have volume, vertical rays, and a dancing fold structure (nimitz/iq
+ * layered-slab march sampling a veiny triangle-noise field), plus a night-sky
+ * gradient and a moon-direction glow so this single dome is the whole backdrop.
+ *
+ * Crucially the aurora is written to emissiveNode, so it survives the MRT path
+ * and drives the post bloom (the canvas bake could not — that is why post shipped
+ * with useMRT:false). Output is clamped + NaN-guarded to avoid the over-bright
+ * white-sky fallback the canvas bake was working around.
+ *
+ * Keeps the EXACT uniform surface the theme drives per-frame:
+ *   { uTime, uIntensity, uFlare, uWhiteout, uAccent, uMoonDir }
+ * so winter-theme.js plumbing is unchanged. Prototyped + screenshot-verified as
+ * src/playground/effects/winter-aurora.effect.js. See docs/WINTER_AAA_REVIEW_2026-06.md.
  */
 
 import * as THREE from 'three/webgpu';
 import {
-    texture as textureNode,
-    uv,
-    vec3,
+    Fn, Loop, float, vec2, vec3, vec4, uniform,
+    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot, atan2,
+    normalize, positionWorld, cameraPosition,
 } from 'three/tsl';
-
-const TEXTURE_WIDTH = 1024;
-const TEXTURE_HEIGHT = 512;
-const TWO_PI = Math.PI * 2;
-
-function clamp01(value) {
-    return Math.min(1, Math.max(0, value));
-}
-
-function mix(a, b, t) {
-    return a + (b - a) * t;
-}
-
-function colorToCss(r, g, b, a = 1) {
-    return `rgba(${Math.round(clamp01(r) * 255)}, ${Math.round(clamp01(g) * 255)}, ${Math.round(clamp01(b) * 255)}, ${clamp01(a)})`;
-}
-
-function mixColor(a, b, t) {
-    const k = clamp01(t);
-    return [
-        mix(a[0], b[0], k),
-        mix(a[1], b[1], k),
-        mix(a[2], b[2], k),
-    ];
-}
-
-function drawAuroraCurtains(ctx, uniforms) {
-    const time = uniforms.uTime.value || 0;
-    const intensity = clamp01(uniforms.uIntensity.value || 0);
-    const flare = clamp01((uniforms.uFlare.value || 0) / 1.5);
-    const accent = uniforms.uAccent.value || new THREE.Color(0x6ff2d6);
-
-    // Reads even at Still Night, ramps strongly with the storm. Bounded so the
-    // 'screen' stack of 3 layers stays well below white over the dark sky.
-    const strength = 0.13 + intensity * 0.24 + flare * 0.2;
-    const accentColor = [accent.r, accent.g, accent.b];
-    // Classic aurora: strong green base → green-teal mid → violet/pink tips.
-    // (Accent push kept small so it stays green at idle; the accent is cyan.)
-    const emerald = mixColor([0.08, 1.0, 0.34], accentColor, 0.08 + flare * 0.22);
-    const teal = mixColor([0.16, 0.95, 0.50], accentColor, 0.06 + intensity * 0.14);
-    const violet = [0.52, 0.34, 0.95];
-    const pink = [0.92, 0.46, 0.78];
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-
-    // Aurora lives in the VISIBLE band: bright base just above the ridge
-    // (~0.50H = the horizon on the sphere), tall tips rising into the upper sky.
-    const baseY = TEXTURE_HEIGHT * 0.50;
-    const strip = 7;
-    for (let layer = 0; layer < 3; layer += 1) {
-        const drift = time * (0.05 + layer * 0.028); // horizontal dance
-        const ripple = time * (0.7 + layer * 0.22);
-        const layerAlpha = strength * (0.42 - layer * 0.08);
-        const depthShift = layer * 18;
-
-        for (let x = -strip; x < TEXTURE_WIDTH + strip; x += strip) {
-            const nx = x / TEXTURE_WIDTH;
-            // Ribbons spread across the FULL width via NON-HARMONIC sines + a
-            // low base so both halves get coverage (no one-sided bunching).
-            const f1 = 1.7 + layer * 0.4;
-            const f2 = 3.9 + layer * 0.6;
-            const f3 = 6.7 + layer * 0.8;
-            const e1 = Math.sin((nx + drift) * TWO_PI * f1 + layer);
-            const e2 = Math.sin((nx - drift * 0.7) * TWO_PI * f2 + 1.7);
-            const e3 = Math.sin((nx + drift * 0.4) * TWO_PI * f3 + 4.1);
-            const curtain = clamp01(e1 * 0.32 + e2 * 0.22 + e3 * 0.16 + 0.46) ** 1.9;
-            // Draped FOLD bands (broad, drifting) → the curtain reads as folded
-            // fabric catching light, not a flat vertical smear.
-            const foldPhase = (nx + drift * 1.4) * TWO_PI * 11 + Math.sin(nx * TWO_PI * 2.3) * 1.6;
-            const fold = clamp01(Math.sin(foldPhase) * 0.5 + 0.5) ** 1.6;
-            // Fine irregular rays for detail (phase-warped, not a comb).
-            const rayPhase = nx * TWO_PI * 40
-                + Math.sin(nx * TWO_PI * 3.3 + ripple * 0.5) * 7.0
-                + Math.sin(nx * TWO_PI * 0.9) * 4.0
-                + ripple;
-            const ray = clamp01(Math.sin(rayPhase) * 0.5 + 0.5) ** 2.4;
-            const alpha = curtain * (0.32 + fold * 0.45 + ray * 0.23) * layerAlpha;
-            if (alpha < 0.006) continue;
-
-            // Draped curved curtain: top edge waves strongly, base waves gently.
-            const sway = Math.sin((nx + drift) * TWO_PI * 1.3 + ripple * 0.4) * 30
-                + Math.sin((nx + drift) * TWO_PI * 0.5) * 18;
-            const heightVar = 0.4 + 0.6 * (Math.sin(nx * TWO_PI * 2.1 + layer * 1.3) * 0.5 + 0.5);
-            const top = TEXTURE_HEIGHT * 0.12 + depthShift + sway - heightVar * 48 + (1 - curtain) * 46;
-            const bottom = baseY + Math.sin(nx * TWO_PI * 2.6 - ripple * 0.5) * 14;
-            const width = strip * 2.0 + ray * 8;
-
-            const gradient = ctx.createLinearGradient(0, top, 0, bottom);
-            // Tips: pink/violet (faint) → teal (mid) → emerald (bright base) → fade.
-            gradient.addColorStop(0, colorToCss(pink[0], pink[1], pink[2], alpha * 0.05));
-            gradient.addColorStop(0.16, colorToCss(violet[0], violet[1], violet[2], alpha * 0.16));
-            gradient.addColorStop(0.5, colorToCss(teal[0], teal[1], teal[2], alpha * 0.5));
-            gradient.addColorStop(0.82, colorToCss(emerald[0], emerald[1], emerald[2], alpha));
-            gradient.addColorStop(1, colorToCss(emerald[0], emerald[1], emerald[2], alpha * 0.05));
-            ctx.fillStyle = gradient;
-            ctx.fillRect(x - width * 0.5, top, width, Math.max(1, bottom - top));
-        }
-    }
-
-    // Luminous emerald skirt at the ridge — the bright base glow of the aurora.
-    const glow = ctx.createLinearGradient(0, TEXTURE_HEIGHT * 0.42, 0, TEXTURE_HEIGHT * 0.6);
-    glow.addColorStop(0, colorToCss(emerald[0], emerald[1], emerald[2], 0));
-    glow.addColorStop(0.65, colorToCss(0.12, 0.86, 0.6, strength * 0.2));
-    glow.addColorStop(1, colorToCss(0.02, 0.16, 0.22, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, TEXTURE_HEIGHT * 0.42, TEXTURE_WIDTH, TEXTURE_HEIGHT * 0.18);
-
-    ctx.restore();
-}
-
-function drawSkyTexture(ctx, uniforms) {
-    const intensity = clamp01(uniforms.uIntensity.value || 0);
-    const whiteout = clamp01(uniforms.uWhiteout.value || 0);
-
-    const top = mixColor([0.055, 0.09, 0.18], [0.08, 0.13, 0.24], intensity * 0.34);
-    const mid = mixColor([0.07, 0.14, 0.25], [0.1, 0.2, 0.32], intensity * 0.42);
-    const horizon = mixColor([0.09, 0.22, 0.3], [0.14, 0.3, 0.38], intensity * 0.5);
-    const ground = [0.02, 0.04, 0.08];
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, TEXTURE_HEIGHT);
-    gradient.addColorStop(0, colorToCss(top[0], top[1], top[2]));
-    gradient.addColorStop(0.42, colorToCss(mid[0], mid[1], mid[2]));
-    gradient.addColorStop(0.72, colorToCss(horizon[0], horizon[1], horizon[2]));
-    gradient.addColorStop(1, colorToCss(ground[0], ground[1], ground[2]));
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-
-    // A restrained moon-direction sky glow, aligned with the moon mesh
-    // (upper-right, lowered into frame). The moon mesh supplies the visible disc.
-    const moonX = TEXTURE_WIDTH * 0.64;
-    const moonY = TEXTURE_HEIGHT * 0.36;
-    const moonGlow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, TEXTURE_HEIGHT * 0.5);
-    moonGlow.addColorStop(0, 'rgba(160, 198, 255, 0.2)');
-    moonGlow.addColorStop(0.24, 'rgba(82, 142, 210, 0.045)');
-    moonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = moonGlow;
-    ctx.fillRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-
-    // Faint milky winter haze, kept far below white.
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.translate(TEXTURE_WIDTH * 0.52, TEXTURE_HEIGHT * 0.4);
-    ctx.rotate(-0.28);
-    const haze = ctx.createLinearGradient(0, -TEXTURE_HEIGHT * 0.18, 0, TEXTURE_HEIGHT * 0.18);
-    haze.addColorStop(0, 'rgba(80, 118, 180, 0)');
-    haze.addColorStop(0.5, 'rgba(85, 130, 190, 0.035)');
-    haze.addColorStop(1, 'rgba(80, 118, 180, 0)');
-    ctx.fillStyle = haze;
-    ctx.fillRect(-TEXTURE_WIDTH, -TEXTURE_HEIGHT * 0.18, TEXTURE_WIDTH * 2, TEXTURE_HEIGHT * 0.36);
-    ctx.restore();
-
-    // Atmospheric horizon haze — soft misty band where land meets sky, so the
-    // ground/ridge transition is a cold-air gradient rather than a hard edge.
-    const hazeBand = ctx.createLinearGradient(0, TEXTURE_HEIGHT * 0.40, 0, TEXTURE_HEIGHT * 0.66);
-    hazeBand.addColorStop(0, 'rgba(40, 64, 100, 0)');
-    hazeBand.addColorStop(0.5, 'rgba(54, 82, 122, 0.24)');
-    hazeBand.addColorStop(1, 'rgba(28, 48, 78, 0)');
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = hazeBand;
-    ctx.fillRect(0, TEXTURE_HEIGHT * 0.40, TEXTURE_WIDTH, TEXTURE_HEIGHT * 0.26);
-
-    drawAuroraCurtains(ctx, uniforms);
-
-    if (whiteout > 0) {
-        const hazeColor = [0.48, 0.58, 0.7];
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = colorToCss(hazeColor[0], hazeColor[1], hazeColor[2], whiteout * 0.42);
-        ctx.fillRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    }
-}
 
 export function createAuroraVolume(params = {}) {
     const radius = params.radius ?? 4500;
-    console.log('%c[AuroraVolume] build: canvas-aurora-v4 (folds+haze)', 'color:#6ff2d6;font-weight:bold');
+    // Preset-driven march depth (theme passes ~12..28). Clamp for safety.
+    const STEPS = Math.max(10, Math.min(40, Math.round(params.steps ?? 26)));
+    console.log(`%c[AuroraVolume] build: volumetric-tsl-v2-pillars (${STEPS} steps)`, 'color:#6ff2d6;font-weight:bold');
+
     const initialAccent = params.accent instanceof THREE.Color
         ? params.accent.clone()
         : new THREE.Color(params.accent ?? 0x6ff2d6);
+    const moonDir = (params.moonDir instanceof THREE.Vector3
+        ? params.moonDir.clone()
+        : new THREE.Vector3(470, 330, -1050)).normalize();
 
-    const uniforms = {
-        uTime: { value: 0 },
-        uIntensity: { value: 0 },
-        uFlare: { value: 0 },
-        uWhiteout: { value: 0 },
-        uAccent: { value: initialAccent },
-        uMoonDir: { value: params.moonDir ?? new THREE.Vector3(500, 1000, -800).normalize() },
-    };
+    // Uniform surface — identical to the old canvas volume so the theme's
+    // per-frame updates (winter-theme.js ~3163) keep working unchanged.
+    const uTime = uniform(0);
+    const uIntensity = uniform(0);
+    const uFlare = uniform(0);
+    const uWhiteout = uniform(0);
+    const uAccent = uniform(initialAccent);
+    const uMoonDir = uniform(moonDir);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = TEXTURE_WIDTH;
-    canvas.height = TEXTURE_HEIGHT;
-    const ctx = canvas.getContext('2d');
-    drawSkyTexture(ctx, uniforms);
+    // --- 2D rotation ---
+    const rot = Fn(([p, a]) => {
+        const c = cos(a);
+        const s = sin(a);
+        return vec2(p.x.mul(c).sub(p.y.mul(s)), p.x.mul(s).add(p.y.mul(c)));
+    });
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.generateMipmaps = false;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.needsUpdate = true;
+    // triangle wave, clamped away from the hard 0/0.5 cusps
+    const tri = Fn(([x]) => clamp(abs(fract(x).sub(0.5)), 0.01, 0.49));
+
+    // nimitz triNoise2d — layered, domain-warped triangle noise → curly veins
+    const triNoise2d = Fn(([pIn, spd]) => {
+        const t = uTime.mul(spd);
+        const p = pIn.toVar();
+        p.assign(rot(p, p.x.mul(0.06)));
+        const bp = p.toVar();
+        const z = float(1.8).toVar();
+        const z2 = float(2.5).toVar();
+        const rz = float(0.0).toVar();
+        Loop(5, () => {
+            const b2 = bp.mul(2.0);
+            const dg = rot(
+                vec2(tri(b2.x).add(tri(b2.y)), tri(b2.y.add(tri(b2.x)))).mul(0.8),
+                t,
+            ).toVar();
+            p.subAssign(dg.div(z2));
+            bp.mulAssign(1.6);
+            z2.mulAssign(0.6);
+            z.mulAssign(1.8);
+            p.mulAssign(1.2);
+            rz.addAssign(tri(p.x.add(tri(p.y))).div(z));
+        });
+        return rz;
+    });
+
+    // Constant curtain wind speed. Kept constant (not intensity-scaled) because
+    // uTime grows unbounded — a varying multiplier would jump the phase.
+    const driftSpeed = float(0.3);
+
+    // Layered aurora march: intersect the ray with rising horizontal slabs and
+    // accumulate the veiny field. ro at origin, rd the (normalized) view ray.
+    const aurora = Fn(([rd]) => {
+        const col = vec4(0.0).toVar();
+        const avgCol = vec4(0.0).toVar();
+        const ry = max(rd.y, 0.012);
+        Loop(STEPS, ({ i }) => {
+            const fi = float(i);
+            const pt = float(0.8).add(pow(fi, 1.4).mul(0.0045)).div(ry.mul(2.0).add(0.4));
+            const bpos = rd.mul(pt);
+            // Wind-drift the curtain field over time so it visibly flows across
+            // the sky (not just shimmers in place).
+            const drift = vec2(uTime.mul(driftSpeed), uTime.mul(driftSpeed.mul(0.25)));
+            const samplePos = bpos.zx.mul(4.5).add(drift);
+            const raw = triNoise2d(samplePos, 0.14);
+            // Subtract a haze floor → dark cobalt sky between sharp pillars.
+            const rzt = pow(clamp(raw.sub(0.16).mul(1.5), 0.0, 1.0), float(2.6));
+            // Per-layer hue cycle (green → teal → violet) à la nimitz.
+            const rgbBase = vec3(2.15, -0.5, 1.2).negate().add(1.0).add(fi.mul(0.043))
+                .sin()
+                .mul(0.5)
+                .add(0.5);
+            const col2 = vec4(rgbBase.mul(rzt), rzt);
+            avgCol.assign(mix(avgCol, col2, 0.5));
+            const fade = exp(fi.mul(-0.05).sub(1.5)).mul(smoothstep(0.0, 2.0, fi));
+            col.addAssign(avgCol.mul(fade));
+        });
+        // Horizon clip: aurora only above the skyline, soft edge.
+        col.mulAssign(clamp(rd.y.mul(18.0).add(0.1), 0.0, 1.0));
+        return col.mul(2.0);
+    });
+
+    // --- View ray from the camera through this dome fragment ---
+    const rd = normalize(positionWorld.sub(cameraPosition));
+
+    // Storm-driven gains. Aurora reads at idle (intensity floor ~0.12) and
+    // ramps with the storm; flare brightens + pushes toward the combo accent;
+    // whiteout washes the curtains out toward a pale storm sky.
+    const intensity01 = clamp(uIntensity, 0.0, 1.5);
+    // Mid brightness — visible above the ridgeline without blowing out.
+    const auroraGain = float(0.85).add(intensity01.mul(0.45)).mul(float(1.0).add(uFlare.mul(0.3)));
+    const whiteoutFade = float(1.0).sub(clamp(uWhiteout.mul(0.5), 0.0, 0.5));
+
+    // Darker cobalt night gradient — a deep winter night, aurora/moon as the light.
+    const nightTop = vec3(0.012, 0.03, 0.10);
+    const nightHorizon = vec3(0.03, 0.075, 0.18);
+    const skyBase = mix(nightHorizon, nightTop, clamp(rd.y, 0.0, 1.0));
+    const skyLift = vec3(0.45, 0.54, 0.66).mul(clamp(uWhiteout, 0.0, 1.0).mul(0.32));
+    const sky = skyBase.add(skyLift);
+
+    // Moon-direction glow (replaces the canvas radial moon glow).
+    const moonCos = clamp(dot(rd, normalize(uMoonDir)), 0.0, 1.0);
+    const moonGlow = vec3(0.24, 0.38, 0.62).mul(pow(moonCos, float(72.0)).mul(0.5))
+        .add(vec3(0.08, 0.13, 0.24).mul(pow(moonCos, float(10.0)).mul(0.12)));
+
+    const auro = aurora(rd);
+    // Vertical PILLAR mask: irregular drifting shafts from the horizontal view
+    // angle → straight vertical light pillars carved into the curtain band.
+    const az = atan2(rd.x, rd.z);
+    const s1 = sin(az.mul(16.0).add(uTime.mul(0.14)));
+    const s2 = sin(az.mul(33.0).sub(uTime.mul(0.09)));
+    const s3 = sin(az.mul(6.0).add(1.7));
+    const shaftRaw = s1.mul(0.5).add(s2.mul(0.3)).add(s3.mul(0.2)).mul(0.5)
+        .add(0.5);
+    const shafts = float(0.26).add(pow(shaftRaw, float(2.6)));
+    // Curtain density × pillars, tinted emerald(left) → teal(right), brighter left.
+    const curtain = auro.a.mul(shafts);
+    const hx = clamp(rd.x.mul(0.55).add(0.42), 0.0, 1.0);
+    const emerald = vec3(0.10, 1.0, 0.38);
+    const teal = vec3(0.14, 0.95, 0.80);
+    const tint = mix(emerald, teal, hx);
+    const leftWeight = mix(float(1.4), float(0.72), hx);
+    const accentCol = vec3(uAccent.r, uAccent.g, uAccent.b);
+    const tinted = mix(tint, accentCol, clamp(uFlare.mul(0.5), 0.0, 0.8));
+    const auroraRGB = clamp(
+        tinted.mul(curtain).mul(leftWeight).mul(auroraGain).mul(whiteoutFade)
+            .mul(1.15),
+        0.0,
+        6.0,
+    );
+
+    // Luminous emerald ground-glow band above the ridgeline.
+    const glowBand = smoothstep(0.0, 0.1, rd.y).mul(smoothstep(0.46, 0.08, rd.y));
+    const baseGlow = vec3(0.12, 0.85, 0.55).mul(glowBand).mul(auroraGain).mul(whiteoutFade)
+        .mul(0.3);
+
+    const litColor = clamp(sky.add(moonGlow).add(auroraRGB).add(baseGlow), 0.0, 6.0);
+    // Only the aurora + moon glow + base glow bloom — not the dark sky. Kept low so
+    // the MRT bloom doesn't re-brighten what we just dialed down.
+    const emissive = clamp(auroraRGB.add(moonGlow.mul(0.6)).add(baseGlow), 0.0, 6.0).mul(0.7);
 
     const material = new THREE.MeshBasicNodeMaterial({
         side: THREE.BackSide,
@@ -226,34 +184,20 @@ export function createAuroraVolume(params = {}) {
         fog: false,
         toneMapped: false,
     });
-    material.colorNode = textureNode(texture).sample(uv()).rgb;
-    material.emissiveNode = vec3(0.0);
+    material.colorNode = litColor;
+    material.emissiveNode = emissive;
 
-    const geometry = new THREE.SphereGeometry(radius, 48, 24);
+    const geometry = new THREE.SphereGeometry(radius, 64, 32);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -1000;
     mesh.frustumCulled = false;
 
-    let lastFrameKey = '';
-    mesh.onBeforeRender = () => {
-        const key = [
-            Math.floor((uniforms.uTime.value || 0) * 20),
-            Math.round((uniforms.uIntensity.value || 0) * 200),
-            Math.round((uniforms.uFlare.value || 0) * 100),
-            Math.round((uniforms.uWhiteout.value || 0) * 100),
-            uniforms.uAccent.value?.getHexString?.() || 'accent',
-        ].join(':');
-        if (key === lastFrameKey) return;
-        lastFrameKey = key;
-        drawSkyTexture(ctx, uniforms);
-        texture.needsUpdate = true;
-    };
-
     return {
         mesh,
-        uniforms,
+        uniforms: {
+            uTime, uIntensity, uFlare, uWhiteout, uAccent, uMoonDir,
+        },
         dispose: () => {
-            texture.dispose();
             geometry.dispose();
             material.dispose();
         },

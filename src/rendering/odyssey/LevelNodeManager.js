@@ -65,7 +65,7 @@ export function resolveOdysseyNodeShellStyle(chapter, levelId = 1) {
 const GLASS_ORB_SCALE = 1.4; // Slightly larger for better visibility and premium feel
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
-const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
+const GLASS_GLOW_RADIUS = 1.12 * GLASS_ORB_SCALE;
 // Snow-globe: render the themed inner core at a fraction of the shell radius so it reads as
 // an object SUSPENDED inside the clear glass globe (glass-rim gap + orbiting sparkle "snow"),
 // instead of a magma ball that fills the shell and makes the transparent glass look solid.
@@ -83,8 +83,9 @@ const CHAPTER_1_NODE_MIN_SCALE = 0.0;
 // QW11: below this per-frame camera-progress delta the instanced/particle GPU buffers
 // are treated as unchanged, so update() skips the ~7040-particle + instance re-upload
 // (the time-driven sparkle/iridescence still animates in-shader via uTime). Small enough
-// that any real camera dolly re-flushes immediately.
-const UPDATE_PROGRESS_EPSILON = 1e-5;
+// that any real camera dolly re-flushes immediately, but 1e-4 (not 1e-5) so sub-pixel
+// idle camera sway/breathing doesn't needlessly re-flush the whole particle buffer.
+const UPDATE_PROGRESS_EPSILON = 1e-4;
 
 // Lock/star indicator placement relative to the orb, expressed in the CAMERA basis
 // (camera-right, camera-up, toward-camera) and multiplied by node scale. Placing them in
@@ -118,9 +119,12 @@ export class LevelNodeManager {
         this.themeTextureLoads = new Map(); // iconUrl -> Promise<THREE.Texture|null>
         this.cachedBasePositions = new Map(); // levelId -> THREE.Vector3
 
-        // Shared geometries (reused across all 55 nodes)
-        this.sharedInnerGeo = new THREE.SphereGeometry(GLASS_INNER_RADIUS, 32, 32);
-        this.sharedGlassGeo = new THREE.SphereGeometry(GLASS_OUTER_RADIUS, 48, 48);
+        // Shared geometries (reused across all 55 nodes). Segment counts trimmed (48→32
+        // glass, 32→24 inner) — these render on all 55 orbs EVERY frame in EVERY chapter, so
+        // the tri saving is the highest-leverage always-present win; a small refractive orb
+        // reads identically at gameplay distance.
+        this.sharedInnerGeo = new THREE.SphereGeometry(GLASS_INNER_RADIUS, 24, 24);
+        this.sharedGlassGeo = new THREE.SphereGeometry(GLASS_OUTER_RADIUS, 32, 32);
         this.sharedGlowGeo = new THREE.IcosahedronGeometry(GLASS_GLOW_RADIUS, 2);
 
         // Shared canvas textures (identical across all nodes)
@@ -457,6 +461,7 @@ export class LevelNodeManager {
         const starMat = new THREE.MeshBasicMaterial({
             map: this.sharedStarTexture,
             transparent: true,
+            opacity: 0.74,
             alphaTest: 0.1,
             depthWrite: false,
             side: THREE.DoubleSide,
@@ -467,12 +472,12 @@ export class LevelNodeManager {
         this.scene.add(this.starInstancedMesh);
 
         // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
-        // 128 particles per node * 55 nodes = 7040 particles in one draw call.
+        // 96 particles per node * 55 nodes = ~5280 particles in one draw call.
         // THREE.Points renders as 1px on WebGPU, so the sparkle cloud is drawn as
         // camera-facing instanced quads via createNodeParticlesTSL + the shared billboard
         // helper. Per-particle attributes (aOffset/aPState/aNodePos/aNodeScale/aNodeLocked)
         // are identical to the old GLSL Points and are still ticked in update().
-        const particleCountPerNode = 128;
+        const particleCountPerNode = 96; // trimmed from 128 (always-present sparkle cloud); MUST match in build + update
         const totalParticles = count * particleCountPerNode;
 
         const offsetArray = new Float32Array(totalParticles * 3); // Position within the orb
@@ -1037,7 +1042,7 @@ export class LevelNodeManager {
         const glowColorAttr = this.glowInstancedMesh.geometry.getAttribute('aColor');
         const glowStateAttr = this.glowInstancedMesh.geometry.getAttribute('aState');
 
-        const particleCountPerNode = 128;
+        const particleCountPerNode = 96; // trimmed from 128 (always-present sparkle cloud); MUST match in build + update
         const particleNodePosAttr = this.particleSystem.geometry.getAttribute('aNodePos');
         const particleNodeScaleAttr = this.particleSystem.geometry.getAttribute('aNodeScale');
         const particleNodeLockedAttr = this.particleSystem.geometry.getAttribute('aNodeLocked');
@@ -1081,7 +1086,7 @@ export class LevelNodeManager {
                 node.group.position.set(
                     basePos.x + floatX,
                     basePos.y + floatY,
-                    basePos.z + floatZ
+                    basePos.z + floatZ,
                 );
             }
             const baseScale = node.group.userData.baseScale ?? 1.0;
@@ -1226,7 +1231,7 @@ export class LevelNodeManager {
                         .addScaledVector(camRight, place.right * scale)
                         .addScaledVector(camUp, place.up * scale)
                         .addScaledVector(toCam, place.toward * scale));
-                    const starScale = scale * 0.7;
+                    const starScale = scale * 0.52;
                     matrix.scale(scaleVec.set(starScale, starScale, starScale));
                     this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
                 } else {

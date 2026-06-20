@@ -154,6 +154,26 @@ describe('OdysseyDirector', () => {
         expect(state.atmosphere.lightDir.length()).toBeCloseTo(1, 3);
     });
 
+    it('carries an aurora bridge color through the Sky to Space boundary', () => {
+        const director = new OdysseyDirector({ chapterPositions });
+        const state = director.update(1 / 60, { ascentProgress: 0.65, audio: null });
+
+        expect(state.boundaryId).toBe('5-6');
+        expect(state.atmosphere.skyColor.getHex()).toBe(0x06162f);
+        expect(state.atmosphere.fogColor.getHex()).toBe(0x09283f);
+        expect(state.atmosphere.fogDensity).toBeGreaterThan(0.002);
+    });
+
+    it('uses a saturated alpine atmosphere bridge through the Surface to Mountains boundary', () => {
+        const director = new OdysseyDirector({ chapterPositions });
+        const state = director.update(1 / 60, { ascentProgress: 0.36, audio: null });
+
+        expect(state.boundaryId).toBe('3-4');
+        expect(state.atmosphere.skyColor.getHex()).toBe(0x527da2);
+        expect(state.atmosphere.fogColor.getHex()).toBe(0x638699);
+        expect(state.atmosphere.fogDensity).toBeCloseTo(0.0024, 5);
+    });
+
     it('raises smoothed energy toward audio energy and decays a beat pulse', () => {
         const director = new OdysseyDirector({ chapterPositions });
         const loudAudio = {
