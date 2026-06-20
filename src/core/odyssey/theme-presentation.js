@@ -22,7 +22,6 @@ const THEME_PRIMARY_COLORS = Object.freeze({
     'koi-pond': '#ffae73',
     'luminous-tides': '#6fe8ff',
     lunara: '#c7a4ff',
-    meadow: '#89db71',
     'misty-lake': '#8fd8ff',
     'moonlit-forest': '#84a4ff',
     'moonlit-greenhouse': '#6bc894',

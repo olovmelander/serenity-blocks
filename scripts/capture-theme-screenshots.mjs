@@ -11,7 +11,7 @@ const ALL_THEMES = [
     'forest', 'himalayan-peak', 'ice-temple', 'moonlit-forest', 'wolfhour',
     'ocean', 'sunset', 'mountain', 'winter', 'fall', 'summer', 'tornado',
     'sakura-twilight', 'aurora', 'galaxy', 'aether-tides', 'rainy-window',
-    'koi-pond', 'meadow', 'verdant-hills', 'cosmic-chimes', 'singing-bowl',
+    'koi-pond', 'verdant-hills', 'cosmic-chimes', 'singing-bowl',
     'starlight', 'swedish-forest', 'geode', 'bioluminescence', 'shifting-sands',
     'misty-lake', 'waves', 'luminous-tides', 'fluid-dreams', 'crystal-cave',
     'moonlit-greenhouse', 'electric-dreams', 'nebula-flow', 'chromatic-impasto',
