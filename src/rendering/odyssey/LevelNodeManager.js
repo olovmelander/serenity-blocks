@@ -28,12 +28,30 @@ import {
     createNodeParticlesTSL,
     createNodeParticleGeometry,
     createFluidInnerTSL,
+    createFluidInnerInstancedTSL,
 } from './level-node-manager.tsl.js';
 
 const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,svg}', {
     import: 'default',
 });
 const THEME_ICON_LOOKUP = buildThemeIconLookup(THEME_REGISTRY, THEME_ICON_MODULES);
+
+/**
+ * LEVER 1 (core texture-atlas instancing) escape hatch. DEFAULT OFF — this is a
+ * capture-gated WebGPU change (visual identity of all 55 inner cores cannot be verified
+ * headless), so it ships inert and is opt-in via `?odysseyCoreInstanced=1` until a
+ * playground + in-game capture confirms the instanced cores are pixel-identical, after
+ * which the default can be flipped. When OFF, createGlassNode builds the legacy per-node
+ * inner-core Mesh exactly as before (55 materials / 55 pipeline compiles).
+ */
+function readOdysseyCoreInstancedFlag() {
+    if (typeof window === 'undefined') return false;
+    try {
+        const raw = new URLSearchParams(window.location?.search || '').get('odysseyCoreInstanced');
+        if (raw === '1' || raw === 'true' || raw === 'on') return true;
+    } catch { /* default off */ }
+    return false;
+}
 
 // P3b: map each per-world node shell style to a shader style index.
 export const ODYSSEY_NODE_SHELL_STYLE_INDEX = Object.freeze({
@@ -145,6 +163,19 @@ export class LevelNodeManager {
         this.instanceIdMap = new Map(); // levelId -> instanceIndex
         this.nodeIds = []; // index -> levelId
         this.camera = null;
+
+        // LEVER 1: instanced inner-core state (default OFF; see readOdysseyCoreInstancedFlag).
+        // When ON, all 55 inner fluid cores collapse to ONE InstancedMesh + ONE material +
+        // ONE pipeline + a shared DataArrayTexture of theme icons (per-instance layer index).
+        this.coreInstanced = readOdysseyCoreInstancedFlag();
+        this.innerCoreMesh = null;
+        this.innerCoreMaterial = null;
+        this.coreArrayTexture = null;
+        this.coreAtlasSize = 256;
+        this.iconUrlToLayer = new Map(); // resolved iconUrl -> layer index (>=1)
+        this.levelLayer = new Map(); // levelId -> layer index (-1 = no icon → procedural magma)
+        this._scratchMatrix2 = new THREE.Matrix4();
+        this._scratchInnerScaleVec = new THREE.Vector3();
 
         // P3 focal hierarchy (AAA): the player's current/next node blazes + beat-pulses.
         this.focalHierarchy = false;
@@ -314,6 +345,14 @@ export class LevelNodeManager {
         this.nodeIds.forEach((id, index) => this.instanceIdMap.set(id, index));
 
         this._setupInstancedMeshes();
+
+        // LEVER 1: build the shared theme-icon DataArrayTexture + the single instanced
+        // inner-core mesh ONCE before the node batch loop (so layer indices exist when
+        // createGlassNode assigns each node its coreLayer). Only when the flag is ON.
+        if (this.coreInstanced) {
+            await this._buildCoreArrayTexture(levelData);
+            this._setupInnerCoreInstancedMesh();
+        }
 
         const batchSize = 5;
         for (let i = 0; i < levelData.length; i += batchSize) {
@@ -554,17 +593,26 @@ export class LevelNodeManager {
         this.cachedBasePositions.set(levelConfig.id, group.position.clone());
 
         // 1. Inner "Theme" Sphere (Solid textured sphere inside)
-        const themeId = levelConfig.iconThemeId
-            || levelConfig.theme?.pathIcon
-            || levelConfig.theme?.primary;
-        const themeTex = await this.getOrLoadThemeTexture(themeId);
+        let innerMesh = null;
+        let innerMat = null;
+        if (this.coreInstanced) {
+            // LEVER 1: the shared inner-core InstancedMesh draws this core. Store its atlas
+            // layer so update() can write the per-instance aCore attribute; no per-node mesh
+            // or material (that is the 55→1 pipeline/draw collapse). -1 = no icon → magma.
+            group.userData.coreLayer = this.levelLayer.get(levelConfig.id) ?? -1;
+        } else {
+            const themeId = levelConfig.iconThemeId
+                || levelConfig.theme?.pathIcon
+                || levelConfig.theme?.primary;
+            const themeTex = await this.getOrLoadThemeTexture(themeId);
 
-        // Inner sphere acts as the solid core, hiding the path line that passes through
-        const innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
-        const innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
-        // Suspend a smaller themed core inside the clear glass shell (snow-globe read).
-        innerMesh.scale.setScalar(INNER_CORE_DISPLAY_SCALE);
-        group.add(innerMesh);
+            // Inner sphere acts as the solid core, hiding the path line that passes through
+            innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
+            innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
+            // Suspend a smaller themed core inside the clear glass shell (snow-globe read).
+            innerMesh.scale.setScalar(INNER_CORE_DISPLAY_SCALE);
+            group.add(innerMesh);
+        }
 
         // 2. Outer Glass Sphere (Moved to InstancedMesh)
         // The interactive shell is now handled by the shared instanced mesh.
@@ -642,6 +690,93 @@ export class LevelNodeManager {
         );
         material.uniforms = uniforms;
         return material;
+    }
+
+    /**
+     * LEVER 1 — build the shared theme-icon DataArrayTexture (one layer per DISTINCT resolved
+     * icon url; layer 0 reserved = white fallback). Distinct themeIds dedup onto layers
+     * (mirrors themeTextureCache keyed by iconUrl). All layers are forced to coreAtlasSize²
+     * by redrawing each icon through a canvas (DataArrayTexture requires uniform layer dims).
+     * Icons decode async + back-fill into their layer; until then a node shows the procedural
+     * magma fallback (aCore.x = -1), identical to today's null-texture path.
+     */
+    async _buildCoreArrayTexture(levelData) {
+        const SZ = this.coreAtlasSize;
+        this.iconUrlToLayer = new Map();
+        this.levelLayer = new Map();
+        const urlByLevel = new Map();
+        await Promise.all(levelData.map(async (level) => {
+            const themeId = level.iconThemeId || level.theme?.pathIcon || level.theme?.primary;
+            const iconUrl = await resolveThemeIconAssetUrl(themeId, THEME_ICON_LOOKUP);
+            if (iconUrl) urlByLevel.set(level.id, iconUrl);
+        }));
+        let nextLayer = 1; // layer 0 = white fallback
+        urlByLevel.forEach((url, levelId) => {
+            if (!this.iconUrlToLayer.has(url)) {
+                this.iconUrlToLayer.set(url, nextLayer);
+                nextLayer += 1;
+            }
+            this.levelLayer.set(levelId, this.iconUrlToLayer.get(url));
+        });
+        levelData.forEach((level) => {
+            if (!this.levelLayer.has(level.id)) this.levelLayer.set(level.id, -1);
+        });
+        const LAYERS = Math.max(this.iconUrlToLayer.size + 1, 1);
+        const data = new Uint8Array(SZ * SZ * 4 * LAYERS).fill(255); // white = safe fallback
+        this.coreArrayTexture = new THREE.DataArrayTexture(data, SZ, SZ, LAYERS);
+        this.coreArrayTexture.colorSpace = THREE.SRGBColorSpace;
+        this.coreArrayTexture.minFilter = THREE.LinearFilter;
+        this.coreArrayTexture.magFilter = THREE.LinearFilter;
+        this.coreArrayTexture.generateMipmaps = false;
+        this.coreArrayTexture.needsUpdate = true;
+        // Async back-fill: decode each distinct icon and blit it into its layer.
+        this.iconUrlToLayer.forEach((layer, url) => {
+            this.textureLoader.load(url, (tex) => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = SZ;
+                    canvas.height = SZ;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(tex.image, 0, 0, SZ, SZ); // normalize any size → SZ²
+                    const img = ctx.getImageData(0, 0, SZ, SZ).data;
+                    this.coreArrayTexture.image.data.set(img, layer * SZ * SZ * 4);
+                    this.coreArrayTexture.needsUpdate = true;
+                    tex.dispose(); // only needed the decoded pixels
+                    this._markUploadDirty(); // re-run update() so aCore.x flips to the real layer
+                } catch (err) {
+                    console.warn('[LevelNodes] core atlas blit failed for', url, err);
+                }
+            });
+        });
+    }
+
+    /** LEVER 1 — the single InstancedMesh that draws all inner cores (8-buffer-safe: sphere
+     *  position+normal+uv = 3 + instanceMatrix = 4 + the ONE packed aCore vec4 = 8). */
+    _setupInnerCoreInstancedMesh() {
+        const count = this.instanceCount;
+        const inner = createFluidInnerInstancedTSL(this.coreArrayTexture, this.uTime);
+        this.innerCoreMaterial = inner.material;
+        this.innerCoreMesh = new THREE.InstancedMesh(this.sharedInnerGeo, inner.material, count);
+        this.innerCoreMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.innerCoreMesh.frustumCulled = false;
+        this.innerCoreMesh.geometry.setAttribute(
+            'aCore',
+            new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
+        );
+        // MUST-FIX: seed scale-0 matrices so nothing renders at the world origin before the
+        // first update() composes each instance (the shells set theirs in createNodes).
+        const zero = this._scratchMatrix2.makeScale(0, 0, 0);
+        for (let i = 0; i < count; i += 1) this.innerCoreMesh.setMatrixAt(i, zero);
+        this.innerCoreMesh.instanceMatrix.needsUpdate = true;
+        this.scene.add(this.innerCoreMesh);
+    }
+
+    /** LEVER 1 — pack a THREE.Color into one float as 5-5-5 bits (exact in float32, ≤32767). */
+    _packCoreFallback(color) {
+        const r = Math.min(31, Math.floor((color?.r ?? 1) * 31));
+        const g = Math.min(31, Math.floor((color?.g ?? 1) * 31));
+        const b = Math.min(31, Math.floor((color?.b ?? 1) * 31));
+        return (r * 1024) + (g * 32) + b;
     }
 
     createFallbackIconTexture() {
@@ -1041,6 +1176,8 @@ export class LevelNodeManager {
         const glassStateAttr = this.glassInstancedMesh.geometry.getAttribute('aState');
         const glowColorAttr = this.glowInstancedMesh.geometry.getAttribute('aColor');
         const glowStateAttr = this.glowInstancedMesh.geometry.getAttribute('aState');
+        // LEVER 1: the packed per-instance core attribute (null when the lever is OFF).
+        const aCoreAttr = this.innerCoreMesh ? this.innerCoreMesh.geometry.getAttribute('aCore') : null;
 
         const particleCountPerNode = 96; // trimmed from 128 (always-present sparkle cloud); MUST match in build + update
         const particleNodePosAttr = this.particleSystem.geometry.getAttribute('aNodePos');
@@ -1067,6 +1204,8 @@ export class LevelNodeManager {
                 this.glowInstancedMesh.setMatrixAt(idx, matrix);
                 this.lockInstancedMesh.setMatrixAt(idx, matrix);
                 for (let s = 0; s < 3; s++) this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
+                // LEVER 1: scale-0 cull the inner core too (same matrix the shells use).
+                if (this.innerCoreMesh) this.innerCoreMesh.setMatrixAt(idx, matrix);
 
                 // Hide particles for this node
                 for (let p = 0; p < particleCountPerNode; p++) {
@@ -1124,6 +1263,30 @@ export class LevelNodeManager {
 
             glassStateAttr.setXYZW(idx, isLocked ? 1.0 : 0.0, isCompleted ? 1.0 : 0.0, isHovered, isSelected);
 
+            // LEVER 1: inner-core instance matrix + packed aCore vec4. The legacy per-node
+            // innerMesh was a child scaled by INNER_CORE_DISPLAY_SCALE and hidden when
+            // chapterOneQuench >= 0.92; reproduce both here (scale 0 = hidden). aCore packs
+            // layer+0.5 / -1, seed, the locked|completed|hovered|selected bitfield, and the
+            // 5-5-5 fallback colour. setNode*/hover/select mark dirty so this reflushes.
+            if (this.coreInstanced && this.innerCoreMesh && aCoreAttr) {
+                const innerScale = chapterOneQuench < 0.92
+                    ? node.group.scale.x * INNER_CORE_DISPLAY_SCALE
+                    : 0;
+                const innerMat4 = this._scratchMatrix2.compose(
+                    node.group.position,
+                    node.group.quaternion,
+                    this._scratchInnerScaleVec.setScalar(innerScale),
+                );
+                this.innerCoreMesh.setMatrixAt(idx, innerMat4);
+                const layer = node.group.userData.coreLayer ?? -1;
+                const layerEnc = layer >= 0 ? (layer + 0.5) : -1.0;
+                const coreSeed = ((levelId || 1) * 0.61803398875) % 1000;
+                const stateBits = (isLocked ? 1 : 0) + (isCompleted ? 2 : 0)
+                    + (isHovered > 0.5 ? 4 : 0) + (isSelected > 0.5 ? 8 : 0);
+                const packedFb = this._packCoreFallback(node.group.userData.chapterColor);
+                aCoreAttr.setXYZW(idx, layerEnc, coreSeed, stateBits, packedFb);
+            }
+
             // QW11: reuse a shared fallback Color instead of allocating one per node.
             const color = node.group.userData.chapterColor || this._fallbackColor;
             glowColorAttr.setXYZ(idx, color.r, color.g, color.b);
@@ -1145,6 +1308,10 @@ export class LevelNodeManager {
         this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (this.innerCoreMesh && aCoreAttr) {
+            this.innerCoreMesh.instanceMatrix.needsUpdate = true;
+            aCoreAttr.needsUpdate = true;
+        }
         glassStateAttr.needsUpdate = true;
         glowColorAttr.needsUpdate = true;
         glowStateAttr.needsUpdate = true;
@@ -1293,6 +1460,18 @@ export class LevelNodeManager {
             this.particleSystem.geometry.dispose();
             this.particleSystem.material.dispose();
             this.scene.remove(this.particleSystem);
+        }
+        // LEVER 1: free the instanced inner-core material + the shared theme-icon array
+        // texture. The geometry is this.sharedInnerGeo (disposed above) — do NOT double-dispose.
+        if (this.innerCoreMesh) {
+            this.innerCoreMesh.material.dispose();
+            this.scene.remove(this.innerCoreMesh);
+            this.innerCoreMesh = null;
+            this.innerCoreMaterial = null;
+        }
+        if (this.coreArrayTexture) {
+            this.coreArrayTexture.dispose();
+            this.coreArrayTexture = null;
         }
         this.themeTextureCache.forEach((texture) => texture.dispose());
         this.themeTextureCache.clear();

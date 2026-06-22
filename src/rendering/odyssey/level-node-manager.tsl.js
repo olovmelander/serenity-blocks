@@ -692,6 +692,97 @@ export function createFluidInnerTSL(
     };
 }
 
+// ── Instanced inner fluid core (LEVER 1: one InstancedMesh, one material) ─────────
+// Twin of createFluidInnerTSL with IDENTICAL displacement/swirl/grading math. The only
+// changes: per-node uniforms become channels of ONE packed vec4 instance attribute `aCore`
+// (8-vertex-buffer limit: sphere position+normal+uv = 3 + instanceMatrix = 4 + aCore = 8),
+// and the per-node theme texture sample becomes a layer-indexed DataArrayTexture sample.
+//   aCore.x = layer+0.5 (icon) or -1 sentinel (procedural magma, no icon)
+//   aCore.y = per-level seed
+//   aCore.z = state bitfield: locked|completed<<1|hovered<<2|selected<<3
+//   aCore.w = 5-5-5 packed fallback rgb
+export function createFluidInnerInstancedTSL(arrayTexture, uTime = uniform(0)) {
+    const aCore = attribute('aCore', 'vec4');
+    const uFlowStrength = uniform(INNER_FLOW_STRENGTH);
+    const uWobbleStrength = uniform(INNER_WOBBLE_STRENGTH);
+
+    // Decode packed channels.
+    const seed = aCore.y;
+    const layerF = floor(aCore.x); // 0..LAYERS-1 (valid only when x>=0)
+    const useTexture = step(float(0.0), aCore.x); // 1 when x>=0, 0 for the -1 sentinel
+    const stateZ = aCore.z;
+    const uLocked = step(0.5, fract(stateZ.mul(0.5)).mul(2.0)); // bit0
+    const uCompleted = step(0.5, fract(floor(stateZ.mul(0.5)).mul(0.5)).mul(2.0)); // bit1
+    const uHovered = step(0.5, fract(floor(stateZ.mul(0.25)).mul(0.5)).mul(2.0)); // bit2
+    const uSelected = step(0.5, fract(floor(stateZ.mul(0.125)).mul(0.5)).mul(2.0)); // bit3
+    // 5-5-5 unpack of the fallback colour (only feeds the *0.36 magma tint, sub-perceptual).
+    const fw = aCore.w;
+    const fbR = floor(fw.div(1024.0)).div(31.0);
+    const fbG = floor(fw.div(32.0)).sub(floor(fw.div(1024.0)).mul(32.0)).div(31.0);
+    const fbB = fw.sub(floor(fw.div(32.0)).mul(32.0)).div(31.0);
+    const fallbackColor = vec3(fbR, fbG, fbB);
+
+    // ── Vertex: wobble along the normal (LOCAL displacement → instancing-safe) ──
+    const vertexSpeed = mix(0.22, 1.25, oneMinus(uLocked));
+    const vPhase = uTime.mul(vertexSpeed).add(seed);
+    const waveA = sin(vPhase.add(positionLocal.y.mul(7.0)).add(positionLocal.x.mul(5.0)));
+    const waveB = cos(vPhase.mul(0.8).add(positionLocal.z.mul(6.0)).sub(positionLocal.y.mul(4.0)));
+    const wobble = waveA.add(waveB.mul(0.65)).mul(uWobbleStrength);
+    const positionNode = positionLocal.add(normalLocal.mul(wobble));
+
+    const vViewNormal = normalView;
+
+    const colorNode = Fn(() => {
+        const baseUv = uv();
+        const fragSpeed = mix(0.28, 1.25, oneMinus(uLocked));
+        const t = uTime.mul(fragSpeed).add(seed);
+
+        const centered = baseUv.sub(0.5);
+        const radius = length(centered);
+        const flow = vec2(
+            sin(baseUv.y.add(t.mul(0.42)).mul(10.0)).add(cos(baseUv.y.mul(1.7).sub(t.mul(0.31)).mul(5.0))),
+            cos(baseUv.x.sub(t.mul(0.37)).mul(10.0)).add(sin(baseUv.x.mul(1.4).add(t.mul(0.33)).mul(5.0))),
+        );
+        const swirlEnvelope = smoothstep(0.75, 0.0, radius);
+        const swirlDir = vec2(centered.y.negate(), centered.x);
+        const swirledUv = baseUv
+            .add(flow.mul(uFlowStrength.mul(0.010)))
+            .add(swirlDir.mul(sin(t.mul(1.2).add(radius.mul(11.0))).mul(uFlowStrength).mul(0.05).mul(swirlEnvelope)));
+        const clampedUv = clamp(swirledUv, vec2(0.01), vec2(0.99));
+
+        // Layer-indexed array sample (LEVER 1 core change). .depth(int) → WGSL
+        // textureSample(tex, sampler, uv, layer); layerF.toInt() is the 0-based layer.
+        const sampled = texture(arrayTexture, clampedUv).depth(layerF.toInt()).rgb;
+        const fallbackMagma = mix(
+            fallbackColor.mul(0.36),
+            vec3(0.92, 0.24, 0.045),
+            smoothstep(
+                0.24,
+                0.86,
+                snoise3(vec3(baseUv.mul(3.4), t.mul(0.12)).add(seed)).mul(0.5).add(0.5),
+            ).mul(0.58),
+        );
+        const color = mix(fallbackMagma, sampled, step(0.5, useTexture)).toVar();
+
+        const luma = dot(color, vec3(0.299, 0.587, 0.114));
+        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.45))));
+        color.mulAssign(mix(0.45, 1.0, oneMinus(uLocked)));
+        color.addAssign(uCompleted.mul(0.15));
+        const rim = pow(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 2.2);
+        color.addAssign(rim.mul(0.08));
+        color.mulAssign(uHovered.mul(0.10).add(uSelected.mul(0.06)).add(1.0));
+        return color;
+    })();
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = positionNode;
+    material.colorNode = colorNode;
+    material.side = THREE.FrontSide;
+    material.transparent = false;
+    material.toneMapped = true;
+    return { material, uniforms: { uTime, uFlowStrength, uWobbleStrength } };
+}
+
 // ── Standalone pilot assembler ───────────────────────────────────────────────────
 
 /**
