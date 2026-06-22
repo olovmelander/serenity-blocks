@@ -13,86 +13,12 @@ export const CH3_QUATERNIUS_ASSET_CONTRACT = Object.freeze({
     runtimeUse: 'Chapter 3 Surface World foreground nature, forest clusters, shoreline rocks, and birds',
 });
 
-const ASSET_MODULES = typeof import.meta.glob === 'function'
-    ? import.meta.glob('../../assets/chapter-03/quaternius/*.glb', {
-        eager: true,
-        query: '?url',
-        import: 'default',
-    })
-    : {
-        '../../assets/chapter-03/quaternius/tree-hero-quaternius-qztx-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/tree-hero-quaternius-qztx-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/tree-cluster-quaternius-juzo-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/tree-cluster-quaternius-juzo-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pine-cluster-quaternius-oytd-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pine-cluster-quaternius-oytd-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pine-quaternius-igsu-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pine-quaternius-igsu-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pine-quaternius-79gm-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pine-quaternius-79gm-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pine-quaternius-699s-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pine-quaternius-699s-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/tree-quaternius-t9kb-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/tree-quaternius-t9kb-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/twisted-tree-quaternius-7pdb-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/twisted-tree-quaternius-7pdb-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/twisted-tree-quaternius-edsp-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/twisted-tree-quaternius-edsp-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/twisted-tree-quaternius-9awl-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/twisted-tree-quaternius-9awl-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/bush-flowers-quaternius-u1ym-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/bush-flowers-quaternius-u1ym-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/flower-group-quaternius-hfpz-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/flower-group-quaternius-hfpz-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/fern-quaternius-jqca-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/fern-quaternius-jqca-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/clover-quaternius-iq9n-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/clover-quaternius-iq9n-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/rock-medium-quaternius-kzde-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/rock-medium-quaternius-kzde-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pebble-round-quaternius-kytj-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pebble-round-quaternius-kytj-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/bird-jay-quaternius-gyyc-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/bird-jay-quaternius-gyyc-cc0.glb',
-            import.meta.url,
-        ).href,
-        '../../assets/chapter-03/quaternius/pigeon-animated-quaternius-9ngl-cc0.glb': new URL(
-            '../../assets/chapter-03/quaternius/pigeon-animated-quaternius-9ngl-cc0.glb',
-            import.meta.url,
-        ).href,
-    };
+// Quaternius GLB binaries were DELETED 2026-06-22 (Chapter 3 is being redone with new assets).
+// The eager import.meta.glob that emitted ~25MB of GLBs into the Vite bundle is removed; the
+// METADATA_BY_FILE manifest below is kept as the CC0 reference catalogue for the redo. Asset
+// records are now driven by that metadata and carry no bundled url (nothing is fetched at runtime;
+// the GLB loader path was already disabled 2026-06-18).
+const ASSET_MODULES = {};
 
 const METADATA_BY_FILE = Object.freeze({
     'tree-hero-quaternius-qztx-cc0.glb': {
@@ -326,7 +252,7 @@ function makeAssetRecord(key) {
         ...metadata,
         fileName,
         id: metadata.id || fileName.replace(/\.glb$/i, ''),
-        url: ASSET_MODULES[key],
+        url: ASSET_MODULES[key] || null, // binaries deleted 2026-06-22; manifest-only record for the redo
         assetVersion: CH3_QUATERNIUS_ASSET_VERSION,
         license: CH3_QUATERNIUS_ASSET_CONTRACT.license,
         licenseCode: CH3_QUATERNIUS_ASSET_CONTRACT.licenseCode,
@@ -337,7 +263,10 @@ function makeAssetRecord(key) {
 }
 
 export function getChapter3QuaterniusAssetRecords(filter = {}) {
-    const records = Object.keys(ASSET_MODULES)
+    // Driven by METADATA_BY_FILE (the kept CC0 reference manifest), not by bundled binaries:
+    // the GLBs were deleted 2026-06-22, so records describe the catalogue (id/role/license/specs)
+    // for the Ch3 redo but carry url:null. Nothing fetches them (the GLB loader is disabled).
+    const records = Object.keys(METADATA_BY_FILE)
         .sort()
         .map(makeAssetRecord);
 

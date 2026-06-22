@@ -27,11 +27,19 @@ import {
     vec3,
 } from 'three/tsl';
 import { wrappedDiffuse, fresnelRim } from '../sky-children-lighting.js';
+import { detailLumaTriplanar } from './detail-texture.js';
 
 const ROCK_SHADOW = vec3(0.275, 0.259, 0.369); // cool violet rock
 const ROCK_LIT = vec3(0.56, 0.525, 0.659); // pale lit rock
 
-export function createFarRangeMaterial(u) {
+/**
+ * @param {object} u          shared uniform block
+ * @param {THREE.Texture|null} detailTex  CC0 rock luminance map (optional). When
+ *   present, a faint triplanar "tooth" breaks up the flat ROCK_SHADOW→ROCK_LIT band
+ *   on the centerpiece massif — laundered through the existing haze so no photoreal
+ *   frequency ever surfaces. Null on low tiers → pure procedural silhouette.
+ */
+export function createFarRangeMaterial(u, detailTex = null) {
     const material = new MeshBasicNodeMaterial({ fog: false });
 
     const shade = () => {
@@ -41,7 +49,12 @@ export function createFarRangeMaterial(u) {
         const viewDir = normalize(u.uCameraPos.sub(worldP)).toVar();
 
         const diffuse = wrappedDiffuse(N, sunDir, 0.7);
-        const rockBase = mix(ROCK_SHADOW, ROCK_LIT, diffuse);
+        const rockBase = mix(ROCK_SHADOW, ROCK_LIT, diffuse).toVar();
+        if (detailTex) {
+            // Luminance-only, low-contrast. Multiply BEFORE rim + fog so the haze
+            // dissolves most of it (Sky-COTL distant peak, faint painterly grain).
+            rockBase.mulAssign(detailLumaTriplanar(detailTex, worldP, N, 0.0045, 0.84, 1.14));
+        }
         // Warm sun-rim on ridge edges (the only crisp detail that survives the haze).
         const rim = u.uRimColor.mul(fresnelRim(N, viewDir, 2.2, 0.7)).toVar();
         const rock = rockBase.add(rim);

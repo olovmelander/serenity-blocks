@@ -57,6 +57,11 @@ const _origin = new THREE.Vector3();
 // rotation.y = atan2(dirX, dirZ).)
 const MAG_NORTH = new THREE.Vector2(0.42, -0.91);            // NNE → toward the aurora
 const MAG_NORTH_HEADING = Math.atan2(MAG_NORTH.x, MAG_NORTH.y);
+// Paw-trail gait (fractions of the fox's size): stride = spacing between footfall events;
+// FWD = how far the front/back feet sit from body centre; STANCE = L/R foot spread.
+const PAW_STRIDE = 0.5;
+const PAW_STANCE = 0.09;
+const PAW_FWD = 0.16;
 function approachAngle(a, b, rate, dt) {
     let d = b - a;
     while (d > Math.PI) d -= Math.PI * 2;
@@ -72,6 +77,13 @@ export function createArcticFox(scene, {
     count = 3,
     scale = 190,
     footSink = 4,          // how far the paws settle into the snow/ice
+    // Foxes shrink with depth so the ones across the lake (~1km away, by the treeline +
+    // peaks) read as tiny specks — beyond what perspective alone gives — selling the
+    // vast distance. z ≥ nearZ → full size, z ≤ farZ → farScale, smooth between.
+    nearZ = 250,
+    farZ = -1500,
+    farScale = 0.5,
+    onFootstep = null, // (footX, footZ, headingUx, headingUz, modelScale) → paw-trail stamp
 } = {}) {
     const group = new THREE.Group();
     group.name = 'winter-arctic-fox';
@@ -252,7 +264,7 @@ export function createArcticFox(scene, {
         for (const name in src.clips) actions[name] = mixer.clipAction(src.clips[name]);
 
         const fx = {
-            root, mixer, actions,
+            root, model, mixer, actions,
             path: makePath(i),
             // SLOW travel so the vast scene (~1km to the mountains) takes a long
             // journey to cross — not seconds. The trot's leg cycle is matched to this
@@ -268,6 +280,7 @@ export function createArcticFox(scene, {
             greetMid: new THREE.Vector3(), greetRadius: 0, greetAng0: 0,
             basePos: new THREE.Vector3(),
             prevX: 0, prevZ: 0, hasPrev: false,
+            trailDist: 0, footSide: 1, // paw-trail gait accumulator + L/R alternation
             current: null,
         };
         foxes.push(fx);
@@ -315,6 +328,29 @@ export function createArcticFox(scene, {
                     const groundSpeed = Math.sqrt(mx * mx + mz * mz) / dt;
                     const strideRate = fx.modelScale * 0.66;   // units/s the clip strides at timeScale 1
                     fx.current.setEffectiveTimeScale(THREE.MathUtils.clamp(groundSpeed / strideRate, 0.25, 2.2));
+                }
+                // Paw-trail: as the fox trots, drop SMALL individual prints in a 4-foot
+                // DIAGONAL gait — front foot one side + back foot the other, alternating each
+                // stride — so you see four separate paw marks, not one big paw.
+                if (onFootstep && fx.hasPrev) {
+                    const mvx = p.x - fx.prevX;
+                    const mvz = p.z - fx.prevZ;
+                    fx.trailDist += Math.sqrt(mvx * mvx + mvz * mvz);
+                    if (fx.trailDist >= fx.modelScale * PAW_STRIDE) {
+                        fx.trailDist = 0;
+                        const hl = Math.sqrt(hx * hx + hz * hz) || 1;
+                        const ux = hx / hl;
+                        const uz = hz / hl; // forward unit
+                        const rx = uz;
+                        const rz = -ux; // right unit
+                        const ms = fx.modelScale;
+                        const fwd = ms * PAW_FWD;
+                        const st = ms * PAW_STANCE * fx.footSide;
+                        // front foot (ahead, one side) + back foot (behind, other side)
+                        onFootstep(p.x + ux * fwd + rx * st, p.z + uz * fwd + rz * st, ux, uz, ms);
+                        onFootstep(p.x - ux * fwd - rx * st, p.z - uz * fwd - rz * st, ux, uz, ms);
+                        fx.footSide = -fx.footSide;
+                    }
                 }
                 fx.prevX = p.x; fx.prevZ = p.z; fx.hasPrev = true;
                 if (fx.stateTime >= fx.trotDur) startBehavior(fx);
@@ -367,6 +403,14 @@ export function createArcticFox(scene, {
                 }
                 if (fx.stateTime >= fx.stateDur) advanceState(fx);
             }
+        }
+
+        // Scale-perspective: shrink each fox by its current depth so the ones across the
+        // lake (toward the ~1km treeline + peaks) read as tiny specks — beyond what
+        // perspective alone gives.
+        for (const fx of foxes) {
+            const k = THREE.MathUtils.smoothstep(fx.root.position.z, farZ, nearZ);
+            fx.model.scale.setScalar(fx.modelScale * (farScale + (1 - farScale) * k));
         }
     }
 

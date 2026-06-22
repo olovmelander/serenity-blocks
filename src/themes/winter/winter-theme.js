@@ -3724,6 +3724,8 @@ export default class WinterTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, (d) => this.handlePieceLock(d)),
             eventBus.on(EVENTS.HARD_DROP, () => this.stormDirector.onHardDrop()),
             eventBus.on(EVENTS.LEVEL_UP, () => this.stormDirector.onLevelUp()),
+            eventBus.on(EVENTS.TSPIN, (d) => this.stormDirector.onTSpin((d?.detail || d || {}).lineCount ?? 0)),
+            eventBus.on(EVENTS.PERFECT_CLEAR, () => this.stormDirector.onPerfectClear()),
         );
 
         // Pointer tracking for parallax camera
@@ -3920,6 +3922,51 @@ export default class WinterTheme extends BaseTheme {
         );
     }
 
+    // Accessibility gate for the "Living Blizzard" reactivity pushed to the wonderland
+    // effect each frame. Mirrors summer-theme's `backgroundComboEffects` + reduced-motion
+    // convention:
+    //   • backgroundComboEffects OFF → hold the calm ambient baseline (idle floor, no
+    //     transients) so combos never escalate the scene, but the authored snow stays.
+    //   • prefers-reduced-motion → temper the escalation and force the motion/strobe
+    //     transients (kick/trauma/whiteout) to zero. The effect ALSO zeroes the camera
+    //     shake + whiteout flash under reduced-motion; this is defense-in-depth + also
+    //     softens the sideways-snow surge.
+    _stormStateForA11y() {
+        const state = this.stormDirector.getState();
+        if (typeof window === 'undefined') return state;
+        const floor = this.stormDirector.idleFloor;
+        if (window.settings?.backgroundComboEffects === false) {
+            return {
+                intensity: floor,
+                act: state.act,
+                actProgress: 0,
+                gust: 0,
+                gustDir: state.gustDir,
+                whiteout: 0,
+                flare: 0,
+                kick: 0,
+                trauma: 0,
+                vortex: 0,
+                accent: state.accent,
+                accentHex: state.accentHex,
+            };
+        }
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+            const mult = 0.45;
+            return {
+                ...state,
+                intensity: floor + (state.intensity - floor) * mult,
+                gust: state.gust * mult,
+                whiteout: 0,
+                flare: state.flare * mult,
+                kick: 0,
+                trauma: 0,
+                vortex: state.vortex * mult,
+            };
+        }
+        return state;
+    }
+
     startAnimation() {
         const animate = () => {
             if (!this.isActive) return;
@@ -3929,6 +3976,13 @@ export default class WinterTheme extends BaseTheme {
             // Wonderland path: drive ONLY the composed scene + post. Skips the dozen
             // legacy per-frame update loops (the old CPU-bound systems) entirely.
             if (this.useWonderland && this.wonderland) {
+                // Combo "Living Blizzard": ease the storm + push its state into the live
+                // scene each frame BEFORE updating/rendering it. This branch early-returns,
+                // so the legacy `stormDirector.update` further down NEVER runs on the
+                // WebGPU path — it must happen here. The effect's setReactive maps
+                // intensity S → snow/aurora escalation (docs/WINTER_BLIZZARD_COMBO_PLAN.md).
+                this.stormDirector.update(delta);
+                this.wonderland.setReactive?.(this._stormStateForA11y());
                 this.wonderland.camera?.(this.time, this.camera);
                 this.wonderland.update?.(this.time, delta);
                 if (this.post && this.qualityPreset.enablePostProcessing && !this.disablePost) {

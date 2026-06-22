@@ -106,7 +106,7 @@ export function createSkyGradientTSL(uTime, uEnergy) {
         azimuth.mul(1.6).add(uTimeNode.mul(0.02)),
         dir.y.mul(2.2),
     );
-    const smog = fbm2(smogUV).mul(smoothstep(0.7, 0.1, h));
+    const smog = fbm2(smogUV, 3).mul(smoothstep(0.7, 0.1, h)); // 5->3 oct (perf): full-screen sky, masked low
     const smogTint = vec3(0.06, 0.05, 0.09).mul(smog);
 
     // DISTANT CITY-LIGHT BOKEH: a DENSE field of soft neon pinpoints filling the lower
@@ -904,7 +904,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
     // Puddle ripple distortion + along-length scroll (the road slides under the camera).
     // Octave count trimmed by one (5→4) as a per-fragment cost reduction; the puddle
     // ripple is a subtle distortion driver, so the finest octave is not load-bearing.
-    const ripple = fbm2(vec2(p.x.mul(7.0), p.y.mul(3.0).add(uTimeNode.mul(0.22))), 4);
+    const ripple = fbm2(vec2(p.x.mul(7.0), p.y.mul(3.0).add(uTimeNode.mul(0.22))), 3); // 4->3 oct (perf): 280x1400 wet-street floor, finest octave not load-bearing
 
     // NEON LANE SMEARS aligned to the tower banks: vertical bright bands at the lateral X
     // of the inner/mid/outer walls so each smear reads as a tower's reflection on the wet
@@ -970,7 +970,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
 function createHazeMaterial(uTime, uEnergy) {
     const vUv = uv();
     const c = vUv.sub(0.5);
-    const fog = fbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)));
+    const fog = fbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)), 3); // 5->3 oct (perf): 9 radial-masked ground-haze pools
     const radial = smoothstep(0.55, 0.0, length(c));
     const color = mix(vec3(0.0, 0.34, 0.48), vec3(0.48, 0.08, 0.34), vUv.x);
     const a = radial.mul(fog.mul(0.14).add(0.12)).mul(uEnergy.mul(0.34).add(0.48));
@@ -1089,7 +1089,7 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     // Soft radial-ish falloff that reaches 0 well before the quad edge (feathered).
     const radial = smoothstep(0.5, 0.06, length(vec2(c.x.mul(1.3), c.y)));
     // Rolling fog texture so the curtain breathes rather than reading as a flat card.
-    const fog = fbm2(vec2(vUv.x.mul(3.0).add(aSeed), vUv.y.mul(2.0).add(uTimeNode.mul(0.08))));
+    const fog = fbm2(vec2(vUv.x.mul(3.0).add(aSeed), vUv.y.mul(2.0).add(uTimeNode.mul(0.08))), 3); // 5->3 oct (perf): 7 large additive haze curtains
     // Cyan low / magenta high vertical gradient — the chapter's two-tone air.
     const hazeColor = mix(vec3(0.0, 0.34, 0.52), vec3(0.50, 0.06, 0.36), vUv.y);
     const alpha = clamp(

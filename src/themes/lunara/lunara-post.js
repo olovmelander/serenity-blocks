@@ -107,12 +107,14 @@ export class LunaraPost {
         this.camera = camera;
         this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
         this.useMRT = params.useMRT === true;
+        this.useDualBloom = params.dualBloom === true;
         this.resolutionScale = params.resolutionScale ?? 1.0;
         this.bloomDownsample = params.bloomDownsample ?? 0.85;
         this.size = { width: 0, height: 0 };
 
         this.scenePass = null;
         this.bloomNode = null;
+        this.bloomNodeTight = null;
         this.postProcessing = null;
         this.composer = null;
         this.bloomPass = null;
@@ -233,7 +235,13 @@ export class LunaraPost {
         this.composer.addPass(this.gradePass);
     }
 
-    update({ time, bloomStrength, exposure } = {}) {
+    update({
+        time,
+        bloomStrength,
+        exposure,
+        vignetteDarkness,
+        tintStrength,
+    } = {}) {
         if (time !== undefined) {
             if (this.uTime) this.uTime.value = time;
             if (this.gradePass?.uniforms?.uTime) this.gradePass.uniforms.uTime.value = time;
@@ -246,6 +254,18 @@ export class LunaraPost {
         if (exposure !== undefined) {
             if (this.uExposure) this.uExposure.value = exposure;
             if (this.gradePass?.uniforms?.uExposure) this.gradePass.uniforms.uExposure.value = exposure;
+        }
+        if (vignetteDarkness !== undefined) {
+            if (this.uVignetteDarkness) this.uVignetteDarkness.value = vignetteDarkness;
+            if (this.gradePass?.uniforms?.uVignetteDarkness) {
+                this.gradePass.uniforms.uVignetteDarkness.value = vignetteDarkness;
+            }
+        }
+        if (tintStrength !== undefined) {
+            if (this.uTintStrength) this.uTintStrength.value = tintStrength;
+            if (this.gradePass?.uniforms?.uTintStrength) {
+                this.gradePass.uniforms.uTintStrength.value = tintStrength;
+            }
         }
     }
 

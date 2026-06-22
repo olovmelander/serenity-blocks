@@ -42,6 +42,9 @@ export function createSnowRenderer(sim, opts = {}) {
     const uFogNear = uniform(opts.fogNear ?? 1400);
     const uFogFar = uniform(opts.fogFar ?? 3000);
     const uFogStr = uniform(opts.fogStrength ?? 0);
+    // Wind streak: stretch the billboard along its screen-space velocity (0 = round
+    // flake; >0 = motion streak). Ramped with storm intensity for the combo blizzard.
+    const uStretch = uniform(opts.stretch ?? 0);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -63,11 +66,23 @@ export function createSnowRenderer(sim, opts = {}) {
         const c = cos(angle);
         const s = sin(angle);
         const q = positionLocal.xy.toVar();
-        const rx = q.x.mul(c).sub(q.y.mul(s));
-        const ry = q.x.mul(s).add(q.y.mul(c));
+        const rx = q.x.mul(c).sub(q.y.mul(s)).toVar();
+        const ry = q.x.mul(s).add(q.y.mul(c)).toVar();
+
+        // Wind streaks: stretch the quad along the flake's screen-space velocity so fast
+        // driving snow reads as motion streaks. uStretch=0 → identity (round flake).
+        const vdata = velocities.element(instanceIndex);
+        const velView = cameraViewMatrix.mul(vec4(vdata.xyz, 0.0)).xy.toVar();
+        const dir = velView.div(length(velView).add(0.0001)).toVar();
+        const along = rx.mul(dir.x).add(ry.mul(dir.y));
+        const perp = ry.mul(dir.x).sub(rx.mul(dir.y));
+        const alongS = along.mul(float(1.0).add(uStretch));
+        const perpS = perp.mul(float(1.0).sub(uStretch.mul(0.35)));
+        const ox = alongS.mul(dir.x).sub(perpS.mul(dir.y));
+        const oy = alongS.mul(dir.y).add(perpS.mul(dir.x));
 
         const viewParticle = cameraViewMatrix.mul(vec4(center, 1.0));
-        const viewPos = viewParticle.add(vec4(rx.mul(size), ry.mul(size), 0.0, 0.0));
+        const viewPos = viewParticle.add(vec4(ox.mul(size), oy.mul(size), 0.0, 0.0));
         return cameraProjectionMatrix.mul(viewPos);
     })();
 
@@ -145,7 +160,7 @@ export function createSnowRenderer(sim, opts = {}) {
         mesh,
         material,
         uniforms: {
-            uTime, uColor, uSize, uOpacity, uGlint, uFogStr,
+            uTime, uColor, uSize, uOpacity, uGlint, uFogStr, uStretch,
         },
         update(time) {
             uTime.value = time;

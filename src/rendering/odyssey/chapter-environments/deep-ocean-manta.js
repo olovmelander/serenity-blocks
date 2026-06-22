@@ -188,17 +188,15 @@ export async function loadDeepOceanMantas(group, uniforms, corridor) {
     group.userData.mantaFlights = group.userData.mantaFlights || [];
     group.userData.mantaMixers = group.userData.mantaMixers || [];
 
-    // Load Manta
+    // Load manta + whale IN PARALLEL so the two ~4.5MB fetch+decode+upload operations
+    // overlap instead of running serially (await manta THEN await whale halved the throughput
+    // of the chapter's heaviest async work). Each seats independently — order is irrelevant.
     const mantaRecord = getChapter2CreatureAssetById('manta-glide');
-    if (mantaRecord?.url) {
-        await loadCreature(group, uniforms, corridor, mantaRecord, 'manta');
-    }
-
-    // Load Whale
     const whaleRecord = getChapter2CreatureAssetById('whale-glide');
-    if (whaleRecord?.url) {
-        await loadCreature(group, uniforms, corridor, whaleRecord, 'whale');
-    }
+    await Promise.all([
+        mantaRecord?.url ? loadCreature(group, uniforms, corridor, mantaRecord, 'manta') : null,
+        whaleRecord?.url ? loadCreature(group, uniforms, corridor, whaleRecord, 'whale') : null,
+    ]);
 }
 
 /**

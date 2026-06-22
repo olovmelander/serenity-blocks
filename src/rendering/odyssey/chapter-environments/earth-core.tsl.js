@@ -85,15 +85,21 @@ function viewFresnel(k = 3.0, nView = normalView) {
  * f += 0.5*snoise(p); p*=2.01; f += 0.25*snoise(p); p*=2.02; f += 0.125*snoise(p);
  * p*=2.03; f += 0.0625*snoise(p).
  */
-function fbm(pInput) {
+function fbm(pInput, octaves = 4) {
+    // octaves is a JS build-time count (default 4 = unchanged for the rock/column materials).
+    // The lava lake + magma canopy pass 3: their 4th octave (amp 0.0625) is sub-pixel detail
+    // eaten by haze/ACES (lake, seen at grazing distance) or the density smoothstep (canopy).
     const p0 = vec3(pInput);
     const p1 = p0.mul(2.01);
     const p2 = p1.mul(2.02);
-    const p3 = p2.mul(2.03);
-    return snoise3(p0).mul(0.5)
+    let f = snoise3(p0).mul(0.5)
         .add(snoise3(p1).mul(0.25))
-        .add(snoise3(p2).mul(0.125))
-        .add(snoise3(p3).mul(0.0625));
+        .add(snoise3(p2).mul(0.125));
+    if (octaves >= 4) {
+        const p3 = p2.mul(2.03);
+        f = f.add(snoise3(p3).mul(0.0625));
+    }
+    return f;
 }
 
 // ── Shared molten-rock field (adapts pyrestorm's lava-river MOUNTAIN shader) ──────
@@ -246,17 +252,19 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // DOMAIN-WARP the lookup (adapt pyrestorm's flow technique) so the molten reads as
     // meandering RIVERS of glowing lava, not a static amber temperature gradient.
     const ftime = uTime.mul(0.15);
+    // Lava lake fbm dropped 4->3 octaves (perf): the largest co-visible surface in the chapter
+    // (360x360 opaque plane the camera looks ACROSS); the finest octave is lost in haze + ACES.
     const warp = vec3(
-        fbm(vPos.mul(0.035).add(vec3(ftime.mul(0.4), 0.0, 0.0))),
+        fbm(vPos.mul(0.035).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3),
         0.0,
-        fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0))),
+        fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0)), 3),
     ).mul(6.0);
     const wPos = vPos.add(warp);
-    const flow1 = fbm(wPos.mul(0.06).add(vec3(ftime, 0.0, ftime.mul(0.5))));
-    const flow2 = fbm(wPos.mul(0.1).add(vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0)));
-    const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))));
+    const flow1 = fbm(wPos.mul(0.06).add(vec3(ftime, 0.0, ftime.mul(0.5))), 3);
+    const flow2 = fbm(wPos.mul(0.1).add(vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0)), 3);
+    const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))), 3);
     // High-freq crust map: dark charred islands floating in the molten (pyrestorm).
-    const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0))).add(0.5);
+    const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3).add(0.5);
     const crustFactor = smoothstep(0.46, 0.86, crustMap);
 
     // Lower base + wider contrast so most of the lake falls into the dark charred
@@ -524,7 +532,8 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
         fbm3(dir.mul(1.3).add(vec3(0.0, 9.0, swirlTime.mul(0.6))), 3),
     ).mul(0.55);
     const conv = clamp(
-        ridged3(dir.mul(2.4).add(warpField).add(vec3(0.0, swirlTime.mul(0.5), 0.0)), 4),
+        // ridged3 4->3 octaves (perf): full-screen backstop dome, capped below every set piece.
+        ridged3(dir.mul(2.4).add(warpField).add(vec3(0.0, swirlTime.mul(0.5), 0.0)), 3),
         0.0,
         1.0,
     );
@@ -573,9 +582,11 @@ export function createMagmaCloudCanopyTSL(uTime, uPulseIntensity = uniform(0), o
     const cloudPos = dir.mul(3.0);
     const motion = vec3(uTime.mul(0.018), uTime.mul(0.012), uTime.mul(0.009));
 
-    const cloud1 = fbm(cloudPos.add(motion));
-    const cloud2 = fbm(cloudPos.mul(2.05).sub(motion.mul(0.62)));
-    const cloud3 = fbm(cloudPos.mul(0.55).add(motion.mul(0.38)));
+    // Canopy fbm dropped 4->3 octaves (perf): a depthTest:false full-overdraw sky deck behind
+    // everything; the density smoothstep below clips the finest octave to nothing.
+    const cloud1 = fbm(cloudPos.add(motion), 3);
+    const cloud2 = fbm(cloudPos.mul(2.05).sub(motion.mul(0.62)), 3);
+    const cloud3 = fbm(cloudPos.mul(0.55).add(motion.mul(0.38)), 3);
     const densityRaw = cloud1.mul(0.52).add(cloud2.mul(0.32)).add(cloud3.mul(0.24));
 
     // Keep the deck mostly above/around the corridor. The very top is thinner, so the
@@ -584,7 +595,7 @@ export function createMagmaCloudCanopyTSL(uTime, uPulseIntensity = uniform(0), o
         .mul(oneMinus(smoothstep(0.88, 1.0, dir.y).mul(0.32)));
     const density = smoothstep(-0.16, 0.48, densityRaw).mul(ceilingMask);
 
-    const glowNoise = fbm(cloudPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)))
+    const glowNoise = fbm(cloudPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)), 3)
         .add(0.5);
     const internalGlow = smoothstep(0.42, 0.86, glowNoise);
     const underLight = oneMinus(smoothstep(0.12, 0.78, dir.y)).mul(density);
@@ -1035,8 +1046,15 @@ export function createObsidianColumnTSL(
     radius = 6,
     height = 70,
     uBakedBounce = uniform(1),
+    sharedMaterial = null,
 ) {
-    const { material } = createMoltenPocketMaterialTSL(uTime, uPulseIntensity, uBakedBounce, true);
+    // The column graph is byte-identical for every column/slab (isColumn=true; only geometry
+    // + transform vary), so callers can pass ONE pre-built material to share across all of
+    // them and collapse N pipeline compiles of this heavy graph to 1 (cold-start variant cut,
+    // zero visual change). Falls back to building its own for standalone callers.
+    const { material } = sharedMaterial
+        ? { material: sharedMaterial }
+        : createMoltenPocketMaterialTSL(uTime, uPulseIntensity, uBakedBounce, true);
     const geometry = new THREE.CylinderGeometry(radius * 0.72, radius, height, 18, 5);
     const pos = geometry.attributes.position;
     for (let i = 0; i < pos.count; i += 1) {

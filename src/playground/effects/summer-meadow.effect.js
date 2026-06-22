@@ -38,6 +38,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import midsummerPoleUrl from '../../themes/summer/assets/midsummer_pole.glb?url';
 import cottageUrl from '../../themes/summer/assets/swedish_cottage.glb?url';
 import dockBoatUrl from '../../themes/summer/assets/dock_boat.glb?url';
@@ -113,20 +114,30 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
     const uSunRight = uniform(vec3(sunRight.x, sunRight.y, sunRight.z));
     const uSunUp = uniform(vec3(sunUp.x, sunUp.y, sunUp.z));
 
-    // Lights — affect ONLY the near GLB trees (MeshStandard + flatShading + vertexColors);
-    // the rest of the scene (procedural far trees, props, grass) is unlit MeshBasic.
-    // Primary directional sun tinted Golden Yellow (#FCD581) for golden-hour warmth.
-    const sunLight = new T.DirectionalLight(0xfcd581, 3.0);
+    // A faint warm key + sky fill for the few PBR surfaces (glossy glass); the unlit
+    // stylized scene ignores these.
+    const sunLight = new T.DirectionalLight(0xfcd581, 1.4);
     sunLight.position.set(sunDir.x * 120, sunDir.y * 120 + 60, sunDir.z * 120);
     add(sunLight);
-    // Hemisphere: Soft Sky Blue (#85B9D1) from above, Midtone Canopy (#4A7C59) bounce below.
-    add(new T.HemisphereLight(0x85b9d1, 0x4a7c59, 1.2));
-    // Ambient tinted Sunset Peach (#F8A898) to unify the warm atmosphere.
-    add(new T.AmbientLight(0xf8a898, 0.5));
-    // Gentle camera-side fill lifts the (backlit) front of the near GLB trees.
-    const fillLight = new T.DirectionalLight(0xfff4ea, 0.55);
-    fillLight.position.set(8, 48, 90);
-    add(fillLight);
+    add(new T.HemisphereLight(0x85b9d1, 0x4a7c59, 0.35));
+
+    // ── LIGHTER-TOUCH HYBRID — golden-hour PolyHaven HDRI as an ENVIRONMENT MAP only ─
+    // Tone mapping stays OFF so the vibrant stylized meadow keeps its pop (global ACES
+    // muted it). The HDRI is used purely for glossy REFLECTIONS — the cottage windows
+    // mirror the warm sky. No scene-wide PBR re-grade.
+    renderer.toneMapping = T.NoToneMapping;
+    new RGBELoader().load('/hdri/belfast_sunset_puresky_2k.hdr', (hdr) => {
+        hdr.mapping = T.EquirectangularReflectionMapping;
+        try {
+            const pmrem = new T.PMREMGenerator(renderer);
+            scene.environment = pmrem.fromEquirectangular(hdr).texture;
+            pmrem.dispose();
+        } catch (e) {
+            scene.environment = hdr; // fallback: equirect environment directly
+            console.warn('[Summer] PMREM failed, using equirect env', e);
+        }
+        console.log('[Summer] HDRI environment loaded.');
+    }, undefined, (e) => console.warn('[Summer] HDRI load failed', e));
 
     // ── shared shading helpers (manual, unlit — full art control) ───────────────
     // Aerial-perspective fog: distant surfaces melt into the warm horizon haze.
@@ -598,22 +609,24 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         })();
         loader.load(cottageUrl, (gltf) => {
             const model = gltf.scene;
-            // Render the cottage UNLIT so the wall reads as EXACT vivid #FF2C2C and the
-            // terracotta roof shows true — MeshStandard lit by the warm scene lights
-            // desaturates the red toward washed-out pink. Plank/tile relief comes from
-            // the baseColor textures, so flat-unlit still reads dimensional and matches
-            // the scene's flat-faceted aesthetic.
+            // Stylized UNLIT cottage (vibrant Falu walls + Firewatch roof) — the ONE
+            // realistic touch is the GLASS: a glossy PBR window that mirrors the golden
+            // HDRI sky (the rest stays flat so the look + vibrancy are unchanged).
             model.traverse((o) => {
                 if (o.isMesh && o.material) {
                     const src = Array.isArray(o.material) ? o.material[0] : o.material;
                     const isWall = src.name && src.name.startsWith('Falu');
                     const isRoof = src.name && src.name.includes('Roof');
+                    const isGlass = src.name && src.name.includes('Glass');
+                    if (isGlass) {
+                        // Glossy PBR glass — reflects the warm sky via scene.environment.
+                        const g = track(new T.MeshStandardNodeMaterial());
+                        g.color = new T.Color(0x1f2c38); g.roughness = 0.06; g.metalness = 0.0;
+                        g.envMapIntensity = 2.4; g.side = T.DoubleSide;
+                        o.material = g; o.frustumCulled = false; return;
+                    }
                     if (isRoof) {
-                        // Firewatch-style roof: drop the busy baked pantile texture for a
-                        // clean FLAT-FACETED terracotta — each roof slope renders as one
-                        // solid tone (the sunlit slope lighter, the shaded slope darker),
-                        // with faint, perfectly regular world-aligned tile courses. Reads
-                        // bold + tidy at lake distance, matching the scene's low-poly look.
+                        // Firewatch flat-faceted terracotta (unlit) + faint tile courses.
                         const rmat = track(new T.MeshBasicNodeMaterial());
                         const rbase = cv(0xc0512e);
                         const tone = max(dot(faceN, uSunDir), float(0.0)).mul(0.42).add(0.66);
@@ -621,9 +634,7 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
                         const line = smoothstep(0.80, 0.98, course).mul(0.13);
                         rmat.colorNode = rbase.mul(tone).mul(float(1.0).sub(line));
                         rmat.side = T.DoubleSide;
-                        o.material = rmat;
-                        o.frustumCulled = false;
-                        return;
+                        o.material = rmat; o.frustumCulled = false; return;
                     }
                     const map = isWall ? faluTex : (src.map || null);
                     const basic = new T.MeshBasicMaterial({
@@ -709,26 +720,44 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         mist.position.set(0, 2.6, -126);
     }
 
-    // ═══ POLLEN / PETAL MOTES — drifting additive billboards (golden-hour shimmer) ═
+    // ═══ FIREFLIES & POLLEN — drifting golden-hour motes (additive billboards) ═══════
+    // Two kinds share one instanced field: gentle warm POLLEN dust that shimmers, and
+    // brighter yellow-green FIREFLIES that blink/twinkle independently. All drift on a
+    // slow multi-frequency current. Additive over the dark meadow → they glow; invisible
+    // against the bright sky (as real motes are).
     {
-        const MOTES = Math.max(120, parseInt(P.get('motes'), 10) || 440);
-        const moteGeo = track(new T.PlaneGeometry(0.13, 0.13)); // faces +Z ≈ camera
+        const MOTES = Math.max(200, parseInt(P.get('motes'), 10) || 720);
+        const moteGeo = track(new T.PlaneGeometry(0.17, 0.17)); // faces +Z ≈ camera
         const moteMat = track(new T.MeshBasicNodeMaterial());
         const fi = float(instanceIndex);
         const ph = fract(sin(fi.mul(91.17)).mul(7841.3));
         const ph2 = fract(sin(fi.mul(33.71)).mul(1287.7));
-        // Local floating bob (positionNode runs pre-instanceMatrix → translates the quad).
+        const kind = fract(sin(fi.mul(57.31)).mul(4517.1));
+        const isFly = smoothstep(0.60, 0.64, kind); // ~0 = pollen, ~1 = firefly (~36% are flies)
+
+        // Slow organic multi-frequency drift (positionNode runs pre-instanceMatrix).
         const t = uTime.add(ph.mul(6.283));
         const drift = vec3(
-            sin(t.mul(0.6)).mul(0.5),
-            sin(t.mul(0.45).add(ph2.mul(6.0))).mul(0.4).add(sin(uTime.mul(0.2)).mul(0.18)),
-            cos(t.mul(0.5)).mul(0.5),
+            sin(t.mul(0.5)).mul(0.6).add(sin(t.mul(0.21).add(ph2.mul(6.0))).mul(0.3)),
+            sin(t.mul(0.4).add(ph2.mul(6.0))).mul(0.35).add(sin(uTime.mul(0.15).add(ph.mul(3.0))).mul(0.25)),
+            cos(t.mul(0.45)).mul(0.6),
         );
         moteMat.positionNode = positionLocal.add(drift);
+
         const pr = uv().sub(0.5).mul(2.0);
-        const fall = pow(clamp(float(1.0).sub(length(pr)), 0.0, 1.0), float(2.0));
-        moteMat.colorNode = cv(0xfff0c0).mul(fall);
-        moteMat.opacityNode = fall.mul(float(0.22).add(uSparkle.mul(0.6)).add(uWarmth.mul(0.1)));
+        const fall = pow(clamp(float(1.0).sub(length(pr)), 0.0, 1.0), float(2.2)); // soft round glow
+        // Twinkle: fireflies pulse fast + sharp (blink); pollen shimmers slow + soft.
+        const twk = pow(
+            sin(uTime.mul(mix(float(1.1), float(3.0), isFly)).add(ph.mul(6.283))).mul(0.5).add(0.5),
+            mix(float(1.0), float(2.6), isFly),
+        );
+        const twinkle = mix(float(0.7).add(twk.mul(0.45)), float(0.1).add(twk.mul(1.0)), isFly);
+        // Colour: pollen warm cream, fireflies warm yellow-green; fireflies brighter.
+        const col = mix(cv(0xffe7ad), cv(0xd9ff86), isFly.mul(0.7));
+        const bright = mix(float(1.0), float(2.1), isFly);
+        moteMat.colorNode = col.mul(fall).mul(bright).mul(twinkle);
+        moteMat.opacityNode = fall.mul(twinkle).mul(float(0.42).add(uSparkle.mul(0.5)).add(uWarmth.mul(0.1)));
+        moteMat.emissiveNode = col.mul(fall).mul(twinkle).mul(isFly.mul(1.2).add(0.3)); // feeds bloom (flies glow most)
         moteMat.transparent = true;
         moteMat.depthWrite = false;
         moteMat.blending = T.AdditiveBlending;
@@ -740,11 +769,11 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const q = new T.Quaternion(); // identity → quads face the camera
         const s = new T.Vector3();
         for (let i = 0; i < MOTES; i++) {
-            const z = 10 - 46 * Math.random();
-            const x = (Math.random() * 2 - 1) * (14 + (10 - z) * 1.2);
-            const y = 0.4 + Math.random() * 5.5;
+            const z = 12 - 52 * Math.random();              // +12 (near) .. -40 (mid-lake air)
+            const x = (Math.random() * 2 - 1) * (16 + (12 - z) * 1.3);
+            const y = 0.3 + Math.random() * 6.5;
             pos.set(x, y, z);
-            const sc = 0.5 + Math.random() * 1.3;
+            const sc = 0.45 + Math.random() * 1.4;
             s.set(sc, sc, sc);
             m.compose(pos, q, s);
             motes.setMatrixAt(i, m);
@@ -752,6 +781,44 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         motes.instanceMatrix.needsUpdate = true;
         motes.frustumCulled = false;
         add(motes);
+    }
+
+    // ═══ GOD-RAYS — warm light shafts slanting from the low sun (additive billboards) ═
+    // Cheap volumetric look: a fan of soft additive quads facing the camera, slanted
+    // toward the sun and depth-TESTED so the foreground trees occlude them → rays read
+    // as filtering "through the trees". No post-process pass. Disable with ?godrays=0.
+    if (P.get('godrays') !== '0') {
+        const shaftMat = track(new T.MeshBasicNodeMaterial());
+        const su = uv();
+        const edge = pow(clamp(float(1.0).sub(su.x.sub(0.5).abs().mul(2.0)), 0.0, 1.0), float(1.7)); // soft sides
+        const vert = su.y.mul(smoothstep(1.0, 0.78, su.y)).add(0.04);                                  // bright top, soft tip
+        const flick = sin(positionWorld.x.mul(0.25).add(uTime.mul(0.5))).mul(0.14).add(0.86);           // gentle shimmer
+        const glow = edge.mul(vert).mul(flick);
+        shaftMat.colorNode = cv(0xffe6ad).mul(glow);
+        shaftMat.opacityNode = glow.mul(float(0.17).add(uSparkle.mul(0.22)));
+        shaftMat.emissiveNode = cv(0xffe6ad).mul(glow).mul(0.4);
+        shaftMat.transparent = true;
+        shaftMat.depthWrite = false;          // depthTEST stays on → trees occlude the shafts
+        shaftMat.blending = T.AdditiveBlending;
+        shaftMat.toneMapped = false;
+        shaftMat.side = T.DoubleSide;
+
+        const SHAFTS = 11;
+        for (let i = 0; i < SHAFTS; i++) {
+            const geo = track(new T.PlaneGeometry(4 + Math.random() * 5, 48 + Math.random() * 34));
+            const shaft = new T.Mesh(geo, shaftMat);
+            // Fanned across the sun side (it glows upper-right), high in the air over the lake.
+            shaft.position.set(
+                -8 + (i / (SHAFTS - 1)) * 92 + (Math.random() - 0.5) * 8,
+                16 + Math.random() * 11,
+                -68 - Math.random() * 36,
+            );
+            shaft.rotation.z = -0.30 - Math.random() * 0.42; // slant toward the upper-right sun
+            shaft.rotation.y = (Math.random() - 0.5) * 0.25;
+            shaft.renderOrder = 3;
+            shaft.frustumCulled = false;
+            add(shaft);
+        }
     }
 
     // ═══ BIRDS — Chapter-3 skinned songbirds (goldfinch + swallow), reused ═══════
