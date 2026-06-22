@@ -30,6 +30,8 @@
     "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
     "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
     "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
+    "perf:odyssey:baseline": "node scripts/odyssey-perf-baseline.mjs",
+    "perf:odyssey:compare": "node scripts/odyssey-perf-compare.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
   },
   "build": {

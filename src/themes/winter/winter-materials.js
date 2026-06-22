@@ -751,15 +751,26 @@ export function createWinterLakeNodeMaterial(params = {}) {
     const uMoonColor = uniform(params.moonColor ?? new THREE.Color(0xdce8ff)); // moon glitter
     const uMoonU = uniform(params.moonU ?? 0.74); // moon column position in lake U
     const uCrackColor = uniform(params.crackColor ?? new THREE.Color(0xbfeeff)); // white-cyan cracks
+    // ── "Shinier / icier" procedural levers (grade-safe, single-pass) ─────────
+    const uFrostStrength = uniform(params.frostStrength ?? 0.5); // fbm normal-tilt → faceted ice plate
+    const uStorm = uniform(0); // 0..1 Living-Blizzard intensity — combos flare the ice
+    const uStreakAngle = uniform(params.streakAngle ?? 0.5); // skated-ice streak direction (radians)
+    const uStreakFreq = uniform(params.streakFreq ?? 130.0); // streak density
 
     const baseUv = uv();
     const u = baseUv.x;
     const v = baseUv.y;
 
-    // View-based fresnel for a FLAT plane (surface normal is ~constant +Y).
+    // FROST RELIEF: tilt the dead-flat +Y normal with two decorrelated noise fields so the
+    // whole sheet reads as a faceted ICE PLATE — every highlight below (sheen, sparkle, sweep,
+    // moon glare) then rides real micro-relief instead of flat paint. uFrostStrength scales it.
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const vDotUp = clamp(abs(viewDir.y), 0.0, 1.0);
-    const fresnel = pow(float(1.0).sub(vDotUp), float(3.5));
+    const frostNx = mx_noise_float(vec3(u.mul(40.0), v.mul(26.0), float(2.0)));
+    const frostNz = mx_noise_float(vec3(u.mul(40.0).add(13.0), v.mul(26.0).add(7.0), float(4.0)));
+    const nPert = normalize(vec3(frostNx.mul(uFrostStrength), float(1.0), frostNz.mul(uFrostStrength)));
+    const vDotN = clamp(abs(dot(viewDir, nPert)), 0.0, 1.0);
+    const fresnel = pow(float(1.0).sub(vDotN), float(3.5));
+    const facet = clamp(length(vec2(frostNx, frostNz)).mul(uFrostStrength), 0.0, 1.0); // slope → glint gate
 
     // Base turquoise sheet: bright glowing centre, deeper toward the shoreline.
     const cx = u.sub(0.5).mul(2.0);
@@ -810,30 +821,32 @@ export function createWinterLakeNodeMaterial(params = {}) {
     // ── Glossy "shiny ice" highlights (ice-temple-style) ─────────────────────
     // Brighter grazing-angle sheen (fresnel rim).
     const sheen = mix(vec3(0.0), vec3(0.52, 0.70, 0.92), fresnel.mul(0.62));
-    // Twinkling micro-sparkles scattered across the sheet (specular glints).
-    const sparkleField = mx_noise_float(vec3(u.mul(165.0), v.mul(108.0), uTime.mul(0.9).add(31.0)))
+    // Twinkling micro-sparkles — stretched (v×40) so glints read ELONGATED like ice crystals,
+    // gated by the frost facet slope so they cluster on relief; combos (uStorm) raise density.
+    const sparkleField = mx_noise_float(vec3(u.mul(165.0), v.mul(40.0), uTime.mul(0.9).add(31.0)))
         .mul(0.5).add(0.5);
-    const sparkle = smoothstep(0.9, 1.0, sparkleField)
+    const sparkle = smoothstep(float(0.9).sub(uStorm.mul(0.12)), float(1.0), sparkleField)
         .mul(smoothstep(0.05, 0.5, v))
-        .mul(fresnel.mul(0.6).add(0.55));
-    // Slow specular SWEEP gliding across the ice (like the tetromino-block shine).
-    const sweepPhase = u.mul(2.6).add(v.mul(1.4)).sub(uTime.mul(0.22));
+        .mul(fresnel.mul(0.6).add(0.55))
+        .mul(facet.mul(0.7).add(0.6));
+    // ANISOTROPIC STREAK specular — thin highlights raked along the skate / ice-growth
+    // direction (the unmistakable "polished ice" read), windowed by a low-freq density noise.
+    const sDir = u.mul(cos(uStreakAngle)).add(v.mul(sin(uStreakAngle)));
+    const streakNoise = mx_noise_float(vec3(u.mul(8.0), v.mul(8.0), float(5.0))).mul(0.5).add(0.5);
+    const streakDensField = mx_noise_float(vec3(u.mul(3.0), v.mul(3.0), float(9.0))).mul(0.5).add(0.5);
+    const streakDens = smoothstep(0.45, 0.8, streakDensField);
+    const streak = pow(abs(sin(sDir.mul(uStreakFreq).add(streakNoise.mul(6.28)))), float(22.0))
+        .mul(streakDens).mul(fresnel.mul(0.7).add(0.3)).mul(smoothstep(0.1, 0.6, v));
+    // Slow specular SWEEP gliding across the ice (like the tetromino-block shine); combos speed it.
+    const sweepPhase = u.mul(2.6).add(v.mul(1.4)).sub(uTime.mul(float(0.22).add(uStorm.mul(0.5))));
     const sweep = pow(sin(sweepPhase).mul(0.5).add(0.5), float(7.0))
         .mul(smoothstep(0.12, 0.7, v)).mul(0.5);
     // Tight moon GLARE hotspot where the moon concentrates on the ice.
     const glareDist = length(vec2(uW.sub(uMoonU).mul(2.6), v.sub(0.30).mul(1.15)));
     const moonGlare = smoothstep(0.55, 0.0, glareDist).mul(colShimmer.mul(0.4).add(0.6));
-    const shine = uMoonColor.mul(sparkle.mul(0.95).add(sweep.mul(0.6)).add(moonGlare.mul(0.8)));
-
-    let col = iceBase;
-    col = mix(col, uMountain, mtnMask);
-    col = col.add(skySmear);
-    col = col.add(auroraSmear);
-    col = col.add(moonRefl);
-    col = col.add(sheen);
-    col = col.add(shine);
-    col = mix(col, uCrackColor, crackLine.mul(0.85));
-    const finalColor = clamp(col, 0.0, 1.6);
+    const shine = uMoonColor.mul(
+        sparkle.mul(0.95).add(sweep.mul(0.6)).add(moonGlare.mul(0.8)).add(streak.mul(0.85)),
+    );
 
     // Organic shoreline alpha so the ice melts into the snow (no hard rectangle).
     const edgeNoise = mx_noise_float(vec3(baseUv.mul(5.0), float(0.0))).mul(0.5).add(0.5);
@@ -843,6 +856,28 @@ export function createWinterLakeNodeMaterial(params = {}) {
         .mul(smoothstep(0.0, eIn, v))
         .mul(float(1.0).sub(smoothstep(float(1.0).sub(eIn), 1.0, v)));
 
+    // SUB-SURFACE cyan glow: an inner light in the sheet's centre that BREATHES and SWELLS on
+    // combos (uStorm) so the ice visibly flares during play. FROST RIM: a brighter crystalline
+    // band at the ice/snow seam that sells "frozen" + hides the shoreline alpha seam.
+    const subsurf = uLakeColor.mul(
+        centreGlow.mul(float(0.22).add(uStorm.mul(0.9))).mul(sin(uTime.mul(0.5)).mul(0.08).add(0.92)),
+    );
+    const rim = edgeMask.mul(float(1.0).sub(edgeMask)).mul(4.0); // bright in the edge fade band
+    const rimSparkle = mx_noise_float(vec3(u.mul(120.0), v.mul(120.0), float(13.0))).mul(0.5).add(0.5);
+    const frostRim = uCrackColor.mul(rim.mul(rimSparkle.mul(0.5).add(0.6)).mul(1.15));
+
+    let col = iceBase;
+    col = mix(col, uMountain, mtnMask);
+    col = col.add(skySmear);
+    col = col.add(auroraSmear);
+    col = col.add(moonRefl);
+    col = col.add(subsurf);
+    col = col.add(sheen);
+    col = col.add(shine);
+    col = col.add(frostRim);
+    col = mix(col, uCrackColor, crackLine.mul(0.85));
+    const finalColor = clamp(col, 0.0, 1.7);
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = finalColor;
     material.opacityNode = clamp(edgeMask, 0.0, 1.0);
@@ -851,13 +886,15 @@ export function createWinterLakeNodeMaterial(params = {}) {
     material.emissiveNode = moonRefl.mul(0.55)
         .add(auroraSmear.mul(0.35))
         .add(uCrackColor.mul(crackLine.mul(0.3)))
+        .add(subsurf.mul(0.5))
+        .add(frostRim.mul(0.6))
         .add(shine.mul(0.6));
 
     /* eslint-enable camelcase */
     return {
         material,
         uniforms: {
-            uTime, uAurora, uLakeColor, uMoonColor,
+            uTime, uAurora, uLakeColor, uMoonColor, uStorm, uFrostStrength, uStreakAngle, uStreakFreq,
         },
     };
 }

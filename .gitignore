@@ -67,3 +67,6 @@ test_output*.txt
 /playground_*_current.png
 /docs/_captures/
 /docs/perf-captures/
+
+# Odyssey GLB optimize backups (rollback source is git HEAD; never commit the uncompressed originals)
+src/rendering/odyssey/assets/_originals/

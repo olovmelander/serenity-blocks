@@ -985,7 +985,12 @@ export function updateDeepOceanEnvironment(group, delta, time, camera = null, ca
     // the final act, becoming the pearl-bubble rush of the breach.
     const { bubbles } = animated;
     const baseAttr = bubbles?.userData?.baseAttribute;
-    if (bubbles && baseAttr) {
+    // Skip the full per-frame instanced-attribute buffer re-upload while the chapter is
+    // off-screen (group.visible is driven by the manager's opacity gate). Bubbles only rise
+    // and recycle, so freezing their Y while invisible is imperceptible — they resume from
+    // the same position the frame the chapter becomes visible again. Avoids a whole-buffer
+    // GPU re-upload every frame for a chapter the camera isn't in.
+    if (bubbles && baseAttr && group.visible) {
         const depthValue = uniforms?.uDepth ? uniforms.uDepth.value : 0;
         const breachRush = 1 + 1.6 * THREE.MathUtils.smoothstep(depthValue, 0.8, 1);
         const pos = baseAttr.array;

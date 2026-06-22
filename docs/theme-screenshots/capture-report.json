@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-06-01T16:09:11.258Z",
+  "generatedAt": "2026-06-21T09:37:12.883Z",
   "totalThemes": 1,
   "captured": 1,
   "failed": 0,
   "settleTimeMs": 25000,
   "results": [
     {
-      "theme": "sky-children-v2",
+      "theme": "lunara",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\sky-children-v2.png",
+      "screenshot": "docs\\theme-screenshots\\lunara.png",
       "error": null
     }
   ]

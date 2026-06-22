@@ -75,4 +75,10 @@ export function buildChapterWarmSamples({ chapterPositions = [], chapterIds = []
         .sort((a, b) => a - b);
 }
 
-export default { buildJourneyWarmSamples, buildChapterWarmSamples };
+export function buildPointWarmSamples({ position = 0 } = {}) {
+    const value = Number(position);
+    if (!Number.isFinite(value)) return [0];
+    return [Math.min(1, Math.max(0, value))];
+}
+
+export default { buildJourneyWarmSamples, buildChapterWarmSamples, buildPointWarmSamples };

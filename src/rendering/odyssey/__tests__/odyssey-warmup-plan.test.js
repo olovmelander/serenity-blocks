@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChapterWarmSamples, buildJourneyWarmSamples } from '../odyssey-warmup-plan.js';
+import { buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples } from '../odyssey-warmup-plan.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 
 describe('buildJourneyWarmSamples (startup warm-up slimming)', () => {
@@ -64,5 +64,12 @@ describe('buildJourneyWarmSamples (startup warm-up slimming)', () => {
         });
 
         expect(samples).toEqual([0.25, 0.375, 0.5]);
+    });
+
+    it('builds a single current-position warm-up sample', () => {
+        expect(buildPointWarmSamples({ position: 0.42 })).toEqual([0.42]);
+        expect(buildPointWarmSamples({ position: -1 })).toEqual([0]);
+        expect(buildPointWarmSamples({ position: 2 })).toEqual([1]);
+        expect(buildPointWarmSamples({ position: Number.NaN })).toEqual([0]);
     });
 });

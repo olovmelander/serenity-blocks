@@ -113,7 +113,7 @@ export function createIslandArches(u, opts = {}) {
 }
 
 // ── Shared finisher: merged geometry + terrain-anchored painterly material. ───
-function finishProp(u, {
+export function finishProp(u, {
     positions, anchors, colors, indices, cloudY, renderOrder, doubleSide, rimStrength,
 }) {
     const geometry = new THREE.BufferGeometry();

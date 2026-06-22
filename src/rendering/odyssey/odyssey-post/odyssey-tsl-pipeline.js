@@ -931,6 +931,20 @@ export class OdysseyTslPipeline {
         this._postGrainScale = q;
     }
 
+    getPerfState() {
+        return {
+            active: true,
+            useMRT: this.useMRT,
+            enableBloom: this.enableBloom,
+            bloomAllowed: this._bloomAllowed,
+            bloomScale: this.bloomScale,
+            activeVariantKey: this._activeVariantKey,
+            outputVariants: this._outputVariants.size,
+            postChromaScale: this._postChromaScale,
+            postGrainScale: this._postGrainScale,
+        };
+    }
+
     render() {
         this.postProcessing.render();
     }

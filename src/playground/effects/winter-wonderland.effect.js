@@ -17,12 +17,16 @@
 import * as THREE from 'three/webgpu';
 import {
     uniform, attribute, uv, positionLocal, positionWorld, positionView, normalView, normalWorld,
-    normalize, vec2, vec3, float, mix, clamp, smoothstep, sin, cos, mod, pow,
-    dot, length, cameraPosition, mx_noise_float,
+    normalize, vec2, vec3, vec4, float, mix, clamp, smoothstep, sin, cos, mod, pow,
+    dot, length, cameraPosition, mx_noise_float, texture,
 } from 'three/tsl';
 import { createAuroraVolume } from '../../themes/winter/rendering/aurora-volume.js';
 import { createFramingSpruces } from '../../themes/winter/rendering/framing-spruces.js';
 import { createArcticFox } from '../../themes/winter/rendering/arctic-fox.js';
+import {
+    createWinterSnowDetail, disposeWinterSnowDetail, snowLumaPlanar, snowPerturbNormal,
+} from '../../themes/winter/rendering/snow-detail.js';
+import { createPawTrail } from '../../themes/winter/rendering/paw-trail.js';
 import { SnowSim } from '../../themes/winter/sim/snow-sim.js';
 import { createSnowRenderer } from '../../themes/winter/rendering/snow-renderer.js';
 import {
@@ -85,7 +89,7 @@ const FRAMING_SPRUCES = [
 // more trees, an extra row, taller, brought slightly forward of the (now lower)
 // mountains so it reads as the dense conifer belt between lake and peaks.
 const TREELINE = {
-    count: 340, rows: 6, xSpan: 5400, xCenter: 0, zBack: -1880, rowGap: 110, baseY: -274, hMin: 90, hMax: 190,
+    count: 150, rows: 3, xSpan: 5400, xCenter: 0, zBack: -1880, rowGap: 130, baseY: -274, hMin: 95, hMax: 195,
 };
 
 // ── AAA falling-snow tiers (camera-relative GPU-compute billboards) ──
@@ -256,57 +260,211 @@ function buildFacetedSnowDrifts({
     width = 12000, depth = 7000, segX = 120, segZ = 70, amp = 130, detailAmp = 36,
     posY = -280, posZ = -1400, lakeHalfX = 1900, lakeHalfZ = 850,
     lakeZWorld = -1500, lakeDepth = 150, moonDir = new THREE.Vector3(1500, 820, -2400),
+    // PolyHaven snow detail: smooth normals + perturb the lighting normal with a snow nor_gl
+    // map + a luminance tooth. Tooth/normal DIMMED (the photoreal grain fought the soft-pillow
+    // target — fluffy comes from form + soft light, not gritty detail).
+    smooth = true, detailDiff = null, detailNor = null,
+    toothScale = 0.0042, toothLo = 0.94, toothHi = 1.05,
+    // nor_gl tiled every 1/norScale units: a small scale + strong tilt reads as a repeating
+    // lighting GRID ("dark squares") once the cold grade boosts contrast. Bigger + softer.
+    norScale = 0.006, norStrength = 0.2,
+    lipAmp = 55, // rounded snow bank at the lake shore (land snow now sits above the ice anyway)
+    trail = null, // { texture, uOrigin, uInvSize } → fox paw-trail map
 } = {}) {
     const geometry = new THREE.PlaneGeometry(width, depth, segX, segZ);
     geometry.rotateX(-Math.PI / 2);
     const pos = geometry.attributes.position;
     const seed = 11.3;
+    const hArr = new Float32Array(pos.count); // per-vertex heights → baked AO + crest attrs
+    const iceRel = LAKE_Y - posY; // ice plane height above the mesh origin — keep land snow ≥ this
+    // Billowy "powder dome" height: abs-noise (billow) folded + smoothstep-rounded so the
+    // drifts read as convex PILLOWS, not a symmetric wavy sheet — silhouette is half the
+    // "thick fluffy" read. Octaves: broad domes + mid drifts + a fine signed grain. A bias
+    // keeps the (all-positive) billow field roughly centred so framing doesn't float up.
+    const billow = (x, z, s) => Math.abs(_valueNoise2D(x, z, s) * 2.0 - 1.0);
     for (let i = 0; i < pos.count; i += 1) {
         const wx = pos.getX(i);
         const wz = pos.getZ(i) + posZ;
-        const big = _valueNoise2D(wx * 0.00075, wz * 0.00075, seed);
-        const small = _valueNoise2D(wx * 0.0032 + 5.0, wz * 0.0032 + 5.0, seed + 3.0);
-        let h = (big - 0.45) * 2.0 * amp + (small - 0.5) * 2.0 * detailAmp;
+        const o1 = billow(wx * 0.00075, wz * 0.00075, seed); // broad swells
+        const oMid = billow(wx * 0.0028 + 2.0, wz * 0.0028 + 2.0, seed + 1.5); // readable drifts
+        const o2 = billow(wx * 0.0019 + 5.0, wz * 0.0019 + 5.0, seed + 3.0);
+        const grain = _valueNoise2D(wx * 0.006 + 9.0, wz * 0.006 + 9.0, seed + 7.0);
+        let b = o1 * 0.44 + oMid * 0.36 + o2 * 0.22;
+        b = b * b * (3.0 - 2.0 * b); // round crests, flatten troughs → pillows
         const bx = Math.max(0, Math.abs(wx) - lakeHalfX);
         const bz = Math.max(0, Math.abs(wz - lakeZWorld) - lakeHalfZ);
         const basin = Math.min(1, Math.sqrt(bx * bx + bz * bz) / 900);
-        // Inside the lake: a near-FLAT bed sitting just below the ice plane (not a
-        // deep pit) so the snow fills the space under the transparent ice — otherwise
-        // the ice reads as a floating layer with a visible void beneath it.
-        h = h * (0.05 + 0.95 * basin) - lakeDepth * (1 - basin);
+        // Land snow sits AT/ABOVE the ice and piles UP into drifts — the frozen lake sits IN
+        // the snow, never on a plateau above it. Floored at the ice so the near foreground can
+        // never dip BELOW the lake surface.
+        const drift = (b ** 1.25) * amp * 0.62 + (grain - 0.5) * detailAmp;
+        const landH = Math.max(iceRel, iceRel + 6 + drift);
+        // Rounded SNOW LIP just outside the lake edge — a touch of raised bank at the shore.
+        const lip = Math.sin(Math.min(1, basin / 0.5) * Math.PI) * lipAmp;
+        // Blend the land snow down to a near-flat bed just below the ice inside the lake (so the
+        // snow fills the void under the transparent ice — no floating layer).
+        const h = landH * (0.14 + 0.86 * basin) - lakeDepth * (1 - basin) + lip;
+        hArr[i] = h;
         pos.setY(i, h);
     }
-    const flatGeo = geometry.toNonIndexed();
-    flatGeo.computeVertexNormals();
-    geometry.dispose();
+    // Bake per-vertex depth cues (vertex-time, free on the fragment path):
+    //   aHeight    → crest highlight (brighten the wind-dusted mound tops)
+    //   aOcclusion → valley AO (darken troughs so the existing displacement reads as DEPTH)
+    let minH = Infinity;
+    let maxH = -Infinity;
+    for (let i = 0; i < pos.count; i += 1) {
+        if (hArr[i] < minH) minH = hArr[i];
+        if (hArr[i] > maxH) maxH = hArr[i];
+    }
+    const span = Math.max(1e-3, maxH - minH);
+    const cols = segX + 1;
+    const rows = segZ + 1;
+    const aHeight = new Float32Array(pos.count);
+    const aOcc = new Float32Array(pos.count);
+    const aoWin = 34; // concavity window (world units): >0 crest, <0 valley (wider = gentler)
+    for (let iy = 0; iy < rows; iy += 1) {
+        for (let ix = 0; ix < cols; ix += 1) {
+            const i = iy * cols + ix;
+            aHeight[i] = (hArr[i] - minH) / span;
+            let sum = 0;
+            let n = 0;
+            if (ix > 0) { sum += hArr[i - 1]; n += 1; }
+            if (ix < cols - 1) { sum += hArr[i + 1]; n += 1; }
+            if (iy > 0) { sum += hArr[i - cols]; n += 1; }
+            if (iy < rows - 1) { sum += hArr[i + cols]; n += 1; }
+            const concavity = hArr[i] - (n ? sum / n : hArr[i]);
+            const t = Math.max(0, Math.min(1, (concavity + aoWin) / (2 * aoWin)));
+            aOcc[i] = t * t * (3.0 - 2.0 * t); // smoothstep: valley→0, crest→1
+        }
+    }
+    // Blur the AO across the grid (3× 3×3 box) so it reads as SOFT shading rather than the
+    // blocky per-vertex / per-triangle dark patches the coarse 120×70 grid otherwise produces.
+    const aoTmp = new Float32Array(pos.count);
+    let aoSrc = aOcc;
+    let aoDst = aoTmp;
+    for (let pass = 0; pass < 3; pass += 1) {
+        for (let iy = 0; iy < rows; iy += 1) {
+            for (let ix = 0; ix < cols; ix += 1) {
+                let sum = 0;
+                let n = 0;
+                for (let dy = -1; dy <= 1; dy += 1) {
+                    for (let dx = -1; dx <= 1; dx += 1) {
+                        const jx = ix + dx;
+                        const jy = iy + dy;
+                        if (jx >= 0 && jx < cols && jy >= 0 && jy < rows) { sum += aoSrc[jy * cols + jx]; n += 1; }
+                    }
+                }
+                aoDst[iy * cols + ix] = sum / n;
+            }
+        }
+        const swap = aoSrc; aoSrc = aoDst; aoDst = swap;
+    }
+    geometry.setAttribute('aHeight', new THREE.BufferAttribute(aHeight, 1));
+    geometry.setAttribute('aOcclusion', new THREE.BufferAttribute(aoSrc, 1));
+    // SMOOTH shading (indexed vertex normals) removes the hard facet edges that read as
+    // "squares"; the snow normal map below re-adds fine micro-relief. flatGeo path kept for
+    // the original angular low-poly look (smooth:false).
+    let snowGeo;
+    if (smooth) {
+        geometry.computeVertexNormals();
+        snowGeo = geometry;
+    } else {
+        snowGeo = geometry.toNonIndexed();
+        snowGeo.computeVertexNormals();
+        geometry.dispose();
+    }
 
     const uMoonDir = uniform(moonDir.clone().normalize());
-    const uLit = uniform(new THREE.Color(0xbcd2f2));
-    const uShadow = uniform(new THREE.Color(0x16335c));
-    const uDeep = uniform(new THREE.Color(0x0a1f3d));
+    const uLit = uniform(new THREE.Color(0xcfe0f8)); // bright moonlit dome-tops (overshoot for grade)
+    // Floor LIFTED so shadowed snow stays a luminous blue instead of grade-crushed dark
+    // patches ("dark squares"): the in-game ACES + 0.82 exposure + cold tint pushes the dark
+    // end toward near-black, so overshoot it bright here.
+    const uShadow = uniform(new THREE.Color(0x32568a)); // luminous blue shadow (was near-navy)
+    const uSky = uniform(new THREE.Color(0x3a608f)); // periwinkle sky-bounce floor
+    const uGround = uniform(new THREE.Color(0x2a4a78)); // ambient under-floor
+    const uSssTint = uniform(new THREE.Color(0x8c9cd9)); // backlit subsurface glow
     const uFog = uniform(new THREE.Color(0x12233a));
+    const uWrap = uniform(0.52); // half-Lambert wrap → softer terminator (less dark on dome sides)
+    const uSssStr = uniform(0.24);
+    const uCrest = uniform(new THREE.Color(0xfff1e4)); // warm cream crest dusting (overshoot cold grade)
+    const uTime = uniform(0);
+    const uTrailDarken = uniform(0.82); // how much a paw print packs/darkens the snow (bold so small prints read)
+    const uTrailRim = uniform(new THREE.Color(0xe6eeff)); // bright compression rim around a print
+    // Baked depth attributes → valley AO (darken troughs) + crest mask (brighten tops).
+    const aOccN = mix(float(0.86), float(1.0), attribute('aOcclusion'));
+    const crestN = smoothstep(0.52, 0.95, attribute('aHeight'));
     const nView = normalize(normalView);
     const nWorld = normalize(normalWorld);
-    const moonLambert = clamp(dot(nWorld, uMoonDir), 0.0, 1.0);
-    const upFace = clamp(nWorld.y, 0.0, 1.0);
-    const litAmount = clamp(moonLambert.mul(0.7).add(upFace.mul(0.45)), 0.0, 1.0);
-    const lowMix = mix(uDeep, uShadow, smoothstep(0.0, 0.45, litAmount));
+    const worldXZ = positionWorld.xz;
+    // Perturb the LIGHTING normal with the snow nor_gl map (DIMMED so the photoreal grain
+    // doesn't fight the soft-pillow target) → fine micro-relief on the smooth domes.
+    const nLit = detailNor
+        ? snowPerturbNormal(detailNor, worldXZ, norScale, nWorld, norStrength)
+        : nWorld;
+    // Fox paw-trail "pit": 0 off-trail → ~1 in a fresh print (border-faded so edge-clamped
+    // samples never smear). Drives the packed-snow shading below.
+    let pitN = float(0.0);
+    if (trail) {
+        const tuv = clamp(positionWorld.xz.sub(trail.uOrigin).mul(trail.uInvSize), 0.0, 1.0);
+        const tbx = smoothstep(0.0, 0.03, tuv.x).mul(smoothstep(1.0, 0.97, tuv.x));
+        const tby = smoothstep(0.0, 0.03, tuv.y).mul(smoothstep(1.0, 0.97, tuv.y));
+        pitN = texture(trail.texture, tuv).r.mul(tbx).mul(tby);
+    }
+    // WRAP / half-Lambert: soften the terminator so every dome reads as a scattering powder
+    // VOLUME, not a hard-shaded sheet (a hard terminator is the #1 "flat plane" tell).
+    const ndl = dot(nLit, uMoonDir);
+    const moonWrap = clamp(ndl.add(uWrap).div(float(1.0).add(uWrap)), 0.0, 1.0);
+    const moonWrapC = moonWrap.mul(moonWrap); // square back some contrast
+    const upFace = clamp(nLit.y, 0.0, 1.0);
+    const litAmount = clamp(moonWrapC.mul(0.7).add(upFace.mul(0.45)), 0.0, 1.0);
+    // Shadow FLOOR = a cool sky-bounce so snow shadows stay luminous BLUE (never near-black).
+    // Valley AO darkens the troughs (not the lit crests) so the displacement reads as DEPTH.
+    const skyAmb = mix(uGround, uSky, clamp(nWorld.y.mul(0.5).add(0.5), 0.0, 1.0));
+    const lowMix = mix(skyAmb, uShadow, smoothstep(0.0, 0.45, litAmount)).mul(aOccN);
     let snowCol = mix(lowMix, uLit, smoothstep(0.4, 0.95, litAmount));
+    // Backlit SUBSURFACE glow: light bleeding through the powder where it faces away from the
+    // moon → ridges glow, selling soft depth.
+    const sss = pow(clamp(dot(nLit.negate(), uMoonDir).add(moonWrapC), 0.0, 1.0), float(2.5)).mul(uSssStr).mul(aOccN);
+    snowCol = snowCol.add(uSssTint.mul(sss));
     const facetRim = pow(float(1.0).sub(clamp(nView.z, 0.0, 1.0)), float(2.2)).mul(0.10);
     snowCol = snowCol.add(vec3(0.32, 0.46, 0.7).mul(facetRim));
-    const glint = mx_noise_float(vec3(positionWorld.xz.mul(0.06), float(0.0))).mul(0.5).add(0.5);
-    const sparkle = smoothstep(0.86, 1.0, glint).mul(litAmount).mul(0.4);
-    snowCol = snowCol.add(vec3(0.7, 0.82, 1.0).mul(sparkle));
+    // Sparse crystalline sparkle: gate a noise seed by the moon half-vector so glints flash as
+    // discrete points with view/light angle (dry-powder crystals) + a slow time twinkle.
+    const Vw = normalize(cameraPosition.sub(positionWorld));
+    const Hw = normalize(uMoonDir.add(Vw));
+    const align = pow(clamp(dot(nLit, Hw), 0.0, 1.0), float(180.0));
+    const glint = mx_noise_float(vec3(positionWorld.xz.mul(0.06).add(uTime.mul(0.12)), float(0.0))).mul(0.5).add(0.5);
+    // Packed snow in a print stops sparkling and loses its crest dusting (kill both by pitN).
+    const noTrail = float(1.0).sub(pitN);
+    const sparkle = smoothstep(0.9, 1.0, glint).mul(align).mul(litAmount).mul(0.7);
+    snowCol = snowCol.add(vec3(0.78, 0.86, 1.0).mul(sparkle).mul(noTrail));
+    // Crest highlight: a warm cream dusting on the wind-packed mound tops (gated by light) so
+    // the drifts bulge toward the moon and read as 3D mass.
+    snowCol = mix(snowCol, uCrest, crestN.mul(litAmount).mul(0.4).mul(noTrail));
+    // Paw print: pack + cool the snow (toward periwinkle, grade-safe) and add a bright
+    // compression RIM at the print's soft edge — sells "a fox pressed the snow here".
+    if (trail) {
+        snowCol = mix(snowCol, snowCol.mul(vec3(0.72, 0.8, 0.97)), pitN.mul(uTrailDarken));
+        const rim = smoothstep(0.1, 0.38, pitN).mul(float(1.0).sub(smoothstep(0.38, 0.7, pitN)));
+        snowCol = snowCol.add(uTrailRim.mul(rim).mul(litAmount).mul(0.5));
+    }
+    // Greyscale LUMINANCE tooth from the snow diffuse — surface grain so each area is no
+    // longer one flat tone (multiplied into the palette, never used as photoreal albedo).
+    if (detailDiff) {
+        snowCol = snowCol.mul(snowLumaPlanar(detailDiff, worldXZ, toothScale, toothLo, toothHi));
+    }
     const dist = length(positionWorld.sub(cameraPosition));
     const fogT = smoothstep(float(300.0), float(3400.0), dist);
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = clamp(mix(snowCol, uFog, fogT.mul(0.92)), 0.0, 1.1);
     material.emissiveNode = vec3(0.0);
-    const mesh = new THREE.Mesh(flatGeo, material);
+    const mesh = new THREE.Mesh(snowGeo, material);
     mesh.position.set(0, posY, posZ);
     mesh.renderOrder = -30;
     mesh.frustumCulled = false;
-    return { mesh, geometry: flatGeo, material };
+    return {
+        mesh, geometry: snowGeo, material, uTime,
+    };
 }
 
 function makeFacetedRockMaterial({ moonDir = new THREE.Vector3(1500, 820, -2400) } = {}) {
@@ -486,6 +644,86 @@ function buildSnowMist() {
     return { group, bands };
 }
 
+// Whiteout flash — the climax of the "Whiteout" act (Tetris / Perfect Clear).
+// useMRT:false in this pipeline ⇒ no emissive bloom, so the flash is a FULLSCREEN
+// white wash: an NDC quad whose vertexNode outputs clip space directly (always fills
+// the screen, ignores the camera) with depthTest off so it sits on top of everything.
+// Opacity follows the director's decaying `whiteout` transient; a soft center vignette
+// makes it read as light flooding in rather than a flat fill. Capped < 1 so it never
+// fully blanks a frame, and zeroed under reduced-motion (photosensitivity safety).
+function buildWhiteoutWash() {
+    const geo = new THREE.PlaneGeometry(2, 2);
+    const uOpacity = uniform(0);
+    const uColor = uniform(new THREE.Color(0xeef4ff));
+    const material = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+        side: THREE.DoubleSide,
+    });
+    // Fullscreen NDC quad — bypass the view/projection entirely.
+    material.vertexNode = vec4(positionLocal.xy, 0.0, 1.0);
+    const d = length(uv().sub(vec2(0.5, 0.5)));
+    const bloom = smoothstep(0.95, 0.12, d); // brightest at center, falls to the corners
+    const alpha = clamp(uOpacity.mul(float(0.5).add(bloom.mul(0.6))), 0.0, 0.92);
+    material.colorNode = vec4(uColor, alpha);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 100000; // draw last, over the entire scene
+    return {
+        mesh, material, uOpacity, dispose() { geo.dispose(); material.dispose(); },
+    };
+}
+
+// Layered conifer-SILHOUETTE bands receding into the cold haze behind the real
+// treeline (Firewatch aerial perspective): each is a flat camera-facing quad whose
+// opacity is a procedural conifer-treeline ridge — lighter/cooler/softer with
+// distance, the farthest melting into the horizon. Carries the deep background so the
+// instanced belt can stay thin. Static (no per-frame cost), in front of the peaks.
+function buildTreelineBands() {
+    const group = new THREE.Group();
+    group.name = 'winter-treeline-bands';
+    // [ z, baseY, width, height, colourHex, opacity, ridgeFreq, softEdge, seed ]
+    const specs = [
+        [-2520, -300, 6800, 620, 0xa9c0d4, 0.82, 62, 0.045, 0.0],
+        [-2820, -300, 7600, 690, 0xbed0e0, 0.70, 48, 0.062, 1.7],
+        [-3060, -300, 8400, 760, 0xd0dde8, 0.54, 36, 0.088, 3.3],
+    ];
+    specs.forEach(([z, baseY, w, h, hex, op, freq, soft, seed]) => {
+        const geo = new THREE.PlaneGeometry(w, h, 1, 1);
+        const mat = new THREE.MeshBasicNodeMaterial();
+        mat.transparent = true;
+        mat.depthWrite = false;
+        mat.side = THREE.DoubleSide;
+        mat.toneMapped = false;
+        const p = uv();
+        // Conifer-treeline ridge height as a function of x: pointed tips (|sin|) gated by
+        // slow clumps + noise → an organic silhouette, not a regular comb.
+        const tips = sin(p.x.mul(freq)).abs();
+        const tips2 = sin(p.x.mul(freq * 2.3).add(seed)).abs();
+        const clump = sin(p.x.mul(freq * 0.22).add(seed)).mul(0.5).add(0.5);
+        const n = mx_noise_float(vec3(p.x.mul(90.0).add(seed), 0.0, 0.0)).mul(0.5).add(0.5);
+        const ridge = float(0.26)
+            .add(tips.mul(0.20).mul(clump.mul(0.5).add(0.5)))
+            .add(tips2.mul(0.06))
+            .add(n.mul(0.05));
+        // opaque below the ridge, transparent above (soft AA edge); soft bottom so the
+        // base dissolves into the mist instead of a hard line.
+        const sil = smoothstep(ridge.add(soft), ridge.sub(soft), p.y);
+        const baseFade = smoothstep(0.0, 0.16, p.y);
+        mat.opacityNode = sil.mul(baseFade).mul(op);
+        const c = new THREE.Color(hex);
+        mat.colorNode = vec3(c.r, c.g, c.b).mul(float(0.92).add(p.y.mul(0.16)));
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(0, baseY + h / 2, z);
+        mesh.renderOrder = -20; // behind the mist bands, in front of the peaks
+        mesh.frustumCulled = false;
+        group.add(mesh);
+    });
+    return { group };
+}
+
 export function create({ scene, renderer, camera }) {
     const disposables = [];
     const track = (obj) => { disposables.push(obj); return obj; };
@@ -497,6 +735,9 @@ export function create({ scene, renderer, camera }) {
     let smoothPointerX = 0;
     let smoothPointerY = 0;
     let prevCamTime = 0;
+    let lastPX = 0; // for idle (cursor-still) detection → camera breathing
+    let lastPY = 0;
+    let camIdle = 0;
     const onPointerMove = (e) => {
         pointerX = (e.clientX / window.innerWidth) * 2 - 1;
         pointerY = (e.clientY / window.innerHeight) * 2 - 1;
@@ -555,14 +796,26 @@ export function create({ scene, renderer, camera }) {
     ];
     peakSpecs.forEach((s) => { const p = buildWinterPeak(s); scene.add(p.mesh); disposables.push(p); });
 
-    // --- Faceted low-poly snow drift field (angular flat-shaded drifts) ---
+    // --- Fox PAW TRAILS: a decaying trail map stamped by the foxes' footfalls, sampled by
+    // the snow ground to pack/darken the trail (RDR2-style, see docs/WINTER_FOX_PAW_TRAILS_PLAN.md).
+    const pawTrail = createPawTrail({
+        origin: [-1200, -1880],
+        size: [2400, 2320],
+        res: 512,
+        tau: 7.0,
+        lake: { cx: 0, cz: LAKE_Z, halfX: 2050, halfZ: 600 },
+    });
+
+    // --- Snow drift field — smooth + PolyHaven snow detail (no more "built from squares") ---
+    // snow_01 (or snow_02): diffuse → painterly luminance tooth, nor_gl → lighting micro-relief.
+    const snowDetail = createWinterSnowDetail('snow_01');
     const drifts = buildFacetedSnowDrifts({
         width: 12000,
         depth: 7000,
         segX: 120,
         segZ: 70,
-        amp: 130,
-        detailAmp: 36,
+        amp: 205,
+        detailAmp: 34,
         posY: GROUND_Y,
         posZ: -1400,
         lakeHalfX: 2050,
@@ -570,6 +823,10 @@ export function create({ scene, renderer, camera }) {
         lakeZWorld: LAKE_Z,
         lakeDepth: 12,
         moonDir: MOON_POS.clone(),
+        smooth: true,
+        detailDiff: snowDetail.diff,
+        detailNor: snowDetail.nor,
+        trail: { texture: pawTrail.texture, uOrigin: pawTrail.uOrigin, uInvSize: pawTrail.uInvSize },
     });
     scene.add(drifts.mesh);
     disposables.push(drifts);
@@ -649,6 +906,7 @@ export function create({ scene, renderer, camera }) {
         // Small foxes so the landscape reads vast/majestic; they ground-follow the
         // snow + ice and fade into the haze with distance (see arctic-fox.js).
         groundMeshes: [drifts.mesh, lake], fallbackY: FEET_Y, count: 3, scale: 80,
+        onFootstep: (x, z, ux, uz, ms) => pawTrail.stamp(x, z, ux, uz, ms),
     });
     arcticFox.load();
 
@@ -689,9 +947,67 @@ export function create({ scene, renderer, camera }) {
         disposables.push(snowFallback);
     }
 
+    // ── Storm reactivity (combo "Living Blizzard", quick-win #1) ─────────────────
+    // Capture each snow tier's baseline wind, then drive them as multipliers of a
+    // single master intensity S∈[0,1]: snow leans + blasts SIDEWAYS and the curl
+    // SWIRL deepens as S climbs. S is set by the theme via setReactive(directorState),
+    // or by a ?winterStorm=1 debug slider here in the playground. Pure uniform writes
+    // (zero recompile). See docs/WINTER_BLIZZARD_COMBO_PLAN.md.
+    const snowBase = snowTiers.map(({ sim, rend }) => ({
+        bx: sim.uBreeze.value.x,
+        bz: sim.uBreeze.value.z,
+        curlStr: sim.uCurlStr.value,
+        curlFreq: sim.uCurlFreq.value,
+        fall: sim.uFall.value,
+        gustAmp: sim.uGustAmp.value,
+        gustFreq: sim.uGustFreq.value,
+        fog: rend.uniforms.uFogStr.value,
+    }));
+    let stormReact = null; // last director getState() pushed via setReactive()
+    let stormDebugS = 0; // ?winterStorm debug-slider value (playground only)
+    let stormSlider = null;
+    const stormDebug = typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).has('winterStorm');
+    if (stormDebug) {
+        window.__winterStorm = (v) => {
+            if (v && typeof v === 'object') {
+                // synthetic director state for testing transients (trauma/kick/vortex/…)
+                stormReact = {
+                    intensity: 0, gust: 0, gustDir: 1, flare: 0, whiteout: 0, kick: 0, trauma: 0, vortex: 0, ...v,
+                };
+            } else {
+                stormReact = null;
+                stormDebugS = THREE.MathUtils.clamp(+v || 0, 0, 1);
+            }
+        };
+        if (typeof document !== 'undefined') {
+            stormSlider = document.createElement('input');
+            stormSlider.type = 'range';
+            stormSlider.min = '0';
+            stormSlider.max = '1';
+            stormSlider.step = '0.01';
+            stormSlider.value = '0';
+            stormSlider.title = 'winter storm intensity S';
+            stormSlider.style.cssText = 'position:fixed;left:16px;bottom:16px;width:300px;z-index:99999';
+            stormSlider.addEventListener('input', () => { stormDebugS = parseFloat(stormSlider.value); });
+            document.body.appendChild(stormSlider);
+        }
+    }
+
     // --- Drifting snow-mist banks (atmospheric depth / cold haze) ---
+    // Deep-background conifer-silhouette bands (behind the thin real treeline).
+    const treelineBands = buildTreelineBands();
+    scene.add(treelineBands.group);
+
     const mist = buildSnowMist();
     scene.add(mist.group);
+
+    // Whiteout flash overlay (driven by the director's `whiteout` transient in update()).
+    const reduceMotion = typeof window !== 'undefined'
+        && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const whiteoutWash = buildWhiteoutWash();
+    scene.add(whiteoutWash.mesh);
+    disposables.push(whiteoutWash);
 
     return {
         cameraRadius: 0.001,
@@ -713,21 +1029,45 @@ export function create({ scene, renderer, camera }) {
             const parallaxX = smoothPointerX * 55.0;
             const parallaxY = -smoothPointerY * 28.0;
 
-            // Idle breathing/sway — always present but subtle; mouse parallax rides on
-            // top. When the pointer is still, only this gentle drift remains.
-            const swayX = Math.sin(time * 0.15) * 9 + Math.sin(time * 0.33 + 1.1) * 4;
-            const bobY = Math.sin(time * 0.40) * 4 + Math.cos(time * 0.26) * 2.5;
-            const dollyZ = Math.sin(time * 0.12) * 12;
+            // When the cursor is STILL, ramp in a gentle BREATHING motion — a slow
+            // inhale/exhale where the eye rises + eases forward, then settles back. Moving
+            // the mouse resets it instantly so the parallax look-around takes over.
+            const moved = Math.abs(pointerX - lastPX) + Math.abs(pointerY - lastPY) > 0.0008;
+            lastPX = pointerX;
+            lastPY = pointerY;
+            camIdle = moved ? 0 : camIdle + dt;
+            const breatheAmt = THREE.MathUtils.smoothstep(camIdle, 0.4, 1.8); // 0 active → 1 still
+            const breath = time * 1.15; // ~5.5s inhale/exhale cycle
+            const breathY = Math.sin(breath) * 3.4 * breatheAmt;
+            const breathZ = Math.sin(breath + 0.5) * 7.5 * breatheAmt;
+            const breathLook = Math.sin(breath - 0.3) * 3.0 * breatheAmt;
 
+            // A tiny ever-present drift so the view is never frozen; breathing rides on top.
+            const swayX = Math.sin(time * 0.15) * 9 + Math.sin(time * 0.33 + 1.1) * 4;
+            const bobY = Math.sin(time * 0.40) * 2.0 + Math.cos(time * 0.26) * 1.3;
+            const dollyZ = Math.sin(time * 0.12) * 5;
+
+            // Combo juice: a tasteful, DECAYING camera punch on big moments. `trauma`
+            // (Tetris/T-spin/Perfect-Clear) → a rotational wobble (layered sine, NOT
+            // per-frame jitter); `kick` → a brief forward dolly push. Rotation-only (no
+            // translation) so it never clips the camera through the framing spruces.
+            // Reduced-motion zeroes the shake — the #1 motion-sickness lever.
+            const shakeGain = reduceMotion ? 0 : 1;
+            const trauma = ((stormReact?.trauma ?? 0) * shakeGain) ** 1.7;
+            const kickZ = (stormReact?.kick ?? 0) * 26 * shakeGain;
             camera.position.set(
                 swayX + parallaxX,
-                Math.max(46, 78 + bobY + parallaxY),
-                760 + dollyZ,
+                Math.max(46, 78 + bobY + breathY + parallaxY),
+                760 + dollyZ + breathZ - kickZ,
             );
             // Look target wanders subtly + leans toward the cursor for a parallax feel.
             const lookX = Math.sin(time * 0.16 + 0.7) * 14 + parallaxX * 0.4;
-            const lookY = 120 + Math.cos(time * 0.21) * 5 + parallaxY * 0.35;
+            const lookY = 120 + Math.cos(time * 0.21) * 5 + breathLook + parallaxY * 0.35;
             camera.lookAt(lookX, lookY, -1900);
+            if (trauma > 0.0001) {
+                camera.rotateZ((Math.sin(time * 23.0) + Math.sin(time * 14.3 + 1.7) * 0.6) * 0.07 * trauma);
+                camera.rotateX(Math.sin(time * 19.0 + 1.3) * 0.045 * trauma);
+            }
         },
         update(time) {
             // Derive dt locally so the GLB wind-sway mixers work whether the host
@@ -739,9 +1079,42 @@ export function create({ scene, renderer, camera }) {
             if (haloU?.uTime) haloU.uTime.value = time;
             // Falling snow: dispatch each tier's GPU compute + advance render uniforms.
             if (camera) uSnowCamPos.value.copy(camera.position);
+            // Master storm intensity S drives the whole scene's escalation: the snow
+            // blows sideways + swirls (below) AND the aurora SURGES (brighter + a flare
+            // bloom on big clears) — so combos visibly light up the sky.
+            const stormS = THREE.MathUtils.clamp(stormReact?.intensity ?? stormDebugS, 0, 1);
+            const gustDir = stormReact?.gustDir ?? 1;
+            const gustT = stormReact?.gust ?? 0;
+            const blast = 1 + 1.8 * gustT;
+            aurora.uniforms.uIntensity.value = 0.62 + 0.6 * stormS + (stormReact?.flare ?? 0) * 0.5;
             uSnowAurora.value = aurora.uniforms.uIntensity.value;
+            // Ice flares with the storm: sub-surface cyan glow swells + sparkle density/streak
+            // speed ramp on combos (the lake reads as part of the Living Blizzard).
+            if (lakeU?.uStorm) lakeU.uStorm.value = THREE.MathUtils.clamp(stormS + (stormReact?.whiteout ?? 0) * 0.3, 0, 1.3);
+            if (drifts?.uTime) drifts.uTime.value = time;
+            // Whiteout flash: the decaying `whiteout` transient (Tetris / Perfect Clear)
+            // floods the screen white. Reduced-motion suppresses the strobe entirely.
+            whiteoutWash.uOpacity.value = reduceMotion ? 0 : THREE.MathUtils.clamp(stormReact?.whiteout ?? 0, 0, 1.2) * 0.85;
             for (let s = 0; s < snowTiers.length; s += 1) {
                 const { sim, rend } = snowTiers[s];
+                const b = snowBase[s];
+                // Sideways DRIVE: base×0.6 calm → a strong horizontal blast at S=1. The
+                // additive (+44·S) makes even the gentle baseline winds really blow; the
+                // fall eases DOWN with S so flakes go near-horizontal (driving sheets),
+                // while the curl swirl deepens so they tumble in eddies, not on rails.
+                sim.uBreeze.value.set(
+                    (b.bx * (0.6 + 2.4 * stormS) + 44 * stormS) * gustDir * blast,
+                    0,
+                    (b.bz * (0.6 + 1.0 * stormS) + 12 * stormS),
+                );
+                sim.uCurlStr.value = b.curlStr * (1 + 1.8 * stormS) + 22 * gustT + 50 * (stormReact?.vortex ?? 0);
+                sim.uCurlFreq.value = b.curlFreq * (1 + 0.5 * stormS);
+                sim.uFall.value = b.fall * (1 - 0.30 * stormS);
+                sim.uGustAmp.value = b.gustAmp * (0.7 + 1.0 * stormS);
+                sim.uGustFreq.value = b.gustFreq * (1 + 0.4 * stormS);
+                // Wind streaks ramp in with the storm; a touch more snow-haze at the climax.
+                rend.uniforms.uStretch.value = stormS * 2.4;
+                rend.uniforms.uFogStr.value = b.fog + THREE.MathUtils.smoothstep(stormS, 0.45, 1.0) * 0.3;
                 sim.update(dt, time);
                 try {
                     renderer.compute(sim.computeNode);
@@ -750,6 +1123,10 @@ export function create({ scene, renderer, camera }) {
                     if (!snowComputeErr) { snowComputeErr = true; console.error('[winter snow] compute failed:', e); }
                 }
                 rend.update(time);
+            }
+            if (stormDebug && typeof window !== 'undefined' && snowBase.length) {
+                const nb = snowTiers[snowTiers.length - 1].sim.uBreeze.value;
+                window.__winterStormDbg = { S: +stormS.toFixed(2), nearBreezeX: +nb.x.toFixed(1) };
             }
             if (snowFallback) snowFallback.uTime.value = time;
             moonClouds.clouds.forEach((c) => {
@@ -762,17 +1139,26 @@ export function create({ scene, renderer, camera }) {
             });
             spruces.update(dt);
             arcticFox.update(dt);
+            pawTrail.update(dt);
         },
+        // Theme pushes the StormDirector state here each frame (intensity + transients).
+        setReactive(state) { stormReact = state; },
         dispose() {
             if (typeof window !== 'undefined') window.removeEventListener('pointermove', onPointerMove);
+            if (stormSlider) stormSlider.remove();
+            if (stormDebug && typeof window !== 'undefined') delete window.__winterStorm;
             scene.remove(aurora.mesh, moon, lake, moonClouds.group);
             scene.remove(drifts.mesh, ambientLight, treeMoonLight, treeFillLight, mist.group);
             snowTiers.forEach(({ sim, rend }) => { scene.remove(rend.mesh); rend.dispose(); sim.dispose(); });
             if (snowFallback) scene.remove(snowFallback.points);
             moonClouds.clouds.forEach((c) => { c.geo.dispose(); c.mesh.material.dispose(); });
             mist.bands.forEach((b) => { b.geo.dispose(); b.mesh.material.dispose(); });
+            treelineBands.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+            scene.remove(treelineBands.group);
             spruces.dispose?.();
             arcticFox.dispose?.();
+            pawTrail.dispose();
+            disposeWinterSnowDetail(snowDetail);
             disposables.forEach((d) => { try { d.dispose?.(); } catch (e) { /* noop */ } });
         },
     };

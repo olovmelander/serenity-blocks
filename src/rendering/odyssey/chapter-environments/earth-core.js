@@ -1047,6 +1047,20 @@ export function createEarthCoreEnvironment(options = {}) {
         x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 112, giant: false,
     });
 
+    // Share ONE material across all obsidian columns + ceiling slabs: the node graph is
+    // byte-identical for isColumn=true (only geometry/transform differ) and all uniforms are
+    // shared/constant, so 12 separate MeshStandardNodeMaterial compiles of the chapter's
+    // heaviest graph (moltenRockField, ~28 snoise3/frag) collapse to 1 — a cold-start
+    // pipeline-variant cut with zero visual change (same pattern the chapter already uses for
+    // god-rays / horizons / contact-decals). The manager's opacity crossfade still drives the
+    // single shared material.uniforms.uOpacity for the whole set.
+    const sharedColumnMaterial = createMoltenPocketMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        true,
+    ).material;
+
     const columns = columnSpecs.map((spec) => {
         const col = createObsidianColumnTSL(
             uniforms.uTime,
@@ -1054,6 +1068,7 @@ export function createEarthCoreEnvironment(options = {}) {
             spec.r,
             spec.h,
             uniforms.uBakedBounce,
+            sharedColumnMaterial,
         );
         // Seat the BASE at the lake surface (center = lake + h/2) so the column rises out
         // of the lake instead of passing half through it.
@@ -1094,6 +1109,7 @@ export function createEarthCoreEnvironment(options = {}) {
             spec.r,
             spec.h,
             uniforms.uBakedBounce,
+            sharedColumnMaterial,
         );
         // Hang from the top of the corridor (well above the lake), inverted so the wide
         // end reads as a ceiling vault pressing down.

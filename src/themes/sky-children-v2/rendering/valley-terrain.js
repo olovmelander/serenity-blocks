@@ -31,6 +31,7 @@ import { valueNoise2 } from '../sky-children-noise.js';
 import {
     wrappedDiffuse, coloredShadowBlend, fresnelRim, glitter,
 } from '../sky-children-lighting.js';
+import { detailLumaPlanar, detailLumaTriplanar } from './detail-texture.js';
 
 // Configuration constants matching the CPU terrainField configuration
 const size = 640.0;
@@ -186,7 +187,8 @@ const COL_ROCK = vec3(0.24, 0.32, 0.28); // soft green-grey rock
 
 // Plain-JS helper that INLINES nodes.
 // reads displacedNormal (varying) instead of normalWorld.
-function shadeGround(u, displacedNormal) {
+// `detail` (optional) = { grass, dirt } CC0 luminance maps — see detail-texture.js.
+function shadeGround(u, displacedNormal, detail = null) {
     const N = normalize(displacedNormal).toVar();
     const worldP = positionWorld.toVar();
     const sunDir = normalize(u.uSunDir).toVar();
@@ -199,7 +201,16 @@ function shadeGround(u, displacedNormal) {
     const patch = fbmMacro(worldP.xz.mul(0.02));
     const albedoA = mix(COL_LOW, COL_MID, tLow);
     const albedoB = mix(albedoA, COL_HIGH, tHigh);
-    const albedoC = albedoB.mul(float(0.86).add(patch.mul(0.26)));
+    const albedoC = albedoB.mul(float(0.86).add(patch.mul(0.26))).toVar();
+    // CC0 grass+dirt LUMINANCE grain (two scales) breaks up the flat 3-band green.
+    // Multiplies the palette green only — never the asset's RGB — and is applied
+    // BEFORE the slope→rock blend so cliffs stay rock. Honors the COL_ROCK read.
+    if (detail?.grass) {
+        albedoC.mulAssign(detailLumaPlanar(detail.grass, worldP.xz, 0.05, 0.9, 1.08));
+    }
+    if (detail?.dirt) {
+        albedoC.mulAssign(detailLumaPlanar(detail.dirt, worldP.xz, 0.012, 0.93, 1.06));
+    }
     const albedo = mix(albedoC, COL_ROCK, smoothstep(float(0.46), float(0.82), slope)).toVar();
 
     // Soft wrapped diffuse + colored-shadow blend (cool-violet shadow, anchor #1/#2).
@@ -229,7 +240,7 @@ function shadeGround(u, displacedNormal) {
     return { color, emissive };
 }
 
-export function createValleyTerrainMaterial(u) {
+export function createValleyTerrainMaterial(u, detail = null) {
     const material = new MeshBasicNodeMaterial({ fog: false });
 
     // Displace vertex positions on the GPU in the vertex stage
@@ -252,13 +263,13 @@ export function createValleyTerrainMaterial(u) {
     );
 
     // Shading using displaced normal varying
-    material.colorNode = Fn(() => shadeGround(u, displacedNormal).color)();
-    material.emissiveNode = Fn(() => shadeGround(u, displacedNormal).emissive)();
+    material.colorNode = Fn(() => shadeGround(u, displacedNormal, detail).color)();
+    material.emissiveNode = Fn(() => shadeGround(u, displacedNormal, detail).emissive)();
     material.userData.emitsBloom = true;
     return material;
 }
 
-export function createValleyCliffMaterial(u) {
+export function createValleyCliffMaterial(u, detailTex = null) {
     // The skirt/drop below the terrain: darker, simpler, fogged so it reads as a
     // shadowed cliff face that melts into the haze. It has CPU-mapped positions,
     // so it uses the normalWorld.
@@ -268,7 +279,11 @@ export function createValleyCliffMaterial(u) {
         const worldP = positionWorld.toVar();
         const sunDir = normalize(u.uSunDir);
         const diffuse = wrappedDiffuse(N, sunDir, 0.7);
-        const albedo = vec3(0.20, 0.24, 0.20);
+        const albedo = vec3(0.20, 0.24, 0.20).toVar();
+        if (detailTex) {
+            // ~92% of this is eaten by fog below, so the rock tooth is near-free.
+            albedo.mulAssign(detailLumaTriplanar(detailTex, worldP, N, 0.02, 0.8, 1.18));
+        }
         const litColor = albedo.mul(u.uSunColor).mul(0.7);
         const shadowColor = albedo.mul(u.uShadowTint).mul(0.7);
         const base = coloredShadowBlend(diffuse, litColor, shadowColor, 0.2).toVar();

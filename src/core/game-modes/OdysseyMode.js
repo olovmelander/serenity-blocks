@@ -176,6 +176,9 @@ export class OdysseyMode extends BaseGameMode {
         this.chapterArrivalCueTimer = null;
         this.isTallBoard = false;
         this._boardBuildPromise = null;
+        this._deferredWarpPreinitTimer = null;
+        this._warpPreinitScheduled = false;
+        this._warpPreinitComplete = false;
 
         // In-place retry: fail -> instant restart of the SAME level, reusing the
         // live gameplay surface/theme/board (no journey-return + journey-entry round-trip).
@@ -539,6 +542,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Dispose the 3D Odyssey Board and overlay
         this._disposeOdysseyBoard();
+        this._clearDeferredWarpPreinit();
 
         this.journeyEntryTransition?.dispose?.();
         this.journeyEntryTransition = null;
@@ -3324,12 +3328,21 @@ export class OdysseyMode extends BaseGameMode {
         } = options;
 
         console.log('[Odyssey] Showing board view');
+        const boardViewMark = 'odyssey:mode:board-view';
+        const boardInitMark = 'odyssey:mode:board-init';
+        const focusMark = 'odyssey:mode:focus-selected-level';
+        const overlayWaitMark = 'odyssey:mode:overlay-wait';
+        const overlayDismissMark = 'odyssey:mode:overlay-dismiss';
+        this._perfMark(boardViewMark);
 
         // Initialize Three.js Odyssey Board if not exists
+        this._perfMark(boardInitMark);
         await this._initializeOdysseyBoard();
+        this._perfMeasure('odyssey:mode:board-init', boardInitMark);
         this.closeOdysseyNavigator({ restoreBoardPreview: true });
         this._restoreBoardOverlayAfterLaunchAttempt();
 
+        this._perfMark(focusMark);
         if (Number.isFinite(focusLevelId)) {
             await this._focusBoardLevelForLaunch(focusLevelId, {
                 updatePreview: true,
@@ -3338,6 +3351,7 @@ export class OdysseyMode extends BaseGameMode {
         } else if (Number.isFinite(this.selectedLevelId)) {
             this._updateLevelPreview(this.selectedLevelId);
         }
+        this._perfMeasure('odyssey:mode:focus-selected-level', focusMark);
 
         if (keepBoardLocked) {
             this._lockOdysseyBoardForLaunch();
@@ -3352,19 +3366,26 @@ export class OdysseyMode extends BaseGameMode {
         this._stopPhaserBoardScene();
 
         if (showLoadingOverlay) {
+            this._perfMark(overlayWaitMark);
             const elapsed = Date.now() - (this._overlayShownAt || 0);
             const remaining = Math.max(0, minOverlayDisplayMs - elapsed);
 
             if (remaining > 0) {
                 await new Promise((resolve) => setTimeout(resolve, remaining));
             }
+            this._perfMeasure('odyssey:mode:overlay-wait', overlayWaitMark);
 
+            this._perfMark(overlayDismissMark);
             await this._dismissCinematicLoadingOverlay();
+            this._perfMeasure('odyssey:mode:overlay-dismiss', overlayDismissMark);
             // Startup trace: the user-perceived "board visible" moment (overlay fully gone).
             if (this._overlayShownAt) {
                 console.log(`[OdysseyStartup] board visible ${Date.now() - this._overlayShownAt}ms after overlay show`);
             }
         }
+        this._perfMeasure('odyssey:mode:board-visible', boardViewMark);
+        this._scheduleDeferredWarpPreinit();
+        this.boardController?.startDeferredBackgroundLoading?.();
 
         return true;
     }
@@ -3533,11 +3554,85 @@ export class OdysseyMode extends BaseGameMode {
         console.log('[Odyssey] Three.js board initialized');
     }
 
+    _resolveWarpPreinitMode() {
+        try {
+            const raw = new URLSearchParams(window.location?.search || '').get('odysseyWarpPreinit');
+            const mode = String(raw || '').trim().toLowerCase();
+            if (mode === 'immediate' || mode === 'defer' || mode === 'off') {
+                return mode;
+            }
+        } catch {
+            // Default below.
+        }
+        return 'defer';
+    }
+
+    _preInitWarpTransition() {
+        if (!this.transitionManager || this._warpPreinitComplete) return false;
+
+        const warpMark = 'odyssey:mode:preinit-warp';
+        this._perfMark(warpMark);
+        this.transitionManager.preInitWarp();
+        this._perfMeasure('odyssey:mode:preinit-warp', warpMark);
+        this._warpPreinitComplete = true;
+        return true;
+    }
+
+    _isBoardIdleForDeferredWarpPreinit() {
+        const bc = this.boardController;
+        if (!bc) return true;
+
+        const pendingChapterLoads = bc.pendingChapterLoads?.size || 0;
+        const pendingPrewarms = bc.prewarmQueue?.length || 0;
+        const bgRenderWarmComplete = bc._bgRenderWarmComplete || !bc._bgRenderWarmStarted;
+        return pendingChapterLoads === 0
+            && pendingPrewarms === 0
+            && !bc.isPrewarming
+            && bgRenderWarmComplete
+            && (!bc._canRunBackgroundTask || bc._canRunBackgroundTask());
+    }
+
+    _scheduleDeferredWarpPreinit({ delayMs = 5000 } = {}) {
+        if (!this.transitionManager || this._warpPreinitScheduled || this._warpPreinitComplete) return;
+        if (this._resolveWarpPreinitMode() !== 'defer') return;
+
+        this._warpPreinitScheduled = true;
+        const run = () => {
+            this._deferredWarpPreinitTimer = null;
+            if (!this.isActive || !this.isInBoardView) {
+                this._warpPreinitScheduled = false;
+                return;
+            }
+            if (!this._isBoardIdleForDeferredWarpPreinit()) {
+                this._warpPreinitScheduled = false;
+                this._scheduleDeferredWarpPreinit({ delayMs: 1200 });
+                return;
+            }
+            this._preInitWarpTransition();
+        };
+
+        this._deferredWarpPreinitTimer = window.setTimeout(run, Math.max(0, delayMs));
+    }
+
+    _clearDeferredWarpPreinit() {
+        if (!this._deferredWarpPreinitTimer) return;
+
+        window.clearTimeout(this._deferredWarpPreinitTimer);
+        this._deferredWarpPreinitTimer = null;
+        this._warpPreinitScheduled = false;
+    }
+
     /**
-     * Bring a built board on screen, create the info overlay, and pre-init the warp transition.
+     * Bring a built board on screen, create the info overlay, and schedule transition warmup.
      * @private
      */
     _revealOdysseyBoard() {
+        const revealMark = 'odyssey:mode:reveal-board';
+        const containerMark = 'odyssey:mode:reveal-container';
+        const overlayMark = 'odyssey:mode:create-board-overlay';
+        this._perfMark(revealMark);
+
+        this._perfMark(containerMark);
         const boardContainer = document.getElementById('odyssey-board-3d');
         if (boardContainer) {
             // `display` was set to 'none' when the board was parked (or hidden for the
@@ -3554,6 +3649,7 @@ export class OdysseyMode extends BaseGameMode {
             this._boardParked = false;
             this._logBoardMemory('board-resumed');
         }
+        this._perfMeasure('odyssey:mode:reveal-container', containerMark);
 
         if (this.deps?.soundManager?.musicTrack) {
             this.boardTrackKey = this.deps.soundManager.musicTrack;
@@ -3561,12 +3657,18 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         // Create the info overlay (header + level panel)
+        this._perfMark(overlayMark);
         this._createBoardInfoOverlay();
+        this._perfMeasure('odyssey:mode:create-board-overlay', overlayMark);
 
         // Pre-initialize warp transition to avoid GPU init freeze later
-        if (this.transitionManager) {
-            this.transitionManager.preInitWarp();
+        const warpPreinitMode = this._resolveWarpPreinitMode();
+        if (warpPreinitMode === 'immediate') {
+            this._preInitWarpTransition();
+        } else if (warpPreinitMode === 'off') {
+            console.log('[ThemeTransition] Warp renderer pre-init skipped');
         }
+        this._perfMeasure('odyssey:mode:reveal-board', revealMark);
     }
 
     /**

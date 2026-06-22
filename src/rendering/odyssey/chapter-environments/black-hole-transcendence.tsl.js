@@ -70,14 +70,17 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
     const base = mix(vec3(0.072, 0.040, 0.130), vec3(0.150, 0.070, 0.250), h);
 
     const q = dir.mul(3.4).add(vec3(0.0, 0.0, uTime.mul(0.03)));
-    const dust = fbm3(q);
-    const filaments = ridged3(q.mul(0.8).add(7.0));
+    // Octaves 5->3 (perf): this is a full-screen BackSide dome (the mode's heaviest fragment,
+    // stacked under the ambient wash). Octaves 4-5 are low-amplitude detail eaten by the
+    // pocket smoothstep below + ACES downstream — same cut already verified safe on ch5/ch6.
+    const dust = fbm3(q, 3);
+    const filaments = ridged3(q.mul(0.8).add(7.0), 3);
 
     // Nebula POCKETS: a low-frequency ridged field carved into bright/dim cells so the
     // dome reads as clustered nebula structure (pockets) rather than a uniform haze.
     // Widened smoothstep (0.12..0.70) so pockets cover MORE of the dome and the dimmest
     // cells still carry visible nebula instead of going dark.
-    const pocketRaw = ridged3(dir.mul(1.15).add(vec3(0.0, 0.0, uTime.mul(0.012)).add(21.0)));
+    const pocketRaw = ridged3(dir.mul(1.15).add(vec3(0.0, 0.0, uTime.mul(0.012)).add(21.0)), 3);
     const pockets = smoothstep(0.12, 0.70, pocketRaw);
 
     // Hotter, more saturated magenta filaments threading the void (preserves the magenta
@@ -93,7 +96,7 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
     // gold/cyan veins so they layer over the primary filaments rather than tracking them;
     // gated by `pockets` so the accents stay inside the clustered nebula structure, and
     // kept low-luminance (deep-void discipline — no blowout, ACES downstream).
-    const veins = ridged3(q.mul(1.35).add(13.0));
+    const veins = ridged3(q.mul(1.35).add(13.0), 3);
     const goldVein = vec3(0.30, 0.20, 0.06).mul(pow(veins, 2.0)).mul(pockets.mul(0.6).add(0.2));
     const cyanVein = vec3(0.05, 0.22, 0.34).mul(filaments).mul(pockets.mul(0.5).add(0.18));
     nebula = nebula.add(goldVein).add(cyanVein);
@@ -388,8 +391,10 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
     // reads as nebula (bright clumps), not a flat band. The ridged term carves brighter
     // violet filaments; the fbm term softens them into clouds.
     const dir = normalize(positionLocal);
-    const clouds = fbm3(dir.mul(2.2).add(vec3(0.0, 0.0, uTime.mul(0.02)))).mul(0.6).add(0.5);
-    const filaments = ridged3(dir.mul(1.6).add(vec3(0.0, 0.0, uTime.mul(0.015)).add(13.0)));
+    // Octaves 5->3 (perf): second full-screen BackSide dome overlapping the void dome on every
+    // background pixel; the high octaves vanish under the pocket smoothstep + low wash intensity.
+    const clouds = fbm3(dir.mul(2.2).add(vec3(0.0, 0.0, uTime.mul(0.02))), 3).mul(0.6).add(0.5);
+    const filaments = ridged3(dir.mul(1.6).add(vec3(0.0, 0.0, uTime.mul(0.015)).add(13.0)), 3);
     const pockets = smoothstep(0.30, 0.85, filaments).mul(0.9).add(0.5);
     const mottle = clouds.mul(pockets);
 

@@ -30,6 +30,7 @@ export class BlackHolePost {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
         this.bloomDownsample = params.bloomDownsample ?? 0.8;
+        this.enableChromatic = params.enableChromatic ?? true;
         this.postProcessing = new THREE.PostProcessing(renderer);
 
         this.scenePass = pass(scene, camera);
@@ -47,7 +48,10 @@ export class BlackHolePost {
 
         const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
         this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
+            originalBloomSetSize(
+                Math.max(1, Math.floor(width * this.bloomDownsample)),
+                Math.max(1, Math.floor(height * this.bloomDownsample)),
+            );
         };
 
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0006);
@@ -71,7 +75,9 @@ export class BlackHolePost {
             vignette,
         );
 
-        const chroma = chromaticAberration(vignetteColor, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
+        const chroma = this.enableChromatic
+            ? chromaticAberration(vignetteColor, this.uChromaticStrength, vec2(0.5, 0.5), 1.1)
+            : vignetteColor;
         const combined = chroma.add(this.bloomNode);
 
         const exposed = combined.mul(this.uExposure);
@@ -104,7 +110,7 @@ export class BlackHolePost {
         if (params.bloomThreshold !== undefined) {
             this.bloomNode.threshold.value = params.bloomThreshold;
         }
-        if (params.chromaticStrength !== undefined) {
+        if (this.enableChromatic && params.chromaticStrength !== undefined) {
             this.uChromaticStrength.value = params.chromaticStrength;
         }
         if (params.vignetteOffset !== undefined) {
