@@ -518,6 +518,14 @@ export class ChapterEnvironmentManager {
         // detection for the FOV pulse.
         this.atmosphereOwned = false;
 
+        // LEVER 2 — chapter LRU eviction. Inert unless the board turns it on (default OFF;
+        // ?odysseyChapterEvict=1). When on, chapters outside the active +/-N window are FULLY
+        // disposed (geometry + material + textures/RTs + their reparented rig lights) and
+        // re-created on approach. This OWNS residency, so the background loader must be off.
+        this.evictionEnabled = false;
+        this.evictionWindow = 2;
+        this.onChapterRecreated = null; // board hook: re-queue prewarm + offscreen render-warm
+
         // Quality settings
         this.qualitySettings = {
             particleCount: 500,
@@ -560,6 +568,19 @@ export class ChapterEnvironmentManager {
      */
     setAtmosphereOwned(owned) {
         this.atmosphereOwned = !!owned;
+    }
+
+    /**
+     * LEVER 2 — enable/configure chapter LRU eviction. Inert until enabled:true.
+     * @param {object} opts
+     * @param {boolean} [opts.enabled]
+     * @param {number} [opts.window] resident half-window N (active +/-N stays resident)
+     * @param {Function|null} [opts.onRecreated] board hook fired after a chapter re-creates
+     */
+    setChapterEviction({ enabled, window, onRecreated } = {}) {
+        if (typeof enabled === 'boolean') this.evictionEnabled = enabled;
+        if (Number.isFinite(window)) this.evictionWindow = Math.max(1, Math.floor(window));
+        if (typeof onRecreated === 'function' || onRecreated === null) this.onChapterRecreated = onRecreated;
     }
 
     /**
@@ -767,6 +788,141 @@ export class ChapterEnvironmentManager {
 
         console.log(`[ChapterEnvironmentManager] Created chapter ${chapterId} environment`);
         return group;
+    }
+
+    /**
+     * LEVER 2 — FULLY free a single chapter's environment so the windowed-residency model can
+     * reclaim its VRAM. Superset of dispose()'s per-env teardown: ALSO disposes material map
+     * textures + uniform-value .isTexture + any userData RenderTargets (the dispose() path
+     * leaks these). Removes ONLY this chapter's reparented lights from the shared
+     * persistentLightRig, leaving every other resident chapter's crossfade intact.
+     * @param {number} chapterId
+     * @returns {boolean} true if an env was disposed
+     */
+    disposeChapterEnvironment(chapterId) {
+        const env = this.environments.get(chapterId);
+        if (!env) return false;
+        // Never free a chapter still drawing (visible with non-zero opacity) — retry once faded.
+        if (env.group?.visible && (env.lastOpacity ?? 0) > 0) return false;
+
+        // 1) Rig lights FIRST — remove ONLY this chapter's lights from the shared rig.
+        if (env.rigLights) {
+            for (const entry of env.rigLights) {
+                const { light } = entry;
+                this.persistentLightRig.remove(light);
+                if (typeof light.dispose === 'function') light.dispose();
+            }
+            env.rigLights.length = 0;
+        }
+
+        // 2) Geometry + material + ALL textures (material maps AND uniform .isTexture) + RTs.
+        if (env.group) {
+            env.group.traverse((child) => {
+                if (child.geometry && typeof child.geometry.dispose === 'function') {
+                    child.geometry.dispose();
+                }
+                if (child.material) {
+                    const materials = Array.isArray(child.material) ? child.material : [child.material];
+                    materials.forEach((material) => {
+                        if (!material) return;
+                        Object.keys(material).forEach((key) => {
+                            const val = material[key];
+                            if (val && val.isTexture && typeof val.dispose === 'function') val.dispose();
+                        });
+                        if (material.uniforms) {
+                            Object.keys(material.uniforms).forEach((key) => {
+                                const uni = material.uniforms[key];
+                                if (uni && uni.value && uni.value.isTexture
+                                    && typeof uni.value.dispose === 'function') {
+                                    uni.value.dispose();
+                                }
+                            });
+                        }
+                        if (typeof material.dispose === 'function') material.dispose();
+                    });
+                }
+                const ud = child.userData;
+                if (ud) {
+                    Object.keys(ud).forEach((key) => {
+                        const val = ud[key];
+                        if (val && val.isRenderTarget && typeof val.dispose === 'function') val.dispose();
+                    });
+                }
+            });
+            const gud = env.group.userData;
+            if (gud) {
+                Object.keys(gud).forEach((key) => {
+                    const val = gud[key];
+                    if (val && val.isRenderTarget && typeof val.dispose === 'function') val.dispose();
+                });
+            }
+            this.environmentGroup.remove(env.group);
+        }
+
+        // 3) Drop from the residency map + null cached refs so VRAM/closures release.
+        this.environments.delete(chapterId);
+        env.group = null;
+        env.opacityTargets = null;
+        env.update = null;
+        env.config = null;
+        // _loadedModules (module-level) is intentionally KEPT — it caches only the
+        // {config,create,update} fn refs (no GPU resources), so re-create skips the import().
+        console.log(`[ChapterEnvironmentManager] Evicted chapter ${chapterId} environment`);
+        return true;
+    }
+
+    /**
+     * LEVER 2 — windowed residency. Keep [active-N .. active+N] resident (plus the seam
+     * source/target and anything currently drawing), evict the rest, re-create chapters
+     * entering the window. Inert unless setChapterEviction({enabled:true}) was called. Caps
+     * work at 1 evict + 1 create per call so the CPU bake / GPU free spreads across frames.
+     * @param {number} progress current camera progress (0..1)
+     * @param {object} blendState resolved blend state (has activeChapter + source/target)
+     */
+    updateResidency(progress, blendState) {
+        if (!this.evictionEnabled || !blendState) return;
+        const chapterCount = CHAPTER_CONFIGS.length;
+        const active = Number.isFinite(blendState.activeChapter)
+            ? blendState.activeChapter : this.currentChapter;
+        const N = this.evictionWindow;
+
+        const resident = new Set();
+        for (let id = active - N; id <= active + N; id += 1) {
+            if (id >= 1 && id <= chapterCount) resident.add(id);
+        }
+        // Never evict the two chapters co-present at a seam, nor anything still drawing.
+        if (Number.isFinite(blendState.sourceChapter)) resident.add(blendState.sourceChapter);
+        if (Number.isFinite(blendState.targetChapter)) resident.add(blendState.targetChapter);
+        this.environments.forEach((env, id) => {
+            if (env.group?.visible && (env.lastOpacity ?? 0) > 0) resident.add(id);
+        });
+
+        // EVICT — farthest-from-active first, capped at 1 per call.
+        let evictId = -1;
+        let evictDist = -1;
+        this.environments.forEach((env, id) => {
+            if (resident.has(id)) return;
+            const d = Math.abs(id - active);
+            if (d > evictDist) { evictDist = d; evictId = id; }
+        });
+        if (evictId > 0) this.disposeChapterEnvironment(evictId);
+
+        // RE-CREATE — nearest missing resident chapter first, capped at 1 per call.
+        let createId = -1;
+        let createDist = Infinity;
+        resident.forEach((id) => {
+            if (this.environments.has(id)) return;
+            const d = Math.abs(id - active);
+            if (d < createDist) { createDist = d; createId = id; }
+        });
+        if (createId > 0) {
+            this.createChapterEnvironment(createId).then(() => {
+                this.updateVisibility(this.cameraProgress, { mode: 'progress' });
+                if (this.onChapterRecreated) this.onChapterRecreated(createId);
+            }).catch((err) => {
+                console.warn(`[ChapterEnvironmentManager] Re-create on approach failed for chapter ${createId}:`, err);
+            });
+        }
     }
 
     /**

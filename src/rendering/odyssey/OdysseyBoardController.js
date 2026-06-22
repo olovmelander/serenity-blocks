@@ -295,9 +295,24 @@ export class OdysseyBoardController {
         this._fastStart = this.warmupMode === 'current';
         this._skipPreRevealWarmup = this.warmupMode === 'off';
         this.focusChapter = Number.isFinite(options.focusChapter) ? options.focusChapter : null;
+        // LEVER 2 — chapter LRU eviction (default OFF; opt-in ?odysseyChapterEvict=1, window N=2).
+        // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
+        // background chapter loader + full background render-warm are disabled (below) to avoid
+        // fighting the evictor. NOT auto-enabled on the RTX/keep-alive path — flag-only.
+        this.chapterEvictionEnabled = (options.chapterEviction === true
+            || readBooleanUrlFlag('odysseyChapterEvict'))
+            && !this.restrictStartupChapterLoading;
+        this.chapterEvictionWindow = Number.parseInt(readUrlValue('odysseyChapterEvictWindow'), 10) || 2;
         this.backgroundChapterLoadingEnabled = options.backgroundChapterLoading !== false
             && !this.restrictStartupChapterLoading
-            && !readBooleanUrlFlag('odysseyDisableBackgroundLoading');
+            && !readBooleanUrlFlag('odysseyDisableBackgroundLoading')
+            && !this.chapterEvictionEnabled;
+        // L8 dome-cull: hide the global atmosphere dome while a single chapter's own
+        // full-coverage sky dome fully covers the frame (mid-chapter, not a seam), removing
+        // a guaranteed full-screen overdraw layer. Default ON; ?odysseyDomeCullOff=1 reverts
+        // to always-visible (today's behaviour). Per-chapter safety (does each chapter's dome
+        // fully cover at weight 1?) is capture-verified; the dome is restored at every seam.
+        this._domeCullEnabled = !readBooleanUrlFlag('odysseyDomeCullOff');
         this.pixelRatioOverride = Number.isFinite(options.pixelRatioOverride)
             ? Math.min(2, Math.max(0.5, options.pixelRatioOverride))
             : readPixelRatioOverrideFromUrl();
@@ -568,6 +583,25 @@ export class OdysseyBoardController {
         }
         /* eslint-enable no-await-in-loop */
         this.environmentManager.updateVisibility(this.environmentManager.cameraProgress, { mode: 'progress' });
+
+        // LEVER 2 — hand residency to the manager once the startup window is built. The
+        // onRecreated hook re-queues prewarm + an offscreen render-warm so a chapter re-entering
+        // the window is GPU-ready before it draws (no first-visit compile hitch on re-approach).
+        if (this.chapterEvictionEnabled && this.environmentManager) {
+            this.environmentManager.setChapterEviction({
+                enabled: true,
+                window: this.chapterEvictionWindow,
+                onRecreated: (chapterId) => {
+                    const env = this.environmentManager.environments.get(chapterId);
+                    if (env) env._renderWarmed = false;
+                    this._queueChapterPrewarm(chapterId);
+                    if (env && this.isActive) {
+                        this._renderWarmChapterOffscreen(chapterId, env);
+                        env._renderWarmed = true;
+                    }
+                },
+            });
+        }
         trace.end('creates');
 
         // ─── Step 4: Build path ───
@@ -928,6 +962,14 @@ export class OdysseyBoardController {
 
     _startBackgroundRenderWarm() {
         if (this._bgRenderWarmStarted) return;
+        // LEVER 2: when chapter eviction owns residency, do NOT sweep-warm all 8 chapters —
+        // they would be evicted again moments later. Each chapter is render-warmed on approach
+        // via the setChapterEviction onRecreated hook instead.
+        if (this.chapterEvictionEnabled) {
+            this._bgRenderWarmStarted = true;
+            this._bgRenderWarmComplete = true;
+            return;
+        }
         this._bgRenderWarmStarted = true;
         this._bgRenderWarmComplete = false;
         this._bgRenderWarmCurrent = null;
@@ -1846,6 +1888,20 @@ export class OdysseyBoardController {
         this.nodeManager?.update(delta, this.cinematicJourneyActive ? (directorState?.node?.focalPulse ?? 0) : 0);
         this.layoutEditor?.update(delta);
 
+        // L8 dome-cull: when the dominant chapter's own full-coverage dome is fully opaque
+        // (mid-chapter, NOT a seam), hide the global atmosphere dome to drop its full-screen
+        // overdraw layer. The clear colour is driven to the horizon every frame regardless
+        // (OdysseyAtmosphere.update), so the backdrop stays intact; we keep the dome visible
+        // at seams + low max-weight so the zenith→horizon gradient never flattens during a
+        // crossfade. Set BEFORE atmosphere.update so its gradient-uniform writes are skipped
+        // while hidden. Reversible via ?odysseyDomeCullOff=1.
+        if (this.atmosphere && this._domeCullEnabled) {
+            const weightsMap = blendState?.weights;
+            const maxWeight = weightsMap ? Math.max(0, ...Object.values(weightsMap)) : 0;
+            const domeInSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
+            this.atmosphere.setDomeVisible(!(!domeInSeam && maxWeight >= 0.995));
+        }
+
         // Drive the conductor from camera position + audio (time-driven — every frame).
         this.atmosphere?.update(this.camera, directorState);
         this.debugOverlay?.update(directorState, audioState);
@@ -1874,6 +1930,13 @@ export class OdysseyBoardController {
             if (runPositionWork) {
                 this._ensureBoundaryAssets(cameraProgress);
                 this._handleChapterSeam(cameraProgress, blendState);
+                // LEVER 2: drive windowed residency (evict far chapters, re-create approaching
+                // ones) on the same throttled position-work cadence as visibility. Inert unless
+                // ?odysseyChapterEvict=1. Runs BEFORE updateVisibility so a just-re-created
+                // chapter's opacity is set correctly this frame.
+                if (this.chapterEvictionEnabled && blendState) {
+                    this.environmentManager.updateResidency(cameraProgress, blendState);
+                }
                 this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress', blendState });
 
                 const progressDelta = Number.isFinite(this.lastGlobalEnvUpdateProgress)
