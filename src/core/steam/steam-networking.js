@@ -315,7 +315,6 @@ export class SteamNetworking {
             return;
         }
 
-        const buffer = Buffer.from(JSON.stringify(envelope));
         const sendType = this._resolveDelivery(options.delivery);
 
         // Send via steamworks.js preload API
@@ -468,19 +467,26 @@ export class SteamNetworking {
     startP2PPolling() {
         if (this.mockMode) return;
 
-        // Poll for P2P packets at 60Hz via steamworks.js preload API
+        // Guard against a second init() orphaning the previous interval — that
+        // would leak a 60Hz timer and double-process every incoming packet.
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+
+        // Poll for P2P packets at 60Hz via steamworks.js preload API.
+        // steamworks.js 0.4.0 P2P is single-channel: drain it each tick. The
+        // logical channel rides inside the envelope (used for seq tracking), so
+        // we don't need a per-channel transport here.
         this.pollInterval = setInterval(async () => {
-            for (const channel of [0, 1, 2]) {
-                try {
-                    while (await ipcRenderer.invoke('steam:isP2PPacketAvailable', channel)) {
-                        const packet = await ipcRenderer.invoke('steam:readP2PPacket', channel);
-                        if (packet) {
-                            this.handleP2PPacket(packet, channel);
-                        }
-                    }
-                } catch (err) {
-                    // Ignore polling errors
+            try {
+                let packet = await ipcRenderer.invoke('steam:readP2PPacket');
+                while (packet) {
+                    this.handleP2PPacket(packet, 0);
+                    packet = await ipcRenderer.invoke('steam:readP2PPacket');
                 }
+            } catch (err) {
+                // Ignore polling errors
             }
         }, 16); // ~60Hz
     }
@@ -867,6 +873,10 @@ export class SteamNetworking {
             matchId: this.matchId,
             matchNonce: this.matchNonce,
             hostSteamId: this.hostSteamId,
+            // Logical channel travels with the packet so the receiver can track
+            // per-channel sequence numbers even though steamworks.js 0.4.0
+            // delivers everything on one physical channel.
+            channel,
             seq,
             tick: options.tick ?? data?.tick ?? null,
             sentAt: Date.now(),
@@ -902,6 +912,7 @@ export class SteamNetworking {
                 matchId: message.matchId ?? null,
                 matchNonce: message.matchNonce ?? null,
                 hostSteamId: message.hostSteamId ?? null,
+                channel: message.channel ?? 0,
                 seq: message.seq ?? 0,
                 tick: message.tick ?? null,
                 sentAt: message.timestamp ?? Date.now(),
@@ -959,7 +970,12 @@ export class SteamNetworking {
             if (envelope.hostSteamId !== this.hostSteamId) return false;
         }
 
-        const seqKey = `${fromSteamId}:${channel}`;
+        // Key replay/ordering by the LOGICAL channel carried in the envelope, not
+        // the physical transport channel — steamworks.js 0.4.0 delivers all packets
+        // on a single channel, so per-channel sender seq counters would otherwise
+        // collide on one key and drop ~half the traffic. (In mock mode the two are
+        // equal, so existing behavior is unchanged.)
+        const seqKey = `${fromSteamId}:${envelope.channel ?? channel}`;
         const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
         if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
             return false;
