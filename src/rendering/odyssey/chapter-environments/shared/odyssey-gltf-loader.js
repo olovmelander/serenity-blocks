@@ -67,8 +67,17 @@ export async function loadOdysseyGltfCached(url) {
     }
 
     const gltf = await loadPromise;
+    // SkeletonUtils.clone SHARES geometry + materials (+ their textures) by reference with the
+    // cached source — every consumer's clone points at the same GPU resources. Tag each mesh so
+    // chapter LRU eviction (ChapterEnvironmentManager.disposeChapterEnvironment) detaches these
+    // from the scene graph but NEVER disposes the shared cached geo/mat/textures (doing so would
+    // corrupt the cache + any other chapter sharing the GLB, and break re-create-on-approach).
+    const scene = SkeletonUtils.clone(gltf.scene);
+    scene.traverse((child) => {
+        if (child.isMesh) child.userData.fromSharedGltfCache = true;
+    });
     return {
-        scene: SkeletonUtils.clone(gltf.scene),
+        scene,
         animations: gltf.animations || [],
         cameras: gltf.cameras || [],
         asset: gltf.asset || {},
