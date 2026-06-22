@@ -37,20 +37,20 @@ const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,sv
 const THEME_ICON_LOOKUP = buildThemeIconLookup(THEME_REGISTRY, THEME_ICON_MODULES);
 
 /**
- * LEVER 1 (core texture-atlas instancing) escape hatch. DEFAULT OFF — this is a
- * capture-gated WebGPU change (visual identity of all 55 inner cores cannot be verified
- * headless), so it ships inert and is opt-in via `?odysseyCoreInstanced=1` until a
- * playground + in-game capture confirms the instanced cores are pixel-identical, after
- * which the default can be flipped. When OFF, createGlassNode builds the legacy per-node
- * inner-core Mesh exactly as before (55 materials / 55 pipeline compiles).
+ * LEVER 1 (core texture-atlas instancing). DEFAULT ON in the browser — capture-confirmed
+ * 2026-06-22 (instanced cores read identical to the legacy per-node path). Collapses all 55
+ * inner fluid cores to ONE InstancedMesh + ONE material + ONE pipeline + a shared theme-icon
+ * DataArrayTexture (−54 cold-start pipeline compiles + draws). Opt OUT via
+ * `?odysseyCoreInstanced=0` to restore the legacy per-node inner-core Mesh path. Non-browser
+ * (tests/SSR) stays on the legacy path so unit suites remain deterministic.
  */
 function readOdysseyCoreInstancedFlag() {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') return false; // tests/SSR: legacy path (deterministic)
     try {
         const raw = new URLSearchParams(window.location?.search || '').get('odysseyCoreInstanced');
-        if (raw === '1' || raw === 'true' || raw === 'on') return true;
-    } catch { /* default off */ }
-    return false;
+        if (raw === '0' || raw === 'false' || raw === 'off') return false;
+    } catch { /* default on */ }
+    return true;
 }
 
 // P3b: map each per-world node shell style to a shader style index.

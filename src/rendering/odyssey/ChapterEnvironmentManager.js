@@ -818,6 +818,12 @@ export class ChapterEnvironmentManager {
         // 2) Geometry + material + ALL textures (material maps AND uniform .isTexture) + RTs.
         if (env.group) {
             env.group.traverse((child) => {
+                // Skip shared cached-GLB meshes (manta/whale/conifers): their geometry +
+                // materials + textures are owned by the loadOdysseyGltfCached cache and shared
+                // across chapters + re-create (SkeletonUtils.clone shares them by reference).
+                // Disposing them would corrupt the cache + break re-create-on-approach; detaching
+                // the group below suffices (the small GLB cache stays resident by design).
+                if (child.userData?.fromSharedGltfCache) return;
                 if (child.geometry && typeof child.geometry.dispose === 'function') {
                     child.geometry.dispose();
                 }
