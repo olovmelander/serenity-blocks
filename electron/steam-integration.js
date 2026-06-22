@@ -291,7 +291,39 @@ function registerSteamCallbacks() {
         (p) => setSteamServerConnection(false, 'SteamServerConnectFailure', p),
     );
 
-    steamCallbackHandles.push(lobbyJoinHandle, connectedHandle, disconnectedHandle, failureHandle);
+    // P2P session handshake (legacy ISteamNetworking): when a peer sends us its
+    // first packet, Steam raises P2PSessionRequest and DROPS that packet until we
+    // explicitly accept the session. Without this, two real machines join the same
+    // lobby but never exchange game state (NET_HELLO/NET_WELCOME never arrive).
+    // We accept and let the app layer (_validateEnvelope: matchId/nonce/protocol)
+    // authorize individual packets.
+    const p2pSessionRequestHandle = steamworksClient.callback.register(
+        steamworksModule.SteamCallback.P2PSessionRequest,
+        (payload) => {
+            const remote = payload?.remote;
+            if (remote === undefined || remote === null) return;
+            try {
+                steamworksClient.networking.acceptP2PSession(BigInt(remote));
+                steamLog(`Accepted P2P session from ${remote}`);
+            } catch (err) {
+                steamLog(`WARN: failed to accept P2P session from ${remote}: ${err.message}`);
+            }
+        },
+    );
+
+    // Surfaced for diagnostics — a connect failure here explains a peer that joins
+    // the lobby but never syncs (NAT/firewall, peer quit, or session timeout).
+    const p2pSessionFailHandle = steamworksClient.callback.register(
+        steamworksModule.SteamCallback.P2PSessionConnectFail,
+        (payload) => {
+            steamLog(`WARN: P2P session connect failed remote=${payload?.remote} error=${payload?.error}`);
+        },
+    );
+
+    steamCallbackHandles.push(
+        lobbyJoinHandle, connectedHandle, disconnectedHandle, failureHandle,
+        p2pSessionRequestHandle, p2pSessionFailHandle,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -968,29 +1000,43 @@ export function registerSteamIPC() {
     });
 
     // --- P2P Networking ---
-    ipcMain.handle('steam:sendP2PPacket', (_event, steamId, data, sendType, channel) => {
+    // steamworks.js 0.4.0 P2P is single-channel and its signatures are:
+    //   sendP2PPacket(steamId64, sendType, data)   — NOT (steamId, data, sendType, channel)
+    //   isP2PPacketAvailable() -> next packet size  — takes no channel
+    //   readP2PPacket(size)    -> { data, steamId } — takes the size, not a channel
+    // The previous call sites used the old greenworks/channel argument order, so
+    // real-Steam sends/reads silently failed (mock BroadcastChannel mode masked it).
+    ipcMain.handle('steam:sendP2PPacket', (_event, steamId, data, sendType /* channel unused */) => {
         if (!steamworksClient) return false;
         try {
             const buffer = Buffer.from(JSON.stringify(data));
-            steamworksClient.networking.sendP2PPacket(BigInt(steamId), buffer, sendType, channel);
-            return true;
-        } catch { return false; }
+            const type = Number.isInteger(sendType) ? sendType : 2; // default: Reliable
+            return steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
+        } catch (err) {
+            steamLog(`WARN: sendP2PPacket failed: ${err.message}`);
+            return false;
+        }
     });
 
-    ipcMain.handle('steam:readP2PPacket', (_event, channel) => {
+    ipcMain.handle('steam:readP2PPacket', () => {
         if (!steamworksClient) return null;
         try {
-            if (!steamworksClient.networking.isP2PPacketAvailable(channel)) return null;
-            const packet = steamworksClient.networking.readP2PPacket(channel);
-            if (!packet) return null;
-            if (!packet.data || packet.data.length > MAX_P2P_PACKET_BYTES) return null;
+            const size = steamworksClient.networking.isP2PPacketAvailable();
+            if (!size) return null;
+            if (size > MAX_P2P_PACKET_BYTES) {
+                // Drain an oversized/garbage packet without buffering it.
+                try { steamworksClient.networking.readP2PPacket(size); } catch {}
+                return null;
+            }
+            const packet = steamworksClient.networking.readP2PPacket(size);
+            if (!packet || !packet.data) return null;
             return { steamId: packet.steamId.steamId64.toString(), data: packet.data.toString('utf8') };
         } catch { return null; }
     });
 
-    ipcMain.handle('steam:isP2PPacketAvailable', (_event, channel) => {
-        if (!steamworksClient) return false;
-        try { return steamworksClient.networking.isP2PPacketAvailable(channel); } catch { return false; }
+    ipcMain.handle('steam:isP2PPacketAvailable', () => {
+        if (!steamworksClient) return 0;
+        try { return steamworksClient.networking.isP2PPacketAvailable() || 0; } catch { return 0; }
     });
 
     ipcMain.handle('steam:closeP2PSession', (_event, steamId) => {

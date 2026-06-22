@@ -73,7 +73,7 @@ export class LobbyWaitingRoom {
         <div class="lobby-controls" style="margin-top: auto; padding-top: 20px;">
              <!-- Invite Link / Room Code -->
              <div class="room-code-display">
-                <div class="room-code-label">Lobby ID</div>
+                <div class="room-code-label">Lobby ID — share this to let friends join</div>
                 <div class="room-code-row">
                    <span class="room-code-value" id="lobby-id-display">Connecting...</span>
                    <button class="lobby-copy-btn" id="copy-lobby-id" title="Copy Lobby ID" aria-label="Copy Lobby ID">

@@ -47,7 +47,19 @@ export class LobbyBrowser {
             🔄 Refresh
           </button>
         </div>
-        
+
+        <div class="lobby-join-by-id" style="display:flex; gap:8px; margin:14px 0 4px;">
+          <input type="text" id="join-by-id-input"
+            placeholder="Paste a Lobby ID to join a friend's match"
+            maxlength="32" inputmode="numeric" autocomplete="off" spellcheck="false"
+            style="flex:1; min-width:0; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.35); color:#fff; font-size:14px;" />
+          <button class="btn btn-primary" id="join-by-id-btn">Join</button>
+        </div>
+        <div class="join-by-id-hint" style="font-size:12px; color:rgba(255,255,255,0.6); margin-bottom:6px;">
+          💡 Ask the host for their <strong>Lobby ID</strong> (shown in their waiting room), or use <strong>Invite Friends</strong> / Steam → <em>Join Game</em>.
+        </div>
+        <div class="join-by-id-error" id="join-by-id-error" style="display:none; font-size:12px; color:#ff7676; margin-bottom:6px;"></div>
+
         <div class="lobby-list-container">
           <div class="lobby-list-header">
             <span class="col-name">Match Name</span>
@@ -58,8 +70,8 @@ export class LobbyBrowser {
           </div>
           <div class="lobby-list" id="lobby-list">
             <div class="lobby-list-empty">
-              <p>🔍 No lobbies found</p>
-              <p class="text-muted">Create a new match to get started!</p>
+              <p>🔍 No public lobbies found</p>
+              <p class="text-muted">Create a match, or join a friend with their <strong>Lobby ID</strong> above.</p>
             </div>
           </div>
         </div>
@@ -98,6 +110,56 @@ export class LobbyBrowser {
         // Refresh button
         const refreshBtn = this.container.querySelector('#refresh-lobbies-btn');
         refreshBtn.addEventListener('click', () => this.refresh());
+
+        // Join-by-ID (room code) — the reliable cross-machine path that does not
+        // depend on the public lobby list (which Steam region-filters and caps).
+        const joinIdBtn = this.container.querySelector('#join-by-id-btn');
+        const joinIdInput = this.container.querySelector('#join-by-id-input');
+        if (joinIdBtn) {
+            joinIdBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.joinById();
+            });
+        }
+        if (joinIdInput) {
+            joinIdInput.addEventListener('keydown', (e) => {
+                // Keep keystrokes out of the global game hotkey handlers.
+                e.stopPropagation();
+                if (e.key === 'Enter') this.joinById();
+            });
+            joinIdInput.addEventListener('input', () => this.clearJoinError());
+        }
+    }
+
+    /**
+   * Join a lobby from the pasted Lobby ID (room code). Steam lobby IDs are
+   * numeric, so we strip everything else to tolerate stray spaces/quotes.
+   */
+    joinById() {
+        const input = this.container.querySelector('#join-by-id-input');
+        const raw = (input?.value || '').trim();
+        const id = raw.replace(/\D/g, '');
+
+        if (!id) {
+            this.showJoinError('Enter a Lobby ID to join (numbers only).');
+            return;
+        }
+
+        this.clearJoinError();
+        // Reuse the same join path as the lobby list (calls onJoinLobby + hides).
+        this.joinLobby(id);
+    }
+
+    showJoinError(message) {
+        const el = this.container.querySelector('#join-by-id-error');
+        if (!el) return;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
+    clearJoinError() {
+        const el = this.container.querySelector('#join-by-id-error');
+        if (el) el.style.display = 'none';
     }
 
     /**
@@ -165,8 +227,8 @@ export class LobbyBrowser {
         if (this.lobbies.length === 0) {
             listEl.innerHTML = `
         <div class="lobby-list-empty">
-          <p>🔍 No lobbies found</p>
-          <p class="text-muted">Create a new match to get started!</p>
+          <p>🔍 No public lobbies found</p>
+          <p class="text-muted">Create a match, or join a friend with their <strong>Lobby ID</strong> above.</p>
         </div>
       `;
             return;
