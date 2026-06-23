@@ -492,22 +492,19 @@ export class LobbyWaitingRoom {
       colorStrip.className = 'player-color-strip';
       cardEl.appendChild(colorStrip);
 
-      // Player avatar using PlayerCard component
+      // Player avatar + name. Render the name via the PlayerCard component's
+      // built-in label (showName) — the reliable path used elsewhere in the app —
+      // with a non-empty fallback so a card is never nameless.
+      const displayName = player.name || (isLocal ? 'You' : 'Player');
       const playerCard = createPlayerCard({
         steamId: player.steamId,
-        name: player.name,
+        name: displayName,
         color: playerColor,
         size: 'medium',
-        showName: false,
+        showName: true,
         vertical: true,
       });
       cardEl.appendChild(playerCard);
-
-      // Player name
-      const nameEl = document.createElement('div');
-      nameEl.className = 'player-name';
-      nameEl.textContent = player.name;
-      cardEl.appendChild(nameEl);
 
       // Player status
       const statusEl = document.createElement('div');

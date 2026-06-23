@@ -19733,8 +19733,9 @@ body.phaser-multiplayer-active #single-player-container {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
+    overflow: hidden;
     padding: 4px 2px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.02);
@@ -19743,6 +19744,12 @@ body.phaser-multiplayer-active #single-player-container {
 
 .player-stats-bar .stat-item:hover {
     background: rgba(255, 255, 255, 0.05);
+}
+
+/* Score is the widest value (formatted, up to 6-7 digits) — give it ~2x the room
+   of the 1-2 digit cells so it isn't ellipsis-truncated in the narrow strip. */
+.player-stats-bar .stat-score {
+    flex-grow: 2.2;
 }
 
 .player-stats-bar .stat-icon {
@@ -19757,12 +19764,17 @@ body.phaser-multiplayer-active #single-player-container {
 
 .player-stats-bar .stat-value {
     font-family: 'Orbitron', sans-serif;
-    font-size: 20px !important;
+    font-size: 15px !important;
     font-weight: 700;
     color: #ffffff;
     text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
     font-variant-numeric: tabular-nums;
     margin-top: 2px;
+    /* Never let a wide value (e.g. a 6-digit score) spill into the next cell. */
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Stat-specific colors */

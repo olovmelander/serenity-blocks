@@ -12,6 +12,7 @@ import {
     calculateGarbage,
     createGarbageAttackFromColumns,
 } from '../garbage.js';
+import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 
 export class FFAAttackRouter {
     constructor(ffaGameState) {
@@ -301,14 +302,20 @@ export class FFAAttackRouter {
             timestamp: Date.now(),
         });
 
-        // Broadcast attack event to all players
-        this.gameState.network.broadcastToAll('game:garbage:sent', {
+        const garbagePayload = {
             from: attackerSteamId,
             fromName: attacker.name,
             totalLines: scaledLines,
             targets: opponents.map((o) => o.steamId),
             targetCount: opponents.length,
-        });
+        };
+
+        // Broadcast attack event to all peers (they render it from the network msg)…
+        this.gameState.network.broadcastToAll('game:garbage:sent', garbagePayload);
+        // …and emit a LOCAL echo so the HOST (which never receives its own broadcast)
+        // also logs the attack in the Battle Log. Only the host runs routeAttack, so
+        // this fires once on the host and never on peers — no double entry.
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_SENT, garbagePayload);
     }
 
     /**

@@ -659,7 +659,21 @@
 body.start-modal-open .intro-title-container.shrink-to-logo {
     opacity: 0.92;
     top: var(--menu-logo-top) !important;
-    transform: translate(-50%, 0) perspective(1000px) scale(var(--menu-logo-scale)) !important;
+    /* Render the wordmark at a real (small) font-size instead of GPU-downscaling a
+       full-size title. A transform scale on a 3D/composited layer rasterizes the
+       gradient-clipped glyphs at a pinned low raster scale and bitmap-scales them,
+       which blurs the logo (very visible at devicePixelRatio 1.5+). Translate only,
+       no scale/perspective, and drop the compositing hints so Chromium lays out and
+       rasterizes crisp vector glyphs at the target size at full device resolution. */
+    transform: translate(-50%, 0) !important;
+    perspective: none !important;
+    transform-style: flat !important;
+    will-change: auto !important;
+    /* No transform transition (the resting transform is unscaled, so transitioning it
+       would wobble). Size is now driven by font-size, so transition THAT instead: the
+       one-time correction from the 0.2 fallback to the JS-computed --menu-logo-scale
+       eases smoothly rather than popping in a single frame. */
+    transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), font-size 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out !important;
     animation: none !important;
     pointer-events: none !important;
 }
@@ -678,25 +692,42 @@ body.start-modal-open .intro-title-container.shrink-to-logo::before {
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
     letter-spacing: 0.2em;
-    animation: menuLogoFloat 6.2s ease-in-out infinite !important;
-    will-change: transform;
+    /* Crisp logo: real font-size = natural × computed logo scale (see container
+       rule). --menu-logo-scale is set by updateMenuLogoLayout(); 0.2 is the
+       pre-JS fallback. The clamp() must mirror the natural .intro-title font-size. */
+    font-size: calc(clamp(2rem, 7vw, 5.5rem) * var(--menu-logo-scale, 0.2)) !important;
+    /* No transform/filter animation and no 3D context. Any of those promote the
+       wordmark to a composited GPU layer, and under Electron's
+       enable-gpu-rasterization that layer's gradient-clipped glyphs get rasterized
+       into a texture that goes soft at fractional DPR (1.5) — the exact blur seen
+       in the packaged build but NOT in plain Chrome. Keeping the title un-composited
+       lets the gradient text paint directly at device resolution, crisp like the
+       menu cards. (Glow is preserved via text-shadow, which paints without a layer.) */
+    animation: none !important;
+    transform-style: flat !important;
+    will-change: auto;
 }
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-letter {
-    animation: menuLetterGlow 5.8s ease-in-out infinite !important;
-    background-image: linear-gradient(180deg,
-            #ffffff 0%,
-            #bfeeff 46%,
-            #95a6ff 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    /* SOLID fill — NOT gradient-clipped text. -webkit-background-clip:text rasterizes
+       the glyphs through a mask that Electron's ANGLE/D3D11 GPU rasterizer samples soft
+       at fractional DPR (1.5) — the menu cards use solid text and stay crisp, proving
+       this is the cause. A solid light color + the same text-shadow glow matches the
+       gradient look without the blur. (filter/animation already removed for the same
+       compositing reasons.) */
+    animation: none !important;
+    filter: none !important;
+    background: none !important;
+    background-image: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    color: #e8f3ff !important;
+    -webkit-text-fill-color: #e8f3ff !important;
     text-shadow:
         0 0 7px rgba(220, 245, 255, 0.88),
         0 0 16px rgba(110, 210, 255, 0.58),
         0 0 28px rgba(128, 90, 255, 0.28),
         0 4px 14px rgba(0, 0, 0, 0.4);
-    filter: drop-shadow(0 0 7px rgba(110, 210, 255, 0.3));
 }
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {

@@ -3392,6 +3392,20 @@ body.electron-app .active-session-overlay {
   -webkit-backdrop-filter: none;
 }
 
+/* These overlays leaned on backdrop-filter blur to obscure the sessions grid
+   behind their near-transparent centers (the AAA sheet sets the prep overlay's
+   gradient center to alpha 0.08). Electron disables the blur, so without an
+   opaque base the crisp grid bleeds through and the popup looks doubled/broken.
+   Restore a solid deep-space base (keeping the subtle accent glow at top).
+   The #serenity-hub-panel id is needed to outrank the AAA background rule. */
+body.electron-app #serenity-hub-panel .session-prep-overlay,
+body.electron-app #serenity-hub-panel .session-countdown-overlay,
+body.electron-app #serenity-hub-panel .active-session-overlay {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(var(--cs-accent-rgb), 0.12), transparent 60%),
+    rgba(4, 6, 16, 0.99);
+}
+
 body.electron-app .gamepad-hints,
 body.electron-app .gamepad-notification {
   backdrop-filter: none;

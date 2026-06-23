@@ -13,6 +13,8 @@ export const MULTIPLAYER_EVENTS = {
     PLAYER_TOPPED_OUT: 'ffa:player-topped-out',
     GARBAGE_INSERTED: 'ffa:garbage-inserted',
     GARBAGE_COUNTERED: 'ffa:garbage-countered',
+    GARBAGE_SENT: 'ffa:garbage-sent', // local echo so the AUTHORING node logs its own attacks
+
     RENDER_FRAME: 'ffa:render-frame',
     COUNTDOWN: 'ffa:countdown',
     GAME_OVER: 'ffa:game-over',
