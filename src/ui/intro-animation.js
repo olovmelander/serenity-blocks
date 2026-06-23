@@ -263,9 +263,21 @@ export class IntroAnimation {
             return;
         }
 
+        // The resting menu logo now renders at font-size = natural × --menu-logo-scale
+        // (crisp vector glyphs, not a transform-downscaled bitmap). Neutralize that
+        // scale to 1 before measuring, or we'd measure the already-shrunk wordmark and
+        // the computed scale would drift smaller on every layout pass. Reading
+        // offsetWidth forces a synchronous reflow, so the measurement reflects the
+        // natural size; the real scale is reapplied below before the frame paints.
+        const prevScale = titleContainer.style.getPropertyValue('--menu-logo-scale');
+        titleContainer.style.setProperty('--menu-logo-scale', '1');
         const naturalWidth = titleContainer.offsetWidth;
         const naturalHeight = titleContainer.offsetHeight;
         if (naturalWidth <= 0 || naturalHeight <= 0) {
+            // Restore the prior scale so a transient zero-size measurement can't leave
+            // the wordmark stuck at full (unscaled) size.
+            if (prevScale) titleContainer.style.setProperty('--menu-logo-scale', prevScale);
+            else titleContainer.style.removeProperty('--menu-logo-scale');
             return;
         }
 

@@ -133,7 +133,7 @@ export class OnlineScoreboard {
                     <span class="col-rank">${this._getMedal(index)}</span>
                     <span class="col-name">${this._escapeHtml(player.name)}</span>
                     <span class="col-frags">${player.frags || 0}</span>
-                    <span class="col-score">${player.score || 0}</span>
+                    <span class="col-score">${(player.score || 0).toLocaleString()}</span>
                     <span class="col-status">${status}</span>
                 </div>
             `;

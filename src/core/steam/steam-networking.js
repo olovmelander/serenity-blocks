@@ -52,6 +52,7 @@ export class SteamNetworking {
         this.sendSeqByChannel = new Map();
         this.recvSeqByPeer = new Map();
         this.incomingSnapshotBaselines = new Map();
+        this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
         this.outgoingSnapshotState = new Map();
 
         // Phase 4: Binary encoding for snapshots (90% bandwidth reduction)
@@ -59,8 +60,15 @@ export class SteamNetworking {
         this.binaryEncoder = null;
         this.binaryDecoder = null;
         this.lastBroadcastSnapshot = null;
+        // Deltas diff against the last KEYFRAME (which is sent reliably and in-order),
+        // not against the previous broadcast — so one lost/reordered unreliable delta
+        // can't invalidate every later delta in the interval. Only a full advances it.
+        this.lastKeyframeSnapshot = null;
         this.lastFullSnapshotAt = 0;
-        this.fullSnapshotIntervalMs = 1000;
+        // Reliable keyframe cadence. A dropped (unreliable) delta self-heals on the
+        // next full, so this bounds the worst-case opponent-board freeze. 250ms keeps
+        // it crisp; keyframes are tiny binary + only ~4/s so bandwidth stays low.
+        this.fullSnapshotIntervalMs = 250;
 
         // Phase 4: Heartbeat and disconnect detection
         this.heartbeatInterval = null;
@@ -390,29 +398,44 @@ export class SteamNetworking {
                 const now = Date.now();
                 const forceFullSnapshot = now - this.lastFullSnapshotAt >= this.fullSnapshotIntervalMs;
 
-                if (this.lastBroadcastSnapshot && !forceFullSnapshot) {
-                    // Try to encode as delta relative to last broadcast
-                    binaryBuffer = this.binaryEncoder.encodeDeltaSnapshot(data, this.lastBroadcastSnapshot);
+                if (this.lastKeyframeSnapshot && !forceFullSnapshot) {
+                    // Delta relative to the last KEYFRAME (not the previous broadcast).
+                    binaryBuffer = this.binaryEncoder.encodeDeltaSnapshot(data, this.lastKeyframeSnapshot);
                     if (binaryBuffer) {
                         usedDelta = true;
                     }
                 }
 
-                // Fallback to full snapshot if delta failed (e.g. first frame or player list change)
+                // Fallback to a full keyframe (first frame, player-list change, or due).
                 if (!binaryBuffer) {
                     binaryBuffer = this.binaryEncoder.encodeSnapshot(data);
                     usedDelta = false;
                     this.lastFullSnapshotAt = now;
+                    // ONLY a full advances the delta baseline; every delta in the next
+                    // interval diffs against this keyframe.
+                    this.lastKeyframeSnapshot = data;
                 }
 
-                // Update baseline for next time
-                this.lastBroadcastSnapshot = data;
-
                 // Convert to base64 for JSON transport
+                // The binary codec does NOT serialize lastInputSeq or roundGeneration.
+                // Carry them in the JSON wrapper (like _digest) and re-attach on the
+                // receiver. Without lastInputSeq the peer can't prune its input
+                // history → it replays its whole history onto the board (glitches);
+                // without roundGeneration a stale snapshot can clobber the next round.
+                const acks = {};
+                if (Array.isArray(data?.players)) {
+                    for (const p of data.players) {
+                        if (p && p.steamId != null && p.lastInputSeq != null) {
+                            acks[p.steamId] = p.lastInputSeq;
+                        }
+                    }
+                }
                 encodedData = {
                     _binary: true,
                     _delta: usedDelta, // Flag to tell receiver to use decodeDeltaSnapshot
                     _data: this._arrayBufferToBase64(binaryBuffer),
+                    _gen: data?.roundGeneration,
+                    _acks: acks,
                     // Carry the host's DJB2 state digest in the JSON wrapper. The
                     // binary codec does not serialize it, so without this the
                     // peer's desync detection (syncFromHost) never runs on the
@@ -432,8 +455,22 @@ export class SteamNetworking {
             }
         }
 
+        // A full snapshot (keyframe) is the recovery point for the delta stream, so
+        // it MUST arrive: send it RELIABLE + immediately, bypassing backpressure.
+        // Intermediate deltas stay unreliable_no_delay for lowest latency — a lost
+        // delta now self-heals on the next guaranteed keyframe instead of stranding
+        // the opponent board for up to a full keyframe interval.
+        const isKeyframe = isBinary && encodedData._delta === false;
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            this._queueSnapshot(steamId, messageType, encodedData, { ...options, isBinary });
+            if (isKeyframe) {
+                this._sendMessage(steamId, messageType, encodedData, {
+                    channel: 0,
+                    delivery: 'reliable',
+                    isBinary,
+                });
+            } else {
+                this._queueSnapshot(steamId, messageType, encodedData, { ...options, isBinary });
+            }
         });
     }
 
@@ -526,6 +563,8 @@ export class SteamNetworking {
             // drops it); capture it before `payload` is replaced by the decoded
             // snapshot so we can re-attach it below for desync detection.
             const carriedDigest = payload && payload._digest;
+            const carriedGen = payload && payload._gen;
+            const carriedAcks = payload && payload._acks;
             if (payload && payload._binary === true && payload._data) {
                 try {
                     if (!this.binaryDecoder) {
@@ -534,39 +573,33 @@ export class SteamNetworking {
                     const binaryBuffer = this._base64ToArrayBuffer(payload._data);
 
                     if (payload._delta) {
-                        // Delta Packet: Need baseline
-                        // We assume the PREVIOUS packet from this sender was the baseline.
-                        // Since we use reliable delivery, lastReceivedSnapshot should be correct.
-                        const lastSnapshot = this.incomingSnapshotBaselines.get(fromSteamId);
-
-                        if (lastSnapshot) {
-                            payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, lastSnapshot);
+                        // Delta diffs against the last KEYFRAME (reliable). Do NOT
+                        // advance the baseline on a delta — it stays pinned to the
+                        // keyframe so a dropped/reordered delta can't invalidate the
+                        // rest of the interval.
+                        const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
+                        if (baseline) {
+                            payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
                         } else {
-                            console.warn(`Received DELTA from ${fromSteamId} but have no baseline. Requesting resync.`);
-                            this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', {
-                                requestResync: true,
-                                reason: 'missing_delta_baseline',
-                            });
+                            // No keyframe yet — ask once (rate-limited) and wait for it.
+                            this._requestResync(fromSteamId, 'missing_delta_baseline');
                             return;
                         }
                     } else {
-                        // Full Packet
+                        // Full keyframe — decode and adopt as the new baseline.
                         payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
+                        this.incomingSnapshotBaselines.set(fromSteamId, payload);
                     }
-
-                    // Store decoded snapshot as new baseline for this peer
-                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
                 } catch (err) {
                     console.warn('Binary decoding failed, payload may be corrupted:', err);
                     this.packetStats.decodeFailures += 1;
+                    // Keep the keyframe baseline: a single bad/reordered delta does not
+                    // invalidate it — the next delta or the next reliable keyframe
+                    // recovers. Request a resync at most once per keyframe interval.
                     if (payload?._delta) {
-                        this.incomingSnapshotBaselines.delete(fromSteamId);
-                        this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', {
-                            requestResync: true,
-                            reason: 'delta_decode_failed',
-                        });
+                        this._requestResync(fromSteamId, 'delta_decode_failed');
                     }
-                    return; // Drop corrupted packet
+                    return; // Drop the corrupted delta only.
                 }
             }
 
@@ -576,6 +609,19 @@ export class SteamNetworking {
             if (carriedDigest !== undefined && carriedDigest !== null
                 && payload && typeof payload === 'object') {
                 payload.digest = carriedDigest;
+            }
+            // Re-attach the round generation (round fence) and per-player input acks
+            // (reconciliation pruning) that the binary codec drops.
+            if (carriedGen !== undefined && carriedGen !== null
+                && payload && typeof payload === 'object') {
+                payload.roundGeneration = carriedGen;
+            }
+            if (carriedAcks && payload && Array.isArray(payload.players)) {
+                payload.players.forEach((p) => {
+                    if (p && carriedAcks[p.steamId] !== undefined) {
+                        p.lastInputSeq = carriedAcks[p.steamId];
+                    }
+                });
             }
 
             // Call registered message handlers (array-based)
@@ -687,6 +733,9 @@ export class SteamNetworking {
             this._disconnectCheckInterval = null;
         }
         this.incomingSnapshotBaselines.clear();
+        this.lastResyncRequestAt.clear();
+        this.lastKeyframeSnapshot = null;
+        this.lastBroadcastSnapshot = null;
         this.outgoingSnapshotState.forEach((state) => {
             if (state?.timer) {
                 clearTimeout(state.timer);
@@ -995,6 +1044,34 @@ export class SteamNetworking {
         this.sendP2PMessage(targetSteamId, 'net:error', payload);
     }
 
+    /**
+     * Ask the host for a full-state resync, at most once per keyframe interval per
+     * peer. Without this, a burst of reordered/dropped unreliable deltas would emit
+     * one request each and fan out into multiple concurrent full-state transfers.
+     */
+    _requestResync(fromSteamId, reason) {
+        const now = Date.now();
+        const last = this.lastResyncRequestAt.get(fromSteamId) || 0;
+        if (now - last < this.fullSnapshotIntervalMs) return;
+        this.lastResyncRequestAt.set(fromSteamId, now);
+        this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', { requestResync: true, reason });
+    }
+
+    /**
+     * Force the next outgoing snapshot to be a full KEYFRAME and discard stale
+     * receive baselines. MUST be called on a round restart: otherwise the host's
+     * first post-restart packet is a DELTA encoded against the PRE-restart keyframe
+     * (hostTick is monotonic, so the baseline-tick guard doesn't catch it), and the
+     * peer decodes round-2 state against round-1 data → corrupted/frozen peer board.
+     */
+    resetSnapshotBaselines() {
+        this.lastKeyframeSnapshot = null;
+        this.lastBroadcastSnapshot = null;
+        this.lastFullSnapshotAt = 0;
+        this.incomingSnapshotBaselines.clear();
+        this.lastResyncRequestAt.clear();
+    }
+
     _nextSeq(channel) {
         const current = this.sendSeqByChannel.get(channel) ?? 0;
         const next = current + 1;
@@ -1035,8 +1112,8 @@ export class SteamNetworking {
             // Phase 4: Backpressure metrics
             totalDropped: 0,
             totalSent: 0,
+            sentThisWindow: 0,
             currentRate: 30,
-            consecutiveSuccesses: 0,
         };
 
         const now = Date.now();
@@ -1051,27 +1128,15 @@ export class SteamNetworking {
             });
             state.lastSendAt = now;
             state.totalSent++;
-            state.consecutiveSuccesses++;
-
-            // Phase 4: Try to restore rate after sustained success
-            if (state.consecutiveSuccesses >= 30 && state.currentRate < 30) {
-                // Sustained 1 second of success, try to increase rate
-                if (state.currentRate === 10) {
-                    state.currentRate = 20;
-                    state.minInterval = 1000 / 20;
-                } else if (state.currentRate === 20) {
-                    state.currentRate = 30;
-                    state.minInterval = 1000 / 30;
-                }
-                state.consecutiveSuccesses = 0;
-            }
+            state.sentThisWindow = (state.sentThisWindow || 0) + 1;
+            // Rate restoration is now time-based (see the window-reset block), which
+            // recovers reliably instead of needing 30 uninterrupted successes.
         } else {
             // Queue is building up - apply backpressure
             if (state.pending) {
                 // Drop the OLD pending snapshot, keep the NEW one (latest state)
                 state.dropCount++;
                 state.totalDropped++;
-                state.consecutiveSuccesses = 0;
             }
 
             // Store the latest snapshot
@@ -1094,6 +1159,7 @@ export class SteamNetworking {
                         );
                         state.lastSendAt = Date.now();
                         state.totalSent++;
+                        state.sentThisWindow = (state.sentThisWindow || 0) + 1;
                         state.pending = null;
                     }
                     state.timer = null;
@@ -1101,23 +1167,27 @@ export class SteamNetworking {
             }
         }
 
-        // Reset window stats every second
+        // Reset window stats every second + adapt the rate.
         if (now - state.windowStart > 1000) {
-            // Phase 4: Adaptive throttling based on drop rate
-            const dropRate = state.dropCount / Math.max(1, state.dropCount + (state.totalSent - (state.totalSent - state.dropCount)));
+            const sent = state.sentThisWindow || 0;
+            // Real drop-rate (the old formula algebraically collapsed to a constant).
+            const dropRate = state.dropCount / Math.max(1, state.dropCount + sent);
 
             if (state.dropCount >= 5 || dropRate > 0.3) {
-                // Heavy congestion - drop to 10Hz
-                state.currentRate = 10;
-                state.minInterval = 1000 / 10;
-            } else if (state.dropCount >= 2 || dropRate > 0.1) {
-                // Moderate congestion - drop to 20Hz
+                // Heavy congestion → floor at 20Hz (never the old 10Hz pin, which
+                // combined with the delta stream to strand boards).
                 state.currentRate = 20;
-                state.minInterval = 1000 / 20;
+            } else if (state.dropCount >= 2 || dropRate > 0.1) {
+                state.currentRate = 25;
+            } else if (state.dropCount === 0 && state.currentRate < 30) {
+                // Clean window → restore one tier toward 30Hz. Time-based recovery
+                // can't get pinned the way the old 30-consecutive-success gate did.
+                state.currentRate = state.currentRate >= 25 ? 30 : 25;
             }
-            // Note: Rate restoration happens in the success path above
+            state.minInterval = 1000 / state.currentRate;
 
             state.dropCount = 0;
+            state.sentThisWindow = 0;
             state.windowStart = now;
         }
 

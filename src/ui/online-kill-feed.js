@@ -7,8 +7,8 @@ export class OnlineKillFeed {
     constructor(container) {
         this.container = container;
         this.listContainer = null;
-        this.maxItems = 10;
-        this.itemTTL = 5000;
+        this.maxItems = 12;
+        this.itemTTL = 12000;
         this.items = [];
         this.expireTimer = null;
 
@@ -26,10 +26,35 @@ export class OnlineKillFeed {
     }
 
     /**
+     * Returns true if `key` was seen within the last 3s (used to collapse the same
+     * combat event arriving from multiple sources into a single row).
+     */
+    _isDuplicate(key) {
+        if (!key) return false;
+        const now = Date.now();
+        if (!this._recentKeys) this._recentKeys = new Map();
+        // Cheap prune so the map can't grow unbounded.
+        if (this._recentKeys.size > 64) {
+            for (const [k, t] of this._recentKeys) {
+                if (now - t > 5000) this._recentKeys.delete(k);
+            }
+        }
+        const last = this._recentKeys.get(key);
+        this._recentKeys.set(key, now);
+        return last != null && now - last < 3000;
+    }
+
+    /**
      * Add a kill event to the feed
      * @param {Object} event - { killer: string, victim: string, linesCleared?: number }
      */
     addKill(event) {
+        // Dedup: the same death can reach the feed from both a local event and the
+        // host's network broadcast (or a fragile double-record). Prefer a stable
+        // eventId (identical on host + peer) over the victim-name fallback so the two
+        // nodes can't diverge based on local-emit vs network-arrival timing.
+        if (this._isDuplicate(event.eventId || `kill:${event.victim}`)) return;
+
         const isSelfKill = typeof event.isSelfKill === 'boolean'
             ? event.isSelfKill
             : !event.killer;
@@ -292,6 +317,7 @@ export class OnlineKillFeed {
      */
     clear() {
         this.items = [];
+        this._recentKeys?.clear();
         if (this.expireTimer) {
             clearTimeout(this.expireTimer);
             this.expireTimer = null;

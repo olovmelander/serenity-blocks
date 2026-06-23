@@ -30,6 +30,10 @@ let steamServerConnected = null;
 let steamSteamId = null;
 let steamPlayerName = null;
 let currentLobbyId = null;
+// steamworks.js 0.4.0 has no matchmaking.getLobbyFromId()/leaveLobby() — lobby
+// data/owner/members/leave are only reachable via the Lobby OBJECT returned by
+// createLobby()/joinLobby(). Hold onto it for the lobby we're currently in.
+let currentLobby = null;
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
@@ -670,7 +674,9 @@ export function registerSteamIPC() {
 
     // --- Avatar & Rich Presence ---
     ipcMain.handle('steam:getAvatar', async (_event, steamId, size = 'medium') => {
-        if (!steamworksClient) return null;
+        // steamworks.js 0.4.0 has no friends/avatar API — return null cleanly so the
+        // UI falls back to default avatars instead of throwing on every lookup.
+        if (!steamworksClient?.friends) return null;
         try {
             const target = steamId || steamSteamId;
             if (!target) return null;
@@ -678,14 +684,22 @@ export function registerSteamIPC() {
         } catch { return null; }
     });
 
+    // Rich presence lives under `localplayer` in steamworks.js 0.4.0 (there is no
+    // `friends` namespace). This is what powers "Join Game" on a friend's profile.
     ipcMain.handle('steam:setRichPresence', (_event, key, value) => {
         if (!steamworksClient) return false;
-        try { steamworksClient.friends.setRichPresence(key, value); return true; } catch { return false; }
+        try { steamworksClient.localplayer.setRichPresence(key, value); return true; } catch { return false; }
     });
 
     ipcMain.handle('steam:clearRichPresence', () => {
         if (!steamworksClient) return false;
-        try { steamworksClient.friends.clearRichPresence(); return true; } catch { return false; }
+        // 0.4.0 has no clear-all; clear known keys by setting them with no value.
+        try {
+            ['status', 'connect', 'steam_display'].forEach((k) => {
+                try { steamworksClient.localplayer.setRichPresence(k); } catch {}
+            });
+            return true;
+        } catch { return false; }
     });
 
     // --- Stats ---
@@ -885,12 +899,15 @@ export function registerSteamIPC() {
         try { return steamworksClient.friends.getFriendPersonaState(BigInt(steamId)); } catch { return 0; }
     });
 
+    // steamworks.js 0.4.0 has no "invite a specific user to lobby" API; the only
+    // path is the Steam overlay invite dialog (the user picks the friend there).
     ipcMain.handle('steam:inviteToLobby', (_event, friendSteamId, lobbyId) => {
         if (!steamworksClient) return false;
         try {
+            if (currentLobby?.openInviteDialog) { currentLobby.openInviteDialog(); return true; }
             const target = lobbyId || currentLobbyId;
             if (!target) return false;
-            steamworksClient.matchmaking.inviteUserToLobby(BigInt(target), BigInt(friendSteamId));
+            steamworksClient.overlay.activateInviteDialog(BigInt(target));
             return true;
         } catch { return false; }
     });
@@ -898,23 +915,36 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:openLobbyInviteDialog', (_event, lobbyId) => {
         if (!steamworksClient) return false;
         try {
+            if (currentLobby?.openInviteDialog) { currentLobby.openInviteDialog(); return true; }
             const target = lobbyId || currentLobbyId;
             if (!target) return false;
-            const lobby = steamworksClient.matchmaking.getLobbyFromId(BigInt(target));
-            if (!lobby) return false;
-            lobby.openInviteDialog();
+            steamworksClient.overlay.activateInviteDialog(BigInt(target));
             return true;
         } catch { return false; }
     });
 
+    // steamworks.js 0.4.0 overlay API: activateDialog(Dialog) / activateDialogToUser(Dialog, steamId64).
+    // Dialog is a numeric enum: Friends=0, Community=1, Players=2, Settings=3,
+    // OfficialGameGroup=4, Stats=5, Achievements=6. (overlay.activate/activateToUser do not exist.)
+    const OVERLAY_DIALOG = {
+        friends: 0, community: 1, players: 2, settings: 3, officialgamegroup: 4, stats: 5, achievements: 6,
+    };
     ipcMain.handle('steam:activateOverlay', (_event, type) => {
         if (!steamworksClient) return false;
-        try { steamworksClient.overlay.activate(type || 'Friends'); return true; } catch { return false; }
+        try {
+            const dialog = OVERLAY_DIALOG[String(type || 'friends').toLowerCase()] ?? 0;
+            steamworksClient.overlay.activateDialog(dialog);
+            return true;
+        } catch { return false; }
     });
 
     ipcMain.handle('steam:activateOverlayToUser', (_event, type, steamId) => {
         if (!steamworksClient) return false;
-        try { steamworksClient.overlay.activateToUser(type || 'steamid', BigInt(steamId)); return true; } catch { return false; }
+        try {
+            const dialog = OVERLAY_DIALOG[String(type || 'friends').toLowerCase()] ?? 0;
+            steamworksClient.overlay.activateDialogToUser(dialog, BigInt(steamId));
+            return true;
+        } catch { return false; }
     });
 
     // --- Lobbies ---
@@ -923,23 +953,26 @@ export function registerSteamIPC() {
         const { maxPlayers = 8, lobbyType = 'public' } = options || {};
         const type = lobbyType === 'public' ? 2 : 1;
         const lobby = await steamworksClient.matchmaking.createLobby(type, maxPlayers);
+        currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
         return currentLobbyId;
     });
 
     ipcMain.handle('steam:joinLobby', async (_event, lobbyId) => {
         if (!steamworksClient) throw new Error('Steam not initialized');
-        await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
-        currentLobbyId = lobbyId;
+        // joinLobby() RESOLVES to the Lobby object — keep it; it's the only handle
+        // to the lobby's owner/members/data in steamworks.js 0.4.0.
+        const lobby = await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
+        currentLobby = lobby || null;
+        currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
         return true;
     });
 
     ipcMain.handle('steam:leaveLobby', () => {
-        if (!steamworksClient || !currentLobbyId) return;
-        try {
-            steamworksClient.matchmaking.leaveLobby(BigInt(currentLobbyId));
-            currentLobbyId = null;
-        } catch {}
+        if (!currentLobby) { currentLobbyId = null; return; }
+        try { currentLobby.leave(); } catch {}
+        currentLobby = null;
+        currentLobbyId = null;
     });
 
     ipcMain.handle('steam:getLobbies', async () => {
@@ -960,43 +993,33 @@ export function registerSteamIPC() {
         } catch { return []; }
     });
 
+    // All per-lobby reads/writes go through the live Lobby object (currentLobby),
+    // since steamworks.js 0.4.0 has no getLobbyFromId(id) lookup. We're only ever
+    // in one lobby at a time, so the lobbyId arg is accepted for compatibility but
+    // currentLobby is authoritative.
     ipcMain.handle('steam:getLobbyData', (_event, lobbyId, key) => {
-        if (!steamworksClient) return null;
-        try {
-            return steamworksClient.matchmaking.getLobbyFromId(BigInt(lobbyId))?.getData(key) || null;
-        } catch { return null; }
+        if (!currentLobby) return null;
+        try { return currentLobby.getData(key) || null; } catch { return null; }
     });
 
     ipcMain.handle('steam:setLobbyData', (_event, lobbyId, key, value) => {
-        if (!steamworksClient) return false;
-        try {
-            steamworksClient.matchmaking.getLobbyFromId(BigInt(lobbyId))?.setData(key, value);
-            return true;
-        } catch { return false; }
+        if (!currentLobby) return false;
+        try { return !!currentLobby.setData(key, String(value)); } catch { return false; }
     });
 
     ipcMain.handle('steam:getLobbyMembers', (_event, lobbyId) => {
-        if (!steamworksClient) return [];
+        if (!currentLobby) return [];
         try {
-            const lobby = steamworksClient.matchmaking.getLobbyFromId(BigInt(lobbyId));
-            if (!lobby) return [];
-            const members = [];
-            for (let i = 0; i < lobby.getMemberCount(); i++) {
-                const m = lobby.getMemberByIndex(i);
-                members.push({
-                    steamId: m.steamId64.toString(),
-                    name: steamworksClient.friends.getFriendPersonaName(m),
-                });
-            }
-            return members;
+            return currentLobby.getMembers().map((m) => {
+                const id = m.steamId64.toString();
+                return { steamId: id, name: getPersonaName(id) };
+            });
         } catch { return []; }
     });
 
     ipcMain.handle('steam:getLobbyOwner', (_event, lobbyId) => {
-        if (!steamworksClient) return null;
-        try {
-            return steamworksClient.matchmaking.getLobbyFromId(BigInt(lobbyId))?.getOwner()?.steamId64?.toString() || null;
-        } catch { return null; }
+        if (!currentLobby) return null;
+        try { return currentLobby.getOwner()?.steamId64?.toString() || null; } catch { return null; }
     });
 
     // --- P2P Networking ---
@@ -1039,9 +1062,9 @@ export function registerSteamIPC() {
         try { return steamworksClient.networking.isP2PPacketAvailable() || 0; } catch { return 0; }
     });
 
-    ipcMain.handle('steam:closeP2PSession', (_event, steamId) => {
-        if (!steamworksClient) return;
-        try { steamworksClient.networking.closeP2PSessionWithUser(BigInt(steamId)); } catch {}
+    ipcMain.handle('steam:closeP2PSession', (_event, _steamId) => {
+        // steamworks.js 0.4.0 exposes no closeP2PSession API — sessions time out on
+        // their own. No-op kept so renderer calls remain harmless.
     });
 
     // --- Diagnostics ---
@@ -1061,8 +1084,14 @@ export function cleanupSteam() {
     steamCallbackHandles = [];
 
     if (steamworksClient) {
-        try { steamworksClient.friends?.clearRichPresence?.(); } catch {}
+        try {
+            steamworksClient.localplayer?.setRichPresence?.('status');
+            steamworksClient.localplayer?.setRichPresence?.('connect');
+        } catch {}
+        try { currentLobby?.leave?.(); } catch {}
         steamworksClient = null;
     }
+    currentLobby = null;
+    currentLobbyId = null;
     steamInitialized = false;
 }

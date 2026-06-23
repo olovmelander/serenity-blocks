@@ -87,9 +87,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Cleanup handlers
         this.cleanupHandlers = [];
 
-        // Snapshot Interpolation
+        // Snapshot Interpolation. ~90ms ≈ 3 packets at 30Hz, so there are reliably
+        // two snapshots to blend between under Steam-P2P jitter; 50ms left <17ms of
+        // slack and fell back to snapping on any hiccup. Costs ~40ms of (cosmetic)
+        // opponent-view lag, which is imperceptible vs. the smoothness gained.
         this.snapshotInterpolator = new SnapshotInterpolator({
-            interpolationDelay: 50, // 50ms buffer for smooth 30Hz -> 60Hz
+            interpolationDelay: 90,
         });
 
         // === PERFORMANCE OPTIMIZATIONS ===
@@ -1256,12 +1259,34 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.garbageCounteredUnsub);
 
+        // Local echo of the host's OWN outgoing attacks → Battle Log. The host never
+        // receives its own network broadcast, so without this its attacks are
+        // invisible in the log. Only the host runs routeAttack (which emits this),
+        // and peers log from the network message instead — so it fires once per node.
+        this.garbageSentLocalUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.GARBAGE_SENT,
+            (detail) => {
+                if (!this.killFeed) return;
+                const targetLabel = detail.targetCount === 1
+                    ? '1 player'
+                    : `${detail.targetCount || 0} players`;
+                this.killFeed.addGarbageSent({
+                    sender: detail.fromName,
+                    target: targetLabel,
+                    lines: detail.totalLines || 0,
+                    senderColor: this._getPlayerColor(detail.from),
+                });
+            },
+        );
+        this.cleanupHandlers.push(this.garbageSentLocalUnsub);
+
         // Round restart - clear death overlay and reset board state
         this.roundRestartUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.ROUND_RESTART,
             () => {
                 console.log('[OnlineMultiplayer] Round restarting - clearing death state');
                 this._clearDeathState();
+                this.killFeed?.clear(); // don't bleed last round's Battle-Log rows into the new round
                 this.roundNumber += 1;
                 this._playRoundStartStinger();
             },
@@ -1302,6 +1327,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Update stats display
             this._updateLocalStats(myState);
+
+            // Tear down the ELIMINATED overlay the moment we're revived (round reset).
+            // Strict === true: a missing/undefined isAlive must never clear it early.
+            this._reconcileDeathOverlay(myState.isAlive === true);
         }
 
         // Update opponent boards
@@ -1315,9 +1344,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Actually, let's let _handleRenderFrame handle visual updates.
             // But we need to update stats/metadata here?
 
-            // For now, we update mostly meta-data here. Visuals are in render loop.
-            const opponents = normalizedPlayers.filter((p) => p.id !== this.steamNetworking.steamId);
-            this.opponentWatchManager.updateFromState(opponents); // Keep this for metadata syncing
+            // Metadata + discrete grid only. We DROP currentPiece here so this 30Hz
+            // raw write can't stomp the 60fps interpolated piece that
+            // _processRenderFrame owns (the verified cause of opponent "snap every
+            // ~33ms"). The smooth, interpolated piece flows through the render loop.
+            const opponents = normalizedPlayers
+                .filter((p) => p.id !== this.steamNetworking.steamId)
+                .map(({ currentPiece, ...meta }) => meta);
+            this.opponentWatchManager.updateFromState(opponents);
         }
 
         // Update scoreboard
@@ -1433,11 +1467,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Update local stats + garbage
             this._updateLocalStats({
                 frags: localPlayer.frags || 0,
-                deaths: 0,
+                deaths: localPlayer.deaths || 0,
                 score: localPlayer.gameState?.score || 0,
                 lines: localPlayer.gameState?.lines || 0,
             });
             this._updateGarbageMeter(localPlayer.garbageQueue);
+
+            // Safe revival check (=== true): never clears on a missing isAlive field.
+            this._reconcileDeathOverlay(localPlayer.isAlive === true);
         }
 
         // Update Opponent Boards with INTERPOLATION
@@ -1629,6 +1666,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 killerColor,
                 victimColor,
                 isSelfKill,
+                // Stable, node-independent identity: a victim dies once per round, and
+                // roundNumber is in lock-step on host + peer. So the host's local
+                // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the
+                // SAME eventId → both nodes show one identical row (no clock-skewed dedup).
+                eventId: victimId ? `death:${victimId}:${this.roundNumber}` : undefined,
             });
         }
 
@@ -1648,13 +1690,19 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
+        // Idempotent: a single death can be signalled by both PLAYER_TOPPED_OUT and
+        // _handlePlayerDeath — only animate once per death until the next clear.
+        if (this._deathShown) return;
+        this._deathShown = true;
+
         // 1. Camera flash effect (if board scene available)
         if (this.mainBoardScene?.cameras?.main) {
             this.mainBoardScene.cameras.main.flash(400, 255, 255, 255, false);
         }
 
         boardContainer.classList.add('death-shake');
-        setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
+        if (this._deathShakeTimer) clearTimeout(this._deathShakeTimer);
+        this._deathShakeTimer = setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
 
         // 2. Create white flash overlay
         const flashOverlay = document.createElement('div');
@@ -1683,8 +1731,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }, 200);
         });
 
-        // 3. Create death overlay with skull and text (after flash)
-        setTimeout(() => {
+        // 3. Create death overlay with skull and text (after flash).
+        // Track the handle so _clearDeathState can cancel a still-pending overlay
+        // (a round-ending death emits ROUND_RESTART BEFORE this fires).
+        if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
+        this._deathOverlayTimer = setTimeout(() => {
+            this._deathOverlayTimer = null;
+            // If we were revived/cleared while the timer was pending, don't show it.
+            if (!this._deathShown) return;
             this._createDeathOverlay(boardContainer, killerName);
         }, 500);
 
@@ -1783,22 +1837,35 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Clear death state from the main board (for rematch/new game)
      */
     _clearDeathState() {
+        // Cancel any still-pending death animation so it can't be born after the
+        // round already reset (the orphaned-timeout bug that stuck "ELIMINATED").
+        if (this._deathOverlayTimer) {
+            clearTimeout(this._deathOverlayTimer);
+            this._deathOverlayTimer = null;
+        }
+        if (this._deathShakeTimer) {
+            clearTimeout(this._deathShakeTimer);
+            this._deathShakeTimer = null;
+        }
+        this._deathShown = false;
+
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
-        // Remove eliminated class
         boardContainer.classList.remove('eliminated');
+        boardContainer.classList.remove('death-shake');
+        boardContainer.querySelector('.death-overlay')?.remove();
+        boardContainer.querySelector('.death-flash-overlay')?.remove();
+    }
 
-        // Remove death overlay
-        const deathOverlay = boardContainer.querySelector('.death-overlay');
-        if (deathOverlay) {
-            deathOverlay.remove();
-        }
-
-        // Remove flash overlay
-        const flashOverlay = boardContainer.querySelector('.death-flash-overlay');
-        if (flashOverlay) {
-            flashOverlay.remove();
+    /**
+     * Reconcile the death overlay against authoritative liveness. Driven from
+     * state updates so the overlay is torn down the instant the local player is
+     * revived (round restart), independent of event ordering/timeouts.
+     */
+    _reconcileDeathOverlay(isAlive) {
+        if (isAlive === true && this._deathShown) {
+            this._clearDeathState();
         }
     }
 
@@ -2165,7 +2232,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._lastStats.deaths = deaths;
         }
         if (score !== this._lastStats.score && this._statElements.score) {
-            this._statElements.score.textContent = score;
+            this._statElements.score.textContent = score.toLocaleString();
             this._lastStats.score = score;
         }
         if (lines !== this._lastStats.lines && this._statElements.lines) {
@@ -2345,8 +2412,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.ffaGameState.chatHistory.push(payload);
         }
 
-        // Broadcast to others (handled by ffa game state listeners)
-        this.ffaGameState.network.broadcastToAll('game:chat', payload);
+        // Deliver: the host fans out to all peers; a peer sends to the host, which
+        // rebroadcasts. (broadcastToAll hard-guards non-hosts, so peers MUST relay
+        // via the host or their message is silently dropped on real Steam.)
+        const network = this.ffaGameState.network;
+        if (network.isHost) {
+            network.broadcastToAll('game:chat', payload);
+        } else if (network.hostSteamId) {
+            network.sendP2PMessage(network.hostSteamId, 'game:chat', payload);
+        }
     }
 
     /**

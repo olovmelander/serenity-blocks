@@ -200,7 +200,7 @@ export default class ThreeJSIntroRendererWebGPU {
             }
 
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+            this.renderer.setPixelRatio(this._renderPixelRatio());
             // ACES is applied MANUALLY in the post graph (so the cinematic grade can
             // run in display space). The renderer must therefore NOT tonemap — it
             // only performs the sRGB output transform on the post output node.
@@ -1288,13 +1288,28 @@ export default class ThreeJSIntroRendererWebGPU {
         }
     }
 
+    /**
+     * Render resolution is intentionally DECOUPLED from the visual quality
+     * budget (particles / bloom / DOF / frame-skip). The budget throttles the
+     * expensive per-frame work; resolution must still track the display, or a
+     * maximized packaged window on a HiDPI panel renders this background canvas
+     * well below native device pixels and Chromium upscales it into a blur —
+     * while the DOM UI (menu text/cards) stays crisp. Matches the rest of the
+     * app (min(devicePixelRatio, 2)); only the weakest tier shaves a little.
+     */
+    _renderPixelRatio() {
+        const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+        const cap = this.quality?.key === 'LOW' ? 1.5 : 2.0;
+        return Math.min(dpr, cap);
+    }
+
     applyQualitySettings() {
         this.spawnInterval = this.quality.spawnInterval;
         this.uDoFStrength.value = this.isBackgroundMode ? this.quality.dof * 0.4 : this.quality.dof;
         this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
 
         if (this.renderer) {
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+            this.renderer.setPixelRatio(this._renderPixelRatio());
         }
 
         if (this.particleCompute) {
@@ -1338,7 +1353,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+        this.renderer.setPixelRatio(this._renderPixelRatio());
 
         if (this._scenePass) {
             this._scenePass.setSize(window.innerWidth, window.innerHeight);

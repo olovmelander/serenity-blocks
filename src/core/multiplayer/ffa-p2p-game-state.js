@@ -213,6 +213,12 @@ export class FFAGameStateP2P {
         this.resyncTimeoutMs = RESYNC_TIMEOUT_MS;
         this.resyncMaxRetries = RESYNC_MAX_RETRIES;
         this.handshakeComplete = this.isHost;
+        this._announceTimer = null; // join-announce resend timer (peer side)
+        // Monotonic round counter. Stamped into every snapshot + the round-restart
+        // message so a peer can FENCE OFF stale authoritative state: a late
+        // (unreliable, deferred) snapshot from a finished round must not clobber the
+        // freshly-revived next round. Bumped by the host on each round restart.
+        this.roundGeneration = 0;
 
         // Phase 5: Input Batching
         this.pendingInputs = []; // Array of inputs to send this tick
@@ -379,17 +385,41 @@ export class FFAGameStateP2P {
     announceJoin() {
         if (this.isHost) return;
 
-        console.log('📢 Announcing join to host...');
-
-        this.network.sendP2PMessage(
-            this.network.hostSteamId,
-            MessageTypes.NET_HELLO,
-            {
-                protocolVersion: this.network.protocolVersion,
-                clientVersion: this.network.protocolVersion,
-                featureFlags: [],
-            },
-        );
+        // Legacy Steam P2P drops the FIRST packet to a peer until the receiver
+        // accepts the session, so we resend the join announce until the host
+        // replies NET_WELCOME (sets handshakeComplete). Identity is sent via BOTH
+        // NET_HELLO (now carries the name) and LOBBY_PLAYER_JOINED, so the host can
+        // add us to the roster even if one of the two is lost. The host-id guard
+        // also prevents a BigInt(null) send crash if the owner hasn't resolved yet.
+        if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
+        let attempts = 0;
+        const maxAttempts = 12;
+        const send = () => {
+            if (this.handshakeComplete) { this._announceTimer = null; return; }
+            const hostId = this.network.hostSteamId;
+            if (hostId) {
+                console.log(`📢 Announcing join to host ${hostId} (attempt ${attempts + 1}/${maxAttempts})...`);
+                this.network.sendP2PMessage(hostId, MessageTypes.NET_HELLO, {
+                    protocolVersion: this.network.protocolVersion,
+                    clientVersion: this.network.protocolVersion,
+                    name: this.network.playerName,
+                    featureFlags: [],
+                });
+                this.network.sendP2PMessage(hostId, MessageTypes.LOBBY_PLAYER_JOINED, {
+                    steamId: this.localPlayerId,
+                    name: this.network.playerName,
+                });
+            } else {
+                console.warn('⚠️ Cannot announce join yet — host Steam ID not resolved');
+            }
+            attempts += 1;
+            if (attempts < maxAttempts && !this.handshakeComplete) {
+                this._announceTimer = setTimeout(send, 700);
+            } else {
+                this._announceTimer = null;
+            }
+        };
+        send();
     }
 
     /**
@@ -411,6 +441,15 @@ export class FFAGameStateP2P {
                 existing.disconnectTimeout = null;
                 console.log(`♻️ Player rejoined via NET_HELLO: ${existing.name}`);
                 this.queueResync(msg.from);
+            } else if (accepted && msg.from !== this.localPlayerId && !this.players.has(msg.from)) {
+                // New peer joining — add to the roster. NET_HELLO now carries the
+                // name, so this is sufficient even if the peer's LOBBY_PLAYER_JOINED
+                // is lost. Broadcast the updated list so everyone (incl. the new
+                // peer) converges on the full roster.
+                console.log(`📢 Host adding new peer via NET_HELLO: ${msg.data?.name || 'Player'} (${msg.from})`);
+                this.addPlayer(msg.from, msg.data?.name || 'Player');
+                this.queueResync(msg.from);
+                this.broadcastPlayerList();
             }
 
             this.network.sendP2PMessage(msg.from, MessageTypes.NET_WELCOME, {
@@ -427,6 +466,8 @@ export class FFAGameStateP2P {
         this.network.on(MessageTypes.NET_WELCOME, (msg) => {
             if (this.isHost) return;
             if (msg.data?.accepted) {
+                this.handshakeComplete = true;
+                if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
                 console.log('✅ NET_WELCOME received from host');
             } else {
                 console.warn(`⚠️ NET_WELCOME rejected: ${msg.data?.reason || 'unknown'}`);
@@ -711,9 +752,10 @@ export class FFAGameStateP2P {
                 });
             }
 
-            // If host, rebroadcast to others
+            // If host, rebroadcast to other peers — excluding the original sender,
+            // who already showed their own message locally (prevents a duplicate).
             if (this.isHost) {
-                this.broadcastToPeers('game:chat', resolved);
+                this.broadcastToPeers('game:chat', resolved, msg.from);
             }
         });
 
@@ -792,6 +834,18 @@ export class FFAGameStateP2P {
         const countFrom = data.countFrom !== undefined ? data.countFrom : 3;
         const includeZero = data.includeZero === true;
         const instantStart = data.instantStart === true;
+
+        // Adopt the host's new round generation immediately, so any stale round-N
+        // snapshot that arrives after this restart is fenced off in _applySnapshotState.
+        if (typeof data.roundGeneration === 'number') {
+            this.roundGeneration = data.roundGeneration;
+        } else {
+            this.roundGeneration += 1;
+        }
+        // Drop the stale receive baseline so a delta from before the restart can't
+        // decode against round-1 data; the peer waits for the host's fresh keyframe.
+        this.network.resetSnapshotBaselines?.();
+        console.log(`🔄 [FFA] Peer round restart → generation ${this.roundGeneration}`);
 
         // ... (Same reset logic as before) ...
         console.log('🔄 Host performing local restart...');
@@ -893,10 +947,10 @@ export class FFAGameStateP2P {
         }
     }
 
-    broadcastToPeers(type, data) {
+    broadcastToPeers(type, data, excludeId = null) {
         if (!this.isHost) return;
         this.players.forEach((p, steamId) => {
-            if (steamId !== this.localPlayerId && !p.isDisconnected) {
+            if (steamId !== this.localPlayerId && steamId !== excludeId && !p.isDisconnected) {
                 this.network.sendP2PMessage(steamId, type, data);
             }
         });
@@ -1620,6 +1674,7 @@ export class FFAGameStateP2P {
         return {
             players,
             gamePhase: this.gamePhase,
+            roundGeneration: this.roundGeneration, // fence: peers drop snapshots from an older round
             hotPotatoState: this.hotPotatoState ? { ...this.hotPotatoState } : null,
             winner: this.winner ? {
                 steamId: this.winner.steamId,
@@ -1852,6 +1907,16 @@ export class FFAGameStateP2P {
     }
 
     _applySnapshotState(state, { forceLocal, reconcileLocal = false }) {
+        // ROUND FENCE: ignore authoritative state from a round we've already left.
+        // After a restart, a stale round-N snapshot (unreliable, deferred) can land
+        // AFTER the reliable round-(N+1) restart; applying it would re-set
+        // isAlive=false / gamePhase='finished' and permanently freeze the next round.
+        if (typeof state.roundGeneration === 'number'
+            && state.roundGeneration < this.roundGeneration) {
+            console.warn(`⏮️ [FFA] Dropped stale snapshot: gen ${state.roundGeneration} < current ${this.roundGeneration}`);
+            return;
+        }
+
         // Update all player states from host
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
@@ -1870,8 +1935,11 @@ export class FFAGameStateP2P {
                 player.isAlive = playerData.isAlive;
                 player.gameState.isGameOver = !playerData.isAlive;
 
-                // Sync sequence number
-                if (playerData.lastInputSeq) {
+                // Sync the input-ack sequence (drives reconciliation pruning). Must
+                // use != null so an explicit 0 is honored and a real value isn't
+                // skipped — this is what stops the peer replaying its WHOLE input
+                // history (incl. hard-drops) onto the board every snapshot.
+                if (playerData.lastInputSeq != null) {
                     player.lastInputSeq = playerData.lastInputSeq;
                 }
 
@@ -1907,6 +1975,7 @@ export class FFAGameStateP2P {
                         color: e.color,
                         holeMask: e.holeMask,
                         variant: e.variant,
+                        isLastInBurst: e.isLastInBurst, // needed for correct burst grouping on peers
                     }));
                 }
 
@@ -1957,6 +2026,7 @@ export class FFAGameStateP2P {
                 matchConfig: this.matchConfig,
                 sharedSeed: this.sharedSeed,
                 matchStartTime: this.matchStartTime,
+                roundGeneration: this.roundGeneration,
             },
             snapshot: encodeBase64(snapshotBytes),
         };
@@ -1964,6 +2034,15 @@ export class FFAGameStateP2P {
 
     _sendResyncToPeer(steamId) {
         if (!this.isHost) return;
+
+        // Coalesce: never start a second full-state transfer to a peer that already
+        // has one in flight. A burst of baseline-mismatch resync requests (e.g.
+        // reordered unreliable deltas) must fold into the active transfer instead of
+        // fanning out into N concurrent chunked transfers + N retransmit timers.
+        // Each transfer self-clears from resyncTransfers on completion/abort.
+        for (const t of this.resyncTransfers.values()) {
+            if (t.steamId === steamId) return;
+        }
 
         const payload = this._buildResyncPayload();
         const bytes = encodeUtf8(JSON.stringify(payload));
@@ -2145,6 +2224,11 @@ export class FFAGameStateP2P {
         }
         if (state.matchStartTime) {
             this.matchStartTime = state.matchStartTime;
+        }
+        // A resync is authoritative current state — adopt its generation so the
+        // forced apply below isn't fenced and future snapshots stay aligned.
+        if (typeof state.roundGeneration === 'number' && state.roundGeneration > this.roundGeneration) {
+            this.roundGeneration = state.roundGeneration;
         }
 
         state.players.forEach((playerData) => {
@@ -2849,14 +2933,28 @@ export class FFAGameStateP2P {
             const { gameState } = player;
             if (gameState.isGameOver && player.isAlive) {
                 const { lastAttackerId } = player;
-                if (lastAttackerId) {
-                    const attacker = this.players.get(lastAttackerId);
-                    console.log(`🏆 Death attributed to last attacker: ${attacker?.name || lastAttackerId}`);
+                const attacker = lastAttackerId ? this.players.get(lastAttackerId) : null;
+                if (attacker) {
+                    console.log(`🏆 Death attributed to last attacker: ${attacker.name || lastAttackerId}`);
                 } else {
                     console.log('💀 Death with no attacker tracked (self-kill)');
                 }
 
                 this.fragTracker.recordDeath(steamId, lastAttackerId);
+
+                // Emit the local death event too. recordDeath broadcasts to PEERS,
+                // but the host never receives its own broadcast, so without this the
+                // Battle Log misses natural top-outs caught here (the host's only
+                // death path that previously emitted nothing).
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
+                    steamId,
+                    playerName: player.name,
+                    killer: lastAttackerId || null,
+                    killerId: lastAttackerId || null,
+                    killerName: attacker?.name || null,
+                    isSelfKill: !lastAttackerId || lastAttackerId === steamId,
+                    isLocal: steamId === this.localPlayerId,
+                });
             }
         });
 
@@ -2912,12 +3010,24 @@ export class FFAGameStateP2P {
 
         console.log('🎮 Starting next round...');
 
+        // Bump the round generation BEFORE broadcasting so every snapshot built
+        // from here on is fenced as "newer", and any round-N snapshot still in
+        // flight (gen < this) is dropped by peers.
+        this.roundGeneration += 1;
+
+        // Force the next snapshot to be a fresh keyframe — otherwise the first
+        // post-restart packet is a delta against the pre-restart keyframe and the
+        // peer decodes round-2 against round-1 data.
+        this.network.resetSnapshotBaselines?.();
+
         // Broadcast round restart to all peers BEFORE starting the next round
         const newSeed = Math.floor(Math.random() * 1000000);
         const instantStart = true;
+        console.log(`🔄 [FFA] Round restart → generation ${this.roundGeneration} (seed ${newSeed})`);
         this.network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, {
             newSeed,
             instantStart,
+            roundGeneration: this.roundGeneration,
         });
 
         // Dispatch event to clear death visuals for all players
@@ -3170,6 +3280,8 @@ export class FFAGameStateP2P {
     cleanup() {
         this.stopGameLoop();
         this.stopStateSyncLoop();
+
+        if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
 
         if (this.inputValidator) {
             this.inputValidator.reset();

@@ -13,7 +13,7 @@ import { COLORS, SHAPES } from '../constants.js';
 // Magic bytes for format identification
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3; // v3: garbage type-byte packs holeMask[8:9] + variant + isLastInBurst
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {
@@ -458,19 +458,26 @@ export class BinaryEncoder {
             return offset + 7;
         }
 
-        // Type: 0 = line, 1 = blind, 2 = full_blind, 3 = other
-        let typeVal = 3;
+        // Type byte packs flags into its spare bits (the board is 10 columns, so the
+        // hole mask needs 10 bits — the low 8 go in their own byte below, the high 2
+        // ride here; previously they were truncated, garbling garbage on peer
+        // victims). Bits: [0-1]=type, [2-3]=holeMask>>8, [4]=variant 'clean', [5]=isLastInBurst.
+        let typeVal = 3; // 0 = line, 1 = blind, 2 = full_blind, 3 = other
         if (entry.type === 'line') typeVal = 0;
         else if (entry.type === 'blind') typeVal = 1;
         else if (entry.type === 'full_blind') typeVal = 2;
-        view.setUint8(offset++, typeVal);
+        const holeMask = entry.holeMask || 0;
+        const holeHi = (holeMask >> 8) & 0x03;
+        const variantBit = entry.variant === 'clean' ? 1 : 0;
+        const lastBit = entry.isLastInBurst ? 1 : 0;
+        view.setUint8(offset++, (typeVal & 0x03) | (holeHi << 2) | (variantBit << 4) | (lastBit << 5));
 
         // Attacker ID hash (4 bytes) - Use simple hash for compact encoding
         const attackerHash = this._hashString(entry.attackerId || '');
         view.setUint32(offset, attackerHash, true); offset += 4;
 
-        // Hole mask (1 byte) - 10 bits packed, use lower 8 bits
-        view.setUint8(offset++, (entry.holeMask || 0) & 0xFF);
+        // Hole mask low 8 bits (the high 2 are in the type byte above).
+        view.setUint8(offset++, holeMask & 0xFF);
 
         // Duration (1 byte) - encoded in deciseconds (Math.round(entry.duration * 10))
         const durationVal = Math.min(255, Math.round((entry.duration || 0) * 10));
@@ -975,15 +982,19 @@ export class BinaryDecoder {
      */
     _decodeGarbageEntry(buffer, view, offset) {
         this._assertAvailable(view, offset, 7, 'garbage entry');
-        const typeVal = view.getUint8(offset++);
+        const typeByte = view.getUint8(offset++);
+        const typeVal = typeByte & 0x03;
+        const holeHi = (typeByte >> 2) & 0x03;
+        const variant = ((typeByte >> 4) & 0x01) ? 'clean' : 'normal';
+        const isLastInBurst = !!((typeByte >> 5) & 0x01);
         let type = 'other';
         if (typeVal === 0) type = 'line';
         else if (typeVal === 1) type = 'blind';
         else if (typeVal === 2) type = 'full_blind';
 
         const attackerHash = view.getUint32(offset, true); offset += 4;
-        const holeMask = view.getUint8(offset++);
-        
+        const holeMask = view.getUint8(offset++) | (holeHi << 8); // recombine the 10-bit mask
+
         const durationVal = view.getUint8(offset++);
         const duration = durationVal / 10;
 
@@ -996,6 +1007,8 @@ export class BinaryDecoder {
                 attackerId,
                 holeMask,
                 duration,
+                variant,
+                isLastInBurst,
             },
             offset,
         };

@@ -125,6 +125,32 @@ describe('binary snapshot encoding', () => {
         expect(encoder.encodeDeltaSnapshot(current, baseline)).toBeNull();
     });
 
+    it('round-trips garbage entries with the full 10-bit hole mask, variant and isLastInBurst', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        // Hole columns include 8 and 9 — exactly the bits the old 8-bit mask
+        // truncated, which garbled garbage on peer victims (the board is 10 cols).
+        const holeMask = 0b1100000101; // cols 0,2,8,9 → 773, needs 10 bits
+        const snapshot = makeSnapshot([makePlayer({
+            steamId: '1000',
+            garbageEntries: [
+                { type: 'line', attackerId: '2000', holeMask, duration: 0, variant: 'clean', isLastInBurst: true },
+                { type: 'line', attackerId: '2000', holeMask: 0x0F, duration: 0, variant: 'normal', isLastInBurst: false },
+            ],
+        })]);
+
+        const decoded = decoder.decodeSnapshot(encoder.encodeSnapshot(snapshot));
+        const entries = decoded.players[0].garbageEntries;
+        expect(entries).toHaveLength(2);
+        expect(entries[0].holeMask).toBe(holeMask); // NOT truncated to 0x05
+        expect(entries[0].variant).toBe('clean');
+        expect(entries[0].isLastInBurst).toBe(true);
+        expect(entries[1].holeMask).toBe(0x0F);
+        expect(entries[1].variant).toBe('normal');
+        expect(entries[1].isLastInBurst).toBe(false);
+    });
+
     it('encodes a full 8-player snapshot far smaller than JSON', () => {
         const players = Array.from({ length: 8 }, (_, i) => makePlayer({ steamId: String(1000 + i) }));
         const { jsonSize, binarySize, reduction } = compareEncodingSizes(makeSnapshot(players));

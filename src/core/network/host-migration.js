@@ -30,6 +30,16 @@ export class HostMigration {
         if (this.gameState.isHost) return;
 
         this.monitorInterval = setInterval(() => {
+            // Host migration only applies to an ACTIVE match. During the lobby /
+            // waiting-room and the initial P2P handshake (which can take several
+            // seconds over Steam relay), keep the timer fresh so the joiner never
+            // promotes itself to host — doing so would split-brain the lobby (both
+            // sides think they're host, which breaks ready-up, chat routing, and
+            // roster names).
+            if (this.gameState.gamePhase !== 'playing') {
+                this.lastHeartbeatTime = Date.now();
+                return;
+            }
             const now = Date.now();
             if (now - this.lastHeartbeatTime > this.HEARTBEAT_TIMEOUT) {
                 console.warn('⚠️ Host heartbeat timeout! Initiating election...');
