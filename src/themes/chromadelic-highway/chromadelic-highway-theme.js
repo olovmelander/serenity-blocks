@@ -2135,7 +2135,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     // so the road geometry and the camera react to the same signal in lockstep.
     // Amplitudes ~30% wider and time scale ~38% slower than the original to read
     // as a winding road rather than nervous wobble.
-    sampleRoadCurve(z) {
+    // `out` is an optional reusable {x,y,strength} target. Hot per-frame loops pass a
+    // scratch object so this never allocates; callers that omit it keep the old contract.
+    sampleRoadCurve(z, out) {
         const t = Math.max(0, (200 - z) / 2700);
         const strength = t * t;
         const ts = this.time * 0.075;
@@ -2144,6 +2146,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             Math.sin(t * 1.2 + ts * 0.5)   * 160 * strength +
             Math.cos(t * 1.8 + ts * 0.75)  * 100 * strength;
         const y = Math.sin(t * 1.5 + ts * 0.33) * 30 * strength;
+        if (out) {
+            out.x = x;
+            out.y = y;
+            out.strength = strength;
+            return out;
+        }
         return { x, y, strength };
     }
 
@@ -2152,11 +2160,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         const positions = this.roadGeometry.attributes.position.array;
         const segments = this.qualityPreset.roadSegments;
+        const scratch = this._roadCurveScratch
+            || (this._roadCurveScratch = { x: 0, y: 0, strength: 0 });
 
         for (let i = 0; i <= segments; i++) {
             const t = i / segments;
             const z = 400 - t * 2900;
-            const { x: xOffset, y: yOffset } = this.sampleRoadCurve(z);
+            const { x: xOffset, y: yOffset } = this.sampleRoadCurve(z, scratch);
 
             const leftIdx = (i * 2) * 3;
             positions[leftIdx] = -100 + xOffset;
@@ -2170,7 +2180,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
 
         this.roadGeometry.attributes.position.needsUpdate = true;
-        this.roadGeometry.computeVertexNormals();
+        // The road material is unlit (MeshBasicNodeMaterial / basic ShaderMaterial) and never
+        // samples the normal attribute, so per-frame computeVertexNormals() was pure wasted CPU
+        // plus a redundant normal-buffer upload every frame. Skipped: zero visual change.
 
         if (this.underRoadGlow) {
             const centerSeg = Math.floor(segments * 0.65);
@@ -4431,7 +4443,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
 
                 // Rings ride the shared road curve so they stay glued to the highway.
-                const c = this.sampleRoadCurve(ring.position.z);
+                const c = this.sampleRoadCurve(
+                    ring.position.z,
+                    this._ringCurveScratch || (this._ringCurveScratch = { x: 0, y: 0, strength: 0 }),
+                );
                 const t = Math.max(0, (200 - ring.position.z) / 2700);
                 ring.position.x = c.x;
                 ring.position.y = 25 + c.y;
@@ -4459,34 +4474,53 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const ringGlowStrength = this.ringGlow * RING_GLOW_TUNING.uniformGlowScale * depthFade;
                 const ringLightness = RING_GLOW_TUNING.baseLightness
                     + this.ringGlow * RING_GLOW_TUNING.lightnessGlowScale * depthFade;
-                const color = new THREE.Color().setHSL(
-                    ring.userData.hue,
-                    RING_GLOW_TUNING.saturation,
-                    ringLightness,
-                );
+                const ringHue = ring.userData.hue;
+                const ringSat = RING_GLOW_TUNING.saturation;
                 if (md) {
-                    // WebGPU path
+                    // WebGPU path: mutate the existing uColor Color in place (same HSL args)
+                    // instead of allocating a new THREE.Color every ring every frame.
                     md.uniforms.uTime.value = this.time;
                     md.uniforms.uPulse.value = ringPulse;
                     md.uniforms.uGlow.value = ringGlowStrength;
-                    md.uniforms.uColor.value = color;
+                    md.uniforms.uColor.value.setHSL(ringHue, ringSat, ringLightness);
                 } else if (ring.material.uniforms) {
                     // WebGL path — depth-fade applied identically so both backends match.
                     ring.material.uniforms.uTime.value = this.time;
                     ring.material.uniforms.uPulse.value = ringPulse;
                     ring.material.uniforms.uGlow.value = ringGlowStrength;
-                    ring.material.uniforms.uColor.value = color;
+                    ring.material.uniforms.uColor.value.setHSL(ringHue, ringSat, ringLightness);
                 }
             });
 
             // Animate edge glow lines — bend them along the shared road curve so they
             // hug the highway instead of running straight while the road bends away.
-            if (this.edgeStrips) {
+            if (this.edgeStrips && this.edgeStrips.length) {
+                // Every strip rides the IDENTICAL curve at the IDENTICAL z steps (only the
+                // per-strip xBase/yBase differ), so sample the curve once per frame into a
+                // reused cache and share it across all strips; same output, ~6x fewer
+                // sampleRoadCurve calls and zero per-vertex allocation.
+                const cacheSegments = this.edgeStrips[0].userData.segments ?? 60;
+                let curveCache = this._edgeCurveCache;
+                if (!curveCache || curveCache.length !== cacheSegments + 1) {
+                    curveCache = Array.from(
+                        { length: cacheSegments + 1 },
+                        () => ({ x: 0, y: 0, z: 0 }),
+                    );
+                    this._edgeCurveCache = curveCache;
+                }
+                for (let j = 0; j <= cacheSegments; j++) {
+                    const z = 350 - (j / cacheSegments) * 2600;
+                    const e = curveCache[j];
+                    this.sampleRoadCurve(z, e); // writes e.x / e.y in place (no alloc)
+                    e.z = z;
+                }
+
                 this.edgeStrips.forEach((line) => {
                     line.userData.hue = (line.userData.hue + 0.0002) % 1.0;
                     const md = line.userData.materialData;
                     if (md) {
-                        md.uniforms.uColor.value = new THREE.Color().setHSL(line.userData.hue, 0.9, 0.55);
+                        // Mutate the uColor Color in place (same HSL args); no per-frame alloc.
+                        md.uniforms.uColor.value.setHSL(line.userData.hue, 0.9, 0.55);
                         md.uniforms.uOpacity.value = (0.5 - line.userData.offset * 0.12) + this.pulseIntensity * 0.25;
                     } else {
                         line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
@@ -4494,15 +4528,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         line.material.opacity = baseOpacity + this.pulseIntensity * 0.25;
                     }
 
-                    // Rewrite vertex positions to follow the road curve.
+                    // Rewrite vertex positions to follow the shared road curve.
                     const positions = line.geometry.attributes.position?.array;
                     const segments = line.userData.segments ?? 60;
                     const xBase = line.userData.xBase ?? 0;
                     const yBase = line.userData.yBase ?? 0;
-                    if (positions) {
+                    if (positions && segments === cacheSegments) {
                         for (let j = 0; j <= segments; j++) {
-                            const t = j / segments;
-                            const z = 350 - t * 2600;
+                            const c = curveCache[j];
+                            const idx = j * 3;
+                            positions[idx]     = xBase + c.x;
+                            positions[idx + 1] = yBase + c.y;
+                            positions[idx + 2] = c.z;
+                        }
+                        line.geometry.attributes.position.needsUpdate = true;
+                    } else if (positions) {
+                        // Fallback path for a strip with a divergent segment count (not used today).
+                        for (let j = 0; j <= segments; j++) {
+                            const z = 350 - (j / segments) * 2600;
                             const c = this.sampleRoadCurve(z);
                             const idx = j * 3;
                             positions[idx]     = xBase + c.x;
@@ -4553,8 +4596,15 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Sample the road curve ahead to derive yaw target and bank slope.
             // Two samples → finite-difference slope = "how much the road bends ahead".
-            const cAhead = this.sampleRoadCurve(-1500);
-            const cNear  = this.sampleRoadCurve(-800);
+            // Two distinct scratch objects — both results are live at once (slope + lookAt).
+            const cAhead = this.sampleRoadCurve(
+                -1500,
+                this._camCurveAhead || (this._camCurveAhead = { x: 0, y: 0, strength: 0 }),
+            );
+            const cNear = this.sampleRoadCurve(
+                -800,
+                this._camCurveNear || (this._camCurveNear = { x: 0, y: 0, strength: 0 }),
+            );
             const slope = (cAhead.x - cNear.x) / 700;
 
             this.camera.position.x = Math.sin(ct * 0.13) * 2.4 + Math.sin(ct * 0.41) * 0.6 + parallaxX;
@@ -4644,7 +4694,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const approachEnd = THREE.MathUtils.clamp(profile.approachEnd ?? 120, 1, duration - 1);
         const flybyEnd = THREE.MathUtils.clamp(profile.flybyEnd ?? 160, approachEnd + 1, duration - 0.001);
 
-        const targetPos = new THREE.Vector3();
+        // Reuse one sample object across all celestial callers — each consumes targetPos
+        // (via .copy()) and glowBoost immediately before the next call, and lerpVectors below
+        // fully overwrites all three components, so there is no cross-planet bleed or staleness.
+        const sample = this._journeySample
+            || (this._journeySample = { targetPos: new THREE.Vector3(), glowBoost: 0 });
+        const targetPos = sample.targetPos;
         let glowBoost = 0;
 
         if (localTime < approachEnd) {
@@ -4680,7 +4735,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             );
         }
 
-        return { targetPos, glowBoost };
+        sample.glowBoost = glowBoost;
+        return sample;
     }
 
     // Sample a position inside a named celestial slot. Returns Vector3 + bounds so
@@ -4764,7 +4820,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         const approachEnd = 120;
         const flybyEnd = 160;
-        const targetPos = new THREE.Vector3();
+        // Reused scratch — fully overwritten by lerpVectors below and copied onto the planet,
+        // so a persistent Vector3 is byte-identical to allocating a fresh one each frame.
+        const targetPos = this._primaryPlanetScratch
+            || (this._primaryPlanetScratch = new THREE.Vector3());
         let glowBoost = 0;
 
         if (this.journeyTime < approachEnd) {
