@@ -395,6 +395,7 @@ export class CustomCursor {
         this.semanticState = CURSOR_STATES.DEFAULT;
         this.renderState = CURSOR_STATES.HIDDEN;
         this.activeMagneticElement = null;
+        this.activeMagneticRect = null;
         this.lastFrameTime = null;
         this.lastPointerActivity = 0;
         this.gamepadSuppressed = false;
@@ -527,7 +528,7 @@ export class CustomCursor {
                 this.onPointerLeaveWindow();
             }
         }, { signal, passive: true });
-        window.addEventListener('resize', () => this.updateCanvasSize(), { signal, passive: true });
+        window.addEventListener('resize', () => { this.updateCanvasSize(); this.refreshMagneticRect(); }, { signal, passive: true });
         window.addEventListener('blur', () => this.onPointerLeaveWindow(), { signal, passive: true });
         window.addEventListener('modalShown', () => this.refreshModalState(), { signal, passive: true });
         window.addEventListener('modalHidden', () => this.refreshModalState(), { signal, passive: true });
@@ -728,6 +729,19 @@ export class CustomCursor {
         const resolved = resolveCursorStateFromTarget(this.pointerTarget);
         this.semanticState = resolved.state;
         this.activeMagneticElement = resolved.magneticElement;
+        // Cache the magnetic element's rect on pointer move (these reads happen BEFORE the
+        // per-frame syncPresentation() DOM writes, so they don't thrash). updateMotion() reuses
+        // it every frame instead of calling getBoundingClientRect() itself — that per-frame read,
+        // landing right after syncPresentation() mutated classes/dataset, forced a synchronous
+        // layout on every animation frame while magnetism was active (measured ~1s of forced
+        // reflow over a 16s trace and a global FPS tax on every theme).
+        this.refreshMagneticRect();
+    }
+
+    refreshMagneticRect() {
+        this.activeMagneticRect = this.activeMagneticElement
+            ? this.activeMagneticElement.getBoundingClientRect()
+            : null;
     }
 
     syncBodyContext() {
@@ -887,8 +901,10 @@ export class CustomCursor {
         const intensity = INTENSITY_CONFIG[this.settings.customCursorIntensity];
         const magneticPull = { x: 0, y: 0 };
 
-        if (this.activeMagneticElement && !this.prefersReducedMotion) {
-            const rect = this.activeMagneticElement.getBoundingClientRect();
+        if (this.activeMagneticElement && this.activeMagneticRect && !this.prefersReducedMotion) {
+            // Reuse the rect cached on pointer move / resize — never read layout in the
+            // per-frame loop (that read, after syncPresentation()'s DOM writes, forced a reflow).
+            const rect = this.activeMagneticRect;
             const centerX = rect.left + (rect.width / 2);
             const centerY = rect.top + (rect.height / 2);
             magneticPull.x = (centerX - this.target.x) * intensity.magnetism;
