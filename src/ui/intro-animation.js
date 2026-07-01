@@ -78,6 +78,14 @@ export class IntroAnimation {
         this.boundAnimate = this.animate.bind(this);
         this.phaseTimers = [];
         this.lastTitleBoundsSync = 0;
+        // Title-bounds sync settling: the 3D title glow only needs the wordmark's rect while
+        // the title is animating (intro reveal + shrink-to-logo). Once it stops moving, its rect
+        // is static, so we stop the per-frame getBoundingClientRect() — that read (landing after
+        // the cursor/renderer dirty layout each frame) forced a synchronous reflow every frame on
+        // the idle menu. Re-armed by scheduleMenuLogoLayoutUpdate() on any layout-affecting event.
+        this._titleBoundsSettled = false;
+        this._lastTitleRect = null;
+        this._titleStableCount = 0;
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
         this.menuLayoutRaf = null;
@@ -228,6 +236,11 @@ export class IntroAnimation {
     }
 
     scheduleMenuLogoLayoutUpdate() {
+        // Any layout-affecting event (resize, modal open/close, cards ResizeObserver, or the
+        // shrink-to-logo transition) can move/resize the title, so re-arm the per-frame
+        // title-bounds sync until it settles again.
+        this._titleBoundsSettled = false;
+        this._titleStableCount = 0;
         if (typeof requestAnimationFrame !== 'function') {
             this.updateMenuLogoLayout();
             return;
@@ -346,10 +359,14 @@ export class IntroAnimation {
 
     syncTitleBounds(timeMs = performance.now()) {
         if (!this.threeRenderer?.setTitleBounds || !this.container) return;
-        // Sync ~every frame so the renderer's title glow tracks the wordmark
-        // smoothly during the fast shrink-to-logo move (a coarse throttle made the
-        // glow lag/trail downward behind the rising text). Reading one element's
-        // rect is cheap, and the shrink already dirties layout each frame anyway.
+        // Once the title has settled (menu idle / logo at rest) its rect is static, so stop
+        // reading layout every frame — that per-frame getBoundingClientRect(), landing right
+        // after the cursor/renderer dirty layout, forced a synchronous reflow on every frame.
+        // scheduleMenuLogoLayoutUpdate() re-arms this on resize/modal/observer/shrink so the
+        // glow keeps tracking the wordmark smoothly whenever it actually moves.
+        if (this._titleBoundsSettled) return;
+        // Sync ~every frame while animating so the renderer's title glow tracks the wordmark
+        // smoothly during the fast shrink-to-logo move (a coarse throttle made the glow lag).
         if (timeMs - this.lastTitleBoundsSync < 16) return;
 
         const titleContainer = this.container.querySelector('.intro-title-container');
@@ -364,6 +381,20 @@ export class IntroAnimation {
             height: rect.height,
         });
         this.lastTitleBoundsSync = timeMs;
+
+        // Settle detection: when the rect stops changing between syncs the title has finished
+        // moving, so after a few stable frames we stop the per-frame reads (until re-armed).
+        const last = this._lastTitleRect;
+        const stable = last
+            && Math.abs(last.x - rect.left) < 0.5 && Math.abs(last.y - rect.top) < 0.5
+            && Math.abs(last.w - rect.width) < 0.5 && Math.abs(last.h - rect.height) < 0.5;
+        if (stable) {
+            this._titleStableCount += 1;
+            if (this._titleStableCount >= 6) this._titleBoundsSettled = true;
+        } else {
+            this._titleStableCount = 0;
+            this._lastTitleRect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+        }
     }
 
     waitForMenuBgReady(timeoutMs = 2200) {
