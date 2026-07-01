@@ -630,10 +630,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.renderer.setSize(width, height);
 
         if (this.isWebGPU && this.postProcessing) {
+            // Cap bloom internal resolution at ~65% (Winter-parity) instead of 84%.
             this.postProcessing.bloomDownsample = THREE.MathUtils.clamp(
-                0.62 + (this.adaptiveScalerState.effectScale ?? 1) * 0.22,
-                0.58,
-                0.84,
+                0.5 + (this.adaptiveScalerState.effectScale ?? 1) * 0.15,
+                0.5,
+                0.65,
             );
             this.postProcessing.setSize(width, height);
         } else if (this.isWebGL && this.composer) {
@@ -4412,8 +4413,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.ambientSpeedBoost += (this.ambientSpeedTarget - this.ambientSpeedBoost) * 0.02;
             this.applyParticleDrawBudgets();
 
-            // Update road curve
-            this.updateRoadCurve();
+            // Update road curve. The lateral bend advances only with time*0.075 (imperceptibly
+            // slow), so the road + edge MESH geometry is rewritten+uploaded every 2nd frame while
+            // rings/camera keep sampling the curve every frame (cheap transforms). Halves the
+            // per-frame GPU buffer uploads — a hitch source that Winter avoids entirely.
+            this._curveGeoTick = (this._curveGeoTick + 1) | 0;
+            const rewriteCurveGeo = (this._curveGeoTick & 1) === 0;
+            if (rewriteCurveGeo) this.updateRoadCurve();
 
             // Update shooting stars
             this.updateShootingStars(delta);
@@ -4500,22 +4506,27 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 // reused cache and share it across all strips; same output, ~6x fewer
                 // sampleRoadCurve calls and zero per-vertex allocation.
                 const cacheSegments = this.edgeStrips[0].userData.segments ?? 60;
-                let curveCache = this._edgeCurveCache;
-                if (!curveCache || curveCache.length !== cacheSegments + 1) {
-                    curveCache = Array.from(
-                        { length: cacheSegments + 1 },
-                        () => ({ x: 0, y: 0, z: 0 }),
-                    );
-                    this._edgeCurveCache = curveCache;
+                // Rebuild the shared curve cache only on geometry-rewrite frames (throttled).
+                if (rewriteCurveGeo) {
+                    let curveCache = this._edgeCurveCache;
+                    if (!curveCache || curveCache.length !== cacheSegments + 1) {
+                        curveCache = Array.from(
+                            { length: cacheSegments + 1 },
+                            () => ({ x: 0, y: 0, z: 0 }),
+                        );
+                        this._edgeCurveCache = curveCache;
+                    }
+                    for (let j = 0; j <= cacheSegments; j++) {
+                        const z = 350 - (j / cacheSegments) * 2600;
+                        const e = curveCache[j];
+                        this.sampleRoadCurve(z, e); // writes e.x / e.y in place (no alloc)
+                        e.z = z;
+                    }
                 }
-                for (let j = 0; j <= cacheSegments; j++) {
-                    const z = 350 - (j / cacheSegments) * 2600;
-                    const e = curveCache[j];
-                    this.sampleRoadCurve(z, e); // writes e.x / e.y in place (no alloc)
-                    e.z = z;
-                }
+                const curveCache = this._edgeCurveCache;
 
                 this.edgeStrips.forEach((line) => {
+                    // Hue/opacity uniforms update EVERY frame (cheap; keeps the glow breathing).
                     line.userData.hue = (line.userData.hue + 0.0002) % 1.0;
                     const md = line.userData.materialData;
                     if (md) {
@@ -4528,7 +4539,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         line.material.opacity = baseOpacity + this.pulseIntensity * 0.25;
                     }
 
-                    // Rewrite vertex positions to follow the shared road curve.
+                    // Vertex-position rewrite + upload is throttled to every 2nd frame.
+                    if (!rewriteCurveGeo || !curveCache) return;
                     const positions = line.geometry.attributes.position?.array;
                     const segments = line.userData.segments ?? 60;
                     const xBase = line.userData.xBase ?? 0;
@@ -5214,10 +5226,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.renderer.setSize(width, height);
         }
         if (this.isWebGPU && this.postProcessing) {
+            // Cap bloom internal resolution at ~65% (Winter-parity) instead of 84%.
             this.postProcessing.bloomDownsample = THREE.MathUtils.clamp(
-                0.62 + (this.adaptiveScalerState?.effectScale ?? 1) * 0.22,
-                0.58,
-                0.84,
+                0.5 + (this.adaptiveScalerState?.effectScale ?? 1) * 0.15,
+                0.5,
+                0.65,
             );
             this.postProcessing.setSize(width, height);
         }
