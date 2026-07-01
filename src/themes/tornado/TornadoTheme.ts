@@ -23,22 +23,22 @@ const COMBO_COLORS = [
 
 const QUALITY_PRESETS = {
     Minimal: {
-        ribbonCount: 40, ribbonSegments: 40, groundSegments: 60, windStreakCount: 0, enableBloom: false,
+        ribbonCount: 40, ribbonSegments: 40, groundSegments: 60, windStreakCount: 0, windStreakPoints: 24, enableBloom: false,
     },
     Low: {
-        ribbonCount: 60, ribbonSegments: 50, groundSegments: 80, windStreakCount: 8, enableBloom: false,
+        ribbonCount: 60, ribbonSegments: 50, groundSegments: 80, windStreakCount: 8, windStreakPoints: 30, enableBloom: false,
     },
     Medium: {
-        ribbonCount: 100, ribbonSegments: 60, groundSegments: 100, windStreakCount: 12, enableBloom: true,
+        ribbonCount: 100, ribbonSegments: 60, groundSegments: 100, windStreakCount: 12, windStreakPoints: 34, enableBloom: true,
     },
     High: {
-        ribbonCount: 130, ribbonSegments: 80, groundSegments: 120, windStreakCount: 16, enableBloom: true,
+        ribbonCount: 130, ribbonSegments: 80, groundSegments: 120, windStreakCount: 16, windStreakPoints: 38, enableBloom: true,
     },
     Ultra: {
-        ribbonCount: 160, ribbonSegments: 100, groundSegments: 140, windStreakCount: 20, enableBloom: true,
+        ribbonCount: 148, ribbonSegments: 92, groundSegments: 140, windStreakCount: 20, windStreakPoints: 40, enableBloom: true,
     },
     Extreme: {
-        ribbonCount: 200, ribbonSegments: 120, groundSegments: 160, windStreakCount: 24, enableBloom: true,
+        ribbonCount: 176, ribbonSegments: 104, groundSegments: 160, windStreakCount: 24, windStreakPoints: 42, enableBloom: true,
     },
 };
 type QualityName = keyof typeof QUALITY_PRESETS;
@@ -334,6 +334,7 @@ export default class TornadoTheme extends BaseTheme {
         if (this.qualityPreset.windStreakCount > 0) {
             this.windStreaks = new TornadoWindStreaks({
                 count: this.qualityPreset.windStreakCount,
+                pointsPerStreak: this.qualityPreset.windStreakPoints,
                 length: 8.0, // Length of each streak
                 thickness: 0.8, // Thickness of streak particles
                 baseRadius: 5.0, // Distance from tornado center
