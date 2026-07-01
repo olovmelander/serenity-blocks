@@ -31,7 +31,10 @@ export class ChromadelicHighwayPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
-        this.bloomDownsample = params.bloomDownsample ?? 0.8;
+        // Bloom is a heavy multi-pass blur; render it at ~65% like the Winter pipeline
+        // (was 0.8). Bloom is inherently soft so the lower internal resolution is not
+        // perceptible, but it cuts bloom pixel work by ~(0.8/0.65)^2 ≈ 1.5x.
+        this.bloomDownsample = params.bloomDownsample ?? 0.65;
         this.postProcessing = new THREE.PostProcessing(renderer);
 
         this.scenePass = pass(scene, camera);
@@ -151,8 +154,11 @@ export class ChromadelicHighwayPost {
             const rayLen = length(rayDir).add(1e-4);
             const rayUnit = rayDir.div(rayLen);
             const rayFalloff = smoothstep(0.6, 0.0, rayLen); // brightest near sun
-            const rayStepCount = 6;
-            const rayStepSize = 0.04;
+            // 4 taps (was 6) at wider spacing → SAME reach (4*0.06 = 6*0.04 = 0.24), fewer
+            // emissive samples. Final gain renormalised (0.18 → 0.30) so the summed weight
+            // (decay sum 1.5 vs 2.5) yields identical brightness. Visually indistinguishable.
+            const rayStepCount = 4;
+            const rayStepSize = 0.06;
             for (let i = 1; i <= rayStepCount; i++) {
                 const offset = rayUnit.mul(float(-i * rayStepSize));
                 const sampleUV = uvNode.add(offset);
@@ -160,14 +166,17 @@ export class ChromadelicHighwayPost {
                 const decay = float(1.0 - i / rayStepCount);
                 godRays = godRays.add(sample.mul(decay));
             }
-            godRays = godRays.mul(rayFalloff).mul(this.uGodRayStrength.mul(0.18));
+            godRays = godRays.mul(rayFalloff).mul(this.uGodRayStrength.mul(0.30));
         }
 
         // Anamorphic horizontal flare — wide horizontal streak from bright emissives.
         // Cheap 5-tap horizontal blur of the emissive pass, additively composed.
         let anamorphic = vec3(0.0);
         if (enableAnamorphic) {
-            const flareTaps = 5;
+            // 3 tap-pairs (was 5) at the SAME spread; final gain renormalised (0.06 → 0.12) so
+            // the summed weight (decay sum 1.0 vs 2.0 per side) yields identical flare intensity.
+            // Saves 4 emissive samples per pixel; the streak is soft so this is imperceptible.
+            const flareTaps = 3;
             const flareSpread = 0.045;
             for (let i = 1; i <= flareTaps; i++) {
                 const dx = (i / flareTaps) * flareSpread;
@@ -178,7 +187,7 @@ export class ChromadelicHighwayPost {
             }
             // Bias the flare warm (slight gold/magenta) so it reads as lens optic, not just bloom.
             const flareTint = vec3(1.05, 0.88, 1.18);
-            anamorphic = anamorphic.mul(flareTint).mul(this.uAnamorphicStrength.mul(0.06));
+            anamorphic = anamorphic.mul(flareTint).mul(this.uAnamorphicStrength.mul(0.12));
         }
 
         // Subtle wet-road reflection: mirror bright emissives from above the road horizon
