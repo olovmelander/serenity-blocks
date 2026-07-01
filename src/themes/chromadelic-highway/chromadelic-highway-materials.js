@@ -125,6 +125,27 @@ function finalizeNodeMaterial(material, uniforms = {}, meta = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared road-curve displacement (TSL)
+// ─────────────────────────────────────────────────────────────────────────────
+// GPU-side lateral bend of the highway. MUST stay byte-for-byte equivalent to
+// ChromadelicHighwayTheme.sampleRoadCurve(z): the road + edge meshes are displaced by this in
+// the vertex stage (no per-frame CPU geometry rewrite/upload), while the tunnel rings and the
+// camera bank/yaw still sample the same formula on the CPU — so everything moves in lockstep.
+//   t = max(0, (200 - z) / 2700);  strength = t*t;  ts = time * 0.075
+//   x = sin(t*2.5+ts)*260*s + sin(t*1.2+ts*0.5)*160*s + cos(t*1.8+ts*0.75)*100*s
+//   y = sin(t*1.5+ts*0.33)*30*s
+function roadCurveOffset(z, uTime) {
+    const t = max(float(0.0), float(200.0).sub(z).div(2700.0));
+    const strength = t.mul(t);
+    const ts = uTime.mul(0.075);
+    const x = sin(t.mul(2.5).add(ts)).mul(260.0).mul(strength)
+        .add(sin(t.mul(1.2).add(ts.mul(0.5))).mul(160.0).mul(strength))
+        .add(cos(t.mul(1.8).add(ts.mul(0.75))).mul(100.0).mul(strength));
+    const y = sin(t.mul(1.5).add(ts.mul(0.33))).mul(30.0).mul(strength);
+    return vec3(x, y, float(0.0));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Road Surface Material
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -137,6 +158,10 @@ export function createRoadNodeMaterial() {
     const uProgress = uniform(0);
     const uPulse = uniform(0);
     const uPace = uniform(1.0);
+
+    // Bend the flat road strip along the highway curve in the vertex stage. The geometry stays
+    // static (built once); only this uTime uniform advances — zero per-frame buffer uploads.
+    material.positionNode = positionLocal.add(roadCurveOffset(positionLocal.z, uTime));
 
     const uvCoord = uv();
     const viewPos = positionLocal;
@@ -827,14 +852,18 @@ export function createEdgeGlowNodeMaterial(colorVec3, opacity) {
 
     const uColor = uniform(colorVec3);
     const uOpacity = uniform(opacity);
+    const uTime = uniform(0);
 
+    // Same GPU-driven bend as the road so the edge strips hug the highway with no per-frame
+    // vertex rewrite/upload. Base geometry (xBase, yBase, z) is built once in createEdgeGlowStrips.
+    material.positionNode = positionLocal.add(roadCurveOffset(positionLocal.z, uTime));
     material.colorNode = uColor;
     material.opacityNode = uOpacity;
     material.emissiveNode = uColor.mul(uOpacity).mul(BLOOM_CLASS_WEIGHTS.edgeGlow);
 
     return finalizeNodeMaterial(
         material,
-        { uColor, uOpacity },
+        { uColor, uOpacity, uTime },
         { emitsBloom: true, mrtRole: 'edge-glow' },
     );
 }
