@@ -225,7 +225,9 @@ export default class TornadoTheme extends BaseTheme {
     private updateCameraMovement() {
         if (!this.camera) return;
 
-        const dt = this.clock.getDelta();
+        // Clamp to avoid a multi-second post-stall/refocus delta lurching the
+        // ambient camera sway + breathing (this.time is the animation clock).
+        const dt = Math.min(this.clock.getDelta(), 1 / 20);
         this.time += dt;
 
         // Base Orbital Movement
