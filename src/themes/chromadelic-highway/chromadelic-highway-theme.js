@@ -2025,6 +2025,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         this.roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength, 1, segments);
         this.roadGeometry.rotateX(-Math.PI / 2);
+        // Lay the flat road strip out ONCE (x=±100, y=0, z=400-t*2900). On WebGPU the lateral
+        // curve bend is applied in the vertex shader (positionNode), so this geometry is static —
+        // never rewritten or re-uploaded per frame (Winter-style). The WebGL fallback still
+        // rewrites it on the CPU, but shares this same base at frame 0.
+        this.writeStaticRoadBase();
 
         if (this.isWebGPU) {
             this.roadMaterialData = createRoadNodeMaterial();
@@ -2088,6 +2093,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.roadMesh = new THREE.Mesh(this.roadGeometry, this.roadMaterial);
         }
 
+        // The vertex shader displaces the road beyond its static bounding sphere, so disable
+        // frustum culling — the highway is always centred in view regardless.
+        this.roadMesh.frustumCulled = false;
         this.scene.add(this.roadMesh);
         this.createUnderRoadGlow();
         console.log('[ChromadelicHighway] Dynamic road created');
@@ -2154,6 +2162,39 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             return out;
         }
         return { x, y, strength };
+    }
+
+    // Static flat-road base layout (x=±100, y=0, z=400-t*2900). Written once at creation; the
+    // WebGPU vertex shader bends it via positionNode, so it is never touched again per frame.
+    writeStaticRoadBase() {
+        if (!this.roadGeometry) return;
+        const positions = this.roadGeometry.attributes.position.array;
+        const segments = this.qualityPreset.roadSegments;
+        for (let i = 0; i <= segments; i++) {
+            const z = 400 - (i / segments) * 2900;
+            const leftIdx = (i * 2) * 3;
+            positions[leftIdx] = -100;
+            positions[leftIdx + 1] = 0;
+            positions[leftIdx + 2] = z;
+            const rightIdx = (i * 2 + 1) * 3;
+            positions[rightIdx] = 100;
+            positions[rightIdx + 1] = 0;
+            positions[rightIdx + 2] = z;
+        }
+        this.roadGeometry.attributes.position.needsUpdate = true;
+    }
+
+    // WebGPU under-road-glow x-follow — mirrors the CPU follow that updateRoadCurve() does on the
+    // WebGL path, without touching geometry (one cheap curve sample, no buffer upload).
+    updateUnderRoadGlowFollow() {
+        if (!this.underRoadGlow) return;
+        const segments = this.qualityPreset.roadSegments;
+        const centerZ = 400 - (Math.floor(segments * 0.65) / segments) * 2900;
+        const c = this.sampleRoadCurve(
+            centerZ,
+            this._roadCurveScratch || (this._roadCurveScratch = { x: 0, y: 0, strength: 0 }),
+        );
+        this.underRoadGlow.position.x = c.x * 0.35;
     }
 
     updateRoadCurve() {
@@ -2376,6 +2417,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
 
                 const line = new THREE.Line(geometry, material);
+                // Shader-displaced (WebGPU positionNode) beyond static bounds — always draw it.
+                line.frustumCulled = false;
                 line.userData.side = side;
                 line.userData.offset = i;
                 line.userData.hue = hue;
@@ -4413,13 +4456,19 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.ambientSpeedBoost += (this.ambientSpeedTarget - this.ambientSpeedBoost) * 0.02;
             this.applyParticleDrawBudgets();
 
-            // Update road curve. The lateral bend advances only with time*0.075 (imperceptibly
-            // slow), so the road + edge MESH geometry is rewritten+uploaded every 2nd frame while
-            // rings/camera keep sampling the curve every frame (cheap transforms). Halves the
-            // per-frame GPU buffer uploads — a hitch source that Winter avoids entirely.
-            this._curveGeoTick = (this._curveGeoTick + 1) | 0;
-            const rewriteCurveGeo = (this._curveGeoTick & 1) === 0;
-            if (rewriteCurveGeo) this.updateRoadCurve();
+            // Road curve deformation. On WebGPU the bend lives in the road/edge vertex shaders
+            // (positionNode driven by uTime) — the geometry is STATIC, so there is ZERO per-frame
+            // rewrite or GPU upload (the hitch source Winter avoids). Only the under-road glow
+            // follows on the CPU (one cheap curve sample, no upload). The WebGL fallback keeps the
+            // CPU geometry rewrite, throttled to every 2nd frame.
+            let rewriteCurveGeo = false;
+            if (this.isWebGPU) {
+                this.updateUnderRoadGlowFollow();
+            } else {
+                this._curveGeoTick = (this._curveGeoTick + 1) | 0;
+                rewriteCurveGeo = (this._curveGeoTick & 1) === 0;
+                if (rewriteCurveGeo) this.updateRoadCurve();
+            }
 
             // Update shooting stars
             this.updateShootingStars(delta);
@@ -4533,6 +4582,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         // Mutate the uColor Color in place (same HSL args); no per-frame alloc.
                         md.uniforms.uColor.value.setHSL(line.userData.hue, 0.9, 0.55);
                         md.uniforms.uOpacity.value = (0.5 - line.userData.offset * 0.12) + this.pulseIntensity * 0.25;
+                        // GPU-driven curve: advance the shader's uTime; geometry stays static.
+                        if (md.uniforms.uTime) md.uniforms.uTime.value = this.time;
                     } else {
                         line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
                         const baseOpacity = 0.5 - line.userData.offset * 0.12;
