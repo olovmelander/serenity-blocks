@@ -5889,7 +5889,19 @@ export default class StellarDriftTheme extends BaseTheme {
         const animate = () => {
             if (!this.isActive) return;
 
-            const measuredDelta = this.clock.getDelta();
+            // Schedule the next frame up-front so the loop self-heals after any throttled/
+            // skipped/errored frame (matches BaseTheme.safeAnimate + wolfhour/black-hole/tornado).
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+
+            // Honor engine-wide background/pause throttling (window.isRenderingPaused -> skip;
+            // isRenderingReduced -> ~10fps). Bailing here stops the 3 GPU compute dispatches +
+            // the post RTT chain from burning the GPU while backgrounded; foreground is unchanged.
+            // getDelta() is intentionally NOT called before this bail, so the first resumed frame
+            // returns the full skipped span, which the clamp below caps.
+            if (!this.shouldRenderFrame()) return;
+
+            const measuredDelta = Math.min(this.clock.getDelta(), 1 / 20);
             const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
             if (this.fixedDeltaSeconds !== null) {
                 this.fixedElapsed += rawDelta;
@@ -6547,9 +6559,8 @@ export default class StellarDriftTheme extends BaseTheme {
             if (this.flags.baseline) {
                 this.trackBaselineFrame(measuredDelta);
             }
-
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
+            // Next-frame scheduling moved to the top of the closure (see above) so the
+            // loop self-heals after a gated/skipped/errored frame.
         };
 
         this.animationFrameId = requestAnimationFrame(animate);
