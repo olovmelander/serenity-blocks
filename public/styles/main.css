@@ -25,6 +25,19 @@ body {
     --global-sunset-flare-strength: 1;
 }
 
+/* ═══ STUDIO IDENT — full-screen cinematic "Diamond Ignition" splash ═══
+   Three GPU-aware acts: REVEAL (before the shader pre-warm, GPU free) → static HOLD
+   (.sb-lit, during the warm — nothing animates so the saturated GPU can't stutter it)
+   → EXIT bloom-crossfade (after the warm, GPU free). */
+:root {
+    --sb-accent: #8cd7ff;
+    --sb-accent-2: #8ea6ff;
+    --sb-ink: #050610;
+    --sb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --sb-ease-lockup: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --sb-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
 .startup-shell {
     position: fixed;
     inset: 0;
@@ -32,85 +45,439 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+    /* OPAQUE dark stage — a pure studio ident; nothing behind shows through during the
+       hold. The exit crossfade is driven by the whole shell fading its opacity. */
     background:
-        radial-gradient(circle at top, rgba(99, 102, 241, 0.22), transparent 42%),
-        linear-gradient(180deg, rgba(5, 6, 12, 0.94), rgba(10, 12, 24, 0.98));
-    transition: opacity 0.22s ease, visibility 0.22s ease;
+        radial-gradient(ellipse at 50% 46%, #16244c 0%, #0a1024 46%, var(--sb-ink) 100%),
+        var(--sb-ink);
+    /* EXIT crossfade — long enough to overlap onto the live intro (no black gap). */
+    transition: opacity 0.9s var(--sb-ease-out), visibility 0.9s var(--sb-ease-out);
+    animation: sb-void-in 0.8s var(--sb-ease-out) both;
 }
 
-.startup-shell.is-hidden {
+@keyframes sb-void-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Static cinematic framing — zero-per-frame paint, safe during the warm hold. */
+.startup-shell__spotlight {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 48%, rgba(140, 215, 255, 0.10) 0%, rgba(110, 95, 255, 0.05) 30%, transparent 62%);
+}
+
+.startup-shell__vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.startup-shell__grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Letterbox bars — transform-only slide, only during reveal/exit. */
+.startup-shell__letterbox {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 9vh;
+    background: #000;
+    z-index: 2;
+    animation: sb-bar-in 0.6s var(--sb-ease-out) 0.05s both;
+}
+
+.startup-shell__letterbox--top { top: 0; transform: translateY(-100%); }
+.startup-shell__letterbox--bottom { bottom: 0; transform: translateY(100%); }
+
+@keyframes sb-bar-in { to { transform: translateY(0); } }
+
+/* Exit whiteout the intro nebula "develops" out of. */
+.startup-shell__bloom {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
     opacity: 0;
-    visibility: hidden;
+    background: radial-gradient(ellipse at 50% 48%, #ffffff 0%, rgba(224, 240, 255, 0.9) 30%, transparent 70%);
+}
+
+/* ── LOGO GROUP (reveals, holds, and exits as one) ── */
+.startup-logo {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+}
+
+.startup-logo__markwrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Baked radial bloom behind the mark — static; the primary "still but stunning" tool. */
+.startup-logo__glow {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(140, 215, 255, 0.30) 0%, rgba(110, 95, 255, 0.12) 38%, transparent 70%);
+    filter: blur(18px);
+    animation: sb-glow-ignite 1.3s var(--sb-ease-out) both;
+}
+
+@keyframes sb-glow-ignite {
+    0% { opacity: 0; transform: scale(0.4); }
+    55% { opacity: 1; transform: scale(1.12); }
+    100% { opacity: 0.78; transform: scale(1); }
+}
+
+.startup-logo__mark {
+    width: 128px;
+    height: 128px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 30px;
+    background: radial-gradient(circle at 50% 34%, rgba(140, 215, 255, 0.34), rgba(142, 166, 255, 0.14) 60%, transparent 78%);
+    border: 1px solid rgba(180, 210, 255, 0.32);
+    box-shadow: 0 0 40px rgba(140, 215, 255, 0.30), 0 0 90px rgba(110, 95, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    /* REVEAL: ignite-from-dark focus-pull; parked by .sb-lit for the warm hold. */
+    animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
+    will-change: opacity, transform, filter;
+}
+
+.startup-logo__mark span {
+    font-size: 58px;
+    line-height: 1;
+    color: rgba(224, 238, 255, 0.98);
+    text-shadow: 0 0 22px rgba(140, 215, 255, 0.8), 0 0 44px rgba(110, 95, 255, 0.5);
+}
+
+@keyframes sb-mark-ignite {
+    0% { opacity: 0; filter: blur(10px) brightness(1.5); transform: scale(0.86); }
+    60% { opacity: 1; }
+    100% { opacity: 1; filter: blur(0) brightness(1); transform: scale(1); }
+}
+
+/* NAME — static gradient fill; tracking "locks up" via scaleX (NOT letter-spacing → no reflow). */
+.startup-logo__name {
+    position: relative;
+    overflow: hidden;
+    animation: sb-name-in 0.9s var(--sb-ease-lockup) 0.45s both;
+}
+
+.startup-logo__name-text {
+    display: inline-block;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.34em;
+    padding-left: 0.34em;
+    text-transform: uppercase;
+    text-align: center;
+    background: linear-gradient(100deg, #ffffff 0%, #d7f5ff 46%, #8ea6ff 66%, #ffffff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    transform-origin: center;
+}
+
+@keyframes sb-name-in {
+    0% { opacity: 0; transform: translateY(10px) scaleX(1.28); }
+    100% { opacity: 1; transform: translateY(0) scaleX(1); }
+}
+
+/* One-shot light-sweep sheen — transform-driven overlay, fires as the name lands. */
+.startup-logo__sheen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40%;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0) 30%, rgba(230, 245, 255, 0.85) 50%, rgba(255, 255, 255, 0) 70%, transparent 100%);
+    mix-blend-mode: screen;
+    transform: translateX(-160%);
+    animation: sb-sheen 1.1s var(--sb-ease-out) 1.05s both;
+}
+
+@keyframes sb-sheen { to { transform: translateX(360%); } }
+
+.startup-shell__eyebrow {
+    color: rgba(160, 196, 255, 0.78);
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    animation: sb-fade-up 0.8s var(--sb-ease-out) 0.1s both;
+}
+
+@keyframes sb-fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.startup-logo__image {
+    max-width: 300px;
+    max-height: 160px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 30px rgba(140, 180, 255, 0.4));
+    animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
+}
+
+/* ── HOLD (during warm): park all reveal anims + drop will-change; only a slow opacity
+   breathe (5.5s) so a dropped frame under GPU saturation is invisible. ── */
+.startup-shell.sb-lit .startup-logo__glow,
+.startup-shell.sb-lit .startup-logo__mark,
+.startup-shell.sb-lit .startup-logo__image,
+.startup-shell.sb-lit .startup-logo__name,
+.startup-shell.sb-lit .startup-logo__sheen,
+.startup-shell.sb-lit .startup-shell__eyebrow {
+    animation: none !important;
+    will-change: auto;
+}
+
+.startup-shell.sb-lit .startup-logo {
+    animation: sb-breathe 5.5s ease-in-out infinite;
+}
+
+@keyframes sb-breathe {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 1; }
+}
+
+/* ═══ EXIT — "Diamond Ignition → Nebula Birth": one continuous ~2.75s masterpiece reveal.
+   The held diamond OVERLOADS into a full-frame white-out that the live intro nebula +
+   "SERENITY BLOCKS" title develop out of — no cut, no black gap. Multi-layer, all
+   compositor-only (transform / opacity / filter + screen blends). ═══ */
+
+/* Warp handoff: when the WebGPU particle reveal takes over, the ident just does a
+   fast opacity fade to expose the warp's diamond beneath (no CSS develop-out). The
+   warp canvas (z:15000, opaque black) sits under the shell, so this crossfades the
+   ident straight into the live particle diamond. */
+.startup-shell.is-warp-out {
+    animation: none !important;
+    /* Gentle ease-out cross-dissolve, front-loaded onto the warp's ignition flare
+       (light-covers-cut) so the DOM ident hands to the GPU gem with no visible seam. */
+    transition: opacity 420ms var(--sb-ease-out);
+    opacity: 0;
     pointer-events: none;
 }
 
-.startup-shell__panel {
-    width: min(420px, calc(100vw - 48px));
-    padding: 28px 30px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(14, 16, 28, 0.9);
-    box-shadow:
-        0 32px 80px rgba(0, 0, 0, 0.42),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(20px);
+/* Dark stage backing stays opaque THROUGH the bloom peak, then fades under the white,
+   so the eye never sees the stage dissolve to black. */
+.startup-shell.is-hidden {
+    animation: sb-backing-out 2.75s var(--sb-ease-in) both;
+    pointer-events: none;
 }
 
-.startup-shell__eyebrow {
-    color: rgba(160, 196, 255, 0.82);
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+@keyframes sb-backing-out {
+    0%, 40% { opacity: 1; }
+    100% { opacity: 0; }
 }
 
-.startup-shell__title {
-    margin-top: 10px;
-    color: #f8fafc;
-    font-size: 26px;
-    font-weight: 700;
+/* Logo group rack-focus dissolve — spent into the light. */
+.startup-shell.is-hidden .startup-logo {
+    animation: sb-logo-rack 1.65s var(--sb-ease-in) both;
+    will-change: transform, filter, opacity;
 }
 
-.startup-shell__status {
-    margin-top: 10px;
-    color: rgba(226, 232, 240, 0.88);
-    font-size: 13px;
+@keyframes sb-logo-rack {
+    0% { opacity: 1; transform: scale(1); filter: blur(0) brightness(1); }
+    8% { opacity: 1; transform: scale(0.94); filter: blur(0) brightness(1.05); }
+    45% { opacity: 1; transform: scale(1.34); filter: blur(1px) brightness(1.7); }
+    72% { opacity: 0.4; transform: scale(1.7); filter: blur(7px) brightness(2.1); }
+    100% { opacity: 0; transform: scale(2.05); filter: blur(16px) brightness(2.4); }
 }
 
-.startup-shell__detail {
-    min-height: 16px;
-    margin-top: 8px;
-    color: rgba(248, 113, 113, 0.9);
-    font-size: 11px;
-    line-height: 1.45;
-    word-break: break-word;
+/* Diamond mark super-ignites toward the viewer and becomes the flash. */
+.startup-shell.is-hidden .startup-logo__mark {
+    animation: sb-mark-overload 1.4s var(--sb-ease-in) both;
+    will-change: transform, filter, opacity;
 }
 
-.startup-shell__meter {
-    position: relative;
-    margin-top: 18px;
-    height: 6px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
+@keyframes sb-mark-overload {
+    0% { transform: scale(1); filter: blur(0) brightness(1); opacity: 1; }
+    45% { transform: scale(1.5); filter: blur(2px) brightness(2.6); opacity: 1; }
+    100% { transform: scale(2.3); filter: blur(14px) brightness(3.2); opacity: 0; }
 }
 
-.startup-shell__meter-fill {
-    display: block;
-    width: 32%;
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
-    animation: startup-shell-scan 1.05s ease-in-out infinite;
+/* Baked glow super-novas to fill toward the whiteout. */
+.startup-shell.is-hidden .startup-logo__glow {
+    animation: sb-glow-supernova 1.5s var(--sb-ease-out) both;
+    will-change: transform, opacity;
 }
 
-@keyframes startup-shell-scan {
-    0% {
-        transform: translateX(-160%);
+@keyframes sb-glow-supernova {
+    0% { opacity: 0.78; transform: scale(1); }
+    40% { opacity: 1; transform: scale(2.4); }
+    100% { opacity: 0; transform: scale(3.6); }
+}
+
+/* Bloom white-out envelope — the master clock (peak 0.92 at 40% ≈ 1.1s). screen-blend
+   ADDS to the nebula behind; peak ≤0.92 so it reads as overexposure, not a white card. */
+.startup-shell.is-hidden .startup-shell__bloom {
+    animation: sb-bloom-envelope 2.75s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    mix-blend-mode: screen;
+    will-change: opacity, transform;
+}
+
+@keyframes sb-bloom-envelope {
+    0% { opacity: 0; transform: scale(0.88); }
+    22% { opacity: 0.55; transform: scale(1.02); }
+    40% { opacity: 0.92; transform: scale(1.14); }
+    58% { opacity: 0.62; transform: scale(1.22); }
+    100% { opacity: 0; transform: scale(1.34); }
+}
+
+/* Radial lens-flare glint riding the peak (pseudo-element, no extra DOM). */
+.startup-shell.is-hidden .startup-shell__bloom::after {
+    content: '';
+    position: absolute;
+    top: 48%;
+    left: 50%;
+    width: 44vmax;
+    height: 44vmax;
+    transform: translate(-50%, -50%) scale(0.2);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(142, 166, 255, 0.35) 18%, transparent 42%);
+    mix-blend-mode: screen;
+    opacity: 0;
+    will-change: opacity, transform;
+    animation: sb-flare-glint 0.95s ease-out 0.72s both;
+}
+
+@keyframes sb-flare-glint {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+    45% { opacity: 0.9; transform: translate(-50%, -50%) scale(1.05); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
+}
+
+/* Horizontal anamorphic flare — reuse the spotlight layer, scaleX/scaleY only. */
+.startup-shell.is-hidden .startup-shell__spotlight {
+    background: linear-gradient(90deg, transparent 0%, rgba(150, 210, 255, 0) 30%, rgba(224, 244, 255, 0.9) 50%, rgba(150, 210, 255, 0) 70%, transparent 100%);
+    mix-blend-mode: screen;
+    opacity: 0;
+    transform: scaleY(0.02) scaleX(0.4);
+    transform-origin: 50% 48%;
+    will-change: opacity, transform;
+    animation: sb-anamorphic 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.62s both;
+}
+
+@keyframes sb-anamorphic {
+    0% { opacity: 0; transform: scaleY(0.02) scaleX(0.4); }
+    35% { opacity: 1; transform: scaleY(0.07) scaleX(1.2); }
+    100% { opacity: 0; transform: scaleY(0.02) scaleX(1.45); }
+}
+
+/* Ember / dust dissolve — the diamond's matter drifts outward, seeding the nebula. */
+.startup-shell.is-hidden .startup-shell__ember {
+    animation: sb-ember-rise 2.3s cubic-bezier(0.3, 0.7, 0.2, 1) 0.15s both;
+    will-change: transform, opacity;
+}
+
+.startup-shell.is-hidden .startup-shell__ember--far {
+    animation: sb-ember-rise2 2.4s cubic-bezier(0.3, 0.7, 0.2, 1) 0.3s both;
+}
+
+@keyframes sb-ember-rise {
+    0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1); }
+    30% { opacity: 0.9; }
+    100% { opacity: 0; transform: translate3d(0, -13vh, 0) scale(1.4); }
+}
+
+@keyframes sb-ember-rise2 {
+    0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1); }
+    30% { opacity: 0.55; }
+    100% { opacity: 0; transform: translate3d(0, -21vh, 0) scale(1.65); }
+}
+
+/* Chromatic fringe on the studio name as it dissolves. */
+.startup-shell.is-hidden .startup-logo__name {
+    animation: sb-name-chroma 0.8s ease-out 0.55s both;
+}
+
+@keyframes sb-name-chroma {
+    0% { filter: none; }
+    50% { filter: drop-shadow(2px 0 0 rgba(140, 215, 255, 0.85)) drop-shadow(-2px 0 0 rgba(142, 166, 255, 0.85)); }
+    100% { filter: drop-shadow(6px 0 0 rgba(140, 215, 255, 0)) drop-shadow(-6px 0 0 rgba(142, 166, 255, 0)); }
+}
+
+/* Letterbox bars retract. */
+.startup-shell.is-hidden .startup-shell__letterbox--top {
+    transform: translateY(-100%);
+    transition: transform 0.8s var(--sb-ease-in);
+}
+
+.startup-shell.is-hidden .startup-shell__letterbox--bottom {
+    transform: translateY(100%);
+    transition: transform 0.8s var(--sb-ease-in);
+}
+
+/* Ember dot-field base (rest) styles — hidden until the exit animates them. */
+.startup-shell__ember {
+    position: absolute;
+    inset: -12%;
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    mix-blend-mode: screen;
+    background-image: radial-gradient(rgba(200, 236, 255, 0.9) 0.8px, transparent 1.6px);
+    background-size: 46px 46px;
+}
+
+.startup-shell__ember--far {
+    z-index: 4;
+    background-image: radial-gradient(rgba(150, 180, 255, 0.75) 0.8px, transparent 1.6px);
+    background-size: 74px 74px;
+}
+
+/* ── prefers-reduced-motion: clean crossfade, no flash/streak/embers, no black gap. ── */
+@media (prefers-reduced-motion: reduce) {
+    .startup-shell,
+    .startup-shell__letterbox,
+    .startup-logo__glow,
+    .startup-logo__mark,
+    .startup-logo__image,
+    .startup-logo__name,
+    .startup-shell__eyebrow,
+    .startup-logo { animation: none !important; }
+    .startup-logo__glow,
+    .startup-logo__mark,
+    .startup-logo__name,
+    .startup-shell__eyebrow,
+    .startup-logo__image { opacity: 1 !important; }
+    .startup-logo__mark,
+    .startup-logo { transform: none !important; filter: none !important; }
+    .startup-logo__name-text { transform: none !important; }
+    .startup-logo__sheen { display: none; }
+    .startup-shell.is-hidden {
+        animation: none !important;
+        transition: opacity 0.6s ease-out;
+        opacity: 0;
     }
-
-    100% {
-        transform: translateX(360%);
-    }
+    .startup-shell.is-hidden .startup-logo,
+    .startup-shell.is-hidden .startup-logo__mark,
+    .startup-shell.is-hidden .startup-logo__glow,
+    .startup-shell.is-hidden .startup-shell__bloom,
+    .startup-shell.is-hidden .startup-shell__spotlight,
+    .startup-shell.is-hidden .startup-shell__ember { animation: none !important; }
+    .startup-shell.is-hidden .startup-logo { transition: opacity 0.55s ease; opacity: 0; transform: none; filter: none; }
+    .startup-shell.is-hidden .startup-shell__bloom,
+    .startup-shell.is-hidden .startup-shell__ember { display: none !important; }
+    .startup-shell__spotlight { display: none; }
 }
 
 /* --- Background Container --- */
@@ -20987,7 +21354,13 @@ body.serenity-mode.cursor-hidden * {
 .modal.game-mode-selection {
     background: transparent;
     backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     pointer-events: none;
+}
+
+body.electron-app #start-modal.modal.game-mode-selection {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .modal.game-mode-selection .floating-settings-btn {

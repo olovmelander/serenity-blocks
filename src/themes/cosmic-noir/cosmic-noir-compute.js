@@ -1,4 +1,3 @@
-/* eslint-disable max-classes-per-file */
 /**
  * Cosmic Noir - GPU Compute (Phase 3)
  * Unified void spark particle simulation for WebGPU.
@@ -9,13 +8,11 @@ import {
     Fn,
     If,
     clamp,
-    cos,
     float,
     instanceIndex,
     max,
     normalize,
     pow,
-    sin,
     storage,
     uniform,
     vec3,
@@ -281,122 +278,5 @@ export class CosmicNoirSparkCompute {
         this.velocityData = null;
         this.lifeData = null;
         this.colorData = null;
-    }
-}
-
-export class CosmicNoirStarTwinkleCompute {
-    constructor(starCount) {
-        this.count = starCount;
-        // phase, speed, baseBrightness, size
-        this.stateData = new Float32Array(starCount * 4);
-        this.stateBuffer = new THREE.StorageBufferAttribute(this.stateData, 4);
-        this.uDelta = uniform(0);
-        this.computeNode = null;
-    }
-
-    setInitialData(twinkleData, brightnessData, sizeData) {
-        for (let i = 0; i < this.count; i += 1) {
-            const base = i * 4;
-            const tBase = i * 2;
-            this.stateData[base] = twinkleData[tBase] || 0.0;
-            this.stateData[base + 1] = twinkleData[tBase + 1] || 1.0;
-            this.stateData[base + 2] = brightnessData[i] ?? 0.5;
-            this.stateData[base + 3] = sizeData[i] ?? 12.0;
-        }
-        this.stateBuffer.needsUpdate = true;
-    }
-
-    createComputeNode() {
-        const state = storage(this.stateBuffer, 'vec4', this.count);
-        const delta = this.uDelta;
-        const tau = float(6.28318530718);
-
-        const computeStars = Fn(() => {
-            const index = instanceIndex;
-            const entry = state.element(index).toVar();
-            entry.x.addAssign(entry.y.mul(delta));
-            If(entry.x.greaterThan(tau), () => {
-                entry.x.assign(entry.x.sub(tau));
-            });
-            state.element(index).assign(entry);
-        });
-
-        this.computeNode = computeStars().compute(this.count);
-        return this.computeNode;
-    }
-
-    update(delta) {
-        this.uDelta.value = delta;
-    }
-
-    getStateBuffer() {
-        return this.stateBuffer;
-    }
-
-    dispose() {
-        this.computeNode = null;
-        this.stateBuffer = null;
-        this.stateData = null;
-    }
-}
-
-export class CosmicNoirAtmosphereFlowCompute {
-    constructor() {
-        this.count = 2;
-        // [0]: flowAx, flowAy, flowBx, flowBy
-        // [1]: warpX, warpY, densityPulse, turbulence
-        this.flowData = new Float32Array(8);
-        this.flowBuffer = new THREE.StorageBufferAttribute(this.flowData, 4);
-        this.uTime = uniform(0);
-        this.uPulseIntensity = uniform(0);
-        this.uExplosionIntensity = uniform(0);
-        this.computeNode = null;
-    }
-
-    createComputeNode() {
-        const flowState = storage(this.flowBuffer, 'vec4', this.count);
-        const time = this.uTime;
-        const pulse = this.uPulseIntensity;
-        const explosion = this.uExplosionIntensity;
-
-        const computeFlow = Fn(() => {
-            const flowA = vec4(
-                sin(time.mul(0.23)).mul(0.42).add(pulse.mul(0.07)),
-                cos(time.mul(0.19)).mul(-0.31).sub(explosion.mul(0.12)),
-                sin(time.mul(0.17)).mul(-0.27).add(explosion.mul(0.08)),
-                cos(time.mul(0.29)).mul(0.35).add(pulse.mul(0.05)),
-            );
-
-            const flowB = vec4(
-                sin(time.mul(0.37)).mul(0.45).add(explosion.mul(0.1)),
-                cos(time.mul(0.31)).mul(0.45).sub(explosion.mul(0.08)),
-                sin(time.mul(0.62)).mul(0.2).add(1.0).add(pulse.mul(0.08)),
-                max(float(0.25), float(1.0).add(explosion.mul(0.6))),
-            );
-
-            flowState.element(0).assign(flowA);
-            flowState.element(1).assign(flowB);
-        });
-
-        this.computeNode = computeFlow().compute(1);
-        return this.computeNode;
-    }
-
-    update(params = {}) {
-        if (params.time !== undefined) this.uTime.value = params.time;
-        if (params.pulseIntensity !== undefined) this.uPulseIntensity.value = params.pulseIntensity;
-        if (params.explosionIntensity !== undefined) {
-            this.uExplosionIntensity.value = params.explosionIntensity;
-        }
-    }
-
-    getFlowBuffer() {
-        return this.flowBuffer;
-    }
-
-    dispose() {
-        this.computeNode = null;
-        this.flowBuffer = null;
-        this.flowData = null;
     }
 }

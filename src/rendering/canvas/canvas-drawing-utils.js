@@ -680,19 +680,19 @@ export function drawPieceStyledUnified(
                     const hasLeft = x === 0 || !row[x - 1];
                     const hasRight = x === row.length - 1 || !row[x + 1];
 
-                    if (!hasTop) {
+                    if (hasTop) {
                         ctx.moveTo(px, py + 0.5);
                         ctx.lineTo(px + size, py + 0.5);
                     }
-                    if (!hasBottom) {
+                    if (hasBottom) {
                         ctx.moveTo(px, py + size - 0.5);
                         ctx.lineTo(px + size, py + size - 0.5);
                     }
-                    if (!hasLeft) {
+                    if (hasLeft) {
                         ctx.moveTo(px + 0.5, py);
                         ctx.lineTo(px + 0.5, py + size);
                     }
-                    if (!hasRight) {
+                    if (hasRight) {
                         ctx.moveTo(px + size - 0.5, py);
                         ctx.lineTo(px + size - 0.5, py + size);
                     }

@@ -238,6 +238,10 @@ export class FFAAttackRouter {
 
         // Calculate garbage attack using Quadra formula
         const attack = calculateGarbage(cascadeSummary, rules);
+        const attackMeta = this.gameState._createAttackMetadata?.(attackerSteamId, cascadeSummary) || {};
+        if (attackMeta.attackId) {
+            attack.withId(attackMeta.attackId);
+        }
         const totalLines = attack.getTotalLines();
 
         if (this.isHotPotatoEnabled()) {
@@ -290,25 +294,45 @@ export class FFAAttackRouter {
 
         // Distribute garbage to all opponents
         opponents.forEach((opponent) => {
-            this.sendGarbageToPlayer(opponent, scaledLines, cascadeSummary, attacker);
+            this.sendGarbageToPlayer(opponent, scaledLines, cascadeSummary, attacker, {
+                attack,
+                attackMeta,
+            });
         });
 
         // Track attack in history
         this.recordAttack({
+            attackId: attackMeta.attackId,
+            attackSeq: attackMeta.attackSeq,
             from: attacker.steamId,
             fromName: attacker.name,
+            rawLines: totalLines,
+            cancelledLines,
             totalLines: scaledLines,
             targetCount: opponents.length,
             timestamp: Date.now(),
+            sourceSimTick: attackMeta.sourceSimTick,
+            sourceLockSeq: attackMeta.sourceLockSeq,
         });
 
         const garbagePayload = {
+            attackId: attackMeta.attackId,
+            attackSeq: attackMeta.attackSeq,
             from: attackerSteamId,
             fromName: attacker.name,
+            rawLines: totalLines,
+            cancelledLines,
             totalLines: scaledLines,
             targets: opponents.map((o) => o.steamId),
             targetCount: opponents.length,
+            sourceSimTick: attackMeta.sourceSimTick,
+            sourceLockSeq: attackMeta.sourceLockSeq,
         };
+
+        this.gameState._recordNetEvent?.('attack_routed', {
+            ...garbagePayload,
+            rulesHash: attackMeta.rulesHash,
+        });
 
         // Broadcast attack event to all peers (they render it from the network msg)…
         this.gameState.network.broadcastToAll('game:garbage:sent', garbagePayload);
@@ -322,7 +346,7 @@ export class FFAAttackRouter {
    * Send garbage to a specific player
    * ENHANCED: Insert immediately if opponent has no piece
    */
-    sendGarbageToPlayer(opponent, lines, cascadeSummary, attacker) {
+    sendGarbageToPlayer(opponent, lines, cascadeSummary, attacker, options = {}) {
         // Create garbage entries with attacker's color and steamId
         const context = {
             color: attacker.color || '#808080', // Use player's assigned color
@@ -333,8 +357,44 @@ export class FFAAttackRouter {
         this._logGarbage(`📦 Creating garbage entries with attackerId: ${attacker.steamId} (${attacker.name})`);
 
         // Expand garbage into actual entries
-        const garbageAttack = calculateGarbage(cascadeSummary, this.gameState.matchConfig?.attackRules || {});
-        const entries = garbageAttack.expandEntries(context);
+        const attackMeta = options.attackMeta || {};
+        const garbageAttack = options.attack || calculateGarbage(cascadeSummary, this.gameState.matchConfig?.attackRules || {});
+        if (attackMeta.attackId && typeof garbageAttack.withId === 'function') {
+            garbageAttack.withId(attackMeta.attackId);
+        }
+        let entries = garbageAttack.expandEntries(context);
+
+        const lineLimit = Math.max(0, Math.floor(Number(lines) || 0));
+        let acceptedLines = 0;
+        entries = entries.filter((entry) => {
+            if (entry.type !== 'line') return true;
+            if (acceptedLines >= lineLimit) return false;
+            acceptedLines += 1;
+            return true;
+        });
+
+        let lineIndex = 0;
+        const lastLineIndex = entries.filter((entry) => entry.type === 'line').length - 1;
+        entries = entries.map((entry) => {
+            const isLine = entry.type === 'line';
+            const currentLineIndex = isLine ? lineIndex++ : 0;
+            return {
+                ...entry,
+                attackId: attackMeta.attackId || entry.attackId,
+                attackSeq: attackMeta.attackSeq,
+                sourceSimTick: attackMeta.sourceSimTick,
+                createdSimTick: attackMeta.createdSimTick ?? attackMeta.sourceSimTick,
+                sourceLockSeq: attackMeta.sourceLockSeq,
+                targetId: opponent.steamId,
+                lineIndex: isLine ? currentLineIndex : undefined,
+                applyAfterLockSeq: opponent._lockSeq || 0,
+                rulesHash: attackMeta.rulesHash,
+                clearSummary: attackMeta.clearSummary,
+                isLastInBurst: isLine ? currentLineIndex === lastLineIndex : entry.isLastInBurst,
+                connectAbove: isLine ? currentLineIndex > 0 : entry.connectAbove,
+                connectBelow: isLine ? currentLineIndex < lastLineIndex : entry.connectBelow,
+            };
+        });
 
         // Verify attackerId is set
         this._logGarbage(`📦 Generated ${entries.length} entries, checking attackerId...`);

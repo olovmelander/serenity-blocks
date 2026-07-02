@@ -177,6 +177,58 @@ export class SoundManager {
         this.sfxLimiterNode = null;
     }
 
+    /**
+     * Play a one-shot audio FILE (e.g. the boot warp whoosh) through the SFX bus, honoring
+     * mute + SFX volume. Decodes once and caches the buffer. Best-effort — never throws.
+     * Uses XHR (works with file:// in packaged Electron) + Web Audio so it routes through
+     * the same limiter/volume as the procedural SFX.
+     * @param {string} url  relative or absolute audio URL
+     * @param {{volume?: number}} [options]
+     * @returns {Promise<void>}
+     */
+    async playOneShotFile(url, options = {}) {
+        if (!url) return;
+        try {
+            this.resumeAudioContext();
+            if (!this.audioContext || this.isMuted) return;
+            const resolved = this.normalizeAudioUrl(url) || url;
+
+            if (!this.oneShotBuffers) this.oneShotBuffers = new Map();
+            let buffer = this.oneShotBuffers.get(resolved);
+            if (!buffer) {
+                const encoded = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', resolved, true);
+                    xhr.responseType = 'arraybuffer';
+                    xhr.onload = () => {
+                        if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) {
+                            resolve(xhr.response);
+                        } else {
+                            reject(new Error(`HTTP ${xhr.status} for ${resolved}`));
+                        }
+                    };
+                    xhr.onerror = () => reject(new Error(`network error for ${resolved}`));
+                    xhr.send();
+                });
+                buffer = await this.audioContext.decodeAudioData(encoded);
+                this.oneShotBuffers.set(resolved, buffer);
+            }
+
+            // Re-check after the async load/decode (mute could have flipped meanwhile).
+            if (this.isMuted || !this.audioContext) return;
+
+            const source = this.audioContext.createBufferSource();
+            source.buffer = buffer;
+            const gain = this.audioContext.createGain();
+            gain.gain.value = clampUnitVolume(options.volume ?? 1, 1) * this.getSfxVolume();
+            source.connect(gain);
+            gain.connect(this.getToneDestination(false) || this.audioContext.destination);
+            source.start();
+        } catch (error) {
+            console.warn('[SoundManager] one-shot file play failed:', url, error);
+        }
+    }
+
     bindRuntimeAudioHooks() {
         if (this.runtimeHooksBound || typeof document === 'undefined') {
             return;

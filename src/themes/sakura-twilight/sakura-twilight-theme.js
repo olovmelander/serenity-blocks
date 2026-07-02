@@ -126,6 +126,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.shadowMap.enabled = false; // PERF: Disabled for +5-15 FPS
         // this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
@@ -180,7 +181,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // Listen for resolution changes
         this.handleDisplaySettingsChange = (e) => {
             const { width, height, resolution } = e.detail;
-            const mode = resolution === 'auto' ? 'auto' : 'fixed';
+            const mode = resolution && resolution !== 'auto' ? 'fixed' : 'auto';
             this.setInternalResolution(width, height, mode);
         };
         window.addEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
@@ -331,8 +332,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
             canopyMesh.receiveShadow = true;
             canopyMesh.customDepthMaterial = new THREE.MeshDepthMaterial({
                 depthPacking: THREE.RGBADepthPacking,
-                map: canopyMat.map,
-                alphaTest: 0.5,
+                map: this.sharedCanopyMaterial.map,
+                alphaTest: this.sharedCanopyMaterial.alphaTest,
             });
 
             // 4. Shadow/Dirt Decals (Grounding the trees)
@@ -1012,13 +1013,27 @@ export default class SakuraTwilightTheme extends BaseTheme {
         return texture;
     }
 
+    configureColorTexture(texture, label = 'texture') {
+        if (!texture) {
+            console.warn(`[SakuraTheme] Missing ${label}; GLB material will use fallback color`);
+            return null;
+        }
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.max(texture.anisotropy || 1, this.renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
     setupSharedCanopyMaterial(baseMat) {
+        const canopyMap = this.configureColorTexture(baseMat?.map, 'canopy leaf texture');
+
         this.sharedCanopyMaterial = new THREE.MeshLambertMaterial({
-            map: baseMat.map,
-            color: baseMat.color,
-            alphaMap: baseMat.map,
-            transparent: true,
-            alphaTest: 0.5,
+            map: canopyMap,
+            color: baseMat?.color || new THREE.Color(0xffffff),
+            transparent: false,
+            alphaTest: 0.35,
+            depthWrite: true,
             side: THREE.DoubleSide,
         });
 
@@ -1316,6 +1331,10 @@ export default class SakuraTwilightTheme extends BaseTheme {
         ctx.restore();
 
         const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.magFilter = THREE.LinearFilter;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.generateMipmaps = true;
         texture.needsUpdate = true;
         return texture;
     }
@@ -1323,19 +1342,32 @@ export default class SakuraTwilightTheme extends BaseTheme {
     createPetals() {
         if (!this.scene) return;
 
-        // PERFORMANCE: Points are MUCH faster than InstancedMesh
         const count = 400;
         const petalTexture = this.createPetalTexture();
 
-        const geometry = new THREE.BufferGeometry();
+        const geometry = new THREE.InstancedBufferGeometry();
+        geometry.setIndex([0, 1, 2, 2, 1, 3]);
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+            -0.5, -0.5, 0,
+            0.5, -0.5, 0,
+            -0.5, 0.5, 0,
+            0.5, 0.5, 0,
+        ]), 3));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+            0, 0,
+            1, 0,
+            0, 1,
+            1, 1,
+        ]), 2));
+
         const positions = new Float32Array(count * 3);
         const seeds = new Float32Array(count * 4);
         const sizes = new Float32Array(count);
         const alphas = new Float32Array(count);
 
         // Camera at (20, 4, 30)
-        const camX = 20; const
-            camZ = 30;
+        const camX = 20;
+        const camZ = 30;
 
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
@@ -1365,26 +1397,30 @@ export default class SakuraTwilightTheme extends BaseTheme {
             alphas[i] = 0.7 + Math.random() * 0.3;
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 4));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+        geometry.setAttribute('aBasePosition', new THREE.InstancedBufferAttribute(positions, 3));
+        geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 4));
+        geometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(sizes, 1));
+        geometry.setAttribute('aAlpha', new THREE.InstancedBufferAttribute(alphas, 1));
+        geometry.instanceCount = count;
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
                 uPetalTexture: { value: petalTexture },
                 uFogColor: { value: this.config.fogColor },
+                uViewport: { value: this.getPetalViewportSize() },
             },
             vertexShader: `
                 uniform float uTime;
+                uniform vec2 uViewport;
                 
+                attribute vec3 aBasePosition;
                 attribute vec4 aSeed;
                 attribute float aSize;
                 attribute float aAlpha;
                 
+                varying vec2 vUv;
                 varying float vAlpha;
-                varying float vRotation;
                 
                 void main() {
                     float phase = aSeed.x;
@@ -1392,7 +1428,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     float spiralPhase = aSeed.z;
                     float spiralRadius = aSeed.w;
                     
-                    vec3 pos = position;
+                    vec3 pos = aBasePosition;
                     float t = uTime * fallSpeed;
                     
                     // Gentle downward fall
@@ -1419,35 +1455,39 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     pos.x = mod(pos.x + 60.0, 120.0) - 60.0;
                     pos.z = mod(pos.z + 60.0, 120.0) - 60.0;
                     
-                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    vec4 centerView = modelViewMatrix * vec4(pos, 1.0);
                     
-                    // Size attenuation
-                    float dist = -mvPosition.z;
-                    gl_PointSize = aSize * (80.0 / max(dist, 1.0));
-                    gl_PointSize = clamp(gl_PointSize, 2.0, 20.0);
-                    
-                    vRotation = t * 2.0 + phase;
+                    // Screen-space size attenuation, expressed as a view-space billboard.
+                    float dist = max(-centerView.z, 1.0);
+                    float spritePixels = clamp(aSize * (80.0 / dist), 2.0, 20.0);
+                    vec2 viewSize = vec2(
+                        spritePixels * 2.0 * dist / (uViewport.x * projectionMatrix[0][0]),
+                        spritePixels * 2.0 * dist / (uViewport.y * projectionMatrix[1][1])
+                    );
+
+                    float rotation = t * 2.0 + phase;
+                    float c = cos(rotation);
+                    float s = sin(rotation);
+                    vec2 quad = vec2(position.x * c - position.y * s, position.x * s + position.y * c);
+                    centerView.xy += quad * viewSize;
+
+                    vUv = uv;
                     
                     // Fog fade
                     float fogFactor = smoothstep(15.0, 70.0, dist);
                     vAlpha = aAlpha * (1.0 - fogFactor * 0.8);
                     
-                    gl_Position = projectionMatrix * mvPosition;
+                    gl_Position = projectionMatrix * centerView;
                 }
             `,
             fragmentShader: `
                 uniform sampler2D uPetalTexture;
                 
+                varying vec2 vUv;
                 varying float vAlpha;
-                varying float vRotation;
                 
                 void main() {
-                    vec2 uv = gl_PointCoord - 0.5;
-                    float c = cos(vRotation);
-                    float s = sin(vRotation);
-                    vec2 rotatedUV = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c) + 0.5;
-                    
-                    vec4 texColor = texture2D(uPetalTexture, rotatedUV);
+                    vec4 texColor = texture2D(uPetalTexture, vUv);
                     if (texColor.a < 0.1) discard;
                     
                     gl_FragColor = vec4(texColor.rgb, texColor.a * vAlpha);
@@ -1458,16 +1498,23 @@ export default class SakuraTwilightTheme extends BaseTheme {
             blending: THREE.NormalBlending,
         });
 
-        this.petals = new THREE.Points(geometry, material);
+        this.petals = new THREE.Mesh(geometry, material);
         this.petals.frustumCulled = false;
         this.scene.add(this.petals);
 
-        console.log(`[SakuraTheme] Created ${count} petals (optimized Points system)`);
+        console.log(`[SakuraTheme] Created ${count} petals (instanced billboard system)`);
     }
 
     updatePetals() {
         if (!this.petals?.material?.uniforms) return;
         this.petals.material.uniforms.uTime.value = this.clock.getElapsedTime();
+    }
+
+    getPetalViewportSize() {
+        return new THREE.Vector2(
+            Math.max(1, this.renderer?.domElement?.width || window.innerWidth || 1),
+            Math.max(1, this.renderer?.domElement?.height || window.innerHeight || 1),
+        );
     }
 
     createMoon() {
@@ -2577,6 +2624,37 @@ export default class SakuraTwilightTheme extends BaseTheme {
      * Fox 1: Stays near the hero tree (center)
      * Fox 2: Roams the entire visible terrain
      */
+    configureFoxMaterial(material) {
+        const nextMaterial = material?.clone?.() || new THREE.MeshStandardMaterial({
+            roughness: 0.58,
+            metalness: 0,
+        });
+
+        if (nextMaterial.map) {
+            this.configureColorTexture(nextMaterial.map, 'fox base-color texture');
+            nextMaterial.color?.set?.(0xffffff);
+        } else if (nextMaterial.color) {
+            nextMaterial.color.set(0xd86a2a);
+        }
+
+        if ('metalness' in nextMaterial) nextMaterial.metalness = 0;
+        if ('roughness' in nextMaterial) nextMaterial.roughness = Math.max(nextMaterial.roughness ?? 0.58, 0.5);
+        nextMaterial.needsUpdate = true;
+        return nextMaterial;
+    }
+
+    configureFoxModelMaterials(model) {
+        model.traverse((child) => {
+            if (!child.isMesh) return;
+
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.material = Array.isArray(child.material)
+                ? child.material.map((material) => this.configureFoxMaterial(material))
+                : this.configureFoxMaterial(child.material);
+        });
+    }
+
     async loadFoxes() {
         const loader = new GLTFLoader();
 
@@ -2621,13 +2699,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 foxModel.position.set(config.startPos.x, startY, config.startPos.z);
                 foxModel.scale.setScalar(config.scale);
 
-                // Enable shadows on all meshes
-                foxModel.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
+                this.configureFoxModelMaterials(foxModel);
 
                 // Find bones for procedural animations
                 // The Fox model has a skeleton with named bones
@@ -3201,9 +3273,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
             this.renderer.domElement.style.width = '100%';
             this.renderer.domElement.style.height = '100%';
         } else {
-            // Auto mode: Use native DPR for crispness
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setPixelRatio(this.getEffectivePixelRatio());
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        if (this.petals?.material?.uniforms?.uViewport) {
+            this.petals.material.uniforms.uViewport.value.copy(this.getPetalViewportSize());
         }
     }
 

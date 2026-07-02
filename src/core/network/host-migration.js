@@ -104,6 +104,7 @@ export class HostMigration {
      * Claim host status
      */
     claimHost() {
+        const migrationEpoch = this.gameState.prepareMigrationClaim?.() ?? this.gameState.migrationEpoch ?? 0;
         console.log('👑 I am the new host! Broadcasting claim...');
 
         // Broadcast CLAIM message
@@ -112,18 +113,26 @@ export class HostMigration {
         // Assuming network.broadcastToAll works even if not host (it should just iter peers)
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_CLAIM, {
             newHostId: this.gameState.localPlayerId,
+            migrationEpoch,
         });
 
         // Actually become host
-        this.becomeHost();
+        this.becomeHost(migrationEpoch);
     }
 
     /**
      * Transition to host role
      */
-    becomeHost() {
+    becomeHost(migrationEpoch = null) {
         this.stopMonitoring();
         this.isElectionInProgress = false;
+
+        if (this.gameState._migrationEpochEnabled && !Number.isFinite(Number(migrationEpoch))) {
+            migrationEpoch = this.gameState.prepareMigrationClaim?.() ?? this.gameState.migrationEpoch ?? 0;
+        }
+        if (this.gameState._migrationEpochEnabled) {
+            this.gameState.migrationEpoch = Number(migrationEpoch) || 0;
+        }
 
         this.gameState.promoteToHost?.();
 
@@ -133,7 +142,8 @@ export class HostMigration {
         const snapshot = this.gameState.buildStateSnapshot();
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_SYNC, {
             snapshot,
-            newHostId: this.gameState.localPlayerId
+            newHostId: this.gameState.localPlayerId,
+            migrationEpoch: this.gameState.migrationEpoch || 0,
         });
 
         // Also fire standard state update just in case
@@ -164,6 +174,12 @@ export class HostMigration {
 
         if (expectedHostId !== newHostId) {
             console.warn(`🗳️ Ignoring host claim from ${msg.from}: expected ${expectedHostId}`);
+            return;
+        }
+
+        if (this.gameState._acceptMigrationEpoch
+            && !this.gameState._acceptMigrationEpoch(msg.data?.migrationEpoch, { source: 'migration_claim', from: msg.from })) {
+            console.warn(`Ignoring host claim from ${msg.from}: stale migration epoch ${msg.data?.migrationEpoch}`);
             return;
         }
 

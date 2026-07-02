@@ -989,6 +989,10 @@ export function registerSteamIPC() {
                     maxPlayers: l.getMemberLimit(),
                     endCondition: l.getData('end_condition') || 'frags',
                     endConditionValue: l.getData('end_condition_value') || '10',
+                    // Match lifecycle the host advertises via setLobbyData('status', ...)
+                    // so the browser can offer Join / "Join (next round)" / Watch. Empty
+                    // (older/un-stamped lobbies) → browser derives status from capacity.
+                    status: l.getData('status') || undefined,
                 }));
         } catch { return []; }
     });

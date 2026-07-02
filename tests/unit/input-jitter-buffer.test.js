@@ -55,4 +55,49 @@ describe('InputJitterBuffer clock', () => {
 
         expect(dropped).toBeGreaterThan(0); // the old labeling loses inputs
     });
+
+    it('stores scheduled tick separately from raw jitter tick metadata', () => {
+        const buf = new InputJitterBuffer({ adaptive: true, tickRate: 60 });
+        buf.addPlayer('peer');
+        buf.setCurrentTick(10); // processCursor = 8 at bufferDepth 2
+
+        const accepted = buf.addInput('peer', 8, { type: 'move' }, {
+            jitterTick: 4,
+            scheduleSource: 'sim_tick_clamped_late',
+            lateClamped: true,
+            receivedAt: 1234,
+        });
+
+        expect(accepted).toBe(true);
+        const inputs = buf.getInputsForTick().get('peer');
+        expect(inputs).toHaveLength(1);
+        expect(inputs[0]).toMatchObject({
+            _tick: 8,
+            _rawTick: 4,
+            _scheduleSource: 'sim_tick_clamped_late',
+            _lateClamped: true,
+            _receivedAt: 1234,
+        });
+    });
+
+    it('uses raw jitter tick offsets to raise adaptive depth', () => {
+        const buf = new InputJitterBuffer({
+            adaptive: true,
+            tickRate: 60,
+            bufferDepth: 2,
+            minBufferDepth: 2,
+            maxBufferDepth: 8,
+        });
+        buf.addPlayer('peer');
+        buf.setCurrentTick(10);
+
+        for (let i = 0; i < 20; i += 1) {
+            expect(buf.addInput('peer', 8, { type: 'move', seq: i }, { jitterTick: 4 })).toBe(true);
+        }
+
+        const stats = buf.getStats();
+        expect(stats.bufferDepth).toBe(3);
+        expect(stats.avgOffsetTicks).toBe(6);
+        expect(stats.maxOffsetTicks).toBe(6);
+    });
 });

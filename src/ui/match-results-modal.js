@@ -23,6 +23,7 @@ export class MatchResultsModal {
     this.isVisible = false;
     this.chatUnsub = null;
     this.chatHandler = null;
+    this._autoReturnInterval = null; // cosmetic "returning to lobby in N s" ticker
 
     this.createUI();
   }
@@ -246,6 +247,7 @@ export class MatchResultsModal {
 
     this.updateContent(results);
     this.updateHostState();
+    this._startAutoReturnCountdown(options.autoReturnMs);
 
     if (!this.chatUnsub) {
       this.chatHandler = (detail) => {
@@ -288,6 +290,7 @@ export class MatchResultsModal {
  */
   hide() {
     if (!this.container) return;
+    this._stopAutoReturnCountdown();
     this.container.classList.remove('visible');
     this.isVisible = false;
 
@@ -465,6 +468,33 @@ export class MatchResultsModal {
       this.playAgainBtn.disabled = true;
       this.playAgainBtn.classList.add('btn-disabled');
       this.hostHint.textContent = 'Waiting for host to start a rematch.';
+    }
+  }
+
+  /**
+   * Cosmetic countdown shown to ALL clients: "<base hint> • Returning to lobby in N s".
+   * The authoritative auto-return is driven host-side (it broadcasts RETURN_TO_LOBBY); this
+   * is purely the visible heads-up so nobody is surprised when the screen advances.
+   */
+  _startAutoReturnCountdown(autoReturnMs) {
+    this._stopAutoReturnCountdown();
+    if (!this.hostHint || !autoReturnMs || autoReturnMs <= 0) return;
+    const baseHint = this.hostHint.textContent || '';
+    const endsAt = Date.now() + autoReturnMs;
+    const render = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      const suffix = `Returning to lobby in ${remaining}s…`;
+      this.hostHint.textContent = baseHint ? `${baseHint} • ${suffix}` : suffix;
+      if (remaining <= 0) this._stopAutoReturnCountdown();
+    };
+    render();
+    this._autoReturnInterval = setInterval(render, 1000);
+  }
+
+  _stopAutoReturnCountdown() {
+    if (this._autoReturnInterval) {
+      clearInterval(this._autoReturnInterval);
+      this._autoReturnInterval = null;
     }
   }
 

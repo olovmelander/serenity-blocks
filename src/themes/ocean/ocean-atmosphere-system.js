@@ -3252,17 +3252,32 @@ export class OceanAtmosphereSystem {
         billboardHeavyTick = true,
         skipBillboards = false,
     } = {}) {
+        // WS 1.4 parity for the atmosphere registries (the theme-loop skip
+        // operates on different arrays). currentStrength/glowIntensity damp to
+        // constants and sit flat for long stretches, so only re-broadcast them
+        // when they actually change; uTime always advances. Exact-equality means
+        // the skipped write is byte-identical — the uniform already holds the
+        // value — so there is zero visual change.
+        const last = this._lastAtmBroadcast || (this._lastAtmBroadcast = {
+            currentStrength: Number.NaN,
+            glowIntensity: Number.NaN,
+        });
+        const strengthChanged = currentStrength !== last.currentStrength;
+        const glowChanged = glowIntensity !== last.glowIntensity;
+        if (strengthChanged) last.currentStrength = currentStrength;
+        if (glowChanged) last.glowIntensity = glowIntensity;
+
         // Legacy ShaderMaterial uniforms (each is { value: ... } object)
         this.uniforms.forEach((uniforms) => {
             if (uniforms.uTime) uniforms.uTime.value = elapsed;
-            if (uniforms.uCurrentStrength) uniforms.uCurrentStrength.value = currentStrength;
-            if (uniforms.uGlowIntensity) uniforms.uGlowIntensity.value = glowIntensity;
+            if (strengthChanged && uniforms.uCurrentStrength) uniforms.uCurrentStrength.value = currentStrength;
+            if (glowChanged && uniforms.uGlowIntensity) uniforms.uGlowIntensity.value = glowIntensity;
         });
         // TSL NodeMaterial userData (each is a TSL uniform() node — same .value setter)
         this.tslUserData.forEach((userData) => {
             if (userData.uTime) userData.uTime.value = elapsed;
-            if (userData.uCurrentStrength) userData.uCurrentStrength.value = currentStrength;
-            if (userData.uGlowIntensity) userData.uGlowIntensity.value = glowIntensity;
+            if (strengthChanged && userData.uCurrentStrength) userData.uCurrentStrength.value = currentStrength;
+            if (glowChanged && userData.uGlowIntensity) userData.uGlowIntensity.value = glowIntensity;
         });
         // Glow + dust billboard meshes (up to ~504 instances at Extreme) update
         // at 30 Hz on the odd-frame stride group. Slow drift; visually identical.

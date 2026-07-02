@@ -3891,7 +3891,9 @@ export default class WinterTheme extends BaseTheme {
                 return;
             }
 
-            console.log(`[Winter] Frost Snap at (${wx.toFixed(1)}, ${wy.toFixed(1)})`);
+            if (typeof window !== 'undefined' && /[?&]debugEffects=1\b/.test(window.location?.search || '')) {
+                console.log(`[Winter] Frost Snap at (${wx.toFixed(1)}, ${wy.toFixed(1)})`);
+            }
             this.createFrostSnap(wx, wy);
         }
     }

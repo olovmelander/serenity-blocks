@@ -1978,8 +1978,11 @@
    ======================================== */
 
 .online-game-area {
-  --online-opponents-width: clamp(340px, 30vw, 560px);
-  --online-info-width: clamp(320px, 22vw, 480px);
+  /* Narrower sides so the center HERO board gets the majority of the width (Quadra: the
+   * focused board is the star). If you change these, mirror them in clampPx() in
+   * OnlineMultiplayerMode.js (hero board sizing fallback). */
+  --online-opponents-width: clamp(300px, 24vw, 460px);
+  --online-info-width: clamp(300px, 20vw, 440px);
   --online-opponent-board-min-width: 140px;
   --online-opponent-board-min-height: 220px;
   --round-start-accent: #4fd1c5;
@@ -2165,6 +2168,14 @@
   justify-items: stretch;
   position: relative;
   z-index: 1;
+}
+
+/* Full-roster watch (spectator / eliminated player): show up to 8 boards instead of the
+ * default 2x2. Without this the 5th–8th mini-boards overflow the fixed 2x2 grid and render
+ * clipped off-screen. 2 columns x 4 rows fits the tall left watch panel. */
+.watch-grid.full-roster {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
 }
 
 .opponent-mini-board {
@@ -2374,6 +2385,18 @@
   filter: grayscale(80%);
 }
 
+/* Late joiner waiting to spawn next round — NOT eliminated. Gently dimmed with a teal cast
+   (distinct from the grayscale .dead), paired with the ⏳ "NEXT ROUND" overlay. */
+.opponent-mini-board.waiting {
+  opacity: 0.78;
+  filter: saturate(0.7) brightness(0.92);
+}
+
+@keyframes opp-waiting-pulse {
+  0%, 100% { opacity: 0.65; transform: scale(0.94); }
+  50%      { opacity: 1;    transform: scale(1.06); }
+}
+
 .opponent-grid-frame.death-shake {
   animation: deathShake 0.45s ease-in-out;
 }
@@ -2511,17 +2534,19 @@
   margin-bottom: 0;
 }
 
-/* CENTER COLUMN: Main Board Panel */
+/* CENTER COLUMN: Main Board Panel.
+ * FILLS its grid track (was width:max-content, which shrank to the board and left the wide
+ * center column empty) so the hero board can scale to the column and JS can measure it. The
+ * board itself is sized to var(--board-width/height) and stays centered inside this panel. */
 .main-board-panel {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  margin: auto 0;
-  height: auto;
-  width: max-content;
-  margin-left: auto;
-  margin-right: auto;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  min-width: 0;
   position: relative;
 }
 
@@ -2706,6 +2731,146 @@
   overflow: hidden;
   position: relative;
   box-sizing: content-box;
+}
+
+/* Spectator spotlight: a watcher has no board of their own, so the main board becomes a
+ * large view of ONE selected player (click a mini-board on the left to choose). */
+.spectator-spotlight {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 8px 6px;
+  box-sizing: border-box;
+  gap: 6px;
+}
+.spectator-spotlight-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  flex: 0 0 auto;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.spectator-spotlight-eye { color: #5eead4; font-size: 18px; line-height: 1; }
+.spectator-spotlight-name {
+  font-size: 16px;
+  color: #5eead4;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spectator-spotlight-frags { font-size: 13px; color: #cbd5e0; opacity: 0.85; }
+.spectator-spotlight-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+/* Spectator spotlight = board + pending-garbage bar, laid out like the main board's
+ * .player-board-wrapper (bar to the left of the board). The bar's height is set inline
+ * (= the board height) by OpponentWatchManager._resizeSpotlight; it inherits the main
+ * board's vertical-meter look via the shared .main-board-panel .garbage-indicator rules. */
+.spectator-spotlight-board-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  max-height: 100%;
+}
+.spectator-spotlight-garbage {
+  flex: 0 0 20px;
+  align-self: center;
+}
+.spectator-spotlight-garbage .opponent-garbage-segment {
+  width: 100%;
+  border-radius: 2px;
+  opacity: 0.85;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.35);
+}
+/* The canvas size is set EXPLICITLY (inline px) by OpponentWatchManager._resizeSpotlight()
+ * — the largest 1:2 board that fits the stage. We deliberately do NOT use aspect-ratio +
+ * height:100% here: in a wide column the flex cross-axis stretch + _renderMiniBoard's
+ * getBoundingClientRect feedback drove a runaway height (canvas sized by width → 2× tall →
+ * overflow). Explicit px (like the mini-boards) breaks that loop. */
+.spectator-spotlight-canvas {
+  max-height: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  /* OPAQUE backing: _renderMiniBoard fills the canvas at 0.6 alpha, so a translucent CSS
+     background let the theme (e.g. the red planet) bleed through the big center board — the
+     "blurred background" the spectator view had. An opaque backing makes it read like the
+     host/peer board (which draws an opaque playfield). */
+  background: #0a0f19;
+  /* 2px so the selected-player colour (set inline by the spotlight onChange) reads clearly. */
+  border: 2px solid rgba(102, 126, 234, 0.35);
+  image-rendering: pixelated;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.spectator-spotlight-hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #cbd5e0;
+  opacity: 0.6;
+  text-align: center;
+}
+/* Highlight the mini-board currently shown in the spotlight — in the SELECTED player's colour
+ * (--spotlight-color is set inline by OpponentWatchManager; falls back to teal). */
+.opponent-mini-board.spotlighted {
+  outline: 2px solid var(--spotlight-color, #5eead4);
+  outline-offset: 1px;
+  box-shadow: 0 0 16px var(--spotlight-color, #5eead4) !important;
+}
+
+/* SPECTATOR layout: a watcher has no board of their own, so the spotlight must be the STAR
+ * (Quadra: the focused board is largest). The board lives inside the player-card structure,
+ * which is sized for a player — so under .spectating we (a) hide the local-only chrome (own
+ * stats bar, NEXT queue, garbage indicator — all empty for a spectator) and (b) make the
+ * board chain FILL the center column so the spotlight canvas scales up to fill it. */
+#online-multiplayer-container.spectating .player-stats-bar,
+#online-multiplayer-container.spectating .player-next-section,
+#online-multiplayer-container.spectating #online-garbage-bar {
+  display: none;
+}
+#online-multiplayer-container.spectating #online-player-card {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding: 0;
+}
+#online-multiplayer-container.spectating .player-board-wrapper,
+#online-multiplayer-container.spectating .player-board-section {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  /* Clip so a transient oversize canvas can't inflate the flex chain past the column. */
+  overflow: hidden;
+}
+#online-multiplayer-container.spectating .player-board-section {
+  display: flex;
+}
+#online-multiplayer-container.spectating #online-main-board {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+/* Host/peer recolor #online-board-border to the local player; a spectator has no local player,
+   so it stays the default purple (#8b5cf6) — a stray frame around the whole column. Hide it so
+   the spotlight canvas's player-coloured border (set inline by the onChange) is the single clean
+   frame around the board, matching the host/peer look. */
+#online-multiplayer-container.spectating #online-board-border {
+  display: none;
 }
 
 /* The width is now correctly set on .online-next-queue-wrapper at line ~2845 */
@@ -3302,6 +3467,16 @@
   color: #48bb78;
 }
 
+/* Late joiner waiting to spawn next round — teal "Waiting", NOT the red of eliminated. */
+.scoreboard-row.waiting {
+  opacity: 0.82;
+  border-left-color: #5eead4;
+}
+
+.scoreboard-row.waiting .col-status {
+  color: #5eead4;
+}
+
 .online-kill-feed {
   background: rgba(15, 20, 30, 0.8);
   border: 1px solid rgba(102, 126, 234, 0.3);
@@ -3310,6 +3485,27 @@
   flex: 1 1 0;
   min-height: 80px;
   overflow-y: auto;
+  /* Firefox: thin accent scrollbar matching the Serenity Hub / Settings design language. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 126, 234, 0.62) rgba(0, 0, 0, 0.12);
+}
+
+/* Battle Log scrollbar — Serenity design language (accent → lavender gradient thumb on a
+ * subtle dark track), matching the Serenity Hub and Settings modal instead of the grey default. */
+.online-kill-feed::-webkit-scrollbar {
+  width: 7px;
+}
+.online-kill-feed::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 7px;
+}
+.online-kill-feed::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(102, 126, 234, 0.80), rgba(142, 162, 255, 0.55));
+  border: 1px solid rgba(8, 10, 23, 0.55);
+  border-radius: 7px;
+}
+.online-kill-feed::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.95);
 }
 
 .kill-feed-header {
@@ -3371,6 +3567,18 @@
 .kill-feed-item .victim {
   color: #fc8181;
   font-weight: 600;
+}
+
+/* Round divider in the transactional (cross-round) Battle Log. */
+.kill-feed-item.round-divider {
+  background: transparent;
+  text-align: center;
+  color: #94a3b8;
+  font-weight: 700;
+  letter-spacing: 1px;
+  opacity: 0.8;
+  padding: 8px 4px 2px;
+  animation: none;
 }
 
 /* Scoreboard overlay (TAB) */
@@ -3456,6 +3664,15 @@
 
 .scoreboard-overlay-row.dead {
   opacity: 0.5;
+}
+
+/* Late joiner waiting to spawn — teal, distinct from eliminated. */
+.scoreboard-overlay-row.waiting {
+  opacity: 0.82;
+}
+
+.scoreboard-overlay-row.waiting .col-status {
+  color: #5eead4;
 }
 
 .scoreboard-overlay-row .col-frags,
@@ -3740,6 +3957,11 @@
   .watch-grid {
     grid-template-columns: repeat(4, 1fr);
     grid-template-rows: minmax(0, 1fr);
+  }
+
+  .watch-grid.full-roster {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
   .right-panel {

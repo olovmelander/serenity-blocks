@@ -101,14 +101,26 @@ export class OnlineScoreboard {
     updatePlayers(players) {
         if (!players || !Array.isArray(players)) return;
 
-        // Sort by the appropriate metric
-        this.players = [...players].sort((a, b) => {
-            const aVal = a[this.sortBy] || 0;
-            const bVal = b[this.sortBy] || 0;
-            return bVal - aVal; // Descending order
-        });
+        // Sort by a DETERMINISTIC total order so equal primary keys can never make
+        // rows swap based on the input array order (the host snapshot's player order
+        // wobbles across deltas/resyncs, and early-game everyone is tied at 0). Primary
+        // metric desc → frags → score → lines → stable id tiebreak.
+        this.players = [...players].sort((a, b) => this._compare(a, b));
 
         this.render();
+    }
+
+    /**
+     * Total-order comparator: primary metric, then frags/score/lines, then a stable id
+     * tiebreak. Fully determined by values + id → independent of input array order.
+     */
+    _compare(a, b) {
+        const primary = (b[this.sortBy] || 0) - (a[this.sortBy] || 0);
+        if (primary) return primary;
+        if ((b.frags || 0) !== (a.frags || 0)) return (b.frags || 0) - (a.frags || 0);
+        if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+        if ((b.lines || 0) !== (a.lines || 0)) return (b.lines || 0) - (a.lines || 0);
+        return String(a.id ?? '').localeCompare(String(b.id ?? ''));
     }
 
     /**
@@ -117,14 +129,27 @@ export class OnlineScoreboard {
     render() {
         if (!this.listContainer) return;
 
+        // Dirty-check: skip the full innerHTML rebuild when nothing that affects the
+        // rendered rows changed (order, displayed values, status, color, local highlight).
+        // The peer feed can fire ~30Hz; rebuilding every time flickers and teleports rows.
+        const sig = this.players.map((p) => `${p.id}|${p.name}|${p.frags || 0}|${p.score || 0}|`
+            + `${p.lines || 0}|${p.isAlive !== false ? 1 : 0}|${p.awaitingSpawn === true ? 1 : 0}|${p.color || ''}|${p.id === this.localPlayerId ? 1 : 0}`).join('~');
+        if (sig === this._lastRenderSig) return;
+        this._lastRenderSig = sig;
+
         const html = this.players.map((player, index) => {
             const isLocal = player.id === this.localPlayerId;
-            const isDead = player.isAlive === false;
-            const status = isDead ? 'Dead' : 'Alive';
+            // A late joiner waiting to spawn is isAlive:false but NOT eliminated.
+            const isWaiting = player.awaitingSpawn === true;
+            const isDead = player.isAlive === false && !isWaiting;
+            let status = 'Alive';
+            if (isWaiting) status = 'Waiting';
+            else if (isDead) status = 'Dead';
 
             const classes = ['scoreboard-row'];
             if (isLocal) classes.push('local-player');
             if (isDead) classes.push('dead');
+            if (isWaiting) classes.push('waiting');
 
             const colorStyle = player.color ? `--player-row-color: ${player.color}` : '--player-row-color: #a0aec0';
 
@@ -182,6 +207,7 @@ export class OnlineScoreboard {
      */
     destroy() {
         this.players = [];
+        this._lastRenderSig = null;
         if (this.listContainer) {
             this.listContainer.innerHTML = '';
         }

@@ -127,15 +127,26 @@ export class BaseTheme {
         // Activate the DOM theme container
         const themeContainer = document.getElementById(`${this.name}-theme`);
         if (themeContainer) {
-            console.log('[BaseTheme] Activating theme container:', this.name);
-            // Remove active class from all theme containers
-            document.querySelectorAll('.theme-container').forEach((container) => {
-                container.classList.remove('active');
-            });
-            themeContainer.style.removeProperty('opacity');
-            themeContainer.style.removeProperty('visibility');
-            // Add active class to this theme's container
-            themeContainer.classList.add('active');
+            if (this._prewarmHidden) {
+                // Boot-time pre-warm: build + compile the theme's WebGPU pipelines
+                // while the container stays HIDDEN (default .theme-container CSS is
+                // opacity:0/visibility:hidden but keeps full size, so the render loop
+                // still warms). Do NOT add 'active' — the reveal happens on the real
+                // first mode entry via resume(). Keeps the cold ~1s build off both the
+                // menu and the loading overlay.
+                console.log('[BaseTheme] Pre-warming theme container (hidden):', this.name);
+                themeContainer.classList.remove('active');
+            } else {
+                console.log('[BaseTheme] Activating theme container:', this.name);
+                // Remove active class from all theme containers
+                document.querySelectorAll('.theme-container').forEach((container) => {
+                    container.classList.remove('active');
+                });
+                themeContainer.style.removeProperty('opacity');
+                themeContainer.style.removeProperty('visibility');
+                // Add active class to this theme's container
+                themeContainer.classList.add('active');
+            }
         } else {
             console.warn('[BaseTheme] Theme container not found:', `${this.name}-theme`);
         }
@@ -231,8 +242,7 @@ export class BaseTheme {
         }
 
         // Cancel all animation frames
-        this.animationIds.forEach((id) => cancelAnimationFrame(id));
-        this.animationIds = [];
+        this.cancelAnimationFrames();
 
         // Clear tracked intervals, timeouts, and event listeners
         this.clearTrackedResources();
@@ -241,6 +251,45 @@ export class BaseTheme {
         // Note: WebGL renderer clears layers when loadTheme() is called,
         // so we just reset our local tracking
         this.webglLayers = [];
+    }
+
+    /**
+     * Cancel animation loops registered through BaseTheme plus common legacy RAF fields.
+     * Several older themes predate registerAnimation(), so the base teardown also clears
+     * those well-known handles to keep inactive themes from retaining a live frame.
+     */
+    cancelAnimationFrames() {
+        const cancelFrame = typeof cancelAnimationFrame === 'function'
+            ? cancelAnimationFrame
+            : null;
+
+        if (!cancelFrame) {
+            this.animationIds = [];
+            return;
+        }
+
+        this.animationIds.forEach((id) => cancelFrame(id));
+        this.animationIds = [];
+
+        [
+            'animationFrameId',
+            'animationFrame',
+            'rafId',
+            'animationId',
+            '_shapeFadeRaf',
+        ].forEach((propName) => {
+            const id = this[propName];
+            if (typeof id === 'number') {
+                cancelFrame(id);
+                this[propName] = null;
+            }
+        });
+
+        if (this.renderer
+            && this.renderer !== this.webglRenderer
+            && typeof this.renderer.setAnimationLoop === 'function') {
+            this.renderer.setAnimationLoop(null);
+        }
     }
 
     /**
@@ -354,6 +403,7 @@ export class BaseTheme {
     }
 
     releaseManagedGpuResources() {
+        this.cancelAnimationFrames();
         this.clearEventUnsubscribers();
         this.removeCommonResizeHandlers();
         this.removeRendererResilience();
@@ -875,10 +925,43 @@ export class BaseTheme {
 
         // Cancel all animation frames to stop GPU work
         this.animationIds.forEach((id) => cancelAnimationFrame(id));
+        // Reset the common render-loop re-entry guards so the loop can actually RESTART
+        // on resume(). Themes typically start their loop only in createScene() and guard
+        // re-entry (e.g. `if (this.isAnimating) return` / `if (this.animationLoopStarted)
+        // return`); pausing cancelled the RAF but left those flags set, which froze a
+        // resumed (e.g. pre-warmed) theme. Harmless no-op on themes that don't use them.
+        this.isAnimating = false;
+        this.animationLoopStarted = false;
         // Keep the IDs so we know we need to restart when resume is called
         this._wasPaused = true;
         this.isPaused = true;
         this.lifecycleState = 'paused';
         return true;
+    }
+
+    /**
+     * Restart the render loop after a resume. Most themes start their loop only in
+     * createScene()/start() (not in resume()), so a resumed — e.g. pre-warmed — theme
+     * would otherwise never render again. Tries the common loop-start methods; pause()
+     * cleared the re-entry guards so these actually restart. Themes with a bespoke loop
+     * (or that already restart it inside resume()) are safe: the guard makes the extra
+     * call a no-op. Override for custom loop management.
+     */
+    restartRenderLoop() {
+        const starters = [
+            'animate',
+            'startAnimationLoop',
+            'startAnimation',
+            '_startAnimation',
+            '_startAnimationLoop',
+            'startRenderLoop',
+            '_animate',
+        ];
+        for (const name of starters) {
+            if (typeof this[name] === 'function') {
+                this[name]();
+                return;
+            }
+        }
     }
 }

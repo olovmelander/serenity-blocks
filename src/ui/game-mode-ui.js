@@ -7,6 +7,23 @@ import { GAME_MODES } from '../core/constants.js';
 import steamService from '../core/steam/steam-service.js';
 import { STEAM_EVENTS } from '../core/steam/steam-config.js';
 
+// Dev-only: allow ONLINE MP without a real Steam connection so the MOCK transport
+// (BroadcastChannel + localStorage, used in the browser / no-Steam build) can be tested
+// on ONE machine across two browser windows. Enabled by ?localMp=host|join, ?localMpTest=1,
+// or localStorage 'serenity.localMpTest'='1'. The packaged Steam build is unaffected unless
+// the flag is explicitly set.
+export function isLocalMpTestMode() {
+    try {
+        const p = new URLSearchParams(window.location.search);
+        if (p.get('localMp') === 'host' || p.get('localMp') === 'join' || p.get('localMp') === 'watch' || p.get('localMp') === 'browse' || p.get('localMpTest') === '1') {
+            return true;
+        }
+        return typeof localStorage !== 'undefined' && localStorage.getItem('serenity.localMpTest') === '1';
+    } catch {
+        return false;
+    }
+}
+
 export function resolveOnlineMultiplayerAvailability(connectionState = 'offline') {
     if (connectionState === 'connected' || connectionState === 'partial') {
         return {
@@ -213,6 +230,11 @@ export class GameModeUI {
 
     updateOnlineMultiplayerAvailability() {
         if (!this.onlineMultiplayerBtn) return;
+        // Local 2-player mock testing bypasses the Steam-connection gate.
+        if (isLocalMpTestMode()) {
+            this.setOnlineMultiplayerAvailability({ enabled: true, disabledLabel: '', title: '' });
+            return;
+        }
         const connectionState = steamService?.getConnectionState?.() || 'offline';
         const availability = resolveOnlineMultiplayerAvailability(connectionState);
         this.setOnlineMultiplayerAvailability(availability);

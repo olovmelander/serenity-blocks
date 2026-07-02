@@ -757,13 +757,13 @@ export function create({ scene, renderer, camera }) {
 
     // --- Moon + halo (upper-right) ---
     const { material: moonMat } = createWinterMoonNodeMaterial({ color: new THREE.Color(PAL.moonWhite) });
-    const moon = new THREE.Mesh(track(new THREE.SphereGeometry(190, 48, 48)), moonMat);
+    const moon = new THREE.Mesh(track(new THREE.SphereGeometry(190, 32, 24)), moonMat);
     moon.position.copy(MOON_POS);
     scene.add(moon);
     const { material: haloMat, uniforms: haloU } = createWinterMoonHaloNodeMaterial({
         intensity: 0.5, color: new THREE.Color(PAL.auroraCyanTip),
     });
-    moon.add(new THREE.Mesh(track(new THREE.SphereGeometry(360, 32, 32)), haloMat));
+    moon.add(new THREE.Mesh(track(new THREE.SphereGeometry(360, 24, 16)), haloMat));
 
     // --- Soft painterly clouds near the moon (NormalBlending wisps, not blobs) ---
     const moonClouds = buildMoonClouds(MOON_POS);

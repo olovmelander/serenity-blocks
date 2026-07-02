@@ -8,6 +8,7 @@
 
 import { SteamConfig } from './config.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
+import { NetworkImpairmentHarness, readNetworkImpairmentConfig } from '../network/network-impairment.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -82,12 +83,26 @@ export class SteamNetworking {
 
         // Mock P2P communication channel (for cross-window messaging)
         this.broadcastChannel = null;
+        this.networkImpairment = new NetworkImpairmentHarness(readNetworkImpairmentConfig());
+        this.networkImpairmentTimers = new Set();
         this.packetStats = {
             sent: 0,
             received: 0,
             sendFailures: 0,
             decodeFailures: 0,
             validationFailures: 0,
+            staleDeltasDropped: 0, // deltas superseded by a newer keyframe (silently ignored)
+            keyframesSent: 0,
+            deltasSent: 0,
+            keyframesReceived: 0,
+            deltasReceived: 0,
+            missingBaselineDeltas: 0,
+            aheadOfBaselineDeltas: 0,
+            deltaDecodeFailures: 0,
+            resyncRequestsSent: 0,
+            resyncRequestsSuppressed: 0,
+            snapshotBytesSent: [],
+            snapshotBytesReceived: [],
         };
     }
 
@@ -166,6 +181,10 @@ export class SteamNetworking {
                 lobbyType,
                 endCondition,
                 endConditionValue,
+                // Match lifecycle as advertised to the lobby browser:
+                //   'open' (waiting room, normal Join) | 'playing' (in progress → drop-in / watch) | 'finished'
+                // Kept current by the host via setLobbyStatus()/setLobbyPlayerCount().
+                status: 'open',
                 createdAt: Date.now(),
             };
 
@@ -304,12 +323,40 @@ export class SteamNetworking {
 
     _sendMessage(targetSteamId, messageType, data, options) {
         const envelope = this._buildEnvelope(messageType, data, options);
+        this._sendEnvelope(targetSteamId, messageType, envelope, options);
+    }
 
+    _sendEnvelope(targetSteamId, messageType, envelope, options = {}) {
+        const impairmentPlan = this.networkImpairment.planDelivery({
+            channel: options.channel ?? 0,
+            delivery: options.delivery ?? 'reliable',
+            messageType,
+        });
+
+        if (impairmentPlan.drop) {
+            return;
+        }
+
+        for (const delivery of impairmentPlan.deliveries) {
+            if (delivery.delayMs > 0) {
+                const timer = setTimeout(() => {
+                    this.networkImpairmentTimers.delete(timer);
+                    this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+                }, delivery.delayMs);
+                this.networkImpairmentTimers.add(timer);
+            } else {
+                this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+            }
+        }
+    }
+
+    _deliverEnvelopeNow(targetSteamId, messageType, envelope, options = {}) {
         if (this.mockMode) {
             // Mock send via BroadcastChannel
             if (this.broadcastChannel) {
                 const message = {
                     ...envelope,
+                    type: messageType,
                     from: this.steamId,
                     to: targetSteamId,
                     channel: options.channel,
@@ -347,20 +394,19 @@ export class SteamNetworking {
    */
     broadcastToAll(messageType, data, options = {}) {
         if (this.mockMode) {
-            // Mock broadcast via BroadcastChannel
-            if (this.broadcastChannel) {
-                const envelope = this._buildEnvelope(messageType, data, options);
-                const message = {
-                    ...envelope,
-                    from: this.steamId,
-                    to: 'all',
-                    channel: options.channel ?? 0,
-                };
-                this.broadcastChannel.postMessage(message);
+            const envelope = this._buildEnvelope(messageType, data, {
+                channel: 0,
+                delivery: 'reliable',
+                ...options,
+            });
+            this._sendEnvelope('all', messageType, envelope, {
+                channel: 0,
+                delivery: 'reliable',
+                ...options,
+            });
 
-                if (SteamConfig.debugMode) {
+            if (SteamConfig.debugMode) {
                     console.log('🧪 Mock broadcast:', messageType);
-                }
             }
             return;
         }
@@ -435,6 +481,7 @@ export class SteamNetworking {
                     _delta: usedDelta, // Flag to tell receiver to use decodeDeltaSnapshot
                     _data: this._arrayBufferToBase64(binaryBuffer),
                     _gen: data?.roundGeneration,
+                    _migrationEpoch: data?.migrationEpoch,
                     _acks: acks,
                     // Carry the host's DJB2 state digest in the JSON wrapper. The
                     // binary codec does not serialize it, so without this the
@@ -461,7 +508,17 @@ export class SteamNetworking {
         // delta now self-heals on the next guaranteed keyframe instead of stranding
         // the opponent board for up to a full keyframe interval.
         const isKeyframe = isBinary && encodedData._delta === false;
+        const skipPeers = options.skipPeers instanceof Set
+            ? options.skipPeers
+            : new Set(Array.isArray(options.skipPeers) ? options.skipPeers : []);
+
         this.connectedPeers.forEach((peerInfo, steamId) => {
+            if (skipPeers.has(steamId)) return;
+            if (isBinary) {
+                if (isKeyframe) this.packetStats.keyframesSent += 1;
+                else if (encodedData._delta === true) this.packetStats.deltasSent += 1;
+                this._recordSnapshotBytes('sent', encodedData._encodedSize || 0);
+            }
             if (isKeyframe) {
                 this._sendMessage(steamId, messageType, encodedData, {
                     channel: 0,
@@ -544,109 +601,136 @@ export class SteamNetworking {
                 return;
             }
 
-            if (!this._isSenderAllowedForMessage(envelope.msgType, fromSteamId)) {
-                this.packetStats.validationFailures += 1;
-                return;
-            }
-
-            this.packetStats.received += 1;
-
-            // Track peer connection
-            if (!this.connectedPeers.has(fromSteamId)) {
-                this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
-                console.log(`✅ New peer connected: ${fromSteamId}`);
-            }
-
-            // Phase 4: Decode binary payload if present (FULL or DELTA)
-            let { payload } = envelope;
-            // The host's state digest rides in the JSON wrapper (the binary codec
-            // drops it); capture it before `payload` is replaced by the decoded
-            // snapshot so we can re-attach it below for desync detection.
-            const carriedDigest = payload && payload._digest;
-            const carriedGen = payload && payload._gen;
-            const carriedAcks = payload && payload._acks;
-            if (payload && payload._binary === true && payload._data) {
-                try {
-                    if (!this.binaryDecoder) {
-                        this.binaryDecoder = getBinaryDecoder();
-                    }
-                    const binaryBuffer = this._base64ToArrayBuffer(payload._data);
-
-                    if (payload._delta) {
-                        // Delta diffs against the last KEYFRAME (reliable). Do NOT
-                        // advance the baseline on a delta — it stays pinned to the
-                        // keyframe so a dropped/reordered delta can't invalidate the
-                        // rest of the interval.
-                        const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
-                        if (baseline) {
-                            payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
-                        } else {
-                            // No keyframe yet — ask once (rate-limited) and wait for it.
-                            this._requestResync(fromSteamId, 'missing_delta_baseline');
-                            return;
-                        }
-                    } else {
-                        // Full keyframe — decode and adopt as the new baseline.
-                        payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
-                        this.incomingSnapshotBaselines.set(fromSteamId, payload);
-                    }
-                } catch (err) {
-                    console.warn('Binary decoding failed, payload may be corrupted:', err);
-                    this.packetStats.decodeFailures += 1;
-                    // Keep the keyframe baseline: a single bad/reordered delta does not
-                    // invalidate it — the next delta or the next reliable keyframe
-                    // recovers. Request a resync at most once per keyframe interval.
-                    if (payload?._delta) {
-                        this._requestResync(fromSteamId, 'delta_decode_failed');
-                    }
-                    return; // Drop the corrupted delta only.
-                }
-            }
-
-            // Re-attach the host's state digest that travelled in the JSON
-            // wrapper, so the decoded snapshot carries it into syncFromHost's
-            // desync detection (the binary codec does not encode `digest`).
-            if (carriedDigest !== undefined && carriedDigest !== null
-                && payload && typeof payload === 'object') {
-                payload.digest = carriedDigest;
-            }
-            // Re-attach the round generation (round fence) and per-player input acks
-            // (reconciliation pruning) that the binary codec drops.
-            if (carriedGen !== undefined && carriedGen !== null
-                && payload && typeof payload === 'object') {
-                payload.roundGeneration = carriedGen;
-            }
-            if (carriedAcks && payload && Array.isArray(payload.players)) {
-                payload.players.forEach((p) => {
-                    if (p && carriedAcks[p.steamId] !== undefined) {
-                        p.lastInputSeq = carriedAcks[p.steamId];
-                    }
-                });
-            }
-
-            // Call registered message handlers (array-based)
-            const handlers = this.messageHandlers.get(envelope.msgType);
-            if (handlers && handlers.length > 0) {
-                handlers.forEach((handler) => {
-                    try {
-                        handler({
-                            from: fromSteamId,
-                            type: envelope.msgType,
-                            data: payload,
-                            timestamp: envelope.sentAt,
-                            seq: envelope.seq,
-                            tick: envelope.tick,
-                            protocolVersion: envelope.protocolVersion,
-                        });
-                    } catch (err) {
-                        console.error('Error in message handler:', err);
-                    }
-                });
-            }
+            this._processEnvelope(envelope, fromSteamId, { trackPeer: true });
         } catch (err) {
             console.error('❌ Failed to parse P2P packet:', err);
             this.packetStats.decodeFailures += 1;
         }
+    }
+
+    _processEnvelope(envelope, fromSteamId, { trackPeer = false } = {}) {
+        if (!this._isSenderAllowedForMessage(envelope.msgType, fromSteamId)) {
+            this.packetStats.validationFailures += 1;
+            return false;
+        }
+
+        this.packetStats.received += 1;
+
+        if (trackPeer && !this.connectedPeers.has(fromSteamId)) {
+            this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
+            console.log(`✅ New peer connected: ${fromSteamId}`);
+        }
+
+        const decoded = this._decodeEnvelopePayload(envelope, fromSteamId);
+        if (!decoded || decoded.drop === true) {
+            return false;
+        }
+
+        this._dispatchEnvelope(envelope, fromSteamId, decoded.payload);
+        return true;
+    }
+
+    _decodeEnvelopePayload(envelope, fromSteamId) {
+        let { payload } = envelope;
+        const carriedDigest = payload && payload._digest;
+        const carriedGen = payload && payload._gen;
+        const carriedMigrationEpoch = payload && payload._migrationEpoch;
+        const carriedAcks = payload && payload._acks;
+
+        if (payload && payload._binary === true && payload._data) {
+            try {
+                if (!this.binaryDecoder) {
+                    this.binaryDecoder = getBinaryDecoder();
+                }
+                const binaryBuffer = this._base64ToArrayBuffer(payload._data);
+                this._recordSnapshotBytes('received', payload._encodedSize || binaryBuffer.byteLength || 0);
+
+                if (payload._delta) {
+                    this.packetStats.deltasReceived += 1;
+                    const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
+                    if (!baseline) {
+                        this.packetStats.missingBaselineDeltas += 1;
+                        this._requestResync(fromSteamId, 'missing_delta_baseline');
+                        return { drop: true };
+                    }
+
+                    const deltaBaselineTick = this.binaryDecoder.peekDeltaBaselineTick(binaryBuffer);
+                    if (deltaBaselineTick != null && typeof baseline.tick === 'number') {
+                        if (deltaBaselineTick < baseline.tick) {
+                            this.packetStats.staleDeltasDropped += 1;
+                            return { drop: true };
+                        }
+                        if (deltaBaselineTick > baseline.tick) {
+                            this.packetStats.aheadOfBaselineDeltas += 1;
+                            this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                            return { drop: true };
+                        }
+                    }
+
+                    payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
+                } else {
+                    this.packetStats.keyframesReceived += 1;
+                    payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
+                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
+                }
+            } catch (err) {
+                console.warn('Binary decoding failed, payload may be corrupted:', err);
+                this.packetStats.decodeFailures += 1;
+                if (payload?._delta) {
+                    this.packetStats.deltaDecodeFailures += 1;
+                    this._requestResync(fromSteamId, 'delta_decode_failed');
+                }
+                return { drop: true };
+            }
+        }
+
+        if (carriedDigest !== undefined && carriedDigest !== null
+            && payload && typeof payload === 'object') {
+            payload.digest = carriedDigest;
+        }
+        if (carriedGen !== undefined && carriedGen !== null
+            && payload && typeof payload === 'object') {
+            payload.roundGeneration = carriedGen;
+        }
+        if (carriedMigrationEpoch !== undefined && carriedMigrationEpoch !== null
+            && payload && typeof payload === 'object') {
+            payload.migrationEpoch = carriedMigrationEpoch;
+        }
+        if (carriedAcks && payload && Array.isArray(payload.players)) {
+            payload.players.forEach((p) => {
+                if (p && carriedAcks[p.steamId] !== undefined) {
+                    p.lastInputSeq = carriedAcks[p.steamId];
+                }
+            });
+        }
+
+        return { payload };
+    }
+
+    setIncomingSnapshotBaseline(fromSteamId, snapshot) {
+        if (!fromSteamId || !snapshot || typeof snapshot !== 'object') return;
+        this.incomingSnapshotBaselines.set(fromSteamId, snapshot);
+    }
+
+    _dispatchEnvelope(envelope, fromSteamId, payload) {
+        const handlers = this.messageHandlers.get(envelope.msgType);
+        if (!handlers || handlers.length === 0) return;
+
+        handlers.forEach((handler) => {
+            try {
+                handler({
+                    from: fromSteamId,
+                    type: envelope.msgType,
+                    data: payload,
+                    timestamp: envelope.sentAt,
+                    seq: envelope.seq,
+                    tick: envelope.tick,
+                    protocolVersion: envelope.protocolVersion,
+                });
+            } catch (err) {
+                console.error('Error in message handler:', err);
+            }
+        });
     }
 
     // Note: on() method is defined at the end of the class (array-based version)
@@ -655,6 +739,7 @@ export class SteamNetworking {
    * Leave current lobby
    */
     leaveLobby() {
+        this._clearNetworkImpairmentTimers();
         if (!this.currentLobbyId) return;
 
         if (this.mockMode) {
@@ -707,6 +792,10 @@ export class SteamNetworking {
                 hostName: lobby.hostName,
                 endCondition: lobby.endCondition,
                 endConditionValue: lobby.endConditionValue,
+                // Surface the advertised lifecycle so the browser can show Join vs
+                // "Join (next round)" / Watch for an in-progress match. Falls back to
+                // capacity-derived status in the browser when absent (older entries).
+                status: lobby.status,
             }));
         }
 
@@ -724,6 +813,7 @@ export class SteamNetworking {
    * Cleanup on shutdown
    */
     shutdown() {
+        this._clearNetworkImpairmentTimers();
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
@@ -755,6 +845,60 @@ export class SteamNetworking {
             localStorage.setItem('serenity_mock_lobbies', JSON.stringify(lobbies));
         } catch (err) {
             console.warn('⚠️ Failed to save mock lobby to localStorage:', err);
+        }
+    }
+
+    /**
+   * Patch an existing mock lobby's fields in shared localStorage (cross-window).
+   * No-op if the lobby isn't found.
+   */
+    updateMockLobby(lobbyId, patch) {
+        try {
+            const lobbies = this.loadMockLobbies();
+            let changed = false;
+            lobbies.forEach((lobby) => {
+                if (lobby.id === lobbyId) {
+                    Object.assign(lobby, patch);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                localStorage.setItem('serenity_mock_lobbies', JSON.stringify(lobbies));
+            }
+        } catch (err) {
+            console.warn('⚠️ Failed to update mock lobby in localStorage:', err);
+        }
+    }
+
+    /**
+   * Advertise the current match lifecycle status ('open' | 'playing' | 'finished')
+   * to the lobby list so browsers render Join / "Join (next round)" / Watch correctly.
+   * Host-only in effect; safe no-op when there's no current lobby. Works for the mock
+   * transport (localStorage) and best-effort for real Steam (lobby metadata).
+   */
+    setLobbyStatus(status) {
+        if (!this.currentLobbyId || !status) return;
+        if (this.mockMode) {
+            this.updateMockLobby(this.currentLobbyId, { status });
+            return;
+        }
+        try {
+            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status));
+        } catch (err) {
+            console.warn('⚠️ Failed to set lobby status:', err);
+        }
+    }
+
+    /**
+   * Advertise the current player count to the lobby list (drives the N/max display
+   * and the "Full" vs "Join (next round)" decision for in-progress matches).
+   */
+    setLobbyPlayerCount(count) {
+        if (!this.currentLobbyId || typeof count !== 'number') return;
+        // Mock lobbies carry their own currentPlayers (read by getLobbies). Real Steam
+        // reports the live member count via getMemberCount(), so there's nothing to write.
+        if (this.mockMode) {
+            this.updateMockLobby(this.currentLobbyId, { currentPlayers: count });
         }
     }
 
@@ -852,42 +996,10 @@ export class SteamNetworking {
         const envelope = this._normalizeEnvelope(message, message.from);
         if (!envelope) return;
         if (!this._validateEnvelope(envelope, message.from, message.channel ?? 0)) {
+            this.packetStats.validationFailures += 1;
             return;
         }
-
-        // Phase 4: Decode binary payload if present
-        let { payload } = envelope;
-        if (payload && payload._binary === true && payload._data) {
-            try {
-                if (!this.binaryDecoder) {
-                    this.binaryDecoder = getBinaryDecoder();
-                }
-                const binaryBuffer = this._base64ToArrayBuffer(payload._data);
-                payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
-            } catch (err) {
-                console.warn('Binary decoding failed in mock mode:', err);
-                return; // Drop corrupted packet
-            }
-        }
-
-        // Call registered message handlers
-        const handlers = this.messageHandlers.get(envelope.msgType);
-        if (handlers && handlers.length > 0) {
-            handlers.forEach((handler) => {
-                try {
-                    handler({
-                        data: payload,
-                        from: message.from,
-                        timestamp: envelope.sentAt,
-                        seq: envelope.seq,
-                        tick: envelope.tick,
-                        protocolVersion: envelope.protocolVersion,
-                    });
-                } catch (err) {
-                    console.error('Error in message handler:', err);
-                }
-            });
-        }
+        this._processEnvelope(envelope, message.from, { trackPeer: true });
     }
 
     /**
@@ -1014,9 +1126,26 @@ export class SteamNetworking {
         }
 
         if (!isHello) {
-            if (envelope.matchId !== this.matchId) return false;
-            if (envelope.matchNonce !== this.matchNonce) return false;
-            if (envelope.hostSteamId !== this.hostSteamId) return false;
+            if (envelope.matchId !== this.matchId
+                || envelope.matchNonce !== this.matchNonce
+                || envelope.hostSteamId !== this.hostSteamId) {
+                // Previously a SILENT 100% drop — the root of "lose connection mid-match
+                // with the Steam session still open" (split-brain after a false host
+                // migration: the peer promoted itself and rewrote its own hostSteamId, so
+                // every cross-host packet now mismatches). Throttled-warn so it's
+                // diagnosable instead of an invisible blackhole.
+                const reason = envelope.matchId !== this.matchId ? 'matchId'
+                    : (envelope.matchNonce !== this.matchNonce ? 'matchNonce' : 'hostSteamId');
+                const now = Date.now();
+                this._envDropWarn = this._envDropWarn || {};
+                if (!this._envDropWarn[reason] || now - this._envDropWarn[reason] > 2000) {
+                    this._envDropWarn[reason] = now;
+                    console.warn(`[Net] DROP inbound pkt from ${fromSteamId}: ${reason} mismatch `
+                        + `(msgType=${envelope.msgType}, theirs=${envelope[reason]}, ours=${this[reason]}) `
+                        + `— possible host split-brain (throttled 1/2s).`);
+                }
+                return false;
+            }
         }
 
         // Key replay/ordering by the LOGICAL channel carried in the envelope, not
@@ -1052,8 +1181,12 @@ export class SteamNetworking {
     _requestResync(fromSteamId, reason) {
         const now = Date.now();
         const last = this.lastResyncRequestAt.get(fromSteamId) || 0;
-        if (now - last < this.fullSnapshotIntervalMs) return;
+        if (now - last < this.fullSnapshotIntervalMs) {
+            this.packetStats.resyncRequestsSuppressed += 1;
+            return;
+        }
         this.lastResyncRequestAt.set(fromSteamId, now);
+        this.packetStats.resyncRequestsSent += 1;
         this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', { requestResync: true, reason });
     }
 
@@ -1070,6 +1203,21 @@ export class SteamNetworking {
         this.lastFullSnapshotAt = 0;
         this.incomingSnapshotBaselines.clear();
         this.lastResyncRequestAt.clear();
+    }
+
+    setNetworkImpairment(config = {}) {
+        this._clearNetworkImpairmentTimers();
+        this.networkImpairment.setConfig(config);
+    }
+
+    getNetworkImpairmentStats() {
+        return this.networkImpairment.getStats();
+    }
+
+    _clearNetworkImpairmentTimers() {
+        if (!this.networkImpairmentTimers) return;
+        this.networkImpairmentTimers.forEach((timer) => clearTimeout(timer));
+        this.networkImpairmentTimers.clear();
     }
 
     _nextSeq(channel) {
@@ -1212,9 +1360,38 @@ export class SteamNetworking {
         return stats;
     }
 
-    getPacketStats() {
+    _recordSnapshotBytes(direction, byteLength) {
+        if (!Number.isFinite(byteLength) || byteLength <= 0) return;
+        const key = direction === 'sent' ? 'snapshotBytesSent' : 'snapshotBytesReceived';
+        const samples = this.packetStats[key] || [];
+        samples.push(byteLength);
+        if (samples.length > 120) {
+            samples.splice(0, samples.length - 120);
+        }
+        this.packetStats[key] = samples;
+    }
+
+    _snapshotByteSummary(samples = []) {
+        if (!Array.isArray(samples) || samples.length === 0) {
+            return { count: 0, p50: 0, p95: 0, max: 0 };
+        }
+        const sorted = [...samples].sort((a, b) => a - b);
+        const percentile = (p) => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))];
         return {
-            ...this.packetStats,
+            count: sorted.length,
+            p50: percentile(0.50),
+            p95: percentile(0.95),
+            max: sorted[sorted.length - 1],
+        };
+    }
+
+    getPacketStats() {
+        const { snapshotBytesSent, snapshotBytesReceived, ...counters } = this.packetStats;
+        return {
+            ...counters,
+            snapshotBytesSent: this._snapshotByteSummary(snapshotBytesSent),
+            snapshotBytesReceived: this._snapshotByteSummary(snapshotBytesReceived),
+            netImpairment: this.getNetworkImpairmentStats(),
             connectedPeers: this.connectedPeers.size,
             pendingOutgoingSnapshots: Array.from(this.outgoingSnapshotState.values())
                 .filter((state) => state?.pending).length,

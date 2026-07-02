@@ -1245,16 +1245,18 @@ export class SharedEffects {
         const dropHeight = endScreenY - startScreenY;
         const finalDropHeight = dropHeight + this.scene.blockSize;
 
-        console.log('[SharedEffects] Rendering playHardDropEffect: ', {
-            pieceShape: piece.shape,
-            isInfinityMode,
-            hiddenRows: this.scene.hiddenRows,
-            startY, endY,
-            startScreenY, endScreenY,
-            dropHeight, finalDropHeight,
-            displayCenterX, pieceWidth,
-            colorHex, colorInt
-        });
+        if (typeof window !== 'undefined' && /[?&]debugEffects=1\b/.test(window.location?.search || '')) {
+            console.log('[SharedEffects] Rendering playHardDropEffect: ', {
+                pieceShape: piece.shape,
+                isInfinityMode,
+                hiddenRows: this.scene.hiddenRows,
+                startY, endY,
+                startScreenY, endScreenY,
+                dropHeight, finalDropHeight,
+                displayCenterX, pieceWidth,
+                colorHex, colorInt,
+            });
+        }
 
         const PhaserRef = window.Phaser;
 

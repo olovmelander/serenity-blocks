@@ -206,7 +206,9 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal, options = 
     const fbmOctaves = Math.max(1, Math.floor(options.fbmOctaves ?? 2));
     // Ray march is capped at steps*stepSize = maxMarch. Beyond that, further steps are no-ops.
     // maxMarchSq lets us cheaply short-circuit wasted iterations once the ray has drifted too far.
-    const stepSizeValue = 32.0;
+    // stepSize is configurable so step count can be lowered (cheaper) while keeping the same total
+    // march reach (steps*stepSize) — preserves how far rays travel so the disk isn't clipped.
+    const stepSizeValue = Math.max(8, Number(options.stepSize) || 32.0);
     const maxMarch = steps * stepSizeValue * 1.1;
     const maxMarchSq = maxMarch * maxMarch;
 

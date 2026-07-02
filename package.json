@@ -24,6 +24,7 @@
     "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
     "validate:wolfhour:phase6": "node scripts/run-electron.mjs scripts/wolfhour-phase6-validation.mjs",
     "validate:windows:parity": "node scripts/run-electron.mjs scripts/windows-electron-parity-validation.mjs",
+    "validate:windows:menu": "node scripts/run-electron.mjs scripts/windows-menu-visual-validation.mjs",
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",

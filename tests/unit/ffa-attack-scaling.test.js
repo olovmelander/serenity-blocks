@@ -7,8 +7,9 @@
  * cannot drift apart again (remediation Phase 1 / Phase 3).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { FFAAttackRouter } from '../../src/core/multiplayer/ffa-attack-router.js';
+import { GarbageQueue } from '../../src/core/garbage.js';
 
 // applyAttackScaling only reads (baseLines, opponentCount, boringRules); a minimal
 // stub game state is sufficient to construct the router.
@@ -49,5 +50,92 @@ describe('FFAAttackRouter.applyAttackScaling', () => {
 
     it('sends 0 lines when base lines is 0', () => {
         expect(router.applyAttackScaling(0, 5, false)).toBe(0);
+    });
+});
+
+describe('FFAAttackRouter authoritative garbage metadata', () => {
+    function makePlayer(steamId, name, color = '#808080') {
+        return {
+            steamId,
+            name,
+            color,
+            isAlive: true,
+            _lockSeq: steamId === 'A' ? 9 : 4,
+            garbageQueue: new GarbageQueue(),
+            gameState: {
+                currentPiece: { type: 'I' },
+                isGameOver: false,
+            },
+        };
+    }
+
+    it('stamps every queued garbage line with stable attack provenance and target order metadata', () => {
+        const attacker = makePlayer('A', 'Alpha', '#f00');
+        const opponents = Array.from({ length: 7 }, (_, index) => makePlayer(`P${index + 1}`, `Peer ${index + 1}`));
+        const players = new Map([[attacker.steamId, attacker], ...opponents.map((p) => [p.steamId, p])]);
+        const network = { broadcastToAll: vi.fn() };
+        const gameState = {
+            isHost: true,
+            debugGarbage: false,
+            players,
+            matchConfig: { boringRules: false, attackRules: {} },
+            network,
+            applyGarbageCounter: vi.fn(() => 0),
+            insertPendingGarbage: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            _createAttackMetadata: vi.fn(() => ({
+                attackId: 'r2-a17',
+                attackSeq: 17,
+                attackerId: 'A',
+                sourceSimTick: 120,
+                createdSimTick: 120,
+                sourceLockSeq: 9,
+                clearSummary: { depth: 5 },
+                rulesHash: 'rules',
+            })),
+        };
+        const router = new FFAAttackRouter(gameState);
+
+        router.routeAttack('A', {
+            depth: 5, // Quadra formula -> 4 raw lines, scaled to 2 with 7 opponents.
+            holeMask: [
+                [true, false, false, false, false, false, false, false, false, false],
+                [false, true, false, false, false, false, false, false, false, false],
+                [false, false, true, false, false, false, false, false, false, false],
+                [false, false, false, true, false, false, false, false, false, false],
+            ],
+        });
+
+        const entries = opponents[0].garbageQueue.entries;
+        expect(entries).toHaveLength(2);
+        expect(entries.map((entry) => entry.lineIndex)).toEqual([0, 1]);
+        expect(entries.map((entry) => entry.isLastInBurst)).toEqual([false, true]);
+        expect(entries[0]).toMatchObject({
+            attackId: 'r2-a17',
+            attackSeq: 17,
+            attackerId: 'A',
+            attackerName: 'Alpha',
+            targetId: 'P1',
+            sourceSimTick: 120,
+            createdSimTick: 120,
+            sourceLockSeq: 9,
+            applyAfterLockSeq: 4,
+            rulesHash: 'rules',
+        });
+        expect(network.broadcastToAll).toHaveBeenCalledWith('game:garbage:sent', expect.objectContaining({
+            attackId: 'r2-a17',
+            attackSeq: 17,
+            rawLines: 4,
+            cancelledLines: 0,
+            totalLines: 2,
+            targetCount: 7,
+            sourceSimTick: 120,
+            sourceLockSeq: 9,
+        }));
+        expect(gameState._recordNetEvent).toHaveBeenCalledWith('attack_routed', expect.objectContaining({
+            attackId: 'r2-a17',
+            totalLines: 2,
+            rulesHash: 'rules',
+        }));
     });
 });

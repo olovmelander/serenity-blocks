@@ -11,8 +11,13 @@ function createLoopMock(callOrder) {
     return {
         onRender: null,
         onUpdate: null,
+        externalPlayerUpdate: false,
         clearPlayers: vi.fn(() => callOrder.push('clearPlayers')),
         registerPlayer: vi.fn(() => callOrder.push('registerPlayer')),
+        updatePlayers: vi.fn(() => callOrder.push('loopUpdatePlayers')),
+        setExternalPlayerUpdate: vi.fn(function setExternalPlayerUpdate(enabled) {
+            this.externalPlayerUpdate = enabled === true;
+        }),
         start: vi.fn(() => callOrder.push('start')),
         stop: vi.fn(() => callOrder.push('stop')),
     };
@@ -26,6 +31,11 @@ function createBareGameState({ isHost = false, gamePhase = 'playing' } = {}) {
     state.gamePhase = gamePhase;
     state.loopCallbacksConfigured = false;
     state.loopRunning = false;
+    state.simTick = 0;
+    state._simTickNetcodeEnabled = false;
+    state._simTickAccumulatorMs = 0;
+    state.SIM_TICK_MS = 1000 / 60;
+    state.MAX_SIM_STEPS_PER_FRAME = 5;
     state.localPlayerId = 'local-player';
     state.players = new Map([
         ['local-player', { gameState: { currentPiece: {} } }],
@@ -41,6 +51,7 @@ function createBareGameState({ isHost = false, gamePhase = 'playing' } = {}) {
     state.maybeBroadcastPostPhysics = vi.fn(() => callOrder.push('broadcast'));
     state.renderAllPlayers = vi.fn(() => callOrder.push('render'));
     state.syncUnifiedLoopPlayers = vi.fn(() => callOrder.push('syncUnifiedLoopPlayers'));
+    state._recordNetEvent = vi.fn(() => callOrder.push('recordNetEvent'));
     state.buildLocalPredictionCallbacks = vi.fn(() => ({ prediction: true }));
     state.stopStateSyncLoop = vi.fn(() => callOrder.push('stopStateSyncLoop'));
     state.inputValidator = { reset: vi.fn(() => callOrder.push('inputValidator.reset')) };
@@ -83,6 +94,52 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.processBufferedInputs).toHaveBeenCalledOnce();
         expect(state.updateAllPlayers).toHaveBeenCalledWith(16);
         expect(state.flushInputBatch).not.toHaveBeenCalled();
+        expect(state.simTick).toBe(1);
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(false);
+    });
+
+    it('runs host simulation at fixed sim ticks when simTickNetcode is enabled', () => {
+        const { state, callOrder } = createBareGameState({ isHost: true });
+        state._simTickNetcodeEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 10;
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 35);
+
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(true);
+        expect(state.simTick).toBe(3);
+        expect(state._simTickAccumulatorMs).toBe(5);
+        expect(callOrder).toEqual([
+            'advance',
+            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
+            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
+            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
+            'broadcast',
+        ]);
+        expect(state.unifiedLoop.updatePlayers).toHaveBeenCalledTimes(3);
+        expect(state.updateAllPlayers).toHaveBeenCalledTimes(3);
+        expect(state.updateAllPlayers).toHaveBeenNthCalledWith(1, 10);
+        expect(state.maybeBroadcastPostPhysics).toHaveBeenCalledOnce();
+        expect(state.maybeBroadcastPostPhysics).toHaveBeenCalledWith(35);
+    });
+
+    it('clamps fixed sim catch-up after a long host frame', () => {
+        const { state } = createBareGameState({ isHost: true });
+        state._simTickNetcodeEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 2;
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 55);
+
+        expect(state.simTick).toBe(2);
+        expect(state.unifiedLoop.updatePlayers).toHaveBeenCalledTimes(2);
+        expect(state._simTickAccumulatorMs).toBe(10);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('sim_tick_clamped', expect.objectContaining({
+            maxSteps: 2,
+            tickMs: 10,
+        }));
     });
 
     it('does not advance held input outside the playing phase', () => {

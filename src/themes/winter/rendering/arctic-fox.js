@@ -281,6 +281,7 @@ export function createArcticFox(scene, {
             basePos: new THREE.Vector3(),
             prevX: 0, prevZ: 0, hasPrev: false,
             trailDist: 0, footSide: 1, // paw-trail gait accumulator + L/R alternation
+            gcY: fallbackY, gcValid: false, rayPhase: i % 3, // amortized ground-raycast cache
             current: null,
         };
         foxes.push(fx);
@@ -288,7 +289,9 @@ export function createArcticFox(scene, {
         fx.stateTime = Math.random() * fx.trotDur;   // stagger so they don't sync up
     }
 
+    let _frame = 0;
     function update(dt) {
+        _frame += 1;
         // Greeting encounters: tick cooldowns, then pair-check trotting foxes.
         for (const fx of foxes) if (fx.greetCooldown > 0) fx.greetCooldown -= dt;
         for (let i = 0; i < foxes.length; i += 1) {
@@ -314,7 +317,14 @@ export function createArcticFox(scene, {
                 fx.t += dt * fx.speed;
                 const p = fx.path(fx.t);
                 const pn = fx.path(fx.t + 0.03);   // lookahead → heading
-                const gy = groundY(p.x, p.z) - footSink;
+                // Amortize the ground raycast: foxes move slowly over smooth ground, so a
+                // raycast every 3rd frame (staggered per fox) and reused between is visually
+                // identical to per-frame, at ~3× fewer O(n) raycasts against the drift mesh.
+                if (!fx.gcValid || (_frame % 3) === fx.rayPhase) {
+                    fx.gcY = groundY(p.x, p.z);
+                    fx.gcValid = true;
+                }
+                const gy = fx.gcY - footSink;
                 fx.root.position.set(p.x, gy, p.z);
                 const hx = pn.x - p.x;
                 const hz = pn.z - p.z;

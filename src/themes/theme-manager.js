@@ -185,9 +185,61 @@ export class ThemeManager {
             themeInstance.stop();
         }
 
+        this.clearRendererThemeResources();
+    }
+
+    clearRendererThemeResources() {
         if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
             console.log('[ThemeManager] Clearing renderer theme resources');
             this.webglRenderer.clearThemeResources();
+        }
+    }
+
+    removeThemeFromCache(themeName, themeInstance = null) {
+        if (!themeName) {
+            return;
+        }
+
+        const cachedTheme = this.themeInstances.get(themeName);
+        if (cachedTheme && (!themeInstance || cachedTheme === themeInstance)) {
+            this.themeInstances.delete(themeName);
+        }
+
+        this.themeLRU = this.themeLRU.filter((entry) => entry !== themeName);
+    }
+
+    disposeThemeInstance(themeInstance, themeName, { removeFromCache = false } = {}) {
+        if (!themeInstance) {
+            return;
+        }
+
+        const resolvedThemeName = themeName || themeInstance.name || 'unknown';
+
+        try {
+            if (typeof themeInstance.cleanup === 'function') {
+                themeInstance.cleanup();
+            } else if (this.isHeavyGpuTheme(resolvedThemeName) && typeof themeInstance.releaseInactiveResources === 'function') {
+                themeInstance.releaseInactiveResources();
+            } else if (typeof themeInstance.stop === 'function') {
+                themeInstance.stop();
+            }
+        } catch (error) {
+            console.warn(`[ThemeManager] Theme cleanup failed: ${resolvedThemeName}`, error);
+        } finally {
+            this.clearRendererThemeResources();
+
+            if (this.activeTheme === themeInstance) {
+                this.activeTheme = null;
+            }
+
+            if (this.pendingThemeInstance === themeInstance) {
+                this.pendingThemeInstance = null;
+                this.pendingThemeName = null;
+            }
+
+            if (removeFromCache) {
+                this.removeThemeFromCache(resolvedThemeName, themeInstance);
+            }
         }
     }
 
@@ -207,17 +259,9 @@ export class ThemeManager {
                 const themeInstance = this.themeInstances.get(themeName);
 
                 if (themeInstance) {
-                    // Call cleanup to free resources
-                    if (typeof themeInstance.cleanup === 'function') {
-                        themeInstance.cleanup();
-                    }
-                    this.themeInstances.delete(themeName);
-                }
-
-                // Remove from LRU tracking
-                const index = this.themeLRU.indexOf(themeName);
-                if (index > -1) {
-                    this.themeLRU.splice(index, 1);
+                    this.disposeThemeInstance(themeInstance, themeName, {
+                        removeFromCache: true,
+                    });
                 }
 
                 console.log(`[ThemeManager] Cache size after eviction: ${this.themeInstances.size}/${this.maxCachedThemes}`);
@@ -436,20 +480,25 @@ export class ThemeManager {
         this.isTransitioning = true;
 
         try {
+            this.clearAdjacentThemePreloadQueue();
+            this.pendingAdjacentThemePreload = false;
+
+            const outgoingTheme = this.activeTheme || this.pendingThemeInstance;
+            const outgoingThemeName = this.activeTheme ? this.activeThemeName : this.pendingThemeName;
+            if (outgoingTheme && outgoingThemeName !== themeName) {
+                console.log('[ThemeManager] Disposing current theme before switch:', outgoingThemeName);
+                this.disposeThemeInstance(outgoingTheme, outgoingThemeName, {
+                    removeFromCache: true,
+                });
+            }
+
             console.log('[ThemeManager] Loading theme:', themeName);
             // Load the new theme
             const newTheme = await this.loadTheme(themeName);
             console.log('[ThemeManager] Theme loaded:', newTheme);
 
-            // Stop and cleanup current theme if any
-            if (this.activeTheme) {
-                console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-                this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
-            }
-
             this.pendingThemeInstance = newTheme;
             this.pendingThemeName = themeName;
-            this.activeThemeName = themeName;
 
             if (this.themesSuspended) {
                 console.log('[ThemeManager] Theme activation deferred (themes are suspended)');
@@ -459,6 +508,26 @@ export class ThemeManager {
             }
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
+            this.pendingThemeInstance = null;
+            this.pendingThemeName = null;
+
+            if (!this.activeTheme && themeName !== 'forest') {
+                console.warn('[ThemeManager] Falling back to forest theme after switch failure');
+                try {
+                    const forestTheme = await this.loadTheme('forest');
+                    this.pendingThemeInstance = forestTheme;
+                    this.pendingThemeName = 'forest';
+
+                    if (this.themesSuspended) {
+                        this.activeThemeName = 'forest';
+                    } else {
+                        await this.activateThemeInstance(forestTheme, 'forest');
+                    }
+                } catch (fallbackError) {
+                    console.error('[ThemeManager] Failed to activate fallback theme after switch failure:', fallbackError);
+                    this.activeThemeName = null;
+                }
+            }
         } finally {
             const endedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
             performanceMonitor.recordThemeSwitch({
@@ -480,8 +549,10 @@ export class ThemeManager {
 
         // Stop current active theme if different from the one we're activating
         if (this.activeTheme && this.activeTheme !== themeInstance) {
-            console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-            this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
+            console.log('[ThemeManager] Disposing current theme before activation:', this.activeThemeName);
+            this.disposeThemeInstance(this.activeTheme, this.activeThemeName, {
+                removeFromCache: true,
+            });
         }
 
         // Start the theme (this calls createScene and initializes everything)
@@ -497,6 +568,9 @@ export class ThemeManager {
             );
         } catch (error) {
             console.error(`[ThemeManager] Theme "${themeName}" failed to start:`, error);
+            this.disposeThemeInstance(themeInstance, themeName, {
+                removeFromCache: true,
+            });
             // Attempt fallback to forest if this wasn't already forest
             if (themeName !== 'forest') {
                 console.warn('[ThemeManager] Falling back to forest theme');
@@ -519,6 +593,127 @@ export class ThemeManager {
         console.log('[ThemeManager] Theme activation complete:', themeName);
 
         this.queueAdjacentThemePreload();
+    }
+
+    /**
+     * Boot-time pre-warm (AAA "compile shaders during the loading screen" pattern):
+     * build a theme's scene + compile its WebGPU pipelines during the idle menu window
+     * so the first mode entry resolves via the proven-smooth ~15ms quick-resume path
+     * instead of paying a ~1s cold createScene under the loading overlay.
+     *
+     * Builds the theme HIDDEN (occluded, never flashed on the menu), lets its render
+     * loop run until the scene graph stabilizes (deferred subsystems done) plus a buffer
+     * of frames so the post-processing pipeline compiles through the real render path,
+     * then parks it paused-as-pending. Never emits THEME_CHANGED (menu music/UI stay put);
+     * the real entry's resume emits it. Best-effort: on failure the cold build + the
+     * loading-overlay calm-hold still cover entry.
+     *
+     * @param {string} themeName
+     * @param {{ maxWarmMs?: number, postWarmFrames?: number }} [options]
+     * @returns {Promise<boolean>} true if the theme ended up warm + parked
+     */
+    async prewarmTheme(themeName, { maxWarmMs = 7000, postWarmFrames = 30 } = {}) {
+        if (!themeName || this.isTransitioning) return false;
+        if (this.isPackagedWindowsSafeMode()) return false;
+        // Only pre-warm from the idle/suspended menu state — never over a live theme.
+        if (this.activeTheme || !this.themesSuspended) return false;
+        if (!getThemeMeta(themeName)) return false;
+
+        // Already built + parked as the pending resume target? Nothing to do.
+        const cached = this.themeInstances.get(themeName);
+        if (cached?.hasStarted && this.pendingThemeInstance === cached && !this.activeTheme) {
+            return true;
+        }
+
+        const nextFrame = () => new Promise((resolve) => {
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(() => resolve());
+            } else {
+                setTimeout(resolve, 16);
+            }
+        });
+
+        this.isTransitioning = true;
+        try {
+            const theme = await this.loadTheme(themeName);
+            if (!theme || this.activeTheme) return false;
+
+            if (!theme.hasStarted) {
+                console.log(`[ThemeManager] Pre-warming theme (hidden): ${themeName}`);
+                theme._prewarmHidden = true;
+                try {
+                    await withTimeout(
+                        theme.start(this.webglRenderer, {
+                            assetManager: this.assetManager,
+                            audioManager: this.audioManager,
+                        }),
+                        THEME_LIFECYCLE_TIMEOUT,
+                        `Theme "${themeName}" prewarm`,
+                    );
+
+                    // Let the theme's own render loop compile scene pipelines: wait for
+                    // the scene graph to stop growing (deferred rIC subsystems finished).
+                    const startedAt = performance.now();
+                    let stableFrames = 0;
+                    let lastCount = -1;
+                    while (performance.now() - startedAt < maxWarmMs) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await nextFrame();
+                        if (this.activeTheme) break; // user entered — abandon warm
+                        const count = theme.scene?.children?.length ?? 0;
+                        if (count === lastCount) {
+                            stableFrames += 1;
+                            if (stableFrames >= 45) break;
+                        } else {
+                            stableFrames = 0;
+                            lastCount = count;
+                        }
+                    }
+
+                    // Extra frames so post-processing + any late materials compile
+                    // through the real render path (post pipelines are NOT covered by
+                    // compileAsync(scene) — they compile on the first post.render()).
+                    for (let i = 0; i < postWarmFrames && !this.activeTheme; i += 1) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await nextFrame();
+                    }
+
+                    // Final compile sweep for stragglers.
+                    if (typeof theme.renderer?.compileAsync === 'function' && theme.scene && theme.camera) {
+                        try {
+                            await theme.renderer.compileAsync(theme.scene, theme.camera);
+                        } catch (compileErr) {
+                            // non-fatal
+                        }
+                    }
+                } finally {
+                    theme._prewarmHidden = false;
+                }
+            }
+
+            // If the user entered a mode mid-warm, activateThemeInstance already took
+            // over — don't clobber it.
+            if (this.activeTheme) return false;
+
+            // Park it: pause the loop, keep GPU resources warm, expose as the pending
+            // resume target. Mirrors the state suspendThemes() leaves for an active
+            // theme, which resumeThemes() quick-resumes smoothly.
+            if (typeof theme.pause === 'function') {
+                theme.pause();
+            }
+            this.pendingThemeInstance = theme;
+            this.pendingThemeName = themeName;
+            this.activeThemeName = themeName;
+            this.activeTheme = null;
+            this.themesSuspended = true;
+            console.log(`[ThemeManager] Theme pre-warmed + parked for instant first entry: ${themeName}`);
+            return true;
+        } catch (error) {
+            console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
+            return false;
+        } finally {
+            this.isTransitioning = false;
+        }
     }
 
     suspendThemes() {
@@ -599,18 +794,86 @@ export class ThemeManager {
                 this.pendingThemeInstance = null;
                 this.pendingThemeName = null;
 
-                // Restart animation loop if the theme has an animate method
-                if (typeof themeInstance.animate === 'function') {
+                // Restart the render loop. Most themes only start their loop in
+                // createScene(), so resume() alone leaves them frozen — restart it
+                // generically (base.restartRenderLoop tries animate/startAnimationLoop/
+                // startAnimation; guards prevent a double-start).
+                if (typeof themeInstance.restartRenderLoop === 'function') {
+                    themeInstance.restartRenderLoop();
+                } else if (typeof themeInstance.animate === 'function') {
                     themeInstance.animate();
                 }
 
                 eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
                 console.log('[ThemeManager] Theme resumed successfully (quick resume):', themeName);
+
+                // BULLETPROOF SAFETY NET: guarantee the theme is actually producing
+                // frames. Themes start their loop with varied method names/guards, so
+                // restartRenderLoop() can still miss one and leave the theme frozen.
+                // Verify by watching the renderer; if no frames, rebuild it cleanly so a
+                // theme can NEVER stay frozen after a pre-warmed resume. Fire-and-forget
+                // so the common (working) case doesn't wait.
+                this._ensureThemeRendering(themeInstance, themeName).catch((error) => {
+                    console.warn('[ThemeManager] render-verify failed:', error?.message || error);
+                });
             }
         } else {
             // Different theme or no pending instance, do full activation
             console.log('[ThemeManager] Performing full theme activation');
             await this.activateThemeInstance(themeInstance, themeName);
+        }
+    }
+
+    /**
+     * Verify a just-resumed theme is actually rendering; if it produced no frames within
+     * a short window (its loop failed to restart), rebuild it cleanly via a fresh
+     * createScene — which ALWAYS starts the loop. Guarantees a resumed (e.g. pre-warmed)
+     * theme is never left frozen, regardless of its loop-start method name. Worst case is
+     * the cold build the pre-warm meant to avoid (covered by the loading overlay), not a
+     * dead theme.
+     * @param {BaseTheme} themeInstance
+     * @param {string} themeName
+     * @returns {Promise<void>}
+     */
+    async _ensureThemeRendering(themeInstance, themeName) {
+        const renderer = themeInstance?.renderer;
+        if (!renderer || typeof renderer.render !== 'function') {
+            return; // can't verify (e.g. shared-renderer themes) — assume ok
+        }
+
+        const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+        const nextFrame = () => new Promise((resolve) => {
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+            else setTimeout(resolve, 16);
+        });
+
+        let rendered = false;
+        const origRender = renderer.render.bind(renderer);
+        const origRenderAsync = typeof renderer.renderAsync === 'function' ? renderer.renderAsync.bind(renderer) : null;
+        renderer.render = (...args) => { rendered = true; return origRender(...args); };
+        if (origRenderAsync) {
+            renderer.renderAsync = (...args) => { rendered = true; return origRenderAsync(...args); };
+        }
+
+        try {
+            const startedAt = now();
+            // Give the loop up to ~700ms to fire a frame (generous for slow GPUs).
+            while (!rendered && now() - startedAt < 700) {
+                // eslint-disable-next-line no-await-in-loop
+                await nextFrame();
+            }
+        } finally {
+            renderer.render = origRender;
+            if (origRenderAsync) renderer.renderAsync = origRenderAsync;
+        }
+
+        if (!rendered && this.activeTheme === themeInstance && !this.isTransitioning) {
+            console.warn(`[ThemeManager] Resumed theme "${themeName}" produced no frames — rebuilding to recover.`);
+            try {
+                await this.activateThemeInstance(themeInstance, themeName);
+            } catch (error) {
+                console.error(`[ThemeManager] Recovery rebuild failed for "${themeName}":`, error);
+            }
         }
     }
 
@@ -732,8 +995,9 @@ export class ThemeManager {
     cleanupTheme(themeName) {
         const theme = this.themeInstances.get(themeName);
         if (theme) {
-            theme.cleanup();
-            this.themeInstances.delete(themeName);
+            this.disposeThemeInstance(theme, themeName, {
+                removeFromCache: true,
+            });
         }
     }
 
