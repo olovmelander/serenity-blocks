@@ -354,7 +354,12 @@ export default class SwedishForestTheme extends BaseTheme {
         this._tempMat = new THREE.Matrix4();
         this._rotMat = new THREE.Matrix4();
         this._scaleVec = new THREE.Vector3();
-        this._postUpdateParams = { time: 0 };
+        this._postUpdateParams = {
+            time: 0,
+            sunScreenX: 0.5,
+            sunScreenY: 0.5,
+            sunGlowVisibility: 0,
+        };
         this._sunDirection = new THREE.Vector3();
         this._sunNdc = new THREE.Vector3();
         this._skySunDirection = new THREE.Vector3();
@@ -5357,6 +5362,8 @@ export default class SwedishForestTheme extends BaseTheme {
                     vignetteOffset: 1.28,
                     vignetteDarkness: 0.34,
                     grainStrength: filmGrain ? 0.008 : 0,
+                    ditherStrength: 0.0012,
+                    sunGlowStrength: 0.045,
                 }
                 : {
                     useMRT: this.flags.useMRT,
@@ -5816,6 +5823,8 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         if (this.sun) {
+            this._postUpdateParams.sunGlowVisibility = 0;
+
             // Slow vertical oscillation (like sun slowly setting/rising)
             const sunTime = elapsed * 0.02;
             const sunY = this.sunBaseY + Math.sin(sunTime) * 3.0;
@@ -5838,6 +5847,8 @@ export default class SwedishForestTheme extends BaseTheme {
                 const sunNdc = this._sunNdc.copy(this.sun.position).project(this.camera);
                 const sunScreenX = sunNdc.x * 0.5 + 0.5;
                 const sunScreenY = sunNdc.y * 0.5 + 0.5;
+                this._postUpdateParams.sunScreenX = sunScreenX;
+                this._postUpdateParams.sunScreenY = sunScreenY;
                 if (this.godRayMaterial?.uniforms?.uSunScreenPos) {
                     this.godRayMaterial.uniforms.uSunScreenPos.value.set(sunScreenX, sunScreenY);
                 }
@@ -5858,6 +5869,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 const cameraDir = this._lensCameraForward.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
                 const toSun = this._lensToSun.copy(sunScreenPos).sub(cameraPos).normalize();
                 const sunVisibility = Math.max(0, cameraDir.dot(toSun));
+                this._postUpdateParams.sunGlowVisibility = sunVisibility ** 2.0;
 
                 this.lensFlares.forEach((flare) => {
                     if (flare.userData?.nodeUniforms?.uTime) {
