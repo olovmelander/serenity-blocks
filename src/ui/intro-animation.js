@@ -109,7 +109,7 @@ export class IntroAnimation {
      * Initialize and show the intro animation
      * @returns {Promise<void>} Resolves when user dismisses the intro
      */
-    async show(soundManager = null) {
+    async show(soundManager = null, options = {}) {
         if (this.hasCompleted) {
             return Promise.resolve();
         }
@@ -124,6 +124,23 @@ export class IntroAnimation {
         this.clearPhaseTimers();
         this.isActive = true;
         this.isAnimating = true;
+        // When deferred, hold the "SERENITY BLOCKS" title hidden + un-animated until
+        // revealTitle() — used so the boot warp transition plays out FIRST and the
+        // title's reveal animation plays fresh afterwards, not wasted behind the warp.
+        this.titleDeferred = options.deferTitle === true;
+        this.titleRevealed = !this.titleDeferred;
+        // "Press any key / click / tap to begin" is LOCKED until the title reveals, so the
+        // boot transition can't be skipped before "SERENITY BLOCKS" appears; the prompt +
+        // interaction then unlock IN SYNC with the title. Non-deferred intros allow it
+        // immediately, as before.
+        this.interactionEnabled = !this.titleDeferred;
+        // Readiness gate: resolves once initRenderer() has settled (WebGPU device created,
+        // or WebGL fallback, or failure) so callers can reliably read getWebGPUDevice()
+        // BEFORE deciding whether the boot warp can share the intro's device. Without this,
+        // a cold/slow WebGPU init that outruns the 1500ms boot race leaves getWebGPUDevice()
+        // null → the warp makes a 3rd context → blank on heavy themes.
+        this._rendererReadyResolve = null;
+        this.rendererReady = new Promise((resolve) => { this._rendererReadyResolve = resolve; });
         await this.createIntroHTML();
         this.setupEventListeners();
 
@@ -136,10 +153,63 @@ export class IntroAnimation {
 
         this.startAnimations();
 
+        // Safety net: never let a deferred title stay hidden if the external reveal trigger is
+        // somehow missed (warp error, etc.) — reveals title + unlocks interaction together.
+        if (this._titleRevealSafety) { clearTimeout(this._titleRevealSafety); this._titleRevealSafety = null; }
+        if (this.titleDeferred) {
+            this._titleRevealSafety = setTimeout(() => this.revealTitle(), 4500);
+        }
+
         // Return a promise that resolves when the intro is dismissed
         return new Promise((resolve) => {
             this.onComplete = resolve;
         });
+    }
+
+    /**
+     * Play the deferred "SERENITY BLOCKS" title reveal now. Idempotent — safe to call
+     * from any handoff branch (and a safety timer). Called once the boot warp / startup
+     * transition has finished so the reveal animation plays fresh on the settled intro
+     * instead of being wasted behind the covering transition.
+     */
+    revealTitle() {
+        if (this.titleRevealed) {
+            return;
+        }
+        this.titleRevealed = true;
+        if (this._titleRevealSafety) {
+            clearTimeout(this._titleRevealSafety);
+            this._titleRevealSafety = null;
+        }
+        const titleContainer = this.container?.querySelector('.intro-title-container');
+        if (titleContainer) {
+            titleContainer.classList.remove('intro-title-hold');
+            // Force a reflow so the (previously animation:none) reveal restarts from 0%.
+            this._titleReflow = titleContainer.offsetWidth;
+        }
+
+        // Reveal the "PRESS ANY KEY" prompt + unlock interaction WITH the title (the theme is
+        // warmed BEFORE the warp now, so there's nothing to gate on).
+        this.enableInteraction();
+    }
+
+    /**
+     * Unlock begin-interaction and reveal the "PRESS ANY KEY" prompt in sync with the
+     * title. Idempotent.
+     */
+    enableInteraction() {
+        if (this.interactionEnabled) {
+            return;
+        }
+        this.interactionEnabled = true;
+        const prompt = this.container?.querySelector('.intro-prompt.intro-prompt-hold');
+        if (prompt) {
+            prompt.classList.remove('intro-prompt-hold');
+            // Reflow, then run the no-delay reveal so the prompt fades in WITH the title
+            // (its base rule has a 3s animation-delay that would otherwise hold it back).
+            this._promptReflow = prompt.offsetWidth;
+            prompt.classList.add('intro-prompt-shown');
+        }
     }
 
     /**
@@ -532,6 +602,16 @@ export class IntroAnimation {
     }
 
     /**
+     * The intro's live GPUDevice (or null on WebGL/uninited) — shared with the boot warp so
+     * it doesn't create a 3rd WebGPU context (which blanked the warp when a heavy theme was
+     * already warmed). See BootWarpTransition({ device }).
+     * @returns {GPUDevice|null}
+     */
+    getWebGPUDevice() {
+        return this.threeRenderer?.getDevice?.() || null;
+    }
+
+    /**
      * Ensure the intro music track is playing
      */
     ensureIntroMusic() {
@@ -583,6 +663,9 @@ export class IntroAnimation {
 
         // Initialize renderer: try WebGPU first, fall back to WebGL
         await this.initRenderer(this.threeCanvas);
+        // Signal readiness: the renderer (and its GPUDevice, if WebGPU) now exists, so
+        // getWebGPUDevice() is reliable for the boot-warp device-share decision.
+        this._rendererReadyResolve?.();
         this.setLoadingState(false);
 
         // Phase 5: CSS particles/orbs removed; visuals are now GPU-native in both WebGPU and WebGL paths.
@@ -593,6 +676,11 @@ export class IntroAnimation {
         // Create title container
         const titleContainer = document.createElement('div');
         titleContainer.className = 'intro-title-container';
+        if (this.titleDeferred) {
+            // Applied BEFORE the element is laid out, so the CSS reveal never fires
+            // early; revealTitle() removes it to play the animation fresh.
+            titleContainer.classList.add('intro-title-hold');
+        }
 
         // Create title with individual letters
         const title = this.createAnimatedTitle();
@@ -618,6 +706,10 @@ export class IntroAnimation {
         // Create prompt text
         const prompt = document.createElement('div');
         prompt.className = 'intro-prompt';
+        if (this.titleDeferred) {
+            // Don't invite "press to begin" until the title has appeared + interaction unlocks.
+            prompt.classList.add('intro-prompt-hold');
+        }
         prompt.innerHTML = 'PRESS ANY KEY / CLICK / TAP TO BEGIN';
         this.container.appendChild(prompt);
 
@@ -785,6 +877,14 @@ export class IntroAnimation {
      */
     handleInteraction() {
         if (!this.isActive) return;
+        // Ignore begin-input until the title has appeared (locked through the boot transition).
+        if (!this.interactionEnabled) return;
+        // Single-shot: once "begin" fires, ignore further presses (no double sound/dismiss).
+        this.interactionEnabled = false;
+
+        // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
+        // Honors mute/volume; best-effort so a missing/blocked file never blocks the dismiss.
+        this.soundManager?.playOneShotFile?.('assets/audio/intro/begin.ogg', { volume: 0.8 });
 
         // Dismiss only the text, keep the background
         const prompt = this.container?.querySelector('.intro-prompt');

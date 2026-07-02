@@ -211,6 +211,43 @@
     }
 }
 
+/* Deferred reveal: hold the "SERENITY BLOCKS" title fully hidden + un-animated until
+   the boot warp transition finishes, then JS removes .intro-title-hold and a reflow
+   restarts the reveal fresh — so the title's animation plays AFTER the warp, not
+   wasted behind it. (The CSS reveal otherwise fires immediately on DOM insertion.) */
+.intro-title-container.intro-title-hold .intro-title,
+.intro-title-container.intro-title-hold .intro-letter,
+.intro-title-container.intro-title-hold .intro-shimmer {
+    animation: none !important;
+    opacity: 0 !important;
+}
+
+.intro-title-container.intro-title-hold::before {
+    animation: none !important;
+    opacity: 0 !important;
+}
+
+/* Hold the "PRESS ANY KEY TO BEGIN" prompt hidden until the deferred title has appeared
+   and begin-interaction unlocks — so we never invite a press that does nothing. */
+.intro-prompt.intro-prompt-hold {
+    animation: none !important;
+    opacity: 0 !important;
+}
+
+/* Deferred prompt reveal: fade in WITH the title (the base .intro-prompt rule has a 3s
+   animation-delay that would otherwise hold it back). Kept SNAPPY (~0.35s) so the prompt is
+   fully present as the warp canvas clears — not still faintly fading in a beat behind it. */
+.intro-prompt.intro-prompt-shown {
+    animation:
+        promptFadeIn 0.8s ease-out both,
+        promptPulse 2s ease-in-out 0.8s infinite;
+}
+
+@keyframes promptFadeIn {
+    from { opacity: 0; }
+    to { opacity: 0.28; }
+}
+
 @keyframes titleReveal {
     0% {
         opacity: 0;
@@ -776,6 +813,23 @@ body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {
 /* Hide the static menu logo — the intro title is the logo */
 body.start-modal-open .main-menu-logo {
     display: none !important;
+}
+
+/* Electron: prefer a normal DOM logo in the menu. Keeping the shrunken intro
+   title alive behind the cards creates a composited/filtered layer that can go
+   soft in packaged Windows builds. */
+body.electron-app.start-modal-open .intro-title-container.shrink-to-logo {
+    display: none !important;
+}
+
+body.electron-app.start-modal-open .intro-title-container.shrink-to-logo::before,
+body.electron-app.start-modal-open .intro-title-container.shrink-to-logo::after {
+    display: none !important;
+    content: none !important;
+}
+
+body.electron-app.start-modal-open .main-menu-logo {
+    display: block !important;
 }
 
 /* Responsive adjustments for logo */

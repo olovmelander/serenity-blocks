@@ -53,6 +53,8 @@ function makeSnapshot(players) {
         winner: null,
         timestamp: 0,
         tick: 99,
+        simTick: 1234,
+        snapshotSeq: 56,
     };
 }
 
@@ -77,6 +79,8 @@ describe('binary snapshot encoding', () => {
 
         expect(decoded.gamePhase).toBe('playing');
         expect(decoded.tick).toBe(99);
+        expect(decoded.simTick).toBe(1234);
+        expect(decoded.snapshotSeq).toBe(56);
         expect(decoded.players).toHaveLength(2);
 
         const [a, b] = decoded.players;
@@ -108,14 +112,119 @@ describe('binary snapshot encoding', () => {
         const baseline = makeSnapshot([makePlayer({ steamId: '1000', name: 'Alpha', score: 100 })]);
         const current = makeSnapshot([makePlayer({ steamId: '1000', name: 'Alpha', score: 250 })]);
         current.tick = 100;
+        current.simTick = 1235;
+        current.snapshotSeq = 57;
 
         const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
         expect(deltaBuffer).not.toBeNull();
 
         const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        expect(decoded.simTick).toBe(1235);
+        expect(decoded.snapshotSeq).toBe(57);
         expect(decoded.players[0].steamId).toBe('1000');
         expect(decoded.players[0].name).toBe('Alpha'); // identity carried from baseline
         expect(decoded.players[0].score).toBe(250); // changed stat applied
+    });
+
+    it('round-trips awaitingSpawn so a late joiner is not mistaken for ELIMINATED (v6)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        // A drop-in late joiner is isAlive:false (the loop skips them until next round) but
+        // awaitingSpawn:true — the wire MUST carry this bit or peers render them as eliminated.
+        const snapshot = makeSnapshot([
+            makePlayer({ steamId: '1000', name: 'Alive', isAlive: true, awaitingSpawn: false }),
+            makePlayer({ steamId: '2000', name: 'LateJoiner', isAlive: false, awaitingSpawn: true }),
+            makePlayer({ steamId: '3000', name: 'Eliminated', isAlive: false, awaitingSpawn: false }),
+        ]);
+
+        const decoded = decoder.decodeSnapshot(encoder.encodeSnapshot(snapshot));
+        const [alive, late, dead] = decoded.players;
+
+        expect(alive.awaitingSpawn).toBe(false);
+        expect(late.isAlive).toBe(false);
+        expect(late.awaitingSpawn).toBe(true); // the distinguishing bit
+        expect(dead.isAlive).toBe(false);
+        expect(dead.awaitingSpawn).toBe(false);
+    });
+
+    it('round-trips an awaitingSpawn flip (true→false) through a delta snapshot (v6)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        // Baseline: late joiner waiting. Current: they spawned this round (awaitingSpawn cleared,
+        // alive). The STATS delta must re-send the bit so the opponent's "NEXT ROUND" overlay clears.
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', isAlive: false, awaitingSpawn: true })]);
+        const current = makeSnapshot([makePlayer({ steamId: '1000', isAlive: true, awaitingSpawn: false })]);
+        current.tick = 100;
+
+        const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
+        expect(deltaBuffer).not.toBeNull();
+
+        const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        expect(decoded.players[0].isAlive).toBe(true);
+        expect(decoded.players[0].awaitingSpawn).toBe(false);
+    });
+
+    it('round-trips per-garbage-row attacker color so placed garbage shows the attacker color (v7 full)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        // Two garbage rows from DIFFERENT attackers — green and red. The packed 4-bit grid only
+        // carries cell TYPE, so without the v7 row-color section these decode to generic grey
+        // (the bug: opponent boards showed grey garbage while the side meter showed the color).
+        const grid = emptyGrid();
+        for (let x = 0; x < GRID_COLS; x++) {
+            if (x !== 3) grid[23][x] = { type: 'GARBAGE', color: '#00e676' }; // green attacker
+            if (x !== 7) grid[22][x] = { type: 'GARBAGE', color: '#ff1744' }; // red attacker
+        }
+
+        const decoded = decoder.decodeSnapshot(encoder.encodeSnapshot(makeSnapshot([
+            makePlayer({ steamId: '1000', grid }),
+        ])));
+        const dgrid = decoded.players[0].grid;
+
+        expect(dgrid[23][0].type).toBe('GARBAGE');
+        expect(dgrid[23][0].color).toBe('#00e676'); // green row kept
+        expect(dgrid[22][0].color).toBe('#ff1744'); // red row kept (distinct from green)
+        expect(dgrid[23][3]).toBeNull(); // the hole
+    });
+
+    it('round-trips garbage row color through a delta when the grid changes (v7 delta)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', grid: emptyGrid() })]);
+        const grid = emptyGrid();
+        for (let x = 0; x < GRID_COLS; x++) {
+            if (x !== 5) grid[23][x] = { type: 'GARBAGE', color: '#2979ff' }; // blue attacker
+        }
+        const current = makeSnapshot([makePlayer({ steamId: '1000', grid })]);
+        current.tick = 100;
+
+        const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
+        expect(deltaBuffer).not.toBeNull();
+        const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        expect(decoded.players[0].grid[23][0].color).toBe('#2979ff');
+    });
+
+    it('peekDeltaBaselineTick reports the baseline a delta was diffed against (and null for a full)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+
+        // Delta diffed against a baseline at tick 99 must report 99 — this is the
+        // classifier the receiver uses to drop superseded stragglers WITHOUT decoding
+        // (a newer reliable keyframe overtaking queued unreliable deltas) instead of
+        // throwing a "baseline mismatch" + resync storm.
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', score: 100 })]); // tick 99
+        const current = makeSnapshot([makePlayer({ steamId: '1000', score: 250 })]);
+        current.tick = 107;
+        const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
+
+        expect(decoder.peekDeltaBaselineTick(deltaBuffer)).toBe(99);
+        // A FULL snapshot is not a delta → null (caller must not treat it as one).
+        const fullBuffer = encoder.encodeSnapshot(current);
+        expect(decoder.peekDeltaBaselineTick(fullBuffer)).toBeNull();
     });
 
     it('returns null for a delta when the player roster changes (forcing a full snapshot)', () => {
@@ -135,8 +244,37 @@ describe('binary snapshot encoding', () => {
         const snapshot = makeSnapshot([makePlayer({
             steamId: '1000',
             garbageEntries: [
-                { type: 'line', attackerId: '2000', holeMask, duration: 0, variant: 'clean', isLastInBurst: true },
-                { type: 'line', attackerId: '2000', holeMask: 0x0F, duration: 0, variant: 'normal', isLastInBurst: false },
+                {
+                    type: 'line',
+                    attackerId: '2000',
+                    color: '#3b82f6', // attacker's player color — must survive the wire
+                    holeMask,
+                    duration: 0,
+                    variant: 'clean',
+                    isLastInBurst: true,
+                    attackId: 'r3-a42',
+                    attackSeq: 42,
+                    lineIndex: 0,
+                    createdSimTick: 123,
+                    sourceSimTick: 120,
+                    sourceLockSeq: 9,
+                    applyAfterLockSeq: 4,
+                },
+                {
+                    type: 'line',
+                    attackerId: '2000',
+                    holeMask: 0x0F,
+                    duration: 0,
+                    variant: 'normal',
+                    isLastInBurst: false,
+                    attackId: 'r3-a42',
+                    attackSeq: 42,
+                    lineIndex: 1,
+                    createdSimTick: 123,
+                    sourceSimTick: 120,
+                    sourceLockSeq: 9,
+                    applyAfterLockSeq: 4,
+                },
             ],
         })]);
 
@@ -146,9 +284,40 @@ describe('binary snapshot encoding', () => {
         expect(entries[0].holeMask).toBe(holeMask); // NOT truncated to 0x05
         expect(entries[0].variant).toBe('clean');
         expect(entries[0].isLastInBurst).toBe(true);
+        expect(entries[0]).toMatchObject({
+            attackId: 'r3-a42',
+            attackSeq: 42,
+            lineIndex: 0,
+            createdSimTick: 123,
+            sourceSimTick: 120,
+            sourceLockSeq: 9,
+            applyAfterLockSeq: 4,
+        });
         expect(entries[1].holeMask).toBe(0x0F);
         expect(entries[1].variant).toBe('normal');
         expect(entries[1].isLastInBurst).toBe(false);
+        expect(entries[1].lineIndex).toBe(1);
+        // v5: each garbage row carries the attacker's player color so victims see
+        // sender-colored garbage (parity with local MP), not a uniform grey.
+        expect(entries[0].color).toBe('#3b82f6');
+        // entry[1] had no color → all-zero RGB decodes back to undefined (renderer greys it).
+        expect(entries[1].color).toBeUndefined();
+    });
+
+    it('lowercases and zero-pads odd garbage colors through the 3-byte RGB field', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const snapshot = makeSnapshot([makePlayer({
+            steamId: '1000',
+            garbageEntries: [
+                { type: 'line', attackerId: '2000', color: '#0A0B0C', holeMask: 1, lineIndex: 0 },
+                { type: 'line', attackerId: '2000', color: '#FFFFFF', holeMask: 1, lineIndex: 1 },
+            ],
+        })]);
+        const decoded = decoder.decodeSnapshot(encoder.encodeSnapshot(snapshot));
+        const entries = decoded.players[0].garbageEntries;
+        expect(entries[0].color).toBe('#0a0b0c'); // low bytes preserved + zero-padded
+        expect(entries[1].color).toBe('#ffffff');
     });
 
     it('encodes a full 8-player snapshot far smaller than JSON', () => {

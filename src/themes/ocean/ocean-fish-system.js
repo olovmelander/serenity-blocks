@@ -651,6 +651,14 @@ export class OceanFishSystem {
         this.activeSchoolFish = 0;
         this.activeHeroFish = 0;
         this.activeFishCount = 0;
+        // WS perf: high-water mark of fish indices that have received at least
+        // one full TRS recompose. On light (non-heavy) frames the boid flocking
+        // is skipped, so school-fish velocities are untouched and their
+        // direction/scale stay bit-identical to the last heavy frame; only the
+        // translation columns change. Those already-composed school fish then
+        // take a translation-only matrix patch, skipping ~480-540 quaternion +
+        // matrix composes per light frame with byte-identical output.
+        this._matricesFullyComposed = 0;
         this.nextSchoolToActivate = 0;
         this.populationRevealAge = 0;
         this.nextPopulationRevealAt = 0.7;
@@ -663,6 +671,9 @@ export class OceanFishSystem {
         this.heroProjection = new THREE.Vector3();
         this.heroAssetProjection = new THREE.Vector3();
         this.heroAssetDirection = new THREE.Vector3(1, 0, 0);
+        // Scratch for the per-frame previous-position in updateHeroAssetLayer (avoids a .clone()
+        // Vector3 allocation per hero creature per frame).
+        this._heroAssetPrev = new THREE.Vector3();
         this.heroAssetLoader = null;
         this.heroAssetLoadPromise = null;
         this.heroAssetRecords = new Map();
@@ -1214,7 +1225,7 @@ export class OceanFishSystem {
         }
         if (this.activeFishCount > 0) {
             perf?.startSection('ocean.fish.matrices');
-            this.updateMatrices();
+            this.updateMatrices(heroHeavyTick);
             perf?.endSection('ocean.fish.matrices');
         }
 
@@ -1251,7 +1262,7 @@ export class OceanFishSystem {
             const waveZ = Math.cos(elapsed * 0.36 + creature.phase * 1.3) * 4.8;
             const targetY = creature.laneY + waveY;
             const targetZ = creature.laneZ + waveZ;
-            const previous = creature.group.position.clone();
+            const previous = this._heroAssetPrev.copy(creature.group.position);
 
             creature.group.position.x += creature.direction * speed * dt;
             creature.group.position.y += (targetY - creature.group.position.y) * clamp(dt * 0.72, 0, 1);
@@ -1557,13 +1568,17 @@ export class OceanFishSystem {
                 }
 
                 if (!skipInfluences) {
-                    environmentalInfluences.forEach((influence) => {
+                    // Indexed loop (not forEach) to avoid allocating a closure
+                    // per near-camera fish per heavy frame; the callback captured
+                    // mutable per-iteration locals so V8 could not hoist it.
+                    for (let inf = 0; inf < environmentalInfluences.length; inf++) {
+                        const influence = environmentalInfluences[inf];
                         const dx = px - influence.position.x;
                         const dy = (py - influence.position.y) * 0.48;
                         const dz = pz - influence.position.z;
                         const dist = Math.hypot(dx, dy, dz) || 1;
                         const falloff = clamp(1 - dist / influence.radius, 0, 1);
-                        if (falloff <= 0) return;
+                        if (falloff <= 0) continue;
 
                         const life = 1 - clamp(influence.age / influence.duration, 0, 1);
                         const response = falloff * life * influence.strength;
@@ -1598,7 +1613,7 @@ export class OceanFishSystem {
                                 1 + response * 0.08,
                             );
                         }
-                    });
+                    }
                 }
 
                 const floorY = this.getSeabedHeight(px, pz) + 5.5;
@@ -1683,12 +1698,29 @@ export class OceanFishSystem {
         this.positions[i3 + 2] += this.velocities[i3 + 2] * dt;
     }
 
-    updateMatrices() {
+    updateMatrices(heavyTick = true) {
+        const composedHighWater = this._matricesFullyComposed;
         for (let i = 0; i < this.activeFishCount; i++) {
             const i3 = i * 3;
             const speciesIndex = this.speciesIndices[i];
             const mesh = this.meshes[speciesIndex];
             if (!mesh) continue;
+
+            // Light-frame fast path: school fish (indices < totalSchoolFish)
+            // keep last heavy frame's velocity, so direction/scale are unchanged
+            // and only the translation columns move. Patch elements 12/13/14 of
+            // the cached instance matrix in place — byte-identical to a full
+            // recompose, minus the quaternion+compose cost. Hero fish (re-oriented
+            // every frame by updateHeroFish) and never-yet-composed fish during
+            // the reveal ramp (i >= high-water) still take the full path.
+            if (!heavyTick && i < this.totalSchoolFish && i < composedHighWater) {
+                const arr = mesh.instanceMatrix.array;
+                const o = this.localIndices[i] * 16;
+                arr[o + 12] = this.positions[i3];
+                arr[o + 13] = this.positions[i3 + 1];
+                arr[o + 14] = this.positions[i3 + 2];
+                continue;
+            }
 
             this.direction.set(
                 this.velocities[i3],
@@ -1709,8 +1741,14 @@ export class OceanFishSystem {
             mesh.setMatrixAt(this.localIndices[i], this.dummy.matrix);
         }
 
+        if (this.activeFishCount > composedHighWater) {
+            this._matricesFullyComposed = this.activeFishCount;
+        }
+
+        // Only re-upload buffers that actually hold active instances; empty
+        // species meshes (count 0 during the reveal ramp) are skipped.
         this.meshes.forEach((mesh) => {
-            if (mesh) mesh.instanceMatrix.needsUpdate = true;
+            if (mesh && mesh.count > 0) mesh.instanceMatrix.needsUpdate = true;
         });
     }
 

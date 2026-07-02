@@ -211,22 +211,24 @@ export class StormDirector {
         this.accent.b += (this._targetAccent.b - this.accent.b) * k;
     }
 
-    /** Snapshot for consumers / debug. */
+    /** Snapshot for consumers / debug. Reuses ONE object (mutated in place) so the
+     * per-frame theme→effect push allocates nothing — avoids steady GC pressure / stutter.
+     * Consumers read it the same frame, so in-place reuse is safe. */
     getState() {
-        return {
-            intensity: this.intensity,
-            act: this.act,
-            actProgress: this.actProgress,
-            gust: this.gust,
-            gustDir: this.gustDir,
-            whiteout: this.whiteout,
-            flare: this.flare,
-            kick: this.kick,
-            trauma: this.trauma,
-            vortex: this.vortex,
-            accent: this.accent,
-            accentHex: this.accentHex,
-        };
+        const s = this._stateOut || (this._stateOut = {});
+        s.intensity = this.intensity;
+        s.act = this.act;
+        s.actProgress = this.actProgress;
+        s.gust = this.gust;
+        s.gustDir = this.gustDir;
+        s.whiteout = this.whiteout;
+        s.flare = this.flare;
+        s.kick = this.kick;
+        s.trauma = this.trauma;
+        s.vortex = this.vortex;
+        s.accent = this.accent;
+        s.accentHex = this.accentHex;
+        return s;
     }
 
     reset() {

@@ -169,7 +169,12 @@ export class LobbyBrowser {
         this.container.classList.remove('hidden');
         await this.refresh();
 
-        // Auto-refresh every 5 seconds
+        // Auto-refresh every 5 seconds. Clear any prior handle first so a second
+        // show() (e.g. the ?localMp=browse cold start, where mode-activate already
+        // showed the browser) doesn't orphan the previous interval.
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
         this.refreshInterval = setInterval(() => this.refresh(), 5000);
     }
 
@@ -241,7 +246,18 @@ export class LobbyBrowser {
             const condition = lobby.endCondition || 'frags';
             const pct = Math.min(100, Math.round((current / max) * 100));
             const joinable = this.canJoinLobby(lobby);
-            const disabledLabel = status === 'playing' ? 'In Progress' : 'Full';
+            // An IN-PROGRESS game with a free slot can be DROPPED INTO: you join as a waiting
+            // player and spawn at the next round (same shared seed). Reuses the .btn-join path.
+            const canDropIn = status === 'playing' && current < max;
+            let actionBtn;
+            if (joinable) {
+                actionBtn = `<button class="btn btn-sm btn-join" data-lobby-id="${lobby.id}">Join</button>`;
+            } else if (canDropIn) {
+                actionBtn = `<button class="btn btn-sm btn-join btn-dropin" data-lobby-id="${lobby.id}" title="Join now — you'll spawn at the start of the next round">Join (next round)</button>`;
+            } else {
+                const disabledLabel = status === 'finished' ? 'Finished' : 'Full';
+                actionBtn = `<button class="btn btn-sm btn-disabled" disabled>${disabledLabel}</button>`;
+            }
 
             return `
       <div class="lobby-item" data-lobby-id="${lobby.id}">
@@ -260,10 +276,8 @@ export class LobbyBrowser {
           <span class="status-badge status-${status}">${this.getStatusText(status)}</span>
         </span>
         <span class="col-action">
-          ${joinable
-        ? `<button class="btn btn-sm btn-join" data-lobby-id="${lobby.id}">Join</button>`
-        : `<button class="btn btn-sm btn-disabled" disabled>${disabledLabel}</button>`
-}
+          ${actionBtn}
+          <button class="btn btn-sm btn-watch" data-lobby-id="${lobby.id}" title="Watch this match as a spectator">👁 Watch</button>
         </span>
       </div>
     `;
@@ -272,8 +286,15 @@ export class LobbyBrowser {
         // Add join button listeners
         listEl.querySelectorAll('.btn-join').forEach((btn) => {
             btn.addEventListener('click', (e) => {
-                const { lobbyId } = e.target.dataset;
+                const { lobbyId } = e.currentTarget.dataset;
                 this.joinLobby(lobbyId);
+            });
+        });
+        // Watch (spectate) — available even when a lobby is full / in progress.
+        listEl.querySelectorAll('.btn-watch').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                const { lobbyId } = e.currentTarget.dataset;
+                this.joinLobby(lobbyId, { asSpectator: true });
             });
         });
     }
@@ -322,18 +343,19 @@ export class LobbyBrowser {
     /**
    * Join a lobby
    */
-    async joinLobby(lobbyId) {
+    async joinLobby(lobbyId, options = {}) {
         try {
-            console.log(`🚀 Joining lobby: ${lobbyId}`);
+            const asSpectator = !!options.asSpectator;
+            console.log(`🚀 ${asSpectator ? 'Watching' : 'Joining'} lobby: ${lobbyId}`);
 
             if (this.onJoinLobby) {
-                await this.onJoinLobby(lobbyId);
+                await this.onJoinLobby(lobbyId, { asSpectator });
             }
 
             this.hide();
         } catch (err) {
             console.error('Failed to join lobby:', err);
-            alert(`Failed to join lobby: ${err.message}`);
+            alert(`Failed to ${options.asSpectator ? 'watch' : 'join'} lobby: ${err.message}`);
         }
     }
 

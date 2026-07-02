@@ -83,7 +83,11 @@ import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
-import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from './ui/cinematic-loading-overlay.js';
+import {
+    showCinematicLoadingOverlay,
+    dismissCinematicLoadingOverlay,
+    setCinematicLoadingOverlayBuilding,
+} from './ui/cinematic-loading-overlay.js';
 // Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
 // Side-effect import: self-initialises on the `start` modal.
 import './ui/menu-card-interactions.js';
@@ -631,11 +635,9 @@ function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = {}) {
     };
 }
 
-function updateStartupShellStatus(statusText) {
-    const shellStatus = document.getElementById('startup-shell-status');
-    if (shellStatus && statusText) {
-        shellStatus.textContent = statusText;
-    }
+function updateStartupShellStatus() {
+    // No-op. The studio ident is a pure logo splash — the loading status line was
+    // removed. Kept as a harmless no-op so existing call sites don't break.
 }
 
 async function reportDesktopStartupPhase(phase, payload = {}) {
@@ -649,6 +651,40 @@ async function reportDesktopStartupPhase(phase, payload = {}) {
 
 let startupShellDismissed = false;
 let startupShellReadyReported = false;
+let startupShellShownAt = 0;
+
+/**
+ * If a studio-logo image `src` is set on #startup-logo-image, reveal it and hide the
+ * text placeholder — lets branding be swapped with just an HTML src, no JS edits.
+ */
+function initStartupLogo() {
+    const img = document.getElementById('startup-logo-image');
+    if (!img) return;
+    const src = (img.getAttribute('src') || '').trim();
+    if (src) {
+        img.hidden = false;
+        // Hide the whole text placeholder (mark + glow + name + sheen) when a real
+        // studio logo image is provided.
+        ['.startup-logo__markwrap', '.startup-logo__name'].forEach((sel) => {
+            const el = document.querySelector(sel);
+            if (el) el.style.display = 'none';
+        });
+    }
+}
+
+/**
+ * Ensure the studio-logo splash is shown for at least `ms` so it reads as an
+ * intentional ident (not a flash) even when boot/warm is fast.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function waitForStartupLogoMinVisible(ms = 4000) {
+    if (!startupShellShownAt) return Promise.resolve();
+    const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const remaining = ms - (now - startupShellShownAt);
+    if (remaining <= 0) return Promise.resolve();
+    return new Promise((resolve) => { setTimeout(resolve, remaining); });
+}
 
 async function revealStartupShell() {
     if (startupShellReadyReported) {
@@ -656,12 +692,16 @@ async function revealStartupShell() {
     }
 
     document.body.classList.add('startup-shell-active');
+    startupShellShownAt = typeof performance !== 'undefined' && performance.now
+        ? performance.now()
+        : Date.now();
+    initStartupLogo();
     await onNextPaint();
     startupShellReadyReported = true;
     await reportDesktopStartupPhase('startup-shell-ready');
 }
 
-function dismissStartupShell(reason = 'ready') {
+function dismissStartupShell(reason = 'ready', options = {}) {
     if (startupShellDismissed) {
         return;
     }
@@ -674,11 +714,31 @@ function dismissStartupShell(reason = 'ready') {
         return;
     }
 
+    // Quick handoff: the WebGPU particle warp is taking over the reveal, so we only
+    // need a fast opacity fade of the ident to expose the warp's diamond beneath —
+    // NOT the ~2.75s CSS "Diamond Ignition → Nebula Birth" develop-out.
+    if (options.quick === true) {
+        shell.classList.add('is-warp-out');
+        performanceMonitor.recordEvent('startup_shell_dismissed', { reason, quick: true });
+        // Outlast the 420ms cross-dissolve so the opaque shell covers the whole handoff
+        // (no black frame can flash between shell-gone and warp-still-brightening).
+        setTimeout(() => { shell.remove(); }, 620);
+        return;
+    }
+
     shell.classList.add('is-hidden');
     performanceMonitor.recordEvent('startup_shell_dismissed', { reason });
+    // Drop will-change on the promoted exit layers just before removal so they don't
+    // keep taxing the compositor if the node lingers.
+    setTimeout(() => {
+        shell.querySelectorAll('.startup-logo, .startup-logo__mark, .startup-logo__glow, .startup-shell__bloom, .startup-shell__spotlight, .startup-shell__ember')
+            .forEach((el) => { el.style.willChange = 'auto'; });
+    }, 2800);
+    // Outlast the ~2.75s "Diamond Ignition → Nebula Birth" reveal so the shell (and its
+    // white-out) isn't yanked mid-develop-out — which would pop a hard cut/black.
     setTimeout(() => {
         shell.remove();
-    }, 260);
+    }, 2900);
 }
 
 /**
@@ -848,22 +908,33 @@ class SerenityBlocks {
         this.startBackgroundScene();
     }
 
+    /**
+     * Mount the cosmic cursor. Idempotent — safe to call EARLY (during the boot splash,
+     * so the cursor is visible from the very start) AND from the deferred menu-idle path.
+     * Cheap when idle (throttled rAF, only paints on pointer movement) and it still honors
+     * the customCursorEnabled setting via the cursor's own shouldRender() gate.
+     */
+    mountCustomCursor() {
+        if (this.customCursor) {
+            return;
+        }
+        this.customCursor = new CustomCursor({
+            settingsManager: this.settingsManager,
+        });
+        this.customCursor.mount();
+        this.customCursor.applySettings(this.settingsManager.get());
+        this.cleanupHandlers.push(() => {
+            this.customCursor?.destroy?.();
+            this.customCursor = null;
+        });
+    }
+
     initializeDeferredUiSystems() {
         if (typeof window !== 'undefined' && !window.breathingIndicator) {
             window.breathingIndicator = initEnhancedBreathingIndicator();
         }
 
-        if (!this.customCursor) {
-            this.customCursor = new CustomCursor({
-                settingsManager: this.settingsManager,
-            });
-            this.customCursor.mount();
-            this.customCursor.applySettings(this.settingsManager.get());
-            this.cleanupHandlers.push(() => {
-                this.customCursor?.destroy?.();
-                this.customCursor = null;
-            });
-        }
+        this.mountCustomCursor();
 
         // Game-wide cosmic cursor over dropdowns: NON-DESTRUCTIVE overlay enhancement
         // for every <select> (now + future). Leaves each menu's native select box and
@@ -961,6 +1032,19 @@ class SerenityBlocks {
         }, {
             delayMs: 120,
             timeout: 2200,
+        });
+
+        // AAA "compile shaders during the loading screen" pattern: after the initial
+        // theme is loaded and the intro reveal has settled, warm the first gameplay
+        // theme's WebGPU pipelines in the background (hidden, non-disruptive) so the
+        // first mode entry is an instant ~15ms resume instead of a ~1s cold createScene
+        // freeze under the loading overlay. Best-effort — the loading-overlay calm-hold
+        // still covers any theme that isn't warm yet. Disable with ?noThemeWarm=1.
+        this.scheduleDeferredStartupTask('initial-theme-prewarm', async () => {
+            await this.warmInitialThemeForFirstEntry();
+        }, {
+            delayMs: 1800,
+            timeout: 12000,
         });
 
         this.scheduleDeferredStartupTask('main-menu-player-card', async () => {
@@ -1363,9 +1447,21 @@ class SerenityBlocks {
     handleVisibilityChange(isVisible) {
         console.log(`[Visibility] Tab ${isVisible ? 'visible' : 'hidden'}, behavior: ${this.backgroundTabBehavior}`);
 
+        // ONLINE MP carve-out: while a live online match is active the game must NEVER pause or
+        // throttle (pausing/freezing the sim desyncs the netcode and can trigger false host
+        // migration). Keep everything running regardless of the configured background behavior.
+        let onlineMatchLive = false;
+        try {
+            const mode = this.gameModeManager?.getCurrentMode?.();
+            onlineMatchLive = !!(mode && mode.isInMatch
+                && this.gameModeManager?.getCurrentModeId?.() === GAME_MODES.ONLINE_MULTIPLAYER);
+        } catch (e) { /* default false */ }
+
         if (isVisible) {
             // Tab became visible - resume full rendering
             this.resumeFullRendering();
+        } else if (onlineMatchLive) {
+            console.log('[Visibility] Online match live — never pausing/throttling (netcode sync)');
         } else {
             // Tab became hidden - apply throttling based on behavior
             switch (this.backgroundTabBehavior) {
@@ -2685,6 +2781,146 @@ class SerenityBlocks {
     }
 
     /**
+     * Race a promise against a time budget that RESOLVES (never rejects) on timeout,
+     * so a slow/hung step can never stall boot. Used for the pre-intro theme warm.
+     * @param {Promise} promise
+     * @param {number} ms
+     * @param {string} label
+     * @returns {Promise<void>}
+     */
+    _withStartupBudget(promise, ms, label) {
+        let timer;
+        return Promise.race([
+            Promise.resolve(promise).catch((error) => {
+                console.warn(`[Main] ${label} failed (non-fatal):`, error?.message || error);
+            }),
+            new Promise((resolve) => {
+                timer = setTimeout(() => {
+                    console.warn(`[Main] ${label} exceeded ${ms}ms budget — continuing boot`);
+                    resolve();
+                }, ms);
+            }),
+        ]).finally(() => clearTimeout(timer));
+    }
+
+    /**
+     * AAA "compile shaders during the studio-logo / loading splash" step: while the
+     * startup splash covers the screen and the intro renderer has NOT started yet
+     * (uncontested GPU), load + fully warm the first gameplay theme's WebGPU pipelines
+     * and park it, so the first mode entry is an instant resume. Fully time-budgeted so
+     * it can never stall boot; on timeout/failure the deferred warm + loading-overlay
+     * calm-hold still cover entry. Disable with ?noThemeWarm=1.
+     * @returns {Promise<void>}
+     */
+    async prepareFirstThemeBeforeIntro() {
+        try {
+            // LOAD + fully WARM the selected theme BEFORE the intro/warp, on the uncontested
+            // GPU, so first mode entry is an instant resume. This keeps the theme's WebGPU
+            // renderer alive during the warp — SAFE now because the warp REUSES the intro's
+            // GPUDevice (BootWarpTransition({ device })), so it's theme-device + shared-intro/
+            // warp-device = 2 contexts (works), not 3 (which blanked the warp on heavy themes).
+            await this._withStartupBudget(this.loadInitialTheme(), 6500, 'pre-intro initial theme load');
+
+            if (typeof window !== 'undefined') {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.get('noThemeWarm') === '1') {
+                    return; // skip only the warm; theme is already loaded above
+                }
+            }
+
+            // Finish the ident REVEAL on the uncontested GPU, then flip the splash to a STATIC
+            // hold (.sb-lit) BEFORE the heavy warm so the GPU-saturating compile can't stutter
+            // the splash animation.
+            await this._finishStartupRevealBeforeWarm();
+
+            // Generous budget (15s) so heavy themes (neon-district) actually FINISH compiling
+            // and stabilize before the warp — the user accepts a longer logo splash for this.
+            await this._withStartupBudget(this.warmInitialThemeForFirstEntry(), 15000, 'pre-intro theme warm');
+        } catch (error) {
+            console.warn('[Main] prepareFirstThemeBeforeIntro failed (non-fatal):', error);
+        }
+    }
+
+    /**
+     * Wait until the studio-ident entrance reveal (~1.65s) has played out on the
+     * uncontested GPU, then add `.sb-lit` to freeze the splash into a fully-lit static
+     * hold (parks every reveal animation + drops will-change). Called right before the
+     * GPU-heavy theme warm so nothing animated competes with the saturated GPU process.
+     * @returns {Promise<void>}
+     */
+    async _finishStartupRevealBeforeWarm() {
+        try {
+            const REVEAL_MS = 1650;
+            if (startupShellShownAt) {
+                const nowMs = typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now();
+                const remaining = REVEAL_MS - (nowMs - startupShellShownAt);
+                if (remaining > 0) {
+                    await new Promise((resolve) => { setTimeout(resolve, remaining); });
+                }
+            }
+            const shell = document.getElementById('startup-shell');
+            if (shell) {
+                shell.classList.add('sb-lit');
+            }
+        } catch (error) {
+            // non-fatal
+        }
+    }
+
+    /**
+     * Warm the first gameplay theme's WebGPU pipelines during the idle window, so the
+     * first mode entry is an instant quick-resume instead of a ~1s cold createScene
+     * freeze. Heavy themes only (light ones already enter instantly). Best-effort +
+     * non-blocking; disable with ?noThemeWarm=1.
+     * @returns {Promise<void>}
+     */
+    async warmInitialThemeForFirstEntry() {
+        try {
+            if (typeof window !== 'undefined') {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.get('noThemeWarm') === '1') {
+                    return;
+                }
+            }
+
+            const tm = this.themeManager;
+            if (!tm || typeof tm.prewarmTheme !== 'function') {
+                return;
+            }
+
+            // The theme the first mode entry will resume — WHATEVER the user selected.
+            const themeName = tm.pendingThemeName || tm.activeThemeName;
+            if (!themeName) {
+                return;
+            }
+
+            // Warm the selected theme regardless of its performance class. Heavy WebGPU
+            // themes avoid a ~0.4-0.8s cold-build freeze on first entry; light themes are
+            // already fast, but warming them too keeps first-entry uniform for ALL ~70
+            // themes and is robust to a theme being (mis)classified or growing heavier over
+            // time. Cost for light themes is small and absorbed by the ident-hold window;
+            // prewarmTheme() has its own guards and the resume safety-net makes the worst
+            // case identical to no-warm. (Disable everything with ?noThemeWarm=1.)
+            const warmStartedAt = typeof performance !== 'undefined' && performance.now
+                ? performance.now()
+                : Date.now();
+            const warmed = await tm.prewarmTheme(themeName);
+            performanceMonitor.recordEvent('startup_theme_prewarm', {
+                theme: themeName,
+                warmed,
+                durationMs: (typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now()) - warmStartedAt,
+            });
+            console.log(`[Main] First-entry theme warm-up ${warmed ? 'complete' : 'skipped'}: ${themeName}`);
+        } catch (error) {
+            console.warn('[Main] Initial theme warm-up failed (non-fatal):', error);
+        }
+    }
+
+    /**
      * Setup event listeners
      */
     setupEventListeners() {
@@ -2772,6 +3008,20 @@ class SerenityBlocks {
 
                 this.startPostMenuRenderer();
 
+                // If the target theme was pre-warmed it resumes in ~15ms with no freeze,
+                // so let the overlay animate FULLY (its motion + the cinematic reveal).
+                // Only a cold build (un-warmed theme) needs the calm-hold that hides the
+                // motion so it doesn't stutter mid-animation. `hasStarted` on the pending
+                // (parked) instance means it's warm; missing/false => treat as cold.
+                const pendingThemeWarm = this.themeManager?.pendingThemeInstance?.hasStarted === true;
+                const useCalmHold = !modeHandlesStartupOverlay && !pendingThemeWarm;
+                if (useCalmHold) {
+                    setCinematicLoadingOverlayBuilding(true);
+                    await new Promise((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    });
+                }
+
                 // Activate the mode (sets up UI/DOM elements)
                 await this.gameModeManager.activateMode(mode);
 
@@ -2782,6 +3032,12 @@ class SerenityBlocks {
                 if (!modeHandlesStartupOverlay && this.themeManager?.waitForThemeReady) {
                     const themeReady = await this.themeManager.waitForThemeReady(3000);
                     console.log('[Main] Theme ready:', themeReady);
+                }
+
+                // Cold build complete — GPU is free again. Bring the overlay's motion
+                // back so the cinematic reveal reads as smooth, not a sudden un-freeze.
+                if (useCalmHold) {
+                    setCinematicLoadingOverlayBuilding(false);
                 }
 
                 // --- Phase 4: Sync music (theme music fades in via 1200ms fade) ---
@@ -2818,9 +3074,17 @@ class SerenityBlocks {
         window.addEventListener('startGameWithMode', startGameWithModeHandler);
 
         const startModalShownHandler = (event) => {
-            if (event?.detail?.modalName === 'start' && this.themeManager?.suspendThemes) {
-                this.themeManager.suspendThemes();
+            if (event?.detail?.modalName !== 'start' || !this.themeManager?.suspendThemes) {
+                return;
             }
+            // Only suspend the theme on the MENU (prepping for a mode entry). If a game
+            // mode is already running (e.g. Serenity, where the live theme IS the
+            // experience), suspending pauses its render loop and freezes it — so skip.
+            const activeMode = this.gameModeManager?.getCurrentMode?.();
+            if (activeMode?.isRunning) {
+                return;
+            }
+            this.themeManager.suspendThemes();
         };
         window.addEventListener('modalShown', startModalShownHandler);
 
@@ -5218,7 +5482,9 @@ async function bootstrap() {
         introAnimation.setLoadingPromise?.(appInitPromise, 'LOADING SYSTEMS');
 
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1';
+        const localMpFlag = urlParams.get('localMp');
+        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1'
+            || localMpFlag === 'host' || localMpFlag === 'join' || localMpFlag === 'watch' || localMpFlag === 'browse'; // local 2-player test auto-skips the intro
         const useMinimalPackagedStartup = shouldUseBaselinePackagedStartup();
 
         if (skipIntro || useMinimalPackagedStartup) {
@@ -5232,18 +5498,155 @@ async function bootstrap() {
             } else if (introAnimation?.dismiss) {
                 introAnimation.dismiss();
             }
+            app = await appInitPromise;
         } else {
-            // Show epic intro animation
-            dismissStartupShell('intro-begin');
+            // AAA boot order: finish app init, LOAD the first gameplay theme (no renderer
+            // yet — switchTheme defers while suspended), play the splash → warp → intro, THEN
+            // WARM the theme AFTER the warp disposes. Warming before the warp left the theme's
+            // WebGPU renderer alive as a 3rd context that blanked the warp on heavy themes;
+            // doing it after the warp keeps the warp uncontested (2 contexts) for ALL themes.
+            // "Begin" is gated on that warm so first entry is still an instant resume.
+            app = await appInitPromise;
+            app?.setBootCoordinator?.(desktopBootCoordinator);
+            // Mount the cosmic cursor NOW so it's visible from the START of the boot
+            // experience (studio ident → warp → intro), not only once the menu appears.
+            // Idempotent + cheap when idle; the deferred menu-idle path skips it if mounted.
+            app?.mountCustomCursor?.();
+            await app?.prepareFirstThemeBeforeIntro?.();
+
+            // Hold the studio ident on screen for at least 4s (reveal ~1.5s + a held
+            // beat) before the reveal transition, so it lands as a deliberate, tone-
+            // setting ident even when the warm above was fast/skipped.
+            await waitForStartupLogoMinVisible(4000);
+
             desktopBootCoordinator?.mark('intro-started', {
                 mode: 'interactive',
             });
             console.log('✨ Playing intro animation...');
-            await introAnimation.show(sharedSoundManager);
+
+            // Start the intro rendering BEHIND everything FIRST (intro canvas z:10000
+            // sits under the warp canvas z:15000 and the shell z:20000). The intro is
+            // the core experience, so it claims its WebGPU context before the optional
+            // warp does — on a context-limited GPU the warp yields, never the intro.
+            // The intro's cold setup is masked by the ident either way.
+            // Defer the "SERENITY BLOCKS" title reveal: the intro nebula warms/develops
+            // behind the covering transition, but the title's reveal animation is held so
+            // it plays FRESH once the transition (warp or CSS) finishes — see revealTitle()
+            // after the handoff below.
+            const introPromise = introAnimation.show(sharedSoundManager, { deferTitle: true });
+            await Promise.race([
+                new Promise((resolve) => {
+                    window.addEventListener('intro:phaseChanged', resolve, { once: true });
+                }),
+                new Promise((resolve) => { setTimeout(resolve, 1500); }),
+            ]);
+
+            // Masterpiece reveal: a PRE-WARMED WebGPU compute-particle transition —
+            // the ident diamond ignites into a hyperspace dive that seeds the intro
+            // nebula. Compiled up-front while the ident still covers the screen so it
+            // never hitches; falls back to the CSS crossfade reveal when WebGPU/compute
+            // is unavailable (or the GPU can't spare a second context).
+            let warpTransition = null;
+            try {
+                const { BootWarpTransition } = await import('./ui/boot-warp-transition.js');
+                if (BootWarpTransition.isSupported(urlParams)) {
+                    // The device-share decision below needs the intro renderer to actually
+                    // EXIST first: on a cold first boot (empty shader cache / slower GPU) the
+                    // intro's WebGPU init can outlast the 1500ms phase race above, and reading
+                    // the device too early returns null → the warp would create a 3rd context
+                    // (blank on heavy themes) even though a shareable device was seconds away.
+                    // rendererReady settles on WebGPU success AND on WebGL fallback/failure;
+                    // budgeted so a pathological init can never hang boot (masked by the ident).
+                    await Promise.race([
+                        introAnimation.rendererReady ?? Promise.resolve(),
+                        new Promise((resolve) => { setTimeout(resolve, 8000); }),
+                    ]);
+                    // Share the intro's GPUDevice with the warp. A warmed HEAVY theme
+                    // (electric-dreams-v3, neon-district…) already holds its own WebGPU device
+                    // for its fluid sim; a separate warp device would be the 3rd context and
+                    // (on this class of GPU) silently falls back to WebGL → an invisible warp.
+                    // Reusing the intro's device keeps it at 2 contexts (theme + intro/warp),
+                    // the count that renders reliably. getWebGPUDevice() returns null only when
+                    // the intro itself settled on WebGL — then the warp's own device is at most
+                    // the 2nd context and safe.
+                    const candidate = new BootWarpTransition({
+                        device: introAnimation.getWebGPUDevice?.() || null,
+                    });
+                    const primed = await candidate.prewarm();
+                    if (primed) {
+                        warpTransition = candidate;
+                    } else {
+                        candidate.dispose();
+                    }
+                }
+            } catch (error) {
+                console.warn('[Main] Boot warp prewarm failed (falling back to CSS reveal):', error);
+                warpTransition = null;
+            }
+
+            if (warpTransition) {
+                // Quick-fade the ident to expose the warp's diamond, then dive. The
+                // intro is warm and rendering behind the opaque warp canvas the whole
+                // time, so fading the canvas out crossfades straight into the live scene.
+                try {
+                    // SEAMLESS START: keep the ident up and start the warp FIRST so the
+                    // diamond gem ignites for ~150ms UNSEEN behind the opaque shell, then
+                    // cross-dissolve the shell out mid-ignition (p>=0.06) — the reveal lands
+                    // on a bright, brightening, size-matched gem, never the dim static hold.
+                    // SEAMLESS END (unchanged): overlap the canvas fade with the burst tail
+                    // (p>=0.80) so the live intro develops OUT OF the exploding particles.
+                    let shellDismissed = false;
+                    let fadePromise = null;
+                    let titleRevealed = false;
+                    // Warp SFX: dark deep-space hyperspace whoosh, started in sync with the
+                    // dive (build → bass-burst near the visual explosion). Honors mute/volume;
+                    // best-effort so a missing/blocked audio file never affects the visual.
+                    sharedSoundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                    await warpTransition.play({
+                        durationMs: parseInt(urlParams.get('warpDur'), 10) || 2600,
+                        onProgress: (p) => {
+                            if (!shellDismissed && p >= 0.06) {
+                                shellDismissed = true;
+                                dismissStartupShell('warp-handoff', { quick: true });
+                            }
+                            if (!fadePromise && p >= 0.8) {
+                                fadePromise = warpTransition.fadeOut(720);
+                            }
+                            // Kick the title reveal DURING the burst dissolve (not after the
+                            // canvas is fully gone) so "SERENITY BLOCKS" develops out of the
+                            // clearing warp — ~0.5s earlier than the end of the fade.
+                            if (!titleRevealed && p >= 0.9) {
+                                titleRevealed = true;
+                                introAnimation.revealTitle?.();
+                            }
+                        },
+                    });
+                    // Safety: if progress never crossed the thresholds (e.g. p=1 in one tick),
+                    // make sure the shell is gone and the canvas fades before dispose.
+                    if (!shellDismissed) dismissStartupShell('warp-handoff', { quick: true });
+                    await (fadePromise || warpTransition.fadeOut(560));
+                } catch (error) {
+                    console.warn('[Main] Boot warp play failed:', error);
+                    dismissStartupShell('warp-handoff', { quick: true });
+                } finally {
+                    warpTransition.dispose();
+                }
+            } else {
+                // Fallback: original CSS crossfade splash -> intro reveal.
+                dismissStartupShell('intro-begin');
+            }
+            // The covering transition is done (warp faded, or CSS shell dismissed) — now play
+            // the held "SERENITY BLOCKS" title reveal fresh on the settled, already-warm intro.
+            // (Theme is warmed BEFORE the warp; the warp shared the intro's GPU device, so no
+            // 3rd context blanked it. First entry is an instant resume.)
+            introAnimation.revealTitle?.();
+            await introPromise;
             console.log('✨ Intro animation complete!');
         }
 
-        app = await appInitPromise;
+        if (!app) {
+            app = await appInitPromise;
+        }
         app?.setBootCoordinator?.(desktopBootCoordinator);
         app?.markBootStage?.('core-ready', {
             appMode: desktopRuntimeConfig.appMode,
@@ -5623,6 +6026,122 @@ async function bootstrap() {
                 }
             };
 
+            // ── LOCAL 2-PLAYER TEST (one machine, NO Steam, NO second PC) ───────────────
+            // The browser / no-Steam build runs MOCK P2P over BroadcastChannel + lobbies in
+            // localStorage, so two BROWSER WINDOWS are a real host + peer running the actual
+            // netcode. Open the dev server in two windows:
+            //   window 1: http://localhost:5173/?localMp=host
+            //   window 2: http://localhost:5173/?localMp=join
+            // (or call window.localMpHost() / window.localMpJoin() in each window's console).
+            // maxPlayers defaults to 8 (FFA) so a started 2-window match still has open
+            // slots — required to exercise drop-in ("Join (next round)") + spectator/full-roster
+            // from a 3rd window (?localMp=browse). Pass {maxPlayers:2} for a strict 1v1 cap test.
+            window.localMpHost = async ({ autoStart = true, maxPlayers = 8 } = {}) => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                await onlineMode.handleCreateLobby({
+                    gameName: 'LOCAL TEST', maxPlayers, lobbyType: 'public',
+                    endCondition: 'frags', endConditionValue: 5, boringRules: false,
+                });
+                console.log('🧪 [LOCAL MP] Hosting. Open a 2nd window with ?localMp=join (or run localMpJoin()).');
+                if (autoStart) {
+                    // Auto-ready + auto-start once the peer joins → one-click into a match.
+                    const fg = onlineMode.ffaGameState;
+                    let hostReadied = false;
+                    const poll = setInterval(() => {
+                        if (!fg || fg.gamePhase === 'playing') { clearInterval(poll); return; }
+                        if (fg.players.size >= 2 && !hostReadied) { fg.setReady?.(true); hostReadied = true; }
+                        if (hostReadied && fg.allPlayersReady?.()) {
+                            clearInterval(poll);
+                            console.log('🧪 [LOCAL MP] All ready → starting match');
+                            // Start EXACTLY ONCE. lobbyWaitingRoom.startMatch() calls
+                            // gameState.startMatch() internally and returns undefined, so the old
+                            // `?? fg.startMatch()` fired a SECOND start (different seed) → two board
+                            // scenes + two state-sync loops → empty main board + opponent stutter.
+                            if (onlineMode.lobbyWaitingRoom?.startMatch) {
+                                onlineMode.lobbyWaitingRoom.startMatch();
+                            } else {
+                                fg.startMatch?.();
+                            }
+                        }
+                    }, 600);
+                    setTimeout(() => clearInterval(poll), 90000);
+                }
+                return onlineMode.currentLobbyId;
+            };
+            window.localMpJoin = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                // The host's mock lobby lands in shared localStorage; poll briefly in case
+                // the host window hasn't created it yet.
+                let lobbyId = null;
+                for (let i = 0; i < 40 && !lobbyId; i++) {
+                    const lobbies = (await onlineMode.steamNetworking?.getLobbies?.().catch(() => [])) || [];
+                    if (lobbies.length) lobbyId = lobbies[lobbies.length - 1].id;
+                    if (!lobbyId) await new Promise((r) => setTimeout(r, 500));
+                }
+                if (!lobbyId) {
+                    console.warn('🧪 [LOCAL MP] No mock lobby found — start the host window (?localMp=host) first.');
+                    return null;
+                }
+                await onlineMode.handleJoinLobby(lobbyId);
+                // Auto-ready so the host's barrier completes and the match starts.
+                setTimeout(() => onlineMode.ffaGameState?.setReady?.(true), 800);
+                console.log('🧪 [LOCAL MP] Joined', lobbyId, '— readied up.');
+                return lobbyId;
+            };
+            // Join a running/lobby match as a WATCH-ONLY spectator (no board, no input).
+            window.localMpWatch = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                let lobbyId = null;
+                for (let i = 0; i < 40 && !lobbyId; i++) {
+                    const lobbies = (await onlineMode.steamNetworking?.getLobbies?.().catch(() => [])) || [];
+                    if (lobbies.length) lobbyId = lobbies[lobbies.length - 1].id;
+                    if (!lobbyId) await new Promise((r) => setTimeout(r, 500));
+                }
+                if (!lobbyId) {
+                    console.warn('🧪 [LOCAL MP] No mock lobby found — start the host window (?localMp=host) first.');
+                    return null;
+                }
+                await onlineMode.handleJoinLobby(lobbyId, { asSpectator: true });
+                console.log('🧪 [LOCAL MP] Spectating', lobbyId);
+                return lobbyId;
+            };
+            // Open the LOBBY BROWSER without auto-joining — this is the path that actually
+            // shows the per-lobby Join / "Join (next round)" / 👁 Watch buttons. Use this
+            // (not ?localMp=join, which auto-joins past the browser) to see the buttons a
+            // late arrival gets against an already-started host.
+            window.localMpBrowse = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                await onlineMode.showLobbyBrowser?.();
+                console.log('🧪 [LOCAL MP] Lobby browser open — pick a lobby (Join / Join next round / 👁 Watch).');
+                return onlineMode.currentLobbyId || null;
+            };
+            // Debug handle: stable accessor to the live FFA game state for profiling/diagnostics.
+            window.__getFfa = () => {
+                try {
+                    return app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER)?.ffaGameState || null;
+                } catch {
+                    return null;
+                }
+            };
+            // Debug handle: the live OnlineMultiplayerMode (for the opponent watcher, render glue, etc.).
+            window.__getMode = () => {
+                try {
+                    return app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER) || null;
+                } catch {
+                    return null;
+                }
+            };
+            const __localMpRole = new URLSearchParams(window.location.search).get('localMp');
+            if (__localMpRole === 'host') {
+                window.localMpHost().catch((e) => console.error('🧪 [LOCAL MP] host auto-start failed:', e));
+            } else if (__localMpRole === 'join') {
+                window.localMpJoin().catch((e) => console.error('🧪 [LOCAL MP] join auto-start failed:', e));
+            } else if (__localMpRole === 'watch') {
+                window.localMpWatch().catch((e) => console.error('🧪 [LOCAL MP] watch auto-start failed:', e));
+            } else if (__localMpRole === 'browse') {
+                window.localMpBrowse().catch((e) => console.error('🧪 [LOCAL MP] browse failed:', e));
+            }
+
             console.log('🧪 Test functions available:');
             console.log('  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players');
             console.log('    Example: testMultiplayer(5)');
@@ -5630,6 +6149,7 @@ async function bootstrap() {
             console.log('    Example: testLobby(8)');
             console.log('  - window.testPostMatch(numPlayers) - Show match results modal');
             console.log('    Example: testPostMatch(9)');
+            console.log('  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows');
         }
     } catch (error) {
         console.error('❌ Failed to bootstrap application:', error);

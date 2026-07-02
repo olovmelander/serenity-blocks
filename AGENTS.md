@@ -24,3 +24,12 @@ session — full-journey WebGPU captures have TDR-crashed this dev machine's iGP
 The `webgpu-threejs-tsl` skill (in `~/.codex/skills/`, auto-activates on WebGPU/TSL work)
 is the TSL reference. Full details: **docs/WEBGPU_THREEJS_WORKFLOW.md**. Playground
 contract: **src/playground/README.md**.
+
+## AI SFX generation: use the shared local wrapper
+
+When generating Serenity Blocks sound-effect candidates, use the shared Stable Audio 3 Small-SFX wrapper:
+
+`C:\AI\sfx-foundry\generate-sfx.cmd -Set Zen -Event move -Variants 8`
+
+Do not call Stable Audio directly from ad hoc commands unless you are repairing the wrapper itself. Full workflow:
+**docs/SFX_GENERATION_WORKFLOW.md**.

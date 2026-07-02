@@ -13,7 +13,7 @@ import { COLORS, SHAPES } from '../constants.js';
 // Magic bytes for format identification
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
-const FORMAT_VERSION = 3; // v3: garbage type-byte packs holeMask[8:9] + variant + isLastInBurst
+const FORMAT_VERSION = 7; // v7: per-garbage-ROW attacker color appended after the grid (placed garbage shows attacker color, not grey); v6: per-player awaitingSpawn byte (late-joiner ≠ eliminated); v5: per-garbage-entry attacker color (3-byte RGB); v4: sim/snapshot ids + ordered garbage provenance metadata
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {
@@ -46,6 +46,9 @@ const GRID_ROWS = 24; // Including hidden rows
 const GRID_BYTES = GRID_COLS * GRID_ROWS / 2;
 const MAX_BINARY_PLAYERS = 8;
 const MAX_NEXT_PIECES = 32;
+const GARBAGE_ENTRY_BYTES_V3 = 7;
+const GARBAGE_ENTRY_FIXED_BYTES_V4 = 24;
+const GARBAGE_ENTRY_FIXED_BYTES_V5 = 27; // v4 fixed bytes + 3-byte RGB attacker color
 
 /**
  * Binary Encoder for game state snapshots
@@ -75,9 +78,9 @@ export class BinaryEncoder {
         const playerCount = players.length;
 
         // Calculate required buffer size
-        // Header: 12 bytes (magic + version + playerCount + gamePhase + tick + timestamp)
-        // Per player: ~2KB (max garbage 255 * 6 = 1530 bytes + grid 120 + stats/names)
-        const estimatedSize = 32 + (playerCount * 2048);
+        // Header: 20 bytes (magic + version + playerCount + gamePhase + tick + sim/snapshot ids)
+        // Per player: allow heavy garbage queues with v4 provenance metadata.
+        const estimatedSize = 64 + (playerCount * 8192);
         const buffer = new ArrayBuffer(estimatedSize);
         const view = new DataView(buffer);
         let offset = 0;
@@ -89,6 +92,8 @@ export class BinaryEncoder {
         view.setUint8(offset++, GAME_PHASE_MAP.get(snapshot.gamePhase) || 0);
         view.setUint8(offset++, 0); // Reserved byte for alignment
         view.setUint32(offset, snapshot.tick || 0, true); offset += 4; // Little-endian tick
+        view.setUint32(offset, snapshot.simTick || snapshot.tick || 0, true); offset += 4;
+        view.setUint32(offset, snapshot.snapshotSeq || snapshot.tick || 0, true); offset += 4;
 
         // === PLAYER DATA ===
         for (const player of players) {
@@ -128,7 +133,7 @@ export class BinaryEncoder {
         }
 
         const playerCount = current.players.length;
-        const estimatedSize = 32 + (playerCount * 2048); // Same buffer safety
+        const estimatedSize = 64 + (playerCount * 8192); // Same buffer safety
         const buffer = new ArrayBuffer(estimatedSize);
         const view = new DataView(buffer);
         let offset = 0;
@@ -140,6 +145,8 @@ export class BinaryEncoder {
         view.setUint8(offset++, GAME_PHASE_MAP.get(current.gamePhase) || 0);
         view.setUint8(offset++, 0); // Reserved
         view.setUint32(offset, current.tick || 0, true); offset += 4;
+        view.setUint32(offset, current.simTick || current.tick || 0, true); offset += 4;
+        view.setUint32(offset, current.snapshotSeq || current.tick || 0, true); offset += 4;
         view.setUint32(offset, baseline.tick || 0, true); offset += 4; // Baseline tick ref
 
         // === PLAYER DELTAS ===
@@ -173,6 +180,7 @@ export class BinaryEncoder {
             || current.level !== baseline.level
             || current.frags !== baseline.frags
             || current.isAlive !== baseline.isAlive
+            || (current.awaitingSpawn === true) !== (baseline.awaitingSpawn === true)
             || current.garbagePending !== baseline.garbagePending) {
             mask |= DELTA_FLAGS.STATS;
         }
@@ -240,6 +248,8 @@ export class BinaryEncoder {
             view.setUint16(offset, current.frags || 0, true); offset += 2;
             view.setUint8(offset++, current.isAlive ? 1 : 0);
             view.setUint8(offset++, Math.min(current.garbagePending || 0, 255));
+            // v6: awaitingSpawn (late joiner ≠ eliminated)
+            view.setUint8(offset++, current.awaitingSpawn ? 1 : 0);
         }
 
         if (mask & DELTA_FLAGS.DROPS) {
@@ -249,6 +259,8 @@ export class BinaryEncoder {
 
         if (mask & DELTA_FLAGS.GRID) {
             offset = this._encodeGrid(buffer, view, offset, current.grid);
+            // v7: garbage row colors ride with the grid (they change together).
+            offset = this._encodeGarbageRowColors(buffer, view, offset, current.grid);
         }
 
         if (mask & DELTA_FLAGS.PIECE) {
@@ -329,13 +341,16 @@ export class BinaryEncoder {
         offset = this._writeString(buffer, view, offset, player.name || '');
         offset = this._writeString(buffer, view, offset, player.color || '#ffffff');
 
-        // === STATS (16 bytes) ===
+        // === STATS (12 bytes) ===
         view.setUint32(offset, player.score || 0, true); offset += 4;
         view.setUint16(offset, player.lines || 0, true); offset += 2;
         view.setUint8(offset++, player.level || 1);
         view.setUint16(offset, player.frags || 0, true); offset += 2;
         view.setUint8(offset++, player.isAlive ? 1 : 0);
         view.setUint8(offset++, Math.min(player.garbagePending || 0, 255));
+        // v6: late joiner WAITING to spawn (isAlive:false but NOT eliminated). Stripping this
+        // is what made late joiners render as ELIMINATED+skull on opponents' mini-boards.
+        view.setUint8(offset++, player.awaitingSpawn ? 1 : 0);
 
         // === DROP STATE (4 bytes) ===
         view.setUint16(offset, Math.min(player.dropCounter || 0, 65535), true); offset += 2;
@@ -343,6 +358,9 @@ export class BinaryEncoder {
 
         // === GRID (120 bytes - 2 cells per byte) ===
         offset = this._encodeGrid(buffer, view, offset, player.grid);
+
+        // === GARBAGE ROW COLORS (v7+, variable: 1 + count*4 bytes) ===
+        offset = this._encodeGarbageRowColors(buffer, view, offset, player.grid);
 
         // === CURRENT PIECE (5 bytes) ===
         offset = this._encodePiece(buffer, view, offset, player.currentPiece);
@@ -401,6 +419,43 @@ export class BinaryEncoder {
     }
 
     /**
+     * v7: encode the per-garbage-ROW attacker color appended after the grid. The 4-bit packed
+     * grid carries cell TYPE only, so a garbage row's attacker color (set on its cells by
+     * insertGarbageEntries) is otherwise lost on the wire — opponent mini-boards then render
+     * placed garbage as generic grey instead of the attacker's color. Every cell in a garbage
+     * row shares one color, so we emit one (rowIndex, RGB) per row whose color isn't the default
+     * grey. Format: 1 byte count, then count * (1 byte rowIndex + 3 bytes RGB).
+     */
+    _encodeGarbageRowColors(buffer, view, offset, grid) {
+        const rows = [];
+        if (grid && Array.isArray(grid)) {
+            for (let y = 0; y < GRID_ROWS; y++) {
+                const row = grid[y];
+                if (!row) continue;
+                for (let x = 0; x < GRID_COLS; x++) {
+                    const cell = row[x];
+                    if (!cell || typeof cell !== 'object') continue;
+                    const t = cell.type || cell.shapeKey;
+                    if (t === 'GARBAGE' || t === 'CLEAN_GARBAGE') {
+                        // First garbage cell in the row carries the row's color.
+                        if (cell.color && cell.color !== '#808080') {
+                            rows.push({ rowIndex: y, color: cell.color });
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        const count = Math.min(rows.length, 255);
+        view.setUint8(offset++, count);
+        for (let i = 0; i < count; i++) {
+            view.setUint8(offset++, rows[i].rowIndex);
+            offset = this._writeColorRGB(view, offset, rows[i].color);
+        }
+        return offset;
+    }
+
+    /**
      * Get cell type index (0-15)
      */
     _getCellType(cell) {
@@ -449,13 +504,29 @@ export class BinaryEncoder {
         return offset;
     }
 
+    _clampUint(value, max = 0xFFFFFFFF) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return Math.min(max, Math.floor(n));
+    }
+
+    _attackSeqFromEntry(entry = {}) {
+        if (entry.attackSeq != null) return this._clampUint(entry.attackSeq);
+        if (typeof entry.attackId === 'number') return this._clampUint(entry.attackId);
+        if (typeof entry.attackId === 'string') {
+            const match = entry.attackId.match(/(\d+)(?!.*\d)/);
+            if (match) return this._clampUint(match[1]);
+        }
+        return 0;
+    }
+
     /**
-     * Encode a garbage entry (7 bytes)
+     * Encode a garbage entry (v4: 24 bytes, v3 legacy: 7 bytes)
      */
     _encodeGarbageEntry(buffer, view, offset, entry) {
         if (!entry) {
-            for (let i = 0; i < 7; i++) view.setUint8(offset + i, 0);
-            return offset + 7;
+            for (let i = 0; i < GARBAGE_ENTRY_FIXED_BYTES_V5; i++) view.setUint8(offset + i, 0);
+            return this._writeString(buffer, view, offset + GARBAGE_ENTRY_FIXED_BYTES_V5, '');
         }
 
         // Type byte packs flags into its spare bits (the board is 10 columns, so the
@@ -483,7 +554,42 @@ export class BinaryEncoder {
         const durationVal = Math.min(255, Math.round((entry.duration || 0) * 10));
         view.setUint8(offset++, durationVal);
 
+        view.setUint32(offset, this._attackSeqFromEntry(entry), true); offset += 4;
+        view.setUint8(offset++, this._clampUint(entry.lineIndex, 255));
+        view.setUint32(offset, this._clampUint(entry.createdSimTick), true); offset += 4;
+        view.setUint32(offset, this._clampUint(entry.sourceSimTick), true); offset += 4;
+        view.setUint16(offset, this._clampUint(entry.sourceLockSeq, 65535), true); offset += 2;
+        view.setUint16(offset, this._clampUint(entry.applyAfterLockSeq, 65535), true); offset += 2;
+
+        // v5: attacker color as 3-byte RGB so each victim's garbage rows render in the
+        // sender's player color (matching local MP) instead of a uniform grey. #000000
+        // encodes "no color" and decodes back to undefined (renderer falls back to grey).
+        offset = this._writeColorRGB(view, offset, entry.color);
+
+        offset = this._writeString(buffer, view, offset, entry.attackId || '');
+
         return offset;
+    }
+
+    /**
+     * Write a hex color string ('#rrggbb') as 3 RGB bytes. Non-hex / missing → 0,0,0.
+     */
+    _writeColorRGB(view, offset, color) {
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        if (typeof color === 'string' && color.charCodeAt(0) === 35 /* '#' */ && color.length >= 7) {
+            const rr = parseInt(color.slice(1, 3), 16);
+            const gg = parseInt(color.slice(3, 5), 16);
+            const bb = parseInt(color.slice(5, 7), 16);
+            if (!Number.isNaN(rr)) r = rr & 0xFF;
+            if (!Number.isNaN(gg)) g = gg & 0xFF;
+            if (!Number.isNaN(bb)) b = bb & 0xFF;
+        }
+        view.setUint8(offset, r);
+        view.setUint8(offset + 1, g);
+        view.setUint8(offset + 2, b);
+        return offset + 3;
     }
 
     /**
@@ -590,6 +696,13 @@ export class BinaryDecoder {
         const gamePhaseIndex = view.getUint8(offset++);
         offset++; // Reserved byte
         const tick = view.getUint32(offset, true); offset += 4;
+        let simTick = tick;
+        let snapshotSeq = tick;
+        if (version >= 4) {
+            this._assertAvailable(view, offset, 8, 'snapshot v4 header');
+            simTick = view.getUint32(offset, true); offset += 4;
+            snapshotSeq = view.getUint32(offset, true); offset += 4;
+        }
 
         const gamePhase = GAME_PHASES[gamePhaseIndex] || 'waiting';
 
@@ -604,7 +717,7 @@ export class BinaryDecoder {
         // === PLAYER DATA ===
         const players = [];
         for (let i = 0; i < playerCount; i++) {
-            const result = this._decodePlayer(buffer, view, offset);
+            const result = this._decodePlayer(buffer, view, offset, version);
             players.push(result.player);
             offset = result.offset;
         }
@@ -626,7 +739,28 @@ export class BinaryDecoder {
             winner,
             timestamp: Date.now(),
             tick,
+            simTick,
+            snapshotSeq,
         };
+    }
+
+    /**
+     * Cheaply read the baseline tick a delta packet was encoded against, WITHOUT
+     * decoding the whole delta. Lets the receiver classify a delta as current /
+     * superseded-straggler / ahead-of-baseline before committing to a full decode
+     * (and before throwing a noisy mismatch error). Returns null if not a delta.
+     *
+     * Header layout (see decodeDeltaSnapshot): magic[4] version[1] playerCount[1]
+     * gamePhase[1] reserved[1] tick[4] baselineTick[4] → baselineTick at byte 12.
+     */
+    peekDeltaBaselineTick(buffer) {
+        const view = new DataView(buffer);
+        if (view.byteLength < 16) return null;
+        if (view.getUint32(0, false) !== DELTA_MAGIC) return null;
+        const version = view.getUint8(4);
+        const baselineOffset = version >= 4 ? 20 : 12;
+        if (view.byteLength < baselineOffset + 4) return null;
+        return view.getUint32(baselineOffset, true);
     }
 
     /**
@@ -655,6 +789,13 @@ export class BinaryDecoder {
         const gamePhaseIndex = view.getUint8(offset++);
         offset++; // Reserved
         const tick = view.getUint32(offset, true); offset += 4;
+        let simTick = tick;
+        let snapshotSeq = tick;
+        if (version >= 4) {
+            this._assertAvailable(view, offset, 8, 'delta v4 header');
+            simTick = view.getUint32(offset, true); offset += 4;
+            snapshotSeq = view.getUint32(offset, true); offset += 4;
+        }
         const baselineTick = view.getUint32(offset, true); offset += 4;
 
         if (baseline.tick && baseline.tick !== baselineTick) {
@@ -677,7 +818,7 @@ export class BinaryDecoder {
                 throw new Error(`Baseline missing player at index ${i}`);
             }
 
-            const result = this._decodePlayerDelta(buffer, view, offset, basePlayer);
+            const result = this._decodePlayerDelta(buffer, view, offset, basePlayer, version);
             players.push(result.player);
             offset = result.offset;
         }
@@ -705,22 +846,28 @@ export class BinaryDecoder {
             winner,
             timestamp: Date.now(),
             tick,
+            simTick,
+            snapshotSeq,
         };
     }
 
-    _decodePlayerDelta(buffer, view, offset, basePlayer) {
+    _decodePlayerDelta(buffer, view, offset, basePlayer, version = FORMAT_VERSION) {
         const mask = this._readUint8(view, offset++, 'player delta mask');
         const p = { ...basePlayer }; // Start with clone of baseline
 
         // Stats
         if (mask & DELTA_FLAGS.STATS) {
-            this._assertAvailable(view, offset, 11, 'player delta stats');
+            this._assertAvailable(view, offset, version >= 6 ? 12 : 11, 'player delta stats');
             p.score = view.getUint32(offset, true); offset += 4;
             p.lines = view.getUint16(offset, true); offset += 2;
             p.level = view.getUint8(offset++);
             p.frags = view.getUint16(offset, true); offset += 2;
             p.isAlive = view.getUint8(offset++) === 1;
             p.garbagePending = view.getUint8(offset++);
+            // v6: awaitingSpawn (late joiner ≠ eliminated). Older streams leave the baseline value.
+            if (version >= 6) {
+                p.awaitingSpawn = view.getUint8(offset++) === 1;
+            }
         }
 
         // Drops
@@ -733,8 +880,13 @@ export class BinaryDecoder {
         // Grid
         if (mask & DELTA_FLAGS.GRID) {
             p.grid = this._decodeGrid(buffer, view, offset);
-            p.lockedPieces = this._reconstructLockedPiecesFromGrid(p.grid);
             offset += GRID_BYTES;
+            // v7: paint per-garbage-row attacker colors before rebuilding locked pieces so both
+            // the grid (rendered) and lockedPieces carry the attacker color.
+            if (version >= 7) {
+                offset = this._applyGarbageRowColors(view, offset, p.grid);
+            }
+            p.lockedPieces = this._reconstructLockedPiecesFromGrid(p.grid);
         }
 
         // Piece
@@ -765,7 +917,7 @@ export class BinaryDecoder {
             const garbageCount = this._readUint8(view, offset++, 'player delta garbage count');
             const garbageEntries = [];
             for (let i = 0; i < garbageCount; i++) {
-                const result = this._decodeGarbageEntry(buffer, view, offset);
+                const result = this._decodeGarbageEntry(buffer, view, offset, version);
                 garbageEntries.push(result.entry);
                 offset = result.offset;
             }
@@ -785,7 +937,7 @@ export class BinaryDecoder {
     /**
      * Decode a single player's state
      */
-    _decodePlayer(buffer, view, offset) {
+    _decodePlayer(buffer, view, offset, version = FORMAT_VERSION) {
         // === IDENTITY ===
         const steamId = this._readString(buffer, view, offset);
         offset = steamId.offset;
@@ -795,13 +947,18 @@ export class BinaryDecoder {
         offset = color.offset;
 
         // === STATS ===
-        this._assertAvailable(view, offset, 11, 'player stats');
+        this._assertAvailable(view, offset, version >= 6 ? 12 : 11, 'player stats');
         const score = view.getUint32(offset, true); offset += 4;
         const lines = view.getUint16(offset, true); offset += 2;
         const level = view.getUint8(offset++);
         const frags = view.getUint16(offset, true); offset += 2;
         const isAlive = view.getUint8(offset++) === 1;
         const garbagePending = view.getUint8(offset++);
+        // v6: awaitingSpawn (late joiner ≠ eliminated). Older streams default to false.
+        let awaitingSpawn = false;
+        if (version >= 6) {
+            awaitingSpawn = view.getUint8(offset++) === 1;
+        }
 
         // === DROP STATE ===
         this._assertAvailable(view, offset, 4, 'player drop state');
@@ -811,6 +968,11 @@ export class BinaryDecoder {
         // === GRID ===
         const grid = this._decodeGrid(buffer, view, offset);
         offset += GRID_BYTES;
+
+        // === GARBAGE ROW COLORS (v7+) ===
+        if (version >= 7) {
+            offset = this._applyGarbageRowColors(view, offset, grid);
+        }
 
         // === CURRENT PIECE ===
         const currentPiece = this._decodePiece(buffer, view, offset);
@@ -834,7 +996,7 @@ export class BinaryDecoder {
         const garbageCount = this._readUint8(view, offset++, 'garbage count');
         const garbageEntries = [];
         for (let i = 0; i < garbageCount; i++) {
-            const result = this._decodeGarbageEntry(buffer, view, offset);
+            const result = this._decodeGarbageEntry(buffer, view, offset, version);
             garbageEntries.push(result.entry);
             offset = result.offset;
         }
@@ -861,6 +1023,7 @@ export class BinaryDecoder {
                 level,
                 frags,
                 isAlive,
+                awaitingSpawn,
                 garbagePending,
                 dropCounter,
                 dropInterval,
@@ -904,15 +1067,26 @@ export class BinaryDecoder {
         if (cellTypeIndex <= 0) return null;
         const encodedType = CELL_TYPES[cellTypeIndex] || 'empty';
         let type = encodedType;
+        let isGarbage = false;
         if (encodedType === 'garbage') {
             type = 'GARBAGE';
+            isGarbage = true;
         } else if (encodedType === 'clean_garbage') {
             type = 'CLEAN_GARBAGE';
+            isGarbage = true;
         }
+        // Both garbage variants render as the SAME themed grey. The grid codec packs
+        // only a 4-bit type index (no per-cell color), so we must not hand the renderer
+        // a distinct literal grey for CLEAN_GARBAGE — the v4 'clean_garbage' type made it
+        // decode to COLORS.CLEAN_GARBAGE (#a0a0a0), which the board's resolveColor treats
+        // as a "custom" color and renders literally (skipping the theme), so clean vs
+        // normal garbage showed as two mismatched greys. Pin both to the GARBAGE color so
+        // resolveColor themes them uniformly. (Per-attacker garbage tint = future work,
+        // carried on the garbage ENTRY, not the packed grid.)
         return {
             type,
             shapeKey: type,
-            color: COLORS[type] || COLORS.GARBAGE || '#808080',
+            color: isGarbage ? (COLORS.GARBAGE || '#808080') : (COLORS[type] || COLORS.GARBAGE || '#808080'),
         };
     }
 
@@ -980,8 +1154,11 @@ export class BinaryDecoder {
     /**
      * Decode a garbage entry
      */
-    _decodeGarbageEntry(buffer, view, offset) {
-        this._assertAvailable(view, offset, 7, 'garbage entry');
+    _decodeGarbageEntry(buffer, view, offset, version = FORMAT_VERSION) {
+        const entryBytes = version >= 5
+            ? GARBAGE_ENTRY_FIXED_BYTES_V5
+            : (version >= 4 ? GARBAGE_ENTRY_FIXED_BYTES_V4 : GARBAGE_ENTRY_BYTES_V3);
+        this._assertAvailable(view, offset, entryBytes, 'garbage entry');
         const typeByte = view.getUint8(offset++);
         const typeVal = typeByte & 0x03;
         const holeHi = (typeByte >> 2) & 0x03;
@@ -998,6 +1175,29 @@ export class BinaryDecoder {
         const durationVal = view.getUint8(offset++);
         const duration = durationVal / 10;
 
+        let attackSeq = 0;
+        let lineIndex = 0;
+        let createdSimTick = 0;
+        let sourceSimTick = 0;
+        let sourceLockSeq = 0;
+        let applyAfterLockSeq = 0;
+        let attackIdText = '';
+        let color;
+        if (version >= 4) {
+            attackSeq = view.getUint32(offset, true); offset += 4;
+            lineIndex = view.getUint8(offset++);
+            createdSimTick = view.getUint32(offset, true); offset += 4;
+            sourceSimTick = view.getUint32(offset, true); offset += 4;
+            sourceLockSeq = view.getUint16(offset, true); offset += 2;
+            applyAfterLockSeq = view.getUint16(offset, true); offset += 2;
+            if (version >= 5) {
+                color = this._readColorRGB(view, offset); offset += 3;
+            }
+            const attackId = this._readString(buffer, view, offset);
+            attackIdText = attackId.value;
+            offset = attackId.offset;
+        }
+
         // Try to resolve attacker ID from cache
         const attackerId = this._attackerIdCache.get(attackerHash) || `unknown_${attackerHash}`;
 
@@ -1009,9 +1209,53 @@ export class BinaryDecoder {
                 duration,
                 variant,
                 isLastInBurst,
+                attackSeq,
+                attackId: attackIdText || (attackSeq ? `attack_${attackSeq}` : undefined),
+                lineIndex,
+                createdSimTick,
+                sourceSimTick,
+                sourceLockSeq,
+                applyAfterLockSeq,
+                color,
             },
             offset,
         };
+    }
+
+    /**
+     * Read 3 RGB bytes as a hex color string. All-zero (#000000) → undefined,
+     * meaning "no attacker color recorded" so the renderer falls back to grey.
+     */
+    _readColorRGB(view, offset) {
+        const r = view.getUint8(offset);
+        const g = view.getUint8(offset + 1);
+        const b = view.getUint8(offset + 2);
+        if (r === 0 && g === 0 && b === 0) return undefined;
+        const hex = (n) => n.toString(16).padStart(2, '0');
+        return `#${hex(r)}${hex(g)}${hex(b)}`;
+    }
+
+    /**
+     * v7: read the per-garbage-row colors written by BinaryEncoder._encodeGarbageRowColors and
+     * paint them onto the freshly decoded garbage cells (the 4-bit grid left them grey). Returns
+     * the new offset. Mirrors the encoder's 1-byte-count + count*(rowIndex + 3-byte RGB) layout.
+     */
+    _applyGarbageRowColors(view, offset, grid) {
+        const count = this._readUint8(view, offset++, 'garbage-row-color count');
+        for (let i = 0; i < count; i++) {
+            const rowIndex = this._readUint8(view, offset++, 'garbage-row index');
+            const color = this._readColorRGB(view, offset); offset += 3;
+            const row = grid && grid[rowIndex];
+            if (row) {
+                for (let x = 0; x < GRID_COLS; x++) {
+                    const cell = row[x];
+                    if (cell && (cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE')) {
+                        cell.color = color;
+                    }
+                }
+            }
+        }
+        return offset;
     }
 
     /**

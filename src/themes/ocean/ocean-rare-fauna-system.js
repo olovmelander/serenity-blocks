@@ -732,6 +732,11 @@ export class OceanRareFaunaSystem {
                 ? collectSharkBones(group, getModelForwardVector(record.asset?.forwardAxis))
                 : null;
 
+            // Parked pool clones sit at y=-1000 until spawned. Hide them so the
+            // renderer skips ~5 invisible skinned GLBs (draw call + vertex work)
+            // every frame; spawnCreature flips this back on. Visually identical
+            // (they are off-screen and inactive while parked).
+            group.visible = false;
             this.scene.add(group);
 
             this.instancePool[kind].push({
@@ -1453,6 +1458,8 @@ export class OceanRareFaunaSystem {
         const { animationActions } = poolItem;
         const { bones } = poolItem;
 
+        group.visible = true;
+
         const path = this.createPath(kind, variant);
         const duration = randRange(this.rng, definition.duration[0], definition.duration[1]);
         const scale = randRange(this.rng, definition.scale[0], definition.scale[1])
@@ -1608,6 +1615,7 @@ export class OceanRareFaunaSystem {
         if (creature.poolItem) {
             creature.poolItem.active = false;
             creature.poolItem.group.position.set(0, -1000, 0);
+            creature.poolItem.group.visible = false;
         } else {
             this.scene?.remove(creature.group);
             creature.materials.forEach((material) => material.dispose());

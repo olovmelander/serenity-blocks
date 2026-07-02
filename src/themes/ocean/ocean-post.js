@@ -137,9 +137,9 @@ export class OceanPost {
             );
         };
 
-        const sampleAbsorbed = (sampleUv) => {
+        const sampleAbsorbed = (sampleUv, precomputedDepth = null) => {
             const sample = sceneColor.sample(sampleUv);
-            const linearDepth = getLinearDepth(sampleUv);
+            const linearDepth = precomputedDepth || getLinearDepth(sampleUv);
             const absorption = clamp(
                 smoothstep(float(0.1), float(1.0), linearDepth).mul(this.uFogDensity),
                 float(0.0),
@@ -148,7 +148,13 @@ export class OceanPost {
             return vec4(mix(sample.rgb, deepWater, absorption), sample.a);
         };
 
-        const directSample = sampleAbsorbed(uv);
+        // Resolve linear scene depth at the base UV once and share the node:
+        // the direct (un-refracted) absorption sample and the fog/DOF stages
+        // below all need depth at this same UV, so a single resolve compiles to
+        // one texture fetch instead of two. The refracted sample still resolves
+        // its own depth at the offset UV.
+        const baseDepth = getLinearDepth(uv);
+        const directSample = sampleAbsorbed(uv, baseDepth);
 
         // Screen-space refraction (Medium quality and below skip this)
         const refractionEnabled = params.refractionEnabled === true;
@@ -176,8 +182,13 @@ export class OceanPost {
                 sin(uv.y.mul(34.0).add(this.uTime.mul(0.72))).mul(0.0028),
                 sin(uv.x.mul(26.0).sub(this.uTime.mul(0.58))).mul(0.0017),
             ).mul(refractionDrive);
+            // Reuse baseDepth for the refracted tap: the refraction UV offset is <0.0028, so
+            // absorption depth is effectively identical to the base UV — skips one getLinearDepth
+            // chain (depth fetch + 2 transcendental conversions) per pixel. Color still reads the
+            // offset UV. Byte-identical to the eye.
             const refractedSample = sampleAbsorbed(
                 clamp(uv.add(refractionOffset), vec2(0.0), vec2(1.0)),
+                baseDepth,
             );
             baseSample = mix(
                 directSample,
@@ -191,8 +202,6 @@ export class OceanPost {
         } else {
             baseSample = directSample;
         }
-
-        const baseDepth = getLinearDepth(uv);
 
         const gameplayWave = sin(uv.x.mul(42.0).add(this.uTime.mul(3.2))).mul(
             sin(uv.y.mul(29.0).sub(this.uTime.mul(2.6))),
@@ -216,7 +225,10 @@ export class OceanPost {
             for (let i = 0; i < POISSON_TAPS.length; i += 1) {
                 const [tx, ty] = POISSON_TAPS[i];
                 const offset = vec2(float(tx), float(ty)).mul(dofRadius);
-                dofAccum = dofAccum.add(sampleAbsorbed(uv.add(offset)).rgb);
+                // Reuse baseDepth: the DOF radius is clamped to <=dofMaxRadius (~0.0016), so linear
+                // depth is flat across the disc — drops 5 depth fetches + 5 viewZ/ortho conversions
+                // per Extreme pixel. Color still reads the offset UV. Byte-identical.
+                dofAccum = dofAccum.add(sampleAbsorbed(uv.add(offset), baseDepth).rgb);
             }
             const dofSampled = dofAccum.mul(float(1.0 / POISSON_TAPS.length));
             const sharpSampled = baseSample.rgb;
@@ -234,7 +246,15 @@ export class OceanPost {
         // Stronger at the screen edges — looking through a water lens. We feed the
         // already-DOF-blurred scene into the canonical chromaticAberration node so
         // the two effects compose naturally.
-        const chromated = chromaticAberration(focusPick, this.uChromaStrength, vec2(0.5, 0.5), 1.1);
+        // chromaticAberration() wraps its input in convertToTexture() — a FORCED full-screen RTT
+        // resolve of the whole DOF+refraction+absorption chain every frame, then 4 samples of it.
+        // Build it only on tiers that actually use CA (High/Ultra/Extreme); Low/Medium/Minimal
+        // declared it off (QUALITY_EFFECT_LIMITS.chromaticAberration=false), so skip the node +
+        // its RTT there entirely. Extreme keeps the RTT-backed node (its focusPick carries the
+        // 5-tap DOF, so inlining would re-evaluate that 3x — the RTT correctly caches it).
+        const chromated = this.chromaticAberrationEnabled
+            ? chromaticAberration(focusPick, this.uChromaStrength, vec2(0.5, 0.5), 1.1)
+            : focusPick;
 
         // ── God rays (TSL Loop) ──
         // WS 2.1: per-pixel hash dither on the start offset hides banding when

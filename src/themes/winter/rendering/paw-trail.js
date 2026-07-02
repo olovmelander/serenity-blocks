@@ -43,6 +43,7 @@ export function createPawTrail({
     const upAvg = (size[0] / res + size[1] / res) * 0.5; // world units per texel (avg)
     let dirty = true;
     let peak = 0;
+    let accDt = 0; // accumulated dt → throttle the decay loop + GPU upload
 
     /** Stamp a paw print at world (wx,wz), oriented along the unit heading (ux,uz). */
     function stamp(wx, wz, ux, uz, modelScale = 80) {
@@ -87,8 +88,13 @@ export function createPawTrail({
 
     /** Decay the whole map toward empty (framerate-independent). Call once per frame. */
     function update(dt) {
-        if (!dirty && peak < 1) return; // idle — nothing to fade or upload
-        const k = Math.exp(-Math.min(0.1, dt) / tau);
+        accDt += dt;
+        if (!dirty && peak < 1) { accDt = 0; return; } // idle — nothing to fade or upload
+        // Throttle to ~20Hz: the trail fades over ~7s, so decaying + re-uploading the 1MB
+        // texture every 3rd frame instead of every frame is imperceptible (and cuts the
+        // per-frame CPU decay loop + GPU bandwidth ~3×). New prints appear ≤50ms later — unnoticeable.
+        if (accDt < 0.05) return;
+        const k = Math.exp(-Math.min(0.25, accDt) / tau);
         let p = 0;
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i];
@@ -99,6 +105,7 @@ export function createPawTrail({
             }
         }
         peak = p;
+        accDt = 0;
         dirty = false;
         texture.needsUpdate = true;
     }

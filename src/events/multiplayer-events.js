@@ -9,6 +9,10 @@ export const MULTIPLAYER_EVENTS = {
     LINE_CLEAR: 'ffa:line-clear',
     LINE_CLEAR_IMPACT: 'ffa:line-clear-impact',
     COMBO: 'ffa:combo',
+    // Phase 1+2: an OPPONENT (non-local) player cleared lines — drives the staged
+    // flash/combo on that opponent's mini-board. Separate from LINE_CLEAR (which the
+    // local board owns) so the two never double-fire. Carries cascadeCount.
+    OPPONENT_CLEAR: 'ffa:opponent-clear',
     PIECE_LOCK: 'ffa:piece-lock',
     PLAYER_TOPPED_OUT: 'ffa:player-topped-out',
     GARBAGE_INSERTED: 'ffa:garbage-inserted',
@@ -20,6 +24,8 @@ export const MULTIPLAYER_EVENTS = {
     GAME_OVER: 'ffa:game-over',
     ROUND_OVER: 'ffa:round-over',
     PERFECT_CLEAR: 'ffa:perfect-clear',
+    JOIN_REJECTED: 'ffa:join-rejected', // host refused our join (e.g. lobby full)
+    KICKED: 'ffa:kicked', // the host kicked us from the match
 };
 
 export function emitMultiplayerEvent(event, payload) {

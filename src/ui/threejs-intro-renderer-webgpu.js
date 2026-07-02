@@ -146,6 +146,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uAudioPulse = uniform(0);
         this.uWarp = uniform(0);
         this.uTitleGlowStrength = uniform(0.24);
+        this.uTitleShaftStrength = uniform(1);
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
 
@@ -250,6 +251,16 @@ export default class ThreeJSIntroRendererWebGPU {
             console.error('[IntroWebGPU] Initialization failed:', e);
             return false;
         }
+    }
+
+    /**
+     * The live GPUDevice backing this WebGPU renderer, or null (WebGL fallback / not inited).
+     * Shared with the boot warp so the warp doesn't create a 3rd WebGPU context (which blanked
+     * the warp when a heavy theme was already warmed = 2 contexts + warp).
+     * @returns {GPUDevice|null}
+     */
+    getDevice() {
+        return this.renderer?.backend?.isWebGPUBackend ? (this.renderer.backend.device || null) : null;
     }
 
     setVisualProfile(profileId = 'cinematic_clean') {
@@ -603,7 +614,8 @@ export default class ThreeJSIntroRendererWebGPU {
         const shaft = vec3(float(0.10), float(0.55), float(0.95))
             .mul(shaftMask.mul(shaftMask))
             .mul(breathing.mul(float(0.35)).add(float(0.65)))
-            .mul(this.uGodRayStrength.add(float(0.08)));
+            .mul(this.uGodRayStrength.add(float(0.08)))
+            .mul(this.uTitleShaftStrength);
 
         // ── DoF proxy ──
         const focusMask = smoothstep(float(0.1), float(0.72), dist).mul(this.uDoFStrength.mul(float(0.6)));
@@ -1180,13 +1192,13 @@ export default class ThreeJSIntroRendererWebGPU {
             ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
                 + (breath * 0.03)
             : 0;
+        const isMenuBackground = this.isBackgroundMode || this.phase === INTRO_PHASES.MENU_BG;
         this.uGodRayStrength.value = this.quality.godRays;
-        this.uDoFStrength.value = this.quality.dof + (this.uWarp.value * 0.05);
+        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (this.uWarp.value * 0.05);
         this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
-        const menuBgGlowAttenuation = this.phase === INTRO_PHASES.MENU_BG ? 0.28 : 1.0;
-        this.uTitleGlowStrength.value = this.titleGlowEnabled
-            ? (0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02) * menuBgGlowAttenuation
-            : 0;
+        this.uTitleShaftStrength.value = isMenuBackground ? 0 : 1;
+        const titleGlowBase = 0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02;
+        this.uTitleGlowStrength.value = this.titleGlowEnabled && !isMenuBackground ? titleGlowBase : 0;
 
         if (this.particleCompute) {
             this.particleCompute.setAttractionStrength(this.quality.attraction * phase.attractionMul);
@@ -1305,8 +1317,10 @@ export default class ThreeJSIntroRendererWebGPU {
 
     applyQualitySettings() {
         this.spawnInterval = this.quality.spawnInterval;
-        this.uDoFStrength.value = this.isBackgroundMode ? this.quality.dof * 0.4 : this.quality.dof;
+        this.uDoFStrength.value = this.isBackgroundMode ? 0 : this.quality.dof;
         this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
+        this.uTitleGlowStrength.value = this.isBackgroundMode ? 0 : this.uTitleGlowStrength.value;
+        this.uTitleShaftStrength.value = this.isBackgroundMode ? 0 : 1;
 
         if (this.renderer) {
             this.renderer.setPixelRatio(this._renderPixelRatio());

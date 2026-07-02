@@ -61,6 +61,7 @@ export class CanvasBoardEffects {
         };
         this.fadeOverlayAlpha = 0;
         this.rowFlashes = [];
+        this.shockwaves = [];
         this.comboEnergy = 0;
 
         this.particles = [];
@@ -197,6 +198,39 @@ export class CanvasBoardEffects {
             this.rowFlashes = remaining;
         }
 
+        if (this.shockwaves.length > 0) {
+            const remaining = [];
+            for (let i = 0; i < this.shockwaves.length; i += 1) {
+                const wave = this.shockwaves[i];
+                if (wave.delay > 0) {
+                    wave.delay -= dtSeconds;
+                    remaining.push(wave);
+                    active = true;
+                    continue;
+                }
+
+                wave.elapsed += dtSeconds;
+                const progress = wave.elapsed / wave.duration;
+                if (progress >= 1) continue;
+
+                const eased = 1 - ((1 - progress) ** 3);
+                const radius = wave.startRadius + (wave.endRadius - wave.startRadius) * eased;
+                const alpha = wave.alpha * (1 - progress);
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.strokeStyle = toRGBA(wave.colorRGB, alpha);
+                ctx.lineWidth = wave.lineWidth * (1 - progress * 0.45);
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, radius, 0, TWO_PI);
+                ctx.stroke();
+                ctx.restore();
+
+                remaining.push(wave);
+                active = true;
+            }
+            this.shockwaves = remaining;
+        }
+
         // Particles update
         if (this.particles.length > 0) {
             const remaining = [];
@@ -298,19 +332,20 @@ export class CanvasBoardEffects {
     }
 
     triggerCombo(comboCount = 2, color = '#ffd166') {
-        this.comboEnergy = Math.min(4, comboCount * 0.65);
+        const comboValue = Math.max(1, Number(comboCount) || 1);
+        this.comboEnergy = Math.min(4, comboValue * 0.65);
         this.ensureLoop();
 
         const badge = document.createElement('div');
         badge.className = 'combo-badge';
-        badge.textContent = `${comboCount}x Combo!`;
+        badge.textContent = `${comboValue}x Combo!`;
         badge.style.position = 'absolute';
         badge.style.left = '50%';
         badge.style.top = '50%';
         badge.style.transform = 'translate(-50%, -50%) scale(0.75)';
         badge.style.padding = '6px 12px';
         badge.style.borderRadius = '12px';
-        badge.style.fontSize = `${14 + comboCount * 2}px`;
+        badge.style.fontSize = `${14 + comboValue * 2}px`;
         badge.style.fontWeight = '700';
         badge.style.color = '#1f2937';
         badge.style.background = toRGBA(parseColor(color), 0.85);
@@ -332,9 +367,76 @@ export class CanvasBoardEffects {
             }, 520);
         });
 
-        const burstSpeed = 210 + comboCount * 25;
-        const particleCount = clamp(comboCount * 22, 24, 120);
+        const burstSpeed = 210 + comboValue * 25;
+        const particleCount = clamp(comboValue * 22, 24, 120);
         this.spawnBurstParticles(this.width / 2, this.height / 2, particleCount, burstSpeed, color);
+        if (comboValue >= 2) {
+            this.triggerCascadeWave(comboValue, color);
+        }
+    }
+
+    triggerCascadeWave(count = 2, color = '#ffd166') {
+        const colorRGB = parseColor(color);
+        const maxRadius = Math.hypot(this.width, this.height) * 0.55;
+        const waveCount = count >= 4 ? 2 : 1;
+        for (let i = 0; i < waveCount; i += 1) {
+            this.shockwaves.push({
+                x: this.width / 2,
+                y: this.height / 2,
+                startRadius: this.blockSize * (1.2 + i * 0.8),
+                endRadius: maxRadius,
+                elapsed: 0,
+                delay: i * 0.08,
+                duration: 0.5 + Math.min(count, 6) * 0.035,
+                alpha: clamp(0.28 + count * 0.035, 0.25, 0.55),
+                lineWidth: this.isFocused ? 4 : 2.5,
+                colorRGB,
+            });
+        }
+        this.ensureLoop();
+    }
+
+    triggerPerfectClear(depth = 0, color = '#ffffff') {
+        const depthValue = Math.max(0, Number(depth) || 0);
+        this.triggerFlash(color, 1.2, 600);
+        this.spawnBurstParticles(
+            this.width / 2,
+            this.height / 2,
+            this.isFocused ? 48 : 32,
+            260 + Math.min(depthValue, 8) * 18,
+            '#9ff7ff',
+        );
+        this.triggerCascadeWave(Math.max(4, depthValue), '#9ff7ff');
+
+        const badge = document.createElement('div');
+        badge.className = 'perfect-clear-badge';
+        badge.textContent = 'Perfect Clear';
+        badge.style.position = 'absolute';
+        badge.style.left = '50%';
+        badge.style.top = '48%';
+        badge.style.transform = 'translate(-50%, -50%) scale(0.82)';
+        badge.style.padding = '7px 12px';
+        badge.style.borderRadius = '10px';
+        badge.style.fontSize = this.isFocused ? '18px' : '13px';
+        badge.style.fontWeight = '800';
+        badge.style.textTransform = 'uppercase';
+        badge.style.letterSpacing = '0.08em';
+        badge.style.color = '#0f172a';
+        badge.style.background = 'rgba(255, 255, 255, 0.92)';
+        badge.style.boxShadow = '0 0 22px rgba(159, 247, 255, 0.65)';
+        badge.style.opacity = '0';
+        badge.style.transition = 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease-out';
+
+        this.textLayer.appendChild(badge);
+        requestAnimationFrame(() => {
+            badge.style.opacity = '1';
+            badge.style.transform = 'translate(-50%, -95%) scale(1)';
+            setTimeout(() => {
+                badge.style.opacity = '0';
+                badge.style.transform = 'translate(-50%, -135%) scale(0.92)';
+                setTimeout(() => badge.remove(), 260);
+            }, 680);
+        });
     }
 
     triggerPieceLockPulse(color = '#6ee7b7') {
@@ -453,6 +555,7 @@ export class CanvasBoardEffects {
         this.textLayer.innerHTML = '';
         this.flash.alpha = 0;
         this.rowFlashes = [];
+        this.shockwaves = [];
         this.comboEnergy = 0;
         this.releaseParticles();
     }

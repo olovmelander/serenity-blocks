@@ -9862,6 +9862,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         this.applyRenderScale(true);
+        // pause() cancels the RAF loop but leaves `isAnimating` true, so startAnimation()'s
+        // "already running" guard would no-op and the loop would never restart (frozen
+        // theme after a pre-warm pause→resume). Reset it so the loop actually restarts.
+        this.isAnimating = false;
+        // A resuming theme is no longer pre-warming; clear the flag so the render loop
+        // doesn't keep SKIPPING its render (isPrewarming short-circuits the loop) if the
+        // pre-warm was parked mid-prewarmScene.
+        this.isPrewarming = false;
         this.startAnimation();
         return true;
     }

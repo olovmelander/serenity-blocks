@@ -756,6 +756,7 @@ export function createWinterLakeNodeMaterial(params = {}) {
     const uStorm = uniform(0); // 0..1 Living-Blizzard intensity — combos flare the ice
     const uStreakAngle = uniform(params.streakAngle ?? 0.5); // skated-ice streak direction (radians)
     const uStreakFreq = uniform(params.streakFreq ?? 130.0); // streak density
+    const uIceDepth = uniform(params.iceDepth ?? 0.045); // parallax "look into the thick ice" depth
 
     const baseUv = uv();
     const u = baseUv.x;
@@ -777,7 +778,13 @@ export function createWinterLakeNodeMaterial(params = {}) {
     const cz = v.sub(0.5).mul(2.0);
     const distCentre = clamp(length(vec2(cx, cz.mul(0.8))), 0.0, 1.0);
     const centreGlow = float(1.0).sub(smoothstep(0.0, 0.85, distCentre));
-    const iceBase = mix(uBaseColor, uLakeColor, centreGlow);
+    let iceBase = mix(uBaseColor, uLakeColor, centreGlow);
+    // PARALLAX DEPTH: faint frozen air-bubbles sampled at a VIEW-OFFSET UV so they sit BELOW
+    // the surface — the slab reads as THICK ice with internal depth, not a flat sheet. Sparse
+    // + centre-gated + parallax-shifted, so it reads as depth and never as surface grain.
+    const iceParUv = baseUv.sub(viewDir.xz.div(clamp(abs(viewDir.y), 0.22, 1.0)).mul(uIceDepth));
+    const deepBub = mx_noise_float(vec3(iceParUv.x.mul(11.0), iceParUv.y.mul(8.0), float(6.0))).mul(0.5).add(0.5);
+    iceBase = mix(iceBase, uLakeColor.mul(1.16), smoothstep(0.62, 0.9, deepBub).mul(centreGlow).mul(0.26));
 
     // Slow ripple field that wobbles every reflected band horizontally.
     const ripple = mx_noise_float(vec3(u.mul(6.0), v.mul(3.0).add(uTime.mul(0.05)), float(0.0)))

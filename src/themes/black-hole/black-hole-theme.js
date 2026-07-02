@@ -52,7 +52,10 @@ const QUALITY_PRESETS = {
         nebulaCount: 16,
         diskSegments: 80,
         burstSparkCount: 11000,
-        maxPixelRatio: 1.5,
+        // 1.25x supersampling (was 1.5x): still above native so the image stays crisp, but it cuts
+        // the whole pixel-bound pipeline (the ~50% post baseline + disk fill + all overdraw) by ~30%
+        // on high-DPR displays. This is the single biggest uniform FPS lever at Extreme.
+        maxPixelRatio: 1.25,
         bloomStrength: 0.6,
         bloomRadius: 0.8,
         bloomDownsample: 0.7,
@@ -107,6 +110,11 @@ const QUALITY_PRESETS = {
         starCount: 820,
         particleCount: 1600,
         comboParticleBudget: 3000,
+        // Fill-rate pass (2026-06-30): GPU ablation (Extreme) showed nebula count and bloom-mip
+        // resolution are NOT meaningful costs, so those earlier trims were reverted to keep the
+        // original look. The one change kept is dropping the extra additive disk glow layer
+        // (layeredDiskCount 1 -> 0): the base disk still blooms via emissive MRT, and removing the
+        // second full fbm-ring shader eliminates a real additive overdraw at High.
         nebulaCount: 5,
         diskSegments: 32,
         burstSparkCount: 2200,
@@ -129,7 +137,7 @@ const QUALITY_PRESETS = {
         burstMaxBatchFactor: 0.045,
         particleComputeInterval: 1 / 30,
         hawkingUpdateInterval: 1 / 24,
-        layeredDiskCount: 1,
+        layeredDiskCount: 0,
         sortObjects: false,
     },
     Medium: {
@@ -1003,6 +1011,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.blackHoleGroup = null;
         this.driftX = 0;
         this.driftY = 0;
+        // Reusable scratch for the per-frame drift result to avoid allocating an object every frame.
+        this._driftScratch = { x: 0, y: 0, z: 0 };
         this.driftPhaseX = this.random() * Math.PI * 2;
         this.driftPhaseY = this.random() * Math.PI * 2;
 
@@ -1053,9 +1063,13 @@ export default class BlackHoleTheme extends BaseTheme {
         const quality = this.getCurrentQualityLevel();
         switch (quality) {
         case 'Extreme':
-            return { steps: 14, fbmOctaves: 2 };
+            // Step count is the dominant cost of the volumetric disk (cost = steps x covered pixels),
+            // and the disk is the source of the frame-time spikes. Fewer steps with a larger step size
+            // keeps the same total march reach (no disk clipping) while cutting the per-pixel work that
+            // drives those spikes.
+            return { steps: 10, stepSize: 45, fbmOctaves: 2 };
         case 'Ultra':
-            return { steps: 10, fbmOctaves: 1 };
+            return { steps: 8, stepSize: 40, fbmOctaves: 1 };
         case 'High':
         default:
             return { steps: 8, fbmOctaves: 1 };
@@ -1309,7 +1323,7 @@ export default class BlackHoleTheme extends BaseTheme {
         console.log('[BlackHole] Hidden old DOM elements');
     }
 
-    computeDriftPosition(timeSeconds = this.time) {
+    computeDriftPosition(timeSeconds = this.time, out = null) {
         // Increased range from 0.35 to 0.5 to allow it to float across the full screen
         const widthRange = window.innerWidth * 0.5;
         const heightRange = window.innerHeight * 0.5;
@@ -1320,6 +1334,13 @@ export default class BlackHoleTheme extends BaseTheme {
         const y = (Math.cos(t * 0.89 + this.driftPhaseY) + Math.sin(t * 1.67 + this.driftPhaseY)) * 0.5 * heightRange;
         const z = (Math.sin(t * 0.73 + this.driftPhaseX) + Math.cos(t * 1.1 + this.driftPhaseY)) * 0.5 * depthRange;
 
+        // Write into the provided scratch object when given (hot path) to avoid per-frame allocation.
+        if (out) {
+            out.x = x;
+            out.y = y;
+            out.z = z;
+            return out;
+        }
         return { x, y, z };
     }
 
@@ -1348,13 +1369,12 @@ export default class BlackHoleTheme extends BaseTheme {
             this.innerDisk.position.y = y;
             this.innerDisk.position.z = z;
         }
-        if (this.accretionVolumeLayers.length) {
-            this.accretionVolumeLayers.forEach((layer) => {
-                layer.position.x = x;
-                layer.position.y = y;
-                layer.position.z = z;
-                this.setMaterialUniformVec3(layer?.material, 'uCenter', x, y, z);
-            });
+        for (let i = 0; i < this.accretionVolumeLayers.length; i += 1) {
+            const layer = this.accretionVolumeLayers[i];
+            layer.position.x = x;
+            layer.position.y = y;
+            layer.position.z = z;
+            this.setMaterialUniformVec3(layer?.material, 'uCenter', x, y, z);
         }
         if (this.hawkingParticles) {
             this.hawkingParticles.position.x = x;
@@ -1370,15 +1390,11 @@ export default class BlackHoleTheme extends BaseTheme {
         this.setMaterialUniformVec3(this.starfield?.material, 'uBlackHolePos', x, y, z);
         this.setMaterialUniformVec3(this.particles?.material, 'uBlackHolePos', x, y, z);
         this.setMaterialUniformVec3(this.burstSparks?.material, 'uBlackHolePos', x, y, z);
-        if (this.burstSparkBanks.length) {
-            this.burstSparkBanks.forEach((burstSparks) => {
-                this.setMaterialUniformVec3(burstSparks?.material, 'uBlackHolePos', x, y, z);
-            });
+        for (let i = 0; i < this.burstSparkBanks.length; i += 1) {
+            this.setMaterialUniformVec3(this.burstSparkBanks[i]?.material, 'uBlackHolePos', x, y, z);
         }
-        if (this.burstSparksPool.length) {
-            this.burstSparksPool.forEach((burstSparks) => {
-                this.setMaterialUniformVec3(burstSparks?.material, 'uBlackHolePos', x, y, z);
-            });
+        for (let i = 0; i < this.burstSparksPool.length; i += 1) {
+            this.setMaterialUniformVec3(this.burstSparksPool[i]?.material, 'uBlackHolePos', x, y, z);
         }
     }
 
@@ -1708,7 +1724,9 @@ export default class BlackHoleTheme extends BaseTheme {
         material.forceSinglePass = true;
 
         const instanced = new THREE.InstancedMesh(geometry, material, cloudCount);
-        instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        // Instance matrices are written once in the build loop below and never per frame (nebula
+        // motion is per-mesh rotation.z), so keep the default StaticDrawUsage — DynamicDrawUsage
+        // was a stale hint telling the driver to expect re-uploads that never come.
         instanced.frustumCulled = false;
         instanced.renderOrder = -10;
 
@@ -1800,7 +1818,11 @@ export default class BlackHoleTheme extends BaseTheme {
         this.scene.add(this.blackHoleCore);
 
         // Inner black sphere (solid event horizon) - LARGER
-        const horizonSegments = this.getCurrentQualityLevel() === 'High' ? 32 : 48;
+        // Only the top tiers carry the extra tessellation; High and below cap at 32. (This previously
+        // inverted: every tier EXCEPT High used 48, so low-end HW paid for more geometry than High on
+        // a featureless black occluder where 32 is already perfectly round at screen scale.)
+        const horizonQuality = this.getCurrentQualityLevel();
+        const horizonSegments = (horizonQuality === 'Ultra' || horizonQuality === 'Extreme') ? 48 : 32;
         const blackGeometry = new THREE.SphereGeometry(120, horizonSegments, horizonSegments);
         const blackMaterial = this.isWebGPU
             ? createEventHorizonNodeMaterial()
@@ -2557,7 +2579,12 @@ export default class BlackHoleTheme extends BaseTheme {
             || this.hawkingTargetIntensity > 1.08
             || this.photonSpherePulse > 0.08
             || this.burstFactor > 0.08;
-        if (active) return 0;
+        // Cap the active-state update rate instead of running every frame. Hawking has NO GPU
+        // compute path (unlike the other particle systems), so an interval of 0 during combos ran
+        // its ~448-particle CPU integration loop + 3 InstancedBufferAttribute uploads on EVERY
+        // frame — precisely when the GPU is busiest with the disk raymarch + burst. Bounding it to
+        // ~30 Hz (or the idle tier rate if faster) is imperceptible on these tiny background sprites.
+        if (active) return Math.min(this.qualityPreset.hawkingUpdateInterval ?? (1 / 30), 1 / 30);
         return this.qualityPreset.hawkingUpdateInterval ?? 0;
     }
 
@@ -3802,10 +3829,26 @@ export default class BlackHoleTheme extends BaseTheme {
         const animate = () => {
             if (!this.isActive) return;
 
-            const delta = this.fixedDeltaSeconds ?? this.clock.getDelta();
+            // Schedule the next frame up-front so the loop self-heals and resumes automatically
+            // after any throttled/skipped frames (matches BaseTheme.safeAnimate semantics).
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+
+            // Honor engine-wide background-tab / pause throttling that every other theme respects via
+            // safeAnimate(). When the window is hidden the engine sets isRenderingPaused (skip entirely)
+            // or isRenderingReduced (render at ~10 FPS). Skipping here stops this heavy scene from
+            // burning GPU in the background; visible-frame output is unchanged.
+            if (!this.shouldRenderFrame()) return;
+
+            // Clamp delta so a long stall (alt-tab resume, GC hitch, throttled frame) can't teleport
+            // particles/drift in a single huge step. Normal frames are far below this cap, so steady-state
+            // motion is identical.
+            const delta = this.fixedDeltaSeconds ?? Math.min(0.25, this.clock.getDelta());
             this.time += delta;
             this.updateDynamicResolution(delta);
-            void this.updateGpuTimings();
+            // updateGpuTimings is async; only invoke it when timings are actually enabled so we don't
+            // allocate a throwaway Promise + schedule a microtask every frame during normal play.
+            if (this.gpuTimings.enabled) void this.updateGpuTimings();
 
             // Smooth intensity transitions
             this.diskIntensity += (this.diskTargetIntensity - this.diskIntensity) * 0.1;
@@ -3873,12 +3916,13 @@ export default class BlackHoleTheme extends BaseTheme {
             this.setCachedUniform('innerDiskIntensity', this.diskIntensity * 1.2);
             this.setCachedUniform('innerDiskRotation', this.diskRotationSpeed * 1.5);
 
-            this.accretionVolumeLayers.forEach((layer, index) => {
+            for (let index = 0; index < this.accretionVolumeLayers.length; index += 1) {
+                const layer = this.accretionVolumeLayers[index];
                 const boost = 0.2 + index * 0.1;
                 this.setMaterialUniform(layer?.material, 'uTime', this.time * 0.8);
                 this.setMaterialUniform(layer?.material, 'uIntensity', this.diskIntensity * boost);
                 this.setMaterialUniform(layer?.material, 'uRotationSpeed', this.diskRotationSpeed * 0.6);
-            });
+            }
 
             this.setCachedUniform('hawkingTime', this.time);
             this.setCachedUniform('hawkingIntensity', this.hawkingIntensity);
@@ -3935,7 +3979,7 @@ export default class BlackHoleTheme extends BaseTheme {
             }
 
             // Black hole floating/drifting motion
-            const drift = this.computeDriftPosition(this.time);
+            const drift = this.computeDriftPosition(this.time, this._driftScratch);
             this.driftX = drift.x;
             this.driftY = drift.y;
             this.driftZ = drift.z;
@@ -4007,9 +4051,9 @@ export default class BlackHoleTheme extends BaseTheme {
             }
 
             // Subtle nebula rotation
-            this.nebulaClouds.forEach((cloud) => {
-                cloud.rotation.z += 0.0001;
-            });
+            for (let i = 0; i < this.nebulaClouds.length; i += 1) {
+                this.nebulaClouds[i].rotation.z += 0.0001;
+            }
 
             this.updateNaturalCamera(delta);
 
@@ -4045,9 +4089,6 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.renderer.clear();
                 this.renderer.render(this.scene, this.camera);
             }
-
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
         };
 
         this.animationFrameId = requestAnimationFrame(animate);

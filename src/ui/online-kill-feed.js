@@ -4,11 +4,15 @@
  * Shows recent kills/deaths and combat events in chronological order
  */
 export class OnlineKillFeed {
-    constructor(container) {
+    constructor(container, options = {}) {
         this.container = container;
         this.listContainer = null;
-        this.maxItems = 12;
-        this.itemTTL = 12000;
+        // The Battle Log is a TRANSACTIONAL, append-only record of the whole match:
+        // every entry stays for the entire match (no per-entry TTL) and we keep a
+        // generous history instead of a 12-row transient HUD that silently empties out.
+        // (Callers can opt back into the old ephemeral feed by passing maxItems/itemTTL.)
+        this.maxItems = options.maxItems ?? 200;
+        this.itemTTL = options.itemTTL ?? Infinity; // Infinity = never auto-expire
         this.items = [];
         this.expireTimer = null;
 
@@ -154,6 +158,14 @@ export class OnlineKillFeed {
         });
     }
 
+    /**
+     * Add a round divider so the transactional (cross-round) log stays readable:
+     * prior rounds' rows are kept, just separated by a "— Round N —" marker.
+     */
+    addRoundMarker(roundNumber) {
+        this._addItem({ type: 'round', roundNumber });
+    }
+
     _addItem(itemData) {
         const item = {
             ...itemData,
@@ -218,6 +230,14 @@ export class OnlineKillFeed {
                 `;
             }
 
+            if (item.type === 'round') {
+                return `
+                    <div class="${classes.join(' ')} round-divider">
+                        <span class="round-note">— Round ${this._escapeHtml(String(item.roundNumber ?? ''))} —</span>
+                    </div>
+                `;
+            }
+
             if (item.type === 'combo') {
                 const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
                 return `
@@ -268,6 +288,13 @@ export class OnlineKillFeed {
     _scheduleExpire() {
         if (this.expireTimer) {
             clearTimeout(this.expireTimer);
+        }
+
+        // Transactional mode (itemTTL = Infinity): entries never expire, so there's
+        // nothing to schedule — the log persists for the whole match.
+        if (!Number.isFinite(this.itemTTL)) {
+            this.expireTimer = null;
+            return;
         }
 
         if (this.items.length === 0) {

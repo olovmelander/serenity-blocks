@@ -19,7 +19,10 @@ import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell, session
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { appendFileSync, mkdirSync, readFileSync } from 'fs';
-import { createHash } from 'crypto';
+import {
+    createContentSecurityPolicy,
+    extractInlineScriptHashes,
+} from './content-security-policy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -29,7 +32,9 @@ const isWindows = process.platform === 'win32';
 // GPU configuration — minimal, sensible defaults
 // ---------------------------------------------------------------------------
 app.commandLine.appendSwitch('force-high-performance-gpu');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
+if (process.env.SERENITY_ENABLE_GPU_RASTERIZATION === '1') {
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+}
 app.commandLine.appendSwitch('enable-webgl');
 
 // ---------------------------------------------------------------------------
@@ -346,17 +351,9 @@ function computeInlineScriptHashes() {
     try {
         const indexPath = join(app.getAppPath(), 'dist', 'index.html');
         const html = readFileSync(indexPath, 'utf8');
-        const hashes = [];
         // Match only attribute-less classic inline scripts (<script>...</script>).
         // Module scripts are externalized by Vite to a `src` (covered by 'self').
-        const re = /<script>([\s\S]*?)<\/script>/g;
-        let m = re.exec(html);
-        while (m !== null) {
-            const digest = createHash('sha256').update(m[1], 'utf8').digest('base64');
-            hashes.push(`'sha256-${digest}'`);
-            m = re.exec(html);
-        }
-        return hashes;
+        return extractInlineScriptHashes(html);
     } catch (err) {
         console.warn('[Electron] Could not hash inline startup scripts for CSP:', err.message);
         return [];
@@ -369,37 +366,10 @@ function installContentSecurityPolicy() {
         return;
     }
 
-    const inlineScriptHashes = isPackaged ? computeInlineScriptHashes().join(' ') : '';
-    const packagedPolicy = [
-        "default-src 'self' file:",
-        `script-src 'self' file: 'wasm-unsafe-eval'${inlineScriptHashes ? ` ${inlineScriptHashes}` : ''}`,
-        "style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' file: data: https://fonts.gstatic.com",
-        "img-src 'self' file: data: blob:",
-        "media-src 'self' file: data: blob:",
-        "connect-src 'self' file: https://fonts.googleapis.com https://fonts.gstatic.com",
-        "worker-src 'self' file: blob:",
-        "object-src 'none'",
-        "base-uri 'none'",
-        "frame-src 'none'",
-    ].join('; ');
-
-    // Vite's dev server needs eval + inline + its localhost websocket for HMR.
-    const devPolicy = [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:5173",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' data: https://fonts.gstatic.com",
-        "img-src 'self' data: blob:",
-        "media-src 'self' data: blob:",
-        "connect-src 'self' http://localhost:5173 ws://localhost:5173 https://fonts.googleapis.com https://fonts.gstatic.com",
-        "worker-src 'self' blob:",
-        "object-src 'none'",
-        "base-uri 'none'",
-        "frame-src 'none'",
-    ].join('; ');
-
-    const policy = isPackaged ? packagedPolicy : devPolicy;
+    const policy = createContentSecurityPolicy({
+        mode: isPackaged ? 'packaged' : 'dev',
+        inlineScriptHashes: isPackaged ? computeInlineScriptHashes() : [],
+    });
 
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
         callback({
@@ -480,9 +450,15 @@ function createWindow() {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
-    // Window focus events → renderer
+    // Window focus events → renderer.
+    // Only report "unfocused" on a TRUE minimize — a plain focus loss (alt-tab, a
+    // second window, glancing at the other machine during an online match) must NOT
+    // throttle the renderer/game to 10 FPS mid-match. (blur fires on any focus loss;
+    // isMinimized() distinguishes a real minimize from alt-tab.)
     mainWindow.on('blur', () => {
-        emitRuntimeEvent('window-focus-changed', { focused: false });
+        if (mainWindow.isMinimized()) {
+            emitRuntimeEvent('window-focus-changed', { focused: false });
+        }
     });
     mainWindow.on('focus', () => {
         emitRuntimeEvent('window-focus-changed', { focused: true });
