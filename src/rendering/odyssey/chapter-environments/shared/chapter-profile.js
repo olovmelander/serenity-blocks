@@ -195,7 +195,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             baseColor: 0x1d4a22,
             // Creative plan Ch3 item 7: a sun-warmed chlorophyll leyline (the old lime
             // 0x9be84f clashed with the golden hour instead of belonging to it).
-            emissiveColor: 0x96a842,
+            // Masterplan D2: dimmed further (0x96a842 → 0x687d31) — live capture showed the
+            // ch3 path was the single worst figure-ground offender in the journey (a neon-green
+            // slab that out-read the whole meadow). Keeps the chlorophyll identity, recedes.
+            emissiveColor: 0x687d31,
             flowSpeed: 0.7,
             widthScale: 0.9,
         },

@@ -653,9 +653,13 @@ export function createFluidInnerTSL(
         );
         const color = mix(fallbackMagma, sampled, step(0.5, uUseTexture)).toVar();
 
+        // Locked "dormant gem" treatment — softened so a dark theme icon no longer reads as a
+        // near-black void when previewing locked chapters ahead (masterplan §2 #11): gentler
+        // ×0.60 brightness floor + lighter desaturation + a small biome-tint glow floor.
         const luma = dot(color, vec3(0.299, 0.587, 0.114));
-        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.45))));
-        color.mulAssign(mix(0.45, 1.0, oneMinus(uLocked)));
+        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.30))));
+        color.mulAssign(mix(0.60, 1.0, oneMinus(uLocked)));
+        color.addAssign(uLocked.mul(uFallbackColor).mul(0.12));
         color.addAssign(uCompleted.mul(0.15));
 
         const rim = pow(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 2.2);
@@ -764,9 +768,13 @@ export function createFluidInnerInstancedTSL(arrayTexture, uTime = uniform(0)) {
         );
         const color = mix(fallbackMagma, sampled, step(0.5, useTexture)).toVar();
 
+        // Locked "dormant gem" treatment — softened so a dark theme icon no longer reads as a
+        // near-black void when previewing locked chapters ahead (masterplan §2 #11): gentler
+        // ×0.60 brightness floor + lighter desaturation + a small biome-tint glow floor.
         const luma = dot(color, vec3(0.299, 0.587, 0.114));
-        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.45))));
-        color.mulAssign(mix(0.45, 1.0, oneMinus(uLocked)));
+        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.30))));
+        color.mulAssign(mix(0.60, 1.0, oneMinus(uLocked)));
+        color.addAssign(uLocked.mul(fallbackColor).mul(0.12));
         color.addAssign(uCompleted.mul(0.15));
         const rim = pow(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 2.2);
         color.addAssign(rim.mul(0.08));

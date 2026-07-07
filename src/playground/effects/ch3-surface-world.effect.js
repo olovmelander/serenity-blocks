@@ -30,6 +30,8 @@ import {
     createTreeLineTSL,
     createReedsTSL,
     createGreatTreeTSL,
+    createPollenTSL,
+    createWildflowersTSL,
 } from '../../rendering/odyssey/chapter-environments/surface-world.tsl.js';
 import {
     createCanonicalMountainRangeTSL,
@@ -114,10 +116,16 @@ export function create({ scene, params }) {
 
     // ── Vegetation (anchored to getTerrainHeight in-builder, lifted by offset) ─
     const liftToTerrain = (r) => { if (r.mesh) r.mesh.position.y += terrainOffsetY; };
-    place('flowers', () => createMeadowFlowersTSL(uTime, 3600), liftToTerrain);
-    place('trees', () => createTreesTSL(uTime, 26, opts), liftToTerrain);
-    place('spruces', () => createSpruceTreesTSL(uTime, 22), liftToTerrain);
-    place('tree-line', () => createTreeLineTSL(uTime, 44), liftToTerrain);
+    // Real 3D wildflowers by default; ?flowers=card for the legacy flat cross-cards. (?pollen=0.)
+    if (params.get('flowers') === 'card') {
+        place('flowers', () => createMeadowFlowersTSL(uTime, 3600), liftToTerrain);
+    } else {
+        place('flowers', () => createWildflowersTSL(uTime, 1400), liftToTerrain);
+    }
+    if (num(params, 'pollen', 1) !== 0) place('pollen', () => createPollenTSL(uTime, 900, opts));
+    place('trees', () => createTreesTSL(uTime, 16, opts), liftToTerrain);
+    place('spruces', () => createSpruceTreesTSL(uTime, 12), liftToTerrain);
+    place('tree-line', () => createTreeLineTSL(uTime, 30), liftToTerrain);
     place('reeds', () => createReedsTSL(uTime, 220), liftToTerrain);
     place('great-tree', () => createGreatTreeTSL(uTime), liftToTerrain);
 

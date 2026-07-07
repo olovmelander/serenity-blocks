@@ -574,7 +574,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.voidDome = voidDome;
 
     // Deep-violet ambient wash the camera sits inside (re-centred on the camera in
-    // update()) so the corridor between motifs never reads as dead RGB-black.
+    // update()) so the corridor between motifs never reads as dead RGB-black. Kept as a
+    // separate camera-enveloping dome — a B3 fold into the world-anchored void dome above was
+    // tried and reverted (it left the corridor corners RGB-black; see the .tsl.js note).
     const { mesh: ambientWash } = createAmbientWashTSL(uniforms.uTime, uniforms.uEnergy);
     group.add(ambientWash);
     group.userData.ambientWash = ambientWash;

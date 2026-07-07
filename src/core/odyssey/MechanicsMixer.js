@@ -147,7 +147,8 @@ export class MechanicsMixer {
     configureFromLevel(levelConfig) {
         const { mechanics } = levelConfig;
 
-        // Set base mode
+        // Set base mode (setBaseMode already clears prior overrides, so per-level config is
+        // isolated even though the engine + mixer are reused across levels — see the mixer test).
         this.setBaseMode(mechanics.baseMode || 'standard');
 
         // Apply speed overrides

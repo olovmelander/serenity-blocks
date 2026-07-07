@@ -33,6 +33,7 @@ import {
     abs,
     attribute,
     cameraPosition,
+    clamp,
     cos,
     dot,
     float,
@@ -64,6 +65,11 @@ import {
     resolveMountainTreatment,
 } from './shared/mountain-language.js';
 import { createWaterSurfaceTSL as createDeepOceanWaterSurfaceTSL } from './deep-ocean.tsl.js';
+// Real 3D per-species wildflower geometry (procedural, baked vertex colour, no GLB assets) —
+// the Midsommar theme's flora builders, ported to replace Ch3's flat cross-card blooms.
+import {
+    buildDaisy, buildButtercup, buildLupine, buildCornflower, buildPoppy,
+} from '../../../themes/summer/rendering/summer-flora.js';
 
 const SURFACE_WORLD_TERRAIN_DEPTH_OFFSET = 8;
 
@@ -71,11 +77,80 @@ const SURFACE_WORLD_TERRAIN_DEPTH_OFFSET = 8;
 // The river/lake winds along this X (carved into getTerrainHeight); the lake and the
 // waterfall feeding it sit on the same axis so the water reads as one connected system.
 const SURFACE_RIVER_CENTER_X = -20;
-// HERO: a great ancient tree on a knoll off the LEFT of the path (per the plan), anchored
-// in Z down-corridor so it reads against the sky. Y resolves to getTerrainHeight at build.
-const SURFACE_GREAT_TREE_POS = { x: 40, z: -260 };
-// Second beat: a tiered cliff waterfall feeding the lake further down-corridor.
-const SURFACE_WATERFALL_POS = { x: -64, z: -480 };
+// HERO: a great ancient tree on a knoll off the LEFT of the path, on the SUN side so the low
+// front-left sun (SURFACE_SUN_DIR) rim/back-lights its canopy (a dark, glowing-edged hero
+// silhouette) and it agrees with the camera's hero-beat aim. Anchored in Z down-corridor so it
+// reads against the sky. x=-80 is ~60u off the carved corridor so it never blocks the lane.
+const SURFACE_GREAT_TREE_POS = { x: -80, z: -250 };
+// HERO LAKE (BEAT-2): a calm basin the river feeds, wrapped + reflected by the Great Tree on
+// the opposite (left) knoll. Carved into getTerrainHeight so the water plane fills it.
+// The lake sits WITHIN the ±200 landscape mesh (getTerrainHeight only shapes the visible ground
+// there — beyond it the foothill-bridge terrain takes over and would occlude the water).
+const SURFACE_LAKE_CENTER = { x: -30, z: -150 };
+const SURFACE_LAKE_RADIUS = 72;
+// Second beat: a tiered waterfall at the far RIM of the lake (on the river axis, off the corridor
+// so its base clears the lane), tumbling toward the camera INTO the lake — river → waterfall →
+// lake reads as one connected water story, with the Great Tree on the far knoll beyond.
+const SURFACE_WATERFALL_POS = { x: -34, z: -212 };
+
+// ── Shared meadow COMPOSITION grammar (deliberate placement, NOT uniform random scatter) ─────
+// The carved river-corridor centre at depth z (mirrors the getTerrainHeight river carve). Every
+// meadow scatter pass keeps OUT of this band so the water + a thin dry trail read as clean
+// negative space — a leading line down the frame — and biases DENSITY toward the flanking banks.
+function surfaceCorridorCenter(z) {
+    // BotW re-composition: the river now THREADS the lake centre (exactly -30 at z=-150) as one
+    // gently winding stream — mountain snowmelt → lake → foreground — a single water leading line.
+    // Must stay byte-identical to the getTerrainHeight carve or carve + keep-out desync.
+    return SURFACE_LAKE_CENTER.x + Math.sin((z + 150) * 0.011) * 20;
+}
+// Deliberate meadow placement gate for (x,z): reject inside the corridor keep-out, then accept
+// with a probability that is LUSH in the banks flanking the path and thins to a sparse wing-
+// meadow with an aerial far-taper — the moving-camera equivalent of Midsommar's near-camera
+// density wedge (since here "near camera" = near the path the spline follows). `keepOut` widens
+// for taller assets (trees) so they never stand in the water/lane.
+function surfaceMeadowPlace(x, z, keepOut = 26) {
+    const lat = Math.abs(x - surfaceCorridorCenter(z));
+    if (lat < keepOut) return false;
+    const pLat = 1 - smoothstepCPU(keepOut + 14, 200, lat); // dense in the banks, ~0 far out
+    const pFar = 1 - smoothstepCPU(150, 330, Math.hypot(x, z)); // aerial far-taper into distance
+    return Math.random() < Math.max(0.12, pLat * pFar); // floor keeps a faint far-meadow
+}
+// Hero keep-out: a WIDE breathing ring around the Great Tree (BotW: the hero landmark reads
+// ALONE against the sky — no stand crowds it).
+function surfaceOffHero(x, z, r = 64) {
+    return Math.hypot(x - SURFACE_GREAT_TREE_POS.x, z - SURFACE_GREAT_TREE_POS.z) > r;
+}
+// Deliberate TREE placement gate: solid higher ground, OUT of the meandering river corridor (a
+// wider keep-out than the meadow so trunks never stand in the water/lane), and clear of the hero.
+function surfaceTreeGate(x, z, minH = 6.0, keepOut = 40) {
+    if (getTerrainHeight(x, z) < minH) return false;
+    if (Math.abs(x - surfaceCorridorCenter(z)) < keepOut) return false;
+    return surfaceOffHero(x, z);
+}
+// Curated deciduous COPSE hearts (BotW spareness — a FEW deliberate stands with wide open
+// negative space between, not a scatter): right-near + deep-right + left-near corridor framing.
+const DECIDUOUS_HEARTS = [
+    { x: 72, z: -118 }, { x: 120, z: -238 }, { x: -70, z: -96 }, { x: 44, z: -292 },
+];
+// Curated spruce COPSE hearts: the OUTCROP crown (screens the range, right third) + a far-left
+// ridge wing + a right-deep stand — dark spiky masses that frame, kept clear of the hero.
+const SPRUCE_HEARTS = [
+    { x: 74, z: -176 }, { x: -136, z: -182 }, { x: 114, z: -206 },
+];
+// Deliberate FLOWER drift PATCHES (BotW: a few concentrated blooms + open meadow between, not a
+// banks-wide carpet): east lake shore, sunlit left hill shoulder, a drift up toward the hero, and
+// a deep-right rhythm patch. { x, z, r } — filled by even-disc sampling, terrain-gated.
+const SURFACE_FLOWER_PATCHES = [
+    { x: 56, z: -150, r: 24 }, { x: -104, z: -108, r: 26 },
+    { x: -56, z: -196, r: 20 }, { x: 92, z: -232, r: 20 },
+];
+// Even-disc sample within a random patch (sqrt(rand) radius = uniform area).
+function surfaceFlowerPatchSample() {
+    const p = SURFACE_FLOWER_PATCHES[Math.floor(Math.random() * SURFACE_FLOWER_PATCHES.length)];
+    const a = Math.random() * Math.PI * 2;
+    const rr = Math.sqrt(Math.random()) * p.r;
+    return { x: p.x + Math.cos(a) * rr, z: p.z + Math.sin(a) * rr };
+}
 
 export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     sourceChapter: 2,
@@ -234,17 +309,22 @@ function smoothstepCPU(min0, max0, value) {
 export function getTerrainHeight(x, z) {
     const d = Math.sqrt(x * x + z * z);
 
-    // Layered rolling hills — broad swells + the original fine ripples for real volume.
-    let noise = Math.sin(x * 0.018) * Math.cos(z * 0.021) * 11; // broad rolling swells
-    noise += Math.sin(x * 0.05) * Math.sin(z * 0.05) * 5; // original mid ripple
-    noise += Math.sin(x * 0.1 + z * 0.2) * 2; // original fine ripple
-    noise += Math.cos(x * 0.034 - z * 0.028) * 4; // cross-roll for non-repeating hills
+    // River corridor computed FIRST (byte-identical to surfaceCorridorCenter) so the far ridgeline
+    // can be NOTCHED where the river runs — a valley-mouth the snowmelt stream exits.
+    const riverCenter = SURFACE_LAKE_CENTER.x + Math.sin((z + 150) * 0.011) * 20;
+    const channel = 1 - smoothstepCPU(0, 46, Math.abs(x - riverCenter));
 
-    // Broad valley swell + a far RIDGELINE band (gated by distance so it only rises on the
-    // horizon, leaving the near valley readable). Gives the chapter a real hill silhouette.
+    // Layered rolling hills — broad swells + CALMED fine ripples (painterly larger forms, not
+    // busy micro-bumps) + a broad valley swell.
+    let noise = Math.sin(x * 0.018) * Math.cos(z * 0.021) * 11; // broad rolling swells
+    noise += Math.sin(x * 0.05) * Math.sin(z * 0.05) * 3; // mid ripple (calmed 5→3)
+    noise += Math.sin(x * 0.1 + z * 0.2) * 1; // fine ripple (calmed 2→1)
+    noise += Math.cos(x * 0.034 - z * 0.028) * 4; // cross-roll for non-repeating hills
     noise += Math.sin(x * 0.012) * Math.cos(z * 0.009) * 7; // broad valley swell
+    // Far RIDGELINE band (horizon hill silhouette), NOTCHED where the river runs so a gap in the
+    // foothills reads as the stream's source.
     const ridgeline = Math.sin(x * 0.009) * Math.cos(z * 0.006) * 22;
-    noise += ridgeline * smoothstepCPU(120, 260, d);
+    noise += ridgeline * smoothstepCPU(120, 260, d) * (1 - channel * 0.75);
 
     const viewDist = 180.0;
     let distFactor = Math.min(d / viewDist, 1.0);
@@ -254,13 +334,22 @@ export function getTerrainHeight(x, z) {
 
     let h = baseH + (noise * smoothstepCPU(50, 100, d));
 
-    // Carve a winding river channel into the valley floor: a smooth low corridor whose
-    // center bends gently along -Z. The carve depth tapers in with distance so the near
-    // foreground shore reads first, then the channel opens INTO the frame toward the lake.
-    const riverCenter = SURFACE_RIVER_CENTER_X + Math.sin(z * 0.012) * 26;
-    const channel = 1 - smoothstepCPU(0, 46, Math.abs(x - riverCenter));
-    const channelDepth = channel * (16 + smoothstepCPU(-40, -360, z) * 10);
+    // Carve the winding river channel — a stream GROWING deeper toward the far mountains (the
+    // snowmelt source) so it reads as one connected water leading line threading the lake.
+    const channelDepth = channel * (14 + smoothstepCPU(-60, -200, z) * 12);
     h -= channelDepth;
+
+    // HERO LAKE basin — the river's mid-course pool (the river now threads its centre).
+    const lakeD = Math.hypot(x - SURFACE_LAKE_CENTER.x, z - SURFACE_LAKE_CENTER.z);
+    h -= (1 - smoothstepCPU(0, SURFACE_LAKE_RADIUS, lakeD)) * 34;
+
+    // Triangle-rule LANDMARKS (BotW three-point frame): a smooth KNOLL lifting the hero Great Tree
+    // (left third) so it reads against the sky, + a steeper rocky OUTCROP (right third, crowned
+    // with spruce) that screens the range and balances the hero. Both clear of the river + lake.
+    const knollD = Math.hypot(x - SURFACE_GREAT_TREE_POS.x, z - SURFACE_GREAT_TREE_POS.z);
+    h += (1 - smoothstepCPU(0, 42, knollD)) * 16;
+    const outD = Math.hypot(x - 74, z + 176);
+    h += (1 - smoothstepCPU(0, 34, outD)) * 22;
 
     if (h < -2.0) {
         h = -15.0;
@@ -319,6 +408,7 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     const uMid = uniform(new THREE.Color(0x2f86d8)); // Clear, SATURATED mid azure (was washed)
     const uHorizon = uniform(new THREE.Color(0xf0b878)); // Warm golden-hour horizon
     const uHaze = uniform(new THREE.Color(0xf2d49e)); // Warm ground-haze band (waterline)
+    const uPeach = uniform(new THREE.Color(0xf8a898)); // Saturated sunset-peach mid-band (Midsommar)
     const uSunCore = uniform(new THREE.Color(0xffe6a8)); // Soft warm sun core (not pure white)
     const uSunGlow = uniform(new THREE.Color(0xffc26a)); // Golden halo around the sun
     const uOpacity = uniform(1);
@@ -348,6 +438,11 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     const horizonBand = smoothstep(0.0, 0.16, h); // warm hugs the horizon line
     const zenithBand = pow(h, float(0.5)); // pull saturated blue up into the dome
     let sky = mix(horizonCol, midCol, horizonBand);
+    // Saturated PEACH mid-stop (Midsommar): a distinct golden-hour band just above the horizon,
+    // between the warm horizon and the azure mid — the split-complementary warmth that makes the
+    // reference sky glow. Faded out toward winter (the cool arc reclaims the low sky).
+    const peachBand = smoothstep(0.02, 0.14, h).mul(oneMinus(smoothstep(0.14, 0.34, h)));
+    sky = mix(sky, uPeach, peachBand.mul(oneMinus(winterT.mul(0.85))).mul(0.5));
     sky = mix(sky, zenithCol, zenithBand);
 
     // Warm ground-haze band hugging the horizon line (very low, soft): warms the waterline
@@ -361,8 +456,11 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     // off — the core peaks at ~0.9*coreColor, never a clipped white hole.
     const sunDir = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
     const sunDot = dot(dir, sunDir);
-    const sunCore = pow(smoothstep(0.9955, 1.0, sunDot), float(1.6)).mul(0.9);
-    const sunHalo = pow(smoothstep(0.80, 1.0, sunDot), float(2.4)).mul(0.40);
+    // Brighter hero sun (overshoot): the RAW cap kept the core ≲0.9 so it never blew out in the
+    // ungraded playground, but in-game ACES then maps it to a dim ~0.6 — so lift the core to ~1.0
+    // and the halo up so the golden sun survives the tonemap and reads as the light source.
+    const sunCore = pow(smoothstep(0.9955, 1.0, sunDot), float(1.6)).mul(1.0);
+    const sunHalo = pow(smoothstep(0.80, 1.0, sunDot), float(2.4)).mul(0.52);
     // Winter cools and dims the in-dome sun (the pale #DCE8FF disc of the snow line).
     const domeSunCore = mix(uSunCore, vec3(0.863, 0.91, 1.0), winterT.mul(0.8));
     const domeSunGlow = mix(uSunGlow, vec3(0.74, 0.82, 0.94), winterT.mul(0.8));
@@ -417,16 +515,132 @@ function configureChapter2WaterSurface(part, {
 // and bloom tagging as Chapter 2; only transform/scale change so the surface-world terrain
 // has enough coverage after the breach. The water renders behind the terrain so the
 // additive Chapter 2 material cannot flood the green land.
+// Golden-hour reflective LAKE (Swedish-Forest-inspired, FULLY PROCEDURAL — no render target): a
+// calm cool-teal water body that warms into a peach-gold reflected sky at the grazing rim (the
+// reduced-fresnel warm-reflectance trick, rf0≈0.09 — NOT a mirror-blue ocean), with a camera-
+// relative golden SUN-GLITTER path, faked dark shore/tree silhouette reflections on the far shore,
+// gentle drifting ripples and a soft radial shore alpha. Replaces the cool deep-ocean caustic
+// shader the Ch3 lake used to reuse. NON-additive, not bloom-tagged; ACES rolls off the overshoot.
+// Shared GOLDEN-HOUR WATER material — the one warm reflective look for ALL Ch3 water
+// (lake, river, foreground sea) so nothing reads as the old cool cyan caustic slab. It shades
+// from positionWorld + uv, so the same material drops onto any flat water plane regardless of
+// size/segments. `useRadialEdge` dissolves the plane at its rim (the pooled LAKE wants that; the
+// river/sea want to fill to their scaled extent, so they pass false).
+function buildGoldenWaterMaterial(uTime, {
+    uSeason = uniform(0), uOpacity = uniform(1), useRadialEdge = true, rippleAmp = 0.16,
+} = {}) {
+    const sunDir = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
+
+    const wpos = positionWorld;
+    const eyeDir = normalize(cameraPosition.sub(wpos));
+    const dist = length(cameraPosition.sub(wpos));
+    const rt = uTime.mul(0.35);
+
+    // Faked calm surface normal (low-amplitude drifting tilt) — a lake, not chop.
+    const ripA = sin(wpos.x.mul(0.11).add(rt)).add(sin(wpos.z.mul(0.09).sub(rt.mul(0.8))));
+    const ripB = sin(wpos.x.mul(0.045).add(wpos.z.mul(0.038)).add(rt.mul(0.6)));
+    const nrm = normalize(vec3(ripA.mul(0.035).add(ripB.mul(0.02)), 1.0, ripB.mul(0.035).sub(ripA.mul(0.02))));
+
+    // Reduced-fresnel WARM reflectance: coloured/dark water at normal view, reflective only at the
+    // grazing rim → the opposite of a mirror-blue sea.
+    const theta = clamp(dot(eyeDir, nrm), 0.0, 1.0);
+    const rf0 = float(0.09);
+    const reflectance = rf0.add(oneMinus(rf0).mul(pow(oneMinus(theta), float(5.0))));
+
+    // Depth gradient: cool teal body near/deep → warmer toward the far horizon; winter cools it.
+    const depthFactor = smoothstep(20.0, 240.0, dist);
+    const winterT = smoothstep(0.7, 0.95, uSeason);
+    const bodyCol = mix(vec3(0.035, 0.13, 0.16), vec3(0.06, 0.22, 0.26), depthFactor); // rich cool teal
+    // Warm reflected sky — a saturated golden-hour gradient (bright gold toward the far horizon)
+    // so the reflective surface reads GOLDEN, not pale grey; winter cools it toward pale blue.
+    let skyRefl = mix(vec3(0.62, 0.42, 0.28), vec3(0.90, 0.68, 0.42), depthFactor); // amber → warm gold
+    skyRefl = mix(skyRefl, vec3(0.60, 0.72, 0.86), winterT.mul(0.7));
+    // Horizontal ripple light-bands (Firewatch): faint brighter/darker streaks across the surface
+    // so it reads as rippled water, not a flat metallic sheet. Low frequency + gentle amplitude so
+    // the broad sea plane gets soft glancing bands, NOT a regular corduroy weave.
+    const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
+        .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
+    skyRefl = skyRefl.mul(mix(float(0.9), float(1.08), bands));
+    let color = mix(bodyCol, skyRefl, reflectance);
+
+    // Faked dark shore/tree silhouette reflections toward the FAR shore (high uv.y), rippled so
+    // they wobble like water — the reflected tree-stands + Great Tree without a mirror pass.
+    const vUv = uv();
+    const ripd = sin(wpos.z.mul(1.4).add(uTime.mul(0.6))).mul(0.05)
+        .add(sin(wpos.x.mul(0.8).add(uTime.mul(0.3))).mul(0.03));
+    const silBase = sin(wpos.x.mul(0.14).add(2.0)).mul(0.5).add(0.5)
+        .mul(sin(wpos.x.mul(0.33).sub(1.0)).mul(0.5).add(0.5));
+    const silhouette = smoothstep(0.42, 0.85, silBase.add(ripd));
+    const farMask = smoothstep(0.4, 0.8, vUv.y.add(ripd));
+    color = mix(color, vec3(0.07, 0.11, 0.09), silhouette.mul(farMask).mul(0.6));
+
+    // Golden SUN-GLITTER path (camera-relative half-vector spec): a piercing highlight + broad
+    // glow toward the low sun + a shimmer band — the golden-hour signature; tracks the moving cam.
+    const halfV = normalize(sunDir.add(eyeDir));
+    const specDot = clamp(dot(nrm, halfV), 0.0, 1.0);
+    const shimmer = sin(wpos.z.mul(7.0).add(uTime.mul(2.0))).mul(0.5).add(0.5)
+        .mul(sin(wpos.x.mul(3.2).add(uTime.mul(1.4))).mul(0.5).add(0.5));
+    const glitter = pow(specDot, float(90.0)).mul(2.4).add(pow(specDot, float(14.0)).mul(0.28));
+    const sunPath = glitter.mul(shimmer.mul(0.5).add(0.7));
+    color = color.add(vec3(1.0, 0.72, 0.34).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
+
+    // Soft radial shore alpha (plane UV 0.5 = centre) so a pooled lake dissolves into the bank;
+    // the river/sea fill to their scaled edge instead (useRadialEdge = false → alpha 1).
+    const distFromCenter = length(vUv.sub(0.5)).mul(2.0);
+    const edgeAlpha = useRadialEdge ? oneMinus(smoothstep(0.82, 1.0, distFromCenter)) : float(1.0);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = edgeAlpha.mul(uOpacity);
+    // Gentle vertical ripple (local-space phase so the positionNode isn't circular).
+    material.positionNode = positionLocal.add(vec3(
+        0.0,
+        sin(positionLocal.x.mul(0.11).add(rt)).add(sin(positionLocal.z.mul(0.09).sub(rt.mul(0.8)))).mul(rippleAmp),
+        0.0,
+    ));
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.toneMapped = false;
+    return { material, uniforms: { uOpacity, uSeason } };
+}
+
+export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
+    const uOpacity = uniform(1);
+    const { material } = buildGoldenWaterMaterial(uTime, { uSeason, uOpacity, useRadialEdge: true });
+
+    const geometry = new THREE.PlaneGeometry(SURFACE_LAKE_RADIUS * 2.5, SURFACE_LAKE_RADIUS * 2.5, 32, 32);
+    geometry.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'surface-golden-lake';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -2;
+    return {
+        mesh, material, geometry, uniforms: { uOpacity, uSeason },
+    };
+}
+
 export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) {
     const uOpacity = uniform(1);
     const uDepth = uniform(CH3_WATER_READABILITY_SETTINGS.ch2SurfaceDepth);
     const deepWaterOptions = { uDepth, uOpacity };
 
+    // Borrow the deep-ocean builder ONLY for its correctly-sized water plane geometry (the extent
+    // configureChapter2WaterSurface scales against); its cool cyan caustic MATERIAL is discarded and
+    // replaced by the shared golden-hour water below so the foreground sea + river read as the same
+    // warm BotW valley water as the lake — no more cyan slab clashing with the golden pool.
     const seaPart = createDeepOceanWaterSurfaceTSL(
         uTime,
         surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset,
         deepWaterOptions,
     );
+    seaPart.material?.dispose?.();
+    // One golden material (no radial dissolve → fills to the scaled plane edge) shared by BOTH the
+    // sea and river meshes — a single NodeMaterial pipeline for both, same draw/pipeline share the
+    // old cyan reuse had, now warm. rippleAmp trimmed vs the lake since these are broad flat sheets.
+    const warmWater = buildGoldenWaterMaterial(uTime, { uOpacity, useRadialEdge: false, rippleAmp: 0.1 });
+    seaPart.material = warmWater.material;
     const sea = configureChapter2WaterSurface(seaPart, {
         name: 'surface-chapter-02-water-foreground',
         x: CH3_WATER_READABILITY_SETTINGS.seaCenterX,
@@ -435,17 +649,11 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
         scaleZ: CH3_WATER_READABILITY_SETTINGS.seaScaleZ,
     });
 
-    // ZERO-VISUAL pipeline/draw share: the river is the EXACT same water as the sea —
-    // createDeepOceanWaterSurfaceTSL was previously called a 2nd time here with IDENTICAL
-    // args (same uTime, same { uDepth, uOpacity }); only the mesh transform differed (the
-    // shader displaces in positionLocal and the +0.4 Y was applied to mesh.position.y, never
-    // baked into the material). Reusing seaPart.material + seaPart.geometry collapses a
-    // duplicate NodeMaterial pipeline compile and a duplicate geometry upload while rendering
-    // the same pixels — the per-mesh difference is transform/renderOrder/name only, and the
-    // shared uOpacity node already drives both (no per-instance material mutation in update()).
+    // The river is the EXACT same warm water as the sea — shared golden material + geometry (one
+    // NodeMaterial pipeline, one geometry upload); only the mesh transform/renderOrder/name differ.
     const riverPart = {
-        mesh: new THREE.Mesh(seaPart.geometry, seaPart.material),
-        material: seaPart.material,
+        mesh: new THREE.Mesh(seaPart.geometry, warmWater.material),
+        material: warmWater.material,
         geometry: seaPart.geometry,
     };
     const river = configureChapter2WaterSurface(riverPart, {
@@ -461,10 +669,22 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     // Y here to keep the river plane in the identical world position it had before.
     river.position.y = surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4;
 
+    // HERO LAKE surface: the procedural GOLDEN-HOUR REFLECTIVE lake (createGoldenLakeTSL) pooled
+    // over the carved basin (SURFACE_LAKE_CENTER) — same warm palette as the river/sea, but with a
+    // soft radial shore dissolve since it's a discrete pool rather than a filled corridor.
+    const lakeBuilt = createGoldenLakeTSL(uTime, {});
+    const lake = lakeBuilt.mesh;
+    lake.position.set(
+        SURFACE_LAKE_CENTER.x,
+        surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4,
+        SURFACE_LAKE_CENTER.z,
+    );
+
     const group = new THREE.Group();
     group.name = 'surface-ocean-tsl';
     group.add(sea);
     group.add(river);
+    group.add(lake);
     group.userData.readability = CH3_WATER_READABILITY_SETTINGS;
     group.userData.sea = sea;
     group.userData.river = river;
@@ -534,10 +754,13 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // sakura-twilight palette discipline) — a vivid lit spring green low, a deep forest green
     // high — so the hills read green rather than the old pale wash. A subtle blue-green
     // variation by ground noise breaks the plastic uniformity.
-    const grassColorLow = vec3(0.14, 0.48, 0.12); // Rich lit spring green
+    // BotW painterly sage: pull the vivid spring green toward a warmer OLIVE/sage (R nearer G, a
+    // yellow-green rather than a saturated emerald) so the meadow reads like a sun-bleached Hyrule
+    // field, not a neon lawn. Still lush — just muted enough to sit under the golden-hour grade.
+    const grassColorLow = vec3(0.26, 0.42, 0.17); // Sage-olive lit meadow
     // Creative plan Ch3 item 1: shaded pole pulled toward #0D3A16 so tree silhouettes
     // separate from the ground in grayscale (the collapsed-value fix).
-    const grassColorHigh = vec3(0.025, 0.14, 0.055); // Deep shaded forest green
+    const grassColorHigh = vec3(0.05, 0.15, 0.07); // Deep shaded sage-forest green
     const grassColor = mix(grassColorLow, grassColorHigh, smoothstep(5.0, 30.0, relHeight));
 
     let color = mix(sandColor, grassColor, sandAmount);
@@ -955,6 +1178,42 @@ function vegetationSwayNode(uTime, strength = 1.0) {
     return vec3(posL.x.add(swayX), posL.y, posL.z.add(swayZ));
 }
 
+// Golden backlit SSS rim (Midsommar-inspired): a warm translucent glow when the camera looks
+// toward the low sun THROUGH the foliage — the golden-hour "glow" that makes grass/flowers read
+// as lit volume, not flat cards. Additive IN-SHADER so it survives the shared ACES post grade.
+// `heightFrac` (0 base → 1 tip) concentrates the glow at the sunlit tips. Returns a vec3 to ADD
+// to a vegetation colorNode.
+function backlitSSSNode(heightFrac, strength = 0.5) {
+    const sunDirN = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
+    const viewDir = normalize(positionWorld.sub(cameraPosition));
+    const backlit = pow(clamp(dot(sunDirN, viewDir), 0.0, 1.0), float(2.5));
+    return vec3(0.988, 0.835, 0.506).mul(backlit).mul(heightFrac).mul(strength); // #FCD581 warm gold
+}
+
+// Shared meadow wind direction (XZ) for the 3D wildflowers.
+const SURFACE_WIND_DIR = new THREE.Vector2(0.94, 0.34);
+
+// Height-masked wind sway for the instanced 3D wildflowers (Midsommar's makeFloraMat grammar):
+// the bloom top bends along the wind while the stem stays rooted, phased PER-INSTANCE by a
+// world-XZ attribute (positionNode runs BEFORE instanceMatrix, so the final world pos isn't
+// available here — aWorldXZ is baked on the CPU at placement). `height` = the geometry's local
+// height (~1 for the unit-authored flora); amp/stiff/flutter are the per-species wind feel.
+function floraSwayNode(uTime, height, amp, stiff, flutter) {
+    const yN = clamp(positionLocal.y.div(float(Math.max(0.001, height))), 0.0, 1.0);
+    const mask = pow(yN, float(stiff));
+    const wxz = attribute('aWorldXZ', 'vec2');
+    const ph = wxz.x.mul(0.6).add(wxz.y.mul(0.45));
+    const sway = sin(uTime.mul(1.05).add(ph)).mul(0.7)
+        .add(sin(uTime.mul(0.46).add(ph.mul(1.7))).mul(0.3));
+    const bend = sway.mul(float(amp)).mul(mask);
+    const flut = sin(uTime.mul(5.5).add(ph.mul(3.0))).mul(float(flutter)).mul(yN);
+    return positionLocal.add(vec3(
+        float(SURFACE_WIND_DIR.x).mul(bend).add(flut),
+        bend.abs().mul(-0.03),
+        float(SURFACE_WIND_DIR.y).mul(bend).add(flut.mul(0.5)),
+    ));
+}
+
 // Per-instance green-tint attribute: a small multiplicative RGB jitter so a field of
 // instanced props reads as VARIED foliage (some bluer, some more yellow-green, some darker)
 // instead of one flat plastic green — the "varied, better-coloured" the brief asks for.
@@ -975,20 +1234,24 @@ function buildTintArray(maxCount, spread = 0.18) {
 
 // Low-poly grass tuft: a tight fan of 3 closed cones — volume, no flat underside.
 export function createGrassTuftsTSL(uTime = uniform(0), count = 760) {
-    const blade = () => new THREE.ConeGeometry(0.55, 3.2, 5, 1, false);
+    // A SHORT base carpet (blades ~2u) that fills the ground BELOW the taller flowers (2.4–4.3u)
+    // so it never occludes the blooms — a lush ground, not a wall of spikes.
+    const blade = () => new THREE.ConeGeometry(0.5, 2.0, 5, 1, false);
     const geometry = mergeOffsetGeometries([
-        { geo: blade(), offset: [0, 1.6, 0] },
-        { geo: blade(), offset: [0.7, 1.4, 0.2] },
-        { geo: blade(), offset: [-0.6, 1.4, -0.3] },
+        { geo: blade(), offset: [0, 1.0, 0] },
+        { geo: blade(), offset: [0.6, 0.85, 0.2] },
+        { geo: blade(), offset: [-0.55, 0.85, -0.3] },
     ]);
     geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(buildTintArray(count, 0.22), 3));
 
-    // VISUAL POLISH (de-wash): richer saturated tuft greens + per-instance tint variation.
+    // VISUAL POLISH (de-wash): richer saturated tuft greens + per-instance tint variation,
+    // plus the golden backlit SSS rim so the carpet glows toward the low sun (Midsommar look).
+    const grassHeightFrac = smoothstep(0.0, 2.0, positionLocal.y);
     const colorNode = mix(
         vec3(0.055, 0.27, 0.065), // shaded base green
         vec3(0.28, 0.62, 0.14), // saturated sunlit blade green
-        smoothstep(0.0, 3.0, positionLocal.y),
-    ).mul(attribute('aTint', 'vec3'));
+        grassHeightFrac,
+    ).mul(attribute('aTint', 'vec3')).add(backlitSSSNode(grassHeightFrac, 0.4));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 1.0);
@@ -998,19 +1261,23 @@ export function createGrassTuftsTSL(uTime = uniform(0), count = 760) {
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
     let n = 0;
-    for (let i = 0; i < count; i += 1) {
-        const x = (Math.random() - 0.5) * 340;
-        const z = (Math.random() - 0.5) * 340;
+    let guard = 0;
+    // Same field + composition gate as the flowers so grass underlies every bloom (no floating
+    // cards) and the carpet hugs the path exactly like the meadow — banks-dense, corridor-clear.
+    while (n < count && guard < count * 16) {
+        guard += 1;
+        const x = (Math.random() - 0.5) * 460;
+        const z = (Math.random() - 0.5) * 460 - 60;
+        if (!surfaceMeadowPlace(x, z)) continue;
         const h = getTerrainHeight(x, z);
-        if (h >= 4.0) {
-            const s = 0.6 + Math.random() * 0.8;
-            dummy.position.set(x, h - 0.2, z);
-            dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.set(s, s * (0.8 + Math.random() * 0.6), s);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(n, dummy.matrix);
-            n += 1;
-        }
+        if (h < 4.0) continue;
+        const s = 0.6 + Math.random() * 0.8;
+        dummy.position.set(x, h - 0.2, z);
+        dummy.rotation.y = Math.random() * Math.PI;
+        dummy.scale.set(s, s * (0.8 + Math.random() * 0.6), s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(n, dummy.matrix);
+        n += 1;
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.count = n;
@@ -1127,23 +1394,84 @@ export function createMeadowFlowersTSL(uTime = uniform(0), count = 3600) {
     return { mesh, material, geometry };
 }
 
-// A few low-poly trees: merged trunk (cylinder) + two stacked canopy cones. Denser + more
-// varied than before, with richer greens, per-instance tint and a warm golden-hour rim.
-// Shared clustered-placement helper (creative plan item 5): trees grow in STANDS, never
-// uniform stamping. Picks a handful of land cluster hearts, then scatters instances
-// around them — rejection-sampled against the same land gate as before.
-function pickTreeClusters(clusterCount, landGate) {
-    const clusters = [];
-    let guard = 0;
-    while (clusters.length < clusterCount && guard < clusterCount * 60) {
-        guard += 1;
-        const x = (Math.random() - 0.5) * 300;
-        const z = (Math.random() - 0.5) * 300;
-        if (landGate(x, z)) clusters.push({ x, z });
-    }
-    return clusters;
+// Real 3D per-species WILDFLOWERS (replaces the flat cross-card meadow blooms): oxeye daisies,
+// buttercups, poppies + tall lupine & cornflower spikes — procedural geometry with baked vertex
+// colour (summer-flora.js, no GLB assets), instanced per species, wind-swayed (floraSwayNode) and
+// terrain-anchored. Daisy-dominant like the Midsommar reference. Returns { group, mesh, parts }.
+// Scales are LARGE for the big Ch3 world (trees ~14u, grass ~2u): realistic flora proportions
+// read as invisible specks here, so the blooms are bumped to bold, stylised heroes (~3–4u tall,
+// heads ~0.6–0.8u) that rise above the grass and read as a lush colour field from the moving
+// journey camera — the same builders Midsommar uses at its smaller world scale.
+const WILDFLOWER_SPECIES = [
+    {
+        build: buildDaisy, frac: 0.40, sMin: 4.0, sMax: 5.8, amp: 0.16, stiff: 1.2, flutter: 0.04,
+    },
+    {
+        build: buildButtercup, frac: 0.22, sMin: 4.6, sMax: 6.4, amp: 0.20, stiff: 1.1, flutter: 0.05,
+    },
+    {
+        build: buildPoppy, frac: 0.08, sMin: 4.4, sMax: 5.8, amp: 0.18, stiff: 1.1, flutter: 0.05,
+    },
+    {
+        build: buildLupine, frac: 0.14, sMin: 3.0, sMax: 4.4, amp: 0.22, stiff: 1.3, flutter: 0.03,
+    },
+    {
+        build: buildCornflower, frac: 0.16, sMin: 4.0, sMax: 5.6, amp: 0.22, stiff: 1.3, flutter: 0.03,
+    },
+];
+
+export function createWildflowersTSL(uTime = uniform(0), count = 1400) {
+    const group = new THREE.Group();
+    group.name = 'wildflowers-3d';
+    const parts = [];
+    const dummy = new THREE.Object3D();
+
+    WILDFLOWER_SPECIES.forEach((sp) => {
+        const geo = sp.build();
+        geo.computeBoundingBox();
+        const gh = geo.boundingBox.max.y - geo.boundingBox.min.y;
+        const cnt = Math.max(1, Math.round(count * sp.frac));
+
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.positionNode = floraSwayNode(uTime, gh, sp.amp, sp.stiff, sp.flutter);
+        material.colorNode = attribute('color', 'vec3'); // baked linear vertex colour
+        material.side = THREE.DoubleSide;
+        material.toneMapped = false; // keep the family colours vivid (matches the chapter props)
+
+        const mesh = new THREE.InstancedMesh(geo, material, cnt);
+        const aWorldXZ = new Float32Array(cnt * 2);
+        let n = 0;
+        let guard = 0;
+        while (n < cnt && guard < cnt * 24) {
+            guard += 1;
+            // BotW: cluster blooms into a FEW deliberate drift patches (open meadow between), not
+            // a banks-wide carpet — even-disc samples within a random SURFACE_FLOWER_PATCHES patch.
+            const { x, z } = surfaceFlowerPatchSample();
+            const h = getTerrainHeight(x, z);
+            if (h < 4.0) continue; // above the waterline (lakeside patches gate at the shore)
+            const s = sp.sMin + Math.random() * (sp.sMax - sp.sMin);
+            dummy.position.set(x, h - 0.2, z);
+            dummy.rotation.y = Math.random() * Math.PI * 2;
+            dummy.scale.set(s, s * (0.9 + Math.random() * 0.3), s);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(n, dummy.matrix);
+            aWorldXZ[n * 2] = x;
+            aWorldXZ[n * 2 + 1] = z;
+            n += 1;
+        }
+        mesh.count = n;
+        mesh.instanceMatrix.needsUpdate = true;
+        geo.setAttribute('aWorldXZ', new THREE.InstancedBufferAttribute(aWorldXZ, 2));
+        mesh.frustumCulled = false;
+        group.add(mesh);
+        parts.push({ mesh, material, geometry: geo });
+    });
+
+    return { group, mesh: group, parts };
 }
 
+// A few low-poly trees: merged trunk (cylinder) + two stacked canopy cones. Denser + more
+// varied than before, with richer greens, per-instance tint and a warm golden-hour rim.
 export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
     const uSeason = options.uSeason ?? uniform(0);
     const trunk = new THREE.CylinderGeometry(0.55, 0.9, 7, 6, 1);
@@ -1188,44 +1516,45 @@ export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
     const uSnowBlend = options.uSnowBlend ?? uniform(0);
     const snowCap = crownGrade.mul(uSnowBlend).mul(oneMinus(isTrunk));
     const colorNode = mix(mix(foliage, bark, isTrunk), vec3(0.93, 0.96, 1.0), snowCap.mul(0.6));
-    // Warm golden-hour rim on the grazing canopy edge — applied as EMISSIVE below so it
-    // reads as a light-independent glow on the lit canopy (foliage only, capped, never white).
-    const rim = pow(oneMinus(max(dot(normalView, normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    // TRUE sun-direction BACKLIT canopy glow (Midsommar-inspired): a warm golden rim that reads
+    // only when the camera looks toward the low sun THROUGH the canopy — NOT the old view-only
+    // fresnel that gilded every silhouette edge regardless of the sun. Emissive so it glows
+    // independent of the diffuse (and feeds bloom in-game); concentrated on the upper crown.
+    const canopyBacklit = backlitSSSNode(crownGrade, 0.5).mul(oneMinus(isTrunk));
 
-    // LIT material (was unlit MeshBasic): the merged cone/trunk geometry is real 3D, but
-    // an unlit material left it reading as flat cardboard. Lambert lets the directional sun
-    // reveal the conical form (volumetric, sakura-discipline). The crown gradient + tint
-    // become the ALBEDO; lighting does the form; the warm rim stays as an emissive accent.
+    // LIT material (was unlit MeshBasic): the merged cone/trunk geometry is real 3D, but an
+    // unlit material left it reading as flat cardboard. Lambert lets the directional sun reveal
+    // the conical form; flatShading gives each facet a distinct catch (the crisp low-poly read
+    // Midsommar gets from its faceN normal); the backlit glow stays as an emissive accent.
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.4); // gentle whole-tree sway
     material.colorNode = colorNode;
-    material.emissiveNode = vec3(0.82, 0.60, 0.30).mul(rim).mul(0.06).mul(oneMinus(isTrunk));
+    material.emissiveNode = canopyBacklit;
+    material.flatShading = true;
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
-    const landGate = (x, z) => getTerrainHeight(x, z) >= 6.0 && Math.abs(x) > 14;
-    const clusters = pickTreeClusters(8, landGate);
+    // Deliberate STANDS around curated hearts (not random), gated OUT of the corridor + hero.
+    const clusters = DECIDUOUS_HEARTS;
     let n = 0;
     let guard = 0;
-    while (n < count && guard < count * 16) {
+    while (n < count && guard < count * 18) {
         guard += 1;
-        // Clustered placement: jitter around a stand heart, fall back to open scatter.
-        const heart = clusters.length ? clusters[guard % clusters.length] : null;
-        const x = heart ? heart.x + (Math.random() - 0.5) * 64 : (Math.random() - 0.5) * 300;
-        const z = heart ? heart.z + (Math.random() - 0.5) * 64 : (Math.random() - 0.5) * 300;
+        const heart = clusters[guard % clusters.length];
+        const x = heart.x + (Math.random() - 0.5) * 40;
+        const z = heart.z + (Math.random() - 0.5) * 40;
+        if (!surfaceTreeGate(x, z)) continue; // off-corridor, on higher ground, clear of the hero
         const h = getTerrainHeight(x, z);
-        // Trees only on solid higher ground, away from the immediate path center.
-        if (h >= 6.0 && Math.abs(x) > 14) {
-            // ≥2.5× scale spread (plan item 5): saplings through old growth.
-            const s = 0.55 + Math.random() * 1.45;
-            dummy.position.set(x, h - 0.5, z);
-            dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.set(s, s * (0.85 + Math.random() * 0.5), s);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(n, dummy.matrix);
-            n += 1;
-        }
+        // ≥2.5× scale spread (saplings→old growth), with deeper hearts capped shorter for depth.
+        const depthCap = 1 - smoothstepCPU(-60, -240, z) * 0.5;
+        const s = (0.55 + Math.random() * 1.45) * depthCap;
+        dummy.position.set(x, h - 0.5, z);
+        dummy.rotation.y = Math.random() * Math.PI;
+        dummy.scale.set(s, s * (0.85 + Math.random() * 0.5), s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(n, dummy.matrix);
+        n += 1;
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.count = n;
@@ -1272,29 +1601,30 @@ export function createSpruceTreesTSL(uTime = uniform(0), count = 22, options = {
     material.positionNode = vegetationSwayNode(uTime, 0.25);
     material.colorNode = colorNode;
     material.emissiveNode = vec3(0.78, 0.58, 0.28).mul(rim).mul(0.05).mul(oneMinus(isTrunk));
+    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
-    const landGate = (x, z) => getTerrainHeight(x, z) >= 7.0 && Math.abs(x) > 18;
-    const clusters = pickTreeClusters(5, landGate);
+    // Deliberate spruce STANDS around curated hearts, gated OUT of the corridor + hero.
+    const clusters = SPRUCE_HEARTS;
     let n = 0;
     let guard = 0;
-    while (n < count && guard < count * 16) {
+    while (n < count && guard < count * 18) {
         guard += 1;
-        const heart = clusters.length ? clusters[guard % clusters.length] : null;
-        const x = heart ? heart.x + (Math.random() - 0.5) * 52 : (Math.random() - 0.5) * 300;
-        const z = heart ? heart.z + (Math.random() - 0.5) * 52 : (Math.random() - 0.5) * 300;
+        const heart = clusters[guard % clusters.length];
+        const x = heart.x + (Math.random() - 0.5) * 36;
+        const z = heart.z + (Math.random() - 0.5) * 36;
+        if (!surfaceTreeGate(x, z, 7.0, 42)) continue; // higher ground, off-corridor, off-hero
         const h = getTerrainHeight(x, z);
-        if (h >= 7.0 && Math.abs(x) > 18) {
-            const s = 0.6 + Math.random() * 1.3;
-            dummy.position.set(x, h - 0.4, z);
-            dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.set(s, s * (0.9 + Math.random() * 0.45), s);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(n, dummy.matrix);
-            n += 1;
-        }
+        const depthCap = 1 - smoothstepCPU(-60, -240, z) * 0.5;
+        const s = (0.6 + Math.random() * 1.3) * depthCap;
+        dummy.position.set(x, h - 0.4, z);
+        dummy.rotation.y = Math.random() * Math.PI;
+        dummy.scale.set(s, s * (0.9 + Math.random() * 0.45), s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(n, dummy.matrix);
+        n += 1;
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.count = n;
@@ -1414,6 +1744,7 @@ export function createGreatTreeTSL(uTime = uniform(0)) {
     material.positionNode = vegetationSwayNode(uTime, 0.22); // slow, heavy whole-tree sway
     material.colorNode = colorNode;
     material.emissiveNode = vec3(0.84, 0.60, 0.26).mul(rim).mul(0.07).mul(oneMinus(isTrunk));
+    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -1549,6 +1880,7 @@ export function createTreeLineTSL(uTime = uniform(0), count = 64) {
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.3);
     material.colorNode = colorNode;
+    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -1557,7 +1889,10 @@ export function createTreeLineTSL(uTime = uniform(0), count = 64) {
     let guard = 0;
     while (n < count && guard < count * 24) {
         guard += 1;
-        const x = (Math.random() - 0.5) * 360;
+        // BotW framing SCREEN: two flank wings that leave an OPEN CENTRAL GAP to the peaks (the
+        // river's vanishing point), instead of a full-width curtain across the whole horizon.
+        const sign = Math.random() < 0.5 ? -1 : 1;
+        const x = sign * (64 + Math.random() * 118);
         const z = -(120 + Math.random() * 100); // far band, into the frame
         const d = Math.sqrt(x * x + z * z);
         const h = getTerrainHeight(x, z);
@@ -1582,15 +1917,19 @@ export function createTreeLineTSL(uTime = uniform(0), count = 64) {
 // (downward FBM streaks, side-feathered) feeding a glowing splash pool at the lake. The
 // ribbons are additive-soft + capped (peak channel ≤ ~0.8) so they bloom gently, never
 // blow white. Anchored at SURFACE_WATERFALL_POS over the river axis.
-export function createWaterfallTSL(uTime = uniform(0)) {
+export function createWaterfallTSL(uTime = uniform(0), options = {}) {
     const group = new THREE.Group();
     group.name = 'surface-waterfall-tsl';
     const uOpacity = uniform(1);
+    // As winter arrives (shared season/altitude snow blend) the fall FREEZES: the vertical
+    // scroll slows to a near-still glassy sheet and the water shifts to pale ice-blue, so the
+    // hero fall reads as freezing over rather than simply vanishing across the 3→4 seam.
+    const uSnowBlend = options.uSnowBlend ?? uniform(0);
 
     // One shared ribbon material: bright cool-white water graded warmer at the lit top,
     // with a vertical scrolling FBM streak and a side feather to 0 before the plane edge.
     const vUv = uv();
-    const scroll = uTime.mul(0.5);
+    const scroll = uTime.mul(mix(float(0.5), float(0.05), uSnowBlend));
     const streak = snoise3(vec3(vUv.x.mul(5.0), vUv.y.mul(7.0).add(scroll), scroll.mul(0.4)))
         .mul(0.5).add(0.5);
     const streak2 = snoise3(vec3(vUv.x.mul(11.0), vUv.y.mul(15.0).add(scroll.mul(1.6)), 0.0))
@@ -1601,7 +1940,10 @@ export function createWaterfallTSL(uTime = uniform(0)) {
     const bottomFade = oneMinus(smoothstep(0.86, 1.0, vUv.y));
     // Warm-lit crest -> cool water body. Crests brightened toward #E8E2D0 (creative plan
     // asset 2) so the falls bloom gently and read from 200 units down the corridor.
-    const ribbonColor = mix(vec3(0.62, 0.74, 0.80), vec3(0.91, 0.89, 0.82), smoothstep(0.55, 1.0, vUv.y));
+    const liquidColor = mix(vec3(0.62, 0.74, 0.80), vec3(0.91, 0.89, 0.82), smoothstep(0.55, 1.0, vUv.y));
+    // Frozen: pale ice-blue with a brighter icy crest (the fall glazes over as winter sets in).
+    const iceColor = mix(vec3(0.80, 0.87, 0.93), vec3(0.94, 0.97, 1.0), smoothstep(0.4, 1.0, vUv.y));
+    const ribbonColor = mix(liquidColor, iceColor, uSnowBlend);
     const ribbonAlpha = flow.mul(sideFeather).mul(topFade).mul(bottomFade)
         .mul(0.58)
         .mul(uOpacity);
@@ -1642,7 +1984,7 @@ export function createWaterfallTSL(uTime = uniform(0)) {
     const poolUv = uv().sub(0.5).length().mul(2.0);
     const poolGlow = oneMinus(smoothstep(0.2, 1.0, poolUv));
     const poolMat = new THREE.MeshBasicNodeMaterial();
-    poolMat.colorNode = vec3(0.70, 0.78, 0.74);
+    poolMat.colorNode = mix(vec3(0.70, 0.78, 0.74), vec3(0.82, 0.90, 0.96), uSnowBlend);
     poolMat.opacityNode = poolGlow.mul(0.4).mul(uOpacity);
     poolMat.transparent = true;
     poolMat.depthWrite = false;
@@ -1658,7 +2000,7 @@ export function createWaterfallTSL(uTime = uniform(0)) {
     const anchor = getTerrainHeight(SURFACE_WATERFALL_POS.x, SURFACE_WATERFALL_POS.z);
     group.position.set(SURFACE_WATERFALL_POS.x, anchor - 15, SURFACE_WATERFALL_POS.z);
     return {
-        group, material: ribbonMat, geometry: ribbonGeo, uniforms: { uOpacity },
+        group, material: ribbonMat, geometry: ribbonGeo, uniforms: { uOpacity, uSnowBlend },
     };
 }
 
@@ -1706,13 +2048,30 @@ export function createPollenTSL(uTime = uniform(0), count = 260, options = {}) {
     // and hands off to the autumn leaves.
     const summerGate = smoothstep(0.16, 0.3, uSeason).mul(oneMinus(smoothstep(0.5, 0.66, uSeason)));
 
+    // TWO species share the field (Midsommar-inspired): warm cream POLLEN dust that shimmers
+    // slowly, and brighter yellow-green FIREFLIES that BLINK independently and GLOW (bloom via
+    // emissiveNode + emitsBloom). isFly is split by the per-instance random; the twinkle rate +
+    // sharpness differ so flies blink fast/hard while pollen shimmers slow/soft.
+    const isFly = smoothstep(0.62, 0.66, aRandom); // ~34% fireflies
+    const twk = pow(
+        sin(uTime.mul(mix(float(1.1), float(3.0), isFly)).add(aRandom.mul(6.283))).mul(0.5).add(0.5),
+        mix(float(1.0), float(2.6), isFly),
+    );
+    const twinkle = mix(float(0.7).add(twk.mul(0.45)), float(0.1).add(twk.mul(1.0)), isFly);
+    const moteCol = mix(vec3(1.0, 0.80, 0.42), vec3(0.85, 1.0, 0.52), isFly.mul(0.8)); // amber → yellow-green
+    const bright = mix(float(1.0), float(1.9), isFly);
+    const gate = summerGate.mul(0.7).add(0.3);
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec3(1.0, 0.80, 0.42); // warm amber pollen (#FFAA44 firefly family)
-    material.opacityNode = feather.mul(0.55).mul(summerGate.mul(0.7).add(0.3)).mul(uOpacity);
+    material.colorNode = moteCol.mul(bright).mul(twinkle);
+    material.opacityNode = feather.mul(twinkle).mul(gate).mul(0.5).mul(uOpacity);
+    // Fireflies feed the MRT threshold bloom (like the sun disc); pollen barely glows.
+    material.emissiveNode = moteCol.mul(feather).mul(twinkle).mul(isFly.mul(1.2).add(0.2)).mul(gate);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
@@ -1765,6 +2124,32 @@ export function createSnowMotesTSL(uTime = uniform(0), count = 220, options = {}
     return {
         mesh, material, geometry, uniforms: { uOpacity },
     };
+}
+
+// Chapter-3 butterflies material (creative plan asset "Fluttering Butterflies"): the ONE
+// particle the .tsl.js polish sweep missed — it lived as a raw OPAQUE MeshBasicMaterial in
+// the .js builder (pure orange #FFAA00, no alpha, tone-mapped), so 20 hard garish squares
+// tumbled near the path. Rebuilt here alongside its siblings with the same squares-killer
+// discipline: a soft honey-amber node material (golden-hour amber family, #E6B45A — a touch
+// deeper than the #FFCC6B pollen so they read as their own creature) with a radial wing-oval
+// feather to 0 BEFORE the quad rim, alpha-blended and not tone-clipped. One shared material
+// across the 20 JS-animated butterfly meshes — they keep their per-frame flap/heading in
+// updateSurfaceWorldEnvironment; only the look moves to the GPU here.
+export function createButterflyMaterialTSL() {
+    // Horizontal wing-oval feather: alpha falls to 0 before the plane edge, slightly wider
+    // than tall so the fluttering quad reads as beating wings rather than a round mote.
+    const c = uv().sub(0.5);
+    const r = c.mul(vec2(1.0, 1.5)).length().mul(2.0);
+    const feather = oneMinus(smoothstep(0.32, 1.0, r));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = vec3(0.902, 0.706, 0.353); // #E6B45A soft honey-amber (golden-hour family)
+    material.opacityNode = feather.mul(0.9);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.NormalBlending;
+    return material;
 }
 
 // Drifting bird silhouettes — adapted from swedish-forest-birds' swept-wing shape. Each

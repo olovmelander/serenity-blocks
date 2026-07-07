@@ -795,6 +795,12 @@ export async function processPhysics(gameState, callbacks) {
             gameState.level++;
             gameState.linesUntilNextLevel += 15; // Quadra: 15 lines per level
             gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
+            // Odyssey speed-up modifier: keep the drop interval 1.5x shorter at every level-up so the
+            // effect survives the recompute. Gated on speedMultiplier (only the Odyssey modifier sets
+            // it) → shared single-player physics is byte-identical (masterplan §2 #3 / C2).
+            if (gameState.speedMultiplier) {
+                gameState.dropInterval /= gameState.speedMultiplier;
+            }
 
             if (callbacks.playLevelUp) callbacks.playLevelUp();
             if (callbacks.onLevelUp) callbacks.onLevelUp(gameState.level);
@@ -810,7 +816,15 @@ export async function processPhysics(gameState, callbacks) {
         // Quadra-style scoring: uses depth (lines), level, complexity (cascades), and perfect clear
         // Perfect clear is detected later after all cascades complete, so we pass false here
         // and add the perfect clear bonus at the end if the board is empty
-        const points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
+        let points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
+        // Odyssey combo-multiplier modifier: scale the line-clear score by the combo built up on
+        // prior consecutive-clearing locks. Gated on comboMultiplierEnabled — a flag ONLY the
+        // Odyssey ModifierStack sets — so shared single-player/multiplayer physics is byte-identical.
+        // The multiplier is fixed per lock (maintained at end of processPhysics), so every cascade
+        // wave of this lock shares it. (masterplan §2 #3 / C2)
+        if (gameState.comboMultiplierEnabled && gameState.comboMultiplier > 1) {
+            points = Math.round(points * gameState.comboMultiplier);
+        }
         gameState.score += points;
 
         if (callbacks.playLineClear) callbacks.playLineClear();
@@ -932,8 +946,12 @@ export async function processPhysics(gameState, callbacks) {
     // Quadra-style Perfect Clear Bonus
     // Award bonus points when the entire board is cleared
     if (sendForClean && depth > 0) {
-        const perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
+        let perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
             - calculateQuadraLineScore(depth, gameState.level, complexity, false);
+        // Scale the perfect-clear bonus by the same Odyssey combo multiplier for a coherent chain.
+        if (gameState.comboMultiplierEnabled && gameState.comboMultiplier > 1) {
+            perfectClearBonus = Math.round(perfectClearBonus * gameState.comboMultiplier);
+        }
         gameState.score += perfectClearBonus;
         physicsLog(`[Physics] Perfect clear bonus: +${perfectClearBonus} points (depth=${depth})`);
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(perfectClearBonus);
@@ -971,6 +989,17 @@ export async function processPhysics(gameState, callbacks) {
         gameState.comboState.manualColumns = [...manualHoleColumns];
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;
+    }
+
+    // Odyssey combo-multiplier modifier: maintain the consecutive-clear counter ONCE per lock.
+    // processPhysics runs exactly once per lock (the cascade loop above no-ops on a non-clearing
+    // lock), so this is the correct single anchor: a clearing lock advances the chain, a
+    // non-clearing lock resets it. The multiplier is read by the score-award sites on the NEXT
+    // lock, so the first clear of a chain is neutral (x1) and each consecutive clear escalates
+    // (x1.5, x2, …). Gated so shared single-player physics is unaffected. (masterplan §2 #3 / C2)
+    if (gameState.comboMultiplierEnabled) {
+        gameState.comboCount = linesClearedThisTurn > 0 ? (gameState.comboCount || 0) + 1 : 0;
+        gameState.comboMultiplier = 1 + (gameState.comboCount * 0.5);
     }
 
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);

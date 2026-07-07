@@ -19,10 +19,12 @@ import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell, session
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import inspector from 'node:inspector';
 import {
     createContentSecurityPolicy,
     extractInlineScriptHashes,
 } from './content-security-policy.js';
+import { buildDebugToolsStatus } from './debug-tools.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -252,6 +254,11 @@ ipcMain.handle('steam:getDiagnostics', () => ({ pending: true, phase: 'stub' }))
 const diagnosticsEnabled = process.env.SERENITY_ENABLE_DIAGNOSTICS === '1';
 const loggingEnabled = process.env.SERENITY_ENABLE_LOGGING === '1';
 
+let remoteDebuggingPort = null;
+let remoteDebuggingUrl = null;
+let mainInspectorPort = null;
+let mainInspectorUrl = null;
+
 let _diagnosticsLogPath = null;
 
 function getDiagnosticsLogPath() {
@@ -309,6 +316,49 @@ if (diagnosticsEnabled) {
             return info;
         } catch { return {}; }
     });
+
+    // Renderer remote debugging (CDP) — the packaged app never exposed an
+    // attach point for chrome-devtools MCP / webgpu_inspector before this;
+    // they could only ever reach the Vite dev-server tab. Loopback-only by
+    // default (Chromium binds 127.0.0.1 unless --remote-debugging-address is
+    // also passed), and only opens when diagnostics are explicitly enabled.
+    remoteDebuggingPort = Number(process.env.SERENITY_REMOTE_DEBUGGING_PORT) || 9222;
+    app.commandLine.appendSwitch('remote-debugging-port', String(remoteDebuggingPort));
+    remoteDebuggingUrl = `http://127.0.0.1:${remoteDebuggingPort}`;
+    console.log(`[Electron] Renderer remote debugging enabled at ${remoteDebuggingUrl}`);
+
+    // Main-process (Node) inspector — separate opt-in, off even with
+    // diagnostics enabled unless a port is explicitly requested.
+    const inspectPortArg = process.argv.find((arg) => arg.startsWith('--serenity-main-inspect-port='));
+    const requestedInspectPort = Number(process.env.SERENITY_MAIN_INSPECT_PORT)
+        || (inspectPortArg ? Number(inspectPortArg.split('=')[1]) : 0);
+    if (requestedInspectPort) {
+        try {
+            inspector.open(requestedInspectPort, '127.0.0.1', false);
+            mainInspectorPort = requestedInspectPort;
+            mainInspectorUrl = inspector.url();
+            console.log(`[Electron] Main-process inspector enabled at ${mainInspectorUrl}`);
+        } catch (err) {
+            console.warn('[Electron] Failed to open main-process inspector:', err.message);
+        }
+    }
+
+    ipcMain.removeHandler('desktop:get-debug-tools-status');
+    ipcMain.handle('desktop:get-debug-tools-status', () => buildDebugToolsStatus({
+        isPackagedWindowsApp: isPackaged && isWindows,
+        remoteDebuggingPort,
+        remoteDebuggingUrl,
+        mainInspectorPort,
+        mainInspectorUrl,
+        logPaths: { main: getDiagnosticsLogPath(), userData: app.getPath('userData') },
+    }));
+
+    ipcMain.removeHandler('desktop:get-devtools-diagnostics');
+    ipcMain.handle('desktop:get-devtools-diagnostics', () => ({
+        remoteDebuggingUrl,
+        logPath: getDiagnosticsLogPath(),
+        entries: [],
+    }));
 
     console.log('[Electron] Diagnostics enabled (SERENITY_ENABLE_DIAGNOSTICS=1)');
 }
@@ -400,6 +450,7 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: true,
             backgroundThrottling: false,
+            additionalArguments: diagnosticsEnabled ? ['--serenity-diagnostics-enabled'] : [],
         },
     });
 

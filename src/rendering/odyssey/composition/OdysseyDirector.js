@@ -24,25 +24,17 @@ import {
     getCameraProfileForChapter,
     lerpNumber,
 } from '../chapter-environments/shared/chapter-profile.js';
+// E3 — one source of truth for the 3->4/5->6 colour bridges (was copy-pasted here + in CEM).
+import {
+    SEAM_34_ALPINE_BRIDGE,
+    SEAM_56_AURORA_BRIDGE,
+    SEAM_34_COLOUR_HALF_WIDTH as SEAM_34_ALPINE_COLOUR_HALF_WIDTH,
+    SEAM_56_COLOUR_HALF_WIDTH as SEAM_56_AURORA_COLOUR_HALF_WIDTH,
+} from '../chapter-environments/shared/seam-bridges.js';
 
 const ENERGY_ATTACK_RATE = 9.0; // toward a higher audio energy (fast)
 const ENERGY_RELEASE_RATE = 2.5; // back down (slow, so it "breathes")
 const PULSE_DECAY_RATE = 6.0; // beat-pulse envelope decay
-const SEAM_34_ALPINE_COLOUR_HALF_WIDTH = 0.055;
-const SEAM_34_ALPINE_BRIDGE = Object.freeze({
-    skyColor: 0x527da2,
-    fogColor: 0x638699,
-    ambientLight: 0xd8ded0,
-    ambientIntensity: 0.56,
-    fogDensity: 0.0024,
-});
-const SEAM_56_AURORA_COLOUR_HALF_WIDTH = 0.07;
-const SEAM_56_AURORA_BRIDGE = Object.freeze({
-    skyColor: 0x06162f,
-    fogColor: 0x09283f,
-    ambientLight: 0x1a4b5c,
-    ambientIntensity: 0.32,
-});
 
 function expApproach(current, target, rate, dt) {
     if (!(dt > 0) || !(rate > 0)) return current;

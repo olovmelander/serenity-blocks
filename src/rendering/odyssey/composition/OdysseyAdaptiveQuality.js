@@ -151,6 +151,23 @@ export class OdysseyAdaptiveQuality {
     }
 
     /**
+     * Discard the current frame-time window + re-base the evaluation/stability clocks so the NEXT
+     * window is measured from a clean slate. The board calls this once the startup background
+     * chapter-load + render-warm settle: those frames are main-thread-blocked by synchronous JS
+     * chapter builds (NOT GPU-bound), so if they reach the resolution policy it slashes renderScale
+     * for the whole session (the board then reads low-res even at 200+fps, since recovery is a slow
+     * +step/cooldown climb). Leaves renderScale + the escalated tier untouched — measurement state only.
+     * @param {number} [nowMs=0] monotonic clock used to re-base the eval + stability timers.
+     */
+    resetFrameWindow(nowMs = 0) {
+        this._frameCount = 0;
+        this._frameHead = 0;
+        this._lastEvalAt = nowMs;
+        this._stableSince = nowMs;
+        this._floorPressureSince = 0;
+    }
+
+    /**
      * Throttled (~1Hz) evaluation. Runs the resolution policy first; if resolution is pinned
      * at its floor and pressure persists, escalates the next non-resolution tier (one per
      * escalate-cooldown). On recovery it reverses: restore non-resolution tiers first (one

@@ -440,6 +440,20 @@ export class OdysseyCameraController {
         this._frameTangent = new THREE.Vector3();
         this._frameNormal = new THREE.Vector3();
         this._frameRight = new THREE.Vector3();
+        // B7 (perf): reused scratch for computeFollowFrame's per-frame outputs so the always-on
+        // camera follow stops allocating ~3 Vector3/frame (clones + an untargeted getPathDataAt) —
+        // that per-frame GC is a contributor to the scroll/seam frame-time spikes. Aliasing-safe:
+        // updateFollowPosition (the only caller) copies/lerps camPos/lookTarget into persistent
+        // targets synchronously and never retains them; these three stay distinct from the
+        // _frame* frame vectors above (camPos ≠ position, cameraUp ≠ normal, lookTarget ≠ position).
+        this._frameCamPos = new THREE.Vector3();
+        this._frameCameraUp = new THREE.Vector3();
+        this._frameLookTarget = new THREE.Vector3();
+        // Discard sink for the look-ahead getPathDataAt's tangent/normal/right, which that call
+        // computes but the caller ignores (only the look-ahead POSITION is used). Passing one
+        // shared throwaway for all three avoids 3 fresh Vector3/frame — they're overwritten in
+        // sequence and never read, so the aliasing is intentional and harmless.
+        this._frameThrow = new THREE.Vector3();
 
         // UNIT A7-CAMERA: smoothed per-chapter framing. `_activeFraming` is eased
         // toward the resolved framing of the chapter under the camera so boundary
@@ -1063,6 +1077,10 @@ export class OdysseyCameraController {
     update(deltaTime) {
         // Update breathing time
         this.breatheTime += deltaTime;
+        // Desired view-axis roll for this frame, applied AFTER lookAt() (which would otherwise
+        // rebuild the quaternion and discard any camera.rotation.z written before it). Set by
+        // applyBreathingMotion() and updatePortalApproach(); 0 = no roll. (masterplan §2 #6)
+        this._pendingViewRoll = 0;
         this.updateDirectorCamera(deltaTime);
         this.updateChapterFraming(deltaTime);
 
@@ -1097,6 +1115,13 @@ export class OdysseyCameraController {
 
         this.camera.up.copy(this.followCameraUp || FREE_CAMERA_WORLD_UP);
         this.camera.lookAt(this.lookAtTarget);
+
+        // Re-apply the subtle breathing / portal-approach roll about the local view axis,
+        // AFTER lookAt has set the orientation (masterplan §2 #6 — this roll was previously
+        // written to camera.rotation.z before lookAt and silently discarded every frame).
+        if (this._pendingViewRoll) {
+            this.camera.rotateZ(this._pendingViewRoll);
+        }
     }
 
     /**
@@ -1131,7 +1156,8 @@ export class OdysseyCameraController {
         if (cc.rollEnabled) {
             const rollAmplitude = cc.rollAmplitude * driftScale * (1 - (seamWeight * 0.82)) * (1 - vistaWeight * 0.55);
             const roll = Math.sin(t * Math.PI * 2 * cc.rollFrequency) * rollAmplitude;
-            this.camera.rotation.z = roll;
+            // Deferred to after lookAt() in update() so it isn't discarded (masterplan §2 #6).
+            this._pendingViewRoll = roll;
         }
     }
 
@@ -1646,14 +1672,14 @@ export class OdysseyCameraController {
         const framing = this._activeFraming;
 
         const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(tangent.y) * 0.45, 0.35, 0.9);
-        const cameraUp = normal.clone().lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
+        const cameraUp = this._frameCameraUp.copy(normal).lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
         // Roll-stabilisation (per-chapter): pull the up-vector toward WORLD up so a
         // near-vertical spline can't tilt the horizon. Default worldUp 0 = unchanged.
         const worldUpBlend = THREE.MathUtils.clamp(framing.worldUp ?? 0, 0, 1);
         if (worldUpBlend > 0) {
             cameraUp.lerp(PATH_FRAME_GRAVITY_UP, worldUpBlend).normalize();
         }
-        const camPos = pathPoint.clone()
+        const camPos = this._frameCamPos.copy(pathPoint)
             .addScaledVector(tangent, -(this.directorCamera.followDistance + vistaPullback))
             .addScaledVector(right, this.config.followOffset.x + framing.camRight)
             .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift + framing.camUp)
@@ -1671,7 +1697,9 @@ export class OdysseyCameraController {
             0,
             1,
         );
-        const { position: lookTarget } = this.getPathDataAt(lookAheadT);
+        const { position: lookTarget } = this.getPathDataAt(
+            lookAheadT, this._frameLookTarget, this._frameThrow, this._frameThrow, this._frameThrow,
+        );
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }
@@ -1870,7 +1898,8 @@ export class OdysseyCameraController {
             roll = THREE.MathUtils.lerp(0.024, 0, suction);
         }
 
-        this.camera.rotation.z = roll;
+        // Deferred to after lookAt() in update() so the suction roll survives (masterplan §2 #6).
+        this._pendingViewRoll = roll;
         this.camera.updateProjectionMatrix();
 
         if (elapsed >= approach.duration) {

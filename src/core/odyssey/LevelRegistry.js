@@ -394,7 +394,9 @@ export class LevelRegistry {
         }
 
         if (levelConfig.victory) {
-            const validTypes = ['lines', 'score', 'time', 'height', 'cascade', 'combo', 'custom'];
+            // 'tetrises' is supported by VictoryConditionEvaluator (primary switch) but was
+            // missing here, so a tetrises-primary level would falsely fail validation (masterplan §2 #10).
+            const validTypes = ['lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'custom'];
             if (!validTypes.includes(levelConfig.victory.primary.type)) {
                 errors.push(`Invalid victory type: ${levelConfig.victory.primary.type}`);
             }

@@ -68,6 +68,17 @@
             };
         })();
     </script>
+    <script>
+        (() => {
+            // Diagnostics-gated GPU capture — window.electronAPI.diagnosticsEnabled is set
+            // synchronously by preload.cjs (SERENITY_ENABLE_DIAGNOSTICS=1) before this runs.
+            // document.write here (not appendChild) guarantees it loads and executes before
+            // the game's module bootstrap touches WebGPU, per webgpu_inspector's own contract.
+            if (window.electronAPI && window.electronAPI.diagnosticsEnabled) {
+                document.write('<script src="/vendor/webgpu-inspector.js"><\/script>');
+            }
+        })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap"
@@ -421,6 +432,9 @@
         </div>
         <div id="stellar-drift-theme" class="theme-container">
             <!-- 3D canvas will be dynamically added by StellarDriftTheme -->
+        </div>
+        <div id="vesper-chrysalis-theme" class="theme-container">
+            <!-- 3D canvas will be dynamically added by VesperChrysalisTheme -->
         </div>
         <div id="moonlit-forest-theme" class="theme-container">
             <!-- 3D canvas will be dynamically added by MoonlitForestTheme -->

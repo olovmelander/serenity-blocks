@@ -45,23 +45,22 @@ import {
     createLandscapeTSL,
     createFoothillBridgeTSL,
     createFluffyGrassTSL,
+    createWildflowersTSL,
     createSunRaysTSL,
     createCloudsTSL,
-    createMeadowFlowersTSL,
     createTreesTSL,
     createTreeLineTSL,
     createReedsTSL,
     createGreatTreeTSL,
     createFallingLeavesTSL,
-    createWaterfallTSL,
     getSurfaceGreatTreeAnchor,
     createPollenTSL,
     createBirdsTSL,
     createSunDiscTSL,
     createSpruceTreesTSL,
-    createCabinTSL,
     createForegroundPassByTSL,
     createSnowMotesTSL,
+    createButterflyMaterialTSL,
     CH3_BIRD_SILHOUETTE_SETTINGS,
     getTerrainHeight,
     foothillBridgeHeight,
@@ -614,6 +613,27 @@ async function loadQuaterniusNatureAssets(group, layer) {
     }
 }
 
+// Birds-only restore (masterplan D1-ch3): the Quaternius GROUND GLBs are deleted (pending the
+// Ch3 redo), but the goldfinch + swallow flight GLBs are still on disk (shared with Summer) and
+// carry a full wing-rig + flight system. Loading just the animated birds gives Ch3 real motion
+// life now, at ~1.6MB, without waiting on the ground-prop redo. CH3_QUATERNIUS_GROUND_PLACEMENTS
+// stays gated off.
+async function loadFlyingBirdsOnly(group, layer) {
+    const { birdLayer } = layer.userData;
+    const jobs = CH3_FLYING_BIRD_FLIGHTS.map((flight) => addFlyingBird(group, birdLayer, flight));
+    const results = await Promise.allSettled(jobs);
+    const loadedCount = results.filter((r) => r.status === 'fulfilled' && r.value).length;
+    const failedCount = results.length - loadedCount;
+    layer.userData.loadedCount = loadedCount;
+    layer.userData.failedCount = failedCount;
+    layer.userData.assetsReady = loadedCount > 0;
+    layer.userData.assetStatus = loadedCount > 0 ? 'birds-only' : 'birds-error';
+    group.userData.quaterniusAssetsReady = true;
+    if (failedCount > 0) {
+        console.warn(`[Odyssey][Ch3] ${failedCount} flying birds failed to load`);
+    }
+}
+
 function createQuaterniusNatureLayer(group, terrainOffsetY) {
     const layer = new THREE.Group();
     layer.name = 'quaternius-cc0-nature-assets';
@@ -644,16 +664,17 @@ function createQuaterniusNatureLayer(group, terrainOffsetY) {
         return layer;
     }
 
-    // GLB VEGETATION REMOVED (2026-06-18, per user request): all Chapter-3 Quaternius ground
-    // props (trees / flowers / bushes / ferns / clover / rocks / pebbles) AND the GLB flying
-    // birds (goldfinch + swallow, ~8.8MB) are no longer loaded — the Ch3 scene is being redone
-    // with new assets. This drops ~33MB of GLB fetch + decode + the per-placement draws/pipelines
-    // off the cold start. The empty ground/bird layers + opacity-target + mixer/flight arrays are
-    // kept so update()/opacity/visibility stays a no-op (no restructure). To restore, re-enable:
-    //   layer.userData.loadPromise = loadQuaterniusNatureAssets(group, layer).catch(...)
-    layer.userData.assetStatus = 'removed-pending-redo';
+    // GROUND props (trees / flowers / bushes / ferns / clover / rocks) stay REMOVED — their
+    // Quaternius GLBs were deleted 2026-06-18 pending the Ch3 redo. But the animated flying
+    // BIRDS (goldfinch + swallow, ~1.6MB, on disk + shared with Summer) are restored now to give
+    // Ch3 real motion life (masterplan D1-ch3). Fire-and-forget; the empty ground layer keeps
+    // update()/opacity a no-op. Full ground restore = swap loadFlyingBirdsOnly → loadQuaterniusNatureAssets.
+    layer.userData.assetStatus = 'birds-only-pending-ground-redo';
     layer.userData.loadedCount = 0;
     group.userData.quaterniusAssetsReady = true;
+    layer.userData.loadPromise = loadFlyingBirdsOnly(group, layer).catch((error) => {
+        console.warn('[Odyssey][Ch3] flying-bird load failed:', error);
+    });
 
     return layer;
 }
@@ -982,18 +1003,16 @@ export function createSurfaceWorldEnvironment() {
     group.add(butterflies);
     group.userData.butterflies = butterflies;
 
-    // 9. Living Landscapes vegetation — instanced low-poly grass tufts, trees and reeds,
-    // all anchored to the same getTerrainHeight() as the terrain so they sit ON the
-    // ground. Capped + instanced; FrontSide solid (no flat cardboard undersides).
-    // Wildflower meadow (replaces the old grass tufts): sky-children-style cross-card flowers
-    // in coherent color drifts, anchored to the terrain.
-    const meadowFlowers = createMeadowFlowers(uniforms, 2400);
+    // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
+    // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
+    // zoned (deliberate clumps + open negative space), not a scattered carpet.
+    const meadowFlowers = createWildflowers(uniforms, 1400);
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);
     group.userData.meadowFlowers = meadowFlowers;
 
-    const trees = createTrees(uniforms, 26);
+    const trees = createTrees(uniforms, 16);
     trees.name = 'trees';
     trees.position.y = terrainOffsetY;
     group.add(trees);
@@ -1001,14 +1020,14 @@ export function createSurfaceWorldEnvironment() {
 
     // Spruce stands — the second species (creative plan item 5): mixed stands with the
     // deciduous rounds so the forest reads as forest, never uniform stamping.
-    const spruces = createSpruces(uniforms, 22);
+    const spruces = createSpruces(uniforms, 12);
     spruces.name = 'spruce-trees';
     spruces.position.y = terrainOffsetY;
     group.add(spruces);
     group.userData.spruces = spruces;
 
     // Mid-distance tree LINE (2nd instanced pass) — layers the hill silhouette in depth.
-    const treeLine = createTreeLine(uniforms, 44);
+    const treeLine = createTreeLine(uniforms, 30);
     treeLine.name = 'tree-line';
     treeLine.position.y = terrainOffsetY;
     group.add(treeLine);
@@ -1116,28 +1135,14 @@ export function createSurfaceWorldEnvironment() {
     group.add(fallingLeaves);
     group.userData.fallingLeaves = fallingLeaves;
 
-    // Falu-red cabin (creative plan asset 3): the human-scale cue at the treeline,
-    // promoted from hazed speck to landmark.
-    const cabin = createCabin(uniforms);
-    cabin.position.y += terrainOffsetY;
-    group.add(cabin);
-    group.userData.cabin = cabin;
-
     // Winter snow motes (creative plan asset 9): the final act's particle story.
     const snowMotes = createSnowMotes(uniforms, 160);
     snowMotes.name = 'snow-motes';
     group.add(snowMotes);
     group.userData.snowMotes = snowMotes;
 
-    // Second beat: a tiered cliff waterfall feeding the lake further down-corridor.
-    const waterfall = createWaterfall(uniforms);
-    waterfall.name = 'waterfall';
-    waterfall.position.y += terrainOffsetY;
-    group.add(waterfall);
-    group.userData.waterfall = waterfall;
-
     // 10. Warm-amber pollen motes drifting in the golden-hour light.
-    const pollen = createPollen(uniforms, 180);
+    const pollen = createPollen(uniforms, 600);
     pollen.name = 'pollen';
     group.add(pollen);
     group.userData.pollen = pollen;
@@ -1201,8 +1206,6 @@ export function createSurfaceWorldEnvironment() {
         bridgeConiferBelt,
         greatTree,
         fallingLeaves,
-        waterfall,
-        cabin,
         foregroundLayer,
         snowMotes,
         pollen,
@@ -1228,7 +1231,6 @@ export function createSurfaceWorldEnvironment() {
             rays,
             clouds,
             butterflies,
-            cabin,
             foregroundLayer,
             snowMotes,
             pollen,
@@ -1237,14 +1239,6 @@ export function createSurfaceWorldEnvironment() {
     );
     group.userData.oceanOpacityUniformTargets = collectUniformTargetsFromRoots(
         [ocean],
-        'uOpacity',
-    );
-    // SEAM 3->4: the WATERFALL gets its OWN opacity target set so it can be gated by the
-    // surface fade AND the seam-recede ramp (so it recedes gracefully into the Mountains
-    // approach instead of blinking off when the group hides). Excluded from the surface set
-    // above to avoid a double-write of the same uOpacity node in one frame.
-    group.userData.waterfallOpacityUniformTargets = collectUniformTargetsFromRoots(
-        [waterfall],
         'uOpacity',
     );
     // GATE THE LEAK: the alpine pieces (distant range + foothill skirt) get their own
@@ -1328,9 +1322,13 @@ export function createFluffyGrass(uniforms, count) {
 // WebGPU/TSL: Living Landscapes vegetation. Each builder returns an instanced low-poly
 // mesh anchored to getTerrainHeight() (props sit on the ground, no floating). No uniforms
 // to tag (the sway is time-driven via the shared uTime node), so they are returned plain.
-function createMeadowFlowers(uniforms, count) {
-    const { mesh } = createMeadowFlowersTSL(uniforms.uTime, count);
-    return mesh;
+
+// Real 3D per-species WILDFLOWERS (daisy/buttercup/poppy/lupine/cornflower) — replaces the flat
+// cross-card blooms. Deliberately placed (banks-dense, corridor-clear) by the shared composition
+// grammar. Delegates to createWildflowersTSL; returns the group (terrain-anchored in-builder).
+function createWildflowers(uniforms, count) {
+    const { group } = createWildflowersTSL(uniforms.uTime, count);
+    return group;
 }
 
 function createTrees(uniforms, count) {
@@ -1367,13 +1365,6 @@ function createFallingLeaves(uniforms, count, corridorPlacements) {
     return mesh;
 }
 
-// WebGPU/TSL: tiered cliff waterfall feeding the lake (scrolling emissive ribbons + splash
-// pool). Returns the group; uOpacity tagged so the surface fade collector drives it.
-function createWaterfall(uniforms) {
-    const { group, uniforms: builderUniforms } = createWaterfallTSL(uniforms.uTime);
-    return tagUniforms(group, builderUniforms);
-}
-
 // WebGPU/TSL: warm-amber pollen motes (instanced billboard quads, radial feather). uOpacity
 // is tagged so the surface fade collector drives it like the other surface elements.
 function createPollen(uniforms, count) {
@@ -1406,12 +1397,6 @@ function createBirds(count) {
 function createSpruces(uniforms, count) {
     const { mesh, uniforms: builderUniforms } = createSpruceTreesTSL(uniforms.uTime, count);
     return tagUniforms(mesh, builderUniforms); // uSnowBlend → spruces whiten toward the seam
-}
-
-// Falu-red cabin landmark; uOpacity tagged for the surface fade collectors.
-function createCabin(uniforms) {
-    const { group, uniforms: builderUniforms } = createCabinTSL(uniforms.uTime);
-    return tagUniforms(group, builderUniforms);
 }
 
 // Foreground pass-by silhouettes; uOpacity tagged for the surface fade collectors.
@@ -1490,10 +1475,10 @@ function createDistantMountains(uniforms, hostCenter = null) {
 function createButterflies(count) {
     const group = new THREE.Group();
     const geometry = new THREE.PlaneGeometry(1, 1);
-    const material = new THREE.MeshBasicMaterial({
-        color: 0xffaa00,
-        side: THREE.DoubleSide,
-    });
+    // Soft honey-amber wing material delegated to the .tsl.js builder (alongside pollen /
+    // leaves / snow-motes) — was a raw opaque pure-orange MeshBasicMaterial that read as
+    // hard garish squares. One shared material across all `count` meshes.
+    const material = createButterflyMaterialTSL();
 
     for (let i = 0; i < count; i++) {
         const mesh = new THREE.Mesh(geometry, material);
@@ -1639,15 +1624,6 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (ocean) {
         ocean.visible = surfaceGate > 0 && waterCrossingState.waterCrossingVisible;
     }
-
-    // SEAM 3->4: waterfall recedes (fades) across the seam in addition to the surface fade.
-    const waterfallOpacityUniformTargets = group.userData.waterfallOpacityUniformTargets || [];
-    waterfallOpacityUniformTargets.forEach((target) => {
-        const baseOpacity = typeof target.__odysseyBaseOpacity === 'number'
-            ? target.__odysseyBaseOpacity
-            : target.value;
-        target.value = baseOpacity * surfaceGate * recedeOpacity;
-    });
 
     // Alpine pieces: toggle on the combined gate + drive their dedicated opacity targets.
     const { alpineElements } = group.userData;

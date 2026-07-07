@@ -12,6 +12,8 @@
 //   ?ref=<url>          reference image to overlay (e.g. /playground-refs/target.png)
 //   ?refMode=overlay|split|side
 //   ?refOpacity=<0..1>
+//   ?inspector=1        attach three.js's built-in Inspector (r181+) — GPU-timestamp
+//                        Performance/Memory/Console panel, opt-in (adds its own DOM overlay)
 //
 // Screenshot contract: `window.__PLAYGROUND_READY__ === true` and a `playground-ready`
 // event fire after the first frame has compiled + rendered. Agent API on `window.__PLAYGROUND__`.
@@ -311,6 +313,17 @@ async function init() {
             label: 'playground',
             onDeviceLost: () => showError('WebGPU device lost (possible TDR). Reload the page to recover.'),
         });
+    }
+
+    if (params.get('inspector') === '1') {
+        try {
+            const { Inspector } = await import('three/addons/inspector/Inspector.js');
+            renderer.inspector = new Inspector();
+            document.body.appendChild(renderer.inspector.domElement);
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[playground] Inspector failed to attach:', e?.stack || e);
+        }
     }
 
     window.addEventListener('resize', onResize);
