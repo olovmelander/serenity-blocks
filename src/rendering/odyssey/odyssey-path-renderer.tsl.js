@@ -104,11 +104,15 @@ export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     coreTubularSegments: 480,
     glowTubularSegments: 320,
     // Raw linear emissive ceilings — kept <= ~1.5 at peak so post-tonemap stays sub-white.
-    emission: 1.35, // outer overall emissive multiplier (was 1.8 — clipped to white).
-    flowGlowPeak: 0.22, // outer flow-pulse glow peak (was 0.35).
-    edgeGlowPeak: 1.0, // outer leading-edge glow gain (was 1.5).
-    coreBrightness: 1.45, // inner-core emissive multiplier (was 2.0 — full white).
-    glowAlphaPeak: 0.14, // additive halo alpha peak (was 0.15).
+    // FIGURE-GROUND (masterplan D2): live captures showed the path was the BRIGHTEST object in
+    // every chapter frame, out-reading the world hero. Dropped the ceilings ~25-35% so the path
+    // stays a clear leading line but recedes below the chapter's own scene. Capture-verified on
+    // the worst offenders (ch3 green, ch4 white, ch5 blue). Prior values in parens.
+    emission: 1.0, // outer overall emissive multiplier (was 1.35).
+    flowGlowPeak: 0.16, // outer flow-pulse glow peak (was 0.22).
+    edgeGlowPeak: 0.72, // outer leading-edge glow gain (was 1.0).
+    coreBrightness: 1.05, // inner-core emissive multiplier (was 1.45).
+    glowAlphaPeak: 0.09, // additive halo alpha peak (was 0.14).
     // widthScale compression: chapter widthScale s -> 1 + (s-1)*widthScaleBlend.
     widthScaleBlend: 0.35,
 });

@@ -63,6 +63,38 @@ import {
     MOUNTAIN_SHADING,
     resolveMountainTreatment,
 } from './shared/mountain-language.js';
+import { createSnowConiferBelt } from './shared/snow-conifer-belt.js';
+
+// Ch4-side tree-line (3→4 seam continuity): the snow-conifer belt was designed to bridge the
+// seam ("both Ch3 and Ch4 seed conifers" — snow-conifer-belt.js), and Ch3 even comments that
+// "the Ch4 side seeds its own conifers on its lower slopes", but Ch4 never did — so the Ch3
+// forest stopped DEAD at the boundary and the peaks were bare. Seed a low belt on the near
+// snow-floor apron that climbs toward the peaks and thins to bare snow at the tree line, so the
+// forest carries across the seam. Placed on the flat snow-floor plane (floorY); the central
+// corridor is kept clear for the camera path.
+function buildCh4SeamConiferPlacements(floorY) {
+    const out = { spruce: [], pine: [], fir: [] };
+    let placed = 0;
+    let guard = 0;
+    while (placed < 80 && guard < 80 * 16) {
+        guard += 1;
+        const x = (Math.random() - 0.5) * 720;
+        const z = -100 - Math.random() * 560; // near the seam (-100) → toward the peaks (-660)
+        if (Math.abs(x) < 60) continue; // clear central corridor for the path
+        const climb = Math.min(1, Math.max(0, (-z - 100) / 560)); // 0 near seam → 1 toward peaks
+        if (climb > 0.72) continue; // tree line ends → bare snow toward the peaks
+        if (Math.random() > (1 - climb * 0.8)) continue; // thin toward the line
+        let species = 'fir';
+        if (climb < 0.4) species = 'spruce';
+        else if (climb < 0.65) species = 'pine';
+        const scale = (0.7 + Math.random() * 0.6) * (1 - climb * 0.35);
+        out[species].push({
+            x, y: floorY + 1, z, scale, rotationY: Math.random() * Math.PI * 2,
+        });
+        placed += 1;
+    }
+    return out;
+}
 
 /**
  * Mountain Peaks environment configuration
@@ -211,18 +243,47 @@ export function createMountainPeaksEnvironment(options = {}) {
     massif.add(foothillApron);
     group.userData.foothillApron = foothillApron;
 
+    // Smooth snow-ground BASEPLATE (3→4 review fix): a 3000-radius radially-feathered snow
+    // disc sitting just under the foothill/peak feet, so the chapter base reads as continuous
+    // snow instead of the cloud-sea rim + bare FBM plane edges. This builder was authored +
+    // validated in the pilot but was never added to the LIVE scene — the "square baseplate /
+    // not smooth at the bottom" the user reported. Shares the ticked uTimeNode for its sparkle.
+    const snowFloorY = foothillBaseY - 45;
+    const snowFloor = createSnowFloorTSL(uTimeNode, snowFloorY);
+    massif.add(snowFloor.group);
+    group.userData.snowFloor = snowFloor.mesh;
+
+    // Ch4 tree-line continuity across the 3→4 seam (see buildCh4SeamConiferPlacements above):
+    // a low winter conifer belt on the near snow-floor slopes so the Ch3 forest carries into
+    // the mountains and thins to bare snow, instead of stopping dead at the boundary.
+    const ch4Conifers = createSnowConiferBelt({
+        uSnowBlend: uniform(1), // winter throughout
+        placementsBySpecies: buildCh4SeamConiferPlacements(snowFloorY),
+    });
+    ch4Conifers.name = 'snow-conifer-belt-ch4';
+    massif.add(ch4Conifers);
+    group.userData.ch4Conifers = ch4Conifers;
+
     const heroSpec = getCanonicalMountainRangeWorldSpecs()
         .find((spec) => spec.id === 'ch4-center-hero');
     const heroCrownLocalY = heroSpec
         ? (heroSpec.worldPosition.y - chapterCenterY) + heroSpec.height * 0.96
         : 660;
-    const { group: mountains } = createCanonicalMountainRangeTSL({
+    const { group: mountains, parts: mainPeakParts } = createCanonicalMountainRangeTSL({
         hostCenter: chapterRange?.center,
         hostChapterId: 4,
         name: 'main-peaks',
         uTransition,
         summitGlow: uSummitGlow,
         opacityTargets: mainPeakOpacityTargets,
+    });
+    // SNOW PARITY (3→4 seam): this is the SAME canonical chain the Ch3 distant preview shows,
+    // and that preview is driven to full winter snow by the end of Ch3 (snowBlend→1). Ch4 left
+    // its copy at uSnowBlend 0 (a higher snow line / more bare rock), so the shared silhouette
+    // visibly LOST snow across the handoff. Ch4 is winter throughout, so pin the hero peaks to
+    // full snow to match the preview at the seam. (uSnowBlend is otherwise not driven in Ch4.)
+    mainPeakParts.forEach((part) => {
+        if (part.uniforms?.uSnowBlend) part.uniforms.uSnowBlend.value = 1;
     });
     group.userData.foregroundRidge = null;
 

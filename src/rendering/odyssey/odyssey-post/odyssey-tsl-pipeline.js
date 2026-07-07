@@ -74,12 +74,19 @@ const SEAM_BLOOM_BOOST = 0.1;
 const MASTER = Object.freeze({
     // Tinted toe: deep shadows lifted+tinted toward a cool teal/indigo, then blacks
     // gently crushed. Cool toe + warm-ish highlights is the classic teal/amber film look.
-    toeTint: new THREE.Color(0.06, 0.10, 0.16), // cool teal-indigo cast in the shadows
+    // 2026-07-05: warmed the toe (was 0.06,0.10,0.16 hard teal-indigo → less cold/muddy
+    // shadows) as part of the "less muted" vividness pass — the stylized palette read cooler
+    // + greyer than the reference theme (which uses NoToneMapping + no grade).
+    toeTint: new THREE.Color(0.09, 0.10, 0.13), // gently cool shadow cast (warmed from teal-indigo)
     toeLift: 0.012, // how far the deep shadows are lifted toward toeTint
     blackCrush: 0.018, // gentle black point raise (subtractive floor) for contrast
     shoulder: 0.86, // highlight shoulder roll-off knee (lower = earlier, softer rolloff)
     contrast: 1.07, // gentle global S-curve contrast around mid-grey
-    saturation: 1.06, // subtle global saturation lift
+    // 2026-07-05: lifted 1.06 → 1.15 to counter the ACES tonemap's desaturation of highlights
+    // (the "single largest reason colors read muted" vs the untonemapped reference theme).
+    // Display-space + clamped downstream, so no blowout; hot chapters (Earth Core/Urban) are
+    // still pulled back by their lower per-chapter uChapterSat so lava/neon don't over-clip.
+    saturation: 1.15, // global saturation lift (vividness pass)
     // Slight global temperature/tint bias (per-channel multiply, ~1.0). Warm reds,
     // cool-ish blues = a hair of teal/amber separation baked into the stock.
     tempBias: new THREE.Color(1.015, 1.0, 0.985),
@@ -114,15 +121,22 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [0.86, 0.98, 1.10], contrast: 1.12, vignette: 1.28, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
     },
-    // 3 Surface World — fresh green-gold daylight, light vignette.
+    // 3 Surface World — Midsommar golden-hour meadow. Re-aimed WARM from the old cool-green cast:
+    // the previous tint [0.97,1.04,0.95] pulled R+B DOWN and G UP (cool/green), fighting the
+    // golden-hour intent on TOP of the shared ACES muting; now warm (R up, B down) with more
+    // saturation + contrast + a lighter vignette so the meadow reads vivid + sunlit. (Tint
+    // renormalises to origLuma → hue-only shift, safe against ACES; A/B in-game.)
     {
-        tint: [0.97, 1.04, 0.95], contrast: 1.0, vignette: 0.90, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
+        tint: [1.04, 1.01, 0.92], contrast: 1.05, vignette: 0.75, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 4 Mountains — open, airy, light vignette (REFERENCE stock).
     {
         tint: [1.02, 1.00, 1.06], contrast: 1.03, vignette: 0.74, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
     },
     // 5 Sky & Drift — warm violet haze, open frame.
+    // READY (unverified) FIX pending a capture pass: contrast 0.98→1.04 + sat 1.06→1.11 to give the
+    // weakest/flattest chapter (3/5, reads washed — contrast is BELOW neutral) depth. Reverted for
+    // now because it couldn't be visually confirmed headless; re-apply once ch5 can be eyeballed.
     {
         tint: [1.05, 0.96, 1.07], contrast: 0.98, vignette: 0.70, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
     },
@@ -182,8 +196,8 @@ export class OdysseyTslPipeline {
         // ── Smoothed director-driven modulation state (no per-frame allocs) ──
         // The chapter signature is resolved (source→target by seamProgress) every frame,
         // then exponentially smoothed into these so seams/beats glide instead of popping.
-        this._smChroma = params.chroma ?? 0.0015; // edge-CA base amount (radial)
-        this._smVignette = params.vignette ?? 0.42; // vignette strength
+        this._smChroma = params.chroma ?? 0.0009; // edge-CA base amount (radial); de-hazed 2026-07-05
+        this._smVignette = params.vignette ?? 0.30; // vignette strength; opened up 2026-07-05
         this._smChapterContrast = 1.0; // per-chapter contrast nudge
         this._smChapterTint = new THREE.Color(1, 1, 1); // per-chapter signature tint
         this._scratchTint = new THREE.Color(); // resolve target (reused)
@@ -217,7 +231,7 @@ export class OdysseyTslPipeline {
         // director's bloom weight (the LEAN no-bloom variant is forced in update()). Honors
         // the constructor enableBloom (no node ⇒ never allowed). No-op for existing callers.
         this._bloomAllowed = this.enableBloom;
-        this._baseGrain = params.grain ?? 0.022; // grain anchor the scale multiplies
+        this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
         this.postProcessing = new THREE.PostProcessing(renderer);
         const scenePass = pass(scene, camera);
@@ -284,9 +298,9 @@ export class OdysseyTslPipeline {
         this.uExposure = uniform(params.exposure ?? 1.0);
         this.uContrast = uniform(params.contrast ?? 1.06);
         this.uSaturation = uniform(params.saturation ?? 1.08);
-        this.uVignette = uniform(params.vignette ?? 0.42);
-        this.uChroma = uniform(params.chroma ?? 0.0015);
-        this.uGrain = uniform(params.grain ?? 0.022);
+        this.uVignette = uniform(params.vignette ?? 0.30);
+        this.uChroma = uniform(params.chroma ?? 0.0009);
+        this.uGrain = uniform(params.grain ?? 0.012);
         this.uGradeTint = uniform(params.gradeTint ?? new THREE.Color(1, 1, 1));
         this.uGradeStrength = uniform(params.gradeStrength ?? 0.18);
 
@@ -718,8 +732,10 @@ export class OdysseyTslPipeline {
             // Base vignette/CA, modulated by the arc weight; beat energy tightens the
             // vignette a touch (eye drawn inward on a hit) and a hair of extra CA.
             const beatPulse = directorState.beatPulse ?? 0;
-            const baseVignette = 0.40 * sig.vignetteWeight + energy * 0.05 + beatPulse * 0.03;
-            const baseChroma = 0.0015 * sig.chromaWeight + beatPulse * 0.0004;
+            // De-hazed 2026-07-05 (user "looks soft/less-stunning" report): vignette base
+            // 0.40→0.30 (open the corners) and CA base 0.0015→0.0009 (less edge resample-blur).
+            const baseVignette = 0.30 * sig.vignetteWeight + energy * 0.05 + beatPulse * 0.03;
+            const baseChroma = 0.0009 * sig.chromaWeight + beatPulse * 0.0004;
 
             this._smVignette = lerp(this._smVignette, baseVignette, k);
             this._smChroma = lerp(this._smChroma, baseChroma, k);

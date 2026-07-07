@@ -103,6 +103,14 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
 
     const color = base.add(nebula.mul(uEnergy.mul(0.5).add(0.85)));
 
+    // NOTE (masterplan B3, attempted + reverted 2026-07-05): folding the camera-enveloping
+    // ambient wash (createAmbientWashTSL) into this dome to save a full-screen pass REGRESSED
+    // the corridor — the wash is re-centred on the camera every frame so it always fills the
+    // frame, whereas this dome is world-anchored (fixed z), so at chapter positions where it
+    // doesn't cover the corners those pixels fell back to RGB-black (the exact crush the wash
+    // prevents). The two domes serve different roles and can't be merged without an enveloping
+    // void dome. Left separate; a real B3 needs the void dome itself to envelop the camera.
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = uOpacity;

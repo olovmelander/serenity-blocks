@@ -49,41 +49,21 @@ export const MODIFIER_DEFINITIONS = {
         apply: (gameState) => {
             gameState.comboMultiplierEnabled = true;
             gameState.comboMultiplier = 1;
+            gameState.comboCount = 0;
         },
-        applyToCallbacks: (callbacks, gameState) => {
-            const originalOnLineClear = callbacks.onLineClear;
-            callbacks.onLineClear = (lineCount) => {
-                // Apply combo multiplier to scoring
-                if (gameState.comboMultiplierEnabled && gameState.comboCount > 0) {
-                    gameState.comboMultiplier = 1 + (gameState.comboCount * 0.5);
-                } else {
-                    gameState.comboMultiplier = 1;
-                }
-                originalOnLineClear?.(lineCount);
-            };
-            return callbacks;
-        },
+        // The consecutive-clear counter + score scaling now live in physics.js (gated on
+        // comboMultiplierEnabled), because the score is awarded BEFORE onLineClear fires and the
+        // counter must be maintained once per lock in the shared clear routine. The old wrapper
+        // here read an always-unset gameState.comboCount and ran too late to affect the clear, so
+        // the modifier did nothing — see masterplan §2 #3 / C2. No callback wrapping needed.
+        applyToCallbacks: (callbacks) => callbacks,
     },
 
-    invisible: {
-        name: 'Invisible',
-        description: 'Placed blocks become invisible after a moment',
-        apply: (gameState) => {
-            gameState.invisibleBlocksEnabled = true;
-            gameState.invisibleDelay = 1500; // ms before blocks fade
-        },
-        applyToCallbacks: (callbacks, gameState) => {
-            const originalOnPieceLock = callbacks.onPieceLock;
-            callbacks.onPieceLock = (piece) => {
-                originalOnPieceLock?.(piece);
-                // Invisibility is handled by rendering, we just mark the piece
-                if (gameState.invisibleBlocksEnabled) {
-                    piece.fadeOutTime = Date.now() + gameState.invisibleDelay;
-                }
-            };
-            return callbacks;
-        },
-    },
+    // NOTE: the 'invisible' modifier was RETIRED (masterplan §2 #3 / C2). It was double-dead — no
+    // level activated it AND no renderer read piece.fadeOutTime — and a correct wire would touch
+    // SHARED single-player board render code (board.js/draw.js) plus thread fadeOutTime through the
+    // gravity-cascade connected-components rebuild (physics.js), where it's currently lost. Removed
+    // rather than shipped half-working. Re-add here + wire the render skip if the effect is wanted.
 
     mirror: {
         name: 'Mirror Mode',
@@ -102,6 +82,12 @@ export const MODIFIER_DEFINITIONS = {
         description: 'Speed increases faster than normal',
         apply: (gameState) => {
             gameState.speedMultiplier = 1.5;
+            // Speed up the STARTING interval now (covers fixed-speed / no-progression levels that
+            // never hit the level-up recompute). physics.js honours speedMultiplier on every
+            // level-up so the player stays 1.5x faster throughout (masterplan §2 #3 / C2).
+            if (gameState.dropInterval) {
+                gameState.dropInterval /= 1.5;
+            }
         },
         applyToCallbacks: (callbacks) => callbacks,
     },

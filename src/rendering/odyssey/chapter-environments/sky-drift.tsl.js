@@ -328,6 +328,13 @@ export function createCloudSheetTSL(uTime, {
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // NOTE: additive here contradicts the "NOT additive / dark value anchor" doc above — a known
+    // discrepancy. Investigated via the ch5-cloud-sheets playground A/B (2026-07-05): at the
+    // shipping opacities (0.08→0.16 × density × edge ≈ 4%) the strata are a whisper-faint layer
+    // either way, and against the REAL dark dusk sky the dark ink tint under normal blend goes
+    // dark-on-dark (sheets vanish) while additive keeps faint lit-rim structure — so flipping to
+    // normal is not a clear win and can read worse. Left as additive; revisit only if the strata
+    // opacity is ever raised enough for the dark-anchor to actually register.
     material.blending = THREE.AdditiveBlending;
 
     const geometry = new THREE.PlaneGeometry(620, 360, 1, 1);
@@ -527,12 +534,18 @@ export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cf
     // order): magenta-pink nitrogen hem at the BASE, yellow-green foot, green oxygen
     // body, crimson high-oxygen caps fading at the TOP. The legacy colorA/colorB
     // arguments are kept for signature compatibility but the stack below owns the look.
-    const uHem = uniform(new THREE.Color(0xff5fb0)); // nitrogen hem (base)
-    const uFoot = uniform(new THREE.Color(0x9cff57)); // bright yellow-green foot
+    // 2026-07-05 (playground-verified): the curtains are viewed nearly EDGE-ON (camera aims at the
+    // peak horizon), which compresses this vertical stack into a horizontal band — so the physically
+    // "correct" crimson high-oxygen cap read as a GARISH red/orange rainbow band (ch5 audit weak
+    // point), fighting the doc's own "strictly cool-dominant" intent. Re-graded cool-dominant: the
+    // caps are now violet (the classic pink/purple upper aurora), the foot is a softer teal-green
+    // instead of hot lime, and the hem is a gentler magenta — a cohesive green→teal→violet curtain.
+    const uHem = uniform(new THREE.Color(0xe060c6)); // nitrogen hem (base) — softer magenta
+    const uFoot = uniform(new THREE.Color(0x6dff9c)); // teal-green foot (was hot lime 0x9cff57)
     const uBody = uniform(new THREE.Color(0x3dff8e)); // oxygen green body
     const uBodyDim = uniform(new THREE.Color(0x1e9e64)); // dim body wash
-    const uCap = uniform(new THREE.Color(0xc71f37)); // crimson cap
-    const uCapFade = uniform(new THREE.Color(0x6e1030)); // cap fade-out
+    const uCap = uniform(new THREE.Color(0x9a5cff)); // violet cap (was crimson red 0xc71f37)
+    const uCapFade = uniform(new THREE.Color(0x3a1f66)); // cap fade-out — deep violet
     const uAccent = uniform(new THREE.Color(0x5b3bff)); // blue-violet edge accent
 
     // Vertex wobble + a gentle ARC bow across the upper frame (the hero curtain

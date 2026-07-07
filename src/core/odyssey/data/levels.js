@@ -102,7 +102,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 20 lines to complete your first level! A gentle introduction to the odyssey.',
             difficulty: 1,
-            estimatedTime: 120,
             tip: 'Build flat stacks and clear multiple lines at once. Clearing 2+ lines is more efficient than singles! Keep playing after goal for more stars.',
         },
     },
@@ -175,7 +174,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Learn the power of cascading clears. Watch blocks fall and chain together.',
             difficulty: 2,
-            estimatedTime: 180,
             tip: 'Build towers with gaps - when you clear a line, blocks above will fall and may trigger chain reactions! Keep playing after goal for more stars.',
         },
     },
@@ -248,7 +246,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Trigger 4 cascades in the crystal geode! A cascade happens when falling blocks clear more lines.',
             difficulty: 2,
-            estimatedTime: 150,
             tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade chain! Keep playing after goal for more stars.',
         },
     },
@@ -321,7 +318,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'TIME ATTACK! Clear 30 lines before the 3-minute timer runs out.',
             difficulty: 3,
-            estimatedTime: 120,
             tip: 'This is your first time attack level! Speed matters more than perfection - keep clearing lines to beat the clock.',
         },
     },
@@ -395,7 +391,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 40 lines in the crystal cavern! Cascades are active - falling blocks can trigger more clears.',
             difficulty: 4,
-            estimatedTime: 200,
             tip: 'This level combines line clearing with cascades. The 6 starting rows create cascade opportunities - use them! Keep playing after goal for more stars.',
         },
     },
@@ -465,7 +460,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Start under pressure with a half-filled board. Dig your way out!',
             difficulty: 5,
-            estimatedTime: 150,
             tip: 'Clear the starting garbage quickly to make room for building.',
         },
     },
@@ -536,7 +530,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Master the cascade. Build towering structures that collapse in chain reactions.',
             difficulty: 6,
-            estimatedTime: 240,
             tip: 'Plan multiple layers of clears. Each cascade can trigger the next.',
         },
     },
@@ -606,7 +599,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Enter the deep ocean. The water offers a new rhythm to your descent.',
             difficulty: 3,
-            estimatedTime: 150,
             tip: 'The calmer pace gives you more time to plan ahead.',
         },
     },
@@ -676,7 +668,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Ride the glowing tides. Build combos to maximize your score.',
             difficulty: 4,
-            estimatedTime: 180,
             tip: 'Consecutive clears build combos. Keep the rhythm going!',
         },
     },
@@ -747,7 +738,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'A place of perfect calm. Take your time and build with precision.',
             difficulty: 3,
-            estimatedTime: 240,
             tip: 'Slower drops mean more time for perfect placements.',
         },
     },
@@ -818,7 +808,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Float among graceful koi. Create flowing cascades like ripples in water.',
             difficulty: 5,
-            estimatedTime: 200,
             tip: 'Build tall structures that cascade downward like waterfalls.',
         },
     },
@@ -889,7 +878,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Race the waves! Speed and precision combine in this high-tempo challenge.',
             difficulty: 6,
-            estimatedTime: 180,
             tip: 'The speed increases - stay focused and keep clearing!',
         },
     },
@@ -959,7 +947,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Emerge into a lush forest. The surface world welcomes you with warmth.',
             difficulty: 4,
-            estimatedTime: 150,
             tip: 'Enjoy the natural pace and focus on clean stacking.',
         },
     },
@@ -1030,7 +1017,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'New growth springs forth. Build combos like blossoming flowers.',
             difficulty: 4,
-            estimatedTime: 180,
             tip: 'Keep combos going by clearing lines in quick succession.',
         },
     },
@@ -1100,7 +1086,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Sway with the meadow grasses. Create cascading clears like wind through fields.',
             difficulty: 5,
-            estimatedTime: 200,
             tip: 'Let blocks cascade naturally like grass bending in the breeze.',
         },
     },
@@ -1170,7 +1155,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The summer sun beats down. Move fast before the heat overwhelms!',
             difficulty: 6,
-            estimatedTime: 150,
             tip: 'Speed is key - keep pieces flowing!',
         },
     },
@@ -1241,7 +1225,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Gather the autumn harvest. Combine cascades and Tetrises for maximum yield.',
             difficulty: 6,
-            estimatedTime: 200,
             tip: 'The starting blocks are your harvest - collect points from them!',
         },
     },
@@ -1312,7 +1295,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Cherry blossoms fall in the fading light. Play with grace and precision.',
             difficulty: 5,
-            estimatedTime: 210,
             tip: 'Like falling petals, aim for clean, beautiful plays.',
         },
     },
@@ -1383,7 +1365,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Climb the rolling green hills. Master cascading chains on tall terrain.',
             difficulty: 7,
-            estimatedTime: 240,
             tip: 'The tall board allows massive cascades - build upward!',
         },
     },
@@ -1455,7 +1436,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The sun sets on the surface world. Rise toward the mountains as light fades.',
             difficulty: 8,
-            estimatedTime: 240,
             tip: 'Combine every technique. This is your graduation from the surface.',
         },
     },
@@ -1528,7 +1508,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Chapter finale! Trigger 10 cascades on the tall 40-row board.',
             difficulty: 7,
-            estimatedTime: 180,
             tip: 'Build tall towers with gaps - the 40-row board gives space for epic chain reactions! Keep playing after goal for more stars.',
         },
     },
@@ -1598,7 +1577,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Watch the sun rise over the Himalayas. Build score in the thin mountain air.',
             difficulty: 6,
-            estimatedTime: 180,
             tip: 'Start by clearing the existing blocks, then build for Tetrises.',
         },
     },
@@ -1668,7 +1646,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Enter the ancient ice temple. Frozen structures create cascade opportunities.',
             difficulty: 6,
-            estimatedTime: 200,
             tip: 'The ice formations are arranged for cascading - find the patterns.',
         },
     },
@@ -1738,7 +1715,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'A blizzard descends! Race against the storm at high speed.',
             difficulty: 7,
-            estimatedTime: 150,
             tip: 'Speed is survival - keep moving!',
         },
     },
@@ -1809,7 +1785,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Rest in a moonlit forest on the mountainside. A moment of serene challenge.',
             difficulty: 7,
-            estimatedTime: 210,
             tip: 'The moonlight reveals cascade patterns - watch for them.',
         },
     },
@@ -1883,7 +1858,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 30 lines starting from a half-filled board! Dig out fast.',
             difficulty: 8,
-            estimatedTime: 120,
             tip: 'Half the board is garbage - clear it quickly and build for Tetrises. Keep playing after goal for more stars!',
         },
     },
@@ -1954,7 +1928,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The moon rises over the summit. Create cascading avalanches.',
             difficulty: 8,
-            estimatedTime: 240,
             tip: 'Build massive towers for spectacular cascade chains.',
         },
     },
@@ -2026,7 +1999,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Reach the summit and transcend the mountains. Only sky awaits above.',
             difficulty: 9,
-            estimatedTime: 240,
             tip: 'Everything you\'ve learned comes together here. Trust your skills.',
         },
     },
@@ -2096,7 +2068,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Step into the clouds. Gravity loosens as you enter the sky realm.',
             difficulty: 6,
-            estimatedTime: 170,
             tip: 'Feel the lightness - pieces seem to float.',
         },
     },
@@ -2167,7 +2138,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Dance beneath the northern lights. Build combos like waves of color.',
             difficulty: 7,
-            estimatedTime: 190,
             tip: 'The aurora pulses with your combos - keep them flowing!',
         },
     },
@@ -2237,7 +2207,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Follow the path of stars. Create cascading constellations.',
             difficulty: 7,
-            estimatedTime: 210,
             tip: 'Stars cascade like dominoes - set them up carefully.',
         },
     },
@@ -2307,7 +2276,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'A storm rages! Navigate the turbulence at maximum speed.',
             difficulty: 8,
-            estimatedTime: 150,
             tip: 'The storm pushes you faster - embrace the chaos!',
         },
     },
@@ -2378,7 +2346,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Float among ethereal lights. Combine cascades and combos for transcendence.',
             difficulty: 8,
-            estimatedTime: 220,
             tip: 'The aurora responds to your cascades - make them spectacular!',
         },
     },
@@ -2452,7 +2419,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Trigger 18 cascades at the edge of space. Build tall for chain reactions!',
             difficulty: 9,
-            estimatedTime: 260,
             tip: 'The 30-row board with 12 starting rows creates cascade opportunities. Build upward! Keep playing after goal for more stars.',
         },
     },
@@ -2524,7 +2490,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Leave the atmosphere behind. Space awaits beyond the aurora\'s final dance.',
             difficulty: 9,
-            estimatedTime: 250,
             tip: 'This is the gateway to space. Give everything you have!',
         },
     },
@@ -2595,7 +2560,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Journey to the heart of a galaxy. Build score among swirling stars.',
             difficulty: 8,
-            estimatedTime: 200,
             tip: 'The galaxy spirals with your combos - keep the rhythm!',
         },
     },
@@ -2665,7 +2629,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Weave through astral threads. Create cascading patterns of cosmic energy.',
             difficulty: 8,
-            estimatedTime: 230,
             tip: 'The astral threads guide cascade patterns - follow them.',
         },
     },
@@ -2738,7 +2701,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 35 lines under the blood moon! 8 rows of garbage and fast drops.',
             difficulty: 8,
-            estimatedTime: 120,
             tip: 'Fast 450ms drops with garbage - work quickly but stay calm. Every line counts!',
         },
     },
@@ -2809,7 +2771,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The sun hides behind the moon. Play in the shadow of totality.',
             difficulty: 9,
-            estimatedTime: 200,
             tip: 'The eclipse shadow reveals hidden cascade opportunities.',
         },
     },
@@ -2880,7 +2841,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'A dying star explodes. Capture the energy in your score.',
             difficulty: 10,
-            estimatedTime: 240,
             tip: 'The supernova energy fuels your combo multiplier.',
         },
     },
@@ -2954,7 +2914,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Race the expanding shockwave! Clear 60 lines before time runs out.',
             difficulty: 9,
-            estimatedTime: 150,
             tip: 'Speed is critical - use Tetrises (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
         },
     },
@@ -3026,7 +2985,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Approach the event horizon. Beyond lies the point of no return.',
             difficulty: 10,
-            estimatedTime: 260,
             tip: 'Everything you\'ve learned leads to this. Trust your instincts.',
         },
     },
@@ -3096,7 +3054,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Enter the gate to singularity. Reality begins to distort around you.',
             difficulty: 8,
-            estimatedTime: 180,
             tip: 'The black hole pulls at everything - stay centered.',
         },
     },
@@ -3169,7 +3126,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Chapter 6 finale! Trigger 18 cascades at the singularity.',
             difficulty: 9,
-            estimatedTime: 240,
             tip: 'The 28-row board is your canvas for massive chain reactions. Build tall and let gravity do the work! Keep playing after goal for more stars.',
         },
     },
@@ -3240,7 +3196,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Reality becomes fluid. Build score in the realm of dreams.',
             difficulty: 9,
-            estimatedTime: 200,
             tip: 'In dreams, combos flow endlessly - let them.',
         },
     },
@@ -3311,7 +3266,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Colors splash across the void. Paint with cascades and combos.',
             difficulty: 9,
-            estimatedTime: 210,
             tip: 'Each cascade paints a new color - make it a masterpiece.',
         },
     },
@@ -3384,7 +3338,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 40 lines on the chromadelic highway! Ultra-fast 400ms drops.',
             difficulty: 9,
-            estimatedTime: 120,
             tip: 'At level 13 speed with 400ms drops, trust your reflexes. Fast but clean stacking wins!',
         },
     },
@@ -3458,7 +3411,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Harness the voltage! Trigger 25 cascades on the massive 32-row storm board.',
             difficulty: 10,
-            estimatedTime: 300,
             tip: 'With 16 starting rows and 32 total rows, this board is built for epic cascades. Build strategically! Keep playing after goal for more stars.',
         },
     },
@@ -3529,7 +3481,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The ultimate speed challenge. Maximum intensity before transcendence.',
             difficulty: 10,
-            estimatedTime: 150,
             tip: 'This is the storm before the calm. Give everything!',
         },
     },
@@ -3602,7 +3553,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 40 lines in an electric dreamscape! Cascades and combos active.',
             difficulty: 9,
-            estimatedTime: 120,
             tip: 'Gravity cascades are active - use them to chain clears for faster progress!',
         },
     },
@@ -3677,7 +3627,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
             difficulty: 10,
-            estimatedTime: 420,
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
     },
@@ -3750,7 +3699,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Rain patters against the window as you fall into a meditative rhythm. The city lights blur in the droplets.',
             difficulty: 6,
-            estimatedTime: 180,
             tip: 'Let the rain guide your pace. Steady, rhythmic play wins this level.',
         },
     },
@@ -3823,7 +3771,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The sun sets behind towering skyscrapers as neon signs flicker to life. The city awakens.',
             difficulty: 7,
-            estimatedTime: 240,
             tip: 'Use cascade gravity to chain reactions. The neon lights reward bold plays.',
         },
     },
@@ -3896,7 +3843,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Deep in the neon district, holographic billboards pulse with light. Speed and precision are everything.',
             difficulty: 8,
-            estimatedTime: 250,
             tip: 'The time limit is strict. Focus on efficient Tetris clears to meet your target.',
         },
     },
@@ -3970,7 +3916,6 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The ultimate urban challenge. Retro-futuristic sun sets over chrome mountains as you push for the high score.',
             difficulty: 9,
-            estimatedTime: 300,
             tip: 'This is the bonus chapter finale. Go for glory with maximum cascade chains!',
         },
     },
@@ -4125,7 +4070,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'Pressure builds slowly as you enter the deeper water. Dig a clean route through the opening stack, then settle in.',
             difficulty: 3,
-            estimatedTime: 140,
             tip: 'Use your first clears to make breathing room, then stabilize before you chase big clears.',
         },
     },
@@ -4158,7 +4102,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'Build layered reef structures and let the current pull them apart in cascading waves.',
             difficulty: 4,
-            estimatedTime: 210,
             tip: 'Create staggered shelves instead of tall spikes. Reliable two- and three-step chains beat risky mega-builds.',
         },
     },
@@ -4176,7 +4119,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'The ocean opens into a calm, luminous lane. Use the slower rhythm to rebuild precision.',
             difficulty: 4,
-            estimatedTime: 160,
             tip: 'Treat this as a reset level. Look ahead, flatten the stack, and win through efficiency.',
         },
     },
@@ -4210,7 +4152,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 4,
-            estimatedTime: 210,
             description: 'A still pocket in the deep. Slow speed and a long preview let you shape deliberate, elegant clears.',
             tip: 'Do not force speed here. Use the long preview to set up the exact board you want.',
         },
@@ -4253,7 +4194,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'You break into daylight at the forest edge. This is a reset: breathe, stack cleanly, and enjoy the wider horizon.',
             difficulty: 3,
-            estimatedTime: 160,
             tip: 'Use the gentler opener to rebuild rhythm before the chapter starts mixing mechanics again.',
         },
     },
@@ -4324,7 +4264,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'Golden leaves drift across open hills. End the season with patience, clean structure, and graceful lines.',
             difficulty: 5,
-            estimatedTime: 190,
             tip: 'This is a release beat. Let the pace settle and win with clean board management.',
         },
     },
@@ -4368,7 +4307,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'The foothills rise ahead, still touched by evening color. Build momentum before the real climb begins.',
             difficulty: 5,
-            estimatedTime: 190,
             tip: 'Treat the opening stack as scaffolding. Clear it cleanly, then turn the board into safe score routes.',
         },
     },
@@ -4399,7 +4337,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'The ridge opens into a vast vertical canvas. Use the extra height to stage elegant chain reactions.',
             difficulty: 6,
-            estimatedTime: 190,
             tip: 'Tall boards reward patience. Build shelves, not spikes, so every clear feeds the next.',
         },
     },
@@ -4474,7 +4411,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'The mountain finally falls away beneath you. Glide into open sky and learn the new floating rhythm.',
             difficulty: 6,
-            estimatedTime: 220,
             tip: 'Use the extra height to smooth the board before you cash in on big score turns.',
         },
     },
@@ -4539,7 +4475,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'Rain streaks across the glass as the world below softens into light. Build measured cascades inside the storm.',
             difficulty: 6,
-            estimatedTime: 190,
             tip: 'Think in layers. Gentle, repeatable cascades are better than one overbuilt tower.',
         },
     },
@@ -4731,7 +4666,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 9,
-            estimatedTime: 150,
             tip: 'This is still a speed wall, but it is no longer a marathon. Compress the target with Tetrises and keep the stack low.',
         },
     },
@@ -4768,7 +4702,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'The dream slows just enough for one deep breath. Use the cascades to glide into the final void.',
             difficulty: 8,
-            estimatedTime: 130,
             tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
         },
     },
@@ -4818,7 +4751,6 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 10,
-            estimatedTime: 420,
             description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },

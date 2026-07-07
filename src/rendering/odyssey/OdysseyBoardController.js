@@ -45,13 +45,22 @@ import {
     computeScenePixelRatio,
     evaluateDynamicResolutionAdjustment,
 } from '../../utils/desktop-performance-policy.js';
+import {
+    beginPostTargetCompile,
+    endPostTargetCompile,
+    compileGroupThroughPost,
+} from './warmup/post-target-compile.js';
 
 // Dynamic-resolution (DRS) tuning. The odyssey board pins a static pixel ratio at
 // init/resize; here we wire the existing frame-time policy so render scale sheds under
 // load and recovers when headroom returns. The policy itself enforces 6s-down/12s-up
 // cooldowns + a 0.5..1.25 clamp, so we only need a rolling frame-time window + a 1Hz
 // evaluation tick (NEVER per-frame — re-allocating the scene RT every frame can black-frame).
-const ODYSSEY_MAX_PIXEL_RATIO = 1.2; // QW3: lowered 1.5 -> 1.2; the heavy grade/grain masks it.
+// Hard ceiling on top of the per-tier `odyssey` scene cap. Restored to 1.5 (was QW3's 1.2)
+// so it no longer binds BELOW the theme's cap — the per-tier odyssey cap (now theme parity)
+// governs, and the adaptive controller rides renderScale beneath it (user low-res report
+// 2026-07-05). A DPR>1.5 panel is still clamped so 4K/retina can't runaway the fill cost.
+const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
 const DRS_FRAME_WINDOW = 60; // rolling frames used for the p95/p99 estimate.
 const DRS_EVAL_INTERVAL_MS = 1000; // evaluate at ~1Hz (policy cooldowns gate actual changes).
 const DRS_TARGET_FRAME_RATE = 60;
@@ -375,6 +384,15 @@ export class OdysseyBoardController {
         // Interaction/performance tracking
         this.lastInteractionAt = performance.now();
         this.backgroundLoadQuietWindowMs = 700;
+        // Frame-health backpressure for speculative background work (chapter creation / prewarm /
+        // render-warm). A rolling EMA of the RAW (pre-clamp) frame time: a heavy background build is
+        // itself a multi-hundred-ms frame spike, so the EMA jumps and the shared gate closes until
+        // the board renders smoothly again → builds self-space instead of back-to-back-freezing the
+        // visible board (the post-reveal "feels frozen ~45s" jank). RAW (not the 50ms-clamped delta)
+        // so a real build spike is distinguishable from a genuinely slow machine.
+        this.frameMsEma = 16.7; // ~60fps seed
+        this.frameHealthBudgetMs = 33; // ~30fps floor; above this, pause speculative bg work
+        this._bgGateBlockedSince = 0; // starvation escape: force one pass after a long block
 
         // ── Adaptive quality (Wave 2). One controller owns the whole degrade ladder:
         // Tier 0 resolution (subsumes the old inline QW2 DRS call — there is no longer a
@@ -564,6 +582,22 @@ export class OdysseyBoardController {
             }
         }
         console.log(`[OdysseyBoard] Startup chapter set: ${startupChapterIds.join(', ')}${startupScopeLabel}`);
+
+        // A2 EXPERIMENT (?odysseyLightsFirst=1, default OFF): hoist the global atmosphere
+        // light rig + build ALL chapter environments (reparenting every chapter's lights into
+        // the persistent rig) BEFORE launching any chapter compileAsync, so each prewarm
+        // specializes on the FINAL scene light set. The persistent rig "keeps the light set
+        // constant" only once every chapter is created — the default interleaved loop compiles
+        // chapter 1 before chapters 2..8's lights exist, so the first real render re-specializes
+        // the lit pipelines on the grown light-set hash (the ~5.5s/chapter warm suspect). Two
+        // passes are required: a single interleaved pass can't see the not-yet-created chapters'
+        // lights. Opt-in until a cold Electron boot A/B confirms the win (warm Dawn cache hides
+        // the compile cost, so this can only be measured cold).
+        const lightsFirst = this.aaaPostActive && readBooleanUrlFlag('odysseyLightsFirst');
+        if (lightsFirst) {
+            this._createAtmosphereLightRig();
+        }
+
         /* eslint-disable no-await-in-loop */
         for (const ch of startupChapterIds) {
             const createStart = performance.now();
@@ -574,12 +608,29 @@ export class OdysseyBoardController {
             if (createMs > 150) {
                 trace.event(`create ch${ch} took ${Math.round(createMs)}ms`);
             }
-            if (serialInit) {
-                await this._prewarmChapterEnvironment(ch);
-            } else {
-                compilePool.push(this._prewarmChapterEnvironment(ch));
+            // Default path: launch this chapter's compile immediately (interleaved with the
+            // next chapter's create). In lightsFirst mode, defer ALL compiles to pass 2 below.
+            if (!lightsFirst) {
+                if (serialInit) {
+                    await this._prewarmChapterEnvironment(ch);
+                } else {
+                    compilePool.push(this._prewarmChapterEnvironment(ch));
+                }
             }
             await this._yieldToMain();
+        }
+        if (lightsFirst) {
+            // Pass 2 — the full light set (atmosphere + every chapter's reparented lights) is
+            // now resident, so every chapter pipeline compiles against the light-set hash it
+            // will actually render with. No first-render re-specialization.
+            for (const ch of startupChapterIds) {
+                if (serialInit) {
+                    await this._prewarmChapterEnvironment(ch);
+                } else {
+                    compilePool.push(this._prewarmChapterEnvironment(ch));
+                }
+                await this._yieldToMain();
+            }
         }
         /* eslint-enable no-await-in-loop */
         this.environmentManager.updateVisibility(this.environmentManager.cameraProgress, { mode: 'progress' });
@@ -596,8 +647,12 @@ export class OdysseyBoardController {
                     if (env) env._renderWarmed = false;
                     this._queueChapterPrewarm(chapterId);
                     if (env && this.isActive) {
-                        this._renderWarmChapterOffscreen(chapterId, env);
-                        env._renderWarmed = true;
+                        // Warm AFTER the async prewarm compile resolves. Rendering synchronously in
+                        // the SAME tick we queued the prewarm is a GUARANTEED (not merely racy)
+                        // setPipeline(undefined) throw — the same warm-render-beats-compile bug the
+                        // background sweep now guards (compileAsync leaves .pipeline undefined until
+                        // its promise resolves). Defer with a bounded prewarmed-poll.
+                        this._deferRenderWarm(chapterId, env, 0);
                     }
                 },
             });
@@ -873,8 +928,30 @@ export class OdysseyBoardController {
         return Math.abs(targetPosition - currentPosition) <= this.cameraSettledThreshold;
     }
 
+    /** @private true when recent frames are smooth enough to steal main-thread time for bg work. */
+    _isFrameHealthy() {
+        if (typeof document !== 'undefined' && document.hidden) return true; // nothing to stutter
+        return this.frameMsEma <= this.frameHealthBudgetMs;
+    }
+
     _canRunBackgroundTask() {
-        return this._isInteractionIdle() && this._isCameraSettled();
+        // Interaction-idle + camera-settled are the "user isn't busy" gate; frame-health is the
+        // "board isn't already stuttering" gate — the three background paths (creation, prewarm,
+        // render-warm) all funnel through here, so this one term backpressures every speculative
+        // build. Starvation escape: if the board is idle+settled but stays frame-unhealthy for a
+        // sustained window (e.g. a weak GPU whose ch1 alone exceeds budget), force one pass so
+        // loading always completes (otherwise chapters never prebuild → first scroll hard-hitches).
+        if (!(this._isInteractionIdle() && this._isCameraSettled())) return false;
+        if (this._isFrameHealthy()) {
+            this._bgGateBlockedSince = 0;
+            return true;
+        }
+        if (!this._bgGateBlockedSince) this._bgGateBlockedSince = performance.now();
+        if (performance.now() - this._bgGateBlockedSince > 8000) {
+            this._bgGateBlockedSince = 0;
+            return true;
+        }
+        return false;
     }
 
     _queueChapterPrewarm(chapterId) {
@@ -1021,9 +1098,38 @@ export class OdysseyBoardController {
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
             const env = this.environmentManager?.environments?.get(ch);
             if (!env) {
-                // Not created yet (still background-loading) — wait, don't advance.
-                setTimeout(step, 300);
+                // Not created yet. Normally it background-loads shortly — but in capture/restricted
+                // startup the deferred chapters are NEVER created (eviction + background loading are
+                // forced off) while `order` still spans the full journey, so an UNBOUNDED wait here
+                // hangs the sweep forever → _bgRenderWarmComplete never sets → the adaptive controller
+                // stays frozen all session (the freeze gate in _tickAdaptiveQuality). Bound it like the
+                // prewarm wait below: after a grace window, SKIP a chapter that never materialises so
+                // the sweep always reaches completion (session-review finding 2026-07-05).
+                if (!this._bgWarmMissWaits) this._bgWarmMissWaits = {};
+                this._bgWarmMissWaits[ch] = (this._bgWarmMissWaits[ch] || 0) + 1;
+                if (this._bgWarmMissWaits[ch] <= 30) { // ~30 × 300ms = 9s for a real bg create to land
+                    setTimeout(step, 300);
+                    return;
+                }
+                idx += 1; // give up on this never-created chapter — advance so the sweep can finish
+                setTimeout(step, 60);
                 return;
+            }
+            // Do NOT render-warm until this chapter's async compile (prewarm) has RESOLVED.
+            // _renderWarmChapterOffscreen does a SYNCHRONOUS renderer.render(); warming a chapter
+            // whose pipelines are still building via compileAsync makes WebGPU bind a not-yet-ready
+            // pipeline → "setPipeline … not of type GPURenderPipeline" (the ch3/5/8 warm failures —
+            // console showed the warm firing BEFORE "Prewarmed chapter N shaders"). Bounded wait so
+            // a stuck/rejected compile can't hang the sweep (which would leave _bgRenderWarmComplete
+            // false forever); after the grace window, proceed — the live loop still warms on visit.
+            if (!env.prewarmed) {
+                if (!this._bgWarmWaits) this._bgWarmWaits = {};
+                this._bgWarmWaits[ch] = (this._bgWarmWaits[ch] || 0) + 1;
+                if (this._bgWarmWaits[ch] <= 30) { // ~30 × 200ms = 6s for the compile to land
+                    setTimeout(step, 200);
+                    return;
+                }
+                console.warn(`[OdysseyWarmup] chapter ${ch} still not prewarmed after grace window — warming anyway`);
             }
             idx += 1;
             if (!env._renderWarmed) {
@@ -1035,6 +1141,22 @@ export class OdysseyBoardController {
             setTimeout(step, 120);
         };
         setTimeout(step, 900); // let the reveal settle before stealing GPU time
+    }
+
+    /**
+     * Render-warm a chapter once its async prewarm compile has RESOLVED (env.prewarmed). Used by
+     * the eviction re-approach hook, where the chapter was just re-created + its prewarm queued in
+     * the same tick — warming synchronously then throws setPipeline(undefined). Bounded poll so a
+     * stuck/rejected compile never leaves a dangling timer chain. @private
+     */
+    _deferRenderWarm(chapterId, env, attempt) {
+        if (!this.isActive || !env || env._renderWarmed) return;
+        if (!env.prewarmed && attempt < 30) { // ~30 × 200ms = 6s grace for the compile to land
+            setTimeout(() => this._deferRenderWarm(chapterId, env, attempt + 1), 200);
+            return;
+        }
+        this._renderWarmChapterOffscreen(chapterId, env);
+        env._renderWarmed = true;
     }
 
     /**
@@ -1065,14 +1187,18 @@ export class OdysseyBoardController {
             this.renderer.render(this.scene, this.camera);
         } catch (error) {
             console.warn(`[OdysseyBoard] Background render-warm failed for chapter ${chapterId}:`, error?.message || error);
-            // DIAGNOSTIC (once per failing chapter): the full-scene render threw an invalid
-            // pipeline for THIS chapter's content. Probe each of the chapter's meshes in
-            // isolation to name the exact culprit material/geometry so it can be fixed (the
-            // background warm then works for every chapter). Runs only on the rare failure path.
-            if (!this._warmProbedChapters) this._warmProbedChapters = new Set();
-            if (!this._warmProbedChapters.has(chapterId)) {
-                this._warmProbedChapters.add(chapterId);
-                this._probeWarmFailure(chapterId, group);
+            // DIAGNOSTIC (debug overlay only, ?odysseyAAA=1): the failure-path probe re-renders the
+            // WHOLE scene once PER chapter drawable (~46 renders/chapter) to name the culprit mesh.
+            // That is pure main-thread waste in normal play — it fired for ch3/ch5/ch8, adding
+            // ~138 stray full-scene renders to the post-reveal background-load window (a real chunk
+            // of the "feels frozen for ~45s" jank). Gate it to the debug flag so shipped/normal runs
+            // just log the one warning above and move on; ?odysseyAAA=1 still gets the culprit probe.
+            if (this.debugOverlayActive) {
+                if (!this._warmProbedChapters) this._warmProbedChapters = new Set();
+                if (!this._warmProbedChapters.has(chapterId)) {
+                    this._warmProbedChapters.add(chapterId);
+                    this._probeWarmFailure(chapterId, group);
+                }
             }
         } finally {
             this._endPostTargetCompile(saved);
@@ -1136,48 +1262,23 @@ export class OdysseyBoardController {
      * (direct-to-canvas rendering — the plain compile is then correct as-is).
      * @private
      */
+    // E2: the post-target compile mechanics live in warmup/post-target-compile.js (pure, testable,
+    // no board state). These stay as thin wrappers so every internal caller is unchanged.
+    /** @private */
     _beginPostTargetCompile() {
-        const scenePass = this.postProcessingStack?.scenePass;
-        if (!scenePass?.renderTarget
-            || typeof this.renderer?.getMRT !== 'function'
-            || typeof this.renderer?.setMRT !== 'function') {
-            return null;
-        }
-        const previousTarget = this.renderer.getRenderTarget();
-        const previousMRT = this.renderer.getMRT();
-        this.renderer.setRenderTarget(scenePass.renderTarget);
-        this.renderer.setMRT(scenePass.getMRT?.() ?? null);
-        return { previousTarget, previousMRT };
+        return beginPostTargetCompile(this.renderer, this.postProcessingStack);
     }
 
-    /** @private restore the renderer state captured by _beginPostTargetCompile */
+    /** @private */
     _endPostTargetCompile(saved) {
-        if (!saved) return;
-        this.renderer.setRenderTarget(saved.previousTarget);
-        this.renderer.setMRT(saved.previousMRT);
+        endPostTargetCompile(this.renderer, saved);
     }
 
-    /**
-     * Launch a targeted compileAsync with the post target bound for its synchronous
-     * context-capture phase, restoring renderer state immediately after (the returned
-     * promise resolves later, off the main thread — safe to pool in parallel).
-     * @private
-     */
+    /** @private */
     _compileGroupThroughPost(group) {
-        const saved = this._beginPostTargetCompile();
-        try {
-            if (typeof this.renderer.compileAsync === 'function') {
-                return this.renderer.compileAsync(this.scene, this.camera, group);
-            }
-            if (typeof this.renderer.compile === 'function') {
-                this.renderer.compile(this.scene, this.camera, group);
-            }
-            return Promise.resolve();
-        } finally {
-            // compileAsync captures its render context (incl. the bound target) in its
-            // synchronous phase — restoring here cannot affect the in-flight compile.
-            this._endPostTargetCompile(saved);
-        }
+        return compileGroupThroughPost(
+            this.renderer, this.postProcessingStack, this.scene, this.camera, group,
+        );
     }
 
     async _prewarmChapterEnvironment(chapterId) {
@@ -1261,8 +1362,13 @@ export class OdysseyBoardController {
         const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
             renderScale: this._drs.renderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO, // QW3: 1.5 -> 1.2.
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
+            // Pass the selected quality tier so the user's setting actually governs Odyssey
+            // resolution. Without it computeScenePixelRatio defaults to 'High', hard-locking
+            // the browser (no desktop policy) to the High cap — Ultra/Extreme were unreachable
+            // and the scene stayed soft on capable GPUs (user low-res report 2026-07-05).
+            qualityTier: this.qualityName,
         });
         // WebGPU with automatic WebGL2 fallback (one TSL codebase runs on both backends).
         // ?forceWebGL=1 forces the WebGL2 backend for QA/parity testing.
@@ -1376,6 +1482,27 @@ export class OdysseyBoardController {
     }
 
     /**
+     * A2 — create the global atmosphere light rig (ambient + key + fill) so it exists
+     * BEFORE the chapter compile pool launches (opt-in via ?odysseyLightsFirst=1). In the
+     * default path this rig is born in setupDirector() AFTER the compile barrier, so the
+     * first real render re-specializes every lit chapter pipeline on the changed light-set
+     * hash (the ~5.5s/chapter warm-render suspect). Idempotent — setupDirector() reuses
+     * this.atmosphere when it's already been hoisted. Same motivation as the post-target
+     * hoist in initialize() (compiles must see their final render/lighting context).
+     */
+    _createAtmosphereLightRig() {
+        if (this.atmosphere || !this.aaaPostActive) return;
+        try {
+            this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
+            this.environmentManager?.setAtmosphereOwned(true);
+            console.log('[OdysseyBoard] Atmosphere light rig hoisted before compile pool (odysseyLightsFirst)');
+        } catch (error) {
+            console.warn('[OdysseyBoard] Early atmosphere hoist failed (non-fatal):', error);
+            this.atmosphere = null;
+        }
+    }
+
+    /**
      * Set up the cinematic Odyssey spine: the director (conductor), the audio
      * reactor, and the optional debug overlay (?odysseyAAA=1).
      */
@@ -1391,7 +1518,10 @@ export class OdysseyBoardController {
             // it owns the global look so ChapterEnvironmentManager yields fog/clear/
             // ambient (it still detects chapter changes for the FOV pulse).
             if (this.aaaPostActive) {
-                this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
+                // Reuse the rig if ?odysseyLightsFirst hoisted it before the compile pool.
+                if (!this.atmosphere) {
+                    this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
+                }
                 // Parallax mid/far depth filler so the corridor between chapter set pieces
                 // is never empty void (reads chapter-profile + path-utils; one cohesive rig).
                 this.corridorField = new OdysseyCorridorField(this.scene);
@@ -1652,6 +1782,7 @@ export class OdysseyBoardController {
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
+            qualityTier: this.qualityName,
         });
 
         this.camera.aspect = width / height;
@@ -1685,6 +1816,7 @@ export class OdysseyBoardController {
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
+            qualityTier: this.qualityName,
         });
         this.renderer.setPixelRatio(pixelRatio);
         if (this.postProcessingStack?.resize) {
@@ -1707,6 +1839,23 @@ export class OdysseyBoardController {
      */
     _tickAdaptiveQuality(frameMs) {
         if (!this.adaptiveQuality || !this.adaptiveQualityEnabled || !this.cinematicJourneyActive) return;
+        // Skip while the tab is hidden: rAF throttles to ~1fps when backgrounded and the loop's
+        // 50ms delta clamp (animate()) then feeds the controller a stream of "20fps" frames, which
+        // would spuriously downscale a board nobody is watching — it would then reveal low-res on
+        // return. Quality should only adapt to frames the user actually sees.
+        if (typeof document !== 'undefined' && document.hidden) return;
+        // Do NOT let the adaptive controller react while the startup background chapter-load +
+        // render-warm are still running. Those frames are main-thread-blocked by synchronous JS
+        // chapter builds (not GPU fill), so feeding them to the resolution policy makes it slash
+        // renderScale for the ENTIRE session — the board then looks low-res even at 200+fps once
+        // the load settles, because recovery is a slow +0.05/12s climb (user "feels low-res"
+        // report 2026-07-05: measured renderScale stuck at 0.6 @ 222fps). Freeze until the last
+        // startup phase (_bgRenderWarmComplete) finishes, then measure from a clean window.
+        if (!this._bgRenderWarmComplete) return;
+        if (!this._adaptiveResumedAfterLoad) {
+            this._adaptiveResumedAfterLoad = true;
+            this.adaptiveQuality.resetFrameWindow(performance.now());
+        }
         this.adaptiveQuality.recordFrame(frameMs);
         // Refresh the (cheap) pipeline reference each tick — the post stack is built after the
         // controller and can be torn down / re-created; ctx is reused so this is alloc-free.
@@ -1852,7 +2001,15 @@ export class OdysseyBoardController {
         // the board logs p99 ~8s cold-start spikes) cannot lurch the camera/director/grade by a
         // multi-second time step on the NEXT frame. 0.05s = 3 frames @60fps; anything longer is a
         // hitch we never want to integrate. Zero visual cost in steady state (delta << 0.05).
-        const delta = Math.min(this.clock.getDelta(), 0.05);
+        const rawDelta = this.clock.getDelta();
+        // Frame-health EMA for background backpressure — feed the RAW delta (pre-clamp) so a long
+        // build/compile frame registers as jank and closes the bg gate. Skip when the tab is hidden
+        // (rAF throttles to ~1fps → meaningless deltas, and there are no visible frames to protect).
+        if (!(typeof document !== 'undefined' && document.hidden)) {
+            const rawMs = rawDelta * 1000;
+            if (rawMs > 0 && rawMs < 2000) this.frameMsEma += (rawMs - this.frameMsEma) * 0.15;
+        }
+        const delta = Math.min(rawDelta, 0.05);
         this.renderFrame(delta);
     }
 

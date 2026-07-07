@@ -244,16 +244,21 @@ export function createCloudSeaDeckTSL({
     const litTop = clamp(billow.mul(0.8).add(up.mul(0.4)), 0.0, 1.0);
     let color = mix(uTrough, uTopWarm, litTop);
 
-    // Soft distance fog-edge fade toward the silver horizon band — NO hard rim.
+    // Soft distance fog-edge fade toward the silver horizon band. This is a COLOUR haze
+    // (camera-relative is fine — it just tints the far billows) and does NOT create an edge.
     const dist = length(positionWorld.xz.sub(cameraPosition.xz));
     const edge = smoothstep(radius * 0.45, radius * 0.95, dist);
     color = mix(color, uFogEdge, edge);
     // Cool the whole deck toward night with the chapter transition.
     color = mix(color, uTrough.mul(0.35), uTrans.mul(0.7));
 
-    // Alpha: solid body, feathered to 0 at the rim so there is no geometry edge; modulated
-    // by reveal (entry rise) so B7 can dissolve the deck below frame on the 4→5 exit.
-    const bodyAlpha = oneMinus(smoothstep(radius * 0.7, radius * 0.99, dist));
+    // Alpha rim: feather to 0 relative to the disc CENTRE (positionLocal.xz — the geometry is
+    // centred + rotated flat), NOT the camera. Keying the rim to camera distance let the disc's
+    // finite geometry edge show as a HARD STRAIGHT LINE whenever the camera sat inside ~radius
+    // of the rim (the 3→4 "square/hard bottom" the review flagged). Centre-relative always
+    // completes the fade INSIDE the geometry rim regardless of where the camera is.
+    const rimDist = length(positionLocal.xz);
+    const bodyAlpha = oneMinus(smoothstep(radius * 0.8, radius * 0.985, rimDist));
     const alpha = bodyAlpha.mul(uOpacity).mul(reveal);
 
     const material = new THREE.MeshBasicNodeMaterial();

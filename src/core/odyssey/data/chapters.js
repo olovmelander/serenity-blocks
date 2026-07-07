@@ -52,8 +52,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'You emerge from the molten depths. Above, you sense the vast liquid worlds waiting...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: null, // First chapter always unlocked
     },
 
     {
@@ -88,11 +86,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'Light spills down from above. The sea lifts you toward land, color, and changing seasons...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 1,
-        },
     },
 
     {
@@ -131,11 +124,6 @@ export const CHAPTER_CONFIGS = [
             seamWidth: 0.03,
             preloadDistance: 0.06,
         },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 2,
-        },
     },
 
     {
@@ -173,11 +161,6 @@ export const CHAPTER_CONFIGS = [
             ...DEFAULT_BOARD_TRANSITION,
             seamWidth: 0.06,
         },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 3,
-        },
     },
 
     {
@@ -212,11 +195,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 4,
-        },
     },
 
     {
@@ -256,11 +234,6 @@ export const CHAPTER_CONFIGS = [
             beatDurationMs: 1100,
             preloadDistance: 0.07,
             fxPreset: 'heavy',
-        },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 5,
         },
     },
 
@@ -302,11 +275,6 @@ export const CHAPTER_CONFIGS = [
             preloadDistance: 0.06,
             fxPreset: 'neon',
         },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 6,
-        },
     },
 
     {
@@ -340,11 +308,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'The city fades like an afterimage. What remains is the memory of the journey and the pulse of these electric nights.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 7,
-        },
     },
 ];
 

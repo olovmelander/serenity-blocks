@@ -19,6 +19,12 @@ import {
     getChapterProfile,
     getChapterTransitionForChapter,
 } from './chapter-environments/shared/chapter-profile.js';
+import {
+    SEAM_34_COLOUR_HALF_WIDTH,
+    SEAM_34_ALPINE_BRIDGE,
+    SEAM_56_COLOUR_HALF_WIDTH,
+    SEAM_56_AURORA_BRIDGE,
+} from './chapter-environments/shared/seam-bridges.js';
 
 /**
  * Dynamic chapter module map — each entry returns a Promise that loads the module
@@ -160,28 +166,11 @@ const SEAM_78_AFTERGLOW_BAND = 0.05; // fraction of BH's span before the boundar
 //   to the luminous payoff, never a hard cut at progress=1.
 const JOURNEY_END_BAND = 0.18;
 
-// SEAM 5->6 COLOUR ("the color changes to darker space with a pop"). The fog/sky COLOUR is
-// normally lerped only across the NARROW content seam (seamWidth 0.03), so the whole Sky
-// violet -> Space near-black change is crammed into ~0.06 of progress and reads as a snap.
-// For the 5->6 boundary ONLY we drive the COLOUR lerp over a WIDER, smootherstep'd window
-// centred on the boundary — WITHOUT widening the ecotone/content seam (so no extra double-
-// render cost; only the per-frame colour scalar changes). The midpoint is a deep teal
-// aurora bridge, not lavender haze, so chapter 06 inherits chapter 05's best ending tone.
-const SEAM_34_COLOUR_HALF_WIDTH = 0.055; // per-side progress window for the 3->4 colour/fog lerp
-const SEAM_34_ALPINE_BRIDGE = Object.freeze({
-    skyColor: 0x527da2,
-    fogColor: 0x638699,
-    ambientLight: 0xd8ded0,
-    ambientIntensity: 0.56,
-    fogDensity: 0.0024,
-});
-const SEAM_56_COLOUR_HALF_WIDTH = 0.07; // per-side progress window for the 5->6 colour lerp
-const SEAM_56_AURORA_BRIDGE = Object.freeze({
-    skyColor: 0x06162f,
-    fogColor: 0x09283f,
-    ambientLight: 0x1a4b5c,
-    ambientIntensity: 0.32,
-});
+// SEAM 3->4 alpine + 5->6 aurora COLOUR bridges (SEAM_*_ALPINE/AURORA_BRIDGE + *_COLOUR_HALF_WIDTH)
+// moved to chapter-environments/shared/seam-bridges.js (E3 — one source of truth; OdysseyDirector
+// imports the SAME constants). The wide smootherstep'd colour window bridges Sky violet -> Space
+// near-black through a deep teal midpoint so the change reads smooth, not a snap.
+
 // 5→6 carry: the inherited summit chain + aurora are world-locked DEEP ahead (the camera
 // never physically passes the hero peak in Ch6 — it stays ~400u in front), so they would
 // "pop" the instant the manager flipped the Ch5 group invisible. Hold the Ch5 env fully
@@ -799,12 +788,16 @@ export class ChapterEnvironmentManager {
      * @param {number} chapterId
      * @returns {boolean} true if an env was disposed
      */
-    disposeChapterEnvironment(chapterId) {
-        const env = this.environments.get(chapterId);
-        if (!env) return false;
-        // Never free a chapter still drawing (visible with non-zero opacity) — retry once faded.
-        if (env.group?.visible && (env.lastOpacity ?? 0) > 0) return false;
-
+    /**
+     * Free ALL GPU resources for one environment and detach its group: this chapter's rig
+     * lights, then geometry + material + every material-map texture + uniform .isTexture +
+     * userData/group render targets — skipping shared cached-GLB meshes. The correct teardown
+     * superset shared by both the eviction path (disposeChapterEnvironment) and full dispose()
+     * (masterplan §2 #7). Does NOT touch this.environments bookkeeping — the caller owns that.
+     * @param {object} env resolved environment record
+     */
+    _freeEnvironmentResources(env) {
+        if (!env) return;
         // 1) Rig lights FIRST — remove ONLY this chapter's lights from the shared rig.
         if (env.rigLights) {
             for (const entry of env.rigLights) {
@@ -864,6 +857,15 @@ export class ChapterEnvironmentManager {
             }
             this.environmentGroup.remove(env.group);
         }
+    }
+
+    disposeChapterEnvironment(chapterId) {
+        const env = this.environments.get(chapterId);
+        if (!env) return false;
+        // Never free a chapter still drawing (visible with non-zero opacity) — retry once faded.
+        if (env.group?.visible && (env.lastOpacity ?? 0) > 0) return false;
+
+        this._freeEnvironmentResources(env);
 
         // 3) Drop from the residency map + null cached refs so VRAM/closures release.
         this.environments.delete(chapterId);
@@ -1552,29 +1554,12 @@ export class ChapterEnvironmentManager {
      * Dispose of all environments
      */
     dispose() {
-        this.environments.forEach((env) => {
-            // QW4: this chapter's lights were reparented into the persistent rig — remove and
-            // dispose them there (they are no longer children of env.group).
-            if (env.rigLights) {
-                for (const entry of env.rigLights) {
-                    const { light } = entry;
-                    this.persistentLightRig.remove(light);
-                    if (typeof light.dispose === 'function') light.dispose();
-                }
-                env.rigLights.length = 0;
-            }
-            env.group.traverse((child) => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach((m) => m.dispose());
-                    } else {
-                        child.material.dispose();
-                    }
-                }
-            });
-            this.environmentGroup.remove(env.group);
-        });
+        // Full teardown reuses the eviction path's complete walk (§2 #7): frees textures +
+        // uniform-textures + render targets the old body leaked, and skips fromSharedGltfCache
+        // meshes so mode teardown no longer corrupts the module-level GLB cache (manta/whale/
+        // conifers) — which would break them on the NEXT Odyssey entry. No visibility guard here:
+        // teardown frees everything regardless of what's currently drawing.
+        this.environments.forEach((env) => this._freeEnvironmentResources(env));
 
         this.environments.clear();
         this.ambientLights.clear();

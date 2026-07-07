@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="data:," />
     <title>WebGPU/TSL Playground</title>
+    <script>
+        // Opt-in GPU frame/buffer/shader capture — add ?webgpuInspector=1 to the URL.
+        // Must load+run BEFORE the deferred module touches WebGPU (webgpu_inspector patches
+        // the WebGPU API up front), so it's a classic <script> in <head>. Opt-in because the
+        // API patching adds overhead you don't want on every playground run.
+        // Once loaded, inspect via window.webgpuInspector or the extension/plugin panel.
+        (() => {
+            if (new URLSearchParams(location.search).get('webgpuInspector') === '1') {
+                document.write('<script src="/vendor/webgpu-inspector.js"><\/script>');
+            }
+        })();
+    </script>
 </head>
 <body>
     <div id="stage"></div>

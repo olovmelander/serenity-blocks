@@ -54,13 +54,14 @@ function colorChannels(hex) {
 }
 
 describe('Surface World chapter environment (creative plan ch3)', () => {
-    it('mounts the cabin, foreground pass-by layer, spruce stands, and snow motes', () => {
+    it('mounts the ocean, foreground pass-by layer, spruce stands, and snow motes', () => {
         stubCanvasDocument();
 
         const group = createSurfaceWorldEnvironment();
 
         expect(group.userData.ocean?.name).toBe('ocean-surface');
-        expect(group.userData.cabin?.name).toBe('falu-cabin');
+        // Cabin removed from Ch3 (no human-structure cue) — the meadow/lake/great-tree carry it.
+        expect(group.userData.cabin).toBeUndefined();
         expect(group.userData.foregroundLayer?.name).toBe('foreground-pass-by');
         expect(group.userData.spruces?.name).toBe('spruce-trees');
         expect(group.userData.snowMotes?.name).toBe('snow-motes');

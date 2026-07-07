@@ -25,8 +25,20 @@
  */
 import * as THREE from 'three/webgpu';
 import { createWarpParticles } from './boot-warp-transition-scene.js';
+import { markStartup } from './startup-debug.js';
 
 const CANVAS_ID = 'boot-warp-canvas';
+let nextTransitionId = 1;
+
+function nowMs() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+}
+
+function elapsedSince(startedAt) {
+    return Math.round((nowMs() - startedAt) * 10) / 10;
+}
 
 /**
  * Whether the WebGPU particle reveal can run here.
@@ -55,6 +67,8 @@ export class BootWarpTransition {
      * @param {number} [opts.zIndex]  canvas stacking (default 15000 — between intro & shell)
      */
     constructor(opts = {}) {
+        this.debugId = nextTransitionId;
+        nextTransitionId += 1;
         this.count = opts.count || 48000;
         this.zIndex = opts.zIndex ?? 15000;
         // Optional shared GPUDevice (the intro's). When set, the warp reuses it instead of
@@ -70,6 +84,12 @@ export class BootWarpTransition {
         this._ready = false;
         this._disposed = false;
         this._playing = false;
+        this.lastPrewarmStatus = null;
+        markStartup('boot-warp:constructed', {
+            id: this.debugId,
+            count: this.count,
+            sharedDevice: Boolean(this.sharedDevice),
+        });
     }
 
     static isSupported(params) { return isBootWarpSupported(params); }
@@ -79,7 +99,68 @@ export class BootWarpTransition {
      * frame at progress 0). Resolves only once the pipeline is ready.
      * @returns {Promise<boolean>} true if a WebGPU renderer is live and primed
      */
-    async prewarm() {
+    async prewarm(options = {}) {
+        if (this._disposed) return false;
+        const timeoutMs = Math.max(1, Number.isFinite(options.timeoutMs) ? options.timeoutMs : 6500);
+        const startedAt = nowMs();
+        let timeoutId = null;
+        let timedOut = false;
+        markStartup('boot-warp:prewarm-start', {
+            id: this.debugId,
+            timeoutMs,
+            sharedDevice: Boolean(this.sharedDevice),
+        });
+        const prewarmPromise = this._prewarmInternal().catch((error) => {
+            this.lastPrewarmStatus = 'prewarm-exception';
+            markStartup('boot-warp:prewarm-exception', {
+                id: this.debugId,
+                durationMs: elapsedSince(startedAt),
+                message: error?.message || String(error),
+            }, { level: 'warn' });
+            console.warn('[BootWarp] prewarm failed:', error?.message || error);
+            this.dispose();
+            return false;
+        });
+
+        const result = await Promise.race([
+            prewarmPromise,
+            new Promise((resolve) => {
+                timeoutId = setTimeout(() => {
+                    timedOut = true;
+                    resolve(false);
+                }, timeoutMs);
+            }),
+        ]);
+
+        if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+        }
+
+        if (timedOut) {
+            this.lastPrewarmStatus = 'prewarm-timeout';
+            markStartup('boot-warp:prewarm-timeout', {
+                id: this.debugId,
+                timeoutMs,
+                durationMs: elapsedSince(startedAt),
+            }, { level: 'warn' });
+            console.warn(`[BootWarp] prewarm exceeded ${timeoutMs}ms - falling back to CSS reveal`);
+            this.dispose();
+            prewarmPromise
+                .then(() => { try { this.dispose(); } catch { /* late cleanup */ } })
+                .catch(() => { /* failed anyway - nothing live to clean */ });
+            return false;
+        }
+
+        markStartup('boot-warp:prewarm-complete', {
+            id: this.debugId,
+            ok: Boolean(result),
+            status: this.lastPrewarmStatus,
+            durationMs: elapsedSince(startedAt),
+        });
+        return Boolean(result);
+    }
+
+    async _prewarmInternal() {
         if (this._disposed) return false;
         const w = typeof window !== 'undefined' ? window.innerWidth : 1920;
         const h = typeof window !== 'undefined' ? window.innerHeight : 1080;
@@ -96,70 +177,133 @@ export class BootWarpTransition {
             // shared device (three r181 WebGPUBackend.dispose leaves it), so the intro survives.
             rendererParams.device = this.sharedDevice;
         }
+        markStartup('boot-warp:init-start', {
+            id: this.debugId,
+            width: w,
+            height: h,
+            sharedDevice: Boolean(this.sharedDevice),
+        });
         const renderer = new THREE.WebGPURenderer(rendererParams);
+        this.renderer = renderer;
         try {
-            // Race init against a timeout — a shared-device init is near-instant, but an
-            // own-device requestAdapter/requestDevice can stall on a context-limited GPU.
-            await Promise.race([
-                renderer.init(),
-                new Promise((_, reject) => { setTimeout(() => reject(new Error('WebGPU init timeout')), 5000); }),
-            ]);
-        } catch {
-            renderer.dispose?.();
+            await renderer.init();
+            markStartup('boot-warp:init-complete', {
+                id: this.debugId,
+                isWebGPUBackend: renderer.backend?.isWebGPUBackend === true,
+                isWebGLBackend: renderer.backend?.isWebGLBackend === true,
+            });
+        } catch (error) {
+            this.lastPrewarmStatus = 'webgpu-init-failed';
+            markStartup('boot-warp:init-failed', {
+                id: this.debugId,
+                message: error?.message || String(error),
+            }, { level: 'warn' });
+            try { renderer.dispose(); } catch { /* partial init */ }
+            if (this.renderer === renderer) this.renderer = null;
+            return false;
+        }
+        if (this._disposed) {
+            markStartup('boot-warp:init-late-after-dispose', { id: this.debugId }, { level: 'warn' });
+            try { renderer.dispose(); } catch { /* late timeout cleanup */ }
+            if (this.renderer === renderer) this.renderer = null;
             return false;
         }
         // If the backend fell back to WebGL2 there's no compute — bail so the caller uses
         // the CSS reveal instead of a broken/blank warp.
         if (renderer.backend?.isWebGPUBackend !== true) {
+            this.lastPrewarmStatus = 'webgpu-backend-unavailable';
+            markStartup('boot-warp:backend-unavailable', {
+                id: this.debugId,
+                isWebGPUBackend: renderer.backend?.isWebGPUBackend === true,
+                isWebGLBackend: renderer.backend?.isWebGLBackend === true,
+            }, { level: 'warn' });
             renderer.dispose?.();
+            if (this.renderer === renderer) this.renderer = null;
             return false;
         }
-        this.renderer = renderer;
 
-        renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 1.5));
-        renderer.setSize(w, h, false);
-        renderer.setClearColor(0x000000, 1);
-        renderer.toneMapping = THREE.NoToneMapping;
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        // Everything past init is exception-guarded: once the opaque canvas is appended,
+        // an uncaught throw (TSL codegen, renderAsync rejection on device loss) would
+        // otherwise leave a permanent full-screen black layer over the intro AND the
+        // menu — the caller's catch can't reach `candidate` to dispose it.
+        try {
+            renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 1.5));
+            renderer.setSize(w, h, false);
+            renderer.setClearColor(0x000000, 1);
+            renderer.toneMapping = THREE.NoToneMapping;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-        const canvas = renderer.domElement;
-        canvas.id = CANVAS_ID;
-        canvas.style.cssText = `position:fixed;inset:0;width:100%;height:100%;z-index:${this.zIndex};`
-            + 'pointer-events:none;background:#000;opacity:1;';
-        if (typeof document !== 'undefined') document.body.appendChild(canvas);
-        this.canvas = canvas;
+            const canvas = renderer.domElement;
+            canvas.id = CANVAS_ID;
+            canvas.style.cssText = `position:fixed;inset:0;width:100%;height:100%;z-index:${this.zIndex};`
+                + 'pointer-events:none;background:#000;opacity:1;';
+            if (typeof document !== 'undefined') document.body.appendChild(canvas);
+            this.canvas = canvas;
+            markStartup('boot-warp:canvas-appended', {
+                id: this.debugId,
+                zIndex: this.zIndex,
+                width: canvas.width,
+                height: canvas.height,
+            });
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 200);
-        camera.position.set(0, 0, 7);
-        camera.lookAt(0, 0, 0);
-        camera.updateMatrixWorld();
-        this.scene = scene;
-        this.camera = camera;
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 200);
+            camera.position.set(0, 0, 7);
+            camera.lookAt(0, 0, 0);
+            camera.updateMatrixWorld();
+            this.scene = scene;
+            this.camera = camera;
 
-        const warp = createWarpParticles({
-            count: this.count,
-            aspect,
-            viewportHeight: h,
-            compute: typeof renderer.compute === 'function',
-        });
-        if (!warp.computeNode) { // WebGL2 fallback slipped through — no compute, bail
-            warp.dispose();
+            const warp = createWarpParticles({
+                count: this.count,
+                aspect,
+                viewportHeight: h,
+                compute: typeof renderer.compute === 'function',
+            });
+            if (!warp.computeNode) { // WebGL2 fallback slipped through — no compute, bail
+                this.lastPrewarmStatus = 'compute-unavailable';
+                markStartup('boot-warp:compute-unavailable', { id: this.debugId }, { level: 'warn' });
+                warp.dispose();
+                this.dispose();
+                return false;
+            }
+            warp.setAspect(aspect);
+            warp.setViewProj(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+            scene.add(warp.mesh);
+            this.warp = warp;
+            markStartup('boot-warp:particles-created', {
+                id: this.debugId,
+                count: this.count,
+                hasComputeNode: Boolean(warp.computeNode),
+            });
+
+            // Prime: dispatch compute + render one frame at progress 0 so the pipeline
+            // compiles NOW (masked by the ident), not at the first play() frame.
+            warp.setProgress(0);
+            warp.setTime(0);
+            markStartup('boot-warp:prime-compute-start', { id: this.debugId });
+            renderer.compute(warp.computeNode);
+            markStartup('boot-warp:prime-render-start', { id: this.debugId });
+            renderer.render(scene, camera);
+            markStartup('boot-warp:prime-render-complete', { id: this.debugId });
+            if (this._disposed) {
+                markStartup('boot-warp:prime-late-after-dispose', { id: this.debugId }, { level: 'warn' });
+                return false;
+            }
+        } catch (err) {
+            this.lastPrewarmStatus = 'setup-failed';
+            markStartup('boot-warp:setup-failed', {
+                id: this.debugId,
+                message: err?.message || String(err),
+            }, { level: 'warn' });
+            console.warn('[BootWarp] prewarm failed after setup — cleaning up:', err?.message || err);
+            this.dispose();
             return false;
         }
-        warp.setAspect(aspect);
-        warp.setViewProj(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-        scene.add(warp.mesh);
-        this.warp = warp;
 
-        // Prime: dispatch compute + render one frame at progress 0 so the pipeline
-        // compiles NOW (masked by the ident), not at the first play() frame.
-        warp.setProgress(0);
-        warp.setTime(0);
-        renderer.compute(warp.computeNode);
-        await renderer.renderAsync(scene, camera);
-
+        this.lastPrewarmStatus = 'ready';
         this._ready = true;
+        markStartup('boot-warp:ready', { id: this.debugId });
         return true;
     }
 
@@ -176,12 +320,25 @@ export class BootWarpTransition {
         if (!this._ready || this._disposed || !this.warp) return Promise.resolve();
 
         this._playing = true;
+        markStartup('boot-warp:play-start', {
+            id: this.debugId,
+            durationMs,
+        });
+        const progressMarks = {
+            revealShell: false,
+            fadeOverlap: false,
+            titleReveal: false,
+        };
         const start = (typeof performance !== 'undefined' && performance.now)
             ? performance.now() : Date.now();
 
         return new Promise((resolve) => {
             const loop = () => {
-                if (this._disposed) { resolve(); return; }
+                if (this._disposed) {
+                    markStartup('boot-warp:play-disposed', { id: this.debugId }, { level: 'warn' });
+                    resolve();
+                    return;
+                }
                 const now = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now() : Date.now();
                 const elapsed = now - start;
@@ -192,17 +349,50 @@ export class BootWarpTransition {
                     this.renderer.compute(this.warp.computeNode);
                     this.renderer.render(this.scene, this.camera);
                 } catch (e) {
+                    markStartup('boot-warp:play-render-failed', {
+                        id: this.debugId,
+                        progress: p,
+                        message: e?.message || String(e),
+                    }, { level: 'error' });
                     // eslint-disable-next-line no-console
                     console.error('[BootWarp] render failed:', e);
                     this._playing = false;
                     resolve();
                     return;
                 }
-                if (onProgress) onProgress(p);
+                if (!progressMarks.revealShell && p >= 0.06) {
+                    progressMarks.revealShell = true;
+                    markStartup('boot-warp:progress-reveal-shell', { id: this.debugId, progress: p });
+                }
+                if (!progressMarks.fadeOverlap && p >= 0.8) {
+                    progressMarks.fadeOverlap = true;
+                    markStartup('boot-warp:progress-fade-overlap', { id: this.debugId, progress: p });
+                }
+                if (!progressMarks.titleReveal && p >= 0.9) {
+                    progressMarks.titleReveal = true;
+                    markStartup('boot-warp:progress-title-reveal', { id: this.debugId, progress: p });
+                }
+                if (onProgress) {
+                    // Guarded: a throw from the caller's progress side-effects (shell
+                    // dismiss, title reveal) must not kill this rAF loop with the play()
+                    // promise unresolved — that would hang the boot behind the warp.
+                    try {
+                        onProgress(p);
+                    } catch (progressError) {
+                        markStartup('boot-warp:progress-callback-failed', {
+                            id: this.debugId,
+                            progress: p,
+                            message: progressError?.message || String(progressError),
+                        }, { level: 'error' });
+                        // eslint-disable-next-line no-console
+                        console.error('[BootWarp] onProgress failed (playback continues):', progressError);
+                    }
+                }
                 if (p < 1) {
                     this._raf = requestAnimationFrame(loop);
                 } else {
                     this._playing = false;
+                    markStartup('boot-warp:play-complete', { id: this.debugId });
                     resolve();
                 }
             };
@@ -217,14 +407,34 @@ export class BootWarpTransition {
      */
     fadeOut(ms = 500) {
         if (!this.canvas || this._disposed) return Promise.resolve();
+        markStartup('boot-warp:fade-out-start', {
+            id: this.debugId,
+            durationMs: ms,
+        });
         this.canvas.style.transition = `opacity ${ms}ms ease-out`;
         // Force a style flush before flipping opacity so the transition runs.
         this._flush = this.canvas.offsetWidth;
         this.canvas.style.opacity = '0';
-        return new Promise((resolve) => { setTimeout(resolve, ms + 30); });
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                markStartup('boot-warp:fade-out-complete', { id: this.debugId });
+                resolve();
+            }, ms + 30);
+        });
     }
 
     dispose() {
+        const hadLiveResources = Boolean(
+            this.renderer || this.scene || this.camera || this.warp || this.canvas || this._raf,
+        );
+        if (hadLiveResources) {
+            markStartup('boot-warp:dispose', {
+                id: this.debugId,
+                ready: this._ready,
+                playing: this._playing,
+                status: this.lastPrewarmStatus,
+            });
+        }
         this._disposed = true;
         this._playing = false;
         if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }

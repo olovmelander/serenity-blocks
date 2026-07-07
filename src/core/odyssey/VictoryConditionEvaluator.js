@@ -116,7 +116,10 @@ export class VictoryConditionEvaluator {
     }
 
     /**
-     * Update height metric (for infinity mode)
+     * Update height metric (for a possible future 'height' victory level — the type is a
+     * supported-but-unused capability: the difficulty model derives targets for it and it is in
+     * LevelRegistry validTypes, so this stays wired. Fully removing it is a "delete or author"
+     * design decision, not a dead-code deletion.)
      * @param {number} height - Current build height
      */
     updateHeight(height) {

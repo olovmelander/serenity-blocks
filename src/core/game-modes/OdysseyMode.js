@@ -29,7 +29,6 @@ import {
 } from '../infinity-grid.js';
 import {
     GAME_MODES,
-    COLS,
 } from '../constants.js';
 import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
@@ -43,6 +42,11 @@ import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntry
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
+import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
+import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
+import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
+import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
+import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
@@ -63,6 +67,27 @@ function isOdysseyLayoutEditorEnabled() {
     try {
         const search = new URLSearchParams(window.location?.search || '');
         return search.get('odysseyEditor') === '1';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Whether to expose the console debug handles (window.odysseyMode / window.testOdysseyLevel).
+ * These are DEV/tooling only — testOdysseyLevel unlocks levels into the real save, so it must
+ * never ship to players (Steam leaderboard is console-gameable otherwise; masterplan §2 #4).
+ * Allowed in a DEV build, or when a capture/validation harness flag is present so the offline
+ * screenshot/perf tooling keeps working against any build mode.
+ * @returns {boolean}
+ */
+function isOdysseyDebugExposureEnabled() {
+    if (typeof window === 'undefined') return false;
+    if (import.meta.env.DEV) return true;
+    try {
+        const search = new URLSearchParams(window.location?.search || '');
+        return search.get('odysseyAAA') === '1'
+            || search.get('odysseyDebug') === '1'
+            || search.has('odysseyCaptureChapters');
     } catch {
         return false;
     }
@@ -109,6 +134,17 @@ export class OdysseyMode extends BaseGameMode {
         this.currentLevelConfig = null;
         this.gameState = null;
         this.levelStartTime = null;
+        // Accumulated paused wall-time for the current level so the level clock does not
+        // count time spent in the pause menu (masterplan §2 #2). _pauseStartedAt marks an
+        // in-progress pause; levelPausedMs is the total already-accumulated paused time.
+        this.levelPausedMs = 0;
+        this._pauseStartedAt = null;
+        // Per-level cache of the wrapped physics callbacks (masterplan §2 #9) — rebuilt when
+        // a new level reconfigures the hybridEngine, reused across every drop keypress.
+        this._physicsCallbacks = null;
+        // Deferred board-park timer after level entry (masterplan §2 #9) — tracked so a fast
+        // return-to-map can cancel it before it parks a just-resumed board.
+        this._boardParkTimer = null;
         this.levelTimerInterval = null;
 
         // Phase 3: Odyssey Board Controller
@@ -335,18 +371,22 @@ export class OdysseyMode extends BaseGameMode {
             this.boardViewReadyPromise = null;
         }
 
-        // Expose for console testing: window.testOdysseyLevel(3) to test level 3
-        window.testOdysseyLevel = (levelId) => {
-            console.log(`[Odyssey] Testing level ${levelId}...`);
-            // Unlock the level for testing (bypasses normal progression)
-            this.odysseyState.unlockLevel(levelId);
-            return this.enterLevel(levelId);
-        };
-        window.odysseyMode = this;
+        // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
+        // into the real save, so exposing it in the shipped game makes the Steam leaderboard
+        // console-gameable (masterplan §2 #4). Gated behind DEV / capture-harness flags.
+        if (isOdysseyDebugExposureEnabled()) {
+            window.testOdysseyLevel = (levelId) => {
+                console.log(`[Odyssey] Testing level ${levelId}...`);
+                // Unlock the level for testing (bypasses normal progression)
+                this.odysseyState.unlockLevel(levelId);
+                return this.enterLevel(levelId);
+            };
+            window.odysseyMode = this;
+            console.log('[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level');
+        }
 
         console.log('[Odyssey] Mode activated');
         console.log(`[Odyssey] Progress: ${this.odysseyState.getOverallProgress()}%`);
-        console.log('[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level');
     }
 
     /**
@@ -377,7 +417,11 @@ export class OdysseyMode extends BaseGameMode {
             this.deps.frameRateController?.pauseHybridLoop();
         }
 
-        // Pause level timer
+        // Pause level timer + start accumulating paused wall-time so the clock excludes
+        // time spent in the pause menu (masterplan §2 #2).
+        if (this.levelStartTime && this._pauseStartedAt === null) {
+            this._pauseStartedAt = Date.now();
+        }
         if (this.levelTimerInterval) {
             clearInterval(this.levelTimerInterval);
             this.levelTimerInterval = null;
@@ -420,6 +464,13 @@ export class OdysseyMode extends BaseGameMode {
 
         if (this.usingHybridLoop) {
             this.deps.frameRateController?.resumeHybridLoop();
+        }
+
+        // Fold the just-ended pause interval into the paused-time accumulator before the
+        // clock resumes (masterplan §2 #2).
+        if (this._pauseStartedAt !== null) {
+            this.levelPausedMs += Date.now() - this._pauseStartedAt;
+            this._pauseStartedAt = null;
         }
 
         // Resume level timer
@@ -521,6 +572,8 @@ export class OdysseyMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        // Cancel the deferred board-park timer so it can't fire against a torn-down mode (§2 #9).
+        this._cancelBoardParkTimer();
         await this._applyBoardAudioPolicy({ restoreTrack: true });
         await super.onDeactivate();
 
@@ -718,7 +771,14 @@ export class OdysseyMode extends BaseGameMode {
                         // Phase 1: park the board (keep it resident) so returning to the map
                         // is a resume, not a full cold-start rebuild. Falls back to full
                         // dispose when keep-alive is disabled (?odysseyKeepBoard=0).
-                        setTimeout(() => {
+                        // Tracked + guarded (masterplan §2 #9): a fast return-to-map within 1.2s
+                        // would otherwise park a board that _revealOdysseyBoard just resumed.
+                        // The timer is cancelled by _cancelBoardParkTimer() on reveal/deactivate,
+                        // and the callback bails if the board view was re-entered meanwhile.
+                        this._cancelBoardParkTimer();
+                        this._boardParkTimer = setTimeout(() => {
+                            this._boardParkTimer = null;
+                            if (this.isInBoardView) return; // returned to the map — don't re-park
                             if (this._keepBoardAlive) {
                                 this._parkOdysseyBoard();
                             } else {
@@ -2310,70 +2370,20 @@ export class OdysseyMode extends BaseGameMode {
     _createGameStateForLevel(levelConfig) {
         const { mechanics } = levelConfig;
 
-        // Phase 2: Use GameplayHybridEngine to create configured GameState
+        // New level → the hybridEngine is reconfigured below, so the cached physics-callback
+        // wrapper (bound to the previous level's engine) must be rebuilt (masterplan §2 #9).
+        this._physicsCallbacks = null;
+
+        // Phase 2: Use GameplayHybridEngine to create configured GameState.
+        // NOTE: createGameState() already seeds starting garbage rows deterministically
+        // via seedStartingRows() (GameplayHybridEngine.js). A previous mode-side
+        // _addStartingRows() call here double-seeded the board — the two hole patterns
+        // intersected so most seeded rows started completely full and the first lock
+        // mass-cleared them, gutting the dig/boss level design. Removed 2026-07 (masterplan §2 #1).
         this.hybridEngine.configure(levelConfig);
         this.gameState = this.hybridEngine.createGameState();
 
-        // Add starting rows if configured
-        if (mechanics.board.startingRows > 0) {
-            this._addStartingRows(mechanics.board.startingRows);
-        }
-
         console.log(`[Odyssey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
-    }
-
-    /**
-     * Add pre-filled garbage rows to the board
-     * Creates solid garbage rows with one random gap per row, matching multiplayer garbage format.
-     * @private
-     */
-    _addStartingRows(rowCount) {
-        const { lockedPieces, boardGrid } = this.gameState;
-        const cols = COLS;
-        const totalRows = boardGrid.length;
-
-        for (let row = 0; row < rowCount; row++) {
-            const boardRow = totalRows - row - 1;
-            // Create a row with one random gap (matching Quadra-style garbage)
-            const gapCol = Math.floor(Math.random() * cols);
-
-            // Build the row shape: 1 = solid block, 0 = hole
-            const rowShape = [];
-            for (let col = 0; col < cols; col++) {
-                const isHole = col === gapCol;
-                rowShape.push(isHole ? 0 : 1);
-
-                // Also add to boardGrid for immediate rendering
-                if (!isHole && boardGrid[boardRow]) {
-                    boardGrid[boardRow][col] = {
-                        color: '#666666',
-                        type: 'garbage',
-                        id: `starting_garbage_${boardRow}_${col}`,
-                    };
-                }
-            }
-
-            // Create a full-row garbage piece (like multiplayer garbage.js does)
-            const garbagePiece = {
-                shapeKey: 'GARBAGE',
-                shape: [rowShape],
-                x: 0,
-                y: boardRow,
-                color: '#666666',
-                type: 'garbage', // Explicit type for consistent rendering
-                pieceId: `starting_garbage_${boardRow}`,
-                isGarbage: true,
-                garbageMeta: {
-                    variant: 'normal',
-                    connectTop: row < rowCount - 1,
-                    connectBottom: row > 0,
-                },
-            };
-
-            lockedPieces.push(garbagePiece);
-        }
-
-        console.log(`[Odyssey] Added ${rowCount} starting garbage rows`);
     }
 
     /**
@@ -2522,6 +2532,8 @@ export class OdysseyMode extends BaseGameMode {
         this.gameState.isPaused = false;
         this.gameState.lastTime = performance.now();
         this.levelStartTime = Date.now();
+        this.levelPausedMs = 0;
+        this._pauseStartedAt = null;
         this._startLevelTimer();
         this._startGameLoop();
         this.isRunning = true;
@@ -2682,6 +2694,15 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _getPhysicsCallbacks() {
+        // Cached per level (masterplan §2 #9): this builds ~15 closures + a hybridEngine
+        // metric-tracking wrapper, and was previously rebuilt on EVERY hard/soft-drop keypress
+        // (window.hardDrop/softDrop). The closures read this.* dynamically so the cache never
+        // goes stale within a level; it is cleared in _createGameStateForLevel when the
+        // hybridEngine is reconfigured for the next level.
+        if (this._physicsCallbacks) {
+            return this._physicsCallbacks;
+        }
+
         // Phase 2: Build base callbacks, then wrap with hybridEngine for metric tracking
         const baseCallbacks = {
             onMove: () => this.deps.soundManager?.sfxPlayer?.playMove(),
@@ -2842,8 +2863,9 @@ export class OdysseyMode extends BaseGameMode {
             },
         };
 
-        // Wrap callbacks with hybridEngine metric tracking
-        return this.hybridEngine.buildPhysicsCallbacks(baseCallbacks);
+        // Wrap callbacks with hybridEngine metric tracking, then cache for the level.
+        this._physicsCallbacks = this.hybridEngine.buildPhysicsCallbacks(baseCallbacks);
+        return this._physicsCallbacks;
     }
 
     // =============================
@@ -2972,68 +2994,10 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _showGoalCompleteOverlay() {
-        // Remove existing overlay if any
+        // View extracted to ui/odyssey/GoalCompleteOverlay.js (E1). OdysseyMode keeps the
+        // lifecycle (stores the element so _hideGoalCompleteOverlay can remove it).
         this._hideGoalCompleteOverlay();
-
-        this._goalCompleteOverlay = document.createElement('div');
-        this._goalCompleteOverlay.id = 'goal-complete-overlay';
-        this._goalCompleteOverlay.style.cssText = `
-            position: fixed;
-            top: 60px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: linear-gradient(135deg, rgba(20, 60, 40, 0.95), rgba(10, 40, 30, 0.95));
-            border: 2px solid rgba(100, 255, 150, 0.6);
-            border-radius: 16px;
-            padding: 16px 32px;
-            z-index: 1000;
-            text-align: center;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(100, 255, 150, 0.3);
-            animation: goalCompleteSlideIn 0.5s ease-out;
-        `;
-
-        this._goalCompleteOverlay.innerHTML = `
-            <style>
-                @keyframes goalCompleteSlideIn {
-                    from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-                    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-                }
-                @keyframes goalCompletePulse {
-                    0%, 100% { opacity: 0.7; }
-                    50% { opacity: 1; }
-                }
-                .goal-complete-title {
-                    font-family: 'Orbitron', sans-serif;
-                    font-size: 24px;
-                    font-weight: 700;
-                    color: #4ade80;
-                    text-shadow: 0 0 20px rgba(100, 255, 150, 0.8);
-                    margin-bottom: 8px;
-                }
-                .goal-complete-subtitle {
-                    font-family: 'Segoe UI', sans-serif;
-                    font-size: 14px;
-                    color: rgba(255, 255, 255, 0.8);
-                }
-                .goal-complete-hint {
-                    font-family: 'Segoe UI', sans-serif;
-                    font-size: 12px;
-                    color: rgba(255, 255, 255, 0.6);
-                    margin-top: 8px;
-                    animation: goalCompletePulse 2s ease-in-out infinite;
-                }
-                .goal-complete-hint kbd {
-                    background: rgba(255, 255, 255, 0.2);
-                    padding: 2px 8px;
-                    border-radius: 4px;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
-                }
-            </style>
-            <div class="goal-complete-title">GOAL COMPLETE!</div>
-            <div class="goal-complete-subtitle">Keep playing for more stars</div>
-            <div class="goal-complete-hint">Press <kbd>Enter</kbd> to finish</div>
-        `;
-
+        this._goalCompleteOverlay = createGoalCompleteOverlay();
         document.body.appendChild(this._goalCompleteOverlay);
     }
 
@@ -3055,25 +3019,6 @@ export class OdysseyMode extends BaseGameMode {
     _calculateStars() {
         // Phase 2: Use hybridEngine for star calculation
         return this.hybridEngine.calculateStars();
-    }
-
-    /**
-     * Check if results meet a star condition
-     * @private
-     * @deprecated Use hybridEngine.calculateStars() instead
-     */
-    _meetsCondition(results, condition) {
-        // Kept for backwards compatibility
-        for (const [key, target] of Object.entries(condition)) {
-            if (key === 'bonuses') {
-                const completedBonuses = results.bonuses?.filter((b) => b).length || 0;
-                if (completedBonuses < target) return false;
-            } else {
-                const value = results[key] ?? this.levelMetrics[key] ?? this.gameState?.[key] ?? 0;
-                if (value < target) return false;
-            }
-        }
-        return true;
     }
 
     /**
@@ -3099,16 +3044,10 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
-        // Check failure condition
-        const failureType = this.currentLevelConfig?.victory?.failure?.type;
-
-        if (failureType === 'top-out' || failureType === undefined) {
-            await this.failLevel('top-out');
-        } else {
-            // Top-out might not be a failure for some levels
-            // For now, treat it as failure
-            await this.failLevel('top-out');
-        }
+        // Top-out fails the level. (E5: the former per-level `failureType` branch was dead — both
+        // arms called failLevel('top-out') — so it collapses to this single call. Re-introduce a
+        // real branch here if a level ever needs a non-failure top-out.)
+        await this.failLevel('top-out');
     }
 
     // =============================
@@ -3321,9 +3260,10 @@ export class OdysseyMode extends BaseGameMode {
         const {
             focusLevelId = this.selectedLevelId,
             keepBoardLocked = false,
-            // Startup optimization: was 5000 — the board init itself is the pacing now, the
-            // overlay floor only guards against a jarringly instant flash on warm re-entries.
-            minOverlayDisplayMs = 1500,
+            // Startup optimization: was 5000 → 1500 → 800. The board init is the real pacing;
+            // the floor only guards against a jarringly instant flash on warm re-entries, and
+            // ~800ms is enough for that once the dismiss animation is counted (masterplan A9).
+            minOverlayDisplayMs = 800,
             showLoadingOverlay = true,
         } = options;
 
@@ -3408,20 +3348,22 @@ export class OdysseyMode extends BaseGameMode {
      */
     _computeEagerStartupChapters() {
         try {
-            const unlocked = this.odysseyState?.unlockedLevels;
-            const furthestLevel = unlocked && unlocked.size > 0 ? Math.max(...unlocked) : 1;
-            const furthestChapter = this.levelRegistry?.getLevel?.(furthestLevel)?.chapter
-                || this.odysseyState?.currentChapter
-                || 1;
-            // Eager-CREATE the player's neighbourhood: chapters 1-2 + a small look-ahead past the
-            // furthest unlocked. (Creating ALL 8 up front was tried and REVERTED — it forced the
-            // first render to upload/draw all 8 chapters, ballooning warm-up to ~22s / board-
-            // visible to ~38s. The cheaper win is to keep this window small and create the rest
-            // PROMPTLY in the background via setTimeout — see loadChaptersInBackground — so they
-            // are ready a few seconds after reveal instead of building on-approach mid-scroll.)
-            const lastEager = Math.max(2, furthestChapter + 1);
+            // Eager-CREATE only the reveal neighbourhood: the FOCUS chapter the board reveals
+            // into (odysseyState.currentChapter — the same one fast-start warms, see the
+            // OdysseyBoardController focusChapter option) ± 1. The rest load PROMPTLY in the
+            // background (loadChaptersInBackground) a few seconds after reveal.
+            //
+            // Previously this was a PREFIX 1..furthest+1, so a late-game player (e.g. chapter 7)
+            // eagerly created AND compiled ALL 8 chapters before reveal — cold start regressed with
+            // progression (masterplan A1). A focus-centred window keeps the pre-reveal cost constant
+            // regardless of how far the player has progressed. Creating all 8 up front was already
+            // tried + reverted (it ballooned warm-up to ~22s / board-visible ~38s).
+            const focusChapter = this.odysseyState?.currentChapter || 1;
+            const chapterCount = (this.levelRegistry?.getPresentationLayout?.()?.chapterPositions?.length || 9) - 1;
+            const lo = Math.max(1, focusChapter - 1);
+            const hi = Math.min(Math.max(2, chapterCount), focusChapter + 1);
             const eager = [];
-            for (let ch = 1; ch <= lastEager; ch += 1) {
+            for (let ch = lo; ch <= hi; ch += 1) {
                 eager.push(ch);
             }
             return eager;
@@ -3627,6 +3569,9 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _revealOdysseyBoard() {
+        // A return-to-map is happening now — cancel any pending post-entry park so it can't
+        // re-park the board we're about to resume (masterplan §2 #9).
+        this._cancelBoardParkTimer();
         const revealMark = 'odyssey:mode:reveal-board';
         const containerMark = 'odyssey:mode:reveal-container';
         const overlayMark = 'odyssey:mode:create-board-overlay';
@@ -3700,6 +3645,17 @@ export class OdysseyMode extends BaseGameMode {
      * cheap DOM info overlay is torn down here; it is recreated by _revealOdysseyBoard().
      * @private
      */
+    /**
+     * Cancel the pending post-entry board-park timer, if any (masterplan §2 #9).
+     * @private
+     */
+    _cancelBoardParkTimer() {
+        if (this._boardParkTimer) {
+            clearTimeout(this._boardParkTimer);
+            this._boardParkTimer = null;
+        }
+    }
+
     _parkOdysseyBoard() {
         this.boardViewReadyPromise = null;
         if (!this.boardController) {
@@ -3771,223 +3727,9 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
-        const overlay = document.createElement('div');
-        overlay.id = 'odyssey-board-overlay';
-        overlay.innerHTML = `
-            <div class="odyssey-header-bar">
-                <h1>Odyssey Mode</h1>
-                <div class="odyssey-progress-info">
-                    <span id="odyssey-header-stars">⭐ 0/168</span>
-                    <span id="odyssey-header-progress">Progress: 0%</span>
-                </div>
-            </div>
-            <div id="odyssey-chapter-arrival-card" class="odyssey-chapter-arrival-card" aria-live="polite">
-                <div id="odyssey-arrival-kicker" class="odyssey-arrival-kicker">Chapter 1</div>
-                <div id="odyssey-arrival-title" class="odyssey-arrival-title">Earth Core</div>
-                <div id="odyssey-arrival-subtitle" class="odyssey-arrival-subtitle">Find your first rhythm</div>
-            </div>
-            <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
-                <div id="level-panel-number" class="level-number-badge">LEVEL 1</div>
-                <h2 id="level-panel-name">Level Name</h2>
-                <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>
-                <p id="level-panel-description" class="level-description">Description...</p>
-                <div id="level-panel-stars" class="level-stars">☆☆☆</div>
-                <div id="level-panel-objectives" class="level-objectives"></div>
-                <button id="level-panel-play-btn" class="level-play-btn">▶ Play</button>
-            </div>
-        `;
-
-        // Add styles
-        const style = document.createElement('style');
-        style.id = 'odyssey-board-overlay-styles';
-        style.textContent = `
-            #odyssey-board-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: none;
-                z-index: 1001;
-            }
-            .odyssey-header-bar {
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 1rem 2rem;
-                background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
-                pointer-events: auto;
-            }
-            .odyssey-header-bar h1 {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 1.5rem;
-                color: #00ffcc;
-                text-shadow: 0 0 10px #00ffcc;
-                margin: 0;
-            }
-            .odyssey-progress-info {
-                display: flex;
-                gap: 2rem;
-                font-size: 1rem;
-                color: #88aaff;
-            }
-            .odyssey-chapter-arrival-card {
-                position: absolute;
-                left: 50%;
-                top: 18%;
-                transform: translate(-50%, -10px);
-                min-width: min(460px, calc(100vw - 48px));
-                max-width: min(620px, calc(100vw - 48px));
-                text-align: center;
-                opacity: 0;
-                pointer-events: none;
-                color: #eef7ff;
-                text-shadow: 0 0 18px rgba(0, 255, 204, 0.42);
-                transition: opacity 260ms ease, transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
-            }
-            .odyssey-chapter-arrival-card.visible {
-                opacity: 1;
-                transform: translate(-50%, 0);
-            }
-            .odyssey-arrival-kicker {
-                font-family: 'Space Mono', monospace;
-                font-size: 0.78rem;
-                letter-spacing: 0;
-                text-transform: uppercase;
-                color: rgba(180, 226, 255, 0.78);
-                margin-bottom: 0.35rem;
-            }
-            .odyssey-arrival-title {
-                font-family: 'Orbitron', sans-serif;
-                font-size: clamp(1.45rem, 4vw, 2.6rem);
-                line-height: 1.05;
-                color: #ffffff;
-            }
-            .odyssey-arrival-subtitle {
-                margin-top: 0.45rem;
-                font-size: clamp(0.85rem, 2vw, 1.05rem);
-                color: rgba(208, 226, 255, 0.76);
-            }
-            .odyssey-level-panel {
-                position: absolute;
-                right: 2rem;
-                top: 50%;
-                transform: translateY(-50%);
-                width: 320px;
-                background: rgba(10, 20, 40, 0.95);
-                border: 1px solid rgba(100, 150, 255, 0.3);
-                border-radius: 12px;
-                padding: 1.5rem;
-                pointer-events: auto;
-                box-shadow: 0 0 30px rgba(0, 100, 255, 0.2);
-            }
-            .odyssey-level-panel.hidden {
-                display: none;
-            }
-            .level-number-badge {
-                display: inline-block;
-                padding: 0.35rem 0.75rem;
-                background: linear-gradient(135deg, rgba(0, 170, 255, 0.2), rgba(0, 255, 204, 0.2));
-                border: 1px solid rgba(0, 255, 204, 0.4);
-                border-radius: 6px;
-                font-family: 'Orbitron', sans-serif;
-                font-size: 0.7rem;
-                font-weight: 600;
-                letter-spacing: 1.5px;
-                color: #00ffcc;
-                text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
-                margin-bottom: 0.75rem;
-                box-shadow: 0 0 15px rgba(0, 255, 204, 0.15);
-            }
-            .odyssey-level-panel h2 {
-                margin: 0 0 0.5rem 0;
-                font-size: 1.4rem;
-                color: #00ffcc;
-                font-family: 'Orbitron', sans-serif;
-            }
-            .level-chapter {
-                color: #88aaff;
-                font-size: 0.9rem;
-                margin: 0 0 1rem 0;
-            }
-            .level-description {
-                color: #aabbcc;
-                font-size: 0.95rem;
-                line-height: 1.4;
-                margin: 0 0 1rem 0;
-            }
-            .level-stars {
-                font-size: 2rem;
-                text-align: center;
-                margin: 1rem 0;
-                letter-spacing: 0.5rem;
-            }
-            .level-objectives {
-                margin: 1rem 0;
-                padding: 0.75rem;
-                background: rgba(0,0,0,0.3);
-                border-radius: 6px;
-            }
-            .level-objectives div {
-                padding: 0.3rem 0;
-                font-size: 0.9rem;
-                color: #aabbcc;
-            }
-            .level-play-btn {
-                width: 100%;
-                padding: 1rem;
-                background: linear-gradient(135deg, #00aa88, #0088aa);
-                border: none;
-                border-radius: 8px;
-                color: white;
-                font-size: 1.2rem;
-                font-weight: bold;
-                cursor: pointer;
-                transition: all 0.2s;
-            }
-            .level-play-btn:hover {
-                background: linear-gradient(135deg, #00ccaa, #00aacc);
-                transform: scale(1.02);
-            }
-            .level-play-btn:disabled {
-                background: #444;
-                cursor: not-allowed;
-            }
-            @keyframes btn-click-pulse {
-                0% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
-                20% { transform: scale(0.92); box-shadow: 0 0 20px rgba(0, 255, 200, 0.8); background: #ffffff; color: #000; }
-                50% { transform: scale(1.05); box-shadow: 0 0 10px rgba(0, 255, 200, 0.5); background: #ccffee; }
-                100% { transform: scale(1); box-shadow: 0 0 15px rgba(0, 255, 200, 0.4); }
-            }
-            @keyframes btn-launch-shimmer {
-                0% { background-position: 0% 50%; }
-                100% { background-position: 200% 50%; }
-            }
-            .level-play-btn:active {
-                transform: scale(0.95);
-            }
-            .level-play-btn.clicked {
-                /* Dynamic gradient background */
-                background: linear-gradient(110deg, #00aa88 20%, #00ffcc 30%, #ffffff 50%, #00ffcc 70%, #00aa88 80%);
-                background-size: 200% 100%;
-                color: #003322;
-                text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
-                font-weight: 800;
-                
-                /* Sequence: Pulse (0.6s) then Shimmer (loop) */
-                animation: 
-                    btn-click-pulse 0.6s ease-out forwards,
-                    btn-launch-shimmer 2s linear infinite;
-                
-                pointer-events: none;
-                border: 1px solid #ffffff;
-            }
-        `;
-
+        // View extracted to ui/odyssey/BoardInfoOverlay.js (E1); the wiring below needs mode
+        // state (selectedLevelId / launchOdysseyLevel / header progress) so it stays here.
+        const { overlay, style } = createBoardInfoOverlay();
         document.head.appendChild(style);
         document.body.appendChild(overlay);
 
@@ -4379,331 +4121,9 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _createLevelSelectUI() {
-        const container = document.createElement('div');
-        container.id = 'odyssey-level-select';
-        container.className = 'odyssey-level-select';
-        container.innerHTML = `
-            <div class="odyssey-header">
-                <h1>Odyssey Mode</h1>
-                <div class="odyssey-progress">
-                    <span class="odyssey-stars">Stars: <span id="odyssey-total-stars">0</span>/<span id="odyssey-max-stars">168</span></span>
-                    <span class="odyssey-completion">Progress: <span id="odyssey-progress-pct">0</span>%</span>
-                </div>
-                <div class="odyssey-progress-bar"><div class="odyssey-progress-fill" id="odyssey-progress-fill"></div></div>
-            </div>
-            <div class="odyssey-chapters" id="odyssey-chapters"></div>
-            <div class="odyssey-actions">
-                <button id="odyssey-back-btn" class="odyssey-btn">Back to Menu</button>
-            </div>
-        `;
-
-        // Add styles (Cosmic Serenity — gold "Odyssey" accent; guard against dupes)
-        const styleId = 'odyssey-level-select-styles';
-        if (!document.getElementById(styleId)) {
-            const style = document.createElement('style');
-            style.id = styleId;
-            style.textContent = `
-            .odyssey-level-select {
-                --cs-accent: #fcd17a;
-                --cs-accent-rgb: 252, 209, 122;
-                --cs-accent-2: #ffb75e;
-                --cs-done-rgb: 94, 234, 212;
-                position: fixed;
-                inset: 0;
-                width: 100vw;
-                height: 100vh;
-                background:
-                    radial-gradient(120% 80% at 50% -10%, rgba(var(--cs-accent-rgb), 0.10), transparent 60%),
-                    radial-gradient(90% 70% at 12% 0%, rgba(142, 162, 255, 0.08), transparent 60%),
-                    linear-gradient(180deg, #0c0e1c 0%, #07080f 100%);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                padding: 2.4rem 2rem;
-                z-index: 1002;
-                overflow-y: auto;
-                box-sizing: border-box;
-                animation: ods-fade 0.4s ease both;
-                scrollbar-width: thin;
-                scrollbar-color: rgba(var(--cs-accent-rgb), 0.6) rgba(0, 0, 0, 0.2);
-            }
-
-            .odyssey-level-select::-webkit-scrollbar { width: 10px; }
-            .odyssey-level-select::-webkit-scrollbar-track { background: transparent; }
-            .odyssey-level-select::-webkit-scrollbar-thumb {
-                background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.7), rgba(255, 183, 94, 0.5));
-                border: 2px solid transparent;
-                background-clip: padding-box;
-                border-radius: 6px;
-            }
-
-            .odyssey-header {
-                text-align: center;
-                margin-bottom: 2rem;
-            }
-
-            .odyssey-header h1 {
-                font-family: 'Orbitron', monospace;
-                font-size: clamp(2rem, 4vw, 2.6rem);
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-                color: transparent;
-                -webkit-text-fill-color: transparent;
-                background: linear-gradient(100deg,
-                        #fff3d6 0%, var(--cs-accent) 38%, var(--cs-accent-2) 64%, #fffaf0 100%);
-                background-size: 220% auto;
-                -webkit-background-clip: text;
-                background-clip: text;
-                filter: drop-shadow(0 0 20px rgba(var(--cs-accent-rgb), 0.32));
-                margin: 0 0 0.6rem;
-                animation: ods-shimmer 8s ease-in-out infinite;
-            }
-
-            .odyssey-progress {
-                display: flex;
-                gap: 1.6rem;
-                justify-content: center;
-                font-family: 'Space Mono', monospace;
-                font-size: 0.95rem;
-                color: rgba(211, 219, 245, 0.55);
-            }
-
-            .odyssey-stars {
-                color: var(--cs-accent);
-                font-weight: 700;
-            }
-
-            .odyssey-progress-bar {
-                width: 260px;
-                height: 6px;
-                margin: 0.85rem auto 0;
-                border-radius: 999px;
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(var(--cs-accent-rgb), 0.18);
-                overflow: hidden;
-            }
-
-            .odyssey-progress-fill {
-                height: 100%;
-                width: 0%;
-                border-radius: 999px;
-                background: linear-gradient(90deg, var(--cs-accent), var(--cs-accent-2));
-                box-shadow: 0 0 12px rgba(var(--cs-accent-rgb), 0.5);
-                transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-            }
-
-            .odyssey-chapters {
-                display: flex;
-                flex-direction: column;
-                gap: 1.1rem;
-                max-width: 840px;
-                width: 100%;
-            }
-
-            .odyssey-chapter {
-                position: relative;
-                background:
-                    radial-gradient(120% 100% at 0% 0%, rgba(var(--cs-accent-rgb), 0.05), transparent 55%),
-                    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(8, 10, 23, 0.45));
-                border: 1px solid rgba(150, 180, 255, 0.10);
-                border-radius: 16px;
-                padding: 1.1rem 1.2rem;
-                box-shadow:
-                    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-                    0 14px 32px rgba(0, 0, 0, 0.18);
-                transition: border-color 0.25s ease, box-shadow 0.25s ease;
-            }
-
-            .odyssey-chapter:hover {
-                border-color: rgba(var(--cs-accent-rgb), 0.28);
-                box-shadow:
-                    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-                    0 18px 40px rgba(0, 0, 0, 0.24),
-                    0 0 26px rgba(var(--cs-accent-rgb), 0.08);
-            }
-
-            .odyssey-chapter.current {
-                border-color: rgba(var(--cs-accent-rgb), 0.45);
-                box-shadow:
-                    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-                    0 0 28px rgba(var(--cs-accent-rgb), 0.14);
-            }
-
-            .odyssey-chapter.complete {
-                border-color: rgba(var(--cs-accent-rgb), 0.22);
-            }
-
-            .odyssey-chapter-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 12px;
-                margin-bottom: 0.9rem;
-            }
-
-            .odyssey-chapter-name {
-                font-family: 'Orbitron', monospace;
-                font-size: 1.05rem;
-                color: #eef3ff;
-                letter-spacing: 0.01em;
-            }
-
-            .odyssey-chapter-stars {
-                flex-shrink: 0;
-                color: var(--cs-accent);
-                font-family: 'Space Mono', monospace;
-                font-size: 0.82rem;
-                font-weight: 700;
-                white-space: nowrap;
-                padding: 3px 11px;
-                border-radius: 999px;
-                background: rgba(var(--cs-accent-rgb), 0.10);
-                border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
-            }
-
-            .odyssey-chapter.complete .odyssey-chapter-stars {
-                background: rgba(var(--cs-accent-rgb), 0.20);
-                border-color: rgba(var(--cs-accent-rgb), 0.50);
-                color: #fff3d6;
-                box-shadow: 0 0 14px rgba(var(--cs-accent-rgb), 0.25);
-            }
-
-            .odyssey-levels {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.55rem;
-            }
-
-            .odyssey-level-btn {
-                width: 52px;
-                height: 52px;
-                border-radius: 11px;
-                border: 1px solid rgba(150, 180, 255, 0.18);
-                background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(10, 13, 27, 0.55));
-                color: #eef3ff;
-                font-family: 'Orbitron', monospace;
-                font-size: 0.95rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 1px;
-            }
-
-            .odyssey-level-btn:hover:not(.locked) {
-                border-color: rgba(var(--cs-accent-rgb), 0.60);
-                background: rgba(var(--cs-accent-rgb), 0.12);
-                transform: translateY(-2px) scale(1.04);
-                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35), 0 0 16px rgba(var(--cs-accent-rgb), 0.30);
-            }
-
-            .odyssey-level-btn:focus-visible {
-                outline: none;
-                box-shadow:
-                    0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
-                    0 0 0 5px rgba(var(--cs-accent-rgb), 0.20);
-            }
-
-            .odyssey-level-btn.locked {
-                opacity: 0.4;
-                cursor: not-allowed;
-                border-color: rgba(150, 180, 255, 0.08);
-                background: rgba(10, 13, 27, 0.40);
-                color: rgba(211, 219, 245, 0.45);
-            }
-
-            .odyssey-level-btn.completed {
-                border-color: rgba(var(--cs-done-rgb), 0.50);
-                background: linear-gradient(180deg, rgba(var(--cs-done-rgb), 0.12), rgba(10, 13, 27, 0.50));
-                color: #d8fff5;
-            }
-
-            .odyssey-level-btn.completed:hover {
-                border-color: rgba(var(--cs-done-rgb), 0.80);
-                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35), 0 0 16px rgba(var(--cs-done-rgb), 0.35);
-            }
-
-            .odyssey-level-btn.current {
-                border-color: rgba(var(--cs-accent-rgb), 0.85);
-                background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.20), rgba(10, 13, 27, 0.50));
-                color: #ffffff;
-                animation: ods-pulse 2s ease-in-out infinite;
-            }
-
-            .odyssey-level-stars {
-                font-size: 0.55rem;
-                letter-spacing: 0.5px;
-                margin-top: 1px;
-                color: var(--cs-accent);
-            }
-
-            .odyssey-level-btn.locked .odyssey-level-stars { color: rgba(211, 219, 245, 0.30); }
-            .odyssey-level-btn.completed .odyssey-level-stars { color: var(--cs-accent); }
-
-            .odyssey-actions {
-                margin: 2rem 0 1rem;
-            }
-
-            .odyssey-btn {
-                padding: 0.8rem 2rem;
-                font-family: 'Space Mono', monospace;
-                font-size: 0.95rem;
-                font-weight: 600;
-                letter-spacing: 0.04em;
-                border: 1px solid rgba(var(--cs-accent-rgb), 0.45);
-                background:
-                    linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.14), rgba(var(--cs-accent-rgb), 0.05)),
-                    rgba(8, 10, 23, 0.50);
-                color: #ffe9c2;
-                border-radius: 12px;
-                cursor: pointer;
-                transition: all 0.22s ease;
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-            }
-
-            .odyssey-btn:hover {
-                border-color: rgba(var(--cs-accent-rgb), 0.70);
-                color: #ffffff;
-                transform: translateY(-1px);
-                box-shadow: 0 0 20px rgba(var(--cs-accent-rgb), 0.25);
-            }
-
-            .odyssey-btn:focus-visible {
-                outline: none;
-                box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.28);
-            }
-
-            @keyframes ods-shimmer {
-                0%, 100% { background-position: 0% center; }
-                50% { background-position: 200% center; }
-            }
-
-            @keyframes ods-pulse {
-                0%, 100% { box-shadow: 0 0 0 1px rgba(var(--cs-accent-rgb), 0.50), 0 0 10px rgba(var(--cs-accent-rgb), 0.40); }
-                50% { box-shadow: 0 0 0 1px rgba(var(--cs-accent-rgb), 0.80), 0 0 22px rgba(var(--cs-accent-rgb), 0.70); }
-            }
-
-            @keyframes ods-fade {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
-
-            @media (prefers-reduced-motion: reduce) {
-                .odyssey-level-select,
-                .odyssey-header h1,
-                .odyssey-level-btn.current {
-                    animation: none !important;
-                }
-            }
-        `;
-            document.head.appendChild(style);
-        }
-
-        // Add to DOM
-        document.body.appendChild(container);
+        // View shell extracted to ui/odyssey/LevelSelectOverlay.js (E1). Only the back-button
+        // handler needs mode state (_exitToMenu); _updateLevelSelectUI still fills the data.
+        const container = createLevelSelectOverlay();
 
         // Add event listeners
         document.getElementById('odyssey-back-btn').addEventListener('click', () => {
@@ -4893,180 +4313,16 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _createResultsModal(results, onClose) {
-        const modal = document.createElement('div');
-        modal.id = 'odyssey-results-modal';
-        modal.style.cssText = `
-            position: fixed;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 10000;
-            animation: fadeIn 0.3s ease-out;
-        `;
-
-        // Add keyframes
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes starPop { 0% { transform: scale(0); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
-        `;
-        modal.appendChild(style);
-
-        const content = document.createElement('div');
-        content.style.cssText = `
-            background: linear-gradient(165deg, rgba(20, 15, 40, 0.95) 0%, rgba(12, 10, 30, 0.98) 100%);
-            border: 1px solid rgba(180, 130, 255, 0.4);
-            border-radius: 24px;
-            padding: 40px 50px;
-            text-align: center;
-            max-width: 520px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 80px rgba(140, 80, 255, 0.2);
-            animation: slideUp 0.4s ease-out;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-        `;
-
-        // Title
-        const title = document.createElement('h2');
-        title.textContent = 'Level Complete!';
-        title.style.cssText = `
-            margin: 0 0 20px 0;
-            font-size: 28px;
-            font-weight: 700;
-            color: #fff;
-            text-shadow: 0 0 30px rgba(100, 255, 150, 0.5);
-        `;
-        content.appendChild(title);
-
-        // Level name
-        if (this.currentLevelConfig) {
-            const levelName = document.createElement('div');
-            levelName.textContent = this.currentLevelConfig.name;
-            levelName.style.cssText = `
-                font-size: 16px;
-                color: rgba(180, 150, 255, 0.8);
-                margin-bottom: 25px;
-            `;
-            content.appendChild(levelName);
-        }
-
-        // Stars
-        const starsContainer = document.createElement('div');
-        starsContainer.style.cssText = `
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            margin-bottom: 30px;
-        `;
-
-        for (let i = 0; i < 3; i++) {
-            const star = document.createElement('div');
-            const isFilled = i < results.stars;
-            star.innerHTML = `
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="${isFilled ? 'rgba(255, 200, 100, 1)' : 'rgba(255, 200, 100, 0.1)'}" stroke="${isFilled ? 'rgba(255, 220, 150, 1)' : 'rgba(255, 200, 100, 0.3)'}" stroke-width="2">
-                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-                </svg>
-            `;
-            star.style.cssText = `
-                animation: starPop 0.3s ease-out ${0.2 + i * 0.15}s backwards;
-                filter: ${isFilled ? 'drop-shadow(0 0 12px rgba(255, 200, 100, 0.8))' : 'none'};
-            `;
-            starsContainer.appendChild(star);
-        }
-        content.appendChild(starsContainer);
-
-        // Stats
-        const stats = [
-            { label: 'Score', value: results.score.toLocaleString() },
-            { label: 'Lines', value: results.lines },
-            { label: 'Time', value: this._formatTime(results.time * 1000) },
-        ];
-
-        const statsContainer = document.createElement('div');
-        statsContainer.style.cssText = `
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-        `;
-
-        stats.forEach((stat) => {
-            const statDiv = document.createElement('div');
-            statDiv.innerHTML = `
-                <div style="font-size: 11px; color: rgba(180, 200, 220, 0.6); letter-spacing: 1px; margin-bottom: 5px;">${stat.label.toUpperCase()}</div>
-                <div style="font-size: 20px; font-weight: 700; color: #fff;">${stat.value}</div>
-            `;
-            statsContainer.appendChild(statDiv);
+        // View extracted to ui/odyssey/ResultsModal.js (E1). Thread the few pieces of
+        // mode state it needs; caller contract (returns the modal element) is unchanged.
+        return createResultsModal({
+            results,
+            onClose,
+            levelConfig: this.currentLevelConfig,
+            levelId: this.currentLevelId,
+            totalStars: this.odysseyState.getTotalStars(),
+            formatTime: (ms) => this._formatTime(ms),
         });
-        content.appendChild(statsContainer);
-
-        // Steam leaderboard panel (level time + total stars)
-        const leaderboardHost = document.createElement('div');
-        leaderboardHost.className = 'steam-leaderboard-panel';
-        leaderboardHost.style.marginBottom = '24px';
-        content.appendChild(leaderboardHost);
-
-        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${this.currentLevelId}`;
-        const totalStars = this.odysseyState.getTotalStars();
-        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
-
-        const leaderboardPanel = new SteamLeaderboardPanel({
-            title: 'Odyssey Leaderboards',
-            boards: [
-                {
-                    id: 'level-time',
-                    label: 'Level Time',
-                    name: levelBoard,
-                    currentScore: levelTimeMs,
-                    formatScore: formatMilliseconds,
-                },
-                {
-                    id: 'total-stars',
-                    label: 'Total Stars',
-                    name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
-                    currentScore: totalStars,
-                    formatScore: formatNumber,
-                },
-            ],
-            defaultBoardId: 'level-time',
-            pageSize: 8,
-        });
-
-        leaderboardPanel.mount(leaderboardHost);
-
-        // Continue button
-        const button = document.createElement('button');
-        button.textContent = 'Continue';
-        button.style.cssText = `
-            padding: 14px 40px;
-            font-size: 16px;
-            font-weight: 600;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-            color: #fff;
-            background: linear-gradient(135deg, rgba(100, 180, 255, 0.3) 0%, rgba(180, 130, 255, 0.3) 100%);
-            border: 1px solid rgba(180, 130, 255, 0.6);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        `;
-        button.onmouseenter = () => {
-            button.style.background = 'linear-gradient(135deg, rgba(100, 180, 255, 0.5) 0%, rgba(180, 130, 255, 0.5) 100%)';
-            button.style.transform = 'scale(1.05)';
-        };
-        button.onmouseleave = () => {
-            button.style.background = 'linear-gradient(135deg, rgba(100, 180, 255, 0.3) 0%, rgba(180, 130, 255, 0.3) 100%)';
-            button.style.transform = 'scale(1)';
-        };
-        button.onclick = () => {
-            modal.remove();
-            onClose();
-        };
-        content.appendChild(button);
-
-        modal.appendChild(content);
-        return modal;
     }
 
     /**
@@ -5109,184 +4365,14 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _createFailureModal(reasonText, onChoose) {
-        const modal = document.createElement('div');
-        modal.id = 'odyssey-failure-modal';
-        modal.dataset.odysseyWheelLock = 'true';
-        modal.style.cssText = `
-            position: fixed;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 10000;
-            animation: fadeIn 0.3s ease-out;
-        `;
-
-        // Add keyframes
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        `;
-        modal.appendChild(style);
-
-        const content = document.createElement('div');
-        content.style.cssText = `
-            background: linear-gradient(165deg, rgba(40, 15, 20, 0.95) 0%, rgba(30, 10, 15, 0.98) 100%);
-            border: 1px solid rgba(255, 100, 100, 0.4);
-            border-radius: 24px;
-            padding: 40px 50px;
-            text-align: center;
-            max-width: 400px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 80px rgba(255, 80, 80, 0.2);
-            animation: slideUp 0.4s ease-out;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-        `;
-
-        // Title
-        const title = document.createElement('h2');
-        title.textContent = 'Level Failed';
-        title.style.cssText = `
-            margin: 0 0 15px 0;
-            font-size: 28px;
-            font-weight: 700;
-            color: rgba(255, 100, 100, 1);
-            text-shadow: 0 0 30px rgba(255, 80, 80, 0.5);
-        `;
-        content.appendChild(title);
-
-        // Reason
-        const reason = document.createElement('div');
-        reason.textContent = reasonText;
-        reason.style.cssText = `
-            font-size: 16px;
-            color: rgba(255, 200, 200, 0.8);
-            margin-bottom: 8px;
-        `;
-        content.appendChild(reason);
-
-        // Attempt counter (builds the "one more try" momentum)
-        if (Number.isFinite(this._levelAttemptNumber)) {
-            const attempt = document.createElement('div');
-            attempt.textContent = `Attempt ${this._levelAttemptNumber}`;
-            attempt.style.cssText = `
-                font-size: 12px;
-                letter-spacing: 1.5px;
-                text-transform: uppercase;
-                color: rgba(255, 200, 200, 0.45);
-                margin-bottom: 28px;
-            `;
-            content.appendChild(attempt);
-        }
-
-        // Actions: Retry (primary) + Back to Map (secondary)
-        const actions = document.createElement('div');
-        actions.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        `;
-
-        const retryBtn = document.createElement('button');
-        retryBtn.textContent = 'Retry';
-        retryBtn.style.cssText = `
-            padding: 14px 40px;
-            font-size: 16px;
-            font-weight: 600;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-            color: #fff;
-            background: linear-gradient(135deg, rgba(255, 100, 100, 0.35) 0%, rgba(255, 150, 100, 0.35) 100%);
-            border: 1px solid rgba(255, 120, 110, 0.7);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        `;
-        retryBtn.onmouseenter = () => {
-            retryBtn.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.55) 0%, rgba(255, 150, 100, 0.55) 100%)';
-            retryBtn.style.transform = 'scale(1.05)';
-        };
-        retryBtn.onmouseleave = () => {
-            retryBtn.style.background = 'linear-gradient(135deg, rgba(255, 100, 100, 0.35) 0%, rgba(255, 150, 100, 0.35) 100%)';
-            retryBtn.style.transform = 'scale(1)';
-        };
-
-        const mapBtn = document.createElement('button');
-        mapBtn.textContent = 'Back to Map';
-        mapBtn.style.cssText = `
-            padding: 11px 40px;
-            font-size: 14px;
-            font-weight: 500;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-            color: rgba(255, 220, 220, 0.75);
-            background: transparent;
-            border: 1px solid rgba(255, 120, 110, 0.3);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        `;
-        mapBtn.onmouseenter = () => {
-            mapBtn.style.background = 'rgba(255, 120, 110, 0.12)';
-            mapBtn.style.color = '#fff';
-        };
-        mapBtn.onmouseleave = () => {
-            mapBtn.style.background = 'transparent';
-            mapBtn.style.color = 'rgba(255, 220, 220, 0.75)';
-        };
-
-        actions.appendChild(retryBtn);
-        actions.appendChild(mapBtn);
-        content.appendChild(actions);
-
-        // Keyboard hints
-        const hints = document.createElement('div');
-        hints.style.cssText = `
-            margin-top: 20px;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            color: rgba(255, 200, 200, 0.4);
-        `;
-        hints.innerHTML = 'Press <b style="color: rgba(255,200,200,0.7);">Enter</b> / <b style="color: rgba(255,200,200,0.7);">R</b> to retry &middot; <b style="color: rgba(255,200,200,0.7);">Esc</b> for map';
-        content.appendChild(hints);
-
-        modal.appendChild(content);
-
-        // Single-fire choice dispatch shared by buttons + keyboard. The caller owns
-        // removing the modal (a retry keeps the backdrop up while the board resets).
-        let resolved = false;
-        let onKeyDown = null;
-        const choose = (choice) => {
-            if (resolved) return;
-            resolved = true;
-            document.removeEventListener('keydown', onKeyDown, true);
-            onChoose(choice);
-        };
-        onKeyDown = (e) => {
-            switch (e.key) {
-            case 'Enter':
-            case ' ':
-            case 'r':
-            case 'R':
-                e.preventDefault();
-                e.stopPropagation();
-                choose('retry');
-                break;
-            case 'Escape':
-                e.preventDefault();
-                e.stopPropagation();
-                choose('map');
-                break;
-            default:
-                break;
-            }
-        };
-        // Capture phase so the modal wins over any still-attached gameplay key handlers.
-        document.addEventListener('keydown', onKeyDown, true);
-
-        retryBtn.addEventListener('click', () => choose('retry'));
-        mapBtn.addEventListener('click', () => choose('map'));
-
-        return modal;
+        // View extracted to ui/odyssey/FailureModal.js (E1). Caller contract unchanged
+        // (returns the modal element; the caller owns removing it so a retry keeps the
+        // backdrop up during the board reset).
+        return createFailureModal({
+            reasonText,
+            onChoose,
+            attemptNumber: this._levelAttemptNumber,
+        });
     }
 
     /**
@@ -5315,6 +4401,18 @@ export class OdysseyMode extends BaseGameMode {
      * Start the level timer
      * @private
      */
+    /**
+     * True elapsed level time in ms, excluding time spent paused (masterplan §2 #2).
+     * @returns {number}
+     * @private
+     */
+    _elapsedLevelMs() {
+        if (!this.levelStartTime) return 0;
+        const pausedInProgress = this._pauseStartedAt !== null
+            ? (Date.now() - this._pauseStartedAt) : 0;
+        return Math.max(0, Date.now() - this.levelStartTime - this.levelPausedMs - pausedInProgress);
+    }
+
     _startLevelTimer() {
         if (this.levelTimerInterval) {
             clearInterval(this.levelTimerInterval);
@@ -5322,7 +4420,7 @@ export class OdysseyMode extends BaseGameMode {
 
         this.levelTimerInterval = setInterval(() => {
             if (this.levelStartTime && !this.gameState?.isPaused) {
-                const elapsedTime = (Date.now() - this.levelStartTime) / 1000;
+                const elapsedTime = this._elapsedLevelMs() / 1000;
                 // Phase 2: Update time via hybridEngine
                 this.hybridEngine?.updateTime(elapsedTime);
             }
@@ -5346,13 +4444,18 @@ export class OdysseyMode extends BaseGameMode {
 
         window.move = (dir) => {
             if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
-            const moved = coreMove(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playMove());
+            // Odyssey mirror modifier: reverse left/right at the single input choke point (keyboard
+            // tap, DAS auto-repeat, and gamepad all route through window.move) so shared physics and
+            // single-player are untouched (masterplan §2 #3 / C2). Rotation is intentionally not
+            // mirrored, matching standard mirror-mode.
+            const mdir = this.gameState.mirrorControls ? -dir : dir;
+            const moved = coreMove(this.gameState, mdir, () => this.deps.soundManager?.sfxPlayer?.playMove());
             if (this.boardJuice) {
                 if (moved) {
-                    this.boardJuice.nudge(dir * 1.5, 0);
-                    this.boardJuice.tilt(dir * 0.4);
+                    this.boardJuice.nudge(mdir * 1.5, 0);
+                    this.boardJuice.tilt(mdir * 0.4);
                 } else {
-                    this.boardJuice.nudge(dir * 0.8, 0);
+                    this.boardJuice.nudge(mdir * 0.8, 0);
                 }
             }
         };
@@ -5489,9 +4592,9 @@ export class OdysseyMode extends BaseGameMode {
             combo: metrics.maxCombo,
         });
 
-        // Update time
+        // Update time (excludes paused time — masterplan §2 #2)
         if (this.levelStartTime) {
-            const elapsedMs = Date.now() - this.levelStartTime;
+            const elapsedMs = this._elapsedLevelMs();
             this.odysseyHUD.updateTime(elapsedMs);
         }
     }

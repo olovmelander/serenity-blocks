@@ -141,6 +141,19 @@ export class IntroAnimation {
         // null → the warp makes a 3rd context → blank on heavy themes.
         this._rendererReadyResolve = null;
         this.rendererReady = new Promise((resolve) => { this._rendererReadyResolve = resolve; });
+        // Safety net: never let a deferred title stay hidden if the external reveal trigger
+        // is somehow missed (warp error, etc.). Armed HERE, in show()'s synchronous prefix,
+        // NOT after createIntroHTML — the boot flow calls postponeTitleSafety() while
+        // createIntroHTML may still be awaiting a cold renderer init, and re-arming the
+        // 4500ms default afterwards would silently CLOBBER that postpone (title +
+        // PRESS-ANY-KEY would then unlock behind the opaque ident/warp on a cold first
+        // run). Arming synchronously guarantees any later postpone is the last writer.
+        // A too-early 'safety' fire is harmless: revealTitle before the DOM exists makes
+        // createIntroHTML build the title visible (state-aware hold classes).
+        this.clearTitleRevealSafety();
+        if (this.titleDeferred) {
+            this._titleRevealSafety = setTimeout(() => this.revealTitle('safety'), 4500);
+        }
         await this.createIntroHTML();
         this.setupEventListeners();
 
@@ -152,13 +165,6 @@ export class IntroAnimation {
         this.startRenderLoop();
 
         this.startAnimations();
-
-        // Safety net: never let a deferred title stay hidden if the external reveal trigger is
-        // somehow missed (warp error, etc.) — reveals title + unlocks interaction together.
-        if (this._titleRevealSafety) { clearTimeout(this._titleRevealSafety); this._titleRevealSafety = null; }
-        if (this.titleDeferred) {
-            this._titleRevealSafety = setTimeout(() => this.revealTitle(), 4500);
-        }
 
         // Return a promise that resolves when the intro is dismissed
         return new Promise((resolve) => {
@@ -172,15 +178,13 @@ export class IntroAnimation {
      * transition has finished so the reveal animation plays fresh on the settled intro
      * instead of being wasted behind the covering transition.
      */
-    revealTitle() {
+    revealTitle(source = 'manual') {
         if (this.titleRevealed) {
             return;
         }
         this.titleRevealed = true;
-        if (this._titleRevealSafety) {
-            clearTimeout(this._titleRevealSafety);
-            this._titleRevealSafety = null;
-        }
+        this.clearTitleRevealSafety();
+        performanceMonitor.recordEvent('startup_intro_title_revealed', { source });
         const titleContainer = this.container?.querySelector('.intro-title-container');
         if (titleContainer) {
             titleContainer.classList.remove('intro-title-hold');
@@ -191,6 +195,35 @@ export class IntroAnimation {
         // Reveal the "PRESS ANY KEY" prompt + unlock interaction WITH the title (the theme is
         // warmed BEFORE the warp now, so there's nothing to gate on).
         this.enableInteraction();
+    }
+
+    /**
+     * Push the deferred-title safety timer out to `ms` from now. Called by the boot
+     * flow once the warp transition is COMMITTED: on a cold first run the warp's
+     * prewarm compile can exceed the default 4500ms safety, which would otherwise
+     * reveal the title + unlock "PRESS ANY KEY" behind the still-opaque warp canvas
+     * (wasted reveal animation + invisible intro dismissal on a stray keypress).
+     * The warp path reveals explicitly at p>=0.9 and again after the handoff, so the
+     * postponed timer is purely the stalled-warp backstop.
+     * @param {number} ms
+     */
+    postponeTitleSafety(ms) {
+        if (this.titleRevealed) return;
+        this.clearTitleRevealSafety();
+        this._titleRevealSafety = setTimeout(() => this.revealTitle('postponed-safety'), ms);
+        performanceMonitor.recordEvent('startup_intro_title_safety_postponed', { ms });
+    }
+
+    clearTitleRevealSafety() {
+        if (this._titleRevealSafety) {
+            clearTimeout(this._titleRevealSafety);
+            this._titleRevealSafety = null;
+        }
+    }
+
+    resolveRendererReady() {
+        this._rendererReadyResolve?.();
+        this._rendererReadyResolve = null;
     }
 
     /**
@@ -463,7 +496,12 @@ export class IntroAnimation {
             if (this._titleStableCount >= 6) this._titleBoundsSettled = true;
         } else {
             this._titleStableCount = 0;
-            this._lastTitleRect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+            this._lastTitleRect = {
+                x: rect.left,
+                y: rect.top,
+                w: rect.width,
+                h: rect.height,
+            };
         }
     }
 
@@ -535,11 +573,48 @@ export class IntroAnimation {
     /**
      * Initialize the 3D renderer. Tries WebGPU first, falls back to WebGL.
      */
+    replaceRendererCanvasForFallback(canvas) {
+        if (!canvas || typeof document === 'undefined') {
+            return canvas;
+        }
+
+        const fallbackCanvas = document.createElement('canvas');
+        fallbackCanvas.id = canvas.id || 'intro-webgl-canvas';
+        if (canvas.style && fallbackCanvas.style) {
+            fallbackCanvas.style.cssText = canvas.style.cssText;
+            if (!fallbackCanvas.style.cssText) {
+                fallbackCanvas.style.position = canvas.style.position || 'absolute';
+                fallbackCanvas.style.top = canvas.style.top || '0';
+                fallbackCanvas.style.left = canvas.style.left || '0';
+                fallbackCanvas.style.width = canvas.style.width || '100%';
+                fallbackCanvas.style.height = canvas.style.height || '100%';
+                fallbackCanvas.style.zIndex = canvas.style.zIndex || '0';
+            }
+        }
+
+        const parent = canvas.parentNode;
+        if (parent?.replaceChild) {
+            parent.replaceChild(fallbackCanvas, canvas);
+        } else if (parent?.appendChild) {
+            parent.appendChild(fallbackCanvas);
+        }
+
+        if (this.threeCanvas === canvas) {
+            this.threeCanvas = fallbackCanvas;
+        }
+        performanceMonitor.recordEvent('startup_intro_renderer_canvas_replaced', {
+            reason: 'webgpu-timeout',
+        });
+        return fallbackCanvas;
+    }
+
     async initRenderer(canvas) {
         const initStartedAt = typeof performance !== 'undefined' && performance.now
             ? performance.now()
             : Date.now();
         const hasWebGPU = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+        let rendererCanvas = canvas;
+        let fallbackReason = 'none';
         performanceMonitor.recordEvent('startup_intro_renderer_init_started', {
             introV2: this.flags.introV2,
             hasWebGPU,
@@ -547,10 +622,41 @@ export class IntroAnimation {
 
         // Keep a fallback path for rollout / regression checks.
         if (this.flags.introV2 && hasWebGPU) {
+            let webgpuRenderer = null;
             try {
                 const { default: WebGPURenderer } = await import('./threejs-intro-renderer-webgpu.js');
-                const webgpuRenderer = new WebGPURenderer(canvas);
-                const success = await webgpuRenderer.init();
+                webgpuRenderer = new WebGPURenderer(rendererCanvas);
+                // Budget the init: a stalled requestAdapter/requestDevice would otherwise
+                // hang createIntroHTML -> show() -> the whole boot at `await introPromise`.
+                const initPromise = webgpuRenderer.init();
+                let initTimedOut = false;
+                let timeoutId = null;
+                let success = false;
+                try {
+                    success = await Promise.race([
+                        initPromise,
+                        new Promise((resolve) => {
+                            timeoutId = setTimeout(() => { initTimedOut = true; resolve(false); }, 10000);
+                        }),
+                    ]);
+                } finally {
+                    if (timeoutId !== null) {
+                        clearTimeout(timeoutId);
+                    }
+                }
+                if (initTimedOut) {
+                    fallbackReason = 'webgpu-timeout';
+                    rendererCanvas = this.replaceRendererCanvasForFallback(rendererCanvas);
+                    // The orphaned init may still resolve later and would then hold a live
+                    // GPUDevice + render loop for the whole session. Destroy it on arrival.
+                    initPromise
+                        .then(() => { webgpuRenderer.destroy?.(); })
+                        .catch(() => { /* failed anyway - nothing live to clean */ });
+                    performanceMonitor.recordEvent('startup_intro_renderer_webgpu_timeout', {
+                        timeoutMs: 10000,
+                    });
+                    console.warn('[IntroAnimation] WebGPU init timed out, falling back to WebGL');
+                }
                 if (success) {
                     this.threeRenderer = webgpuRenderer;
                     this.isWebGPU = true;
@@ -562,35 +668,53 @@ export class IntroAnimation {
                             : Date.now()) - initStartedAt,
                     });
                     console.log('[IntroAnimation] WebGPU renderer initialized');
-                    return;
+                    return 'webgpu';
                 }
-                // WebGPU init returned false, fall through to WebGL
-                webgpuRenderer.destroy?.();
+                if (!initTimedOut) {
+                    fallbackReason = 'webgpu-init-failed';
+                    webgpuRenderer.destroy?.();
+                }
             } catch (err) {
+                fallbackReason = 'webgpu-exception';
+                webgpuRenderer?.destroy?.();
                 console.warn('[IntroAnimation] WebGPU init failed, falling back to WebGL:', err);
             }
         }
 
-        // Fallback: WebGL renderer
-        const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
-        this.threeRenderer = new ThreeJSIntroRenderer(canvas);
-        if (this.threeRenderer.init()) {
-            this.isWebGPU = false;
-            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
-                backend: 'webgl',
-                durationMs: (typeof performance !== 'undefined' && performance.now
-                    ? performance.now()
-                    : Date.now()) - initStartedAt,
-            });
-            console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
-        } else {
-            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
-                backend: 'failed',
-                durationMs: (typeof performance !== 'undefined' && performance.now
-                    ? performance.now()
-                    : Date.now()) - initStartedAt,
-            });
+        try {
+            const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
+            const webglRenderer = new ThreeJSIntroRenderer(rendererCanvas);
+            if (webglRenderer.init()) {
+                this.threeRenderer = webglRenderer;
+                this.isWebGPU = false;
+                performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                    backend: 'webgl',
+                    fallbackReason,
+                    durationMs: (typeof performance !== 'undefined' && performance.now
+                        ? performance.now()
+                        : Date.now()) - initStartedAt,
+                });
+                console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
+                return 'webgl';
+            }
+
+            webglRenderer.destroy?.();
+            fallbackReason = 'webgl-init-failed';
+        } catch (error) {
+            fallbackReason = 'webgl-exception';
+            console.warn('[IntroAnimation] WebGL fallback init failed:', error);
         }
+
+        this.threeRenderer = null;
+        this.isWebGPU = false;
+        performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+            backend: 'failed',
+            fallbackReason,
+            durationMs: (typeof performance !== 'undefined' && performance.now
+                ? performance.now()
+                : Date.now()) - initStartedAt,
+        });
+        return 'failed';
     }
 
     /**
@@ -661,24 +785,40 @@ export class IntroAnimation {
         this.threeCanvas.style.zIndex = '0'; // Behind CSS overlays
         this.container.appendChild(this.threeCanvas);
 
-        // Initialize renderer: try WebGPU first, fall back to WebGL
-        await this.initRenderer(this.threeCanvas);
-        // Signal readiness: the renderer (and its GPUDevice, if WebGPU) now exists, so
-        // getWebGPUDevice() is reliable for the boot-warp device-share decision.
-        this._rendererReadyResolve?.();
+        // Initialize renderer: try WebGPU first, fall back to WebGL. This must never
+        // prevent the DOM/CSS title + prompt from being created.
+        try {
+            await this.initRenderer(this.threeCanvas);
+        } catch (error) {
+            this.threeRenderer = null;
+            this.isWebGPU = false;
+            console.warn('[IntroAnimation] Renderer init crashed, continuing with DOM fallback:', error);
+            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                backend: 'failed',
+                fallbackReason: 'unhandled-exception',
+                message: error?.message || String(error),
+            });
+        } finally {
+            // Signal readiness: the renderer settled (or definitively failed), so
+            // getWebGPUDevice() is reliable for the boot-warp device-share decision.
+            this.resolveRendererReady();
+        }
         this.setLoadingState(false);
 
         // Phase 5: CSS particles/orbs removed; visuals are now GPU-native in both WebGPU and WebGL paths.
-        this.threeRenderer.setBackgroundMode?.(false);
+        this.threeRenderer?.setBackgroundMode?.(false);
 
         // PERFORMANCE: Removed foreground particles - WebGL handles foreground particles
 
         // Create title container
         const titleContainer = document.createElement('div');
         titleContainer.className = 'intro-title-container';
-        if (this.titleDeferred) {
+        if (this.titleDeferred && !this.titleRevealed) {
             // Applied BEFORE the element is laid out, so the CSS reveal never fires
-            // early; revealTitle() removes it to play the animation fresh.
+            // early; revealTitle() removes it to play the animation fresh. The
+            // !titleRevealed guard covers the cold-boot race where the CSS-fallback
+            // path calls revealTitle() before this DOM exists — then the title must
+            // be created VISIBLE (its reveal plays on insertion), never held forever.
             titleContainer.classList.add('intro-title-hold');
         }
 
@@ -706,8 +846,10 @@ export class IntroAnimation {
         // Create prompt text
         const prompt = document.createElement('div');
         prompt.className = 'intro-prompt';
-        if (this.titleDeferred) {
-            // Don't invite "press to begin" until the title has appeared + interaction unlocks.
+        if (this.titleDeferred && !this.interactionEnabled) {
+            // Don't invite "press to begin" until the title has appeared + interaction
+            // unlocks. Same cold-boot race guard as the title above: if interaction was
+            // already unlocked before this DOM existed, create the prompt visible.
             prompt.classList.add('intro-prompt-hold');
         }
         prompt.innerHTML = 'PRESS ANY KEY / CLICK / TAP TO BEGIN';
@@ -991,6 +1133,7 @@ export class IntroAnimation {
         if (!this.isActive) return;
 
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
         this.isActive = false;
 
         // Remove event listeners
@@ -1032,7 +1175,9 @@ export class IntroAnimation {
 
         // Signal completion near the midpoint of the warp to mask theme loading hitch.
         if (this.onComplete) {
-            const handoverPromise = new Promise(resolve => setTimeout(resolve, 380));
+            const handoverPromise = new Promise((resolve) => {
+                setTimeout(resolve, 380);
+            });
             handoverPromise.then(() => {
                 if (this.onComplete) {
                     this.onComplete();
@@ -1128,6 +1273,7 @@ export class IntroAnimation {
      */
     skip() {
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
         if (this.container) {
             this.container.classList.add('hidden');
@@ -1158,6 +1304,7 @@ export class IntroAnimation {
      */
     reset() {
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
         this.hasCompleted = false;
         this.isActive = false;

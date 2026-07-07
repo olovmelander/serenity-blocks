@@ -433,6 +433,13 @@ const RAW_THEME_REGISTRY = [
         icon: './stellar-drift/stellar-drift-theme-icon.png',
         group: 'cosmic',
     },
+    {
+        id: 'vesper-chrysalis',
+        displayName: 'Vesper Chrysalis',
+        module: './vesper-chrysalis/vesper-chrysalis-theme.js',
+        icon: './vesper-chrysalis/vesper-chrysalis-theme-icon.png',
+        group: 'fantasy',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -484,6 +491,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'astral-weave',
     'stellar-velocity',
     'stellar-drift',
+    'vesper-chrysalis',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({

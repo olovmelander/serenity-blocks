@@ -487,7 +487,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.prewarmPromise = null;
         this.prewarmRequested = false;
         this.syncLoadEnabled = false;
+        this.buildingLoadPromise = null;
+        this.buildingLoadInProgress = false;
+        this.buildingLoadComplete = true;
         this.backgroundLoadPromise = null;
+        this.backgroundLoadInProgress = false;
+        this.backgroundLoadComplete = false;
+        this.deferredMaterialLoadPromise = null;
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
         this.sceneInitialized = false;
         this.isCreatingScene = false;
         this.isAnimating = false;
@@ -927,12 +935,25 @@ export default class NeonDistrictTheme extends BaseTheme {
                 console.log('[NeonDistrict] Phase 1 complete - core rendering active');
             } else {
                 // Start building creation in chunks - DO NOT AWAIT
-                // This allows the first frame to render immediately with sky/street
-                this.createBuildings().then(() => {
-                    if (this.isActive) {
-                        this.loadRemainingContentInBackground();
-                    }
-                });
+                // This allows the first frame to render immediately with sky/street.
+                // Startup still observes this promise and waits before the boot warp,
+                // so the transition does not compete with chunked building generation.
+                this.buildingLoadInProgress = true;
+                this.buildingLoadComplete = false;
+                this.buildingLoadPromise = this.createBuildings()
+                    .then(() => {
+                        if (this.isActive) {
+                            return this.loadRemainingContentInBackground();
+                        }
+                        return null;
+                    })
+                    .catch((error) => {
+                        console.warn('[NeonDistrict] Background building load failed:', error);
+                    })
+                    .finally(() => {
+                        this.buildingLoadInProgress = false;
+                        this.buildingLoadComplete = true;
+                    });
             }
 
             console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
@@ -1112,8 +1133,16 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
         });
 
-        // Process queue using requestIdleCallback
-        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0);
+        // Process queue using requestIdleCallback. Startup uses these in-progress
+        // flags to wait before prewarming the boot warp, so the warp does not contend
+        // with deferred WebGPU content from the first gameplay theme.
+        this.backgroundLoadInProgress = true;
+        this.backgroundLoadComplete = false;
+        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0)
+            .finally(() => {
+                this.backgroundLoadInProgress = false;
+                this.backgroundLoadComplete = true;
+            });
         return this.backgroundLoadPromise;
     }
 
@@ -1142,12 +1171,20 @@ export default class NeonDistrictTheme extends BaseTheme {
                     ? Math.max(2, Math.min(16, deadline.timeRemaining()))
                     : 8;
 
-                // Process items - support async work items
+                // Process items - support async work items. Each item is exception-
+                // guarded: a throw/rejection must never abandon this promise, because
+                // the startup boot-warp gate watches backgroundLoadInProgress — an
+                // unsettled promise would pin the flag true and force every boot to the
+                // 45s idle-wait cap. A failed item is logged and skipped, not fatal.
                 while (index < queue.length && (performance.now() - startTime) < budget) {
-                    const result = queue[index]();
-                    // If work item returns a promise (async prewarm), await it
-                    if (result instanceof Promise) {
-                        await result;
+                    try {
+                        const result = queue[index]();
+                        // If work item returns a promise (async prewarm), await it
+                        if (result instanceof Promise) {
+                            await result;
+                        }
+                    } catch (error) {
+                        console.warn('[NeonDistrict] Background work item failed (skipped):', error);
                     }
                     index++;
                 }
@@ -4594,71 +4631,82 @@ export default class NeonDistrictTheme extends BaseTheme {
             const textureLoader = new THREE.TextureLoader();
             const texturePath = './textures/neon-district/';
 
-            Promise.all([
+            this.deferredMaterialLoadInProgress = true;
+            this.deferredMaterialLoadComplete = false;
+            this.deferredMaterialLoadPromise = Promise.all([
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_diff_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_nor_gl_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_rough_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_ao_2k.jpg`, resolve, undefined, () => resolve(null))),
-            ]).then(async ([diffuseMap, normalMap, roughnessMap, aoMap]) => {
-                if (!this.isActive) return;
+            ])
+                .then(async ([diffuseMap, normalMap, roughnessMap, aoMap]) => {
+                    if (!this.isActive) return;
 
-                // Configure textures for high quality tiling
-                [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
-                    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-                    tex.repeat.set(4, 18);
-                    tex.anisotropy = 8; // Balanced for perf and less shimmer
-                });
+                    // Configure textures for high quality tiling
+                    [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
+                        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                        tex.repeat.set(4, 18);
+                        tex.anisotropy = 8; // Balanced for perf and less shimmer
+                    });
 
-                // Recreate material with textures
-                // PHASE 1: Pass quality for procedural shadow gating
-                const upgradedGround = createWetGroundNodeMaterial({
-                    diffuseMap,
-                    normalMap,
-                    roughnessMap,
-                    aoMap,
-                    quality: this.currentQualityName, // Phase 1: gate shadows
-                    reflectorNode: this.reflectionsEnabled ? this.groundReflector : null,
-                });
+                    // Recreate material with textures
+                    // PHASE 1: Pass quality for procedural shadow gating
+                    const upgradedGround = createWetGroundNodeMaterial({
+                        diffuseMap,
+                        normalMap,
+                        roughnessMap,
+                        aoMap,
+                        quality: this.currentQualityName, // Phase 1: gate shadows
+                        reflectorNode: this.reflectionsEnabled ? this.groundReflector : null,
+                    });
 
-                // Update the ground mesh material
-                if (this.ground && upgradedGround.material) {
-                    // PERF: Pause rendering while swapping material to avoid mid-frame compilation
-                    this.isPrewarming = true;
-
-                    this.ground.material.dispose();
-                    this.ground.material = upgradedGround.material;
-                    this.wetGroundUniforms = upgradedGround.uniforms;
-                    this.groundMaterial = upgradedGround.material;
-
-                    // IMPORTANT: Update groundUniforms references to new uniforms
-                    // Otherwise animation loop updates stale uniforms and ripples don't animate
-                    if (this.groundUniforms) {
-                        if (this.wetGroundUniforms?.uTime) {
-                            this.groundUniforms.uTime = this.wetGroundUniforms.uTime;
-                        } else if (!this.groundUniforms.uTime) {
-                            this.groundUniforms.uTime = { value: 0 };
-                        }
-                    }
-
-                    // Apply scene environment for reflections
-                    if (this.scene.environment) {
-                        this.groundMaterial.envMap = this.scene.environment;
-                        this.groundMaterial.envMapIntensity = 0.9;
-                    }
-
-                    // PERF: Prewarm the new material before resuming render
-                    if (this.renderer?.compileAsync) {
+                    // Update the ground mesh material
+                    if (this.ground && upgradedGround.material) {
+                        // PERF: Pause rendering while swapping material to avoid mid-frame compilation
+                        this.isPrewarming = true;
                         try {
-                            await this.renderer.compileAsync(this.scene, this.camera);
-                            console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
-                        } catch (e) {
-                            console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                            this.ground.material.dispose();
+                            this.ground.material = upgradedGround.material;
+                            this.wetGroundUniforms = upgradedGround.uniforms;
+                            this.groundMaterial = upgradedGround.material;
+
+                            // IMPORTANT: Update groundUniforms references to new uniforms
+                            // Otherwise animation loop updates stale uniforms and ripples don't animate
+                            if (this.groundUniforms) {
+                                if (this.wetGroundUniforms?.uTime) {
+                                    this.groundUniforms.uTime = this.wetGroundUniforms.uTime;
+                                } else if (!this.groundUniforms.uTime) {
+                                    this.groundUniforms.uTime = { value: 0 };
+                                }
+                            }
+
+                            // Apply scene environment for reflections
+                            if (this.scene.environment) {
+                                this.groundMaterial.envMap = this.scene.environment;
+                                this.groundMaterial.envMapIntensity = 0.9;
+                            }
+
+                            // PERF: Prewarm the new material before resuming render
+                            if (this.renderer?.compileAsync) {
+                                try {
+                                    await this.renderer.compileAsync(this.scene, this.camera);
+                                    console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
+                                } catch (e) {
+                                    console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                                }
+                            }
+                        } finally {
+                            this.isPrewarming = false;
                         }
                     }
-
-                    this.isPrewarming = false;
-                }
-            });
+                })
+                .catch((error) => {
+                    console.warn('[NeonDistrict] Wet ground texture upgrade failed:', error);
+                })
+                .finally(() => {
+                    this.deferredMaterialLoadInProgress = false;
+                    this.deferredMaterialLoadComplete = true;
+                });
         } else {
             // Create PLACEHOLDER material first (instant display)
             wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
@@ -10149,7 +10197,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.sceneInitialized = false;
         this.isCreatingScene = false;
         this.isAnimating = false;
+        this.buildingLoadPromise = null;
+        this.buildingLoadInProgress = false;
+        this.buildingLoadComplete = true;
         this.backgroundLoadPromise = null;
+        this.backgroundLoadInProgress = false;
+        this.backgroundLoadComplete = false;
+        this.deferredMaterialLoadPromise = null;
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
         this.prewarmPromise = null;
         this.prewarmRequested = false;
         this.prewarmEnabled = false;

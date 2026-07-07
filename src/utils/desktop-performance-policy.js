@@ -7,67 +7,68 @@ const MIN_RENDER_SCALE = 0.5;
 const MAX_RENDER_SCALE = 1.25;
 const SCALE_PERSIST_STABILITY_MS = 20000;
 
-// QW3 (Odyssey perf pass): the Odyssey scene is GPU fill-rate bound (heavy always-on
-// post stack: CA -> bloom -> ACES -> grade -> vignette -> grain, plus 20+ stacked
-// additive layers at seams). Every fill cost scales with pixel count, and the master
-// grade + grain masks resolution loss, so the `odyssey` cap is deliberately the lowest
-// per-scene ceiling. Tuned ~15-20% below the previous 1.0-1.25 band. Wave 2's adaptive
-// controller rides `renderScale` between these (ceiling) and MIN_RENDER_SCALE (floor).
+// Odyssey scene pixel-ratio ceilings. Previously (QW3) the `odyssey` cap was pinned
+// ~15-20% BELOW the theme cap because the scene was assumed GPU fill-rate bound, which made
+// Odyssey visibly softer/lower-res than a single-scene theme on the SAME display (user
+// report 2026-07-05). It is now brought to THEME PARITY at every tier: the ceiling is what
+// a capable GPU renders at, and the adaptive controllers ride `renderScale` down toward
+// MIN_RENDER_SCALE on weaker GPUs, so raising the ceiling helps strong GPUs reach full
+// resolution without hurting weak ones. Odyssey still carries more fill per pixel (heavy
+// post + additive seam layers), so its adaptive controller will simply back off sooner.
 const DEFAULT_PIXEL_RATIO_CAPS = {
     default: 1.35,
     theme: 1.35,
     menu: 1.15,
     gameplay: 1.4,
-    odyssey: 1.1,
+    odyssey: 1.25,
     hub: 1,
     settings: 1,
 };
 
 const QUALITY_PIXEL_RATIO_CAPS = {
-    // QW3: per-tier `odyssey` caps lowered ~15-20% vs the prior 1.0-1.25 band so the
-    // heavy graded Odyssey scene renders at fewer pixels (grade/grain masks the loss).
-    // Ordering stays monotonic across tiers; other scene types are unchanged.
+    // `odyssey` now matches the `theme` cap at each tier (was ~15-20% lower). Ordering stays
+    // monotonic across tiers; other scene types are unchanged.
     Minimal: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 0.9,
         theme: 0.9,
         gameplay: 1,
-        odyssey: 0.85,
+        odyssey: 0.9,
     },
     Low: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 1,
         theme: 1,
         gameplay: 1.1,
-        odyssey: 0.9,
+        odyssey: 1,
     },
     Medium: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 1.15,
         theme: 1.15,
         gameplay: 1.2,
-        odyssey: 1,
+        odyssey: 1.15,
     },
     High: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 1.25,
         theme: 1.25,
         gameplay: 1.3,
-        odyssey: 1.1,
+        odyssey: 1.25,
     },
     Ultra: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 1.35,
         theme: 1.35,
         gameplay: 1.4,
-        odyssey: 1.2,
+        odyssey: 1.35,
     },
     Extreme: {
         ...DEFAULT_PIXEL_RATIO_CAPS,
         default: 1.5,
         theme: 1.5,
         gameplay: 1.5,
-        odyssey: 1.25,
+        odyssey: 1.5,
     },
 };
 
