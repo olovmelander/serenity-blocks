@@ -14,12 +14,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    float, vec2, vec3, uniform, positionLocal, normalLocal, normalWorld, positionWorld,
+    float, vec2, vec3, vec4, uniform, positionLocal, normalLocal, normalWorld, positionWorld,
     cameraPosition, normalize, dot, clamp, smoothstep, abs, mix, sin, pow, fract, length,
-    screenUV, uv, atan2, floor, pass, viewportUV, attribute, cos, texture,
-    reflector, mx_noise_float, mx_fractal_noise_float,
+    screenUV, uv, atan2, floor, pass, viewportUV, attribute, cos, texture, texture3D,
+    reflector, mx_noise_float, mx_fractal_noise_float, positionGeometry,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 
 export const meta = {
     id: 'vesper-chrysalis',
@@ -36,7 +37,10 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 export function create({ scene, camera, renderer, sizes, params }) {
     const uTime = uniform(0);
     const uS = uniform(clamp01(num(params, 'S', 0)));
-    const pulse = sin(uTime.mul(1.1)).mul(0.5).add(0.5);
+    // Desynced multi-rate throb (V4 1.4): the hero breathes instead of blinking as one LED.
+    const pulseBody = sin(uTime.mul(0.70)).mul(0.5).add(0.5); // slow body swell
+    const pulseVein = sin(uTime.mul(1.55).add(1.3)).mul(0.5).add(0.5); // faster vein flicker (phase-offset)
+    const pulseCrack = sin(uTime.mul(1.05).add(3.0)).mul(0.5).add(0.5); // mid crack pulse (phase-offset)
     const disposables = [];
     const track = (o) => { disposables.push(o); return o; };
     const disposeTextures = []; // loaded textures (planets etc.) freed on dispose
@@ -57,26 +61,51 @@ export function create({ scene, camera, renderer, sizes, params }) {
     const bloomDS = tier >= 3 ? 0.6 : 0.5; // cheaper bloom downsample below High
     const emberCountT = tier <= 1 ? 130 : (tier <= 2 ? 260 : (tier === 3 ? 360 : 420));
     const shardCountT = tier <= 1 ? 12 : (tier <= 2 ? 18 : 22);
+    const reflTaps = tier <= 1 ? 1 : (tier <= 3 ? 3 : 5); // wet-mirror soft-reflection kernel taps (V4 1.3)
+    const wantNebula = tier >= 2; // sky nebula lobe (V4 2.7)
+    const nebOct = tier <= 2 ? 2 : (tier === 3 ? 3 : 4); // nebula fbm octaves by tier
+    const nebWarp = tier >= 4; // domain-warp the nebula only on Ultra/Extreme (TDR caution)
 
     // ════ SKY DOME ════
     const skyMat = new THREE.MeshBasicNodeMaterial();
     {
         const dir = normalize(positionLocal);
         const y = dir.y;
-        const up = smoothstep(0.0, 0.58, y);
-        let s = mix(vec3(0.120, 0.062, 0.235), vec3(0.022, 0.014, 0.060), up);
-        s = mix(s, vec3(0.022, 0.014, 0.060).mul(0.4), uS.mul(up).mul(0.85));
+        // 2.7 three-stop vertical gradient: deep-plum near-horizon → violet mid → indigo zenith
+        const up = smoothstep(0.0, 0.62, y);
+        const upHi = smoothstep(0.28, 0.92, y);
+        let s = mix(vec3(0.135, 0.055, 0.150), vec3(0.055, 0.030, 0.120), up);
+        s = mix(s, vec3(0.020, 0.014, 0.055), upHi);
+        s = mix(s, s.mul(0.4), uS.mul(up).mul(0.85)); // darken as it wakes
         const bandStrength = float(1.0).sub(uS.mul(0.72));
         const band = pow(smoothstep(0.24, 0.0, abs(y.add(0.01))), float(1.9));
         const front = smoothstep(-0.4, 0.7, dir.z.negate());
         s = s.add(vec3(0.95, 0.33, 0.60).mul(band).mul(float(0.55).add(front.mul(0.45))).mul(0.5).mul(bandStrength));
-        // sparse stars
+        // 2.7 low-key nebula lobe in the upper-side sky (noise paid over the whole dome ×2 → tier-gated)
+        if (wantNebula) {
+            const sideMask = smoothstep(0.05, 0.5, y).mul(smoothstep(0.98, 0.35, y)).mul(smoothstep(0.10, 0.55, abs(dir.x)));
+            let np = dir.mul(2.2);
+            if (nebWarp) {
+                const warp = mx_fractal_noise_float(dir.mul(1.5).add(uTime.mul(0.01)), 2).mul(0.35);
+                np = np.add(vec3(warp, warp.mul(0.7), warp.mul(1.2)));
+            }
+            const neb = pow(mx_fractal_noise_float(np, nebOct).mul(0.5).add(0.5), float(2.4));
+            s = s.add(mix(vec3(0.34, 0.10, 0.42), vec3(0.12, 0.20, 0.5), neb).mul(neb).mul(sideMask).mul(0.11));
+        }
+        // 2.7 two-layer stars with twinkle + slight colour temperature (coarse bloom-eligible + fine dim)
         const P = floor(vec2(atan2(dir.x, dir.z).mul(30.0), y.mul(48.0)));
         const seed = mx_noise_float(vec3(P.x, P.y, 1.0)).mul(0.5).add(0.5);
-        s = s.add(vec3(0.86, 0.90, 1.0)
+        const twk = sin(uTime.mul(2.3).add(seed.mul(40.0))).mul(0.5).add(0.5).mul(0.6).add(0.4);
+        const starTemp = mix(vec3(0.86, 0.90, 1.0), vec3(1.0, 0.86, 0.72), pow(fract(seed.mul(7.0)), float(2.0)));
+        s = s.add(starTemp
             .mul(pow(seed, float(40.0)))
             .mul(smoothstep(0.08, 0.32, y))
+            .mul(twk)
             .mul(float(0.9).add(uS.mul(1.1))));
+        const P2 = floor(vec2(atan2(dir.x, dir.z).mul(72.0), y.mul(110.0)));
+        const seed2 = mx_noise_float(vec3(P2.x, P2.y, 5.0)).mul(0.5).add(0.5);
+        const twk2 = sin(uTime.mul(3.1).add(seed2.mul(55.0))).mul(0.5).add(0.5);
+        s = s.add(vec3(0.70, 0.78, 1.0).mul(pow(seed2, float(70.0))).mul(smoothstep(0.06, 0.30, y)).mul(twk2).mul(0.5));
         skyMat.colorNode = s;
         skyMat.side = THREE.BackSide;
         skyMat.depthWrite = false;
@@ -139,13 +168,54 @@ export function create({ scene, camera, renderer, sizes, params }) {
     }
     scene.add(track(planets));
 
+    // ════ TWILIGHT FILL RIG (V4 1.1) — colored bounce so darks read as plum/indigo, not grey-black ════
+    // The hero relic is a practical light: a warm amber radial bounce onto the terrain, escalation-gated so
+    // the Dormant tableau barely changes and the fill blooms in as the world wakes (Spill→Ascension). Plus a
+    // hemispheric colored ambient (cool indigo above → warm plum below) + a soft magenta key toward the band.
+    const uRelicPos = uniform(new THREE.Vector3(0, 19, -95)); // egg world pos, updated each frame
+    const uEggCol = uniform(new THREE.Color(1.0, 0.52, 0.16)); // warm amber
+    const eggBounceNode = (Nrm) => {
+        const toEgg = uRelicPos.sub(positionWorld);
+        const d2 = dot(toEgg, toEgg);
+        const dir = toEgg.div(d2.sqrt().max(0.001));
+        const falloff = float(1.0).div(d2.mul(0.0016).add(1.0));
+        const facing = clamp(dot(Nrm, dir), 0.0, 1.0).mul(0.7).add(0.3);
+        return uEggCol.mul(falloff).mul(facing).mul(uS.mul(0.9).add(0.08)).mul(pulseBody.mul(0.25).add(0.85));
+    };
+    const hemiFillNode = (Nrm) => {
+        const upf = Nrm.y.mul(0.5).add(0.5); // 0 down → 1 up
+        const hemi = mix(vec3(0.075, 0.030, 0.060), vec3(0.040, 0.034, 0.090), upf); // plum below → indigo above
+        const key = clamp(Nrm.z.negate(), 0.0, 1.0).mul(0.22); // faces the horizon band (−z)
+        return hemi.add(vec3(0.46, 0.16, 0.26).mul(key));
+    };
+
     // ════ MOUNTAIN RIDGES — jagged continuous silhouettes (CPU-baked ridge curtains) ════
     // A solid near-black curtain per range; the TOP edge is displaced by ridged noise into
     // organic jagged peaks (valleys submerge below the waterline → no seam). Fogged for depth.
     const peakMat = new THREE.MeshBasicNodeMaterial();
-    peakMat.colorNode = vec3(0.010, 0.007, 0.020) // near-black body
-        .add(vec3(0.85, 0.36, 0.52).mul(pow(attribute('aCrest', 'float'), float(7.0))).mul(0.17)); // warm horizon-catch rim on the crest
-    peakMat.toneMapped = false; // fog stays ENABLED → distance-fade to haze (aerial perspective)
+    {
+        const Pw = positionWorld;
+        const Nrm = normalize(normalWorld);
+        const crest = pow(attribute('aCrest', 'float'), float(7.0));
+        // near-black body + warm horizon-catch crest rim (existing look)
+        let peakCol = vec3(0.010, 0.007, 0.020)
+            .add(vec3(0.85, 0.36, 0.52).mul(crest).mul(0.17));
+        // 1.1 vertical duotone: plum at the waterline → faint indigo up-ridge (subtle colored near-black)
+        const hgt = smoothstep(-2.0, 46.0, Pw.y);
+        peakCol = peakCol.add(mix(vec3(0.026, 0.012, 0.030), vec3(0.014, 0.013, 0.038), hgt).mul(0.5));
+        // 1.1 egg practical-light bounce (negligible at ridge distance, but consistent)
+        peakCol = peakCol.add(eggBounceNode(Nrm));
+        // 1.2 aerial-perspective height fog: bases melt into magenta haze, crests stay silhouette
+        const dist = length(Pw.sub(cameraPosition));
+        const distF = smoothstep(160.0, 820.0, dist);
+        const heightF = clamp(Pw.y.mul(-0.045).exp(), 0.0, 1.0); // dense at the waterline, thin at the crest
+        const fogAmt = clamp(distF.mul(heightF), 0.0, 0.92);
+        const fogCol = mix(vec3(0.055, 0.030, 0.075), vec3(0.28, 0.085, 0.150), heightF); // crest→mid-plum, base→magenta pole
+        peakCol = mix(peakCol, fogCol, fogAmt);
+        peakMat.colorNode = peakCol;
+    }
+    peakMat.toneMapped = false;
+    peakMat.fog = false; // 1.2: per-material analytic height fog replaces THREE.Fog on the peaks
     const peaks = new THREE.Group();
     const makeRidge = (width, z, segs, seedOff, amp) => {
         const geo = new THREE.PlaneGeometry(width, 130, segs, 1);
@@ -179,28 +249,51 @@ export function create({ scene, camera, renderer, sizes, params }) {
     // ranges fade with distance, and the submerged bases never reveal a void behind them.
     scene.fog = new THREE.Fog(new THREE.Color(0.038, 0.022, 0.058), 260, 900);
 
-    // ════ AERIAL-HAZE VEILS — thin additive bands between the ranges (receding-into-haze depth) ════
+    // ════ AERIAL-HAZE VEILS + valley mist — receding-into-haze depth + mountain–lake seam softener ════
     if (tier >= 2) {
-        const veilMat = new THREE.MeshBasicNodeMaterial();
-        {
+        const veilZ = tier >= 4 ? [-410, -560, -700, -780] : [-430, -640];
+        veilZ.forEach((vz, i) => {
+            const depth = i / Math.max(1, veilZ.length - 1); // 0 near → 1 far
+            const veilMat = new THREE.MeshBasicNodeMaterial();
             const vv = uv();
-            const band = smoothstep(0.42, 0.0, abs(vv.y.sub(0.40))); // thin horizon band
-            const drift = sin(vv.x.mul(6.0).add(uTime.mul(0.08))).mul(0.15).add(0.85);
-            veilMat.colorNode = vec3(0.62, 0.26, 0.46).mul(band).mul(drift).mul(0.14);
+            const band = smoothstep(0.42, 0.0, abs(vv.y.sub(0.40)));
+            const pool = smoothstep(0.9, 0.1, vv.y).mul(0.5).add(0.6); // bottom-heavy pooling
+            const drift = sin(vv.x.mul(6.0).add(uTime.mul(0.06 + i * 0.02)).add(i * 1.7)).mul(0.15).add(0.85); // desynced
+            const col = mix(vec3(0.42, 0.24, 0.52), vec3(0.72, 0.24, 0.40), depth); // near cool violet → far warm magenta
+            const dens = 0.10 + depth * 0.06; // far veils denser
+            veilMat.colorNode = col.mul(band).mul(pool).mul(drift).mul(dens);
             veilMat.transparent = true;
             veilMat.blending = THREE.AdditiveBlending;
             veilMat.depthWrite = false;
             veilMat.toneMapped = false;
             veilMat.fog = false;
             veilMat.side = THREE.DoubleSide;
-        }
-        const veilZ = tier >= 4 ? [-410, -560, -700, -780] : [-430, -640];
-        veilZ.forEach((vz) => {
             const v = new THREE.Mesh(new THREE.PlaneGeometry(2600, 130), veilMat);
             v.position.set(0, 42, vz);
             v.renderOrder = -1;
             scene.add(track(v));
         });
+        // ONE wide low mist band hugging the waterline (softens the seam; the reflector doubles it free).
+        const mistMat = new THREE.MeshBasicNodeMaterial();
+        {
+            const mv = uv();
+            const mband = smoothstep(0.55, 0.0, abs(mv.y.sub(0.30))); // low band near the waterline
+            const xtaper = smoothstep(0.0, 0.06, abs(mv.x.sub(0.5))); // ZERO dead-centre (board wedge), full beyond ±6%
+            const mdrift = sin(mv.x.mul(4.0).sub(uTime.mul(0.05))).mul(0.2).add(0.8);
+            const moct = tier >= 3 ? 2 : 1;
+            const mn = mx_fractal_noise_float(vec3(mv.x.mul(5.0), mv.y.mul(2.0).add(uTime.mul(0.02)), 0.0), moct).mul(0.5).add(0.5);
+            mistMat.colorNode = vec3(0.40, 0.26, 0.46).mul(mband).mul(xtaper).mul(mdrift).mul(mn.mul(0.5).add(0.5)).mul(0.08);
+            mistMat.transparent = true;
+            mistMat.blending = THREE.AdditiveBlending;
+            mistMat.depthWrite = false;
+            mistMat.toneMapped = false;
+            mistMat.fog = false;
+            mistMat.side = THREE.DoubleSide;
+        }
+        const mist = new THREE.Mesh(new THREE.PlaneGeometry(2400, 90), mistMat);
+        mist.position.set(0, 8, -300); // waterline in front of the near range
+        mist.renderOrder = -1;
+        scene.add(track(mist));
     }
 
     // ════ IBL — procedural twilight environment (PMREM, zero asset download) ════
@@ -213,8 +306,11 @@ export function create({ scene, camera, renderer, sizes, params }) {
             const envScene = new THREE.Scene();
             const envDomeMat = new THREE.MeshBasicNodeMaterial();
             const ey = normalize(positionLocal).y;
-            envDomeMat.colorNode = mix(vec3(0.20, 0.09, 0.30), vec3(0.02, 0.015, 0.06), smoothstep(-0.1, 0.7, ey))
-                .add(vec3(0.95, 0.32, 0.58).mul(pow(smoothstep(0.20, 0.0, abs(ey.add(0.02))), float(2.4))).mul(0.9));
+            // 2.1 env matches the real sky (3-stop gradient + band) so glass/crystals reflect THIS world, not a generic blur
+            let envc = mix(vec3(0.135, 0.055, 0.150), vec3(0.045, 0.026, 0.110), smoothstep(-0.05, 0.55, ey)); // plum → violet
+            envc = mix(envc, vec3(0.018, 0.013, 0.050), smoothstep(0.30, 0.95, ey)); // → indigo zenith
+            envc = envc.add(vec3(0.95, 0.32, 0.58).mul(pow(smoothstep(0.18, 0.0, abs(ey.add(0.02))), float(2.4))).mul(0.95)); // magenta band
+            envDomeMat.colorNode = envc;
             envDomeMat.side = THREE.BackSide;
             envDomeMat.toneMapped = false;
             const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), envDomeMat);
@@ -235,12 +331,47 @@ export function create({ scene, camera, renderer, sizes, params }) {
             addLight(1.3, 1.3, 1.6, 1.0, -10, 18, 12); // star
             addLight(1.3, 1.3, 1.6, 0.8, 26, 14, -18); // star
             addLight(1.1, 1.2, 1.45, 0.7, 6, 22, 20); // star
-            const rt = pmrem.fromScene(envScene, 0.04);
+            // 2.1 near-black jagged ridge-ring at the horizon → reflections break on mountain shapes (not a clean gradient)
+            if (tier >= 2) {
+                const ridgeMat = new THREE.MeshBasicNodeMaterial();
+                ridgeMat.colorNode = vec3(0.006, 0.004, 0.012);
+                ridgeMat.toneMapped = false; ridgeMat.side = THREE.BackSide;
+                const ridgeGeo = new THREE.CylinderGeometry(40, 40, 20, 64, 1, true);
+                const rp = ridgeGeo.attributes.position;
+                for (let i = 0; i < rp.count; i += 1) {
+                    if (rp.getY(i) > 0) { // jag the top ring into peaks
+                        const ang = Math.atan2(rp.getZ(i), rp.getX(i));
+                        const jag = (1 - Math.abs(Math.sin(ang * 7.3))) + (1 - Math.abs(Math.sin(ang * 13.1 + 1.3))) * 0.5;
+                        rp.setY(i, rp.getY(i) + jag * 6);
+                    }
+                }
+                rp.needsUpdate = true;
+                const ridgeRing = new THREE.Mesh(ridgeGeo, ridgeMat);
+                ridgeRing.position.y = -6; // top edge sits near the env horizon
+                envScene.add(ridgeRing);
+                envDisposn.push(ridgeGeo, ridgeMat);
+            }
+            const rt = pmrem.fromScene(envScene, 0.02); // sharper prefilter (was 0.04) → crisper reflections
             if (rt?.texture) { envTexture = rt.texture; scene.environment = envTexture; }
             envDome.geometry.dispose(); envDomeMat.dispose();
             envDisposn.forEach((o) => o.dispose?.());
             pmrem.dispose?.();
-        } catch (err) { /* IBL optional — egg falls back to fresnel-emissive */ }
+        } catch (err) { console.warn('[vesper] IBL bake failed — egg falls back to fresnel-emissive:', err); }
+    }
+
+    // ════ HERO LIGHTS (V4 2.6) — real soft lights; ONLY the PBR heroes (crystals + egg) respond ════
+    // MeshBasic peaks/boulders/mound/water/sky ignore lights, so the cost is confined to 2 materials.
+    let heroHemi = null; let heroKey = null;
+    if (tier >= 2) {
+        heroHemi = new THREE.HemisphereLight(new THREE.Color(0.34, 0.22, 0.58), new THREE.Color(0.30, 0.12, 0.20), 0.40);
+        scene.add(heroHemi);
+        if (tier >= 3) {
+            heroKey = new THREE.DirectionalLight(new THREE.Color(1.0, 0.62, 0.30), 0.40);
+            heroKey.position.set(-42, 60, -60); // warm key from the upper-left band
+            heroKey.target.position.set(0, 19, -95); // aim at the relic
+            heroKey.castShadow = false;
+            scene.add(heroKey); scene.add(heroKey.target);
+        }
     }
 
     // ── combo water rings: pool of vec4(x, z, ageSec, amp) (halcyon pattern) ──
@@ -266,17 +397,56 @@ export function create({ scene, camera, renderer, sizes, params }) {
         scene.add(reflection.target);
     }
     {
-        const rip = sin(positionWorld.x.mul(0.05).add(uTime.mul(0.7)))
-            .add(sin(positionWorld.z.mul(0.062).sub(uTime.mul(0.5))))
-            .add(sin(positionWorld.x.mul(0.017).add(positionWorld.z.mul(0.013)).add(uTime.mul(0.3))).mul(0.6));
+        // 2.5 directional 2-axis flow ripple: distinct x/z displacement → anisotropic liquid (High+ noise, else sines)
         const rippleAmt = float(rippleBase).add(uS.mul(0.006));
-        const reflUV = screenUV.flipX().add(vec2(rip.mul(rippleAmt), rip.mul(rippleAmt.mul(0.5))));
-        const reflColor = reflection ? reflection.sample(reflUV).rgb : vec3(0.12, 0.07, 0.24);
+        let ripX; let ripZ;
+        if (tier >= 3) {
+            const fp = vec3(positionWorld.x.mul(0.03), positionWorld.z.mul(0.03), uTime.mul(0.05));
+            ripX = mx_noise_float(fp);
+            ripZ = mx_noise_float(fp.add(vec3(4.2, 1.3, 2.0)));
+        } else {
+            const ripS = sin(positionWorld.x.mul(0.05).add(uTime.mul(0.7)))
+                .add(sin(positionWorld.z.mul(0.062).sub(uTime.mul(0.5))));
+            ripX = ripS; ripZ = ripS.mul(0.6);
+        }
+        const reflUV = screenUV.flipX().add(vec2(ripX.mul(rippleAmt.mul(3.0)), ripZ.mul(rippleAmt.mul(1.8))));
         const V = normalize(cameraPosition.sub(positionWorld));
-        const fres = pow(clamp(float(1.0).sub(abs(V.y)), 0.0, 1.0), float(2.2));
-        const reflectivity = clamp(fres.mul(0.85).add(0.26), 0.0, 1.0);
-        const bodyCol = mix(vec3(0.020, 0.014, 0.052), vec3(0.070, 0.038, 0.175),
+        // 1.3 wet-mirror: centerMask keeps the board strip flat/dark; a downward-smear kernel
+        // (energy-preserving weights sum to 1) whose spread grows at grazing softens the mirror.
+        const centerMask = smoothstep(16.0, 44.0, abs(positionWorld.x)); // 0 board strip → 1 flanks
+        const graze = smoothstep(0.55, 0.0, abs(V.y)); // 1 at grazing horizon → 0 straight down
+        let reflColor;
+        if (reflection) {
+            const spread = graze.mul(0.006).add(0.0015);
+            if (reflTaps >= 5) {
+                reflColor = reflection.sample(reflUV).rgb.mul(0.34)
+                    .add(reflection.sample(reflUV.add(vec2(0.0, spread))).rgb.mul(0.22))
+                    .add(reflection.sample(reflUV.sub(vec2(0.0, spread))).rgb.mul(0.22))
+                    .add(reflection.sample(reflUV.add(vec2(0.0, spread.mul(2.0)))).rgb.mul(0.11))
+                    .add(reflection.sample(reflUV.sub(vec2(0.0, spread.mul(2.0)))).rgb.mul(0.11));
+            } else if (reflTaps >= 3) {
+                reflColor = reflection.sample(reflUV).rgb.mul(0.5)
+                    .add(reflection.sample(reflUV.add(vec2(0.0, spread))).rgb.mul(0.25))
+                    .add(reflection.sample(reflUV.sub(vec2(0.0, spread))).rgb.mul(0.25));
+            } else {
+                reflColor = reflection.sample(reflUV).rgb;
+            }
+        } else {
+            reflColor = vec3(0.12, 0.07, 0.24);
+        }
+        const fres = pow(clamp(float(1.0).sub(abs(V.y)), 0.0, 1.0), float(2.6));
+        const reflectivity = clamp(fres.mul(0.9).add(float(0.08).mul(centerMask)), 0.0, 1.0);
+        let bodyCol = mix(vec3(0.020, 0.014, 0.052), vec3(0.070, 0.038, 0.175),
             smoothstep(-400.0, -30.0, positionWorld.z).oneMinus());
+        if (tier >= 3) {
+            // Wave 3: procedural caustics on the near-shore lakebed (injected into the BODY, below the reflection).
+            const cp = vec2(positionWorld.x.mul(0.06), positionWorld.z.mul(0.06));
+            const c1 = mx_noise_float(vec3(cp.x, cp.y.add(uTime.mul(0.08)), 0.0));
+            const c2 = mx_noise_float(vec3(cp.x.sub(uTime.mul(0.05)), cp.y, 3.0));
+            const caus = pow(clamp(c1.add(c2).mul(0.5).add(0.5), 0.0, 1.0), float(4.0)); // clamp BEFORE pow (no NaN/overshoot)
+            const nearShore = smoothstep(-260.0, -20.0, positionWorld.z).oneMinus();
+            bodyCol = bodyCol.add(vec3(0.12, 0.34, 0.42).mul(caus).mul(nearShore).mul(centerMask).mul(0.25)); // cap ≤0.25, off-centre
+        }
         let water = mix(bodyCol, reflColor.mul(vec3(0.92, 0.90, 1.02)), reflectivity);
         if (wantGlint) {
             const glint = pow(mx_noise_float(positionWorld.mul(0.5).add(uTime.mul(0.15))).abs(), float(9.0));
@@ -284,9 +454,15 @@ export function create({ scene, camera, renderer, sizes, params }) {
         }
         // Bioluminescent flow — drifting magenta blotches near the shore (the "living" water).
         if (flowOctaves > 0) {
-            const flow = mx_fractal_noise_float(
-                vec3(positionWorld.x.mul(0.012), positionWorld.z.mul(0.012).add(uTime.mul(0.04)), 0.0), flowOctaves,
-            ).mul(0.5).add(0.5);
+            // 2.5 constant advection dir + a domain-warp (High+) so the glow churns organically, not as a conveyor scroll.
+            const flowDir = vec2(0.10, -0.55); // constant (NOT per-pixel time×noise → no unbounded long-session shear)
+            const base = vec2(positionWorld.x.mul(0.012), positionWorld.z.mul(0.012)).add(flowDir.mul(uTime.mul(0.06)));
+            let fpv = base;
+            if (tier >= 3) {
+                const warp = mx_noise_float(vec3(base.x.mul(1.7), base.y.mul(1.7), uTime.mul(0.03))).mul(0.25);
+                fpv = base.add(warp);
+            }
+            const flow = mx_fractal_noise_float(vec3(fpv.x, fpv.y, 0.0), flowOctaves).mul(0.5).add(0.5);
             const bio = pow(flow, float(3.0)).mul(smoothstep(-320.0, -10.0, positionWorld.z).oneMinus());
             water = water.add(vec3(0.55, 0.14, 0.62).mul(bio).mul(0.4));
         }
@@ -317,13 +493,15 @@ export function create({ scene, camera, renderer, sizes, params }) {
     scene.add(track(relic));
     {
         // core
-        const corePos = positionLocal.mul(2.8).add(vec3(0, uTime.mul(-0.28), 0));
+        // Wave 3: roiling molten core — a domain-warp (once) on the churn field so it churns, not just scrolls.
+        const coreWarp = mx_noise_float(positionLocal.mul(2.0).add(uTime.mul(0.10))).mul(0.3);
+        const corePos = positionLocal.mul(2.8).add(vec3(coreWarp, uTime.mul(-0.28), coreWarp));
         const churn = mx_fractal_noise_float(corePos, 4).mul(0.5).add(0.5);
         // Dark cracked-rock heart with molten amber veins → reads as a distinct object
         // inside the glass (NOT a uniform glowing ball), like the Hatom embryo core.
         const coreVeinField = mx_fractal_noise_float(positionLocal.mul(3.2), 4).mul(0.5).add(0.5);
         const coreCrack = smoothstep(float(0.09), float(0.0), abs(coreVeinField.sub(0.5)));
-        const veinGlow = coreCrack.mul(float(0.5).add(uS.mul(1.3)).add(pulse.mul(uS.mul(0.5).add(0.12))));
+        const veinGlow = coreCrack.mul(float(0.5).add(uS.mul(1.3)).add(pulseVein.mul(uS.mul(0.5).add(0.12))));
         const coreVein = mix(vec3(1.0, 0.26, 0.02), vec3(1.0, 0.74, 0.30), churn);
         const coreMat = new THREE.MeshBasicNodeMaterial();
         coreMat.colorNode = vec3(0.045, 0.018, 0.030).add(coreVein.mul(veinGlow));
@@ -336,7 +514,9 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const crackField = mx_fractal_noise_float(positionLocal.mul(1.7), 4).mul(0.5).add(0.5);
         const crackW = float(0.010).add(uS.mul(0.055));
         const crackLine = smoothstep(crackW, float(0.0), abs(crackField.sub(0.5)));
-        const crackGlow = crackLine.mul(uS).mul(pulse.mul(0.35).add(0.85));
+        // Wave 3: traveling crack-energy wave — light pulses run ALONG the cracks (not a uniform blink).
+        const crackTravel = sin(crackField.mul(18.0).sub(uTime.mul(1.6))).mul(0.5).add(0.5);
+        const crackGlow = crackLine.mul(uS).mul(pulseCrack.mul(0.35).add(0.85)).mul(crackTravel.mul(0.5).add(0.6));
         // High+ = real transmission glass; Minimal/Low = fresnel faux-glass (skips the per-frame
         // transmission viewport-mip capture entirely). Emissive rim + veins are shared below.
         const shellMat = useTransmission
@@ -354,6 +534,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
             shellMat.iridescenceIOR = 1.25;
             shellMat.clearcoat = 1.0;
             shellMat.clearcoatRoughness = 0.12;
+            // Wave 3: subtle roughness breakup → panel-line reflections (glassier facets, not a uniform mirror)
+            shellMat.roughnessNode = float(0.05).add(mx_noise_float(positionLocal.mul(4.0)).abs().mul(0.05));
         } else {
             shellMat.opacityNode = clamp(float(0.30).add(fres.mul(0.55)), 0.0, 1.0);
         }
@@ -363,7 +545,11 @@ export function create({ scene, camera, renderer, sizes, params }) {
         shellMat.emissiveNode = vec3(0.35, 0.75, 1.0).mul(fres).mul(0.7)
             .add(vec3(1.0, 0.48, 0.12).mul(crackGlow).mul(1.7));
         // geode surface bumps
-        shellMat.positionNode = positionLocal.add(normalLocal.mul(mx_noise_float(positionLocal.mul(2.2)).mul(0.07)));
+        // Wave 3: static geode bumps + a SMALL animated surface ripple (amp ~0.02 — larger would
+        // visibly "swim" since normals aren't recomputed). The ripple grows as the relic wakes.
+        const geode = mx_noise_float(positionLocal.mul(2.2)).mul(0.05);
+        const surf = mx_noise_float(positionLocal.mul(3.0).add(uTime.mul(0.15))).mul(0.02).mul(uS.mul(0.6).add(0.4));
+        shellMat.positionNode = positionLocal.add(normalLocal.mul(geode.add(surf)));
         relic.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 6), shellMat));
     }
 
@@ -398,11 +584,21 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const N = normalize(normalWorld);
         const V = normalize(cameraPosition.sub(positionWorld));
         const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.2));
+        // 1.4 desynced per-instance breath (aPhase/aRate set as InstancedBufferAttributes below)
+        const aPhase = attribute('aPhase', 'float');
+        const aRate = attribute('aRate', 'float');
+        const breath = sin(uTime.mul(aRate).add(aPhase.mul(6.283))).mul(0.5).add(0.5);
         shardMat.color = new THREE.Color(0.05, 0.10, 0.20);
         shardMat.metalness = 0.12;
         shardMat.roughness = 0.08; // glassier → sharper reflection of the enriched env map
         shardMat.emissiveNode = vec3(0.40, 0.85, 1.0).mul(f).mul(0.9)
-            .add(vec3(0.30, 0.70, 1.0).mul(uS).mul(0.3));
+            .add(vec3(0.30, 0.70, 1.0).mul(uS).mul(0.3))
+            .mul(breath.mul(0.35).add(0.82)); // 0.82..1.17 breathing glow (desynced per spire)
+        // 1.4 micro top-sway: use positionGeometry (raw attr, NOT reassigned by InstanceNode) → true
+        // cone-local [-0.5,0.5] so the bend stays base-0/tip-1 instead of saturating post-instance.
+        const swayMask = positionGeometry.y.add(0.5).clamp(0.0, 1.0);
+        const sway = sin(uTime.mul(aRate.mul(0.6)).add(aPhase.mul(6.283))).mul(swayMask).mul(0.05);
+        shardMat.positionNode = positionLocal.add(vec3(sway, 0.0, sway.mul(0.5)));
         shardMat.transparent = true;
         shardMat.opacityNode = clamp(float(0.55).add(f.mul(0.45)), 0.0, 1.0);
         shardMat.depthWrite = false;
@@ -438,6 +634,15 @@ export function create({ scene, camera, renderer, sizes, params }) {
             }
         }
         crystals.instanceMatrix.needsUpdate = true;
+        // 1.4 per-instance breath phase/rate (InstancedBufferAttribute → read via attribute() in the material)
+        const aPhaseArr = new Float32Array(clusterN * spiresPer);
+        const aRateArr = new Float32Array(clusterN * spiresPer);
+        for (let i = 0; i < clusterN * spiresPer; i += 1) {
+            aPhaseArr[i] = crnd(i * 13 + 2);
+            aRateArr[i] = 0.5 + crnd(i * 13 + 7) * 0.7; // 0.5..1.2 desynced rates
+        }
+        crystalGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(aPhaseArr, 1));
+        crystalGeo.setAttribute('aRate', new THREE.InstancedBufferAttribute(aRateArr, 1));
     }
     crystals.frustumCulled = false;
     scene.add(track(crystals));
@@ -450,7 +655,10 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const N = normalize(normalWorld);
         const V = normalize(cameraPosition.sub(positionWorld));
         const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.6));
-        boulderMat.colorNode = vec3(0.008, 0.006, 0.016).add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09)); // near-black + faint magenta rim
+        boulderMat.colorNode = vec3(0.008, 0.006, 0.016)
+            .add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09)) // faint magenta rim (existing)
+            .add(hemiFillNode(N).mul(0.5)) // 1.1 colored ambient (plum/indigo, capped)
+            .add(eggBounceNode(N).mul(0.7)); // 1.1 warm egg bounce
         boulderMat.toneMapped = false;
     }
     const boulderGeo = new THREE.IcosahedronGeometry(1, 2);
@@ -492,11 +700,21 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const moundMat = new THREE.MeshBasicNodeMaterial();
         {
             const pl = positionLocal;
-            const vf = mx_fractal_noise_float(vec3(pl.x.mul(0.06), pl.y.mul(0.06).add(uTime.mul(0.03)), 0.0), 3).mul(0.5).add(0.5);
+            // 2.5 domain-warp (High+) so the vein network churns organically rather than scrolling rigidly
+            let vp = vec2(pl.x.mul(0.06), pl.y.mul(0.06).add(uTime.mul(0.03)));
+            if (tier >= 3) {
+                const w = mx_noise_float(vec3(pl.x.mul(0.03), pl.y.mul(0.03), uTime.mul(0.02))).mul(0.4);
+                vp = vp.add(w);
+            }
+            const vf = mx_fractal_noise_float(vec3(vp.x, vp.y, 0.0), 3).mul(0.5).add(0.5);
             const vein = smoothstep(0.055, 0.0, abs(vf.sub(0.5))); // glowing vein isolines
             const speck = pow(mx_noise_float(pl.mul(0.55)).abs(), float(4.0)); // fine moss speckle
             const veinCol = vec3(0.9, 0.2, 0.6).mul(vein.mul(0.5).add(speck.mul(0.2)));
-            moundMat.colorNode = vec3(0.02, 0.012, 0.03).add(veinCol.mul(float(0.45).add(uS.mul(0.55))));
+            const Nm = normalize(normalWorld); // valid after computeVertexNormals() below
+            moundMat.colorNode = vec3(0.02, 0.012, 0.03)
+                .add(veinCol.mul(float(0.45).add(uS.mul(0.55))))
+                .add(hemiFillNode(Nm).mul(0.4)) // 1.1 colored ambient
+                .add(eggBounceNode(Nm).mul(0.6)); // 1.1 warm egg bounce
             moundMat.toneMapped = false;
         }
         const moundGeo = new THREE.PlaneGeometry(95, 62, 48, 30);
@@ -509,11 +727,18 @@ export function create({ scene, camera, renderer, sizes, params }) {
             mp.setZ(i, dome + (mn(x * 0.3, y * 0.3) - 0.5) * 4.5); // + rocky roughness
         }
         mp.needsUpdate = true;
+        moundGeo.computeVertexNormals(); // 1.1 REQUIRED: displaced plane normals are uniform otherwise → flat hemi fill
         const mound = new THREE.Mesh(moundGeo, moundMat);
         mound.rotation.x = -Math.PI / 2; // lay flat (displacement → +y)
         mound.position.set(-58, -1, -74); // off-centre-left, behind the crystals
         scene.add(track(mound));
     }
+
+    // 2.5 cheap curl-ish swirl velocity from a 2D noise field (ONE call per point → 2 noise/vert, reused for x/z)
+    const curlDrift = (px, pz, t, amp) => vec2(
+        mx_noise_float(vec3(px.mul(0.08), pz.mul(0.08), t)),
+        mx_noise_float(vec3(px.mul(0.08).add(11.3), pz.mul(0.08).add(5.1), t)),
+    ).mul(amp);
 
     // ════ GPU EMBERS — amber motes rising off the relic (vertex-animated points) ════
     const EMBER_COUNT = emberCountT;
@@ -571,11 +796,18 @@ export function create({ scene, camera, renderer, sizes, params }) {
     const flyMat = new THREE.PointsNodeMaterial();
     {
         const sd = attribute('aSeed', 'vec3');
-        const wander = vec3(
-            sin(uTime.mul(0.23).add(sd.x.mul(6.283))).mul(9.0),
-            sin(uTime.mul(0.17).add(sd.y.mul(6.283))).mul(5.0),
-            cos(uTime.mul(0.19).add(sd.z.mul(6.283))).mul(9.0),
-        );
+        // 2.5 curl-noise wander (High+) — organic swirl instead of bounded sines; y stays a gentle bob
+        let wander;
+        if (tier >= 3) {
+            const cv = curlDrift(positionLocal.x.add(sd.x.mul(50.0)), positionLocal.z.add(sd.z.mul(50.0)), uTime.mul(0.05), 9.0);
+            wander = vec3(cv.x, sin(uTime.mul(0.17).add(sd.y.mul(6.283))).mul(5.0), cv.y);
+        } else {
+            wander = vec3(
+                sin(uTime.mul(0.23).add(sd.x.mul(6.283))).mul(9.0),
+                sin(uTime.mul(0.17).add(sd.y.mul(6.283))).mul(5.0),
+                cos(uTime.mul(0.19).add(sd.z.mul(6.283))).mul(9.0),
+            );
+        }
         flyMat.positionNode = positionLocal.add(wander);
         // sharp staggered blink; mostly warm lime-gold, some cyan (Hatom's green glint)
         const blink = pow(sin(uTime.mul(1.5).add(sd.x.mul(20.0))).mul(0.5).add(0.5), float(3.0));
@@ -611,11 +843,18 @@ export function create({ scene, camera, renderer, sizes, params }) {
     {
         const sd = attribute('aSeed', 'vec3');
         // gentle bounded drift on all axes (stays in the volume → continuous ambient float)
-        const drift = vec3(
-            sin(uTime.mul(0.08).add(sd.x.mul(6.283))).mul(7.0),
-            sin(uTime.mul(0.05).add(sd.y.mul(6.283))).mul(5.0),
-            cos(uTime.mul(0.07).add(sd.z.mul(6.283))).mul(7.0),
-        );
+        // 2.5 curl-noise drift (High+) — slow organic swirl across the whole view; y stays a gentle bob
+        let drift;
+        if (tier >= 3) {
+            const cv = curlDrift(positionLocal.x.add(sd.y.mul(60.0)), positionLocal.z.add(sd.x.mul(60.0)), uTime.mul(0.035), 7.0);
+            drift = vec3(cv.x, sin(uTime.mul(0.05).add(sd.y.mul(6.283))).mul(5.0), cv.y);
+        } else {
+            drift = vec3(
+                sin(uTime.mul(0.08).add(sd.x.mul(6.283))).mul(7.0),
+                sin(uTime.mul(0.05).add(sd.y.mul(6.283))).mul(5.0),
+                cos(uTime.mul(0.07).add(sd.z.mul(6.283))).mul(7.0),
+            );
+        }
         dustMat.positionNode = positionLocal.add(drift);
         const tw = sin(uTime.mul(0.9).add(sd.x.mul(15.0))).mul(0.5).add(0.5); // faint twinkle
         dustMat.colorNode = mix(vec3(0.70, 0.76, 1.0), vec3(1.0, 0.85, 0.68), pow(sd.y, float(2.5))); // cool + a few warm
@@ -669,6 +908,55 @@ export function create({ scene, camera, renderer, sizes, params }) {
     wing.position.set(0, 44, -128);
     scene.add(track(wing));
 
+    // ════ 3D-LUT GRADE (V4 2.2) — bake the hatom film-grade to a Data3DTexture (behind ?gradeV2) ════
+    // Non-linear per-region shaping the inline linear split-tone can't do: crushed-but-COLORED violet
+    // blacks → magenta mids (→ #F76CFE) → amber highs (#ff8a3c) → cyan held off clip. Applied AFTER ACES.
+    // A/B favoured the baked LUT (deeper colored blacks, more hatom-like) → default ON; ?gradeV1 reverts
+    // to the inline linear split-tone. Minimal keeps the inline grade (skips the 3D-texture bake).
+    const useLutV2 = tier >= 1 && !(params?.has?.('gradeV1'));
+    const lutN = tier >= 3 ? 33 : 16;
+    let lutTex = null;
+    if (useLutV2) {
+        const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+        const lp = (a, b, t) => a + (b - a) * t;
+        const gradeSample = (r0, g0, b0) => {
+            let r = Math.max(0, (r0 - 0.02) / 0.98); // deeper violet black-crush
+            let g = Math.max(0, (g0 - 0.02) / 0.98);
+            let b = Math.max(0, (b0 - 0.02) / 0.98);
+            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const t = sm(0.06, 0.80, luma); // violet shadows → amber highs
+            r *= lp(0.90, 1.22, t); g *= lp(0.80, 1.00, t); b *= lp(1.20, 0.80, t);
+            const midW = sm(0.12, 0.38, luma) * sm(0.72, 0.40, luma) * 0.22; // magenta mid push (#F76CFE)
+            r = lp(r, luma * 0.97, midW); g = lp(g, luma * 0.42, midW); b = lp(b, luma * 1.00, midW);
+            const hiW = sm(0.72, 1.0, luma) * 0.12; // cyan held off clip in the highs
+            r = lp(r, r * 0.86, hiW); b = lp(b, b * 1.05, hiW);
+            luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            r = lp(luma, r, 1.16); g = lp(luma, g, 1.16); b = lp(luma, b, 1.16); // saturation
+            r = (r - 0.5) * 1.14 + 0.5; g = (g - 0.5) * 1.14 + 0.5; b = (b - 0.5) * 1.14 + 0.5; // contrast
+            return [Math.min(1, Math.max(0, r)), Math.min(1, Math.max(0, g)), Math.min(1, Math.max(0, b))];
+        };
+        const data = new Uint8Array(lutN * lutN * lutN * 4);
+        let pi = 0;
+        for (let bi = 0; bi < lutN; bi += 1) {
+            for (let gi = 0; gi < lutN; gi += 1) {
+                for (let ri = 0; ri < lutN; ri += 1) {
+                    const o = gradeSample(ri / (lutN - 1), gi / (lutN - 1), bi / (lutN - 1));
+                    data[pi] = Math.round(o[0] * 255); data[pi + 1] = Math.round(o[1] * 255);
+                    data[pi + 2] = Math.round(o[2] * 255); data[pi + 3] = 255; pi += 4;
+                }
+            }
+        }
+        lutTex = new THREE.Data3DTexture(data, lutN, lutN, lutN);
+        lutTex.format = THREE.RGBAFormat;
+        lutTex.type = THREE.UnsignedByteType;
+        lutTex.minFilter = THREE.LinearFilter;
+        lutTex.magFilter = THREE.LinearFilter;
+        lutTex.wrapS = THREE.ClampToEdgeWrapping;
+        lutTex.wrapT = THREE.ClampToEdgeWrapping;
+        lutTex.wrapR = THREE.ClampToEdgeWrapping;
+        lutTex.needsUpdate = true;
+    }
+
     // ════ POST: threshold bloom + violet-ember ACES grade + vignette + grain ════
     // Threshold bloom (non-MRT) — the scene is high-contrast (dark base + bright
     // emissives) so a threshold naturally isolates the core/cracks/band/sparkle.
@@ -710,19 +998,30 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const acesNum = exposed.mul(exposed.mul(a).add(b));
         const acesDen = exposed.mul(exposed.mul(c).add(d)).add(e);
         let graded = clamp(acesNum.div(acesDen), 0.0, 1.0);
-        // Crush blacks toward zero (the Hatom near-black shadow signature).
-        graded = graded.sub(uBlack).div(float(1.0).sub(uBlack)).max(0.0);
-        // Violet-shadow / warm-amber split-tone (violet = R+B up, G down — NOT blue).
-        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
-        const shadowTint = vec3(0.94, 0.82, 1.16);
-        const highTint = vec3(1.20, 0.99, 0.80);
-        graded = graded.mul(mix(shadowTint, highTint, smoothstep(0.06, 0.80, luma)));
-        // Saturation + filmic contrast.
-        graded = mix(vec3(luma), graded, uSaturation);
-        graded = graded.sub(0.5).mul(uContrast).add(0.5);
+        if (useLutV2 && lutTex) {
+            // 2.2 baked hatom film-grade (carries crush + duotone + magenta-mid + cyan-hold + sat/contrast)
+            const uLutMix = uniform(0.95);
+            graded = lut3D(vec4(graded, 1.0), texture3D(lutTex), lutN, uLutMix).rgb;
+        } else {
+            // Crush blacks toward zero (the Hatom near-black shadow signature).
+            graded = graded.sub(uBlack).div(float(1.0).sub(uBlack)).max(0.0);
+            // Violet-shadow / warm-amber split-tone (violet = R+B up, G down — NOT blue).
+            const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+            const shadowTint = vec3(0.94, 0.82, 1.16);
+            const highTint = vec3(1.20, 0.99, 0.80);
+            graded = graded.mul(mix(shadowTint, highTint, smoothstep(0.06, 0.80, luma)));
+            // Saturation + filmic contrast.
+            graded = mix(vec3(luma), graded, uSaturation);
+            graded = graded.sub(0.5).mul(uContrast).add(0.5);
+        }
         // Vignette (focuses the eye on the hero).
         const vigD = length(uvp.sub(0.5)).mul(1.75);
         graded = graded.mul(mix(float(0.58), float(1.0), smoothstep(1.1, 0.2, vigD)));
+        // 2.4 lower-centre board-wedge dead-zone: a feathered ~12% luminance knock so the egg's
+        // lake reflection never competes with the playfield UI (viewportUV is y-up on both backends).
+        const dzV = smoothstep(0.60, 0.0, uvp.y); // 1 at the bottom → 0 by 60% up (protects the upper-third egg)
+        const dzH = smoothstep(0.32, 0.0, abs(uvp.x.sub(0.5))); // 1 at horizontal centre → 0 at the flanks
+        graded = graded.mul(float(1.0).sub(dzV.mul(dzH).mul(0.12)));
         // Fine film grain (kills sky banding).
         const grain = fract(sin(dot(uvp.add(uGrainT), vec2(12.9898, 78.233))).mul(43758.5453))
             .sub(0.5).mul(uGrain);
@@ -759,6 +1058,7 @@ export function create({ scene, camera, renderer, sizes, params }) {
     let sEased = sBaseline;
     let intensity = 1; // reactivity multiplier (0 = off; reduced-motion → ~0.45)
     let lastTime = null;
+    let prevCamTime = null; // Wave 3: dt source for frame-rate-independent camera/cursor easing
 
     const applyPulse = (kind, payload = {}) => {
         if (intensity <= 0) return;
@@ -810,21 +1110,32 @@ export function create({ scene, camera, renderer, sizes, params }) {
 
     return {
         camera(time, cam) {
-            // ease the cursor toward its target → smooth parallax
-            mouseX += (mouseTX - mouseX) * 0.045;
-            mouseY += (mouseTY - mouseY) * 0.045;
+            // Wave 3: frame-rate-independent cursor ease (dt via a prevCamTime closure → same feel at any fps)
+            const cdt = prevCamTime === null ? 1 / 60 : Math.max(0.001, Math.min(0.1, time - prevCamTime));
+            prevCamTime = time;
+            const cursorEase = 1 - Math.exp(-3.0 * cdt);
+            mouseX += (mouseTX - mouseX) * cursorEase;
+            mouseY += (mouseTY - mouseY) * cursorEase;
+            const S = sEased; // 2.4 the escalation scalar drives a narrative reframe
+            const sMot = Math.max(camMotion, 0.6); // keep the slow reframe legible even in reduced-motion
             // organic breathing: layered slow sines (no single obvious period)
             const bx = (Math.sin(time * 0.13) * 1.3 + Math.sin(time * 0.07 + 1.7) * 0.8) * camMotion;
             const by = (Math.sin(time * 0.11 + 1.3) * 0.8 + Math.sin(time * 0.05) * 0.5) * camMotion;
             const bz = Math.sin(time * 0.06) * 1.6 * camMotion;
+            // 2.4 very-slow lateral orbit (shears the depth planes) + counter-rotated lookAt
+            const orbit = Math.sin(time * 0.045) * 3.0 * camMotion;
+            // 2.4 S-driven dolly-in + crane-up + rising gaze (44→~34 z, 15.5→~20 y, 14.5→~22 lookY)
+            const baseZ = 44 - S * 10 * sMot;
+            const baseY = 15.5 + S * 4.5 * sMot;
+            const lookY = 14.5 + S * 7.5 * sMot;
             cam.position.set(
-                bx + mouseX * 7.0 * camMotion,
-                15.5 + by + mouseY * -3.0 * camMotion,
-                44 + bz,
+                bx + orbit + mouseX * 7.0 * camMotion,
+                baseY + by + mouseY * -3.0 * camMotion,
+                baseZ + bz,
             );
             cam.lookAt(
-                mouseX * 4.5 * camMotion + Math.sin(time * 0.04) * 2.0 * camMotion,
-                14.5 + mouseY * -1.6 * camMotion,
+                orbit * -0.4 + mouseX * 4.5 * camMotion + Math.sin(time * 0.04) * 2.0 * camMotion, // x pinned ≈0, counter-rotated
+                lookY + mouseY * -1.6 * camMotion,
                 -95,
             );
             cam.fov = 58;
@@ -846,6 +1157,7 @@ export function create({ scene, camera, renderer, sizes, params }) {
             uTime.value = time;
             relic.rotation.y = time * 0.08;
             relic.position.y = 19 + Math.sin(time * 0.5) * 1.2; // slow idle bob (floats on the horizon)
+            uRelicPos.value.copy(relic.position); // 1.1 egg-as-practical-light follows the bob
             // combo rings: expand + fade + upload
             for (let i = 0; i < RING_COUNT; i += 1) {
                 const s = ringState[i];
@@ -871,6 +1183,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
             if (window.__VESPER__) delete window.__VESPER__;
             post?.dispose();
             if (reflection) { scene.remove(reflection.target); reflection.dispose?.(); }
+            if (heroHemi) { scene.remove(heroHemi); heroHemi.dispose?.(); }
+            if (heroKey) { scene.remove(heroKey); scene.remove(heroKey.target); heroKey.dispose?.(); } // 2.6
             disposables.forEach((o) => {
                 scene.remove(o);
                 o.traverse?.((c) => { c.geometry?.dispose?.(); c.material?.dispose?.(); });
@@ -880,6 +1194,7 @@ export function create({ scene, camera, renderer, sizes, params }) {
             skyMat.dispose(); peakMat.dispose(); shardMat.dispose();
             disposeTextures.forEach((t) => t.dispose?.());
             if (envTexture) { if (scene.environment === envTexture) scene.environment = null; envTexture.dispose?.(); }
+            lutTex?.dispose?.(); // 2.2
         },
     };
 }
