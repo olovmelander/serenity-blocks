@@ -85,6 +85,7 @@ import {
     BOOT_WARP_PREWARM_TIMEOUT_MS,
     BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
     BOOT_WARP_MAX_PREWARM_ATTEMPTS,
+    playBootWarpHandoff,
     waitForStartupThemeIdle,
     waitForIntroRendererDecision,
 } from './ui/boot-warp-startup.js';
@@ -5590,9 +5591,7 @@ async function bootstrap() {
                     // (blank on heavy themes) even though a shareable device was seconds away.
                     // rendererReady settles on WebGPU success AND on WebGL fallback/failure.
                     markStartup('boot-warp:intro-decision-start');
-                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation, {
-                        timeoutMs: BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
-                    });
+                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation);
                     markStartup('boot-warp:intro-decision-complete', introWarpDecision);
                     if (introWarpDecision.canAttemptWarp) {
                         const getStartupTheme = () => app?.themeManager?.pendingThemeInstance
@@ -5747,53 +5746,26 @@ async function bootstrap() {
             }
 
             if (warpTransition) {
-                // Quick-fade the ident to expose the warp's diamond, then dive. The
-                // intro is warm and rendering behind the opaque warp canvas the whole
-                // time, so fading the canvas out crossfades straight into the live scene.
+                // Timed handoff: the warp must render at least one frame, then stay
+                // visible for the configured minimum before the title/fade can advance.
                 try {
-                    markStartup('boot-warp:handoff-start');
-                    // SEAMLESS START: keep the ident up and start the warp FIRST so the
-                    // diamond gem ignites for ~150ms UNSEEN behind the opaque shell, then
-                    // cross-dissolve the shell out mid-ignition (p>=0.06) — the reveal lands
-                    // on a bright, brightening, size-matched gem, never the dim static hold.
-                    // SEAMLESS END (unchanged): overlap the canvas fade with the burst tail
-                    // (p>=0.80) so the live intro develops OUT OF the exploding particles.
-                    let shellDismissed = false;
-                    let fadePromise = null;
-                    let titleRevealed = false;
-                    // Warp SFX: dark deep-space hyperspace whoosh, started in sync with the
-                    // dive (build → bass-burst near the visual explosion). Honors mute/volume;
-                    // best-effort so a missing/blocked audio file never affects the visual.
-                    sharedSoundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
-                    await warpTransition.play({
-                        durationMs: parseInt(urlParams.get('warpDur'), 10) || 2600,
-                        onProgress: (p) => {
-                            if (!shellDismissed && p >= 0.06) {
-                                shellDismissed = true;
-                                markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
-                                dismissStartupShell('warp-handoff', { quick: true });
-                            }
-                            if (!fadePromise && p >= 0.8) {
-                                fadePromise = warpTransition.fadeOut(720);
-                            }
-                            // Kick the title reveal DURING the burst dissolve (not after the
-                            // canvas is fully gone) so "SERENITY BLOCKS" develops out of the
-                            // clearing warp — ~0.5s earlier than the end of the fade.
-                            if (!titleRevealed && p >= 0.9) {
-                                titleRevealed = true;
-                                markStartup('intro:title-reveal-request', { source: 'warp-progress' });
-                                introAnimation.revealTitle?.('warp-progress');
-                            }
-                        },
+                    const handoffResult = await playBootWarpHandoff({
+                        warpTransition,
+                        urlParams,
+                        introAnimation,
+                        soundManager: sharedSoundManager,
+                        dismissStartupShell,
                     });
-                    // Safety: if progress never crossed the thresholds (e.g. p=1 in one tick),
-                    // make sure the shell is gone and the canvas fades before dispose.
-                    if (!shellDismissed) {
-                        markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff-safety' });
-                        dismissStartupShell('warp-handoff', { quick: true });
+                    if (!handoffResult.shellDismissed) {
+                        markStartup('boot-warp:handoff-fallback', {
+                            status: handoffResult.status,
+                            firstFrameRendered: handoffResult.firstFrameRendered,
+                        }, { level: 'warn' });
+                        warpTransition.dispose();
+                        warpTransition = null;
+                        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
+                        dismissStartupShell('intro-begin');
                     }
-                    await (fadePromise || warpTransition.fadeOut(560));
-                    markStartup('boot-warp:handoff-complete');
                 } catch (error) {
                     console.warn('[Main] Boot warp play failed:', error);
                     performanceMonitor.recordEvent('startup_boot_warp_play_failed', {
@@ -5802,9 +5774,12 @@ async function bootstrap() {
                     markStartup('boot-warp:play-failed', {
                         message: error?.message || String(error),
                     }, { level: 'warn' });
-                    dismissStartupShell('warp-handoff', { quick: true });
+                    if (!startupShellDismissed) {
+                        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
+                        dismissStartupShell('intro-begin');
+                    }
                 } finally {
-                    warpTransition.dispose();
+                    warpTransition?.dispose();
                 }
             } else {
                 // Fallback: original CSS crossfade splash -> intro reveal.
