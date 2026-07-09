@@ -122,11 +122,15 @@ export function create({
     scene.add(track(new THREE.Mesh(new THREE.SphereGeometry(4000, 48, 24), skyMat)));
 
     // ════ PLANETS — HUGE backlit worlds (hatom phase-5): crescent rims + atmospheric halos ════
-    // Anchor-moon always present for depth; the giant ensemble + saturn ring + light-wisp streaks
-    // bloom in at the Cosmos beat (uCosmos), framing the upper corners; mirrored in the lake free.
+    // The worlds are ALWAYS in the sky (calm crescents while dormant, mirrored in the lake free);
+    // their crescents + halos INTENSIFY at the Cosmos beat (uCosmos), when the light-wisp streaks
+    // + monolith join as the climax flourish.
     const planets = new THREE.Group();
-    const cosmosGroup = new THREE.Group(); // ensemble — visibility-gated in update() (zero cost while dormant)
+    const cosmosGroup = new THREE.Group(); // the giant worlds (always visible)
     planets.add(cosmosGroup);
+    const streakGroup = new THREE.Group(); // light-wisp streaks — Cosmos-only, visibility-gated in update()
+    streakGroup.visible = false;
+    planets.add(streakGroup);
     const haloSprites = []; // additive atmosphere billboards, camera-billboarded each frame
     {
         const TEXBASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/'}textures/`;
@@ -152,13 +156,15 @@ export function create({
             const litSide = pow(smoothstep(0.12, 0.75, dot(N, sunV)), float(1.5));
             // faintly-textured body (cloud bands stay readable in shadow) + the hatom signature:
             // a thin INTENSE warm crescent arc on the sunward limb + a whisper of cool dark-limb air.
+            // The crescent sits at 55% while dormant and surges to full at the Cosmos crest.
+            const cGain = uCosmos.mul(0.45).add(0.55);
             mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit.mul(0.6).add(0.12)).mul(0.85)
-                .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent))
+                .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent).mul(cGain))
                 .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.10));
             mat.toneMapped = false;
             mat.fog = false;
             mat.transparent = true;
-            mat.opacityNode = opts.always ? float(0.92) : uCosmos.mul(0.92);
+            mat.opacityNode = float(0.92);
             const mesh = new THREE.Mesh(new THREE.SphereGeometry(rad, 48, 32), mat);
             mesh.position.set(x, y, z);
             parent.add(mesh);
@@ -179,7 +185,7 @@ export function create({
                 hm.depthTest = false; // halo reads beyond/over the silhouette
                 hm.toneMapped = false;
                 hm.fog = false;
-                hm.opacityNode = opts.always ? float(0.5) : uCosmos;
+                hm.opacityNode = opts.always ? float(0.5) : uCosmos.mul(0.5).add(0.5);
                 const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.7, rad * 2.7), hm);
                 halo.position.set(x, y, z);
                 halo.renderOrder = 1; // before the body (body renderOrder 2 occludes the halo centre)
@@ -210,7 +216,8 @@ export function create({
                 const rn = smoothstep(0.30, 0.5, rr);
                 const bands = sin(rn.mul(46.0)).mul(0.5).add(0.5);
                 ringMat.colorNode = vec3(0.85, 0.7, 0.55).mul(float(0.55).add(bands.mul(0.45))).mul(0.55);
-                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr)).mul(uCosmos).mul(0.42);
+                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr))
+                    .mul(uCosmos.mul(0.5).add(0.5)).mul(0.42);
                 ringMat.transparent = true; ringMat.side = THREE.DoubleSide;
                 ringMat.toneMapped = false; ringMat.fog = false; ringMat.depthWrite = false;
                 const ring = new THREE.Mesh(new THREE.RingGeometry(64, 104, 64), ringMat);
@@ -234,7 +241,7 @@ export function create({
                     const streak = new THREE.Mesh(new THREE.PlaneGeometry(1900, 110), sm2);
                     streak.position.set(-60 + si * 160, 268 + si * 42, -640 - si * 60);
                     streak.renderOrder = 2;
-                    cosmosGroup.add(streak);
+                    streakGroup.add(streak);
                 }
             }
         }
@@ -1317,10 +1324,10 @@ export function create({
             uAscend.value = clamp01((sEased - 0.5) / 0.35); // wing unfurls from S≈0.5→0.85
             wing.visible = uAscend.value > 0.001; // skip the additive wing plane entirely while dormant
             uCosmos.value = clamp01((sEased - 0.85) / 0.15); // planet ensemble blooms in at the Cosmos crest
-            // Cosmos climax: gate the giant ensemble entirely while dormant (zero draw cost),
-            // raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
+            // Cosmos climax: the worlds are always in the sky — only the light-wisp streaks are
+            // gated; raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
             const ce = uCosmos.value;
-            cosmosGroup.visible = ce > 0.001;
+            streakGroup.visible = ce > 0.001;
             if (monolith) {
                 const es = ce * ce * (3 - 2 * ce); // smoothstep ease
                 monolith.position.y = -46 + 60 * es;
