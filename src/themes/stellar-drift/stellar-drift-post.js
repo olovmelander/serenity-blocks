@@ -64,7 +64,7 @@ export class StellarDriftPost {
 
         const uv = viewportUV;
         const centered = uv.sub(0.5).mul(2.0); // preserved: reused by the speed-line pattern below
-        const dist = length(centered);         // preserved: reused by the speed-line pattern below
+        const dist = length(centered); // preserved: reused by the speed-line pattern below
 
         // Vignette-at-UV that samples the scene texture directly. Wrapped in Fn so each chromatic
         // tap re-evaluates the vignette at its own UV -- exactly what chromaticAberration(vignetteColor,

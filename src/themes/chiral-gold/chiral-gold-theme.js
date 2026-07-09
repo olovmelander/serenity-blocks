@@ -2279,7 +2279,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
 
         if (this.wispCpuState && this.wispPoints?.geometry?.attributes?.position) {
-            const { positions, pulse, ampX, ampY, ampZ, freqA, freqB, freqC, phase, group } = this.wispCpuState;
+            const {
+                positions, pulse, ampX, ampY, ampZ, freqA, freqB, freqC, phase, group,
+            } = this.wispCpuState;
             const count = pulse.length;
 
             for (let i = 0; i < count; i += 1) {
@@ -2543,9 +2545,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.cameraZoomNudgeZ = THREE.MathUtils.lerp(this.cameraZoomNudgeZ, 0, delta * 3.0);
 
         // --- Cinematic time layers (overlapping periods prevent repetition) ---
-        const ct1 = this.time * 0.04;   // ~157s period — primary slow orbit
-        const ct2 = this.time * 0.027;  // ~233s period — secondary drift
-        const ct3 = this.time * 0.017;  // ~370s period — ultra-slow sweep
+        const ct1 = this.time * 0.04; // ~157s period — primary slow orbit
+        const ct2 = this.time * 0.027; // ~233s period — secondary drift
+        const ct3 = this.time * 0.017; // ~370s period — ultra-slow sweep
 
         // --- Lissajous orbit with three frequency layers ---
         const orbitX = Math.sin(ct1) * 220
@@ -2744,83 +2746,83 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     getChoreographyCaps() {
         switch (this.currentQualityLevel) {
-            case 'Extreme':
-            case 'Ultra':
-            case 'High':
-                return {
-                    eventScale: 1.0,
-                    maxBurstPulses: 4,
-                    maxTrailBursts: 2,
-                    maxShockwaves: 4,
-                    maxExtraShockwaves: 3,
-                    allowAdvancedScreenFx: true,
-                    allowFormation: true,
-                    allowBeamFlash: true,
-                    allowStrandUnwind: true,
-                };
-            case 'Medium':
-                return {
-                    eventScale: 0.82,
-                    maxBurstPulses: 2,
-                    maxTrailBursts: 1,
-                    maxShockwaves: 3,
-                    maxExtraShockwaves: 1,
-                    allowAdvancedScreenFx: false,
-                    allowFormation: true,
-                    allowBeamFlash: false,
-                    allowStrandUnwind: true,
-                };
-            case 'Low':
-                return {
-                    eventScale: 0.62,
-                    maxBurstPulses: 1,
-                    maxTrailBursts: 0,
-                    maxShockwaves: 2,
-                    maxExtraShockwaves: 0,
-                    allowAdvancedScreenFx: false,
-                    allowFormation: false,
-                    allowBeamFlash: false,
-                    allowStrandUnwind: false,
-                };
-            case 'Minimal':
-                return {
-                    eventScale: 0.5,
-                    maxBurstPulses: 1,
-                    maxTrailBursts: 0,
-                    maxShockwaves: 1,
-                    maxExtraShockwaves: 0,
-                    allowAdvancedScreenFx: false,
-                    allowFormation: false,
-                    allowBeamFlash: false,
-                    allowStrandUnwind: false,
-                };
-            default:
-                return {
-                    eventScale: 1.0,
-                    maxBurstPulses: 3,
-                    maxTrailBursts: 1,
-                    maxShockwaves: 3,
-                    maxExtraShockwaves: 1,
-                    allowAdvancedScreenFx: true,
-                    allowFormation: true,
-                    allowBeamFlash: true,
-                    allowStrandUnwind: true,
-                };
+        case 'Extreme':
+        case 'Ultra':
+        case 'High':
+            return {
+                eventScale: 1.0,
+                maxBurstPulses: 4,
+                maxTrailBursts: 2,
+                maxShockwaves: 4,
+                maxExtraShockwaves: 3,
+                allowAdvancedScreenFx: true,
+                allowFormation: true,
+                allowBeamFlash: true,
+                allowStrandUnwind: true,
+            };
+        case 'Medium':
+            return {
+                eventScale: 0.82,
+                maxBurstPulses: 2,
+                maxTrailBursts: 1,
+                maxShockwaves: 3,
+                maxExtraShockwaves: 1,
+                allowAdvancedScreenFx: false,
+                allowFormation: true,
+                allowBeamFlash: false,
+                allowStrandUnwind: true,
+            };
+        case 'Low':
+            return {
+                eventScale: 0.62,
+                maxBurstPulses: 1,
+                maxTrailBursts: 0,
+                maxShockwaves: 2,
+                maxExtraShockwaves: 0,
+                allowAdvancedScreenFx: false,
+                allowFormation: false,
+                allowBeamFlash: false,
+                allowStrandUnwind: false,
+            };
+        case 'Minimal':
+            return {
+                eventScale: 0.5,
+                maxBurstPulses: 1,
+                maxTrailBursts: 0,
+                maxShockwaves: 1,
+                maxExtraShockwaves: 0,
+                allowAdvancedScreenFx: false,
+                allowFormation: false,
+                allowBeamFlash: false,
+                allowStrandUnwind: false,
+            };
+        default:
+            return {
+                eventScale: 1.0,
+                maxBurstPulses: 3,
+                maxTrailBursts: 1,
+                maxShockwaves: 3,
+                maxExtraShockwaves: 1,
+                allowAdvancedScreenFx: true,
+                allowFormation: true,
+                allowBeamFlash: true,
+                allowStrandUnwind: true,
+            };
         }
     }
 
     getPeripheralBurstFanOut() {
         switch (this.currentQualityLevel) {
-            case 'Extreme':
-            case 'Ultra':
-            case 'High':
-                return 2;
-            case 'Medium':
-                return 1;
-            case 'Low':
-            case 'Minimal':
-            default:
-                return 0;
+        case 'Extreme':
+        case 'Ultra':
+        case 'High':
+            return 2;
+        case 'Medium':
+            return 1;
+        case 'Low':
+        case 'Minimal':
+        default:
+            return 0;
         }
     }
 
@@ -3162,7 +3164,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                             1.2 + comboCount * 0.12 + this.reactiveEnvelope.spark * 0.6,
                             2.4,
                         ) * (0.65 + eventScale * 0.35);
-                        
+
                         this.triggerBurst(burstIntensity, comboCount, {
                             profile: 'dissolve',
                             origin: origin3D,

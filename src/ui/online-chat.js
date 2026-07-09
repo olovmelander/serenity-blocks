@@ -154,8 +154,6 @@ export class OnlineChat {
         return safe ? value : fallback;
     }
 
-    
-
     /**
      * Focus the input
      */

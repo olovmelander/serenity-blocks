@@ -323,7 +323,8 @@ export function createMountainNodeMaterial(colors, layer = 0) {
         .mul(uShockwave)
         .mul(0.6)
         .add(1.0);
-    const rim = uRimColor.mul(fresnel).mul(topLight).mul(2.5).mul(uRimIntensity).mul(shockwave);
+    const rim = uRimColor.mul(fresnel).mul(topLight).mul(2.5).mul(uRimIntensity)
+        .mul(shockwave);
 
     const groundFog = float(1.0).sub(smoothstep(float(-10.0), float(80.0), height));
     const fogColor = vec3(0.02, 0.0, 0.05);
@@ -336,7 +337,9 @@ export function createMountainNodeMaterial(colors, layer = 0) {
     color = mix(color, hazeColor, fogFactor.mul(0.7));
 
     material.colorNode = color;
-    material.userData = { uBaseColor, uRimColor, uMountainLayer, uTime, uRimIntensity, uShockwave };
+    material.userData = {
+        uBaseColor, uRimColor, uMountainLayer, uTime, uRimIntensity, uShockwave,
+    };
 
     return material;
 }
@@ -430,7 +433,9 @@ export function createHighlightNodeMaterial(params = {}) {
     material.colorNode = finalColor;
     material.opacityNode = alpha;
     material.emissiveNode = finalColor.mul(alpha);
-    material.userData = { uColor, uIntensity, uTime, uTwinkle };
+    material.userData = {
+        uColor, uIntensity, uTime, uTwinkle,
+    };
 
     return material;
 }
@@ -526,7 +531,9 @@ export function createParticleNodeMaterial(params = {}) {
     material.colorNode = color;
     material.opacityNode = finalAlpha;
     material.emissiveNode = color.mul(finalAlpha);
-    material.userData = { uTime, uPixelRatio, uTwinkle, uColorShift };
+    material.userData = {
+        uTime, uPixelRatio, uTwinkle, uColorShift,
+    };
 
     return material;
 }
@@ -638,7 +645,9 @@ export function createRingNodeMaterial(params = {}) {
     material.colorNode = color;
     material.opacityNode = alpha;
     material.emissiveNode = color.mul(alpha);
-    material.userData = { uColor, uLife, uRadius, uMaxRadius };
+    material.userData = {
+        uColor, uLife, uRadius, uMaxRadius,
+    };
 
     return material;
 }
@@ -707,7 +716,9 @@ export function createSoftSpriteNodeMaterial(params = {}) {
     material.colorNode = color;
     material.opacityNode = alpha;
     material.emissiveNode = color.mul(alpha);
-    material.userData = { uPixelRatio, uTime, uColorShift, uBrightness };
+    material.userData = {
+        uPixelRatio, uTime, uColorShift, uBrightness,
+    };
 
     return material;
 }
@@ -747,7 +758,9 @@ export function createHorizonHazeNodeMaterial(params = {}) {
     material.colorNode = color;
     material.opacityNode = clamp(intensity, float(0.0), float(1.0));
     material.emissiveNode = color.mul(intensity);
-    material.userData = { uColorLow, uColorHigh, uIntensity, uPulse };
+    material.userData = {
+        uColorLow, uColorHigh, uIntensity, uPulse,
+    };
 
     return material;
 }
@@ -789,7 +802,9 @@ export function createGroundFogNodeMaterial(params = {}) {
     material.colorNode = uColor;
     material.opacityNode = clamp(intensity, float(0.0), float(1.0));
     material.emissiveNode = uColor.mul(intensity);
-    material.userData = { uColor, uOpacity, uTime, uSeed, uPulse };
+    material.userData = {
+        uColor, uOpacity, uTime, uSeed, uPulse,
+    };
 
     return material;
 }

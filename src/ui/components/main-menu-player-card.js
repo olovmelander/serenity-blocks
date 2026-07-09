@@ -423,7 +423,7 @@ class MainMenuPlayerCard {
                 this.updateFriendsPlaying();
                 this.show();
                 this.syncFriendsPlayingPoll();
-            })
+            }),
         );
 
         // Listen for connection changes
@@ -433,7 +433,7 @@ class MainMenuPlayerCard {
                 this.updateConnectionState();
                 this.updateFriendsPlaying();
                 this.syncFriendsPlayingPoll();
-            })
+            }),
         );
 
         this.unsubscribers.push(
@@ -442,7 +442,7 @@ class MainMenuPlayerCard {
                 this.updateConnectionState();
                 this.setFriendsPlayingCount(0);
                 this.syncFriendsPlayingPoll();
-            })
+            }),
         );
 
         this.unsubscribers.push(
@@ -452,7 +452,7 @@ class MainMenuPlayerCard {
                 this.updateConnectionState();
                 this.updateFriendsPlaying();
                 this.syncFriendsPlayingPoll();
-            })
+            }),
         );
 
         // If Steam init failed, show offline state
@@ -463,19 +463,19 @@ class MainMenuPlayerCard {
                 this.setFriendsPlayingCount(0);
                 this.syncFriendsPlayingPoll();
                 this.show();
-            })
+            }),
         );
 
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.CAPABILITIES_UPDATED, () => {
                 this.updateConnectionState();
-            })
+            }),
         );
 
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.STATE_CHANGED, () => {
                 this.updateConnectionState();
-            })
+            }),
         );
 
         // Hide as soon as any game mode is selected (immediate; the start-modal
@@ -531,7 +531,7 @@ class MainMenuPlayerCard {
         this.setConnectionVisualState(
             steamService.getConnectionState
                 ? steamService.getConnectionState()
-                : (status.isOnline ? 'connected' : 'offline')
+                : (status.isOnline ? 'connected' : 'offline'),
         );
 
         // Load avatar
@@ -777,7 +777,7 @@ class MainMenuPlayerCard {
      * Destroy and cleanup
      */
     destroy() {
-        this.unsubscribers.forEach(unsub => unsub());
+        this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
         this.stopFriendsPlayingPoll();
 

@@ -175,40 +175,106 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         //   chromaticAberration / filmGrain / reflectionIntensity → post
         this.qualityPresets = {
             Minimal: {
-                starCount: 500, buildingCount: 30, glowLayers: 1, maxHighlights: 30, particleBudget: 500,
-                windowEmissive: 0.25, windowFlicker: 0, rimIntensity: 0.3, colorVariety: 0,
-                hazeLayers: 0, ambientMotes: 0, palms: 0,
-                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 500,
+                buildingCount: 30,
+                glowLayers: 1,
+                maxHighlights: 30,
+                particleBudget: 500,
+                windowEmissive: 0.25,
+                windowFlicker: 0,
+                rimIntensity: 0.3,
+                colorVariety: 0,
+                hazeLayers: 0,
+                ambientMotes: 0,
+                palms: 0,
+                chromaticAberration: 0.0,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
             Low: {
-                starCount: 1000, buildingCount: 50, glowLayers: 2, maxHighlights: 40, particleBudget: 1000,
-                windowEmissive: 0.3, windowFlicker: 0, rimIntensity: 0.35, colorVariety: 0,
-                hazeLayers: 0, ambientMotes: 0, palms: 0,
-                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 1000,
+                buildingCount: 50,
+                glowLayers: 2,
+                maxHighlights: 40,
+                particleBudget: 1000,
+                windowEmissive: 0.3,
+                windowFlicker: 0,
+                rimIntensity: 0.35,
+                colorVariety: 0,
+                hazeLayers: 0,
+                ambientMotes: 0,
+                palms: 0,
+                chromaticAberration: 0.0,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
             Medium: {
-                starCount: 1800, buildingCount: 70, glowLayers: 3, maxHighlights: 60, particleBudget: 2000,
-                windowEmissive: 0.4, windowFlicker: 0, rimIntensity: 0.45, colorVariety: 1,
-                hazeLayers: 1, ambientMotes: 100, palms: 0,
-                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 1800,
+                buildingCount: 70,
+                glowLayers: 3,
+                maxHighlights: 60,
+                particleBudget: 2000,
+                windowEmissive: 0.4,
+                windowFlicker: 0,
+                rimIntensity: 0.45,
+                colorVariety: 1,
+                hazeLayers: 1,
+                ambientMotes: 100,
+                palms: 0,
+                chromaticAberration: 0.0,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
             High: {
-                starCount: 2500, buildingCount: 90, glowLayers: 4, maxHighlights: 80, particleBudget: 3500,
-                windowEmissive: 0.5, windowFlicker: 1, rimIntensity: 0.55, colorVariety: 1,
-                hazeLayers: 3, ambientMotes: 220, palms: 4,
-                chromaticAberration: 0.2, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 2500,
+                buildingCount: 90,
+                glowLayers: 4,
+                maxHighlights: 80,
+                particleBudget: 3500,
+                windowEmissive: 0.5,
+                windowFlicker: 1,
+                rimIntensity: 0.55,
+                colorVariety: 1,
+                hazeLayers: 3,
+                ambientMotes: 220,
+                palms: 4,
+                chromaticAberration: 0.2,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
             Ultra: {
-                starCount: 4000, buildingCount: 120, glowLayers: 5, maxHighlights: 100, particleBudget: 6000,
-                windowEmissive: 0.55, windowFlicker: 1, rimIntensity: 0.6, colorVariety: 1,
-                hazeLayers: 3, ambientMotes: 320, palms: 6,
-                chromaticAberration: 0.25, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 4000,
+                buildingCount: 120,
+                glowLayers: 5,
+                maxHighlights: 100,
+                particleBudget: 6000,
+                windowEmissive: 0.55,
+                windowFlicker: 1,
+                rimIntensity: 0.6,
+                colorVariety: 1,
+                hazeLayers: 3,
+                ambientMotes: 320,
+                palms: 6,
+                chromaticAberration: 0.25,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
             Extreme: {
-                starCount: 6000, buildingCount: 150, glowLayers: 6, maxHighlights: 150, particleBudget: 10000,
-                windowEmissive: 0.6, windowFlicker: 1, rimIntensity: 0.65, colorVariety: 1,
-                hazeLayers: 3, ambientMotes: 420, palms: 6,
-                chromaticAberration: 0.3, filmGrain: 0.0, reflectionIntensity: 0.0,
+                starCount: 6000,
+                buildingCount: 150,
+                glowLayers: 6,
+                maxHighlights: 150,
+                particleBudget: 10000,
+                windowEmissive: 0.6,
+                windowFlicker: 1,
+                rimIntensity: 0.65,
+                colorVariety: 1,
+                hazeLayers: 3,
+                ambientMotes: 420,
+                palms: 6,
+                chromaticAberration: 0.3,
+                filmGrain: 0.0,
+                reflectionIntensity: 0.0,
             },
         };
         this.currentQuality = 'High';
@@ -1106,9 +1172,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Bottom-fade gradient quads sitting behind the buildings to give depth.
         // Wider/taller for far layer, narrower/taller near the horizon.
         const layerSpecs = [
-            { width: 360, height: 95, y: 28, z: -92, color: new THREE.Color(0xff2266), opacity: 0.16 },
-            { width: 250, height: 50, y: 16, z: -65, color: new THREE.Color(0xff7a18), opacity: 0.22 },
-            { width: 180, height: 28, y: 10, z: -38, color: new THREE.Color(0xff5599), opacity: 0.12 },
+            {
+                width: 360, height: 95, y: 28, z: -92, color: new THREE.Color(0xff2266), opacity: 0.16,
+            },
+            {
+                width: 250, height: 50, y: 16, z: -65, color: new THREE.Color(0xff7a18), opacity: 0.22,
+            },
+            {
+                width: 180, height: 28, y: 10, z: -38, color: new THREE.Color(0xff5599), opacity: 0.12,
+            },
         ].slice(0, layerCount);
 
         layerSpecs.forEach((spec) => {
@@ -1187,12 +1259,24 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // at 90–95% of edge so trunks frame the very sides of the shot and fronds
         // spill slightly off-screen for that iconic "driving past palms" look.
         const placements = [
-            { x: -22, z: 2, scale: 1.05, rotation: 0.15 },   // close-left
-            { x: 24, z: 0, scale: 1.05, rotation: -0.2 },    // close-right
-            { x: -29, z: -7, scale: 1.0, rotation: -0.1 },   // mid-left
-            { x: 31, z: -9, scale: 0.95, rotation: 0.25 },   // mid-right
-            { x: -37, z: -18, scale: 0.9, rotation: 0.05 },  // far-left
-            { x: 40, z: -20, scale: 0.85, rotation: -0.15 }, // far-right
+            {
+                x: -22, z: 2, scale: 1.05, rotation: 0.15,
+            }, // close-left
+            {
+                x: 24, z: 0, scale: 1.05, rotation: -0.2,
+            }, // close-right
+            {
+                x: -29, z: -7, scale: 1.0, rotation: -0.1,
+            }, // mid-left
+            {
+                x: 31, z: -9, scale: 0.95, rotation: 0.25,
+            }, // mid-right
+            {
+                x: -37, z: -18, scale: 0.9, rotation: 0.05,
+            }, // far-left
+            {
+                x: 40, z: -20, scale: 0.85, rotation: -0.15,
+            }, // far-right
         ].slice(0, palmCount);
 
         const { material: palmMaterial, uniforms: palmMatUniforms } = createPalmNodeMaterial(

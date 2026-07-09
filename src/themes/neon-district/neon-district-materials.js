@@ -99,11 +99,11 @@ const getRipples = /* @__PURE__ */ Fn(([uvCoord, time]) => {
     // Domain warp to break grid alignment (prevents "line" artifacts)
     const warpNoise1 = vec2(
         noise2D(uvCoord.mul(0.12).add(time.mul(0.05))),
-        noise2D(uvCoord.mul(0.12).add(vec2(13.2, 5.7)).sub(time.mul(0.04)))
+        noise2D(uvCoord.mul(0.12).add(vec2(13.2, 5.7)).sub(time.mul(0.04))),
     );
     const warpNoise2 = vec2(
         noise2D(uvCoord.mul(0.03).add(vec2(4.1, 9.6))),
-        noise2D(uvCoord.mul(0.03).add(vec2(-7.3, 2.4)))
+        noise2D(uvCoord.mul(0.03).add(vec2(-7.3, 2.4))),
     );
     const warpedUv = uvCoord
         .add(warpNoise1.sub(0.5).mul(0.9))
@@ -180,7 +180,7 @@ const getRipples = /* @__PURE__ */ Fn(([uvCoord, time]) => {
 const perturbNormalTSL = /* @__PURE__ */ Fn(([inputNormal, noiseNormal, strength]) => {
     // Project noise normal orthogonal to surface normal
     const noiseNormalOrthogonal = noiseNormal.sub(
-        inputNormal.mul(dot(noiseNormal, inputNormal))
+        inputNormal.mul(dot(noiseNormal, inputNormal)),
     );
     return normalize(inputNormal.sub(noiseNormalOrthogonal.mul(strength)));
 });
@@ -298,9 +298,9 @@ export function createBuildingNodeMaterial() {
     const distFromCamera = length(positionView);
 
     // Resolution scale factors - KICK IN SOONER to prevent aliasing
-    const resScale1 = smoothstep(200.0, 500.0, distFromCamera);   // Was 300-600
-    const resScale2 = smoothstep(500.0, 900.0, distFromCamera);   // Was 600-1000
-    const resScale3 = smoothstep(900.0, 1400.0, distFromCamera);  // Was 1000-1500
+    const resScale1 = smoothstep(200.0, 500.0, distFromCamera); // Was 300-600
+    const resScale2 = smoothstep(500.0, 900.0, distFromCamera); // Was 600-1000
+    const resScale3 = smoothstep(900.0, 1400.0, distFromCamera); // Was 1000-1500
 
     // Quantization step - Start slightly blocky (2.0) to avoid pixel crawl immediately
     const quantStep = mix(
@@ -308,9 +308,9 @@ export function createBuildingNodeMaterial() {
         mix(
             float(8.0), // Was 5.0
             mix(float(18.0), float(35.0), resScale3), // Was 15->30
-            resScale2
+            resScale2,
         ),
-        resScale1
+        resScale1,
     );
 
     // Quantize local position
@@ -321,7 +321,7 @@ export function createBuildingNodeMaterial() {
     const patternPos = mix(pos, quantizedPos, quantBlend);
 
     // LOD factor for other simplifications
-    const lodNear = smoothstep(1200.0, 400.0, distFromCamera);  // 1.0 close, 0.0 far
+    const lodNear = smoothstep(1200.0, 400.0, distFromCamera); // 1.0 close, 0.0 far
 
     const positionSeed = hash2D(floor(worldPos.xz.div(50.0)));
     const effectiveSeed = uSeed.add(positionSeed.mul(1000.0));
@@ -346,7 +346,7 @@ export function createBuildingNodeMaterial() {
     const windowScaleFactor = mix(
         float(1.5), // Start at 1.5x scale (was 1.0)
         mix(float(4.0), float(7.0), resScale3),
-        resScale2
+        resScale2,
     );
 
     const baseGridW = float(5.0).add(aspectParams.mul(5.0)).mul(uWindowScale.mul(0.4).add(0.8));
@@ -428,7 +428,12 @@ export function createBuildingNodeMaterial() {
     const emissiveDimming = mix(float(0.15), float(0.85), lodNear);
     material.emissiveNode = windowGlow.mul(emissiveDimming).mul(distanceBlackout);
 
-    return { material, uniforms: { uTime, uSeed, uGlowIntensity, uWindowScale } };
+    return {
+        material,
+        uniforms: {
+            uTime, uSeed, uGlowIntensity, uWindowScale,
+        },
+    };
 }
 
 export function createMegaTowerNodeMaterial() {
@@ -859,7 +864,7 @@ export function createWetGroundNodeMaterial(params = {}) {
     // 150-350: Medium detail (simplified ripples)
     // > 350: Low detail (static wet look only)
     const lodNear = smoothstep(350.0, 150.0, distFromCamera); // 1.0 at close, 0.0 at far (was 500/200)
-    const lodMid = smoothstep(600.0, 350.0, distFromCamera);  // 1.0 at medium, 0.0 at very far (was 800/500)
+    const lodMid = smoothstep(600.0, 350.0, distFromCamera); // 1.0 at medium, 0.0 at very far (was 800/500)
 
     // Ripple detail factor: full at <150, reduced 150-350, none >350
     const rippleDetailFactor = lodNear;
@@ -1028,11 +1033,11 @@ export function createWetGroundNodeMaterial(params = {}) {
 
     // Threshold noise to create distinct light bands
     const neonBand1 = smoothstep(0.4, 0.8, neonNoise1); // Cyan band
-    const neonBand2 = smoothstep(0.5, 0.9, neonNoise2); // Magenta band  
+    const neonBand2 = smoothstep(0.5, 0.9, neonNoise2); // Magenta band
     const neonBand3 = smoothstep(0.3, 0.7, neonNoise3); // Yellow band
 
     // Cyberpunk neon colors - BRIGHTER
-    const neonCyan = vec3(0.2, 0.8, 1.0);    // Softer, less saturated
+    const neonCyan = vec3(0.2, 0.8, 1.0); // Softer, less saturated
     const neonMagenta = vec3(1.0, 0.25, 0.6);
     const neonYellow = vec3(1.0, 0.9, 0.3);
 
@@ -1223,7 +1228,9 @@ export function createNeonHaloNodeMaterial() {
 
     return {
         material: spriteMaterial,
-        uniforms: { uColor, uIntensity, uPulseSpeed, uTime },
+        uniforms: {
+            uColor, uIntensity, uPulseSpeed, uTime,
+        },
         // Helper to create a proper halo with the given color
         createHalo: (color, intensity = 1.0) => {
             const mat = new THREE.SpriteMaterial({

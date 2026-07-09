@@ -599,7 +599,12 @@ export function createHighlightNodeMaterial(params = {}) {
     material.opacityNode = alpha;
     material.emissiveNode = finalColor;
 
-    return { material, uniforms: { uColor, uIntensity, uTime, uTwinkleIntensity } };
+    return {
+        material,
+        uniforms: {
+            uColor, uIntensity, uTime, uTwinkleIntensity,
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------

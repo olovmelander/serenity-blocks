@@ -1122,10 +1122,18 @@ export default class MoonlitForestTheme extends BaseTheme {
         const anchors = Array.isArray(options.anchors) && options.anchors.length > 0
             ? options.anchors
             : [
-                { id: 'idle', event: null, payload: null, settleMs: settleMsDefault },
-                { id: 'line-clear-4', event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 }, settleMs: settleMsDefault },
-                { id: 'combo-6', event: EVENTS.COMBO, payload: { comboCount: 6 }, settleMs: settleMsDefault },
-                { id: 'piece-lock', event: EVENTS.PIECE_LOCK, payload: {}, settleMs: settleMsDefault },
+                {
+                    id: 'idle', event: null, payload: null, settleMs: settleMsDefault,
+                },
+                {
+                    id: 'line-clear-4', event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 }, settleMs: settleMsDefault,
+                },
+                {
+                    id: 'combo-6', event: EVENTS.COMBO, payload: { comboCount: 6 }, settleMs: settleMsDefault,
+                },
+                {
+                    id: 'piece-lock', event: EVENTS.PIECE_LOCK, payload: {}, settleMs: settleMsDefault,
+                },
             ];
 
         const runtimeSettings = typeof window !== 'undefined' ? (window.settings || {}) : {};

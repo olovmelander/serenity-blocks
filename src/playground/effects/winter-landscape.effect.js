@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, Loop, float, vec2, vec3, vec4, uniform,
     mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot,
-    normalize, positionWorld, cameraPosition, normalWorld, uv
+    normalize, positionWorld, cameraPosition, normalWorld, uv,
 } from 'three/tsl';
 
 import {
@@ -16,7 +16,7 @@ import {
     createWinterLakeNodeMaterial,
     createWinterMountainNodeMaterial,
     createWinterGroundNodeMaterial,
-    createWinterMoonNodeMaterial
+    createWinterMoonNodeMaterial,
 } from '../../themes/winter/winter-materials.js';
 
 export const meta = {
@@ -45,7 +45,7 @@ function createIceCracksTexture() {
     for (let i = 0; i < numNodes; i++) {
         points.push({
             x: Math.random() * size,
-            y: Math.random() * size
+            y: Math.random() * size,
         });
     }
 
@@ -53,11 +53,11 @@ function createIceCracksTexture() {
         const p1 = points[i];
         const targets = points
             .map((p, idx) => ({ idx, dist: Math.hypot(p.x - p1.x, p.y - p1.y) }))
-            .filter(t => t.idx !== i)
+            .filter((t) => t.idx !== i)
             .sort((a, b) => a.dist - b.dist)
             .slice(0, 2);
 
-        targets.forEach(t => {
+        targets.forEach((t) => {
             const p2 = points[t.idx];
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
@@ -122,7 +122,7 @@ function createPineTree(foliageMaterial, height = 80) {
         const radius = baseRadius * Math.pow(0.75, i);
         const cheight = coneHeight * Math.pow(0.85, i);
         const coneGeo = new THREE.ConeGeometry(radius, cheight, 5);
-        
+
         const nonIndexedGeo = coneGeo.toNonIndexed();
         nonIndexedGeo.computeVertexNormals();
 
@@ -143,11 +143,11 @@ function createCloud(cloudMaterial, scale = 1.0) {
         const radius = (20 + Math.random() * 25) * scale;
         const geo = new THREE.SphereGeometry(radius, 8, 6);
         const mesh = new THREE.Mesh(geo.toNonIndexed(), cloudMaterial);
-        
+
         mesh.position.set(
             (i - sphereCount * 0.5) * radius * 0.72 + (Math.random() - 0.5) * 12,
             (Math.random() - 0.5) * 8,
-            (Math.random() - 0.5) * 12
+            (Math.random() - 0.5) * 12,
         );
         group.add(mesh);
     }
@@ -228,7 +228,7 @@ function createRock(rockMaterial, scale = 1.0) {
         mesh.position.set(
             (i - count * 0.5) * radius * 0.45 + (Math.random() - 0.5) * 8,
             (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 8
+            (Math.random() - 0.5) * 8,
         );
         mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
         group.add(mesh);
@@ -240,7 +240,7 @@ function createTwig(scale = 1.0) {
     const group = new THREE.Group();
     const mat = new THREE.MeshBasicNodeMaterial();
     mat.colorNode = vec3(0.09, 0.06, 0.04);
-    
+
     const count = 3 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
         const height = (15 + Math.random() * 15) * scale;
@@ -250,7 +250,7 @@ function createTwig(scale = 1.0) {
         branch.rotation.set(
             (Math.random() - 0.5) * 0.9,
             Math.random() * Math.PI,
-            (Math.random() - 0.5) * 0.9
+            (Math.random() - 0.5) * 0.9,
         );
         group.add(branch);
     }
@@ -278,7 +278,6 @@ function createBareSapling(scale = 1.0) {
 
     return group;
 }
-
 
 export function create({ scene, camera }) {
     const group = new THREE.Group();
@@ -406,7 +405,9 @@ export function create({ scene, camera }) {
     // --- Reference-style vertical aurora columns ---
     const auroraCurtains = [];
     const curtainSpecs = [
-        { x: 0, w: 4700, h: 1040, y: 185, z: -1760, s: 1.05 },
+        {
+            x: 0, w: 4700, h: 1040, y: 185, z: -1760, s: 1.05,
+        },
     ];
     curtainSpecs.forEach((spec, i) => {
         const { material, uniforms } = createReferenceAuroraCurtainMaterial(i * 1.73, spec.s);
@@ -450,8 +451,12 @@ export function create({ scene, camera }) {
     // --- Low-Poly Mountains ---
     const ranges = [
         // Rich blue/indigo colors matching the reference photo
-        { z: -2800, color: 0x0b315f, rockHi: 0x2874ad, height: 1080, width: 11000, snowStart: -260, snowRange: 500, fog: 0x125b82, density: 0.0001, index: 0 },
-        { z: -2000, color: 0x0b3b73, rockHi: 0x2c80bd, height: 760, width: 8000, snowStart: -280, snowRange: 390, fog: 0x0d446d, density: 0.00006, index: 1 }
+        {
+            z: -2800, color: 0x0b315f, rockHi: 0x2874ad, height: 1080, width: 11000, snowStart: -260, snowRange: 500, fog: 0x125b82, density: 0.0001, index: 0,
+        },
+        {
+            z: -2000, color: 0x0b3b73, rockHi: 0x2c80bd, height: 760, width: 8000, snowStart: -280, snowRange: 390, fog: 0x0d446d, density: 0.00006, index: 1,
+        },
     ];
 
     ranges.forEach((range) => {
@@ -462,7 +467,7 @@ export function create({ scene, camera }) {
             const x = posAttr.getX(i);
             const y = posAttr.getY(i);
             const v = (y / range.height) + 0.5;
-            
+
             let profile = 0;
             if (range.index === 0) { // Far range (z = -2800)
                 const peaks = [
@@ -472,9 +477,9 @@ export function create({ scene, camera }) {
                     { x: 250, h: 700, w: 1000 },
                     { x: 1200, h: 650, w: 900 },
                     { x: 2200, h: 800, w: 1100 },
-                    { x: 3500, h: 1000, w: 1300 }
+                    { x: 3500, h: 1000, w: 1300 },
                 ];
-                peaks.forEach(p => {
+                peaks.forEach((p) => {
                     const dx = (x - p.x) / p.w;
                     profile += p.h * Math.exp(-dx * dx);
                 });
@@ -485,22 +490,22 @@ export function create({ scene, camera }) {
                     { x: -280, h: 900, w: 550 }, // Prominent center-left peak
                     { x: 450, h: 550, w: 600 },
                     { x: 1100, h: 420, w: 600 },
-                    { x: 1900, h: 650, w: 900 }
+                    { x: 1900, h: 650, w: 900 },
                 ];
-                peaks.forEach(p => {
+                peaks.forEach((p) => {
                     const dx = (x - p.x) / p.w;
                     profile += p.h * Math.exp(-dx * dx);
                 });
             }
-            
+
             let noise = Math.sin(x * 0.008) * 35 + Math.sin(x * 0.025) * 12;
             let totalHeight = (profile * (range.index === 0 ? 0.48 : 0.56) + noise) * Math.pow(v, 1.25);
-            
+
             if (v > 0.05) {
                 posAttr.setY(i, y + totalHeight);
             }
         }
-        
+
         let geoNonIndexed = geometry.toNonIndexed();
         geoNonIndexed.computeVertexNormals();
 
@@ -513,7 +518,7 @@ export function create({ scene, camera }) {
             fogColor: new THREE.Color(range.fog),
             fogDensity: range.density,
             rimColor: new THREE.Color(0x13c2db),
-            rimStrength: 0.32
+            rimStrength: 0.32,
         });
 
         const mesh = new THREE.Mesh(geoNonIndexed, mountainMaterial);
@@ -527,26 +532,26 @@ export function create({ scene, camera }) {
     for (let i = 0; i < groundPos.count; i++) {
         const x = groundPos.getX(i);
         const y = groundPos.getY(i); // pre-rotation depth
-        
+
         const wx = x;
         const wz = -650 + y;
-        
+
         // Define Lake boundaries
         const dx = Math.max(0, Math.abs(wx) - 1200);
         const dz = Math.max(0, Math.abs(wz - (-700)) - 400);
         const distToLake = Math.sqrt(dx * dx + dz * dz);
-        
+
         let disp = -18;
         if (distToLake > 0) {
             disp += Math.min(220, distToLake * 0.16); // steeper slopes outside lake
         }
-        
+
         // Low-poly hills undulations
         const noise = Math.sin(x * 0.004) * 35 + Math.sin(y * 0.006 + 1.2) * 22;
         if (distToLake > 60) {
             disp += noise * Math.min(1.0, (distToLake - 60) * 0.004);
         }
-        
+
         groundPos.setZ(i, disp);
     }
 
@@ -557,7 +562,7 @@ export function create({ scene, camera }) {
         baseColor: new THREE.Color(0x164271), // Deep blue-navy base
         snowColor: new THREE.Color(0xa9cef2), // Moonlit blue snow
         aurora: new THREE.Color(0x13cad6),
-        fogColor: new THREE.Color(0x060e1b)
+        fogColor: new THREE.Color(0x060e1b),
     });
 
     const groundMesh = new THREE.Mesh(groundGeoNonIndexed, groundMat);
@@ -574,7 +579,7 @@ export function create({ scene, camera }) {
         lakeColor: new THREE.Color(0x21d9e7), // Vibrant turquoise center
         aurora: new THREE.Color(0x13cad6),
         fogColor: new THREE.Color(0x060e1b),
-        map: cracksTex
+        map: cracksTex,
     });
 
     const lakeMesh = new THREE.Mesh(lakeGeo.toNonIndexed(), lakeMat);
@@ -639,7 +644,7 @@ export function create({ scene, camera }) {
         fogColor: new THREE.Color(0x060e1b),
         fogDensity: 0.0008,
         rimColor: new THREE.Color(0x13c2db),
-        rimStrength: 0.35
+        rimStrength: 0.35,
     }).material;
 
     // Create rock outcrop in right foreground
@@ -672,10 +677,9 @@ export function create({ scene, camera }) {
         greenColor: new THREE.Color(0x03152d), // Deep cool blue-green foliage base
         fogColor: new THREE.Color(0x060e1b),
         fogDensity: 0.0008,
-        moonDir: new THREE.Vector3(470, 330, -1050)
+        moonDir: new THREE.Vector3(470, 330, -1050),
     }).material;
     const shoreFoliageMat = createFlatNodeMaterial(0x061b38, 0.98);
-
 
     // 1. Foreground groups (Left & Right) - Much larger and placed dramatically closer
     const fgTrees = [
@@ -688,18 +692,18 @@ export function create({ scene, camera }) {
         { x: 1010, z: -20, scale: 3.0 },
         { x: 760, z: -170, scale: 1.7 },
     ];
-    fgTrees.forEach(t => {
+    fgTrees.forEach((t) => {
         const tree = createPineTree(foliageMat, 85 * t.scale);
-        
+
         // Find ground height:
         const dx = Math.max(0, Math.abs(t.x) - 1200);
         const dz = Math.max(0, Math.abs(t.z - (-700)) - 400);
-        const dist = Math.sqrt(dx*dx + dz*dz);
+        const dist = Math.sqrt(dx * dx + dz * dz);
         let groundY = -280 - 18;
         if (dist > 0) {
             groundY += Math.min(220, dist * 0.16);
         }
-        
+
         tree.position.set(t.x, groundY, t.z);
         group.add(tree);
     });
@@ -708,10 +712,10 @@ export function create({ scene, camera }) {
     const treeCount = 128;
     for (let i = 0; i < treeCount; i++) {
         const tree = createPineTree(shoreFoliageMat, 42 + Math.random() * 92);
-        
+
         let tx = 0;
         let tz = 0;
-        
+
         if (i < 78) {
             // Back shore (behind the lake)
             tx = -1950 + (i / 77) * 3900 + (Math.random() - 0.5) * 80;
@@ -725,16 +729,16 @@ export function create({ scene, camera }) {
             tx = 1450 + (Math.random() - 0.5) * 110;
             tz = -1080 + ((i - 102) / 25) * 920;
         }
-        
+
         // Find ground height:
         const dx = Math.max(0, Math.abs(tx) - 1200);
         const dz = Math.max(0, Math.abs(tz - (-700)) - 400);
-        const dist = Math.sqrt(dx*dx + dz*dz);
+        const dist = Math.sqrt(dx * dx + dz * dz);
         let groundY = -280 - 18;
         if (dist > 0) {
             groundY += Math.min(220, dist * 0.16);
         }
-        
+
         tree.position.set(tx, groundY, tz);
         group.add(tree);
     }
@@ -757,9 +761,9 @@ export function create({ scene, camera }) {
             auroraCurtains.forEach((curtain) => {
                 curtain.uniforms.uTime.value = time;
             });
-            
+
             // Slow drift for clouds
-            clouds.forEach(c => {
+            clouds.forEach((c) => {
                 c.mesh.position.x += Math.sin(time * 0.05 + c.offset) * 0.06;
             });
         },

@@ -116,10 +116,42 @@ export class GamepadController {
 
         // DAS (Delayed Auto Shift) states for each gamepad
         this.dasState = [
-            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
-            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
-            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
-            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
+            {
+                left: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                right: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                down: { active: false, intervalAccumulators: 0 },
+            },
+            {
+                left: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                right: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                down: { active: false, intervalAccumulators: 0 },
+            },
+            {
+                left: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                right: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                down: { active: false, intervalAccumulators: 0 },
+            },
+            {
+                left: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                right: {
+                    active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false,
+                },
+                down: { active: false, intervalAccumulators: 0 },
+            },
         ];
         this.dasActions = [
             { left: null, right: null, down: null },
@@ -1474,61 +1506,61 @@ export class GamepadController {
         // Get appropriate action functions based on player slot (0-3 = P1-P4)
         let actions;
         switch (slot) {
-            case 0: // Player 1
-                actions = {
-                    move: this.gameActions.move,
-                    rotate: this.gameActions.rotate,
-                    softDrop: this.gameActions.softDrop,
-                    hardDrop: this.gameActions.hardDrop,
-                    requestMove: this.gameActions.requestMove,
-                    requestRotate: this.gameActions.requestRotate,
-                    requestSoftDrop: this.gameActions.requestSoftDrop,
-                    requestHardDrop: this.gameActions.requestHardDrop,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 1: // Player 2
-                actions = {
-                    move: this.gameActions.moveP2,
-                    rotate: this.gameActions.rotateP2,
-                    softDrop: this.gameActions.softDropP2,
-                    hardDrop: this.gameActions.hardDropP2,
-                    requestMove: this.gameActions.requestMoveP2,
-                    requestRotate: this.gameActions.requestRotateP2,
-                    requestSoftDrop: this.gameActions.requestSoftDropP2,
-                    requestHardDrop: this.gameActions.requestHardDropP2,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 2: // Player 3
-                actions = {
-                    move: this.gameActions.moveP3,
-                    rotate: this.gameActions.rotateP3,
-                    softDrop: this.gameActions.softDropP3,
-                    hardDrop: this.gameActions.hardDropP3,
-                    requestMove: this.gameActions.requestMoveP3,
-                    requestRotate: this.gameActions.requestRotateP3,
-                    requestSoftDrop: this.gameActions.requestSoftDropP3,
-                    requestHardDrop: this.gameActions.requestHardDropP3,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 3: // Player 4
-                actions = {
-                    move: this.gameActions.moveP4,
-                    rotate: this.gameActions.rotateP4,
-                    softDrop: this.gameActions.softDropP4,
-                    hardDrop: this.gameActions.hardDropP4,
-                    requestMove: this.gameActions.requestMoveP4,
-                    requestRotate: this.gameActions.requestRotateP4,
-                    requestSoftDrop: this.gameActions.requestSoftDropP4,
-                    requestHardDrop: this.gameActions.requestHardDropP4,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            default:
-                console.warn(`[Gamepad] Invalid player slot: ${slot}`);
-                return;
+        case 0: // Player 1
+            actions = {
+                move: this.gameActions.move,
+                rotate: this.gameActions.rotate,
+                softDrop: this.gameActions.softDrop,
+                hardDrop: this.gameActions.hardDrop,
+                requestMove: this.gameActions.requestMove,
+                requestRotate: this.gameActions.requestRotate,
+                requestSoftDrop: this.gameActions.requestSoftDrop,
+                requestHardDrop: this.gameActions.requestHardDrop,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 1: // Player 2
+            actions = {
+                move: this.gameActions.moveP2,
+                rotate: this.gameActions.rotateP2,
+                softDrop: this.gameActions.softDropP2,
+                hardDrop: this.gameActions.hardDropP2,
+                requestMove: this.gameActions.requestMoveP2,
+                requestRotate: this.gameActions.requestRotateP2,
+                requestSoftDrop: this.gameActions.requestSoftDropP2,
+                requestHardDrop: this.gameActions.requestHardDropP2,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 2: // Player 3
+            actions = {
+                move: this.gameActions.moveP3,
+                rotate: this.gameActions.rotateP3,
+                softDrop: this.gameActions.softDropP3,
+                hardDrop: this.gameActions.hardDropP3,
+                requestMove: this.gameActions.requestMoveP3,
+                requestRotate: this.gameActions.requestRotateP3,
+                requestSoftDrop: this.gameActions.requestSoftDropP3,
+                requestHardDrop: this.gameActions.requestHardDropP3,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 3: // Player 4
+            actions = {
+                move: this.gameActions.moveP4,
+                rotate: this.gameActions.rotateP4,
+                softDrop: this.gameActions.softDropP4,
+                hardDrop: this.gameActions.hardDropP4,
+                requestMove: this.gameActions.requestMoveP4,
+                requestRotate: this.gameActions.requestRotateP4,
+                requestSoftDrop: this.gameActions.requestSoftDropP4,
+                requestHardDrop: this.gameActions.requestHardDropP4,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        default:
+            console.warn(`[Gamepad] Invalid player slot: ${slot}`);
+            return;
         }
 
         // Process movement (D-pad left/right or left stick X)

@@ -912,7 +912,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
         physicsCallbacks.onHardDrop({
             piece: gameState.currentPiece,
             startY,
-            endY
+            endY,
         });
     }
 

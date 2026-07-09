@@ -146,7 +146,7 @@ export class WarpTransitionRenderer {
 
             // Store normalized color mix factor; actual colors applied via uniform
             const colorMix = Math.random();
-            colors[i3] = colorMix;     // mix factor stored in R channel
+            colors[i3] = colorMix; // mix factor stored in R channel
             colors[i3 + 1] = 0;
             colors[i3 + 2] = 0;
 
@@ -265,9 +265,9 @@ export class WarpTransitionRenderer {
         const geometry = new THREE.CylinderGeometry(
             this.config.tunnelRadius * 1.5, // radius top
             this.config.tunnelRadius * 0.8, // radius bottom
-            this.config.tunnelLength,       // height
-            32,                             // radial segments
-            1                               // height segments
+            this.config.tunnelLength, // height
+            32, // radial segments
+            1, // height segments
         );
         // Rotate so it extends along the Z axis
         geometry.rotateX(Math.PI / 2);
@@ -994,7 +994,7 @@ export class WarpTransitionRenderer {
         // Phase 1: Iris focus (0-30%)
         // Phase 2: Portal expansion (20-55%)
         // Phase 3: Full warp + exit flash (45-100%)
-        const phase1 = Math.min(rawProgress / 0.30, 1);           // 0→1 over first 30%
+        const phase1 = Math.min(rawProgress / 0.30, 1); // 0→1 over first 30%
         const phase2 = Math.max(0, Math.min((rawProgress - 0.20) / 0.35, 1)); // 0→1 over 20-55%
         const phase3 = Math.max(0, Math.min((rawProgress - 0.45) / 0.55, 1)); // 0→1 over 45-100%
 
@@ -1080,7 +1080,7 @@ export class WarpTransitionRenderer {
         const intakeFalloff = Math.max(0, 1 - (phase1 * 1.1));
         mat.uniforms.uLensDistortion.value = intakeFalloff * 1.35 * intakeStrength; // Intensify distortion
         mat.uniforms.uEdgeRefraction.value = intakeFalloff * 1.25 * intakeStrength; // Intensify refraction
-        mat.uniforms.uChromaticSplit.value = intakeFalloff * 1.15 * chromaScale;    // Intensify split
+        mat.uniforms.uChromaticSplit.value = intakeFalloff * 1.15 * chromaScale; // Intensify split
         mat.uniforms.uIntakeStreaks.value = streakEnabled
             ? ((intakeFalloff ** 0.6) * intakeStrength * 1.6) // More violent intake
             : 0;

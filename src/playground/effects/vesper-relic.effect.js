@@ -86,7 +86,8 @@ export function create({ scene, params }) {
         .add(cCrack.mul(crackGlow).mul(1.5));
     shellMat.opacityNode = clamp(
         float(0.05).add(inclusion.mul(0.05)).add(fres.mul(0.85)).add(crackGlow.mul(0.95)),
-        float(0.0), float(1.0),
+        float(0.0),
+        float(1.0),
     );
     // Geode surface: push vertices out along their normals with low-freq noise → facets/lumps.
     const geodeDisp = mx_noise_float(positionLocal.mul(2.2)).mul(0.09);

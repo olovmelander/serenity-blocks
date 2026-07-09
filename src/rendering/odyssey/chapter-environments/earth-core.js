@@ -1385,12 +1385,24 @@ function createVolcanicRockClusters(group, uniforms, elements, count, groupCente
     // composition. Seats rest on the lake, off the path centreline, and are pushed
     // clear of the spline (the frame-07 near-clip fix).
     const seats = [
-        { ft: 0.10, side: -1, lateral: 38, forward: 10, size: 0.7 },
-        { ft: 0.24, side: 1, lateral: 44, forward: 11, size: 0.9 },
-        { ft: 0.38, side: -1, lateral: 48, forward: 14, size: 0.8 },
-        { ft: 0.60, side: 1, lateral: 56, forward: 16, size: 1.2 },
-        { ft: 0.74, side: -1, lateral: 52, forward: 14, size: 0.9, seam: true },
-        { ft: 0.84, side: 1, lateral: 64, forward: 18, size: 0.6, seam: true },
+        {
+            ft: 0.10, side: -1, lateral: 38, forward: 10, size: 0.7,
+        },
+        {
+            ft: 0.24, side: 1, lateral: 44, forward: 11, size: 0.9,
+        },
+        {
+            ft: 0.38, side: -1, lateral: 48, forward: 14, size: 0.8,
+        },
+        {
+            ft: 0.60, side: 1, lateral: 56, forward: 16, size: 1.2,
+        },
+        {
+            ft: 0.74, side: -1, lateral: 52, forward: 14, size: 0.9, seam: true,
+        },
+        {
+            ft: 0.84, side: 1, lateral: 64, forward: 18, size: 0.6, seam: true,
+        },
     ];
     // ONE shared material for every cluster (same node graph → one pipeline), carrying
     // the seam fade + camera-proximity fade + manager ecotone bridge.

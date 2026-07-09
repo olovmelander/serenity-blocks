@@ -54,10 +54,13 @@ export class ShiftingSandsPost {
 
         const xOffset = sin(uv.y.mul(50.0).add(this.uTime.mul(2.0))).mul(0.001)
             .add(sin(uv.y.mul(20.0).add(this.uTime.mul(3.0))).mul(0.002))
-            .mul(heatMask).mul(this.uStrength).mul(100.0);
+            .mul(heatMask)
+            .mul(this.uStrength)
+            .mul(100.0);
 
         const yOffset = cos(uv.x.mul(40.0).add(this.uTime.mul(2.0))).mul(0.001)
-            .mul(heatMask).mul(this.uStrength).mul(100.0);
+            .mul(heatMask).mul(this.uStrength)
+            .mul(100.0);
 
         const distortedUV = uv.add(vec2(xOffset, yOffset));
         const distortedColor = sceneColor.sample(distortedUV);

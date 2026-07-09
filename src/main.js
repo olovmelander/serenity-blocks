@@ -1473,16 +1473,16 @@ class SerenityBlocks {
         } else {
             // Tab became hidden - apply throttling based on behavior
             switch (this.backgroundTabBehavior) {
-                case 'pause':
-                    this.pauseAllRendering();
-                    break;
-                case 'reduce':
-                    this.reduceRenderingFrameRate();
-                    break;
-                case 'continue':
-                default:
-                    // Do nothing - continue as normal
-                    break;
+            case 'pause':
+                this.pauseAllRendering();
+                break;
+            case 'reduce':
+                this.reduceRenderingFrameRate();
+                break;
+            case 'continue':
+            default:
+                // Do nothing - continue as normal
+                break;
             }
         }
 
@@ -2764,16 +2764,16 @@ class SerenityBlocks {
             : Date.now();
 
         switch (settings.backgroundMode) {
-            case 'Specific':
-                initialTheme = settings.backgroundTheme || 'forest';
-                break;
-            case 'Level':
-                initialTheme = this.themeManager.getThemeForLevel(1);
-                break;
-            case 'Random':
-                initialTheme = this.themeManager.getRandomTheme();
-                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-                break;
+        case 'Specific':
+            initialTheme = settings.backgroundTheme || 'forest';
+            break;
+        case 'Level':
+            initialTheme = this.themeManager.getThemeForLevel(1);
+            break;
+        case 'Random':
+            initialTheme = this.themeManager.getRandomTheme();
+            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+            break;
         }
 
         performanceMonitor.recordEvent('startup_initial_theme_started', { theme: initialTheme });
@@ -6217,8 +6217,12 @@ async function bootstrap() {
             window.localMpHost = async ({ autoStart = true, maxPlayers = 8 } = {}) => {
                 const onlineMode = await ensureOnlineMultiplayerMode();
                 await onlineMode.handleCreateLobby({
-                    gameName: 'LOCAL TEST', maxPlayers, lobbyType: 'public',
-                    endCondition: 'frags', endConditionValue: 5, boringRules: false,
+                    gameName: 'LOCAL TEST',
+                    maxPlayers,
+                    lobbyType: 'public',
+                    endCondition: 'frags',
+                    endConditionValue: 5,
+                    boringRules: false,
                 });
                 console.log('🧪 [LOCAL MP] Hosting. Open a 2nd window with ?localMp=join (or run localMpJoin()).');
                 if (autoStart) {

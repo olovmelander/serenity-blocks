@@ -289,12 +289,12 @@ export class OceanBubbleCompute {
             pos.x.addAssign(
                 sin(time.mul(1.2).add(seed.mul(6.28)))
                     .mul(0.3)
-                    .mul(delta)
+                    .mul(delta),
             );
             pos.z.addAssign(
                 cos(time.mul(0.9).add(seed.mul(4.8)))
                     .mul(0.25)
-                    .mul(delta)
+                    .mul(delta),
             );
 
             // Respawn at bottom when hitting surface
@@ -306,7 +306,7 @@ export class OceanBubbleCompute {
                 pos.z.assign(
                     fract(sin(seed.mul(39.346)).mul(43758.5453))
                         .sub(0.5)
-                        .mul(halfD.mul(2.0))
+                        .mul(halfD.mul(2.0)),
                 );
             });
 

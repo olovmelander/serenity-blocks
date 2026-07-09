@@ -3932,9 +3932,15 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         // 3 geometry buckets keep draw calls low while preserving shape variety.
         const lodBuckets = [
-            { name: 'near', ratio: 0.34, size: 24, distortion: 0.30, scaleMin: 0.9, scaleMax: 1.35 },
-            { name: 'mid', ratio: 0.38, size: 16, distortion: 0.27, scaleMin: 0.8, scaleMax: 1.2 },
-            { name: 'far', ratio: 0.28, size: 10, distortion: 0.24, scaleMin: 0.7, scaleMax: 1.05 },
+            {
+                name: 'near', ratio: 0.34, size: 24, distortion: 0.30, scaleMin: 0.9, scaleMax: 1.35,
+            },
+            {
+                name: 'mid', ratio: 0.38, size: 16, distortion: 0.27, scaleMin: 0.8, scaleMax: 1.2,
+            },
+            {
+                name: 'far', ratio: 0.28, size: 10, distortion: 0.24, scaleMin: 0.7, scaleMax: 1.05,
+            },
         ];
 
         const groupCounts = [];
