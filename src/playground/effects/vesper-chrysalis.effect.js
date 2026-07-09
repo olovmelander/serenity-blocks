@@ -74,7 +74,7 @@ export function create({
     const skyMat = new THREE.MeshBasicNodeMaterial();
     {
         const dir = normalize(positionLocal);
-        const y = dir.y;
+        const { y } = dir;
         // 2.7 three-stop vertical gradient: deep-plum near-horizon → violet mid → indigo zenith
         const up = smoothstep(0.0, 0.62, y);
         const upHi = smoothstep(0.28, 0.92, y);
@@ -131,26 +131,30 @@ export function create({
     {
         const TEXBASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/'}textures/`;
         const loader = new THREE.TextureLoader();
-        const beamAim = new THREE.Vector3(0, 150, -110); // every planet is lit from the central sky axis
+        const beamAim = new THREE.Vector3(0, 220, -1500); // BACKLIT: the light axis sits far behind the worlds
         const makePlanet = (file, rad, x, y, z, tint, opts) => {
             const map = loader.load(TEXBASE + file);
             map.colorSpace = THREE.SRGBColorSpace;
             disposeTextures.push(map);
             const parent = opts.always ? planets : cosmosGroup;
-            const sunJs = beamAim.clone().sub(new THREE.Vector3(x, y, z)).normalize();
+            // Cosmos worlds are BACKLIT (thin crescents); the always-visible anchor moon keeps a
+            // front horizon-glow light so it reads as a softly-lit terminator moon while dormant.
+            const sunJs = opts.always
+                ? new THREE.Vector3(0.4, -0.05, 1.0).normalize()
+                : beamAim.clone().sub(new THREE.Vector3(x, y, z)).normalize();
             const sunV = vec3(sunJs.x, sunJs.y, sunJs.z);
             const mat = new THREE.MeshBasicNodeMaterial();
             const N = normalize(normalWorld);
             const Vv = normalize(cameraPosition.sub(positionWorld));
             const ndv = clamp(dot(N, Vv), 0.0, 1.0);
-            const lit = clamp(dot(N, sunV).mul(0.9).add(0.06), 0.03, 1.0); // hard crescent terminator
-            const limb = pow(float(1.0).sub(ndv), float(4.5)); // grazing-limb mask
-            const litSide = smoothstep(0.0, 0.55, dot(N, sunV));
-            // dim tinted body (near-silhouette night side) + the hatom signature: an INTENSE warm
-            // crescent arc on the sunward limb (bloom-eligible) + a faint cool ring on the dark limb.
-            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit).mul(0.7)
+            const lit = clamp(dot(N, sunV).mul(0.9).add(0.06), 0.05, 1.0); // hard crescent terminator
+            const limb = pow(float(1.0).sub(ndv), float(7.0)); // THIN grazing-limb mask
+            const litSide = pow(smoothstep(0.12, 0.75, dot(N, sunV)), float(1.5));
+            // faintly-textured body (cloud bands stay readable in shadow) + the hatom signature:
+            // a thin INTENSE warm crescent arc on the sunward limb + a whisper of cool dark-limb air.
+            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit.mul(0.6).add(0.12)).mul(0.85)
                 .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent))
-                .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.16));
+                .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.10));
             mat.toneMapped = false;
             mat.fog = false;
             mat.transparent = true;
@@ -159,14 +163,16 @@ export function create({
             mesh.position.set(x, y, z);
             parent.add(mesh);
             if (opts.halo > 0) {
-                // atmospheric halo — an additive ring annulus hugging the disc, biased to the lit side
+                // atmospheric halo — a thin additive arc hugging the disc, STRONGLY biased to the
+                // lit side (a partial crescent glow, not a donut); drawn BEFORE the body so the
+                // disc silhouette occludes its inner edge.
                 const hm = new THREE.MeshBasicNodeMaterial();
                 const hd = uv().sub(0.5).mul(2.0);
-                const hl = length(hd); // 0 centre → 1 quad edge; the disc edge sits at ~0.69
-                const ring = smoothstep(0.60, 0.69, hl).mul(smoothstep(0.82, 0.70, hl));
-                const glow = smoothstep(0.55, 0.70, hl).mul(smoothstep(1.0, 0.72, hl)).mul(0.5);
-                const bias = clamp(dot(hd, vec2(sunJs.x, sunJs.y)), 0.0, 1.0).mul(0.75).add(0.35);
-                hm.colorNode = vec3(1.55, 1.15, 0.9).mul(ring.mul(1.5).add(glow)).mul(bias).mul(opts.halo);
+                const hl = length(hd); // 0 centre → 1 quad edge; the disc edge sits at ~0.72
+                const ring = smoothstep(0.64, 0.72, hl).mul(smoothstep(0.84, 0.73, hl));
+                const glow = smoothstep(0.60, 0.74, hl).mul(smoothstep(1.0, 0.75, hl)).mul(0.30);
+                const bias = pow(clamp(dot(hd, vec2(sunJs.x, sunJs.y)), 0.0, 1.0), float(2.0)).mul(0.95).add(0.10);
+                hm.colorNode = vec3(1.55, 1.15, 0.9).mul(ring.mul(0.6).add(glow)).mul(bias).mul(opts.halo);
                 hm.transparent = true;
                 hm.blending = THREE.AdditiveBlending;
                 hm.depthWrite = false;
@@ -174,9 +180,10 @@ export function create({
                 hm.toneMapped = false;
                 hm.fog = false;
                 hm.opacityNode = opts.always ? float(0.5) : uCosmos;
-                const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.9, rad * 2.9), hm);
+                const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.7, rad * 2.7), hm);
                 halo.position.set(x, y, z);
-                halo.renderOrder = 3;
+                halo.renderOrder = 1; // before the body (body renderOrder 2 occludes the halo centre)
+                mesh.renderOrder = 2;
                 parent.add(halo);
                 haloSprites.push(halo);
             }
@@ -202,8 +209,8 @@ export function create({
                 const rr = length(uv().sub(0.5)); // 0 centre → 0.5 edge (RingGeometry uv is a disc)
                 const rn = smoothstep(0.30, 0.5, rr);
                 const bands = sin(rn.mul(46.0)).mul(0.5).add(0.5);
-                ringMat.colorNode = vec3(0.85, 0.7, 0.55).mul(float(0.55).add(bands.mul(0.45)));
-                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr)).mul(uCosmos).mul(0.75);
+                ringMat.colorNode = vec3(0.85, 0.7, 0.55).mul(float(0.55).add(bands.mul(0.45))).mul(0.55);
+                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr)).mul(uCosmos).mul(0.42);
                 ringMat.transparent = true; ringMat.side = THREE.DoubleSide;
                 ringMat.toneMapped = false; ringMat.fog = false; ringMat.depthWrite = false;
                 const ring = new THREE.Mesh(new THREE.RingGeometry(64, 104, 64), ringMat);
@@ -215,11 +222,10 @@ export function create({
                     const sm2 = new THREE.MeshBasicNodeMaterial();
                     const su = uv();
                     const sband = pow(smoothstep(0.5, 0.0, abs(su.y.sub(0.5))), float(2.0));
-                    const sn = mx_fractal_noise_float(
-                        vec3(su.x.mul(7.0).sub(uTime.mul(0.015 + si * 0.008)), su.y.mul(3.0), 2.0 + si * 5.0), 2,
-                    ).mul(0.5).add(0.5);
+                    const sn = mx_fractal_noise_float(vec3(su.x.mul(7.0).sub(uTime.mul(0.015 + si * 0.008)), su.y.mul(3.0), 2.0 + si * 5.0), 2).mul(0.5).add(0.5);
                     sm2.colorNode = mix(vec3(0.75, 0.62, 1.0), vec3(1.0, 0.78, 0.62), su.x)
-                        .mul(sband).mul(pow(sn, float(2.2))).mul(uCosmos).mul(0.30);
+                        .mul(sband).mul(pow(sn, float(2.2))).mul(uCosmos)
+                        .mul(0.24);
                     sm2.transparent = true;
                     sm2.blending = THREE.AdditiveBlending;
                     sm2.depthWrite = false;
@@ -246,7 +252,7 @@ export function create({
         const mV = normalize(cameraPosition.sub(positionWorld));
         const mFres = pow(clamp(float(1.0).sub(dot(mN, mV)), 0.0, 1.0), float(3.0));
         monoMat.colorNode = vec3(0.008, 0.007, 0.016)
-            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.30))
+            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.22))
             .add(vec3(0.5, 0.6, 0.95).mul(mFres).mul(0.10));
         monoMat.toneMapped = false;
         monolith = new THREE.Mesh(new THREE.BoxGeometry(13, 44, 4.5), monoMat);
@@ -260,8 +266,11 @@ export function create({
         const bx2 = abs(bu.x.sub(0.5)).mul(2.0);
         const shaft = pow(smoothstep(1.0, 0.0, bx2), float(2.4));
         const bFade = smoothstep(1.0, 0.12, bu.y).mul(smoothstep(0.0, 0.22, bu.y));
-        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35).add(0.65);
-        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak).mul(uCosmos).mul(0.34);
+        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35)
+            .add(0.65);
+        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak)
+            .mul(uCosmos)
+            .mul(0.34);
         beamMat.transparent = true;
         beamMat.blending = THREE.AdditiveBlending;
         beamMat.depthWrite = false;
@@ -579,6 +588,17 @@ export function create({
             const bio = pow(flow, float(3.0)).mul(smoothstep(-320.0, -10.0, positionWorld.z).oneMinus());
             water = water.add(vec3(0.55, 0.14, 0.62).mul(bio).mul(0.4));
         }
+        // Wave 3: winding sparkle path — a granular glowing ring encircling the mound (hatom
+        // phase-1's luminous trail). Off-centre-left; sparkle tips just kiss the bloom threshold.
+        if (tier >= 2) {
+            const mdx = positionWorld.x.add(58.0);
+            const mdz = positionWorld.z.add(74.0);
+            const mdist = mdx.mul(mdx).add(mdz.mul(mdz)).sqrt();
+            const pathBand = smoothstep(10.0, 2.0, abs(mdist.sub(56.0)));
+            const spark = pow(mx_noise_float(positionWorld.mul(0.7).add(uTime.mul(0.12))).abs(), float(5.0));
+            const pathGlow = pathBand.mul(spark.mul(1.1).add(0.28));
+            water = water.add(vec3(0.85, 0.25, 0.60).mul(pathGlow).mul(uS.mul(0.5).add(0.5)).mul(0.30));
+        }
         // Expanding combo rings — bioluminescent bands that grow from the emit point (mirrored free).
         let ringGlow = float(0.0);
         ringNodes.forEach((rn) => {
@@ -768,10 +788,17 @@ export function create({
         const N = normalize(normalWorld);
         const V = normalize(cameraPosition.sub(positionWorld));
         const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.6));
+        // Wave 3: rock micro-grain — world-space fbm modulates the lit terms so surfaces read as
+        // textured stone in the rim/fill light (base silhouette stays untouched). High+ only.
+        let gMod = float(1.0);
+        if (tier >= 3) {
+            gMod = mx_fractal_noise_float(positionWorld.mul(0.33), 3).mul(0.5).add(0.5).mul(0.6)
+                .add(0.7);
+        }
         boulderMat.colorNode = vec3(0.008, 0.006, 0.016)
-            .add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09)) // faint magenta rim (existing)
-            .add(hemiFillNode(N).mul(0.5)) // 1.1 colored ambient (plum/indigo, capped)
-            .add(eggBounceNode(N).mul(0.7)); // 1.1 warm egg bounce
+            .add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09).mul(gMod)) // faint magenta rim, grained
+            .add(hemiFillNode(N).mul(0.5).mul(gMod)) // 1.1 colored ambient (plum/indigo, capped)
+            .add(eggBounceNode(N).mul(0.7).mul(gMod)); // 1.1 warm egg bounce
         boulderMat.toneMapped = false;
     }
     const boulderGeo = new THREE.IcosahedronGeometry(1, 2);
@@ -791,11 +818,21 @@ export function create({
     {
         const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
         const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
+        // Wave 3: parallax corner anchors — the first two instances become near-foreground rocks
+        // pinned to the lower frame corners (x from the per-aspect horizontal frustum half-width;
+        // z capped ≤ +16 so they stay ≥~18u from the lens even at the full Cosmos dolly-in).
+        const aspect = (sizes?.width || 1280) / (sizes?.height || 720);
+        const cornerX = 36 * Math.tan((58 / 2) * (Math.PI / 180)) * aspect * 0.85;
         for (let i = 0; i < boulderCountT; i += 1) {
             const side = i % 2 === 0 ? -1 : 1;
-            const sc = 5 + bnoise(i, 3) * 13; // 5..18
-            const x = side * (44 + bnoise(i, 1) * 62); // |x| 44..106 (frame edges, clear centre)
-            const z = -8 - bnoise(i, 2) * 62; // z -8..-70 (foreground)
+            let sc = 5 + bnoise(i, 3) * 13; // 5..18
+            let x = side * (44 + bnoise(i, 1) * 62); // |x| 44..106 (frame edges, clear centre)
+            let z = -8 - bnoise(i, 2) * 62; // z -8..-70 (foreground)
+            if (i < 2 && boulderCountT > 4) { // corner anchors (skip on the sparse low tiers)
+                sc = 11 + i * 3;
+                x = side * cornerX;
+                z = 6 + i * 5; // +6 / +11 (≤ +16 cap)
+            }
             _e.set(bnoise(i, 4) * 3, bnoise(i, 5) * 6, bnoise(i, 6) * 3);
             _q.setFromEuler(_e);
             _s.set(sc, sc * (0.55 + bnoise(i, 7) * 0.5), sc);
@@ -823,8 +860,17 @@ export function create({
             }
             const vf = mx_fractal_noise_float(vec3(vp.x, vp.y, 0.0), 3).mul(0.5).add(0.5);
             const vein = smoothstep(0.055, 0.0, abs(vf.sub(0.5))); // glowing vein isolines
+            // Wave 3: GRANULAR twinkling speckle (hatom's phase-1 mound reads as glowing sand) —
+            // per-grain phase from a second noise so individual grains shimmer independently.
             const speck = pow(mx_noise_float(pl.mul(0.55)).abs(), float(4.0)); // fine moss speckle
-            const veinCol = vec3(0.9, 0.2, 0.6).mul(vein.mul(0.5).add(speck.mul(0.2)));
+            const grainPh = mx_noise_float(pl.mul(0.9)).mul(20.0);
+            const tw3 = sin(uTime.mul(2.0).add(grainPh)).mul(0.5).add(0.5).mul(0.9)
+                .add(0.5);
+            let speckSum = speck.mul(tw3);
+            if (tier >= 3) { // extra fine glitter layer on High+
+                speckSum = speckSum.add(pow(mx_noise_float(pl.mul(1.6)).abs(), float(6.0)).mul(tw3).mul(0.8));
+            }
+            const veinCol = vec3(0.9, 0.2, 0.6).mul(vein.mul(0.5).add(speckSum.mul(0.22)));
             const Nm = normalize(normalWorld); // valid after computeVertexNormals() below
             moundMat.colorNode = vec3(0.02, 0.012, 0.03)
                 .add(veinCol.mul(float(0.45).add(uS.mul(0.55))))
@@ -961,7 +1007,9 @@ export function create({
         // 2.5 curl-noise drift (High+) — slow organic swirl across the whole view; y stays a gentle bob
         let drift;
         if (tier >= 3) {
-            const cv = curlDrift(positionLocal.x.add(sd.y.mul(60.0)), positionLocal.z.add(sd.x.mul(60.0)), uTime.mul(0.035), 7.0);
+            const cx = positionLocal.x.add(sd.y.mul(60.0));
+            const cz = positionLocal.z.add(sd.x.mul(60.0));
+            const cv = curlDrift(cx, cz, uTime.mul(0.035), 7.0);
             drift = vec3(cv.x, sin(uTime.mul(0.05).add(sd.y.mul(6.283))).mul(5.0), cv.y);
         } else {
             drift = vec3(
@@ -1269,6 +1317,21 @@ export function create({
             uAscend.value = clamp01((sEased - 0.5) / 0.35); // wing unfurls from S≈0.5→0.85
             wing.visible = uAscend.value > 0.001; // skip the additive wing plane entirely while dormant
             uCosmos.value = clamp01((sEased - 0.85) / 0.15); // planet ensemble blooms in at the Cosmos crest
+            // Cosmos climax: gate the giant ensemble entirely while dormant (zero draw cost),
+            // raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
+            const ce = uCosmos.value;
+            cosmosGroup.visible = ce > 0.001;
+            if (monolith) {
+                const es = ce * ce * (3 - 2 * ce); // smoothstep ease
+                monolith.position.y = -46 + 60 * es;
+                monolith.visible = ce > 0.001;
+                monoBeam.visible = ce > 0.001;
+            }
+            if (camera) {
+                for (let i = 0; i < haloSprites.length; i += 1) {
+                    haloSprites[i].quaternion.copy(camera.quaternion);
+                }
+            }
             uTime.value = time;
             relic.rotation.y = time * 0.08;
             relic.position.y = 19 + Math.sin(time * 0.5) * 1.2; // slow idle bob (floats on the horizon)
