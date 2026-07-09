@@ -510,3 +510,43 @@ export function getThemeIds() {
 export function getThemeMeta(id) {
     return themeMap.get(id);
 }
+
+/**
+ * Idempotent, registry-owned theme-container creation (plan Phase 2.7).
+ *
+ * 62 themes rely on a hand-written static `<div id="<id>-theme">` in
+ * index.html; chiral-gold proved the lazy-create pattern when its div was
+ * forgotten. This makes the registry the owner: existing static divs win
+ * (getElementById-first), a missing one is created on first activation —
+ * NOT 62 divs at boot. Inline base styles mirror chiral-gold's proven set,
+ * since a lazily-created div has no `#<id>-theme` CSS rule to lean on.
+ * The static divs stay until their deletion ships as its own verified commit
+ * (stacking order against `background-canvas` is the risk).
+ */
+export function ensureThemeContainer(themeId) {
+    if (typeof document === 'undefined' || !themeMap.has(themeId)) return null;
+
+    const containerId = `${themeId}-theme`;
+    let container = document.getElementById(containerId);
+    if (!container) {
+        container = document.createElement('div');
+        container.id = containerId;
+        container.className = 'theme-container';
+        Object.assign(container.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            zIndex: '-1',
+            pointerEvents: 'none',
+            opacity: '0',
+        });
+        if (document.body.firstChild) {
+            document.body.insertBefore(container, document.body.firstChild);
+        } else {
+            document.body.appendChild(container);
+        }
+    }
+    return container;
+}

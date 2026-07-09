@@ -3,7 +3,7 @@
  */
 
 import { THEMES } from '../core/constants.js';
-import { THEME_REGISTRY, getThemeMeta } from './theme-registry.js';
+import { THEME_REGISTRY, getThemeMeta, ensureThemeContainer } from './theme-registry.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
@@ -554,6 +554,10 @@ export class ThemeManager {
                 removeFromCache: true,
             });
         }
+
+        // Registry-owned container guarantee (plan §2.7): static index.html divs
+        // win; a missing one (the chiral-gold class of bug) is lazily created.
+        ensureThemeContainer(themeName);
 
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
