@@ -31,6 +31,7 @@ import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplay
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
 import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
 import { createBlindTimers, applyBlindEffect, applyFullBlindEffect } from '../blind.js';
+import { readFlag as readNetFlag } from '../flags.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -40,25 +41,9 @@ const DOWNLOAD_JOIN_TIMEOUT_MS = 15000;
 const MAX_ADAPTIVE_INPUT_LATE_TICKS = 30;
 const MAX_ADAPTIVE_INPUT_FUTURE_TICKS = 8;
 
-/**
- * Resolve a runtime feature flag. Precedence: URL `?name=1`/`?name=0` →
- * localStorage `serenity.<name>` ('1'/'0') → default. The installed Electron app
- * loads from file:// with no query string, so localStorage is the toggle the user
- * has in the DevTools console:  localStorage.setItem('serenity.lockEvents','0')
- * then reload. URL still wins for dev.
- */
-function readNetFlag(name, defaultOn) {
-    if (typeof window === 'undefined') return defaultOn;
-    const search = (window.location && window.location.search) || '';
-    if (new RegExp(`[?&]${name}=1\\b`).test(search)) return true;
-    if (new RegExp(`[?&]${name}=0\\b`).test(search)) return false;
-    try {
-        const ls = window.localStorage && window.localStorage.getItem(`serenity.${name}`);
-        if (ls === '1') return true;
-        if (ls === '0') return false;
-    } catch (e) { /* localStorage unavailable — fall through to default */ }
-    return defaultOn;
-}
+// Runtime flags resolve via the central registry reader (src/core/flags.js,
+// Phase 0.6): URL `?name=1`/`?name=0` → localStorage `serenity.<name>` → default.
+// The former local readNetFlag clone was consolidated there.
 
 const CRC32_TABLE = (() => {
     const table = new Uint32Array(256);
@@ -345,6 +330,16 @@ export class FFAGameStateP2P {
         // gameState each frame, instant input). Supersedes the LOCAL-BOARD HOLD when on.
         // Toggle OFF: ?peerLocalSim=0.
         this._peerLocalSimEnabled = readNetFlag('peerLocalSim', true);
+        // DESYNC BACKSTOP re-armed (plan §1.2): both divergence branches in
+        // syncFromHost gate on this flag, but it was never initialized and
+        // setDesyncDetection had zero callers — the safety net the design note
+        // above calls load-bearing was silently dead, so a genuine divergence
+        // produced a permanently drifted peer board. Default ON; ?desyncCheck=0
+        // to disable. Requires 3 (peer-local-sim) / 5 (legacy) consecutive
+        // confirmed mismatches before triggering, so snapshot-adoption races
+        // cannot false-positive.
+        this._desyncCheckEnabled = readNetFlag('desyncCheck', true);
+        this._desyncCount = 0;
         // Phase 1+2 (OPPONENT CLEAR FEEDBACK): opponents currently teleport between 30Hz
         // settled grids with ZERO clear feedback. The host (which simulates every player)
         // broadcasts a tiny grid-FREE GAME_LINES_CLEAR event per clear; peers replay it as
@@ -912,84 +907,11 @@ export class FFAGameStateP2P {
             }
         });
 
-        this.network.on(MessageTypes.LOBBY_PLAYER_JOINED, (msg) => {
-            console.log('📬 LOBBY_PLAYER_JOINED received:', msg);
-            console.log('   isHost:', this.isHost);
-            console.log('   msg.data:', msg.data);
+        this.network.on(MessageTypes.LOBBY_PLAYER_JOINED, (msg) => this._handleLobbyPlayerJoined(msg));
 
-            // Host receives join announcement from peer
-            if (this.isHost && msg.data.steamId && msg.data.name) {
-                console.log(`📢 Host received join from: ${msg.data.name} (${msg.data.steamId})`);
-                if (msg.data.steamId !== this.localPlayerId) {
-                    if (msg.data.asSpectator) {
-                        this._registerSpectator(msg.data.steamId, msg.data.name);
-                    } else {
-                        this.addPlayer(msg.data.steamId, msg.data.name);
-                        this.queueResync(msg.data.steamId);
-                    }
-                }
-            }
+        this.network.on(MessageTypes.LOBBY_PLAYER_LEFT, (msg) => this._handleLobbyPlayerLeft(msg));
 
-            // Peers receive player list update from host
-            if (!this.isHost && msg.data.players) {
-                console.log('📢 Peer received player list update from host:', msg.data.players);
-                if (typeof msg.data.spectatorCount === 'number') {
-                    this.spectatorCount = msg.data.spectatorCount; // mirror host's count for display
-                }
-                msg.data.players.forEach((p) => {
-                    if (!this.players.has(p.steamId)) {
-                        console.log(`   Adding player: ${p.name} with color from host: ${p.color}`);
-                        this.addPlayer(p.steamId, p.name, p.steamId === this.localPlayerId);
-                        // Override auto-assigned color with host's color
-                        const player = this.players.get(p.steamId);
-                        if (player && p.color) {
-                            console.log(`   🎨 Overriding color for ${p.name}: ${player.color} → ${p.color}`);
-                            player.color = p.color;
-                        }
-                        // Adopt the host's authoritative alive/late-joiner state so a drop-in
-                        // late joiner isn't briefly shown alive (then skull) before the snapshot.
-                        if (player) {
-                            if (p.isAlive !== undefined) player.isAlive = p.isAlive;
-                            if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
-                        }
-                    } else {
-                        // Update existing player
-                        console.log(`   Updating existing player: ${p.name}`);
-                        const player = this.players.get(p.steamId);
-                        console.log(`     Current color: ${player.color}, Host color: ${p.color}`);
-                        player.isReady = p.isReady;
-                        player.isAlive = p.isAlive;
-                        // Late joiner waiting state (≠ eliminated) — keep the ⏳ overlay in sync.
-                        if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
-                        // Update color if provided (ensures consistency)
-                        if (p.color) {
-                            console.log(`   🎨 Updating color for ${p.name}: ${player.color} → ${p.color}`);
-                            player.color = p.color;
-                        }
-                    }
-                });
-                console.log('   📊 Final player colors:', Array.from(this.players.values()).map((p) => ({ name: p.name, color: p.color })));
-            }
-            // Peer received the host's authoritative roster (joins / ready / color
-            // updates). Emit so the PEER's Activity Log records host/other ready changes
-            // — the host's broadcast updates isReady in place and otherwise never fires
-            // PLAYER_LIST_CHANGED on the peer.
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED, { players: this.players });
-        });
-
-        this.network.on(MessageTypes.LOBBY_PLAYER_LEFT, (msg) => {
-            this.removePlayer(msg.data.steamId);
-        });
-
-        this.network.on(MessageTypes.LOBBY_GAME_START, (msg) => {
-            if (!this.isHost) {
-                console.log('📬 Peer received game start from host!');
-                this.startMatch(msg.data.sharedSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
-
-                // Note: MATCH_STARTED event will be emitted AFTER countdown completes
-                // (see startMatch -> showCountdown callback line ~1065)
-            }
-        });
+        this.network.on(MessageTypes.LOBBY_GAME_START, (msg) => this._handleLobbyGameStart(msg));
 
         // HOST admin kicked us → bubble up so the mode can tear down + return to menu.
         this.network.on(MessageTypes.PLAYER_KICKED, (msg) => {
@@ -1007,25 +929,11 @@ export class FFAGameStateP2P {
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.KICKED, { reason: msg.data?.reason || 'kicked' });
         });
 
-        this.network.on(MessageTypes.LOBBY_PLAYER_READY, (msg) => {
-            const player = this.players.get(msg.data.steamId);
-            if (player) {
-                player.isReady = msg.data.isReady;
-                console.log(`${player.name} is ${msg.data.isReady ? 'ready' : 'not ready'}`);
-                // Notify the lobby UI so the host's Activity Log records the peer's
-                // ready change. (Player cards update via the 1s interval, but
-                // _logRosterChanges only runs on PLAYER_LIST_CHANGED — so without this
-                // the host never logs "<peer> is ready".)
-                emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED, { players: this.players });
-            }
-        });
+        this.network.on(MessageTypes.LOBBY_PLAYER_READY, (msg) => this._handleLobbyPlayerReady(msg));
 
         // === HOST MIGRATION ===
 
-        this.network.on(MessageTypes.NET_HEARTBEAT, (msg) => {
-            // Pass to migration system
-            this.hostMigration.onHeartbeat();
-        });
+        this.network.on(MessageTypes.NET_HEARTBEAT, (msg) => this._handleNetHeartbeat(msg));
 
         this.network.on(MessageTypes.GAME_HOST_MIGRATION_CLAIM, (msg) => {
             this.hostMigration.handleClaim(msg);
@@ -1157,21 +1065,7 @@ export class FFAGameStateP2P {
         });
 
         // Ready-barrier: PEER starts the round only when the host says everyone is go.
-        this.network.on(MessageTypes.GAME_ROUND_START, (msg) => {
-            if (this.isHost) return;
-            const gen = msg.data?.roundGeneration;
-            if (typeof gen === 'number' && gen !== this.roundGeneration) return;
-            if (this._readyBarrierTimer) {
-                clearTimeout(this._readyBarrierTimer); // GO arrived — cancel the local fallback
-                this._readyBarrierTimer = null;
-            }
-            const startThunk = this._pendingRoundStart;
-            this._pendingRoundStart = null;
-            if (startThunk) {
-                console.log(`🚦 [FFA] Peer round-start (gen ${this.roundGeneration})`);
-                startThunk();
-            }
-        });
+        this.network.on(MessageTypes.GAME_ROUND_START, (msg) => this._handleRoundStartSignal(msg));
         // PHASE 4.4: Chat messages
         this.network.on('game:chat', (msg) => {
             console.log(`💬 Chat from ${msg.data.playerName}: ${msg.data.message}`);
@@ -1252,6 +1146,179 @@ export class FFAGameStateP2P {
                 required: Math.ceil(this.players.size / 2),
             });
         });
+    }
+
+    // === SENDER-VALIDATED LOBBY/ROUND HANDLERS (plan §1.3) ===
+    // Previously any peer could start a match on another peer, release the
+    // ready-barrier early, evict anyone from every roster, rewrite a peer's
+    // roster, toggle another player's ready state, and refresh host liveness /
+    // suppress elections. Each handler now binds authority to the transport
+    // sender identity (msg.from is stamped from the transport-level Steam id in
+    // _dispatchEnvelope — never attacker-writable payload). Guards fail-open
+    // like PLAYER_KICKED: block only when we KNOW the sender is wrong, so a
+    // missing from/hostSteamId can't break legit traffic (mock transports may
+    // omit `from`). Structural replacement: plan §6A.3 default-deny role table.
+
+    _isFromHost(msg) {
+        return !(msg?.from && this.network?.hostSteamId && msg.from !== this.network.hostSteamId);
+    }
+
+    /** Sender may act on `steamId` only for itself, unless sender is the host. */
+    _isSelfOrHost(msg, steamId) {
+        if (!msg?.from) return true; // fail-open: transport didn't stamp a sender
+        if (steamId && msg.from === steamId) return true;
+        return this._isFromHost(msg);
+    }
+
+    _rejectSpoof(type, msg) {
+        this._spoofDrops = (this._spoofDrops || 0) + 1;
+        console.warn(`🚫 [FFA] Ignoring ${type} from unauthorized sender ${msg?.from}`);
+    }
+
+    _handleLobbyPlayerJoined(msg) {
+        console.log('📬 LOBBY_PLAYER_JOINED received:', msg);
+
+        // Host receives join announcement from peer — a peer may only announce
+        // ITSELF (§1.3 hole d: forged joins under another id).
+        if (this.isHost && msg.data.steamId && msg.data.name) {
+            if (msg.from && msg.data.steamId !== msg.from) {
+                this._rejectSpoof('LOBBY_PLAYER_JOINED (forged join id)', msg);
+                return;
+            }
+            console.log(`📢 Host received join from: ${msg.data.name} (${msg.data.steamId})`);
+            if (msg.data.steamId !== this.localPlayerId) {
+                if (msg.data.asSpectator) {
+                    this._registerSpectator(msg.data.steamId, msg.data.name);
+                } else {
+                    this.addPlayer(msg.data.steamId, msg.data.name);
+                    this.queueResync(msg.data.steamId);
+                }
+            }
+        }
+
+        // Peers receive player list update — roster adoption is host-authoritative
+        // (§1.3 hole d: any peer could rewrite a peer's roster).
+        if (!this.isHost && msg.data.players) {
+            if (!this._isFromHost(msg)) {
+                this._rejectSpoof('LOBBY_PLAYER_JOINED (roster from non-host)', msg);
+                return;
+            }
+            console.log('📢 Peer received player list update from host:', msg.data.players);
+            if (typeof msg.data.spectatorCount === 'number') {
+                this.spectatorCount = msg.data.spectatorCount; // mirror host's count for display
+            }
+            msg.data.players.forEach((p) => {
+                if (!this.players.has(p.steamId)) {
+                    console.log(`   Adding player: ${p.name} with color from host: ${p.color}`);
+                    this.addPlayer(p.steamId, p.name, p.steamId === this.localPlayerId);
+                    // Override auto-assigned color with host's color
+                    const player = this.players.get(p.steamId);
+                    if (player && p.color) {
+                        console.log(`   🎨 Overriding color for ${p.name}: ${player.color} → ${p.color}`);
+                        player.color = p.color;
+                    }
+                    // Adopt the host's authoritative alive/late-joiner state so a drop-in
+                    // late joiner isn't briefly shown alive (then skull) before the snapshot.
+                    if (player) {
+                        if (p.isAlive !== undefined) player.isAlive = p.isAlive;
+                        if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
+                    }
+                } else {
+                    // Update existing player
+                    console.log(`   Updating existing player: ${p.name}`);
+                    const player = this.players.get(p.steamId);
+                    player.isReady = p.isReady;
+                    player.isAlive = p.isAlive;
+                    // Late joiner waiting state (≠ eliminated) — keep the ⏳ overlay in sync.
+                    if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
+                    // Update color if provided (ensures consistency)
+                    if (p.color) {
+                        player.color = p.color;
+                    }
+                }
+            });
+        }
+        // Peer received the host's authoritative roster (joins / ready / color
+        // updates). Emit so the PEER's Activity Log records host/other ready changes
+        // — the host's broadcast updates isReady in place and otherwise never fires
+        // PLAYER_LIST_CHANGED on the peer.
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED, { players: this.players });
+    }
+
+    _handleLobbyPlayerLeft(msg) {
+        // §1.3 hole c: any peer could evict ANY player (steamId comes from
+        // attacker-controlled data). A peer may only remove itself; the host may
+        // remove anyone.
+        if (!this._isSelfOrHost(msg, msg.data?.steamId)) {
+            this._rejectSpoof('LOBBY_PLAYER_LEFT', msg);
+            return;
+        }
+        this.removePlayer(msg.data.steamId);
+    }
+
+    _handleLobbyGameStart(msg) {
+        if (this.isHost) return;
+        // §1.3 hole a: any peer could force every other peer into a match.
+        if (!this._isFromHost(msg)) {
+            this._rejectSpoof('LOBBY_GAME_START', msg);
+            return;
+        }
+        console.log('📬 Peer received game start from host!');
+        this.startMatch(msg.data.sharedSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
+        // Note: MATCH_STARTED event will be emitted AFTER countdown completes
+        // (see startMatch -> showCountdown callback)
+    }
+
+    _handleLobbyPlayerReady(msg) {
+        // Same class as hole c: ready state may only be toggled by the player
+        // itself (or relayed by the host).
+        if (!this._isSelfOrHost(msg, msg.data?.steamId)) {
+            this._rejectSpoof('LOBBY_PLAYER_READY', msg);
+            return;
+        }
+        const player = this.players.get(msg.data.steamId);
+        if (player) {
+            player.isReady = msg.data.isReady;
+            console.log(`${player.name} is ${msg.data.isReady ? 'ready' : 'not ready'}`);
+            // Notify the lobby UI so the host's Activity Log records the peer's
+            // ready change. (Player cards update via the 1s interval, but
+            // _logRosterChanges only runs on PLAYER_LIST_CHANGED — so without this
+            // the host never logs "<peer> is ready".)
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED, { players: this.players });
+        }
+    }
+
+    _handleNetHeartbeat(msg) {
+        // §1.3 hole e: host liveness must only refresh on the HOST's heartbeat —
+        // otherwise a peer spamming net:heartbeat keeps a dead host "alive"
+        // forever and vetoes every election. Silent drop (heartbeats are 0.5 Hz
+        // per peer); counted for netDiag.
+        if (!this._isFromHost(msg)) {
+            this._heartbeatSpoofsIgnored = (this._heartbeatSpoofsIgnored || 0) + 1;
+            return;
+        }
+        this.hostMigration.onHeartbeat();
+    }
+
+    _handleRoundStartSignal(msg) {
+        if (this.isHost) return;
+        // §1.3 hole b: any peer could release the ready-barrier prematurely.
+        if (!this._isFromHost(msg)) {
+            this._rejectSpoof('GAME_ROUND_START', msg);
+            return;
+        }
+        const gen = msg.data?.roundGeneration;
+        if (typeof gen === 'number' && gen !== this.roundGeneration) return;
+        if (this._readyBarrierTimer) {
+            clearTimeout(this._readyBarrierTimer); // GO arrived — cancel the local fallback
+            this._readyBarrierTimer = null;
+        }
+        const startThunk = this._pendingRoundStart;
+        this._pendingRoundStart = null;
+        if (startThunk) {
+            console.log(`🚦 [FFA] Peer round-start (gen ${this.roundGeneration})`);
+            startThunk();
+        }
     }
 
     performRoundRestart(data) {

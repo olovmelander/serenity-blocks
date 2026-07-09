@@ -789,6 +789,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             if (window.inputController) {
                 window.inputController.updateDAS(delta);
             }
+            // Pad hold-to-repeat (plan §1.5): this loop bypasses updateGame, so it
+            // must advance gamepad DAS itself (advanceGameplayInput dedupes by
+            // timestamp, so double-advance in one frame is a no-op).
+            if (window.gamepadController) {
+                window.gamepadController.advanceGameplayInput(currentTime);
+            }
 
             if (this.botManager) {
                 this.botManager.update(delta, currentTime);

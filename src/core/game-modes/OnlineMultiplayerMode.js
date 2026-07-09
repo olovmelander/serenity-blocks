@@ -24,19 +24,9 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
-
-function readOnlineNetFlag(name, defaultOn) {
-    if (typeof window === 'undefined') return defaultOn;
-    const search = (window.location && window.location.search) || '';
-    if (new RegExp(`[?&]${name}=1\\b`).test(search)) return true;
-    if (new RegExp(`[?&]${name}=0\\b`).test(search)) return false;
-    try {
-        const ls = window.localStorage && window.localStorage.getItem(`serenity.${name}`);
-        if (ls === '1') return true;
-        if (ls === '0') return false;
-    } catch (e) { /* localStorage unavailable; keep default */ }
-    return defaultOn;
-}
+// Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
+// local readOnlineNetFlag clone; identical URL → localStorage → default semantics.
+import { readFlag as readOnlineNetFlag } from '../flags.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system

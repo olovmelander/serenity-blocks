@@ -2490,6 +2490,11 @@ class SerenityBlocks {
         // Gamepad controller
         this.gamepadController = new GamepadController();
         this.gamepadController.initialize();
+        // Plan §1.5: updateGame advances pad DAS via window.gamepadController
+        // (same idiom as window.inputController below) — this assignment was
+        // missing, so pad hold-to-repeat never ticked in any single-board mode.
+        // Phase 5.4 replaces the global with per-player DAS state in GameState.
+        window.gamepadController = this.gamepadController;
 
         // Connect gamepad controller to modal manager
         this.modalManager.setGamepadController(this.gamepadController);
