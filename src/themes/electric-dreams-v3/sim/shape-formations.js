@@ -322,6 +322,52 @@ function fillTetromino(arr, n, opts = {}) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// TetrominoSet - all 7 unique tetrominoes spread across the screen.
+// opts: { cellSize=1.15, cellFill=0.9, depth=0.8 }
+// ──────────────────────────────────────────────────────────────────────────
+const TETROMINO_SET_PIECES = Object.freeze([
+    Object.freeze([-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0]), // I
+    Object.freeze([-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]), // O
+    Object.freeze([-1, -0.5, 0, -0.5, 1, -0.5, 0, 0.5]), // T
+    Object.freeze([-0.5, -0.5, 0.5, -0.5, -1, 0.5, 0, 0.5]), // S
+    Object.freeze([-1, -0.5, 0, -0.5, 0, 0.5, 1, 0.5]), // Z
+    Object.freeze([-1, -0.5, 0, -0.5, 1, -0.5, -1, 0.5]), // J
+    Object.freeze([-1, -0.5, 0, -0.5, 1, -0.5, 1, 0.5]), // L
+]);
+
+const TETROMINO_SET_LAYOUT = Object.freeze([
+    -9.6, 4.2,
+    -3.2, 4.2,
+    3.2, 4.2,
+    9.6, 4.2,
+    -6.4, -4.2,
+    0, -4.2,
+    6.4, -4.2,
+]);
+
+function fillTetrominoSet(arr, n, opts = {}) {
+    const cellSize = opts.cellSize ?? 1.15;
+    const cellFill = opts.cellFill ?? 0.9;
+    const depth = opts.depth ?? 0.8;
+    const pieceCount = TETROMINO_SET_PIECES.length;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const pieceIndex = i % pieceCount;
+        const piece = TETROMINO_SET_PIECES[pieceIndex];
+        const cellIndex = (Math.floor(i / pieceCount) + pieceIndex) % 4;
+        const cellOffset = cellIndex * 2;
+        const cx = TETROMINO_SET_LAYOUT[pieceIndex * 2];
+        const cy = TETROMINO_SET_LAYOUT[pieceIndex * 2 + 1];
+        const u = (((i * GOLDEN_RATIO_F) % 1) - 0.5) * cellSize * cellFill;
+        const v = (((i * 0.31415) % 1) - 0.5) * cellSize * cellFill;
+        arr[i4] = cx + piece[cellOffset] * cellSize + u;
+        arr[i4 + 1] = cy + piece[cellOffset + 1] * cellSize + v;
+        arr[i4 + 2] = (pieceIndex - 3) * 0.08 + (((i * 0.71) % 1) - 0.5) * depth;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Pyramid (tetrahedron) — 4 triangular faces.
 // Particles distributed across face surfaces via barycentric coords.
 // opts: { size=7 }
@@ -528,6 +574,236 @@ function fillWavySphere(arr, n, opts = {}) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Lightning - jagged ribbon bolt in the XY plane with a little depth.
+// opts: { scale=1.35, thickness=0.75, depth=0.8 }
+function fillLightning(arr, n, opts = {}) {
+    const scale = opts.scale ?? 1.35;
+    const thickness = opts.thickness ?? 0.75;
+    const depth = opts.depth ?? 0.8;
+    const segments = 5;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const p = (i / n) * segments;
+        const segment = Math.min(segments - 1, Math.floor(p));
+        const t = p - segment;
+        let x0; let y0; let x1; let y1;
+        switch (segment) {
+        case 0:
+            x0 = -1.5; y0 = 5.8; x1 = 2.0; y1 = 1.1;
+            break;
+        case 1:
+            x0 = 2.0; y0 = 1.1; x1 = 0.15; y1 = 1.0;
+            break;
+        case 2:
+            x0 = 0.15; y0 = 1.0; x1 = 1.55; y1 = -5.8;
+            break;
+        case 3:
+            x0 = 1.55; y0 = -5.8; x1 = -2.25; y1 = -0.55;
+            break;
+        default:
+            x0 = -2.25; y0 = -0.55; x1 = -0.35; y1 = -0.55;
+            break;
+        }
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const len = Math.max(0.0001, Math.sqrt(dx * dx + dy * dy));
+        const edgeTaper = 0.45 + 0.55 * Math.sin(Math.PI * t);
+        const offset = (((i * GOLDEN_RATIO_F) % 1) - 0.5) * thickness * edgeTaper;
+        arr[i4] = (x0 + dx * t + (-dy / len) * offset) * scale;
+        arr[i4 + 1] = (y0 + dy * t + (dx / len) * offset) * scale;
+        arr[i4 + 2] = (((i * 0.31) % 1) - 0.5) * depth;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Snowflake - six radial arms with angled branchlets.
+// opts: { radius=8.5, branchRadius=4.6, branchLength=2.8, thickness=0.45, depth=0.7 }
+function fillSnowflake(arr, n, opts = {}) {
+    const radius = opts.radius ?? 8.5;
+    const branchRadius = opts.branchRadius ?? 4.6;
+    const branchLength = opts.branchLength ?? 2.8;
+    const thickness = opts.thickness ?? 0.45;
+    const depth = opts.depth ?? 0.7;
+    const arms = 6;
+    const features = arms * 3;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const feature = i % features;
+        const arm = Math.floor(feature / 3);
+        const branch = feature % 3;
+        const armAngle = (arm / arms) * Math.PI * 2;
+        const localT = (i * GOLDEN_RATIO_F) % 1;
+        const side = branch === 2 ? -1 : 1;
+        let x; let y; let angle; let length;
+        if (branch === 0) {
+            angle = armAngle;
+            length = radius * (0.08 + localT * 0.92);
+            x = Math.cos(angle) * length;
+            y = Math.sin(angle) * length;
+        } else {
+            const baseX = Math.cos(armAngle) * branchRadius;
+            const baseY = Math.sin(armAngle) * branchRadius;
+            angle = armAngle + side * Math.PI * 0.28;
+            length = branchLength * localT;
+            x = baseX + Math.cos(angle) * length;
+            y = baseY + Math.sin(angle) * length;
+        }
+        const normal = angle + Math.PI * 0.5;
+        const offset = (((i * 0.31) % 1) - 0.5) * thickness;
+        arr[i4] = x + Math.cos(normal) * offset;
+        arr[i4 + 1] = y + Math.sin(normal) * offset;
+        arr[i4 + 2] = (((i * 0.71) % 1) - 0.5) * depth;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Lotus - layered polar rose petals, filled toward the center.
+// opts: { radius=9, petals=8, depth=0.8 }
+function fillLotus(arr, n, opts = {}) {
+    const radius = opts.radius ?? 9;
+    const petals = opts.petals ?? 8;
+    const depth = opts.depth ?? 0.8;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const theta = ((i * GOLDEN_RATIO_F) % 1) * Math.PI * 2;
+        const petal = Math.abs(Math.sin(theta * petals * 0.5));
+        const petalLimit = radius * (0.22 + 0.78 * petal ** 0.72);
+        const fill = Math.sqrt((i * 0.31) % 1);
+        const r = petalLimit * fill;
+        arr[i4] = r * Math.cos(theta);
+        arr[i4 + 1] = r * Math.sin(theta) * 0.86;
+        arr[i4 + 2] = (0.5 - fill) * depth + (((i * 0.71) % 1) - 0.5) * depth * 0.35;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Crescent - tapered sickle arc facing the camera.
+// opts: { radius=7.1, thickness=2.6, depth=0.8 }
+function fillCrescent(arr, n, opts = {}) {
+    const radius = opts.radius ?? 7.1;
+    const thickness = opts.thickness ?? 2.6;
+    const depth = opts.depth ?? 0.8;
+    const arc = opts.arc ?? 2.65;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const t = i / n;
+        const theta = (t - 0.5) * arc;
+        const centerX = Math.cos(theta) * radius - radius * 0.55;
+        const centerY = Math.sin(theta) * radius;
+        const taper = 0.16 + 0.84 * Math.sin(Math.PI * t);
+        const offset = (((i * GOLDEN_RATIO_F) % 1) - 0.5) * thickness * taper;
+        arr[i4] = centerX + Math.cos(theta) * offset;
+        arr[i4 + 1] = centerY + Math.sin(theta) * offset;
+        arr[i4 + 2] = (((i * 0.31) % 1) - 0.5) * depth;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Crystal shard - elongated faceted double pyramid with a slight skew.
+// opts: { height=12, radius=3.8, sides=6 }
+function fillCrystalShard(arr, n, opts = {}) {
+    const height = opts.height ?? 12;
+    const radius = opts.radius ?? 3.8;
+    const sides = opts.sides ?? 6;
+    const faceCount = sides * 2;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const face = i % faceCount;
+        const topHalf = face < sides;
+        const side = face % sides;
+        const angle0 = (side / sides) * Math.PI * 2 + (topHalf ? 0.12 : -0.12);
+        const angle1 = ((side + 1) / sides) * Math.PI * 2 + (topHalf ? 0.12 : -0.12);
+        let a = (i * GOLDEN_RATIO_F) % 1;
+        let b = (i * 0.31415) % 1;
+        if (a + b > 1) { a = 1 - a; b = 1 - b; }
+        const c = 1 - a - b;
+        const apexY = topHalf ? height * 0.55 : -height * 0.55;
+        const apexX = topHalf ? 0.55 : -0.45;
+        const apexZ = topHalf ? 0.35 : -0.25;
+        const r0 = radius * (0.9 + 0.1 * Math.sin(side));
+        const r1 = radius * (0.9 + 0.1 * Math.cos(side));
+        const x0 = Math.cos(angle0) * r0;
+        const z0 = Math.sin(angle0) * r0;
+        const x1 = Math.cos(angle1) * r1;
+        const z1 = Math.sin(angle1) * r1;
+        arr[i4] = apexX * a + x0 * b + x1 * c;
+        arr[i4 + 1] = apexY * a;
+        arr[i4 + 2] = apexZ * a + z0 * b + z1 * c;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Mobius - a single twisted ribbon loop.
+// opts: { radius=5.8, width=2.2 }
+function fillMobius(arr, n, opts = {}) {
+    const radius = opts.radius ?? 5.8;
+    const width = opts.width ?? 2.2;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const u = (i / n) * Math.PI * 2;
+        const v = (((i * GOLDEN_RATIO_F) % 1) - 0.5) * 2 * width;
+        const half = u * 0.5;
+        const band = radius + v * Math.cos(half);
+        arr[i4] = band * Math.cos(u);
+        arr[i4 + 1] = band * Math.sin(u) * 0.72;
+        arr[i4 + 2] = v * Math.sin(half);
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Comet - glowing head with a tapered trailing plume.
+// opts: { headRadius=2.6, tailLength=13, tailWidth=3.2 }
+function fillComet(arr, n, opts = {}) {
+    const headRadius = opts.headRadius ?? 2.6;
+    const tailLength = opts.tailLength ?? 13;
+    const tailWidth = opts.tailWidth ?? 3.2;
+    const headCount = Math.max(1, Math.floor(n * 0.36));
+    const tailCount = Math.max(1, n - headCount);
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        if (i < headCount) {
+            const y = 1 - (i / Math.max(1, headCount - 1)) * 2;
+            const rad = Math.sqrt(Math.max(0, 1 - y * y));
+            const theta = GOLDEN_ANGLE * i;
+            arr[i4] = 4.2 + headRadius * Math.cos(theta) * rad;
+            arr[i4 + 1] = headRadius * y;
+            arr[i4 + 2] = headRadius * Math.sin(theta) * rad;
+        } else {
+            const tailI = i - headCount;
+            const t = tailI / Math.max(1, tailCount - 1);
+            const angle = tailI * GOLDEN_ANGLE;
+            const taper = (1 - t) ** 1.55;
+            const plumeR = tailWidth * taper * Math.sqrt((tailI * 0.31) % 1);
+            arr[i4] = 3.6 - tailLength * t;
+            arr[i4 + 1] = Math.sin(angle) * plumeR;
+            arr[i4 + 2] = Math.cos(angle) * plumeR * 0.65;
+        }
+        arr[i4 + 3] = 1;
+    }
+}
+
+// Nautilus - logarithmic spiral shell with a growing rounded tube.
+// opts: { maxRadius=8.8, turns=3.7, tubeRadius=1.25 }
+function fillNautilus(arr, n, opts = {}) {
+    const maxRadius = opts.maxRadius ?? 8.8;
+    const turns = opts.turns ?? 3.7;
+    const tubeRadius = opts.tubeRadius ?? 1.25;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const t = i / n;
+        const angle = t * turns * Math.PI * 2;
+        const radius = maxRadius * (0.08 + 0.92 * t ** 1.35);
+        const tubeAngle = ((i * GOLDEN_RATIO_F) % 1) * Math.PI * 2;
+        const tube = tubeRadius * (0.22 + 0.78 * t);
+        const radialOffset = Math.cos(tubeAngle) * tube;
+        const r = radius + radialOffset;
+        arr[i4] = r * Math.cos(angle);
+        arr[i4 + 1] = r * Math.sin(angle) * 0.78;
+        arr[i4 + 2] = Math.sin(tubeAngle) * tube;
+        arr[i4 + 3] = 1;
+    }
+}
+
 // Free — zero attraction. Particles ignore targets and behave as free fluid.
 // Useful as a "release" state when returning from a formation.
 // ──────────────────────────────────────────────────────────────────────────
@@ -556,6 +832,7 @@ export const SHAPE_GENERATORS = Object.freeze({
     butterfly: fillButterfly,
     ring: fillRing,
     tetromino: fillTetromino,
+    tetrominoSet: fillTetrominoSet,
     // New in this batch — geometric + organic + math curves.
     pyramid: fillPyramid,
     octahedron: fillOctahedron,
@@ -565,6 +842,14 @@ export const SHAPE_GENERATORS = Object.freeze({
     trefoil: fillTrefoil,
     vortex: fillVortex,
     wavySphere: fillWavySphere,
+    lightning: fillLightning,
+    snowflake: fillSnowflake,
+    lotus: fillLotus,
+    crescent: fillCrescent,
+    crystalShard: fillCrystalShard,
+    mobius: fillMobius,
+    comet: fillComet,
+    nautilus: fillNautilus,
     free: fillFree,
 });
 

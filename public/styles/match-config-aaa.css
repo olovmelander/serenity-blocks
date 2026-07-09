@@ -83,6 +83,33 @@
     animation: cs-shimmer 8s ease-in-out infinite;
 }
 
+.match-config-modal .lmc .match-config-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: #d9e7ff;
+    color: #d9e7ff;
+}
+
+.match-config-modal .lmc-title-text {
+    background: linear-gradient(100deg,
+            #d9e7ff 0%, var(--cs-accent) 32%, var(--cs-accent-2) 60%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+}
+
+.match-config-modal .lmc-title-icon {
+    flex: 0 0 auto;
+    color: var(--cs-accent);
+    filter: drop-shadow(0 0 10px rgba(var(--cs-accent-rgb), 0.42));
+}
+
 /* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
 
 /* ---- Labels + help --------------------------------------------------------- */
@@ -128,6 +155,100 @@
 
 .match-config-modal .form-group input::placeholder {
     color: rgba(211, 219, 245, 0.38);
+}
+
+.match-config-modal .lmc-number-stepper {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+
+.match-config-modal .lmc-number-stepper input[type="number"] {
+    width: 100%;
+    padding-right: 68px;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.match-config-modal .lmc-number-stepper input[type="number"]::-webkit-inner-spin-button,
+.match-config-modal .lmc-number-stepper input[type="number"]::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.match-config-modal .lmc-number-stepper__controls {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    width: 42px;
+    height: 40px;
+    padding: 4px;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 3px;
+    transform: translateY(-50%);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.24);
+    border-radius: 10px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+        rgba(8, 10, 23, 0.68);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+.match-config-modal .lmc-number-stepper__button {
+    appearance: none;
+    -webkit-appearance: none;
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    color: rgba(221, 228, 255, 0.82);
+    cursor: pointer;
+    transition:
+        background 0.18s ease,
+        color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+}
+
+.match-config-modal .lmc-number-stepper__button::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+.match-config-modal .lmc-number-stepper__button--up::before {
+    transform: translateY(2px) rotate(-135deg);
+}
+
+.match-config-modal .lmc-number-stepper__button--down::before {
+    transform: translateY(-2px) rotate(45deg);
+}
+
+.match-config-modal .lmc-number-stepper__button:hover {
+    background: rgba(var(--cs-accent-rgb), 0.22);
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+.match-config-modal .lmc-number-stepper__button:active {
+    transform: scale(0.94);
+}
+
+.match-config-modal .lmc-number-stepper__button:focus-visible {
+    outline: none;
+    background: rgba(var(--cs-accent-rgb), 0.24);
+    color: #ffffff;
+    box-shadow: 0 0 0 2px rgba(var(--cs-accent-rgb), 0.36);
 }
 
 /* Select keeps its dropdown arrow alongside the glass background */
@@ -220,6 +341,11 @@
     color: var(--cs-accent);
 }
 
+.match-config-modal .advanced-settings summary .lmc-summary-icon {
+    flex: 0 0 auto;
+    color: var(--cs-accent);
+}
+
 .match-config-modal .advanced-settings summary:hover {
     color: #ffffff;
 }
@@ -234,6 +360,10 @@
 }
 
 .match-config-modal .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
     background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
     border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
     color: #0a0c1a;
@@ -242,12 +372,80 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
+.match-config-modal .btn-primary .lmc-action-icon {
+    flex: 0 0 auto;
+    transition: transform 0.22s ease, filter 0.22s ease;
+    will-change: transform;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start {
+    margin-left: -2px;
+    overflow: visible;
+    transform: translateY(1px) rotate(-8deg);
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-body {
+    stroke: #25305f;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-fin {
+    stroke: #7b3ff2;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-window {
+    fill: #b9fbff;
+    stroke: #138aa1;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-flame {
+    stroke: #ff7a3d;
+    filter: drop-shadow(0 0 4px rgba(255, 122, 61, 0.45));
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.match-config-modal .btn-primary:hover .lmc-action-icon--match-start {
+    animation: lmc-rocket-boost 0.72s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    filter: drop-shadow(0 2px 5px rgba(10, 12, 26, 0.26));
+}
+
+.match-config-modal .btn-primary:hover .lmc-action-icon--match-start .cs-match-start-flame {
+    animation: lmc-rocket-flame 0.22s ease-in-out infinite alternate;
+}
+
 .match-config-modal .btn-primary:hover {
     background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
     transform: translateY(-2px);
     box-shadow:
         0 9px 26px rgba(var(--cs-accent-rgb), 0.50),
         inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+@keyframes lmc-rocket-boost {
+    0%, 100% {
+        transform: translateY(1px) rotate(-8deg);
+    }
+    42% {
+        transform: translate(2px, -3px) rotate(-13deg);
+    }
+    70% {
+        transform: translate(-1px, 1px) rotate(-6deg);
+    }
+}
+
+@keyframes lmc-rocket-flame {
+    from {
+        opacity: 0.72;
+        stroke-width: 1.8;
+        transform: translate(0, 0) scale(0.92);
+    }
+    to {
+        opacity: 1;
+        stroke-width: 2.5;
+        transform: translate(-0.5px, 0.5px) scale(1.16);
+    }
 }
 
 .match-config-modal .btn-primary:focus-visible {
@@ -337,12 +535,15 @@
 @media (prefers-reduced-motion: reduce) {
     .match-config-modal .match-config-content,
     .match-config-modal .match-config-header h2,
-    .match-config-modal .form-group {
+    .match-config-modal .form-group,
+    .match-config-modal .btn-primary:hover .lmc-action-icon--match-start,
+    .match-config-modal .btn-primary:hover .lmc-action-icon--match-start .cs-match-start-flame {
         animation: none !important;
     }
 
     .match-config-modal .checkbox-label input[type="checkbox"],
-    .match-config-modal .checkbox-label input[type="checkbox"]::before {
+    .match-config-modal .checkbox-label input[type="checkbox"]::before,
+    .match-config-modal .btn-primary .lmc-action-icon {
         transition: none !important;
     }
 }

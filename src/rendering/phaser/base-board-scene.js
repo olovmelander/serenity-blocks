@@ -170,6 +170,8 @@ export function createBaseBoardScene(
                 // Dynamic layer (pieceGraphics): always clear for current piece/ghost updates
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
+                // Blind veil is dynamic (alpha fades each frame); always clear.
+                this.blindGraphics?.clear();
 
                 performanceMonitor.updateEnd();
                 performanceMonitor.renderStart();
@@ -331,6 +333,9 @@ export function createBaseBoardScene(
 
             try {
                 this.graphicsLayers.board = this.add.graphics();
+                // Blind veil sits ABOVE the locked stack but BELOW the active
+                // piece/ghost, so a blinded board stays playable.
+                this.graphicsLayers.blind = this.add.graphics();
                 this.graphicsLayers.piece = this.add.graphics();
                 this.graphicsLayers.fx = this.add.graphics();
                 console.log('[BaseBoardScene] Graphics layers created successfully');
@@ -345,6 +350,7 @@ export function createBaseBoardScene(
          */
         attachGraphicsLayerAliases() {
             this.boardGraphics = this.graphicsLayers.board;
+            this.blindGraphics = this.graphicsLayers.blind;
             this.pieceGraphics = this.graphicsLayers.piece;
             this.effectsGraphics = this.graphicsLayers.fx;
         }
@@ -705,7 +711,7 @@ export function createBaseBoardScene(
             if (this._boardDirty) {
                 this.drawGrid();
                 this.drawBoardFromGrid();
-                this.drawLockedPieceOutlines();
+                // drawLockedPieceOutlines intentionally removed: pieces render as fused shapes with no internal borders
             }
 
             // Dynamic layer - render every frame
@@ -715,6 +721,80 @@ export function createBaseBoardScene(
             this.drawAnimatedPieces();
             if (this.gameState.currentPiece) {
                 this.drawCurrentPiece();
+            }
+
+            // Quadra blind veil — drawn every frame (alpha fades); the blind layer
+            // sits below the piece layer so the active piece/ghost stay visible.
+            this.drawBlindOverlay();
+        }
+
+        /**
+         * Eases the veil alpha toward 0 over the last ~25% of the timer for a
+         * smooth reveal. Full opacity otherwise.
+         * @param {number} ratio - remaining/original duration (0..1)
+         */
+        _blindFade(ratio) {
+            if (ratio <= 0) return 0;
+            if (ratio >= 0.25) return 1;
+            return ratio / 0.25;
+        }
+
+        /**
+         * Draws the Quadra blind blackout from gameState.blindTimers onto the
+         * dedicated (dynamic, always-cleared) blind layer.
+         *   - full blind (field):   veil the whole visible locked stack
+         *   - partial blind (pending): veil only the garbage rows
+         * Render-only: never touches board/collision state.
+         */
+        drawBlindOverlay() {
+            const layer = this.blindGraphics;
+            const gs = this.gameState;
+            const bt = gs?.blindTimers;
+            if (!layer || !bt) return;
+
+            const fieldActive = (bt.field || 0) > 0;
+            const pendingActive = (bt.pending || 0) > 0;
+            if (!fieldActive && !pendingActive) return;
+
+            const { startRow, endRow } = this.getVisibleRowRange();
+            const isInfinity = !!gs.isInfinityMode;
+            const minRow = isInfinity ? startRow : Math.max(startRow, this.hiddenRows);
+            const bs = this.blockSize;
+            const VEIL = 0x05070d; // near-black with a faint cool tint
+            const MAX_ALPHA = 0.92;
+
+            if (fieldActive) {
+                // FULL BLIND: one rect over the whole visible play area.
+                const ratio = bt.fieldMax > 0 ? bt.field / bt.fieldMax : 1;
+                const alpha = MAX_ALPHA * this._blindFade(ratio);
+                if (alpha <= 0) return;
+                const y = Math.round(minRow * bs);
+                const h = Math.round(endRow * bs) - y;
+                layer.fillStyle(VEIL, alpha);
+                layer.fillRect(0, y, Math.round(this.cols * bs), h);
+                return;
+            }
+
+            // PARTIAL BLIND: veil only garbage cells in the locked stack.
+            const grid = gs.boardGrid;
+            if (!grid) return;
+            const ratio = bt.pendingMax > 0 ? bt.pending / bt.pendingMax : 1;
+            const alpha = MAX_ALPHA * this._blindFade(ratio);
+            if (alpha <= 0) return;
+            layer.fillStyle(VEIL, alpha);
+            for (let worldY = minRow; worldY < endRow; worldY++) {
+                const row = grid[worldY];
+                if (!row) continue;
+                for (let worldX = 0; worldX < this.cols; worldX++) {
+                    const cell = row[worldX];
+                    if (!cell) continue;
+                    if (cell.type !== 'GARBAGE' && cell.type !== 'CLEAN_GARBAGE') continue;
+                    const px = Math.round(worldX * bs);
+                    const py = Math.round(worldY * bs);
+                    const w = Math.round((worldX + 1) * bs) - px;
+                    const h = Math.round((worldY + 1) * bs) - py;
+                    layer.fillRect(px, py, w, h);
+                }
             }
         }
 
@@ -734,39 +814,109 @@ export function createBaseBoardScene(
         drawBoardFromGrid() {
             const grid = this.gameState?.boardGrid;
             if (!grid) return;
+            const staticLayer = this.boardGraphics;
+            if (!staticLayer) return;
 
             const { startRow, endRow } = this.getVisibleRowRange();
+            const isInfinity = !!this.gameState?.isInfinityMode;
+            const minRow = isInfinity ? startRow : Math.max(startRow, this.hiddenRows);
+            const range = Math.max(1, endRow - startRow);
+            const bs = this.blockSize;
 
-            // PERFORMANCE: Draw to static boardGraphics layer (only redraws when board changes)
-            const staticLayer = this.boardGraphics;
+            // Resolve themed color once per (type|color), with garbage special-casing.
+            // Pooled across frames (cleared each draw) to avoid a per-frame Map allocation.
+            if (!this._poolColorCache) this._poolColorCache = new Map();
+            const colorCache = this._poolColorCache;
+            colorCache.clear();
+            const resolveColor = (cell) => {
+                const cacheKey = `${cell.type}|${cell.color}`;
+                const cached = colorCache.get(cacheKey);
+                if (cached) return cached;
+                let colorValue = cell.color;
+                if (typeof colorValue === 'string' && COLORS[colorValue]) colorValue = COLORS[colorValue];
+                const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
+                const isCustomColor = cell.color && cell.color !== '#808080';
+                if (!isGarbage || !isCustomColor) colorValue = this.getThemedColor(cell.type, colorValue);
+                const resolved = { colorInt: this.colorToInt(colorValue), isGarbage };
+                colorCache.set(cacheKey, resolved);
+                return resolved;
+            };
 
-            for (let worldY = startRow; worldY < endRow; worldY++) {
+            // Continuous vertical light ramp across the stack (top lighter → bottom
+            // darker). A pure function of worldY, so vertically/horizontally adjacent
+            // same-color cells always match at their shared edge → zero seams.
+            const shadeAt = (worldY) => 0.1 * (1 - 2 * ((worldY - startRow) / range));
+
+            // ---- Body: per-cell overlapping rects (seamless, topology-proof) ----
+            for (let worldY = minRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
-
                 for (let worldX = 0; worldX < this.cols; worldX++) {
                     const cell = row[worldX];
                     if (!cell) continue;
-
-                    let colorValue = cell.color;
-                    if (typeof colorValue === 'string' && COLORS[colorValue]) {
-                        colorValue = COLORS[colorValue];
+                    const { colorInt, isGarbage } = resolveColor(cell);
+                    const px = Math.round(worldX * bs);
+                    const py = Math.round(worldY * bs);
+                    const w = Math.round((worldX + 1) * bs) - px;
+                    const h = Math.round((worldY + 1) * bs) - py;
+                    if (isGarbage) {
+                        staticLayer.fillStyle(colorInt, 1); // matte
+                    } else {
+                        const top = this._shadeColor(colorInt, shadeAt(worldY));
+                        const bot = this._shadeColor(colorInt, shadeAt(worldY + 1));
+                        staticLayer.fillGradientStyle(top, top, bot, bot, 1, 1, 1, 1);
                     }
+                    staticLayer.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
+                }
+            }
 
-                    // Get themed color if cell has a type
-                    if (cell.type) {
-                        // Special handling for garbage: preserve player colors (non-gray)
-                        // If garbage has a specific color (not default gray), don't override with theme
-                        const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
-                        const isCustomColor = cell.color && cell.color !== '#808080';
-
-                        if (!isGarbage || !isCustomColor) {
-                            colorValue = this.getThemedColor(cell.type, colorValue);
+            // ---- Rim: outer perimeter of each fused same-color region only ----
+            const rimFx = this._pieceFx('T');
+            if (!rimFx.rim) return;
+            const width = Math.max(1, bs * rimFx.rimWidthFactor);
+            // Pooled across frames (cleared each draw) — avoids a per-frame Set allocation.
+            if (!this._poolVisited) this._poolVisited = new Set();
+            const visited = this._poolVisited;
+            visited.clear();
+            for (let worldY = minRow; worldY < endRow; worldY++) {
+                const row = grid[worldY];
+                if (!row) continue;
+                for (let worldX = 0; worldX < this.cols; worldX++) {
+                    const cell = row[worldX];
+                    if (!cell) continue;
+                    const key = `${worldX},${worldY}`;
+                    if (visited.has(key)) continue;
+                    visited.add(key);
+                    const { colorInt, isGarbage } = resolveColor(cell);
+                    if (isGarbage) continue; // garbage has no rim
+                    // Flood-fill the connected same-color region (visible band only).
+                    // Pooled across regions/frames (cleared per region) to kill the
+                    // per-region Set/array churn that spiked GC during big cascades.
+                    if (!this._poolGroup) this._poolGroup = new Set();
+                    const group = this._poolGroup;
+                    group.clear();
+                    group.add(key);
+                    if (!this._poolStack) this._poolStack = [];
+                    const stack = this._poolStack;
+                    stack.length = 0;
+                    stack.push([worldX, worldY]);
+                    while (stack.length) {
+                        const [cx, cy] = stack.pop();
+                        for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+                            if (nx < 0 || nx >= this.cols || ny < minRow || ny >= endRow) continue;
+                            const nk = `${nx},${ny}`;
+                            if (visited.has(nk)) continue;
+                            const ncell = grid[ny]?.[nx];
+                            if (!ncell) continue;
+                            const nc = resolveColor(ncell);
+                            if (nc.isGarbage || nc.colorInt !== colorInt) continue;
+                            visited.add(nk);
+                            group.add(nk);
+                            stack.push([nx, ny]);
                         }
                     }
-
-                    // Draw to static layer instead of dynamic pieceGraphics
-                    this.drawBlock(worldX, worldY, colorValue, 1.0, false, null, 0, 0, staticLayer);
+                    const loops = this.traceLoops(group, 0, 0);
+                    this.strokeLoops(staticLayer, loops, 0xffffff, width, rimFx.rimAlpha * 0.6);
                 }
             }
         }
@@ -847,32 +997,27 @@ export function createBaseBoardScene(
             const pieces = this.gameState?.lockedPieces;
             if (!pieces) return;
 
+            const skipHiddenRows = !this.gameState?.isInfinityMode;
+
             pieces
                 .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
                 .forEach((piece) => {
-                    // Get themed color for this piece type
-                    // Get themed color for this piece type
-                    let themedColor = piece.color;
-
+                    let colorValue = piece.color;
                     const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
                     const isCustomColor = piece.color && piece.color !== '#808080';
-
                     if (!isGarbage || !isCustomColor) {
-                        themedColor = this.getThemedColor(piece.type, piece.color);
+                        colorValue = this.getThemedColor(piece.type, piece.color);
                     }
-
-                    piece.shape.forEach((row, localY) => {
-                        row.forEach((cell, localX) => {
-                            if (cell <= 0) return;
-
-                            const worldX = piece.x + localX;
-                            const worldY = piece.y + localY + piece.animationOffset;
-
-                            if ((!this.gameState?.isInfinityMode && worldY < this.hiddenRows) || worldY >= this.rows + this.hiddenRows) return;
-
-                            this.drawBlock(worldX, worldY, themedColor, 1.0);
-                        });
-                    });
+                    const colorInt = this.colorToInt(colorValue);
+                    // Garbage stays matte (no gradient/rim); playable pieces get depth.
+                    const fx = isGarbage
+                        ? { gradient: false, rim: false, gloss: false }
+                        : this._pieceFx(piece.type);
+                    // Animated pieces shift by a fractional animationOffset.
+                    this.drawFusedPiece(
+                        this.pieceGraphics, piece.shape, piece.x, piece.y + piece.animationOffset,
+                        colorInt, { alpha: 1, fx, gloss: false, skipHiddenRows },
+                    );
                 });
         }
 
@@ -881,51 +1026,428 @@ export function createBaseBoardScene(
             if (!piece) return;
 
             const ghostY = getGhostLandingY(this.gameState);
+            const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            piece.shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
-                    if (cell > 0) {
-                        const worldX = piece.x + x;
-                        const worldY = ghostY + y;
+            // The ghost is a single translucent silhouette — NO gradient/gloss/rim
+            // depth (that would turn it into a bright box competing with the active
+            // piece). One shared pulse alpha across all cells keeps it fused.
+            const minAlpha = 0.1;
+            const maxAlpha = 0.35;
+            const pieceCenterX = Math.floor(piece.x + piece.shape[0].length / 2);
+            const pieceCenterY = Math.floor(ghostY + piece.shape.length / 2);
+            // Reduced motion: freeze the pulse at its midpoint.
+            const pulse = this._reducedMotion() ? 0.5 : this._getPulseIntensity(pieceCenterX, pieceCenterY);
+            const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
 
-                        if (this.gameState?.isInfinityMode || worldY >= this.hiddenRows) {
-                            const minAlpha = 0.1;
-                            const maxAlpha = 0.35;
-                            const pulse = this._getPulseIntensity(worldX, worldY);
-                            const pulsatingAlpha = minAlpha + (maxAlpha - minAlpha) * pulse;
-                            this.drawBlock(worldX, worldY, '#FFFFFF', pulsatingAlpha, true);
-                        }
-                    }
-                });
-            });
+            const present = this._presentCells(piece.shape, ghostY, skipHiddenRows);
+            const loops = this.traceLoops(present, piece.x, ghostY);
+            // Translucent fill MUST use the single contour polygon — per-cell rects
+            // double-cover at their overlap and produce brighter internal seam lines.
+            this.fillContour(this.pieceGraphics, loops, 0xffffff, alpha);
+            // A faint cyan outer outline is the ghost's only edge treatment.
+            this.strokeLoops(this.pieceGraphics, loops, 0x64c8ff, 1, alpha * 0.7);
         }
 
         drawCurrentPiece() {
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
-            // Get themed color for this piece type
             const themedColor = this.getThemedColor(piece.type, piece.color);
+            const colorInt = this.colorToInt(themedColor);
+            const fx = this._pieceFx(piece.type);
+            const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            // Draw all blocks of the piece as solid fill first
-            piece.shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
-                    if (cell > 0) {
-                        const worldY = piece.y + y;
-                        if (this.gameState?.isInfinityMode || worldY >= this.hiddenRows) {
-                            this.drawBlock(piece.x + x, worldY, themedColor, 1.0, false, piece.shape, x, y);
-                        }
-                    }
+            // Active piece gets the full premium treatment: continuous gradient,
+            // top gloss sheen, and an outer rim — all on the fused silhouette only.
+            this.drawFusedPiece(this.pieceGraphics, piece.shape, piece.x, piece.y, colorInt, {
+                alpha: 1, fx, gloss: true, skipHiddenRows,
+            });
+        }
+
+        /**
+         * Trace the outer boundary of a piece shape as a pixel-space polygon.
+         * Works by collecting every outer edge segment (where an adjacent cell is absent),
+         * then chaining them into a single closed path.  Tetrominos are simply connected,
+         * so the chain always forms one polygon.
+         *
+         * @param {Array<Array<number>>} shape - 2-D piece shape matrix (1 = filled, 0 = empty)
+         * @param {number} originX - Grid X of the piece's top-left corner
+         * @param {number} originY - Grid Y of the piece's top-left corner
+         * @param {number} [minWorldY=0] - Only include cells at worldY >= this (hidden-row clipping)
+         * @returns {Array<{x:number, y:number}>} Ordered polygon vertices in pixel coordinates
+         */
+        buildOuterContour(shape, originX, originY, minWorldY = 0) {
+            const bs = this.blockSize;
+            const has = (lx, ly) =>
+                ly >= 0 && ly < shape.length &&
+                lx >= 0 && lx < (shape[0]?.length ?? 0) &&
+                shape[ly][lx] > 0;
+
+            // Collect directed outer-edge segments (CW winding).
+            // Direction for each face ensures the final polygon is clockwise.
+            const edges = [];
+            shape.forEach((row, ly) => {
+                const worldY = originY + ly;
+                if (!this.gameState?.isInfinityMode && worldY < minWorldY) return;
+                row.forEach((cell, lx) => {
+                    if (!cell) return;
+                    const x0 = Math.round((originX + lx) * bs);
+                    const y0 = Math.round((originY + ly) * bs);
+                    const x1 = Math.round((originX + lx + 1) * bs);
+                    const y1 = Math.round((originY + ly + 1) * bs);
+                    if (!has(lx, ly - 1)) edges.push({ fx: x0, fy: y0, tx: x1, ty: y0 }); // top
+                    if (!has(lx + 1, ly)) edges.push({ fx: x1, fy: y0, tx: x1, ty: y1 }); // right
+                    if (!has(lx, ly + 1)) edges.push({ fx: x1, fy: y1, tx: x0, ty: y1 }); // bottom
+                    if (!has(lx - 1, ly)) edges.push({ fx: x0, fy: y1, tx: x0, ty: y0 }); // left
                 });
             });
 
-            // Draw outline around the entire piece
-            const tempPiece = {
-                ...piece,
-                y: piece.y, // Already in world coordinates
-                x: piece.x,
+            if (edges.length === 0) return [];
+
+            const edgeMap = new Map();
+            edges.forEach((e) => edgeMap.set(`${e.fx},${e.fy}`, e));
+
+            const points = [];
+            let current = edges[0];
+            const startKey = `${edges[0].fx},${edges[0].fy}`;
+            do {
+                points.push({ x: current.fx, y: current.fy });
+                current = edgeMap.get(`${current.tx},${current.ty}`);
+                if (!current) break;
+            } while (`${current.fx},${current.fy}` !== startKey);
+
+            return points;
+        }
+
+        /**
+         * Fill a polygon produced by buildOuterContour using Phaser Graphics path API.
+         * A single fillPath call — no internal seams possible.
+         * @param {Phaser.GameObjects.Graphics} graphics
+         * @param {Array<{x:number,y:number}>} points
+         * @param {number} colorInt   - integer color (0xRRGGBB)
+         * @param {number} [alpha=1]
+         */
+        fillFusedShape(graphics, points, colorInt, alpha = 1) {
+            if (!graphics || points.length < 3) return;
+            graphics.fillStyle(colorInt, alpha);
+            graphics.beginPath();
+            graphics.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                graphics.lineTo(points[i].x, points[i].y);
+            }
+            graphics.closePath();
+            graphics.fillPath();
+        }
+
+        /**
+         * Resolve a color string to an integer, falling back to mid-grey.
+         * @param {string} color
+         * @returns {number}
+         */
+        colorToInt(color) {
+            if (!color || typeof color !== 'string') return 0x808080;
+            const parsed = parseInt(color.replace('#', ''), 16);
+            return Number.isNaN(parsed) ? 0x808080 : parsed;
+        }
+
+        // =====================================================================
+        // FUSED PIECE RENDERING (premium depth, no internal seams)
+        // See docs/tetromino-visual-upgrade-plan.md. Body fills as per-cell
+        // overlapping opaque rects (topology-proof, never a diagonal); depth is
+        // applied only as a continuous whole-shape gradient + outer-perimeter rim.
+        // =====================================================================
+
+        /** Whether to soften animated effects for accessibility. */
+        _reducedMotion() {
+            try {
+                if (typeof window !== 'undefined') {
+                    if (window.settingsManager?.get?.().reducedMotion) return true;
+                    if (typeof window.matchMedia === 'function') {
+                        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            return false;
+        }
+
+        /**
+         * Resolve premium effect parameters for a piece type from the theme.
+         * Themes opt out by setting renderMode 'flat' or effects.premium === false.
+         */
+        _pieceFx(pieceType) {
+            // NOTE: keep these in sync with the Canvas-2D next-queue values in
+            // canvas-drawing-utils.js (PIECE_DEPTH) so previews match the board.
+            const DEF = {
+                gradient: true,
+                highlight: 0.18, // lighten amount (0..1) at top-left
+                shadow: 0.18, // darken amount (0..1) at bottom-right
+                rim: true,
+                rimAlpha: 0.42,
+                rimWidthFactor: 0.05,
+                gloss: true,
+                glossAlpha: 0.22,
             };
-            this.drawPieceOutline(tempPiece);
+            try {
+                if (this.styleManager?.getPhaserEffects) {
+                    return { ...DEF, ...this.styleManager.getPhaserEffects(pieceType) };
+                }
+            } catch (e) { /* ignore */ }
+            return DEF;
+        }
+
+        /** Shade an int color: amount>0 lightens, amount<0 darkens. */
+        _shadeColor(colorInt, amount) {
+            if (!amount) return colorInt;
+            return amount > 0
+                ? this.lightenColor(colorInt, amount)
+                : this.darkenColor(colorInt, -amount);
+        }
+
+        /** Linear-interpolate two int colors. */
+        _lerpColor(c1, c2, t) {
+            const r1 = (c1 >> 16) & 0xff; const g1 = (c1 >> 8) & 0xff; const b1 = c1 & 0xff;
+            const r2 = (c2 >> 16) & 0xff; const g2 = (c2 >> 8) & 0xff; const b2 = c2 & 0xff;
+            const r = Math.round(r1 + (r2 - r1) * t);
+            const g = Math.round(g1 + (g2 - g1) * t);
+            const b = Math.round(b1 + (b2 - b1) * t);
+            return (r << 16) | (g << 8) | b;
+        }
+
+        /** Bilinear color sample from 4 corner colors at normalized (u,v). */
+        _bilerpColor(tl, tr, bl, br, u, v) {
+            return this._lerpColor(this._lerpColor(tl, tr, u), this._lerpColor(bl, br, u), v);
+        }
+
+        /**
+         * Collect present (filled + visible) cells of a shape into a Set keyed
+         * "lx,ly", honouring the per-cell hidden-row skip (consistent with the
+         * contour's neighbour test, which fixes the spawn-time diagonal).
+         */
+        _presentCells(shape, originY, skipHiddenRows) {
+            const set = new Set();
+            const minWorldY = skipHiddenRows ? this.hiddenRows : -Infinity;
+            for (let ly = 0; ly < shape.length; ly++) {
+                const row = shape[ly];
+                if (!row) continue;
+                if ((originY + ly) < minWorldY) continue;
+                for (let lx = 0; lx < row.length; lx++) {
+                    if (row[lx] > 0) set.add(`${lx},${ly}`);
+                }
+            }
+            return set;
+        }
+
+        /** Pixel rect for a local cell, with 0.5px overlap to fuse seams. */
+        _cellRect(originX, originY, lx, ly) {
+            const bs = this.blockSize;
+            const px = Math.round((originX + lx) * bs);
+            const py = Math.round((originY + ly) * bs);
+            const w = Math.round((originX + lx + 1) * bs) - px;
+            const h = Math.round((originY + ly + 1) * bs) - py;
+            return { px, py, w, h };
+        }
+
+        /**
+         * Body fill — per-cell overlapping opaque rects in one pass. Seamless,
+         * topology-proof. Optional continuous TL→BR gradient across the whole
+         * shape (computed in piece-bbox space so it never breaks at a cell edge).
+         */
+        fillFusedBody(graphics, presentSet, originX, originY, colorInt, alpha, fx) {
+            if (!graphics || presentSet.size === 0) return;
+            const cells = [];
+            let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
+            presentSet.forEach((key) => {
+                const [lx, ly] = key.split(',').map(Number);
+                cells.push([lx, ly]);
+                if (lx < minLx) minLx = lx;
+                if (ly < minLy) minLy = ly;
+                if (lx > maxLx) maxLx = lx;
+                if (ly > maxLy) maxLy = ly;
+            });
+            const bw = (maxLx - minLx + 1) || 1;
+            const bh = (maxLy - minLy + 1) || 1;
+            const useGradient = fx && fx.gradient;
+
+            // bbox corner tints for the diagonal light ramp
+            const cTL = useGradient ? this._shadeColor(colorInt, fx.highlight) : colorInt;
+            const cBR = useGradient ? this._shadeColor(colorInt, -fx.shadow) : colorInt;
+            const cTR = colorInt;
+            const cBL = colorInt;
+
+            if (!useGradient) graphics.fillStyle(colorInt, alpha);
+
+            cells.forEach(([lx, ly]) => {
+                const { px, py, w, h } = this._cellRect(originX, originY, lx, ly);
+                if (useGradient) {
+                    const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
+                    const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
+                    const tl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v0);
+                    const tr = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v0);
+                    const bl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v1);
+                    const br = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v1);
+                    graphics.fillGradientStyle(tl, tr, bl, br, alpha, alpha, alpha, alpha);
+                }
+                graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
+            });
+        }
+
+        /**
+         * Gloss sheen — a continuous white vertical highlight, brightest at the
+         * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
+         * Continuous across cells (no seams).
+         */
+        glossPass(graphics, presentSet, originX, originY, glossAlpha) {
+            if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
+            const PhaserRef = window.Phaser;
+            let minLy = Infinity; let maxLy = -Infinity;
+            presentSet.forEach((key) => {
+                const ly = Number(key.split(',')[1]);
+                if (ly < minLy) minLy = ly;
+                if (ly > maxLy) maxLy = ly;
+            });
+            const bh = (maxLy - minLy + 1) || 1;
+            const sheenSpan = Math.max(1, bh * 0.55); // sheen reaches ~55% down
+            const alphaAt = (ly) => {
+                const t = (ly - minLy) / sheenSpan;
+                return Math.max(0, glossAlpha * (1 - t));
+            };
+            if (graphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
+                graphics.setBlendMode(PhaserRef.BlendModes.ADD);
+            }
+            presentSet.forEach((key) => {
+                const [lx, ly] = key.split(',').map(Number);
+                const aTop = alphaAt(ly);
+                const aBot = alphaAt(ly + 1);
+                if (aTop <= 0 && aBot <= 0) return;
+                const { px, py, w, h } = this._cellRect(originX, originY, lx, ly);
+                graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
+                graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
+            });
+            if (graphics.setBlendMode && PhaserRef?.BlendModes?.NORMAL !== undefined) {
+                graphics.setBlendMode(PhaserRef.BlendModes.NORMAL);
+            }
+        }
+
+        /**
+         * Trace the outer perimeter(s) of a present-cell set as one or more closed
+         * loops (handles concave shapes and holes). Used ONLY for the rim stroke,
+         * never the body fill. Robust: the neighbour test uses the same present set,
+         * so the edge graph is always consistent (no dropped edges / diagonals).
+         * @returns {Array<Array<{x:number,y:number}>>} loops in pixel coords
+         */
+        traceLoops(presentSet, originX, originY) {
+            const bs = this.blockSize;
+            const has = (lx, ly) => presentSet.has(`${lx},${ly}`);
+            const edges = [];
+            presentSet.forEach((key) => {
+                const [lx, ly] = key.split(',').map(Number);
+                const x0 = (originX + lx) * bs; const y0 = (originY + ly) * bs;
+                const x1 = (originX + lx + 1) * bs; const y1 = (originY + ly + 1) * bs;
+                if (!has(lx, ly - 1)) edges.push({ fx: x0, fy: y0, tx: x1, ty: y0, dx: 1, dy: 0 });
+                if (!has(lx + 1, ly)) edges.push({ fx: x1, fy: y0, tx: x1, ty: y1, dx: 0, dy: 1 });
+                if (!has(lx, ly + 1)) edges.push({ fx: x1, fy: y1, tx: x0, ty: y1, dx: -1, dy: 0 });
+                if (!has(lx - 1, ly)) edges.push({ fx: x0, fy: y1, tx: x0, ty: y0, dx: 0, dy: -1 });
+            });
+            if (edges.length === 0) return [];
+
+            // Pooled across calls (cleared each call) — traceLoops runs per fused region.
+            if (!this._poolStartMap) this._poolStartMap = new Map();
+            const startMap = this._poolStartMap;
+            startMap.clear();
+            edges.forEach((e) => {
+                const k = `${e.fx},${e.fy}`;
+                if (!startMap.has(k)) startMap.set(k, []);
+                startMap.get(k).push(e);
+            });
+
+            // Prefer the most-clockwise continuation (interior on the right) so any
+            // genuine pinch resolves to a simple loop rather than a self-crossing.
+            const turnScore = (din, c) => {
+                const cross = din.dx * c.dy - din.dy * c.dx;
+                const dot = din.dx * c.dx + din.dy * c.dy;
+                if (cross > 0) return 0; // right turn (clockwise in y-down)
+                if (cross === 0 && dot > 0) return 1; // straight
+                if (cross < 0) return 2; // left turn
+                return 3; // reverse
+            };
+
+            if (!this._poolUsed) this._poolUsed = new Set();
+            const used = this._poolUsed;
+            used.clear();
+            const loops = [];
+            edges.forEach((startEdge) => {
+                if (used.has(startEdge)) return;
+                const loop = [];
+                let e = startEdge;
+                let guard = 0;
+                while (e && !used.has(e) && guard++ < 100000) {
+                    used.add(e);
+                    loop.push({ x: e.fx, y: e.fy });
+                    const candidates = startMap.get(`${e.tx},${e.ty}`) || [];
+                    let best = null; let bestScore = 99;
+                    for (const c of candidates) {
+                        if (used.has(c)) continue;
+                        const s = turnScore(e, c);
+                        if (s < bestScore) { bestScore = s; best = c; }
+                    }
+                    e = best;
+                }
+                if (loop.length >= 3) loops.push(loop);
+            });
+            return loops;
+        }
+
+        /** Stroke one or more perimeter loops (the outer rim). */
+        strokeLoops(graphics, loops, colorInt, width, alpha) {
+            if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
+            graphics.lineStyle(width, colorInt, alpha);
+            loops.forEach((loop) => {
+                if (loop.length < 2) return;
+                graphics.beginPath();
+                graphics.moveTo(loop[0].x, loop[0].y);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.closePath();
+                graphics.strokePath();
+            });
+        }
+
+        /**
+         * Fill a fused shape as a single contour polygon (one fillPath). Unlike the
+         * per-cell rect fill, this is correct for TRANSLUCENT fills (the ghost),
+         * where overlapping rects would double-cover and show brighter seam lines.
+         */
+        fillContour(graphics, loops, colorInt, alpha) {
+            if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
+            graphics.fillStyle(colorInt, alpha);
+            graphics.beginPath();
+            loops.forEach((loop) => {
+                if (loop.length < 3) return;
+                graphics.moveTo(loop[0].x, loop[0].y);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.closePath();
+            });
+            graphics.fillPath();
+        }
+
+        /**
+         * Draw one fused piece (active or animated) with premium depth.
+         * Body → gradient/flat; optional gloss; optional outer rim. Seam-free.
+         */
+        drawFusedPiece(graphics, shape, originX, originY, colorInt, opts = {}) {
+            const {
+                alpha = 1, fx = null, gloss = false, skipHiddenRows = true,
+            } = opts;
+            const present = this._presentCells(shape, originY, skipHiddenRows);
+            if (present.size === 0) return;
+            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx);
+            if (gloss && fx && fx.gloss) {
+                this.glossPass(graphics, present, originX, originY, fx.glossAlpha);
+            }
+            if (fx && fx.rim) {
+                const loops = this.traceLoops(present, originX, originY);
+                const width = Math.max(1, this.blockSize * fx.rimWidthFactor);
+                this.strokeLoops(graphics, loops, 0xffffff, width, fx.rimAlpha * alpha);
+            }
         }
 
         /**
@@ -935,17 +1457,20 @@ export function createBaseBoardScene(
          * @param {string} color - Hex color string
          * @param {number} alpha - Opacity (0-1)
          * @param {boolean} isGhost - Whether this is a ghost piece block
-         * @param {Object} shape - Piece shape (unused, kept for compatibility)
-         * @param {number} localX - Local X in piece shape (unused)
-         * @param {number} localY - Local Y in piece shape (unused)
-         * @param {Phaser.GameObjects.Graphics} graphics - Target graphics layer (defaults to pieceGraphics)
+         * @param {Object} shape - Piece shape
+         * @param {number} localX - Local X in piece shape
+         * @param {number} localY - Local Y in piece shape
+         * @param {Phaser.GameObjects.Graphics} graphics - Target graphics layer
          */
+        // eslint-disable-next-line no-unused-vars
         drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0, graphics = null) {
-            // y is already in world coordinates (0-23), draw directly
-            // The camera is positioned to show only the visible portion
+            // Calculate pixel-perfect coordinates to prevent subpixel antialiasing gaps
             const px = Math.round(x * this.blockSize);
             const py = Math.round(y * this.blockSize);
-            const size = this.blockSize;
+            const pxNext = Math.round((x + 1) * this.blockSize);
+            const pyNext = Math.round((y + 1) * this.blockSize);
+            const width = pxNext - px;
+            const height = pyNext - py;
 
             // Use specified graphics layer or default to pieceGraphics (dynamic layer)
             const targetGraphics = graphics || this.pieceGraphics;
@@ -958,17 +1483,16 @@ export function createBaseBoardScene(
                 }
             }
 
-            // --- Start of Ghost Piece Changes ---
             if (isGhost) {
-                // Change from an outline to a semi-transparent fill
+                // Ghost pieces use semi-transparent fills without overlap to prevent darker overlap lines
                 targetGraphics.fillStyle(colorInt, alpha);
-                targetGraphics.fillRect(px, py, size, size);
+                targetGraphics.fillRect(px, py, width, height);
                 return;
             }
 
-            // Draw the solid color fill for the block (no individual borders)
+            // Draw solid blocks with a tiny 0.25px overlap to guarantee perfect visual fusion with no seams
             targetGraphics.fillStyle(colorInt, alpha);
-            targetGraphics.fillRect(px, py, size, size);
+            targetGraphics.fillRect(px - 0.25, py - 0.25, width + 0.5, height + 0.5);
         }
 
         /**
@@ -977,14 +1501,6 @@ export function createBaseBoardScene(
          */
         drawPieceOutline(piece) {
             if (!piece || !piece.shape) return;
-
-            let colorInt = 0x000000;
-            if (piece.color && typeof piece.color === 'string') {
-                const parsed = parseInt(piece.color.replace('#', ''), 16);
-                if (!Number.isNaN(parsed)) {
-                    colorInt = parsed;
-                }
-            }
 
             // Draw extremely subtle borders only on the outer edges of the piece
             // Very low opacity (0.08) makes it barely visible but helps distinguish pieces

@@ -72,7 +72,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.35,
         bloomThreshold: 0.38,
         bloomMode: 'full',
-        bloomDownsample: 1.0,
+        bloomDownsample: 0.65,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -89,7 +89,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.32,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.9,
+        bloomDownsample: 0.65,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -106,7 +106,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.3,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.85,
+        bloomDownsample: 0.65,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -164,6 +164,42 @@ const QUALITY_PRESETS = {
         minParticleScale: 0.45,
     },
 };
+
+// Fog-motion profiles, frozen module constants (were rebuilt as fresh object literals
+// twice per frame — updateFogMotion + shouldUseEnhancedFogMotion). Consumers only read fields.
+const FOG_PROFILE_FULL = Object.freeze({
+    enabled: true,
+    speed: 1.0,
+    driftMultiplier: 1.0,
+    heightMultiplier: 1.0,
+    scalePulseAmplitude: 0.06,
+    opacityPulseAmplitude: 0.2,
+    ringScaleAmplitude: 0.03,
+    ringOpacityPulse: 0.18,
+    ringRotationSpeed: 0.04,
+});
+const FOG_PROFILE_SOFT = Object.freeze({
+    enabled: true,
+    speed: 0.7,
+    driftMultiplier: 0.6,
+    heightMultiplier: 0.65,
+    scalePulseAmplitude: 0.035,
+    opacityPulseAmplitude: 0.12,
+    ringScaleAmplitude: 0.018,
+    ringOpacityPulse: 0.1,
+    ringRotationSpeed: 0.025,
+});
+const FOG_PROFILE_OFF = Object.freeze({
+    enabled: false,
+    speed: 0,
+    driftMultiplier: 0,
+    heightMultiplier: 0,
+    scalePulseAmplitude: 0,
+    opacityPulseAmplitude: 0,
+    ringScaleAmplitude: 0,
+    ringOpacityPulse: 0,
+    ringRotationSpeed: 0,
+});
 
 const RESONANCE_QUALITY_SCALE = {
     Extreme: 1.0,
@@ -418,6 +454,8 @@ export default class IceTempleTheme extends BaseTheme {
         // Event handling
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
+        // Bind the rAF loop once (was re-bound every frame at the reschedule site).
+        this._boundAnimate = this.animate.bind(this);
 
         // Pointer tracking for parallax camera
         this.pointerX = 0;
@@ -750,44 +788,9 @@ export default class IceTempleTheme extends BaseTheme {
 
     getFogMotionProfile() {
         const profile = this.qualityPreset?.fogMotionProfile || 'soft';
-        if (profile === 'full') {
-            return {
-                enabled: true,
-                speed: 1.0,
-                driftMultiplier: 1.0,
-                heightMultiplier: 1.0,
-                scalePulseAmplitude: 0.06,
-                opacityPulseAmplitude: 0.2,
-                ringScaleAmplitude: 0.03,
-                ringOpacityPulse: 0.18,
-                ringRotationSpeed: 0.04,
-            };
-        }
-        if (profile === 'soft') {
-            return {
-                enabled: true,
-                speed: 0.7,
-                driftMultiplier: 0.6,
-                heightMultiplier: 0.65,
-                scalePulseAmplitude: 0.035,
-                opacityPulseAmplitude: 0.12,
-                ringScaleAmplitude: 0.018,
-                ringOpacityPulse: 0.1,
-                ringRotationSpeed: 0.025,
-            };
-        }
-
-        return {
-            enabled: false,
-            speed: 0,
-            driftMultiplier: 0,
-            heightMultiplier: 0,
-            scalePulseAmplitude: 0,
-            opacityPulseAmplitude: 0,
-            ringScaleAmplitude: 0,
-            ringOpacityPulse: 0,
-            ringRotationSpeed: 0,
-        };
+        if (profile === 'full') return FOG_PROFILE_FULL;
+        if (profile === 'soft') return FOG_PROFILE_SOFT;
+        return FOG_PROFILE_OFF;
     }
 
     shouldUseEnhancedFogMotion() {
@@ -803,10 +806,11 @@ export default class IceTempleTheme extends BaseTheme {
         const { speed } = fogMotionProfile;
 
         if (this.mistLayers?.length) {
-            this.mistLayers.forEach((layer, index) => {
+            for (let index = 0; index < this.mistLayers.length; index++) {
+                const layer = this.mistLayers[index];
                 const basePosition = layer.userData?.basePosition;
                 const baseScale = layer.userData?.baseScale;
-                if (!basePosition || !baseScale) return;
+                if (!basePosition || !baseScale) continue;
 
                 const phase = layer.userData.phase ?? (index * 0.9);
                 const driftRadius = layer.userData.driftRadius ?? 0.5;
@@ -848,7 +852,7 @@ export default class IceTempleTheme extends BaseTheme {
                             * (1 + (pulse * fogMotionProfile.opacityPulseAmplitude * motionScale));
                         layer.material.opacity = THREE.MathUtils.clamp(opacity, 0.02, 1.0);
                     }
-                    return;
+                    continue;
                 }
 
                 layer.position.copy(basePosition);
@@ -856,7 +860,7 @@ export default class IceTempleTheme extends BaseTheme {
                 if (layer.material) {
                     layer.material.opacity = opacityBase;
                 }
-            });
+            }
         }
 
         if (!this.fogRing) return;
@@ -1233,7 +1237,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         this.removeRendererResilienceListeners();
         const { domElement } = this.renderer;
-        this.renderer.dispose();
+        this.disposeRenderer(this.renderer, { nullInstance: false });
 
         if (removeCanvas && domElement?.parentNode) {
             domElement.parentNode.removeChild(domElement);
@@ -4794,7 +4798,14 @@ export default class IceTempleTheme extends BaseTheme {
     animate() {
         if (!this.isActive) return;
 
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+        // Reschedule up-front (cached bound ref) so the loop self-heals, then honor engine-wide
+        // background/pause throttling. When hidden (window.isRenderingPaused) or reduced (~10fps),
+        // this skips both renderer.compute() dispatches (snow + shards) and renderFrame() (render +
+        // bloom) — the theme was the only heavy WebGPU theme not gating its loop. Foreground is
+        // unchanged; time uniform stays correct on resume (elapsed is wall-clock via getElapsedTime,
+        // delta is already clamped below), so no delta clamp is added here.
+        this.animationFrame = requestAnimationFrame(this._boundAnimate);
+        if (!this.shouldRenderFrame()) return;
 
         const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : this.clock.getDelta();
         const delta = this.fixedDeltaSeconds !== null ? rawDelta : Math.min(rawDelta, 0.05);

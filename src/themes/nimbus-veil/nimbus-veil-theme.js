@@ -956,7 +956,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             if (this.container && this.renderer.domElement.parentNode === this.container) {
                 this.container.removeChild(this.renderer.domElement);
             }

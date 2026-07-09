@@ -20,6 +20,7 @@ export class NetworkQosHud {
                 <div class="qos-row"><span class="label">RTT</span><span class="value" data-qos="rtt">-- ms</span></div>
                 <div class="qos-row"><span class="label">Loss</span><span class="value" data-qos="loss">--%</span></div>
                 <div class="qos-row"><span class="label">Snap</span><span class="value" data-qos="rate">-- Hz</span></div>
+                <div class="qos-row"><span class="label">Interp</span><span class="value" data-qos="interp">-- ms</span></div>
                 <div class="qos-row"><span class="label">Route</span><span class="value" data-qos="route">--</span></div>
             </div>
         `;
@@ -51,6 +52,11 @@ export class NetworkQosHud {
             this.values.rate.textContent = stats.snapshotRate !== null && stats.snapshotRate !== undefined
                 ? `${stats.snapshotRate.toFixed(1)} Hz`
                 : '-- Hz';
+        }
+        if (this.values.interp) {
+            this.values.interp.textContent = stats.interpDelayMs !== null && stats.interpDelayMs !== undefined
+                ? `${Math.round(stats.interpDelayMs)} ms`
+                : '-- ms';
         }
         if (this.values.route) {
             this.values.route.textContent = stats.route || '--';

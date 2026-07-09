@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
+import * as THREE from 'three/webgpu';
+import {
+    float,
+    mix,
+    positionLocal,
+    sin,
+    smoothstep,
+    uniform,
+    uv,
+    varying,
+    vec3,
+} from 'three/tsl';
+import { snoise3 } from './odyssey-tsl-noise.js';
 
 export const MOUNTAIN_AURORA_CURTAIN_CONFIGS = Object.freeze([
     Object.freeze({
@@ -19,129 +32,59 @@ export const SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES = Object.freeze([0.35,
 export const SURFACE_WORLD_AURORA_PREVIEW_START = 0.27;
 export const SURFACE_WORLD_AURORA_PREVIEW_END = 0.33;
 
-const noiseGLSL = `
-vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+// ── TSL aurora curtain (WebGPU twin of the Ashima-snoise ShaderMaterial) ─────────
+//
+// The original was a single GLSL THREE.ShaderMaterial (Ashima `snoise` curtain) that
+// cannot render on WebGPURenderer. It is rebuilt here as a MeshBasicNodeMaterial:
+//   • positionNode reproduces the vertex displacement (z/x wobble from snoise3 of the
+//     local position), and stashes the per-vertex displacement in a varying so the
+//     fragment band term matches the GLSL `vDisplacement`.
+//   • colorNode / opacityNode reproduce the fragment gradient + edge fades + bands.
+// Ashima `snoise` (~[-1,1]) maps to the shared `snoise3` (built-in MaterialX gradient
+// noise, also ~[-1,1]) per docs/ODYSSEY_AAA_MASTER_PLAN.md §3.4 — same curtain look,
+// runs on both the WebGPU and the WebGL2-fallback backends. Additive + bloom-eligible.
 
-float snoise(vec3 v) {
-    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+/**
+ * Build the displaced TSL position node for one aurora curtain and capture the
+ * per-vertex displacement into the returned varying (mirrors the GLSL `vDisplacement`).
+ * @param {*} uTime float node — shared time
+ * @param {*} uLayerOffset float node — per-layer phase offset
+ * @returns {{ positionNode:*, vDisplacement:* }}
+ */
+function buildAuroraCurtainNodes(uTime, uLayerOffset) {
+    const t = uTime.mul(0.2).add(uLayerOffset);
+    const pos = positionLocal;
 
-    vec3 i = floor(v + dot(v, C.yyy));
-    vec3 x0 = v - i + dot(i, C.xxx);
+    const noise1 = snoise3(vec3(pos.x.mul(0.05), pos.y.mul(0.05), t.mul(0.5)));
+    const noise2 = snoise3(vec3(pos.x.mul(0.1), pos.y.mul(0.1), t.mul(0.8))).mul(0.5);
+    const displacement = noise1.add(noise2);
 
-    vec3 g = step(x0.yzx, x0.xyz);
-    vec3 l = 1.0 - g;
-    vec3 i1 = min(g.xyz, l.zxy);
-    vec3 i2 = max(g.xyz, l.zxy);
+    // Pass the vertex displacement to the fragment exactly like the GLSL varying.
+    const vDisplacement = varying(displacement);
 
-    vec3 x1 = x0 - i1 + C.xxx;
-    vec3 x2 = x0 - i2 + C.yyy;
-    vec3 x3 = x0 - D.yyy;
+    const transformed = vec3(
+        pos.x.add(sin(pos.y.mul(0.05).add(t)).mul(5.0)),
+        pos.y,
+        pos.z.add(displacement.mul(10.0)),
+    );
 
-    i = mod289(i);
-    vec4 p = permute(permute(permute(
-                i.z + vec4(0.0, i1.z, i2.z, 1.0))
-            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-
-    float n_ = 0.142857142857;
-    vec3 ns = n_ * D.wyz - D.xzx;
-
-    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-
-    vec4 x_ = floor(j * ns.z);
-    vec4 y_ = floor(j - 7.0 * x_);
-
-    vec4 x = x_ * ns.x + ns.yyyy;
-    vec4 y = y_ * ns.x + ns.yyyy;
-    vec4 h = 1.0 - abs(x) - abs(y);
-
-    vec4 b0 = vec4(x.xy, y.xy);
-    vec4 b1 = vec4(x.zw, y.zw);
-
-    vec4 s0 = floor(b0) * 2.0 + 1.0;
-    vec4 s1 = floor(b1) * 2.0 + 1.0;
-    vec4 sh = -step(h, vec4(0.0));
-
-    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-
-    vec3 p0 = vec3(a0.xy, h.x);
-    vec3 p1 = vec3(a0.zw, h.y);
-    vec3 p2 = vec3(a1.xy, h.z);
-    vec3 p3 = vec3(a1.zw, h.w);
-
-    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-    p0 *= norm.x;
-    p1 *= norm.y;
-    p2 *= norm.z;
-    p3 *= norm.w;
-
-    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-    m = m * m;
-    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    return { positionNode: transformed, vDisplacement };
 }
-`;
 
-const auroraVertexShader = `
-uniform float uTime;
-uniform float layerOffset;
-
-varying vec2 vUv;
-varying float vDisplacement;
-
-${noiseGLSL}
-
-void main() {
-    vUv = uv;
-
-    float t = uTime * 0.2 + layerOffset;
-    float noise1 = snoise(vec3(position.x * 0.05, position.y * 0.05, t * 0.5));
-    float noise2 = snoise(vec3(position.x * 0.1, position.y * 0.1, t * 0.8)) * 0.5;
-
-    vDisplacement = noise1 + noise2;
-
-    vec3 transformed = position;
-    transformed.z += vDisplacement * 10.0;
-    transformed.x += sin(position.y * 0.05 + t) * 5.0;
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+/**
+ * Resolve the shared time as a TSL node. Post-migration callers (mountain-peaks.js /
+ * surface-world.js) pass a TSL `uniform()` node for `uniforms.uTime`, which the graph
+ * uses directly. A defensive `uniform()` wrapper is returned for the legacy
+ * `{ value }` plain-object form so a stale caller still constructs without throwing.
+ * @param {*} sharedTime the caller's `uniforms.uTime`
+ * @returns {*} a TSL float node usable in the graph (supports `.mul`)
+ */
+function resolveTimeNode(sharedTime) {
+    if (sharedTime && typeof sharedTime.mul === 'function') {
+        return sharedTime;
+    }
+    return uniform(Number.isFinite(sharedTime?.value) ? sharedTime.value : 0);
 }
-`;
-
-const auroraFragmentShader = `
-uniform float uTime;
-uniform vec3 uColor1;
-uniform vec3 uColor2;
-uniform vec3 uColor3;
-uniform float uOpacity;
-uniform float uAuroraFade;
-uniform float uLayerOpacity;
-
-varying vec2 vUv;
-varying float vDisplacement;
-
-${noiseGLSL}
-
-void main() {
-    float alpha = smoothstep(0.0, 0.4, vUv.y) * (1.0 - smoothstep(0.7, 1.0, vUv.y));
-    float xFade = smoothstep(0.0, 0.2, vUv.x) * (1.0 - smoothstep(0.8, 1.0, vUv.x));
-    alpha *= xFade;
-
-    float noiseVal = snoise(vec3(vUv.x * 2.0, vUv.y * 1.0, uTime * 0.1));
-    vec3 color = mix(uColor1, uColor2, vUv.y);
-    color = mix(color, uColor3, smoothstep(0.4, 0.6, noiseVal));
-
-    float bands = sin(vUv.y * 20.0 + vDisplacement * 2.0) * 0.5 + 0.5;
-    alpha *= 0.5 + bands * 0.5;
-    color *= 1.1;
-
-    gl_FragColor = vec4(color, alpha * 0.45 * uLayerOpacity * uAuroraFade * uOpacity);
-}
-`;
 
 export function resolveMountainAuroraPreviewOpacity(progress) {
     if (!Number.isFinite(progress)) {
@@ -165,6 +108,9 @@ export function createMountainAuroraBackdrop(uniforms, options = {}) {
     const group = new THREE.Group();
     group.name = name;
 
+    // Share the caller's uTime node into the TSL graph so its update() ticks unchanged.
+    const uTime = resolveTimeNode(uniforms?.uTime);
+
     const selectedConfigs = MOUNTAIN_AURORA_CURTAIN_CONFIGS.slice(
         0,
         Math.min(layerCount, MOUNTAIN_AURORA_CURTAIN_CONFIGS.length),
@@ -182,24 +128,64 @@ export function createMountainAuroraBackdrop(uniforms, options = {}) {
             ? layerOpacities[index]
             : config.opacity;
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                layerOffset: { value: index * 2.0 },
-                uColor1: { value: new THREE.Color(0x00ffaa) },
-                uColor2: { value: new THREE.Color(0x00aaff) },
-                uColor3: { value: new THREE.Color(0xaa00ff) },
-                uOpacity: { value: 1 },
-                uAuroraFade: { value: 1 },
-                uLayerOpacity: { value: layerOpacity },
-            },
-            vertexShader: auroraVertexShader,
-            fragmentShader: auroraFragmentShader,
-            transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
+        // Per-curtain uniforms as TSL nodes. uOpacity/uAuroraFade/uLayerOpacity are
+        // exposed back on `material.uniforms` (below) with numeric `.value` so the
+        // callers' collectUniformTargets()/update() find and tick them as before.
+        const uLayerOffset = uniform(index * 2.0);
+        const uColor1 = uniform(new THREE.Color(0x00ffaa));
+        const uColor2 = uniform(new THREE.Color(0x00aaff));
+        const uColor3 = uniform(new THREE.Color(0xaa00ff));
+        const uOpacity = uniform(1);
+        const uAuroraFade = uniform(1);
+        const uLayerOpacity = uniform(layerOpacity);
+
+        const { positionNode, vDisplacement } = buildAuroraCurtainNodes(uTime, uLayerOffset);
+
+        const vUv = uv();
+
+        // Edge fades (smoothstep windows match the GLSL fragment).
+        const yFade = smoothstep(0.0, 0.4, vUv.y)
+            .mul(float(1.0).sub(smoothstep(0.7, 1.0, vUv.y)));
+        const xFade = smoothstep(0.0, 0.2, vUv.x)
+            .mul(float(1.0).sub(smoothstep(0.8, 1.0, vUv.x)));
+
+        // Color gradient + noise-driven tertiary tint.
+        const noiseVal = snoise3(vec3(vUv.x.mul(2.0), vUv.y.mul(1.0), uTime.mul(0.1)));
+        const colorBase = mix(uColor1, uColor2, vUv.y);
+        const color = mix(colorBase, uColor3, smoothstep(0.4, 0.6, noiseVal)).mul(1.1);
+
+        // Vertical bands modulated by the per-vertex displacement varying.
+        const bands = sin(vUv.y.mul(20.0).add(vDisplacement.mul(2.0))).mul(0.5).add(0.5);
+        const alpha = yFade.mul(xFade)
+            .mul(float(0.5).add(bands.mul(0.5)))
+            .mul(0.45)
+            .mul(uLayerOpacity)
+            .mul(uAuroraFade)
+            .mul(uOpacity);
+
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.positionNode = positionNode;
+        material.colorNode = color;
+        material.opacityNode = alpha;
+        material.transparent = true;
+        material.side = THREE.DoubleSide;
+        material.depthWrite = false;
+        material.blending = THREE.AdditiveBlending;
+        material.userData.emitsBloom = true;
+
+        // Legacy-shaped uniform bridge: collectUniformTargets()/update() in the callers
+        // read & mutate material.uniforms.{uAuroraFade,uOpacity}.value (numeric). These
+        // ARE the TSL uniform nodes, so writing .value reactively updates the graph.
+        material.uniforms = {
+            uTime,
+            layerOffset: uLayerOffset,
+            uColor1,
+            uColor2,
+            uColor3,
+            uOpacity,
+            uAuroraFade,
+            uLayerOpacity,
+        };
 
         const curtain = new THREE.Mesh(geometry, material);
         curtain.position.set(config.x, config.y, config.z);

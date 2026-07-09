@@ -78,10 +78,10 @@ export class WinterPipeline {
 
         // --- Runtime uniforms ---
         this.uTime = uniform(0);
-        this.uExposure = uniform(params.exposure ?? 1.0);
-        this.uContrast = uniform(params.contrast ?? 1.14);
+        this.uExposure = uniform(params.exposure ?? 0.82);
+        this.uContrast = uniform(params.contrast ?? 1.18);
         this.uSaturation = uniform(params.saturation ?? 1.12);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.55);
+        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.62);
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0011);
         this.uGrainStrength = uniform(params.grainStrength ?? 0.0026);
         this.uDitherStrength = uniform(params.ditherStrength ?? 0.002);

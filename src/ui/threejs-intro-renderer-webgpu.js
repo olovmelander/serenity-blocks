@@ -33,6 +33,14 @@ import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
 import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
 import { createIntroNebulaSky } from './intro-nebula-sky.js';
+import {
+    INTRO_TETROMINO_BLOCK_RADIUS,
+    INTRO_TETROMINO_CLICK_IMPULSE,
+    INTRO_TETROMINO_PICK_PADDING,
+    computeImpulseAwayFromRay,
+    findClosestTetrominoRayHit,
+    getPointerNdcFromClient,
+} from './intro-tetromino-interactions.js';
 
 const SHAPE_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 
@@ -55,6 +63,21 @@ const {
     MeshBasicNodeMaterial,
     MeshStandardNodeMaterial,
 } = THREE;
+
+function toPlainRay(ray) {
+    return {
+        origin: {
+            x: ray.origin.x,
+            y: ray.origin.y,
+            z: ray.origin.z,
+        },
+        direction: {
+            x: ray.direction.x,
+            y: ray.direction.y,
+            z: ray.direction.z,
+        },
+    };
+}
 
 function isWindowsPlatform() {
     if (typeof navigator === 'undefined') return false;
@@ -90,6 +113,8 @@ export default class ThreeJSIntroRendererWebGPU {
         this.clock = new THREE.Clock();
         this.lastSpawnTime = 0;
         this.spawnAccumulator = 0;
+        this.raycaster = new THREE.Raycaster();
+        this.tetrominoClickReadbackInFlight = false;
 
         // Pointer-driven camera parallax (cursor arcs the camera around the scene).
         this.cameraParallax = new IntroCameraParallax();
@@ -121,6 +146,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uAudioPulse = uniform(0);
         this.uWarp = uniform(0);
         this.uTitleGlowStrength = uniform(0.24);
+        this.uTitleShaftStrength = uniform(1);
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
 
@@ -175,7 +201,7 @@ export default class ThreeJSIntroRendererWebGPU {
             }
 
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+            this.renderer.setPixelRatio(this._renderPixelRatio());
             // ACES is applied MANUALLY in the post graph (so the cinematic grade can
             // run in display space). The renderer must therefore NOT tonemap — it
             // only performs the sRGB output transform on the post output node.
@@ -225,6 +251,16 @@ export default class ThreeJSIntroRendererWebGPU {
             console.error('[IntroWebGPU] Initialization failed:', e);
             return false;
         }
+    }
+
+    /**
+     * The live GPUDevice backing this WebGPU renderer, or null (WebGL fallback / not inited).
+     * Shared with the boot warp so the warp doesn't create a 3rd WebGPU context (which blanked
+     * the warp when a heavy theme was already warmed = 2 contexts + warp).
+     * @returns {GPUDevice|null}
+     */
+    getDevice() {
+        return this.renderer?.backend?.isWebGPUBackend ? (this.renderer.backend.device || null) : null;
     }
 
     setVisualProfile(profileId = 'cinematic_clean') {
@@ -578,7 +614,8 @@ export default class ThreeJSIntroRendererWebGPU {
         const shaft = vec3(float(0.10), float(0.55), float(0.95))
             .mul(shaftMask.mul(shaftMask))
             .mul(breathing.mul(float(0.35)).add(float(0.65)))
-            .mul(this.uGodRayStrength.add(float(0.08)));
+            .mul(this.uGodRayStrength.add(float(0.08)))
+            .mul(this.uTitleShaftStrength);
 
         // ── DoF proxy ──
         const focusMask = smoothstep(float(0.1), float(0.72), dist).mul(this.uDoFStrength.mul(float(0.6)));
@@ -1009,6 +1046,73 @@ export default class ThreeJSIntroRendererWebGPU {
         this.applyQualitySettings();
     }
 
+    async triggerTetrominoBounceAt(clientX, clientY) {
+        if (!this.renderer
+            || !this.camera
+            || !this.tetrominoCompute
+            || typeof this.renderer.getArrayBufferAsync !== 'function'
+            || this.tetrominoClickReadbackInFlight) {
+            return false;
+        }
+
+        const ndc = getPointerNdcFromClient(this.canvas, clientX, clientY);
+        if (!ndc) {
+            return false;
+        }
+
+        this.raycaster.setFromCamera(ndc, this.camera);
+        const ray = toPlainRay(this.raycaster.ray);
+        this.tetrominoClickReadbackInFlight = true;
+
+        try {
+            const [
+                positionBuffer,
+                velocityBuffer,
+                rotationBuffer,
+                rotSpeedBuffer,
+            ] = await Promise.all([
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getPositionBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getVelocityBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotationBuffer()),
+                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotSpeedBuffer()),
+            ]);
+
+            if (!this.renderer || !this.tetrominoCompute) {
+                return false;
+            }
+
+            const positions = new Float32Array(positionBuffer);
+            const velocities = new Float32Array(velocityBuffer);
+            const rotations = new Float32Array(rotationBuffer);
+            const rotSpeeds = new Float32Array(rotSpeedBuffer);
+            const hit = findClosestTetrominoRayHit({
+                ray,
+                positions,
+                velocities,
+                rotations,
+                maxSlots: IntroTetrominoCompute.MAX_TETROMINOS,
+                pickRadius: INTRO_TETROMINO_BLOCK_RADIUS + INTRO_TETROMINO_PICK_PADDING,
+            });
+
+            if (!hit) {
+                return false;
+            }
+
+            const impulse = computeImpulseAwayFromRay(ray, hit.center, INTRO_TETROMINO_CLICK_IMPULSE);
+            return this.tetrominoCompute.applyClickImpulseToSlot(hit.slot, {
+                positions,
+                velocities,
+                rotations,
+                rotSpeeds,
+            }, impulse);
+        } catch (error) {
+            console.warn('[IntroWebGPU] Tetromino click readback failed:', error);
+            return false;
+        } finally {
+            this.tetrominoClickReadbackInFlight = false;
+        }
+    }
+
     startWarpDismiss(duration = 1.2) {
         this.warpDuration = Math.max(0.4, duration);
         this.warpStartTime = this.uTime.value;
@@ -1088,13 +1192,13 @@ export default class ThreeJSIntroRendererWebGPU {
             ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
                 + (breath * 0.03)
             : 0;
+        const isMenuBackground = this.isBackgroundMode || this.phase === INTRO_PHASES.MENU_BG;
         this.uGodRayStrength.value = this.quality.godRays;
-        this.uDoFStrength.value = this.quality.dof + (this.uWarp.value * 0.05);
+        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (this.uWarp.value * 0.05);
         this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
-        const menuBgGlowAttenuation = this.phase === INTRO_PHASES.MENU_BG ? 0.28 : 1.0;
-        this.uTitleGlowStrength.value = this.titleGlowEnabled
-            ? (0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02) * menuBgGlowAttenuation
-            : 0;
+        this.uTitleShaftStrength.value = isMenuBackground ? 0 : 1;
+        const titleGlowBase = 0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02;
+        this.uTitleGlowStrength.value = this.titleGlowEnabled && !isMenuBackground ? titleGlowBase : 0;
 
         if (this.particleCompute) {
             this.particleCompute.setAttractionStrength(this.quality.attraction * phase.attractionMul);
@@ -1196,13 +1300,30 @@ export default class ThreeJSIntroRendererWebGPU {
         }
     }
 
+    /**
+     * Render resolution is intentionally DECOUPLED from the visual quality
+     * budget (particles / bloom / DOF / frame-skip). The budget throttles the
+     * expensive per-frame work; resolution must still track the display, or a
+     * maximized packaged window on a HiDPI panel renders this background canvas
+     * well below native device pixels and Chromium upscales it into a blur —
+     * while the DOM UI (menu text/cards) stays crisp. Matches the rest of the
+     * app (min(devicePixelRatio, 2)); only the weakest tier shaves a little.
+     */
+    _renderPixelRatio() {
+        const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+        const cap = this.quality?.key === 'LOW' ? 1.5 : 2.0;
+        return Math.min(dpr, cap);
+    }
+
     applyQualitySettings() {
         this.spawnInterval = this.quality.spawnInterval;
-        this.uDoFStrength.value = this.isBackgroundMode ? this.quality.dof * 0.4 : this.quality.dof;
+        this.uDoFStrength.value = this.isBackgroundMode ? 0 : this.quality.dof;
         this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
+        this.uTitleGlowStrength.value = this.isBackgroundMode ? 0 : this.uTitleGlowStrength.value;
+        this.uTitleShaftStrength.value = this.isBackgroundMode ? 0 : 1;
 
         if (this.renderer) {
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+            this.renderer.setPixelRatio(this._renderPixelRatio());
         }
 
         if (this.particleCompute) {
@@ -1246,7 +1367,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+        this.renderer.setPixelRatio(this._renderPixelRatio());
 
         if (this._scenePass) {
             this._scenePass.setSize(window.innerWidth, window.innerHeight);

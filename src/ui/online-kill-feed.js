@@ -4,11 +4,15 @@
  * Shows recent kills/deaths and combat events in chronological order
  */
 export class OnlineKillFeed {
-    constructor(container) {
+    constructor(container, options = {}) {
         this.container = container;
         this.listContainer = null;
-        this.maxItems = 10;
-        this.itemTTL = 5000;
+        // The Battle Log is a TRANSACTIONAL, append-only record of the whole match:
+        // every entry stays for the entire match (no per-entry TTL) and we keep a
+        // generous history instead of a 12-row transient HUD that silently empties out.
+        // (Callers can opt back into the old ephemeral feed by passing maxItems/itemTTL.)
+        this.maxItems = options.maxItems ?? 200;
+        this.itemTTL = options.itemTTL ?? Infinity; // Infinity = never auto-expire
         this.items = [];
         this.expireTimer = null;
 
@@ -26,10 +30,35 @@ export class OnlineKillFeed {
     }
 
     /**
+     * Returns true if `key` was seen within the last 3s (used to collapse the same
+     * combat event arriving from multiple sources into a single row).
+     */
+    _isDuplicate(key) {
+        if (!key) return false;
+        const now = Date.now();
+        if (!this._recentKeys) this._recentKeys = new Map();
+        // Cheap prune so the map can't grow unbounded.
+        if (this._recentKeys.size > 64) {
+            for (const [k, t] of this._recentKeys) {
+                if (now - t > 5000) this._recentKeys.delete(k);
+            }
+        }
+        const last = this._recentKeys.get(key);
+        this._recentKeys.set(key, now);
+        return last != null && now - last < 3000;
+    }
+
+    /**
      * Add a kill event to the feed
      * @param {Object} event - { killer: string, victim: string, linesCleared?: number }
      */
     addKill(event) {
+        // Dedup: the same death can reach the feed from both a local event and the
+        // host's network broadcast (or a fragile double-record). Prefer a stable
+        // eventId (identical on host + peer) over the victim-name fallback so the two
+        // nodes can't diverge based on local-emit vs network-arrival timing.
+        if (this._isDuplicate(event.eventId || `kill:${event.victim}`)) return;
+
         const isSelfKill = typeof event.isSelfKill === 'boolean'
             ? event.isSelfKill
             : !event.killer;
@@ -129,6 +158,14 @@ export class OnlineKillFeed {
         });
     }
 
+    /**
+     * Add a round divider so the transactional (cross-round) log stays readable:
+     * prior rounds' rows are kept, just separated by a "— Round N —" marker.
+     */
+    addRoundMarker(roundNumber) {
+        this._addItem({ type: 'round', roundNumber });
+    }
+
     _addItem(itemData) {
         const item = {
             ...itemData,
@@ -193,6 +230,14 @@ export class OnlineKillFeed {
                 `;
             }
 
+            if (item.type === 'round') {
+                return `
+                    <div class="${classes.join(' ')} round-divider">
+                        <span class="round-note">— Round ${this._escapeHtml(String(item.roundNumber ?? ''))} —</span>
+                    </div>
+                `;
+            }
+
             if (item.type === 'combo') {
                 const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
                 return `
@@ -245,6 +290,13 @@ export class OnlineKillFeed {
             clearTimeout(this.expireTimer);
         }
 
+        // Transactional mode (itemTTL = Infinity): entries never expire, so there's
+        // nothing to schedule — the log persists for the whole match.
+        if (!Number.isFinite(this.itemTTL)) {
+            this.expireTimer = null;
+            return;
+        }
+
         if (this.items.length === 0) {
             this.expireTimer = null;
             return;
@@ -292,6 +344,7 @@ export class OnlineKillFeed {
      */
     clear() {
         this.items = [];
+        this._recentKeys?.clear();
         if (this.expireTimer) {
             clearTimeout(this.expireTimer);
             this.expireTimer = null;

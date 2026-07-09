@@ -1677,7 +1677,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.removeRendererResilienceListeners();
         const domElement = this.renderer.domElement;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[StellarDrift] renderer dispose failed:', error);
         }
@@ -4461,12 +4461,20 @@ export default class StellarDriftTheme extends BaseTheme {
         const lightTime = this.time * 7.0;
         const pulse = this.bloomPulseIntensity * 0.7 + this.auroraPulse * 0.35 + this.warpSpeed * 0.25;
         const planetUniforms = this.planetMaterialData?.uniforms || this.planet?.material?.uniforms;
-        const paletteWarmGlow = this._selectedPalettes?.[0]?.glow?.clone?.() || new THREE.Color(0xffd9c7);
-        const paletteCoolGlow = this._selectedPalettes?.[1]?.glow?.clone?.() || new THREE.Color(0xd8ffff);
-        const paletteAccentGlow = this._selectedPalettes?.[2]?.glow?.clone?.() || new THREE.Color(0xf1dcff);
-        const paletteWarmBody = this._selectedPalettes?.[0]?.body?.clone?.() || new THREE.Color(0xffb223);
-        const paletteCoolBody = this._selectedPalettes?.[1]?.body?.clone?.() || new THREE.Color(0x22e5da);
-        const paletteAccentBody = this._selectedPalettes?.[2]?.body?.clone?.() || new THREE.Color(0x6e58ff);
+        // Scratch + fixed tint targets reused across this method. Byte-identical to the previous
+        // per-frame clones: the palette sources are static after setup and are only READ here (via
+        // s.copy(src).lerp(...)), and each scratch value is consumed by the .copy() into a light
+        // color before the scratch is reused. Fallback Colors still allocate only on the rare path
+        // where _selectedPalettes is missing (same as before).
+        const s = this._litScratch || (this._litScratch = new THREE.Color());
+        const hemiGround = this._litHemiGround || (this._litHemiGround = new THREE.Color(0x08050a));
+        const ambientTint = this._litAmbientTint || (this._litAmbientTint = new THREE.Color(0x090814));
+        const paletteWarmGlow = this._selectedPalettes?.[0]?.glow || new THREE.Color(0xffd9c7);
+        const paletteCoolGlow = this._selectedPalettes?.[1]?.glow || new THREE.Color(0xd8ffff);
+        const paletteAccentGlow = this._selectedPalettes?.[2]?.glow || new THREE.Color(0xf1dcff);
+        const paletteWarmBody = this._selectedPalettes?.[0]?.body || new THREE.Color(0xffb223);
+        const paletteCoolBody = this._selectedPalettes?.[1]?.body || new THREE.Color(0x22e5da);
+        const paletteAccentBody = this._selectedPalettes?.[2]?.body || new THREE.Color(0x6e58ff);
 
         if (this.meteorLight) {
             this.meteorLight.position.set(
@@ -4474,7 +4482,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 320 + Math.cos(lightTime * 0.71) * 120 + planetY * 0.18,
                 280 + Math.sin(lightTime * 0.33 + 1.3) * 260,
             );
-            this.meteorLight.color.copy(paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.34));
+            this.meteorLight.color.copy(s.copy(paletteCoolGlow).lerp(paletteAccentGlow, 0.34));
             this.meteorLight.intensity = 2.0 + pulse * 1.45;
             this.meteorLight.angle = THREE.MathUtils.lerp(
                 this.meteorLight.angle,
@@ -4494,7 +4502,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 120 + Math.cos(lightTime * 0.41) * 90,
                 420 + Math.sin(lightTime * 0.22 + 0.6) * 180,
             );
-            this.keyLight.color.copy(paletteWarmGlow.clone().lerp(paletteWarmBody, 0.28));
+            this.keyLight.color.copy(s.copy(paletteWarmGlow).lerp(paletteWarmBody, 0.28));
             this.keyLight.intensity = 1.08 + pulse * 0.52;
         }
 
@@ -4504,18 +4512,18 @@ export default class StellarDriftTheme extends BaseTheme {
                 240 + Math.sin(lightTime * 0.24 + 1.1) * 120,
                 -760 + Math.cos(lightTime * 0.16 + 0.2) * 280,
             );
-            this.rimLight.color.copy(paletteCoolBody.clone().lerp(paletteAccentGlow, 0.42));
+            this.rimLight.color.copy(s.copy(paletteCoolBody).lerp(paletteAccentGlow, 0.42));
             this.rimLight.intensity = 0.78 + this.auroraPulse * 0.24 + this.warpSpeed * 0.12;
         }
 
         if (this.hemisphereLight) {
-            this.hemisphereLight.color.copy(paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.18));
-            this.hemisphereLight.groundColor.copy(paletteWarmBody.clone().lerp(new THREE.Color(0x08050a), 0.84));
+            this.hemisphereLight.color.copy(s.copy(paletteCoolGlow).lerp(paletteAccentGlow, 0.18));
+            this.hemisphereLight.groundColor.copy(s.copy(paletteWarmBody).lerp(hemiGround, 0.84));
             this.hemisphereLight.intensity = 0.18 + this.auroraPulse * 0.08 + this.nebulaBoostIntensity * 0.04;
         }
 
         if (this.ambientLight) {
-            this.ambientLight.color.copy(paletteAccentBody.clone().lerp(new THREE.Color(0x090814), 0.82));
+            this.ambientLight.color.copy(s.copy(paletteAccentBody).lerp(ambientTint, 0.82));
             this.ambientLight.intensity = THREE.MathUtils.clamp(
                 0.2 + pulse * 0.11 - this.warpSpeed * 0.09,
                 0.12,
@@ -5889,7 +5897,19 @@ export default class StellarDriftTheme extends BaseTheme {
         const animate = () => {
             if (!this.isActive) return;
 
-            const measuredDelta = this.clock.getDelta();
+            // Schedule the next frame up-front so the loop self-heals after any throttled/
+            // skipped/errored frame (matches BaseTheme.safeAnimate + wolfhour/black-hole/tornado).
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+
+            // Honor engine-wide background/pause throttling (window.isRenderingPaused -> skip;
+            // isRenderingReduced -> ~10fps). Bailing here stops the 3 GPU compute dispatches +
+            // the post RTT chain from burning the GPU while backgrounded; foreground is unchanged.
+            // getDelta() is intentionally NOT called before this bail, so the first resumed frame
+            // returns the full skipped span, which the clamp below caps.
+            if (!this.shouldRenderFrame()) return;
+
+            const measuredDelta = Math.min(this.clock.getDelta(), 1 / 20);
             const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
             if (this.fixedDeltaSeconds !== null) {
                 this.fixedElapsed += rawDelta;
@@ -6213,25 +6233,31 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             });
 
-            const paletteWarmGlow = this._selectedPalettes?.[0]?.glow?.clone?.() || new THREE.Color(0xffd9c7);
-            const paletteCoolGlow = this._selectedPalettes?.[1]?.glow?.clone?.() || new THREE.Color(0xcfffff);
-            const paletteAccentGlow = this._selectedPalettes?.[2]?.glow?.clone?.() || new THREE.Color(0xf1dcff);
-            const paletteWarmBody = this._selectedPalettes?.[0]?.body?.clone?.() || new THREE.Color(0xffb223);
-            const paletteCoolBody = this._selectedPalettes?.[1]?.body?.clone?.() || new THREE.Color(0x22e5da);
-            const paletteAccentBody = this._selectedPalettes?.[2]?.body?.clone?.() || new THREE.Color(0x6e58ff);
+            // Palette sources are static after setup and only READ below (via scratch .copy().lerp());
+            // drop the per-frame .clone() and reuse a scratch Color. Byte-identical. Fallback Colors
+            // still allocate only on the rare path where _selectedPalettes is missing (as before).
+            const mainTint = this._mainTintScratch || (this._mainTintScratch = new THREE.Color());
+            const paletteWarmGlow = this._selectedPalettes?.[0]?.glow || new THREE.Color(0xffd9c7);
+            const paletteCoolGlow = this._selectedPalettes?.[1]?.glow || new THREE.Color(0xcfffff);
+            const paletteAccentGlow = this._selectedPalettes?.[2]?.glow || new THREE.Color(0xf1dcff);
+            const paletteWarmBody = this._selectedPalettes?.[0]?.body || new THREE.Color(0xffb223);
+            const paletteCoolBody = this._selectedPalettes?.[1]?.body || new THREE.Color(0x22e5da);
+            const paletteAccentBody = this._selectedPalettes?.[2]?.body || new THREE.Color(0x6e58ff);
             const glowBlendPhase = Math.sin(this.time * 0.18) * 0.5 + 0.5;
 
             if (this.heroRingMaterialData[0]?.uniforms?.uColorInner?.value?.copy) {
-                const primaryInnerColor = paletteAccentGlow.clone().lerp(paletteWarmGlow, 0.28 + glowBlendPhase * 0.22);
-                const primaryOuterColor = paletteAccentBody.clone().lerp(paletteWarmBody, 0.18 + glowBlendPhase * 0.18);
-                this.heroRingMaterialData[0].uniforms.uColorInner.value.copy(primaryInnerColor);
-                this.heroRingMaterialData[0].uniforms.uColorOuter.value.copy(primaryOuterColor);
+                // Each scratch value is consumed by the .copy() into the uniform before the scratch is
+                // reused; copying inner vs outer is order-independent, so this is byte-identical.
+                this.heroRingMaterialData[0].uniforms.uColorInner.value
+                    .copy(mainTint.copy(paletteAccentGlow).lerp(paletteWarmGlow, 0.28 + glowBlendPhase * 0.22));
+                this.heroRingMaterialData[0].uniforms.uColorOuter.value
+                    .copy(mainTint.copy(paletteAccentBody).lerp(paletteWarmBody, 0.18 + glowBlendPhase * 0.18));
             }
             if (this.heroRingMaterialData[1]?.uniforms?.uColorInner?.value?.copy) {
-                const outerInnerColor = paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.18 + (1 - glowBlendPhase) * 0.28);
-                const outerOuterColor = paletteCoolBody.clone().lerp(paletteAccentBody, 0.14 + glowBlendPhase * 0.18);
-                this.heroRingMaterialData[1].uniforms.uColorInner.value.copy(outerInnerColor);
-                this.heroRingMaterialData[1].uniforms.uColorOuter.value.copy(outerOuterColor);
+                this.heroRingMaterialData[1].uniforms.uColorInner.value
+                    .copy(mainTint.copy(paletteCoolGlow).lerp(paletteAccentGlow, 0.18 + (1 - glowBlendPhase) * 0.28));
+                this.heroRingMaterialData[1].uniforms.uColorOuter.value
+                    .copy(mainTint.copy(paletteCoolBody).lerp(paletteAccentBody, 0.14 + glowBlendPhase * 0.18));
             }
 
             // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
@@ -6336,14 +6362,13 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             });
 
-            const smallGlowColor = paletteWarmGlow.clone().lerp(
-                paletteAccentGlow,
-                0.28 + glowBlendPhase * 0.28,
-            ).offsetHSL(0, 0.08, 0.04);
-            const bigGlowColor = paletteCoolGlow.clone().lerp(
-                paletteAccentBody,
-                0.18 + (1 - glowBlendPhase) * 0.24,
-            ).offsetHSL(0, 0.12, 0.02);
+            // Distinct scratches: smallGlowColor and bigGlowColor coexist (each consumed in its own
+            // block below), so they cannot share one buffer. offsetHSL mutates the scratch in place
+            // exactly as it mutated the old clone. Byte-identical.
+            const smallGlowColor = (this._smallGlowScratch || (this._smallGlowScratch = new THREE.Color()))
+                .copy(paletteWarmGlow).lerp(paletteAccentGlow, 0.28 + glowBlendPhase * 0.28).offsetHSL(0, 0.08, 0.04);
+            const bigGlowColor = (this._bigGlowScratch || (this._bigGlowScratch = new THREE.Color()))
+                .copy(paletteCoolGlow).lerp(paletteAccentBody, 0.18 + (1 - glowBlendPhase) * 0.24).offsetHSL(0, 0.12, 0.02);
 
             if (this.smallGlow) {
                 const glowScale = 1 + this.glowSurgeIntensity * 1.15;
@@ -6547,9 +6572,8 @@ export default class StellarDriftTheme extends BaseTheme {
             if (this.flags.baseline) {
                 this.trackBaselineFrame(measuredDelta);
             }
-
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
+            // Next-frame scheduling moved to the top of the closure (see above) so the
+            // loop self-heals after a gated/skipped/errored frame.
         };
 
         this.animationFrameId = requestAnimationFrame(animate);

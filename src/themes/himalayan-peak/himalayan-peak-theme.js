@@ -380,7 +380,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         this.director.reset();
 
         if (this.renderer) {
-            try { this.renderer.dispose(); } catch (e) { /* ignore */ }
+            try { this.disposeRenderer(this.renderer, { nullInstance: false }); } catch (e) { /* ignore */ }
             this.renderer = null;
         }
         this.scene = null;

@@ -30,6 +30,16 @@ export class HostMigration {
         if (this.gameState.isHost) return;
 
         this.monitorInterval = setInterval(() => {
+            // Host migration only applies to an ACTIVE match. During the lobby /
+            // waiting-room and the initial P2P handshake (which can take several
+            // seconds over Steam relay), keep the timer fresh so the joiner never
+            // promotes itself to host — doing so would split-brain the lobby (both
+            // sides think they're host, which breaks ready-up, chat routing, and
+            // roster names).
+            if (this.gameState.gamePhase !== 'playing') {
+                this.lastHeartbeatTime = Date.now();
+                return;
+            }
             const now = Date.now();
             if (now - this.lastHeartbeatTime > this.HEARTBEAT_TIMEOUT) {
                 console.warn('⚠️ Host heartbeat timeout! Initiating election...');
@@ -64,33 +74,37 @@ export class HostMigration {
         if (this.isElectionInProgress) return;
         this.isElectionInProgress = true;
 
-        // 1. Determine candidates (all peers minus old host)
-        // We use the player list from game state
-        const peers = Array.from(this.gameState.players.values())
-            .filter((p) => !p.isDisconnected && p.steamId !== this.network.hostSteamId);
-
-        if (peers.length === 0) {
+        const candidateId = this._getExpectedHostCandidateId();
+        if (!candidateId) {
             console.error('❌ No peers left to migrate to.');
+            this.isElectionInProgress = false;
             return;
         }
 
-        // 2. Select candidate with lowest Steam ID (string comparison)
-        // This is a deterministic way for all peers to agree on the same candidate
-        peers.sort((a, b) => a.steamId.localeCompare(b.steamId));
-        const candidate = peers[0];
-
-        console.log(`🗳️ Election started. Candidate: ${candidate.name} (${candidate.steamId})`);
+        const candidate = this.gameState.players.get(candidateId);
+        console.log(`🗳️ Election started. Candidate: ${candidate?.name || 'Unknown'} (${candidateId})`);
 
         // 3. If I am the candidate, claim host
-        if (candidate.steamId === this.gameState.localPlayerId) {
+        if (candidateId === this.gameState.localPlayerId) {
             this.claimHost();
         }
+    }
+
+    _getExpectedHostCandidateId() {
+        if (!this.gameState.players) return null;
+
+        const peers = Array.from(this.gameState.players.values())
+            .filter((p) => p?.steamId && !p.isDisconnected && p.steamId !== this.network.hostSteamId);
+
+        peers.sort((a, b) => String(a.steamId).localeCompare(String(b.steamId)));
+        return peers[0]?.steamId || null;
     }
 
     /**
      * Claim host status
      */
     claimHost() {
+        const migrationEpoch = this.gameState.prepareMigrationClaim?.() ?? this.gameState.migrationEpoch ?? 0;
         console.log('👑 I am the new host! Broadcasting claim...');
 
         // Broadcast CLAIM message
@@ -99,39 +113,37 @@ export class HostMigration {
         // Assuming network.broadcastToAll works even if not host (it should just iter peers)
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_CLAIM, {
             newHostId: this.gameState.localPlayerId,
+            migrationEpoch,
         });
 
         // Actually become host
-        this.becomeHost();
+        this.becomeHost(migrationEpoch);
     }
 
     /**
      * Transition to host role
      */
-    becomeHost() {
+    becomeHost(migrationEpoch = null) {
         this.stopMonitoring();
         this.isElectionInProgress = false;
 
-        // Update network role
-        this.network.isHost = true;
-        this.network.hostSteamId = this.gameState.localPlayerId;
-        this.gameState.isHost = true;
-
-        console.log('🚀 Migration complete. I am now the host.');
-
-        // Initialize host systems
-        if (this.gameState.inputValidator) {
-            this.gameState.inputValidator.reset();
+        if (this.gameState._migrationEpochEnabled && !Number.isFinite(Number(migrationEpoch))) {
+            migrationEpoch = this.gameState.prepareMigrationClaim?.() ?? this.gameState.migrationEpoch ?? 0;
+        }
+        if (this.gameState._migrationEpochEnabled) {
+            this.gameState.migrationEpoch = Number(migrationEpoch) || 0;
         }
 
-        // Resume game loop as host
-        this.gameState.startHeartbeatLoop();
+        this.gameState.promoteToHost?.();
+
+        console.log('🚀 Migration complete. I am now the host.');
 
         // CRITICAL: Explicitly sync state to all peers to assert authority
         const snapshot = this.gameState.buildStateSnapshot();
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_SYNC, {
             snapshot,
-            newHostId: this.gameState.localPlayerId
+            newHostId: this.gameState.localPlayerId,
+            migrationEpoch: this.gameState.migrationEpoch || 0,
         });
 
         // Also fire standard state update just in case
@@ -147,7 +159,30 @@ export class HostMigration {
      * Handle CLAIM message from another peer
      */
     handleClaim(msg) {
-        const { newHostId } = msg.data;
+        const { newHostId } = msg.data || {};
+        const expectedHostId = this._getExpectedHostCandidateId();
+
+        if (!this.isElectionInProgress) {
+            console.warn(`🗳️ Ignoring host claim from ${msg.from}: no election in progress`);
+            return;
+        }
+
+        if (!newHostId || msg.from !== newHostId) {
+            console.warn(`🗳️ Ignoring forged host claim from ${msg.from}: claimed ${newHostId}`);
+            return;
+        }
+
+        if (expectedHostId !== newHostId) {
+            console.warn(`🗳️ Ignoring host claim from ${msg.from}: expected ${expectedHostId}`);
+            return;
+        }
+
+        if (this.gameState._acceptMigrationEpoch
+            && !this.gameState._acceptMigrationEpoch(msg.data?.migrationEpoch, { source: 'migration_claim', from: msg.from })) {
+            console.warn(`Ignoring host claim from ${msg.from}: stale migration epoch ${msg.data?.migrationEpoch}`);
+            return;
+        }
+
         console.log(`🗳️ Accepting new host: ${newHostId}`);
 
         this.network.hostSteamId = newHostId;

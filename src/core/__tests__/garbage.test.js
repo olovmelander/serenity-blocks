@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-    calculateGarbage, maskArrayToBits, bitsToColumns, columnsToMask,
+    calculateGarbage, maskArrayToBits, bitsToColumns, ATTACK_TYPES,
+    applyHandicap, accumulateHandicapStamps,
 } from '../garbage.js';
 import { COLS } from '../constants.js';
 
@@ -129,6 +130,109 @@ describe('Garbage Logic (Quadra Compliance)', () => {
             // Check second mask
             const cols1 = bitsToColumns(attack.cleanMasks[1]);
             expect(cols1).toEqual([0, 3, 6, 9]);
+        });
+    });
+
+    describe('Attack rulesets (config-selectable)', () => {
+        const doubleClear = () => ({
+            depth: 2,
+            complexity: 1,
+            holeMask: [
+                Array.from({ length: COLS }, (_, i) => i === 0),
+                Array.from({ length: COLS }, (_, i) => i === 0),
+            ],
+            manualColumns: [0],
+        });
+
+        it('defaults to a line attack when no rules are given', () => {
+            const attack = calculateGarbage(doubleClear());
+            expect(attack.attackType).toBe(ATTACK_TYPES.LINES);
+            expect(attack.param).toBe(0);
+        });
+
+        it('forces a Blind attack when rules.forceAttackType=blind', () => {
+            const attack = calculateGarbage(doubleClear(), { forceAttackType: ATTACK_TYPES.BLIND });
+            expect(attack.attackType).toBe(ATTACK_TYPES.BLIND);
+            // Blind param = blindBaseDuration(3) + complexity(1)
+            expect(attack.param).toBe(4);
+            // A blind attack still carries its blackout entry on expansion
+            const entries = attack.expandEntries();
+            expect(entries.some((e) => e.type === 'blind')).toBe(true);
+        });
+
+        it('forces a Full Blind attack when rules.forceAttackType=full_blind', () => {
+            const attack = calculateGarbage(doubleClear(), { forceAttackType: ATTACK_TYPES.FULL_BLIND });
+            expect(attack.attackType).toBe(ATTACK_TYPES.FULL_BLIND);
+            // Full blind param = depth(2) * fullBlindMultiplier(2)
+            expect(attack.param).toBe(4);
+            const entries = attack.expandEntries();
+            expect(entries.some((e) => e.type === 'full_blind')).toBe(true);
+        });
+
+        it('honours custom blind tuning params', () => {
+            const attack = calculateGarbage(doubleClear(), {
+                forceAttackType: ATTACK_TYPES.BLIND,
+                blindBaseDuration: 5,
+            });
+            expect(attack.param).toBe(6); // 5 + complexity(1)
+        });
+
+        it('forces a Hot Potato attack with a timer param', () => {
+            const attack = calculateGarbage(doubleClear(), {
+                forceAttackType: ATTACK_TYPES.POTATO,
+                potatoDurationMs: 9000,
+            });
+            expect(attack.attackType).toBe(ATTACK_TYPES.POTATO);
+            expect(attack.param).toBe(9000);
+        });
+    });
+
+    describe('Handicap pipeline (Quadra net_version 24)', () => {
+        const mkState = (handicap) => ({
+            handicap, handicaps: {}, handicapCrowd: 0, isAlive: true,
+        });
+
+        it('equal handicaps accumulate no stamps and never reduce attacks', () => {
+            const sender = mkState(2);
+            const opponent = mkState(2);
+
+            for (let i = 0; i < 20; i++) {
+                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+            }
+
+            expect(sender.handicaps[1] || 0).toBe(0);
+            expect(applyHandicap(4, sender, 1)).toBe(4); // unchanged
+        });
+
+        it('a higher-handicap sender accumulates stamps and reduces lines to weaker opponents', () => {
+            const sender = mkState(4); // Grandmaster
+            const opponent = mkState(1); // Apprentice
+            // diff = 3 → max 9 stamps; 1 stamp accrues per placement
+            for (let i = 0; i < 9; i++) {
+                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+            }
+            expect(sender.handicaps[1]).toBe(9);
+
+            // 3 stamps reduce 1 line → 9 stamps reduce up to 3 lines
+            expect(applyHandicap(4, sender, 1)).toBe(1);
+            // stamps consumed
+            expect(sender.handicaps[1]).toBe(0);
+        });
+
+        it('caps accumulated stamps at the level difference', () => {
+            const sender = mkState(3);
+            const opponent = mkState(2); // diff = 1 → max 3 stamps
+            for (let i = 0; i < 10; i++) {
+                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+            }
+            expect(sender.handicaps[1]).toBe(3);
+        });
+
+        it('clean attacks bypass handicap (no reduction, no stamp spend)', () => {
+            const sender = mkState(4);
+            sender.handicaps[1] = 9;
+            expect(applyHandicap(4, sender, 1, true)).toBe(4);
+            expect(sender.handicaps[1]).toBe(9);
         });
     });
 });

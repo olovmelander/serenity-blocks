@@ -7,6 +7,13 @@ const RAW_THEME_REGISTRY = [
         icon: './forest/forest-theme-icon.png',
     },
     {
+        id: 'halcyon-apex',
+        displayName: 'Halcyon Apex',
+        module: './halcyon-apex/halcyon-apex-theme.js',
+        group: 'biomes',
+        icon: './halcyon-apex/halcyon-apex-theme-icon.png',
+    },
+    {
         id: 'himalayan-peak',
         displayName: 'Himalayan Peak',
         module: './himalayan-peak/himalayan-peak-theme.js',
@@ -71,7 +78,7 @@ const RAW_THEME_REGISTRY = [
     },
     {
         id: 'summer',
-        displayName: 'Summer',
+        displayName: 'Midsommar',
         module: './summer/summer-theme.js',
         group: 'biomes',
         icon: './summer/summer-theme-icon.png',
@@ -126,13 +133,6 @@ const RAW_THEME_REGISTRY = [
         icon: './koi-pond/koi-pond-theme-icon.png',
     },
     {
-        id: 'meadow',
-        displayName: 'Meadow',
-        module: './meadow/meadow-theme.js',
-        group: 'biomes',
-        icon: './meadow/meadow-theme-icon.png',
-    },
-    {
         id: 'verdant-hills',
         displayName: 'Verdant Hills',
         module: './verdant-hills/verdant-hills-theme.js',
@@ -178,6 +178,13 @@ const RAW_THEME_REGISTRY = [
         id: 'bioluminescence',
         displayName: 'Bioluminescence',
         module: './bioluminescence/bioluminescence-theme.js',
+        group: 'cosmic',
+        icon: './bioluminescence/bioluminescence-theme-icon.png',
+    },
+    {
+        id: 'bioluminescence-2',
+        displayName: 'Bioluminescence II',
+        module: './bioluminescence-2/bioluminescence-2-theme.js',
         group: 'cosmic',
         icon: './bioluminescence/bioluminescence-theme-icon.png',
     },
@@ -426,9 +433,17 @@ const RAW_THEME_REGISTRY = [
         icon: './stellar-drift/stellar-drift-theme-icon.png',
         group: 'cosmic',
     },
+    {
+        id: 'vesper-chrysalis',
+        displayName: 'Vesper Chrysalis',
+        module: './vesper-chrysalis/vesper-chrysalis-theme.js',
+        icon: './vesper-chrysalis/vesper-chrysalis-theme-icon.png',
+        group: 'fantasy',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
+    'halcyon-apex',
     'ice-temple',
     'moonlit-forest',
     'wolfhour',
@@ -443,9 +458,11 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'rainy-window',
     'verdant-hills',
     'singing-bowl',
+    'starlight',
     'swedish-forest',
     'geode',
     'bioluminescence',
+    'bioluminescence-2',
     'shifting-sands',
     'misty-lake',
     'waves',
@@ -474,6 +491,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'astral-weave',
     'stellar-velocity',
     'stellar-drift',
+    'vesper-chrysalis',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({

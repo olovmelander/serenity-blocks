@@ -32,6 +32,8 @@ import {
     clamp,
     texture,
     mx_noise_float,
+    normalWorld,
+    dot,
 } from 'three/tsl';
 
 export function createWinterSkyNodeMaterial(params = {}) {
@@ -83,18 +85,18 @@ export function createWinterMoonNodeMaterial(params = {}) {
     const craterNoise = mx_noise_float(vec3(vUv.mul(8.0), uTime.mul(0.02)))
         .mul(0.5)
         .add(0.5);
-    const craterMask = smoothstep(0.35, 0.82, craterNoise);
+    const craterMask = smoothstep(0.42, 0.9, craterNoise);
     // Visible darker maria so the disc reads as a moon, not a white blob.
-    const craterShade = mix(vec3(0.95, 0.96, 0.98), vec3(0.58, 0.64, 0.76), craterMask);
+    const craterShade = mix(vec3(1.0, 0.99, 0.94), vec3(0.84, 0.86, 0.91), craterMask.mul(0.42));
     const normal = normalize(normalView);
     // Limb darkening: bright center → dimmer toward the edge (3D sphere read).
     const ndotv = clamp(normal.z, 0.0, 1.0);
-    const limb = float(0.5).add(pow(ndotv, float(0.45)).mul(0.55));
+    const limb = float(0.82).add(pow(ndotv, float(0.45)).mul(0.24));
     const baseColor = uColor.mul(craterShade).mul(limb);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = baseColor;
-    material.emissiveNode = baseColor.mul(0.35);
+    material.emissiveNode = baseColor.mul(0.9);
 
     return { material, uniforms: { uColor, uTime } };
 }
@@ -165,7 +167,12 @@ export function createWinterMountainNodeMaterial(params = {}) {
     const sparkle = smoothstep(0.72, 1.0, glint).mul(0.35);
     const snowShade = snowCol.add(vec3(0.5, 0.6, 0.78).mul(sparkle));
 
-    const litColor = mix(rock, snowShade, snowFactor);
+    const nWorld = normalize(normalWorld);
+    const slope = nWorld.y;
+    const slopeFactor = smoothstep(float(0.18), float(0.48), slope);
+    const finalSnowFactor = snowFactor.mul(slopeFactor);
+
+    const litColor = mix(rock, snowShade, finalSnowFactor);
 
     // Backlit moonlit rim along the ridge silhouette edges (cool aurora-tinted).
     const rim = pow(float(1.0).sub(abs(vNormal.z)), float(2.5));
@@ -211,8 +218,8 @@ export function createWinterGroundNodeMaterial(params = {}) {
     const drift1 = mx_noise_float(vec3(vPos.xz.mul(0.004), uTime.mul(0.02))).mul(0.5).add(0.5);
     const drift2 = mx_noise_float(vec3(vPos.xz.mul(0.015), float(3.0))).mul(0.5).add(0.5);
     const driftShade = clamp(drift1.mul(0.6).add(drift2.mul(0.4)), 0.0, 1.0);
-    // Brighter, more moonlit near the camera; darker far. Drift modulates it.
-    const nearBright = nearT.mul(0.4).add(0.55);
+    // Darker winter night: dimmer overall, a touch of moonlit lift near camera.
+    const nearBright = nearT.mul(0.28).add(0.3);
     const base = mix(uSnowColor, uBaseColor, float(0.35))
         .mul(float(0.4).add(driftShade.mul(0.6)).mul(nearBright));
 
@@ -291,16 +298,22 @@ export function createWinterAuroraNodeMaterial(options = {}) {
     material.emissiveNode = cycledColor
         .mul(intensity.mul(uIntensity).mul(0.8).add(sparkleBoost));
 
-    material.userData = { uTime, uIntensity, uOpacity, uOffset, uSpeed, uDetail };
+    material.userData = {
+        uTime, uIntensity, uOpacity, uOffset, uSpeed, uDetail,
+    };
 
     return {
         material,
-        uniforms: { uTime, uIntensity, uOpacity, uOffset, uSpeed, uDetail, uColor1, uColor2, uColor3 },
+        uniforms: {
+            uTime, uIntensity, uOpacity, uOffset, uSpeed, uDetail, uColor1, uColor2, uColor3,
+        },
     };
 }
 
 export function createWinterSnowNodeMaterial(params = {}) {
-    const { isWebGPU = false, snowCompute = null, stormDriven = false } = params;
+    const {
+        isWebGPU = false, snowCompute = null, stormDriven = false,
+    } = params;
     const material = new THREE.PointsNodeMaterial();
     material.transparent = true;
     material.depthWrite = false;
@@ -347,18 +360,13 @@ export function createWinterSnowNodeMaterial(params = {}) {
         );
     }
 
-    // --- Soft round flake sprite (replaces the square additive blob) ---
-    // NOTE: use uv() not pointUV — pointUV emits invalid WGSL (gl_PointCoord)
-    // in this three revision (see neon-dusk / fluid-dreams materials).
-    const coord = uv().sub(0.5);
-    const r = length(coord).mul(2.0);
-    const core = float(1.0).sub(smoothstep(0.1, 0.72, r));
-    const hotspot = float(1.0).sub(smoothstep(0.0, 0.34, r));
-    const flake = clamp(core.add(hotspot.mul(0.1)), 0.0, 1.0);
+    // WebGPU `THREE.Points` render as one-pixel primitives here; point-sprite
+    // UV masks are unavailable, so this layer is the fine storm sheet.
+    const flake = float(1.0);
 
-    // Slightly more presence + a wider near/far split for layered depth
-    // (kept low — NormalBlending, so no additive haze risk).
-    const depthAlpha = float(0.022).add(aDepth.mul(0.072));
+    // The old UV mask path evaluated transparent against the geometry UV stub.
+    // Lifted so falling flakes actually read across the whole screen.
+    const depthAlpha = float(0.2).add(aDepth.mul(0.5));
     const twinkle = float(0.85).add(sin(uTime.mul(3.0).add(aPhase.mul(10.0))).mul(0.15));
 
     // Depth-of-field approximation: soften near/far, sharpest mid-depth.
@@ -385,7 +393,7 @@ export function createWinterSnowNodeMaterial(params = {}) {
         .mul(depthScale)
         .mul(blurScale)
         .mul(densitySize)
-        .mul(float(600.0).div(positionView.z.negate()));
+        .mul(float(950.0).div(positionView.z.negate()));
     material.emissiveNode = vec3(0.0);
 
     return {
@@ -618,4 +626,282 @@ export function createWinterFogNodeMaterial(params = {}) {
     material.emissiveNode = vec3(0.0);
 
     return { material, uniforms: { uTime, uOpacity, uSpeed } };
+}
+
+export function createWinterTreeFoliageNodeMaterial(params = {}) {
+    const uTime = uniform(0);
+    const uSnowColor = uniform(params.snowColor ?? new THREE.Color(0xddeeff));
+    const uGreenColor = uniform(params.greenColor ?? new THREE.Color(0x0a263d)); // deep dark cool green-blue
+    const uFogColor = uniform(params.fogColor ?? new THREE.Color(0x070d18));
+    const uFogDensity = uniform(params.fogDensity ?? 0.0008);
+    const uMoonDir = uniform(params.moonDir ?? new THREE.Vector3(470, 330, -1050).normalize());
+
+    const vPos = positionWorld;
+    const nWorld = normalize(normalWorld);
+
+    // Flat slope cover: faces pointing up get snow
+    const slope = nWorld.y;
+
+    // Organic breakup for snow using noise
+    const noise = mx_noise_float(vec3(vPos.mul(0.06))).mul(0.18);
+    const snowFactor = smoothstep(float(0.1).add(noise), float(0.58).add(noise), slope);
+
+    const baseCol = mix(uGreenColor, uSnowColor, snowFactor);
+
+    // Subtle moon highlighting on the snow
+    const moonLit = clamp(dot(nWorld, normalize(uMoonDir)), 0.0, 1.0);
+    const finalLit = baseCol.add(uSnowColor.mul(moonLit.mul(0.25)));
+
+    // Atmospheric depth fog
+    const depth = length(vPos.sub(cameraPosition));
+    const fogFactor = float(1.0).sub(
+        exp(depth.mul(depth).mul(uFogDensity.mul(uFogDensity)).negate()),
+    );
+    const finalColor = mix(finalLit, uFogColor, fogFactor);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = finalColor;
+    material.emissiveNode = vec3(0.0);
+
+    return { material, uniforms: { uTime } };
+}
+
+/**
+ * Recolour the BAKED vertex colours of the GLB winter trees: remap only the
+ * green-dominant foliage to a target forest green while leaving the white snow
+ * caps and brown trunks untouched, preserving the baked per-facet shading.
+ *
+ * Reads `attribute('color','vec3')` directly (so `vertexColors` is OFF to avoid
+ * three's automatic colour-attribute multiply) and outputs the result as the
+ * albedo of a lit MeshStandardNodeMaterial — the same scene lights (moon key +
+ * ambient) then shade near (skinned hero) and far (instanced LOD) trees alike.
+ */
+export function createWinterTreeRecolorMaterial(params = {}) {
+    const uTarget = uniform(params.foliage ?? new THREE.Color(0x36571b)); // "under the snow" forest green
+    const uRefLum = uniform(params.refLum ?? 0.10); // ~mean baked foliage luminance (decouples brightness); lowered 0.12→0.10 so recolour reads brighter to survive the in-game exposure 0.82
+    const uGreenThresh = uniform(params.greenThresh ?? 0.012);
+    const uGreenSoft = uniform(params.greenSoft ?? 0.05);
+    const uSnowLumaLo = uniform(params.snowLumaLo ?? 0.42);
+    const uSnowLumaHi = uniform(params.snowLumaHi ?? 0.68);
+    const uSnowSatLo = uniform(params.snowSatLo ?? 0.10);
+    const uSnowSatHi = uniform(params.snowSatHi ?? 0.26);
+    // Cold snow-haze (aerial perspective): distant trees fade into the winter mist.
+    const uHaze = uniform(params.haze ?? new THREE.Color(0xbcd3e3));
+    const uHazeNear = uniform(params.hazeNear ?? 1050);
+    const uHazeFar = uniform(params.hazeFar ?? 2700);
+    const uHazeStrength = uniform(params.hazeStrength ?? 0.5);
+
+    const c = attribute('color', 'vec3'); // baked COLOR_0: foliage / snow / bark (linear)
+    const lumW = vec3(0.2126, 0.7152, 0.0722);
+    const lum = dot(c, lumW);
+    const maxC = c.r.max(c.g).max(c.b);
+    const minC = c.r.min(c.g).min(c.b);
+    const sat = maxC.sub(minC).div(maxC.max(float(1e-4)));
+    const greenness = c.g.sub(c.r.max(c.b)); // >0 only where green dominates → foliage
+
+    const foliageCand = smoothstep(uGreenThresh.sub(uGreenSoft), uGreenThresh.add(uGreenSoft), greenness);
+    // Snow = bright AND desaturated; the (1-sat) term stops lit-green needles being mis-tagged.
+    const snowMask = smoothstep(uSnowLumaLo, uSnowLumaHi, lum)
+        .mul(float(1.0).sub(smoothstep(uSnowSatLo, uSnowSatHi, sat)));
+    const foliageMask = foliageCand.mul(float(1.0).sub(snowMask)); // green AND not snow
+
+    // Recolour preserving baked FACET shading without inheriting the (dark) baked
+    // luminance: scale the target by the vertex brightness relative to a reference
+    // mean, centred near 1 so the target shows at roughly its own set brightness
+    // (lit facets a bit brighter, self-shadowed a bit darker).
+    // Shadow floor lifted 0.45→0.55 so self-shadowed facets don't crush to dark teal
+    // once the in-game cold grade (exposure 0.82 + contrast about 0.5 + blue tint) bites.
+    const shade = clamp(lum.div(uRefLum.max(float(1e-3))), float(0.55), float(1.5));
+    const recolored = uTarget.mul(shade);
+
+    const albedo = mix(c, recolored, foliageMask);
+    // Aerial perspective: fade albedo toward the cold haze with distance, plus a
+    // touch of emissive so far trees don't crush to black on their shadow sides.
+    const dist = length(positionWorld.sub(cameraPosition));
+    const hazeT = smoothstep(uHazeNear, uHazeFar, dist).mul(uHazeStrength);
+
+    const material = new THREE.MeshStandardNodeMaterial();
+    material.colorNode = mix(albedo, uHaze, hazeT);
+    // Distance-haze emissive + a faint target-tinted "green kiss" on the foliage only,
+    // so close trees self-illuminate against the cool in-game grade + MRT bloom instead
+    // of dying to navy. Kept low (0.06) so they read forest-green, not neon.
+    material.emissiveNode = uHaze.mul(hazeT.mul(0.4)).add(uTarget.mul(foliageMask).mul(0.06));
+    material.vertexColors = false; // we read 'color' manually → avoid the auto-multiply
+    material.flatShading = true;
+    material.side = THREE.DoubleSide;
+    material.roughness = 1.0;
+    material.metalness = 0.0;
+    return {
+        material,
+        uniforms: {
+            uTarget, uRefLum, uGreenThresh, uGreenSoft, uSnowLumaLo, uSnowLumaHi, uSnowSatLo, uSnowSatHi,
+            uHaze, uHazeNear, uHazeFar, uHazeStrength,
+        },
+    };
+}
+
+export function createWinterLakeNodeMaterial(params = {}) {
+    /* eslint-disable camelcase */
+    const uTime = uniform(0);
+    const uLakeColor = uniform(params.lakeColor ?? new THREE.Color(0x16d2d6)); // glowing centre cyan
+    const uBaseColor = uniform(params.baseColor ?? new THREE.Color(0x0a5a70)); // deep turquoise shore
+    const uAurora = uniform(params.aurora ?? new THREE.Color(0x33b890)); // emerald→teal curtain
+    const uSky = uniform(params.skyColor ?? new THREE.Color(0x1b3a6e)); // cobalt reflected sky
+    const uMountain = uniform(params.mtnColor ?? new THREE.Color(0x081c33)); // dark reflected treeline/peaks
+    const uMoonColor = uniform(params.moonColor ?? new THREE.Color(0xdce8ff)); // moon glitter
+    const uMoonU = uniform(params.moonU ?? 0.74); // moon column position in lake U
+    const uCrackColor = uniform(params.crackColor ?? new THREE.Color(0xbfeeff)); // white-cyan cracks
+    // ── "Shinier / icier" procedural levers (grade-safe, single-pass) ─────────
+    const uFrostStrength = uniform(params.frostStrength ?? 0.5); // fbm normal-tilt → faceted ice plate
+    const uStorm = uniform(0); // 0..1 Living-Blizzard intensity — combos flare the ice
+    const uStreakAngle = uniform(params.streakAngle ?? 0.5); // skated-ice streak direction (radians)
+    const uStreakFreq = uniform(params.streakFreq ?? 130.0); // streak density
+    const uIceDepth = uniform(params.iceDepth ?? 0.045); // parallax "look into the thick ice" depth
+
+    const baseUv = uv();
+    const u = baseUv.x;
+    const v = baseUv.y;
+
+    // FROST RELIEF: tilt the dead-flat +Y normal with two decorrelated noise fields so the
+    // whole sheet reads as a faceted ICE PLATE — every highlight below (sheen, sparkle, sweep,
+    // moon glare) then rides real micro-relief instead of flat paint. uFrostStrength scales it.
+    const viewDir = normalize(cameraPosition.sub(positionWorld));
+    const frostNx = mx_noise_float(vec3(u.mul(40.0), v.mul(26.0), float(2.0)));
+    const frostNz = mx_noise_float(vec3(u.mul(40.0).add(13.0), v.mul(26.0).add(7.0), float(4.0)));
+    const nPert = normalize(vec3(frostNx.mul(uFrostStrength), float(1.0), frostNz.mul(uFrostStrength)));
+    const vDotN = clamp(abs(dot(viewDir, nPert)), 0.0, 1.0);
+    const fresnel = pow(float(1.0).sub(vDotN), float(3.5));
+    const facet = clamp(length(vec2(frostNx, frostNz)).mul(uFrostStrength), 0.0, 1.0); // slope → glint gate
+
+    // Base turquoise sheet: bright glowing centre, deeper toward the shoreline.
+    const cx = u.sub(0.5).mul(2.0);
+    const cz = v.sub(0.5).mul(2.0);
+    const distCentre = clamp(length(vec2(cx, cz.mul(0.8))), 0.0, 1.0);
+    const centreGlow = float(1.0).sub(smoothstep(0.0, 0.85, distCentre));
+    let iceBase = mix(uBaseColor, uLakeColor, centreGlow);
+    // PARALLAX DEPTH: faint frozen air-bubbles sampled at a VIEW-OFFSET UV so they sit BELOW
+    // the surface — the slab reads as THICK ice with internal depth, not a flat sheet. Sparse
+    // + centre-gated + parallax-shifted, so it reads as depth and never as surface grain.
+    const iceParUv = baseUv.sub(viewDir.xz.div(clamp(abs(viewDir.y), 0.22, 1.0)).mul(uIceDepth));
+    const deepBub = mx_noise_float(vec3(iceParUv.x.mul(11.0), iceParUv.y.mul(8.0), float(6.0))).mul(0.5).add(0.5);
+    iceBase = mix(iceBase, uLakeColor.mul(1.16), smoothstep(0.62, 0.9, deepBub).mul(centreGlow).mul(0.26));
+
+    // Slow ripple field that wobbles every reflected band horizontally.
+    const ripple = mx_noise_float(vec3(u.mul(6.0), v.mul(3.0).add(uTime.mul(0.05)), float(0.0)))
+        .mul(0.5).add(0.5);
+    const uW = u.add(ripple.sub(0.5).mul(0.06));
+
+    // Reflected-sky smear (cobalt), strengthening toward the far shore.
+    const skyBand = smoothstep(0.45, 1.0, v);
+    const skySmear = uSky.mul(skyBand.mul(0.45)).mul(ripple.mul(0.5).add(0.6));
+
+    // Aurora curtain smear: emerald→teal vertical streaks, mid-to-far, wobbled.
+    const curtain = sin(uW.mul(11.0).add(uTime.mul(0.08))).mul(0.5).add(0.5);
+    const curtainNoise = mx_noise_float(vec3(uW.mul(4.0), v.mul(1.5).add(uTime.mul(0.04)), float(3.0)))
+        .mul(0.5).add(0.5);
+    const auroraDepth = smoothstep(0.30, 0.95, v).mul(smoothstep(1.0, 0.86, v).add(0.55));
+    const auroraSmear = uAurora.mul(
+        auroraDepth.mul(curtain.mul(0.6).add(0.25)).mul(curtainNoise.mul(0.5).add(0.5)).mul(0.7),
+    );
+
+    // Reflected-mountain / treeline darkening band near the far shore.
+    const mtnBand = smoothstep(0.74, 0.93, v).mul(smoothstep(1.0, 0.9, v).add(0.35));
+    const mtnRagged = mx_noise_float(vec3(uW.mul(7.0), float(11.0), float(0.0))).mul(0.5).add(0.5);
+    const mtnMask = clamp(mtnBand.mul(mtnRagged.mul(0.6).add(0.55)), 0.0, 1.0);
+
+    // Moon glitter column (procedural) — vertical broken-light band under the moon.
+    const colBand = smoothstep(0.085, 0.0, abs(uW.sub(uMoonU)));
+    const colShimmer = mx_noise_float(vec3(u.mul(48.0), v.mul(22.0).add(uTime.mul(0.6)), float(7.0)))
+        .mul(0.5).add(0.5);
+    const moonColumn = colBand.mul(smoothstep(0.04, 0.85, v)).mul(colShimmer.mul(0.65).add(0.35));
+    const moonRefl = uMoonColor.mul(moonColumn);
+
+    // Procedural white-cyan crack lines (no texture needed).
+    const cn1 = mx_noise_float(vec3(u.mul(9.0), v.mul(9.0), float(1.7))).mul(0.5).add(0.5);
+    const cn2 = mx_noise_float(vec3(u.mul(5.0).add(v.mul(3.0)), v.mul(6.0).sub(u.mul(2.0)), float(4.2)))
+        .mul(0.5).add(0.5);
+    const ridge1 = float(1.0).sub(smoothstep(0.0, 0.04, abs(cn1.sub(0.5))));
+    const ridge2 = float(1.0).sub(smoothstep(0.0, 0.05, abs(cn2.sub(0.5))));
+    const crackDepth = float(0.45).add(smoothstep(1.0, 0.2, v).mul(0.55));
+    const crackLine = clamp(ridge1.add(ridge2.mul(0.7)), 0.0, 1.0).mul(crackDepth);
+
+    // ── Glossy "shiny ice" highlights (ice-temple-style) ─────────────────────
+    // Brighter grazing-angle sheen (fresnel rim).
+    const sheen = mix(vec3(0.0), vec3(0.52, 0.70, 0.92), fresnel.mul(0.62));
+    // Twinkling micro-sparkles — stretched (v×40) so glints read ELONGATED like ice crystals,
+    // gated by the frost facet slope so they cluster on relief; combos (uStorm) raise density.
+    const sparkleField = mx_noise_float(vec3(u.mul(165.0), v.mul(40.0), uTime.mul(0.9).add(31.0)))
+        .mul(0.5).add(0.5);
+    const sparkle = smoothstep(float(0.9).sub(uStorm.mul(0.12)), float(1.0), sparkleField)
+        .mul(smoothstep(0.05, 0.5, v))
+        .mul(fresnel.mul(0.6).add(0.55))
+        .mul(facet.mul(0.7).add(0.6));
+    // ANISOTROPIC STREAK specular — thin highlights raked along the skate / ice-growth
+    // direction (the unmistakable "polished ice" read), windowed by a low-freq density noise.
+    const sDir = u.mul(cos(uStreakAngle)).add(v.mul(sin(uStreakAngle)));
+    const streakNoise = mx_noise_float(vec3(u.mul(8.0), v.mul(8.0), float(5.0))).mul(0.5).add(0.5);
+    const streakDensField = mx_noise_float(vec3(u.mul(3.0), v.mul(3.0), float(9.0))).mul(0.5).add(0.5);
+    const streakDens = smoothstep(0.45, 0.8, streakDensField);
+    const streak = pow(abs(sin(sDir.mul(uStreakFreq).add(streakNoise.mul(6.28)))), float(22.0))
+        .mul(streakDens).mul(fresnel.mul(0.7).add(0.3)).mul(smoothstep(0.1, 0.6, v));
+    // Slow specular SWEEP gliding across the ice (like the tetromino-block shine); combos speed it.
+    const sweepPhase = u.mul(2.6).add(v.mul(1.4)).sub(uTime.mul(float(0.22).add(uStorm.mul(0.5))));
+    const sweep = pow(sin(sweepPhase).mul(0.5).add(0.5), float(7.0))
+        .mul(smoothstep(0.12, 0.7, v)).mul(0.5);
+    // Tight moon GLARE hotspot where the moon concentrates on the ice.
+    const glareDist = length(vec2(uW.sub(uMoonU).mul(2.6), v.sub(0.30).mul(1.15)));
+    const moonGlare = smoothstep(0.55, 0.0, glareDist).mul(colShimmer.mul(0.4).add(0.6));
+    const shine = uMoonColor.mul(
+        sparkle.mul(0.95).add(sweep.mul(0.6)).add(moonGlare.mul(0.8)).add(streak.mul(0.85)),
+    );
+
+    // Organic shoreline alpha so the ice melts into the snow (no hard rectangle).
+    const edgeNoise = mx_noise_float(vec3(baseUv.mul(5.0), float(0.0))).mul(0.5).add(0.5);
+    const eIn = float(0.06).add(edgeNoise.mul(0.07));
+    const edgeMask = smoothstep(0.0, eIn, u)
+        .mul(float(1.0).sub(smoothstep(float(1.0).sub(eIn), 1.0, u)))
+        .mul(smoothstep(0.0, eIn, v))
+        .mul(float(1.0).sub(smoothstep(float(1.0).sub(eIn), 1.0, v)));
+
+    // SUB-SURFACE cyan glow: an inner light in the sheet's centre that BREATHES and SWELLS on
+    // combos (uStorm) so the ice visibly flares during play. FROST RIM: a brighter crystalline
+    // band at the ice/snow seam that sells "frozen" + hides the shoreline alpha seam.
+    const subsurf = uLakeColor.mul(
+        centreGlow.mul(float(0.22).add(uStorm.mul(0.9))).mul(sin(uTime.mul(0.5)).mul(0.08).add(0.92)),
+    );
+    const rim = edgeMask.mul(float(1.0).sub(edgeMask)).mul(4.0); // bright in the edge fade band
+    const rimSparkle = mx_noise_float(vec3(u.mul(120.0), v.mul(120.0), float(13.0))).mul(0.5).add(0.5);
+    const frostRim = uCrackColor.mul(rim.mul(rimSparkle.mul(0.5).add(0.6)).mul(1.15));
+
+    let col = iceBase;
+    col = mix(col, uMountain, mtnMask);
+    col = col.add(skySmear);
+    col = col.add(auroraSmear);
+    col = col.add(moonRefl);
+    col = col.add(subsurf);
+    col = col.add(sheen);
+    col = col.add(shine);
+    col = col.add(frostRim);
+    col = mix(col, uCrackColor, crackLine.mul(0.85));
+    const finalColor = clamp(col, 0.0, 1.7);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = finalColor;
+    material.opacityNode = clamp(edgeMask, 0.0, 1.0);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.emissiveNode = moonRefl.mul(0.55)
+        .add(auroraSmear.mul(0.35))
+        .add(uCrackColor.mul(crackLine.mul(0.3)))
+        .add(subsurf.mul(0.5))
+        .add(frostRim.mul(0.6))
+        .add(shine.mul(0.6));
+
+    /* eslint-enable camelcase */
+    return {
+        material,
+        uniforms: {
+            uTime, uAurora, uLakeColor, uMoonColor, uStorm, uFrostStrength, uStreakAngle, uStreakFreq,
+        },
+    };
 }

@@ -40,6 +40,8 @@ const CLOUD_SETTINGS_KEYS = [
 const CLOUD_KEYBIND_KEYS = [
     'keyBindings',
     'player2KeyBindings',
+    'serenityKeyBindings',
+    'serenityGamepadBindings',
 ];
 
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
@@ -359,6 +361,14 @@ export class SteamCloudSyncManager {
                 ...current.player2KeyBindings,
                 ...(keybinds.player2KeyBindings || {}),
             },
+            serenityKeyBindings: {
+                ...current.serenityKeyBindings,
+                ...(keybinds.serenityKeyBindings || {}),
+            },
+            serenityGamepadBindings: {
+                ...current.serenityGamepadBindings,
+                ...(keybinds.serenityGamepadBindings || {}),
+            },
         };
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });
@@ -413,6 +423,14 @@ export class SteamCloudSyncManager {
                 player2KeyBindings: {
                     ...(localKeys.player2KeyBindings || {}),
                     ...(cloudKeys.player2KeyBindings || {}),
+                },
+                serenityKeyBindings: {
+                    ...(localKeys.serenityKeyBindings || {}),
+                    ...(cloudKeys.serenityKeyBindings || {}),
+                },
+                serenityGamepadBindings: {
+                    ...(localKeys.serenityGamepadBindings || {}),
+                    ...(cloudKeys.serenityGamepadBindings || {}),
                 },
             };
         }

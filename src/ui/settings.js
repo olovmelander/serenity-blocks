@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
     gameMode: 'single',
     dasDelay: 120,
     dasInterval: 40,
+    softDropInterval: 50,
     musicTrack: 'Ambient',
     soundSet: 'Zen',
     musicVolume: 1.0,
@@ -80,6 +81,15 @@ const DEFAULT_CONFIG = {
         softDrop: 's',
         hardDrop: 'Shift',
     },
+    serenityKeyBindings: {
+        toggleHub: 'h',
+        toggleBreathing: 'Space',
+        cycleBreathingTechnique: 't',
+        randomTheme: 'b',
+        toggleFullscreen: 'f',
+        toggleControlHints: '/',
+        exitToMenu: 'Escape',
+    },
     gamepadBindings: {
         moveLeft: 14, // D-pad Left
         moveRight: 15, // D-pad Right
@@ -120,6 +130,24 @@ const DEFAULT_CONFIG = {
         hardDrop: 1,
         pause: 9,
     },
+    serenityGamepadBindings: {
+        toggleHub: 3, // Y Button
+        toggleBreathing: 2, // X Button
+        randomTheme: 10, // Left stick click
+        toggleFullscreen: 11, // Right stick click
+        previousTrack: 4, // Left bumper
+        nextTrack: 5, // Right bumper
+        volumeDown: 6, // Left trigger
+        volumeUp: 7, // Right trigger
+        toggleControlHints: 8, // Select/Share
+        openSettings: 9, // Start/Options
+        previousBreathingTechnique: 12, // D-pad Up
+        nextBreathingTechnique: 13, // D-pad Down
+        confirmSelection: 0, // A Button
+        closeHub: 1, // B Button
+        navigateLeft: 14, // D-pad Left
+        navigateRight: 15, // D-pad Right
+    },
 };
 
 const KEYBOARD_BINDING_ACTIONS = [
@@ -132,11 +160,40 @@ const KEYBOARD_BINDING_ACTIONS = [
     'hardDrop',
 ];
 
-function sanitizeBindings(bindings, fallbackBindings) {
+const SERENITY_KEYBOARD_BINDING_ACTIONS = [
+    'toggleHub',
+    'toggleBreathing',
+    'cycleBreathingTechnique',
+    'randomTheme',
+    'toggleFullscreen',
+    'toggleControlHints',
+    'exitToMenu',
+];
+
+const SERENITY_GAMEPAD_BINDING_ACTIONS = [
+    'toggleHub',
+    'toggleBreathing',
+    'randomTheme',
+    'toggleFullscreen',
+    'previousTrack',
+    'nextTrack',
+    'volumeDown',
+    'volumeUp',
+    'toggleControlHints',
+    'openSettings',
+    'previousBreathingTechnique',
+    'nextBreathingTechnique',
+    'confirmSelection',
+    'closeHub',
+    'navigateLeft',
+    'navigateRight',
+];
+
+function sanitizeBindings(bindings, fallbackBindings, actions = KEYBOARD_BINDING_ACTIONS) {
     const source = (bindings && typeof bindings === 'object') ? bindings : {};
     const sanitized = {};
 
-    KEYBOARD_BINDING_ACTIONS.forEach((action) => {
+    actions.forEach((action) => {
         const value = source[action];
         if (typeof value === 'string' && value.length > 0) {
             sanitized[action] = value;
@@ -150,6 +207,33 @@ function sanitizeBindings(bindings, fallbackBindings) {
 
 const sanitizePlayer1KeyBindings = (bindings) => sanitizeBindings(bindings, DEFAULT_CONFIG.keyBindings);
 const sanitizePlayer2KeyBindings = (bindings) => sanitizeBindings(bindings, DEFAULT_CONFIG.player2KeyBindings);
+const sanitizeSerenityKeyBindings = (bindings) => sanitizeBindings(
+    bindings,
+    DEFAULT_CONFIG.serenityKeyBindings,
+    SERENITY_KEYBOARD_BINDING_ACTIONS,
+);
+
+function sanitizeButtonBindings(bindings, fallbackBindings, actions) {
+    const source = (bindings && typeof bindings === 'object') ? bindings : {};
+    const sanitized = {};
+
+    actions.forEach((action) => {
+        const value = source[action];
+        if (Number.isInteger(value) && value >= 0) {
+            sanitized[action] = value;
+        } else {
+            sanitized[action] = fallbackBindings[action];
+        }
+    });
+
+    return sanitized;
+}
+
+const sanitizeSerenityGamepadBindings = (bindings) => sanitizeButtonBindings(
+    bindings,
+    DEFAULT_CONFIG.serenityGamepadBindings,
+    SERENITY_GAMEPAD_BINDING_ACTIONS,
+);
 
 const GAMEPAD_BINDING_KEYS = [
     'gamepadBindings',
@@ -163,43 +247,6 @@ const DEFAULT_GAMEPAD_BINDINGS = [
     DEFAULT_CONFIG.player2GamepadBindings,
     DEFAULT_CONFIG.player3GamepadBindings,
     DEFAULT_CONFIG.player4GamepadBindings,
-];
-
-const SERENITY_GAMEPAD_DEFAULTS = [
-    'Y (Triangle)',
-    'X (Square)',
-    'L3 (L-Stick Click)',
-    'R3 (R-Stick Click)',
-    'LB (L1)',
-    'RB (R1)',
-    'LT (L2)',
-    'RT (R2)',
-    'Select (Share)',
-    'Start (Options)',
-    'D-Pad Down',
-    'D-Pad Up',
-    'A (Cross)',
-    'B (Circle)',
-    'D-Left / L-Stick Left',
-    'D-Right / L-Stick Right',
-    'D-Up / L-Stick Up',
-    'D-Down / L-Stick Down',
-    'R-Stick Up/Down',
-];
-
-const SERENITY_KEYBOARD_DEFAULTS = [
-    'H',
-    'Space',
-    'T',
-    'B',
-    'F',
-    '/ or ?',
-    'ESC',
-    'Click',
-    'H or ESC',
-    'Click Tab Button',
-    'Mouse Wheel',
-    'Mouse / Click',
 ];
 
 function applyCursorSettingDefaults(settings) {
@@ -253,6 +300,24 @@ export class SettingsManager {
             });
         } else {
             this.settings.player2KeyBindings = sanitizePlayer2KeyBindings(this.settings.player2KeyBindings);
+        }
+
+        if (newSettings.serenityKeyBindings) {
+            this.settings.serenityKeyBindings = sanitizeSerenityKeyBindings({
+                ...previousSettings.serenityKeyBindings,
+                ...newSettings.serenityKeyBindings,
+            });
+        } else {
+            this.settings.serenityKeyBindings = sanitizeSerenityKeyBindings(this.settings.serenityKeyBindings);
+        }
+
+        if (newSettings.serenityGamepadBindings) {
+            this.settings.serenityGamepadBindings = sanitizeSerenityGamepadBindings({
+                ...previousSettings.serenityGamepadBindings,
+                ...newSettings.serenityGamepadBindings,
+            });
+        } else {
+            this.settings.serenityGamepadBindings = sanitizeSerenityGamepadBindings(this.settings.serenityGamepadBindings);
         }
 
         this.settings = applyCursorSettingDefaults(this.settings);
@@ -315,6 +380,8 @@ export class SettingsManager {
                 const loaded = JSON.parse(saved);
                 const loadedKeyBindings = loaded.keyBindings || {};
                 const loadedP2KeyBindings = loaded.player2KeyBindings || {};
+                const loadedSerenityKeyBindings = loaded.serenityKeyBindings || {};
+                const loadedSerenityGamepadBindings = loaded.serenityGamepadBindings || {};
                 const sanitizedKeyBindings = sanitizePlayer1KeyBindings({
                     ...DEFAULT_CONFIG.keyBindings,
                     ...loadedKeyBindings,
@@ -323,6 +390,14 @@ export class SettingsManager {
                     ...DEFAULT_CONFIG.player2KeyBindings,
                     ...loadedP2KeyBindings,
                 });
+                const sanitizedSerenityKeyBindings = sanitizeSerenityKeyBindings({
+                    ...DEFAULT_CONFIG.serenityKeyBindings,
+                    ...loadedSerenityKeyBindings,
+                });
+                const sanitizedSerenityGamepadBindings = sanitizeSerenityGamepadBindings({
+                    ...DEFAULT_CONFIG.serenityGamepadBindings,
+                    ...loadedSerenityGamepadBindings,
+                });
                 const sanitizedCursorSettings = normalizeCursorSettings(loaded);
 
                 this.settings = {
@@ -330,19 +405,33 @@ export class SettingsManager {
                     ...loaded,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
+                    serenityKeyBindings: sanitizedSerenityKeyBindings,
+                    serenityGamepadBindings: sanitizedSerenityGamepadBindings,
                 };
                 this.settings = applyCursorSettingDefaults(this.settings);
                 this.didLoadFromStorage = true;
 
                 const keyBindingsChanged = JSON.stringify(loadedKeyBindings) !== JSON.stringify(sanitizedKeyBindings);
                 const player2BindingsChanged = JSON.stringify(loadedP2KeyBindings) !== JSON.stringify(sanitizedP2KeyBindings);
+                const serenityKeyBindingsChanged = (
+                    JSON.stringify(loadedSerenityKeyBindings) !== JSON.stringify(sanitizedSerenityKeyBindings)
+                );
+                const serenityGamepadBindingsChanged = (
+                    JSON.stringify(loadedSerenityGamepadBindings) !== JSON.stringify(sanitizedSerenityGamepadBindings)
+                );
                 const cursorSettingsChanged = (
                     loaded.customCursorEnabled !== sanitizedCursorSettings.customCursorEnabled
                     || loaded.customCursorIntensity !== sanitizedCursorSettings.customCursorIntensity
                     || loaded.customCursorVisibilityPreset !== sanitizedCursorSettings.customCursorVisibilityPreset
                     || loaded.customCursorReducedMotion !== sanitizedCursorSettings.customCursorReducedMotion
                 );
-                if (keyBindingsChanged || player2BindingsChanged || cursorSettingsChanged) {
+                if (
+                    keyBindingsChanged
+                    || player2BindingsChanged
+                    || serenityKeyBindingsChanged
+                    || serenityGamepadBindingsChanged
+                    || cursorSettingsChanged
+                ) {
                     this.save({ emitEvent: false });
                 }
             }
@@ -433,21 +522,38 @@ export function updateControlsDisplay(settings) {
  * @param {SettingsManager} settingsManager - Settings manager instance
  * @param {Function} updateCallback - Callback to update controls display
  */
+function getKeyboardBindingContext(elementId) {
+    if (elementId.startsWith('key-serenity-')) {
+        return {
+            action: elementId.substring('key-serenity-'.length),
+            bindingsKey: 'serenityKeyBindings',
+            defaultBindings: DEFAULT_CONFIG.serenityKeyBindings,
+        };
+    }
+
+    if (elementId.startsWith('key-p2-')) {
+        return {
+            action: elementId.substring(7),
+            bindingsKey: 'player2KeyBindings',
+            defaultBindings: DEFAULT_CONFIG.player2KeyBindings,
+        };
+    }
+
+    return {
+        action: elementId.substring(4),
+        bindingsKey: 'keyBindings',
+        defaultBindings: DEFAULT_CONFIG.keyBindings,
+    };
+}
+
 export function handleKeybinding(event, element, settingsManager, updateCallback) {
     event.preventDefault();
 
     const elementId = element.id;
     const key = event.key === ' ' ? 'Space' : event.key;
     const settings = settingsManager.get();
-
-    // Determine if this is player 2 binding
-    const isPlayer2 = elementId.startsWith('key-p2-');
-    const action = isPlayer2
-        ? elementId.substring(7) // Remove 'key-p2-' prefix
-        : elementId.substring(4); // Remove 'key-' prefix
-
-    const bindingsKey = isPlayer2 ? 'player2KeyBindings' : 'keyBindings';
-    const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
+    const { action, bindingsKey, defaultBindings } = getKeyboardBindingContext(elementId);
+    const currentBindings = settings[bindingsKey] || defaultBindings;
 
     // Check if key is already used for another action in the same player's bindings
     if (Object.values(currentBindings).includes(key) && currentBindings[action] !== key) {
@@ -495,6 +601,15 @@ const GAMEPAD_BUTTON_NAMES = {
 };
 
 function getGamepadBindingContext(elementId) {
+    if (elementId.startsWith('gamepad-serenity-')) {
+        return {
+            playerIndex: null,
+            action: elementId.substring('gamepad-serenity-'.length),
+            bindingsKey: 'serenityGamepadBindings',
+            defaultBindings: DEFAULT_CONFIG.serenityGamepadBindings,
+        };
+    }
+
     const match = /^gamepad(?:-p(\d))?-(.+)$/.exec(elementId);
     const rawIndex = match && match[1] ? parseInt(match[1], 10) - 1 : 0;
     const playerIndex = Number.isNaN(rawIndex) ? 0 : Math.min(Math.max(rawIndex, 0), GAMEPAD_BINDING_KEYS.length - 1);
@@ -504,6 +619,7 @@ function getGamepadBindingContext(elementId) {
         playerIndex,
         action,
         bindingsKey: GAMEPAD_BINDING_KEYS[playerIndex],
+        defaultBindings: DEFAULT_GAMEPAD_BINDINGS[playerIndex],
     };
 }
 
@@ -517,11 +633,11 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
     const elementId = element.id;
     let settings = settingsManager.get();
 
-    const { playerIndex, action, bindingsKey } = getGamepadBindingContext(elementId);
+    const { action, bindingsKey, defaultBindings } = getGamepadBindingContext(elementId);
     let currentBindings = settings[bindingsKey];
 
     if (!currentBindings) {
-        currentBindings = { ...DEFAULT_GAMEPAD_BINDINGS[playerIndex] };
+        currentBindings = { ...defaultBindings };
         settingsManager.update({ [bindingsKey]: currentBindings }, false);
         settingsManager.save();
         settings = settingsManager.get();
@@ -536,7 +652,8 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
 
             // Check all buttons
             for (let btnIndex = 0; btnIndex < gamepad.buttons.length; btnIndex++) {
-                if (gamepad.buttons[btnIndex].pressed) {
+                const button = gamepad.buttons[btnIndex];
+                if (button.pressed || button.value > 0.3) {
                     // Check if button is already used for another action
                     if (Object.values(currentBindings).includes(btnIndex) && currentBindings[action] !== btnIndex) {
                         // Revert to original button
@@ -600,6 +717,25 @@ export function updateGamepadControlsDisplay(settings) {
             const buttonIndex = bindings[action];
             element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
         });
+    });
+}
+
+function updateSerenityControlsDisplay(settings) {
+    const keyBindings = settings.serenityKeyBindings || DEFAULT_CONFIG.serenityKeyBindings;
+    SERENITY_KEYBOARD_BINDING_ACTIONS.forEach((action) => {
+        const element = document.getElementById(`key-serenity-${action}`);
+        if (element && keyBindings[action]) {
+            element.textContent = keyBindings[action];
+        }
+    });
+
+    const gamepadBindings = settings.serenityGamepadBindings || DEFAULT_CONFIG.serenityGamepadBindings;
+    SERENITY_GAMEPAD_BINDING_ACTIONS.forEach((action) => {
+        const element = document.getElementById(`gamepad-serenity-${action}`);
+        const buttonIndex = gamepadBindings[action];
+        if (element && buttonIndex !== undefined) {
+            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
     });
 }
 
@@ -727,49 +863,33 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-    const resetSerenityGamepadDisplay = () => {
-        const nodes = document.querySelectorAll('#controls-serenity-gamepad .gamepad-display');
-        nodes.forEach((node, index) => {
-            const value = SERENITY_GAMEPAD_DEFAULTS[index];
-            if (value !== undefined) {
-                node.textContent = value;
-            }
-        });
-    };
-
-    const resetSerenityKeyboardDisplay = () => {
-        const nodes = document.querySelectorAll('#controls-serenity-keyboard .gamepad-display');
-        nodes.forEach((node, index) => {
-            const value = SERENITY_KEYBOARD_DEFAULTS[index];
-            if (value !== undefined) {
-                node.textContent = value;
-            }
-        });
-    };
-
     const applyKeyDefaults = (key) => {
-        if (!DEFAULT_SETTINGS[key]) return;
-        settingsManager.update({ [key]: { ...DEFAULT_SETTINGS[key] } });
+        const defaults = DEFAULT_SETTINGS[key] || DEFAULT_CONFIG[key];
+        if (!defaults) return;
+        settingsManager.update({ [key]: { ...defaults } });
         settingsManager.save();
         updateControlsDisplay(settingsManager.get());
+        updateSerenityControlsDisplay(settingsManager.get());
     };
 
     const applyGamepadDefaults = (key) => {
-        if (!DEFAULT_SETTINGS[key]) return;
-        settingsManager.update({ [key]: { ...DEFAULT_SETTINGS[key] } });
+        const defaults = DEFAULT_SETTINGS[key] || DEFAULT_CONFIG[key];
+        if (!defaults) return;
+        settingsManager.update({ [key]: { ...defaults } });
         settingsManager.save();
         updateGamepadControlsDisplay(settingsManager.get());
+        updateSerenityControlsDisplay(settingsManager.get());
     };
 
     const bindingResetHandlers = {
         'keyboard-player1': () => applyKeyDefaults('keyBindings'),
         'keyboard-player2': () => applyKeyDefaults('player2KeyBindings'),
-        'keyboard-serenity': () => resetSerenityKeyboardDisplay(),
+        'keyboard-serenity': () => applyKeyDefaults('serenityKeyBindings'),
         'gamepad-player1': () => applyGamepadDefaults('gamepadBindings'),
         'gamepad-player2': () => applyGamepadDefaults('player2GamepadBindings'),
         'gamepad-player3': () => applyGamepadDefaults('player3GamepadBindings'),
         'gamepad-player4': () => applyGamepadDefaults('player4GamepadBindings'),
-        'gamepad-serenity': () => resetSerenityGamepadDisplay(),
+        'gamepad-serenity': () => applyGamepadDefaults('serenityGamepadBindings'),
     };
 
     document.querySelectorAll('[data-reset-target]').forEach((button) => {
@@ -793,6 +913,28 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             }
         });
     }
+
+    const bindTimingSlider = (sliderId, valueId, settingKey, fallbackValue) => {
+        const slider = document.getElementById(sliderId);
+        const value = document.getElementById(valueId);
+        if (!slider || !value) return;
+
+        const initialValue = Number(settings[settingKey] ?? fallbackValue);
+        slider.value = Number.isFinite(initialValue) ? initialValue : fallbackValue;
+        value.textContent = slider.value;
+
+        slider.addEventListener('input', (event) => {
+            const parsedValue = parseInt(event.target.value, 10);
+            const numericValue = Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+            settingsManager.update({ [settingKey]: numericValue });
+            value.textContent = String(numericValue);
+            settingsManager.save();
+        });
+    };
+
+    bindTimingSlider('das-delay', 'das-delay-value', 'dasDelay', DEFAULT_CONFIG.dasDelay);
+    bindTimingSlider('das-interval', 'das-interval-value', 'dasInterval', DEFAULT_CONFIG.dasInterval);
+    bindTimingSlider('soft-drop-interval', 'soft-drop-interval-value', 'softDropInterval', DEFAULT_CONFIG.softDropInterval);
 
     // Music volume slider
     const musicVolumeSlider = document.getElementById('music-volume');
@@ -872,6 +1014,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             handleModeChange(mode);
             settingsManager.save();
         });
+
+        // Sync UI with external settings changes
+        if (typeof window !== 'undefined') {
+            window.addEventListener('settingsChanged', (e) => {
+                const changes = e.detail;
+                const currentSettings = settingsManager.get();
+                if (changes.backgroundMode !== undefined) {
+                    bgModeSelect.value = currentSettings.backgroundMode;
+                    handleModeChange(currentSettings.backgroundMode);
+                }
+            });
+        }
     }
 
     // Theme-Linked SFX toggle
@@ -1492,18 +1646,13 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     }
 
     // Initialize key bindings listeners
-    const keyInputs = document.querySelectorAll('.key-input');
+    const keyInputs = document.querySelectorAll('.key-input:not(.gamepad-input)');
     keyInputs.forEach((input) => {
-        const elementId = input.id;
-        const isPlayer2 = elementId.startsWith('key-p2-');
-        const action = isPlayer2
-            ? elementId.substring(7) // Remove 'key-p2-' prefix
-            : elementId.substring(4); // Remove 'key-' prefix
+        const context = getKeyboardBindingContext(input.id);
+        const currentBindings = settings[context.bindingsKey] || context.defaultBindings;
 
-        const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
-
-        if (currentBindings && currentBindings[action]) {
-            input.textContent = currentBindings[action];
+        if (currentBindings && currentBindings[context.action]) {
+            input.textContent = currentBindings[context.action];
         }
 
         input.addEventListener('click', () => {
@@ -1514,7 +1663,9 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             const keydownHandler = (event) => {
                 if (input.classList.contains('listening')) {
                     handleKeybinding(event, input, settingsManager, () => {
-                        updateControlsDisplay(settingsManager.get());
+                        const refreshedSettings = settingsManager.get();
+                        updateControlsDisplay(refreshedSettings);
+                        updateSerenityControlsDisplay(refreshedSettings);
                     });
                     document.removeEventListener('keydown', keydownHandler);
                 }
@@ -1528,7 +1679,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     const gamepadInputs = document.querySelectorAll('.gamepad-input');
     gamepadInputs.forEach((input) => {
         const context = getGamepadBindingContext(input.id);
-        const currentBindings = settings[context.bindingsKey] || DEFAULT_GAMEPAD_BINDINGS[context.playerIndex];
+        const currentBindings = settings[context.bindingsKey] || context.defaultBindings;
 
         if (currentBindings && currentBindings[context.action] !== undefined) {
             const buttonIndex = currentBindings[context.action];
@@ -1540,7 +1691,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             document.querySelectorAll('.gamepad-input.listening').forEach((el) => {
                 const otherContext = getGamepadBindingContext(el.id);
                 const latestSettings = settingsManager.get();
-                const otherBindings = latestSettings[otherContext.bindingsKey] || DEFAULT_GAMEPAD_BINDINGS[otherContext.playerIndex];
+                const otherBindings = latestSettings[otherContext.bindingsKey] || otherContext.defaultBindings;
                 const otherButtonIndex = otherBindings?.[otherContext.action];
                 if (otherButtonIndex !== undefined) {
                     el.textContent = GAMEPAD_BUTTON_NAMES[otherButtonIndex] || `Button ${otherButtonIndex}`;
@@ -1554,6 +1705,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             handleGamepadBinding(input, settingsManager, () => {
                 const refreshedSettings = settingsManager.get();
                 updateGamepadControlsDisplay(refreshedSettings);
+                updateSerenityControlsDisplay(refreshedSettings);
             });
         });
     });
@@ -1562,6 +1714,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     settings = settingsManager.get();
     updateControlsDisplay(settings);
     updateGamepadControlsDisplay(settings);
+    updateSerenityControlsDisplay(settings);
 }
 
 /**

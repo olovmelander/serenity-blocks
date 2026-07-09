@@ -2057,11 +2057,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 await renderer.init();
                 if (renderer.backend?.isWebGPUBackend !== true) {
                     renderer.dispose();
+                    renderer.forceContextLoss?.();
+                    renderer.domElement?.remove?.();
                     renderer = null;
                 }
             } catch (error) {
                 console.warn('[MoonlitForest] WebGPU renderer init failed, using WebGL fallback:', error);
                 renderer?.dispose?.();
+                renderer?.forceContextLoss?.();
+                renderer?.domElement?.remove?.();
                 renderer = null;
             }
         }
@@ -3682,7 +3686,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (this.renderer) {
             const { domElement } = this.renderer;
             this.renderer.onDeviceLost = null;
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             if (domElement?.parentNode) {
                 domElement.parentNode.removeChild(domElement);
             }

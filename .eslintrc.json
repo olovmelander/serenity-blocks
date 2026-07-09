@@ -32,5 +32,8 @@
   },
   "globals": {
     "Phaser": "readonly"
+  },
+  "settings": {
+    "import/core-modules": ["three/webgpu", "three/tsl"]
   }
 }

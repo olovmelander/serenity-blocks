@@ -6,10 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:playground": "vite --open /playground.html",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron electron/main.js",
-    "dev:electron": "NODE_ENV=development electron electron/main.js",
+    "dev:electron": "node scripts/run-electron.mjs --dev electron/main.js",
     "electron:minimal": "electron electron/main-minimal.js",
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix",
@@ -17,14 +20,20 @@
     "format:check": "prettier --check \"src/**/*.js\"",
     "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
-    "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
-    "validate:windows:devtools": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-devtools-smoke.mjs",
-    "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
-    "validate:windows:parity": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-electron-parity-validation.mjs",
+    "validate:cosmic-noir:phase6": "node scripts/run-electron.mjs scripts/cosmic-noir-phase6-validation.mjs",
+    "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
+    "validate:wolfhour:phase6": "node scripts/run-electron.mjs scripts/wolfhour-phase6-validation.mjs",
+    "validate:windows:parity": "node scripts/run-electron.mjs scripts/windows-electron-parity-validation.mjs",
+    "validate:windows:menu": "node scripts/run-electron.mjs scripts/windows-menu-visual-validation.mjs",
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
-    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs"
+    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
+    "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
+    "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
+    "perf:odyssey:baseline": "node scripts/odyssey-perf-baseline.mjs",
+    "perf:odyssey:compare": "node scripts/odyssey-perf-compare.mjs",
+    "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",
@@ -44,17 +53,28 @@
       {
         "from": "node_modules/steamworks.js",
         "to": "native_modules/steamworks.js",
-        "filter": ["**/*", "!dist/linux64/**", "!dist/osx/**"]
+        "filter": [
+          "**/*",
+          "!dist/linux64/**",
+          "!dist/osx/**"
+        ]
       },
       {
         "from": "node_modules/ez-steam-api",
         "to": "native_modules/ez-steam-api",
-        "filter": ["**/*", "!bin/linux-x64/**"]
+        "filter": [
+          "**/*",
+          "!bin/linux-x64/**"
+        ]
       },
       {
         "from": "node_modules/koffi",
         "to": "native_modules/ez-steam-api/node_modules/koffi",
-        "filter": ["package.json", "index.js", "build/koffi/win32_x64/**"]
+        "filter": [
+          "package.json",
+          "index.js",
+          "build/koffi/win32_x64/**"
+        ]
       }
     ],
     "extraFiles": [
@@ -98,9 +118,7 @@
   "license": "MIT",
   "dependencies": {
     "ez-steam-api": "^0.57.1",
-    "jimp": "^0.16.13",
-    "steamworks.js": "^0.4.0",
-    "three": "^0.181.2"
+    "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
@@ -110,9 +128,14 @@
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
     "node-fetch": "^3.3.2",
-    "phaser": "4.0.0-rc.5",
+    "phaser": "^4.1.0",
     "prettier": "^3.3.3",
+    "three": "^0.181.2",
+    "typescript": "^5.9.3",
     "vite": "^5.4.11",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

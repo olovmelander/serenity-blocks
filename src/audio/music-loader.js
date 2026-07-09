@@ -3,8 +3,6 @@
  * Handles loading music tracks from songs.json and managing track metadata
  */
 
-import songsManifest from '../../public/assets/music/songs.json';
-
 /**
  * Global storage for available songs
  * @type {Array<Object>}
@@ -17,6 +15,13 @@ let availableSongs = [];
  */
 export async function loadSongs() {
     try {
+        // Relative path (matches Vite `base: './'`) so the manifest resolves under BOTH
+        // http:// dev AND the packaged Electron file:// origin. A leading-slash '/assets/…'
+        // resolves to the filesystem root under file://, so the fetch fails in the installed
+        // app and the catch below falls back to a 1-song list — the "only one track ships" bug.
+        const response = await fetch('./assets/music/songs.json');
+        if (!response.ok) throw new Error(`songs.json HTTP ${response.status}`);
+        const songsManifest = await response.json();
         const songs = Array.isArray(songsManifest)
             ? songsManifest.map((song) => ({ ...song }))
             : [];
@@ -62,7 +67,7 @@ export function nameToKey(name) {
  */
 export function getSongPath(trackName, songsData) {
     const song = songsData.find((s) => nameToKey(s.name) === trackName);
-    return song ? song.path : songsData[0]?.path || '/assets/music/echoes-of-the-soul.mp3';
+    return song ? song.path : songsData[0]?.path || './assets/music/echoes-of-the-soul.mp3';
 }
 
 /**

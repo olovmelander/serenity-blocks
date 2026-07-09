@@ -47,7 +47,19 @@ export class LobbyBrowser {
             🔄 Refresh
           </button>
         </div>
-        
+
+        <div class="lobby-join-by-id" style="display:flex; gap:8px; margin:14px 0 4px;">
+          <input type="text" id="join-by-id-input"
+            placeholder="Paste a Lobby ID to join a friend's match"
+            maxlength="32" inputmode="numeric" autocomplete="off" spellcheck="false"
+            style="flex:1; min-width:0; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.35); color:#fff; font-size:14px;" />
+          <button class="btn btn-primary" id="join-by-id-btn">Join</button>
+        </div>
+        <div class="join-by-id-hint" style="font-size:12px; color:rgba(255,255,255,0.6); margin-bottom:6px;">
+          💡 Ask the host for their <strong>Lobby ID</strong> (shown in their waiting room), or use <strong>Invite Friends</strong> / Steam → <em>Join Game</em>.
+        </div>
+        <div class="join-by-id-error" id="join-by-id-error" style="display:none; font-size:12px; color:#ff7676; margin-bottom:6px;"></div>
+
         <div class="lobby-list-container">
           <div class="lobby-list-header">
             <span class="col-name">Match Name</span>
@@ -58,8 +70,8 @@ export class LobbyBrowser {
           </div>
           <div class="lobby-list" id="lobby-list">
             <div class="lobby-list-empty">
-              <p>🔍 No lobbies found</p>
-              <p class="text-muted">Create a new match to get started!</p>
+              <p>🔍 No public lobbies found</p>
+              <p class="text-muted">Create a match, or join a friend with their <strong>Lobby ID</strong> above.</p>
             </div>
           </div>
         </div>
@@ -98,6 +110,56 @@ export class LobbyBrowser {
         // Refresh button
         const refreshBtn = this.container.querySelector('#refresh-lobbies-btn');
         refreshBtn.addEventListener('click', () => this.refresh());
+
+        // Join-by-ID (room code) — the reliable cross-machine path that does not
+        // depend on the public lobby list (which Steam region-filters and caps).
+        const joinIdBtn = this.container.querySelector('#join-by-id-btn');
+        const joinIdInput = this.container.querySelector('#join-by-id-input');
+        if (joinIdBtn) {
+            joinIdBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.joinById();
+            });
+        }
+        if (joinIdInput) {
+            joinIdInput.addEventListener('keydown', (e) => {
+                // Keep keystrokes out of the global game hotkey handlers.
+                e.stopPropagation();
+                if (e.key === 'Enter') this.joinById();
+            });
+            joinIdInput.addEventListener('input', () => this.clearJoinError());
+        }
+    }
+
+    /**
+   * Join a lobby from the pasted Lobby ID (room code). Steam lobby IDs are
+   * numeric, so we strip everything else to tolerate stray spaces/quotes.
+   */
+    joinById() {
+        const input = this.container.querySelector('#join-by-id-input');
+        const raw = (input?.value || '').trim();
+        const id = raw.replace(/\D/g, '');
+
+        if (!id) {
+            this.showJoinError('Enter a Lobby ID to join (numbers only).');
+            return;
+        }
+
+        this.clearJoinError();
+        // Reuse the same join path as the lobby list (calls onJoinLobby + hides).
+        this.joinLobby(id);
+    }
+
+    showJoinError(message) {
+        const el = this.container.querySelector('#join-by-id-error');
+        if (!el) return;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
+    clearJoinError() {
+        const el = this.container.querySelector('#join-by-id-error');
+        if (el) el.style.display = 'none';
     }
 
     /**
@@ -107,7 +169,12 @@ export class LobbyBrowser {
         this.container.classList.remove('hidden');
         await this.refresh();
 
-        // Auto-refresh every 5 seconds
+        // Auto-refresh every 5 seconds. Clear any prior handle first so a second
+        // show() (e.g. the ?localMp=browse cold start, where mode-activate already
+        // showed the browser) doesn't orphan the previous interval.
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
         this.refreshInterval = setInterval(() => this.refresh(), 5000);
     }
 
@@ -165,8 +232,8 @@ export class LobbyBrowser {
         if (this.lobbies.length === 0) {
             listEl.innerHTML = `
         <div class="lobby-list-empty">
-          <p>🔍 No lobbies found</p>
-          <p class="text-muted">Create a new match to get started!</p>
+          <p>🔍 No public lobbies found</p>
+          <p class="text-muted">Create a match, or join a friend with their <strong>Lobby ID</strong> above.</p>
         </div>
       `;
             return;
@@ -179,7 +246,18 @@ export class LobbyBrowser {
             const condition = lobby.endCondition || 'frags';
             const pct = Math.min(100, Math.round((current / max) * 100));
             const joinable = this.canJoinLobby(lobby);
-            const disabledLabel = status === 'playing' ? 'In Progress' : 'Full';
+            // An IN-PROGRESS game with a free slot can be DROPPED INTO: you join as a waiting
+            // player and spawn at the next round (same shared seed). Reuses the .btn-join path.
+            const canDropIn = status === 'playing' && current < max;
+            let actionBtn;
+            if (joinable) {
+                actionBtn = `<button class="btn btn-sm btn-join" data-lobby-id="${lobby.id}">Join</button>`;
+            } else if (canDropIn) {
+                actionBtn = `<button class="btn btn-sm btn-join btn-dropin" data-lobby-id="${lobby.id}" title="Join now — you'll spawn at the start of the next round">Join (next round)</button>`;
+            } else {
+                const disabledLabel = status === 'finished' ? 'Finished' : 'Full';
+                actionBtn = `<button class="btn btn-sm btn-disabled" disabled>${disabledLabel}</button>`;
+            }
 
             return `
       <div class="lobby-item" data-lobby-id="${lobby.id}">
@@ -198,10 +276,8 @@ export class LobbyBrowser {
           <span class="status-badge status-${status}">${this.getStatusText(status)}</span>
         </span>
         <span class="col-action">
-          ${joinable
-        ? `<button class="btn btn-sm btn-join" data-lobby-id="${lobby.id}">Join</button>`
-        : `<button class="btn btn-sm btn-disabled" disabled>${disabledLabel}</button>`
-}
+          ${actionBtn}
+          <button class="btn btn-sm btn-watch" data-lobby-id="${lobby.id}" title="Watch this match as a spectator">👁 Watch</button>
         </span>
       </div>
     `;
@@ -210,8 +286,15 @@ export class LobbyBrowser {
         // Add join button listeners
         listEl.querySelectorAll('.btn-join').forEach((btn) => {
             btn.addEventListener('click', (e) => {
-                const { lobbyId } = e.target.dataset;
+                const { lobbyId } = e.currentTarget.dataset;
                 this.joinLobby(lobbyId);
+            });
+        });
+        // Watch (spectate) — available even when a lobby is full / in progress.
+        listEl.querySelectorAll('.btn-watch').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                const { lobbyId } = e.currentTarget.dataset;
+                this.joinLobby(lobbyId, { asSpectator: true });
             });
         });
     }
@@ -260,18 +343,19 @@ export class LobbyBrowser {
     /**
    * Join a lobby
    */
-    async joinLobby(lobbyId) {
+    async joinLobby(lobbyId, options = {}) {
         try {
-            console.log(`🚀 Joining lobby: ${lobbyId}`);
+            const asSpectator = !!options.asSpectator;
+            console.log(`🚀 ${asSpectator ? 'Watching' : 'Joining'} lobby: ${lobbyId}`);
 
             if (this.onJoinLobby) {
-                await this.onJoinLobby(lobbyId);
+                await this.onJoinLobby(lobbyId, { asSpectator });
             }
 
             this.hide();
         } catch (err) {
             console.error('Failed to join lobby:', err);
-            alert(`Failed to join lobby: ${err.message}`);
+            alert(`Failed to ${options.asSpectator ? 'watch' : 'join'} lobby: ${err.message}`);
         }
     }
 

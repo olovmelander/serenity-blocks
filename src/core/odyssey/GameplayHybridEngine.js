@@ -8,13 +8,39 @@
  * - Connects victory/failure evaluation
  */
 
-import { GameState } from '../game.js';
+import { rebuildBoardGridFromPieces } from '../board.js';
+import { GameState, markBoardDirty } from '../game.js';
 import {
-    COLS, ROWS, HIDDEN_ROWS, LEVEL_SPEEDS,
+    ROWS, HIDDEN_ROWS, LEVEL_SPEEDS,
 } from '../constants.js';
+import { columnsToMask, insertGarbageEntries, maskArrayToBits } from '../garbage.js';
 import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
+
+const ODYSSEY_SEED_HOLE_PATTERNS = Object.freeze([
+    [4],
+    [5],
+    [3, 7],
+    [2, 6],
+    [1, 5, 8],
+    [0, 4, 9],
+]);
+
+function buildStartingRowEntries(rowCount, levelId = 0) {
+    return Array.from({ length: rowCount }, (_, index) => {
+        const patternIndex = (levelId + index) % ODYSSEY_SEED_HOLE_PATTERNS.length;
+        const holeMask = maskArrayToBits(columnsToMask(ODYSSEY_SEED_HOLE_PATTERNS[patternIndex]));
+
+        return {
+            type: 'line',
+            attackId: `odyssey-start-${levelId}`,
+            variant: 'normal',
+            holeMask,
+            color: '#808080',
+        };
+    });
+}
 
 /**
  * GameplayHybridEngine - Configures gameplay for Odyssey Mode levels
@@ -82,20 +108,48 @@ export class GameplayHybridEngine {
         this.gameState.dropInterval = mechanics.speed.fixedDropInterval
             || LEVEL_SPEEDS[this.gameState.level - 1] || 1000;
 
-        // Apply hold setting
-        this.gameState.holdEnabled = mixer.get('holdEnabled');
-
         // Apply modifiers to game state
         this.modifierStack.applyToGameState(this.gameState);
+
+        this.seedStartingRows();
 
         console.log('[HybridEngine] GameState created:', {
             isInfinityMode: isInfinityBased,
             rows: mechanics.board.rows,
+            startingRows: mechanics.board.startingRows || 0,
             startLevel: this.gameState.level,
             dropInterval: this.gameState.dropInterval,
         });
 
         return this.gameState;
+    }
+
+    seedStartingRows() {
+        const requestedRows = Number(this.levelConfig?.mechanics?.board?.startingRows) || 0;
+        if (!this.gameState || requestedRows <= 0) {
+            return;
+        }
+
+        const totalRows = this.gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
+        const maxSeedRows = Math.max(0, totalRows - HIDDEN_ROWS - 4);
+        const rowCount = Math.min(Math.floor(requestedRows), maxSeedRows);
+        if (rowCount <= 0) {
+            return;
+        }
+
+        const entries = buildStartingRowEntries(rowCount, this.levelConfig?.id || 0);
+        const result = insertGarbageEntries(this.gameState.lockedPieces, entries, {
+            boardGrid: this.gameState.boardGrid,
+            settleFloatingBlocks: false,
+        });
+
+        if (result.topOut) {
+            this.gameState.isGameOver = true;
+            return;
+        }
+
+        rebuildBoardGridFromPieces(this.gameState.lockedPieces, this.gameState.boardGrid);
+        markBoardDirty(this.gameState);
     }
 
     /**

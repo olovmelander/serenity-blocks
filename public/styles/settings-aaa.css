@@ -646,6 +646,158 @@ body.electron-app #settings-modal .modal-content {
     min-width: 0;
 }
 
+#settings-modal .cs-settings-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    color: currentColor;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    overflow: visible;
+    filter: drop-shadow(0 0 7px rgba(var(--cs-accent-rgb), 0.28));
+}
+
+#settings-modal .controls-subtab-icon {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    color: rgba(196, 181, 253, 0.76);
+}
+
+#settings-modal .controls-subtab.active .controls-subtab-icon,
+#settings-modal .controls-subtab:hover .controls-subtab-icon,
+#settings-modal .controls-subtab:focus-visible .controls-subtab-icon {
+    color: var(--cs-accent);
+}
+
+#settings-modal .controls-subtab[data-subtab="player1"] {
+    --controls-player-color: #3B82F6;
+    --controls-player-rgb: 59, 130, 246;
+}
+
+#settings-modal .controls-subtab[data-subtab="player2"] {
+    --controls-player-color: #EF4444;
+    --controls-player-rgb: 239, 68, 68;
+}
+
+#settings-modal .controls-subtab[data-subtab="gamepad1"] {
+    --controls-player-color: #3B82F6;
+    --controls-player-rgb: 59, 130, 246;
+}
+
+#settings-modal .controls-subtab[data-subtab="gamepad2"] {
+    --controls-player-color: #EF4444;
+    --controls-player-rgb: 239, 68, 68;
+}
+
+#settings-modal .controls-subtab[data-subtab="gamepad3"] {
+    --controls-player-color: #10B981;
+    --controls-player-rgb: 16, 185, 129;
+}
+
+#settings-modal .controls-subtab[data-subtab="gamepad4"] {
+    --controls-player-color: #F59E0B;
+    --controls-player-rgb: 245, 158, 11;
+}
+
+#settings-modal .controls-subtab[data-subtab="player1"] .controls-subtab-icon,
+#settings-modal .controls-subtab[data-subtab="player2"] .controls-subtab-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad1"] .controls-subtab-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad2"] .controls-subtab-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad3"] .controls-subtab-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad4"] .controls-subtab-icon {
+    color: var(--controls-player-color);
+}
+
+#settings-modal .controls-subtab[data-subtab="player1"] .cs-settings-icon,
+#settings-modal .controls-subtab[data-subtab="player2"] .cs-settings-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad1"] .cs-settings-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad2"] .cs-settings-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad3"] .cs-settings-icon,
+#settings-modal .controls-subtab[data-subtab="gamepad4"] .cs-settings-icon {
+    filter: drop-shadow(0 0 8px rgba(var(--controls-player-rgb), 0.42));
+}
+
+#settings-modal .controls-subtab[data-subtab="player1"]:hover,
+#settings-modal .controls-subtab[data-subtab="player1"].active,
+#settings-modal .controls-subtab[data-subtab="player1"]:focus-visible,
+#settings-modal .controls-subtab[data-subtab="player2"]:hover,
+#settings-modal .controls-subtab[data-subtab="player2"].active,
+#settings-modal .controls-subtab[data-subtab="player2"]:focus-visible,
+#settings-modal .controls-subtab[data-subtab="gamepad1"]:hover,
+#settings-modal .controls-subtab[data-subtab="gamepad1"].active,
+#settings-modal .controls-subtab[data-subtab="gamepad1"]:focus-visible,
+#settings-modal .controls-subtab[data-subtab="gamepad2"]:hover,
+#settings-modal .controls-subtab[data-subtab="gamepad2"].active,
+#settings-modal .controls-subtab[data-subtab="gamepad2"]:focus-visible,
+#settings-modal .controls-subtab[data-subtab="gamepad3"]:hover,
+#settings-modal .controls-subtab[data-subtab="gamepad3"].active,
+#settings-modal .controls-subtab[data-subtab="gamepad3"]:focus-visible,
+#settings-modal .controls-subtab[data-subtab="gamepad4"]:hover,
+#settings-modal .controls-subtab[data-subtab="gamepad4"].active,
+#settings-modal .controls-subtab[data-subtab="gamepad4"]:focus-visible {
+    border-color: rgba(var(--controls-player-rgb), 0.36);
+    box-shadow:
+        0 0 18px rgba(var(--controls-player-rgb), 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#settings-modal .controls-title-icon {
+    width: 19px;
+    height: 19px;
+    color: var(--cs-accent);
+}
+
+#settings-modal .controls-section-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+#settings-modal .controls-section-title span,
+#settings-modal .serenity-controls-header h3 span {
+    min-width: 0;
+}
+
+#settings-modal .serenity-controls-header h3 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+#settings-modal .controls-info-box strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#settings-modal .controls-tip-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--cs-accent);
+    stroke-width: 1.9;
+}
+
+#settings-modal .settings-tip-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--cs-accent);
+}
+
+#settings-modal .settings-tip-icon {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.9;
+}
+
 #settings-modal .controls-subtab-content.active {
     min-height: 100%;
     padding: 22px 24px;

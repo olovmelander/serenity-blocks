@@ -2,16 +2,28 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiplayerGameState } from '../multiplayer.js';
-import { MultiPlayerState, PLAYER_COLORS } from '../multi-player-state.js';
+import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
-import { spawnPiece, fillBag, processAutoDrop } from '../game.js';
+import {
+    spawnPiece,
+    fillBag,
+    processAutoDrop,
+    move as coreMove,
+    rotate as coreRotate,
+    softDrop as coreSoftDrop,
+    hardDrop as coreHardDrop,
+} from '../game.js';
+import { createEmptyMatchMetrics, accumulateMatchMetrics } from '../match-metrics.js';
+import { decrementBlindTimers } from '../blind.js';
+import { LocalBotManager } from '../ai/local-bot-manager.js';
 
 import { expandGridIfNeeded, checkInfinityGameOver, calculateBuildHeight } from '../infinity-grid.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
+import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
@@ -19,6 +31,8 @@ import {
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
+import { createBoardScene } from '../../rendering/phaser/board-scene.js';
+import { createMultiplayerBoardScene } from '../../rendering/phaser/multiplayer/board-panel.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 
@@ -61,6 +75,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.configModal = null;
         this.configuredForStart = false; // Track if config modal has been shown
         this.matchStartLoadingOverlay = null;
+        this.botManager = null;
 
         // Round tracking (frags) - will be configured by modal
         this.roundWins = {
@@ -69,7 +84,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player3: 0,
             player4: 0,
         };
-        this.teamRoundWins = { 0: 0, 1: 0 };
+        // Keyed by team id (0..3); missing keys read as 0, so this supports any team count.
+        this.teamRoundWins = {};
 
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
@@ -240,7 +256,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _getMatchStartLoadingTitle(config = this.matchConfig) {
-        return config?.isInfinityLMS ? 'LAST STANDING' : 'FREE-FOR-ALL';
+        if (config?.isInfinityLMS) {
+            return 'LAST STANDING';
+        }
+        if (config?.hotPotato || config?.attackStyle === 'hot_potato') {
+            return 'HOT POTATO';
+        }
+        return 'FREE-FOR-ALL';
     }
 
     async _dismissMatchStartLoadingOverlay({
@@ -311,7 +333,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     // Add team marker if in team mode
                     if (this.matchConfig?.isTeamMode) {
                         const teamId = this._getResolvedTeamId(i - 1);
-                        const teamName = teamId === 0 ? 'TEAM A' : 'TEAM B';
+                        const teamName = this._getTeamLabel(teamId).toUpperCase();
                         const teamColor = this._getTeamColorScheme(teamId).primary;
 
                         let teamMarker = playerCard.querySelector('.team-marker');
@@ -406,7 +428,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player3: 0,
             player4: 0,
         };
-        this.teamRoundWins = { 0: 0, 1: 0 };
+        this.teamRoundWins = {};
 
         // Store match start time for time-based win conditions
         this.matchStartTime = Date.now();
@@ -418,6 +440,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState = new MultiPlayerState(numPlayers);
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
+        // Apply per-player Quadra handicap levels AFTER reset() (which restores the
+        // default level). No-op unless the host picked differing levels.
+        this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
 
         // Activate Phaser multiplayer UI
@@ -529,6 +554,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Setup reactive board juice inputs
         this._setupInputWrappers();
+        this._setupLocalBots();
 
         // Start game loop
         this.multiplayerState.isPaused = false;
@@ -584,6 +610,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (this.multiplayerState) {
             this.multiplayerState.isGameOver = true;
         }
+
+        if (this.botManager) {
+            this.botManager.destroy();
+            this.botManager = null;
+        }
     }
 
     /**
@@ -594,6 +625,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log('[LocalMultiplayer] Deactivating...');
         await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 200, minVisibleMs: 0 });
+
+        if (this.botManager) {
+            this.botManager.destroy();
+            this.botManager = null;
+        }
 
         // Hide and destroy config modal
         if (this.configModal) {
@@ -732,9 +768,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const delta = currentTime - this.multiplayerState.lastTime;
             this.multiplayerState.lastTime = currentTime;
 
+            // Update Hot Potato state if enabled
+            if (this.multiplayerState.hotPotato?.enabled) {
+                const prevHolder = this.multiplayerState.hotPotato.holderIndex;
+                const event = this.multiplayerState.updateHotPotato(Date.now());
+                const currentHolder = this.multiplayerState.hotPotato.holderIndex;
+
+                if (prevHolder !== currentHolder && currentHolder !== null) {
+                    if (event && event.type === 'detonate') {
+                        this.deps.soundManager?.playGarbageReceived();
+                        console.log(`[LocalMultiplayer] Hot potato detonated! P${prevHolder + 1} -> P${currentHolder + 1}`);
+                    } else {
+                        this.deps.soundManager?.playGarbageSend();
+                        console.log(`[LocalMultiplayer] Hot potato passed: P${prevHolder + 1} -> P${currentHolder + 1}`);
+                    }
+                }
+            }
+
             // Update DAS (Delayed Auto Shift) for continuous movement
             if (window.inputController) {
                 window.inputController.updateDAS(delta);
+            }
+
+            if (this.botManager) {
+                this.botManager.update(delta, currentTime);
             }
 
             // Debug log every 60 frames (once per second at 60fps)
@@ -760,6 +817,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
                 // Skip players paused for minimap exploration
                 if (this.multiplayerState.playerPaused?.[playerIndex]) {
+                    continue;
+                }
+
+                // Tick down any active Quadra blind blackout (real-time seconds)
+                decrementBlindTimers(playerState, delta / 1000);
+
+                // Decrement hit-stop if active and skip loop update
+                if (playerState.hitStopRemaining > 0) {
+                    playerState.hitStopRemaining = Math.max(0, playerState.hitStopRemaining - delta);
                     continue;
                 }
 
@@ -838,23 +904,82 @@ export class LocalMultiplayerMode extends BaseGameMode {
             },
             onLineClear: (lineCount, ...rest) => {
                 const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
-                this.deps.soundManager.sfxPlayer.playLineClear();
-                // Emit event for theme reactions (optional, but good for consistency with single player)
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
+                const cascadeCount = rest[3] ?? 1;
+                this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
+            },
+            onTSpin: (lineCount) => {
+                eventBus.emit(EVENTS.TSPIN, { lineCount, player: playerNum });
+                this.deps.soundManager.sfxPlayer.playTSpin?.();
+                const scene = this.boardScenes?.[playerNum - 1];
+                if (scene?.sharedEffects?.playTSpinEffect) {
+                    scene.sharedEffects.playTSpinEffect(lineCount);
+                }
+            },
+            onB2B: () => {
+                eventBus.emit(EVENTS.B2B, { active: true, player: playerNum });
+                this.deps.soundManager.sfxPlayer.playB2B?.();
+                const scene = this.boardScenes?.[playerNum - 1];
+                if (scene?.sharedEffects?.playB2BChange) {
+                    scene.sharedEffects.playB2BChange(true);
+                }
             },
             onPieceLock: (piece) => {
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
             },
             onLineClearImpact: (lineCount, cascadeCount) => {
-                // Effects handled in main.js
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                const playerState = this.multiplayerState?.players?.[playerNum - 1];
+                if (!prefersReducedMotion && playerState) {
+                    const scene = this.boardScenes?.[playerNum - 1];
+                    let hitStop = 0;
+                    if (scene?.sharedEffects) {
+                        const tier = scene.sharedEffects.getClearTier(lineCount);
+                        hitStop = tier?.hitStop || 0;
+                    } else if (lineCount >= 4) {
+                        hitStop = 70;
+                    }
+                    if (hitStop > 0) {
+                        playerState.hitStopRemaining = hitStop;
+                    }
+                }
+                const scene = this.boardScenes?.[playerNum - 1];
+                if (scene?.playLineClearImpact) {
+                    scene.playLineClearImpact(lineCount, cascadeCount);
+                }
             },
             onHardDrop: (dropData) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                const playerState = this.multiplayerState?.players?.[playerNum - 1];
+                if (!prefersReducedMotion && playerState) {
+                    playerState.hitStopRemaining = Math.max(playerState.hitStopRemaining || 0, 30);
+                }
+
                 this.deps.soundManager.sfxPlayer.playHardDrop();
                 this.boardScenes.forEach((scene) => {
                     if (scene && scene.playHardDropEffect) {
                         scene.playHardDropEffect(dropData);
                     }
                 });
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                const playerState = this.multiplayerState?.players?.[playerNum - 1];
+                if (!prefersReducedMotion && playerState) {
+                    playerState.hitStopRemaining = 110;
+                }
+
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                this.deps.soundManager.sfxPlayer.playPerfectClear?.();
+
+                const scene = this.boardScenes?.[playerNum - 1];
+                if (scene?.sharedEffects?.playPerfectClear) {
+                    scene.sharedEffects.playPerfectClear(depth);
+                }
             },
             onGarbageReceived: () => this.deps.soundManager.sfxPlayer.playGarbageReceived?.(),
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
@@ -897,6 +1022,36 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         const { numPlayers } = this.multiplayerState;
+
+        // Update Hot Potato UI indicators (runs every frame for smooth timer)
+        if (this.multiplayerState.hotPotato?.enabled) {
+            const potatoState = this.multiplayerState.getHotPotatoState(Date.now());
+            const { holderIndex } = potatoState;
+            const { timeRemainingMs } = potatoState;
+            const formattedTime = `${(timeRemainingMs / 1000).toFixed(1)}s`;
+
+            for (let i = 0; i < numPlayers; i++) {
+                const card = document.getElementById(`player-${i + 1}-card`);
+                if (card) {
+                    if (i === holderIndex && !this.multiplayerState.players[i].isGameOver) {
+                        card.classList.add('hot-potato-holder');
+                        card.setAttribute('data-potato-time', formattedTime);
+                    } else {
+                        card.classList.remove('hot-potato-holder');
+                        card.removeAttribute('data-potato-time');
+                    }
+                }
+            }
+        } else {
+            // Ensure classes are cleared when disabled
+            for (let i = 0; i < numPlayers; i++) {
+                const card = document.getElementById(`player-${i + 1}-card`);
+                if (card) {
+                    card.classList.remove('hot-potato-holder');
+                    card.removeAttribute('data-potato-time');
+                }
+            }
+        }
 
         // Skip DOM updates most frames (run at ~6fps for text stats)
         // But ALWAYS update minimaps for smooth animation
@@ -1030,12 +1185,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     const playerKey = `player${i}`;
                     let displayVal = `${(this.matchStats[playerKey]?.frags || 0) + (this.multiplayerState.frags[i - 1] || 0)} F`;
 
-                    // If team mode, show team total frags on the board
+                    // If team mode, show team total frags on the board. Group by
+                    // the resolved team id so the total matches the color/standings.
                     if (this.matchConfig?.isTeamMode) {
-                        const teamId = this.matchConfig.playerTeams[i - 1];
+                        const teamId = this._getResolvedTeamId(i - 1);
                         let teamTotalFrags = 0;
                         for (let j = 0; j < numPlayers; j++) {
-                            if (this.matchConfig.playerTeams[j] === teamId) {
+                            if (this._getResolvedTeamId(j) === teamId) {
                                 teamTotalFrags += this.multiplayerState.frags[j];
                             }
                         }
@@ -1128,40 +1284,40 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const ec = this.matchConfig?.endCondition || 'frags';
         const fmt = (n) => this._formatStatValue(n);
 
-        const fragsIcon = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em;margin-right:2px"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/><line x1="3" y1="13" x2="5" y2="15"/><line x1="8" y1="8" x2="4" y2="12"/></svg>`;
+        const fragsIcon = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em;margin-right:2px"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/><line x1="3" y1="13" x2="5" y2="15"/><line x1="8" y1="8" x2="4" y2="12"/></svg>';
 
         switch (ec) {
-            case 'frags':
-            case 'time':
-                // Frags wins / time limit: most kills leads
-                return {
-                    sortKey: 'frags',
-                    primaryFn: (e) => `${fragsIcon}${e.frags}`,
-                    metaFn: (e) => `${fmt(e.score)} · Lv${e.level} · ${e.lines}L`,
-                };
-            case 'lines':
-                // First to N lines: lines cleared leads
-                return {
-                    sortKey: 'lines',
-                    primaryFn: (e) => `${e.lines}L`,
-                    metaFn: (e) => `${fragsIcon}${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
-                };
-            case 'infinity-lms':
-                // Survival: alive status + lines cleared as tiebreak
-                return {
-                    sortKey: 'lines',
-                    primaryFn: (e) => `${e.lines}L`,
-                    metaFn: (e) => `Lv${e.level}`,
-                };
-            case 'points':
-            case 'never':
-            default:
-                // Score-based / endless: score leads
-                return {
-                    sortKey: 'score',
-                    primaryFn: (e) => fmt(e.score),
-                    metaFn: (e) => `${fragsIcon}${e.frags} · Lv${e.level} · ${e.lines}L`,
-                };
+        case 'frags':
+        case 'time':
+            // Frags wins / time limit: most kills leads
+            return {
+                sortKey: 'frags',
+                primaryFn: (e) => `${fragsIcon}${e.frags}`,
+                metaFn: (e) => `${fmt(e.score)} · Lv${e.level} · ${e.lines}L`,
+            };
+        case 'lines':
+            // First to N lines: lines cleared leads
+            return {
+                sortKey: 'lines',
+                primaryFn: (e) => `${e.lines}L`,
+                metaFn: (e) => `${fragsIcon}${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
+            };
+        case 'infinity-lms':
+            // Survival: alive status + lines cleared as tiebreak
+            return {
+                sortKey: 'lines',
+                primaryFn: (e) => `${e.lines}L`,
+                metaFn: (e) => `Lv${e.level}`,
+            };
+        case 'points':
+        case 'never':
+        default:
+            // Score-based / endless: score leads
+            return {
+                sortKey: 'score',
+                primaryFn: (e) => fmt(e.score),
+                metaFn: (e) => `${fragsIcon}${e.frags} · Lv${e.level} · ${e.lines}L`,
+            };
         }
     }
 
@@ -1206,7 +1362,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         standings.forEach((entry, rankIndex) => {
             const refs = this._hudItems[entry.playerIndex];
             if (!refs) return;
-            const { el, rankEl, scoreEl, metaEl } = refs;
+            const {
+                el, rankEl, scoreEl, metaEl,
+            } = refs;
 
             rankEl.innerHTML = RANK_LABELS[rankIndex] ?? `${rankIndex + 1}`;
             el.dataset.rank = rankIndex + 1;
@@ -1833,7 +1991,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _ensureMultiplayerBoardScenes(forceRestart = false) {
         const { phaserGame } = this.deps;
-        const MultiplayerBoardSceneClass = this.deps.phaserGame?.MultiplayerBoardSceneClass;
+        let MultiplayerBoardSceneClass = this.deps.MultiplayerBoardSceneClass
+            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
+
+        if (!MultiplayerBoardSceneClass) {
+            console.log('[LocalMultiplayer] MultiplayerBoardSceneClass not found, attempting dynamic creation...');
+            try {
+                MultiplayerBoardSceneClass = createMultiplayerBoardScene(Phaser);
+            } catch (err) {
+                console.error('[LocalMultiplayer] Failed to dynamically generate MultiplayerBoardScene class:', err);
+            }
+        }
 
         if (!phaserGame || !MultiplayerBoardSceneClass) {
             throw new Error('Phaser game or MultiplayerBoardScene class not available');
@@ -1985,7 +2153,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const numPlayers = this.matchConfig?.numPlayers || 2;
         console.log(`[LocalMultiplayer] Creating separate Phaser instances for ${numPlayers} players...`);
 
-        const BoardScene = this.deps.BoardSceneClass || this.deps.MultiplayerBoardSceneClass;
+        let BoardScene = this.deps.BoardSceneClass
+            || this.deps.MultiplayerBoardSceneClass
+            || this.deps.phaserGame?.BoardSceneClass
+            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
+
+        if (!BoardScene) {
+            console.log('[LocalMultiplayer] BoardSceneClass not found, attempting dynamic creation...');
+            try {
+                BoardScene = createBoardScene(Phaser);
+            } catch (err) {
+                console.error('[LocalMultiplayer] Failed to dynamically generate BoardScene class:', err);
+            }
+        }
+
         if (!BoardScene) {
             throw new Error('BoardScene or MultiplayerBoardScene class not available');
         }
@@ -2093,6 +2274,96 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
     }
 
+    _setupLocalBots() {
+        if (!this.multiplayerState) return;
+
+        if (!this.botManager) {
+            this.botManager = new LocalBotManager({
+                actionFactory: (playerIndex) => this._createBotActions(playerIndex),
+                multiplayerState: this.multiplayerState,
+                rng: Math.random,
+            });
+        } else {
+            this.botManager.destroy();
+        }
+
+        this.botManager.configure(this.matchConfig?.playerSlots || []);
+    }
+
+    _isBotPlayer(playerIndex) {
+        return Boolean(this.botManager?.isBotPlayer(playerIndex));
+    }
+
+    _createBotActions(playerIndex) {
+        const playerNum = playerIndex + 1;
+        const getPlayerState = () => this.multiplayerState?.players?.[playerIndex];
+        const getPhysicsCallbacks = () => this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
+            || this._getPhysicsCallbacks(playerNum);
+        const playMove = () => this.deps.soundManager?.sfxPlayer?.playMove?.();
+        const playRotate = () => this.deps.soundManager?.sfxPlayer?.playRotate?.();
+        const playDrop = () => this.deps.soundManager?.sfxPlayer?.playDrop?.();
+
+        return {
+            moveLeft: () => {
+                const playerState = getPlayerState();
+                const moved = coreMove(playerState, -1, playMove);
+                if (moved) this._applyBotBoardJuice(playerNum, 'move', -1);
+                return moved;
+            },
+            moveRight: () => {
+                const playerState = getPlayerState();
+                const moved = coreMove(playerState, 1, playMove);
+                if (moved) this._applyBotBoardJuice(playerNum, 'move', 1);
+                return moved;
+            },
+            rotateLeft: () => {
+                const playerState = getPlayerState();
+                const rotated = coreRotate(playerState, 'left', playRotate);
+                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'left');
+                return rotated;
+            },
+            rotateRight: () => {
+                const playerState = getPlayerState();
+                const rotated = coreRotate(playerState, 'right', playRotate);
+                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'right');
+                return rotated;
+            },
+            rotateFlip: () => {
+                const playerState = getPlayerState();
+                const rotated = coreRotate(playerState, 'flip', playRotate);
+                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'flip');
+                return rotated;
+            },
+            softDrop: () => {
+                const playerState = getPlayerState();
+                return coreSoftDrop(playerState, playDrop, getPhysicsCallbacks());
+            },
+            hardDrop: () => {
+                const playerState = getPlayerState();
+                if (!playerState?.currentPiece) return false;
+                coreHardDrop(playerState, playDrop, getPhysicsCallbacks());
+                this._applyBotBoardJuice(playerNum, 'hardDrop');
+                return true;
+            },
+        };
+    }
+
+    _applyBotBoardJuice(playerNum, action, value = null) {
+        const juice = this[`boardJuiceP${playerNum}`];
+        if (!juice) return;
+
+        if (action === 'move') {
+            juice.nudge(value * 0.5, 0);
+        } else if (action === 'rotate') {
+            const degrees = value === 'left' ? -1 : (value === 'flip' ? 2 : 1);
+            juice.tilt(degrees * 1.5);
+            juice.nudge(0, -0.5);
+        } else if (action === 'hardDrop') {
+            juice.dip(4);
+            juice.bounce();
+        }
+    }
+
     /**
      * Wrap global input handlers to trigger board juice per player
      * @private
@@ -2102,54 +2373,91 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._inputWrappersSetup = true;
 
         this._originalInputs = {
-            move: window.move, rotate: window.rotate, hardDrop: window.hardDrop,
-            moveP2: window.moveP2, rotateP2: window.rotateP2, hardDropP2: window.hardDropP2,
-            moveP3: window.moveP3, rotateP3: window.rotateP3, hardDropP3: window.hardDropP3,
-            moveP4: window.moveP4, rotateP4: window.rotateP4, hardDropP4: window.hardDropP4,
+            move: window.move,
+            rotate: window.rotate,
+            hardDrop: window.hardDrop,
+            hold: window.hold,
+            moveP2: window.moveP2,
+            rotateP2: window.rotateP2,
+            hardDropP2: window.hardDropP2,
+            holdP2: window.holdP2,
+            moveP3: window.moveP3,
+            rotateP3: window.rotateP3,
+            hardDropP3: window.hardDropP3,
+            holdP3: window.holdP3,
+            moveP4: window.moveP4,
+            rotateP4: window.rotateP4,
+            hardDropP4: window.hardDropP4,
+            holdP4: window.holdP4,
         };
 
         const wrapMove = (playerNum, origMove) => (dir) => {
-            if (origMove) origMove(dir);
+            if (this._isBotPlayer(playerNum - 1)) return false;
+            if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
+            let result = false;
+            if (origMove) result = origMove(dir);
             const juice = this[`boardJuiceP${playerNum}`];
             if (juice) {
                 juice.nudge(dir * 0.5, 0);
             }
+            return result;
         };
 
         const wrapRotate = (playerNum, origRotate) => (dir) => {
-            if (origRotate) origRotate(dir);
+            if (this._isBotPlayer(playerNum - 1)) return false;
+            if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
+            const result = origRotate ? origRotate(dir) : false;
             const juice = this[`boardJuiceP${playerNum}`];
             if (juice) {
                 const degrees = (dir === 'left' ? -1 : (dir === 'flip' ? 2 : 1));
                 juice.tilt(degrees * 1.5);
                 juice.nudge(0, -0.5);
             }
+            return result;
         };
 
         const wrapHardDrop = (playerNum, origHardDrop) => () => {
-            if (origHardDrop) origHardDrop();
+            if (this._isBotPlayer(playerNum - 1)) return false;
+            if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
+            const result = origHardDrop ? origHardDrop() : false;
             const juice = this[`boardJuiceP${playerNum}`];
             if (juice) {
                 juice.dip(4);
                 juice.bounce();
             }
+            return result;
+        };
+
+        const wrapHold = (playerNum, origHold) => () => {
+            if (this._isBotPlayer(playerNum - 1)) return false;
+            if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
+            const result = origHold ? origHold() : false;
+            const juice = this[`boardJuiceP${playerNum}`];
+            if (juice) {
+                juice.nudge(0, -0.5);
+            }
+            return result;
         };
 
         window.move = wrapMove(1, this._originalInputs.move);
         window.rotate = wrapRotate(1, this._originalInputs.rotate);
         window.hardDrop = wrapHardDrop(1, this._originalInputs.hardDrop);
+        window.hold = wrapHold(1, this._originalInputs.hold);
 
         if (this._originalInputs.moveP2) window.moveP2 = wrapMove(2, this._originalInputs.moveP2);
         if (this._originalInputs.rotateP2) window.rotateP2 = wrapRotate(2, this._originalInputs.rotateP2);
         if (this._originalInputs.hardDropP2) window.hardDropP2 = wrapHardDrop(2, this._originalInputs.hardDropP2);
+        if (this._originalInputs.holdP2) window.holdP2 = wrapHold(2, this._originalInputs.holdP2);
 
         if (this._originalInputs.moveP3) window.moveP3 = wrapMove(3, this._originalInputs.moveP3);
         if (this._originalInputs.rotateP3) window.rotateP3 = wrapRotate(3, this._originalInputs.rotateP3);
         if (this._originalInputs.hardDropP3) window.hardDropP3 = wrapHardDrop(3, this._originalInputs.hardDropP3);
+        if (this._originalInputs.holdP3) window.holdP3 = wrapHold(3, this._originalInputs.holdP3);
 
         if (this._originalInputs.moveP4) window.moveP4 = wrapMove(4, this._originalInputs.moveP4);
         if (this._originalInputs.rotateP4) window.rotateP4 = wrapRotate(4, this._originalInputs.rotateP4);
         if (this._originalInputs.hardDropP4) window.hardDropP4 = wrapHardDrop(4, this._originalInputs.hardDropP4);
+        if (this._originalInputs.holdP4) window.holdP4 = wrapHold(4, this._originalInputs.holdP4);
     }
 
     /**
@@ -2162,18 +2470,22 @@ export class LocalMultiplayerMode extends BaseGameMode {
         window.move = this._originalInputs.move;
         window.rotate = this._originalInputs.rotate;
         window.hardDrop = this._originalInputs.hardDrop;
+        window.hold = this._originalInputs.hold;
 
         if (this._originalInputs.moveP2 !== undefined) window.moveP2 = this._originalInputs.moveP2;
         if (this._originalInputs.rotateP2 !== undefined) window.rotateP2 = this._originalInputs.rotateP2;
         if (this._originalInputs.hardDropP2 !== undefined) window.hardDropP2 = this._originalInputs.hardDropP2;
+        if (this._originalInputs.holdP2 !== undefined) window.holdP2 = this._originalInputs.holdP2;
 
         if (this._originalInputs.moveP3 !== undefined) window.moveP3 = this._originalInputs.moveP3;
         if (this._originalInputs.rotateP3 !== undefined) window.rotateP3 = this._originalInputs.rotateP3;
         if (this._originalInputs.hardDropP3 !== undefined) window.hardDropP3 = this._originalInputs.hardDropP3;
+        if (this._originalInputs.holdP3 !== undefined) window.holdP3 = this._originalInputs.holdP3;
 
         if (this._originalInputs.moveP4 !== undefined) window.moveP4 = this._originalInputs.moveP4;
         if (this._originalInputs.rotateP4 !== undefined) window.rotateP4 = this._originalInputs.rotateP4;
         if (this._originalInputs.hardDropP4 !== undefined) window.hardDropP4 = this._originalInputs.hardDropP4;
+        if (this._originalInputs.holdP4 !== undefined) window.holdP4 = this._originalInputs.holdP4;
 
         this._originalInputs = null;
         this._inputWrappersSetup = false;
@@ -2309,16 +2621,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     _getResolvedTeamId(playerIndex) {
+        // Honor the raw team id (0..3); default to the player's own team (its
+        // index) when unset. No 2-team clamp — supports up to TEAM_COLORS teams.
         const teamId = this.matchConfig?.playerTeams?.[playerIndex];
-        if (teamId === 0 || teamId === 1) {
-            return teamId;
-        }
-        return playerIndex % 2;
+        const resolved = Number.isInteger(teamId) ? teamId : playerIndex;
+        return Math.min(Math.max(resolved, 0), TEAM_COLORS.length - 1);
     }
 
     _getTeamColorScheme(teamId) {
-        const resolvedTeamId = teamId === 1 ? 1 : 0;
-        return PLAYER_COLORS[resolvedTeamId] || PLAYER_COLORS[0];
+        return TEAM_COLORS[teamId % TEAM_COLORS.length] || TEAM_COLORS[0];
     }
 
     _getPlayerColorScheme(playerIndex) {
@@ -2336,7 +2647,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _getTeamLabel(teamId) {
-        return teamId === 1 ? 'Team B' : 'Team A';
+        return `Team ${String.fromCharCode(65 + (teamId % 26))}`;
     }
 
     _getTeamRoundStats() {
@@ -2394,10 +2705,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _recordTeamRoundWin(teamId) {
-        const resolvedTeamId = teamId === 1 ? 1 : 0;
-        this.teamRoundWins[resolvedTeamId] = (this.teamRoundWins[resolvedTeamId] || 0) + 1;
-        this._syncTeamRoundWins(resolvedTeamId);
-        return this.teamRoundWins[resolvedTeamId];
+        this.teamRoundWins[teamId] = (this.teamRoundWins[teamId] || 0) + 1;
+        this._syncTeamRoundWins(teamId);
+        return this.teamRoundWins[teamId];
     }
 
     _getTeamAggregateStats(teamId) {
@@ -2429,30 +2739,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-            case 'frags':
-                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+        case 'frags':
+            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
 
-            case 'time': {
-                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-                return elapsedMinutes >= config.endConditionValue;
-            }
+        case 'time': {
+            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+            return elapsedMinutes >= config.endConditionValue;
+        }
 
-            case 'points': {
-                const targetScore = config.endConditionValue * 1000;
-                const totals = this._getTeamAggregateStats(teamId);
-                return totals.score >= targetScore;
-            }
+        case 'points': {
+            const targetScore = config.endConditionValue * 1000;
+            const totals = this._getTeamAggregateStats(teamId);
+            return totals.score >= targetScore;
+        }
 
-            case 'lines': {
-                const totals = this._getTeamAggregateStats(teamId);
-                return totals.lines >= config.endConditionValue;
-            }
+        case 'lines': {
+            const totals = this._getTeamAggregateStats(teamId);
+            return totals.lines >= config.endConditionValue;
+        }
 
-            case 'never':
-                return false;
+        case 'never':
+            return false;
 
-            default:
-                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+        default:
+            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
         }
     }
 
@@ -2585,18 +2895,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 : `Last player standing wins (${maxRows} rows)`;
         }
         switch (config.endCondition) {
-            case 'frags':
-                return `First to ${config.endConditionValue} frags wins`;
-            case 'time':
-                return `${config.endConditionValue} minute time limit`;
-            case 'points':
-                return `First to ${config.endConditionValue * 1000} points wins`;
-            case 'lines':
-                return `First to ${config.endConditionValue} lines wins`;
-            case 'never':
-                return 'Play until manual end';
-            default:
-                return `First to ${config.endConditionValue} frags wins`;
+        case 'frags':
+            return `First to ${config.endConditionValue} frags wins`;
+        case 'time':
+            return `${config.endConditionValue} minute time limit`;
+        case 'points':
+            return `First to ${config.endConditionValue * 1000} points wins`;
+        case 'lines':
+            return `First to ${config.endConditionValue} lines wins`;
+        case 'never':
+            return 'Play until manual end';
+        default:
+            return `First to ${config.endConditionValue} frags wins`;
         }
     }
 
@@ -2651,17 +2961,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     async _handleTeamRoundEnd(teamId) {
-        const resolvedTeamId = teamId === 1 ? 1 : 0;
-        const teamName = this._getTeamLabel(resolvedTeamId);
+        const teamName = this._getTeamLabel(teamId);
 
         console.log(`[LocalMultiplayer] Round ended! Winner: ${teamName}`);
 
-        const teamWins = this._recordTeamRoundWin(resolvedTeamId);
-        const wonMatch = this._checkTeamMatchWinCondition(resolvedTeamId);
+        const teamWins = this._recordTeamRoundWin(teamId);
+        const wonMatch = this._checkTeamMatchWinCondition(teamId);
 
         if (wonMatch) {
             console.log(`[LocalMultiplayer] ${teamName} wins the match!`);
-            await this._showMatchEnd({ type: 'team', teamId: resolvedTeamId });
+            await this._showMatchEnd({ type: 'team', teamId });
             return;
         }
 
@@ -2681,44 +2990,44 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-            case 'frags': {
-                // Check if any player has reached the cumulative individual kill target
-                const numFragPlayers = config.numPlayers || 2;
-                for (let fi = 0; fi < numFragPlayers; fi++) {
-                    const matchKey = `player${fi + 1}`;
-                    const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
-                    if (cumulative >= config.endConditionValue) return true;
-                }
-                return false;
+        case 'frags': {
+            // Check if any player has reached the cumulative individual kill target
+            const numFragPlayers = config.numPlayers || 2;
+            for (let fi = 0; fi < numFragPlayers; fi++) {
+                const matchKey = `player${fi + 1}`;
+                const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
+                if (cumulative >= config.endConditionValue) return true;
             }
+            return false;
+        }
 
-            case 'time': {
-                // Check if time limit has been reached
-                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-                return elapsedMinutes >= config.endConditionValue;
-            }
+        case 'time': {
+            // Check if time limit has been reached
+            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+            return elapsedMinutes >= config.endConditionValue;
+        }
 
-            case 'points': {
-                // Check if either player reached the score target
-                const targetScore = config.endConditionValue * 1000;
-                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
-            }
+        case 'points': {
+            // Check if either player reached the score target
+            const targetScore = config.endConditionValue * 1000;
+            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+        }
 
-            case 'lines': {
-                // Check if either player cleared enough lines
-                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
-            }
+        case 'lines': {
+            // Check if either player cleared enough lines
+            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+        }
 
-            case 'never':
-                // Never end automatically
-                return false;
+        case 'never':
+            // Never end automatically
+            return false;
 
-            default:
-                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        default:
+            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
         }
     }
 
@@ -2837,6 +3146,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.matchStats[matchKey].lineClearCounts[key] = (this.matchStats[matchKey].lineClearCounts[key] || 0) + (playerState.lineClearCounts[key] || 0);
             }
 
+            // Aggregate combat/advanced metrics across rounds (reset per round in MultiPlayerState)
+            if (!this.matchStats[matchKey].metrics) {
+                this.matchStats[matchKey].metrics = this._emptyMatchMetrics();
+            }
+            this._accumulateMatchMetrics(
+                this.matchStats[matchKey].metrics,
+                this.multiplayerState.getPlayerMetrics(i),
+            );
+
             accumulatedLog[matchKey] = this.matchStats[matchKey];
         }
 
@@ -2844,6 +3162,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Reset multiplayer state
         this.multiplayerState.reset();
+        this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
 
         // Create new shared seed and reinitialize RNG for all players
@@ -2893,6 +3212,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         this._syncBoardScenes();
+        this._setupLocalBots();
 
         // Start game loop
         this.multiplayerState.isPaused = false;
@@ -2908,13 +3228,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Show match end (someone won the required number of rounds)
      * @private
      */
+    /**
+     * Empty aggregate-metrics record used for end-of-match stats.
+     * @private
+     */
+    _emptyMatchMetrics() {
+        return createEmptyMatchMetrics();
+    }
+
+    /**
+     * Accumulate one round's player metrics into a running match-total record.
+     * Delegates to the pure `match-metrics` helper. Additive fields are summed;
+     * max-style fields take the maximum.
+     * @private
+     */
+    _accumulateMatchMetrics(target, src = {}) {
+        return accumulateMatchMetrics(target, src);
+    }
+
     async _showMatchEnd(winner) {
         let winnerName = 'Player 1';
         if (winner === 'draw') {
             winnerName = 'Draw';
         } else if (winner && typeof winner === 'object' && winner.type === 'team') {
-            const resolvedTeamId = winner.teamId === 1 ? 1 : 0;
-            winnerName = this._getTeamLabel(resolvedTeamId);
+            winnerName = this._getTeamLabel(winner.teamId);
         } else if (typeof winner === 'string') {
             const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
             winnerName = `Player ${winnerIndex + 1}`;
@@ -2972,6 +3309,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             }
 
+            // Combat/advanced metrics: previous rounds (matchStats) + current round (live)
+            const metrics = this._accumulateMatchMetrics(this._emptyMatchMetrics(), stats.metrics || {});
+            this._accumulateMatchMetrics(metrics, this.multiplayerState.getPlayerMetrics(i));
+
+            const seconds = Math.max(totalDuration / 1000, 0.001);
+            const pps = (totalPieces / seconds).toFixed(2);
+            const apm = Math.round((metrics.attacksSent || 0) / minutes);
+
             players.push({
                 name: `P${i + 1}`,
                 score: finalScore,
@@ -2980,10 +3325,55 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 frags,
                 bpm,
                 ppm,
+                pps,
+                apm,
+                attacksSent: metrics.attacksSent,
+                attackLinesSent: metrics.attackLinesSent,
+                cleanLinesSent: metrics.cleanLinesSent,
+                maxCombo: metrics.maxComboComplexity,
+                maxDepth: metrics.maxComboDepth,
+                potatoPasses: metrics.potatoPasses,
+                potatoHits: metrics.potatoDetonations,
                 pieces,
                 clears,
             });
         }
+
+        // Only show Hot Potato rows if the mode was actually played this match
+        const potatoPlayed = players.some((p) => ((p.potatoPasses || 0) + (p.potatoHits || 0)) > 0);
+
+        const resultIcon = (name, tone = 'violet') => (
+            `<span class="match-result-icon match-result-icon--${tone}">`
+            + `${csIcon(name, 22, 'match-result-icon-svg')}</span>`
+        );
+        const clearBadge = (value, tone) => (
+            `<span class="match-result-icon match-result-clear-badge match-result-icon--${tone}">${value}</span>`
+        );
+        const winnerCrown = (side) => (
+            `<span class="winner-crown winner-crown--${side}">${csIcon('crown', 58, 'winner-crown-svg')}</span>`
+        );
+
+        const rowIcon = {
+            score: resultIcon('trophy', 'gold'),
+            bpm: resultIcon('bolt', 'orange'),
+            ppm: resultIcon('chart-up', 'cyan'),
+            frags: resultIcon('crossed-swords', 'violet'),
+            deaths: resultIcon('skull', 'rose'),
+            lines: resultIcon('line-stack', 'mint'),
+            single: clearBadge(1, 'blue'),
+            double: clearBadge(2, 'blue'),
+            triple: clearBadge(3, 'blue'),
+            tetris: clearBadge(4, 'blue'),
+            pps: resultIcon('match-start', 'rocket'),
+            apm: resultIcon('burst', 'rose'),
+            attacksSent: resultIcon('inbox', 'cyan'),
+            attackLines: resultIcon('crossed-swords', 'amber'),
+            cleanLines: resultIcon('star', 'gold'),
+            maxCombo: resultIcon('chain', 'silver'),
+            maxCascade: resultIcon('spiral', 'cyan'),
+            potatoPasses: resultIcon('potato', 'amber'),
+            potatoHits: resultIcon('bomb', 'rose'),
+        };
 
         // CSS Styles Injection
         const styleBlock = `
@@ -2991,9 +3381,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
                 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
                 @keyframes pulseGlow { 0% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } 50% { text-shadow: 0 0 40px rgba(16, 185, 129, 0.8); } 100% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } }
+                @keyframes crownFloat { 0%, 100% { transform: translateY(0) rotate(var(--crown-tilt)); } 50% { transform: translateY(-5px) rotate(var(--crown-tilt)); } }
                 
                 #match-end-overlay {
                     font-family: 'Inter', system-ui, sans-serif;
+                    --match-end-accent-rgb: var(--cs-accent-rgb, 139, 92, 246);
                 }
 
                 .glass-panel {
@@ -3003,23 +3395,107 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     border: 1px solid rgba(255, 255, 255, 0.08);
                     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
                     border-radius: 24px;
-                    padding: 40px;
                     max-width: 1000px;
-                    width: 95%;
+                    width: min(1000px, 95vw);
+                    max-height: min(90vh, 860px);
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(var(--match-end-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
                     animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                    opacity: 0; 
+                    opacity: 0;
                 }
-                
+
+                .match-end-header {
+                    flex: 0 0 auto;
+                    text-align: center;
+                    padding: 40px 40px 0;
+                }
+
+                .match-end-scroll-area {
+                    flex: 1 1 auto;
+                    min-height: 0;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    padding: 0 40px 18px;
+                    scrollbar-gutter: stable;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(var(--match-end-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
+                }
+
+                .match-end-scroll-area::-webkit-scrollbar {
+                    width: 7px;
+                }
+
+                .match-end-scroll-area::-webkit-scrollbar-track {
+                    background: rgba(0, 0, 0, 0.10);
+                    border-radius: 7px;
+                }
+
+                .match-end-scroll-area::-webkit-scrollbar-thumb {
+                    background: linear-gradient(180deg, rgba(var(--match-end-accent-rgb), 0.80), rgba(142, 162, 255, 0.55));
+                    border: 1px solid rgba(8, 10, 23, 0.68);
+                    border-radius: 7px;
+                }
+
+                .match-end-scroll-area::-webkit-scrollbar-thumb:hover {
+                    background: rgba(var(--match-end-accent-rgb), 0.92);
+                }
+
                 .winner-title {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 24px;
                     font-size: 64px;
                     font-weight: 900;
                     margin-bottom: 8px;
-                    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
                     filter: drop-shadow(0 0 30px rgba(16, 185, 129, 0.4));
                     letter-spacing: -2px;
                     animation: slideUp 0.6s ease-out forwards;
+                }
+
+                .winner-title .winner-text {
+                    background: linear-gradient(135deg, #9ef3c1 0%, #68d391 48%, #38bdf8 100%);
+                    -webkit-background-clip: text;
+                    background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    color: transparent;
+                }
+
+                .winner-crown {
+                    --crown-tilt: -7deg;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #6ee7b7;
+                    filter:
+                        drop-shadow(0 0 18px rgba(110, 231, 183, 0.35))
+                        drop-shadow(0 10px 24px rgba(16, 185, 129, 0.22));
+                    animation: crownFloat 2.8s ease-in-out infinite;
+                }
+
+                .winner-crown--right {
+                    --crown-tilt: 7deg;
+                }
+
+                .winner-crown-svg {
+                    overflow: visible;
+                }
+
+                .winner-crown .cs-crown-band {
+                    fill: rgba(110, 231, 183, 0.24);
+                    stroke: #6ee7b7;
+                }
+
+                .winner-crown .cs-crown-rim {
+                    stroke: #d9fff1;
+                }
+
+                .winner-crown .cs-crown-gem {
+                    fill: #b9fbff;
+                    stroke: #38bdf8;
                 }
 
                 .win-condition {
@@ -3033,7 +3509,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 .stat-grid {
                     display: grid;
                     grid-template-columns: 180px repeat(${numPlayers}, 1fr);
-                    margin: 0 0 40px 0;
+                    margin: 0 0 12px 0;
                     border-radius: 12px;
                     overflow: hidden;
                     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -3076,7 +3552,161 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     color: #cbd5e1;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 10px;
+                }
+
+                .grid-cell.label > span:last-child {
+                    min-width: 0;
+                }
+
+                .match-result-icon {
+                    width: 28px;
+                    height: 28px;
+                    flex: 0 0 28px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 9px;
+                    background:
+                        linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
+                        rgba(6, 9, 22, 0.54);
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                        0 6px 16px rgba(0, 0, 0, 0.22);
+                }
+
+                .match-result-icon-svg {
+                    width: 21px;
+                    height: 21px;
+                    overflow: visible;
+                }
+
+                .match-result-icon--gold { color: #f9c74f; }
+                .match-result-icon--orange { color: #fb923c; }
+                .match-result-icon--cyan { color: #67e8f9; }
+                .match-result-icon--violet { color: #a78bfa; }
+                .match-result-icon--rose { color: #fb7185; }
+                .match-result-icon--mint { color: #6ee7b7; }
+                .match-result-icon--blue { color: #93c5fd; }
+                .match-result-icon--rocket { color: #8ea2ff; }
+                .match-result-icon--amber { color: #fbbf24; }
+                .match-result-icon--silver { color: #cbd5e1; }
+
+                .match-result-clear-badge {
+                    font-weight: 900;
+                    color: #dbeafe;
+                    background:
+                        radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.28), transparent 35%),
+                        linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(124, 58, 237, 0.86));
+                    border-color: rgba(147, 197, 253, 0.45);
+                    text-shadow: 0 1px 4px rgba(15, 23, 42, 0.45);
+                }
+
+                .match-result-icon .cs-trophy-cup,
+                .match-result-icon .cs-trophy-base {
+                    stroke: #f9c74f;
+                    fill: rgba(249, 199, 79, 0.16);
+                }
+
+                .match-result-icon .cs-trophy-handle,
+                .match-result-icon .cs-crown-gem {
+                    stroke: #fff3b0;
+                }
+
+                .match-result-icon .cs-chart-frame {
+                    stroke: rgba(103, 232, 249, 0.55);
+                }
+
+                .match-result-icon .cs-chart-line,
+                .match-result-icon .cs-chart-point {
+                    stroke: #67e8f9;
+                }
+
+                .match-result-icon .cs-sword-a {
+                    stroke: currentColor;
+                }
+
+                .match-result-icon .cs-sword-b {
+                    stroke: #d8b4fe;
+                }
+
+                .match-result-icon--amber .cs-sword-b {
+                    stroke: #fed7aa;
+                }
+
+                .match-result-icon .cs-skull-head {
+                    fill: rgba(251, 113, 133, 0.14);
+                    stroke: #fda4af;
+                }
+
+                .match-result-icon .cs-skull-eye,
+                .match-result-icon .cs-skull-nose {
+                    fill: #ffe4e6;
+                    stroke: #ffe4e6;
+                }
+
+                .match-result-icon .cs-lines-block-a { fill: rgba(110, 231, 183, 0.32); stroke: #6ee7b7; }
+                .match-result-icon .cs-lines-block-b { fill: rgba(56, 189, 248, 0.26); stroke: #38bdf8; }
+                .match-result-icon .cs-lines-block-c { fill: rgba(167, 139, 250, 0.24); stroke: #a78bfa; }
+                .match-result-icon .cs-lines-base { stroke: rgba(226, 232, 240, 0.76); }
+
+                .match-result-icon .cs-match-start-body { stroke: #8ea2ff; }
+                .match-result-icon .cs-match-start-fin { stroke: #c084fc; }
+                .match-result-icon .cs-match-start-window { fill: #b9fbff; stroke: #22d3ee; }
+                .match-result-icon .cs-match-start-flame {
+                    stroke: #ff8a3d;
+                    filter: drop-shadow(0 0 4px rgba(255, 138, 61, 0.55));
+                }
+
+                .match-result-icon .cs-burst-core {
+                    fill: rgba(251, 113, 133, 0.18);
+                    stroke: #fb7185;
+                }
+
+                .match-result-icon .cs-burst-rays {
+                    stroke: #fbbf24;
+                }
+
+                .match-result-icon .cs-inbox-tray {
+                    fill: rgba(103, 232, 249, 0.12);
+                    stroke: #67e8f9;
+                }
+
+                .match-result-icon .cs-inbox-slot,
+                .match-result-icon .cs-inbox-arrow {
+                    stroke: #d9faff;
+                }
+
+                .match-result-icon .cs-chain-a {
+                    stroke: #e2e8f0;
+                }
+
+                .match-result-icon .cs-chain-b {
+                    stroke: #94a3b8;
+                }
+
+                .match-result-icon .cs-potato-body {
+                    fill: rgba(251, 191, 36, 0.16);
+                    stroke: #fbbf24;
+                }
+
+                .match-result-icon .cs-potato-eye {
+                    stroke: #fed7aa;
+                }
+
+                .match-result-icon .cs-potato-spark,
+                .match-result-icon .cs-bomb-spark {
+                    stroke: #fef3c7;
+                }
+
+                .match-result-icon .cs-bomb-body {
+                    fill: rgba(251, 113, 133, 0.16);
+                    stroke: #fb7185;
+                }
+
+                .match-result-icon .cs-bomb-fuse {
+                    stroke: #fbbf24;
                 }
                 
                 .grid-cell.highlight {
@@ -3097,6 +3727,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     height: 1px;
                     background: rgba(255, 255, 255, 0.08);
                     margin: 4px 0;
+                }
+
+                .match-end-actions {
+                    flex: 0 0 auto;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 20px;
+                    padding: 18px 40px 24px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.08);
+                    background:
+                        linear-gradient(180deg, rgba(15, 23, 42, 0.40), rgba(8, 11, 24, 0.82)),
+                        rgba(8, 11, 24, 0.62);
+                    box-shadow: 0 -18px 32px rgba(0, 0, 0, 0.22);
                 }
 
                 .btn-primary {
@@ -3126,7 +3770,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Helper to generate a stat row
         const genRow = (icon, label, accessor) => {
             let html = `<div class="grid-row">
-                          <div class="grid-cell label">${icon} ${label}</div>`;
+                          <div class="grid-cell label">${icon}<span>${label}</span></div>`;
             players.forEach((p) => {
                 const value = accessor(p);
                 // Mark value for animation
@@ -3160,43 +3804,59 @@ export class LocalMultiplayerMode extends BaseGameMode {
         overlay.innerHTML = `
             ${styleBlock}
             <div class="glass-panel">
-                <div style="text-align: center;">
+                <div class="match-end-header">
                     <div class="winner-title">
-                        👑 ${winnerName} WINS! 👑
+                        ${winnerCrown('left')}<span class="winner-text">${winnerName} WINS!</span>${winnerCrown('right')}
                     </div>
                     <div class="win-condition">
                         ${this._getWinConditionText()}
                     </div>
                 </div>
 
-                <div class="stat-grid">
-                    <!-- Header -->
-                    <div class="grid-header-row">
-                        <div class="grid-header-cell">Statistic</div>
-                        ${players.map((p) => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
+                <div class="match-end-scroll-area">
+                    <div class="stat-grid">
+                        <!-- Header -->
+                        <div class="grid-header-row">
+                            <div class="grid-header-cell">Statistic</div>
+                            ${players.map((p) => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
+                        </div>
+
+                        <!-- Core Stats -->
+                        ${genRow(rowIcon.score, 'Score', (p) => p.score)}
+                        ${genRow(rowIcon.bpm, 'BPM', (p) => p.bpm)}
+                        ${genRow(rowIcon.ppm, 'PPM', (p) => p.ppm)}
+                        
+                        <div class="separator"></div>
+                        
+                        ${genRow(rowIcon.frags, 'Frags', (p) => p.frags)}
+                        ${genRow(rowIcon.deaths, 'Deaths', (p) => p.deaths)}
+                        ${genRow(rowIcon.lines, 'Lines', (p) => p.lines)}
+
+                        <div class="separator"></div>
+
+                        <!-- Clears -->
+                        ${genRow(rowIcon.single, 'Single', (p) => p.clears[1] || 0)}
+                        ${genRow(rowIcon.double, 'Double', (p) => p.clears[2] || 0)}
+                        ${genRow(rowIcon.triple, 'Triple', (p) => p.clears[3] || 0)}
+                        ${genRow(rowIcon.tetris, 'Tetris', (p) => p.clears[4] || 0)}
+
+                        <div class="separator"></div>
+
+                        <!-- Combat / advanced -->
+                        ${genRow(rowIcon.pps, 'PPS', (p) => p.pps)}
+                        ${genRow(rowIcon.apm, 'APM', (p) => p.apm)}
+                        ${genRow(rowIcon.attacksSent, 'Attacks Sent', (p) => p.attacksSent)}
+                        ${genRow(rowIcon.attackLines, 'Attack Lines', (p) => p.attackLinesSent)}
+                        ${genRow(rowIcon.cleanLines, 'Clean Lines', (p) => p.cleanLinesSent)}
+                        ${genRow(rowIcon.maxCombo, 'Max Combo', (p) => p.maxCombo)}
+                        ${genRow(rowIcon.maxCascade, 'Max Cascade', (p) => p.maxDepth)}
+                        ${potatoPlayed ? '<div class="separator"></div>' : ''}
+                        ${potatoPlayed ? genRow(rowIcon.potatoPasses, 'Potato Passes', (p) => p.potatoPasses) : ''}
+                        ${potatoPlayed ? genRow(rowIcon.potatoHits, 'Potato Hits', (p) => p.potatoHits) : ''}
                     </div>
-
-                    <!-- Core Stats -->
-                    ${genRow('🏆', 'Score', (p) => p.score)}
-                    ${genRow('⚡', 'BPM', (p) => p.bpm)}
-                    ${genRow('📈', 'PPM', (p) => p.ppm)}
-                    
-                    <div class="separator"></div>
-                    
-                    ${genRow('⚔️', 'Frags', (p) => p.frags)}
-                    ${genRow('💀', 'Deaths', (p) => p.deaths)}
-                    ${genRow('📊', 'Lines', (p) => p.lines)}
-
-                    <div class="separator"></div>
-
-                    <!-- Clears -->
-                    ${genRow('1️⃣', 'Single', (p) => p.clears[1] || 0)}
-                    ${genRow('2️⃣', 'Double', (p) => p.clears[2] || 0)}
-                    ${genRow('3️⃣', 'Triple', (p) => p.clears[3] || 0)}
-                    ${genRow('4️⃣', 'Tetris', (p) => p.clears[4] || 0)}
                 </div>
 
-                <div style="text-align: center; display: flex; gap: 20px; justify-content: center;">
+                <div class="match-end-actions">
                     <button id="restart-match-btn" class="btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);">
                         Restart Match
                     </button>
@@ -3264,7 +3924,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.roundWins.player2 = 0;
                 this.roundWins.player3 = 0;
                 this.roundWins.player4 = 0;
-                this.teamRoundWins = { 0: 0, 1: 0 };
+                this.teamRoundWins = {};
                 eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
             }, 300);
         });
@@ -3573,10 +4233,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             y;
 
                         switch (edge) {
-                            case 0: x = Math.random() * width; y = 0; break; // Top
-                            case 1: x = width; y = Math.random() * height; break; // Right
-                            case 2: x = Math.random() * width; y = height; break; // Bottom
-                            case 3: x = 0; y = Math.random() * height; break; // Left
+                        case 0: x = Math.random() * width; y = 0; break; // Top
+                        case 1: x = width; y = Math.random() * height; break; // Right
+                        case 2: x = Math.random() * width; y = height; break; // Bottom
+                        case 3: x = 0; y = Math.random() * height; break; // Left
                         }
 
                         const sparkle = boardScene.add.particles(x, y, particleKey, {

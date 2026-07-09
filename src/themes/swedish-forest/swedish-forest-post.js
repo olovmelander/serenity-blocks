@@ -134,6 +134,7 @@ export class SwedishForestPost {
         this.useMRT = params.useMRT === true;
         this.useBloom = params.useBloom !== false;
         this.resolutionScale = params.resolutionScale ?? 1;
+        this.bloomDownsample = Math.max(0.25, Math.min(1, params.bloomDownsample ?? 0.5));
         this.size = { width: 0, height: 0 };
         this.pixelRatio = 1;
 
@@ -176,7 +177,7 @@ export class SwedishForestPost {
                 params.bloomThreshold ?? 0.8,
             );
             // Run bloom at half resolution — it's a wide blur so full-res is wasteful
-            this.bloomHalfRes = true;
+            this.bloomHalfRes = this.bloomDownsample < 1;
             combined = combined.add(this.bloomNode);
         }
 
@@ -188,6 +189,10 @@ export class SwedishForestPost {
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.3);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.4);
         this.uGrainStrength = uniform(params.grainStrength ?? 0.015);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0014);
+        this.uSunScreen = uniform(params.sunScreen ?? new THREE.Vector2(0.5, 0.5));
+        this.uSunGlowStrength = uniform(params.sunGlowStrength ?? 0);
+        this.uSunGlowVisibility = uniform(0);
         this.uTime = uniform(0);
 
         let graded = combined.xyz.mul(this.uExposure);
@@ -217,6 +222,13 @@ export class SwedishForestPost {
         );
         graded = graded.mul(vignette);
 
+        const sunOffset = viewportUV.sub(this.uSunScreen);
+        const sunDistance = dot(sunOffset, sunOffset);
+        const sunVeil = smoothstep(0.22, 0.0, sunDistance)
+            .mul(this.uSunGlowStrength)
+            .mul(this.uSunGlowVisibility);
+        graded = clamp(graded.add(vec3(1.0, 0.48, 0.16).mul(sunVeil)), float(0.0), float(1.0));
+
         const grainSeed = dot(
             viewportUV.add(vec2(this.uTime.mul(0.013), this.uTime.mul(-0.017))),
             vec2(12.9898, 78.233),
@@ -224,6 +236,10 @@ export class SwedishForestPost {
         const grainNoise = fract(sin(grainSeed).mul(43758.5453));
         const grain = grainNoise.sub(0.5).mul(this.uGrainStrength);
         graded = clamp(graded.add(vec3(grain)), float(0.0), float(1.0));
+
+        const ditherSeed = dot(viewportUV.mul(2048.0), vec2(171.17, 231.43));
+        const dither = fract(sin(ditherSeed).mul(43758.5453)).sub(0.5).mul(this.uDitherStrength);
+        graded = clamp(graded.add(vec3(dither)), float(0.0), float(1.0));
 
         this.postProcessing.outputNode = vec4(graded, combined.a);
         this.postProcessing.needsUpdate = true;
@@ -303,6 +319,18 @@ export class SwedishForestPost {
             if (this.uGrainStrength) this.uGrainStrength.value = params.grainStrength;
             if (this.gradePass?.uniforms?.uGrainStrength) this.gradePass.uniforms.uGrainStrength.value = params.grainStrength;
         }
+        if (params.ditherStrength !== undefined && this.uDitherStrength) {
+            this.uDitherStrength.value = params.ditherStrength;
+        }
+        if (params.sunGlowStrength !== undefined && this.uSunGlowStrength) {
+            this.uSunGlowStrength.value = params.sunGlowStrength;
+        }
+        if (params.sunGlowVisibility !== undefined && this.uSunGlowVisibility) {
+            this.uSunGlowVisibility.value = params.sunGlowVisibility;
+        }
+        if (params.sunScreenX !== undefined && params.sunScreenY !== undefined && this.uSunScreen) {
+            this.uSunScreen.value.set(params.sunScreenX, params.sunScreenY);
+        }
 
         if (params.resolutionScale !== undefined) {
             const nextScale = params.resolutionScale;
@@ -348,10 +376,9 @@ export class SwedishForestPost {
             const scaledHeight = Math.max(1, Math.round(height * this.pixelRatio));
             this.scenePass.setSize(scaledWidth, scaledHeight);
             if (this.bloomNode?._separableBlurMaterials?.length) {
-                const bloomScale = this.bloomHalfRes ? 0.5 : 1;
                 this.bloomNode.setSize(
-                    Math.max(1, Math.round(scaledWidth * bloomScale)),
-                    Math.max(1, Math.round(scaledHeight * bloomScale)),
+                    Math.max(1, Math.round(scaledWidth * this.bloomDownsample)),
+                    Math.max(1, Math.round(scaledHeight * this.bloomDownsample)),
                 );
             }
         }

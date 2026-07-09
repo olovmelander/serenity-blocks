@@ -8,6 +8,7 @@
 
 import { SteamConfig } from './config.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
+import { NetworkImpairmentHarness, readNetworkImpairmentConfig } from '../network/network-impairment.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -18,6 +19,20 @@ const hasSteamworks = Boolean(ipcRenderer);
 if (!hasSteamworks) {
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
 }
+
+const HOST_AUTHORITATIVE_MESSAGE_TYPES = new Set([
+    'game:state:full',
+    'game:state:delta',
+    'game:state:resync',
+    'game:syncpoint',
+    'game:piece:lock',
+    'game:lines:clear',
+    'game:garbage:sent',
+    'game:player:died',
+    'game:player:frag',
+    'game:match:end',
+    'game:round:restart',
+]);
 
 
 
@@ -38,12 +53,23 @@ export class SteamNetworking {
         this.sendSeqByChannel = new Map();
         this.recvSeqByPeer = new Map();
         this.incomingSnapshotBaselines = new Map();
+        this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
         this.outgoingSnapshotState = new Map();
 
         // Phase 4: Binary encoding for snapshots (90% bandwidth reduction)
         this.useBinaryEncoding = true; // Enable by default for production
         this.binaryEncoder = null;
         this.binaryDecoder = null;
+        this.lastBroadcastSnapshot = null;
+        // Deltas diff against the last KEYFRAME (which is sent reliably and in-order),
+        // not against the previous broadcast — so one lost/reordered unreliable delta
+        // can't invalidate every later delta in the interval. Only a full advances it.
+        this.lastKeyframeSnapshot = null;
+        this.lastFullSnapshotAt = 0;
+        // Reliable keyframe cadence. A dropped (unreliable) delta self-heals on the
+        // next full, so this bounds the worst-case opponent-board freeze. 250ms keeps
+        // it crisp; keyframes are tiny binary + only ~4/s so bandwidth stays low.
+        this.fullSnapshotIntervalMs = 250;
 
         // Phase 4: Heartbeat and disconnect detection
         this.heartbeatInterval = null;
@@ -57,12 +83,26 @@ export class SteamNetworking {
 
         // Mock P2P communication channel (for cross-window messaging)
         this.broadcastChannel = null;
+        this.networkImpairment = new NetworkImpairmentHarness(readNetworkImpairmentConfig());
+        this.networkImpairmentTimers = new Set();
         this.packetStats = {
             sent: 0,
             received: 0,
             sendFailures: 0,
             decodeFailures: 0,
             validationFailures: 0,
+            staleDeltasDropped: 0, // deltas superseded by a newer keyframe (silently ignored)
+            keyframesSent: 0,
+            deltasSent: 0,
+            keyframesReceived: 0,
+            deltasReceived: 0,
+            missingBaselineDeltas: 0,
+            aheadOfBaselineDeltas: 0,
+            deltaDecodeFailures: 0,
+            resyncRequestsSent: 0,
+            resyncRequestsSuppressed: 0,
+            snapshotBytesSent: [],
+            snapshotBytesReceived: [],
         };
     }
 
@@ -141,6 +181,10 @@ export class SteamNetworking {
                 lobbyType,
                 endCondition,
                 endConditionValue,
+                // Match lifecycle as advertised to the lobby browser:
+                //   'open' (waiting room, normal Join) | 'playing' (in progress → drop-in / watch) | 'finished'
+                // Kept current by the host via setLobbyStatus()/setLobbyPlayerCount().
+                status: 'open',
                 createdAt: Date.now(),
             };
 
@@ -279,12 +323,40 @@ export class SteamNetworking {
 
     _sendMessage(targetSteamId, messageType, data, options) {
         const envelope = this._buildEnvelope(messageType, data, options);
+        this._sendEnvelope(targetSteamId, messageType, envelope, options);
+    }
 
+    _sendEnvelope(targetSteamId, messageType, envelope, options = {}) {
+        const impairmentPlan = this.networkImpairment.planDelivery({
+            channel: options.channel ?? 0,
+            delivery: options.delivery ?? 'reliable',
+            messageType,
+        });
+
+        if (impairmentPlan.drop) {
+            return;
+        }
+
+        for (const delivery of impairmentPlan.deliveries) {
+            if (delivery.delayMs > 0) {
+                const timer = setTimeout(() => {
+                    this.networkImpairmentTimers.delete(timer);
+                    this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+                }, delivery.delayMs);
+                this.networkImpairmentTimers.add(timer);
+            } else {
+                this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+            }
+        }
+    }
+
+    _deliverEnvelopeNow(targetSteamId, messageType, envelope, options = {}) {
         if (this.mockMode) {
             // Mock send via BroadcastChannel
             if (this.broadcastChannel) {
                 const message = {
                     ...envelope,
+                    type: messageType,
                     from: this.steamId,
                     to: targetSteamId,
                     channel: options.channel,
@@ -298,7 +370,6 @@ export class SteamNetworking {
             return;
         }
 
-        const buffer = Buffer.from(JSON.stringify(envelope));
         const sendType = this._resolveDelivery(options.delivery);
 
         // Send via steamworks.js preload API
@@ -323,20 +394,19 @@ export class SteamNetworking {
    */
     broadcastToAll(messageType, data, options = {}) {
         if (this.mockMode) {
-            // Mock broadcast via BroadcastChannel
-            if (this.broadcastChannel) {
-                const envelope = this._buildEnvelope(messageType, data, options);
-                const message = {
-                    ...envelope,
-                    from: this.steamId,
-                    to: 'all',
-                    channel: options.channel ?? 0,
-                };
-                this.broadcastChannel.postMessage(message);
+            const envelope = this._buildEnvelope(messageType, data, {
+                channel: 0,
+                delivery: 'reliable',
+                ...options,
+            });
+            this._sendEnvelope('all', messageType, envelope, {
+                channel: 0,
+                delivery: 'reliable',
+                ...options,
+            });
 
-                if (SteamConfig.debugMode) {
+            if (SteamConfig.debugMode) {
                     console.log('🧪 Mock broadcast:', messageType);
-                }
             }
             return;
         }
@@ -371,30 +441,55 @@ export class SteamNetworking {
                 // DELTA ENCODING OPTIMIZATION
                 let binaryBuffer;
                 let usedDelta = false;
+                const now = Date.now();
+                const forceFullSnapshot = now - this.lastFullSnapshotAt >= this.fullSnapshotIntervalMs;
 
-                if (this.lastBroadcastSnapshot) {
-                    // Try to encode as delta relative to last broadcast
-                    // This is safe because we use RELIABLE delivery
-                    binaryBuffer = this.binaryEncoder.encodeDeltaSnapshot(data, this.lastBroadcastSnapshot);
+                if (this.lastKeyframeSnapshot && !forceFullSnapshot) {
+                    // Delta relative to the last KEYFRAME (not the previous broadcast).
+                    binaryBuffer = this.binaryEncoder.encodeDeltaSnapshot(data, this.lastKeyframeSnapshot);
                     if (binaryBuffer) {
                         usedDelta = true;
                     }
                 }
 
-                // Fallback to full snapshot if delta failed (e.g. first frame or player list change)
+                // Fallback to a full keyframe (first frame, player-list change, or due).
                 if (!binaryBuffer) {
                     binaryBuffer = this.binaryEncoder.encodeSnapshot(data);
                     usedDelta = false;
+                    this.lastFullSnapshotAt = now;
+                    // ONLY a full advances the delta baseline; every delta in the next
+                    // interval diffs against this keyframe.
+                    this.lastKeyframeSnapshot = data;
                 }
 
-                // Update baseline for next time
-                this.lastBroadcastSnapshot = data;
-
                 // Convert to base64 for JSON transport
+                // The binary codec does NOT serialize lastInputSeq or roundGeneration.
+                // Carry them in the JSON wrapper (like _digest) and re-attach on the
+                // receiver. Without lastInputSeq the peer can't prune its input
+                // history → it replays its whole history onto the board (glitches);
+                // without roundGeneration a stale snapshot can clobber the next round.
+                const acks = {};
+                if (Array.isArray(data?.players)) {
+                    for (const p of data.players) {
+                        if (p && p.steamId != null && p.lastInputSeq != null) {
+                            acks[p.steamId] = p.lastInputSeq;
+                        }
+                    }
+                }
                 encodedData = {
                     _binary: true,
                     _delta: usedDelta, // Flag to tell receiver to use decodeDeltaSnapshot
                     _data: this._arrayBufferToBase64(binaryBuffer),
+                    _gen: data?.roundGeneration,
+                    _migrationEpoch: data?.migrationEpoch,
+                    _acks: acks,
+                    // Carry the host's DJB2 state digest in the JSON wrapper. The
+                    // binary codec does not serialize it, so without this the
+                    // peer's desync detection (syncFromHost) never runs on the
+                    // default binary path. The digest is the full-state digest
+                    // even for delta packets (buildStateSnapshot computes it over
+                    // all players regardless of encoding).
+                    _digest: data?.digest,
                     // Debug stats
                     _originalSize: JSON.stringify(data).length,
                     _encodedSize: binaryBuffer.byteLength,
@@ -407,8 +502,32 @@ export class SteamNetworking {
             }
         }
 
+        // A full snapshot (keyframe) is the recovery point for the delta stream, so
+        // it MUST arrive: send it RELIABLE + immediately, bypassing backpressure.
+        // Intermediate deltas stay unreliable_no_delay for lowest latency — a lost
+        // delta now self-heals on the next guaranteed keyframe instead of stranding
+        // the opponent board for up to a full keyframe interval.
+        const isKeyframe = isBinary && encodedData._delta === false;
+        const skipPeers = options.skipPeers instanceof Set
+            ? options.skipPeers
+            : new Set(Array.isArray(options.skipPeers) ? options.skipPeers : []);
+
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            this._queueSnapshot(steamId, messageType, encodedData, { ...options, isBinary });
+            if (skipPeers.has(steamId)) return;
+            if (isBinary) {
+                if (isKeyframe) this.packetStats.keyframesSent += 1;
+                else if (encodedData._delta === true) this.packetStats.deltasSent += 1;
+                this._recordSnapshotBytes('sent', encodedData._encodedSize || 0);
+            }
+            if (isKeyframe) {
+                this._sendMessage(steamId, messageType, encodedData, {
+                    channel: 0,
+                    delivery: 'reliable',
+                    isBinary,
+                });
+            } else {
+                this._queueSnapshot(steamId, messageType, encodedData, { ...options, isBinary });
+            }
         });
     }
 
@@ -442,19 +561,26 @@ export class SteamNetworking {
     startP2PPolling() {
         if (this.mockMode) return;
 
-        // Poll for P2P packets at 60Hz via steamworks.js preload API
+        // Guard against a second init() orphaning the previous interval — that
+        // would leak a 60Hz timer and double-process every incoming packet.
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+
+        // Poll for P2P packets at 60Hz via steamworks.js preload API.
+        // steamworks.js 0.4.0 P2P is single-channel: drain it each tick. The
+        // logical channel rides inside the envelope (used for seq tracking), so
+        // we don't need a per-channel transport here.
         this.pollInterval = setInterval(async () => {
-            for (const channel of [0, 1, 2]) {
-                try {
-                    while (await ipcRenderer.invoke('steam:isP2PPacketAvailable', channel)) {
-                        const packet = await ipcRenderer.invoke('steam:readP2PPacket', channel);
-                        if (packet) {
-                            this.handleP2PPacket(packet, channel);
-                        }
-                    }
-                } catch (err) {
-                    // Ignore polling errors
+            try {
+                let packet = await ipcRenderer.invoke('steam:readP2PPacket');
+                while (packet) {
+                    this.handleP2PPacket(packet, 0);
+                    packet = await ipcRenderer.invoke('steam:readP2PPacket');
                 }
+            } catch (err) {
+                // Ignore polling errors
             }
         }, 16); // ~60Hz
     }
@@ -465,8 +591,8 @@ export class SteamNetworking {
    */
     handleP2PPacket(packet, channel = 0) {
         try {
-            const message = JSON.parse(packet.data.toString());
             const fromSteamId = packet.steamId;
+            const message = this._parsePacketData(packet.data);
             const envelope = this._normalizeEnvelope(message, fromSteamId);
             if (!envelope) return;
 
@@ -475,74 +601,136 @@ export class SteamNetworking {
                 return;
             }
 
-            this.packetStats.received += 1;
-
-            // Track peer connection
-            if (!this.connectedPeers.has(fromSteamId)) {
-                this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
-                console.log(`✅ New peer connected: ${fromSteamId}`);
-            }
-
-            // Phase 4: Decode binary payload if present (FULL or DELTA)
-            let { payload } = envelope;
-            if (payload && payload._binary === true && payload._data) {
-                try {
-                    if (!this.binaryDecoder) {
-                        this.binaryDecoder = getBinaryDecoder();
-                    }
-                    const binaryBuffer = this._base64ToArrayBuffer(payload._data);
-
-                    if (payload._delta) {
-                        // Delta Packet: Need baseline
-                        // We assume the PREVIOUS packet from this sender was the baseline.
-                        // Since we use reliable delivery, lastReceivedSnapshot should be correct.
-                        const lastSnapshot = this.incomingSnapshotBaselines.get(fromSteamId);
-
-                        if (lastSnapshot) {
-                            payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, lastSnapshot);
-                        } else {
-                            console.warn(`Received DELTA from ${fromSteamId} but have no baseline! Requesting resync?`);
-                            // Drop it? Or try decoding as full (maybe magic handles it)?
-                            // decodeDelta checking magic might fail.
-                            return;
-                        }
-                    } else {
-                        // Full Packet
-                        payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
-                    }
-
-                    // Store decoded snapshot as new baseline for this peer
-                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
-                } catch (err) {
-                    console.warn('Binary decoding failed, payload may be corrupted:', err);
-                    this.packetStats.decodeFailures += 1;
-                    return; // Drop corrupted packet
-                }
-            }
-
-            // Call registered message handlers (array-based)
-            const handlers = this.messageHandlers.get(envelope.msgType);
-            if (handlers && handlers.length > 0) {
-                handlers.forEach((handler) => {
-                    try {
-                        handler({
-                            from: fromSteamId,
-                            type: envelope.msgType,
-                            data: payload,
-                            timestamp: envelope.sentAt,
-                            seq: envelope.seq,
-                            tick: envelope.tick,
-                            protocolVersion: envelope.protocolVersion,
-                        });
-                    } catch (err) {
-                        console.error('Error in message handler:', err);
-                    }
-                });
-            }
+            this._processEnvelope(envelope, fromSteamId, { trackPeer: true });
         } catch (err) {
             console.error('❌ Failed to parse P2P packet:', err);
             this.packetStats.decodeFailures += 1;
         }
+    }
+
+    _processEnvelope(envelope, fromSteamId, { trackPeer = false } = {}) {
+        if (!this._isSenderAllowedForMessage(envelope.msgType, fromSteamId)) {
+            this.packetStats.validationFailures += 1;
+            return false;
+        }
+
+        this.packetStats.received += 1;
+
+        if (trackPeer && !this.connectedPeers.has(fromSteamId)) {
+            this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
+            console.log(`✅ New peer connected: ${fromSteamId}`);
+        }
+
+        const decoded = this._decodeEnvelopePayload(envelope, fromSteamId);
+        if (!decoded || decoded.drop === true) {
+            return false;
+        }
+
+        this._dispatchEnvelope(envelope, fromSteamId, decoded.payload);
+        return true;
+    }
+
+    _decodeEnvelopePayload(envelope, fromSteamId) {
+        let { payload } = envelope;
+        const carriedDigest = payload && payload._digest;
+        const carriedGen = payload && payload._gen;
+        const carriedMigrationEpoch = payload && payload._migrationEpoch;
+        const carriedAcks = payload && payload._acks;
+
+        if (payload && payload._binary === true && payload._data) {
+            try {
+                if (!this.binaryDecoder) {
+                    this.binaryDecoder = getBinaryDecoder();
+                }
+                const binaryBuffer = this._base64ToArrayBuffer(payload._data);
+                this._recordSnapshotBytes('received', payload._encodedSize || binaryBuffer.byteLength || 0);
+
+                if (payload._delta) {
+                    this.packetStats.deltasReceived += 1;
+                    const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
+                    if (!baseline) {
+                        this.packetStats.missingBaselineDeltas += 1;
+                        this._requestResync(fromSteamId, 'missing_delta_baseline');
+                        return { drop: true };
+                    }
+
+                    const deltaBaselineTick = this.binaryDecoder.peekDeltaBaselineTick(binaryBuffer);
+                    if (deltaBaselineTick != null && typeof baseline.tick === 'number') {
+                        if (deltaBaselineTick < baseline.tick) {
+                            this.packetStats.staleDeltasDropped += 1;
+                            return { drop: true };
+                        }
+                        if (deltaBaselineTick > baseline.tick) {
+                            this.packetStats.aheadOfBaselineDeltas += 1;
+                            this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                            return { drop: true };
+                        }
+                    }
+
+                    payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
+                } else {
+                    this.packetStats.keyframesReceived += 1;
+                    payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
+                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
+                }
+            } catch (err) {
+                console.warn('Binary decoding failed, payload may be corrupted:', err);
+                this.packetStats.decodeFailures += 1;
+                if (payload?._delta) {
+                    this.packetStats.deltaDecodeFailures += 1;
+                    this._requestResync(fromSteamId, 'delta_decode_failed');
+                }
+                return { drop: true };
+            }
+        }
+
+        if (carriedDigest !== undefined && carriedDigest !== null
+            && payload && typeof payload === 'object') {
+            payload.digest = carriedDigest;
+        }
+        if (carriedGen !== undefined && carriedGen !== null
+            && payload && typeof payload === 'object') {
+            payload.roundGeneration = carriedGen;
+        }
+        if (carriedMigrationEpoch !== undefined && carriedMigrationEpoch !== null
+            && payload && typeof payload === 'object') {
+            payload.migrationEpoch = carriedMigrationEpoch;
+        }
+        if (carriedAcks && payload && Array.isArray(payload.players)) {
+            payload.players.forEach((p) => {
+                if (p && carriedAcks[p.steamId] !== undefined) {
+                    p.lastInputSeq = carriedAcks[p.steamId];
+                }
+            });
+        }
+
+        return { payload };
+    }
+
+    setIncomingSnapshotBaseline(fromSteamId, snapshot) {
+        if (!fromSteamId || !snapshot || typeof snapshot !== 'object') return;
+        this.incomingSnapshotBaselines.set(fromSteamId, snapshot);
+    }
+
+    _dispatchEnvelope(envelope, fromSteamId, payload) {
+        const handlers = this.messageHandlers.get(envelope.msgType);
+        if (!handlers || handlers.length === 0) return;
+
+        handlers.forEach((handler) => {
+            try {
+                handler({
+                    from: fromSteamId,
+                    type: envelope.msgType,
+                    data: payload,
+                    timestamp: envelope.sentAt,
+                    seq: envelope.seq,
+                    tick: envelope.tick,
+                    protocolVersion: envelope.protocolVersion,
+                });
+            } catch (err) {
+                console.error('Error in message handler:', err);
+            }
+        });
     }
 
     // Note: on() method is defined at the end of the class (array-based version)
@@ -551,6 +739,7 @@ export class SteamNetworking {
    * Leave current lobby
    */
     leaveLobby() {
+        this._clearNetworkImpairmentTimers();
         if (!this.currentLobbyId) return;
 
         if (this.mockMode) {
@@ -603,6 +792,10 @@ export class SteamNetworking {
                 hostName: lobby.hostName,
                 endCondition: lobby.endCondition,
                 endConditionValue: lobby.endConditionValue,
+                // Surface the advertised lifecycle so the browser can show Join vs
+                // "Join (next round)" / Watch for an in-progress match. Falls back to
+                // capacity-derived status in the browser when absent (older entries).
+                status: lobby.status,
             }));
         }
 
@@ -620,6 +813,7 @@ export class SteamNetworking {
    * Cleanup on shutdown
    */
     shutdown() {
+        this._clearNetworkImpairmentTimers();
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
@@ -629,6 +823,9 @@ export class SteamNetworking {
             this._disconnectCheckInterval = null;
         }
         this.incomingSnapshotBaselines.clear();
+        this.lastResyncRequestAt.clear();
+        this.lastKeyframeSnapshot = null;
+        this.lastBroadcastSnapshot = null;
         this.outgoingSnapshotState.forEach((state) => {
             if (state?.timer) {
                 clearTimeout(state.timer);
@@ -648,6 +845,60 @@ export class SteamNetworking {
             localStorage.setItem('serenity_mock_lobbies', JSON.stringify(lobbies));
         } catch (err) {
             console.warn('⚠️ Failed to save mock lobby to localStorage:', err);
+        }
+    }
+
+    /**
+   * Patch an existing mock lobby's fields in shared localStorage (cross-window).
+   * No-op if the lobby isn't found.
+   */
+    updateMockLobby(lobbyId, patch) {
+        try {
+            const lobbies = this.loadMockLobbies();
+            let changed = false;
+            lobbies.forEach((lobby) => {
+                if (lobby.id === lobbyId) {
+                    Object.assign(lobby, patch);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                localStorage.setItem('serenity_mock_lobbies', JSON.stringify(lobbies));
+            }
+        } catch (err) {
+            console.warn('⚠️ Failed to update mock lobby in localStorage:', err);
+        }
+    }
+
+    /**
+   * Advertise the current match lifecycle status ('open' | 'playing' | 'finished')
+   * to the lobby list so browsers render Join / "Join (next round)" / Watch correctly.
+   * Host-only in effect; safe no-op when there's no current lobby. Works for the mock
+   * transport (localStorage) and best-effort for real Steam (lobby metadata).
+   */
+    setLobbyStatus(status) {
+        if (!this.currentLobbyId || !status) return;
+        if (this.mockMode) {
+            this.updateMockLobby(this.currentLobbyId, { status });
+            return;
+        }
+        try {
+            ipcRenderer.invoke('steam:setLobbyData', this.currentLobbyId, 'status', String(status));
+        } catch (err) {
+            console.warn('⚠️ Failed to set lobby status:', err);
+        }
+    }
+
+    /**
+   * Advertise the current player count to the lobby list (drives the N/max display
+   * and the "Full" vs "Join (next round)" decision for in-progress matches).
+   */
+    setLobbyPlayerCount(count) {
+        if (!this.currentLobbyId || typeof count !== 'number') return;
+        // Mock lobbies carry their own currentPlayers (read by getLobbies). Real Steam
+        // reports the live member count via getMemberCount(), so there's nothing to write.
+        if (this.mockMode) {
+            this.updateMockLobby(this.currentLobbyId, { currentPlayers: count });
         }
     }
 
@@ -745,42 +996,10 @@ export class SteamNetworking {
         const envelope = this._normalizeEnvelope(message, message.from);
         if (!envelope) return;
         if (!this._validateEnvelope(envelope, message.from, message.channel ?? 0)) {
+            this.packetStats.validationFailures += 1;
             return;
         }
-
-        // Phase 4: Decode binary payload if present
-        let { payload } = envelope;
-        if (payload && payload._binary === true && payload._data) {
-            try {
-                if (!this.binaryDecoder) {
-                    this.binaryDecoder = getBinaryDecoder();
-                }
-                const binaryBuffer = this._base64ToArrayBuffer(payload._data);
-                payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
-            } catch (err) {
-                console.warn('Binary decoding failed in mock mode:', err);
-                return; // Drop corrupted packet
-            }
-        }
-
-        // Call registered message handlers
-        const handlers = this.messageHandlers.get(envelope.msgType);
-        if (handlers && handlers.length > 0) {
-            handlers.forEach((handler) => {
-                try {
-                    handler({
-                        data: payload,
-                        from: message.from,
-                        timestamp: envelope.sentAt,
-                        seq: envelope.seq,
-                        tick: envelope.tick,
-                        protocolVersion: envelope.protocolVersion,
-                    });
-                } catch (err) {
-                    console.error('Error in message handler:', err);
-                }
-            });
-        }
+        this._processEnvelope(envelope, message.from, { trackPeer: true });
     }
 
     /**
@@ -815,12 +1034,32 @@ export class SteamNetworking {
             matchId: this.matchId,
             matchNonce: this.matchNonce,
             hostSteamId: this.hostSteamId,
+            // Logical channel travels with the packet so the receiver can track
+            // per-channel sequence numbers even though steamworks.js 0.4.0
+            // delivers everything on one physical channel.
+            channel,
             seq,
             tick: options.tick ?? data?.tick ?? null,
             sentAt: Date.now(),
             protocolVersion: this.protocolVersion,
             payload: data,
         };
+    }
+
+    _parsePacketData(data) {
+        if (typeof data === 'string') {
+            return JSON.parse(data);
+        }
+
+        if (data && typeof data === 'object' && (data.msgType || data.type)) {
+            return data;
+        }
+
+        if (data && typeof data.toString === 'function') {
+            return JSON.parse(data.toString());
+        }
+
+        throw new Error('Unsupported P2P packet payload');
     }
 
     _normalizeEnvelope(message, fromSteamId) {
@@ -834,6 +1073,7 @@ export class SteamNetworking {
                 matchId: message.matchId ?? null,
                 matchNonce: message.matchNonce ?? null,
                 hostSteamId: message.hostSteamId ?? null,
+                channel: message.channel ?? 0,
                 seq: message.seq ?? 0,
                 tick: message.tick ?? null,
                 sentAt: message.timestamp ?? Date.now(),
@@ -843,6 +1083,20 @@ export class SteamNetworking {
         }
         console.warn('⚠️ Unknown packet format from', fromSteamId);
         return null;
+    }
+
+    _isSenderAllowedForMessage(messageType, fromSteamId) {
+        if (
+            !this.isHost
+            && this.hostSteamId
+            && HOST_AUTHORITATIVE_MESSAGE_TYPES.has(messageType)
+            && fromSteamId !== this.hostSteamId
+        ) {
+            console.warn(`⚠️ Rejected host-authoritative ${messageType} from non-host ${fromSteamId}`);
+            return false;
+        }
+
+        return true;
     }
 
     _validateEnvelope(envelope, fromSteamId, channel) {
@@ -872,12 +1126,34 @@ export class SteamNetworking {
         }
 
         if (!isHello) {
-            if (envelope.matchId !== this.matchId) return false;
-            if (envelope.matchNonce !== this.matchNonce) return false;
-            if (envelope.hostSteamId !== this.hostSteamId) return false;
+            if (envelope.matchId !== this.matchId
+                || envelope.matchNonce !== this.matchNonce
+                || envelope.hostSteamId !== this.hostSteamId) {
+                // Previously a SILENT 100% drop — the root of "lose connection mid-match
+                // with the Steam session still open" (split-brain after a false host
+                // migration: the peer promoted itself and rewrote its own hostSteamId, so
+                // every cross-host packet now mismatches). Throttled-warn so it's
+                // diagnosable instead of an invisible blackhole.
+                const reason = envelope.matchId !== this.matchId ? 'matchId'
+                    : (envelope.matchNonce !== this.matchNonce ? 'matchNonce' : 'hostSteamId');
+                const now = Date.now();
+                this._envDropWarn = this._envDropWarn || {};
+                if (!this._envDropWarn[reason] || now - this._envDropWarn[reason] > 2000) {
+                    this._envDropWarn[reason] = now;
+                    console.warn(`[Net] DROP inbound pkt from ${fromSteamId}: ${reason} mismatch `
+                        + `(msgType=${envelope.msgType}, theirs=${envelope[reason]}, ours=${this[reason]}) `
+                        + `— possible host split-brain (throttled 1/2s).`);
+                }
+                return false;
+            }
         }
 
-        const seqKey = `${fromSteamId}:${channel}`;
+        // Key replay/ordering by the LOGICAL channel carried in the envelope, not
+        // the physical transport channel — steamworks.js 0.4.0 delivers all packets
+        // on a single channel, so per-channel sender seq counters would otherwise
+        // collide on one key and drop ~half the traffic. (In mock mode the two are
+        // equal, so existing behavior is unchanged.)
+        const seqKey = `${fromSteamId}:${envelope.channel ?? channel}`;
         const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
         if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
             return false;
@@ -895,6 +1171,53 @@ export class SteamNetworking {
             originalMsgType,
         };
         this.sendP2PMessage(targetSteamId, 'net:error', payload);
+    }
+
+    /**
+     * Ask the host for a full-state resync, at most once per keyframe interval per
+     * peer. Without this, a burst of reordered/dropped unreliable deltas would emit
+     * one request each and fan out into multiple concurrent full-state transfers.
+     */
+    _requestResync(fromSteamId, reason) {
+        const now = Date.now();
+        const last = this.lastResyncRequestAt.get(fromSteamId) || 0;
+        if (now - last < this.fullSnapshotIntervalMs) {
+            this.packetStats.resyncRequestsSuppressed += 1;
+            return;
+        }
+        this.lastResyncRequestAt.set(fromSteamId, now);
+        this.packetStats.resyncRequestsSent += 1;
+        this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', { requestResync: true, reason });
+    }
+
+    /**
+     * Force the next outgoing snapshot to be a full KEYFRAME and discard stale
+     * receive baselines. MUST be called on a round restart: otherwise the host's
+     * first post-restart packet is a DELTA encoded against the PRE-restart keyframe
+     * (hostTick is monotonic, so the baseline-tick guard doesn't catch it), and the
+     * peer decodes round-2 state against round-1 data → corrupted/frozen peer board.
+     */
+    resetSnapshotBaselines() {
+        this.lastKeyframeSnapshot = null;
+        this.lastBroadcastSnapshot = null;
+        this.lastFullSnapshotAt = 0;
+        this.incomingSnapshotBaselines.clear();
+        this.lastResyncRequestAt.clear();
+    }
+
+    setNetworkImpairment(config = {}) {
+        this._clearNetworkImpairmentTimers();
+        this.networkImpairment.setConfig(config);
+    }
+
+    getNetworkImpairmentStats() {
+        return this.networkImpairment.getStats();
+    }
+
+    _clearNetworkImpairmentTimers() {
+        if (!this.networkImpairmentTimers) return;
+        this.networkImpairmentTimers.forEach((timer) => clearTimeout(timer));
+        this.networkImpairmentTimers.clear();
     }
 
     _nextSeq(channel) {
@@ -937,8 +1260,8 @@ export class SteamNetworking {
             // Phase 4: Backpressure metrics
             totalDropped: 0,
             totalSent: 0,
+            sentThisWindow: 0,
             currentRate: 30,
-            consecutiveSuccesses: 0,
         };
 
         const now = Date.now();
@@ -953,27 +1276,15 @@ export class SteamNetworking {
             });
             state.lastSendAt = now;
             state.totalSent++;
-            state.consecutiveSuccesses++;
-
-            // Phase 4: Try to restore rate after sustained success
-            if (state.consecutiveSuccesses >= 30 && state.currentRate < 30) {
-                // Sustained 1 second of success, try to increase rate
-                if (state.currentRate === 10) {
-                    state.currentRate = 20;
-                    state.minInterval = 1000 / 20;
-                } else if (state.currentRate === 20) {
-                    state.currentRate = 30;
-                    state.minInterval = 1000 / 30;
-                }
-                state.consecutiveSuccesses = 0;
-            }
+            state.sentThisWindow = (state.sentThisWindow || 0) + 1;
+            // Rate restoration is now time-based (see the window-reset block), which
+            // recovers reliably instead of needing 30 uninterrupted successes.
         } else {
             // Queue is building up - apply backpressure
             if (state.pending) {
                 // Drop the OLD pending snapshot, keep the NEW one (latest state)
                 state.dropCount++;
                 state.totalDropped++;
-                state.consecutiveSuccesses = 0;
             }
 
             // Store the latest snapshot
@@ -996,6 +1307,7 @@ export class SteamNetworking {
                         );
                         state.lastSendAt = Date.now();
                         state.totalSent++;
+                        state.sentThisWindow = (state.sentThisWindow || 0) + 1;
                         state.pending = null;
                     }
                     state.timer = null;
@@ -1003,23 +1315,27 @@ export class SteamNetworking {
             }
         }
 
-        // Reset window stats every second
+        // Reset window stats every second + adapt the rate.
         if (now - state.windowStart > 1000) {
-            // Phase 4: Adaptive throttling based on drop rate
-            const dropRate = state.dropCount / Math.max(1, state.dropCount + (state.totalSent - (state.totalSent - state.dropCount)));
+            const sent = state.sentThisWindow || 0;
+            // Real drop-rate (the old formula algebraically collapsed to a constant).
+            const dropRate = state.dropCount / Math.max(1, state.dropCount + sent);
 
             if (state.dropCount >= 5 || dropRate > 0.3) {
-                // Heavy congestion - drop to 10Hz
-                state.currentRate = 10;
-                state.minInterval = 1000 / 10;
-            } else if (state.dropCount >= 2 || dropRate > 0.1) {
-                // Moderate congestion - drop to 20Hz
+                // Heavy congestion → floor at 20Hz (never the old 10Hz pin, which
+                // combined with the delta stream to strand boards).
                 state.currentRate = 20;
-                state.minInterval = 1000 / 20;
+            } else if (state.dropCount >= 2 || dropRate > 0.1) {
+                state.currentRate = 25;
+            } else if (state.dropCount === 0 && state.currentRate < 30) {
+                // Clean window → restore one tier toward 30Hz. Time-based recovery
+                // can't get pinned the way the old 30-consecutive-success gate did.
+                state.currentRate = state.currentRate >= 25 ? 30 : 25;
             }
-            // Note: Rate restoration happens in the success path above
+            state.minInterval = 1000 / state.currentRate;
 
             state.dropCount = 0;
+            state.sentThisWindow = 0;
             state.windowStart = now;
         }
 
@@ -1044,9 +1360,38 @@ export class SteamNetworking {
         return stats;
     }
 
-    getPacketStats() {
+    _recordSnapshotBytes(direction, byteLength) {
+        if (!Number.isFinite(byteLength) || byteLength <= 0) return;
+        const key = direction === 'sent' ? 'snapshotBytesSent' : 'snapshotBytesReceived';
+        const samples = this.packetStats[key] || [];
+        samples.push(byteLength);
+        if (samples.length > 120) {
+            samples.splice(0, samples.length - 120);
+        }
+        this.packetStats[key] = samples;
+    }
+
+    _snapshotByteSummary(samples = []) {
+        if (!Array.isArray(samples) || samples.length === 0) {
+            return { count: 0, p50: 0, p95: 0, max: 0 };
+        }
+        const sorted = [...samples].sort((a, b) => a - b);
+        const percentile = (p) => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))];
         return {
-            ...this.packetStats,
+            count: sorted.length,
+            p50: percentile(0.50),
+            p95: percentile(0.95),
+            max: sorted[sorted.length - 1],
+        };
+    }
+
+    getPacketStats() {
+        const { snapshotBytesSent, snapshotBytesReceived, ...counters } = this.packetStats;
+        return {
+            ...counters,
+            snapshotBytesSent: this._snapshotByteSummary(snapshotBytesSent),
+            snapshotBytesReceived: this._snapshotByteSummary(snapshotBytesReceived),
+            netImpairment: this.getNetworkImpairmentStats(),
             connectedPeers: this.connectedPeers.size,
             pendingOutgoingSnapshots: Array.from(this.outgoingSnapshotState.values())
                 .filter((state) => state?.pending).length,

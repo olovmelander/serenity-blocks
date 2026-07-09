@@ -7,6 +7,15 @@
  * - 1v3+: Own canvas (center large), up to 4 opponents around it
  *
  * Inspired by Tetris 99 / Jstris multi-player layouts
+/**
+ * Multi-Player Canvas Layout
+ *
+ * Displays multiple game canvases in optimal layouts:
+ * - 1v1: Own canvas (center-right), opponent (left large)
+ * - 1v2: Own canvas (center), 2 opponents (left, right)
+ * - 1v3+: Own canvas (center large), up to 4 opponents around it
+ *
+ * Inspired by Tetris 99 / Jstris multi-player layouts
  */
 
 import {
@@ -15,17 +24,15 @@ import {
 import { canPlacePiece } from '../core/game.js';
 import {
     drawGrid,
-    drawPiece,
-    drawLockedPieces,
     calculateGhostY,
-    drawBlockStyled,
-    drawPieceSolid,
+    drawPieceStyledUnified,
 } from '../rendering/canvas/canvas-drawing-utils.js';
 import { MultiplayerEffectsManager } from '../rendering/phaser/multiplayer-effects-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import steamService from '../core/steam/steam-service.js';
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class MultiPlayerCanvasLayout {
     constructor(ffaGameState) {
@@ -283,14 +290,14 @@ export class MultiPlayerCanvasLayout {
         messageEl.className = isSystem ? 'system-message' : 'player-message';
 
         if (!isSystem) {
-            const nameColor = color || '#a78bfa';
+            const nameColor = sanitizeCssColor(color);
             messageEl.innerHTML = `
         <span class="color-indicator" style="background:${nameColor};"></span>
-        <span class="author" style="color:${nameColor}">${this.escapeHtml(playerName)}:</span>
-        <span class="text">${this.escapeHtml(message)}</span>
+        <span class="author" style="color:${nameColor}">${escapeHtml(playerName)}:</span>
+        <span class="text">${escapeHtml(message)}</span>
       `;
         } else {
-            messageEl.innerHTML = this.escapeHtml(message);
+            messageEl.innerHTML = escapeHtml(message);
         }
 
         messagesContainer.appendChild(messageEl);
@@ -369,10 +376,7 @@ export class MultiPlayerCanvasLayout {
    * Escape HTML to prevent XSS
    */
     escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return escapeHtml(text);
     }
 
     /**
@@ -717,7 +721,7 @@ export class MultiPlayerCanvasLayout {
 
         this._playerToppedUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, (detail) => {
             this.applyDeathEffect(detail.steamId);
-            this.addChatMessage(`💀 ${detail.playerName} topped out!`, 'system-death');
+            this.addChatMessage(null, `${detail.playerName || 'Player'} topped out!`, true);
 
             if (soundManager) {
                 soundManager.playPlayerDeath();
@@ -1488,7 +1492,7 @@ export class MultiPlayerCanvasLayout {
     }
 
     /**
-   * Draw a piece with theme-based styling
+   * Draw a piece with theme-based styling as a unified fused shape
    * @param {CanvasRenderingContext2D} ctx - Canvas context
    * @param {Object} piece - Piece to draw
    * @param {number} blockSize - Size of each block in pixels
@@ -1497,33 +1501,15 @@ export class MultiPlayerCanvasLayout {
     drawStyledPiece(ctx, piece, blockSize, isGhost = false) {
         if (!piece || !piece.shape) return;
 
-        // Get themed style for this piece type
         const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+        const offsetX = piece.x * blockSize;
+        const offsetY = (piece.y - HIDDEN_ROWS) * blockSize;
 
-        if (isGhost) {
-            // Draw ghosts block-by-block
-            piece.shape.forEach((row, localY) => {
-                row.forEach((cell, localX) => {
-                    if (cell > 0) {
-                        const worldY = piece.y + localY;
-                        const x = (piece.x + localX) * blockSize;
-                        const y = (worldY - HIDDEN_ROWS) * blockSize;
-
-                        // Use styled drawing
-                        drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost);
-                    }
-                });
-            });
-        } else {
-            // Draw cohesively without internal block lines
-            const offsetX = piece.x * blockSize;
-            const offsetY = (piece.y - HIDDEN_ROWS) * blockSize;
-            drawPieceSolid(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig);
-        }
+        drawPieceStyledUnified(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig, isGhost);
     }
 
     /**
-   * Draw locked pieces with theme-based styling
+   * Draw locked pieces with theme-based styling as unified fused shapes
    * @param {CanvasRenderingContext2D} ctx - Canvas context
    * @param {Array} lockedPieces - Array of locked pieces
    * @param {number} blockSize - Size of each block in pixels
@@ -1538,14 +1524,11 @@ export class MultiPlayerCanvasLayout {
             const pieceBottomRow = piece.y + piece.shape.length;
             if (pieceBottomRow <= HIDDEN_ROWS) return;
 
-            // Get themed style for this piece type
             const styleConfig = this.styleManager.getStyleForPiece(piece.type);
-
             const offsetX = piece.x * blockSize;
             const offsetY = (piece.y - HIDDEN_ROWS) * blockSize;
 
-            // Draw piece cohesively without internal divider lines
-            drawPieceSolid(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig);
+            drawPieceStyledUnified(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig, false);
         });
     }
 

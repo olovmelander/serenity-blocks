@@ -40,42 +40,10 @@ export {
     updateCosmicExpanseEnvironment,
 } from './cosmic-expanse.js';
 
-// Environment registry for dynamic loading
-export const CHAPTER_ENVIRONMENTS = {
-    1: {
-        name: 'earth-core',
-        config: () => import('./earth-core.js').then((m) => m.EARTH_CORE_CONFIG),
-        create: () => import('./earth-core.js').then((m) => m.createEarthCoreEnvironment),
-        update: () => import('./earth-core.js').then((m) => m.updateEarthCoreEnvironment),
-    },
-    2: {
-        name: 'deep-ocean',
-        config: () => import('./deep-ocean.js').then((m) => m.DEEP_OCEAN_CONFIG),
-        create: () => import('./deep-ocean.js').then((m) => m.createDeepOceanEnvironment),
-        update: () => import('./deep-ocean.js').then((m) => m.updateDeepOceanEnvironment),
-    },
-    3: {
-        name: 'surface-world',
-        config: () => import('./surface-world.js').then((m) => m.SURFACE_WORLD_CONFIG),
-        create: () => import('./surface-world.js').then((m) => m.createSurfaceWorldEnvironment),
-        update: () => import('./surface-world.js').then((m) => m.updateSurfaceWorldEnvironment),
-    },
-    4: {
-        name: 'mountain-peaks',
-        config: () => import('./mountain-peaks.js').then((m) => m.MOUNTAIN_PEAKS_CONFIG),
-        create: () => import('./mountain-peaks.js').then((m) => m.createMountainPeaksEnvironment),
-        update: () => import('./mountain-peaks.js').then((m) => m.updateMountainPeaksEnvironment),
-    },
-    5: {
-        name: 'sky-drift',
-        config: () => import('./sky-drift.js').then((m) => m.SKY_DRIFT_CONFIG),
-        create: () => import('./sky-drift.js').then((m) => m.createSkyDriftEnvironment),
-        update: () => import('./sky-drift.js').then((m) => m.updateSkyDriftEnvironment),
-    },
-    6: {
-        name: 'cosmic-expanse',
-        config: () => import('./cosmic-expanse.js').then((m) => m.COSMIC_EXPANSE_CONFIG),
-        create: () => import('./cosmic-expanse.js').then((m) => m.createCosmicExpanseEnvironment),
-        update: () => import('./cosmic-expanse.js').then((m) => m.updateCosmicExpanseEnvironment),
-    },
-};
+// NOTE (remediation Phase 2): the orphaned `CHAPTER_ENVIRONMENTS` map was
+// removed here. It was a dynamic-loading registry that listed only 6 of the 8
+// chapters (missing black-hole-transcendence and urban-dreams), was imported by
+// nothing, and had already drifted two chapters behind the live loader. The
+// authoritative chapter wiring lives in ChapterEnvironmentManager.js
+// (CHAPTER_MODULE_LOADERS + CHAPTER_EXPORT_NAMES). Do not re-add a parallel
+// chapter registry here — Phase 4 consolidates all chapter lists into one source.

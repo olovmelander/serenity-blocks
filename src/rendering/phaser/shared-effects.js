@@ -19,8 +19,6 @@ import {
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
-const CAMERA_SHAKE_BASE_INTENSITY = 0.0025;
-const CAMERA_SHAKE_BASE_DURATION = 120;
 
 /**
  * Lightweight debug logger for shared effects. Enable via
@@ -56,6 +54,9 @@ export class SharedEffects {
         this.lineClearParticleKey = 'line-clear-particle';
         this.lastImpactIntensity = 0;
         this.currentComboCount = 0;
+
+        // Hit-stop (impact freeze) guard so overlapping big clears don't stack freezes
+        this._hitStopActive = false;
 
         // PERFORMANCE: Track graphics objects and text objects for proper cleanup
         // Prevents accumulation of orphaned display objects
@@ -94,6 +95,167 @@ export class SharedEffects {
     }
 
     /**
+     * Resolve a line-clear "tier" from the number of lines cleared in one drop.
+     * Drives an escalating crescendo: a single clears cleanly, a quad (Tetris)
+     * gets a white-hot flash, big shake, full-screen pop and a hit-stop.
+     * @param {number} lineCount - Lines cleared simultaneously (this cascade stage)
+     * @returns {{name:string, flashAlpha:number, whiteCore:boolean, fullscreen:boolean, shake:number, shakeDur:number, particleBoost:number, hitStop:number}}
+     */
+    getClearTier(lineCount) {
+        const n = Math.max(1, lineCount || 1);
+        if (n >= 4) {
+            return {
+                name: 'quad', flashAlpha: 0.9, whiteCore: true, fullscreen: true, shake: 4.2, shakeDur: 320, particleBoost: 2.2, hitStop: 70,
+            };
+        }
+        if (n === 3) {
+            return {
+                name: 'triple', flashAlpha: 0.7, whiteCore: true, fullscreen: false, shake: 2.4, shakeDur: 220, particleBoost: 1.7, hitStop: 0,
+            };
+        }
+        if (n === 2) {
+            return {
+                name: 'double', flashAlpha: 0.58, whiteCore: false, fullscreen: false, shake: 1.6, shakeDur: 170, particleBoost: 1.3, hitStop: 0,
+            };
+        }
+        return {
+            name: 'single', flashAlpha: 0.45, whiteCore: false, fullscreen: false, shake: 1.0, shakeDur: 140, particleBoost: 1.0, hitStop: 0,
+        };
+    }
+
+    /**
+     * Whether to soften aggressive juice (shake/freeze/full-screen flashes) for
+     * accessibility. Honors an explicit game setting and the OS reduced-motion pref.
+     * @returns {boolean}
+     */
+    _reducedMotion() {
+        try {
+            if (this.scene?.gameState?.settings?.reducedMotion) return true;
+            if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+                return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            }
+        } catch (e) {
+            // matchMedia unavailable / restricted - fall through to "not reduced"
+        }
+        return false;
+    }
+
+    /**
+     * Impact freeze ("hit-stop"): briefly halts the scene clock + tweens so a big
+     * hit reads as a punch. Phaser timers are frozen during the stop, so the
+     * restore MUST run on the real wall-clock via setTimeout.
+     * @param {number} [durationMs=50]
+     */
+    triggerHitStop(durationMs = 50) {
+        if (this._hitStopActive) return;
+        if (this._reducedMotion()) return;
+
+        const { scene } = this;
+        if (!scene || !scene.tweens || !scene.time) return;
+
+        const timeClock = scene.time;
+        const tweenMgr = scene.tweens;
+        if (typeof timeClock.timeScale !== 'number' || typeof tweenMgr.timeScale !== 'number') {
+            return; // Phaser build doesn't expose timeScale - skip gracefully
+        }
+
+        const prevTime = timeClock.timeScale || 1;
+        const prevTween = tweenMgr.timeScale || 1;
+
+        this._hitStopActive = true;
+        try {
+            timeClock.timeScale = 0.0001;
+            tweenMgr.timeScale = 0.0001;
+        } catch (e) {
+            this._hitStopActive = false;
+            return;
+        }
+
+        // Real-clock restore: scene timers are frozen, so delayedCall can't fire here.
+        setTimeout(() => {
+            this._hitStopActive = false;
+            try {
+                if (scene && scene.time && typeof scene.time.timeScale === 'number') {
+                    scene.time.timeScale = prevTime;
+                }
+                if (scene && scene.tweens && typeof scene.tweens.timeScale === 'number') {
+                    scene.tweens.timeScale = prevTween;
+                }
+            } catch (e) {
+                // Scene torn down mid-freeze - nothing to restore
+            }
+        }, Math.max(16, durationMs));
+    }
+
+    /**
+     * Full-screen additive flash that holds at peak then fades. The hold pairs
+     * naturally with a hit-stop (the freeze holds the bright frame).
+     * @param {number} [color=0xffffff]
+     * @param {number} [peakAlpha=0.5]
+     * @param {number} [holdMs=40]
+     * @param {number} [fadeMs=240]
+     * @param {number} [depth=50]
+     */
+    _screenFlash(color = 0xffffff, peakAlpha = 0.5, holdMs = 40, fadeMs = 240, depth = 50) {
+        if (!this.scene?.add?.rectangle) return;
+        const PhaserRef = window.Phaser;
+        const width = this.scene.cols * this.scene.blockSize;
+        const height = this.scene.rows * this.scene.blockSize;
+
+        const flash = this.scene.add.rectangle(width / 2, height / 2, width, height, color, peakAlpha);
+        flash.setScrollFactor(0);
+        flash.setDepth(depth);
+        if (flash.setBlendMode && PhaserRef?.BlendModes?.ADD) {
+            flash.setBlendMode(PhaserRef.BlendModes.ADD);
+        }
+
+        // Self-destructs via tween (not tracked, mirrors the ripple pattern).
+        this.scene.tweens.add({
+            targets: flash,
+            alpha: 0,
+            delay: holdMs,
+            duration: fadeMs,
+            ease: 'Cubic.easeOut',
+            onComplete: () => flash.destroy(),
+        });
+    }
+
+    /**
+     * Brief glowing border pulse around the playfield - used to register cascade
+     * energy without adding center-screen text clutter.
+     * @param {number} [color=0xffffff]
+     * @param {number} [alpha=0.4]
+     */
+    _boardEdgePulse(color = 0xffffff, alpha = 0.4) {
+        if (!this.scene?.add?.graphics) return;
+        const PhaserRef = window.Phaser;
+        const width = this.scene.cols * this.scene.blockSize;
+        const height = this.scene.rows * this.scene.blockSize;
+
+        const g = this.scene.add.graphics();
+        g.setScrollFactor(0);
+        g.setDepth(9);
+        if (g.setBlendMode && PhaserRef?.BlendModes?.ADD) {
+            g.setBlendMode(PhaserRef.BlendModes.ADD);
+        }
+
+        const data = { alpha, thickness: 6 };
+        this.scene.tweens.add({
+            targets: data,
+            alpha: 0,
+            thickness: 1,
+            duration: 260,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+                g.clear();
+                g.lineStyle(data.thickness, color, data.alpha);
+                g.strokeRect(0, 0, width, height);
+            },
+            onComplete: () => g.destroy(),
+        });
+    }
+
+    /**
      * Trigger line clear flash effect
      * @param {Array<number>} clearedRows - Array of row indices that were cleared
      */
@@ -103,6 +265,7 @@ export class SharedEffects {
         const PhaserRef = window.Phaser;
         const width = this.scene.cols * this.scene.blockSize;
         const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+        const tier = this.getClearTier(clearedRows.length);
 
         if (PhaserRef?.GameObjects) {
             clearedRows.forEach((row, index) => {
@@ -128,7 +291,7 @@ export class SharedEffects {
                     width,
                     this.scene.blockSize,
                     tint,
-                    0.55,
+                    tier.flashAlpha,
                 );
 
                 // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
@@ -137,14 +300,37 @@ export class SharedEffects {
 
                 this.scene.tweens.add({
                     targets: stripe,
-                    alpha: { from: 0.65, to: 0 },
-                    scaleY: { from: 1, to: 1.25 },
+                    alpha: { from: Math.min(tier.flashAlpha + 0.1, 1), to: 0 },
+                    scaleY: { from: 1, to: tier.whiteCore ? 1.5 : 1.25 },
                     y: centerY + 4,
                     duration: 220 + index * 40,
                     ease: 'Cubic.easeOut',
                     delay: index * 50,
                     onComplete: () => stripe.destroy(),
                 });
+
+                // White-hot inner core for triple/quad clears - reads as raw energy
+                if (tier.whiteCore) {
+                    const core = this.scene.add.rectangle(
+                        width / 2,
+                        centerY,
+                        width,
+                        this.scene.blockSize * 0.4,
+                        0xffffff,
+                        0.85,
+                    );
+                    core.setScrollFactor(isInfinityMode ? 1 : 0);
+                    core.setBlendMode(PhaserRef.BlendModes.ADD);
+                    this.scene.tweens.add({
+                        targets: core,
+                        alpha: { from: 0.9, to: 0 },
+                        scaleY: { from: 1, to: 2.2 },
+                        duration: 260 + index * 40,
+                        ease: 'Expo.easeOut',
+                        delay: index * 50,
+                        onComplete: () => core.destroy(),
+                    });
+                }
             });
         } else if (this.scene.effectsGraphics) {
             clearedRows.forEach((row) => {
@@ -159,6 +345,11 @@ export class SharedEffects {
             this.scene.time.delayedCall(120, () => {
                 this.scene.effectsGraphics.clear();
             });
+        }
+
+        // Tetris (4-line) clears blow out the whole playfield with a brief flash.
+        if (tier.fullscreen) {
+            this._screenFlash(0xffffff, this._reducedMotion() ? 0.22 : 0.42, 30, 240, 50);
         }
 
         this.spawnLineClearParticles(clearedRows);
@@ -302,16 +493,24 @@ export class SharedEffects {
      */
     playLineClearImpact(lineCount = 1) {
         const clampedLineCount = Math.max(1, Math.min(4, lineCount));
-        const duration = CAMERA_SHAKE_BASE_DURATION + clampedLineCount * 40;
+        const tier = this.getClearTier(lineCount);
+        const reduced = this._reducedMotion();
 
-        // Call shakeCamera on the scene (defined in base-board-scene.js)
-        // The base scene's shakeCamera method already handles quality multiplier
+        // Call shakeCamera on the scene (defined in base-board-scene.js).
+        // The base scene's shakeCamera method already handles quality multiplier.
+        // Shake magnitude + duration now escalate with the clear tier.
         if (this.scene.shakeCamera) {
-            this.scene.shakeCamera(clampedLineCount, duration);
+            const magnitude = reduced ? tier.shake * 0.4 : tier.shake;
+            this.scene.shakeCamera(magnitude, tier.shakeDur);
         }
 
-        // Increase particle intensity for this frame
-        this.lastImpactIntensity = clampedLineCount;
+        // Hit-stop punch on the biggest clears (Tetris+) for a visceral impact.
+        if (tier.hitStop && !reduced) {
+            this.triggerHitStop(tier.hitStop);
+        }
+
+        // Increase particle intensity for this frame, boosted by the clear tier.
+        this.lastImpactIntensity = clampedLineCount * tier.particleBoost;
     }
 
     /**
@@ -638,13 +837,41 @@ export class SharedEffects {
     showCascadeWave(cascadeCount) {
         if (cascadeCount < 2) return; // Only show for actual cascades (2+)
 
-        // For mega cascades (10+), show special effect instead
+        // Mega cascades (10+) get the screen-filling celebration.
         if (cascadeCount >= 10) {
             this.showMegaCascadeEffect(cascadeCount);
+            return;
         }
 
-        // DISABLED: Cascade wave effect removed per user request
-        // The sweeping gradient wave is disabled to reduce visual clutter
+        // Cascades 2-9 previously had NO feedback. Give each chain stage a compact,
+        // escalating pulse (shockwave ring + glowing border + light shake) without
+        // adding center-screen text that would fight the combo popup.
+        this.showCascadeStep(cascadeCount);
+    }
+
+    /**
+     * Compact per-stage cascade feedback for chains of 2-9.
+     * @param {number} cascadeCount - Current cascade/chain depth
+     */
+    showCascadeStep(cascadeCount) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const centerX = boardWidth / 2;
+        const centerY = boardHeight / 2;
+        const color = this.getComboTint(cascadeCount);
+
+        // Expanding shockwave from the board center, tinted by chain depth.
+        this.createShockwaveRing(centerX, centerY, color, 1);
+
+        // Glowing border that intensifies with the chain.
+        const edgeAlpha = Math.min(0.15 + cascadeCount * 0.05, 0.5);
+        this._boardEdgePulse(color, edgeAlpha);
+
+        // Light shake that grows with chain depth (kept well under mega-cascade levels).
+        if (this.scene.shakeCamera && !this._reducedMotion()) {
+            const magnitude = Math.min(cascadeCount * 0.6, 3.5);
+            this.scene.shakeCamera(magnitude, 120 + cascadeCount * 15);
+        }
     }
 
     /**
@@ -699,6 +926,73 @@ export class SharedEffects {
             const shakeDuration = 400 + (cascadeCount * 20);
             this.scene.shakeCamera(Math.min(cascadeCount / 2, 8), shakeDuration);
         }
+    }
+
+    /**
+     * Perfect Clear ("All Clear") celebration - the game's flagship moment.
+     * A white supernova flash, concentric shockwaves, a radial particle burst,
+     * a strong shake + hit-stop, and a celebratory banner.
+     * @param {number} [depth=0] - Total lines cleared in the run that emptied the board
+     */
+    playPerfectClear(depth = 0) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const centerX = boardWidth / 2;
+        const centerY = boardHeight / 2;
+        const reduced = this._reducedMotion();
+
+        // Supernova core flash.
+        this._screenFlash(0xffffff, reduced ? 0.35 : 0.72, 60, 460, 60);
+
+        // Concentric shockwave rings expanding outward together.
+        const ringColor = 0x9ff7ff;
+        for (let i = 0; i < 3; i++) {
+            this.createShockwaveRing(centerX, centerY, ringColor, 1 + i);
+        }
+
+        // Radial particle burst (reuses the high-combo wave, scaled by depth).
+        if (this.getQualityConfig()?.particles
+            && this.scene.textures?.exists?.(this.lineClearParticleKey)) {
+            this.spawnRadialWave(Math.max(6, Math.min(depth + 4, 14)));
+        }
+
+        // Strong shake + hit-stop for weight.
+        if (this.scene.shakeCamera) {
+            this.scene.shakeCamera(reduced ? 2 : 6, reduced ? 240 : 460);
+        }
+        if (!reduced) {
+            this.triggerHitStop(110);
+        }
+
+        // Celebration banner.
+        const text = this.scene.add.text(
+            centerX,
+            centerY,
+            'PERFECT CLEAR',
+            {
+                fontSize: '40px',
+                fontFamily: 'Orbitron',
+                color: '#ffffff',
+                stroke: '#0a3f53',
+                strokeThickness: 6,
+                fontStyle: 'bold',
+                backgroundColor: 'transparent',
+            },
+        );
+        this._trackText(text);
+        text.setOrigin(0.5);
+        text.setScrollFactor(0);
+        text.setDepth(60);
+
+        this.scene.tweens.add({
+            targets: text,
+            scale: { from: 0.6, to: 1.3 },
+            alpha: { from: 1, to: 0 },
+            y: centerY - 60,
+            duration: 1200,
+            ease: 'Back.easeOut',
+            onComplete: () => text.destroy(),
+        });
     }
 
     /**
@@ -951,16 +1245,18 @@ export class SharedEffects {
         const dropHeight = endScreenY - startScreenY;
         const finalDropHeight = dropHeight + this.scene.blockSize;
 
-        console.log('[SharedEffects] Rendering playHardDropEffect: ', {
-            pieceShape: piece.shape,
-            isInfinityMode,
-            hiddenRows: this.scene.hiddenRows,
-            startY, endY,
-            startScreenY, endScreenY,
-            dropHeight, finalDropHeight,
-            displayCenterX, pieceWidth,
-            colorHex, colorInt
-        });
+        if (typeof window !== 'undefined' && /[?&]debugEffects=1\b/.test(window.location?.search || '')) {
+            console.log('[SharedEffects] Rendering playHardDropEffect: ', {
+                pieceShape: piece.shape,
+                isInfinityMode,
+                hiddenRows: this.scene.hiddenRows,
+                startY, endY,
+                startScreenY, endScreenY,
+                dropHeight, finalDropHeight,
+                displayCenterX, pieceWidth,
+                colorHex, colorInt,
+            });
+        }
 
         const PhaserRef = window.Phaser;
 
@@ -1045,6 +1341,93 @@ export class SharedEffects {
                 burstGraphics.destroy();
             }
         });
+    }
+
+    /**
+     * T-spin celebration: floaty "T-SPIN" banner + swirling vortex particles.
+     * @param {number} [lineCount=0] - Lines cleared with the T-spin (0 = T-spin mini/zero).
+     */
+    playTSpinEffect(lineCount = 0) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const centerX = boardWidth / 2;
+        const centerY = boardHeight / 2;
+
+        // Banner label — "T-SPIN" for zero lines, "T-SPIN SINGLE/DOUBLE/TRIPLE" for 1-3.
+        const labels = ['T-SPIN', 'T-SPIN\nSINGLE', 'T-SPIN\nDOUBLE', 'T-SPIN\nTRIPLE'];
+        const label = labels[Math.min(lineCount, 3)];
+
+        const text = this.scene.add.text(centerX, centerY * 0.75, label, {
+            fontSize: lineCount >= 2 ? '34px' : '28px',
+            fontFamily: 'Orbitron',
+            color: '#cc88ff',
+            stroke: '#220044',
+            strokeThickness: 5,
+            fontStyle: 'bold',
+            align: 'center',
+            backgroundColor: 'transparent',
+        });
+        this._trackText(text);
+        text.setOrigin(0.5);
+        text.setScrollFactor(0);
+        text.setDepth(55);
+
+        this.scene.tweens.add({
+            targets: text,
+            scale: { from: 0.7, to: 1.2 },
+            alpha: { from: 1, to: 0 },
+            y: text.y - 55,
+            duration: 1000,
+            ease: 'Cubic.easeOut',
+            onComplete: () => text.destroy(),
+        });
+
+        // Swirl: expanding ring in purple/violet.
+        this.createShockwaveRing(centerX, centerY, 0xcc44ff, 1);
+        this._boardEdgePulse(0xaa33ff, 0.35);
+
+        // Brief screen flash in purple.
+        if (!this._reducedMotion()) {
+            this._screenFlash(0x9900ff, 0.22, 20, 200, 48);
+        }
+    }
+
+    /**
+     * Back-to-Back indicator: a charged "B2B" banner that pops in.
+     * @param {boolean} [active=true] - Whether a B2B was just scored (always true when called).
+     */
+    playB2BChange(active = true) {
+        if (!active) return;
+
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+
+        const text = this.scene.add.text(boardWidth / 2, boardHeight * 0.18, 'BACK-TO-BACK', {
+            fontSize: '24px',
+            fontFamily: 'Orbitron',
+            color: '#ffdd44',
+            stroke: '#553300',
+            strokeThickness: 4,
+            fontStyle: 'bold',
+            backgroundColor: 'transparent',
+        });
+        this._trackText(text);
+        text.setOrigin(0.5);
+        text.setScrollFactor(0);
+        text.setDepth(54);
+
+        this.scene.tweens.add({
+            targets: text,
+            scale: { from: 0.6, to: 1.1 },
+            alpha: { from: 1, to: 0 },
+            y: text.y - 35,
+            duration: 900,
+            ease: 'Back.easeOut',
+            onComplete: () => text.destroy(),
+        });
+
+        // Gold edge pulse.
+        this._boardEdgePulse(0xffcc00, 0.4);
     }
 
     /**

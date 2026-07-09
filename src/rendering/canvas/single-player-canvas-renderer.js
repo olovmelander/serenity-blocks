@@ -9,11 +9,9 @@ import { canPlacePiece } from '../../core/game.js';
 import {
     calculateBlockSize,
     drawGrid,
-    drawPiece,
-    drawLockedPieces,
     calculateGhostY,
     clearCanvas,
-    drawBlockStyled,
+    drawPieceStyledUnified,
 } from './canvas-drawing-utils.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
@@ -142,59 +140,39 @@ export class SinglePlayerCanvasRenderer {
     }
 
     /**
-   * Draw a piece with theme-based styling
-   * @param {Object} piece - Piece to draw
-   * @param {boolean} isGhost - Whether this is a ghost piece
-   */
+    * Draw a piece with theme-based styling as a unified fused shape
+    * @param {Object} piece - Piece to draw
+    * @param {boolean} isGhost - Whether this is a ghost piece
+    */
     drawStyledPiece(piece, isGhost = false) {
         if (!piece || !piece.shape) return;
 
-        piece.shape.forEach((row, localY) => {
-            row.forEach((cell, localX) => {
-                if (cell > 0) {
-                    const worldY = piece.y + localY;
-                    const x = (piece.x + localX) * this.blockSize;
-                    const y = (worldY - HIDDEN_ROWS) * this.blockSize;
+        const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+        const offsetX = piece.x * this.blockSize;
+        const offsetY = (piece.y - HIDDEN_ROWS) * this.blockSize;
 
-                    // Get themed style for this piece type
-                    const styleConfig = this.styleManager.getStyleForPiece(piece.type);
-
-                    // Use styled drawing
-                    drawBlockStyled(this.ctx, x, y, this.blockSize, styleConfig, isGhost);
-                }
-            });
-        });
+        drawPieceStyledUnified(this.ctx, piece.shape, offsetX, offsetY, this.blockSize, styleConfig, isGhost);
     }
 
     /**
-   * Draw locked pieces with theme-based styling
-   * @param {Array} lockedPieces - Array of locked pieces
-   */
+    * Draw locked pieces with theme-based styling as unified fused shapes
+    * @param {Array} lockedPieces - Array of locked pieces
+    */
     drawStyledLockedPieces(lockedPieces) {
         if (!lockedPieces || lockedPieces.length === 0) return;
 
         lockedPieces.forEach((piece) => {
             if (!piece.shape) return;
 
-            piece.shape.forEach((row, localY) => {
-                row.forEach((cell, localX) => {
-                    if (cell > 0) {
-                        const worldY = piece.y + localY;
+            // Skip drawing if the piece rests completely above the visible board
+            const pieceBottomRow = piece.y + piece.shape.length;
+            if (pieceBottomRow <= HIDDEN_ROWS) return;
 
-                        // Only draw visible area (below hidden rows)
-                        if (worldY >= HIDDEN_ROWS) {
-                            const x = (piece.x + localX) * this.blockSize;
-                            const y = (worldY - HIDDEN_ROWS) * this.blockSize;
+            const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+            const offsetX = piece.x * this.blockSize;
+            const offsetY = (piece.y - HIDDEN_ROWS) * this.blockSize;
 
-                            // Get themed style for this piece type
-                            const styleConfig = this.styleManager.getStyleForPiece(piece.type);
-
-                            // Use styled drawing
-                            drawBlockStyled(this.ctx, x, y, this.blockSize, styleConfig, false);
-                        }
-                    }
-                });
-            });
+            drawPieceStyledUnified(this.ctx, piece.shape, offsetX, offsetY, this.blockSize, styleConfig, false);
         });
     }
 

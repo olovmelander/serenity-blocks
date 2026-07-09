@@ -885,7 +885,7 @@ export default class CinderDriftTheme extends BaseTheme {
         if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('cinder-drift-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

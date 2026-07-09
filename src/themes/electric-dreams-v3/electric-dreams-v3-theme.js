@@ -41,8 +41,9 @@ import { SHAPE_NAMES } from './sim/shape-formations.js';
 // as a deliberate emotional anchor (always heart on game over, never random).
 const RANDOM_SHAPE_POOL = Object.freeze([
     'sphere', 'torus', 'helix', 'galaxy', 'cube', 'star', 'wave', 'butterfly',
-    'ring', 'tetromino', 'pyramid', 'octahedron', 'hexagon', 'sunflower',
-    'infinity', 'trefoil', 'vortex', 'wavySphere',
+    'ring', 'tetromino', 'tetrominoSet', 'pyramid', 'octahedron', 'hexagon',
+    'sunflower', 'infinity', 'trefoil', 'vortex', 'wavySphere', 'lightning',
+    'snowflake', 'lotus', 'crescent', 'crystalShard', 'mobius', 'comet', 'nautilus',
 ]);
 
 const QUALITY_PRESETS = Object.freeze({
@@ -300,7 +301,8 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         const gameOverUnsub = eventBus.on(EVENTS.GAME_OVER, () => this._onGameOver());
         // GAME_START → release any held shape (heart from previous game over).
         const gameStartUnsub = eventBus.on(EVENTS.GAME_START, () => this._fadeReleaseShape());
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, hardDropUnsub, pieceLockUnsub, gameOverUnsub, gameStartUnsub);
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, hardDropUnsub, pieceLockUnsub);
+        this.eventUnsubscribers.push(gameOverUnsub, gameStartUnsub);
 
         // Pointer → camera director. Converts clientX/Y to NDC ([-1, 1])
         // and pushes to the director, which smooths and applies as orbital
@@ -409,7 +411,7 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
      * Public API: switch the fluid to a named formation.
      * If autoReleaseMs > 0, fades strength back to 0 after that delay.
      *
-     * @param {string} name     - shape name (sphere/torus/helix/galaxy/heart/cube/star/wave/butterfly/ring/tetromino/free)
+     * @param {string} name     - registered shape name (see shape-formations.js)
      * @param {object} opts     - shape options (see shape-formations.js)
      * @param {number} strength - attraction strength 0..1.5 (default 0.6)
      * @param {number} autoReleaseMs - if > 0, fade out after this many ms
@@ -749,7 +751,7 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.cameraDirector = null;
 
         if (this.renderer) {
-            try { this.renderer.dispose(); } catch (e) { /* ignore */ }
+            try { this.disposeRenderer(this.renderer, { nullInstance: false }); } catch (e) { /* ignore */ }
             this.renderer = null;
         }
         this.scene = null;

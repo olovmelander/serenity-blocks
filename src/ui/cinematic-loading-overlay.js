@@ -223,15 +223,14 @@ export function dismissCinematicLoadingOverlay(options = 800) {
                 return;
             }
 
-            overlay.style.transition = `opacity ${fadeOutMs}ms ease-out`;
-            overlay.style.opacity = '0';
+            _playRevealTransition(overlay, fadeOutMs);
 
             setTimeout(() => {
                 if (overlay.isConnected) {
                     overlay.remove();
                 }
                 resolve();
-            }, fadeOutMs + 50);
+            }, fadeOutMs + 60);
         };
 
         if (remainingVisibleMs > 0) {
@@ -240,6 +239,94 @@ export function dismissCinematicLoadingOverlay(options = 800) {
             startFade();
         }
     });
+}
+
+/**
+ * Cinematic "warp into the theme" reveal: the backdrop + starfield accelerate toward
+ * the viewer (scale up) and fade, the rings bloom outward, and the title recedes —
+ * uncovering the live, already-resuming theme behind. Reads as flying INTO the scene
+ * rather than a flat cross-fade. Purely compositor-driven (transform/opacity).
+ * @param {HTMLElement} overlay
+ * @param {number} durationMs
+ */
+function _playRevealTransition(overlay, durationMs) {
+    const ease = 'cubic-bezier(0.33, 0, 0.2, 1)';
+    const q = (role) => overlay.querySelector(`[data-cinematic-role="${role}"]`);
+
+    const backdrop = q(ROLE_BACKDROP);
+    const stars = q(ROLE_STARS);
+    const content = q(ROLE_CONTENT);
+    const rings = Array.from(overlay.querySelectorAll(`[data-cinematic-role="${ROLE_RING}"]`));
+
+    // Starfield rushes toward the viewer + fades (warp), backdrop zooms in behind it.
+    if (stars) {
+        stars.style.transformOrigin = '50% 50%';
+        stars.style.transition = `transform ${durationMs}ms ${ease}, opacity ${Math.round(durationMs * 0.85)}ms ease-out`;
+        stars.style.transform = 'scale(2.6)';
+        stars.style.opacity = '0';
+    }
+    if (backdrop) {
+        backdrop.style.transformOrigin = '50% 55%';
+        backdrop.style.transition = `transform ${durationMs}ms ${ease}, opacity ${durationMs}ms ease-out`;
+        backdrop.style.transform = 'scale(1.2)';
+        backdrop.style.opacity = '0';
+    }
+    rings.forEach((ring) => {
+        ring.style.transition = `transform ${durationMs}ms ${ease}, opacity ${Math.round(durationMs * 0.7)}ms ease-out`;
+        ring.style.transform = 'translate(-50%, -50%) scale(2.8)';
+        ring.style.opacity = '0';
+    });
+    if (content) {
+        // Title/dots recede + dissolve slightly ahead of the backdrop.
+        content.style.transition = `transform ${Math.round(durationMs * 0.9)}ms ${ease}, opacity ${Math.round(durationMs * 0.55)}ms ease-out`;
+        content.style.transform = 'translateY(-14px) scale(1.08)';
+        content.style.opacity = '0';
+    }
+
+    // The overlay wrapper itself fades a touch later so the zoom reads before it's gone.
+    overlay.style.transition = `opacity ${durationMs}ms ease-out`;
+    overlay.style.opacity = '0';
+}
+
+/**
+ * Toggle the overlay's "building" phase. A cold WebGPU theme build saturates the
+ * GPU (and blocks the main thread) for ~1s, which would otherwise freeze the
+ * overlay's drifting stars / bouncing dots / pulsing rings mid-motion (reads as a
+ * broken, hung loading screen). During the build we instead hide those motion
+ * elements and freeze the title glow, so the overlay holds a clean, deliberately
+ * calm state — there is no animation to visibly stutter. On exit the motion
+ * elements fade back in and resume, giving a smooth reveal once the GPU is free.
+ *
+ * @param {boolean} building - true while the heavy theme build runs
+ */
+export function setCinematicLoadingOverlayBuilding(building) {
+    const overlay = document.getElementById(OVERLAY_ID);
+    if (!overlay) return;
+
+    overlay.dataset.building = building ? 'true' : 'false';
+
+    const motionRoles = [ROLE_STARS, ROLE_RING, ROLE_DOTS];
+    overlay.querySelectorAll('[data-cinematic-role]').forEach((el) => {
+        const role = el.dataset.cinematicRole;
+        if (motionRoles.includes(role)) {
+            if (building) {
+                // Hide instantly (no transition) so the fade itself can't stutter
+                // when the build starts blocking a frame later.
+                el.style.transition = 'none';
+                el.style.opacity = '0';
+            } else {
+                el.style.transition = 'opacity 420ms ease-out';
+                el.style.removeProperty('opacity');
+            }
+        }
+    });
+
+    const title = overlay.querySelector(`[data-cinematic-role="${ROLE_TITLE}"]`);
+    if (title) {
+        // Keep the title visible with its static glow, but stop the opacity pulse
+        // so a mid-pulse freeze isn't visible during the build.
+        title.style.animationPlayState = building ? 'paused' : 'running';
+    }
 }
 
 function _createRing(size, opacity, duration, delay) {
@@ -255,6 +342,8 @@ function _createRing(size, opacity, duration, delay) {
         border: `1px solid rgba(100, 140, 255, ${opacity})`,
         borderRadius: '50%',
         animation: `cinematic-ring-pulse ${duration}s ease-in-out ${delay}s infinite`,
+        // Promote to a compositor layer so the pulse survives main-thread loading work.
+        willChange: 'transform, opacity',
         pointerEvents: 'none',
         zIndex: '1',
     });
@@ -447,6 +536,7 @@ function _createOverlayElement(title) {
             background: `hsla(${hue}, 80%, 80%, ${brightness})`,
             boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
             animation: `cinematic-star-drift ${4 + Math.random() * 6}s linear ${Math.random() * 3}s infinite`,
+            willChange: 'transform, opacity',
             pointerEvents: 'none',
         });
         starField.appendChild(star);
@@ -476,7 +566,11 @@ function _createOverlayElement(title) {
         letterSpacing: '1.2em',
         paddingLeft: '1.2em',
         color: 'rgba(200, 220, 255, 0.95)',
+        // Static glow (the keyframe only pulses opacity — compositor-driven, so the
+        // title keeps breathing even while loading work blocks the main thread).
+        textShadow: '0 0 30px rgba(100, 140, 255, 0.4), 0 0 70px rgba(100, 140, 255, 0.15)',
         animation: 'cinematic-title-glow 3s ease-in-out infinite',
+        willChange: 'opacity',
         zIndex: '2',
         userSelect: 'none',
         position: 'relative',
@@ -501,6 +595,7 @@ function _createOverlayElement(title) {
             background: 'rgba(160, 190, 255, 0.7)',
             boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
             animation: `cinematic-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
+            willChange: 'transform, opacity',
         });
         dotsContainer.appendChild(dot);
     }
@@ -603,18 +698,12 @@ function _injectKeyframes() {
             90% { opacity: 1; }
             100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
         }
+        /* Compositor-only: text-shadow is a PAINT property (main thread), so animating it
+           froze the whole overlay whenever loading work blocked the main thread. The glow
+           is now a static shadow on the element; only opacity (compositable) pulses. */
         @keyframes cinematic-title-glow {
-            0%, 100% {
-                text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1);
-                opacity: 0.9;
-            }
-            50% {
-                text-shadow:
-                    0 0 40px rgba(100, 140, 255, 0.5),
-                    0 0 80px rgba(100, 140, 255, 0.2),
-                    0 0 120px rgba(100, 140, 255, 0.1);
-                opacity: 1;
-            }
+            0%, 100% { opacity: 0.82; }
+            50% { opacity: 1; }
         }
         @keyframes cinematic-dot-bounce {
             0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }

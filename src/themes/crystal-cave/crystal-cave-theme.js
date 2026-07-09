@@ -1556,7 +1556,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
         // Cleanup Three.js
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('crystal-cave-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

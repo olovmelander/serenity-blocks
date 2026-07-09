@@ -1559,7 +1559,7 @@ export default class GeodeTheme extends BaseTheme {
 
         // Clean up renderer
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('geode-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

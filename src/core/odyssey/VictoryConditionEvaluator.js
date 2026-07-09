@@ -116,7 +116,10 @@ export class VictoryConditionEvaluator {
     }
 
     /**
-     * Update height metric (for infinity mode)
+     * Update height metric (for a possible future 'height' victory level — the type is a
+     * supported-but-unused capability: the difficulty model derives targets for it and it is in
+     * LevelRegistry validTypes, so this stays wired. Fully removing it is a "delete or author"
+     * design decision, not a dead-code deletion.)
      * @param {number} height - Current build height
      */
     updateHeight(height) {
@@ -275,8 +278,12 @@ export class VictoryConditionEvaluator {
 
             // Get value from metrics or gameState
             let value = this.trackedMetrics[key];
-            if (value === undefined && gameState) {
-                value = gameState[key];
+            const gameStateValue = gameState?.[key];
+            if (
+                gameState
+                && (value === undefined || (key === 'score' && value === 0 && Number(gameStateValue) > 0))
+            ) {
+                value = gameStateValue;
             }
             if (value === undefined) {
                 value = 0;

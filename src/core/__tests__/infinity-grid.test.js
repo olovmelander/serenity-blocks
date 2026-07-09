@@ -1,7 +1,4 @@
-/**
- * @fileoverview Tests for infinity grid utilities
- * Run with: npm test (if vitest is configured)
- */
+import { describe, expect, it } from 'vitest';
 
 import {
     createInfinityGrid,
@@ -14,138 +11,111 @@ import {
 } from '../infinity-grid.js';
 import { COLS } from '../constants.js';
 
-// Mock game state helper
 function createMockGameState(options = {}) {
+    const board = options.board || createInfinityGrid(COLS, 24);
+
     return {
         isInfinityMode: true,
         maxRows: options.maxRows || 1000,
-        board: options.board || createInfinityGrid(COLS, 24),
+        board,
+        boardGrid: board,
         lockedPieces: options.lockedPieces || [],
         currentPiece: options.currentPiece || null,
-        ghostPiece: null,
+        ghostPiece: options.ghostPiece || null,
         boardCacheDirty: false,
     };
 }
 
-/**
- * Test: createInfinityGrid creates correct dimensions
- */
-console.log('=== Test 1: createInfinityGrid ===');
-const grid = createInfinityGrid(10, 20);
-console.assert(grid.length === 20, 'Grid should have 20 rows');
-console.assert(grid[0].length === 10, 'Grid should have 10 columns');
-console.assert(grid[0][0] === null, 'Grid cells should be initialized as null');
-console.log('✅ createInfinityGrid works correctly\n');
+describe('infinity-grid utilities', () => {
+    it('creates a grid with the requested dimensions', () => {
+        const grid = createInfinityGrid(10, 20);
 
-/**
- * Test: expandGridIfNeeded adds rows correctly
- */
-console.log('=== Test 2: expandGridIfNeeded ===');
-const gameState = createMockGameState();
-const initialLength = gameState.board.length;
-console.log('Initial grid length:', initialLength);
+        expect(grid).toHaveLength(20);
+        expect(grid[0]).toHaveLength(10);
+        expect(grid[0][0]).toBeNull();
+    });
 
-// Add a locked piece
-gameState.lockedPieces.push({
-    y: 10,
-    blocks: [
-        { row: 10, col: 5 },
-    ],
+    it('expands by the capped batch size and offsets active positions', () => {
+        const gameState = createMockGameState({
+            currentPiece: { y: 12 },
+            ghostPiece: { y: 15 },
+        });
+        const initialLength = gameState.board.length;
+
+        gameState.lockedPieces.push({
+            y: 10,
+            blocks: [{ row: 10, col: 5 }],
+        });
+
+        const expanded = expandGridIfNeeded(gameState, initialLength + 20);
+
+        expect(expanded).toBe(true);
+        expect(gameState.board).toHaveLength(initialLength + 10);
+        expect(gameState.boardGrid).toBe(gameState.board);
+        expect(gameState.lockedPieces[0].y).toBe(20);
+        expect(gameState.lockedPieces[0].blocks[0].row).toBe(20);
+        expect(gameState.currentPiece.y).toBe(22);
+        expect(gameState.ghostPiece.y).toBe(25);
+        expect(gameState.boardCacheDirty).toBe(true);
+    });
+
+    it('does not expand past maxRows', () => {
+        const gameState = createMockGameState({ maxRows: 28 });
+
+        const expanded = expandGridIfNeeded(gameState, 100);
+
+        expect(expanded).toBe(true);
+        expect(gameState.board).toHaveLength(28);
+    });
+
+    it('calculates top row and build height', () => {
+        const gameState = createMockGameState();
+        gameState.board[5][3] = { color: '#ff0000' };
+        gameState.board[20][5] = { color: '#00ff00' };
+
+        expect(calculateTopRow(gameState)).toBe(5);
+        expect(calculateBuildHeight(gameState)).toBe(19);
+    });
+
+    it('returns the bottom row for an empty board', () => {
+        const gameState = createMockGameState();
+
+        expect(calculateTopRow(gameState)).toBe(23);
+        expect(calculateBuildHeight(gameState)).toBe(1);
+    });
+
+    it('checks whether the grid should expand near the top', () => {
+        const gameState = createMockGameState();
+        gameState.board[5][3] = { color: '#ff0000' };
+
+        expect(shouldExpandGrid(gameState, 30)).toBe(true);
+        expect(shouldExpandGrid(gameState, 4)).toBe(false);
+    });
+
+    it('returns grid statistics', () => {
+        const gameState = createMockGameState();
+        gameState.board[10][3] = { color: '#ff0000' };
+        gameState.board[10][4] = { color: '#ff0000' };
+
+        expect(getGridStats(gameState)).toMatchObject({
+            totalRows: 24,
+            topRow: 10,
+            buildHeight: 14,
+            blocksCount: 2,
+            maxRows: 1000,
+            canExpand: true,
+        });
+    });
+
+    it('detects infinity game over only at the absolute top', () => {
+        const gameState = createMockGameState();
+        gameState.board[0][5] = { color: '#ff0000' };
+
+        expect(checkInfinityGameOver(gameState)).toBe(true);
+
+        const safeGameState = createMockGameState();
+        safeGameState.board[10][5] = { color: '#ff0000' };
+
+        expect(checkInfinityGameOver(safeGameState)).toBe(false);
+    });
 });
-
-// Expand grid
-const expanded = expandGridIfNeeded(gameState, initialLength + 20);
-console.assert(expanded === true, 'Should return true when expansion occurs');
-console.assert(gameState.board.length === initialLength + 20, `Grid should expand to ${initialLength + 20} rows`);
-console.log('After expansion:', gameState.board.length);
-
-// Check piece position updated
-console.assert(gameState.lockedPieces[0].y === 30, 'Locked piece y should be updated (10 + 20)');
-console.assert(gameState.lockedPieces[0].blocks[0].row === 30, 'Locked piece block row should be updated');
-console.log('✅ expandGridIfNeeded works correctly\n');
-
-/**
- * Test: calculateTopRow finds highest block
- */
-console.log('=== Test 3: calculateTopRow ===');
-const gameState2 = createMockGameState();
-
-// Place block at row 5
-gameState2.board[5][3] = { color: '#ff0000' };
-
-const topRow = calculateTopRow(gameState2);
-console.assert(topRow === 5, `Top row should be 5, got ${topRow}`);
-console.log('Top row with block at row 5:', topRow);
-
-// Empty board
-const gameState3 = createMockGameState();
-const topRowEmpty = calculateTopRow(gameState3);
-console.assert(topRowEmpty === gameState3.board.length - 1, 'Empty board should return bottom row');
-console.log('Top row for empty board:', topRowEmpty);
-console.log('✅ calculateTopRow works correctly\n');
-
-/**
- * Test: calculateBuildHeight
- */
-console.log('=== Test 4: calculateBuildHeight ===');
-const gameState4 = createMockGameState();
-gameState4.board[20][5] = { color: '#00ff00' };
-
-const height = calculateBuildHeight(gameState4);
-console.log('Build height with block at row 20:', height);
-console.assert(height === 24 - 20, 'Height should be distance from top block to bottom');
-console.log('✅ calculateBuildHeight works correctly\n');
-
-/**
- * Test: shouldExpandGrid threshold check
- */
-console.log('=== Test 5: shouldExpandGrid ===');
-const gameState5 = createMockGameState();
-gameState5.board[5][3] = { color: '#ff0000' };
-
-const should = shouldExpandGrid(gameState5, 30);
-console.assert(should === true, 'Should expand when within threshold');
-console.log('Should expand (top row 5, threshold 30):', should);
-
-const shouldNot = shouldExpandGrid(gameState5, 4);
-console.assert(shouldNot === false, 'Should not expand when outside threshold');
-console.log('Should not expand (top row 5, threshold 4):', shouldNot);
-console.log('✅ shouldExpandGrid works correctly\n');
-
-/**
- * Test: getGridStats returns correct data
- */
-console.log('=== Test 6: getGridStats ===');
-const gameState6 = createMockGameState();
-gameState6.board[10][3] = { color: '#ff0000' };
-gameState6.board[10][4] = { color: '#ff0000' };
-
-const stats = getGridStats(gameState6);
-console.log('Grid stats:', stats);
-console.assert(stats.totalRows === 24, 'Total rows should match');
-console.assert(stats.topRow === 10, 'Top row should be 10');
-console.assert(stats.blocksCount === 2, 'Should count 2 blocks');
-console.assert(stats.maxRows === 1000, 'Max rows should be 1000');
-console.log('✅ getGridStats works correctly\n');
-
-/**
- * Test: checkInfinityGameOver conditions
- */
-console.log('=== Test 7: checkInfinityGameOver ===');
-const gameState7 = createMockGameState();
-gameState7.board[0][5] = { color: '#ff0000' }; // At absolute top
-
-const isGameOver = checkInfinityGameOver(gameState7);
-console.assert(isGameOver === true, 'Game should be over when reaching row 0');
-console.log('Game over at row 0:', isGameOver);
-
-const gameState8 = createMockGameState();
-gameState8.board[10][5] = { color: '#ff0000' };
-const notGameOver = checkInfinityGameOver(gameState8);
-console.assert(notGameOver === false, 'Game should not be over at row 10');
-console.log('Game not over at row 10:', notGameOver);
-console.log('✅ checkInfinityGameOver works correctly\n');
-
-console.log('=========================');
-console.log('All tests passed! ✅');
-console.log('=========================');

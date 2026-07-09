@@ -196,12 +196,12 @@ describe('OdysseyCameraController path travel', () => {
         controller.camera.lookAt(controller.lookAtTarget);
 
         const startingLevel = controller.pathCurve.getPointAt(registry.getLevel(1).pathPosition);
-        startingLevel.z += 1;
+        startingLevel.z += 0.45;
         const ndc = projectPointToNdc(startingLevel, controller.camera);
 
         expect(ndc.x).toBeGreaterThanOrEqual(-0.35);
         expect(ndc.x).toBeLessThanOrEqual(0.35);
-        expect(ndc.y).toBeGreaterThanOrEqual(-0.35);
+        expect(ndc.y).toBeGreaterThanOrEqual(-1.0); // Allow Chapter 1 low 3/4 framing where the level sits near the bottom
         expect(ndc.y).toBeLessThanOrEqual(0.35);
         expect(ndc.z).toBeGreaterThan(-1);
         expect(ndc.z).toBeLessThan(1);

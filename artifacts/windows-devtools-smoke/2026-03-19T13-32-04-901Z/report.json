@@ -1,8 +1,0 @@
-{
-  "startedAt": "2026-03-19T13:32:10.271Z",
-  "finishedAt": "2026-03-19T13:32:10.271Z",
-  "errorMessage": "Timed out waiting for DevTools to open from F12",
-  "errorStack": "Error: Timed out waiting for DevTools to open from F12\n    at waitForCondition (file:///home/melolo/serenity-blocks/scripts/windows-devtools-smoke.mjs:115:11)\n    at async main (file:///home/melolo/serenity-blocks/scripts/windows-devtools-smoke.mjs:396:27)",
-  "remoteDebuggingUrl": "http://127.0.0.1:9222",
-  "reportPath": "/home/melolo/serenity-blocks/artifacts/windows-devtools-smoke/2026-03-19T13-32-04-901Z/report.json"
-}

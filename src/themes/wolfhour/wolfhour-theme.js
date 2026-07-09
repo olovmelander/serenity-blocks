@@ -1160,11 +1160,12 @@ export default class WolfhourTheme extends BaseTheme {
         if (!this._origConsoleWarn) {
             const origWarn = console.warn;
             this._origConsoleWarn = origWarn;
-            console.warn = function (...args) {
+            this._filteredConsoleWarn = function filteredWolfhourWarn(...args) {
                 if (typeof args[0] === 'string'
                     && args[0].includes('Vertex attribute "uv" not found on geometry')) return;
                 origWarn.apply(console, args);
             };
+            console.warn = this._filteredConsoleWarn;
         }
 
         const previousFlags = { ...this.flags };
@@ -1311,6 +1312,8 @@ export default class WolfhourTheme extends BaseTheme {
                 } else {
                     console.log('[Wolfhour] WebGPU backend not acquired, falling back to WebGL');
                     if (renderer.dispose) renderer.dispose();
+                    renderer.forceContextLoss?.();
+                    renderer.domElement?.remove?.();
                 }
             } catch (err) {
                 console.warn('[Wolfhour] WebGPU initialization failed:', err);
@@ -3171,11 +3174,16 @@ export default class WolfhourTheme extends BaseTheme {
         if (!positionAttribute) return;
         const positions = positionAttribute.array;
         const denom = Math.max(1, trailSegments - 1);
+        // angle is constant for the meteor's lifetime — hoist cos/sin out of the per-segment loop
+        // (40-64 iters/meteor/frame on the CPU-fallback path). Multiply order is preserved, so the
+        // written positions are bit-identical.
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
         for (let i = 0; i < trailSegments; i += 1) {
             const t = i / denom;
             const offset = t * trailLength;
-            positions[i * 3] = headX - Math.cos(angle) * offset * direction;
-            positions[i * 3 + 1] = headY - Math.sin(angle) * offset;
+            positions[i * 3] = headX - cosA * offset * direction;
+            positions[i * 3 + 1] = headY - sinA * offset;
             positions[i * 3 + 2] = headZ;
         }
         positionAttribute.needsUpdate = true;
@@ -3183,12 +3191,15 @@ export default class WolfhourTheme extends BaseTheme {
 
     setHeadPosition(head, x, y, z) {
         if (head?.isInstancedMesh) {
-            const dummy = this._headMatrixDummy || (this._headMatrixDummy = new THREE.Object3D());
-            dummy.position.set(x, y, z);
-            dummy.rotation.set(0, 0, 0);
-            dummy.scale.set(1, 1, 1);
-            dummy.updateMatrix();
-            head.setMatrixAt(0, dummy.matrix);
+            // count=1 head with permanently-identity rotation/scale (only translation changes). The
+            // instanceMatrix is initialised to identity+translation in _createInstancedParticleMesh
+            // and only this method updates it, so write the translation directly into columns
+            // 12/13/14 instead of composing a full Object3D matrix (skips 4 method calls + a 4x4
+            // compose per head per frame). Byte-identical to the dummy.compose(pos, identity, 1) path.
+            const m = head.instanceMatrix.array;
+            m[12] = x;
+            m[13] = y;
+            m[14] = z;
             head.instanceMatrix.needsUpdate = true;
             return;
         }
@@ -3956,13 +3967,23 @@ export default class WolfhourTheme extends BaseTheme {
 
             this.animationFrameId = requestAnimationFrame(animate);
 
+            // Honor engine-wide background-tab / pause throttling like every other theme's
+            // safeAnimate() (window.isRenderingPaused → skip the frame; isRenderingReduced → ~10fps).
+            // The rAF is already scheduled above so the loop self-heals; bailing here stops this heavy
+            // scene from burning GPU (uniform pushes + 5 compute dispatches + post) while backgrounded.
+            // Foreground output is unchanged.
+            if (!this.shouldRenderFrame()) return;
+
             let deltaTime;
             if (this.fixedDeltaSeconds) {
                 deltaTime = this.fixedDeltaSeconds;
                 this.fixedElapsedTime += deltaTime;
                 this.time = this.fixedElapsedTime;
             } else {
-                deltaTime = this.clock.getDelta();
+                // Clamp so a long stall (alt-tab resume, GC hitch, throttled frame) can't teleport
+                // nebulas/particles or fire a meteor-spawn storm in one giant catch-up step. Normal
+                // frames are far below this cap, so steady-state motion is identical.
+                deltaTime = Math.min(this.clock.getDelta(), 1 / 30);
                 this.time += deltaTime;
             }
 
@@ -4280,14 +4301,39 @@ export default class WolfhourTheme extends BaseTheme {
         this.disposeMaterialResources(object.material);
     }
 
+    restoreConsoleWarnFilter() {
+        if (!this._origConsoleWarn) {
+            return;
+        }
+
+        if (console.warn === this._filteredConsoleWarn) {
+            console.warn = this._origConsoleWarn;
+        }
+        this._origConsoleWarn = null;
+        this._filteredConsoleWarn = null;
+    }
+
+    stop() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        this.clearRuntimeRebuildTimers();
+        this.restoreConsoleWarnFilter();
+        super.stop();
+    }
+
+    releaseInactiveResources() {
+        this.resetRuntimeScene();
+        super.releaseInactiveResources();
+    }
+
     resetRuntimeScene() {
         this.stop();
 
         // Restore console.warn if we filtered the uv attribute warning
-        if (this._origConsoleWarn) {
-            console.warn = this._origConsoleWarn;
-            this._origConsoleWarn = null;
-        }
+        this.restoreConsoleWarnFilter();
 
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
@@ -4403,7 +4449,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer.domElement.remove();
             this.renderer = null;
         }
@@ -4421,7 +4467,6 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     cleanup() {
-        this.resetRuntimeScene();
         super.cleanup();
 
         console.log('[Wolfhour] Theme cleaned up');

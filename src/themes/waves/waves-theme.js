@@ -876,7 +876,7 @@ export default class WavesTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

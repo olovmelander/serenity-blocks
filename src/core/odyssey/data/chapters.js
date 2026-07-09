@@ -12,6 +12,13 @@ export const DEFAULT_BOARD_TRANSITION = Object.freeze({
     fxPreset: 'standard',
 });
 
+// NOTE: `arcBeats` and `targetDifficultyCurve` are documentation of design INTENT,
+// not the live driver. Actual gameplay difficulty is derived in difficulty-model.js
+// from the per-level `role`/`mechanicFocus`/`emotionalBeat` tags in levels.js
+// (LEVEL_PHASE2_TAGS). `arcBeats` must mirror those `role` tags — this is enforced by
+// the "chapter arcBeats stay in sync" assertion in odyssey-difficulty-balance.test.js.
+// `targetDifficultyCurve` is an indicative 1-10 sketch; the model computes the real
+// continuous scalar (metadata.difficultyModel.scalar) per level.
 export const CHAPTER_CONFIGS = [
     {
         id: 1,
@@ -35,8 +42,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient', // Use existing track for now
+            track: 'CinderDrift',
             crossfadeDuration: 3000,
+            transitionOutStinger: 'steam-quench',
         },
 
         narrative: {
@@ -44,8 +52,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'You emerge from the molten depths. Above, you sense the vast liquid worlds waiting...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: null, // First chapter always unlocked
     },
 
     {
@@ -70,8 +76,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'OceanDeep',
             crossfadeDuration: 4000,
+            transitionOutStinger: 'surface-breach',
         },
 
         narrative: {
@@ -79,11 +86,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'Light spills down from above. The sea lifts you toward land, color, and changing seasons...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 1,
-        },
     },
 
     {
@@ -95,7 +97,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall', 'meadow'],
+            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall'],
             supporting: [],
         },
 
@@ -108,8 +110,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'MoonlitForest',
             crossfadeDuration: 3000,
+            transitionOutStinger: 'ridgeline-rise',
         },
 
         narrative: {
@@ -120,11 +123,6 @@ export const CHAPTER_CONFIGS = [
             ...DEFAULT_BOARD_TRANSITION,
             seamWidth: 0.03,
             preloadDistance: 0.06,
-        },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 2,
         },
     },
 
@@ -150,8 +148,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'HimalayanPeak',
             crossfadeDuration: 3500,
+            transitionOutStinger: 'summit-liftoff',
         },
 
         narrative: {
@@ -161,11 +160,6 @@ export const CHAPTER_CONFIGS = [
         boardTransition: {
             ...DEFAULT_BOARD_TRANSITION,
             seamWidth: 0.06,
-        },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 3,
         },
     },
 
@@ -191,8 +185,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'Starlight',
             crossfadeDuration: 4000,
+            transitionOutStinger: 'atmosphere-edge',
         },
 
         narrative: {
@@ -200,11 +195,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 4,
-        },
     },
 
     {
@@ -212,8 +202,8 @@ export const CHAPTER_CONFIGS = [
         name: 'Space & Cosmic Expanse',
         subtitle: 'Push into the void',
         levelRange: [36, 44],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'test', 'boss'],
-        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 9, 10],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'release', 'boss'],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 7, 10],
 
         themes: {
             primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
@@ -229,8 +219,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'Galaxy',
             crossfadeDuration: 5000,
+            transitionOutStinger: 'lensing-engage',
         },
 
         narrative: {
@@ -243,11 +234,6 @@ export const CHAPTER_CONFIGS = [
             beatDurationMs: 1100,
             preloadDistance: 0.07,
             fxPreset: 'heavy',
-        },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 5,
         },
     },
 
@@ -273,8 +259,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'BlackHole',
             crossfadeDuration: 6000,
+            transitionOutStinger: 'neon-snap',
         },
 
         narrative: {
@@ -287,11 +274,6 @@ export const CHAPTER_CONFIGS = [
             beatDurationMs: 900,
             preloadDistance: 0.06,
             fxPreset: 'neon',
-        },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 6,
         },
     },
 
@@ -317,7 +299,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'NeonDistrict',
             crossfadeDuration: 4000,
         },
 
@@ -326,11 +308,6 @@ export const CHAPTER_CONFIGS = [
             outro: 'The city fades like an afterimage. What remains is the memory of the journey and the pulse of these electric nights.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
-
-        unlockRequirement: {
-            type: 'complete-chapter',
-            value: 7,
-        },
     },
 ];
 

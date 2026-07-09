@@ -234,6 +234,8 @@ const QUALITY_PRESETS = {
     },
 };
 
+const MAX_FRAME_DELTA_SECONDS = 1 / 30;
+
 function parseSwedishForestFlags() {
     const defaults = {
         forceWebGL: false,
@@ -352,6 +354,21 @@ export default class SwedishForestTheme extends BaseTheme {
         this._tempMat = new THREE.Matrix4();
         this._rotMat = new THREE.Matrix4();
         this._scaleVec = new THREE.Vector3();
+        this._postUpdateParams = {
+            time: 0,
+            sunScreenX: 0.5,
+            sunScreenY: 0.5,
+            sunGlowVisibility: 0,
+        };
+        this._sunDirection = new THREE.Vector3();
+        this._sunNdc = new THREE.Vector3();
+        this._skySunDirection = new THREE.Vector3();
+        this._lensSunPosition = new THREE.Vector3();
+        this._lensCameraPosition = new THREE.Vector3();
+        this._lensSunToCamera = new THREE.Vector3();
+        this._lensCameraForward = new THREE.Vector3();
+        this._lensToSun = new THREE.Vector3();
+        this._lensFlarePosition = new THREE.Vector3();
         this.birds = null;
 
         // Scene elements
@@ -5345,6 +5362,8 @@ export default class SwedishForestTheme extends BaseTheme {
                     vignetteOffset: 1.28,
                     vignetteDarkness: 0.34,
                     grainStrength: filmGrain ? 0.008 : 0,
+                    ditherStrength: 0.0012,
+                    sunGlowStrength: 0.045,
                 }
                 : {
                     useMRT: this.flags.useMRT,
@@ -5586,8 +5605,12 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.animationFrame = requestAnimationFrame(this.boundAnimate);
 
+        if (!this.shouldRenderFrame()) return;
+
         const rawDelta = this.clock.getDelta();
-        const delta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : Math.min(rawDelta, 0.05);
+        const delta = this.fixedDeltaSeconds !== null
+            ? this.fixedDeltaSeconds
+            : Math.min(rawDelta, MAX_FRAME_DELTA_SECONDS);
         if (this.fixedDeltaSeconds !== null) {
             this.fixedElapsedTime += this.fixedDeltaSeconds;
         }
@@ -5800,6 +5823,8 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         if (this.sun) {
+            this._postUpdateParams.sunGlowVisibility = 0;
+
             // Slow vertical oscillation (like sun slowly setting/rising)
             const sunTime = elapsed * 0.02;
             const sunY = this.sunBaseY + Math.sin(sunTime) * 3.0;
@@ -5819,29 +5844,32 @@ export default class SwedishForestTheme extends BaseTheme {
             }
 
             if ((this.godRayMaterial?.uniforms?.uSunScreenPos || this.godRayNodeUniforms?.uSunScreenPos) && this.camera) {
-                const sunNdc = this.sun.position.clone().project(this.camera);
-                const sunX = sunNdc.x * 0.5 + 0.5;
-                const sunY = sunNdc.y * 0.5 + 0.5;
+                const sunNdc = this._sunNdc.copy(this.sun.position).project(this.camera);
+                const sunScreenX = sunNdc.x * 0.5 + 0.5;
+                const sunScreenY = sunNdc.y * 0.5 + 0.5;
+                this._postUpdateParams.sunScreenX = sunScreenX;
+                this._postUpdateParams.sunScreenY = sunScreenY;
                 if (this.godRayMaterial?.uniforms?.uSunScreenPos) {
-                    this.godRayMaterial.uniforms.uSunScreenPos.value.set(sunX, sunY);
+                    this.godRayMaterial.uniforms.uSunScreenPos.value.set(sunScreenX, sunScreenY);
                 }
                 if (this.godRayNodeUniforms?.uSunScreenPos) {
-                    this.godRayNodeUniforms.uSunScreenPos.value.set(sunX, sunY);
+                    this.godRayNodeUniforms.uSunScreenPos.value.set(sunScreenX, sunScreenY);
                 }
             }
 
             // Update Lens Flares - position along camera-to-sun axis
             if (this.lensFlares && this.lensFlares.length > 0) {
-                const sunScreenPos = this.sun.position.clone();
-                const cameraPos = this.camera.position.clone();
+                const sunScreenPos = this._lensSunPosition.copy(this.sun.position);
+                const cameraPos = this._lensCameraPosition.copy(this.camera.position);
 
                 // Calculate direction from sun to camera
-                const sunToCam = cameraPos.clone().sub(sunScreenPos);
+                const sunToCam = this._lensSunToCamera.copy(cameraPos).sub(sunScreenPos);
 
                 // Check if sun is roughly in front of camera (dot product > 0 means behind)
-                const cameraDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-                const toSun = sunScreenPos.clone().sub(cameraPos).normalize();
+                const cameraDir = this._lensCameraForward.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+                const toSun = this._lensToSun.copy(sunScreenPos).sub(cameraPos).normalize();
                 const sunVisibility = Math.max(0, cameraDir.dot(toSun));
+                this._postUpdateParams.sunGlowVisibility = sunVisibility ** 2.0;
 
                 this.lensFlares.forEach((flare) => {
                     if (flare.userData?.nodeUniforms?.uTime) {
@@ -5849,7 +5877,7 @@ export default class SwedishForestTheme extends BaseTheme {
                     }
                     // Position flare along sun-to-camera axis
                     const { offset } = flare.userData;
-                    const flarePos = sunScreenPos.clone().add(sunToCam.clone().multiplyScalar(offset));
+                    const flarePos = this._lensFlarePosition.copy(sunToCam).multiplyScalar(offset).add(sunScreenPos);
                     flare.position.copy(flarePos);
 
                     // Make flare always face camera (billboarding)
@@ -5892,25 +5920,26 @@ export default class SwedishForestTheme extends BaseTheme {
             }
 
             // Update Realistic Water Reflection
+            const sunDirection = this._sunDirection.copy(this.sun.position).normalize();
             if (this.lakeMesh?.material?.uniforms?.sunDirection) {
-                this.lakeMesh.material.uniforms.sunDirection.value.copy(this.sun.position).normalize();
+                this.lakeMesh.material.uniforms.sunDirection.value.copy(sunDirection);
             }
             if (this.waterNodeUniforms?.uSunDirection) {
-                this.waterNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                this.waterNodeUniforms.uSunDirection.value.copy(sunDirection);
             }
             if (this.foliageNodeUniforms?.uSunDirection) {
-                this.foliageNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                this.foliageNodeUniforms.uSunDirection.value.copy(sunDirection);
             }
             if (this.dustNodeUniforms?.uSunDirection) {
-                this.dustNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                this.dustNodeUniforms.uSunDirection.value.copy(sunDirection);
             }
             if (this.silhouetteMountainNodeUniforms?.uSunDirection) {
-                this.silhouetteMountainNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                this.silhouetteMountainNodeUniforms.uSunDirection.value.copy(sunDirection);
             }
             if (this.mountainLayerNodeUniforms?.length) {
                 this.mountainLayerNodeUniforms.forEach((uniforms) => {
                     if (uniforms?.uLightDirection) {
-                        uniforms.uLightDirection.value.copy(this.sun.position).normalize();
+                        uniforms.uLightDirection.value.copy(sunDirection);
                     }
                 });
             }
@@ -5919,12 +5948,12 @@ export default class SwedishForestTheme extends BaseTheme {
         // Keep sky dome centered on camera and aligned to sun direction
         if (this.skyDome && (this.skyDome.material?.uniforms?.uSunDirection || this.skyNodeUniforms?.uSunDirection)) {
             const sunTarget = this.sun ? this.sun.position : this.sunPosition;
-            const sunDirection = sunTarget.clone().sub(this.camera.position).normalize();
+            const skySunDirection = this._skySunDirection.copy(sunTarget).sub(this.camera.position).normalize();
             if (this.skyDome.material?.uniforms?.uSunDirection) {
-                this.skyDome.material.uniforms.uSunDirection.value.copy(sunDirection);
+                this.skyDome.material.uniforms.uSunDirection.value.copy(skySunDirection);
             }
             if (this.skyNodeUniforms?.uSunDirection) {
-                this.skyNodeUniforms.uSunDirection.value.copy(sunDirection);
+                this.skyNodeUniforms.uSunDirection.value.copy(skySunDirection);
             }
             this.skyDome.position.copy(this.camera.position);
         }
@@ -6140,6 +6169,7 @@ export default class SwedishForestTheme extends BaseTheme {
             });
         }
         if (this.framingTreeFoliageNodeUniforms?.length) {
+            const sunDirection = this.sun ? this._sunDirection.copy(this.sun.position).normalize() : null;
             this.framingTreeFoliageNodeUniforms.forEach((uniforms) => {
                 if (uniforms?.uTime) {
                     uniforms.uTime.value = elapsed;
@@ -6147,8 +6177,8 @@ export default class SwedishForestTheme extends BaseTheme {
                 if (uniforms?.uWindStrength) {
                     uniforms.uWindStrength.value = 0.12 + this.uniforms.windSpeed.value * 0.22;
                 }
-                if (uniforms?.uSunDirection && this.sun) {
-                    uniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                if (uniforms?.uSunDirection && sunDirection) {
+                    uniforms.uSunDirection.value.copy(sunDirection);
                 }
             });
         }
@@ -6189,7 +6219,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
         if (this.postComposer && this.flags.usePost) {
             try {
-                this.postComposer.update?.({ time: elapsed });
+                this._postUpdateParams.time = elapsed;
+                this.postComposer.update?.(this._postUpdateParams);
                 this.postComposer.render(delta);
             } catch (error) {
                 console.warn(
@@ -6380,7 +6411,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Renderer disposed AFTER scene materials so WebGPU node tracking is intact.
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('swedish-forest-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

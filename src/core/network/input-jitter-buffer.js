@@ -18,7 +18,6 @@ export const INPUT_TYPES = {
     ROTATE_CCW: 'rotate_ccw',
     SOFT_DROP: 'soft_drop',
     HARD_DROP: 'hard_drop',
-    HOLD: 'hold',
 };
 
 /**
@@ -37,8 +36,9 @@ export class InputJitterBuffer {
         // Adaptive Jitter Tracking
         this.playerStats = new Map(); // playerId -> { offsets: [], sum: 0, count: 0 }
         this.historySize = 20; // Samples to keep
-        this.maxBufferDepth = 8; // Cap at ~260ms latency
-        this.minBufferDepth = 2; // Min ~66ms
+        this.maxBufferDepth = config.maxBufferDepth ?? 8; // Cap at ~260ms latency at 30Hz
+        this.minBufferDepth = config.minBufferDepth ?? 2; // Min ~66ms at 30Hz
+        this.lastDepthAdjustTick = -1;
 
         // Target tick rate (30Hz = 33.3ms per tick)
         this.tickRate = config.tickRate ?? 30;
@@ -50,6 +50,7 @@ export class InputJitterBuffer {
 
         // Current processing tick
         this.currentTick = 0;
+        this.processCursor = this.currentTick - this.bufferDepth;
 
         // Last input tick seen per player (for gap detection)
         this.lastInputTick = new Map();
@@ -62,6 +63,8 @@ export class InputJitterBuffer {
             inputsInterpolated: 0, // Missing, used empty input
             inputsTooFuture: 0, // Too far ahead (possible cheat)
             avgJitterMs: 0,
+            avgOffsetTicks: 0,
+            maxOffsetTicks: 0,
         };
 
         // Debug mode
@@ -104,32 +107,42 @@ export class InputJitterBuffer {
      * @param {Object} input - The input data { type, timestamp, ... }
      * @returns {boolean} True if input was accepted
      */
-    addInput(playerId, tick, input) {
+    addInput(playerId, tick, input, options = {}) {
         // Ensure player buffer exists
         if (!this.playerBuffers.has(playerId)) {
             this.addPlayer(playerId);
         }
 
-        // ADAPTIVE LOGIC: Track offset (CurrentServerTick - ClientTick)
-        if (this.adaptiveEnabled) {
-            this._trackJitter(playerId, this.currentTick - tick);
-        }
-
-        // Validate tick is reasonable
-        const minTick = this.currentTick - this.bufferDepth;
-        const maxTick = this.currentTick + this.bufferDepth + 2;
-
-        if (tick < minTick) {
-            // Input is too old - reject
+        const scheduledTick = Math.round(Number(tick));
+        if (!Number.isFinite(scheduledTick)) {
             this.stats.inputsDropped++;
-            this._log(`Dropped stale input from ${playerId}: tick ${tick} < ${minTick}`);
+            this._log(`Dropped input from ${playerId}: invalid tick ${tick}`);
             return false;
         }
 
-        if (tick > maxTick) {
+        // ADAPTIVE LOGIC: Track offset (CurrentServerTick - ClientTick)
+        if (this.adaptiveEnabled) {
+            const jitterTick = Number.isFinite(Number(options.jitterTick))
+                ? Math.round(Number(options.jitterTick))
+                : scheduledTick;
+            this._trackJitter(playerId, this.currentTick - jitterTick);
+        }
+
+        // Validate tick is reasonable
+        const minTick = this.processCursor;
+        const maxTick = this.currentTick + this.bufferDepth + 2;
+
+        if (scheduledTick < minTick) {
+            // Input is too old - reject
+            this.stats.inputsDropped++;
+            this._log(`Dropped stale input from ${playerId}: tick ${scheduledTick} < ${minTick}`);
+            return false;
+        }
+
+        if (scheduledTick > maxTick) {
             // Input is too far in the future - possible time manipulation
             this.stats.inputsTooFuture++;
-            this._log(`Dropped future input from ${playerId}: tick ${tick} > ${maxTick}`);
+            this._log(`Dropped future input from ${playerId}: tick ${scheduledTick} > ${maxTick}`);
             return false;
         }
 
@@ -137,25 +150,28 @@ export class InputJitterBuffer {
         const playerBuffer = this.playerBuffers.get(playerId);
 
         // Get or create tick's input list
-        if (!playerBuffer.has(tick)) {
-            playerBuffer.set(tick, []);
+        if (!playerBuffer.has(scheduledTick)) {
+            playerBuffer.set(scheduledTick, []);
         }
 
         // Add input with metadata
         const enrichedInput = {
             ...input,
-            _receivedAt: Date.now(),
-            _tick: tick,
+            _receivedAt: Number.isFinite(Number(options.receivedAt)) ? Number(options.receivedAt) : Date.now(),
+            _tick: scheduledTick,
+            _rawTick: Number.isFinite(Number(options.jitterTick)) ? Math.round(Number(options.jitterTick)) : scheduledTick,
+            _scheduleSource: options.scheduleSource || 'buffer',
+            _lateClamped: options.lateClamped === true,
             _playerId: playerId,
         };
 
-        playerBuffer.get(tick).push(enrichedInput);
+        playerBuffer.get(scheduledTick).push(enrichedInput);
         this.stats.inputsBuffered++;
 
         // Update last seen tick
         const lastTick = this.lastInputTick.get(playerId) || 0;
-        if (tick > lastTick) {
-            this.lastInputTick.set(playerId, tick);
+        if (scheduledTick > lastTick) {
+            this.lastInputTick.set(playerId, scheduledTick);
         }
 
         return true;
@@ -185,9 +201,7 @@ export class InputJitterBuffer {
      * @returns {Map<playerId, Input[]>} Inputs to process this tick
      */
     getInputsForTick() {
-        // Process inputs from (bufferDepth) ticks ago
-        // This gives time for late inputs to arrive
-        const tickToProcess = this.currentTick - this.bufferDepth;
+        const tickToProcess = this.processCursor;
         const inputs = new Map();
 
         for (const [playerId, playerBuffer] of this.playerBuffers) {
@@ -231,9 +245,10 @@ export class InputJitterBuffer {
      */
     advanceTick() {
         this.currentTick++;
+        this.processCursor++;
 
         // Clean up old buffered inputs (shouldn't happen if buffer is working)
-        const oldestAllowed = this.currentTick - this.bufferDepth - 2;
+        const oldestAllowed = this.processCursor - 2;
 
         for (const [playerId, playerBuffer] of this.playerBuffers) {
             for (const tick of playerBuffer.keys()) {
@@ -253,6 +268,7 @@ export class InputJitterBuffer {
      */
     setCurrentTick(tick) {
         this.currentTick = tick;
+        this.processCursor = this.currentTick - this.bufferDepth;
         this._log(`Jitter buffer tick synced to ${tick}`);
     }
 
@@ -290,6 +306,7 @@ export class InputJitterBuffer {
 
         return {
             currentTick: this.currentTick,
+            processCursor: this.processCursor,
             bufferDepth: this.bufferDepth,
             tickRate: this.tickRate,
             playerCount: this.playerBuffers.size,
@@ -314,7 +331,12 @@ export class InputJitterBuffer {
         }
 
         // Update target depth every 10 ticks or so
-        if (stats.offsets.length >= this.historySize && this.currentTick % 10 === 0) {
+        if (
+            stats.offsets.length >= this.historySize
+            && this.currentTick % 10 === 0
+            && this.lastDepthAdjustTick !== this.currentTick
+        ) {
+            this.lastDepthAdjustTick = this.currentTick;
             this._updateAdaptiveDepth();
         }
     }
@@ -327,6 +349,9 @@ export class InputJitterBuffer {
 
         let maxRequiredDepth = this.minBufferDepth;
         let totalStdDev = 0;
+        let totalAvgOffset = 0;
+        let maxObservedOffset = 0;
+        let playerCount = 0;
 
         for (const stats of this.playerStats.values()) {
             if (stats.offsets.length < 5) continue;
@@ -335,6 +360,9 @@ export class InputJitterBuffer {
             const variance = stats.offsets.reduce((sum, val) => sum + (val - avg) ** 2, 0) / stats.offsets.length;
             const stdDev = Math.sqrt(variance);
             totalStdDev += stdDev;
+            totalAvgOffset += avg;
+            maxObservedOffset = Math.max(maxObservedOffset, ...stats.offsets);
+            playerCount += 1;
 
             // Target: Average delay + 2 * Jitter (95% confidence)
             // But offset is (Server - Client).
@@ -355,6 +383,12 @@ export class InputJitterBuffer {
             maxRequiredDepth = Math.max(maxRequiredDepth, requiredDepth);
         }
 
+        if (playerCount > 0) {
+            this.stats.avgJitterMs = (totalStdDev / playerCount) * this.tickInterval;
+            this.stats.avgOffsetTicks = totalAvgOffset / playerCount;
+            this.stats.maxOffsetTicks = maxObservedOffset;
+        }
+
         // Clamp
         maxRequiredDepth = Math.min(Math.max(maxRequiredDepth, this.minBufferDepth), this.maxBufferDepth);
 
@@ -364,13 +398,10 @@ export class InputJitterBuffer {
             if (maxRequiredDepth > this.targetBufferDepth) this.targetBufferDepth++;
             else this.targetBufferDepth--; // Shrink slower? No, symmetrical for now.
 
-            // Apply to actual buffer depth
-            // We update this.bufferDepth, but doing so abruptly might skip ticks or replay?
-            // If we increase depth (e.g. 2->3), we effectively "pause" processing for 1 tick.
-            // If we decrease depth (e.g. 3->2), we "fast forward" (process 2 ticks at once).
+            // Processing uses a monotonic cursor, so depth changes affect future
+            // acceptance windows without skipping or replaying buffered ticks.
             this.bufferDepth = this.targetBufferDepth;
 
-            this.stats.avgJitterMs = (totalStdDev / this.playerStats.size) * this.tickInterval;
             if (this.debugMode) {
                 this._log(`Adaptive Depth adjusted: ${this.bufferDepth} (Target: ${maxRequiredDepth})`);
             }
@@ -393,6 +424,9 @@ export class InputJitterBuffer {
             inputsDropped: 0,
             inputsInterpolated: 0,
             inputsTooFuture: 0,
+            avgJitterMs: 0,
+            avgOffsetTicks: 0,
+            maxOffsetTicks: 0,
         };
     }
 
@@ -403,6 +437,8 @@ export class InputJitterBuffer {
         this.playerBuffers.clear();
         this.lastInputTick.clear();
         this.currentTick = 0;
+        this.processCursor = this.currentTick - this.bufferDepth;
+        this.lastDepthAdjustTick = -1;
         this.resetStats();
         this._log('Jitter buffer cleared');
     }

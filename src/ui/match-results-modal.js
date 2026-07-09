@@ -23,6 +23,7 @@ export class MatchResultsModal {
     this.isVisible = false;
     this.chatUnsub = null;
     this.chatHandler = null;
+    this._autoReturnInterval = null; // cosmetic "returning to lobby in N s" ticker
 
     this.createUI();
   }
@@ -42,40 +43,40 @@ export class MatchResultsModal {
 
     this.container.innerHTML = `
       <!-- LEFT PANEL: Summary & Actions -->
-      <div class="opponents-panel results-left-panel" style="background: rgba(15,20,30,0.8); border: 1px solid rgba(102,126,234,0.3); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 20px;">
+      <div class="opponents-panel results-left-panel">
           <!-- Header -->
-          <div class="results-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
-             <h2 class="results-title" style="font-size: 20px; color: #fff; margin: 0;">MATCH RESULTS</h2>
-             <div class="results-subtitle" id="match-results-subtitle" style="color: #a0aec0; font-size: 12px; margin-top: 5px;"></div>
+          <div class="results-header">
+             <h2 class="results-title">MATCH RESULTS</h2>
+             <div class="results-subtitle" id="match-results-subtitle"></div>
           </div>
           
           <!-- Winner Display -->
-          <div class="match-results-winner" style="text-align: center; padding: 30px 20px; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2);">
-             <div class="winner-label" style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">Champion</div>
+          <div class="match-results-winner">
+             <div class="winner-label">Champion</div>
              <!-- Winner Avatar -->
-             <div class="winner-avatar-container" id="winner-avatar-container" style="width: 120px; height: 120px; margin: 0 auto 15px; border-radius: 50%; overflow: hidden; border: 4px solid #fbbf24; box-shadow: 0 0 30px rgba(251, 191, 36, 0.4);">
-               <div class="winner-avatar-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #fbbf24, #f59e0b); font-size: 48px; font-weight: bold; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">?</div>
+             <div class="winner-avatar-container" id="winner-avatar-container">
+               <div class="winner-avatar-placeholder">?</div>
              </div>
-             <div class="winner-name" id="match-results-winner-name" style="font-size: 28px; font-weight: 900; color: #fff; text-shadow: 0 0 30px rgba(251, 191, 36, 0.4); margin-bottom: 5px;">-</div>
-             <div class="winner-meta" id="match-results-winner-meta" style="color: #cbd5e0; font-family: 'Space Mono', monospace;"></div>
+             <div class="winner-name" id="match-results-winner-name">-</div>
+             <div class="winner-meta" id="match-results-winner-meta"></div>
           </div>
           
           <!-- Spacer -->
-          <div style="flex: 1;"></div>
+          <div class="results-spacer"></div>
           
           <!-- Actions (Moved to Left) -->
-          <div class="match-results-actions" style="display: flex; flex-direction: column; gap: 12px;">
-             <div class="host-hint" id="match-results-host-hint" style="color: #a0aec0; font-size: 11px; text-align: center; margin-bottom: 5px;"></div>
-             <button class="btn btn-primary" id="match-results-play-again" style="padding: 12px; width: 100%;">Vote Rematch</button>
-             <button class="btn btn-secondary" id="match-results-return-lobby" style="padding: 12px; width: 100%;">Return to Lobby</button>
-             <button class="btn btn-danger" id="match-results-exit" style="padding: 12px; width: 100%;">Exit</button>
+          <div class="match-results-actions">
+             <div class="host-hint" id="match-results-host-hint"></div>
+             <button class="btn btn-primary" id="match-results-play-again">Vote Rematch</button>
+             <button class="btn btn-secondary" id="match-results-return-lobby">Return to Lobby</button>
+             <button class="btn btn-danger" id="match-results-exit">Exit</button>
           </div>
       </div>
 
       <!-- CENTER PANEL: Detailed Stats Table -->
-      <div class="main-board-panel results-center-panel" style="background: rgba(15,20,30,0.6); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 12px; padding: 20px; display: flex; flex-direction: column;">
-          <div class="section-title" style="color: #c4b5fd; margin-bottom: 15px; font-size: 14px; font-weight: bold; text-transform: uppercase;">Performance Statistics</div>
-          <div class="match-results-stats" style="flex: 1; overflow-y: auto;">
+      <div class="main-board-panel results-center-panel">
+          <div class="section-title">Performance Statistics</div>
+          <div class="match-results-stats">
              <div class="stats-table-wrapper" id="match-results-stats-table"></div>
           </div>
       </div>
@@ -83,17 +84,17 @@ export class MatchResultsModal {
       <!-- RIGHT PANEL: Chat & Activity -->
       <div class="right-panel">
          <!-- Battle Log -->
-         <div class="online-kill-feed" style="max-height: 200px; flex: 0 0 auto;">
+         <div class="online-kill-feed results-battle-log">
             <div class="kill-feed-header">Battle Log</div>
-            <div class="match-results-kill-list" id="match-results-kill-feed" style="overflow-y: auto; max-height: 160px;"></div>
+            <div class="match-results-kill-list" id="match-results-kill-feed"></div>
          </div>
          
          <!-- Chat -->
          <div class="online-chat">
             <div class="chat-messages" id="results-chat-messages"></div>
-            <div class="chat-input-row" style="display: flex; gap: 8px; padding: 10px; background: rgba(0,0,0,0.3);">
-                <input type="text" id="results-chat-input" placeholder="Chat..." maxlength="100" style="flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(139,92,246,0.3); color: white; padding: 8px; border-radius: 4px;">
-                <button id="results-chat-send" style="background: #8b5cf6; border: none; color: white; padding: 0 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">SEND</button>
+            <div class="chat-input-row">
+                <input type="text" id="results-chat-input" placeholder="Chat..." maxlength="100">
+                <button id="results-chat-send">SEND</button>
             </div>
          </div>
       </div>
@@ -246,6 +247,7 @@ export class MatchResultsModal {
 
     this.updateContent(results);
     this.updateHostState();
+    this._startAutoReturnCountdown(options.autoReturnMs);
 
     if (!this.chatUnsub) {
       this.chatHandler = (detail) => {
@@ -288,6 +290,7 @@ export class MatchResultsModal {
  */
   hide() {
     if (!this.container) return;
+    this._stopAutoReturnCountdown();
     this.container.classList.remove('visible');
     this.isVisible = false;
 
@@ -404,8 +407,11 @@ export class MatchResultsModal {
               <th>Score</th>
               <th>Lines</th>
               <th>BPM</th>
+              <th>PPS</th>
               <th>PPM</th>
               <th>APM</th>
+              <th>Atk</th>
+              <th>Sent</th>
             </tr>
           </thead>
           <tbody>
@@ -433,8 +439,11 @@ export class MatchResultsModal {
                 <td>${this.formatNumber(player.score || 0)}</td>
                 <td>${player.lines || 0}</td>
                 <td>${player.bpm || 0}</td>
+                <td>${player.pps || 0}</td>
                 <td>${player.ppm || 0}</td>
                 <td>${player.apm || 0}</td>
+                <td>${player.attacksSent || 0}</td>
+                <td>${player.attackLinesSent || 0}</td>
               </tr>
             `;
       }).join('')}
@@ -463,6 +472,33 @@ export class MatchResultsModal {
   }
 
   /**
+   * Cosmetic countdown shown to ALL clients: "<base hint> • Returning to lobby in N s".
+   * The authoritative auto-return is driven host-side (it broadcasts RETURN_TO_LOBBY); this
+   * is purely the visible heads-up so nobody is surprised when the screen advances.
+   */
+  _startAutoReturnCountdown(autoReturnMs) {
+    this._stopAutoReturnCountdown();
+    if (!this.hostHint || !autoReturnMs || autoReturnMs <= 0) return;
+    const baseHint = this.hostHint.textContent || '';
+    const endsAt = Date.now() + autoReturnMs;
+    const render = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      const suffix = `Returning to lobby in ${remaining}s…`;
+      this.hostHint.textContent = baseHint ? `${baseHint} • ${suffix}` : suffix;
+      if (remaining <= 0) this._stopAutoReturnCountdown();
+    };
+    render();
+    this._autoReturnInterval = setInterval(render, 1000);
+  }
+
+  _stopAutoReturnCountdown() {
+    if (this._autoReturnInterval) {
+      clearInterval(this._autoReturnInterval);
+      this._autoReturnInterval = null;
+    }
+  }
+
+  /**
    * Load winner's large avatar
    * @private
    */
@@ -473,8 +509,10 @@ export class MatchResultsModal {
     // Reset to placeholder
     const letter = (name || 'W').charAt(0).toUpperCase();
     container.innerHTML = `
-      <div class="winner-avatar-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, ${color}, ${this._darkenColor(color)}); font-size: 48px; font-weight: bold; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">${letter}</div>
+      <div class="winner-avatar-placeholder">${letter}</div>
     `;
+    container.style.setProperty('--winner-color', color);
+    container.style.setProperty('--winner-color-dark', this._darkenColor(color));
 
     // Update border color to match winner
     container.style.borderColor = color;
@@ -486,7 +524,7 @@ export class MatchResultsModal {
       const avatarUrl = await steamService.getAvatar(steamId, 'large');
       if (avatarUrl) {
         const img = document.createElement('img');
-        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.className = 'winner-avatar-image';
         img.src = avatarUrl;
         img.alt = name || 'Winner';
         img.onerror = () => {

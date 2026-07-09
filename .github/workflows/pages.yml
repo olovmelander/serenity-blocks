@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  pull_request:
 
 permissions:
   contents: read
@@ -11,11 +12,34 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Type-checking is a HARD gate. It is opt-in (checkJs:false; only files with
+      # `// @ts-check` plus the shared *.d.ts contracts are checked), so it is green
+      # today and stays green as modules are annotated. See tsconfig.json.
+      - run: npm run typecheck
+      # Lint is not yet a HARD gate: until the repo-wide LF renormalize lands
+      # (see .gitattributes) ESLint is buried under ~324k CRLF-style problems,
+      # and ~5.5k genuine findings still need triage. Surface it without failing
+      # CI; flip continue-on-error to false once the lint baseline is clean.
+      - run: npm run lint
+        continue-on-error: true
+      - run: npm test
+
   build:
+    needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +55,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

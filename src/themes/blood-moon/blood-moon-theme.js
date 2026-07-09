@@ -684,13 +684,13 @@ export default class BloodMoonTheme extends BaseTheme {
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
-        const bloomPass = new UnrealBloomPass(
+        this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
             0.2,
         );
-        this.composer.addPass(bloomPass);
+        this.composer.addPass(this.bloomPass);
 
         const vignettePass = new ShaderPass(VignetteShader);
         this.composer.addPass(vignettePass);
@@ -1113,8 +1113,12 @@ export default class BloodMoonTheme extends BaseTheme {
         this.eventUnsubscribers = [];
 
         // Cleanup Three.js
+        this.bloomPass?.dispose?.();
+        if (this.composer) {
+            this.disposeComposer(this.composer);
+        }
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('blood-moon-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);
@@ -1139,6 +1143,7 @@ export default class BloodMoonTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.composer = null;
+        this.bloomPass = null;
         this.moon = null;
         this.moonGroup = null;
         this.starfield = null;

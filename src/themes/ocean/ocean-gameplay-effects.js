@@ -990,6 +990,40 @@ export class OceanGameplayEffects {
             }
         }
 
+        // Idle fast-path: when every envelope has settled, nothing is queued,
+        // and no pool has a live member, the material-time writes, billboard
+        // matrix precompute, five pool passes, and post update would all be
+        // no-ops (the pool passes already skip inactive items). Skip them and
+        // return zero boosts — identical rendered result. We push exact-zero
+        // post params once on entering idle so the post graph is fully at rest.
+        const envelopesQuiet = this.pulseTarget === 0 && this.surgeTarget === 0
+            && this.sweepTarget === 0 && this.resonanceTarget === 0
+            && this.gameplayPulse < 1e-4 && this.comboSurge < 1e-4
+            && this.causticSweepStrength < 1e-4 && this.resonance < 1e-4;
+        if (envelopesQuiet && !this.deferredShockwave && !this._hasActiveEffects()) {
+            this.gameplayPulse = 0;
+            this.comboSurge = 0;
+            this.causticSweepStrength = 0;
+            this.resonance = 0;
+            if (!this._idleParamsPushed) {
+                this.getPost?.()?.updateParams?.({
+                    gameplayPulse: 0,
+                    comboSurge: 0,
+                    causticSweepStrength: 0,
+                    chromaticAberrationEnabled: this.limits.chromaticAberration === true,
+                });
+                this._idleParamsPushed = true;
+            }
+            return {
+                currentBoost: 0,
+                glowBoost: 0,
+                comboSurge: 0,
+                gameplayPulse: 0,
+                causticSweepStrength: 0,
+            };
+        }
+        this._idleParamsPushed = false;
+
         // Shared time and billboard state pre-computation
         if (this.isWebGPU) {
             setMaterialTime(this.rippleMat, time);
@@ -1180,6 +1214,14 @@ export class OceanGameplayEffects {
 
     countActive(pool) {
         return pool.reduce((count, item) => count + (item.userData.effect.active ? 1 : 0), 0);
+    }
+
+    _hasActiveEffects() {
+        return this.ripplePool.some((m) => m.userData.effect.active)
+            || this.shockwavePool.some((m) => m.userData.effect.active)
+            || this.siltPool.some((m) => m.userData.effect.active)
+            || this.bubblePool.some((m) => m.userData.effect.active)
+            || this.ribbonPool.some((m) => m.userData.effect.active);
     }
 
     logIfDebug(label, payload) {

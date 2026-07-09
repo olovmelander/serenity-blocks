@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Network Message Types
  * Protocol for P2P communication
@@ -11,6 +12,9 @@ export const MessageTypes = {
     LOBBY_GAME_START: 'lobby:game:start',
     LOBBY_CONFIG_UPDATE: 'lobby:config:update',
     LOBBY_MATCH_CONFIG: 'lobby:match:config',
+    JOIN_REJECTED: 'lobby:join:rejected', // Host → joiner: rejected (e.g. lobby full)
+    RETURN_TO_LOBBY: 'lobby:return', // Host → all: leave the results screen back to the waiting room
+    PLAYER_KICKED: 'lobby:player:kicked', // Host → a player: you've been removed from the match
 
     // Network QoS (ping/pong)
     NET_PING: 'net:ping',
@@ -37,9 +41,11 @@ export const MessageTypes = {
     GAME_GARBAGE_SENT: 'game:garbage:sent', // Host → All
     GAME_PLAYER_DIED: 'game:player:died', // Host → All
     GAME_PLAYER_FRAG: 'game:player:frag', // Host → All
+    GAME_PLAYER_LOCK: 'game:player:lock', // Host → All (reliable per-lock authoritative board snap; anchors opponent boards)
     GAME_MATCH_END: 'game:match:end', // Host → All
     GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
-    GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
+    GAME_ROUND_READY: 'game:round:ready', // Peer → Host (peer has reset and is ready for the next round — ready-barrier syncpoint)
+    GAME_ROUND_START: 'game:round:start', // Host → All (all players ready / timeout — everyone starts the round together)
 
     // Host Migration
     GAME_HOST_MIGRATION_ELECT: 'game:host:elect', // Peer → All

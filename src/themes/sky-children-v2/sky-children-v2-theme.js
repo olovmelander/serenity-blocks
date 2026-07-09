@@ -15,6 +15,8 @@ import { createFarRangeMaterial, createSummitLight } from './rendering/far-range
 import { createMeadowFlowers } from './rendering/meadow-flowers.js';
 import { createFloatingIslands } from './rendering/floating-islands.js';
 import { createIslandBushes, createIslandArches } from './rendering/island-props.js';
+import { createIslandTrees } from './rendering/island-trees.js';
+import { createSkyDetailTextureSet, disposeSkyDetailTextureSet } from './rendering/detail-texture.js';
 import { createGlints } from './sim/glints.js';
 import { createSpirits } from './sim/spirits.js';
 import { createSkyBirds } from './sim/sky-birds.js';
@@ -369,6 +371,10 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.floatingIslandsRuntime = null;
         this.bushesRuntime = null;
         this.archesRuntime = null;
+        this.treesRuntime = null;
+        // Poly Haven CC0 greyscale detail textures (luminance "tooth" on terrain /
+        // cliff / mountains). Tier-gated; null on Minimal/Low. See detail-texture.js.
+        this.skyDetailTextures = null;
         this._tmpColor = new THREE.Color();
         this._fogColor = new THREE.Color();
 
@@ -745,6 +751,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.uniformSets = [];
 
         this.createSharedUniforms();
+        this.createDetailTextures();
         this.createLighting();
         this.createSkyDome();
         this.syncUniforms(); // prime palettes before the first frame
@@ -769,6 +776,17 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.syncCarpetDebug();
     }
 
+    /** Detail textures are only worth their bandwidth/fetches at Medium tier and up. */
+    useDetailTextures() {
+        return ['Medium', 'High', 'Ultra', 'Extreme'].includes(this.qualityTier);
+    }
+
+    /** Build (or clear) the CC0 luminance detail texture set, gated by tier. */
+    createDetailTextures() {
+        disposeSkyDetailTextureSet(this.skyDetailTextures);
+        this.skyDetailTextures = this.useDetailTextures() ? createSkyDetailTextureSet() : null;
+    }
+
     createMeadowField() {
         if (this.meadowRuntime) {
             if (this.meadowRuntime.mesh?.parent) this.scene.remove(this.meadowRuntime.mesh);
@@ -789,8 +807,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
     }
 
     createIslandProps() {
-        // Floating islands (7.5), bushes (7.3), arches (7.4) — the "alive" props.
-        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime].forEach((rt) => {
+        // Floating islands (7.5), bushes (7.3), arches (7.4), trees — the "alive" props.
+        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime, this.treesRuntime].forEach((rt) => {
             if (rt) {
                 if (rt.group?.parent) this.scene.remove(rt.group);
                 if (rt.mesh?.parent) this.scene.remove(rt.mesh);
@@ -798,7 +816,10 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             }
         });
 
-        this.floatingIslandsRuntime = createFloatingIslands(this.u, {});
+        // Solid rock undersides carry the CC0 skirt rock tooth (when available).
+        this.floatingIslandsRuntime = createFloatingIslands(this.u, {
+            detailTex: this.skyDetailTextures?.skirt ?? null,
+        });
         this.scene.add(this.floatingIslandsRuntime.group);
 
         if (this.terrainField) {
@@ -812,6 +833,15 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
             this.archesRuntime = createIslandArches(this.u, { cloudY: 10, count: 3 });
             this.scene.add(this.archesRuntime.mesh);
+
+            // Stylized trees — scales with tier, fewer at low quality.
+            const treeCount = clamp(
+                Math.round((this.qualityPreset.grassNearCount ?? 9000) * 0.0035),
+                18,
+                90,
+            );
+            this.treesRuntime = createIslandTrees(this.u, { count: treeCount, cloudY: 10 });
+            this.scene.add(this.treesRuntime.mesh);
         }
     }
 
@@ -1122,7 +1152,11 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         // Painterly terrain material reads the shared uniform block (colored
         // shadows, soft wrap, warm rim, dew glints, aerial perspective == sky).
-        const terrain = new THREE.Mesh(geometry, createValleyTerrainMaterial(this.u));
+        // CC0 grass/dirt luminance detail (when present) breaks up the flat green.
+        const terrainDetail = this.skyDetailTextures
+            ? { grass: this.skyDetailTextures.grass, dirt: this.skyDetailTextures.dirt }
+            : null;
+        const terrain = new THREE.Mesh(geometry, createValleyTerrainMaterial(this.u, terrainDetail));
         terrain.receiveShadow = false;
 
         this.terrainMesh = terrain;
@@ -1141,7 +1175,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         const skirt = new THREE.Mesh(
             this.createTerrainSkirtGeometry(Math.max(32, Math.floor(segments * 0.5))),
-            createValleyCliffMaterial(this.u),
+            createValleyCliffMaterial(this.u, this.skyDetailTextures?.skirt ?? null),
         );
         skirt.renderOrder = -1;
         this.terrainSkirtMesh = skirt;
@@ -1232,7 +1266,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         // Far-range silhouette material reads the shared uniform block, so the
         // distant ranges fade into the SAME haze/sky color as everything else.
-        const mountainMaterial = createFarRangeMaterial(this.u);
+        // CC0 rock luminance (when present) adds faint painterly tooth to the massif.
+        const mountainMaterial = createFarRangeMaterial(this.u, this.skyDetailTextures?.mountain ?? null);
 
         const group = new THREE.Group();
         // Fewer peaks, spread WIDE with gaps, pushed far back and anchored low so
@@ -2433,16 +2468,21 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             this.birdsRuntime = null;
         }
 
-        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime, this.spiritsRuntime].forEach((rt) => {
-            if (!rt) return;
-            if (rt.group?.parent) this.scene.remove(rt.group);
-            if (rt.mesh?.parent) this.scene.remove(rt.mesh);
-            rt.dispose();
-        });
+        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime, this.treesRuntime, this.spiritsRuntime]
+            .forEach((rt) => {
+                if (!rt) return;
+                if (rt.group?.parent) this.scene.remove(rt.group);
+                if (rt.mesh?.parent) this.scene.remove(rt.mesh);
+                rt.dispose();
+            });
         this.floatingIslandsRuntime = null;
         this.bushesRuntime = null;
         this.archesRuntime = null;
+        this.treesRuntime = null;
         this.spiritsRuntime = null;
+
+        disposeSkyDetailTextureSet(this.skyDetailTextures);
+        this.skyDetailTextures = null;
 
         if (this._vegetationCallbackId !== null) {
             clearTimeout(this._vegetationCallbackId);

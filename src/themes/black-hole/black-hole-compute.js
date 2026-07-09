@@ -361,7 +361,7 @@ export class BlackHoleParticleCompute {
 }
 
 export class BlackHoleBurstCompute {
-    constructor(particleCount) {
+    constructor(particleCount, options = {}) {
         this.count = particleCount;
 
         // position: xyz + spare
@@ -386,7 +386,7 @@ export class BlackHoleBurstCompute {
         this.nextTriggerIndex = 0;
         this.reuseUntil = new Float32Array(particleCount);
         this.currentTime = 0;
-        this.burstLifetimeSeconds = 21.0;
+        this.burstLifetimeSeconds = Math.max(6, Number(options.lifetimeSeconds) || 12.0);
         this.inactiveSpawnTime = 1e9;
         this.maxReuseUntil = 0;
 
@@ -437,8 +437,8 @@ export class BlackHoleBurstCompute {
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
         const miscData = storage(this.miscBuffer, 'vec4', this.count);
 
-        const delta = this.uDelta;
         const time = this.uTime;
+        const lifetime = float(this.burstLifetimeSeconds);
 
         const computeBursts = Fn(() => {
             const index = instanceIndex;
@@ -450,8 +450,8 @@ export class BlackHoleBurstCompute {
             const spawnTime = misc.w;
             const age = time.sub(spawnTime);
             const hasSpawned = step(spawnTime, time);
-            const active = hasSpawned.mul(step(age, float(20.0)));
-            const lifeClamped = clamp(age.mul(float(0.05)), float(0.0), float(1.0));
+            const active = hasSpawned.mul(step(age, lifetime));
+            const lifeClamped = clamp(age.div(lifetime), float(0.0), float(1.0));
             life.x.assign(mix(float(0.0), lifeClamped, active));
 
             If(active.greaterThan(0.5), () => {

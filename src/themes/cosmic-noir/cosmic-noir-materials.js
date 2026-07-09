@@ -326,7 +326,9 @@ export function createAtmosphereNodeMaterial(params = {}) {
     const pos = normalize(positionLocal);
     const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 2.0);
+    // pow(x, 2.0) == x*x exactly, and a single mul is cheaper than the exp2/log2 pow lowering.
+    const fresnelBase = float(1.0).sub(abs(dot(nrm, viewDir)));
+    const fresnel = fresnelBase.mul(fresnelBase);
 
     const flowTime = uTime.mul(0.8);
     const baseFlowA = vec2(flowTime.mul(0.12), flowTime.mul(-0.09));
@@ -369,21 +371,27 @@ export function createAtmosphereNodeMaterial(params = {}) {
         .add(tendrilMask.mul(0.2));
 
     const explosionAge = max(float(0.0), uExplosionTimer);
-    const explosionIn = smoothstep(float(0.0), float(0.15), explosionAge);
-    const explosionOut = float(1.0).sub(smoothstep(float(2.5), float(4.0), explosionAge));
-    const explosionWindow = explosionIn.mul(explosionOut);
-
     const radialDist = length(vec2(pos.x, pos.y));
     const pulseWave = sin(uTime.mul(4.0).sub(radialDist.mul(8.0)))
         .mul(0.5)
         .add(0.5)
         .mul(uPulseIntensity)
         .mul(0.35);
-    const shockPhase = sin(explosionAge.mul(12.0).sub(radialDist.mul(6.0))).mul(0.5).add(0.5);
-    const shockwave = shockPhase
-        .mul(explosionWindow)
-        .mul(uExplosionIntensity)
-        .mul(flowTurbulence);
+    // Gate the explosion shockwave chain behind an If: every term below multiplies to exactly 0
+    // whenever uExplosionTimer <= 0 (idle, ~99% of frames), since explosionIn = smoothstep(0,...,0)
+    // = 0 there. So skipping the two smoothsteps + the shockPhase sin is pixel-identical. The branch
+    // is coherent across each shell (all fragments share uExplosionTimer) so there is no divergence.
+    const shockwave = Fn(() => {
+        const shock = float(0.0).toVar();
+        If(explosionAge.greaterThan(float(0.0)), () => {
+            const explosionIn = smoothstep(float(0.0), float(0.15), explosionAge);
+            const explosionOut = float(1.0).sub(smoothstep(float(2.5), float(4.0), explosionAge));
+            const explosionWindow = explosionIn.mul(explosionOut);
+            const shockPhase = sin(explosionAge.mul(12.0).sub(radialDist.mul(6.0))).mul(0.5).add(0.5);
+            shock.assign(shockPhase.mul(explosionWindow).mul(uExplosionIntensity).mul(flowTurbulence));
+        });
+        return shock;
+    })();
 
     const pulseMul = float(1.0).add(uPulseIntensity.mul(0.5));
     const tendrilGlow = vec3(0.22, 0.22, 0.3)
@@ -475,21 +483,27 @@ export function createNebulaNodeMaterial(params = {}) {
     ).sub(0.5).mul(0.05);
     const secondaryDistortion = vec2(noiseSampleB.y, noiseSampleA.z).sub(0.5).mul(0.014);
     const distortedUv = uvCoord.add(primaryDistortion).add(secondaryDistortion);
-    const softUv = uvCoord.add(primaryDistortion.mul(0.35));
+
+    // Single texture tap at the blend-weighted UV replaces the former 2-tap soft blend
+    // (mix(sample(distortedUv), sample(softUv), 0.42), where softUv = uv + primaryDistortion*0.35).
+    // Because the nebula texture is locally smooth, sampling once at 0.58*distortedUv + 0.42*softUv
+    // closely matches the averaged result while removing a texture fetch on the 4 largest additive
+    // quads in the scene (these dominate fill on this overdraw-bound scene).
+    const sampleUv = uvCoord
+        .add(primaryDistortion.mul(0.727))
+        .add(secondaryDistortion.mul(0.58));
 
     const texNode = params.map ? texture(params.map) : null;
-    const texel = texNode ? texNode.sample(distortedUv) : vec4(1.0, 1.0, 1.0, 1.0);
-    const softTexel = texNode ? texNode.sample(softUv) : vec4(1.0, 1.0, 1.0, 1.0);
+    const texel = texNode ? texNode.sample(sampleUv) : vec4(1.0, 1.0, 1.0, 1.0);
 
     const fadeX = smoothstep(float(0.0), float(0.4), distortedUv.x)
         .mul(smoothstep(float(1.0), float(0.6), distortedUv.x));
     const fadeY = smoothstep(float(0.0), float(0.4), distortedUv.y)
         .mul(smoothstep(float(1.0), float(0.6), distortedUv.y));
-    const edgeFade = pow(fadeX.mul(fadeY), 0.9);
+    // pow(x, 0.9) ~= x across [0,1]; drop the transcendental on this big-fill surface.
+    const edgeFade = fadeX.mul(fadeY);
 
-    const gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-    const softGray = dot(softTexel.rgb, vec3(0.299, 0.587, 0.114));
-    const mergedGray = mix(gray, softGray, 0.42);
+    const mergedGray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
     const veil = smoothstep(float(0.28), float(0.78), veilSample.x.mul(0.55).add(veilSample.y.mul(0.45)));
     const boostedGray = pow(clamp(mergedGray.mul(1.75).add(veil.mul(0.12)), 0.0, 1.0), 0.68);
     const whiteLift = smoothstep(float(0.34), float(0.96), boostedGray);
@@ -765,7 +779,9 @@ export function createCosmicWaveNodeMaterial(params = {}) {
 
     const nrm = normalize(normalWorld);
     const facing = abs(dot(nrm, vec3(0.0, 0.0, 1.0)));
-    const intensity = pow(max(float(0.0), float(0.6).sub(facing)), 2.0);
+    // pow(x, 2.0) == x*x (exact, cheaper).
+    const intensityBase = max(float(0.0), float(0.6).sub(facing));
+    const intensity = intensityBase.mul(intensityBase);
 
     const color = uColor.mul(float(0.5).add(intensity.mul(0.5)));
     const alpha = uOpacity.mul(float(0.3).add(intensity.mul(0.7)));
@@ -864,7 +880,9 @@ export function createAnamorphicFlareNodeMaterial(params = {}) {
 
     // Core glow
     const centerDist = length(vec2(dx, dy));
-    const centerGlow = pow(smoothstep(0.15, 0.0, centerDist), 2.0).mul(2.0);
+    // pow(x, 2.0) == x*x (exact, cheaper).
+    const centerGlowBase = smoothstep(0.15, 0.0, centerDist);
+    const centerGlow = centerGlowBase.mul(centerGlowBase).mul(2.0);
 
     const intensity = streak.add(centerGlow).mul(uOpacity);
 
@@ -928,7 +946,9 @@ export function createAccretionDiskNodeMaterial(params = {}) {
     const edgeFade = smoothstep(float(0.0), float(0.15), radius)
         .mul(smoothstep(float(1.0), float(0.6), radius));
 
-    const intensityGrad = pow(float(1.0).sub(radius), 2.0);
+    // pow(x, 2.0) == x*x (exact, cheaper).
+    const intensityGradBase = float(1.0).sub(radius);
+    const intensityGrad = intensityGradBase.mul(intensityGradBase);
 
     let finalIntensity = plasma.mul(0.6).add(bands.mul(0.4)).mul(edgeFade).mul(intensityGrad);
     finalIntensity = finalIntensity.mul(float(1.0).add(uPulseIntensity.mul(3.5)));

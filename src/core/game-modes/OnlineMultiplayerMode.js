@@ -25,6 +25,19 @@ import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 
+function readOnlineNetFlag(name, defaultOn) {
+    if (typeof window === 'undefined') return defaultOn;
+    const search = (window.location && window.location.search) || '';
+    if (new RegExp(`[?&]${name}=1\\b`).test(search)) return true;
+    if (new RegExp(`[?&]${name}=0\\b`).test(search)) return false;
+    try {
+        const ls = window.localStorage && window.localStorage.getItem(`serenity.${name}`);
+        if (ls === '1') return true;
+        if (ls === '0') return false;
+    } catch (e) { /* localStorage unavailable; keep default */ }
+    return defaultOn;
+}
+
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
  *
@@ -80,6 +93,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.snapshotStats = null;
         this.pingInterval = null;
         this.roundNumber = 1;
+        // Spectator / spectate-after-death UI state (B5).
+        this.isSpectator = false;
+        this._deathShown = false;
+        this._deadSpectating = false;
+        this._preDeathMaxVisible = null;
         this.roundStingerElement = null;
         this.roundStingerTimer = null;
         this.roundStingerRunId = 0;
@@ -87,9 +105,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Cleanup handlers
         this.cleanupHandlers = [];
 
-        // Snapshot Interpolation
+        // Snapshot Interpolation. The default path preserves the verified 90ms delay.
+        // adaptiveInterp=1 maps snapshots onto the host sim timeline and raises only
+        // cosmetic opponent-view delay, smoothing jitter without changing authority.
+        this._adaptiveInterpEnabled = readOnlineNetFlag('adaptiveInterp', false);
         this.snapshotInterpolator = new SnapshotInterpolator({
-            interpolationDelay: 50, // 50ms buffer for smooth 30Hz -> 60Hz
+            interpolationDelay: this._adaptiveInterpEnabled ? 120 : 90,
+            adaptive: this._adaptiveInterpEnabled,
+            minInterpolationDelay: this._adaptiveInterpEnabled ? 100 : 90,
+            maxInterpolationDelay: 180,
+            simTickMs: 1000 / 60,
+            snapshotIntervalMs: 1000 / 30,
+            maxBufferSize: this._adaptiveInterpEnabled ? 24 : 10,
         });
 
         // === PERFORMANCE OPTIMIZATIONS ===
@@ -99,8 +126,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Cache local player reference (changes rarely, avoids find() every frame)
         this._cachedLocalId = null;
         this._cachedLocalPlayerIndex = -1;
-        // Pre-allocated opponent slots (reused every frame, saves ~300 allocations/sec)
-        this._opponentSlots = new Array(7).fill(null).map(() => ({
+        // Pre-allocated opponent slots (reused every frame, saves ~300 allocations/sec).
+        // Sized 8 (the max roster): a PLAYER sees ≤7 opponents (one of 8 is local), but a
+        // SPECTATOR has no local board and watches the FULL roster of up to 8 — so the
+        // _processRenderFrame opponent loop must be able to feed all 8 boards a fresh piece.
+        this._opponentSlots = new Array(8).fill(null).map(() => ({
             id: null,
             steamId: null,
             name: null,
@@ -114,6 +144,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             nextPieces: null,
         }));
         this._activeOpponentCount = 0;
+
+        // SPECTATOR render driver: a watch-only spectator never joins ffaGameState.players
+        // and never runs the unified game loop, so it never emits RENDER_FRAME and
+        // _processRenderFrame (the only path that feeds a live/interpolated currentPiece into
+        // the watch boards) never runs — leaving the opponents' falling pieces frozen. This
+        // RAF loop reproduces that path for a spectator, driven by the snapshot stream it
+        // already receives. Null unless the local client is a spectator and a match is live.
+        this._spectatorRenderId = null;
+        this._latestSnapshotPlayers = null;
     }
 
     getModeId() {
@@ -210,7 +249,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Create lobby browser with cancel callback
         this.lobbyBrowser = new LobbyBrowser(
             this.steamNetworking,
-            (lobbyId) => this.handleJoinLobby(lobbyId),
+            (lobbyId, options) => this.handleJoinLobby(lobbyId, options),
             () => this.showMatchConfigModal(),
             () => this.handleLobbyBrowserCancelled(),
         );
@@ -287,9 +326,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     /**
      * Handle joining a lobby
      */
-    async handleJoinLobby(lobbyId) {
+    async handleJoinLobby(lobbyId, options = {}) {
         try {
-            console.log(`[OnlineMultiplayer] Joining lobby: ${lobbyId}`);
+            const asSpectator = !!options.asSpectator;
+            this.isSpectator = asSpectator;
+            console.log(`[OnlineMultiplayer] Joining lobby: ${lobbyId}${asSpectator ? ' (SPECTATOR)' : ''}`);
 
             // Leave any existing lobby state before joining a new one
             if (this.currentLobbyId && this.currentLobbyId !== lobbyId && this.steamNetworking) {
@@ -310,15 +351,29 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Join the lobby via Steam
             await this.steamNetworking.joinLobby(lobbyId);
 
-            // Create FFA game state as peer
+            // Create FFA game state as peer (or spectator — no local board/input).
             this.ffaGameState = new FFAGameStateP2P(
                 this.steamNetworking,
                 this.steamNetworking.steamId,
+                { asSpectator },
             );
-            this._configureLocalInputHooks(this.ffaGameState);
+            if (!asSpectator) {
+                this._configureLocalInputHooks(this.ffaGameState);
+            }
 
-            // Announce join to host
+            // Announce join to host (carries asSpectator so the host won't roster a spectator)
             this.ffaGameState.announceJoin();
+
+            // Joiners (and spectators) can be kicked by the host at any point (lobby or
+            // match), so subscribe once for the lifetime of this mode. The host never gets
+            // this (it doesn't kick itself).
+            if (!this._kickedUnsub) {
+                this._kickedUnsub = onMultiplayerEvent(
+                    MULTIPLAYER_EVENTS.KICKED,
+                    (detail) => this._handleKicked(detail),
+                );
+                this.cleanupHandlers.push(this._kickedUnsub);
+            }
 
             this.currentLobbyId = lobbyId;
 
@@ -403,6 +458,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
                 garbageCancellation: config.garbageCancellation || 'full',
+                attackStyle: config.attackStyle || 'standard',
+                attackRules: config.attackRules || null,
+                hotPotato: config.hotPotato || false,
+                potatoDurationMs: config.potatoDurationMs || 12000,
+                potatoPenaltyLines: config.potatoPenaltyLines || 6,
                 maxPlayers: config.maxPlayers,
             };
 
@@ -415,6 +475,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
 
             this._setLobbyRichPresence();
+
+            // Hide the lobby browser (mirrors handleJoinLobby) — without this the HOST's
+            // browser stays mounted behind the waiting room and then shows THROUGH over the
+            // match once the waiting room hides ("host sees menus; joiner doesn't").
+            if (this.lobbyBrowser) {
+                this.lobbyBrowser.hide();
+            }
 
             // Show waiting room
             this.showWaitingRoom();
@@ -560,10 +627,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             container.style.display = 'grid';
         }
 
-        // Create main board (Phaser) for local player
-        await this._createMainBoard();
+        // Create main board (Phaser) for local player — a SPECTATOR has no board, so show
+        // a placeholder in the main-board slot instead of a Phaser game with no gameState.
+        if (this.ffaGameState?.isSpectator) {
+            this._showSpectatorMainBoardPlaceholder();
+        } else {
+            await this._createMainBoard();
+        }
 
-        // Create opponent watch manager
+        // Create opponent watch manager (spectators watch the FULL roster here)
         this._createOpponentBoards();
 
         // Initialize right panel (scoreboard, kill feed, chat)
@@ -594,8 +666,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Mark match as active - enables input handling
         this.isInMatch = true;
+        this._suspendThemeForMatch();
         this._registerNetworkHandlers();
-        this._hookInputs();
+        // A spectator never controls a board, so don't wire the gameplay input globals
+        // (window.move/rotate/… would read a non-existent local player). FFAGameStateP2P
+        // .sendInput also hard-returns for spectators as the authoritative backstop.
+        if (!this.ffaGameState?.isSpectator) {
+            this._hookInputs();
+        }
         this._setupVisibilityHandler();
 
         // Reset UI setup flag for next match
@@ -606,6 +684,23 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         window.dispatchEvent(new CustomEvent('game:matchPosition', {
             detail: { position: 1, playerCount }
         }));
+
+        // Drop-in mid-match: we joined as a dead/waiting roster member, so show the full-
+        // roster watch view immediately (reusing the spectate-after-death view). The next
+        // round restart revives us (shared seed) and _clearDeathState → _exitDeadSpectate
+        // returns us to normal play.
+        const localPlayer = this.ffaGameState?.getLocalPlayer?.();
+        if (!this.ffaGameState?.isSpectator && localPlayer && localPlayer.isAlive === false) {
+            console.log('[OnlineMultiplayer] Joined mid-match as waiting — spectating until next round');
+            this._enterDeadSpectate();
+        }
+
+        // A watch-only spectator has no game loop to emit RENDER_FRAME, so drive the watch
+        // boards from the snapshot stream itself (otherwise the falling pieces freeze). Only
+        // a true spectator needs this — a dead/eliminated PLAYER still runs the loop.
+        if (this.ffaGameState?.isSpectator) {
+            this._startSpectatorRenderLoop();
+        }
 
         console.log('[OnlineMultiplayer] ✅ Match started! Game is now active.');
     }
@@ -634,17 +729,54 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._cleanupGameRendering();
         this.isInMatch = false;
 
+        const AUTO_RETURN_MS = 45000;
         if (this.matchResultsModal) {
             this.matchResultsModal.show(detail, {
                 isHost: this.steamNetworking?.isHost,
                 localPlayerId: this.steamNetworking?.steamId,
                 gameState: this.ffaGameState, // Pass gameState for chat history access
+                autoReturnMs: AUTO_RETURN_MS, // all clients show a "returning in N s" countdown
             });
+        }
+
+        // A4d host-idle auto-advance: if the HOST never picks Play Again / Return, send
+        // everyone back to the lobby after the deadline so an idle/rage-quit host can't
+        // freeze the results screen for all players. Auto-RETURN (not auto-rematch) — we
+        // don't force unwilling players into another game. Host-authoritative: the host's
+        // timer fires _handleReturnToLobby, which broadcasts RETURN_TO_LOBBY so peers follow.
+        this._clearResultsAutoAdvance();
+        if (this.steamNetworking?.isHost) {
+            this._resultsAutoAdvanceTimer = setTimeout(() => {
+                this._resultsAutoAdvanceTimer = null;
+                console.log('[OnlineMultiplayer] Results auto-advance — host idle, returning everyone to lobby');
+                this._handleReturnToLobby();
+            }, AUTO_RETURN_MS);
         }
 
         this._syncFfaSteamStats(detail).catch((err) => {
             console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
         });
+    }
+
+    /** Cancel the results-screen host-idle auto-advance timer (host only sets it). */
+    _clearResultsAutoAdvance() {
+        if (this._resultsAutoAdvanceTimer) {
+            clearTimeout(this._resultsAutoAdvanceTimer);
+            this._resultsAutoAdvanceTimer = null;
+        }
+    }
+
+    /** Create the network-stats object if missing (it's nulled on match cleanup). */
+    _ensureNetworkStats() {
+        if (!this.networkStats) {
+            this.networkStats = {
+                rttMs: this.steamNetworking?.isHost ? 0 : null,
+                lossPct: 0,
+                snapshotRate: null,
+                route: this.steamNetworking?.mockMode ? 'Mock' : 'Steam',
+            };
+        }
+        return this.networkStats;
     }
 
     /**
@@ -717,6 +849,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             return;
         }
 
+        this._clearResultsAutoAdvance(); // host chose rematch — cancel the idle timer
+
         if (this.matchResultsModal) {
             this.matchResultsModal.hide();
         }
@@ -725,9 +859,22 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Return to lobby waiting room
+     * Return to lobby waiting room. When the HOST invokes this (button or auto-advance),
+     * it broadcasts RETURN_TO_LOBBY so peers leave the results screen too — otherwise a
+     * host returning to the lobby would strand peers on their results modal forever.
      */
     _handleReturnToLobby() {
+        this._clearResultsAutoAdvance();
+        if (this.steamNetworking?.isHost) {
+            this.steamNetworking.broadcastToAll?.(MessageTypes.RETURN_TO_LOBBY, {});
+        }
+        this._returnToLobbyLocal();
+    }
+
+    /** The local half of returning to the lobby (no broadcast) — also run on a peer that
+     * received RETURN_TO_LOBBY from the host. */
+    _returnToLobbyLocal() {
+        this._clearResultsAutoAdvance();
         if (this.matchResultsModal) {
             this.matchResultsModal.hide();
         }
@@ -750,6 +897,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Exit to main menu
      */
     async _handleExitToMenu() {
+        this._clearResultsAutoAdvance();
         if (this.matchResultsModal) {
             this.matchResultsModal.hide();
         }
@@ -764,6 +912,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this.deps.modalManager) {
             this.deps.modalManager.show('start');
         }
+    }
+
+    /**
+     * We were kicked by the host — tear down and return to the start menu with a notice.
+     * Reuses the exit-to-menu teardown; the alert tells the player why.
+     */
+    async _handleKicked() {
+        console.warn('[OnlineMultiplayer] Kicked by host — leaving match');
+        try { await this._handleExitToMenu(); } catch (e) { /* best-effort teardown */ }
+        // Non-blocking notice (a blocking alert() would freeze the page mid-teardown).
+        try {
+            window.dispatchEvent(new CustomEvent('serenity:toast', {
+                detail: { message: 'You were removed from the match by the host.', type: 'warning' },
+            }));
+        } catch (e) { /* no-op */ }
     }
 
     /**
@@ -788,11 +951,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     /**
      * Create main Phaser board for local player
      */
+    /**
+     * Spectators have no board — fill the main-board slot with a clear "watching" panel
+     * instead of an empty/broken container or a Phaser game with no gameState.
+     */
+    _showSpectatorMainBoardPlaceholder() {
+        const container = document.getElementById('online-main-board');
+        if (!container) return;
+        this.mainBoardScene = null;
+        this.mainPhaserGame = null;
+        // A spectator has no local board → flag the layout so local-only chrome (the
+        // own-stats bar, which would just show zeros) is hidden via CSS.
+        document.getElementById('online-multiplayer-container')?.classList.add('spectating');
+        // A spectator has no board of its own — turn the main board into a "spotlight" that
+        // shows ONE selected player at full size. The OpponentWatchManager drives the canvas
+        // (setSpotlight, wired in _createOpponentBoards); clicking a mini-board picks who.
+        container.innerHTML = `
+            <div class="spectator-spotlight">
+                <div class="spectator-spotlight-header">
+                    <span class="spectator-spotlight-eye">👁</span>
+                    <span class="spectator-spotlight-name">SPECTATING</span>
+                    <span class="spectator-spotlight-frags"></span>
+                </div>
+                <div class="spectator-spotlight-stage">
+                    <div class="spectator-spotlight-board-row">
+                        <div class="garbage-indicator spectator-spotlight-garbage">
+                            <div class="garbage-fill"></div>
+                            <div class="garbage-segments"></div>
+                            <div class="garbage-glow"></div>
+                        </div>
+                        <canvas class="spectator-spotlight-canvas"></canvas>
+                    </div>
+                </div>
+                <div class="spectator-spotlight-hint">Click a board on the left to spotlight a player</div>
+            </div>
+        `;
+    }
+
     async _createMainBoard() {
         const container = document.getElementById('online-main-board');
         if (!container) {
             throw new Error('Main board container not found');
         }
+        // CRITICAL: dispose any EXISTING board before creating a new one. _setupMatchUI can run
+        // again (it resets _uiSetupComplete in _activateMatch) on a new round / rematch / host
+        // migration — and without this each call mounts ANOTHER position:relative <canvas>.
+        // Stacked canvases push the live board out of the overflow:hidden frame, so the board
+        // renders content but looks EMPTY ("no tetrominos") from round 2 on, and each orphaned
+        // Phaser game leaks a WebGL context. Guarantee exactly one board canvas.
+        if (this.mainPhaserGame) {
+            try { this.mainPhaserGame.destroy(true); } catch (e) { /* best-effort */ }
+            this.mainPhaserGame = null;
+            this.mainBoardScene = null;
+        }
+        // Belt-and-suspenders: clear any leftover/orphaned canvases a prior game didn't remove.
+        container.innerHTML = '';
+        // Playing locally (not spectating) → ensure the spectator layout flag is cleared.
+        document.getElementById('online-multiplayer-container')?.classList.remove('spectating');
 
         // Import BoardScene dynamically using factory function
         const { createBoardScene } = await import('../../rendering/phaser/board-scene.js');
@@ -846,6 +1061,58 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         this.opponentWatchManager = new OpponentWatchManager(watchGrid);
         this.opponentWatchManager.setLocalPlayer(this.steamNetworking.steamId);
+        // A spectator has no board of its own, so show the WHOLE roster (not just 4
+        // opponents-besides-me). Its localPlayerId isn't in the roster, so setPlayers'
+        // local-filter is a no-op. setMaxVisible also widens the CSS grid (full-roster
+        // class) so >4 boards aren't clipped off-screen.
+        if (this.ffaGameState?.isSpectator) {
+            this.opponentWatchManager.setMaxVisible(8);
+
+            // Wire the main-board spotlight: the watch manager renders the selected player
+            // full-size onto the spotlight canvas and reports name/frags changes here.
+            const spotlightCanvas = document.querySelector('#online-main-board .spectator-spotlight-canvas');
+            if (spotlightCanvas) {
+                const nameEl = document.querySelector('#online-main-board .spectator-spotlight-name');
+                const fragsEl = document.querySelector('#online-main-board .spectator-spotlight-frags');
+                const eyeEl = document.querySelector('#online-main-board .spectator-spotlight-eye');
+                // The player card frames the whole center column. Host/peer tint it to their OWN
+                // colour (_processRenderFrame ~1841); a spectator has no local player so it kept the
+                // default BLUE — the other half of the "purple+blue border" the user reported. Tint
+                // it to the SPOTLIGHTED player's colour to match the host/peer look.
+                const playerCardEl = document.getElementById('online-player-card');
+                // Pending-garbage meter for the spotlight — mirrors the main board's vertical
+                // bar so the watched board reads like a real player board (the watcher missed it).
+                const spotlightGarbage = document.querySelector('#online-main-board .spectator-spotlight-garbage');
+                this.opponentWatchManager.setSpotlight(spotlightCanvas, {
+                    garbage: spotlightGarbage ? {
+                        meter: spotlightGarbage,
+                        fill: spotlightGarbage.querySelector('.garbage-fill'),
+                        segments: spotlightGarbage.querySelector('.garbage-segments'),
+                    } : null,
+                    onChange: (player) => {
+                        if (nameEl) nameEl.textContent = player?.name || 'SPECTATING';
+                        if (fragsEl) fragsEl.textContent = player ? `⚔️ ${player.frags || 0}` : '';
+                        // Tint the spotlight CANVAS to the SELECTED player's colour so the watched
+                        // board's frame reflects who you're watching. The purple #online-board-border
+                        // overlay is hidden under .spectating, so the canvas border+glow is the single
+                        // clean frame around the board (matching the host/peer board).
+                        const color = player?.color || (player?.id && this._getPlayerColor(player.id)) || '#5eead4';
+                        if (nameEl) nameEl.style.color = color;
+                        if (eyeEl) eyeEl.style.color = color;
+                        spotlightCanvas.style.borderColor = color;
+                        spotlightCanvas.style.boxShadow = `0 0 22px ${color}55, inset 0 0 14px ${color}22`;
+                        // Match host/peer card framing (see _processRenderFrame): coloured border +
+                        // glow + faint gradient — so the whole center frame reflects the watched player.
+                        if (playerCardEl) {
+                            playerCardEl.style.borderColor = `${color}cc`;
+                            playerCardEl.style.borderWidth = '3px';
+                            playerCardEl.style.boxShadow = `0 0 30px ${color}66, inset 0 0 20px ${color}1a`;
+                            playerCardEl.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${color}0d)`;
+                        }
+                    },
+                });
+            }
+        }
 
         // Set initial players from game state
         if (this.ffaGameState && this.ffaGameState.players) {
@@ -987,26 +1254,29 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             });
         };
 
+        // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
+        // Peers follow without re-broadcasting (host is the sole initiator).
+        const returnToLobbyHandler = () => {
+            if (this.steamNetworking?.isHost) return;
+            console.log('[OnlineMultiplayer] Host returned to lobby — following');
+            this._returnToLobbyLocal();
+        };
+
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_DIED, deathHandler);
         this.steamNetworking.on(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
         this.steamNetworking.on('game:chat', chatHandler);
+        this.steamNetworking.on(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
             this.steamNetworking.off('game:chat', chatHandler);
+            this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
-        if (!this.networkStats) {
-            this.networkStats = {
-                rttMs: this.steamNetworking?.isHost ? 0 : null,
-                lossPct: 0,
-                snapshotRate: null,
-                route: this.steamNetworking?.mockMode ? 'Mock' : 'Steam',
-            };
-        }
+        this._ensureNetworkStats();
         if (!this.snapshotStats) {
             this.snapshotStats = {
                 count: 0,
@@ -1034,6 +1304,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.snapshotStats.lastAt = now;
             this.snapshotStats.count += 1;
 
+            // networkStats is nulled by _cleanupGameRendering on return-to-lobby/exit; a
+            // late snapshot/pong that arrives after that would otherwise crash on a null
+            // write. Re-ensure it (also covers stats after a lobby→rematch round-trip).
+            this._ensureNetworkStats();
             if (this.snapshotStats.avgInterval) {
                 this.networkStats.snapshotRate = 1000 / this.snapshotStats.avgInterval;
             }
@@ -1061,6 +1335,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const pongHandler = (msg) => {
             if (this.steamNetworking?.isHost) return;
             if (!msg?.data?.sentAt) return;
+            this._ensureNetworkStats(); // null-safe after return-to-lobby cleanup
             this.networkStats.rttMs = Date.now() - msg.data.sentAt;
             this._updateNetworkHud();
         };
@@ -1176,11 +1451,38 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.comboEffectUnsub);
 
+        // Phase 1+2: OPPONENT clear handler — staged flash (+ combo) on the OPPONENT's
+        // mini-board. Separate from LINE_CLEAR above (which the local board owns), so the
+        // two never double-fire. The watcher draws on its own overlay canvas; it never
+        // touches the opponent grid, so it cannot fight the snapshot interpolator.
+        this.opponentClearUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.OPPONENT_CLEAR,
+            (detail) => {
+                if (!this.opponentWatchManager || detail.steamId === localSteamId) return;
+                const lineCount = detail.linesCleared || (detail.rows?.length || 0);
+                const cascadeCount = detail.cascadeCount || 1;
+                const color = lineCount >= 4 ? '#f59e0b' : lineCount === 3 ? '#fbbf24' : '#ffffff';
+                this.opponentWatchManager.triggerOpponentClear?.(detail.steamId, {
+                    rows: detail.rows || [],
+                    lineCount,
+                    color,
+                });
+                if (cascadeCount >= 2) {
+                    this.opponentWatchManager.triggerOpponentCombo?.(detail.steamId, cascadeCount, color);
+                }
+            },
+        );
+        this.cleanupHandlers.push(this.opponentClearUnsub);
+
         // Piece lock effect handler
         this.pieceLockEffectUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.PIECE_LOCK,
             (detail) => {
-                if (detail.steamId !== localSteamId) return;
+                if (detail.steamId !== localSteamId) {
+                    const color = this._getPlayerColor(detail.steamId);
+                    this.opponentWatchManager?.triggerOpponentPieceLock?.(detail.steamId, color);
+                    return;
+                }
                 if (!this.mainBoardScene) return;
 
                 const { piece } = detail;
@@ -1200,7 +1502,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.hardDropEffectUnsub = onMultiplayerEvent(
             'game:hard_drop',
             (detail) => {
-                if (detail.steamId !== localSteamId) return;
+                if (detail.steamId !== localSteamId) {
+                    const color = this._getPlayerColor(detail.steamId);
+                    this.opponentWatchManager?.triggerOpponentHardDrop?.(detail.steamId, detail.dropData, color);
+                    return;
+                }
                 if (!this.mainBoardScene) return;
 
                 const { dropData } = detail;
@@ -1225,6 +1531,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (detail.isLocal || detail.steamId === localSteamId) {
                     console.log('[OnlineMultiplayer] Local player topped out - showing death animation');
                     this._showDeathAnimation(detail.killerName || null);
+                } else if (detail.steamId) {
+                    this.opponentWatchManager?.setOpponentDeadState?.(detail.steamId, true);
                 }
             },
         );
@@ -1233,11 +1541,36 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.garbageInsertedUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.GARBAGE_INSERTED,
             (detail) => {
-                if (!detail.isLocal) return;
+                if (!detail.isLocal) {
+                    const targetId = detail.steamId ?? detail.playerId;
+                    if (targetId) {
+                        this.opponentWatchManager?.triggerOpponentGarbage?.(targetId, '#f87171');
+                    }
+                    return;
+                }
                 this._flashGarbageIndicator('flash', 500);
             },
         );
         this.cleanupHandlers.push(this.garbageInsertedUnsub);
+
+        this.perfectClearUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.PERFECT_CLEAR,
+            (detail) => {
+                if (detail.steamId !== localSteamId) {
+                    this.opponentWatchManager?.triggerOpponentPerfectClear?.(detail.steamId, detail.depth, '#ffffff');
+                    return;
+                }
+
+                eventBus.emit(EVENTS.PERFECT_CLEAR, {
+                    depth: detail.depth,
+                    perfectClearBonus: detail.perfectClearBonus,
+                    source: 'online',
+                });
+                this.deps.soundManager?.sfxPlayer?.playPerfectClear?.();
+                this.mainBoardScene?.sharedEffects?.playPerfectClear?.(detail.depth);
+            },
+        );
+        this.cleanupHandlers.push(this.perfectClearUnsub);
 
         this.garbageCounteredUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.GARBAGE_COUNTERED,
@@ -1251,13 +1584,39 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.garbageCounteredUnsub);
 
+        // Local echo of the host's OWN outgoing attacks → Battle Log. The host never
+        // receives its own network broadcast, so without this its attacks are
+        // invisible in the log. Only the host runs routeAttack (which emits this),
+        // and peers log from the network message instead — so it fires once per node.
+        this.garbageSentLocalUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.GARBAGE_SENT,
+            (detail) => {
+                if (!this.killFeed) return;
+                const targetLabel = detail.targetCount === 1
+                    ? '1 player'
+                    : `${detail.targetCount || 0} players`;
+                this.killFeed.addGarbageSent({
+                    sender: detail.fromName,
+                    target: targetLabel,
+                    lines: detail.totalLines || 0,
+                    senderColor: this._getPlayerColor(detail.from),
+                });
+            },
+        );
+        this.cleanupHandlers.push(this.garbageSentLocalUnsub);
+
         // Round restart - clear death overlay and reset board state
         this.roundRestartUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.ROUND_RESTART,
             () => {
                 console.log('[OnlineMultiplayer] Round restarting - clearing death state');
                 this._clearDeathState();
+                this.opponentWatchManager?.clearOpponentEffectStates?.();
                 this.roundNumber += 1;
+                // Battle Log is transactional/append-only across the WHOLE match: keep
+                // prior rounds' rows (host AND peers see the full history) and just drop in
+                // a divider so the new round is visually delimited instead of wiping the log.
+                this.killFeed?.addRoundMarker(this.roundNumber);
                 this._playRoundStartStinger();
             },
         );
@@ -1271,18 +1630,26 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _handleStateUpdate(state) {
         if (!state || !state.players) return;
+        const receivedAt = Date.now();
 
         const normalizedPlayers = state.players.map((player) => ({
             ...player,
             id: player.id ?? player.steamId,
         }));
 
+        // SPECTATOR render driver reads the freshest snapshot each animation frame (a
+        // spectator has no game loop / RENDER_FRAME, so this is its only data source). The
+        // interpolator below smooths it; this is just the latest authoritative roster+state.
+        this._latestSnapshotPlayers = normalizedPlayers;
+
         // Feed snapshot to interpolator
         this.snapshotInterpolator.addSnapshot({
             ...state,
             players: normalizedPlayers,
-            timestamp: Date.now(), // Ensure we use arrival time if server time is drifted
-        });
+            receivedAt,
+            timestamp: receivedAt, // Ensure we use arrival time if server time is drifted
+        }, { receivedAt });
+        this._updateInterpolationNetworkStats(normalizedPlayers);
 
         // Update local board if we have state for this player
         const myState = normalizedPlayers.find((p) => p.id === this.steamNetworking.steamId);
@@ -1297,6 +1664,20 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Update stats display
             this._updateLocalStats(myState);
+
+            // Tear down the ELIMINATED overlay the moment we're revived (round reset).
+            // Strict === true: a missing/undefined isAlive must never clear it early.
+            this._reconcileDeathOverlay(myState.isAlive === true);
+
+            // Drop-in mid-match joiner observed as dead/waiting with NO elimination animation
+            // (a fresh joiner doesn't get _showDeathAnimation): enter the full-roster watch
+            // view from the snapshot — robust to the join-time race where isAlive flips to
+            // false only after _activateMatch ran. Idempotent (eliminated players enter via
+            // _showDeathAnimation); revived/exit is handled by _clearDeathState on round restart.
+            if (!this.ffaGameState?.isSpectator && myState.isAlive === false
+                && !this._deadSpectating && !this._deathShown) {
+                this._enterDeadSpectate();
+            }
         }
 
         // Update opponent boards
@@ -1310,26 +1691,39 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Actually, let's let _handleRenderFrame handle visual updates.
             // But we need to update stats/metadata here?
 
-            // For now, we update mostly meta-data here. Visuals are in render loop.
-            const opponents = normalizedPlayers.filter((p) => p.id !== this.steamNetworking.steamId);
-            this.opponentWatchManager.updateFromState(opponents); // Keep this for metadata syncing
+            // Metadata + discrete grid only. We DROP currentPiece here so this 30Hz
+            // raw write can't stomp the 60fps interpolated piece that
+            // _processRenderFrame owns (the verified cause of opponent "snap every
+            // ~33ms"). The smooth, interpolated piece flows through the render loop.
+            const opponents = normalizedPlayers
+                .filter((p) => p.id !== this.steamNetworking.steamId)
+                .map(({ currentPiece, ...meta }) => meta);
+            this.opponentWatchManager.updateFromState(opponents);
         }
 
-        // Update scoreboard
-        const scoreboardPlayers = normalizedPlayers.map((p) => ({
-            id: p.id,
-            name: p.name,
-            frags: p.frags || 0,
-            score: p.score || 0,
-            lines: p.lines || 0,
-            isAlive: p.isAlive !== false,
-            color: p.color || this._getPlayerColor(p.id) || p.steamId && this._getPlayerColor(p.steamId),
-        }));
-        if (this.scoreboard) {
-            this.scoreboard.updatePlayers(scoreboardPlayers);
-        }
-        if (this.scoreboardOverlay) {
-            this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
+        // Update scoreboard — throttled to ~4Hz, sharing the SAME guard as the RAF
+        // render path (_processRenderFrame) so the two feeds don't contend and re-render
+        // the scoreboard ~30Hz (the peer snapshot rate). A 250ms scoreboard lag is
+        // imperceptible; it removes the churn that made tied rows flicker/jump.
+        const sbNow = Date.now();
+        if (!this._lastScoreboardUpdate || sbNow - this._lastScoreboardUpdate > 250) {
+            this._lastScoreboardUpdate = sbNow;
+            const scoreboardPlayers = normalizedPlayers.map((p) => ({
+                id: p.id,
+                name: p.name,
+                frags: p.frags || 0,
+                score: p.score || 0,
+                lines: p.lines || 0,
+                isAlive: p.isAlive !== false,
+                awaitingSpawn: p.awaitingSpawn === true,
+                color: p.color || this._getPlayerColor(p.id) || p.steamId && this._getPlayerColor(p.steamId),
+            }));
+            if (this.scoreboard) {
+                this.scoreboard.updatePlayers(scoreboardPlayers);
+            }
+            if (this.scoreboardOverlay) {
+                this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
+            }
         }
     }
 
@@ -1345,6 +1739,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             name: p.name,
             frags: p.frags || 0,
             isAlive: p.isAlive,
+            awaitingSpawn: p.awaitingSpawn === true,
             gameState: {
                 score: p.score || 0,
                 lines: p.lines || 0,
@@ -1356,6 +1751,75 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }));
 
         this._handleRenderFrame({ players });
+    }
+
+    /**
+     * Start the spectator render driver (watch-only spectators only).
+     *
+     * A spectator runs no game loop, so it never emits RENDER_FRAME and _processRenderFrame
+     * never runs for it — the one path that feeds a live/interpolated currentPiece into the
+     * watch boards. Without it the opponents' falling pieces freeze (the grid still updates
+     * at 30Hz via _handleStateUpdate, but currentPiece is stripped there to avoid fighting
+     * the interpolated piece on host/peer). This RAF loop rebuilds a render-frame from the
+     * latest snapshot (in the gameState-nested shape _processRenderFrame expects) and calls
+     * _processRenderFrame directly, so the spectator gets the SAME interpolation, roster
+     * setPlayers, garbage meters and scoreboard updates as a player — just RAF-driven.
+     *
+     * Idempotent (guards on _spectatorRenderId, like OpponentWatchManager.startAnimationLoop).
+     */
+    _startSpectatorRenderLoop() {
+        if (this._spectatorRenderId) return;
+        const tick = () => {
+            // Re-arm first so a throw in _processRenderFrame can't kill the loop permanently.
+            this._spectatorRenderId = requestAnimationFrame(tick);
+            const snap = this._latestSnapshotPlayers;
+            if (!snap || !snap.length) return; // no snapshot yet → nothing to render
+
+            // Flat snapshot player → the nested gameState shape _processRenderFrame reads.
+            // _processRenderFrame applies the snapshotInterpolator (already fed by
+            // _handleStateUpdate) on top, and its signature check drives setPlayers so
+            // mid-watch roster joins/leaves are reflected automatically.
+            const players = new Array(snap.length);
+            for (let i = 0; i < snap.length; i++) {
+                const p = snap[i];
+                players[i] = {
+                    steamId: p.id ?? p.steamId,
+                    name: p.name,
+                    color: p.color,
+                    isAlive: p.isAlive,
+                    awaitingSpawn: p.awaitingSpawn === true,
+                    isDisconnected: p.isDisconnected,
+                    frags: p.frags || 0,
+                    nextPieces: p.nextPieces,
+                    // Snapshots carry garbagePending (count) + garbageEntries (for coloured
+                    // segments), not a live GarbageQueue. Shim the interface the watch meter
+                    // reads so the spectator's garbage meters work like a player's.
+                    garbageQueue: {
+                        getTotalLines: () => p.garbagePending || 0,
+                        entries: p.garbageEntries || [],
+                    },
+                    gameState: {
+                        score: p.score || 0,
+                        lines: p.lines || 0,
+                        boardGrid: p.grid,
+                        currentPiece: p.currentPiece,
+                        nextPieces: p.nextPieces,
+                        blindTimers: p.blindTimers,
+                    },
+                };
+            }
+            this._processRenderFrame({ players, playerCount: players.length });
+        };
+        this._spectatorRenderId = requestAnimationFrame(tick);
+        console.log('[OnlineMultiplayer] 👁 Spectator render loop started');
+    }
+
+    /** Stop the spectator render driver (no-op if not running). */
+    _stopSpectatorRenderLoop() {
+        if (this._spectatorRenderId) {
+            cancelAnimationFrame(this._spectatorRenderId);
+            this._spectatorRenderId = null;
+        }
     }
 
     /**
@@ -1428,11 +1892,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Update local stats + garbage
             this._updateLocalStats({
                 frags: localPlayer.frags || 0,
-                deaths: 0,
+                deaths: localPlayer.deaths || 0,
                 score: localPlayer.gameState?.score || 0,
                 lines: localPlayer.gameState?.lines || 0,
             });
             this._updateGarbageMeter(localPlayer.garbageQueue);
+
+            // Safe revival check (=== true): never clears on a missing isAlive field.
+            this._reconcileDeathOverlay(localPlayer.isAlive === true);
         }
 
         // Update Opponent Boards with INTERPOLATION
@@ -1441,7 +1908,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             const renderTime = Date.now();
             let opponentIdx = 0;
 
-            for (let i = 0; i < playerCount && opponentIdx < 7; i++) {
+            for (let i = 0; i < playerCount && opponentIdx < this._opponentSlots.length; i++) {
                 const p = players[i];
                 if (!p || p.steamId === localId) continue;
 
@@ -1453,12 +1920,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 slot.name = p.name;
                 slot.color = p.color;
                 slot.isAlive = p.isAlive;
+                slot.awaitingSpawn = p.awaitingSpawn === true;
                 slot.frags = p.frags;
                 slot.garbageQueue = p.garbageQueue;
                 slot.garbagePending = p.garbageQueue?.getTotalLines?.() || 0;
                 slot.grid = gs.boardGrid || gs.grid;
                 slot.currentPiece = gs.currentPiece;
                 slot.nextPieces = gs.nextPieces;
+                slot.blindTimers = gs.blindTimers;
 
                 // Apply interpolation if available
                 const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
@@ -1482,19 +1951,42 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             const playerCard = document.getElementById('online-player-card');
             const localColor = localPlayer.color || this._getPlayerColor(localId);
 
-            if (localColor && playerCard) {
+            // PERF: these ~20 style writes only change when the local color or the window
+            // size changes — skip the whole block on the per-frame path otherwise (it was
+            // re-applying identical inline styles every RENDER_FRAME).
+            const cardStyleKey = localColor && playerCard
+                ? `${localColor}|${window.innerWidth}x${window.innerHeight}`
+                : null;
+            if (cardStyleKey && cardStyleKey === this._lastCardStyleKey) {
+                // unchanged — nothing to re-apply
+            } else if (localColor && playerCard) {
+                this._lastCardStyleKey = cardStyleKey;
                 // Set CSS custom properties (same as local multiplayer)
                 playerCard.style.setProperty('--player-primary', localColor);
                 playerCard.style.setProperty('--player-primary-light', localColor);
                 playerCard.style.setProperty('--player-glow', `${localColor}80`);
 
-                // Set board dimensions — account for next pieces (~60px), stats bar (~50px), padding (~70px)
-                const boardWidth = Math.min(
-                    Math.max(180, window.innerWidth * 0.20),
-                    280,
-                    (window.innerHeight - 180) / 2.2
-                );
-                const boardHeight = boardWidth * 2;
+                // Size the HERO board to FILL the center column (Quadra: the focused board is
+                // the star), instead of the old fixed 280px cap that left the wide 1fr center
+                // column mostly empty. Drive both dims off a single per-block cell so the 10x20
+                // board stays 1:2 and fully visible. Measure .main-board-panel (now fills its
+                // grid track); fall back to a window-derived estimate if it isn't laid out yet.
+                // NOTE: --board-width is set on #online-player-card (scoped) — local/single-player
+                // use their own cards, so this does not affect them.
+                const mainPanel = document.querySelector('.main-board-panel');
+                // clamp() mirrors --online-opponents-width / --online-info-width in multiplayer-ui.css.
+                const clampPx = (min, vwFrac, max) => Math.min(max, Math.max(min, window.innerWidth * vwFrac));
+                const estColW = window.innerWidth - 32 - 20 - clampPx(300, 0.24, 460) - clampPx(300, 0.20, 440);
+                const colW = (mainPanel && mainPanel.clientWidth > 200) ? mainPanel.clientWidth : estColW;
+                const colH = (mainPanel && mainPanel.clientHeight > 200) ? mainPanel.clientHeight : (window.innerHeight - 32);
+                // Chrome reserved around the board: garbage meter + card padding (~60px horiz);
+                // NEXT-piece row + stats bar + card padding + breathing room (~350px vert). The
+                // extra reserve (was 280) keeps the stats bar visible AND leaves a clear margin
+                // above/below the hero board so it doesn't crowd the top/bottom screen edges.
+                // Max cell 72 keeps it from getting oversized on tall displays.
+                const cell = Math.max(16, Math.min(72, Math.floor(Math.min((colW - 60) / 10, (colH - 350) / 20))));
+                const boardWidth = 10 * cell;
+                const boardHeight = 20 * cell;
                 playerCard.style.setProperty('--board-width', `${boardWidth}px`);
                 playerCard.style.setProperty('--board-height', `${boardHeight}px`);
                 playerCard.style.setProperty('--next-piece-size', '38px');
@@ -1557,6 +2049,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     name: p.name,
                     frags: p.frags || 0,
                     isAlive: p.isAlive !== false,
+                    awaitingSpawn: p.awaitingSpawn === true,
                     isDisconnected: p.isDisconnected,
                     grid: p.gameState?.boardGrid || p.gameState?.grid,
                     currentPiece: p.gameState?.currentPiece,
@@ -1585,6 +2078,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     score: p.gameState?.score || 0,
                     lines: p.gameState?.lines || 0,
                     isAlive: p.isAlive !== false,
+                    awaitingSpawn: p.awaitingSpawn === true,
                     color: p.color || this._getPlayerColor(p.steamId),
                 });
             }
@@ -1623,6 +2117,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 killerColor,
                 victimColor,
                 isSelfKill,
+                // Stable, node-independent identity: a victim dies once per round, and
+                // roundNumber is in lock-step on host + peer. So the host's local
+                // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the
+                // SAME eventId → both nodes show one identical row (no clock-skewed dedup).
+                eventId: victimId ? `death:${victimId}:${this.roundNumber}` : undefined,
             });
         }
 
@@ -1642,13 +2141,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
+        // Idempotent: a single death can be signalled by both PLAYER_TOPPED_OUT and
+        // _handlePlayerDeath — only animate once per death until the next clear.
+        if (this._deathShown) return;
+        this._deathShown = true;
+
+        // B5: eliminated → keep watching. Expand to the full-roster watch view so a dead
+        // player can follow everyone still playing (not just the 4-up beside their now-dead
+        // board) until the round resolves. Reverted on revive in _clearDeathState.
+        this._enterDeadSpectate();
+
         // 1. Camera flash effect (if board scene available)
         if (this.mainBoardScene?.cameras?.main) {
             this.mainBoardScene.cameras.main.flash(400, 255, 255, 255, false);
         }
 
         boardContainer.classList.add('death-shake');
-        setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
+        if (this._deathShakeTimer) clearTimeout(this._deathShakeTimer);
+        this._deathShakeTimer = setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
 
         // 2. Create white flash overlay
         const flashOverlay = document.createElement('div');
@@ -1677,8 +2187,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }, 200);
         });
 
-        // 3. Create death overlay with skull and text (after flash)
-        setTimeout(() => {
+        // 3. Create death overlay with skull and text (after flash).
+        // Track the handle so _clearDeathState can cancel a still-pending overlay
+        // (a round-ending death emits ROUND_RESTART BEFORE this fires).
+        if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
+        this._deathOverlayTimer = setTimeout(() => {
+            this._deathOverlayTimer = null;
+            // If we were revived/cleared while the timer was pending, don't show it.
+            if (!this._deathShown) return;
             this._createDeathOverlay(boardContainer, killerName);
         }, 500);
 
@@ -1777,22 +2293,86 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Clear death state from the main board (for rematch/new game)
      */
     _clearDeathState() {
+        // Cancel any still-pending death animation so it can't be born after the
+        // round already reset (the orphaned-timeout bug that stuck "ELIMINATED").
+        if (this._deathOverlayTimer) {
+            clearTimeout(this._deathOverlayTimer);
+            this._deathOverlayTimer = null;
+        }
+        if (this._deathShakeTimer) {
+            clearTimeout(this._deathShakeTimer);
+            this._deathShakeTimer = null;
+        }
+        this._deathShown = false;
+
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
-        // Remove eliminated class
         boardContainer.classList.remove('eliminated');
+        boardContainer.classList.remove('death-shake');
+        boardContainer.querySelector('.death-overlay')?.remove();
+        boardContainer.querySelector('.death-flash-overlay')?.remove();
 
-        // Remove death overlay
-        const deathOverlay = boardContainer.querySelector('.death-overlay');
-        if (deathOverlay) {
-            deathOverlay.remove();
+        // B5: revived (round restart) → back to the normal watch-while-playing view.
+        this._exitDeadSpectate();
+    }
+
+    /**
+     * B5 — spectate-after-death: when the LOCAL player is eliminated but the match
+     * continues, expand the opponent watch grid to the full roster so they can watch
+     * everyone still alive. (A pure spectator is already full-roster, so skip.) Reverted
+     * by _exitDeadSpectate on revive.
+     */
+    _enterDeadSpectate() {
+        if (this._deadSpectating || this.ffaGameState?.isSpectator) return;
+        if (!this.opponentWatchManager) return;
+        this._deadSpectating = true;
+        this._preDeathMaxVisible = this.opponentWatchManager.maxVisible;
+        // setMaxVisible widens the CSS grid (full-roster class) so all alive players fit.
+        this.opponentWatchManager.setMaxVisible(8);
+        document.getElementById('online-multiplayer-container')?.classList.add('dead-spectating');
+        // A DROP-IN joiner (waiting, no elimination animation) gets a clear "you'll spawn
+        // next round" banner over its empty board. An ELIMINATED player (_deathShown) already
+        // has the "ELIMINATED" overlay, so don't add the join banner for them.
+        if (!this._deathShown) {
+            this._showDropInWaitingBanner();
         }
+    }
 
-        // Remove flash overlay
-        const flashOverlay = boardContainer.querySelector('.death-flash-overlay');
-        if (flashOverlay) {
-            flashOverlay.remove();
+    _exitDeadSpectate() {
+        if (!this._deadSpectating) return;
+        this._deadSpectating = false;
+        this.opponentWatchManager?.setMaxVisible(this._preDeathMaxVisible || 4);
+        document.getElementById('online-multiplayer-container')?.classList.remove('dead-spectating');
+        this._hideDropInWaitingBanner();
+    }
+
+    /** Banner over the (empty) main board telling a mid-match drop-in joiner they're queued. */
+    _showDropInWaitingBanner() {
+        const container = document.getElementById('online-main-board');
+        if (!container || container.querySelector('.dropin-waiting-banner')) return;
+        if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+        const banner = document.createElement('div');
+        banner.className = 'dropin-waiting-banner';
+        banner.innerHTML = '<span class="dropin-waiting-icon">⏳</span> Joined mid-match — you\'ll spawn next round';
+        // Fit + WRAP within the board (was white-space:nowrap, which overflowed the narrow board
+        // and got clipped at both ends by overflow:hidden).
+        banner.style.cssText = 'position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:40;max-width:calc(100% - 16px);box-sizing:border-box;padding:8px 12px;border-radius:10px;background:rgba(8,10,23,0.88);border:1px solid rgba(94,234,212,0.45);color:#5eead4;font-weight:700;font-size:12px;letter-spacing:0.2px;line-height:1.3;text-align:center;white-space:normal;overflow-wrap:break-word;pointer-events:none;box-shadow:0 0 16px rgba(94,234,212,0.2);';
+        container.appendChild(banner);
+    }
+
+    _hideDropInWaitingBanner() {
+        document.getElementById('online-main-board')?.querySelector('.dropin-waiting-banner')?.remove();
+    }
+
+    /**
+     * Reconcile the death overlay against authoritative liveness. Driven from
+     * state updates so the overlay is torn down the instant the local player is
+     * revived (round restart), independent of event ordering/timeouts.
+     */
+    _reconcileDeathOverlay(isAlive) {
+        if (isAlive === true && this._deathShown) {
+            this._clearDeathState();
         }
     }
 
@@ -2044,6 +2624,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.qosHud.update(this.networkStats);
     }
 
+    _updateInterpolationNetworkStats(players = []) {
+        if (!this.networkStats || !this.snapshotInterpolator || !this._adaptiveInterpEnabled) return;
+        const localId = this.steamNetworking?.steamId;
+        const opponent = players.find((p) => p && p.id !== localId && p.steamId !== localId);
+        if (!opponent) {
+            this.networkStats.interpDelayMs = null;
+            this.networkStats.interpJitterMs = null;
+            this.networkStats.interpBuffer = null;
+            return;
+        }
+
+        const stats = this.snapshotInterpolator.getStats(opponent.steamId || opponent.id);
+        this.networkStats.interpDelayMs = stats.interpolationDelay;
+        this.networkStats.interpJitterMs = stats.jitterMs;
+        this.networkStats.interpBuffer = stats.bufferSize;
+        this._updateNetworkHud();
+    }
+
     _renderGarbageSegments(container, garbageQueue, totalLines) {
         container.innerHTML = '';
         if (!garbageQueue || totalLines <= 0) return;
@@ -2159,7 +2757,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._lastStats.deaths = deaths;
         }
         if (score !== this._lastStats.score && this._statElements.score) {
-            this._statElements.score.textContent = score;
+            this._statElements.score.textContent = score.toLocaleString();
             this._lastStats.score = score;
         }
         if (lines !== this._lastStats.lines && this._statElements.lines) {
@@ -2244,6 +2842,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return false;
             this.ffaGameState?.sendInput('move', { direction: dir });
             // Board juice: nudge + tilt on move
             if (this.boardJuice) {
@@ -2253,6 +2853,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         window.rotate = (dir) => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return;
             this.ffaGameState?.sendInput('rotate', { direction: dir });
             // Board juice: tilt on rotate
             if (this.boardJuice) {
@@ -2261,10 +2863,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         window.softDrop = () => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return false;
             this.ffaGameState?.sendInput('drop', { type: 'soft' });
         };
 
         window.hardDrop = () => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return;
             this.ffaGameState?.sendInput('drop', { type: 'hard' });
             // Board juice: dip + bounce on hard drop
             if (this.boardJuice) {
@@ -2331,8 +2937,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.ffaGameState.chatHistory.push(payload);
         }
 
-        // Broadcast to others (handled by ffa game state listeners)
-        this.ffaGameState.network.broadcastToAll('game:chat', payload);
+        // Deliver: the host fans out to all peers; a peer sends to the host, which
+        // rebroadcasts. (broadcastToAll hard-guards non-hosts, so peers MUST relay
+        // via the host or their message is silently dropped on real Steam.)
+        const network = this.ffaGameState.network;
+        if (network.isHost) {
+            network.broadcastToAll('game:chat', payload);
+        } else if (network.hostSteamId) {
+            network.sendP2PMessage(network.hostSteamId, 'game:chat', payload);
+        }
     }
 
     /**
@@ -2372,73 +2985,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         });
     }
 
-    /**
-     * Start the online game loop
-     */
-    _startOnlineGameLoop() {
-        const SYNC_INTERVAL = 33; // ~30Hz
-        const TELEMETRY_INTERVAL = 1000;
-        let lastTime = performance.now();
-        let timeSinceSync = 0;
-        let timeSinceTelemetry = 0;
-
-        const loop = (currentTime) => {
-            if (!this.isInMatch) {
-                console.log('[OnlineMultiplayer] Game loop stopped');
-                return;
-            }
-
-            const delta = currentTime - lastTime;
-            lastTime = currentTime;
-            timeSinceSync += delta;
-            timeSinceTelemetry += delta;
-
-            if (timeSinceTelemetry >= TELEMETRY_INTERVAL) {
-                performanceMonitor.setNetworkStats({
-                    packet: this.steamNetworking?.getPacketStats?.() || null,
-                    backpressure: this.steamNetworking?.getBackpressureStats?.() || null,
-                });
-                timeSinceTelemetry = 0;
-            }
-
-            // Host: Run game physics and broadcast state
-            if (this.steamNetworking.isHost && this.ffaGameState) {
-                // Update all player states
-                this.ffaGameState.update(delta);
-
-                if (this.mainBoardScene) {
-                    const localPlayer = this.ffaGameState.players.get(this.steamNetworking.steamId);
-                    if (localPlayer && this.mainBoardScene.gameState !== localPlayer.gameState) {
-                        this.mainBoardScene.gameState = localPlayer.gameState;
-                    }
-                }
-
-                // Update Next Queue
-                if (this.ffaGameState.nextPieces) {
-                    const nextIds = this.ffaGameState.nextPieces.join(',');
-                    if (nextIds !== this.lastNextPieceIds) {
-                        updateNextQueue(this.ffaGameState.nextPieces, 'online-next-queue-container');
-                        this.lastNextPieceIds = nextIds;
-                    }
-                }
-
-                // Broadcast state on elapsed time, not display refresh rate
-                if (timeSinceSync >= SYNC_INTERVAL) {
-                    this._broadcastGameState();
-                    timeSinceSync %= SYNC_INTERVAL;
-                }
-
-                // Update local UI for host matching the broadcast rate or higher (e.g. every frame or 30Hz)
-                this._updateHostUI();
-            }
-
-            // Continue loop
-            this.gameLoopId = requestAnimationFrame(loop);
-        };
-
-        console.log('[OnlineMultiplayer] Starting game loop');
-        this.gameLoopId = requestAnimationFrame(loop);
-    }
+    // [removed 2026-06-23] _startOnlineGameLoop() was DEAD CODE — never called, and it
+    // called this.ffaGameState.update(delta) which does not exist on FFAGameStateP2P
+    // (the real loop is UnifiedMultiplayerLoop driving FFAGameStateP2P.onUpdate). It was
+    // deleted so nobody "revives" it by wiring it up (it would throw / double-broadcast).
+    // The orphaned _broadcastGameState()/_updateHostUI() helpers below belonged to it.
 
     /**
      * Broadcast full game state to all peers (host only)
@@ -2451,9 +3002,47 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
+     * GPU-contention relief, NOW DEFAULT OFF (opt-IN): originally this paused the animated
+     * WebGPU/Three.js ambient theme during an online match (A5), because a mid-range peer
+     * (RTX 3070) logged sustained frame drops + a 0.5 render-scale that made the peer's
+     * RAF-coupled prediction choppy. Since then the peer feel was fixed structurally
+     * (PEER-OWNS-BOARD), so the theme no longer needs to be frozen — and freezing it left
+     * the background visibly static during online play (single-player keeps it animating).
+     * So the theme now KEEPS ANIMATING online exactly like single-player. Low-end machines
+     * can still restore the relief by OPTING IN with localStorage 'serenity.mpSuspendTheme'='1'.
+     * ALWAYS resumed in _cleanupGameRendering (no-op when not suspended).
+     */
+    _suspendThemeForMatch() {
+        try {
+            const optedIn = typeof localStorage !== 'undefined' && localStorage.getItem('serenity.mpSuspendTheme') === '1';
+            if (optedIn && !this._themeSuspendedForMatch && window.themeManager?.suspendThemes) {
+                window.themeManager.suspendThemes();
+                this._themeSuspendedForMatch = true;
+                console.log('[OnlineMultiplayer] Heavy theme suspended for match (opt-in GPU-contention relief; serenity.mpSuspendTheme=1)');
+            }
+        } catch (err) {
+            // Never let theme control break the match.
+            console.warn('[OnlineMultiplayer] suspendThemeForMatch failed:', err?.message);
+        }
+    }
+
+    _resumeThemeAfterMatch() {
+        try {
+            if (this._themeSuspendedForMatch && window.themeManager?.resumeThemes) {
+                this._themeSuspendedForMatch = false;
+                window.themeManager.resumeThemes();
+                console.log('[OnlineMultiplayer] Theme resumed after match');
+            }
+        } catch (err) {
+            console.warn('[OnlineMultiplayer] resumeThemeAfterMatch failed:', err?.message);
+        }
+    }
+
+    /**
      * Clean up game rendering
      */
     _cleanupGameRendering() {
+        this._resumeThemeAfterMatch();
         this._clearRoundStartEffects();
         this.roundStingerRunId += 1;
         if (this.roundStingerElement) {
@@ -2466,6 +3055,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             cancelAnimationFrame(this.gameLoopId);
             this.gameLoopId = null;
         }
+
+        // Stop the spectator render driver BEFORE the opponentWatchManager is destroyed
+        // below, so no queued frame calls _processRenderFrame on a torn-down manager.
+        this._stopSpectatorRenderLoop();
+        this._latestSnapshotPlayers = null;
 
         // Destroy Phaser game
         if (this.mainPhaserGame) {

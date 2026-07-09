@@ -63,6 +63,8 @@ export class StormDirector {
         this.whiteout = 0; // 0..~1.2 whiteout flash
         this.flare = 0; // 0..~1.2 aurora flare
         this.kick = 0; // 0..~1.2 camera dolly-push punch (fast decay)
+        this.trauma = 0; // 0..1 screen-shake energy (rotational, decaying)
+        this.vortex = 0; // 0..~1.2 centered swirl burst (T-spin / combo×6)
 
         // Accent color, eased toward target
         this.accentHex = STORM_ACCENTS.default;
@@ -110,6 +112,8 @@ export class StormDirector {
         if (opts.whiteout) this.whiteout = Math.min(1.2, this.whiteout + opts.whiteout);
         if (opts.flare) this.flare = Math.min(1.2, this.flare + opts.flare);
         if (opts.kick) this.kick = Math.min(1.2, this.kick + opts.kick);
+        if (opts.trauma) this.trauma = Math.min(1.0, this.trauma + opts.trauma);
+        if (opts.vortex) this.vortex = Math.min(1.2, this.vortex + opts.vortex);
         this._setAccent(opts.accent);
     }
 
@@ -120,7 +124,9 @@ export class StormDirector {
     }
 
     onHardDrop() {
-        this.bump(0.045, { gustDir: Math.random() > 0.5 ? 1 : -1, gust: 0.4, kick: 0.4 });
+        this.bump(0.045, {
+            gustDir: Math.random() > 0.5 ? 1 : -1, gust: 0.4, kick: 0.4, trauma: 0.16,
+        });
     }
 
     onLineClear(lines = 1, combo = 0) {
@@ -134,6 +140,7 @@ export class StormDirector {
             whiteout: lines >= 4 ? 0.7 : 0,
             flare: 0.3 + lines * 0.12,
             kick: 0.28 + lines * 0.16, // tetris ≈ 0.9 dolly-push
+            trauma: lines >= 4 ? 0.45 : lines * 0.06,
             accent: STORM_ACCENTS[tier],
         });
     }
@@ -158,6 +165,20 @@ export class StormDirector {
         this.bump(0.08, { gustDir: Math.random() > 0.5 ? 1 : -1, gust: 0.5, flare: 0.4 });
     }
 
+    onTSpin(lines = 0) {
+        // The signature "twist" — a swirling vortex burst + violet accent.
+        this.bump(0.18 + lines * 0.05, {
+            flare: 0.5, kick: 0.35, vortex: 1.2, trauma: 0.25, accent: STORM_ACCENTS.triple,
+        });
+    }
+
+    onPerfectClear() {
+        // The reserved crescendo — whiteout bloom + aurora flare + the biggest shake.
+        this.bump(0.4, {
+            whiteout: 1.0, flare: 1.0, kick: 0.6, trauma: 0.55, accent: STORM_ACCENTS.tetris,
+        });
+    }
+
     update(delta = 0) {
         const dt = Math.min(0.1, Math.max(0, delta));
         this.time += dt;
@@ -177,6 +198,8 @@ export class StormDirector {
         this.whiteout = Math.max(0, this.whiteout - dt * 1.4);
         this.flare = Math.max(0, this.flare - dt * 0.9);
         this.kick = Math.max(0, this.kick - dt * 3.2); // fast ~0.3s punch
+        this.trauma = Math.max(0, this.trauma - dt * 0.8);
+        this.vortex = Math.max(0, this.vortex - dt * 1.2);
 
         // When calm for a while, let accent drift back to the default teal.
         if (this.intensity <= this.idleFloor + 0.05 && this.timeSinceActivity > 4) {
@@ -188,20 +211,24 @@ export class StormDirector {
         this.accent.b += (this._targetAccent.b - this.accent.b) * k;
     }
 
-    /** Snapshot for consumers / debug. */
+    /** Snapshot for consumers / debug. Reuses ONE object (mutated in place) so the
+     * per-frame theme→effect push allocates nothing — avoids steady GC pressure / stutter.
+     * Consumers read it the same frame, so in-place reuse is safe. */
     getState() {
-        return {
-            intensity: this.intensity,
-            act: this.act,
-            actProgress: this.actProgress,
-            gust: this.gust,
-            gustDir: this.gustDir,
-            whiteout: this.whiteout,
-            flare: this.flare,
-            kick: this.kick,
-            accent: this.accent,
-            accentHex: this.accentHex,
-        };
+        const s = this._stateOut || (this._stateOut = {});
+        s.intensity = this.intensity;
+        s.act = this.act;
+        s.actProgress = this.actProgress;
+        s.gust = this.gust;
+        s.gustDir = this.gustDir;
+        s.whiteout = this.whiteout;
+        s.flare = this.flare;
+        s.kick = this.kick;
+        s.trauma = this.trauma;
+        s.vortex = this.vortex;
+        s.accent = this.accent;
+        s.accentHex = this.accentHex;
+        return s;
     }
 
     reset() {
@@ -211,6 +238,8 @@ export class StormDirector {
         this.whiteout = 0;
         this.flare = 0;
         this.kick = 0;
+        this.trauma = 0;
+        this.vortex = 0;
         this.timeSinceActivity = 999;
         this._setAccent(STORM_ACCENTS.default);
         this.accent = hexToRgb(STORM_ACCENTS.default);

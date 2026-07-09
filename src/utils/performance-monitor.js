@@ -4,9 +4,11 @@
  */
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { escapeHtml } from './dom-safety.js';
 
 const FRAME_BUDGET_MS = 16.67; // 60fps target
 const SAMPLE_SIZE = 60; // 1 second worth of samples at 60fps
+const FRAME_TIME_LOG_LIMIT = 30000;
 const MEMORY_CHECK_INTERVAL = 1000; // Check memory every second
 const DISPLAY_UPDATE_INTERVAL = 500; // Update display every 500ms for stability
 const GRAPH_WIDTH = 240; // Width of frame time graph in pixels
@@ -70,6 +72,7 @@ export class PerformanceMonitor {
 
         // Sample buffers
         this.frameTimes = [];
+        this.frameTimeLog = [];
         this.fpsHistory = [];
         this.inputLatencyHistory = [];
 
@@ -274,6 +277,7 @@ export class PerformanceMonitor {
         this._hasEmittedDownscale = false;
 
         this.frameTimes = [];
+        this.frameTimeLog = [];
         this.fpsHistory = [];
         this.inputLatencyHistory = [];
         this.memoryHistory = [];
@@ -282,6 +286,16 @@ export class PerformanceMonitor {
         this.latestNetworkStats = null;
         this.sectionTimers.clear();
         this.sectionMetrics.clear();
+        this.renderCounters = {
+            calls: 0,
+            triangles: 0,
+            geometries: 0,
+            textures: 0,
+            programs: 0,
+            callsAvg: 0,
+            trianglesAvg: 0,
+        };
+        this._counterSamples = { calls: [], triangles: [] };
 
         console.log('[PerformanceMonitor] Metrics reset');
     }
@@ -360,6 +374,10 @@ export class PerformanceMonitor {
         this.frameTimes.push(frameTime);
         if (this.frameTimes.length > SAMPLE_SIZE) {
             this.frameTimes.shift();
+        }
+        this.frameTimeLog.push(frameTime);
+        if (this.frameTimeLog.length > FRAME_TIME_LOG_LIMIT) {
+            this.frameTimeLog.shift();
         }
 
         // Calculate FPS
@@ -944,6 +962,48 @@ export class PerformanceMonitor {
         };
     }
 
+    getFrameTimeSamples() {
+        return [...this.frameTimeLog];
+    }
+
+    getFrameTimeSummary(targetFrameRate = 60) {
+        const target = Number.isFinite(Number(targetFrameRate)) && Number(targetFrameRate) > 0
+            ? Math.min(1000, Math.max(30, Number(targetFrameRate)))
+            : 60;
+        const budgetMs = 1000 / target;
+        const sorted = this.frameTimeLog
+            .filter((sample) => Number.isFinite(sample) && sample >= 0)
+            .sort((a, b) => a - b);
+        const count = sorted.length;
+        if (count === 0) {
+            return {
+                count: 0,
+                budgetMs,
+                p50: 0,
+                p95: 0,
+                p99: 0,
+                max: 0,
+                overBudget: 0,
+                overBudgetPct: 0,
+            };
+        }
+        const percentile = (fraction) => {
+            const index = Math.min(count - 1, Math.max(0, Math.round(fraction * (count - 1))));
+            return sorted[index];
+        };
+        const overBudget = sorted.reduce((total, sample) => total + (sample > budgetMs ? 1 : 0), 0);
+        return {
+            count,
+            budgetMs,
+            p50: percentile(0.5),
+            p95: percentile(0.95),
+            p99: percentile(0.99),
+            max: sorted[count - 1],
+            overBudget,
+            overBudgetPct: (overBudget / count) * 100,
+        };
+    }
+
     /**
      * Get current metrics
      */
@@ -1274,20 +1334,20 @@ export class PerformanceMonitor {
             </div>
             ${webglRenderer ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(webglRenderer)}">
-                WebGL: <span style="color: #0f0;">${simplifyGPUName(webglRenderer)}</span>
+                WebGL: <span style="color: #0f0;">${escapeHtml(simplifyGPUName(webglRenderer))}</span>
             </div>` : ''}
             ${desktopGpuInfo?.adapterLabel ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(desktopGpuInfo.adapterTitle)}">
-                Desktop: <span style="color: #0ff;">${desktopGpuInfo.adapterLabel}</span>
+                Desktop: <span style="color: #0ff;">${escapeHtml(desktopGpuInfo.adapterLabel)}</span>
             </div>` : ''}
             ${desktopGpuInfo?.featureSummary ? `
             <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;" title="${escapeAttribute(desktopGpuInfo.switchSummary)}">
-                GPU Status: <span style="color: #8ff;">${desktopGpuInfo.featureSummary}</span>
+                GPU Status: <span style="color: #8ff;">${escapeHtml(desktopGpuInfo.featureSummary)}</span>
             </div>` : ''}
             ${desktopGpuInfo?.healthSummary || desktopGpuInfo?.angleBackend ? `
             <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;">
-                ${desktopGpuInfo.healthSummary ? `<span style="color: #ffd166;">${desktopGpuInfo.healthSummary}</span>` : ''}
-                ${desktopGpuInfo.angleBackend ? `<span style="color: #8ff;"> · ANGLE: ${desktopGpuInfo.angleBackend}</span>` : ''}
+                ${desktopGpuInfo.healthSummary ? `<span style="color: #ffd166;">${escapeHtml(desktopGpuInfo.healthSummary)}</span>` : ''}
+                ${desktopGpuInfo.angleBackend ? `<span style="color: #8ff;"> · ANGLE: ${escapeHtml(desktopGpuInfo.angleBackend)}</span>` : ''}
             </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
@@ -1467,6 +1527,8 @@ if (typeof window !== 'undefined') {
         recordCounters: (counters) => performanceMonitor.recordCounters(counters),
         getCounters: () => ({ ...performanceMonitor.renderCounters }),
         getPercentiles: () => performanceMonitor.getFrameTimePercentiles(),
+        getFrameTimes: () => performanceMonitor.getFrameTimeSamples(),
+        getFrameTimeSummary: (targetFrameRate) => performanceMonitor.getFrameTimeSummary(targetFrameRate),
         setAdaptiveDownscaleSuppressed: (b) => performanceMonitor.setAdaptiveDownscaleSuppressed(b),
         // Phase J: spike logger surfacing.
         setSpikeContextCollector: (fn) => performanceMonitor.setSpikeContextCollector(fn),

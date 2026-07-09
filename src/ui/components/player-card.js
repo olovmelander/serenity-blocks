@@ -10,6 +10,7 @@
 
 import steamService from '../../core/steam/steam-service.js';
 import { AVATAR_SIZES } from '../../core/steam/steam-config.js';
+import { sanitizeCssColor } from '../../utils/dom-safety.js';
 
 // CSS for player card (injected once)
 const PLAYER_CARD_STYLES = `
@@ -143,6 +144,7 @@ export function createPlayerCard(options = {}) {
 
     const sizeClass = size;
     const sizePx = AVATAR_SIZES[size.toUpperCase()] || 64;
+    const safeColor = sanitizeCssColor(color, '#8b5cf6');
 
     // Create card container
     const card = document.createElement('div');
@@ -155,8 +157,8 @@ export function createPlayerCard(options = {}) {
     // Avatar container with border
     const avatarContainer = document.createElement('div');
     avatarContainer.className = `player-avatar-container ${sizeClass}`;
-    avatarContainer.style.border = `3px solid ${color}`;
-    avatarContainer.style.boxShadow = `0 0 ${sizePx / 4}px ${color}80`;
+    avatarContainer.style.border = `3px solid ${safeColor}`;
+    avatarContainer.style.boxShadow = `0 0 ${sizePx / 4}px ${safeColor}80`;
 
     // Skeleton placeholder (shown during loading)
     const skeleton = document.createElement('div');
@@ -187,7 +189,7 @@ export function createPlayerCard(options = {}) {
     }
 
     // Load avatar asynchronously
-    loadAvatarAsync(avatarContainer, steamId, name, color, size);
+    loadAvatarAsync(avatarContainer, steamId, name, safeColor, size);
 
     return card;
 }

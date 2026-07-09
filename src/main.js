@@ -32,6 +32,7 @@ import {
     markBoardDirty,
 } from './core/game.js';
 import { insertGarbageEntries } from './core/garbage.js';
+import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
 import { rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
@@ -80,9 +81,21 @@ import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
+import {
+    BOOT_WARP_PREWARM_TIMEOUT_MS,
+    BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
+    BOOT_WARP_MAX_PREWARM_ATTEMPTS,
+    waitForStartupThemeIdle,
+    waitForIntroRendererDecision,
+} from './ui/boot-warp-startup.js';
+import { markStartup } from './ui/startup-debug.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
-import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from './ui/cinematic-loading-overlay.js';
+import {
+    showCinematicLoadingOverlay,
+    dismissCinematicLoadingOverlay,
+    setCinematicLoadingOverlayBuilding,
+} from './ui/cinematic-loading-overlay.js';
 // Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
 // Side-effect import: self-initialises on the `start` modal.
 import './ui/menu-card-interactions.js';
@@ -106,6 +119,7 @@ import {
 import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
 
 import { CustomCursor } from './ui/components/custom-cursor.js';
+import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
 import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
 
 const RIPPLE_BORDER_ALPHA = 0.8;
@@ -629,11 +643,9 @@ function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = {}) {
     };
 }
 
-function updateStartupShellStatus(statusText) {
-    const shellStatus = document.getElementById('startup-shell-status');
-    if (shellStatus && statusText) {
-        shellStatus.textContent = statusText;
-    }
+function updateStartupShellStatus() {
+    // No-op. The studio ident is a pure logo splash — the loading status line was
+    // removed. Kept as a harmless no-op so existing call sites don't break.
 }
 
 async function reportDesktopStartupPhase(phase, payload = {}) {
@@ -647,6 +659,40 @@ async function reportDesktopStartupPhase(phase, payload = {}) {
 
 let startupShellDismissed = false;
 let startupShellReadyReported = false;
+let startupShellShownAt = 0;
+
+/**
+ * If a studio-logo image `src` is set on #startup-logo-image, reveal it and hide the
+ * text placeholder — lets branding be swapped with just an HTML src, no JS edits.
+ */
+function initStartupLogo() {
+    const img = document.getElementById('startup-logo-image');
+    if (!img) return;
+    const src = (img.getAttribute('src') || '').trim();
+    if (src) {
+        img.hidden = false;
+        // Hide the whole text placeholder (mark + glow + name + sheen) when a real
+        // studio logo image is provided.
+        ['.startup-logo__markwrap', '.startup-logo__name'].forEach((sel) => {
+            const el = document.querySelector(sel);
+            if (el) el.style.display = 'none';
+        });
+    }
+}
+
+/**
+ * Ensure the studio-logo splash is shown for at least `ms` so it reads as an
+ * intentional ident (not a flash) even when boot/warm is fast.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function waitForStartupLogoMinVisible(ms = 4000) {
+    if (!startupShellShownAt) return Promise.resolve();
+    const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const remaining = ms - (now - startupShellShownAt);
+    if (remaining <= 0) return Promise.resolve();
+    return new Promise((resolve) => { setTimeout(resolve, remaining); });
+}
 
 async function revealStartupShell() {
     if (startupShellReadyReported) {
@@ -654,12 +700,16 @@ async function revealStartupShell() {
     }
 
     document.body.classList.add('startup-shell-active');
+    startupShellShownAt = typeof performance !== 'undefined' && performance.now
+        ? performance.now()
+        : Date.now();
+    initStartupLogo();
     await onNextPaint();
     startupShellReadyReported = true;
     await reportDesktopStartupPhase('startup-shell-ready');
 }
 
-function dismissStartupShell(reason = 'ready') {
+function dismissStartupShell(reason = 'ready', options = {}) {
     if (startupShellDismissed) {
         return;
     }
@@ -672,11 +722,31 @@ function dismissStartupShell(reason = 'ready') {
         return;
     }
 
+    // Quick handoff: the WebGPU particle warp is taking over the reveal, so we only
+    // need a fast opacity fade of the ident to expose the warp's diamond beneath —
+    // NOT the ~2.75s CSS "Diamond Ignition → Nebula Birth" develop-out.
+    if (options.quick === true) {
+        shell.classList.add('is-warp-out');
+        performanceMonitor.recordEvent('startup_shell_dismissed', { reason, quick: true });
+        // Outlast the 420ms cross-dissolve so the opaque shell covers the whole handoff
+        // (no black frame can flash between shell-gone and warp-still-brightening).
+        setTimeout(() => { shell.remove(); }, 620);
+        return;
+    }
+
     shell.classList.add('is-hidden');
     performanceMonitor.recordEvent('startup_shell_dismissed', { reason });
+    // Drop will-change on the promoted exit layers just before removal so they don't
+    // keep taxing the compositor if the node lingers.
+    setTimeout(() => {
+        shell.querySelectorAll('.startup-logo, .startup-logo__mark, .startup-logo__glow, .startup-shell__bloom, .startup-shell__spotlight, .startup-shell__ember')
+            .forEach((el) => { el.style.willChange = 'auto'; });
+    }, 2800);
+    // Outlast the ~2.75s "Diamond Ignition → Nebula Birth" reveal so the shell (and its
+    // white-out) isn't yanked mid-develop-out — which would pop a hard cut/black.
     setTimeout(() => {
         shell.remove();
-    }, 260);
+    }, 2900);
 }
 
 /**
@@ -712,6 +782,7 @@ class SerenityBlocks {
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.customCursor = null;
         this.cleanupHandlers = [];
+        this.isCleaningUp = false;
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
         this._handledPreloadError = false;
         this.globalSerenityHubInitPromise = null;
@@ -845,22 +916,41 @@ class SerenityBlocks {
         this.startBackgroundScene();
     }
 
+    /**
+     * Mount the cosmic cursor. Idempotent — safe to call EARLY (during the boot splash,
+     * so the cursor is visible from the very start) AND from the deferred menu-idle path.
+     * Cheap when idle (throttled rAF, only paints on pointer movement) and it still honors
+     * the customCursorEnabled setting via the cursor's own shouldRender() gate.
+     */
+    mountCustomCursor() {
+        if (this.customCursor) {
+            return;
+        }
+        this.customCursor = new CustomCursor({
+            settingsManager: this.settingsManager,
+        });
+        this.customCursor.mount();
+        this.customCursor.applySettings(this.settingsManager.get());
+        this.cleanupHandlers.push(() => {
+            this.customCursor?.destroy?.();
+            this.customCursor = null;
+        });
+    }
+
     initializeDeferredUiSystems() {
         if (typeof window !== 'undefined' && !window.breathingIndicator) {
             window.breathingIndicator = initEnhancedBreathingIndicator();
         }
 
-        if (!this.customCursor) {
-            this.customCursor = new CustomCursor({
-                settingsManager: this.settingsManager,
-            });
-            this.customCursor.mount();
-            this.customCursor.applySettings(this.settingsManager.get());
-            this.cleanupHandlers.push(() => {
-                this.customCursor?.destroy?.();
-                this.customCursor = null;
-            });
-        }
+        this.mountCustomCursor();
+
+        // Game-wide cosmic cursor over dropdowns: NON-DESTRUCTIVE overlay enhancement
+        // for every <select> (now + future). Leaves each menu's native select box and
+        // layout untouched — only the open option list is themed + portaled so the
+        // cosmic cursor paints over it. (The local-MP modal opts into its own
+        // purpose-built CosmicSelects, which this skips as already-enhanced.)
+        installCosmicSelects();
+        this.cleanupHandlers.push(() => uninstallCosmicSelects());
     }
 
     enableDeferredStartupTasks() {
@@ -950,6 +1040,19 @@ class SerenityBlocks {
         }, {
             delayMs: 120,
             timeout: 2200,
+        });
+
+        // AAA "compile shaders during the loading screen" pattern: after the initial
+        // theme is loaded and the intro reveal has settled, warm the first gameplay
+        // theme's WebGPU pipelines in the background (hidden, non-disruptive) so the
+        // first mode entry is an instant ~15ms resume instead of a ~1s cold createScene
+        // freeze under the loading overlay. Best-effort — the loading-overlay calm-hold
+        // still covers any theme that isn't warm yet. Disable with ?noThemeWarm=1.
+        this.scheduleDeferredStartupTask('initial-theme-prewarm', async () => {
+            await this.warmInitialThemeForFirstEntry();
+        }, {
+            delayMs: 1800,
+            timeout: 12000,
         });
 
         this.scheduleDeferredStartupTask('main-menu-player-card', async () => {
@@ -1352,9 +1455,21 @@ class SerenityBlocks {
     handleVisibilityChange(isVisible) {
         console.log(`[Visibility] Tab ${isVisible ? 'visible' : 'hidden'}, behavior: ${this.backgroundTabBehavior}`);
 
+        // ONLINE MP carve-out: while a live online match is active the game must NEVER pause or
+        // throttle (pausing/freezing the sim desyncs the netcode and can trigger false host
+        // migration). Keep everything running regardless of the configured background behavior.
+        let onlineMatchLive = false;
+        try {
+            const mode = this.gameModeManager?.getCurrentMode?.();
+            onlineMatchLive = !!(mode && mode.isInMatch
+                && this.gameModeManager?.getCurrentModeId?.() === GAME_MODES.ONLINE_MULTIPLAYER);
+        } catch (e) { /* default false */ }
+
         if (isVisible) {
             // Tab became visible - resume full rendering
             this.resumeFullRendering();
+        } else if (onlineMatchLive) {
+            console.log('[Visibility] Online match live — never pausing/throttling (netcode sync)');
         } else {
             // Tab became hidden - apply throttling based on behavior
             switch (this.backgroundTabBehavior) {
@@ -1820,7 +1935,7 @@ class SerenityBlocks {
 
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
-            this.updateFPSCounter(performance.now());
+            this.updateFPSCounter(performance.now(), { recordFrame: false });
             this.startFPSMonitor();
             console.log('[FPS] Enhanced performance monitor shown');
         }
@@ -1857,7 +1972,7 @@ class SerenityBlocks {
     /**
      * Update FPS counter
      */
-    updateFPSCounter(currentTime = performance.now()) {
+    updateFPSCounter(currentTime = performance.now(), { recordFrame = true } = {}) {
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
@@ -1865,13 +1980,16 @@ class SerenityBlocks {
         let stats = null;
 
         if (this.frameRateController) {
-            stats = this.frameRateController.recordFrame(currentTime);
+            const shouldRecord = recordFrame && !this.frameRateController.isRunning;
+            stats = shouldRecord
+                ? this.frameRateController.recordFrame(currentTime)
+                : this.frameRateController.getStats();
             const currentFPS = stats.current;
 
             if (Number.isFinite(currentFPS) && currentFPS > 0) {
                 this.fpsCounter.fps = currentFPS;
             }
-        } else {
+        } else if (recordFrame) {
             this.fpsCounter.frames++;
             const elapsed = currentTime - this.fpsCounter.lastTime;
 
@@ -1915,7 +2033,7 @@ class SerenityBlocks {
         }
 
         const tick = (time) => {
-            this.updateFPSCounter(time);
+            this.updateFPSCounter(time, { recordFrame: false });
             this.fpsCounter.rafId = requestAnimationFrame(tick);
         };
 
@@ -2560,7 +2678,13 @@ class SerenityBlocks {
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
-        if (!isPackagedWindowsSafeMode()) {
+        if (savedMode === GAME_MODES.ODYSSEY) {
+            performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
+                safeMode: false,
+                mode: savedMode,
+                reason: 'odyssey-loads-on-start',
+            });
+        } else if (!isPackagedWindowsSafeMode()) {
             this.scheduleDeferredStartupTask('warm-selected-mode', async () => {
                 await this.gameModeManager.preloadMode(savedMode);
             }, {
@@ -2665,6 +2789,146 @@ class SerenityBlocks {
     }
 
     /**
+     * Race a promise against a time budget that RESOLVES (never rejects) on timeout,
+     * so a slow/hung step can never stall boot. Used for the pre-intro theme warm.
+     * @param {Promise} promise
+     * @param {number} ms
+     * @param {string} label
+     * @returns {Promise<void>}
+     */
+    _withStartupBudget(promise, ms, label) {
+        let timer;
+        return Promise.race([
+            Promise.resolve(promise).catch((error) => {
+                console.warn(`[Main] ${label} failed (non-fatal):`, error?.message || error);
+            }),
+            new Promise((resolve) => {
+                timer = setTimeout(() => {
+                    console.warn(`[Main] ${label} exceeded ${ms}ms budget — continuing boot`);
+                    resolve();
+                }, ms);
+            }),
+        ]).finally(() => clearTimeout(timer));
+    }
+
+    /**
+     * AAA "compile shaders during the studio-logo / loading splash" step: while the
+     * startup splash covers the screen and the intro renderer has NOT started yet
+     * (uncontested GPU), load + fully warm the first gameplay theme's WebGPU pipelines
+     * and park it, so the first mode entry is an instant resume. Fully time-budgeted so
+     * it can never stall boot; on timeout/failure the deferred warm + loading-overlay
+     * calm-hold still cover entry. Disable with ?noThemeWarm=1.
+     * @returns {Promise<void>}
+     */
+    async prepareFirstThemeBeforeIntro() {
+        try {
+            // LOAD + fully WARM the selected theme BEFORE the intro/warp, on the uncontested
+            // GPU, so first mode entry is an instant resume. This keeps the theme's WebGPU
+            // renderer alive during the warp — SAFE now because the warp REUSES the intro's
+            // GPUDevice (BootWarpTransition({ device })), so it's theme-device + shared-intro/
+            // warp-device = 2 contexts (works), not 3 (which blanked the warp on heavy themes).
+            await this._withStartupBudget(this.loadInitialTheme(), 6500, 'pre-intro initial theme load');
+
+            if (typeof window !== 'undefined') {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.get('noThemeWarm') === '1') {
+                    return; // skip only the warm; theme is already loaded above
+                }
+            }
+
+            // Finish the ident REVEAL on the uncontested GPU, then flip the splash to a STATIC
+            // hold (.sb-lit) BEFORE the heavy warm so the GPU-saturating compile can't stutter
+            // the splash animation.
+            await this._finishStartupRevealBeforeWarm();
+
+            // Generous budget (15s) so heavy themes (neon-district) actually FINISH compiling
+            // and stabilize before the warp — the user accepts a longer logo splash for this.
+            await this._withStartupBudget(this.warmInitialThemeForFirstEntry(), 15000, 'pre-intro theme warm');
+        } catch (error) {
+            console.warn('[Main] prepareFirstThemeBeforeIntro failed (non-fatal):', error);
+        }
+    }
+
+    /**
+     * Wait until the studio-ident entrance reveal (~1.65s) has played out on the
+     * uncontested GPU, then add `.sb-lit` to freeze the splash into a fully-lit static
+     * hold (parks every reveal animation + drops will-change). Called right before the
+     * GPU-heavy theme warm so nothing animated competes with the saturated GPU process.
+     * @returns {Promise<void>}
+     */
+    async _finishStartupRevealBeforeWarm() {
+        try {
+            const REVEAL_MS = 1650;
+            if (startupShellShownAt) {
+                const nowMs = typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now();
+                const remaining = REVEAL_MS - (nowMs - startupShellShownAt);
+                if (remaining > 0) {
+                    await new Promise((resolve) => { setTimeout(resolve, remaining); });
+                }
+            }
+            const shell = document.getElementById('startup-shell');
+            if (shell) {
+                shell.classList.add('sb-lit');
+            }
+        } catch (error) {
+            // non-fatal
+        }
+    }
+
+    /**
+     * Warm the first gameplay theme's WebGPU pipelines during the idle window, so the
+     * first mode entry is an instant quick-resume instead of a ~1s cold createScene
+     * freeze. Heavy themes only (light ones already enter instantly). Best-effort +
+     * non-blocking; disable with ?noThemeWarm=1.
+     * @returns {Promise<void>}
+     */
+    async warmInitialThemeForFirstEntry() {
+        try {
+            if (typeof window !== 'undefined') {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.get('noThemeWarm') === '1') {
+                    return;
+                }
+            }
+
+            const tm = this.themeManager;
+            if (!tm || typeof tm.prewarmTheme !== 'function') {
+                return;
+            }
+
+            // The theme the first mode entry will resume — WHATEVER the user selected.
+            const themeName = tm.pendingThemeName || tm.activeThemeName;
+            if (!themeName) {
+                return;
+            }
+
+            // Warm the selected theme regardless of its performance class. Heavy WebGPU
+            // themes avoid a ~0.4-0.8s cold-build freeze on first entry; light themes are
+            // already fast, but warming them too keeps first-entry uniform for ALL ~70
+            // themes and is robust to a theme being (mis)classified or growing heavier over
+            // time. Cost for light themes is small and absorbed by the ident-hold window;
+            // prewarmTheme() has its own guards and the resume safety-net makes the worst
+            // case identical to no-warm. (Disable everything with ?noThemeWarm=1.)
+            const warmStartedAt = typeof performance !== 'undefined' && performance.now
+                ? performance.now()
+                : Date.now();
+            const warmed = await tm.prewarmTheme(themeName);
+            performanceMonitor.recordEvent('startup_theme_prewarm', {
+                theme: themeName,
+                warmed,
+                durationMs: (typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now()) - warmStartedAt,
+            });
+            console.log(`[Main] First-entry theme warm-up ${warmed ? 'complete' : 'skipped'}: ${themeName}`);
+        } catch (error) {
+            console.warn('[Main] Initial theme warm-up failed (non-fatal):', error);
+        }
+    }
+
+    /**
      * Setup event listeners
      */
     setupEventListeners() {
@@ -2752,6 +3016,20 @@ class SerenityBlocks {
 
                 this.startPostMenuRenderer();
 
+                // If the target theme was pre-warmed it resumes in ~15ms with no freeze,
+                // so let the overlay animate FULLY (its motion + the cinematic reveal).
+                // Only a cold build (un-warmed theme) needs the calm-hold that hides the
+                // motion so it doesn't stutter mid-animation. `hasStarted` on the pending
+                // (parked) instance means it's warm; missing/false => treat as cold.
+                const pendingThemeWarm = this.themeManager?.pendingThemeInstance?.hasStarted === true;
+                const useCalmHold = !modeHandlesStartupOverlay && !pendingThemeWarm;
+                if (useCalmHold) {
+                    setCinematicLoadingOverlayBuilding(true);
+                    await new Promise((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    });
+                }
+
                 // Activate the mode (sets up UI/DOM elements)
                 await this.gameModeManager.activateMode(mode);
 
@@ -2762,6 +3040,12 @@ class SerenityBlocks {
                 if (!modeHandlesStartupOverlay && this.themeManager?.waitForThemeReady) {
                     const themeReady = await this.themeManager.waitForThemeReady(3000);
                     console.log('[Main] Theme ready:', themeReady);
+                }
+
+                // Cold build complete — GPU is free again. Bring the overlay's motion
+                // back so the cinematic reveal reads as smooth, not a sudden un-freeze.
+                if (useCalmHold) {
+                    setCinematicLoadingOverlayBuilding(false);
                 }
 
                 // --- Phase 4: Sync music (theme music fades in via 1200ms fade) ---
@@ -2798,9 +3082,17 @@ class SerenityBlocks {
         window.addEventListener('startGameWithMode', startGameWithModeHandler);
 
         const startModalShownHandler = (event) => {
-            if (event?.detail?.modalName === 'start' && this.themeManager?.suspendThemes) {
-                this.themeManager.suspendThemes();
+            if (event?.detail?.modalName !== 'start' || !this.themeManager?.suspendThemes) {
+                return;
             }
+            // Only suspend the theme on the MENU (prepping for a mode entry). If a game
+            // mode is already running (e.g. Serenity, where the live theme IS the
+            // experience), suspending pauses its render loop and freezes it — so skip.
+            const activeMode = this.gameModeManager?.getCurrentMode?.();
+            if (activeMode?.isRunning) {
+                return;
+            }
+            this.themeManager.suspendThemes();
         };
         window.addEventListener('modalShown', startModalShownHandler);
 
@@ -3244,14 +3536,14 @@ class SerenityBlocks {
         // Expose game control functions
         window.move = (dir) => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece || gameState.hitStopRemaining > 0) return false;
 
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
-            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return false;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return false;
 
-            coreMove(
+            return coreMove(
                 gameState,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3261,7 +3553,7 @@ class SerenityBlocks {
 
         window.rotate = (dir) => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece || gameState.hitStopRemaining > 0) return;
 
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
@@ -3278,20 +3570,20 @@ class SerenityBlocks {
 
         window.softDrop = () => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece || gameState.hitStopRemaining > 0) return false;
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
 
             // Check if game is paused (important for multiplayer round transitions)
-            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return false;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return false;
 
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 gameState,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 callbacks,
@@ -3300,7 +3592,7 @@ class SerenityBlocks {
 
         window.hardDrop = () => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece || gameState.hitStopRemaining > 0) return;
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
@@ -3393,10 +3685,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 2)) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused || player2State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 2)) return false;
 
-            coreMove(
+            return coreMove(
                 player2State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3408,7 +3700,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused || player2State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreRotate(
@@ -3423,10 +3715,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 2)) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused || player2State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 2)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player2State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(2),
@@ -3437,7 +3729,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused || player2State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreHardDrop(
@@ -3452,10 +3744,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 3)) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused || player3State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 3)) return false;
 
-            coreMove(
+            return coreMove(
                 player3State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3467,7 +3759,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused || player3State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreRotate(
@@ -3482,10 +3774,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 3)) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused || player3State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 3)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player3State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(3),
@@ -3496,7 +3788,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused || player3State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreHardDrop(
@@ -3511,10 +3803,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 4)) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused || player4State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 4)) return false;
 
-            coreMove(
+            return coreMove(
                 player4State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3526,7 +3818,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused || player4State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreRotate(
@@ -3541,10 +3833,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 4)) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused || player4State.hitStopRemaining > 0) return false;
+            if (isPlayerPaused(multiplayerState, 4)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player4State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(4),
@@ -3555,7 +3847,7 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused || player4State.hitStopRemaining > 0) return;
             if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreHardDrop(
@@ -3574,40 +3866,59 @@ class SerenityBlocks {
         };
 
         const runGameplayCommand = (command) => {
-            if (typeof command !== 'function') return;
+            if (typeof command !== 'function') return false;
             try {
-                command();
+                return command();
             } catch (error) {
                 console.error('[Main] Gameplay command failed:', error);
+                return false;
             }
         };
 
         const enqueueSinglePlayerCommand = (command) => {
             const execute = () => {
+                if (typeof window.singlePlayerCommandDispatcher === 'function') {
+                    return window.singlePlayerCommandDispatcher(command);
+                }
+
                 if (this.gameState?.isProcessingPhysics) {
-                    if (!this.gameState.inputQueue && (command.type === 'move' || command.type === 'rotate')) {
-                        this.gameState.inputQueue = {
+                    if (command.type === 'move' || command.type === 'rotate') {
+                        const queued = {
                             type: command.type,
                             dir: command.value,
                         };
+                        if (Array.isArray(this.gameState.inputQueue)) {
+                            if (this.gameState.inputQueue.length < 4) {
+                                this.gameState.inputQueue.push(queued);
+                                return true;
+                            }
+                        } else if (this.gameState.inputQueue) {
+                            this.gameState.inputQueue = [this.gameState.inputQueue, queued].slice(0, 4);
+                            return true;
+                        } else {
+                            this.gameState.inputQueue = queued;
+                            return true;
+                        }
                     }
-                    return;
+                    return false;
                 }
 
                 if (command.type === 'move') {
-                    window.move?.(command.value);
+                    return window.move?.(command.value);
                 } else if (command.type === 'rotate') {
-                    window.rotate?.(command.value);
+                    return window.rotate?.(command.value);
                 } else if (command.type === 'softDrop') {
-                    window.softDrop?.();
+                    return window.softDrop?.();
                 } else if (command.type === 'hardDrop') {
-                    window.hardDrop?.();
+                    return window.hardDrop?.();
                 }
+
+                return false;
             };
 
             // Execute immediately so input works across mode-specific loops.
             // Only the physics-busy branch above defers by writing to gameState.inputQueue.
-            runGameplayCommand(execute);
+            return runGameplayCommand(execute);
         };
 
         // Setup keyboard and touch controls with the exposed gameActions
@@ -3683,7 +3994,11 @@ class SerenityBlocks {
             this.gamepadController.deadzone = settings.gamepadDeadzone;
         }
         if (settings.dasDelay !== undefined && settings.dasInterval !== undefined) {
-            this.gamepadController.updateDasSettings(settings.dasDelay, settings.dasInterval);
+            this.gamepadController.updateDasSettings(
+                settings.dasDelay,
+                settings.dasInterval,
+                settings.softDropInterval ?? 50,
+            );
         }
 
         // Listen for gamepad status changes to update UI
@@ -3923,6 +4238,18 @@ class SerenityBlocks {
                 settings.player2GamepadBindings,
                 settings.player3GamepadBindings,
                 settings.player4GamepadBindings,
+            );
+        }
+
+        if (
+            changes.dasDelay !== undefined
+            || changes.dasInterval !== undefined
+            || changes.softDropInterval !== undefined
+        ) {
+            this.gamepadController.updateDasSettings(
+                settings.dasDelay,
+                settings.dasInterval,
+                settings.softDropInterval ?? 50,
             );
         }
     }
@@ -4554,6 +4881,11 @@ class SerenityBlocks {
         [1, 2].forEach((playerNum) => {
             const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
 
+            if (playerState.hitStopRemaining > 0) {
+                playerState.hitStopRemaining = Math.max(0, playerState.hitStopRemaining - delta);
+                return;
+            }
+
             coreProcessAutoDrop(
                 playerState,
                 delta,
@@ -4650,11 +4982,16 @@ class SerenityBlocks {
                 multiplayerState.handleGarbageSummary(
                     playerIdentifier,
                     summary,
-                    (player, garbageAmount) => {
+                    (player, targetsOrAmount, maybeGarbageAmount) => {
+                        const targetCount = Array.isArray(targetsOrAmount) ? targetsOrAmount.length : 1;
+                        const garbageAmount = Array.isArray(targetsOrAmount)
+                            ? maybeGarbageAmount
+                            : targetsOrAmount;
                         if (garbageAmount > 0) {
+                            const displayPlayer = multiplayerState.players ? player + 1 : player;
                             this.soundManager.sfxPlayer.playGarbageSend();
                             console.log(
-                                `[Garbage] Player ${player} CASCADE attack ready: ${garbageAmount} line(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
+                                `[Garbage] Player ${displayPlayer} CASCADE attack ready: ${garbageAmount} line(s) to ${targetCount} target(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
                             );
                         }
                     },
@@ -4666,6 +5003,11 @@ class SerenityBlocks {
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: (dropData) => {
+                const settings = this.settingsManager.get();
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && playerState) {
+                    playerState.hitStopRemaining = Math.max(playerState.hitStopRemaining || 0, 30);
+                }
                 this.soundManager.sfxPlayer.playDrop();
                 const scene = sceneRef();
                 console.log(`[Main] onHardDrop for player ${playerNum}, scene exists: ${!!scene}, playHardDropEffect exists: ${!!scene?.playHardDropEffect}`, dropData);
@@ -4686,6 +5028,20 @@ class SerenityBlocks {
             },
             onLineClearImpact: (lineCount) => {
                 const settings = this.settingsManager.get();
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && playerState) {
+                    const scene = sceneRef();
+                    let hitStop = 0;
+                    if (scene?.sharedEffects) {
+                        const tier = scene.sharedEffects.getClearTier(lineCount);
+                        hitStop = tier?.hitStop || 0;
+                    } else if (lineCount >= 4) {
+                        hitStop = 70;
+                    }
+                    if (hitStop > 0) {
+                        playerState.hitStopRemaining = hitStop;
+                    }
+                }
                 console.log(`[Multiplayer] Player ${playerNum} onLineClearImpact called for ${lineCount} lines, effects enabled:`, settings.lineClearEffects);
                 if (settings.lineClearEffects) {
                     const scene = sceneRef();
@@ -4731,6 +5087,10 @@ class SerenityBlocks {
                     }
                 }
 
+                // Quadra handicap: accumulate per-opponent stamps on each placement
+                // (no-op unless players have differing handicap levels).
+                multiplayerState?.accumulateHandicap?.(playerNum - 1);
+
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece, player: playerNum });
             },
@@ -4764,6 +5124,18 @@ class SerenityBlocks {
 
             // Insert any pending garbage before spawning next piece (Quadra-style)
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
+
+            // Apply Quadra blind attacks FIRST. This both triggers the blackout
+            // and removes leading blind/full_blind entries that would otherwise
+            // block dequeueLineBurst() (which bails on a non-'line' head).
+            const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
+            blindBurst.forEach((entry) => {
+                if (entry.type === 'full_blind') {
+                    applyFullBlindEffect(playerState, entry.duration);
+                } else {
+                    applyBlindEffect(playerState, entry.duration);
+                }
+            });
 
             if (!garbageQueue.isEmpty()) {
                 const queuedEntries = drainGarbageEntries(garbageQueue, !!multiplayerState.players);
@@ -4990,9 +5362,24 @@ class SerenityBlocks {
      * Cleanup and destroy application
      */
     cleanup() {
+        if (this.isCleaningUp) {
+            return;
+        }
+        this.isCleaningUp = true;
+
+        const cleanupHandlers = this.cleanupHandlers.splice(0);
+        cleanupHandlers.forEach((handler) => {
+            try {
+                handler?.();
+            } catch (error) {
+                console.warn('[Main] Cleanup handler failed:', error);
+            }
+        });
+
         // Stop game loop
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
         }
 
         // Cleanup Phaser
@@ -5031,6 +5418,12 @@ let app = null;
 async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
+        // Cold-boot KPI anchor: the single number that matters for a Steam
+        // player's first impression is bootstrap-start → interactive menu.
+        // Recorded at the first-usable-frame marker below (remediation Phase 8).
+        const bootstrapStartedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : 0;
         await resolveDesktopRuntimeConfig();
         if (typeof window !== 'undefined') {
             desktopBootCoordinator = createBootStageCoordinator({
@@ -5097,7 +5490,9 @@ async function bootstrap() {
         introAnimation.setLoadingPromise?.(appInitPromise, 'LOADING SYSTEMS');
 
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1';
+        const localMpFlag = urlParams.get('localMp');
+        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1'
+            || localMpFlag === 'host' || localMpFlag === 'join' || localMpFlag === 'watch' || localMpFlag === 'browse'; // local 2-player test auto-skips the intro
         const useMinimalPackagedStartup = shouldUseBaselinePackagedStartup();
 
         if (skipIntro || useMinimalPackagedStartup) {
@@ -5111,18 +5506,325 @@ async function bootstrap() {
             } else if (introAnimation?.dismiss) {
                 introAnimation.dismiss();
             }
+            app = await appInitPromise;
         } else {
-            // Show epic intro animation
-            dismissStartupShell('intro-begin');
+            // AAA boot order: finish app init, load + warm the first gameplay theme while
+            // the studio ident covers the screen, then start the intro behind that shell.
+            // The optional warp may only run after the intro renderer has settled, because
+            // it must reuse the intro GPUDevice when a warmed heavy theme is already alive.
+            app = await appInitPromise;
+            app?.setBootCoordinator?.(desktopBootCoordinator);
+            // Mount the cosmic cursor NOW so it's visible from the START of the boot
+            // experience (studio ident → warp → intro), not only once the menu appears.
+            // Idempotent + cheap when idle; the deferred menu-idle path skips it if mounted.
+            app?.mountCustomCursor?.();
+            await app?.prepareFirstThemeBeforeIntro?.();
+
+            // Hold the studio ident on screen for at least 4s (reveal ~1.5s + a held
+            // beat) before the reveal transition, so it lands as a deliberate, tone-
+            // setting ident even when the warm above was fast/skipped.
+            await waitForStartupLogoMinVisible(4000);
+
             desktopBootCoordinator?.mark('intro-started', {
                 mode: 'interactive',
             });
             console.log('✨ Playing intro animation...');
-            await introAnimation.show(sharedSoundManager);
+
+            // Start the intro rendering BEHIND everything FIRST (intro canvas z:10000
+            // sits under the warp canvas z:15000 and the shell z:20000). The intro is
+            // the core experience, so it claims its WebGPU context before the optional
+            // warp does — on a context-limited GPU the warp yields, never the intro.
+            // The intro's cold setup is masked by the ident either way.
+            // Defer the "SERENITY BLOCKS" title reveal: the intro nebula warms/develops
+            // behind the covering transition, but the title's reveal animation is held so
+            // it plays FRESH once the transition (warp or CSS) finishes — see revealTitle()
+            // after the handoff below.
+            markStartup('intro:show-start', { deferTitle: true });
+            const introPromise = introAnimation.show(sharedSoundManager, { deferTitle: true });
+            let introPhaseGate = 'timeout';
+            await Promise.race([
+                new Promise((resolve) => {
+                    window.addEventListener('intro:phaseChanged', () => {
+                        introPhaseGate = 'phase-changed';
+                        resolve();
+                    }, { once: true });
+                }),
+                new Promise((resolve) => { setTimeout(resolve, 1500); }),
+            ]);
+            markStartup('intro:first-phase-gate', { result: introPhaseGate });
+
+            // Masterpiece reveal: a PRE-WARMED WebGPU compute-particle transition —
+            // the ident diamond ignites into a hyperspace dive that seeds the intro
+            // nebula. Compiled up-front while the ident still covers the screen so it
+            // never hitches; falls back to the CSS crossfade reveal when WebGPU/compute
+            // is unavailable (or the GPU can't spare a second context).
+            let warpTransition = null;
+            try {
+                const { BootWarpTransition } = await import('./ui/boot-warp-transition.js');
+                const bootWarpSupported = BootWarpTransition.isSupported(urlParams);
+                markStartup('boot-warp:support-check', { supported: bootWarpSupported });
+                if (!bootWarpSupported) {
+                    performanceMonitor.recordEvent('startup_boot_warp_skipped', {
+                        reason: 'unsupported-or-disabled',
+                    });
+                    markStartup('boot-warp:skip', {
+                        reason: 'unsupported-or-disabled',
+                    });
+                    console.info('[Startup] Boot warp skipped: unsupported or disabled');
+                }
+
+                if (bootWarpSupported) {
+                    // The warp is required for supported startup paths, but heavy themes
+                    // can take longer to finish deferred GPU compilation. Hold the title
+                    // reveal while we wait dynamically, so the user sees logo -> warp ->
+                    // intro instead of the prompt unlocking behind the studio ident.
+                    introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
+                    markStartup('boot-warp:title-safety-held', {
+                        ms: BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
+                    });
+
+                    // The device-share decision below needs the intro renderer to actually
+                    // EXIST first: on a cold first boot (empty shader cache / slower GPU) the
+                    // intro's WebGPU init can outlast the 1500ms phase race above, and reading
+                    // the device too early returns null → the warp would create a 3rd context
+                    // (blank on heavy themes) even though a shareable device was seconds away.
+                    // rendererReady settles on WebGPU success AND on WebGL fallback/failure.
+                    markStartup('boot-warp:intro-decision-start');
+                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation, {
+                        timeoutMs: BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
+                    });
+                    markStartup('boot-warp:intro-decision-complete', introWarpDecision);
+                    if (introWarpDecision.canAttemptWarp) {
+                        const getStartupTheme = () => app?.themeManager?.pendingThemeInstance
+                            || app?.themeManager?.activeTheme
+                            || null;
+                        markStartup('boot-warp:theme-wait-start');
+                        const themeIdleState = await waitForStartupThemeIdle(getStartupTheme, {
+                            onProgress: (event, state) => {
+                                const level = event === 'still-busy' ? 'warn' : undefined;
+                                markStartup(`boot-warp:theme-wait-${event}`, state, { level });
+                                if (event === 'still-busy') {
+                                    introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
+                                    console.info('[Startup] Waiting for startup theme before warp', state);
+                                }
+                            },
+                        });
+                        markStartup('boot-warp:theme-ready', themeIdleState);
+
+                        const retryablePrewarmStatuses = new Set([
+                            'prewarm-timeout',
+                            'prewarm-exception',
+                            'setup-failed',
+                            'webgpu-init-failed',
+                        ]);
+                        let prewarmAttempt = 0;
+
+                        while (!warpTransition && prewarmAttempt < BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
+                            prewarmAttempt += 1;
+                            const prewarmTimeoutMs = Math.min(
+                                BOOT_WARP_PREWARM_TIMEOUT_MS + ((prewarmAttempt - 1) * 3500),
+                                20000,
+                            );
+
+                            // Share the intro's GPUDevice with the warp. A warmed HEAVY theme
+                            // (electric-dreams-v3, neon-district…) already holds its own WebGPU
+                            // device for its fluid sim; a separate warp device would be the 3rd
+                            // context and (on this class of GPU) silently falls back to WebGL → an
+                            // invisible warp. Reusing the intro's device keeps it at 2 contexts
+                            // (theme + intro/warp), the count that renders reliably. The device is
+                            // null only when the intro settled on WebGL — then the warp's own
+                            // device is at most the 2nd context and safe.
+                            const candidate = new BootWarpTransition({
+                                device: introAnimation.getWebGPUDevice?.() || null,
+                            });
+                            markStartup('boot-warp:prewarm-requested', {
+                                attempt: prewarmAttempt,
+                                sharedDevice: Boolean(introAnimation.getWebGPUDevice?.()),
+                                timeoutMs: prewarmTimeoutMs,
+                            });
+                            // eslint-disable-next-line no-await-in-loop -- retries are inherently sequential
+                            const primed = await candidate.prewarm({
+                                timeoutMs: prewarmTimeoutMs,
+                            });
+                            markStartup('boot-warp:prewarm-result', {
+                                attempt: prewarmAttempt,
+                                primed,
+                                status: candidate.lastPrewarmStatus,
+                            });
+                            if (primed) {
+                                warpTransition = candidate;
+                                // The warp is committed: push the intro's 4500ms deferred-title
+                                // safety past the play window, so a slow cold-cache frame can't
+                                // reveal + unlock input behind the opaque warp canvas.
+                                introAnimation.postponeTitleSafety?.(20000);
+                                performanceMonitor.recordEvent('startup_boot_warp_committed', {
+                                    introDecision: introWarpDecision.reason,
+                                    attempt: prewarmAttempt,
+                                    timeoutMs: prewarmTimeoutMs,
+                                });
+                                markStartup('boot-warp:committed', {
+                                    introDecision: introWarpDecision.reason,
+                                    attempt: prewarmAttempt,
+                                    timeoutMs: prewarmTimeoutMs,
+                                });
+                            } else {
+                                const status = candidate.lastPrewarmStatus || 'prewarm-failed';
+                                candidate.dispose();
+                                if (!retryablePrewarmStatuses.has(status)) {
+                                    performanceMonitor.recordEvent('startup_boot_warp_skipped', {
+                                        reason: status,
+                                        introDecision: introWarpDecision.reason,
+                                        attempt: prewarmAttempt,
+                                    });
+                                    markStartup('boot-warp:skip', {
+                                        reason: status,
+                                        introDecision: introWarpDecision.reason,
+                                        attempt: prewarmAttempt,
+                                    }, { level: 'warn' });
+                                    console.info('[Startup] Boot warp unavailable:', status);
+                                    break;
+                                }
+
+                                markStartup('boot-warp:prewarm-retry', {
+                                    reason: status,
+                                    attempt: prewarmAttempt,
+                                }, { level: 'warn' });
+                                console.info('[Startup] Retrying boot warp prewarm:', status);
+                                if (prewarmAttempt < BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
+                                    // Re-check theme idle only when another attempt will
+                                    // actually run — the exhausted case falls straight
+                                    // through to the CSS reveal without another wait.
+                                    const onRetryIdleProgress = (event, state) => {
+                                        if (event !== 'still-busy') return;
+                                        introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
+                                        markStartup('boot-warp:theme-wait-still-busy', state, { level: 'warn' });
+                                    };
+                                    // eslint-disable-next-line no-await-in-loop -- retries are sequential
+                                    await waitForStartupThemeIdle(getStartupTheme, {
+                                        onProgress: onRetryIdleProgress,
+                                    });
+                                }
+                            }
+                        }
+                        if (!warpTransition && prewarmAttempt >= BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
+                            // Retryable failures kept recurring — a deterministic fault, not a
+                            // transient stall. Fall back to the CSS reveal instead of retrying
+                            // forever behind the ident.
+                            performanceMonitor.recordEvent('startup_boot_warp_skipped', {
+                                reason: 'prewarm-retries-exhausted',
+                                attempts: prewarmAttempt,
+                            });
+                            markStartup('boot-warp:skip', {
+                                reason: 'prewarm-retries-exhausted',
+                                attempts: prewarmAttempt,
+                            }, { level: 'warn' });
+                            console.info('[Startup] Boot warp unavailable after retries — CSS reveal');
+                        }
+                    } else {
+                        // The intro renderer has not settled inside the boot budget. Its
+                        // WebGPU init may still be in flight, so skip the warp and keep the
+                        // known-safe CSS reveal instead of creating an own-device warp.
+                        performanceMonitor.recordEvent('startup_boot_warp_skipped', {
+                            reason: introWarpDecision.reason,
+                        });
+                        markStartup('boot-warp:skip', {
+                            reason: introWarpDecision.reason,
+                        }, { level: 'warn' });
+                        console.info('[Startup] Boot warp skipped:', introWarpDecision.reason);
+                    }
+                }
+            } catch (error) {
+                console.warn('[Main] Boot warp prewarm failed (falling back to CSS reveal):', error);
+                performanceMonitor.recordEvent('startup_boot_warp_skipped', {
+                    reason: 'prewarm-exception',
+                    message: error?.message || String(error),
+                });
+                markStartup('boot-warp:skip', {
+                    reason: 'prewarm-exception',
+                    message: error?.message || String(error),
+                }, { level: 'warn' });
+                warpTransition = null;
+            }
+
+            if (warpTransition) {
+                // Quick-fade the ident to expose the warp's diamond, then dive. The
+                // intro is warm and rendering behind the opaque warp canvas the whole
+                // time, so fading the canvas out crossfades straight into the live scene.
+                try {
+                    markStartup('boot-warp:handoff-start');
+                    // SEAMLESS START: keep the ident up and start the warp FIRST so the
+                    // diamond gem ignites for ~150ms UNSEEN behind the opaque shell, then
+                    // cross-dissolve the shell out mid-ignition (p>=0.06) — the reveal lands
+                    // on a bright, brightening, size-matched gem, never the dim static hold.
+                    // SEAMLESS END (unchanged): overlap the canvas fade with the burst tail
+                    // (p>=0.80) so the live intro develops OUT OF the exploding particles.
+                    let shellDismissed = false;
+                    let fadePromise = null;
+                    let titleRevealed = false;
+                    // Warp SFX: dark deep-space hyperspace whoosh, started in sync with the
+                    // dive (build → bass-burst near the visual explosion). Honors mute/volume;
+                    // best-effort so a missing/blocked audio file never affects the visual.
+                    sharedSoundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                    await warpTransition.play({
+                        durationMs: parseInt(urlParams.get('warpDur'), 10) || 2600,
+                        onProgress: (p) => {
+                            if (!shellDismissed && p >= 0.06) {
+                                shellDismissed = true;
+                                markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
+                                dismissStartupShell('warp-handoff', { quick: true });
+                            }
+                            if (!fadePromise && p >= 0.8) {
+                                fadePromise = warpTransition.fadeOut(720);
+                            }
+                            // Kick the title reveal DURING the burst dissolve (not after the
+                            // canvas is fully gone) so "SERENITY BLOCKS" develops out of the
+                            // clearing warp — ~0.5s earlier than the end of the fade.
+                            if (!titleRevealed && p >= 0.9) {
+                                titleRevealed = true;
+                                markStartup('intro:title-reveal-request', { source: 'warp-progress' });
+                                introAnimation.revealTitle?.('warp-progress');
+                            }
+                        },
+                    });
+                    // Safety: if progress never crossed the thresholds (e.g. p=1 in one tick),
+                    // make sure the shell is gone and the canvas fades before dispose.
+                    if (!shellDismissed) {
+                        markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff-safety' });
+                        dismissStartupShell('warp-handoff', { quick: true });
+                    }
+                    await (fadePromise || warpTransition.fadeOut(560));
+                    markStartup('boot-warp:handoff-complete');
+                } catch (error) {
+                    console.warn('[Main] Boot warp play failed:', error);
+                    performanceMonitor.recordEvent('startup_boot_warp_play_failed', {
+                        message: error?.message || String(error),
+                    });
+                    markStartup('boot-warp:play-failed', {
+                        message: error?.message || String(error),
+                    }, { level: 'warn' });
+                    dismissStartupShell('warp-handoff', { quick: true });
+                } finally {
+                    warpTransition.dispose();
+                }
+            } else {
+                // Fallback: original CSS crossfade splash -> intro reveal.
+                markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
+                dismissStartupShell('intro-begin');
+            }
+            // The covering transition is done (warp faded, or CSS shell dismissed) — now play
+            // the held "SERENITY BLOCKS" title reveal fresh on the settled, already-warm intro.
+            // (Theme is warmed BEFORE the warp; the warp shared the intro's GPU device, so no
+            // 3rd context blanked it. First entry is an instant resume.)
+            markStartup('intro:title-reveal-request', { source: 'post-transition' });
+            introAnimation.revealTitle?.('post-transition');
+            await introPromise;
+            markStartup('intro:complete');
             console.log('✨ Intro animation complete!');
         }
 
-        app = await appInitPromise;
+        if (!app) {
+            app = await appInitPromise;
+        }
         app?.setBootCoordinator?.(desktopBootCoordinator);
         app?.markBootStage?.('core-ready', {
             appMode: desktopRuntimeConfig.appMode,
@@ -5154,6 +5856,17 @@ async function bootstrap() {
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,
         });
+        // Derived cold-boot KPI: one aggregate number for regression tracking,
+        // rather than leaving the scattered per-phase markers un-summarised.
+        if (bootstrapStartedAt && typeof performance !== 'undefined' && performance.now) {
+            const timeToInteractiveMenuMs = Math.round(performance.now() - bootstrapStartedAt);
+            performanceMonitor.recordEvent('startup_time_to_interactive_menu', {
+                timeToInteractiveMenuMs,
+                windowsProfile: desktopRuntimeConfig.windowsProfile,
+                safeMode,
+            });
+            console.log(`⏱️  Cold boot → interactive menu: ${timeToInteractiveMenuMs}ms`);
+        }
         app?.markBootStage?.('menu-ready', {
             safeMode,
         });
@@ -5161,6 +5874,14 @@ async function bootstrap() {
             void app?.startDeferredDesktopServices?.(`first-interaction:${event?.type || 'unknown'}`);
         });
         if (app && typeof window !== 'undefined') {
+            const handlePageHide = () => {
+                app?.cleanup?.();
+            };
+            window.addEventListener('pagehide', handlePageHide);
+            app.cleanupHandlers.push(() => {
+                window.removeEventListener('pagehide', handlePageHide);
+            });
+
             app.deferredDesktopServicesTimer = window.setTimeout(() => {
                 void app.startDeferredDesktopServices('menu-idle');
             }, 2000);
@@ -5483,6 +6204,122 @@ async function bootstrap() {
                 }
             };
 
+            // ── LOCAL 2-PLAYER TEST (one machine, NO Steam, NO second PC) ───────────────
+            // The browser / no-Steam build runs MOCK P2P over BroadcastChannel + lobbies in
+            // localStorage, so two BROWSER WINDOWS are a real host + peer running the actual
+            // netcode. Open the dev server in two windows:
+            //   window 1: http://localhost:5173/?localMp=host
+            //   window 2: http://localhost:5173/?localMp=join
+            // (or call window.localMpHost() / window.localMpJoin() in each window's console).
+            // maxPlayers defaults to 8 (FFA) so a started 2-window match still has open
+            // slots — required to exercise drop-in ("Join (next round)") + spectator/full-roster
+            // from a 3rd window (?localMp=browse). Pass {maxPlayers:2} for a strict 1v1 cap test.
+            window.localMpHost = async ({ autoStart = true, maxPlayers = 8 } = {}) => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                await onlineMode.handleCreateLobby({
+                    gameName: 'LOCAL TEST', maxPlayers, lobbyType: 'public',
+                    endCondition: 'frags', endConditionValue: 5, boringRules: false,
+                });
+                console.log('🧪 [LOCAL MP] Hosting. Open a 2nd window with ?localMp=join (or run localMpJoin()).');
+                if (autoStart) {
+                    // Auto-ready + auto-start once the peer joins → one-click into a match.
+                    const fg = onlineMode.ffaGameState;
+                    let hostReadied = false;
+                    const poll = setInterval(() => {
+                        if (!fg || fg.gamePhase === 'playing') { clearInterval(poll); return; }
+                        if (fg.players.size >= 2 && !hostReadied) { fg.setReady?.(true); hostReadied = true; }
+                        if (hostReadied && fg.allPlayersReady?.()) {
+                            clearInterval(poll);
+                            console.log('🧪 [LOCAL MP] All ready → starting match');
+                            // Start EXACTLY ONCE. lobbyWaitingRoom.startMatch() calls
+                            // gameState.startMatch() internally and returns undefined, so the old
+                            // `?? fg.startMatch()` fired a SECOND start (different seed) → two board
+                            // scenes + two state-sync loops → empty main board + opponent stutter.
+                            if (onlineMode.lobbyWaitingRoom?.startMatch) {
+                                onlineMode.lobbyWaitingRoom.startMatch();
+                            } else {
+                                fg.startMatch?.();
+                            }
+                        }
+                    }, 600);
+                    setTimeout(() => clearInterval(poll), 90000);
+                }
+                return onlineMode.currentLobbyId;
+            };
+            window.localMpJoin = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                // The host's mock lobby lands in shared localStorage; poll briefly in case
+                // the host window hasn't created it yet.
+                let lobbyId = null;
+                for (let i = 0; i < 40 && !lobbyId; i++) {
+                    const lobbies = (await onlineMode.steamNetworking?.getLobbies?.().catch(() => [])) || [];
+                    if (lobbies.length) lobbyId = lobbies[lobbies.length - 1].id;
+                    if (!lobbyId) await new Promise((r) => setTimeout(r, 500));
+                }
+                if (!lobbyId) {
+                    console.warn('🧪 [LOCAL MP] No mock lobby found — start the host window (?localMp=host) first.');
+                    return null;
+                }
+                await onlineMode.handleJoinLobby(lobbyId);
+                // Auto-ready so the host's barrier completes and the match starts.
+                setTimeout(() => onlineMode.ffaGameState?.setReady?.(true), 800);
+                console.log('🧪 [LOCAL MP] Joined', lobbyId, '— readied up.');
+                return lobbyId;
+            };
+            // Join a running/lobby match as a WATCH-ONLY spectator (no board, no input).
+            window.localMpWatch = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                let lobbyId = null;
+                for (let i = 0; i < 40 && !lobbyId; i++) {
+                    const lobbies = (await onlineMode.steamNetworking?.getLobbies?.().catch(() => [])) || [];
+                    if (lobbies.length) lobbyId = lobbies[lobbies.length - 1].id;
+                    if (!lobbyId) await new Promise((r) => setTimeout(r, 500));
+                }
+                if (!lobbyId) {
+                    console.warn('🧪 [LOCAL MP] No mock lobby found — start the host window (?localMp=host) first.');
+                    return null;
+                }
+                await onlineMode.handleJoinLobby(lobbyId, { asSpectator: true });
+                console.log('🧪 [LOCAL MP] Spectating', lobbyId);
+                return lobbyId;
+            };
+            // Open the LOBBY BROWSER without auto-joining — this is the path that actually
+            // shows the per-lobby Join / "Join (next round)" / 👁 Watch buttons. Use this
+            // (not ?localMp=join, which auto-joins past the browser) to see the buttons a
+            // late arrival gets against an already-started host.
+            window.localMpBrowse = async () => {
+                const onlineMode = await ensureOnlineMultiplayerMode();
+                await onlineMode.showLobbyBrowser?.();
+                console.log('🧪 [LOCAL MP] Lobby browser open — pick a lobby (Join / Join next round / 👁 Watch).');
+                return onlineMode.currentLobbyId || null;
+            };
+            // Debug handle: stable accessor to the live FFA game state for profiling/diagnostics.
+            window.__getFfa = () => {
+                try {
+                    return app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER)?.ffaGameState || null;
+                } catch {
+                    return null;
+                }
+            };
+            // Debug handle: the live OnlineMultiplayerMode (for the opponent watcher, render glue, etc.).
+            window.__getMode = () => {
+                try {
+                    return app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER) || null;
+                } catch {
+                    return null;
+                }
+            };
+            const __localMpRole = new URLSearchParams(window.location.search).get('localMp');
+            if (__localMpRole === 'host') {
+                window.localMpHost().catch((e) => console.error('🧪 [LOCAL MP] host auto-start failed:', e));
+            } else if (__localMpRole === 'join') {
+                window.localMpJoin().catch((e) => console.error('🧪 [LOCAL MP] join auto-start failed:', e));
+            } else if (__localMpRole === 'watch') {
+                window.localMpWatch().catch((e) => console.error('🧪 [LOCAL MP] watch auto-start failed:', e));
+            } else if (__localMpRole === 'browse') {
+                window.localMpBrowse().catch((e) => console.error('🧪 [LOCAL MP] browse failed:', e));
+            }
+
             console.log('🧪 Test functions available:');
             console.log('  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players');
             console.log('    Example: testMultiplayer(5)');
@@ -5490,6 +6327,7 @@ async function bootstrap() {
             console.log('    Example: testLobby(8)');
             console.log('  - window.testPostMatch(numPlayers) - Show match results modal');
             console.log('    Example: testPostMatch(9)');
+            console.log('  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows');
         }
     } catch (error) {
         console.error('❌ Failed to bootstrap application:', error);

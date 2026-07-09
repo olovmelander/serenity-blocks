@@ -12,6 +12,13 @@
  * **Strategy:** Try modern API first, fallback to legacy, disable if both fail
  */
 
+// Per-emit/per-frame tracing floods the console (drowning out netcode logs in
+// online play). Gate it behind ?debugParticles=1; warnings/errors always print.
+const PARTICLE_DEBUG = typeof window !== 'undefined'
+    && typeof window.location !== 'undefined'
+    && /[?&]debugParticles=1\b/.test(window.location.search || '');
+const dlog = (...args) => { if (PARTICLE_DEBUG) console.log(...args); };
+
 /**
  * Safely create a particle emitter with Phaser 3/4 compatibility
  * @param {Phaser.Scene} scene - The scene instance
@@ -42,9 +49,9 @@ export function createParticleEmitter(scene, x, y, textureKey, config) {
             return null;
         }
 
-        console.log('[ParticleCompat] Particle emitter created successfully at position:', { x, y });
-        console.log('[ParticleCompat] Emitter actual position:', { x: emitter.x, y: emitter.y });
-        console.log('[ParticleCompat] Emitter config:', {
+        dlog('[ParticleCompat] Particle emitter created successfully at position:', { x, y });
+        dlog('[ParticleCompat] Emitter actual position:', { x: emitter.x, y: emitter.y });
+        dlog('[ParticleCompat] Emitter config:', {
             hasEmitZone: !!config.emitZone,
             emitZoneType: config.emitZone?.type,
             depth: emitter.depth,
@@ -71,8 +78,8 @@ export function emitParticles(emitter, count) {
     }
 
     try {
-        console.log('[ParticleCompat] Attempting to emit', count, 'particles');
-        console.log('[ParticleCompat] Emitter methods:', {
+        dlog('[ParticleCompat] Attempting to emit', count, 'particles');
+        dlog('[ParticleCompat] Emitter methods:', {
             hasExplode: typeof emitter.explode === 'function',
             hasEmit: typeof emitter.emit === 'function',
             hasStart: typeof emitter.start === 'function',
@@ -82,14 +89,14 @@ export function emitParticles(emitter, count) {
         });
 
         if (typeof emitter.explode === 'function') {
-            console.log(`[ParticleCompat] Calling explode(${count})`);
+            dlog(`[ParticleCompat] Calling explode(${count})`);
             const result = emitter.explode(count);
-            console.log('[ParticleCompat] Explode result:', result);
+            dlog('[ParticleCompat] Explode result:', result);
             return true;
         } if (typeof emitter.emit === 'function') {
-            console.log(`[ParticleCompat] Calling emit(${count})`);
+            dlog(`[ParticleCompat] Calling emit(${count})`);
             const result = emitter.emit(count);
-            console.log('[ParticleCompat] Emit result:', result);
+            dlog('[ParticleCompat] Emit result:', result);
             return true;
         }
         console.warn('[ParticleCompat] Emitter has no explode() or emit() method');
@@ -143,7 +150,7 @@ export function isParticleSystemAvailable(scene) {
  */
 export function logParticleSystemInfo(scene) {
     if (!scene) {
-        console.log('[ParticleCompat] No scene provided');
+        dlog('[ParticleCompat] No scene provided');
         return;
     }
 
@@ -153,5 +160,5 @@ export function logParticleSystemInfo(scene) {
         available: isParticleSystemAvailable(scene),
     };
 
-    console.log('[ParticleCompat] Particle System Info:', info);
+    dlog('[ParticleCompat] Particle System Info:', info);
 }
