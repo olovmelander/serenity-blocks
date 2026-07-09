@@ -49,7 +49,7 @@ const GGX = wgslFn(`
     let NdotH2 = NdotH * NdotH;
 
     let num = a2;
-    let denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    var denom = (NdotH2 * (a2 - 1.0) + 1.0);  // var, not let — WGSL let is immutable
     denom = 3.14159265359 * denom * denom;
 
     return num / denom;
@@ -120,7 +120,13 @@ const noiseValue = simplexNoise(uv().mul(10.0));
 
 ### FBM (Fractal Brownian Motion)
 
+Each `wgslFn` compiles standalone — `fbm` below can only call `snoise` if that
+function is passed as an *include* (second argument), or defined in the same
+string. Calling a function from a different `wgslFn` without the include does
+not link.
+
 ```javascript
+// snoise defined in its own wgslFn (see above) — pass it as an include:
 const fbm = wgslFn(`
   fn fbm(p: vec2<f32>, octaves: i32) -> f32 {
     var value = 0.0;
@@ -136,7 +142,7 @@ const fbm = wgslFn(`
 
     return value;
   }
-`);
+`, [simplexNoise]);  // include the wgslFn that defines snoise so it links
 ```
 
 ## WGSL Types Reference

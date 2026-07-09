@@ -38,6 +38,9 @@ export class CosmicNoirPost {
         this.postProcessing = new THREE.PostProcessing(renderer);
 
         this.scenePass = pass(scene, camera);
+        // PassNode.updateBefore() synchronizes its logical size from the renderer every frame.
+        // setResolutionScale() is the r181-supported way to retain an internal scene scale.
+        this.scenePass.setResolutionScale(this.resolutionScale);
         if (this.useMRT) {
             this.scenePass.setMRT(mrt({ output, emissive }));
         }
@@ -221,21 +224,12 @@ export class CosmicNoirPost {
         if (params.bloomDownsample !== undefined) {
             if (Math.abs(this.bloomDownsample - params.bloomDownsample) > 0.005) {
                 this.bloomDownsample = params.bloomDownsample;
-                if (
-                    this.size.width > 0
-                    && this.size.height > 0
-                    && this.bloomNode?._separableBlurMaterials?.length
-                ) {
-                    this.bloomNode.setSize(this.size.width, this.size.height);
-                }
             }
         }
         if (params.resolutionScale !== undefined) {
             if (Math.abs(this.resolutionScale - params.resolutionScale) > 0.005) {
                 this.resolutionScale = params.resolutionScale;
-                if (this.size.width > 0 && this.size.height > 0) {
-                    this.setSize(this.size.width, this.size.height);
-                }
+                this.scenePass.setResolutionScale(this.resolutionScale);
             }
         }
     }
@@ -250,12 +244,8 @@ export class CosmicNoirPost {
         if (this.uScreenAspect) {
             this.uScreenAspect.value = width / height;
         }
-        const scaledWidth = Math.max(1, Math.round(width * this.resolutionScale));
-        const scaledHeight = Math.max(1, Math.round(height * this.resolutionScale));
-        this.scenePass.setSize(scaledWidth, scaledHeight);
-        if (this.bloomNode?._separableBlurMaterials?.length) {
-            this.bloomNode.setSize(scaledWidth, scaledHeight);
-        }
+        // PassNode and BloomNode both derive their physical targets from the renderer during
+        // updateBefore(). Avoid manual logical-size allocations here, especially at DPR > 1.
     }
 
     dispose() {

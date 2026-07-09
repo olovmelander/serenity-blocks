@@ -26,7 +26,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 
 // Use the discrete GPU on laptops with dual GPUs
-app.commandLine.appendSwitch('force-high-performance-gpu');
+app.commandLine.appendSwitch('force_high_performance_gpu');
 
 // Single instance lock
 const gotLock = app.requestSingleInstanceLock();

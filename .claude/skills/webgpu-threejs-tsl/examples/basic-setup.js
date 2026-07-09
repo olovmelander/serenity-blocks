@@ -9,7 +9,7 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { color, time, oscSine, positionLocal, normalWorld } from 'three/tsl';
+import { color, time, oscSine, positionLocal, normalLocal } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 let camera, scene, renderer, controls;
@@ -40,14 +40,14 @@ async function init() {
   const geometry = new THREE.TorusKnotGeometry(1, 0.3, 128, 32);
   const material = new THREE.MeshStandardNodeMaterial();
 
-  // Animated color using TSL
-  material.colorNode = color(0x0088ff).mul(
-    oscSine(time.mul(0.5)).mul(0.5).add(0.5)
-  );
+  // Animated color using TSL (oscSine already returns 0..1 — no remap needed)
+  material.colorNode = color(0x0088ff).mul(oscSine(time.mul(0.5)));
 
-  // Add slight position wobble
+  // Add slight position wobble — displace along the OBJECT-space normal;
+  // positionNode is evaluated in object space, so normalWorld would displace
+  // in the wrong direction on any rotated/scaled mesh.
   material.positionNode = positionLocal.add(
-    normalWorld.mul(oscSine(time.mul(2.0).add(positionLocal.y)).mul(0.05))
+    normalLocal.mul(oscSine(time.mul(2.0).add(positionLocal.y)).mul(0.05))
   );
 
   const mesh = new THREE.Mesh(geometry, material);

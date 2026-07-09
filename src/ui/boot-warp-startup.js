@@ -7,9 +7,9 @@ export const BOOT_WARP_PREWARM_TIMEOUT_MS = 6500;
 export const BOOT_WARP_MIN_VISIBLE_MS = 5000;
 export const BOOT_WARP_DEFAULT_DURATION_MS = 6500;
 export const BOOT_WARP_REVEAL_PROGRESS = 0.06;
-export const BOOT_WARP_FADE_PROGRESS = 0.86;
-export const BOOT_WARP_TITLE_PROGRESS = 0.92;
-export const BOOT_WARP_FADE_OUT_MS = 720;
+export const BOOT_WARP_FADE_PROGRESS = 0.9;
+export const BOOT_WARP_TITLE_PROGRESS = 0.84;
+export const BOOT_WARP_FADE_OUT_MS = 880;
 export const BOOT_WARP_THEME_IDLE_STABLE_MS = 500;
 export const BOOT_WARP_THEME_IDLE_POLL_MS = 100;
 export const BOOT_WARP_THEME_IDLE_WARN_MS = 3000;
@@ -106,6 +106,7 @@ export async function playBootWarpHandoff(options = {}) {
     let visibleStartedAt = null;
     let minVisibleMarked = false;
     let latestProgress = 0;
+    let warpAudioStarted = false;
 
     const visibleMs = () => (visibleStartedAt === null ? 0 : Math.max(0, nowMs() - visibleStartedAt));
 
@@ -164,8 +165,6 @@ export async function playBootWarpHandoff(options = {}) {
         requestedDurationMs: timing.requestedDurationMs,
     });
 
-    soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
-
     const playResult = await warpTransition.play({
         durationMs: timing.durationMs,
         onProgress: (progress, state = {}) => {
@@ -180,6 +179,10 @@ export async function playBootWarpHandoff(options = {}) {
                     durationMs: timing.durationMs,
                     firstFrameRendered: state.firstFrameRendered === true,
                 });
+                if (!warpAudioStarted) {
+                    warpAudioStarted = true;
+                    soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                }
                 markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
                 dismissStartupShell?.('warp-handoff', { quick: true });
             }

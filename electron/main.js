@@ -33,7 +33,7 @@ const isWindows = process.platform === 'win32';
 // ---------------------------------------------------------------------------
 // GPU configuration — minimal, sensible defaults
 // ---------------------------------------------------------------------------
-app.commandLine.appendSwitch('force-high-performance-gpu');
+app.commandLine.appendSwitch('force_high_performance_gpu');
 if (process.env.SERENITY_ENABLE_GPU_RASTERIZATION === '1') {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
 }

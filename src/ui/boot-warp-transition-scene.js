@@ -2,10 +2,10 @@
 /**
  * Boot Warp Transition — shared particle scene builder.
  *
- * Single source of truth for the studio-ident → intro reveal. The diamond studio
- * mark is a GPU compute point-cloud that IGNITES, DIVES through a hyperspace warp
- * toward the camera (light-streaks), then EXPLODES outward past the camera to clear
- * the frame straight into the intro. Renderer-agnostic: builds the InstancedMesh +
+ * Single source of truth for the game-ident -> intro reveal. The Serenity diamond
+ * is a GPU compute point-cloud that focuses into view, opens into a restrained
+ * hyperspace flight, then decelerates into the cool nebula field behind the title.
+ * Renderer-agnostic: builds the InstancedMesh +
  * a TSL compute node and exposes uniform setters — the CALLER owns the
  * WebGPURenderer and dispatches `renderer.compute`.
  *
@@ -14,12 +14,12 @@
  *   - src/ui/boot-warp-transition.js                         (the boot renderer)
  *
  * CONNECTED to the rest of the boot on purpose:
- *   - START: the opening diamond is small + `#8cd7ff` cyan to match the CSS studio
- *     ident mark (128px, --sb-accent), then blooms into colour as it ignites.
- *   - COLOUR: every particle is one of the intro's 8 GALAXY_COLORS, so the exploding
- *     debris reads as the SAME particles the live intro is made of.
- *   - END: an outward explosion (rush past camera → clear) hands straight to the
- *     intro's first frame — the caller crossfades the canvas out during the burst.
+ *   - START: the opening faceted diamond matches the CSS game ident in silhouette,
+ *     scale, and cyan-violet palette.
+ *   - COLOUR: particles use the intro's GALAXY_COLORS, softened the same way as its
+ *     star field, so the flight and live intro feel like one material system.
+ *   - END: particles remain as a slow nebula seed instead of flying past the camera
+ *     into black. The caller reveals the real intro and title through this field.
  *
  * The whole motion is a PURE FUNCTION of `progress` (0..1) + a per-particle
  * home/seed, so it is fully reproducible for phase-locked `?t=` stills.
@@ -27,6 +27,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     cameraProjectionMatrix,
     cameraViewMatrix,
     clamp,
@@ -40,6 +41,7 @@ import {
     positionLocal,
     sin,
     smoothstep,
+    sqrt,
     storage,
     uniform,
     uv,
@@ -62,35 +64,37 @@ const GALAXY_COLORS = [
     [0.2, 0.6, 1.0], // light blue #3399ff
 ];
 
-// Studio-ident mark colour (--sb-accent #8cd7ff) — the diamond starts here, then
-// blooms into the galaxy colours as it ignites, matching the CSS splash.
+// Game-ident facet colours. These are mirrored by public/styles/main.css.
 const SPLASH_CYAN = [0.549, 0.843, 1.0];
+const SPLASH_VIOLET = [0.553, 0.651, 1.0];
+const ARRIVAL_MIST = [0.42, 0.68, 0.98];
 
 const DIAMOND_SIZE = 0.52; // fallback world half-extent when no viewport height is given
-const Z_FAR = -26.0; // tunnel far plane
-const Z_NEAR = 6.0; // tunnel near plane (camera at z≈7)
-const BASE_NDC = 0.010; // half-size in aspect-corrected screen units
+const Z_FAR = -34.0; // tunnel far plane
+const Z_NEAR = 5.3; // tunnel near plane (camera at z=7)
+const BASE_NDC = 0.0048; // half-size in aspect-corrected screen units
+const TRAIL_MAX_NDC = 0.12;
 
 // The warp OPENS as a match-dissolve of the CSS studio-ident mark, so the home diamond
 // must project to that mark's on-screen size. gemHalf is derived per-resolution from this.
-const GEM_TARGET_PX = 138; // on-screen full diameter to match (128px solid mark + a touch of its halo)
+const GEM_TARGET_PX = 118;
 
 // Opening seed-bloom tuning (screenshot-calibrated in the playground): how the dense home
 // diamond reads as a SOFT GLOWING GEM instead of a grainy square, without the additive
 // blend clipping to a white card. All seed terms are a no-op by p>=0.13 → warp/END untouched.
-const SEED_FATTEN = 1.7; // billboard grows (1 + seed*this)× at p0 to close speckle into a solid glow
-const SEED_SUP_K = 42.0; // additive suppression: brightness /(1 + seed*this*densityScale)
+const SEED_FATTEN = 3.2;
+const SEED_SUP_K = 16.0;
 
-// Center-weighted ROUND sample: a uniform-by-ANGLE direction scaled by a centre-biased
-// radius (r = u^0.62). Round (not diamond) matches the CSS mark's circular radial-gradient
-// glow, and uniform-by-angle avoids the axis-clustered "bright cross" you get from L1-
-// normalizing a square. Dense core → soft edge, so the opening reads as a SOFT GLOWING GEM,
-// not a hollow grainy square. Home positions only drive the opening (tunnel/burst use an
-// independent per-particle radius), so this never touches the dive or the loved explosion end.
+// Uniform sample inside |x| + |y| <= 1. The transformed-square construction keeps
+// point density even across all four facets. Returning the polar angle lets each
+// shard preserve its direction as the diamond opens into the tunnel.
 function sampleGem(rng) {
-    const ang = rng() * Math.PI * 2;
-    const r = rng() ** 0.62; // radius biased toward the centre
-    return [Math.cos(ang) * r, Math.sin(ang) * r];
+    const u = rng();
+    const v = rng();
+    const x = u + v - 1;
+    const y = u - v;
+    const angle01 = (Math.atan2(y, x) + Math.PI) / (Math.PI * 2);
+    return [x, y, angle01];
 }
 
 /**
@@ -119,7 +123,7 @@ export function createWarpParticles(opts = {}) {
     const densityScale = count / 48000;
 
     // Storage buffers (4 × vec4 × count):
-    //   home:  diamond xyz + seedA(w)
+    //   home:  diamond xyz + polar angle(w)
     //   meta:  galaxy colour rgb + seedB(w)
     //   pos:   live xyz + energy(w)          ← written each compute
     //   vel:   streakDir.xy + streakLen + depth ← written each compute
@@ -130,11 +134,11 @@ export function createWarpParticles(opts = {}) {
 
     for (let i = 0; i < count; i += 1) {
         const i4 = i * 4;
-        const [dx, dy] = sampleGem(rng);
+        const [dx, dy, angle01] = sampleGem(rng);
         homeData[i4] = dx * gemHalf;
         homeData[i4 + 1] = dy * gemHalf;
-        homeData[i4 + 2] = (rng() - 0.5) * 0.12;
-        homeData[i4 + 3] = rng(); // seedA
+        homeData[i4 + 2] = (rng() - 0.5) * 0.05;
+        homeData[i4 + 3] = angle01;
 
         const g = GALAXY_COLORS[(Math.floor(rng() * GALAXY_COLORS.length)) % GALAXY_COLORS.length];
         metaData[i4] = g[0];
@@ -176,51 +180,82 @@ export function createWarpParticles(opts = {}) {
             const seedC = fract(seedA.mul(37.19).add(seedB.mul(11.7))).toVar();
             const seedD = fract(seedA.mul(91.31).add(seedB.mul(53.4))).toVar();
 
-            // Tunnel constants for this particle.
-            const theta = seedA.mul(6.28318).toVar();
+            // Keep each shard on the radial route it had inside the opening diamond.
+            const theta = seedA.mul(6.28318).sub(3.14159).toVar();
             const cosT = cos(theta).toVar();
             const sinT = sin(theta).toVar();
-            const rho = float(0.1).add(seedB.mul(2.4)).toVar();
+            const rho = float(0.16).add(seedB.mul(2.15)).toVar();
             const zPhase = seedC.toVar();
-            const warpRate = float(1.9).add(seedD.mul(1.7)).toVar();
+            const warpRate = float(1.15).add(seedD.mul(1.2)).toVar();
 
             // Analytic position as a pure function of a progress value.
             const posAt = (pval) => {
-                // Shoulder starts at 0 (not 0.10) so there is NO flat static beat: p=0 is
-                // still exactly ==1 (identical prewarm gem) but the mark begins igniting the
-                // instant progress advances. wTun auto-absorbs the earlier shoulder.
-                const wHold = smoothstep(0.0, 0.22, pval).oneMinus();
-                const wBurst = smoothstep(0.74, 1.0, pval);
-                const wTun = clamp(float(1.0).sub(wHold).sub(wBurst), float(0.0), float(1.0));
+                const wHome = smoothstep(0.05, 0.26, pval).oneMinus();
+                const wArrival = smoothstep(0.62, 0.96, pval);
+                const wTunnel = clamp(
+                    float(1.0).sub(wHome).sub(wArrival),
+                    float(0.0),
+                    float(1.0),
+                );
 
-                // Hyperspace tunnel (mid).
-                const travel = fract(zPhase.add(pval.mul(warpRate)));
+                // Focused ignition: the four facets breathe apart before depth takes over.
+                const ignition = smoothstep(0.015, 0.09, pval)
+                    .mul(smoothstep(0.18, 0.31, pval).oneMinus());
+                const homeScale = float(1.0).add(ignition.mul(float(0.3).add(seedB.mul(0.5))));
+                const homeLaunch = vec3(
+                    homePos.x.mul(homeScale),
+                    homePos.y.mul(homeScale),
+                    homePos.z.sub(ignition.mul(float(0.45).add(seedC.mul(1.4)))),
+                );
+
+                // Acceleration lives in the middle of the shot; wrapping is hidden at both ends.
+                const flight = smoothstep(0.08, 0.76, pval);
+                const travel = fract(zPhase.add(flight.mul(warpRate)));
                 const zStream = mix(float(Z_FAR), float(Z_NEAR), travel);
-                const tunnelPos = vec3(cosT.mul(rho), sinT.mul(rho), zStream);
+                const tunnelRadius = rho.mul(float(0.72).add(flight.mul(0.5)));
+                const tunnelPos = vec3(cosT.mul(tunnelRadius), sinT.mul(tunnelRadius), zStream);
 
-                // Explosion (end): rush outward radially + PAST the camera so the
-                // frame clears straight into the intro.
-                const burstR = rho.mul(9.0).add(2.2);
-                const burstPos = vec3(cosT.mul(burstR), sinT.mul(burstR), float(Z_NEAR + 8.0));
+                // Arrival is a persistent, layered nebula seed with a quiet title-safe core.
+                const arrivalAngle = theta.add(seedC.mul(1.6)).add(t.mul(0.025)).toVar();
+                const arrivalRipple = sin(theta.mul(3.0).add(seedC.mul(6.28318))).mul(0.42);
+                const arrivalDepthScale = float(1.0).add(seedD.mul(1.35));
+                const innerDust = smoothstep(0.0, 0.14, seedC).oneMinus();
+                const arrivalCore = mix(float(2.0), float(0.45), innerDust);
+                const radialWave = float(1.0).add(
+                    sin(theta.mul(2.0).add(seedD.mul(6.28318))).mul(0.14),
+                );
+                const arrivalRadius = arrivalCore.add(sqrt(seedB).mul(7.2))
+                    .add(arrivalRipple)
+                    .mul(arrivalDepthScale)
+                    .mul(radialWave);
+                const arrivalPos = vec3(
+                    cos(arrivalAngle).mul(arrivalRadius),
+                    sin(arrivalAngle).mul(arrivalRadius).mul(float(0.54).add(seedC.mul(0.16))),
+                    float(-4.0).sub(seedD.mul(25.0)),
+                );
 
-                const base = homePos.mul(wHold).add(tunnelPos.mul(wTun)).add(burstPos.mul(wBurst));
+                const base = homeLaunch.mul(wHome)
+                    .add(tunnelPos.mul(wTunnel))
+                    .add(arrivalPos.mul(wArrival));
 
-                const turbAmp = wTun.mul(0.22).add(wBurst.mul(0.16)).add(0.01);
-                const turb = curlNoise3(base.mul(0.35).add(vec3(0.0, 0.0, t.mul(0.12))), t);
+                const turbAmp = wTunnel.mul(0.14)
+                    .add(wArrival.mul(0.3))
+                    .add(ignition.mul(0.07))
+                    .add(0.008);
+                const turb = curlNoise3(base.mul(0.31).add(vec3(0.0, 0.0, t.mul(0.08))), t);
                 const withTurb = base.add(turb.mul(turbAmp));
 
-                const spin = pval.mul(0.55).add(t.mul(0.05))
-                    .mul(wTun.mul(0.7).add(wBurst.mul(0.45)).add(0.05));
+                const spin = pval.mul(0.2).mul(wTunnel).add(t.mul(0.008).mul(wArrival));
                 const rot = rotate2(withTurb.xy, spin);
                 return vec3(rot.x, rot.y, withTurb.z);
             };
 
             const p = uProgress;
-            // Opening-only ignition pulse (peaks ~p0.06, exactly 0 by p>=0.20). Pure fn of
-            // progress → reproducible ?t= stills. Safe ascending·oneMinus form (no reversed edges).
-            const ignite = smoothstep(0.0, 0.06, p).mul(smoothstep(0.08, 0.20, p).oneMinus()).toVar();
+            const ignite = smoothstep(0.01, 0.08, p)
+                .mul(smoothstep(0.17, 0.3, p).oneMinus())
+                .toVar();
             const cur = posAt(p).toVar();
-            const prev = posAt(p.sub(float(0.007))).toVar();
+            const prev = posAt(p.sub(float(0.0045))).toVar();
 
             // Screen-space (aspect-corrected) streak from projected cur/prev.
             const clipCur = uViewProj.mul(vec4(cur, 1.0)).toVar();
@@ -232,27 +267,33 @@ export function createWarpParticles(opts = {}) {
                 clipPrev.y.div(max(clipPrev.w, float(0.001))),
             ).toVar();
             const streak = ndcCur.sub(ndcPrev).toVar();
-            const sLen = length(streak).toVar();
-            const sDir = streak.div(max(sLen, float(0.0001))).toVar();
+            const rawLen = length(streak).toVar();
+            const sDir = streak.div(max(rawLen, float(0.0001))).toVar();
+            const trailGate = smoothstep(0.13, 0.29, p)
+                .mul(smoothstep(0.65, 0.87, p).oneMinus());
+            const sLen = clamp(rawLen.mul(trailGate), float(0.0), float(TRAIL_MAX_NDC)).toVar();
 
-            const wHoldE = smoothstep(0.0, 0.22, p).oneMinus().toVar();
-            const rimBonus = seedA.oneMinus().mul(0.18);
-            const speedGlow = clamp(sLen.mul(7.0), float(0.0), float(1.0)).toVar();
+            const wHomeE = smoothstep(0.05, 0.26, p).oneMinus().toVar();
+            const wArrivalE = smoothstep(0.62, 0.96, p).toVar();
+            const wTunnelE = clamp(
+                float(1.0).sub(wHomeE).sub(wArrivalE),
+                float(0.0),
+                float(1.0),
+            ).toVar();
+            const speedGlow = clamp(sLen.mul(8.0), float(0.0), float(1.0)).toVar();
+            const twinkle = sin(t.mul(1.15).add(seedC.mul(18.0))).mul(0.5).add(0.5);
 
-            // Depth fades hide the tunnel wrap AND let the explosion vanish as it
-            // passes the camera (z→Z_NEAR+8).
-            const nearFade = smoothstep(Z_NEAR + 0.5, Z_NEAR - 3.0, cur.z);
+            // Ascending smoothsteps keep particles soft at the tunnel wrap planes.
+            const nearFade = smoothstep(Z_NEAR - 2.5, Z_NEAR + 0.4, cur.z).oneMinus();
             const farFade = smoothstep(Z_FAR + 2.0, Z_FAR + 12.0, cur.z);
             const depthFade = nearFade.mul(farFade).toVar();
 
-            const energyBase = clamp(
-                float(0.26).add(speedGlow.mul(0.9)).add(wHoldE.mul(0.4)).add(rimBonus),
-                float(0.0),
-                float(1.5),
-            ).mul(depthFade);
-            // Ignition lift ADDED OUTSIDE the clamp so it touches only the opening; ignite==0
-            // by p>=0.20, so the burst/END energy (and thus the loved end) stays bit-identical.
-            const energy = energyBase.add(ignite.mul(0.4).mul(depthFade)).toVar();
+            const energy = wHomeE.mul(0.3)
+                .add(wTunnelE.mul(float(0.15).add(speedGlow.mul(0.58))))
+                .add(wArrivalE.mul(float(0.32).add(twinkle.mul(0.28))))
+                .add(ignite.mul(0.16))
+                .mul(depthFade)
+                .toVar();
 
             const out = positions.element(idx).toVar();
             out.x.assign(cur.x); out.y.assign(cur.y); out.z.assign(cur.z);
@@ -261,7 +302,7 @@ export function createWarpParticles(opts = {}) {
 
             const vout = velocities.element(idx).toVar();
             vout.x.assign(sDir.x); vout.y.assign(sDir.y);
-            vout.z.assign(clamp(sLen, float(0.0), float(0.6)));
+            vout.z.assign(sLen);
             vout.w.assign(wCur);
             velocities.element(idx).assign(vout);
         });
@@ -287,21 +328,33 @@ export function createWarpParticles(opts = {}) {
         const sLen = vdata.z.toVar();
         const depth = vdata.w.toVar();
 
-        const sizeDepth = clamp(float(3.0).div(depth), float(0.25), float(2.4)).toVar();
-        const half = float(BASE_NDC).mul(float(0.5).add(energy.mul(0.7))).mul(sizeDepth).toVar();
-        // Opening seed: fatten sprites so the dense home diamond fuses into a solid glow
-        // (no-op by p0.13). Same smoothstep range as the colorNode seed — must stay identical.
-        const seed = smoothstep(float(0.0), float(0.13), uProgress).oneMinus().toVar();
+        const sizeDepth = clamp(
+            float(3.0).div(max(depth, float(0.2))),
+            float(0.28),
+            float(1.8),
+        ).toVar();
+        const half = float(BASE_NDC).mul(float(0.56).add(energy.mul(0.62))).mul(sizeDepth).toVar();
+        const arrivalSize = smoothstep(0.62, 0.96, uProgress);
+        const particleSeed = meta.element(instanceIndex).w;
+        const softMote = smoothstep(0.0, 0.075, fract(particleSeed.mul(17.17))).oneMinus();
+        const arrivalVariation = float(1.45)
+            .add(particleSeed.mul(1.55))
+            .add(softMote.mul(4.5));
+        half.assign(half.mul(mix(float(1.0), arrivalVariation, arrivalSize)));
+        // The opening seed closes the point cloud into one clean faceted silhouette.
+        const seed = smoothstep(float(0.0), float(0.16), uProgress).oneMinus().toVar();
         half.assign(half.mul(float(1.0).add(seed.mul(SEED_FATTEN))));
 
         // Orientation basis: streak-aligned WHEN moving, but screen-axis-aligned at rest.
         // (sDir is 0 at zero streak — without this fallback the quad collapses to zero area
         // and the particle vanishes, which is why the resting gem looked hollow/grainy.)
-        const hasStreak = smoothstep(float(0.0), float(0.015), sLen).toVar();
+        const hasStreak = smoothstep(float(0.0), float(0.008), sLen).toVar();
         const dir = mix(vec2(1.0, 0.0), sDir, hasStreak).toVar();
         const perp = vec2(dir.y.negate(), dir.x).toVar();
-        const halfLen = half.add(sLen.mul(1.6)).toVar();
-        const halfWid = half.mul(clamp(float(1.0).sub(sLen.mul(1.2)), float(0.35), float(1.0))).toVar();
+        const halfLen = half.add(sLen.mul(0.55)).toVar();
+        const halfWid = half.mul(
+            clamp(float(1.0).sub(sLen.mul(4.0)), float(0.32), float(1.0)),
+        ).toVar();
 
         const offIso = dir.mul(positionLocal.x.mul(halfLen.mul(2.0)))
             .add(perp.mul(positionLocal.y.mul(halfWid.mul(2.0))));
@@ -320,32 +373,40 @@ export function createWarpParticles(opts = {}) {
         const pdata = positions.element(instanceIndex).toVar();
         const energy = pdata.w.toVar();
         const galaxyCol = meta.element(instanceIndex).xyz.toVar();
+        const homePoint = home.element(instanceIndex).xy.toVar();
 
         const uvc = uv().sub(vec2(0.5, 0.5));
         const r = length(uvc).mul(2.0);
-        const disc = smoothstep(1.0, 0.0, r);
-        const core = smoothstep(0.4, 0.0, r);
+        const disc = smoothstep(0.0, 1.0, r).oneMinus();
+        const core = smoothstep(0.0, 0.4, r).oneMinus();
 
-        // START cyan (matches the CSS ident mark) → blooms into the galaxy colour as
-        // the mark ignites; extreme energy (ignition/warp crest) flashes white.
-        const revealAmt = smoothstep(0.12, 0.42, uProgress);
-        const baseCol = mix(vec3(...SPLASH_CYAN), galaxyCol, revealAmt);
-        const hotT = smoothstep(0.85, 1.35, energy).mul(0.85);
+        const facetMix = clamp(
+            homePoint.x.sub(homePoint.y).div(float(gemHalf * 2)).add(0.5),
+            float(0.0),
+            float(1.0),
+        );
+        const identCol = mix(vec3(...SPLASH_CYAN), vec3(...SPLASH_VIOLET), facetMix.mul(0.72));
+        // Intro stars use colour * 0.7 + 0.3. Matching that treatment makes the
+        // arrival field visually survive the crossfade into the renderer behind it.
+        const introStarCol = galaxyCol.mul(0.68).add(vec3(0.3, 0.3, 0.3));
+        const arrivalCol = mix(introStarCol, vec3(...ARRIVAL_MIST), float(0.16));
+        const revealAmt = smoothstep(0.1, 0.46, uProgress);
+        const arrivalAmt = smoothstep(0.66, 0.96, uProgress);
+        const baseCol = mix(mix(identCol, introStarCol, revealAmt), arrivalCol, arrivalAmt.mul(0.28));
+        const hotT = smoothstep(0.52, 0.74, energy).mul(0.28);
         const col = mix(baseCol, vec3(1.0, 1.0, 1.0), hotT);
 
-        // ×1.7 lift so the vivid galaxy hues carry over additive (echoes the intro's ×2.2).
-        const brightness = disc.mul(0.42).add(core.mul(0.62)).mul(energy.mul(0.6).add(0.32)).mul(1.7);
-        const alpha = disc.mul(clamp(energy.mul(0.5).add(0.14), float(0.0), float(0.85)));
+        const brightness = disc.mul(0.34).add(core.mul(0.38))
+            .mul(energy.mul(0.68).add(0.14))
+            .mul(0.92);
+        const alpha = disc.mul(clamp(energy.mul(0.48).add(0.1), float(0.0), float(0.72)));
 
-        // OPENING SEED BLOOM (no-op by p0.13 → warp/END untouched). The centre-weighted home
-        // distribution gives the gem its bright-core→soft body; here we (a) divide down the huge
-        // additive integral so the dense core reads as a bright cyan glow not a clipped white
-        // card (count-robust so 48k boot and 60k playground match), and (b) fade the outer rim
-        // so the gem glows out softly instead of ending on a hard diamond edge.
-        const seed = smoothstep(float(0.0), float(0.13), uProgress).oneMinus().toVar();
+        // Count-aware suppression preserves facet colour instead of clipping the dense
+        // opening into a white card. L1 distance keeps the edge a true diamond.
+        const seed = smoothstep(float(0.0), float(0.16), uProgress).oneMinus().toVar();
         const seedSup = float(1.0).div(float(1.0).add(seed.mul(SEED_SUP_K * densityScale))).toVar();
-        const homeR = length(home.element(instanceIndex).xy).div(float(gemHalf)).toVar();
-        const edgeSoft = smoothstep(float(0.55), float(1.02), homeR).oneMinus().toVar();
+        const homeR = abs(homePoint.x).add(abs(homePoint.y)).div(float(gemHalf)).toVar();
+        const edgeSoft = smoothstep(float(0.78), float(1.02), homeR).oneMinus().toVar();
         const seedShape = mix(float(1.0), edgeSoft, seed).toVar();
         return vec4(col.mul(brightness).mul(seedSup).mul(seedShape), alpha);
     })();
@@ -376,5 +437,10 @@ export function createWarpParticles(opts = {}) {
 }
 
 export const WARP_CONSTANTS = Object.freeze({
-    Z_FAR, Z_NEAR, DIAMOND_SIZE, GALAXY_COLORS,
+    Z_FAR,
+    Z_NEAR,
+    DIAMOND_SIZE,
+    GEM_TARGET_PX,
+    TRAIL_MAX_NDC,
+    GALAXY_COLORS,
 });

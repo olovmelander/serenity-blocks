@@ -221,17 +221,17 @@ const compute2 = Fn(() => { /* ... */ })().compute(count, [64]);
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-// Setup (RenderPipeline replaced PostProcessing in r183)
-const renderPipeline = new THREE.RenderPipeline(renderer);
+// r181 class is PostProcessing (RenderPipeline is the r183 rename — not available here)
+const postProcessing = new THREE.PostProcessing(renderer);
 const scenePass = pass(scene, camera);
 const color = scenePass.getTextureNode('output');
 
 // Apply effects
 const bloomPass = bloom(color);
-renderPipeline.outputNode = color.add(bloomPass);
+postProcessing.outputNode = color.add(bloomPass);
 
 // Render
-renderPipeline.render();
+postProcessing.render();
 ```
 
 ## Common Patterns
@@ -351,16 +351,16 @@ if (adapter.limits.maxBufferSize >= desiredSize) {
 
 See `docs/limits-and-features.md` for full details.
 
-## Version Notes
+## Version Notes (installed: r181)
+
+**r181 (this repo):**
+- `PI2` is deprecated → use `TWO_PI`
+- `PostProcessing` is the post class; `RenderPipeline` does not exist until r183
+- `renderAsync()`/`computeAsync()`-style methods deprecated → `await renderer.init()` once, then sync `render()`/`compute()`
 
 **r178+:**
-- `PI2` is deprecated → use `TWO_PI`
 - `transformedNormalView` → use `normalView`
 - `transformedNormalWorld` → use `normalWorld`
-
-**r171+:**
-- Recommended minimum version for stable TSL
-- Requires separate `three/webgpu` import map entry
 
 ## Resources
 

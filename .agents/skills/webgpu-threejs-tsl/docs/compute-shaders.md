@@ -410,7 +410,9 @@ For thread-safe read-modify-write operations:
 ```javascript
 import { atomicAdd, atomicSub, atomicMax, atomicMin, atomicAnd, atomicOr, atomicXor } from 'three/tsl';
 
-const counter = instancedArray(1, 'uint');
+// The buffer must be declared atomic — WGSL atomics only operate on
+// atomic<u32>/atomic<i32> storage. Call .toAtomic() on the storage node.
+const counter = instancedArray(1, 'uint').toAtomic();
 
 const computeShader = Fn(() => {
   // Atomically increment counter
@@ -430,8 +432,11 @@ const computeShader = Fn(() => {
 const geometry = new THREE.SphereGeometry(0.1, 16, 16);
 const material = new THREE.MeshStandardNodeMaterial();
 
-// Use computed positions
-material.positionNode = positions.element(instanceIndex);
+// ADD the computed position to the instance's local vertices.
+// `positionNode = positions.element(instanceIndex)` alone is a classic bug:
+// it replaces EVERY vertex with the same point, collapsing each instance
+// to a zero-area dot (nothing renders).
+material.positionNode = positionLocal.add(positions.element(instanceIndex));
 
 // Optionally use computed colors
 material.colorNode = colors.element(instanceIndex);
@@ -440,19 +445,27 @@ const mesh = new THREE.InstancedMesh(geometry, material, count);
 scene.add(mesh);
 ```
 
-### Points with Computed Positions
+For camera-facing particle quads (billboards), override `material.vertexNode`
+instead and build the clip-space position yourself — see the working pattern in
+`src/themes/winter/rendering/snow-renderer.js`.
+
+### Point/Sprite Particles with Computed Positions
+
+For `PointsNodeMaterial`/`SpriteNodeMaterial`, `positionNode` means the particle
+**center** (unlike mesh materials, where it replaces vertex positions). The r181
+pattern for instanced particles is a `THREE.Sprite` with the storage buffer bound
+via `.toAttribute()`:
 
 ```javascript
-const geometry = new THREE.BufferGeometry();
-geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
-
 const material = new THREE.PointsNodeMaterial();
-material.positionNode = positions.element(instanceIndex);
-material.colorNode = colors.element(instanceIndex);
+material.positionNode = positions.toAttribute();  // per-instance center
+material.colorNode = colors.toAttribute();
 material.sizeNode = float(5.0);
 
-const points = new THREE.Points(geometry, material);
-scene.add(points);
+const particles = new THREE.Sprite(material);
+particles.count = count;
+particles.frustumCulled = false;   // centers come from the GPU buffer
+scene.add(particles);
 ```
 
 ## Execution Methods
@@ -475,17 +488,22 @@ renderer.compute(computeCollisions);
 
 ## Reading Back Data (GPU to CPU)
 
-```javascript
-// Create buffer for readback
-const readBuffer = new Float32Array(count * 3);
+Storage buffers read back via `getArrayBufferAsync` — pass the buffer attribute
+that backs the storage node:
 
-// Read data back from GPU
-await renderer.readRenderTargetPixelsAsync(
-  computeTexture,
-  0, 0, width, height,
-  readBuffer
-);
+```javascript
+const positions = instancedArray(count, 'vec3');
+
+// ... after some compute passes ...
+const arrayBuffer = await renderer.getArrayBufferAsync(positions.value);
+const data = new Float32Array(arrayBuffer);
 ```
+
+(`readRenderTargetPixelsAsync` is the different API for reading *render targets*,
+not compute storage buffers.)
+
+Readback stalls the pipeline — do it for debugging/tools, never per frame in a
+shipping loop.
 
 ## Complete Example: Particle System
 

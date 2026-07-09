@@ -345,12 +345,12 @@ async function init() {
         if (hudEls.refop && params.has('refOpacity')) hudEls.refop.value = params.get('refOpacity');
     }
 
-    // First frame: compile + render once (renderAsync ensures the pipeline is ready),
-    // then raise the screenshot-ready signal. Mirrors the warm-up themes do at load.
+    // First frame: compile + render once, then raise the screenshot-ready signal.
+    // WebGPURenderer.init() has already settled; r181 deprecates renderAsync().
     applyFrame(tick());
     // Effects may own their render (e.g. a post-processing pass); fall back to direct.
     if (current?.renderAsync) await current.renderAsync();
-    else await renderer.renderAsync(scene, camera);
+    else renderer.render(scene, camera);
     // Only raise the screenshot-ready signal if a real effect actually mounted — otherwise a
     // capture agent would screenshot a blank scene believing it succeeded.
     if (mounted && current) markReady();

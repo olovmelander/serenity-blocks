@@ -1,6 +1,6 @@
 ---
 name: stable-audio-sfx
-description: Generate Serenity Blocks sound-effect candidates with the local Stable Audio 3 Small-SFX wrapper. Use when asked to create, prototype, batch, or revise gameplay/UI/theme SFX.
+description: Generate Serenity Blocks sound-effect candidates with the local Stable Audio 3 Small-SFX wrapper (C:\AI\sfx-foundry). Use for any game-sound request — create, prototype, batch, regenerate, or revise SFX for gameplay events (move, rotate, lock, line clear, combo), UI clicks, or a theme's soundscape (e.g. "the Zen set needs a softer chime"). Not for music tracks, the songs manifest, or repairing the wrapper itself.
 ---
 
 # Stable Audio SFX

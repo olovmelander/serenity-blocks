@@ -6,8 +6,9 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Fn,
     abs,
+    cameraProjectionMatrix,
+    cameraViewMatrix,
     clamp,
     cos,
     dot,
@@ -15,6 +16,7 @@ import {
     fract,
     instanceIndex,
     length,
+    max as tslMax,
     mix,
     pass,
     positionLocal,
@@ -25,6 +27,7 @@ import {
     uv,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -648,24 +651,24 @@ export default class ThreeJSIntroRendererWebGPU {
             titleDelta.x.div(this.uTitleGlowSize.x),
             titleDelta.y.div(this.uTitleGlowSize.y),
         );
-        const halo = smoothstep(float(1.6), float(0.0), length(haloScale));
+        const halo = smoothstep(float(0.0), float(1.6), length(haloScale)).oneMinus();
 
         // (b) Anamorphic horizontal streak — a thin, very wide, bright lens line
         //     through the title centre (the signature "expensive lens" look).
         //     Breathes slightly wider/brighter with the pulse.
-        const streakV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.018)));
-        const streakH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.46)));
+        const streakV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.018))).oneMinus();
+        const streakH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.46))).oneMinus();
         const streak = streakV.mul(streakH).mul(titlePulse.mul(float(0.25)).add(float(0.85)));
 
         // (c) Faint vertical bloom crossing the streak → soft anamorphic star.
-        const vBloomH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.06)));
-        const vBloomV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.17)));
-        const vBloom = vBloomH.mul(vBloomV).mul(float(0.55));
+        const vBloomH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.06))).oneMinus();
+        const vBloomV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.17))).oneMinus();
+        const vBloom = vBloomH.mul(vBloomV).mul(float(0.3));
 
         // Compose: coloured halo + colored vertical bloom + bright near-white streak.
         const streakColor = vec3(float(0.85), float(0.93), float(1.0));
         const titleGlow = titleHue.mul(halo.add(vBloom))
-            .add(streakColor.mul(streak.mul(float(1.5))))
+            .add(streakColor.mul(streak.mul(float(0.08))))
             .mul(this.uTitleGlowStrength);
 
         // ── HDR composite (pre-tonemap): scene + bloom + emissive glows − DoF ──
@@ -677,7 +680,7 @@ export default class ThreeJSIntroRendererWebGPU {
             .sub(softFocus);
 
         // Vignette in linear/HDR space (darkens edges before the tonemap shoulder).
-        const vignetteFactor = smoothstep(float(0.95), float(0.35), dist); // 1 centre → 0 edge
+        const vignetteFactor = smoothstep(float(0.35), float(0.95), dist).oneMinus();
         const vignetted = hdr.mul(
             mix(float(1.0).sub(this.uVignetteDarkness), float(1.0), vignetteFactor),
         );
@@ -843,9 +846,34 @@ export default class ThreeJSIntroRendererWebGPU {
             const typeMask = float(1.0).sub(clamp(typeDiff, float(0.0), float(1.0)));
             const drawMask = active.mul(typeMask);
 
+            // Hide a whole piece while its projected centre crosses the title-safe
+            // region. Physics keeps running, so it reappears naturally after passing.
+            const clipCenter = cameraProjectionMatrix
+                .mul(cameraViewMatrix.mul(vec4(statePos.xyz, 1.0)))
+                .toVar();
+            const screenCenter = clipCenter.xy
+                .div(tslMax(clipCenter.w, float(0.001)))
+                .mul(0.5)
+                .add(0.5)
+                .toVar();
+            const titleDelta = abs(screenCenter.sub(this.uTitleGlowCenter)).toVar();
+            const safeX = smoothstep(
+                float(0.78),
+                float(1.0),
+                titleDelta.x.div(this.uTitleGlowSize.x.mul(1.45)),
+            ).oneMinus();
+            const safeY = smoothstep(
+                float(0.72),
+                float(1.0),
+                titleDelta.y.div(this.uTitleGlowSize.y.mul(2.4)),
+            ).oneMinus();
+            const titleVisibility = safeX.mul(safeY).oneMinus().toVar();
+
             // Collision scale pulse: flash (rot.w) drives a brief 20% scale-up
             const flash = stateRot.w.mul(typeMask);
-            const scale = float(baseScale).add(flash.mul(float(baseScale * 0.2)));
+            const scale = float(baseScale)
+                .add(flash.mul(float(baseScale * 0.2)))
+                .mul(titleVisibility);
 
             const local = positionLocal.mul(scale);
             const sx = sin(stateRot.x);
@@ -965,15 +993,24 @@ export default class ThreeJSIntroRendererWebGPU {
      * first piece to drift in from off-screen (regular spawnTetromino() spawns
      * beyond the edge so pieces "drift in" rather than pop).
      */
-    prepopulateTetrominos(count = 12) {
+    prepopulateTetrominos(count = 7) {
         if (!this.tetrominoCompute) return;
         for (let i = 0; i < count; i++) {
             const typeIdx = Math.floor(Math.random() * SHAPE_KEYS.length);
             const z = (Math.random() - 0.5) * 24 - 8; // -20..4
             const bounds = this.getVisibleBoundsAtDepth(z);
             // Inset a little so they read as on-screen, not clipping the edges.
-            const x = (Math.random() - 0.5) * bounds.width * 0.82;
-            const y = (Math.random() - 0.5) * bounds.height * 0.7;
+            let x = (Math.random() - 0.5) * bounds.width * 0.82;
+            let y = (Math.random() - 0.5) * bounds.height * 0.7;
+            // Keep the first composition readable. Later edge spawns may drift through
+            // naturally, but no preseeded piece should begin over the hero wordmark.
+            const titleHalfW = bounds.width * 0.32;
+            const titleHalfH = bounds.height * 0.13;
+            if (Math.abs(x) < titleHalfW && Math.abs(y) < titleHalfH) {
+                const side = y < 0 ? -1 : 1;
+                y = side * (titleHalfH + bounds.height * (0.07 + Math.random() * 0.08));
+                x += (Math.random() - 0.5) * bounds.width * 0.08;
+            }
             // Gentle drift in any direction (no forced inward push — they're already in view).
             const vx = (Math.random() - 0.5) * 0.06;
             const vy = (Math.random() - 0.5) * 0.06;
@@ -1197,7 +1234,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (this.uWarp.value * 0.05);
         this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
         this.uTitleShaftStrength.value = isMenuBackground ? 0 : 1;
-        const titleGlowBase = 0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02;
+        const titleGlowBase = 0.06 * phase.titleGlowMul + this.audioPulse * 0.012 + breath * 0.008;
         this.uTitleGlowStrength.value = this.titleGlowEnabled && !isMenuBackground ? titleGlowBase : 0;
 
         if (this.particleCompute) {
