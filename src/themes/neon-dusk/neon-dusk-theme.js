@@ -347,7 +347,9 @@ export default class NeonDuskTheme extends BaseTheme {
         this.gpuTimeMs = 0;
         this.gpuTimingElapsed = 0;
         this.gpuTimingPending = false;
-        this.profileAcc = { compute: 0, update: 0, render: 0, total: 0 };
+        this.profileAcc = {
+            compute: 0, update: 0, render: 0, total: 0,
+        };
         this.profileFrames = 0;
         this.profileLastLog = 0;
 
@@ -392,7 +394,9 @@ export default class NeonDuskTheme extends BaseTheme {
         this.profileEnabled = false;
         this.profileFrameStart = 0;
         this.profileFrameLast = 0;
-        this.profileAcc = { compute: 0, update: 0, render: 0, total: 0 };
+        this.profileAcc = {
+            compute: 0, update: 0, render: 0, total: 0,
+        };
         this.profileFrames = 0;
         this.profileLastLog = 0;
         this.profileLogInterval = 1000;
@@ -461,8 +465,7 @@ export default class NeonDuskTheme extends BaseTheme {
     initDebugConfig() {
         if (this.debugConfig) return this.debugConfig;
 
-        const params =
-            typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
         const readBool = (key) => {
             if (!params) return false;
             const value = params.get(key);
@@ -886,7 +889,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 total: (this.profileAcc.total / frames).toFixed(2),
             };
             console.log('[NeonDusk] Profile avg (ms)', avg);
-            this.profileAcc = { compute: 0, update: 0, render: 0, total: 0 };
+            this.profileAcc = {
+                compute: 0, update: 0, render: 0, total: 0,
+            };
             this.profileFrames = 0;
             this.profileLastLog = now;
         }
@@ -1871,7 +1876,9 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     _updateFieldLayerCPU(layer, delta) {
-        const { points, cpuData, computeParams, bounds } = layer;
+        const {
+            points, cpuData, computeParams, bounds,
+        } = layer;
         const positions = points.geometry.attributes.position.array;
         const lives = points.geometry.attributes.aLife.array;
 
@@ -2031,9 +2038,7 @@ export default class NeonDuskTheme extends BaseTheme {
         }
 
         const segments = Math.min(this.activePreset.mountainSegments, 128);
-        const geometries = mountainConfigs.map((config) =>
-            this.createSilhouetteMountainGeometry(config, segments),
-        );
+        const geometries = mountainConfigs.map((config) => this.createSilhouetteMountainGeometry(config, segments));
 
         // Shared mountain material (reduces uniform updates)
         if (this.mountainMaterial) {

@@ -203,7 +203,7 @@ function createCurvedBladeGeometry({
 
         for (let i = 0; i <= segments; i++) {
             const t = i / segments;
-            const w = widthBottom * (1 - t * t) + widthTop * (t * t); 
+            const w = widthBottom * (1 - t * t) + widthTop * (t * t);
             const y = t * bladeHeight;
             const bend = t * t * bladeCurve;
 
@@ -402,28 +402,28 @@ async function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near
 
 const FLOWER_PALETTES = Object.freeze({
     prairie: Object.freeze({
-        pink:   [0.97, 0.42, 0.68],
+        pink: [0.97, 0.42, 0.68],
         yellow: [0.98, 0.75, 0.22],
         purple: [0.72, 0.36, 0.94],
-        blue:   [0.36, 0.60, 0.98],
-        white:  [0.96, 0.94, 0.88],
-        stem:   [0.46, 0.70, 0.43],
+        blue: [0.36, 0.60, 0.98],
+        white: [0.96, 0.94, 0.88],
+        stem: [0.46, 0.70, 0.43],
     }),
     sunset: Object.freeze({
-        pink:   [0.98, 0.45, 0.66],
+        pink: [0.98, 0.45, 0.66],
         yellow: [0.98, 0.72, 0.25],
         purple: [0.75, 0.38, 0.90],
-        blue:   [0.38, 0.58, 0.96],
-        white:  [0.95, 0.90, 0.84],
-        stem:   [0.48, 0.68, 0.42],
+        blue: [0.38, 0.58, 0.96],
+        white: [0.95, 0.90, 0.84],
+        stem: [0.48, 0.68, 0.42],
     }),
     soft: Object.freeze({
-        pink:   [0.95, 0.54, 0.73],
+        pink: [0.95, 0.54, 0.73],
         yellow: [0.95, 0.80, 0.35],
         purple: [0.78, 0.50, 0.92],
-        blue:   [0.46, 0.68, 0.94],
-        white:  [0.93, 0.92, 0.90],
-        stem:   [0.54, 0.78, 0.50],
+        blue: [0.46, 0.68, 0.94],
+        white: [0.93, 0.92, 0.90],
+        stem: [0.54, 0.78, 0.50],
     }),
 });
 
@@ -568,10 +568,10 @@ function sampleFlowerCoverageMetrics(terrainField, carpetField, params = {}) {
         familyCounts,
         familyShare: {
             yellow: familyCounts.yellow / familyDenom,
-            pink:   familyCounts.pink   / familyDenom,
+            pink: familyCounts.pink / familyDenom,
             purple: familyCounts.purple / familyDenom,
-            blue:   familyCounts.blue   / familyDenom,
-            white:  familyCounts.white  / familyDenom,
+            blue: familyCounts.blue / familyDenom,
+            white: familyCounts.white / familyDenom,
         },
     };
 }
@@ -595,30 +595,34 @@ function assignFlowerFamilies(candidates, params = {}) {
     const total = candidates.length;
     const whiteCap = Math.floor(total * whiteShareMax);
     const yellowTarget = Math.round(total * 0.28);
-    const pinkTarget   = Math.round(total * 0.24);
+    const pinkTarget = Math.round(total * 0.24);
     const purpleTarget = Math.round(total * 0.20);
-    const blueTarget   = Math.round(total * 0.18);
+    const blueTarget = Math.round(total * 0.18);
     // white gets the remaining ~10%
-    const counts = { yellow: 0, pink: 0, purple: 0, blue: 0, white: 0 };
+    const counts = {
+        yellow: 0, pink: 0, purple: 0, blue: 0, white: 0,
+    };
 
     return candidates.map((candidate) => {
-        const weights = candidate.familyWeights || { yellow: 0.22, pink: 0.22, purple: 0.14, blue: 0.14, white: 0.08 };
+        const weights = candidate.familyWeights || {
+            yellow: 0.22, pink: 0.22, purple: 0.14, blue: 0.14, white: 0.08,
+        };
         const familyHint = candidate.familyHint;
 
-        const yellowScore  = (weights.yellow  ?? 0.22) + (familyHint === 'yellow'  ? 0.08 : 0) + (yellowTarget  - counts.yellow  > 0 ? 0.24 : -0.08);
-        const pinkScore    = (weights.pink    ?? 0.22) + (familyHint === 'pink'    ? 0.08 : 0) + (pinkTarget    - counts.pink    > 0 ? 0.24 : -0.08);
-        const purpleScore  = (weights.purple  ?? 0.14) + (familyHint === 'purple'  ? 0.08 : 0) + (purpleTarget  - counts.purple  > 0 ? 0.20 : -0.08);
-        const blueScore    = (weights.blue    ?? 0.14) + (familyHint === 'blue'    ? 0.08 : 0) + (blueTarget    - counts.blue    > 0 ? 0.20 : -0.08);
-        const whiteScore   = counts.white < whiteCap
+        const yellowScore = (weights.yellow ?? 0.22) + (familyHint === 'yellow' ? 0.08 : 0) + (yellowTarget - counts.yellow > 0 ? 0.24 : -0.08);
+        const pinkScore = (weights.pink ?? 0.22) + (familyHint === 'pink' ? 0.08 : 0) + (pinkTarget - counts.pink > 0 ? 0.24 : -0.08);
+        const purpleScore = (weights.purple ?? 0.14) + (familyHint === 'purple' ? 0.08 : 0) + (purpleTarget - counts.purple > 0 ? 0.20 : -0.08);
+        const blueScore = (weights.blue ?? 0.14) + (familyHint === 'blue' ? 0.08 : 0) + (blueTarget - counts.blue > 0 ? 0.20 : -0.08);
+        const whiteScore = counts.white < whiteCap
             ? (weights.white ?? 0.08) * 0.34 + (familyHint === 'white' ? 0.03 : 0)
             : -2;
 
         const best = Math.max(yellowScore, pinkScore, purpleScore, blueScore, whiteScore);
         let family = 'yellow';
-        if      (purpleScore === best) family = 'purple';
-        else if (blueScore   === best) family = 'blue';
-        else if (pinkScore   === best) family = 'pink';
-        else if (whiteScore  === best) family = 'white';
+        if (purpleScore === best) family = 'purple';
+        else if (blueScore === best) family = 'blue';
+        else if (pinkScore === best) family = 'pink';
+        else if (whiteScore === best) family = 'white';
 
         counts[family] += 1;
         return { ...candidate, family };
@@ -882,10 +886,10 @@ async function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             averageAnchorDepth: anchors.length > 0 ? depthSum / anchors.length : 0,
             familyShareAccepted: {
                 yellow: familyCounts.yellow / familyTotal,
-                pink:   familyCounts.pink   / familyTotal,
+                pink: familyCounts.pink / familyTotal,
                 purple: familyCounts.purple / familyTotal,
-                blue:   familyCounts.blue   / familyTotal,
-                white:  familyCounts.white  / familyTotal,
+                blue: familyCounts.blue / familyTotal,
+                white: familyCounts.white / familyTotal,
             },
         },
     };
@@ -1194,7 +1198,7 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
     const rebuildInstancesAsync = async () => {
         if (isRebuilding) return null;
         isRebuilding = true;
-        
+
         try {
             const generated = await generateFlowerAnchors(terrainField, carpetField, {
                 ...params,
@@ -1360,10 +1364,10 @@ export function createMoteSystem(scene, params = {}) {
         opacity: 0.6,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
     });
 
-    // We'll use instanced mesh but constantly update the matrices in a render loop 
+    // We'll use instanced mesh but constantly update the matrices in a render loop
     // to simulate wandering flocking paths without complex compute shaders for now.
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     mesh.frustumCulled = false;
@@ -1443,8 +1447,8 @@ export function createMoteSystem(scene, params = {}) {
             if (mesh?.parent) mesh.parent.remove(mesh);
             geometry.dispose();
             material.dispose();
-        }
-    }
+        },
+    };
 }
 
 export function createWindLinesSystem(scene, params = {}) {
@@ -1458,7 +1462,7 @@ export function createWindLinesSystem(scene, params = {}) {
         opacity: 0.65, // Much more opaque
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
     });
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -1548,8 +1552,8 @@ export function createWindLinesSystem(scene, params = {}) {
             if (mesh?.parent) mesh.parent.remove(mesh);
             geometry.dispose();
             material.dispose();
-        }
-    }
+        },
+    };
 }
 
 function updateUniformSet(uniforms, time, windStrength, sunDirection) {

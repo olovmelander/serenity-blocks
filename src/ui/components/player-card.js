@@ -1,6 +1,6 @@
 /**
  * PlayerCard Component
- * 
+ *
  * Reusable Steam avatar + player info component with:
  * - 3 sizes: small (32px), medium (64px), large (184px)
  * - Loading skeleton state
@@ -116,7 +116,7 @@ function injectStyles() {
 
 /**
  * Create a PlayerCard element
- * 
+ *
  * @param {Object} options
  * @param {string} options.steamId - Player's Steam ID
  * @param {string} options.name - Player's display name

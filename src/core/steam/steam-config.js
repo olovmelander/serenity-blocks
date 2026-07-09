@@ -22,9 +22,9 @@ export const STEAM_CONNECTION = {
 
 // Avatar configuration
 export const AVATAR_SIZES = {
-    SMALL: 32,   // List views, HUD
-    MEDIUM: 64,  // Player cards, waiting room
-    LARGE: 184,  // Profile, match results
+    SMALL: 32, // List views, HUD
+    MEDIUM: 64, // Player cards, waiting room
+    LARGE: 184, // Profile, match results
 };
 
 // Avatar cache settings
@@ -72,13 +72,13 @@ export const STEAM_STORAGE_KEYS = {
 // Steam events emitted by SteamService
 export const STEAM_EVENTS = {
     // Initialization events
-    READY: 'steam:ready',             // Steam fully initialized, ready to use
-    INIT_FAILED: 'steam:initFailed',  // Steam init failed after all retries
+    READY: 'steam:ready', // Steam fully initialized, ready to use
+    INIT_FAILED: 'steam:initFailed', // Steam init failed after all retries
 
     // Connection events
-    CONNECTED: 'steam:connected',       // Steam connection established
+    CONNECTED: 'steam:connected', // Steam connection established
     DISCONNECTED: 'steam:disconnected', // Steam connection lost
-    RECONNECTED: 'steam:reconnected',   // Steam reconnected after disconnect
+    RECONNECTED: 'steam:reconnected', // Steam reconnected after disconnect
 
     // Player events
     PLAYER_UPDATED: 'steam:playerUpdated', // Player data changed (name, avatar)

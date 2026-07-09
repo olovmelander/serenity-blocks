@@ -34,18 +34,26 @@ export class InputController {
 
         // DAS timing state (high-precision delta accumulation)
         this.dasState = {
-            moveLeft: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
-            moveRight: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
+            moveLeft: {
+                active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false,
+            },
+            moveRight: {
+                active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false,
+            },
             softDrop: { active: false, intervalAccumulator: 0 },
 
-            p2_moveLeft: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
-            p2_moveRight: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
-            p2_softDrop: { active: false, intervalAccumulator: 0 }
+            p2_moveLeft: {
+                active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false,
+            },
+            p2_moveRight: {
+                active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false,
+            },
+            p2_softDrop: { active: false, intervalAccumulator: 0 },
         };
 
         this.lastTime = performance.now();
         this.gameActions = null; // Injected during setup
-        this.settings = null;    // Injected during setup
+        this.settings = null; // Injected during setup
         this.handleKeyDown = null;
         this.handleKeyUp = null;
         this.handleVisibilityChange = null;
@@ -178,7 +186,7 @@ export class InputController {
      */
     clearTimers() {
         // Reset all DAS states
-        Object.keys(this.dasState).forEach(key => {
+        Object.keys(this.dasState).forEach((key) => {
             this.dasState[key].active = false;
             this.dasState[key].delayAccumulator = 0;
             this.dasState[key].intervalAccumulator = 0;
@@ -246,52 +254,52 @@ function handlePlayer2Action(action, gameActions, inputController, settings) {
     performanceMonitor.recordInputAction();
 
     switch (action) {
-        case 'moveLeft':
-            if (requestMoveP2 || moveP2) {
-                (requestMoveP2 || moveP2)(-1);
-                inputController.dasState.p2_moveLeft.active = true;
-                inputController.dasState.p2_moveLeft.delayAccumulator = 0;
-                inputController.dasState.p2_moveLeft.intervalAccumulator = 0;
-                inputController.dasState.p2_moveLeft.isRepeating = false;
-            }
-            break;
+    case 'moveLeft':
+        if (requestMoveP2 || moveP2) {
+            (requestMoveP2 || moveP2)(-1);
+            inputController.dasState.p2_moveLeft.active = true;
+            inputController.dasState.p2_moveLeft.delayAccumulator = 0;
+            inputController.dasState.p2_moveLeft.intervalAccumulator = 0;
+            inputController.dasState.p2_moveLeft.isRepeating = false;
+        }
+        break;
 
-        case 'moveRight':
-            if (requestMoveP2 || moveP2) {
-                (requestMoveP2 || moveP2)(1);
-                inputController.dasState.p2_moveRight.active = true;
-                inputController.dasState.p2_moveRight.delayAccumulator = 0;
-                inputController.dasState.p2_moveRight.intervalAccumulator = 0;
-                inputController.dasState.p2_moveRight.isRepeating = false;
-            }
-            break;
+    case 'moveRight':
+        if (requestMoveP2 || moveP2) {
+            (requestMoveP2 || moveP2)(1);
+            inputController.dasState.p2_moveRight.active = true;
+            inputController.dasState.p2_moveRight.delayAccumulator = 0;
+            inputController.dasState.p2_moveRight.intervalAccumulator = 0;
+            inputController.dasState.p2_moveRight.isRepeating = false;
+        }
+        break;
 
-        case 'softDrop':
-            if (requestSoftDropP2 || softDropP2) {
-                (requestSoftDropP2 || softDropP2)();
-                inputController.dasState.p2_softDrop.active = true;
-                inputController.dasState.p2_softDrop.intervalAccumulator = 0;
-            }
-            break;
+    case 'softDrop':
+        if (requestSoftDropP2 || softDropP2) {
+            (requestSoftDropP2 || softDropP2)();
+            inputController.dasState.p2_softDrop.active = true;
+            inputController.dasState.p2_softDrop.intervalAccumulator = 0;
+        }
+        break;
 
-        case 'rotateRight':
-            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('right');
-            break;
+    case 'rotateRight':
+        if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('right');
+        break;
 
-        case 'rotateLeft':
-            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('left');
-            break;
+    case 'rotateLeft':
+        if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('left');
+        break;
 
-        case 'flip':
-            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('flip');
-            break;
+    case 'flip':
+        if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('flip');
+        break;
 
-        case 'hardDrop':
-            if (requestHardDropP2 || hardDropP2) (requestHardDropP2 || hardDropP2)();
-            break;
+    case 'hardDrop':
+        if (requestHardDropP2 || hardDropP2) (requestHardDropP2 || hardDropP2)();
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 }
 
@@ -412,69 +420,69 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
             // Execute actions
             switch (action) {
-                case 'moveLeft':
-                    if (requestMove || move) {
-                        (requestMove || move)(-1);
-                        performanceMonitor.recordInputAction();
-                        inputController.dasState.moveLeft.active = true;
-                        inputController.dasState.moveLeft.delayAccumulator = 0;
-                        inputController.dasState.moveLeft.intervalAccumulator = 0;
-                        inputController.dasState.moveLeft.isRepeating = false;
-                    }
-                    break;
+            case 'moveLeft':
+                if (requestMove || move) {
+                    (requestMove || move)(-1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasState.moveLeft.active = true;
+                    inputController.dasState.moveLeft.delayAccumulator = 0;
+                    inputController.dasState.moveLeft.intervalAccumulator = 0;
+                    inputController.dasState.moveLeft.isRepeating = false;
+                }
+                break;
 
-                case 'moveRight':
-                    if (requestMove || move) {
-                        (requestMove || move)(1);
-                        performanceMonitor.recordInputAction();
-                        inputController.dasState.moveRight.active = true;
-                        inputController.dasState.moveRight.delayAccumulator = 0;
-                        inputController.dasState.moveRight.intervalAccumulator = 0;
-                        inputController.dasState.moveRight.isRepeating = false;
-                    }
-                    break;
+            case 'moveRight':
+                if (requestMove || move) {
+                    (requestMove || move)(1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasState.moveRight.active = true;
+                    inputController.dasState.moveRight.delayAccumulator = 0;
+                    inputController.dasState.moveRight.intervalAccumulator = 0;
+                    inputController.dasState.moveRight.isRepeating = false;
+                }
+                break;
 
-                case 'softDrop':
-                    if (requestSoftDrop || softDrop) {
-                        (requestSoftDrop || softDrop)();
-                        performanceMonitor.recordInputAction();
-                        inputController.dasState.softDrop.active = true;
-                        inputController.dasState.softDrop.intervalAccumulator = 0;
-                    }
-                    break;
+            case 'softDrop':
+                if (requestSoftDrop || softDrop) {
+                    (requestSoftDrop || softDrop)();
+                    performanceMonitor.recordInputAction();
+                    inputController.dasState.softDrop.active = true;
+                    inputController.dasState.softDrop.intervalAccumulator = 0;
+                }
+                break;
 
-                case 'rotateRight':
-                    if (requestRotate || rotate) {
-                        (requestRotate || rotate)('right');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'rotateRight':
+                if (requestRotate || rotate) {
+                    (requestRotate || rotate)('right');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'rotateLeft':
-                    if (requestRotate || rotate) {
-                        (requestRotate || rotate)('left');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'rotateLeft':
+                if (requestRotate || rotate) {
+                    (requestRotate || rotate)('left');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'flip':
-                    if (requestRotate || rotate) {
-                        (requestRotate || rotate)('flip');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'flip':
+                if (requestRotate || rotate) {
+                    (requestRotate || rotate)('flip');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'hardDrop':
-                    e.preventDefault();
-                    if (requestHardDrop || hardDrop) {
-                        (requestHardDrop || hardDrop)();
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'hardDrop':
+                e.preventDefault();
+                if (requestHardDrop || hardDrop) {
+                    (requestHardDrop || hardDrop)();
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                default:
-                    // No action for unrecognized key binding
-                    break;
+            default:
+                // No action for unrecognized key binding
+                break;
             }
         } catch (error) {
             console.error('[Keyboard] Error in keydown handler:', error);

@@ -1056,9 +1056,14 @@ export default class StillwaterTheme extends BaseTheme {
                 };
                 this.mainGroup.add(root);
                 const _bb = new THREE.Box3().setFromObject(root);
-                console.log('[Stillwater] hero troll loaded — anims:', gltf.animations.length,
-                    'bbox min', _bb.min.toArray().map((v) => +v.toFixed(1)),
-                    'max', _bb.max.toArray().map((v) => +v.toFixed(1)));
+                console.log(
+                    '[Stillwater] hero troll loaded — anims:',
+                    gltf.animations.length,
+                    'bbox min',
+                    _bb.min.toArray().map((v) => +v.toFixed(1)),
+                    'max',
+                    _bb.max.toArray().map((v) => +v.toFixed(1)),
+                );
             },
             undefined,
             (err) => console.warn('[Stillwater] hero troll load failed:', err),

@@ -1250,11 +1250,16 @@ export class SharedEffects {
                 pieceShape: piece.shape,
                 isInfinityMode,
                 hiddenRows: this.scene.hiddenRows,
-                startY, endY,
-                startScreenY, endScreenY,
-                dropHeight, finalDropHeight,
-                displayCenterX, pieceWidth,
-                colorHex, colorInt,
+                startY,
+                endY,
+                startScreenY,
+                endScreenY,
+                dropHeight,
+                finalDropHeight,
+                displayCenterX,
+                pieceWidth,
+                colorHex,
+                colorInt,
             });
         }
 
@@ -1294,7 +1299,7 @@ export class SharedEffects {
             ease: 'Expo.easeOut', // Sharp, punchy decay
             onComplete: () => {
                 beamGraphics.destroy();
-            }
+            },
         });
 
         // 2. Impact Burst (Masterpiece Shockwave + Flash)
@@ -1316,7 +1321,9 @@ export class SharedEffects {
             burstGraphics.setBlendMode(PhaserRef.BlendModes.ADD);
         }
 
-        const burstData = { radius: pieceWidth * 0.5, alpha: 0.6, thickness: 4, coreScale: 1 };
+        const burstData = {
+            radius: pieceWidth * 0.5, alpha: 0.6, thickness: 4, coreScale: 1,
+        };
 
         this.scene.tweens.add({
             targets: burstData,
@@ -1339,7 +1346,7 @@ export class SharedEffects {
             },
             onComplete: () => {
                 burstGraphics.destroy();
-            }
+            },
         });
     }
 

@@ -92,9 +92,15 @@ export class IntroParticleCompute {
         this.enableAutoShootingStars = true;
         this.qualityKey = 'HIGH';
         this.layerProfile = {
-            far: { ratio: 0.68, sizeMin: 0.06, sizeMax: 0.16, speedMul: 0.72 },
-            mid: { ratio: 0.24, sizeMin: 0.18, sizeMax: 0.34, speedMul: 1.0 },
-            near: { ratio: 0.08, sizeMin: 0.36, sizeMax: 0.64, speedMul: 1.36 },
+            far: {
+                ratio: 0.68, sizeMin: 0.06, sizeMax: 0.16, speedMul: 0.72,
+            },
+            mid: {
+                ratio: 0.24, sizeMin: 0.18, sizeMax: 0.34, speedMul: 1.0,
+            },
+            near: {
+                ratio: 0.08, sizeMin: 0.36, sizeMax: 0.64, speedMul: 1.36,
+            },
         };
 
         this.collisionCursor = 0;
@@ -416,7 +422,8 @@ export class IntroParticleCompute {
                     pos.x.addAssign(vel.x.add(swirlX).add(toCenterX).mul(delta).mul(float(60.0)));
                     pos.y.addAssign(vel.y.mul(delta).mul(float(60.0)));
                     // Nebula drift: positive Z (towards camera) to match stars
-                    pos.z.addAssign(vel.z.add(swirlZ).add(toCenterZ).add(warp.mul(float(0.35))).mul(delta).mul(float(60.0)));
+                    pos.z.addAssign(vel.z.add(swirlZ).add(toCenterZ).add(warp.mul(float(0.35))).mul(delta)
+                        .mul(float(60.0)));
 
                     const pulse = sin(time.mul(float(2.0)).add(misc.y)).mul(float(0.25)).add(float(1.0)).add(audioPulse.mul(float(0.15)));
                     misc.x.assign(clamp(misc.x.mul(pulse), float(0.5), float(4.0)));
@@ -846,23 +853,34 @@ export class IntroParticleCompute {
             this.spawnShootingStar();
             this.lastShootingStarTime = time;
         }
-
     }
 
     getPositionBuffer() { return this.positionBuffer; }
+
     getLifeBuffer() { return this.lifeBuffer; }
+
     getMiscBuffer() { return this.miscBuffer; }
 
     static get STAR_OFFSET() { return STAR_OFFSET; }
+
     static get STAR_COUNT() { return STAR_COUNT; }
+
     static get NEBULA_OFFSET() { return NEBULA_OFFSET; }
+
     static get NEBULA_COUNT() { return NEBULA_COUNT; }
+
     static get SPARKLE_OFFSET() { return SPARKLE_OFFSET; }
+
     static get SPARKLE_COUNT() { return SPARKLE_COUNT; }
+
     static get SHOOTING_OFFSET() { return SHOOTING_OFFSET; }
+
     static get SHOOTING_TRAIL_COUNT() { return SHOOTING_TRAIL_COUNT; }
+
     static get COLLISION_OFFSET() { return COLLISION_OFFSET; }
+
     static get COLLISION_BURST_COUNT() { return COLLISION_BURST_COUNT; }
+
     static get TOTAL_PARTICLES() { return TOTAL_PARTICLES; }
 
     dispose() {

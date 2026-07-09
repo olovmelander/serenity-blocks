@@ -30,7 +30,7 @@ export class SteamInviteManager {
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.INVITE_RECEIVED, (invite) => {
                 this._handleInvite(invite);
-            })
+            }),
         );
 
         const pending = steamService.consumePendingInvites();
@@ -39,7 +39,7 @@ export class SteamInviteManager {
         this.unsubscribers.push(
             this.gameModeManager.on('modeStopped', () => {
                 this._tryJoinPending('modeStopped');
-            })
+            }),
         );
 
         this._gameEndedHandler = () => this._tryJoinPending('gameEnded');
@@ -115,7 +115,7 @@ export class SteamInviteManager {
                         this.pendingMatchUnsub = null;
                     }
                     this._tryJoinPending('matchEnd');
-                }
+                },
             );
         }
     }

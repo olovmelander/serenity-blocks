@@ -10,7 +10,7 @@ export class InGameChat {
 
         // Restore history to the right panel chat
         if (this.gameState.chatHistory) {
-            this.gameState.chatHistory.forEach(msg => this.addMessage(msg, true));
+            this.gameState.chatHistory.forEach((msg) => this.addMessage(msg, true));
         }
     }
 
@@ -38,9 +38,9 @@ export class InGameChat {
 
             const activeEl = document.activeElement;
             const isTypingInInput = activeEl && (
-                activeEl.tagName === 'INPUT' ||
-                activeEl.tagName === 'TEXTAREA' ||
-                activeEl.isContentEditable
+                activeEl.tagName === 'INPUT'
+                || activeEl.tagName === 'TEXTAREA'
+                || activeEl.isContentEditable
             );
 
             if (e.key === 'Enter') {

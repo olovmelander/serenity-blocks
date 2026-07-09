@@ -20,7 +20,9 @@ const checksum32FromHex = (hex) => {
     return Number.isFinite(value) ? value : 0;
 };
 
-export const buildReplayProof = async ({ demo, expectedScore, expectedLines, expectedLevel, expectedDurationMs }) => {
+export const buildReplayProof = async ({
+    demo, expectedScore, expectedLines, expectedLevel, expectedDurationMs,
+}) => {
     const issues = [];
 
     if (!demo || !Array.isArray(demo.inputs) || demo.inputs.length === 0) {

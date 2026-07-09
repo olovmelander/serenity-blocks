@@ -523,10 +523,22 @@ class MistyLakeWater extends Mesh {
             mirrorCamera.projectionMatrix.copy(camera.projectionMatrix);
 
             textureMatrix.set(
-                0.5, 0.0, 0.0, 0.5,
-                0.0, 0.5, 0.0, 0.5,
-                0.0, 0.0, 0.5, 0.5,
-                0.0, 0.0, 0.0, 1.0,
+                0.5,
+                0.0,
+                0.0,
+                0.5,
+                0.0,
+                0.5,
+                0.0,
+                0.5,
+                0.0,
+                0.0,
+                0.5,
+                0.5,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
             );
             textureMatrix.multiply(mirrorCamera.projectionMatrix);
             textureMatrix.multiply(mirrorCamera.matrixWorldInverse);

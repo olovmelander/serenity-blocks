@@ -70,9 +70,9 @@ export function createBaseBoardScene(
             this.blockSize = this.boardConfig.blockSize;
 
             this.graphicsLayers = {
-                board: null,    // Static layer: locked pieces (only redraws when board changes)
-                piece: null,    // Dynamic layer: current piece, ghost, animations (redraws every frame)
-                fx: null,       // Effects layer: particles, line clears, etc.
+                board: null, // Static layer: locked pieces (only redraws when board changes)
+                piece: null, // Dynamic layer: current piece, ghost, animations (redraws every frame)
+                fx: null, // Effects layer: particles, line clears, etc.
             };
 
             this.commonParticleKey = DEFAULT_PARTICLE_KEY;
@@ -1015,8 +1015,14 @@ export function createBaseBoardScene(
                         : this._pieceFx(piece.type);
                     // Animated pieces shift by a fractional animationOffset.
                     this.drawFusedPiece(
-                        this.pieceGraphics, piece.shape, piece.x, piece.y + piece.animationOffset,
-                        colorInt, { alpha: 1, fx, gloss: false, skipHiddenRows },
+                        this.pieceGraphics,
+                        piece.shape,
+                        piece.x,
+                        piece.y + piece.animationOffset,
+                        colorInt,
+                        {
+                            alpha: 1, fx, gloss: false, skipHiddenRows,
+                        },
                     );
                 });
         }
@@ -1078,10 +1084,9 @@ export function createBaseBoardScene(
          */
         buildOuterContour(shape, originX, originY, minWorldY = 0) {
             const bs = this.blockSize;
-            const has = (lx, ly) =>
-                ly >= 0 && ly < shape.length &&
-                lx >= 0 && lx < (shape[0]?.length ?? 0) &&
-                shape[ly][lx] > 0;
+            const has = (lx, ly) => ly >= 0 && ly < shape.length
+                && lx >= 0 && lx < (shape[0]?.length ?? 0)
+                && shape[ly][lx] > 0;
 
             // Collect directed outer-edge segments (CW winding).
             // Direction for each face ensures the final polygon is clockwise.
@@ -1095,10 +1100,18 @@ export function createBaseBoardScene(
                     const y0 = Math.round((originY + ly) * bs);
                     const x1 = Math.round((originX + lx + 1) * bs);
                     const y1 = Math.round((originY + ly + 1) * bs);
-                    if (!has(lx, ly - 1)) edges.push({ fx: x0, fy: y0, tx: x1, ty: y0 }); // top
-                    if (!has(lx + 1, ly)) edges.push({ fx: x1, fy: y0, tx: x1, ty: y1 }); // right
-                    if (!has(lx, ly + 1)) edges.push({ fx: x1, fy: y1, tx: x0, ty: y1 }); // bottom
-                    if (!has(lx - 1, ly)) edges.push({ fx: x0, fy: y1, tx: x0, ty: y0 }); // left
+                    if (!has(lx, ly - 1)) edges.push({
+                        fx: x0, fy: y0, tx: x1, ty: y0,
+                    }); // top
+                    if (!has(lx + 1, ly)) edges.push({
+                        fx: x1, fy: y0, tx: x1, ty: y1,
+                    }); // right
+                    if (!has(lx, ly + 1)) edges.push({
+                        fx: x1, fy: y1, tx: x0, ty: y1,
+                    }); // bottom
+                    if (!has(lx - 1, ly)) edges.push({
+                        fx: x0, fy: y1, tx: x0, ty: y0,
+                    }); // left
                 });
             });
 
@@ -1244,7 +1257,9 @@ export function createBaseBoardScene(
             const py = Math.round((originY + ly) * bs);
             const w = Math.round((originX + lx + 1) * bs) - px;
             const h = Math.round((originY + ly + 1) * bs) - py;
-            return { px, py, w, h };
+            return {
+                px, py, w, h,
+            };
         }
 
         /**
@@ -1277,7 +1292,9 @@ export function createBaseBoardScene(
             if (!useGradient) graphics.fillStyle(colorInt, alpha);
 
             cells.forEach(([lx, ly]) => {
-                const { px, py, w, h } = this._cellRect(originX, originY, lx, ly);
+                const {
+                    px, py, w, h,
+                } = this._cellRect(originX, originY, lx, ly);
                 if (useGradient) {
                     const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
                     const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
@@ -1319,7 +1336,9 @@ export function createBaseBoardScene(
                 const aTop = alphaAt(ly);
                 const aBot = alphaAt(ly + 1);
                 if (aTop <= 0 && aBot <= 0) return;
-                const { px, py, w, h } = this._cellRect(originX, originY, lx, ly);
+                const {
+                    px, py, w, h,
+                } = this._cellRect(originX, originY, lx, ly);
                 graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
                 graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
             });
@@ -1343,10 +1362,18 @@ export function createBaseBoardScene(
                 const [lx, ly] = key.split(',').map(Number);
                 const x0 = (originX + lx) * bs; const y0 = (originY + ly) * bs;
                 const x1 = (originX + lx + 1) * bs; const y1 = (originY + ly + 1) * bs;
-                if (!has(lx, ly - 1)) edges.push({ fx: x0, fy: y0, tx: x1, ty: y0, dx: 1, dy: 0 });
-                if (!has(lx + 1, ly)) edges.push({ fx: x1, fy: y0, tx: x1, ty: y1, dx: 0, dy: 1 });
-                if (!has(lx, ly + 1)) edges.push({ fx: x1, fy: y1, tx: x0, ty: y1, dx: -1, dy: 0 });
-                if (!has(lx - 1, ly)) edges.push({ fx: x0, fy: y1, tx: x0, ty: y0, dx: 0, dy: -1 });
+                if (!has(lx, ly - 1)) edges.push({
+                    fx: x0, fy: y0, tx: x1, ty: y0, dx: 1, dy: 0,
+                });
+                if (!has(lx + 1, ly)) edges.push({
+                    fx: x1, fy: y0, tx: x1, ty: y1, dx: 0, dy: 1,
+                });
+                if (!has(lx, ly + 1)) edges.push({
+                    fx: x1, fy: y1, tx: x0, ty: y1, dx: -1, dy: 0,
+                });
+                if (!has(lx - 1, ly)) edges.push({
+                    fx: x0, fy: y1, tx: x0, ty: y0, dx: 0, dy: -1,
+                });
             });
             if (edges.length === 0) return [];
 

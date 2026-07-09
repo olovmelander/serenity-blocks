@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { uniform, float, vec3, mix, saturate, pow, smoothstep, dot, positionLocal, timerLocal, uv, fbm2D } from 'three/tsl';
+import {
+    uniform, float, vec3, mix, saturate, pow, smoothstep, dot, positionLocal, timerLocal, uv, fbm2D,
+} from 'three/tsl';
 
 export class SkyComboEffectsManager {
     constructor(scene, camera) {
@@ -107,10 +109,10 @@ export class SkyComboEffectsManager {
         let spawnedF = 0;
         for (let i = 0; i < this.flockCount && spawnedF < spawnFlock; i++) {
             if (this.flockData[i * 5 + 3] > 1.0) { // inactive: phase past alive range or 999
-                this.flockData[i * 5]     = originPos.x + (Math.random() - 0.5) * 40;
+                this.flockData[i * 5] = originPos.x + (Math.random() - 0.5) * 40;
                 this.flockData[i * 5 + 1] = originPos.y + Math.random() * 20;
                 this.flockData[i * 5 + 2] = originPos.z + (Math.random() - 0.5) * 40;
-                this.flockData[i * 5 + 3] = 0;                       // reset phase
+                this.flockData[i * 5 + 3] = 0; // reset phase
                 this.flockData[i * 5 + 4] = 60 + Math.random() * 80; // fast upward speed
                 spawnedF++;
             }
@@ -122,10 +124,10 @@ export class SkyComboEffectsManager {
             let spawnedS = 0;
             for (let i = 0; i < this.starCount && spawnedS < spawnStars; i++) {
                 if (this.starData[i * 5 + 3] > 1.0) { // inactive
-                    this.starData[i * 5]     = originPos.x + (Math.random() - 0.5) * 600;
+                    this.starData[i * 5] = originPos.x + (Math.random() - 0.5) * 600;
                     this.starData[i * 5 + 1] = originPos.y + 600 + Math.random() * 300; // high up
                     this.starData[i * 5 + 2] = originPos.z + (Math.random() - 0.5) * 600;
-                    this.starData[i * 5 + 3] = 0;                        // reset phase
+                    this.starData[i * 5 + 3] = 0; // reset phase
                     this.starData[i * 5 + 4] = 200 + Math.random() * 150; // fast fall
                     spawnedS++;
                 }
@@ -169,7 +171,7 @@ export class SkyComboEffectsManager {
 
                 phase += delta * 0.2; // 5-second lifetime
 
-                this.flockData[fIdx]     = x;
+                this.flockData[fIdx] = x;
                 this.flockData[fIdx + 1] = y;
                 this.flockData[fIdx + 2] = z;
                 this.flockData[fIdx + 3] = phase;
@@ -212,7 +214,7 @@ export class SkyComboEffectsManager {
 
                 phase += delta * 0.2; // 5-second lifetime
 
-                this.starData[sIdx]     = x;
+                this.starData[sIdx] = x;
                 this.starData[sIdx + 1] = y;
                 this.starData[sIdx + 2] = z;
                 this.starData[sIdx + 3] = phase;

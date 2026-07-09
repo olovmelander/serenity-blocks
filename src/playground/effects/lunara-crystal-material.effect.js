@@ -152,8 +152,12 @@ export function create({
         envMapIntensity: 1.2,
     });
 
-    const heroGeo = makeCrystalGeometry(T, { sides: 7, height: 6.4, baseRadius: 0.9, skew: 0.18 });
-    const shardGeo = makeCrystalGeometry(T, { sides: 5, height: 3.8, baseRadius: 0.55, skew: 0.26 });
+    const heroGeo = makeCrystalGeometry(T, {
+        sides: 7, height: 6.4, baseRadius: 0.9, skew: 0.18,
+    });
+    const shardGeo = makeCrystalGeometry(T, {
+        sides: 5, height: 3.8, baseRadius: 0.55, skew: 0.26,
+    });
     const hero = add(new T.Mesh(heroGeo, heroMaterial.material));
     hero.position.set(-0.4, 3.2, -2.6);
     hero.rotation.set(-0.08, 0.25, 0.08);

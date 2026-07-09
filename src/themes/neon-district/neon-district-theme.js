@@ -87,13 +87,13 @@ import {
 const QUALITY_PRESETS = {
     Extreme: {
         buildingCount: 50,
-        rainParticles: 5000,   // Was 6500 (-23%)
-        starCount: 12000,      // Was 15000 (-20%)
+        rainParticles: 5000, // Was 6500 (-23%)
+        starCount: 12000, // Was 15000 (-20%)
         bloomStrength: 0.8,
         bloomRadius: 0.6,
         bloomThreshold: 0.2,
         enablePostProcessing: true,
-        flyingVehicles: 60,    // Was 70
+        flyingVehicles: 60, // Was 70
         // Phase 1 (AAA): true planar reflections on the wet street (WebGPU only)
         enableReflections: true,
         reflectionResolutionScale: 0.6,
@@ -101,62 +101,62 @@ const QUALITY_PRESETS = {
     },
     Ultra: {
         buildingCount: 30,
-        rainParticles: 2800,   // Was 3500 (-20%)
-        starCount: 10000,      // Was 12000 (-17%)
+        rainParticles: 2800, // Was 3500 (-20%)
+        starCount: 10000, // Was 12000 (-17%)
         bloomStrength: 0.7,
         bloomRadius: 0.5,
         bloomThreshold: 0.22,
         enablePostProcessing: true,
-        flyingVehicles: 45,    // Was 50
+        flyingVehicles: 45, // Was 50
         enableReflections: true,
         reflectionResolutionScale: 0.5,
         skyStrataCount: 3,
     },
     High: {
         buildingCount: 20,
-        rainParticles: 2000,   // Was 2600 (-23%)
-        starCount: 7000,       // Was 9000 (-22%)
+        rainParticles: 2000, // Was 2600 (-23%)
+        starCount: 7000, // Was 9000 (-22%)
         bloomStrength: 0.6,
         bloomRadius: 0.45,
         bloomThreshold: 0.28,
         enablePostProcessing: true,
-        flyingVehicles: 30,    // Was 35
+        flyingVehicles: 30, // Was 35
         enableReflections: true,
         reflectionResolutionScale: 0.35,
         skyStrataCount: 2,
     },
     Medium: {
         buildingCount: 15,
-        rainParticles: 900,    // Was 1300 (-31%)
-        starCount: 4000,       // Was 6000 (-33%)
+        rainParticles: 900, // Was 1300 (-31%)
+        starCount: 4000, // Was 6000 (-33%)
         bloomStrength: 0.6,
         bloomRadius: 0.4,
         bloomThreshold: 0.3,
         enablePostProcessing: false,
-        flyingVehicles: 15,    // Was 20
+        flyingVehicles: 15, // Was 20
         enableReflections: false, // env-map reflections only below High
         skyStrataCount: 1,
     },
     Low: {
         buildingCount: 10,
-        rainParticles: 300,    // Was 500 (-40%)
-        starCount: 2000,       // Was 3000 (-33%)
+        rainParticles: 300, // Was 500 (-40%)
+        starCount: 2000, // Was 3000 (-33%)
         bloomStrength: 0.0,
         bloomRadius: 0.0,
         bloomThreshold: 1.0,
         enablePostProcessing: false,
-        flyingVehicles: 4,     // Was 6
+        flyingVehicles: 4, // Was 6
         skyStrataCount: 0,
     },
     Minimal: {
         buildingCount: 8,
         rainParticles: 0,
-        starCount: 1000,       // Was 1500 (-33%)
+        starCount: 1000, // Was 1500 (-33%)
         bloomStrength: 0.0,
         bloomRadius: 0.0,
         bloomThreshold: 1.0,
         enablePostProcessing: false,
-        flyingVehicles: 2,     // Was 3
+        flyingVehicles: 2, // Was 3
         skyStrataCount: 0,
     },
 };
@@ -270,7 +270,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.megaTowerUniforms = null;
         this.starUniforms = null;
         this.wetGroundUniforms = null; // WebGPU wet asphalt material uniforms
-        this.groundReflector = null;   // AAA Phase 1: planar reflector for wet street
+        this.groundReflector = null; // AAA Phase 1: planar reflector for wet street
         this.reflectionsEnabled = false;
         this.hdrEnvMap = null;
         this.proceduralEnvMap = null;
@@ -350,8 +350,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.cameraRollOffset = 0;
         this.cameraDriftSeed = Math.random() * Math.PI * 2;
         // AAA Phase 7a: reactive camera channel (event-driven dolly + FOV pulse)
-        this.cameraDollyZ = 0;     // negative pushes the camera down the canyon
-        this.cameraFovPulse = 0;   // transient FOV widen (dolly-zoom), degrees
+        this.cameraDollyZ = 0; // negative pushes the camera down the canyon
+        this.cameraFovPulse = 0; // transient FOV widen (dolly-zoom), degrees
         this.cameraBaseFov = 70;
         this._fovDirty = false;
         this.baseSaturationAmount = 1.12; // Phase 3 grade base (combo ramps above this)
@@ -412,13 +412,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.buildingLodConfig = {
             mainRoadX: 260,
             outerRoadX: 650,
-            nearDistance: 800,   // Was 1500 - switch to medium LOD earlier
-            midDistance: 1800,   // Was 3200 - switch to low LOD earlier
+            nearDistance: 800, // Was 1500 - switch to medium LOD earlier
+            midDistance: 1800, // Was 3200 - switch to low LOD earlier
         };
         this.signLodConfig = {
-            nearDistance: 600,   // Was 900 - reduce sign detail distance
-            midDistance: 1200,   // Was 1800
-            farDistance: 2000,   // Was 2800
+            nearDistance: 600, // Was 900 - reduce sign detail distance
+            midDistance: 1200, // Was 1800
+            farDistance: 2000, // Was 2800
         };
         this.lodScale = 1.0;
 
@@ -549,63 +549,63 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Adjust update intervals based on quality
         switch (this.currentQualityName) {
-            case 'Extreme':
-            case 'Ultra':
-                this.vehicleUpdateInterval = 1 / 30;
-                this.neonSignUpdateInterval = 4;
-                this.neonSignBatchSize = 120;
-                this.vhsUpdateInterval = 1 / 30;
-                this.rainUpdateStride = 2;
-                this.dynamicResolutionAdjustInterval = 3.0;
-                break;
-            case 'High':
-                this.vehicleUpdateInterval = 1 / 24;
-                this.neonSignUpdateInterval = 3;
-                this.neonSignBatchSize = 150;
-                this.vhsUpdateInterval = 1 / 24;
-                this.rainUpdateStride = 2;
-                this.dynamicResolutionAdjustInterval = 3.5;
-                break;
-            case 'Medium':
-                this.vehicleUpdateInterval = 1 / 20;
-                this.neonSignUpdateInterval = 4;
-                this.neonSignBatchSize = 200;
-                this.vhsUpdateInterval = 1 / 20;
-                this.rainUpdateStride = 3;
-                this.dynamicResolutionAdjustInterval = 4.0;
-                break;
-            case 'Minimal':
-                this.vehicleUpdateInterval = 1 / 12;
-                this.neonSignUpdateInterval = 6;
-                this.neonSignBatchSize = 260;
-                this.vhsUpdateInterval = 1 / 12;
-                this.rainUpdateStride = 5;
-                this.dynamicResolutionAdjustInterval = 6.0;
-                break;
-            case 'Low':
-            default:
-                this.vehicleUpdateInterval = 1 / 15;
-                this.neonSignUpdateInterval = 5;
-                this.neonSignBatchSize = 240;
-                this.vhsUpdateInterval = 1 / 15;
-                this.rainUpdateStride = 4;
-                this.dynamicResolutionAdjustInterval = 5.0;
-                break;
+        case 'Extreme':
+        case 'Ultra':
+            this.vehicleUpdateInterval = 1 / 30;
+            this.neonSignUpdateInterval = 4;
+            this.neonSignBatchSize = 120;
+            this.vhsUpdateInterval = 1 / 30;
+            this.rainUpdateStride = 2;
+            this.dynamicResolutionAdjustInterval = 3.0;
+            break;
+        case 'High':
+            this.vehicleUpdateInterval = 1 / 24;
+            this.neonSignUpdateInterval = 3;
+            this.neonSignBatchSize = 150;
+            this.vhsUpdateInterval = 1 / 24;
+            this.rainUpdateStride = 2;
+            this.dynamicResolutionAdjustInterval = 3.5;
+            break;
+        case 'Medium':
+            this.vehicleUpdateInterval = 1 / 20;
+            this.neonSignUpdateInterval = 4;
+            this.neonSignBatchSize = 200;
+            this.vhsUpdateInterval = 1 / 20;
+            this.rainUpdateStride = 3;
+            this.dynamicResolutionAdjustInterval = 4.0;
+            break;
+        case 'Minimal':
+            this.vehicleUpdateInterval = 1 / 12;
+            this.neonSignUpdateInterval = 6;
+            this.neonSignBatchSize = 260;
+            this.vhsUpdateInterval = 1 / 12;
+            this.rainUpdateStride = 5;
+            this.dynamicResolutionAdjustInterval = 6.0;
+            break;
+        case 'Low':
+        default:
+            this.vehicleUpdateInterval = 1 / 15;
+            this.neonSignUpdateInterval = 5;
+            this.neonSignBatchSize = 240;
+            this.vhsUpdateInterval = 1 / 15;
+            this.rainUpdateStride = 4;
+            this.dynamicResolutionAdjustInterval = 5.0;
+            break;
         }
 
         // PERF: More aggressive dynamic resolution for better FPS
         // Lower floor values give 15-25% FPS boost with acceptable "retro" softness
         if (this.currentQualityName === 'Minimal') {
-            this.dynamicResolutionMin = 0.4;  // Was 0.5
+            this.dynamicResolutionMin = 0.4; // Was 0.5
             this.postProcessingScale = 0.5;
         } else if (this.currentQualityName === 'Low') {
-            this.dynamicResolutionMin = 0.5;  // Was 0.6
+            this.dynamicResolutionMin = 0.5; // Was 0.6
             this.postProcessingScale = 0.6;
         } else if (this.currentQualityName === 'Medium') {
             this.dynamicResolutionMin = 0.55; // Was 0.7
             this.postProcessingScale = 0.65;
         } else if (this.currentQualityName === 'High') {
-            this.dynamicResolutionMin = 0.6;  // Was 0.7
+            this.dynamicResolutionMin = 0.6; // Was 0.7
             this.postProcessingScale = 0.7;
         } else {
             // Ultra/Extreme - keep higher quality
@@ -1075,7 +1075,6 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Holographic billboards removed in Phase 0 cleanup (performance)
 
-
         // 2. Rain (Fast)
         workQueue.push(() => {
             if (!this.isActive) return;
@@ -1102,7 +1101,6 @@ export default class NeonDistrictTheme extends BaseTheme {
         });
 
         // Neon signs creation removed in Phase 0 cleanup (disabled for performance)
-
 
         // Final touches - run prewarm BEFORE resuming normal render
         workQueue.push(async () => {
@@ -2534,7 +2532,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const overlayMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
-                uIntensity: { value: 0.45 },  // Subtle glow
+                uIntensity: { value: 0.45 }, // Subtle glow
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -3338,7 +3336,6 @@ export default class NeonDistrictTheme extends BaseTheme {
             debris.receiveShadow = true;
             building.add(debris);
         }
-
     }
 
     createComplexTower(building, width, height, depth) {
@@ -4128,16 +4125,16 @@ export default class NeonDistrictTheme extends BaseTheme {
             return 0;
         }
         switch (this.currentQualityName) {
-            case 'Minimal':
-                return 0;
-            case 'Low':
-                return 0.35;
-            case 'Medium':
-                return 0.6;
-            case 'High':
-                return 0.8;
-            default:
-                return 1.0;
+        case 'Minimal':
+            return 0;
+        case 'Low':
+            return 0.35;
+        case 'Medium':
+            return 0.6;
+        case 'High':
+            return 0.8;
+        default:
+            return 1.0;
         }
     }
 
@@ -6524,10 +6521,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         let scale = 1.0;
 
         switch (shapeType) {
-            case 0: geometry = new THREE.TorusGeometry(8, 1.5, 8, 24); break;
-            case 1: geometry = new THREE.ConeGeometry(10, 3, 3); scale = 1.2; break;
-            case 2: geometry = new THREE.BoxGeometry(3, 40, 3); break;
-            case 3: geometry = new THREE.SphereGeometry(6, 16, 16); break;
+        case 0: geometry = new THREE.TorusGeometry(8, 1.5, 8, 24); break;
+        case 1: geometry = new THREE.ConeGeometry(10, 3, 3); scale = 1.2; break;
+        case 2: geometry = new THREE.BoxGeometry(3, 40, 3); break;
+        case 3: geometry = new THREE.SphereGeometry(6, 16, 16); break;
         }
 
         // Purple-dominant neon colors
@@ -6870,11 +6867,11 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Configuration for rain volume around camera
         this.rainConfig = {
             // Volume size around camera
-            spreadX: 80,      // ±40 units in X
-            spreadY: 60,      // 60 units tall (from camera.y - 5 to camera.y + 55)
-            spreadZ: 120,     // ±60 units in Z (more depth for perspective)
+            spreadX: 80, // ±40 units in X
+            spreadY: 60, // 60 units tall (from camera.y - 5 to camera.y + 55)
+            spreadZ: 120, // ±60 units in Z (more depth for perspective)
             // Fall speed
-            fallSpeed: 45,    // Units per second
+            fallSpeed: 45, // Units per second
             // Reset threshold (below camera)
             resetBelow: -10,
         };
@@ -6885,7 +6882,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const rainGeometry = new THREE.PlaneGeometry(0.06, 0.8);
 
         const rainMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffff,  // white base; per-instance colour (6a) does the tinting
+            color: 0xffffff, // white base; per-instance colour (6a) does the tinting
             transparent: true,
             opacity: 0.45,
             depthWrite: false,
@@ -6920,10 +6917,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         const _rainCol = new THREE.Color();
         const zoneTint = (x) => {
             const r = Math.random();
-            if (x < -12 && r < 0.5) return [1.0, 0.45, 0.82];   // left neon → magenta/pink
-            if (x > 12 && r < 0.5) return [0.42, 0.9, 1.0];     // right neon → cyan
-            if (r < 0.1) return [1.0, 0.74, 0.4];               // occasional amber
-            return [0.82, 0.9, 1.0];                            // cool blue-white default
+            if (x < -12 && r < 0.5) return [1.0, 0.45, 0.82]; // left neon → magenta/pink
+            if (x > 12 && r < 0.5) return [0.42, 0.9, 1.0]; // right neon → cyan
+            if (r < 0.1) return [1.0, 0.74, 0.4]; // occasional amber
+            return [0.82, 0.9, 1.0]; // cool blue-white default
         };
 
         for (let i = 0; i < particleCount; i++) {
@@ -6960,7 +6957,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
             dummy.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2]);
-            dummy.scale.set(sizes[i] * 0.7, sizes[i] * 1.8, 1)
+            dummy.scale.set(sizes[i] * 0.7, sizes[i] * 1.8, 1);
             dummy.updateMatrix();
             rainMesh.setMatrixAt(i, dummy.matrix);
         }
@@ -6985,9 +6982,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             // 6c: splashes catch the colour of the neon overhead (zone by world-X).
             const r = Math.random();
             let cr = 0.85; let cg = 0.93; let cb = 1.0; // cool default
-            if (sx < -120 && r < 0.55) { cr = 1.0; cg = 0.5; cb = 0.85; }       // left → magenta
-            else if (sx > 120 && r < 0.55) { cr = 0.5; cg = 0.92; cb = 1.0; }   // right → cyan
-            else if (r < 0.12) { cr = 1.0; cg = 0.78; cb = 0.45; }              // amber
+            if (sx < -120 && r < 0.55) { cr = 1.0; cg = 0.5; cb = 0.85; } // left → magenta
+            else if (sx > 120 && r < 0.55) { cr = 0.5; cg = 0.92; cb = 1.0; } // right → cyan
+            else if (r < 0.12) { cr = 1.0; cg = 0.78; cb = 0.45; } // amber
             splashColors[i * 3] = cr;
             splashColors[i * 3 + 1] = cg;
             splashColors[i * 3 + 2] = cb;
@@ -7121,7 +7118,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             // Set position and billboard to face camera
             dummy.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2]);
-            dummy.scale.set(sizes[i] * 0.7, sizes[i] * 1.8, 1)
+            dummy.scale.set(sizes[i] * 0.7, sizes[i] * 1.8, 1);
             dummy.updateMatrix();
             mesh.setMatrixAt(i, dummy.matrix);
         }
@@ -7370,25 +7367,33 @@ export default class NeonDistrictTheme extends BaseTheme {
         const wheelGeo = new THREE.CylinderGeometry(1.8, 1.8, 1.6, 14);
         wheelGeo.rotateZ(Math.PI / 2);
 
-        const headGeo = new THREE.CircleGeometry(1.05, 10);          // faces +Z (front)
+        const headGeo = new THREE.CircleGeometry(1.05, 10); // faces +Z (front)
         const tailGeo = new THREE.CircleGeometry(0.95, 10);
-        tailGeo.rotateY(Math.PI);                                    // faces -Z (rear)
+        tailGeo.rotateY(Math.PI); // faces -Z (rear)
         const glowGeo = new THREE.PlaneGeometry(16, 32);
-        glowGeo.rotateX(-Math.PI / 2);                               // flat on the road
+        glowGeo.rotateX(-Math.PI / 2); // flat on the road
 
         // ── Shared materials (node, MRT-safe) ────────────────────────────────
         // Glossy car paint: clearcoat over a metallic base so it mirrors the neon
         // city. White base × per-car instanceColor (set below) = varied paint.
         const bodyMat = new THREE.MeshPhysicalNodeMaterial({
-            color: 0xffffff, roughness: 0.26, metalness: 0.55,
-            clearcoat: 1.0, clearcoatRoughness: 0.1, envMapIntensity: 1.3,
+            color: 0xffffff,
+            roughness: 0.26,
+            metalness: 0.55,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1,
+            envMapIntensity: 1.3,
         });
         bodyMat.emissiveNode = vec3(0.0, 0.0, 0.0);
 
         // Dark tinted reflective glass for the greenhouse.
         const canopyMat = new THREE.MeshPhysicalNodeMaterial({
-            color: 0x04060c, roughness: 0.07, metalness: 0.5,
-            clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.6,
+            color: 0x04060c,
+            roughness: 0.07,
+            metalness: 0.5,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.04,
+            envMapIntensity: 1.6,
         });
         canopyMat.emissiveNode = this.colorToVec3(0x0a1830).mul(float(0.25));
 
@@ -7439,8 +7444,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         let coneMat = null;
         if (this.groundConesEnabled) {
             coneGeo = new THREE.ConeGeometry(3.4, 22, 18, 1, true);
-            coneGeo.translate(0, 11, 0);          // apex → origin (the headlight)
-            coneGeo.rotateX(-Math.PI / 2);        // widen toward +Z (forward)
+            coneGeo.translate(0, 11, 0); // apex → origin (the headlight)
+            coneGeo.rotateX(-Math.PI / 2); // widen toward +Z (forward)
             coneMat = new THREE.MeshBasicNodeMaterial({
                 transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
             });
@@ -7479,8 +7484,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         const _paint = new THREE.Color();
         for (let i = 0; i < count; i++) {
             const hex = Math.random() < 0.62
-                ? paints[Math.floor(Math.random() * 5)]            // dark
-                : paints[5 + Math.floor(Math.random() * 5)];       // neon
+                ? paints[Math.floor(Math.random() * 5)] // dark
+                : paints[5 + Math.floor(Math.random() * 5)]; // neon
             _paint.setHex(hex);
             this.groundCarInstances.body.setColorAt(i, _paint);
         }
@@ -7498,7 +7503,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             { x: 22, dir: -1 }, { x: 56, dir: -1 },
         ];
         this.groundCarRange = { min: -2500, max: 130 };
-        this.groundCarMinGap = 46;          // car length (~25) + buffer; no overlap
+        this.groundCarMinGap = 46; // car length (~25) + buffer; no overlap
         this.groundCarLanes = lanes.map(() => []); // car indices grouped per lane
         // Keep cars well inside the ~±90 street corridor (buildings start at ±140).
         const laneClamp = 80;
@@ -8426,9 +8431,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (this.currentQualityName === 'Extreme' || this.currentQualityName === 'Ultra') {
                 bloomDownsample = 0.75;
             } else if (this.currentQualityName === 'Medium') {
-                bloomDownsample = 0.5;  // Was 0.6
+                bloomDownsample = 0.5; // Was 0.6
             } else if (this.currentQualityName === 'Low' || this.currentQualityName === 'Minimal') {
-                bloomDownsample = 0.4;  // Was 0.5
+                bloomDownsample = 0.4; // Was 0.5
             }
 
             // AAA Phase 2: god-rays gated to High+ (post only runs on High+ anyway).
@@ -9255,7 +9260,6 @@ export default class NeonDistrictTheme extends BaseTheme {
                 }
             }
             mark = this.profileStep('ground', mark);
-
 
             // Animate Mega Tower Shader (Color Drift)
             if (this.megaTowerUniforms?.uTime) {

@@ -285,7 +285,9 @@ export class MultiPlayerState {
         metrics.cleanLinesSent += Math.max(0, cleanLines);
     }
 
-    _recordIncomingAttack(playerIndex, { lines = 0, cleanLines = 0, countAttack = false, potato = false } = {}) {
+    _recordIncomingAttack(playerIndex, {
+        lines = 0, cleanLines = 0, countAttack = false, potato = false,
+    } = {}) {
         const metrics = this.playerMetrics[playerIndex];
         if (!metrics) return;
         if (countAttack) metrics.attacksReceived++;

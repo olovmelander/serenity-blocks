@@ -340,10 +340,18 @@ function traceFusedLoops(shape, offsetX, offsetY, size) {
         if (!cell) return;
         const x0 = offsetX + x * size; const y0 = offsetY + y * size;
         const x1 = offsetX + (x + 1) * size; const y1 = offsetY + (y + 1) * size;
-        if (!has(x, y - 1)) edges.push({ fx: x0, fy: y0, tx: x1, ty: y0, dx: 1, dy: 0 });
-        if (!has(x + 1, y)) edges.push({ fx: x1, fy: y0, tx: x1, ty: y1, dx: 0, dy: 1 });
-        if (!has(x, y + 1)) edges.push({ fx: x1, fy: y1, tx: x0, ty: y1, dx: -1, dy: 0 });
-        if (!has(x - 1, y)) edges.push({ fx: x0, fy: y1, tx: x0, ty: y0, dx: 0, dy: -1 });
+        if (!has(x, y - 1)) edges.push({
+            fx: x0, fy: y0, tx: x1, ty: y0, dx: 1, dy: 0,
+        });
+        if (!has(x + 1, y)) edges.push({
+            fx: x1, fy: y0, tx: x1, ty: y1, dx: 0, dy: 1,
+        });
+        if (!has(x, y + 1)) edges.push({
+            fx: x1, fy: y1, tx: x0, ty: y1, dx: -1, dy: 0,
+        });
+        if (!has(x - 1, y)) edges.push({
+            fx: x0, fy: y1, tx: x0, ty: y0, dx: 0, dy: -1,
+        });
     }));
     if (edges.length === 0) return [];
 
@@ -791,8 +799,10 @@ export function drawPieceStyledUnified(
                 return `rgb(${Math.round(f.r)}, ${Math.round(f.g)}, ${Math.round(f.b)})`;
             };
             const grad = ctx.createLinearGradient(
-                offsetX + sMinX * size, offsetY + sMinY * size,
-                offsetX + sMaxX * size, offsetY + sMaxY * size,
+                offsetX + sMinX * size,
+                offsetY + sMinY * size,
+                offsetX + sMaxX * size,
+                offsetY + sMaxY * size,
             );
             grad.addColorStop(0, shade(0.18));
             grad.addColorStop(0.5, color);

@@ -526,8 +526,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 playerCount,
                 maxPlayers,
                 lobbyId: this.ffaGameState.lobbyId,
-                lobbyName: this.ffaGameState.lobbyName
-            }
+                lobbyName: this.ffaGameState.lobbyName,
+            },
         }));
 
         // Update Steam Rich Presence group size when lobby members change
@@ -682,7 +682,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Dispatch Rich Presence update for match start
         const playerCount = this.ffaGameState?.players?.size || 1;
         window.dispatchEvent(new CustomEvent('game:matchPosition', {
-            detail: { position: 1, playerCount }
+            detail: { position: 1, playerCount },
         }));
 
         // Drop-in mid-match: we joined as a dead/waiting roster member, so show the full-
@@ -1184,7 +1184,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Restore chat history from game state
             if (this.ffaGameState && this.ffaGameState.chatHistory) {
-                this.ffaGameState.chatHistory.forEach(msg => {
+                this.ffaGameState.chatHistory.forEach((msg) => {
                     const isSystem = !msg.playerName;
                     this.chat.addMessage({
                         author: isSystem ? 'System' : msg.playerName,
@@ -2486,18 +2486,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const goal = Number(config.endConditionValue) || 0;
 
         switch (config.endCondition) {
-            case 'frags':
-                return `FIRST TO ${goal || 10} FRAGS`;
-            case 'points':
-                return `FIRST TO ${(goal || 10) * 1000} POINTS`;
-            case 'lines':
-                return `FIRST TO ${goal || 40} LINES`;
-            case 'time':
-                return `${goal || 3} MINUTE SPRINT`;
-            case 'never':
-                return 'ENDLESS BATTLE';
-            default:
-                return 'STAY SHARP';
+        case 'frags':
+            return `FIRST TO ${goal || 10} FRAGS`;
+        case 'points':
+            return `FIRST TO ${(goal || 10) * 1000} POINTS`;
+        case 'lines':
+            return `FIRST TO ${goal || 40} LINES`;
+        case 'time':
+            return `${goal || 3} MINUTE SPRINT`;
+        case 'never':
+            return 'ENDLESS BATTLE';
+        default:
+            return 'STAY SHARP';
         }
     }
 
@@ -2598,7 +2598,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
         this._lastGarbageAmount = amount;
 
-        const { bar, fill, segments, value: valueEl } = this._garbageElements;
+        const {
+            bar, fill, segments, value: valueEl,
+        } = this._garbageElements;
 
         if (fill) {
             const percentage = Math.min(100, (amount / 20) * 100);
@@ -2739,7 +2741,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 score: document.getElementById('online-score'),
                 lines: document.getElementById('online-lines'),
             };
-            this._lastStats = { frags: -1, deaths: -1, score: -1, lines: -1 };
+            this._lastStats = {
+                frags: -1, deaths: -1, score: -1, lines: -1,
+            };
         }
 
         // PERF: Only update DOM when values actually change

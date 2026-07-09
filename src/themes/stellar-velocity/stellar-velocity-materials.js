@@ -155,7 +155,8 @@ function createStarfieldNodeMaterial(params = {}) {
     const boostMul = float(1.0).add(uTwinkleBoost.mul(0.35));
     const tintWeight = clamp(float(0.22).add(uWarpSpeed.mul(0.18)), float(0.0), float(0.65));
     const tunnelTint = mix(vec3(1.0), uTunnelTint, tintWeight);
-    const colorNode = aColor.mul(twinkle).mul(warpMul).mul(boostMul).mul(tunnelTint).add(vec3(uWarpSpeed.mul(0.04)));
+    const colorNode = aColor.mul(twinkle).mul(warpMul).mul(boostMul).mul(tunnelTint)
+        .add(vec3(uWarpSpeed.mul(0.04)));
 
     const dist = length(uvCoord.sub(vec2(0.5)));
     const softCircle = smoothstep(float(0.52), float(0.0), dist);
@@ -270,7 +271,9 @@ function createWarpCoreNodeMaterial(params = {}) {
 
     return finalizeStellarVelocityMaterial(
         material,
-        { uTime, uGlowIntensity, uColor, uPulseBoost },
+        {
+            uTime, uGlowIntensity, uColor, uPulseBoost,
+        },
         {
             emitsBloom: true,
             bloomWeight: STELLAR_VELOCITY_BLOOM_WEIGHTS.warpCore,
@@ -542,7 +545,9 @@ function createEnergyRingNodeMaterial(params = {}) {
 
     return finalizeStellarVelocityMaterial(
         material,
-        { uColor, uOpacity, uTime, uShimmer },
+        {
+            uColor, uOpacity, uTime, uShimmer,
+        },
         {
             emitsBloom: true,
             bloomWeight: STELLAR_VELOCITY_BLOOM_WEIGHTS.energyRing,

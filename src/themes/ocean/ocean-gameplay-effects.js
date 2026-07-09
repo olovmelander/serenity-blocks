@@ -1116,7 +1116,7 @@ export class OceanGameplayEffects {
         for (let i = 0; i < effect.activeCount; i += 1) {
             const i3 = i * 3;
             const offset = i * 16;
-            
+
             // Copy precomputed rotation/scale directly
             instanceArray[offset] = baseMatrix[0];
             instanceArray[offset + 1] = baseMatrix[1];

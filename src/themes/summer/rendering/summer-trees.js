@@ -36,15 +36,23 @@ export function createSummerTrees(scene, ctx = {}) {
     // a barely-perceptible drift in the crowns, not a fast wobble.
     const SPECIES = makeTreeMat ? Object.fromEntries(
         [
-            ['spruce', treeGeos.spruce, { amp: 0.022, stiff: 2.8, flutter: 0.006, freq: 0.16 }],
-            ['pine', treeGeos.pine, { amp: 0.022, stiff: 3.0, flutter: 0.006, freq: 0.16 }],
-            ['birch', treeGeos.birch, { amp: 0.03, stiff: 2.3, flutter: 0.012, freq: 0.2 }],
+            ['spruce', treeGeos.spruce, {
+                amp: 0.022, stiff: 2.8, flutter: 0.006, freq: 0.16,
+            }],
+            ['pine', treeGeos.pine, {
+                amp: 0.022, stiff: 3.0, flutter: 0.006, freq: 0.16,
+            }],
+            ['birch', treeGeos.birch, {
+                amp: 0.03, stiff: 2.3, flutter: 0.012, freq: 0.2,
+            }],
         ].filter(([, g]) => g).map(([k, g, w]) => [k, { geo: g, mat: makeTreeMat({ height: 1.0, ...w }), list: [] }]),
     ) : {};
     Object.values(SPECIES).forEach((s) => geos.push(s.geo));
 
     const rand = (a, b) => a + Math.random() * (b - a);
-    const push = (key, x, z, h) => SPECIES[key]?.list.push({ x, z, h, rotY: Math.random() * Math.PI * 2 });
+    const push = (key, x, z, h) => SPECIES[key]?.list.push({
+        x, z, h, rotY: Math.random() * Math.PI * 2,
+    });
 
     function buildPlacements() {
         // NEAR framing — conifers hug the LEFT edge, birch the RIGHT edge (like the ref).
@@ -60,9 +68,15 @@ export function createSummerTrees(scene, ctx = {}) {
         // FAR ridge — three dense bands of conifers (+ a scattering of birch/pine) walked
         // across X with jitter, receding toward the hills; cottage clearing kept empty.
         const BANDS = [
-            { step: 6, jit: 3, zBase: -132, zRand: 12, hMin: 11, hMax: 17 },
-            { step: 8, jit: 4, zBase: -146, zRand: 14, hMin: 9, hMax: 13 },
-            { step: 11, jit: 5, zBase: -160, zRand: 14, hMin: 7, hMax: 11 },
+            {
+                step: 6, jit: 3, zBase: -132, zRand: 12, hMin: 11, hMax: 17,
+            },
+            {
+                step: 8, jit: 4, zBase: -146, zRand: 14, hMin: 9, hMax: 13,
+            },
+            {
+                step: 11, jit: 5, zBase: -160, zRand: 14, hMin: 7, hMax: 11,
+            },
         ];
         for (const bnd of BANDS) {
             for (let x = -200; x <= 200; x += bnd.step) {
@@ -102,9 +116,9 @@ export function createSummerTrees(scene, ctx = {}) {
 
     return {
         group,
-        load: async () => {},                       // no async assets
+        load: async () => {}, // no async assets
         placeForest: () => { buildPlacements(); build(); },
-        update: () => {},                            // wind is 100% in-shader
+        update: () => {}, // wind is 100% in-shader
         dispose: () => {
             meshes.forEach((mh) => group.remove(mh));
             geos.forEach((g) => g.dispose());

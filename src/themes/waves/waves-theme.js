@@ -575,7 +575,7 @@ export default class WavesTheme extends BaseTheme {
         const angle = this.pickImpactAngle();
         const camZ = this.camera ? this.camera.position.z : -25;
         const zOffset = zBiasAhead
-            ? Math.random() * 35 - 5   // mostly ahead of camera
+            ? Math.random() * 35 - 5 // mostly ahead of camera
             : (Math.random() - 0.5) * 40;
         const z = camZ + zOffset;
 
@@ -583,7 +583,9 @@ export default class WavesTheme extends BaseTheme {
         const origin = new THREE.Vector3(Math.cos(angle) * r, Math.sin(angle) * r, z);
         // Inward normal = from wall point toward the barrel axis
         const wallNormal = new THREE.Vector3(-Math.cos(angle), -Math.sin(angle), 0).normalize();
-        return { origin, wallNormal, angle, z };
+        return {
+            origin, wallNormal, angle, z,
+        };
     }
 
     triggerDropletImpact(opts = {}) {

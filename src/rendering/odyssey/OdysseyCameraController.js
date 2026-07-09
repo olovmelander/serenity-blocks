@@ -1697,9 +1697,7 @@ export class OdysseyCameraController {
             0,
             1,
         );
-        const { position: lookTarget } = this.getPathDataAt(
-            lookAheadT, this._frameLookTarget, this._frameThrow, this._frameThrow, this._frameThrow,
-        );
+        const { position: lookTarget } = this.getPathDataAt(lookAheadT, this._frameLookTarget, this._frameThrow, this._frameThrow, this._frameThrow);
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }

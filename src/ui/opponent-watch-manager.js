@@ -1128,7 +1128,7 @@ export class OpponentWatchManager {
                 playerKey,
                 canvas,
                 ctx: canvas.getContext('2d'),
-                nextCtxs: nextCanvases.map(c => c.getContext('2d')),
+                nextCtxs: nextCanvases.map((c) => c.getContext('2d')),
                 garbageMeter,
                 garbageFill,
                 garbageSegments,
@@ -1919,7 +1919,7 @@ export class OpponentWatchManager {
                 for (let r = 4; r < grid.length; r++) {
                     const gridRow = grid[r];
                     if (!gridRow) continue;
-                    const hasGarbage = gridRow.some(cell => {
+                    const hasGarbage = gridRow.some((cell) => {
                         if (!cell) return false;
                         const type = typeof cell === 'object' ? cell.type : cell;
                         return type === 'garbage' || type === 'clean_garbage';
@@ -2124,8 +2124,6 @@ export class OpponentWatchManager {
         div.textContent = text || '';
         return div.innerHTML;
     }
-
-
 
     /**
      * Cleanup resources

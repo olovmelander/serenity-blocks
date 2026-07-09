@@ -130,7 +130,9 @@ export class SeasonDirector {
     }
 
     onPerfectClear() {
-        this.bump(0.4, { bloom: 0.9, sparkle: 0.9, raise: 1, accent: SEASON_ACCENTS.tetris });
+        this.bump(0.4, {
+            bloom: 0.9, sparkle: 0.9, raise: 1, accent: SEASON_ACCENTS.tetris,
+        });
     }
 
     onLevelUp() {

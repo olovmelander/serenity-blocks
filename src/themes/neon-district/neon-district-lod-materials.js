@@ -55,7 +55,7 @@ const noise2D = /* @__PURE__ */ Fn(([p]) => {
 
 /**
  * BUILDING LOD SYSTEM - Simplified materials for distant buildings
- * 
+ *
  * Tier 0: Full detail (existing createBuildingNodeMaterial)
  * Tier 1: Medium LOD - baked texture, simplified shader
  * Tier 2: Low LOD - solid emissive color
@@ -197,8 +197,8 @@ export function createBuildingMaterialLowLOD(bakedTexture, color = 0x000000) {
     const material = new THREE.MeshBasicMaterial({
         color,
         side: THREE.FrontSide, // Only render front faces
-        transparent: false,    // SOLID opaque
-        depthWrite: true,      // Write to depth buffer
+        transparent: false, // SOLID opaque
+        depthWrite: true, // Write to depth buffer
     });
 
     return { material };
@@ -292,7 +292,12 @@ export function createProceduralBuildingNodeMaterialLOD1() {
     material.colorNode = finalColor;
     material.emissiveNode = windowGlow;
 
-    return { material, uniforms: { uTime, uSeed, uGlowIntensity, uWindowScale } };
+    return {
+        material,
+        uniforms: {
+            uTime, uSeed, uGlowIntensity, uWindowScale,
+        },
+    };
 }
 
 /**
@@ -376,5 +381,10 @@ export function createProceduralBuildingNodeMaterialLOD2() {
     material.colorNode = finalColor;
     material.emissiveNode = windowGlow;
 
-    return { material, uniforms: { uTime, uSeed, uGlowIntensity, uWindowScale } };
+    return {
+        material,
+        uniforms: {
+            uTime, uSeed, uGlowIntensity, uWindowScale,
+        },
+    };
 }

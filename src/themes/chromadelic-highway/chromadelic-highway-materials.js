@@ -48,7 +48,7 @@ import {
 } from 'three/tsl';
 
 const BLOOM_CLASS_WEIGHTS = {
-    road: 0.05,  // Low weight: lane stripes cause high-frequency flicker in bloom
+    road: 0.05, // Low weight: lane stripes cause high-frequency flicker in bloom
     tunnelRing: 0.08, // Low weight: fresnel + camera sway causes bloom flicker
     planet: 0.64,
     planetGlow: 0.42,
@@ -193,7 +193,8 @@ export function createRoadNodeMaterial() {
     const pulseMul = float(1.0).add(uPulse.mul(0.3));
     const paceMul = float(1.0).add(uPace.sub(1.0).mul(0.12));
 
-    const finalColor = rainbow.add(laneGlow).mul(edgeMix).mul(depthMix).mul(pulseMul).mul(paceMul);
+    const finalColor = rainbow.add(laneGlow).mul(edgeMix).mul(depthMix).mul(pulseMul)
+        .mul(paceMul);
     const finalRoadColor = clamp(finalColor, vec3(0.0), vec3(1.06));
 
     material.colorNode = finalRoadColor;
@@ -202,7 +203,9 @@ export function createRoadNodeMaterial() {
 
     return finalizeNodeMaterial(
         material,
-        { uTime, uProgress, uPulse, uPace },
+        {
+            uTime, uProgress, uPulse, uPace,
+        },
         { emitsBloom: true, mrtRole: 'road' },
     );
 }
@@ -256,7 +259,9 @@ export function createTunnelRingNodeMaterial(colorVec3) {
 
     return finalizeNodeMaterial(
         material,
-        { uColor, uTime, uPulse, uGlow },
+        {
+            uColor, uTime, uPulse, uGlow,
+        },
         { emitsBloom: true, mrtRole: 'tunnel-ring' },
     );
 }
@@ -377,7 +382,9 @@ export function createPlanetAtmosphereShellMaterial(opts = {}) {
 
     return finalizeNodeMaterial(
         material,
-        { uTime, uPulse, uIntensity, uHorizon, uZenith },
+        {
+            uTime, uPulse, uIntensity, uHorizon, uZenith,
+        },
         { emitsBloom: true, mrtRole: 'planetAtmosphere' },
     );
 }
@@ -629,7 +636,9 @@ export function createShootingStarNodeMaterial(opts = {}) {
 
     return finalizeNodeMaterial(
         material,
-        { uOpacity, uTime, headBoost, sizeBoost },
+        {
+            uOpacity, uTime, headBoost, sizeBoost,
+        },
         { emitsBloom: true, mrtRole: 'shooting-star' },
     );
 }
@@ -731,7 +740,7 @@ export function createNebulaNodeMaterial(nebulaTexture) {
     // Add subtle UV drift for internal movement
     const drift = vec2(
         sin(uTime.mul(0.05).add(uvCoord.y.mul(4.0))).mul(0.02),
-        cos(uTime.mul(0.04).add(uvCoord.x.mul(4.0))).mul(0.02)
+        cos(uTime.mul(0.04).add(uvCoord.x.mul(4.0))).mul(0.02),
     );
     const texColor = texture(nebulaTexture, uvCoord.add(drift));
 
@@ -761,7 +770,7 @@ export function createNebulaNodeMaterial(nebulaTexture) {
     return finalizeNodeMaterial(
         material,
         { uTime, uPulse },
-        { emitsBloom: true, mrtRole: 'nebula' }
+        { emitsBloom: true, mrtRole: 'nebula' },
     );
 }
 
@@ -836,7 +845,7 @@ export function createVolumetricNebulaSkyMaterial(opts = {}) {
     return finalizeNodeMaterial(
         material,
         { uTime, uPulse, uEmissiveBoost },
-        { emitsBloom: true, mrtRole: 'volumetricNebula' }
+        { emitsBloom: true, mrtRole: 'volumetricNebula' },
     );
 }
 

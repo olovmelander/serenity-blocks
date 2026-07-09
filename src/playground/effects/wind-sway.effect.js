@@ -7,7 +7,9 @@
 //   4. per-plant phase from WORLD position → neighbours move out of sync (free, instance-friendly)
 // Every plant species shares the same positionNode logic via makeWindMat(); only amp/stiff/freq differ.
 import * as THREE from 'three/webgpu';
-import { positionLocal, positionWorld, uniform, vec3, clamp } from 'three/tsl';
+import {
+    positionLocal, positionWorld, uniform, vec3, clamp,
+} from 'three/tsl';
 
 export const meta = {
     id: 'wind-sway',
@@ -18,46 +20,60 @@ export const meta = {
 export function create({ scene }) {
     const uTime = uniform(0);
     const uWind = uniform(new THREE.Vector2(1, 0.32).normalize()); // wind direction on the XZ plane
-    const uStrength = uniform(1.0);                                 // global tuning knob
+    const uStrength = uniform(1.0); // global tuning knob
 
     // --- shared wind vertex-displacement material factory ---
-    function makeWindMat({ color, height, amp, stiff, flutter, freq = 1.0, rough = 0.92, flat = true }) {
+    function makeWindMat({
+        color, height, amp, stiff, flutter, freq = 1.0, rough = 0.92, flat = true,
+    }) {
         const m = new THREE.MeshStandardNodeMaterial({
             color: new THREE.Color(color), roughness: rough, metalness: 0, flatShading: flat,
         });
-        const yN = clamp(positionLocal.y.div(height), 0, 1);   // 0 at base → 1 at top (object space)
-        const mask = yN.pow(stiff);                            // stiffer near the ground
+        const yN = clamp(positionLocal.y.div(height), 0, 1); // 0 at base → 1 at top (object space)
+        const mask = yN.pow(stiff); // stiffer near the ground
         const phase = positionWorld.x.mul(0.6).add(positionWorld.z.mul(0.45)); // per-plant offset
 
         const t = uTime;
         const sway = t.mul(1.1 * freq).add(phase).sin()
-            .add(t.mul(0.47 * freq).add(phase.mul(1.6)).sin().mul(0.5));   // two octaves
-        const gust = t.mul(0.22).add(phase.mul(0.2)).sin().mul(0.35).add(0.78); // slow surge 0.43..1.13
+            .add(t.mul(0.47 * freq).add(phase.mul(1.6)).sin().mul(0.5)); // two octaves
+        const gust = t.mul(0.22).add(phase.mul(0.2)).sin().mul(0.35)
+            .add(0.78); // slow surge 0.43..1.13
         const bend = sway.mul(gust).mul(amp).mul(uStrength).mul(mask);
 
         const flut = t.mul(7.0 * freq).add(positionLocal.x.mul(9.0)).add(positionLocal.z.mul(9.0)).sin()
-            .mul(flutter).mul(uStrength).mul(yN);
+            .mul(flutter)
+            .mul(uStrength)
+            .mul(yN);
 
         const dx = uWind.x.mul(bend).add(flut);
         const dz = uWind.y.mul(bend).add(flut.mul(0.5));
-        const dy = bend.abs().mul(-0.12);   // settle slightly as it leans (fake foreshorten)
+        const dy = bend.abs().mul(-0.12); // settle slightly as it leans (fake foreshorten)
         m.positionNode = positionLocal.add(vec3(dx, dy, dz));
         return m;
     }
 
     const TREE_H = 4.6, FLOWER_H = 1.3, GRASS_H = 0.7;
-    const tiers = [0x2f6b34, 0x3a7d3f, 0x6f7d2f].map((c) =>
-        makeWindMat({ color: c, height: TREE_H, amp: 0.42, stiff: 1.7, flutter: 0.05 }));
-    const matTrunk = makeWindMat({ color: 0x5a3a22, height: TREE_H, amp: 0.42, stiff: 2.6, flutter: 0 });
-    const matStem  = makeWindMat({ color: 0x3f7a28, height: FLOWER_H, amp: 0.18, stiff: 1.25, flutter: 0.03 });
-    const blooms = { white: 0xf2f2ec, yellow: 0xf3b81e, purple: 0x7a2bd8, pink: 0xd62a78 };
-    const matBloom = Object.fromEntries(Object.entries(blooms).map(([k, c]) =>
-        [k, makeWindMat({ color: c, height: FLOWER_H, amp: 0.18, stiff: 1.25, flutter: 0.05, rough: 0.5 })]));
-    const matGrass = [0x4a8f2a, 0x2f6b22].map((c) =>
-        makeWindMat({ color: c, height: GRASS_H, amp: 0.12, stiff: 1.0, flutter: 0.06 }));
+    const tiers = [0x2f6b34, 0x3a7d3f, 0x6f7d2f].map((c) => makeWindMat({
+        color: c, height: TREE_H, amp: 0.42, stiff: 1.7, flutter: 0.05,
+    }));
+    const matTrunk = makeWindMat({
+        color: 0x5a3a22, height: TREE_H, amp: 0.42, stiff: 2.6, flutter: 0,
+    });
+    const matStem = makeWindMat({
+        color: 0x3f7a28, height: FLOWER_H, amp: 0.18, stiff: 1.25, flutter: 0.03,
+    });
+    const blooms = {
+        white: 0xf2f2ec, yellow: 0xf3b81e, purple: 0x7a2bd8, pink: 0xd62a78,
+    };
+    const matBloom = Object.fromEntries(Object.entries(blooms).map(([k, c]) => [k, makeWindMat({
+        color: c, height: FLOWER_H, amp: 0.18, stiff: 1.25, flutter: 0.05, rough: 0.5,
+    })]));
+    const matGrass = [0x4a8f2a, 0x2f6b22].map((c) => makeWindMat({
+        color: c, height: GRASS_H, amp: 0.12, stiff: 1.0, flutter: 0.06,
+    }));
 
-    const geos = [];            // geometries to dispose
-    const roots = [];           // top-level scene objects to remove
+    const geos = []; // geometries to dispose
+    const roots = []; // top-level scene objects to remove
     const mats = [...tiers, matTrunk, matStem, ...Object.values(matBloom), ...matGrass];
     const G = (g) => { geos.push(g); return g; };
 
@@ -86,8 +102,13 @@ export function create({ scene }) {
     }
     for (let i = 0; i < 6; i++) {
         const a = i / 6 * Math.PI * 2;
-        spruce(Math.cos(a) * (5 + rnd() * 3), -3 - rnd() * 4 + Math.sin(a) * 2,
-            4.2 + rnd() * 1.0, 0.9 + rnd() * 0.4, tiers[i % 3]);
+        spruce(
+            Math.cos(a) * (5 + rnd() * 3),
+            -3 - rnd() * 4 + Math.sin(a) * 2,
+            4.2 + rnd() * 1.0,
+            0.9 + rnd() * 0.4,
+            tiers[i % 3],
+        );
     }
 
     // flower = stem + head (disc head, or a tall thin cone for spikes)
@@ -96,8 +117,7 @@ export function create({ scene }) {
         const sg = G(new THREE.CylinderGeometry(0.018, 0.03, h, 4)); sg.translate(0, h / 2, 0);
         g.add(new THREE.Mesh(sg, matStem));
         let hg;
-        if (kind === 'spike') { hg = G(new THREE.ConeGeometry(0.13, 0.6, 6)); hg.translate(0, h + 0.24, 0); }
-        else { hg = G(new THREE.IcosahedronGeometry(0.22, 0)); hg.scale(1, 0.62, 1); hg.translate(0, h + 0.05, 0); }
+        if (kind === 'spike') { hg = G(new THREE.ConeGeometry(0.13, 0.6, 6)); hg.translate(0, h + 0.24, 0); } else { hg = G(new THREE.IcosahedronGeometry(0.22, 0)); hg.scale(1, 0.62, 1); hg.translate(0, h + 0.05, 0); }
         g.add(new THREE.Mesh(hg, mat));
         scene.add(g); roots.push(g);
     }
