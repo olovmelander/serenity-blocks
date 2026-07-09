@@ -103,14 +103,14 @@ export async function playBootWarpHandoff(options = {}) {
     let shellDismissed = false;
     let titleRevealed = false;
     let fadePromise = null;
-    let visibleStartedAt = 0;
+    let visibleStartedAt = null;
     let minVisibleMarked = false;
     let latestProgress = 0;
 
-    const visibleMs = () => (visibleStartedAt ? Math.max(0, nowMs() - visibleStartedAt) : 0);
+    const visibleMs = () => (visibleStartedAt === null ? 0 : Math.max(0, nowMs() - visibleStartedAt));
 
     const markMinVisibleIfReady = () => {
-        if (minVisibleMarked || !visibleStartedAt || visibleMs() < timing.minVisibleMs) {
+        if (minVisibleMarked || visibleStartedAt === null || visibleMs() < timing.minVisibleMs) {
             return false;
         }
 

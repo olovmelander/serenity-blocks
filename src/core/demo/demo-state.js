@@ -164,9 +164,11 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.currentPiece = restorePooledPiece(snapshot.currentPiece);
     gameState.nextPieces = clonePlain(snapshot.nextPieces) || [];
     gameState.boardGrid = clonePlain(snapshot.boardGrid) || createBoardGrid();
-    gameState.board = snapshot.board !== undefined
-        ? clonePlain(snapshot.board)
-        : (gameState.isInfinityMode ? gameState.boardGrid : null);
+    if (snapshot.board !== undefined) {
+        gameState.board = clonePlain(snapshot.board);
+    } else {
+        gameState.board = gameState.isInfinityMode ? gameState.boardGrid : null;
+    }
     if (gameState.isInfinityMode && !gameState.board) {
         gameState.board = gameState.boardGrid;
     }

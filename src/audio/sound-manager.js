@@ -1347,7 +1347,7 @@ export class SoundManager {
 
         // Prefer Web Audio API scheduling for sample-accurate, click-free fading
         if (this.musicGainNode && this.musicGainWired && this.audioContext) {
-            const gain = this.musicGainNode.gain;
+            const { gain } = this.musicGainNode;
             const now = this.audioContext.currentTime;
             gain.cancelScheduledValues(now);
 
@@ -1392,7 +1392,7 @@ export class SoundManager {
                 }
 
                 const progress = Math.min(1, (now - startTime) / durationMs);
-                const eased = 1 - Math.pow(1 - progress, 2);
+                const eased = 1 - (1 - progress) ** 2;
                 this.setAudioElementVolume(startVolume + ((clampedTarget - startVolume) * eased));
 
                 if (progress >= 1) {
@@ -1441,9 +1441,9 @@ export class SoundManager {
             fadeOutMs = undefined,
             fadeInMs = undefined,
         } = options;
-        if (this.isMuted) return;
+        if (this.isMuted) return Promise.resolve();
         const songPath = this.resolveTrackUrl(trackKey);
-        if (!songPath) return;
+        if (!songPath) return Promise.resolve();
 
         if (this.musicInterval) {
             clearInterval(this.musicInterval);
@@ -1458,7 +1458,7 @@ export class SoundManager {
             fadeOutMs,
             fadeInMs,
         });
-        this.currentTrackId = Symbol();
+        this.currentTrackId = Symbol('music-track');
         return switchPromise;
     }
 
@@ -1585,7 +1585,11 @@ export class SoundManager {
             this.audioElement.muted = this.isMuted;
         }
 
-        this.isMuted ? this.stopBackgroundMusic() : this.startBackgroundMusic();
+        if (this.isMuted) {
+            this.stopBackgroundMusic();
+        } else {
+            this.startBackgroundMusic();
+        }
         return this.isMuted;
     }
 

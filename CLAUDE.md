@@ -1,5 +1,11 @@
 # Serenity Blocks — agent guide
 
+## Architecture governance
+
+Before proposing structural changes, load **[docs/ARCHITECTURE_INDEX.md](docs/ARCHITECTURE_INDEX.md)**
+and **[docs/adr/](docs/adr/)**. The remediation plan is the umbrella roadmap; ADRs record
+constraints that should not be re-litigated casually.
+
 ## WebGPU / Three.js visual work: validate before "done" (required)
 
 This project's visual surfaces are WebGPU/TSL. When you create or change a **theme**
