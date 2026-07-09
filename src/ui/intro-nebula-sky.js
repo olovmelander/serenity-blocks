@@ -51,8 +51,8 @@ export function createIntroNebulaSky({ radius = 200 } = {}) {
     const COL_DEEP = vec3(0.018, 0.010, 0.055); // deepest indigo
     const COL_VIOLET = vec3(0.090, 0.045, 0.190); // mid violet
     const COL_TEAL = vec3(0.030, 0.110, 0.180); // upper teal
-    const HI_MAGENTA = vec3(0.520, 0.120, 0.620); // magenta nebula glow
-    const HI_CYAN = vec3(0.080, 0.520, 0.680); // cyan nebula glow
+    const HI_MAGENTA = vec3(0.34, 0.08, 0.42); // magenta nebula glow
+    const HI_CYAN = vec3(0.055, 0.34, 0.47); // cyan nebula glow
 
     const colorNode = Fn(() => {
         const worldDir = normalize(positionWorld).toVar();
@@ -77,12 +77,12 @@ export function createIntroNebulaSky({ radius = 200 } = {}) {
         const frontFade = smoothstep(-1.0, -0.2, worldDir.z).mul(0.7).add(0.3);
 
         // Sparse highlight pockets only where FBM is high — soft edges via smoothstep.
-        const nebulaMask = smoothstep(0.54, 0.88, nebula).mul(frontFade);
+        const nebulaMask = smoothstep(0.6, 0.9, nebula).mul(frontFade);
         // Hue of the pocket varies across the sky (cyan ↔ magenta) for a chromadelic feel.
         const hue = sin(worldDir.x.mul(2.3).add(worldDir.z.mul(1.7)).add(uTime.mul(0.05)))
             .mul(0.5).add(0.5);
         const highlight = mix(HI_CYAN, HI_MAGENTA, hue);
-        const withClouds = mix(gradient, highlight, nebulaMask.mul(0.42));
+        const withClouds = mix(gradient, highlight, nebulaMask.mul(0.32));
 
         // Pulse: tiny additive on audio/combo events (caps low).
         const pulsed = withClouds.add(vec3(uPulse.mul(0.06)));

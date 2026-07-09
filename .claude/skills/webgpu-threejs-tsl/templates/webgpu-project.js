@@ -219,7 +219,7 @@ let postProcessing;
 function setupPostProcessing() {
   // Uncomment and customize as needed
 
-  // postProcessing = new THREE.RenderPipeline(renderer);
+  // postProcessing = new THREE.PostProcessing(renderer);  // r181 class name
   // const scenePass = pass(scene, camera);
   // const sceneColor = scenePass.getTextureNode('output');
   //

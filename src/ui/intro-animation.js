@@ -174,9 +174,9 @@ export class IntroAnimation {
 
     /**
      * Play the deferred "SERENITY BLOCKS" title reveal now. Idempotent — safe to call
-     * from any handoff branch (and a safety timer). Called once the boot warp / startup
-     * transition has finished so the reveal animation plays fresh on the settled intro
-     * instead of being wasted behind the covering transition.
+     * from any handoff branch (and a safety timer). The WebGPU path calls this once its
+     * five-second visible contract is met, letting the title resolve during the nebula
+     * arrival and continue through the canvas crossfade.
      */
     revealTitle(source = 'manual') {
         if (this.titleRevealed) {

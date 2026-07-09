@@ -25,13 +25,12 @@ body {
     --global-sunset-flare-strength: 1;
 }
 
-/* ═══ STUDIO IDENT — full-screen cinematic "Diamond Ignition" splash ═══
-   Three GPU-aware acts: REVEAL (before the shader pre-warm, GPU free) → static HOLD
-   (.sb-lit, during the warm — nothing animates so the saturated GPU can't stutter it)
-   → EXIT bloom-crossfade (after the warm, GPU free). */
+/* Serenity Blocks game ident. The faceted mark is the exact silhouette used by the
+   WebGPU warp, so the first transition is a material change instead of a logo cut. */
 :root {
     --sb-accent: #8cd7ff;
     --sb-accent-2: #8ea6ff;
+    --sb-accent-3: #c77dff;
     --sb-ink: #050610;
     --sb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --sb-ease-lockup: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -46,10 +45,10 @@ body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    /* OPAQUE dark stage — a pure studio ident; nothing behind shows through during the
-       hold. The exit crossfade is driven by the whole shell fading its opacity. */
+    /* Opaque stage: renderer warm-up stays invisible behind the ident. */
     background:
-        radial-gradient(ellipse at 50% 46%, #16244c 0%, #0a1024 46%, var(--sb-ink) 100%),
+        radial-gradient(ellipse at 50% 46%, rgba(49, 104, 155, 0.26) 0%, rgba(70, 42, 112, 0.12) 34%, transparent 67%),
+        linear-gradient(180deg, #090b13 0%, #03040a 56%, #010207 100%),
         var(--sb-ink);
     /* EXIT crossfade — long enough to overlap onto the live intro (no black gap). */
     transition: opacity 0.9s var(--sb-ease-out), visibility 0.9s var(--sb-ease-out);
@@ -66,7 +65,8 @@ body {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(ellipse at 50% 48%, rgba(140, 215, 255, 0.10) 0%, rgba(110, 95, 255, 0.05) 30%, transparent 62%);
+    background:
+        linear-gradient(90deg, transparent 0%, rgba(140, 215, 255, 0.035) 42%, rgba(199, 125, 255, 0.026) 58%, transparent 100%);
 }
 
 .startup-shell__vignette {
@@ -89,7 +89,7 @@ body {
     position: absolute;
     left: 0;
     right: 0;
-    height: 9vh;
+    height: 5.5vh;
     background: #000;
     z-index: 2;
     animation: sb-bar-in 0.6s var(--sb-ease-out) 0.05s both;
@@ -117,11 +117,13 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 26px;
+    gap: 30px;
 }
 
 .startup-logo__markwrap {
     position: relative;
+    width: 150px;
+    height: 150px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -130,12 +132,12 @@ body {
 /* Baked radial bloom behind the mark — static; the primary "still but stunning" tool. */
 .startup-logo__glow {
     position: absolute;
-    width: 260px;
-    height: 260px;
+    width: 280px;
+    height: 280px;
     border-radius: 50%;
     pointer-events: none;
-    background: radial-gradient(circle, rgba(140, 215, 255, 0.30) 0%, rgba(110, 95, 255, 0.12) 38%, transparent 70%);
-    filter: blur(18px);
+    background: radial-gradient(circle, rgba(140, 215, 255, 0.24) 0%, rgba(199, 125, 255, 0.09) 40%, transparent 72%);
+    filter: blur(22px);
     animation: sb-glow-ignite 1.3s var(--sb-ease-out) both;
 }
 
@@ -146,25 +148,56 @@ body {
 }
 
 .startup-logo__mark {
-    width: 128px;
-    height: 128px;
+    position: relative;
+    width: 118px;
+    height: 118px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 30px;
-    background: radial-gradient(circle at 50% 34%, rgba(140, 215, 255, 0.34), rgba(142, 166, 255, 0.14) 60%, transparent 78%);
-    border: 1px solid rgba(180, 210, 255, 0.32);
-    box-shadow: 0 0 40px rgba(140, 215, 255, 0.30), 0 0 90px rgba(110, 95, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    background: conic-gradient(from 45deg,
+            #dff8ff 0deg 90deg,
+            #75c6ee 90deg 180deg,
+            #7186e8 180deg 270deg,
+            #a878de 270deg 360deg);
+    filter:
+        drop-shadow(0 0 8px rgba(215, 247, 255, 0.64))
+        drop-shadow(0 0 26px rgba(115, 198, 238, 0.42))
+        drop-shadow(0 0 58px rgba(168, 120, 222, 0.22));
     /* REVEAL: ignite-from-dark focus-pull; parked by .sb-lit for the warm hold. */
     animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
     will-change: opacity, transform, filter;
 }
 
 .startup-logo__mark span {
-    font-size: 58px;
-    line-height: 1;
-    color: rgba(224, 238, 255, 0.98);
-    text-shadow: 0 0 22px rgba(140, 215, 255, 0.8), 0 0 44px rgba(110, 95, 255, 0.5);
+    width: 36px;
+    height: 36px;
+    clip-path: inherit;
+    background: rgba(238, 250, 255, 0.88);
+    box-shadow: 0 0 22px rgba(216, 244, 255, 0.72);
+}
+
+.startup-logo__mark::before,
+.startup-logo__mark::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+}
+
+.startup-logo__mark::before {
+    inset: 2px;
+    clip-path: inherit;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 42%),
+        linear-gradient(315deg, rgba(78, 207, 255, 0.25), transparent 52%);
+}
+
+.startup-logo__mark::after {
+    inset: 0;
+    background:
+        linear-gradient(90deg, transparent 49.35%, rgba(228, 246, 255, 0.5) 50%, transparent 50.65%),
+        linear-gradient(0deg, transparent 49.35%, rgba(228, 246, 255, 0.38) 50%, transparent 50.65%);
+    mix-blend-mode: screen;
 }
 
 @keyframes sb-mark-ignite {
@@ -182,10 +215,11 @@ body {
 
 .startup-logo__name-text {
     display: inline-block;
-    font-size: 30px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
     font-weight: 700;
-    letter-spacing: 0.34em;
-    padding-left: 0.34em;
+    letter-spacing: 0;
+    padding-left: 0;
     text-transform: uppercase;
     text-align: center;
     background: linear-gradient(100deg, #ffffff 0%, #d7f5ff 46%, #8ea6ff 66%, #ffffff 100%);
@@ -199,6 +233,12 @@ body {
 @keyframes sb-name-in {
     0% { opacity: 0; transform: translateY(10px) scaleX(1.28); }
     100% { opacity: 1; transform: translateY(0) scaleX(1); }
+}
+
+@media (max-width: 480px) {
+    .startup-logo__name-text {
+        font-size: 20px;
+    }
 }
 
 /* One-shot light-sweep sheen — transform-driven overlay, fires as the name lands. */

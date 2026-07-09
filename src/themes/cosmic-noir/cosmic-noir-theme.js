@@ -34,7 +34,6 @@ import {
     createCosmicWaveNodeMaterial,
     createNebulaNodeMaterial,
     createPlanetNodeMaterial,
-    createPlanetGlowNodeMaterial,
     createPlanetGlowSpriteNodeMaterial,
     createStarfieldNodeMaterial,
     createVoidSparkNodeMaterial,
@@ -2496,19 +2495,15 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         const positionAttr = new THREE.BufferAttribute(positions, 3);
-        positionAttr.setUsage(THREE.DynamicDrawUsage);
         const alphaAttr = new THREE.BufferAttribute(alphas, 1);
-        alphaAttr.setUsage(THREE.DynamicDrawUsage);
         const sizeAttr = new THREE.BufferAttribute(sizes, 1);
-        sizeAttr.setUsage(THREE.DynamicDrawUsage);
         const velocityAttr = new THREE.BufferAttribute(velocities, 4);
-        velocityAttr.setUsage(THREE.DynamicDrawUsage);
         const seedAttr = new THREE.BufferAttribute(noiseSeeds, 3);
-        seedAttr.setUsage(THREE.DynamicDrawUsage);
         const birthAttr = new THREE.BufferAttribute(births, 1);
-        birthAttr.setUsage(THREE.DynamicDrawUsage);
         const lifeAttr = new THREE.BufferAttribute(lifetimes, 1);
-        lifeAttr.setUsage(THREE.DynamicDrawUsage);
+        // Keep the default StaticDrawUsage. In Three r181, DynamicDrawUsage forces every
+        // consumed attribute to upload on every rendered frame. Burst writes below already
+        // use addUpdateRange() + needsUpdate, so only the changed particle ranges upload.
 
         geometry.setAttribute('position', positionAttr);
         geometry.setAttribute('aAlpha', alphaAttr);
@@ -2636,7 +2631,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 const upDrift = Math.sin(helixPhase * 2.0) * 35.0 * (this.rand() * 0.6 + 0.7);
 
                 d.velocities[idx * 4] = tangX * tangSpeed + (px / shellRadius) * outwardSpeed;
-                d.velocities[idx * 4 + 1] = py / shellRadius * outwardSpeed + upDrift;
+                d.velocities[idx * 4 + 1] = (py / shellRadius) * outwardSpeed + upDrift;
                 d.velocities[idx * 4 + 2] = tangZ * tangSpeed + (pz / shellRadius) * outwardSpeed;
                 d.velocities[idx * 4 + 3] = 1.0;
                 lifeSeconds = 10.0 + this.rand() * 8.0;
@@ -2696,6 +2691,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         // End state (estimate 0, invisible, draw range 0) is identical to the general path.
         if (d.activeWindows.length === 0) {
             d.activeEstimate = 0;
+            d.highWaterMark = 0;
+            d.nextIndex = 0;
             if (this.gasSwirl.visible) {
                 this.gasSwirl.visible = false;
                 this.gasSwirl.geometry.setDrawRange(0, 0);
@@ -2720,6 +2717,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.gasSwirl.visible) {
             this.gasSwirl.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
         } else {
+            d.highWaterMark = 0;
+            d.nextIndex = 0;
             this.gasSwirl.geometry.setDrawRange(0, 0);
         }
     }
@@ -2843,14 +2842,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         const lifeAttr = new THREE.BufferAttribute(lifetimes, 1);
         const colorAttr = new THREE.BufferAttribute(colors, 3);
         const sizeAttr = new THREE.BufferAttribute(sizes, 1);
-        [
-            positionAttr,
-            velocityAttr,
-            birthAttr,
-            lifeAttr,
-            colorAttr,
-            sizeAttr,
-        ].forEach((attribute) => attribute.setUsage(THREE.DynamicDrawUsage));
+        // These buffers change only when a burst is spawned. Leaving StaticDrawUsage in
+        // place lets the partial update ranges below avoid full uploads on every draw.
 
         geometry.setAttribute('position', positionAttr);
         geometry.setAttribute('aVelocity', velocityAttr);
@@ -3031,12 +3024,24 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         const d = this.unifiedSparkData;
-        d.activeWindows = d.activeWindows.filter((entry) => entry.expiresAt > this.time);
-        d.activeEstimate = d.activeWindows.reduce((sum, entry) => sum + entry.count, 0);
+        let writeIdx = 0;
+        let activeEstimate = 0;
+        for (let i = 0; i < d.activeWindows.length; i += 1) {
+            const entry = d.activeWindows[i];
+            if (entry.expiresAt > this.time) {
+                d.activeWindows[writeIdx] = entry;
+                writeIdx += 1;
+                activeEstimate += entry.count;
+            }
+        }
+        d.activeWindows.length = writeIdx;
+        d.activeEstimate = activeEstimate;
         sparkSystem.visible = d.activeEstimate > 0;
         if (sparkSystem.visible) {
             sparkSystem.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
         } else {
+            d.highWaterMark = 0;
+            d.nextIndex = 0;
             sparkSystem.geometry.setDrawRange(0, 0);
         }
     }
@@ -3645,7 +3650,6 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     renderFrame() {
         if (!this.renderer || !this.scene || !this.camera) return;
-        this.renderer.clear();
 
         if (this.isWebGPU) {
             if (this.postProcessing && this.flags.usePost) {
@@ -3657,6 +3661,9 @@ export default class CosmicNoirTheme extends BaseTheme {
                 }
             }
 
+            // autoClear is disabled for the direct path, so it still needs an explicit clear.
+            // PassNode owns and clears its target when post-processing is active above.
+            this.renderer.clear();
             try {
                 this.renderer.render(this.scene, this.camera);
             } catch (error) {
@@ -3665,6 +3672,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             return;
         }
 
+        this.renderer.clear();
         if (this.composer && this.qualityPreset.enablePostProcessing && !this.flags.noPost) {
             this.composer.render();
         } else {

@@ -125,6 +125,7 @@ vi.mock('three/webgpu', () => {
         Scene,
         PerspectiveCamera,
         Matrix4,
+        ACESFilmicToneMapping: 'ACESFilmicToneMapping',
         NoToneMapping: 'NoToneMapping',
         SRGBColorSpace: 'SRGBColorSpace',
     };
@@ -457,6 +458,7 @@ describe('boot warp startup decision', () => {
             BOOT_WARP_FADE_PROGRESS,
             BOOT_WARP_MIN_VISIBLE_MS,
             BOOT_WARP_REVEAL_PROGRESS,
+            BOOT_WARP_TITLE_PROGRESS,
             resolveBootWarpTiming,
         } = await import('../../src/ui/boot-warp-startup.js');
 
@@ -469,9 +471,10 @@ describe('boot warp startup decision', () => {
         const shortTiming = resolveBootWarpTiming(new URLSearchParams('warpDur=100'));
         const visibleWindowMs = shortTiming.durationMs * (BOOT_WARP_FADE_PROGRESS - BOOT_WARP_REVEAL_PROGRESS);
         expect(shortTiming.requestedDurationMs).toBe(100);
-        expect(shortTiming.durationMs).toBe(6250);
+        expect(shortTiming.durationMs).toBe(5953);
         expect(shortTiming.durationMs).toBeGreaterThanOrEqual(shortTiming.minDurationMs);
         expect(visibleWindowMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
+        expect(BOOT_WARP_TITLE_PROGRESS).toBeLessThan(BOOT_WARP_FADE_PROGRESS);
     });
 
     it('declines the warp when intro renderer readiness exceeds the boot budget', async () => {

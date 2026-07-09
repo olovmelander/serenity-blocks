@@ -9,14 +9,14 @@
  * renderer stay pixel-identical — improve one, improve both.
  *
  *   /playground.html?effect=logo-warp-transition&orbit=0
- *   optional:  &count=60000  &dur=3.2   &t=1.4 (phase-lock a still)
+ *   optional:  &count=60000  &dur=6.5   &t=1.4 (phase-lock a still)
  *
  * Progress phases (uProgress):
- *   0.00–0.10  DIAMOND HOLD  — the mark sits, shimmering
- *   0.10–0.30  IGNITION      — the mark flares and is swept into the tunnel
- *   0.30–0.70  WARP DIVE     — hyperspace streaks stream toward the camera
- *   0.70–0.94  ARRIVAL       — deceleration, curl-eddies, drift into the disc
- *   0.94–1.00  NEBULA SEED   — a slow-rotating luminous disc (hands to the intro)
+ *   0.00–0.13  FACET FOCUS   — the game-ident diamond resolves in cyan-violet
+ *   0.13–0.30  IGNITION      — facets separate and acquire depth
+ *   0.30–0.67  WARP FLIGHT   — controlled radial streaks accelerate toward camera
+ *   0.67–0.94  ARRIVAL       — trails shorten and curl into a layered field
+ *   0.94–1.00  NEBULA SEED   — persistent quiet field for the title crossfade
  */
 import * as THREE from 'three/webgpu';
 import { createWarpParticles } from '../../ui/boot-warp-transition-scene.js';
@@ -27,11 +27,23 @@ export const meta = {
     description: 'GPU compute-particle studio-ident dissolve: diamond → hyperspace dive → nebula seed.',
 };
 
+function createSeededRng(seed = 0x5e12f10) {
+    let value = seed >>> 0;
+    return () => {
+        value += 0x6d2b79f5;
+        let mixed = value;
+        mixed = Math.imul(mixed ^ (mixed >>> 15), mixed | 1);
+        mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+        return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 export function create({
     scene, renderer, sizes, params,
 }) {
     const count = parseInt(params.get('count'), 10) || 60000;
-    const duration = parseFloat(params.get('dur')) || 3.2;
+    const duration = parseFloat(params.get('dur')) || 6.5;
+    const seed = parseInt(params.get('seed'), 10) || 0x5e12f10;
 
     const aspect = (sizes && sizes.width / sizes.height) || (window.innerWidth / window.innerHeight);
 
@@ -46,10 +58,18 @@ export function create({
         aspect,
         viewportHeight: (sizes && sizes.height) || window.innerHeight,
         compute: typeof renderer.compute === 'function',
+        rng: createSeededRng(seed),
     });
     warp.setAspect(aspect);
     warp.setViewProj(new THREE.Matrix4().multiplyMatrices(projCam.projectionMatrix, projCam.matrixWorldInverse));
     scene.add(warp.mesh);
+
+    const previousBackground = scene.background;
+    const previousToneMapping = renderer.toneMapping;
+    const previousExposure = renderer.toneMappingExposure;
+    scene.background = new THREE.Color(0x02040b);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.9;
 
     const refreshViewProj = () => {
         projCam.updateProjectionMatrix();
@@ -60,7 +80,7 @@ export function create({
     return {
         cameraRadius: 7,
         update(time) {
-            const cycle = duration + 1.8; // hold on the nebula seed, then loop
+            const cycle = duration + 2.4; // hold on the nebula seed, then loop
             const local = time % cycle;
             warp.setProgress(Math.min(local / duration, 1));
             warp.setTime(time);
@@ -87,6 +107,9 @@ export function create({
         dispose() {
             scene.remove(warp.mesh);
             warp.dispose();
+            scene.background = previousBackground;
+            renderer.toneMapping = previousToneMapping;
+            renderer.toneMappingExposure = previousExposure;
         },
     };
 }

@@ -2,9 +2,9 @@
 /**
  * Boot Warp Transition — the studio-ident → intro reveal renderer.
  *
- * A self-contained, PRE-WARMED WebGPU renderer that plays the diamond-mark →
- * hyperspace-dive → nebula-seed particle transition on its own full-screen canvas
- * (opaque black, z between the intro canvas and the studio-ident shell). The heavy
+ * A self-contained, PRE-WARMED WebGPU renderer that plays the game-ident diamond ->
+ * restrained warp flight -> nebula-arrival transition on its own full-screen canvas
+ * (opaque near-black, z between the intro canvas and the game-ident shell). The heavy
  * TSL→WGSL compile is done up-front in `prewarm()` while the ident still covers the
  * screen, so `play()` is pure GPU work with no first-frame hitch.
  *
@@ -235,14 +235,15 @@ export class BootWarpTransition {
         try {
             renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 1.5));
             renderer.setSize(w, h, false);
-            renderer.setClearColor(0x000000, 1);
-            renderer.toneMapping = THREE.NoToneMapping;
+            renderer.setClearColor(0x02040b, 1);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.9;
             renderer.outputColorSpace = THREE.SRGBColorSpace;
 
             const canvas = renderer.domElement;
             canvas.id = CANVAS_ID;
             canvas.style.cssText = `position:fixed;inset:0;width:100%;height:100%;z-index:${this.zIndex};`
-                + 'pointer-events:none;background:#000;opacity:1;';
+                + 'pointer-events:none;background:#02040b;opacity:1;';
             if (typeof document !== 'undefined') document.body.appendChild(canvas);
             this.canvas = canvas;
             markStartup('boot-warp:canvas-appended', {
