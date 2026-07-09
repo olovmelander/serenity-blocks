@@ -46,7 +46,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    manifest: true,
+    // GitHub Pages' upload action excludes dot-prefixed folders by default.
+    // Keep the manifest at a visible path so the startup loader can resolve the
+    // hashed desktop entry after deployment.
+    manifest: 'manifest.json',
     sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
     // Electron loads the packaged app from file://, so Vite's module-preload
     // rewrites add startup indirection without providing browser-network wins.
