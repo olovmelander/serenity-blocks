@@ -675,12 +675,12 @@ export default class FluidDreamsTheme extends BaseTheme {
                 const phi = Math.acos(2 * v - 1);
                 const r = 12 + Math.random() * 35;
                 const sinPhi = Math.sin(phi);
-                positions[i * 3]     = r * sinPhi * Math.cos(theta);
+                positions[i * 3] = r * sinPhi * Math.cos(theta);
                 positions[i * 3 + 1] = r * sinPhi * Math.sin(theta);
                 positions[i * 3 + 2] = r * Math.cos(phi);
 
                 const tint = palette[Math.floor(Math.random() * palette.length)];
-                colors[i * 3]     = tint.x;
+                colors[i * 3] = tint.x;
                 colors[i * 3 + 1] = tint.y;
                 colors[i * 3 + 2] = tint.z;
 

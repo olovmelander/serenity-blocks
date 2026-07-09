@@ -105,7 +105,7 @@ function createWhaleBioluminescentMaterial(uniforms) {
         const body = mix(bodyDeep, bodyLit, lum);
         const fres = pow(oneMinus(abs(normalView.z)), 3.0);
         const ventral = clamp(normalWorld.y.negate().mul(0.4).add(0.6), float(0.0), float(1.0));
-        
+
         // Slow pulsing bioluminescence (5-second period)
         const pulse = sin(uniforms.uTime.mul(1.2)).mul(0.15).add(0.85);
         const rim = clamp(fres.mul(ventral).mul(pulse), float(0.0), float(1.0));
@@ -134,16 +134,16 @@ async function loadCreature(group, uniforms, corridor, record, role) {
 
     const model = gltf.scene;
     model.name = `deep-ocean-${role}-model`;
-    
+
     _box.setFromObject(model);
     _box.getSize(_size);
     const scale = (record.targetSize ?? 28) / (Math.max(_size.x, _size.y, _size.z) || 1);
     model.scale.setScalar(scale);
 
-    const material = role === 'whale' 
+    const material = role === 'whale'
         ? createWhaleBioluminescentMaterial(uniforms)
         : createMantaBioluminescentMaterial(uniforms);
-        
+
     model.traverse((child) => {
         if (!child.isMesh) return;
         child.castShadow = false;
@@ -176,7 +176,9 @@ async function loadCreature(group, uniforms, corridor, record, role) {
         group.userData.mantaMixers.push(mixer);
     }
 
-    group.userData.mantaFlights.push({ root, model, mixer, seat: root.userData.seat, phase: root.userData.phase, role });
+    group.userData.mantaFlights.push({
+        root, model, mixer, seat: root.userData.seat, phase: root.userData.phase, role,
+    });
 }
 
 /**
@@ -184,7 +186,7 @@ async function loadCreature(group, uniforms, corridor, record, role) {
  */
 export async function loadDeepOceanMantas(group, uniforms, corridor) {
     if (!hasChapter2CreatureAssets()) return;
-    
+
     group.userData.mantaFlights = group.userData.mantaFlights || [];
     group.userData.mantaMixers = group.userData.mantaMixers || [];
 
@@ -221,44 +223,46 @@ export function updateDeepOceanMantas(group, delta, time) {
     for (let i = 0; i < mixers.length; i += 1) mixers[i].update(delta);
 
     const eps = 0.05;
-    
+
     // A wide, slow horizontal ellipse GLIDE around a centre beside the corridor. The large
     // radii + steady angular speed make the velocity DOMINANT and well-defined, so the head
     // (baseFwd) leads cleanly every frame. The previous tiny hover-weave produced a near-zero,
     // jittery finite-diff velocity → essentially random facing (the "not swimming right" bug).
     const posAtManta = (seat, phase, t) => {
-        const w = 0.14;                          // ~45 s per loop — unhurried glide
+        const w = 0.14; // ~45 s per loop — unhurried glide
         const a = t * w + phase;
-        const cx = seat.x + ESCORT_LATERAL;      // circle beside the camera
+        const cx = seat.x + ESCORT_LATERAL; // circle beside the camera
         const cz = seat.z - 18;
         return {
             x: cx + Math.cos(a) * 30,
-            y: seat.y + Math.sin(t * 0.5 + phase) * 2.5,   // gentle vertical bob
+            y: seat.y + Math.sin(t * 0.5 + phase) * 2.5, // gentle vertical bob
             z: cz + Math.sin(a) * 24,
         };
     };
 
     const posAtWhale = (seat, phase, t) => {
-        const w = 0.085;                         // ~74 s per loop — slow & majestic
+        const w = 0.085; // ~74 s per loop — slow & majestic
         const a = t * w + phase;
-        const cx = seat.x - 30;                  // opposite side from the manta, but in-sightline
+        const cx = seat.x - 30; // opposite side from the manta, but in-sightline
         const cz = seat.z - 22;
         return {
             x: cx + Math.cos(a) * 30,
-            y: seat.y - 10 + Math.sin(t * 0.32 + phase) * 3,   // only slightly deeper, so it reads
+            y: seat.y - 10 + Math.sin(t * 0.32 + phase) * 3, // only slightly deeper, so it reads
             z: cz + Math.sin(a) * 26,
         };
     };
 
     for (let i = 0; i < flights.length; i += 1) {
         const f = flights[i];
-        const { root, seat, phase, role } = f;
+        const {
+            root, seat, phase, role,
+        } = f;
         if (!root) continue;
-        
+
         const isWhale = role === 'whale';
         const p = isWhale ? posAtWhale(seat, phase, time) : posAtManta(seat, phase, time);
         root.position.set(p.x, p.y, p.z);
-        
+
         const pAhead = isWhale ? posAtWhale(seat, phase, time + eps) : posAtManta(seat, phase, time + eps);
         _fwd.set(pAhead.x - p.x, pAhead.y - p.y, pAhead.z - p.z);
         if (_fwd.lengthSq() > 1e-6) {
@@ -267,7 +271,7 @@ export function updateDeepOceanMantas(group, delta, time) {
             _q.setFromUnitVectors(baseFwd, _fwd);
             root.quaternion.copy(_q);
         }
-        
+
         const activeWindow = isWhale ? whaleWindow : escort;
         const bankAmp = isWhale ? 0.12 : 0.4;
         const bank = Math.cos(time * (isWhale ? 0.1 : 0.16) + phase) * bankAmp * (1 - activeWindow * 0.7);

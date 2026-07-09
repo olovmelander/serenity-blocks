@@ -230,22 +230,22 @@ export function createAstralRibbonNodeMaterial(params = {}) {
             .add(noise.sub(0.5).mul(0.08)),
         sin(travelPhase.mul(1.7).add(vUv.y.mul(TAU * 2.0)).sub(uPulseOffset.mul(0.8))).mul(comboWarp.mul(0.78)),
     );
-    
+
     // Ribbon pulsation Wave (width swell)
     const pulseWave = sin(vUv.x.mul(TAU * 8.0).sub(uTime.mul(uFlowSpeed).mul(3.5)).add(uPulseOffset))
         .mul(0.06)
         .mul(float(1.0).add(uLinePulse.mul(1.5).add(uComboEnergy.mul(0.8))));
     const shellBreath = normalLocal.mul(
-        pulseWave.add(sin(travelPhase.mul(3.2)).mul(0.02).mul(float(1.0).add(uEnergy.mul(0.2))))
+        pulseWave.add(sin(travelPhase.mul(3.2)).mul(0.02).mul(float(1.0).add(uEnergy.mul(0.2)))),
     );
-    
+
     // High-end glowing neon emissive
     const emissiveColor = wovenColor.mul(
         float(1.15)
             .add(centerMask.mul(0.4))
             .add(pulsePacket.mul(1.2))
             .add(uComboEnergy.mul(0.85))
-            .add(fresnel.mul(0.3))
+            .add(fresnel.mul(0.3)),
     );
     const alpha = centerMask
         .mul(float(0.26).add(braidMask.mul(0.18)))
@@ -361,7 +361,7 @@ export function createAstralNebulaNodeMaterial(params = {}) {
         .mul(smoothstep(0.98, 0.72, vUv.y));
     const tintMix1 = clamp(detail.mul(0.72).add(texNode.r.mul(0.28)), 0.0, 1.0);
     const tintMix2 = clamp(sin(warped.x.mul(3.0).add(detail.mul(2.0))).mul(0.5).add(0.5).add(uPulse.mul(0.12)), 0.0, 1.0);
-    
+
     let colorNode = mix(uTintA, uTintB, tintMix1);
     colorNode = mix(colorNode, uTintC, tintMix2.mul(0.42))
         .mul(texNode.rgb.add(0.18))
@@ -640,13 +640,13 @@ export function createAstralLightShaftNodeMaterial(params = {}) {
     const uScrollSpeed = uniform(params.scrollSpeed || 0.45);
 
     const vUv = uv();
-    
+
     const vertFade = smoothstep(float(0.0), float(0.22), vUv.y).mul(smoothstep(float(1.0), float(0.42), vUv.y));
     const radFade = smoothstep(float(0.5), float(0.0), abs(vUv.x.sub(0.5)));
-    
+
     const noiseCoords = vec2(vUv.x.mul(2.2), vUv.y.mul(0.45).sub(uTime.mul(uScrollSpeed)));
     const shaftNoise = tslFbm(noiseCoords);
-    
+
     const pulseFactor = float(1.0).add(uPulse.mul(0.4));
     const finalColor = mix(uColorA, uColorB, shaftNoise.mul(0.75)).mul(pulseFactor);
     const alpha = vertFade.mul(radFade).mul(shaftNoise.mul(0.68).add(0.32)).mul(uOpacity).mul(pulseFactor);
@@ -683,10 +683,10 @@ export function createAstralConstellationNodeMaterial(params = {}) {
     const uColorB = uniform(params.colorB || new THREE.Color(0xd95bff));
 
     const vUv = uv();
-    
+
     const twinkle = sin(uTime.mul(2.8).add(vUv.x.mul(12.0))).mul(0.22).add(0.78);
     const pulseFactor = twinkle.mul(float(1.0).add(uScintillation.mul(0.5)));
-    
+
     const finalColor = mix(uColorA, uColorB, vUv.x).mul(pulseFactor);
     const alpha = uOpacity.mul(pulseFactor).mul(smoothstep(float(0.0), float(0.12), vUv.x).mul(smoothstep(float(1.0), float(0.88), vUv.x)));
 

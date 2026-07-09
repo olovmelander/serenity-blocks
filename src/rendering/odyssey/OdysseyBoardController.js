@@ -1276,9 +1276,7 @@ export class OdysseyBoardController {
 
     /** @private */
     _compileGroupThroughPost(group) {
-        return compileGroupThroughPost(
-            this.renderer, this.postProcessingStack, this.scene, this.camera, group,
-        );
+        return compileGroupThroughPost(this.renderer, this.postProcessingStack, this.scene, this.camera, group);
     }
 
     async _prewarmChapterEnvironment(chapterId) {
@@ -2260,9 +2258,9 @@ export class OdysseyBoardController {
                 ? buildPointWarmSamples({ position: fastStartPosition })
                 : warmChapterIds
                     ? buildChapterWarmSamples({
-                    chapterPositions: this.presentationLayout?.chapterPositions || [],
-                    chapterIds: warmChapterIds,
-                })
+                        chapterPositions: this.presentationLayout?.chapterPositions || [],
+                        chapterIds: warmChapterIds,
+                    })
                     : buildJourneyWarmSamples({
                         chapterPositions: this.presentationLayout?.chapterPositions || [],
                     });

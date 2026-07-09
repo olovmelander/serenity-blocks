@@ -38,7 +38,6 @@ export class DemoBrowser {
             importBtn.addEventListener('click', () => this.importInput.click());
             this.importInput.addEventListener('change', (e) => this.handleFileImport(e));
         }
-
     }
 
     show() {
@@ -207,5 +206,4 @@ export class DemoBrowser {
         // Reset input
         event.target.value = '';
     }
-
 }

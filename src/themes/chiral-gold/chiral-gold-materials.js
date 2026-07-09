@@ -123,7 +123,7 @@ export function createGoldDustNodeMaterial(params = {}) {
     const focalDist = abs(depth.sub(boardDepth));
     const focalRange = float(340.0);
     const blurFactor = clamp(focalDist.sub(focalRange).div(650.0), 0.0, 3.2);
-    
+
     const sizeScale = float(1.0).add(blurFactor.mul(1.25));
     const opacityScale = float(1.0).div(float(1.0).add(blurFactor.mul(2.5)));
 
@@ -233,7 +233,7 @@ export function createBurstSparkNodeMaterial(params = {}) {
     const focalDist = abs(depth.sub(boardDepth));
     const focalRange = float(340.0);
     const blurFactor = clamp(focalDist.sub(focalRange).div(650.0), 0.0, 3.2);
-    
+
     const sizeScale = float(1.0).add(blurFactor.mul(1.25));
     const opacityScale = float(1.0).div(float(1.0).add(blurFactor.mul(2.5)));
 
@@ -348,7 +348,7 @@ export function createWispNodeMaterial(params = {}) {
     const focalDist = abs(depth.sub(boardDepth));
     const focalRange = float(340.0);
     const blurFactor = clamp(focalDist.sub(focalRange).div(650.0), 0.0, 3.2);
-    
+
     const sizeScale = float(1.0).add(blurFactor.mul(1.25));
     const opacityScale = float(1.0).div(float(1.0).add(blurFactor.mul(2.5)));
 
@@ -429,7 +429,7 @@ export function createStrandNodeMaterial(params = {}) {
     const focalDist = abs(depth.sub(boardDepth));
     const focalRange = float(340.0);
     const blurFactor = clamp(focalDist.sub(focalRange).div(650.0), 0.0, 3.2);
-    
+
     const sizeScale = float(1.0).add(blurFactor.mul(1.25));
     const opacityScale = float(1.0).div(float(1.0).add(blurFactor.mul(2.5)));
 

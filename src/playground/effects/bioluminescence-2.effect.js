@@ -840,7 +840,9 @@ export function create({
         rotY: 0.12,
         seed: 170,
         baseHex: PAL.rockDark,
-    }, { tintHex: PAL.rockDark, rimHex: PAL.rimCyan, rimStr: 0.22, brightness: 0.56 });
+    }, {
+        tintHex: PAL.rockDark, rimHex: PAL.rimCyan, rimStr: 0.22, brightness: 0.56,
+    });
     addRockMass(33, 2, -104, {
         role: 'wall',
         baseR: 10,
@@ -875,7 +877,9 @@ export function create({
         rotY: -0.18,
         seed: 171,
         baseHex: PAL.rockDark,
-    }, { tintHex: PAL.rockDark, rimHex: PAL.rimViolet, rimStr: 0.24, brightness: 0.56 });
+    }, {
+        tintHex: PAL.rockDark, rimHex: PAL.rimViolet, rimStr: 0.24, brightness: 0.56,
+    });
     addRockMass(-42, -3.5, -75, {
         role: 'wall',
         baseR: 10,
@@ -991,7 +995,9 @@ export function create({
         rotY: -0.2,
         seed: 154,
         baseHex: PAL.rockBlue,
-    }, { tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.28, brightness: 0.62 });
+    }, {
+        tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.28, brightness: 0.62,
+    });
     addRockMass(48, 2, -108, {
         role: 'foreground',
         variant: 4,
@@ -1000,7 +1006,9 @@ export function create({
         rotY: -0.12,
         seed: 155,
         baseHex: PAL.rockBlue,
-    }, { tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.25, brightness: 0.58 });
+    }, {
+        tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.25, brightness: 0.58,
+    });
 
     // 3. Layered Left Canyon Ledges
     addRockMass(-31, -6.5, -48, {
@@ -1011,7 +1019,9 @@ export function create({
         rotY: 0.18,
         seed: 156,
         baseHex: PAL.rockBlue,
-    }, { tintHex: PAL.rockBlue, rimHex: PAL.rimViolet, rimStr: 0.26, brightness: 0.58 });
+    }, {
+        tintHex: PAL.rockBlue, rimHex: PAL.rimViolet, rimStr: 0.26, brightness: 0.58,
+    });
     addRockMass(-43, 14, -94, {
         role: 'slab',
         variant: 1,
@@ -1021,7 +1031,9 @@ export function create({
         rotY: 0.12,
         seed: 157,
         baseHex: PAL.rockBlue,
-    }, { tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.28, brightness: 0.62 });
+    }, {
+        tintHex: PAL.rockBlue, rimHex: PAL.rimCyan, rimStr: 0.28, brightness: 0.62,
+    });
 
     // 4. Midground Pool Rocks (Stepping stones)
     addRockMass(-12, -8.4, -40, {
@@ -1051,7 +1063,9 @@ export function create({
         rotY: 0.12,
         seed: 163,
         baseHex: PAL.rockDark,
-    }, { tintHex: PAL.rockDark, rimHex: PAL.rimViolet, rimStr: 0.32, brightness: 0.64 });
+    }, {
+        tintHex: PAL.rockDark, rimHex: PAL.rimViolet, rimStr: 0.32, brightness: 0.64,
+    });
     addRockMass(45, 14, -126, {
         role: 'wall',
         baseR: 7,
@@ -1059,7 +1073,9 @@ export function create({
         rotY: -0.1,
         seed: 164,
         baseHex: PAL.rockDark,
-    }, { tintHex: PAL.rockDark, rimHex: PAL.rimCyan, rimStr: 0.32, brightness: 0.64 });
+    }, {
+        tintHex: PAL.rockDark, rimHex: PAL.rimCyan, rimStr: 0.32, brightness: 0.64,
+    });
 
     // ── soft god-ray shafts descending through the central haze-well (subtle) ─────
     makeShaft(-18, 14, -134, 12, 44, PAL.cyan, 0.15);
@@ -1645,10 +1661,18 @@ export function create({
         op: 0.42,
         clusterChance: 0.72,
         clusters: [
-            { x: -40, y: -5, z: 10, r: 16, h: 11 },
-            { x: 32, y: -1, z: -82, r: 13, h: 17 },
-            { x: 30, y: 5, z: -104, r: 15, h: 18 },
-            { x: -40, y: 4, z: -122, r: 16, h: 18 },
+            {
+                x: -40, y: -5, z: 10, r: 16, h: 11,
+            },
+            {
+                x: 32, y: -1, z: -82, r: 13, h: 17,
+            },
+            {
+                x: 30, y: 5, z: -104, r: 15, h: 18,
+            },
+            {
+                x: -40, y: 4, z: -122, r: 16, h: 18,
+            },
         ],
     });
     makeMotes(Math.round(170 * DENSITY), { // tiny twinkling sparkles, brighter, smaller
@@ -1663,10 +1687,18 @@ export function create({
         op: 0.68,
         clusterChance: 0.68,
         clusters: [
-            { x: 32, y: 2, z: -82, r: 13, h: 20 },
-            { x: 30, y: 5, z: -104, r: 13, h: 22 },
-            { x: -42, y: -4, z: 8, r: 16, h: 14 },
-            { x: -5, y: 2, z: -128, r: 12, h: 18 },
+            {
+                x: 32, y: 2, z: -82, r: 13, h: 20,
+            },
+            {
+                x: 30, y: 5, z: -104, r: 13, h: 22,
+            },
+            {
+                x: -42, y: -4, z: 8, r: 16, h: 14,
+            },
+            {
+                x: -5, y: 2, z: -128, r: 12, h: 18,
+            },
         ],
     });
     makeMotes(Math.round(310 * DENSITY), { // near-still glowworm twinkle clinging high on the dark ceiling/walls

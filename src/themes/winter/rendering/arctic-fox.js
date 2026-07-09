@@ -15,7 +15,7 @@ const _MOON_DIR = new THREE.Vector3(1650, 1050, -2400).normalize();
 const uFoxMoonDir = uniform(_MOON_DIR);
 function makeFurMaterial() {
     const mat = new THREE.MeshBasicNodeMaterial();
-    const albedo = attribute('color').xyz;            // TRELLIS vertex colours
+    const albedo = attribute('color').xyz; // TRELLIS vertex colours
     const nW = normalize(normalWorld);
     const moon = clamp(dot(nW, uFoxMoonDir), 0.0, 1.0);
     const up = clamp(nW.y, 0.0, 1.0);
@@ -55,7 +55,7 @@ const _origin = new THREE.Vector3();
 // east declination, so the foxes consistently dive toward the aurora — an observant
 // viewer notices they all pounce the same way. (heading: model faces +Z, so
 // rotation.y = atan2(dirX, dirZ).)
-const MAG_NORTH = new THREE.Vector2(0.42, -0.91);            // NNE → toward the aurora
+const MAG_NORTH = new THREE.Vector2(0.42, -0.91); // NNE → toward the aurora
 const MAG_NORTH_HEADING = Math.atan2(MAG_NORTH.x, MAG_NORTH.y);
 // Paw-trail gait (fractions of the fox's size): stride = spacing between footfall events;
 // FWD = how far the front/back feet sit from body centre; STANCE = L/R foot spread.
@@ -71,12 +71,12 @@ function approachAngle(a, b, rate, dt) {
 }
 
 export function createArcticFox(scene, {
-    groundMeshes = [],     // meshes to raycast for ground height (snow drifts + lake ice)
-    groundMesh = null,     // back-compat: a single ground mesh
-    fallbackY = -260,      // FEET_Y if the raycast misses
+    groundMeshes = [], // meshes to raycast for ground height (snow drifts + lake ice)
+    groundMesh = null, // back-compat: a single ground mesh
+    fallbackY = -260, // FEET_Y if the raycast misses
     count = 3,
     scale = 190,
-    footSink = 4,          // how far the paws settle into the snow/ice
+    footSink = 4, // how far the paws settle into the snow/ice
     // Foxes shrink with depth so the ones across the lake (~1km away, by the treeline +
     // peaks) read as tiny specks — beyond what perspective alone gives — selling the
     // vast distance. z ≥ nearZ → full size, z ≤ farZ → farScale, smooth between.
@@ -90,9 +90,9 @@ export function createArcticFox(scene, {
     scene.add(group);
 
     const loader = new GLTFLoader();
-    let src = null;                 // { scene, clip }
+    let src = null; // { scene, clip }
     let groundReady = false;
-    const foxes = [];               // { root, mixer, path, speed, t }
+    const foxes = []; // { root, mixer, path, speed, t }
     const meshes = [groundMesh, ...groundMeshes].filter(Boolean);
 
     // Raycast every ground mesh and take the HIGHEST hit so the fox stands on the
@@ -119,8 +119,8 @@ export function createArcticFox(scene, {
     function makePath(i) {
         const cx = (Math.random() - 0.5) * 360;
         const cz = -560 + (Math.random() - 0.5) * 220;
-        const rx = 560 + Math.random() * 320;       // narrower → stays in frame
-        const rz = 1000 + Math.random() * 230;      // deep: far treeline ⇄ near camera
+        const rx = 560 + Math.random() * 320; // narrower → stays in frame
+        const rz = 1000 + Math.random() * 230; // deep: far treeline ⇄ near camera
         const dir = Math.random() < 0.5 ? 1 : -1;
         const ph = (i / Math.max(1, count)) * Math.PI * 2 + Math.random() * 0.8;
         return (t) => {
@@ -142,8 +142,15 @@ export function createArcticFox(scene, {
     //   • shake  : shake the snow off
     // Clips crossfade for smooth transitions.
     const STATE_CLIP = {
-        trot: 'Run', listen: 'Listen', pounce: 'Pounce', shake: 'Shake', look: 'LookAround',
-        stretch: 'Stretch', scratch: 'Scratch', dig: 'Dig', rest: 'CurlSleep',
+        trot: 'Run',
+        listen: 'Listen',
+        pounce: 'Pounce',
+        shake: 'Shake',
+        look: 'LookAround',
+        stretch: 'Stretch',
+        scratch: 'Scratch',
+        dig: 'Dig',
+        rest: 'CurlSleep',
     };
 
     function play(fx, name, once, timeScale = 1) {
@@ -162,7 +169,7 @@ export function createArcticFox(scene, {
     function setState(fx, s) {
         fx.state = s; fx.stateTime = 0;
         if (s === 'trot') {
-            play(fx, 'Run', false, 1);   // timeScale matched to ground speed in update()
+            play(fx, 'Run', false, 1); // timeScale matched to ground speed in update()
             fx.trotDur = 7 + Math.random() * 9;
             return;
         }
@@ -170,12 +177,12 @@ export function createArcticFox(scene, {
             // aim the coming pounce toward magnetic north (mostly) — the rest are the
             // foxes' less-aligned, lower-success attempts.
             fx.pounceHeading = Math.random() < 0.75
-                ? MAG_NORTH_HEADING + (Math.random() - 0.5) * 0.5   // ≈ north ±14°
-                : Math.random() * Math.PI * 2;                       // an "off" pounce
+                ? MAG_NORTH_HEADING + (Math.random() - 0.5) * 0.5 // ≈ north ±14°
+                : Math.random() * Math.PI * 2; // an "off" pounce
         }
         if (s === 'rest') {
             const a = fx.actions.CurlSleep;
-            play(fx, 'CurlSleep', true, 0.6);   // a slow nap: curl → sleep (breathing) → uncurl
+            play(fx, 'CurlSleep', true, 0.6); // a slow nap: curl → sleep (breathing) → uncurl
             fx.stateDur = a ? a.getClip().duration / 0.6 : 4.5;
             return;
         }
@@ -185,28 +192,28 @@ export function createArcticFox(scene, {
     }
     function startBehavior(fx) {
         const r = Math.random();
-        if (r < 0.30) setState(fx, 'listen');         // → the hunt (listen then pounce)
+        if (r < 0.30) setState(fx, 'listen'); // → the hunt (listen then pounce)
         else if (r < 0.45) setState(fx, 'look');
         else if (r < 0.57) setState(fx, 'shake');
         else if (r < 0.69) setState(fx, 'scratch');
         else if (r < 0.81) setState(fx, 'dig');
         else if (r < 0.91) setState(fx, 'stretch');
-        else setState(fx, 'rest');                    // curl up to sleep → wake → stretch
+        else setState(fx, 'rest'); // curl up to sleep → wake → stretch
     }
     function advanceState(fx) {
-        if (fx.state === 'listen') setState(fx, 'pounce');       // the mousing hunt sequence
-        else if (fx.state === 'rest') setState(fx, 'stretch');   // wake up with a stretch
+        if (fx.state === 'listen') setState(fx, 'pounce'); // the mousing hunt sequence
+        else if (fx.state === 'rest') setState(fx, 'stretch'); // wake up with a stretch
         else setState(fx, 'trot');
     }
 
     // ── Greeting: when two foxes' paths cross they may stop to say hello ──
     // (adapted from sakura-twilight): proximity → %-chance → bow / hop / circle,
     // facing each other, then they part with a cooldown.
-    const GREET_DIST = 320;       // world units — "stumble upon" range (~4 fox lengths)
-    const GREET_CHANCE = 0.6;     // chance to greet on an encounter
-    const GREET_DURATION = 3.0;   // seconds
+    const GREET_DIST = 320; // world units — "stumble upon" range (~4 fox lengths)
+    const GREET_CHANCE = 0.6; // chance to greet on an encounter
+    const GREET_DURATION = 3.0; // seconds
     function startGreeting(a, b) {
-        const type = Math.floor(Math.random() * 3);   // 0 bow · 1 hop · 2 circle
+        const type = Math.floor(Math.random() * 3); // 0 bow · 1 hop · 2 circle
         const mid = a.root.position.clone().add(b.root.position).multiplyScalar(0.5);
         for (const [fx, partner] of [[a, b], [b, a]]) {
             fx.state = 'greet'; fx.stateTime = 0; fx.stateDur = GREET_DURATION;
@@ -214,7 +221,7 @@ export function createArcticFox(scene, {
             fx.basePos.copy(fx.root.position);
             fx.greetRadius = Math.hypot(fx.root.position.x - mid.x, fx.root.position.z - mid.z);
             fx.greetAng0 = Math.atan2(fx.root.position.z - mid.z, fx.root.position.x - mid.x);
-            play(fx, 'Greet', false, 1);   // loops for the greeting duration
+            play(fx, 'Greet', false, 1); // loops for the greeting duration
         }
         console.log(`[ArcticFox] greeting (${['bow', 'hop', 'circle'][type]})`);
     }
@@ -239,7 +246,7 @@ export function createArcticFox(scene, {
         }
         gltf.scene.traverse((o) => {
             if (!o.isMesh) return;
-            o.material = makeFurMaterial();   // cool even snow-white fur (TSL)
+            o.material = makeFurMaterial(); // cool even snow-white fur (TSL)
             o.frustumCulled = false;
             o.castShadow = false;
         });
@@ -264,7 +271,10 @@ export function createArcticFox(scene, {
         for (const name in src.clips) actions[name] = mixer.clipAction(src.clips[name]);
 
         const fx = {
-            root, model, mixer, actions,
+            root,
+            model,
+            mixer,
+            actions,
             path: makePath(i),
             // SLOW travel so the vast scene (~1km to the mountains) takes a long
             // journey to cross — not seconds. The trot's leg cycle is matched to this
@@ -272,21 +282,33 @@ export function createArcticFox(scene, {
             speed: 0.045 + Math.random() * 0.022,
             modelScale: s,
             t: Math.random() * Math.PI * 2,
-            leapAmp: s * 1.25,            // hop ≈ ~2× the fox's height (the real mousing leap)
+            leapAmp: s * 1.25, // hop ≈ ~2× the fox's height (the real mousing leap)
             lungeAmp: s * 0.5,
-            state: '', stateTime: 0, stateDur: 0, trotDur: 0,
+            state: '',
+            stateTime: 0,
+            stateDur: 0,
+            trotDur: 0,
             pounceHeading: MAG_NORTH_HEADING,
-            greetCooldown: Math.random() * 4, greetPartner: null, greetType: 0,
-            greetMid: new THREE.Vector3(), greetRadius: 0, greetAng0: 0,
+            greetCooldown: Math.random() * 4,
+            greetPartner: null,
+            greetType: 0,
+            greetMid: new THREE.Vector3(),
+            greetRadius: 0,
+            greetAng0: 0,
             basePos: new THREE.Vector3(),
-            prevX: 0, prevZ: 0, hasPrev: false,
-            trailDist: 0, footSide: 1, // paw-trail gait accumulator + L/R alternation
-            gcY: fallbackY, gcValid: false, rayPhase: i % 3, // amortized ground-raycast cache
+            prevX: 0,
+            prevZ: 0,
+            hasPrev: false,
+            trailDist: 0,
+            footSide: 1, // paw-trail gait accumulator + L/R alternation
+            gcY: fallbackY,
+            gcValid: false,
+            rayPhase: i % 3, // amortized ground-raycast cache
             current: null,
         };
         foxes.push(fx);
         setState(fx, 'trot');
-        fx.stateTime = Math.random() * fx.trotDur;   // stagger so they don't sync up
+        fx.stateTime = Math.random() * fx.trotDur; // stagger so they don't sync up
     }
 
     let _frame = 0;
@@ -304,7 +326,7 @@ export function createArcticFox(scene, {
                 const dz = a.root.position.z - b.root.position.z;
                 if (dx * dx + dz * dz < GREET_DIST * GREET_DIST) {
                     if (Math.random() < GREET_CHANCE) startGreeting(a, b);
-                    else { a.greetCooldown = 4; b.greetCooldown = 4; }   // passed by
+                    else { a.greetCooldown = 4; b.greetCooldown = 4; } // passed by
                     break;
                 }
             }
@@ -316,7 +338,7 @@ export function createArcticFox(scene, {
             if (fx.state === 'trot') {
                 fx.t += dt * fx.speed;
                 const p = fx.path(fx.t);
-                const pn = fx.path(fx.t + 0.03);   // lookahead → heading
+                const pn = fx.path(fx.t + 0.03); // lookahead → heading
                 // Amortize the ground raycast: foxes move slowly over smooth ground, so a
                 // raycast every 3rd frame (staggered per fox) and reused between is visually
                 // identical to per-frame, at ~3× fewer O(n) raycasts against the drift mesh.
@@ -336,7 +358,7 @@ export function createArcticFox(scene, {
                     const mx = p.x - fx.prevX;
                     const mz = p.z - fx.prevZ;
                     const groundSpeed = Math.sqrt(mx * mx + mz * mz) / dt;
-                    const strideRate = fx.modelScale * 0.66;   // units/s the clip strides at timeScale 1
+                    const strideRate = fx.modelScale * 0.66; // units/s the clip strides at timeScale 1
                     fx.current.setEffectiveTimeScale(THREE.MathUtils.clamp(groundSpeed / strideRate, 0.25, 2.2));
                 }
                 // Paw-trail: as the fox trots, drop SMALL individual prints in a 4-foot
@@ -366,7 +388,7 @@ export function createArcticFox(scene, {
                 if (fx.stateTime >= fx.trotDur) startBehavior(fx);
             } else if (fx.state === 'greet') {
                 const partner = fx.greetPartner;
-                if (partner) {                              // turn to face the friend
+                if (partner) { // turn to face the friend
                     const px = partner.root.position.x - fx.root.position.x;
                     const pz = partner.root.position.z - fx.root.position.z;
                     if (px * px + pz * pz > 1) {
@@ -374,15 +396,15 @@ export function createArcticFox(scene, {
                     }
                 }
                 const tau = THREE.MathUtils.clamp(fx.stateTime / fx.stateDur, 0, 1);
-                if (fx.greetType === 1) {                   // excited hops
+                if (fx.greetType === 1) { // excited hops
                     const hop = Math.max(0, Math.sin(tau * Math.PI * 4)) * (1 - tau * 0.4);
                     fx.root.position.set(fx.basePos.x, fx.basePos.y + hop * fx.modelScale * 0.45, fx.basePos.z);
-                } else if (fx.greetType === 2) {            // circle around each other
+                } else if (fx.greetType === 2) { // circle around each other
                     const ang = fx.greetAng0 + tau * Math.PI * 2;
                     const cx = fx.greetMid.x + Math.cos(ang) * fx.greetRadius;
                     const cz = fx.greetMid.z + Math.sin(ang) * fx.greetRadius;
                     fx.root.position.set(cx, groundY(cx, cz) - footSink, cz);
-                } else {                                    // bow — stay put
+                } else { // bow — stay put
                     fx.root.position.copy(fx.basePos);
                 }
                 if (fx.stateTime >= fx.stateDur) {
@@ -435,5 +457,7 @@ export function createArcticFox(scene, {
     group.userData.setFoxState = setState;
     group.userData.forceGreet = () => { if (foxes.length >= 2) startGreeting(foxes[0], foxes[1]); };
 
-    return { group, load, update, dispose };
+    return {
+        group, load, update, dispose,
+    };
 }

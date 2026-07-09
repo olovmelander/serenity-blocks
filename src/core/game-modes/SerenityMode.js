@@ -539,43 +539,43 @@ export class SerenityMode extends BaseGameMode {
         const action = this._getSerenityActionForKey(event);
 
         switch (action) {
-            case 'exitToMenu':
-                this._exitToMenu();
-                break;
+        case 'exitToMenu':
+            this._exitToMenu();
+            break;
 
-            case 'toggleHub':
-                if (this.serenityHub) {
-                    this.serenityHub.toggle();
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                break;
+        case 'toggleHub':
+            if (this.serenityHub) {
+                this.serenityHub.toggle();
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            break;
 
-            case 'toggleControlHints':
-                if (this.serenityHub) {
-                    this.serenityHub.toggleButtonHints();
-                } else {
-                    this._showKeyboardShortcuts();
-                }
-                break;
+        case 'toggleControlHints':
+            if (this.serenityHub) {
+                this.serenityHub.toggleButtonHints();
+            } else {
+                this._showKeyboardShortcuts();
+            }
+            break;
 
-            case 'toggleBreathing':
-                this._toggleBreathingIndicator();
-                event.preventDefault();
-                break;
+        case 'toggleBreathing':
+            this._toggleBreathingIndicator();
+            event.preventDefault();
+            break;
 
-            case 'cycleBreathingTechnique':
-                this._cycleBreathingTechnique();
-                event.preventDefault();
-                break;
+        case 'cycleBreathingTechnique':
+            this._cycleBreathingTechnique();
+            event.preventDefault();
+            break;
 
-            case 'randomTheme':
-                this._randomTheme();
-                break;
+        case 'randomTheme':
+            this._randomTheme();
+            break;
 
-            case 'toggleFullscreen':
-                this._toggleFullscreen();
-                break;
+        case 'toggleFullscreen':
+            this._toggleFullscreen();
+            break;
         }
     }
 

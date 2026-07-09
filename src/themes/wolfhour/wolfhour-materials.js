@@ -489,7 +489,9 @@ export function createNebulaNodeMaterial(params = {}) {
 
     return {
         material,
-        uniforms: { uOpacity, uPulse, uColorShift, uDefinition },
+        uniforms: {
+            uOpacity, uPulse, uColorShift, uDefinition,
+        },
         meta: { emitsBloom: true },
     };
 }
@@ -546,7 +548,9 @@ export function createGroundFogNodeMaterial(params = {}) {
 
     return {
         material,
-        uniforms: { uTime, uOpacity, uPulse, uSwirl },
+        uniforms: {
+            uTime, uOpacity, uPulse, uSwirl,
+        },
         meta: { emitsBloom: false },
     };
 }

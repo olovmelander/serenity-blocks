@@ -120,7 +120,10 @@ describe('Chapter 3 to 4 ground continuity', () => {
         });
 
         expect(environment.userData.foothillApron?.children).toHaveLength(3);
-        expect(apronZ).toEqual([-600, -860, -710]);
+        // Depth-insensitive to insertion order: the material-sharing perf refactor builds the
+        // sibling foothill right after the shared one, so child order is an implementation
+        // detail — the contract is the three apron depths.
+        expect([...apronZ].sort((a, b) => b - a)).toEqual([-600, -710, -860]);
         expect(fullAnchors.length).toBe(3);
         // Hero peaks ride the cool pole; the apron pulls toward neutral grey-blue (its rock is
         // warmer/greyer — higher red channel — than the saturated cool hero rock).

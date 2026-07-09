@@ -1,9 +1,9 @@
 /**
  * SteamService - Unified Steam API Facade
- * 
+ *
  * Provides a clean, event-driven interface for all Steam functionality.
  * Handles initialization, connection monitoring, and offline queue management.
- * 
+ *
  * Usage:
  *   const steam = SteamService.getInstance();
  *   await steam.initialize();
@@ -167,7 +167,7 @@ class SteamService {
             status?.steamId
             || this.steamId
             || status?.playerName
-            || this.playerName
+            || this.playerName,
         );
         const nextConnected = !!(status?.connected ?? status?.isOnline)
             || (nextInitialized && nextPending && hasIdentity);
@@ -314,7 +314,7 @@ class SteamService {
             if (attempt < STEAM_RETRY.MAX_ATTEMPTS) {
                 const delay = STEAM_RETRY.BASE_DELAY_MS * Math.pow(2, attempt - 1);
                 console.log(`[SteamService] Retrying in ${delay}ms...`);
-                await new Promise(r => setTimeout(r, delay));
+                await new Promise((r) => setTimeout(r, delay));
             }
         }
 
@@ -498,9 +498,7 @@ class SteamService {
                         return await ipcRenderer.invoke(STEAM_IPC.IS_INITIALIZED);
                     }
                 })(),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Timeout')), STEAM_CONNECTION.TIMEOUT_MS)
-                ),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), STEAM_CONNECTION.TIMEOUT_MS)),
             ]);
 
             if (isOnline && !this.wasOnline) {
@@ -863,9 +861,7 @@ class SteamService {
         }
 
         if (action === 'cloudDelete' && data?.filename) {
-            const idxWrite = findIndex((item) =>
-                item.action === 'cloudWrite' && item.data?.filename === data.filename
-            );
+            const idxWrite = findIndex((item) => item.action === 'cloudWrite' && item.data?.filename === data.filename);
             if (idxWrite >= 0) {
                 this.offlineQueue.splice(idxWrite, 1);
             }
@@ -880,9 +876,7 @@ class SteamService {
         }
 
         if ((action === 'setStat' || action === 'setStatMax') && data?.name) {
-            const idxIncrement = findIndex((item) =>
-                item.action === 'incrementStat' && item.data?.name === data.name
-            );
+            const idxIncrement = findIndex((item) => item.action === 'incrementStat' && item.data?.name === data.name);
             if (idxIncrement >= 0) {
                 this.offlineQueue.splice(idxIncrement, 1);
             }
@@ -903,10 +897,8 @@ class SteamService {
         }
 
         if (action === 'incrementStat' && data?.name) {
-            const idxSet = findIndex((item) =>
-                (item.action === 'setStat' || item.action === 'setStatMax')
-                && item.data?.name === data.name
-            );
+            const idxSet = findIndex((item) => (item.action === 'setStat' || item.action === 'setStatMax')
+                && item.data?.name === data.name);
             if (idxSet >= 0) {
                 const existing = this.offlineQueue[idxSet];
                 const delta = Number(data.amount || 0);
@@ -1251,11 +1243,9 @@ class SteamService {
             const keys = Object.keys(cache);
             if (keys.length > AVATAR_CACHE.MAX_STORAGE_ENTRIES) {
                 // Sort by timestamp (oldest first) and remove excess
-                const sorted = keys.sort((a, b) =>
-                    (cache[a].timestamp || 0) - (cache[b].timestamp || 0)
-                );
+                const sorted = keys.sort((a, b) => (cache[a].timestamp || 0) - (cache[b].timestamp || 0));
                 const toRemove = sorted.slice(0, keys.length - AVATAR_CACHE.MAX_STORAGE_ENTRIES);
-                toRemove.forEach(key => delete cache[key]);
+                toRemove.forEach((key) => delete cache[key]);
             }
             localStorage.setItem(STEAM_STORAGE_KEYS.AVATAR_CACHE, JSON.stringify(cache));
         } catch (err) {
@@ -1366,7 +1356,7 @@ class SteamService {
         const friends = await this.getFriends();
         // Filter to friends in-game (gameId matches our app)
         const appId = String(this.appId || STEAM_APP_ID);
-        return friends.filter(f => f.gameId && f.inGame && f.gameId === appId);
+        return friends.filter((f) => f.gameId && f.inGame && f.gameId === appId);
     }
 
     /**
@@ -1687,7 +1677,9 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.GET_LEADERBOARD, { name, type, start, count });
+            return await ipcRenderer.invoke(STEAM_IPC.GET_LEADERBOARD, {
+                name, type, start, count,
+            });
         } catch (err) {
             console.warn('[SteamService] Failed to get leaderboard:', err.message);
             return { supported: false, entries: [], error: err.message };

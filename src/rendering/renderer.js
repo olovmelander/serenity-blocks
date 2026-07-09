@@ -450,18 +450,18 @@ class ParticleSystem {
                 this.blinkInfo[blinkOffset + 1] = timer;
 
                 switch (blinkState) {
-                    case 0: // FADE_IN
-                        this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
-                        break;
-                    case 1: // GLOW
-                        this.alphas[i] = maxAlpha;
-                        break;
-                    case 2: // FADE_OUT
-                        this.alphas[i] = maxAlpha * (timer / fadeOutTime);
-                        break;
-                    case 3: // DARK
-                        this.alphas[i] = 0;
-                        break;
+                case 0: // FADE_IN
+                    this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
+                    break;
+                case 1: // GLOW
+                    this.alphas[i] = maxAlpha;
+                    break;
+                case 2: // FADE_OUT
+                    this.alphas[i] = maxAlpha * (timer / fadeOutTime);
+                    break;
+                case 3: // DARK
+                    this.alphas[i] = 0;
+                    break;
                 }
             } else if (this.behavior === 'ambient') {
                 this.positions[i * 2] += this.velocities[i * 2];

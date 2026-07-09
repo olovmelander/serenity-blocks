@@ -1,0 +1,5 @@
+# Bulk mechanical commits excluded from git blame.
+# Use: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Phase 0.3 ESLint layout autofix + tab expansion (2026-07-09)
+1467054431135921e4dee7444de7000dbb0c0ff0

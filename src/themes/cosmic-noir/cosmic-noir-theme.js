@@ -200,7 +200,7 @@ const QUALITY_PRESETS = {
         atmosphereLayers: 2,
         dustParticles: 500,
         // Shader FBM octave counts — baked at material creation time
-        atmosphereFbmOctaves: 5,  // gasA=5, gasB=4, tendril=4
+        atmosphereFbmOctaves: 5, // gasA=5, gasB=4, tendril=4
         diskFbmOctaves: 5,
         planetFbmOctaves: 4,
         // Geometry tessellation
@@ -244,7 +244,7 @@ const QUALITY_PRESETS = {
         // 1 shell by default on High (perf); ?cosmicNoirAtmoShells=2 restores the double shell.
         atmosphereLayers: 1,
         dustParticles: 280,
-        atmosphereFbmOctaves: 4,  // gasA=4, gasB=3, tendril=3
+        atmosphereFbmOctaves: 4, // gasA=4, gasB=3, tendril=3
         diskFbmOctaves: 3,
         planetFbmOctaves: 4,
         atmosphereDetail: 40,
@@ -267,7 +267,7 @@ const QUALITY_PRESETS = {
         glowLayers: 5,
         atmosphereLayers: 2,
         dustParticles: 0,
-        atmosphereFbmOctaves: 3,  // gasA=3, gasB=2, tendril=2
+        atmosphereFbmOctaves: 3, // gasA=3, gasB=2, tendril=2
         diskFbmOctaves: 3,
         planetFbmOctaves: 3,
         atmosphereDetail: 36,
@@ -288,7 +288,7 @@ const QUALITY_PRESETS = {
         glowLayers: 4,
         atmosphereLayers: 1,
         dustParticles: 0,
-        atmosphereFbmOctaves: 3,  // gasA=3, gasB=2, tendril=2
+        atmosphereFbmOctaves: 3, // gasA=3, gasB=2, tendril=2
         diskFbmOctaves: 2,
         planetFbmOctaves: 3,
         atmosphereDetail: 32,
@@ -309,7 +309,7 @@ const QUALITY_PRESETS = {
         glowLayers: 3,
         atmosphereLayers: 1,
         dustParticles: 0,
-        atmosphereFbmOctaves: 2,  // gasA=2, gasB=2, tendril=2
+        atmosphereFbmOctaves: 2, // gasA=2, gasB=2, tendril=2
         diskFbmOctaves: 2,
         planetFbmOctaves: 3,
         atmosphereDetail: 24,

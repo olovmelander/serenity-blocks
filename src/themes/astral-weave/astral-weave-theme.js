@@ -872,7 +872,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             const halo = new THREE.Mesh(haloGeo, haloData.material);
             const halo2 = new THREE.Mesh(halo2Geo, halo2Data.material);
             const halo3 = new THREE.Mesh(halo3Geo, halo3Data.material);
-            
+
             shell.rotation.set(0.86, 0.18, 0.42);
             shell.scale.set(1, 0.94, 1.06);
             halo.rotation.set(Math.PI * 0.56, 0, 0.18);
@@ -1024,7 +1024,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             const theta = (i / count) * TAU + this.random() * 0.3;
             const phi = Math.acos(2 * this.random() - 1);
             shaft.rotation.set(phi, theta, this.random() * TAU);
-            
+
             shaft.userData = {
                 baseRotation: shaft.rotation.clone(),
                 rotSpeedX: (this.random() - 0.5) * 0.06,

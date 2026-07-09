@@ -151,7 +151,7 @@ export class HostMigration {
 
         // Notify UI
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOST_MIGRATED, {
-            newHostId: this.gameState.localPlayerId
+            newHostId: this.gameState.localPlayerId,
         });
     }
 

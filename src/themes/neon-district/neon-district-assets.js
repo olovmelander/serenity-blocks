@@ -275,8 +275,6 @@ export class NeonDistrictAssets {
             texturePromises.push(loadTex(`ads_large_${this.padNumber(i)}.jpg`));
         }
 
-
-
         // Smoke (3)
         for (let i = 1; i <= 3; i++) {
             texturePromises.push(loadTex(`smoke_${this.padNumber(i)}.jpg`));
@@ -358,7 +356,9 @@ export class NeonDistrictAssets {
         atlas.wrapS = THREE.ClampToEdgeWrapping;
         atlas.wrapT = THREE.ClampToEdgeWrapping;
 
-        const info = { cols, rows, tileW: scaledW, tileH: scaledH };
+        const info = {
+            cols, rows, tileW: scaledW, tileH: scaledH,
+        };
         if (prefix === 'ads') {
             this.adAtlasInfo.small = info;
         } else {
@@ -527,8 +527,6 @@ export class NeonDistrictAssets {
             });
         }
 
-
-
         // ═══════════════════════════════════════════════════════════════════════════
         // SMOKE MATERIALS - Atmospheric steam effects
         // ═══════════════════════════════════════════════════════════════════════════
@@ -622,8 +620,6 @@ export class NeonDistrictAssets {
         const index = Math.floor(Math.random() * 18) + 1;
         return this.getMaterial(`ads_large_${this.padNumber(index)}`);
     }
-
-
 
     /**
      * Get random smoke material

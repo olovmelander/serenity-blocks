@@ -34,7 +34,9 @@ const num = (p, k, d) => {
 };
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-export function create({ scene, camera, renderer, sizes, params }) {
+export function create({
+    scene, camera, renderer, sizes, params,
+}) {
     const uTime = uniform(0);
     const uS = uniform(clamp01(num(params, 'S', 0)));
     // Desynced multi-rate throb (V4 1.4): the hero breathes instead of blinking as one LED.
@@ -49,7 +51,9 @@ export function create({ scene, camera, renderer, sizes, params }) {
     // 6-tier quality presets (Minimal<Low<Medium<High<Ultra<Extreme). Audit-verified:
     // High/Ultra/Extreme stay VISUALLY IDENTICAL; the heavier cuts are scoped to Medium and below.
     const qName = (typeof window !== 'undefined' && window.settings?.graphicsQuality) || 'High';
-    const tier = ({ Minimal: 0, Low: 1, Medium: 2, High: 3, Ultra: 4, Extreme: 5 })[qName] ?? 3;
+    const tier = ({
+        Minimal: 0, Low: 1, Medium: 2, High: 3, Ultra: 4, Extreme: 5,
+    })[qName] ?? 3;
     const reflScale = tier <= 1 ? 0.34 : (tier === 2 ? 0.5 : (tier === 3 ? 0.75 : 0.9)); // sharper mirror on High+
     const rippleBase = tier >= 3 ? 0.0009 : 0.0016; // de-smear the reflection on High+
     const useReflector = tier >= 1; // Minimal: skip the 2nd full-scene pass entirely
@@ -80,7 +84,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const bandStrength = float(1.0).sub(uS.mul(0.72));
         const band = pow(smoothstep(0.24, 0.0, abs(y.add(0.01))), float(1.9));
         const front = smoothstep(-0.4, 0.7, dir.z.negate());
-        s = s.add(vec3(0.95, 0.33, 0.60).mul(band).mul(float(0.55).add(front.mul(0.45))).mul(0.5).mul(bandStrength));
+        s = s.add(vec3(0.95, 0.33, 0.60).mul(band).mul(float(0.55).add(front.mul(0.45))).mul(0.5)
+            .mul(bandStrength));
         // 2.7 low-key nebula lobe in the upper-side sky (noise paid over the whole dome ×2 → tier-gated)
         if (wantNebula) {
             const sideMask = smoothstep(0.05, 0.5, y).mul(smoothstep(0.98, 0.35, y)).mul(smoothstep(0.10, 0.55, abs(dir.x)));
@@ -95,7 +100,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
         // 2.7 two-layer stars with twinkle + slight colour temperature (coarse bloom-eligible + fine dim)
         const P = floor(vec2(atan2(dir.x, dir.z).mul(30.0), y.mul(48.0)));
         const seed = mx_noise_float(vec3(P.x, P.y, 1.0)).mul(0.5).add(0.5);
-        const twk = sin(uTime.mul(2.3).add(seed.mul(40.0))).mul(0.5).add(0.5).mul(0.6).add(0.4);
+        const twk = sin(uTime.mul(2.3).add(seed.mul(40.0))).mul(0.5).add(0.5).mul(0.6)
+            .add(0.4);
         const starTemp = mix(vec3(0.86, 0.90, 1.0), vec3(1.0, 0.86, 0.72), pow(fract(seed.mul(7.0)), float(2.0)));
         s = s.add(starTemp
             .mul(pow(seed, float(40.0)))
@@ -105,7 +111,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const P2 = floor(vec2(atan2(dir.x, dir.z).mul(72.0), y.mul(110.0)));
         const seed2 = mx_noise_float(vec3(P2.x, P2.y, 5.0)).mul(0.5).add(0.5);
         const twk2 = sin(uTime.mul(3.1).add(seed2.mul(55.0))).mul(0.5).add(0.5);
-        s = s.add(vec3(0.70, 0.78, 1.0).mul(pow(seed2, float(70.0))).mul(smoothstep(0.06, 0.30, y)).mul(twk2).mul(0.5));
+        s = s.add(vec3(0.70, 0.78, 1.0).mul(pow(seed2, float(70.0))).mul(smoothstep(0.06, 0.30, y)).mul(twk2)
+            .mul(0.5));
         skyMat.colorNode = s;
         skyMat.side = THREE.BackSide;
         skyMat.depthWrite = false;
@@ -282,7 +289,9 @@ export function create({ scene, camera, renderer, sizes, params }) {
             const mdrift = sin(mv.x.mul(4.0).sub(uTime.mul(0.05))).mul(0.2).add(0.8);
             const moct = tier >= 3 ? 2 : 1;
             const mn = mx_fractal_noise_float(vec3(mv.x.mul(5.0), mv.y.mul(2.0).add(uTime.mul(0.02)), 0.0), moct).mul(0.5).add(0.5);
-            mistMat.colorNode = vec3(0.40, 0.26, 0.46).mul(mband).mul(xtaper).mul(mdrift).mul(mn.mul(0.5).add(0.5)).mul(0.08);
+            mistMat.colorNode = vec3(0.40, 0.26, 0.46).mul(mband).mul(xtaper).mul(mdrift)
+                .mul(mn.mul(0.5).add(0.5))
+                .mul(0.08);
             mistMat.transparent = true;
             mistMat.blending = THREE.AdditiveBlending;
             mistMat.depthWrite = false;
@@ -378,7 +387,9 @@ export function create({ scene, camera, renderer, sizes, params }) {
     // Count tiers down → fewer per-pixel loop iterations in the water shader (near-identical).
     const RING_COUNT = tier <= 1 ? 5 : (tier <= 3 ? 8 : 12);
     const ringNodes = Array.from({ length: RING_COUNT }, () => uniform(new THREE.Vector4(0, 0, 999, 0)));
-    const ringState = Array.from({ length: RING_COUNT }, () => ({ x: 0, z: 0, age: 999, amp: 0 }));
+    const ringState = Array.from({ length: RING_COUNT }, () => ({
+        x: 0, z: 0, age: 999, amp: 0,
+    }));
     const spawnRing = (x, z, amp) => {
         let idx = 0; let worst = -1;
         for (let i = 0; i < RING_COUNT; i += 1) {
@@ -436,8 +447,11 @@ export function create({ scene, camera, renderer, sizes, params }) {
         }
         const fres = pow(clamp(float(1.0).sub(abs(V.y)), 0.0, 1.0), float(2.6));
         const reflectivity = clamp(fres.mul(0.9).add(float(0.08).mul(centerMask)), 0.0, 1.0);
-        let bodyCol = mix(vec3(0.020, 0.014, 0.052), vec3(0.070, 0.038, 0.175),
-            smoothstep(-400.0, -30.0, positionWorld.z).oneMinus());
+        let bodyCol = mix(
+            vec3(0.020, 0.014, 0.052),
+            vec3(0.070, 0.038, 0.175),
+            smoothstep(-400.0, -30.0, positionWorld.z).oneMinus(),
+        );
         if (tier >= 3) {
             // Wave 3: procedural caustics on the near-shore lakebed (injected into the BODY, below the reflection).
             const cp = vec2(positionWorld.x.mul(0.06), positionWorld.z.mul(0.06));
@@ -445,7 +459,8 @@ export function create({ scene, camera, renderer, sizes, params }) {
             const c2 = mx_noise_float(vec3(cp.x.sub(uTime.mul(0.05)), cp.y, 3.0));
             const caus = pow(clamp(c1.add(c2).mul(0.5).add(0.5), 0.0, 1.0), float(4.0)); // clamp BEFORE pow (no NaN/overshoot)
             const nearShore = smoothstep(-260.0, -20.0, positionWorld.z).oneMinus();
-            bodyCol = bodyCol.add(vec3(0.12, 0.34, 0.42).mul(caus).mul(nearShore).mul(centerMask).mul(0.25)); // cap ≤0.25, off-centre
+            bodyCol = bodyCol.add(vec3(0.12, 0.34, 0.42).mul(caus).mul(nearShore).mul(centerMask)
+                .mul(0.25)); // cap ≤0.25, off-centre
         }
         let water = mix(bodyCol, reflColor.mul(vec3(0.92, 0.90, 1.02)), reflectivity);
         if (wantGlint) {
@@ -665,10 +680,12 @@ export function create({ scene, camera, renderer, sizes, params }) {
     {
         const p = boulderGeo.attributes.position; // jitter the shared shape into an irregular rock
         for (let i = 0; i < p.count; i += 1) {
-            p.setXYZ(i,
+            p.setXYZ(
+                i,
                 p.getX(i) + (bnoise(p.getX(i) * 3, p.getZ(i) * 3) - 0.5) * 0.4,
                 p.getY(i) + (bnoise(p.getY(i) * 3 + 5, p.getX(i) * 3) - 0.5) * 0.4,
-                p.getZ(i) + (bnoise(p.getZ(i) * 3 + 9, p.getY(i) * 3) - 0.5) * 0.4);
+                p.getZ(i) + (bnoise(p.getZ(i) * 3 + 9, p.getY(i) * 3) - 0.5) * 0.4,
+            );
         }
         p.needsUpdate = true;
     }
@@ -1065,29 +1082,29 @@ export function create({ scene, camera, renderer, sizes, params }) {
         const k = intensity;
         const RX = 0; const RZ = -95; // rings emit under the relic on the water
         switch (kind) {
-            case 'lineClear':
-                sFlare = Math.min(1, sFlare + (0.14 + 0.06 * (payload.lines || 1)) * k);
-                spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * (payload.lines || 1)) * k);
-                break;
-            case 'combo':
-                sCombo = Math.min(0.55, (payload.count || 0) * 0.06) * k;
-                if ((payload.count || 0) > 1) spawnRing(RX, RZ, 0.5 * k);
-                break;
-            case 'tspin':
-                sFlare = Math.min(1, sFlare + 0.32 * k);
-                spawnRing(RX, RZ, 0.95 * k);
-                break;
-            case 'b2b': if (payload.active) sFlare = Math.min(1, sFlare + 0.16 * k); break;
-            case 'perfectClear':
-                sFlare = Math.min(1, sFlare + 0.5 * k);
-                spawnRing(RX, RZ, 1.2 * k); spawnRing(RX, RZ, 0.85 * k);
-                break;
-            case 'levelUp': sBaseline = Math.min(0.85, sBaseline + 0.07 * k); break;
-            case 'pieceLock': case 'hardDrop':
-                sFlare = Math.min(1, sFlare + 0.03 * k);
-                spawnRing(RX, RZ, 0.16 * k);
-                break;
-            default: break;
+        case 'lineClear':
+            sFlare = Math.min(1, sFlare + (0.14 + 0.06 * (payload.lines || 1)) * k);
+            spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * (payload.lines || 1)) * k);
+            break;
+        case 'combo':
+            sCombo = Math.min(0.55, (payload.count || 0) * 0.06) * k;
+            if ((payload.count || 0) > 1) spawnRing(RX, RZ, 0.5 * k);
+            break;
+        case 'tspin':
+            sFlare = Math.min(1, sFlare + 0.32 * k);
+            spawnRing(RX, RZ, 0.95 * k);
+            break;
+        case 'b2b': if (payload.active) sFlare = Math.min(1, sFlare + 0.16 * k); break;
+        case 'perfectClear':
+            sFlare = Math.min(1, sFlare + 0.5 * k);
+            spawnRing(RX, RZ, 1.2 * k); spawnRing(RX, RZ, 0.85 * k);
+            break;
+        case 'levelUp': sBaseline = Math.min(0.85, sBaseline + 0.07 * k); break;
+        case 'pieceLock': case 'hardDrop':
+            sFlare = Math.min(1, sFlare + 0.03 * k);
+            spawnRing(RX, RZ, 0.16 * k);
+            break;
+        default: break;
         }
     };
 
