@@ -3,8 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone as cloneHierarchy } from 'three/addons/utils/SkeletonUtils.js';
 import spruceUrl from '../assets/spruce.glb?url';
-import pineUrl   from '../assets/pine.glb?url';
-import firUrl    from '../assets/fir.glb?url';
+import pineUrl from '../assets/pine.glb?url';
+import firUrl from '../assets/fir.glb?url';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WinterTrees — Firewatch-style snow trees with THREE.LOD.
@@ -20,20 +20,26 @@ import firUrl    from '../assets/fir.glb?url';
 
 const VARIANTS = [
     {
-        name: 'spruce', url: spruceUrl,
-        heightRange: [55, 130], swayAmp: 0.018, swaySpeed: 0.55,
+        name: 'spruce',
+        url: spruceUrl,
+        heightRange: [55, 130],
+        swayAmp: 0.018,
+        swaySpeed: 0.55,
         // Procedural LOD parameters
-        type:   'conifer',
-        layers: 4,                       // stacked cone tiers
-        layerColors: [0x1a3d22, 0x244f2e, 0x2d5c35, 0x366840],   // dark→lighter green
+        type: 'conifer',
+        layers: 4, // stacked cone tiers
+        layerColors: [0x1a3d22, 0x244f2e, 0x2d5c35, 0x366840], // dark→lighter green
         snowColor: 0xe8eef0,
         trunkColor: 0x3d2b1a,
-        taper: 0.68,                     // how much narrower each tier is vs the last
-        coneAspect: 0.82,                // height / radius ratio per tier
+        taper: 0.68, // how much narrower each tier is vs the last
+        coneAspect: 0.82, // height / radius ratio per tier
     },
     {
-        name: 'pine', url: pineUrl,
-        heightRange: [45, 110], swayAmp: 0.022, swaySpeed: 0.48,
+        name: 'pine',
+        url: pineUrl,
+        heightRange: [45, 110],
+        swayAmp: 0.022,
+        swaySpeed: 0.48,
         type: 'conifer',
         layers: 3,
         layerColors: [0x1e3d1e, 0x2a5226, 0x325032],
@@ -43,8 +49,11 @@ const VARIANTS = [
         coneAspect: 0.72,
     },
     {
-        name: 'fir', url: firUrl,
-        heightRange: [50, 120], swayAmp: 0.015, swaySpeed: 0.62,
+        name: 'fir',
+        url: firUrl,
+        heightRange: [50, 120],
+        swayAmp: 0.015,
+        swaySpeed: 0.62,
         type: 'conifer',
         layers: 5,
         layerColors: [0x152e1a, 0x1d3e23, 0x244b2c, 0x2d5835, 0x35633c],
@@ -76,13 +85,13 @@ function buildConiferLod(v, silhouette = false) {
     const n = v.layers;
 
     // Total height = 1.0 unit (Three.js scales). Trunk takes bottom 12%.
-    const trunkH   = 0.12;
-    const canopyH  = 1.0 - trunkH;
+    const trunkH = 0.12;
+    const canopyH = 1.0 - trunkH;
 
     // Each tier overlaps 20% of the previous.
-    const tierH  = (canopyH / n) * 1.22;
-    const topR   = 0.06;
-    const baseR  = topR / Math.pow(v.taper, n - 1);
+    const tierH = (canopyH / n) * 1.22;
+    const topR = 0.06;
+    const baseR = topR / Math.pow(v.taper, n - 1);
 
     // Trunk
     const trunkMat = silhouette ? SILHOUETTE_MAT : new THREE.MeshBasicMaterial({
@@ -95,9 +104,9 @@ function buildConiferLod(v, silhouette = false) {
 
     // Cone tiers — bottom to top
     for (let i = 0; i < n; i++) {
-        const t    = i / (n - 1);           // 0 = bottom tier, 1 = top
-        const r    = baseR * Math.pow(v.taper, i);
-        const h    = r / v.coneAspect;
+        const t = i / (n - 1); // 0 = bottom tier, 1 = top
+        const r = baseR * Math.pow(v.taper, i);
+        const h = r / v.coneAspect;
         const yBase = trunkH + (canopyH / n) * i * 0.88;
 
         // Pick color per layer — bottom is darker, tip is lighter
@@ -149,26 +158,26 @@ export function createWinterTrees(scene) {
     // ── Load full GLBs (main only — LOD is procedural) ────────────────────
     async function load() {
         const results = await Promise.allSettled(
-            VARIANTS.map((v) =>
-                loader.loadAsync(v.url).then((gltf) => {
-                    gltf.scene.traverse((o) => {
-                        if (!o.isMesh) return;
-                        o.material.flatShading = true;
-                        o.material.vertexColors = true;
-                        o.material.side = THREE.DoubleSide;
-                        o.material.needsUpdate = true;
-                        o.frustumCulled = false;
-                    });
-                    loaded.push({ scene: gltf.scene, clip: gltf.animations?.[0] ?? null, variant: v });
-                    console.log(`[WinterTrees] Loaded ${v.name}`);
-                }).catch((e) => console.warn(`[WinterTrees] Failed ${v.name}:`, e)),
-            ),
+            VARIANTS.map((v) => loader.loadAsync(v.url).then((gltf) => {
+                gltf.scene.traverse((o) => {
+                    if (!o.isMesh) return;
+                    o.material.flatShading = true;
+                    o.material.vertexColors = true;
+                    o.material.side = THREE.DoubleSide;
+                    o.material.needsUpdate = true;
+                    o.frustumCulled = false;
+                });
+                loaded.push({ scene: gltf.scene, clip: gltf.animations?.[0] ?? null, variant: v });
+                console.log(`[WinterTrees] Loaded ${v.name}`);
+            }).catch((e) => console.warn(`[WinterTrees] Failed ${v.name}:`, e))),
         );
         console.log(`[WinterTrees] ${results.filter((r) => r.status === 'fulfilled').length}/${VARIANTS.length} loaded.`);
     }
 
     // ── Spawn one LOD tree ─────────────────────────────────────────────────
-    function spawnTree({ x, z, groundY = -298, heightScale = 1.0, variantIndex = null, rotY = null }) {
+    function spawnTree({
+        x, z, groundY = -298, heightScale = 1.0, variantIndex = null, rotY = null,
+    }) {
         if (loaded.length === 0) return;
 
         const idx = variantIndex !== null
@@ -206,9 +215,10 @@ export function createWinterTrees(scene) {
 
         group.add(lod);
         instances.push({
-            lod, mixer,
-            phase:     Math.random() * Math.PI * 2,
-            swayAmp:   variant.swayAmp * (0.8 + Math.random() * 0.4),
+            lod,
+            mixer,
+            phase: Math.random() * Math.PI * 2,
+            swayAmp: variant.swayAmp * (0.8 + Math.random() * 0.4),
             swaySpeed: variant.swaySpeed * (0.85 + Math.random() * 0.3),
         });
     }
@@ -231,29 +241,57 @@ export function createWinterTrees(scene) {
 
         // Foreground hero trees
         [
-            { x: -1380, z:  -90, h: 1.15, vi: 0 },
-            { x: -1080, z: -300, h: 0.90, vi: 2 },
-            { x: -1560, z: -380, h: 1.05, vi: 0 },
-            { x:  -840, z: -520, h: 0.65, vi: 1 },
-            { x: -1240, z: -560, h: 0.72, vi: 2 },
-            { x:  1360, z: -110, h: 1.10, vi: 1 },
-            { x:  1090, z: -320, h: 0.87, vi: 0 },
-            { x:  1540, z: -400, h: 1.02, vi: 2 },
-            { x:   860, z: -540, h: 0.62, vi: 1 },
-            { x:  1260, z: -580, h: 0.70, vi: 0 },
-        ].forEach((t) => spawnTree({ x: t.x, z: t.z, groundY: groundY(t.x, t.z), heightScale: t.h, variantIndex: t.vi }));
+            {
+                x: -1380, z: -90, h: 1.15, vi: 0,
+            },
+            {
+                x: -1080, z: -300, h: 0.90, vi: 2,
+            },
+            {
+                x: -1560, z: -380, h: 1.05, vi: 0,
+            },
+            {
+                x: -840, z: -520, h: 0.65, vi: 1,
+            },
+            {
+                x: -1240, z: -560, h: 0.72, vi: 2,
+            },
+            {
+                x: 1360, z: -110, h: 1.10, vi: 1,
+            },
+            {
+                x: 1090, z: -320, h: 0.87, vi: 0,
+            },
+            {
+                x: 1540, z: -400, h: 1.02, vi: 2,
+            },
+            {
+                x: 860, z: -540, h: 0.62, vi: 1,
+            },
+            {
+                x: 1260, z: -580, h: 0.70, vi: 0,
+            },
+        ].forEach((t) => spawnTree({
+            x: t.x, z: t.z, groundY: groundY(t.x, t.z), heightScale: t.h, variantIndex: t.vi,
+        }));
 
         // Mid-ground
-        spawnTree({ x: -620, z: -780, groundY: groundY(-620, -780), heightScale: 0.50, variantIndex: 0 });
-        spawnTree({ x:  660, z: -800, groundY: groundY(660, -800),  heightScale: 0.48, variantIndex: 2 });
+        spawnTree({
+            x: -620, z: -780, groundY: groundY(-620, -780), heightScale: 0.50, variantIndex: 0,
+        });
+        spawnTree({
+            x: 660, z: -800, groundY: groundY(660, -800), heightScale: 0.48, variantIndex: 2,
+        });
 
         // Far treeline — all at silhouette distance, drawn as procedural cone shapes
         const farLine = [
-            [-2000,-600],[-1700,-700],[-1400,-750],[-1100,-800],[-800,-820],[-500,-830],
-            [-200,-835],[100,-830],[400,-820],[700,-810],[1000,-790],[1300,-760],[1600,-700],[1900,-620],
+            [-2000, -600], [-1700, -700], [-1400, -750], [-1100, -800], [-800, -820], [-500, -830],
+            [-200, -835], [100, -830], [400, -820], [700, -810], [1000, -790], [1300, -760], [1600, -700], [1900, -620],
         ];
         farLine.forEach(([x, z], i) => spawnTree({
-            x, z, groundY: groundY(x, z),
+            x,
+            z,
+            groundY: groundY(x, z),
             heightScale: 0.55 + Math.random() * 0.3,
             variantIndex: i % 3,
         }));
@@ -289,5 +327,7 @@ export function createWinterTrees(scene) {
         scene.remove(group);
     }
 
-    return { group, load, placeForest, update, dispose };
+    return {
+        group, load, placeForest, update, dispose,
+    };
 }

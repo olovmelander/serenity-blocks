@@ -114,6 +114,11 @@ if (process.platform !== 'win32') {
 // in main.js achieves the same effect without a custom C executable.
 
 async function build() {
+    // Release gates first (Phase 0.4): warns in dev, hard-fails under
+    // SERENITY_RELEASE=1 (e.g. placeholder Steam AppID 480). runCommand exits
+    // the process on a non-zero status, so a failed gate stops the build here.
+    runCommand('node', ['scripts/release-gate-check.mjs']);
+
     ensureWindowsIcon();
 
     const viteDone = runCommandAsync('vite', ['build']);
@@ -131,6 +136,16 @@ async function build() {
     }
 
     runCommand('electron-builder', electronBuilderArgs);
+
+    // Supply-chain: attach a CycloneDX SBOM of the shipped (prod) dependency
+    // surface to release builds (Phase 0.5). Dev builds skip it.
+    if (process.env.SERENITY_RELEASE === '1') {
+        runCommand('npx', [
+            '--yes', '@cyclonedx/cyclonedx-npm', '--omit', 'dev',
+            '--output-file', path.join('release', 'sbom.json'),
+        ]);
+        console.log('[build:win] SBOM written to release/sbom.json');
+    }
 }
 
 build().catch((error) => {

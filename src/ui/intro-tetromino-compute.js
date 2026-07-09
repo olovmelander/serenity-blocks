@@ -255,7 +255,9 @@ export class IntroTetrominoCompute {
                 // Decay collision flash (stored in rot.w) each frame
                 rot.w.mulAssign(float(0.92));
 
-                Loop({ start: int(0), end: int(MAX_TETROMINOS), type: 'int', condition: '<' }, ({ i: j }) => {
+                Loop({
+                    start: int(0), end: int(MAX_TETROMINOS), type: 'int', condition: '<',
+                }, ({ i: j }) => {
                     const shouldSkip = j.equal(int(i));
                     If(shouldSkip.not(), () => {
                         const otherPos = positions.element(j).toVar();
@@ -290,13 +292,17 @@ export class IntroTetrominoCompute {
                                 const hitCount = float(0.0).toVar();
 
                                 // Check all 4×4 block pairs
-                                Loop({ start: int(0), end: int(4), type: 'int', condition: '<' }, ({ i: bi }) => {
+                                Loop({
+                                    start: int(0), end: int(4), type: 'int', condition: '<',
+                                }, ({ i: bi }) => {
                                     // My block position (rotate local offset by my Z angle)
                                     const myBlockOff = blockOffsets.element(myTypeInt.mul(int(4)).add(bi));
                                     const myBx = myBlockOff.x.mul(myCos).sub(myBlockOff.y.mul(mySin)).add(pos.x);
                                     const myBy = myBlockOff.x.mul(mySin).add(myBlockOff.y.mul(myCos)).add(pos.y);
 
-                                    Loop({ start: int(0), end: int(4), type: 'int', condition: '<' }, ({ i: bj }) => {
+                                    Loop({
+                                        start: int(0), end: int(4), type: 'int', condition: '<',
+                                    }, ({ i: bj }) => {
                                         // Other block position (rotate by other's Z angle)
                                         const otherBlockOff = blockOffsets.element(otherTypeInt.mul(int(4)).add(bj));
                                         const oBx = otherBlockOff.x.mul(oCos).sub(otherBlockOff.y.mul(oSin)).add(otherPos.x);
@@ -441,8 +447,11 @@ export class IntroTetrominoCompute {
     }
 
     getPositionBuffer() { return this.positionBuffer; }
+
     getVelocityBuffer() { return this.velocityBuffer; }
+
     getRotationBuffer() { return this.rotationBuffer; }
+
     getRotSpeedBuffer() { return this.rotSpeedBuffer; }
 
     static get MAX_TETROMINOS() { return MAX_TETROMINOS; }

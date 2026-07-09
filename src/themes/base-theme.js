@@ -527,13 +527,13 @@ export class BaseTheme {
 
         // Auto-dispose standard Three.js structures if standard properties were used
         if (this.scene) {
-            console.log(`[BaseTheme] deeply disposing Three.js scene`);
+            console.log('[BaseTheme] deeply disposing Three.js scene');
             this.disposeThreeJSGroup(this.scene);
             this.scene = null;
         }
 
         if (this.postComposer && typeof this.postComposer.dispose === 'function') {
-            console.log(`[BaseTheme] deeply disposing post-composer`);
+            console.log('[BaseTheme] deeply disposing post-composer');
             this.disposeComposer(this.postComposer);
             this.postComposer = null;
         }
@@ -580,7 +580,9 @@ export class BaseTheme {
     registerEventListener(target, event, handler, options) {
         if (!this._eventListeners) this._eventListeners = [];
         target.addEventListener(event, handler, options);
-        this._eventListeners.push({ target, event, handler, options });
+        this._eventListeners.push({
+            target, event, handler, options,
+        });
     }
 
     /**
@@ -599,7 +601,9 @@ export class BaseTheme {
         }
 
         if (this._eventListeners) {
-            this._eventListeners.forEach(({ target, event, handler, options }) => {
+            this._eventListeners.forEach(({
+                target, event, handler, options,
+            }) => {
                 target.removeEventListener(event, handler, options);
             });
             this._eventListeners = [];

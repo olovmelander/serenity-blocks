@@ -279,7 +279,9 @@ export class BubbleStreamPool {
             points.frustumCulled = false;
             scene.add(points);
 
-            this.slots.push({ points, geometry, material, active: false, age: 0, duration: 0 });
+            this.slots.push({
+                points, geometry, material, active: false, age: 0, duration: 0,
+            });
         }
     }
 

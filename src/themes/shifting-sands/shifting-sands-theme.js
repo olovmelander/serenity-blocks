@@ -953,8 +953,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 maxMoonGlow,
                 this.uniforms.moonGlowIntensity.value,
             );
-            this.uniforms.moonGlowIntensity.value +=
-                (baseMoonGlow - this.uniforms.moonGlowIntensity.value) * 0.02;
+            this.uniforms.moonGlowIntensity.value
+                += (baseMoonGlow - this.uniforms.moonGlowIntensity.value) * 0.02;
 
             // Decay blue glow and worm heat back to normal
             this.uniforms.blueGlowIntensity.value *= 0.95;
@@ -1044,7 +1044,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 // Multi-layered organic motion
                 let camX = this.baseCameraPos.x
                     + Math.sin(elapsed * 0.08) * 15 // Slow side-to-side sweep
-                    + Math.sin(elapsed * 0.23) * 6  // Faster subtle drift
+                    + Math.sin(elapsed * 0.23) * 6 // Faster subtle drift
                     + parallaxX;
 
                 let camY = this.baseCameraPos.y
@@ -1054,7 +1054,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
                 let camZ = this.baseCameraPos.z
                     + Math.sin(elapsed * 0.11) * 12 // Slow forward/back drift
-                    + Math.cos(elapsed * 0.31) * 5  // Faster subtle pulse
+                    + Math.cos(elapsed * 0.31) * 5 // Faster subtle pulse
                     + Math.sin(elapsed * 0.2) * 25; // Added deep forward/back drift
 
                 // Ensure camera never goes under dunes
@@ -1111,7 +1111,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 this.spiceMaterial.update(
                     elapsed,
                     this.uniforms.windStrength.value,
-                    this.uniforms.spiceIntensity.value
+                    this.uniforms.spiceIntensity.value,
                 );
             }
 

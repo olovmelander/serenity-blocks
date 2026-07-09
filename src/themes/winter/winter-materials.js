@@ -734,8 +734,18 @@ export function createWinterTreeRecolorMaterial(params = {}) {
     return {
         material,
         uniforms: {
-            uTarget, uRefLum, uGreenThresh, uGreenSoft, uSnowLumaLo, uSnowLumaHi, uSnowSatLo, uSnowSatHi,
-            uHaze, uHazeNear, uHazeFar, uHazeStrength,
+            uTarget,
+            uRefLum,
+            uGreenThresh,
+            uGreenSoft,
+            uSnowLumaLo,
+            uSnowLumaHi,
+            uSnowSatLo,
+            uSnowSatHi,
+            uHaze,
+            uHazeNear,
+            uHazeFar,
+            uHazeStrength,
         },
     };
 }

@@ -392,12 +392,12 @@ export class ChiralGoldBurstCompute {
         this.spawnPosData = new Float32Array(particleCount * 4);
         this.spawnVelData = new Float32Array(particleCount * 4);
         this.spawnMiscData = new Float32Array(particleCount * 4); // x: maxLife, y: delay
-        this.colorData = new Float32Array(particleCount * 4);     // Material reads
+        this.colorData = new Float32Array(particleCount * 4); // Material reads
 
         // GPU updates state tracking buffers (GPU Read-Write, Material reads)
         this.positionData = new Float32Array(particleCount * 4);
         this.velocityData = new Float32Array(particleCount * 4);
-        this.lifeData = new Float32Array(particleCount * 4);      // y: alphaLife
+        this.lifeData = new Float32Array(particleCount * 4); // y: alphaLife
 
         this.spawnPosBuffer = new THREE.StorageBufferAttribute(this.spawnPosData, 4);
         this.spawnVelBuffer = new THREE.StorageBufferAttribute(this.spawnVelData, 4);
@@ -606,7 +606,7 @@ export class ChiralGoldBurstCompute {
                 // Symmetrical dissolve: blast outward to the sides (left or right)
                 const isLeftOrigin = this.origin.x < 0;
                 const sideDir = isLeftOrigin ? -1.0 : 1.0;
-                
+
                 vx = (sideDir * (220.0 + this.random() * 260.0) + (this.random() - 0.5) * 60.0) * clampedIntensity * velocityMultiplier;
                 vy = (this.random() - 0.5) * 120.0 * velocityMultiplier;
                 vz = (this.random() - 0.5) * 90.0 * velocityMultiplier;
@@ -667,7 +667,7 @@ export class ChiralGoldBurstCompute {
         this.nextTriggerIndex = (startIndex + targetBatch) % this.count;
 
         // Critical Fix: We ONLY update spawn parameters and color sizes via CPU to WebGPU.
-        // We MUST NOT upload `positionBuffer` or `velocityBuffer` natively, as that 
+        // We MUST NOT upload `positionBuffer` or `velocityBuffer` natively, as that
         // overwrites and destroys the active simulation properties across frames.
         this.spawnPosBuffer.needsUpdate = true;
         this.spawnVelBuffer.needsUpdate = true;

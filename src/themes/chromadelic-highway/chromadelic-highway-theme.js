@@ -203,12 +203,24 @@ const RING_PALETTE = [0.78, 0.86, 0.55, 0.62, 0.92];
 // Per-quality post-FX flourish ceilings. Each entry is the maximum value the
 // per-frame update can drive a flourish to. Below-zero entries disable that flourish.
 const FLOURISH_TUNING = {
-    Extreme: { godRay: 0.45, anamorphic: 0.30, roadReflection: 0.11, chromaBoost: 1.7 },
-    Ultra:   { godRay: 0.35, anamorphic: 0.22, roadReflection: 0.09, chromaBoost: 1.6 },
-    High:    { godRay: 0.20, anamorphic: 0.12, roadReflection: 0.07, chromaBoost: 1.5 },
-    Medium:  { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.04, chromaBoost: 1.4 },
-    Low:     { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.0,  chromaBoost: 1.3 },
-    Minimal: { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.0,  chromaBoost: 1.2 },
+    Extreme: {
+        godRay: 0.45, anamorphic: 0.30, roadReflection: 0.11, chromaBoost: 1.7,
+    },
+    Ultra: {
+        godRay: 0.35, anamorphic: 0.22, roadReflection: 0.09, chromaBoost: 1.6,
+    },
+    High: {
+        godRay: 0.20, anamorphic: 0.12, roadReflection: 0.07, chromaBoost: 1.5,
+    },
+    Medium: {
+        godRay: 0.0, anamorphic: 0.0, roadReflection: 0.04, chromaBoost: 1.4,
+    },
+    Low: {
+        godRay: 0.0, anamorphic: 0.0, roadReflection: 0.0, chromaBoost: 1.3,
+    },
+    Minimal: {
+        godRay: 0.0, anamorphic: 0.0, roadReflection: 0.0, chromaBoost: 1.2,
+    },
 };
 
 // Celestial slot table — keeps secondary planets composed in the sky rather than
@@ -216,11 +228,21 @@ const FLOURISH_TUNING = {
 // at spawn and clamp to its bounds at runtime. Mutually exclusive zones prevent
 // planets from stacking on each other.
 const CELESTIAL_SLOTS = {
-    upperLeft : { x:[-1900,-1400], y:[560,720], z:[-3800,-3200], renderOrder:-72 },
-    upperRight: { x:[ 1400, 1900], y:[560,720], z:[-3800,-3200], renderOrder:-72 },
-    midLeft   : { x:[-1600,-1200], y:[340,460], z:[-2800,-2200], renderOrder:-64 },
-    midRight  : { x:[ 1200, 1600], y:[340,460], z:[-2800,-2200], renderOrder:-64 },
-    farBack   : { x:[ -500,  500], y:[640,780], z:[-4600,-4000], renderOrder:-80 },
+    upperLeft: {
+        x: [-1900, -1400], y: [560, 720], z: [-3800, -3200], renderOrder: -72,
+    },
+    upperRight: {
+        x: [1400, 1900], y: [560, 720], z: [-3800, -3200], renderOrder: -72,
+    },
+    midLeft: {
+        x: [-1600, -1200], y: [340, 460], z: [-2800, -2200], renderOrder: -64,
+    },
+    midRight: {
+        x: [1200, 1600], y: [340, 460], z: [-2800, -2200], renderOrder: -64,
+    },
+    farBack: {
+        x: [-500, 500], y: [640, 780], z: [-4600, -4000], renderOrder: -80,
+    },
 };
 
 const RING_GLOW_TUNING = {
@@ -474,9 +496,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // mid-range tunnel rings); sweep X = [-800, 800] anchored over vanishing point.
         this.journeyTime = 0;
         this.journeyDuration = 180;
-        this.planetStartPos = new THREE.Vector3(  800, 480, -3400);
-        this.planetClosePos = new THREE.Vector3(    0, 560, -2600);
-        this.planetEndPos   = new THREE.Vector3( -800, 480, -3400);
+        this.planetStartPos = new THREE.Vector3(800, 480, -3400);
+        this.planetClosePos = new THREE.Vector3(0, 560, -2600);
+        this.planetEndPos = new THREE.Vector3(-800, 480, -3400);
         this.celestialCorridor = {
             centerX: 0,
             halfWidth: 900,
@@ -510,8 +532,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         };
         this.reactiveCaps = {
             pulse: 1.25,
-            bloom: 0.2,  // Reduced from 0.3
-            ring: 0.5,   // Reduced from 0.6
+            bloom: 0.2, // Reduced from 0.3
+            ring: 0.5, // Reduced from 0.6
             particle: 1.8,
             ambient: 1.9,
         };
@@ -790,7 +812,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const attackRates = {
             pulse: 4.0, // Smoother (was 8.5)
             bloom: 3.0, // Smoother (was 6.0)
-            ring: 3.5,  // Smoother (was 7.0)
+            ring: 3.5, // Smoother (was 7.0)
             particle: 3.0, // Smoother (was 5.5)
             ambient: 2.5, // Smoother (was 4.5)
         };
@@ -2150,10 +2172,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const t = Math.max(0, (200 - z) / 2700);
         const strength = t * t;
         const ts = this.time * 0.075;
-        const x =
-            Math.sin(t * 2.5 + ts)         * 260 * strength +
-            Math.sin(t * 1.2 + ts * 0.5)   * 160 * strength +
-            Math.cos(t * 1.8 + ts * 0.75)  * 100 * strength;
+        const x = Math.sin(t * 2.5 + ts) * 260 * strength
+            + Math.sin(t * 1.2 + ts * 0.5) * 160 * strength
+            + Math.cos(t * 1.8 + ts * 0.75) * 100 * strength;
         const y = Math.sin(t * 1.5 + ts * 0.33) * 30 * strength;
         if (out) {
             out.x = x;
@@ -2282,10 +2303,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     createTunnelRings() {
         const { ringCount } = this.qualityPreset;
         const ringProfiles = [
-            { radius: 214, tube: 4.5, tubeSegments: 14, radialSegments: 78, speed: 2.9, spin: 0.28 },
-            { radius: 220, tube: 5.0, tubeSegments: 16, radialSegments: 82, speed: 3.1, spin: 0.32 },
-            { radius: 227, tube: 5.8, tubeSegments: 18, radialSegments: 74, speed: 3.25, spin: 0.35 },
-            { radius: 222, tube: 5.2, tubeSegments: 16, radialSegments: 88, speed: 3.0, spin: 0.3 },
+            {
+                radius: 214, tube: 4.5, tubeSegments: 14, radialSegments: 78, speed: 2.9, spin: 0.28,
+            },
+            {
+                radius: 220, tube: 5.0, tubeSegments: 16, radialSegments: 82, speed: 3.1, spin: 0.32,
+            },
+            {
+                radius: 227, tube: 5.8, tubeSegments: 18, radialSegments: 74, speed: 3.25, spin: 0.35,
+            },
+            {
+                radius: 222, tube: 5.2, tubeSegments: 16, radialSegments: 88, speed: 3.0, spin: 0.3,
+            },
         ];
 
         // Neon glow shader for rings (WebGL fallback)
@@ -2850,7 +2879,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const shellData = createPlanetAtmosphereShellMaterial({
                 intensity: 1.3, // Hero owns the dominant atmospheric halo
                 horizon: new THREE.Color(1.0, 0.45, 0.95), // magenta-violet horizon
-                zenith: new THREE.Color(0.35, 0.85, 1.0),  // cool cyan at higher altitude
+                zenith: new THREE.Color(0.35, 0.85, 1.0), // cool cyan at higher altitude
             });
             shellData.material.side = THREE.BackSide;
             const shell = new THREE.Mesh(shellGeo, shellData.material);
@@ -2953,7 +2982,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.neonGasGiant.userData.approachProfile = {
                 start: new THREE.Vector3(-3000, 580, -4800),
                 close: new THREE.Vector3(-2400, 420, -1500),
-                end:   new THREE.Vector3(-3200, 520,   500),
+                end: new THREE.Vector3(-3200, 520, 500),
                 phaseOffset: 36,
                 approachEnd: 114,
                 flybyEnd: 154,
@@ -2963,7 +2992,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 arcFrequencyY: 0.82,
                 arcPhaseY: 1.4,
                 corridorCenterX: -2800,
-                corridorHalfWidth: 900,  // X ∈ [-3700, -1900]
+                corridorHalfWidth: 900, // X ∈ [-3700, -1900]
             };
             this.neonGasGiant.userData.scaleProfile = {
                 minScale: 0.55,
@@ -3124,7 +3153,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.venusOrb.userData.approachProfile = {
                 start: new THREE.Vector3(3100, 830, -4800),
                 close: new THREE.Vector3(2400, 720, -2200),
-                end:   new THREE.Vector3(3500, 780,   500),
+                end: new THREE.Vector3(3500, 780, 500),
                 phaseOffset: 86,
                 approachEnd: 118,
                 flybyEnd: 160,
@@ -3134,7 +3163,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 arcFrequencyY: 0.9,
                 arcPhaseY: 0.9,
                 corridorCenterX: 2900,
-                corridorHalfWidth: 900,  // X ∈ [2000, 3800]
+                corridorHalfWidth: 900, // X ∈ [2000, 3800]
             };
             this.venusOrb.userData.scaleProfile = {
                 minScale: 0.6,
@@ -3180,20 +3209,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.marsPlanet.userData.approachProfile = {
                 start: new THREE.Vector3(2600, 480, -4500),
                 close: new THREE.Vector3(2200, 380, -1400),
-                end:   new THREE.Vector3(3100, 500,   600),
+                end: new THREE.Vector3(3100, 500, 600),
                 phaseOffset: 90,
                 approachEnd: 140,
                 flybyEnd: 170,
                 arcAmplitudeX: 40,
                 arcAmplitudeY: 20,
                 corridorCenterX: 2600,
-                corridorHalfWidth: 800,  // X ∈ [1800, 3400]
+                corridorHalfWidth: 800, // X ∈ [1800, 3400]
             };
             this.marsPlanet.userData.baseScale = 1.0;
             this.marsPlanet.userData.scaleProfile = {
-                minScale: 0.6, maxScale: 1.35,
-                nearDistance: 600, farDistance: 4500,
-                glowScale: 0.16, pulseScale: 0.03, paceScale: 0.04,
+                minScale: 0.6,
+                maxScale: 1.35,
+                nearDistance: 600,
+                farDistance: 4500,
+                glowScale: 0.16,
+                pulseScale: 0.03,
+                paceScale: 0.04,
             };
             this.marsPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.marsPlanet.userData.driftSpeed = 0.025;
@@ -3228,8 +3261,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             this.mercuryPlanet.userData.approachProfile = {
                 start: new THREE.Vector3(1800, 1000, -6000),
-                close: new THREE.Vector3(1400,  920, -3800),
-                end:   new THREE.Vector3(1900,  960, -2400),
+                close: new THREE.Vector3(1400, 920, -3800),
+                end: new THREE.Vector3(1900, 960, -2400),
                 phaseOffset: 60,
                 approachEnd: 140,
                 flybyEnd: 170,
@@ -3239,9 +3272,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             this.mercuryPlanet.userData.baseScale = 1.1;
             this.mercuryPlanet.userData.scaleProfile = {
-                minScale: 0.7, maxScale: 1.25,
-                nearDistance: 1800, farDistance: 6000,
-                glowScale: 0.12, pulseScale: 0.02, paceScale: 0.03,
+                minScale: 0.7,
+                maxScale: 1.25,
+                nearDistance: 1800,
+                farDistance: 6000,
+                glowScale: 0.12,
+                pulseScale: 0.02,
+                paceScale: 0.03,
             };
             this.mercuryPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.mercuryPlanet.userData.driftSpeed = 0.035;
@@ -3297,20 +3334,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.saturnPlanet.userData.approachProfile = {
                 start: new THREE.Vector3(3300, 850, -5500),
                 close: new THREE.Vector3(2700, 720, -2200),
-                end:   new THREE.Vector3(3500, 800,   700),
+                end: new THREE.Vector3(3500, 800, 700),
                 phaseOffset: 30,
                 approachEnd: 140,
                 flybyEnd: 170,
                 arcAmplitudeX: 50,
                 arcAmplitudeY: 30,
                 corridorCenterX: 3100,
-                corridorHalfWidth: 800,  // X ∈ [2300, 3900]
+                corridorHalfWidth: 800, // X ∈ [2300, 3900]
             };
             this.saturnPlanet.userData.baseScale = 0.9;
             this.saturnPlanet.userData.scaleProfile = {
-                minScale: 0.6, maxScale: 1.3,
-                nearDistance: 800, farDistance: 5500,
-                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
+                minScale: 0.6,
+                maxScale: 1.3,
+                nearDistance: 800,
+                farDistance: 5500,
+                glowScale: 0.18,
+                pulseScale: 0.04,
+                paceScale: 0.05,
             };
             this.saturnPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.saturnPlanet.userData.driftSpeed = 0.015;
@@ -3345,20 +3386,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.uranusPlanet.userData.approachProfile = {
                 start: new THREE.Vector3(-3300, 850, -5500),
                 close: new THREE.Vector3(-2700, 720, -2200),
-                end:   new THREE.Vector3(-3500, 800,   700),
+                end: new THREE.Vector3(-3500, 800, 700),
                 phaseOffset: 0,
                 approachEnd: 140,
                 flybyEnd: 170,
                 arcAmplitudeX: 50,
                 arcAmplitudeY: 30,
                 corridorCenterX: -3100,
-                corridorHalfWidth: 800,  // X ∈ [-3900, -2300]
+                corridorHalfWidth: 800, // X ∈ [-3900, -2300]
             };
             this.uranusPlanet.userData.baseScale = 1.0;
             this.uranusPlanet.userData.scaleProfile = {
-                minScale: 0.6, maxScale: 1.3,
-                nearDistance: 800, farDistance: 5500,
-                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
+                minScale: 0.6,
+                maxScale: 1.3,
+                nearDistance: 800,
+                farDistance: 5500,
+                glowScale: 0.18,
+                pulseScale: 0.04,
+                paceScale: 0.05,
             };
             this.uranusPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.uranusPlanet.userData.driftSpeed = 0.018;
@@ -3445,7 +3490,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 new THREE.Color(0x6600cc),
                 new THREE.Color(0xcc00ff),
                 new THREE.Color(0xb84dff),
-                new THREE.Color(0x5c00e6)
+                new THREE.Color(0x5c00e6),
             );
         }
 
@@ -3557,7 +3602,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 new THREE.Color(0x6600cc),
                 new THREE.Color(0xcc00ff),
                 new THREE.Color(0xb84dff),
-                new THREE.Color(0x5c00e6)
+                new THREE.Color(0x5c00e6),
             );
         }
 
@@ -4600,7 +4645,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         for (let j = 0; j <= segments; j++) {
                             const c = curveCache[j];
                             const idx = j * 3;
-                            positions[idx]     = xBase + c.x;
+                            positions[idx] = xBase + c.x;
                             positions[idx + 1] = yBase + c.y;
                             positions[idx + 2] = c.z;
                         }
@@ -4611,7 +4656,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                             const z = 350 - (j / segments) * 2600;
                             const c = this.sampleRoadCurve(z);
                             const idx = j * 3;
-                            positions[idx]     = xBase + c.x;
+                            positions[idx] = xBase + c.x;
                             positions[idx + 1] = yBase + c.y;
                             positions[idx + 2] = z;
                         }
@@ -5130,7 +5175,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const dynamicScale = this.computeCelestialScale(
                 planet.position,
                 planet.userData.scaleProfile,
-                0
+                0,
             );
             planet.scale.setScalar(baseScale * dynamicScale);
 

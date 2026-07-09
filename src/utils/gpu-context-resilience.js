@@ -37,7 +37,9 @@ class GPUContextResilience {
             this.stats.lossCount++;
             this.stats.lastLossTime = Date.now();
             console.warn(`[GPUResilience] WebGL context lost (${label})`);
-            eventBus.emit(EVENTS.CONTEXT_LOST, { type: 'webgl', canvas, event, label });
+            eventBus.emit(EVENTS.CONTEXT_LOST, {
+                type: 'webgl', canvas, event, label,
+            });
             options.onLost?.(event);
         };
 
@@ -89,7 +91,9 @@ class GPUContextResilience {
             this.stats.lastLossTime = Date.now();
             const reason = info?.reason || 'unknown';
             console.warn(`[GPUResilience] WebGPU device lost (${label}): ${reason}`);
-            eventBus.emit(EVENTS.CONTEXT_LOST, { type: 'webgpu', device, info, label });
+            eventBus.emit(EVENTS.CONTEXT_LOST, {
+                type: 'webgpu', device, info, label,
+            });
             options.onDeviceLost?.(info);
         });
 

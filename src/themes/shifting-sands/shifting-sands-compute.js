@@ -40,7 +40,7 @@ const tslHash3 = /* @__PURE__ */ Fn(([p_immutable]) => {
     p.assign(vec3(
         dot(p, vec3(127.1, 311.7, 74.7)),
         dot(p, vec3(269.5, 183.3, 246.1)),
-        dot(p, vec3(113.5, 271.9, 124.6))
+        dot(p, vec3(113.5, 271.9, 124.6)),
     ));
     return fract(sin(p).mul(43758.5453)).mul(2.0).sub(1.0);
 });
@@ -63,7 +63,7 @@ const tslNoise3D = /* @__PURE__ */ Fn(([p_immutable]) => {
     return mix(
         mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y),
         mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y),
-        u.z
+        u.z,
     );
 });
 
@@ -320,10 +320,10 @@ export class SpiceParticleCompute {
             const i4 = i * 4;
 
             // Random position in desert area
-            this.positionData[i4] = (Math.random() - 0.5) * 600;      // x
-            this.positionData[i4 + 1] = Math.random() * 80 - 10;      // y
-            this.positionData[i4 + 2] = (Math.random() - 0.5) * 600;  // z
-            this.positionData[i4 + 3] = Math.random();                 // life (0-1)
+            this.positionData[i4] = (Math.random() - 0.5) * 600; // x
+            this.positionData[i4 + 1] = Math.random() * 80 - 10; // y
+            this.positionData[i4 + 2] = (Math.random() - 0.5) * 600; // z
+            this.positionData[i4 + 3] = Math.random(); // life (0-1)
 
             // Random phase for variation
             this.velocityData[i4] = 0;
@@ -528,9 +528,9 @@ export class SandSmokeCompute {
             const i8 = i * 8;
 
             // Start dead to stagger emission
-            this.stateData[i8] = 0;      // x
+            this.stateData[i8] = 0; // x
             this.stateData[i8 + 1] = -100; // y (underground)
-            this.stateData[i8 + 2] = 0;   // z
+            this.stateData[i8 + 2] = 0; // z
 
             // Stagger startup over a short window to avoid a single-frame emission spike.
             this.stateData[i8 + 3] = -Math.random() * 8.0; // life (negative = delay)

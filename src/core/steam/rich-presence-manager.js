@@ -108,7 +108,7 @@ class RichPresenceManager {
             }),
             gameModeManager.on('modeDeactivated', () => {
                 this.setMode('menu');
-            })
+            }),
         );
 
         // Set initial presence
@@ -204,11 +204,15 @@ class RichPresenceManager {
     }
 
     setLobbyStatus(playerCount, maxPlayers, inLobby = true) {
-        this.updateData({ playerCount, maxPlayers, inLobby, inMatch: false });
+        this.updateData({
+            playerCount, maxPlayers, inLobby, inMatch: false,
+        });
     }
 
     setMatchStatus(position, playerCount) {
-        this.updateData({ position, playerCount, inMatch: true, inLobby: false });
+        this.updateData({
+            position, playerCount, inMatch: true, inLobby: false,
+        });
     }
 
     setLocalPlayers(playerCount) {
@@ -298,7 +302,7 @@ class RichPresenceManager {
      */
     destroy() {
         this.clear();
-        this.unsubscribers.forEach(unsub => unsub());
+        this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
         this.gameModeManager = null;
 

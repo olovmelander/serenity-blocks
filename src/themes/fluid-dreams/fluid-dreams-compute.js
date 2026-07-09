@@ -93,12 +93,12 @@ export class FluidDreamsParticleCompute {
             const r = this.spawnInner + Math.random() * (this.spawnOuter - this.spawnInner);
             const sinPhi = Math.sin(phi);
 
-            this.positionData[i4]     = r * sinPhi * Math.cos(theta);
+            this.positionData[i4] = r * sinPhi * Math.cos(theta);
             this.positionData[i4 + 1] = r * sinPhi * Math.sin(theta);
             this.positionData[i4 + 2] = r * Math.cos(phi);
             this.positionData[i4 + 3] = Math.random(); // initial life
 
-            this.velocityData[i4]     = (Math.random() - 0.5) * 0.2;
+            this.velocityData[i4] = (Math.random() - 0.5) * 0.2;
             this.velocityData[i4 + 1] = (Math.random() - 0.5) * 0.2;
             this.velocityData[i4 + 2] = (Math.random() - 0.5) * 0.2;
             this.velocityData[i4 + 3] = Math.random(); // per-particle seed
@@ -106,7 +106,7 @@ export class FluidDreamsParticleCompute {
             // Initial color sampled from the electric palette.
             const t = Math.random();
             const color = this._samplePaletteJS(t);
-            this.colorData[i4]     = color.x;
+            this.colorData[i4] = color.x;
             this.colorData[i4 + 1] = color.y;
             this.colorData[i4 + 2] = color.z;
             this.colorData[i4 + 3] = 3.5 + Math.random() * 5.0; // sprite size (pixels)
@@ -152,10 +152,10 @@ export class FluidDreamsParticleCompute {
         const attractStrength = this.uAttractStrength;
 
         // Palette colors as constants the compute kernel can mix.
-        const pNeonPink     = vec3(ELECTRIC_PALETTE.neonPink.x, ELECTRIC_PALETTE.neonPink.y, ELECTRIC_PALETTE.neonPink.z);
-        const pViolet       = vec3(ELECTRIC_PALETTE.electricViolet.x, ELECTRIC_PALETTE.electricViolet.y, ELECTRIC_PALETTE.electricViolet.z);
-        const pCyan         = vec3(ELECTRIC_PALETTE.electricCyan.x, ELECTRIC_PALETTE.electricCyan.y, ELECTRIC_PALETTE.electricCyan.z);
-        const pGold         = vec3(ELECTRIC_PALETTE.warmGold.x, ELECTRIC_PALETTE.warmGold.y, ELECTRIC_PALETTE.warmGold.z);
+        const pNeonPink = vec3(ELECTRIC_PALETTE.neonPink.x, ELECTRIC_PALETTE.neonPink.y, ELECTRIC_PALETTE.neonPink.z);
+        const pViolet = vec3(ELECTRIC_PALETTE.electricViolet.x, ELECTRIC_PALETTE.electricViolet.y, ELECTRIC_PALETTE.electricViolet.z);
+        const pCyan = vec3(ELECTRIC_PALETTE.electricCyan.x, ELECTRIC_PALETTE.electricCyan.y, ELECTRIC_PALETTE.electricCyan.z);
+        const pGold = vec3(ELECTRIC_PALETTE.warmGold.x, ELECTRIC_PALETTE.warmGold.y, ELECTRIC_PALETTE.warmGold.z);
 
         const compute = Fn(() => {
             const index = instanceIndex;
@@ -256,7 +256,9 @@ export class FluidDreamsParticleCompute {
     }
 
     getPositionBuffer() { return this.positionBuffer; }
+
     getVelocityBuffer() { return this.velocityBuffer; }
+
     getColorBuffer() { return this.colorBuffer; }
 
     dispose() {

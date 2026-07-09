@@ -191,46 +191,83 @@ const COLORS = {
 
 const QUALITY_PRESETS = {
     Extreme: {
-        enablePostProcessing: true, birdCount: 1024,
-        fireflyCount: 200, dustMoteCount: 150, spiritCount: 45, spiritLodDistance: 200,
-        grassCount: 400, fogBandCount: 3,
-        bloomStrength: 0.18, bloomRadius: 0.35,
-        waterReflectionRes: 1024, enableFilmGrain: true,
+        enablePostProcessing: true,
+        birdCount: 1024,
+        fireflyCount: 200,
+        dustMoteCount: 150,
+        spiritCount: 45,
+        spiritLodDistance: 200,
+        grassCount: 400,
+        fogBandCount: 3,
+        bloomStrength: 0.18,
+        bloomRadius: 0.35,
+        waterReflectionRes: 1024,
+        enableFilmGrain: true,
     },
     Ultra: {
-        enablePostProcessing: true, birdCount: 512,
-        fireflyCount: 160, dustMoteCount: 120, spiritCount: 35,
-        grassCount: 350, fogBandCount: 3,
-        bloomStrength: 0.18, bloomRadius: 0.35,
-        waterReflectionRes: 1024, enableFilmGrain: true,
+        enablePostProcessing: true,
+        birdCount: 512,
+        fireflyCount: 160,
+        dustMoteCount: 120,
+        spiritCount: 35,
+        grassCount: 350,
+        fogBandCount: 3,
+        bloomStrength: 0.18,
+        bloomRadius: 0.35,
+        waterReflectionRes: 1024,
+        enableFilmGrain: true,
     },
     High: {
-        enablePostProcessing: true, birdCount: 256,
-        fireflyCount: 120, dustMoteCount: 100, spiritCount: 25,
-        grassCount: 300, fogBandCount: 3,
-        bloomStrength: 0.16, bloomRadius: 0.30,
-        waterReflectionRes: 768, enableFilmGrain: false,
+        enablePostProcessing: true,
+        birdCount: 256,
+        fireflyCount: 120,
+        dustMoteCount: 100,
+        spiritCount: 25,
+        grassCount: 300,
+        fogBandCount: 3,
+        bloomStrength: 0.16,
+        bloomRadius: 0.30,
+        waterReflectionRes: 768,
+        enableFilmGrain: false,
     },
     Medium: {
-        enablePostProcessing: true, birdCount: 128,
-        fireflyCount: 80, dustMoteCount: 60, spiritCount: 15,
-        grassCount: 200, fogBandCount: 4,
-        bloomStrength: 0.14, bloomRadius: 0.28,
-        waterReflectionRes: 512, enableFilmGrain: false,
+        enablePostProcessing: true,
+        birdCount: 128,
+        fireflyCount: 80,
+        dustMoteCount: 60,
+        spiritCount: 15,
+        grassCount: 200,
+        fogBandCount: 4,
+        bloomStrength: 0.14,
+        bloomRadius: 0.28,
+        waterReflectionRes: 512,
+        enableFilmGrain: false,
     },
     Low: {
-        enablePostProcessing: false, birdCount: 64,
-        fireflyCount: 40, dustMoteCount: 30, spiritCount: 8,
-        grassCount: 120, fogBandCount: 3,
-        bloomStrength: 0, bloomRadius: 0,
-        waterReflectionRes: 256, enableFilmGrain: false,
+        enablePostProcessing: false,
+        birdCount: 64,
+        fireflyCount: 40,
+        dustMoteCount: 30,
+        spiritCount: 8,
+        grassCount: 120,
+        fogBandCount: 3,
+        bloomStrength: 0,
+        bloomRadius: 0,
+        waterReflectionRes: 256,
+        enableFilmGrain: false,
     },
     Minimal: {
-        enablePostProcessing: false, birdCount: 0,
-        fireflyCount: 15, dustMoteCount: 0, spiritCount: 0,
-        grassCount: 0, fogBandCount: 2,
-        bloomStrength: 0, bloomRadius: 0,
-        waterReflectionRes: 256, enableFilmGrain: false,
+        enablePostProcessing: false,
+        birdCount: 0,
+        fireflyCount: 15,
+        dustMoteCount: 0,
+        spiritCount: 0,
+        grassCount: 0,
+        fogBandCount: 2,
+        bloomStrength: 0,
+        bloomRadius: 0,
+        waterReflectionRes: 256,
+        enableFilmGrain: false,
     },
 };
 
@@ -1797,26 +1834,26 @@ export default class SwedishForestTheme extends BaseTheme {
             this.scene.add(mountainMesh);
 
             switch (peakConfig.name) {
-                case 'mainPeak':
-                    this.silhouetteMountain = mountainMesh;
-                    break;
-                case 'tallPeak':
-                    this.tallMountainPeak = mountainMesh;
-                    break;
-                case 'farLeftPeak':
-                    this.farLeftMountain = mountainMesh;
-                    break;
-                case 'extremeLeftRidge':
-                    this.extremeLeftMountain = mountainMesh;
-                    break;
-                case 'rightHill':
-                    this.rightHill = mountainMesh;
-                    break;
-                case 'farRightPeak':
-                    this.farRightMountain = mountainMesh;
-                    break;
-                default:
-                    break;
+            case 'mainPeak':
+                this.silhouetteMountain = mountainMesh;
+                break;
+            case 'tallPeak':
+                this.tallMountainPeak = mountainMesh;
+                break;
+            case 'farLeftPeak':
+                this.farLeftMountain = mountainMesh;
+                break;
+            case 'extremeLeftRidge':
+                this.extremeLeftMountain = mountainMesh;
+                break;
+            case 'rightHill':
+                this.rightHill = mountainMesh;
+                break;
+            case 'farRightPeak':
+                this.farRightMountain = mountainMesh;
+                break;
+            default:
+                break;
             }
         });
 
@@ -2972,7 +3009,6 @@ export default class SwedishForestTheme extends BaseTheme {
             shoreFoamStrength: 0.10, // Barely visible foam
             objectFoamStrength: 0.15,
 
-
             emissiveStrength: 0.24,
         });
 
@@ -3790,8 +3826,14 @@ export default class SwedishForestTheme extends BaseTheme {
                 const rotZ = (this.random() - 0.5) * 0.3;
                 reedCountPerColor[colorIdx]++;
                 reedAssignments.push({
-                    clusterX: cluster.x, clusterZ: cluster.z,
-                    colorIdx, height, localX, localZ, rotX, rotZ,
+                    clusterX: cluster.x,
+                    clusterZ: cluster.z,
+                    colorIdx,
+                    height,
+                    localX,
+                    localZ,
+                    rotX,
+                    rotZ,
                 });
             }
         });
@@ -3904,22 +3946,50 @@ export default class SwedishForestTheme extends BaseTheme {
         // We want these trees to act as an intimate, dark foreground frame.
         const treePositions = [
             // LEFT EDGE FRAMING TREES
-            { x: -55, z: 155, height: 45, scale: 2.5, colorIdx: 0 },
-            { x: -80, z: 145, height: 60, scale: 3.0, colorIdx: 1 },
-            { x: -40, z: 162, height: 35, scale: 2.2, colorIdx: 0 },
-            { x: -95, z: 135, height: 55, scale: 2.8, colorIdx: 2 },
-            { x: -65, z: 150, height: 50, scale: 2.6, colorIdx: 1 },
-            { x: -110, z: 125, height: 65, scale: 3.2, colorIdx: 0 },
-            { x: -45, z: 148, height: 40, scale: 2.0, colorIdx: 2 },
+            {
+                x: -55, z: 155, height: 45, scale: 2.5, colorIdx: 0,
+            },
+            {
+                x: -80, z: 145, height: 60, scale: 3.0, colorIdx: 1,
+            },
+            {
+                x: -40, z: 162, height: 35, scale: 2.2, colorIdx: 0,
+            },
+            {
+                x: -95, z: 135, height: 55, scale: 2.8, colorIdx: 2,
+            },
+            {
+                x: -65, z: 150, height: 50, scale: 2.6, colorIdx: 1,
+            },
+            {
+                x: -110, z: 125, height: 65, scale: 3.2, colorIdx: 0,
+            },
+            {
+                x: -45, z: 148, height: 40, scale: 2.0, colorIdx: 2,
+            },
 
             // RIGHT EDGE FRAMING TREES
-            { x: 50, z: 158, height: 42, scale: 2.4, colorIdx: 0 },
-            { x: 75, z: 148, height: 55, scale: 2.9, colorIdx: 1 },
-            { x: 35, z: 165, height: 32, scale: 2.1, colorIdx: 0 },
-            { x: 90, z: 138, height: 50, scale: 2.7, colorIdx: 2 },
-            { x: 60, z: 152, height: 48, scale: 2.5, colorIdx: 1 },
-            { x: 105, z: 128, height: 60, scale: 3.1, colorIdx: 0 },
-            { x: 42, z: 150, height: 38, scale: 1.9, colorIdx: 2 },
+            {
+                x: 50, z: 158, height: 42, scale: 2.4, colorIdx: 0,
+            },
+            {
+                x: 75, z: 148, height: 55, scale: 2.9, colorIdx: 1,
+            },
+            {
+                x: 35, z: 165, height: 32, scale: 2.1, colorIdx: 0,
+            },
+            {
+                x: 90, z: 138, height: 50, scale: 2.7, colorIdx: 2,
+            },
+            {
+                x: 60, z: 152, height: 48, scale: 2.5, colorIdx: 1,
+            },
+            {
+                x: 105, z: 128, height: 60, scale: 3.1, colorIdx: 0,
+            },
+            {
+                x: 42, z: 150, height: 38, scale: 1.9, colorIdx: 2,
+            },
         ];
 
         treePositions.forEach((config) => {
@@ -4558,14 +4628,26 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mistNodeUniforms = [];
         const mistConfigs = [
             // Distant mist at tree line
-            { y: 7, z: -35, width: 2500, height: 18, density: 0.4 },
-            { y: 5, z: -15, width: 2500, height: 15, density: 0.35 },
+            {
+                y: 7, z: -35, width: 2500, height: 18, density: 0.4,
+            },
+            {
+                y: 5, z: -15, width: 2500, height: 15, density: 0.35,
+            },
             // Mid-ground lake mist
-            { y: 3, z: 20, width: 2500, height: 12, density: 0.3 },
-            { y: 2, z: 60, width: 2500, height: 10, density: 0.25 },
+            {
+                y: 3, z: 20, width: 2500, height: 12, density: 0.3,
+            },
+            {
+                y: 2, z: 60, width: 2500, height: 10, density: 0.25,
+            },
             // Foreground lake mist
-            { y: 1.5, z: 100, width: 2500, height: 8, density: 0.2 },
-            { y: 1.0, z: 140, width: 2500, height: 6, density: 0.15 },
+            {
+                y: 1.5, z: 100, width: 2500, height: 8, density: 0.2,
+            },
+            {
+                y: 1.0, z: 140, width: 2500, height: 6, density: 0.15,
+            },
         ];
 
         for (const config of mistConfigs) {
@@ -5464,8 +5546,7 @@ export default class SwedishForestTheme extends BaseTheme {
         const mrtLabel = this.flags.useMRT ? 'on' : 'off';
         const compute = this.flags.useCompute ? 'on' : 'off';
 
-        this.debugOverlay.textContent
-            = `${backend} | FPS: ${fps}\n`
+        this.debugOverlay.textContent = `${backend} | FPS: ${fps}\n`
             + `Draw: ${calls} | Tris: ${tris} | Tex: ${textures}\n`
             + `Post: ${post} | MRT: ${mrtLabel} | Compute: ${compute}`;
     }

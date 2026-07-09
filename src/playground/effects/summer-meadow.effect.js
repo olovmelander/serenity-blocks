@@ -49,7 +49,6 @@ function makeDracoLoader() {
     return d;
 }
 
-
 export const meta = {
     id: 'summer-meadow',
     title: 'Summer — Midsommar Solstice',
@@ -63,18 +62,39 @@ export const meta = {
 //   Deep Pine #2A4B38 · Midtone Canopy #4A7C59 · Sunlit Grass #97AD43
 //   Falu Red #A23629 · Lake Blue #5B92A8
 const PAL = {
-    skyZenith: 0x85b9d1, skyUpper: 0x9ec6d6, skyMid: 0xc6cdc9,
-    skyPeach: 0xf8a898, skyHorizon: 0xfcd581, skyHorizonDeep: 0xf6b779,
-    sunDisc: 0xffe9a8, sunCore: 0xfff4d6, sunWarm: 0xfcd581,
+    skyZenith: 0x85b9d1,
+    skyUpper: 0x9ec6d6,
+    skyMid: 0xc6cdc9,
+    skyPeach: 0xf8a898,
+    skyHorizon: 0xfcd581,
+    skyHorizonDeep: 0xf6b779,
+    sunDisc: 0xffe9a8,
+    sunCore: 0xfff4d6,
+    sunWarm: 0xfcd581,
     haze: 0xf8a898, // sunset-peach aerial perspective / ambient fog
-    grassShadow: 0x2a4b38, grassMid: 0x4a7c59, grassSun: 0x97ad43, sss: 0xfcd581,
-    waterShallow: 0x5b92a8, waterDeep: 0x355f72,
-    falu: 0xa23629, faluRoof: 0x5d2424, trim: 0xf4efe3, window: 0xffd98a,
-    pineLight: 0x4a7c59, pineDark: 0x2a4b38,
-    birchBark: 0xe8e4d6, birchLeaf: 0x9ac24f,
-    poleWrap: 0x5e7d38, poleWood: 0x7a5a33, wreath: 0x4e7a33,
-    daisy: 0xfcfbf5, daisyCenter: 0xf2c53d, cornflower: 0x5a7bd4,
-    lupine: 0x8e7cc3, buttercup: 0xf6c324, poppy: 0xd7352b,
+    grassShadow: 0x2a4b38,
+    grassMid: 0x4a7c59,
+    grassSun: 0x97ad43,
+    sss: 0xfcd581,
+    waterShallow: 0x5b92a8,
+    waterDeep: 0x355f72,
+    falu: 0xa23629,
+    faluRoof: 0x5d2424,
+    trim: 0xf4efe3,
+    window: 0xffd98a,
+    pineLight: 0x4a7c59,
+    pineDark: 0x2a4b38,
+    birchBark: 0xe8e4d6,
+    birchLeaf: 0x9ac24f,
+    poleWrap: 0x5e7d38,
+    poleWood: 0x7a5a33,
+    wreath: 0x4e7a33,
+    daisy: 0xfcfbf5,
+    daisyCenter: 0xf2c53d,
+    cornflower: 0x5a7bd4,
+    lupine: 0x8e7cc3,
+    buttercup: 0xf6c324,
+    poppy: 0xd7352b,
 };
 
 function colorParts(hex) {
@@ -83,7 +103,9 @@ function colorParts(hex) {
 }
 const cv = (hex) => { const [r, g, b] = colorParts(hex); return vec3(r, g, b); };
 
-export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
+export function create({
+    THREE: T = THREE, scene, camera, renderer, params,
+}) {
     const P = params || new URLSearchParams('');
     const disposables = [];
     const objects = [];
@@ -228,8 +250,8 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
             const yc2 = float(yc)
                 .add(sin(u.mul(freq)).mul(amp))
                 .add(mx_noise_float(vec3(u.mul(0.8), float(yc * 7.0), 0.0)).mul(amp * 0.8));
-            const top = smoothstep(yc2.add(th), yc2.sub(soft), y);             // soft fade above
-            const bot = smoothstep(yc2.sub(th).sub(soft), yc2.sub(th), y);     // firmer base
+            const top = smoothstep(yc2.add(th), yc2.sub(soft), y); // soft fade above
+            const bot = smoothstep(yc2.sub(th).sub(soft), yc2.sub(th), y); // firmer base
             const fb = fbm2(u.mul(1.6), float(yc * 5.0).add(dir.y.mul(3.0)));
             const band = top.mul(bot).mul(mix(float(1.0), smoothstep(0.32, 0.62, fb), float(breakup)));
             return clamp(band, 0.0, 1.0);
@@ -238,9 +260,9 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         // Keep clouds their own coral tone near the sun (low warm wash) so they stay
         // DEFINED against the bright sky instead of blending to white.
         const bandCol = (top, under, hot) => mix(mix(cv(top), cv(under), float(0.6)), cv(hot), warmBias.mul(0.4));
-        const bHi  = stratus(0.46, 0.020, 0.060, 2.0, 0.012, 0.010, 1.0);
-        const bUp  = stratus(0.34, 0.028, 0.050, 1.6, 0.018, 0.008, 0.55);
-        const bMid = stratus(0.23, 0.040, 0.030, 1.3, 0.022, 0.006, 0.15);  // HERO band — most solid
+        const bHi = stratus(0.46, 0.020, 0.060, 2.0, 0.012, 0.010, 1.0);
+        const bUp = stratus(0.34, 0.028, 0.050, 1.6, 0.018, 0.008, 0.55);
+        const bMid = stratus(0.23, 0.040, 0.030, 1.3, 0.022, 0.006, 0.15); // HERO band — most solid
         const bLow = stratus(0.12, 0.050, 0.070, 1.1, 0.016, 0.005, 0.40);
         sky = mix(sky, bandCol(0xffe2b4, 0xffc878, 0xfff0d6), bLow.mul(0.90));
         sky = mix(sky, bandCol(0xfbd9b6, 0xef9a6e, 0xffe0b8), bMid.mul(0.95));
@@ -365,16 +387,16 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         // left-of-middle, tapering to a thin tongue behind the cottage bank on the
         // RIGHT. (Local +Z = near shore toward the camera.) Built from an offset,
         // anisotropic ellipse SDF + a right-side positional pinch + a left-cove notch.
-        const cx = wx.add(8.0);                 // recentre the basin left
-        const cz = wz.sub(4.0);                 // recentre slightly toward the far shore
+        const cx = wx.add(8.0); // recentre the basin left
+        const cz = wz.sub(4.0); // recentre slightly toward the far shore
         const ax = mix(float(96.0), float(66.0), smoothstep(-32.0, 44.0, cx)); // wide left → narrow right
         const az = mix(float(45.0), float(58.0), smoothstep(-12.0, 30.0, cz)); // more near-shore extent
         const ex = cx.div(ax), ez = cz.div(az);
         let er = length(vec2(ex, ez));
         er = er.add(smoothstep(30.0, 92.0, wx).mul(0.42)); // right-side pinch → tapering tongue
         const ang = atan2(ez, ex);
-        const bay = smoothstep(2.5, 3.06, ang.abs()).mul(0.13);  // left cove (|ang|~π = -x side)
-        const nearBulge = smoothstep(0.0, 54.0, cz).mul(0.05);   // belly the near shore toward camera
+        const bay = smoothstep(2.5, 3.06, ang.abs()).mul(0.13); // left cove (|ang|~π = -x side)
+        const nearBulge = smoothstep(0.0, 54.0, cz).mul(0.05); // belly the near shore toward camera
         const wob = sin(ang.mul(3.0)).mul(0.022).add(sin(ang.mul(5.0).add(1.3)).mul(0.014));
         const edge = float(0.97).add(wob).add(nearBulge).sub(bay);
         const shoreMask = smoothstep(edge.add(0.05), edge.sub(0.08), er);
@@ -436,8 +458,8 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const yAxis = new T.Vector3(0, 1, 0);
         for (let i = 0; i < GRASS; i++) {
             const depth = Math.pow(Math.random(), 1.5);
-            const z = 11 - 30 * depth;                 // +11 (near) .. -19 (shoreline)
-            const halfW = 16 + (11 - z) * 1.9;          // full-width carpet
+            const z = 11 - 30 * depth; // +11 (near) .. -19 (shoreline)
+            const halfW = 16 + (11 - z) * 1.9; // full-width carpet
             const x = (Math.random() * 2 - 1) * halfW;
             pos.set(x, 0, z);
             quat.setFromAxisAngle(yAxis, Math.random() * Math.PI * 2);
@@ -458,7 +480,9 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
     // summer-flora.js with baked vertex colour; one InstancedMesh per species. Wind is the
     // shared height-masked TSL sway+gust (uTime/uBreeze), bent in LOCAL space with a
     // per-instance world-XZ phase (aWorldXZ) — same instancing pattern as the grass.
-    const makeFloraMat = ({ height, amp, stiff, flutter, freq = 1.0 }) => {
+    const makeFloraMat = ({
+        height, amp, stiff, flutter, freq = 1.0,
+    }) => {
         const mat = track(new T.MeshBasicNodeMaterial());
         const yN = clamp(positionLocal.y.div(height), 0.0, 1.0);
         const mask = pow(yN, float(stiff));
@@ -472,9 +496,7 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const gust = gustN.mul(0.5).mul(uBreeze.mul(1.6).add(0.5));
         const bend = sway.add(gust).mul(float(amp)).mul(mask);
         const flut = sin(uTime.mul(5.5 * freq).add(ph.mul(3.0))).mul(float(flutter)).mul(yN);
-        mat.positionNode = positionLocal.add(vec3(
-            windDir.x.mul(bend).add(flut), bend.abs().mul(-0.05), windDir.y.mul(bend).add(flut.mul(0.5)),
-        ));
+        mat.positionNode = positionLocal.add(vec3(windDir.x.mul(bend).add(flut), bend.abs().mul(-0.05), windDir.y.mul(bend).add(flut.mul(0.5))));
         mat.colorNode = distFog(shade(attribute('color', 'vec3'), faceN));
         mat.side = T.DoubleSide;
         return mat;
@@ -488,12 +510,24 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const geoH = (g) => { g.computeBoundingBox(); return (g.boundingBox.max.y - g.boundingBox.min.y) || 1; };
         // Daisy-dominant like the reference; poppies are a scattered red accent (not a carpet).
         const SPECIES = [
-            { geo: geos.daisy,       w: { amp: 0.16, stiff: 1.2, flutter: 0.04 }, frac: 0.42, sMin: 1.3, sMax: 1.9 },
-            { geo: geos.buttercup,   w: { amp: 0.20, stiff: 1.1, flutter: 0.05 }, frac: 0.22, sMin: 1.6, sMax: 2.3 },
-            { geo: geos.poppy,       w: { amp: 0.18, stiff: 1.1, flutter: 0.05 }, frac: 0.055, sMin: 1.4, sMax: 1.8 },
-            { geo: geos.spikePurple, w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.14, sMin: 1.2, sMax: 1.8 },
-            { geo: geos.spikeBlue,   w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.12, sMin: 1.2, sMax: 1.8 },
-            { geo: geos.spikePink,   w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.08, sMin: 1.2, sMax: 1.8 },
+            {
+                geo: geos.daisy, w: { amp: 0.16, stiff: 1.2, flutter: 0.04 }, frac: 0.42, sMin: 1.3, sMax: 1.9,
+            },
+            {
+                geo: geos.buttercup, w: { amp: 0.20, stiff: 1.1, flutter: 0.05 }, frac: 0.22, sMin: 1.6, sMax: 2.3,
+            },
+            {
+                geo: geos.poppy, w: { amp: 0.18, stiff: 1.1, flutter: 0.05 }, frac: 0.055, sMin: 1.4, sMax: 1.8,
+            },
+            {
+                geo: geos.spikePurple, w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.14, sMin: 1.2, sMax: 1.8,
+            },
+            {
+                geo: geos.spikeBlue, w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.12, sMin: 1.2, sMax: 1.8,
+            },
+            {
+                geo: geos.spikePink, w: { amp: 0.22, stiff: 1.3, flutter: 0.03 }, frac: 0.08, sMin: 1.2, sMax: 1.8,
+            },
         ].filter((s) => s.geo);
         const m = new T.Matrix4(), pos = new T.Vector3(), quat = new T.Quaternion(), scl = new T.Vector3();
         const yAxis = new T.Vector3(0, 1, 0);
@@ -504,8 +538,8 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
             const aWorldXZ = new Float32Array(count * 2);
             for (let i = 0; i < count; i++) {
                 const depth = Math.pow(Math.random(), 1.8);
-                const z = 12 - 30 * depth;                 // +12 (near) .. -18 (shoreline)
-                const halfW = 13 + (12 - z) * 1.5;          // density concentrated near camera
+                const z = 12 - 30 * depth; // +12 (near) .. -18 (shoreline)
+                const halfW = 13 + (12 - z) * 1.5; // density concentrated near camera
                 const x = (Math.random() * 2 - 1) * halfW;
                 pos.set(x, 0, z);
                 quat.setFromAxisAngle(yAxis, Math.random() * Math.PI * 2);
@@ -565,12 +599,13 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
             // crossbar attach point → swing them like pendulums in update().
             ['RingL', 'RingR'].forEach((name) => {
                 const r = model.getObjectByName(name);
-                if (r) maypoleRings.push({ obj: r, bx: r.rotation.x, bz: r.rotation.z, ph: maypoleRings.length * 1.7 });
+                if (r) maypoleRings.push({
+                    obj: r, bx: r.rotation.x, bz: r.rotation.z, ph: maypoleRings.length * 1.7,
+                });
             });
             console.log(`[Summer] Loaded low-poly midsummer pole GLB (${maypoleRings.length} wreaths).`);
         }, undefined, (err) => console.warn('[Summer] Failed to load midsummer pole GLB:', err));
     }
-
 
     // ═══ COTTAGE — Blender-modelled low-poly Swedish stuga (GLB) on the far shore ══
     const cottage = new T.Group();
@@ -590,11 +625,11 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
             const S = 512, cv = document.createElement('canvas');
             cv.width = cv.height = S;
             const g = cv.getContext('2d');
-            g.fillStyle = '#a23629'; g.fillRect(0, 0, S, S);           // Falu Red accent (#A23629) fills ~95%
+            g.fillStyle = '#a23629'; g.fillRect(0, 0, S, S); // Falu Red accent (#A23629) fills ~95%
             const planks = 7, pw = S / planks;
-            g.fillStyle = 'rgba(60,14,9,0.55)';                        // thin darker plank seams
+            g.fillStyle = 'rgba(60,14,9,0.55)'; // thin darker plank seams
             for (let i = 1; i < planks; i++) g.fillRect(Math.round(i * pw) - 1, 0, 2, S);
-            for (let i = 0; i < 150; i++) {                            // faint vertical grain (reds only — keeps saturation)
+            for (let i = 0; i < 150; i++) { // faint vertical grain (reds only — keeps saturation)
                 const x = (Math.sin(i * 53.13) * 0.5 + 0.5) * S, h = 40 + ((i * 97) % 180), y = (i * 131) % S;
                 g.globalAlpha = 0.05; g.fillStyle = (i % 2) ? '#b5402c' : '#761a10';
                 g.fillRect(x, y, 1, h);
@@ -769,7 +804,7 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const q = new T.Quaternion(); // identity → quads face the camera
         const s = new T.Vector3();
         for (let i = 0; i < MOTES; i++) {
-            const z = 12 - 52 * Math.random();              // +12 (near) .. -40 (mid-lake air)
+            const z = 12 - 52 * Math.random(); // +12 (near) .. -40 (mid-lake air)
             const x = (Math.random() * 2 - 1) * (16 + (12 - z) * 1.3);
             const y = 0.3 + Math.random() * 6.5;
             pos.set(x, y, z);
@@ -791,14 +826,14 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
         const shaftMat = track(new T.MeshBasicNodeMaterial());
         const su = uv();
         const edge = pow(clamp(float(1.0).sub(su.x.sub(0.5).abs().mul(2.0)), 0.0, 1.0), float(1.7)); // soft sides
-        const vert = su.y.mul(smoothstep(1.0, 0.78, su.y)).add(0.04);                                  // bright top, soft tip
-        const flick = sin(positionWorld.x.mul(0.25).add(uTime.mul(0.5))).mul(0.14).add(0.86);           // gentle shimmer
+        const vert = su.y.mul(smoothstep(1.0, 0.78, su.y)).add(0.04); // bright top, soft tip
+        const flick = sin(positionWorld.x.mul(0.25).add(uTime.mul(0.5))).mul(0.14).add(0.86); // gentle shimmer
         const glow = edge.mul(vert).mul(flick);
         shaftMat.colorNode = cv(0xffe6ad).mul(glow);
         shaftMat.opacityNode = glow.mul(float(0.17).add(uSparkle.mul(0.22)));
         shaftMat.emissiveNode = cv(0xffe6ad).mul(glow).mul(0.4);
         shaftMat.transparent = true;
-        shaftMat.depthWrite = false;          // depthTEST stays on → trees occlude the shafts
+        shaftMat.depthWrite = false; // depthTEST stays on → trees occlude the shafts
         shaftMat.blending = T.AdditiveBlending;
         shaftMat.toneMapped = false;
         shaftMat.side = T.DoubleSide;
@@ -829,10 +864,18 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
     if (!P.has('noBirds')) {
         // Further out + roaming. yawOffset aligns each GLB's nose to its heading.
         const BIRD_FLIGHTS = [
-            { assetId: 'swallow-flying', center: [-22, -88], radius: 44, height: 27, speed: 0.135, scale: 1.05, bob: 2.4, offset: 0.0, yawOffset: 0 },
-            { assetId: 'goldfinch-flying', center: [26, -80], radius: 36, height: 22, speed: 0.16, scale: 0.92, bob: 1.8, offset: 2.3, yawOffset: 0 },
-            { assetId: 'swallow-flying', center: [-4, -104], radius: 58, height: 34, speed: 0.105, scale: 1.12, bob: 2.8, offset: 4.1, yawOffset: 0 },
-            { assetId: 'goldfinch-flying', center: [40, -98], radius: 30, height: 25, speed: 0.185, scale: 0.85, bob: 1.5, offset: 5.5, yawOffset: 0 },
+            {
+                assetId: 'swallow-flying', center: [-22, -88], radius: 44, height: 27, speed: 0.135, scale: 1.05, bob: 2.4, offset: 0.0, yawOffset: 0,
+            },
+            {
+                assetId: 'goldfinch-flying', center: [26, -80], radius: 36, height: 22, speed: 0.16, scale: 0.92, bob: 1.8, offset: 2.3, yawOffset: 0,
+            },
+            {
+                assetId: 'swallow-flying', center: [-4, -104], radius: 58, height: 34, speed: 0.105, scale: 1.12, bob: 2.8, offset: 4.1, yawOffset: 0,
+            },
+            {
+                assetId: 'goldfinch-flying', center: [40, -98], radius: 30, height: 25, speed: 0.185, scale: 0.85, bob: 1.5, offset: 5.5, yawOffset: 0,
+            },
         ];
         const loadBird = async (flight) => {
             const record = getChapter3FlyingBirdAssetById(flight.assetId);
@@ -846,7 +889,9 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
                 c.receiveShadow = false;
                 const mats = Array.isArray(c.material) ? c.material : [c.material];
                 const repl = mats.map(() => {
-                    const mm = new T.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide, toneMapped: false });
+                    const mm = new T.MeshBasicMaterial({
+                        color: 0xffffff, vertexColors: true, side: T.DoubleSide, toneMapped: false,
+                    });
                     birdMats.push(mm);
                     return mm;
                 });
@@ -883,8 +928,12 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
                 birch: get('T_Birch', { unit: true }),
             };
             const flowerGeos = {
-                daisy: get('F_Daisy'), buttercup: get('F_Buttercup'), poppy: get('F_Poppy'),
-                spikePurple: get('F_SpikePurple'), spikePink: get('F_SpikePink'), spikeBlue: get('F_SpikeBlue'),
+                daisy: get('F_Daisy'),
+                buttercup: get('F_Buttercup'),
+                poppy: get('F_Poppy'),
+                spikePurple: get('F_SpikePurple'),
+                spikePink: get('F_SpikePink'),
+                spikeBlue: get('F_SpikeBlue'),
             };
             buildGrassTufts(get('F_Grass'));
             buildWildflowers(flowerGeos);
@@ -921,7 +970,9 @@ export function create({ THREE: T = THREE, scene, camera, renderer, params }) {
     }
 
     // ── pointer parallax ────────────────────────────────────────────────────────
-    const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
+    const mouse = {
+        x: 0, y: 0, tx: 0, ty: 0,
+    };
     const onPointer = (e) => {
         mouse.tx = (e.clientX / window.innerWidth) * 2 - 1;
         mouse.ty = (e.clientY / window.innerHeight) * 2 - 1;

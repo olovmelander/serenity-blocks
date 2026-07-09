@@ -751,7 +751,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'triangle', freq: 150, gain: 0.25 }, // Crisp snap
                 ],
                 noise: { type: 'white', gain: 0.15 }, // Icy crunch
-                filter: { type: 'lowpass', frequency: 300, Q: 1.5, envAmount: 200 },
+                filter: {
+                    type: 'lowpass', frequency: 300, Q: 1.5, envAmount: 200,
+                },
                 envelope: { attack: 0.01, decay: 0.3, release: 0.15 }, // Tighter lock sound
                 volume: 0.85,
             }),
@@ -764,7 +766,9 @@ export function createSoundSets(createTone, createRichTone) {
                             { type: 'sine', freq: f, gain: 0.5 }, // Deep healing tone
                             { type: 'sine', freq: f * 0.5, gain: 0.2 }, // Sub-octave warmth
                         ],
-                        filter: { type: 'lowpass', frequency: 500, envAmount: 100, Q: 1.5 },
+                        filter: {
+                            type: 'lowpass', frequency: 500, envAmount: 100, Q: 1.5,
+                        },
                         envelope: { attack: 0.25, decay: 3.0, release: 2.5 }, // Slow, deep Tibetan bowl
                         volume: 0.55,
                     }), i * 120); // Slow, meditative roll
@@ -814,7 +818,9 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [{ type: 'square', freq: 80, gain: 0.2 }],
                     noise: { type: 'white', gain: 0.4 }, // Sharp ice shatter
-                    filter: { type: 'bandpass', frequency: 1000, envAmount: -800, Q: 1.5 },
+                    filter: {
+                        type: 'bandpass', frequency: 1000, envAmount: -800, Q: 1.5,
+                    },
                     envelope: { attack: 0.01, decay: 0.5, release: 0.3 },
                     volume: 0.6,
                 });

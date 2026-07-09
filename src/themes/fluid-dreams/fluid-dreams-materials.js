@@ -52,10 +52,10 @@ import {
 
 export const ELECTRIC_PALETTE = {
     deepAmethyst: new Vector3(0.102, 0.020, 0.196), // #1A0532
-    neonPink:     new Vector3(1.000, 0.176, 0.584), // #FF2D95
+    neonPink: new Vector3(1.000, 0.176, 0.584), // #FF2D95
     electricViolet: new Vector3(0.694, 0.298, 1.000), // #B14CFF
-    electricCyan:   new Vector3(0.000, 0.898, 1.000), // #00E5FF
-    warmGold:       new Vector3(1.000, 0.851, 0.239), // #FFD93D
+    electricCyan: new Vector3(0.000, 0.898, 1.000), // #00E5FF
+    warmGold: new Vector3(1.000, 0.851, 0.239), // #FFD93D
 };
 
 // Tetromino tints pulled from the same palette so the whole scene reads
@@ -331,7 +331,9 @@ export function createBackgroundNodeMaterial() {
     material.colorNode = colour;
     material.emissiveNode = vec3(0.0, 0.0, 0.0);
 
-    material.userData = { uTime, uPulse, uColorTop, uColorMid, uColorBottom };
+    material.userData = {
+        uTime, uPulse, uColorTop, uColorMid, uColorBottom,
+    };
 
     return material;
 }
@@ -384,7 +386,9 @@ export function createVolumetricHazeNodeMaterial(options = {}) {
     material.opacityNode = clamp(density.mul(1.4), float(0.0), float(0.9));
     material.emissiveNode = colour.mul(0.5);
 
-    material.userData = { uTime, uDensity, uTint, uHighlight, uPulse, steps };
+    material.userData = {
+        uTime, uDensity, uTint, uHighlight, uPulse, steps,
+    };
 
     return material;
 }

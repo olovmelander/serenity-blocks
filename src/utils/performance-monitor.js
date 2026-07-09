@@ -1419,13 +1419,13 @@ export class PerformanceMonitor {
                 <div style="margin-top: 10px; color: #888; font-size: 10px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                     Hot Sections:
                     ${hotSections.map((section) => {
-                    const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
-                    return `
+        const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
+        return `
                             <div style="color: ${color}; margin-top: 2px;">
                                 ${section.name}: ${section.avg.toFixed(1)}ms avg (${section.last.toFixed(1)}ms last)
                             </div>
                         `;
-                }).join('')}
+    }).join('')}
                 </div>
             ` : ''}
         `;

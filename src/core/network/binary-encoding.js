@@ -1146,8 +1146,10 @@ export class BinaryDecoder {
         const pendingMax = view.getUint16(offset, true) / 100; offset += 2;
 
         return {
-            timers: { field, fieldMax, pending, pendingMax },
-            offset
+            timers: {
+                field, fieldMax, pending, pendingMax,
+            },
+            offset,
         };
     }
 

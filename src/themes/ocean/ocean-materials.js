@@ -492,7 +492,8 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
     const causticFalloff = float(1.0).sub(smoothstep(float(40.0), float(70.0), viewDist));
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
-    color = color.add(vec3(0.5, 0.96, 0.7).mul(caustic).mul(aHeight).mul(causticFalloff).mul(0.26));
+    color = color.add(vec3(0.5, 0.96, 0.7).mul(caustic).mul(aHeight).mul(causticFalloff)
+        .mul(0.26));
 
     // Depth-graded fog wash to blend seagrass into the deep water column
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));

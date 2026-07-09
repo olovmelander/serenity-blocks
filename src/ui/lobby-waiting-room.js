@@ -11,29 +11,29 @@ import steamService from '../core/steam/steam-service.js';
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class LobbyWaitingRoom {
-  constructor(ffaGameState, onMatchStart, onLeaveLobby = null) {
-    this.gameState = ffaGameState;
-    this.onMatchStart = onMatchStart;
-    this.onLeaveLobby = onLeaveLobby;
-    this.container = null;
-    this.updateInterval = null;
+    constructor(ffaGameState, onMatchStart, onLeaveLobby = null) {
+        this.gameState = ffaGameState;
+        this.onMatchStart = onMatchStart;
+        this.onLeaveLobby = onLeaveLobby;
+        this.container = null;
+        this.updateInterval = null;
 
-    this.createUI();
-  }
+        this.createUI();
+    }
 
-  /**
+    /**
  * Create the waiting room UI
  */
-  /**
+    /**
  * Create the waiting room UI
  */
-  createUI() {
-    this.container = document.createElement('div');
-    this.container.id = 'lobby-waiting-room';
-    // Use the same grid layout class as the game
-    this.container.className = 'online-game-area lobby-mode hidden';
+    createUI() {
+        this.container = document.createElement('div');
+        this.container.id = 'lobby-waiting-room';
+        // Use the same grid layout class as the game
+        this.container.className = 'online-game-area lobby-mode hidden';
 
-    this.container.innerHTML = `
+        this.container.innerHTML = `
       <!-- LEFT PANEL: Lobby Info & Settings -->
       <div class="opponents-panel lobby-left-panel">
         <div class="watch-controls">
@@ -147,684 +147,684 @@ export class LobbyWaitingRoom {
       </div>
     `;
 
-    document.body.appendChild(this.container);
+        document.body.appendChild(this.container);
 
-    this.setupEventListeners();
-  }
+        this.setupEventListeners();
+    }
 
-  /**
+    /**
  * Setup event listeners
  */
-  setupEventListeners() {
+    setupEventListeners() {
     // Leave button
-    const leaveBtn = this.container.querySelector('#leave-lobby-btn');
-    leaveBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent global click handler from triggering
-      this.leaveLobby();
-    });
-
-    // Ready button
-    const readyBtn = this.container.querySelector('#ready-btn');
-    readyBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent global click handler from triggering
-      this.toggleReady();
-    });
-
-    // Copy Lobby ID
-    const copyBtn = this.container.querySelector('#copy-lobby-id');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = this.container.querySelector('#lobby-id-display')?.textContent || '';
-        if (!id || id === 'Connecting...') return;
-        const done = () => {
-          copyBtn.classList.add('copied');
-          setTimeout(() => copyBtn.classList.remove('copied'), 1200);
-        };
-        if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(id).then(done).catch(() => {});
-        } else {
-          done();
-        }
-      });
-    }
-
-    // Start button
-    const startBtn = this.container.querySelector('#start-match-btn');
-    startBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent global click handler from triggering single-player start
-      this.startMatch();
-    });
-
-    // Invite friends button
-    const inviteBtn = this.container.querySelector('#invite-friends-btn');
-    if (inviteBtn) {
-      inviteBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-
-        // Check if Steam is available
-        if (!steamService.isOnline) {
-          this.addChatMessage('[System] Steam is not available. Invites require Steam.', true);
-          return;
-        }
-
-        const lobbyId = this.gameState?.network?.currentLobbyId || null;
-        if (!lobbyId) {
-          this.addChatMessage('[System] No lobby active. Cannot send invites.', true);
-          return;
-        }
-
-        const opened = await steamService.openLobbyInviteDialog(lobbyId);
-        if (!opened) {
-          console.warn('[LobbyWaitingRoom] Unable to open Steam invite dialog');
-          this.addChatMessage('[System] Could not open Steam invite dialog. Try Shift+Tab to open Steam overlay.', true);
-        }
-      });
-    }
-
-    // Chat integration
-    // Listen for incoming messages
-    this.chatHandler = (detail) => {
-      this.addChatMessage({
-        playerName: detail.playerName,
-        message: detail.message,
-        steamId: detail.steamId,
-        color: detail.color
-      });
-    };
-    onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, this.chatHandler);
-
-    // Chat input
-    const chatInput = this.container.querySelector('#lobby-chat-input');
-    const chatSend = this.container.querySelector('#lobby-chat-send');
-
-    const sendChat = () => {
-      const text = chatInput.value.trim();
-      if (text && this.gameState) {
-        const localPlayer = this.gameState.getLocalPlayer?.() || this.gameState.players?.get(this.gameState.localPlayerId);
-        const playerColor = localPlayer?.color || '#a78bfa';
-
-        this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
-          message: text,
-          playerName: this.gameState.network.playerName,
-          steamId: this.gameState.localPlayerId,
-          color: playerColor,
-          timestamp: Date.now()
+        const leaveBtn = this.container.querySelector('#leave-lobby-btn');
+        leaveBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent global click handler from triggering
+            this.leaveLobby();
         });
 
-        // Add to local history/UI
-        const msgData = {
-          message: text,
-          playerName: this.gameState.network.playerName,
-          steamId: this.gameState.localPlayerId,
-          color: playerColor,
-          timestamp: Date.now()
+        // Ready button
+        const readyBtn = this.container.querySelector('#ready-btn');
+        readyBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent global click handler from triggering
+            this.toggleReady();
+        });
+
+        // Copy Lobby ID
+        const copyBtn = this.container.querySelector('#copy-lobby-id');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = this.container.querySelector('#lobby-id-display')?.textContent || '';
+                if (!id || id === 'Connecting...') return;
+                const done = () => {
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => copyBtn.classList.remove('copied'), 1200);
+                };
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(id).then(done).catch(() => {});
+                } else {
+                    done();
+                }
+            });
+        }
+
+        // Start button
+        const startBtn = this.container.querySelector('#start-match-btn');
+        startBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent global click handler from triggering single-player start
+            this.startMatch();
+        });
+
+        // Invite friends button
+        const inviteBtn = this.container.querySelector('#invite-friends-btn');
+        if (inviteBtn) {
+            inviteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+
+                // Check if Steam is available
+                if (!steamService.isOnline) {
+                    this.addChatMessage('[System] Steam is not available. Invites require Steam.', true);
+                    return;
+                }
+
+                const lobbyId = this.gameState?.network?.currentLobbyId || null;
+                if (!lobbyId) {
+                    this.addChatMessage('[System] No lobby active. Cannot send invites.', true);
+                    return;
+                }
+
+                const opened = await steamService.openLobbyInviteDialog(lobbyId);
+                if (!opened) {
+                    console.warn('[LobbyWaitingRoom] Unable to open Steam invite dialog');
+                    this.addChatMessage('[System] Could not open Steam invite dialog. Try Shift+Tab to open Steam overlay.', true);
+                }
+            });
+        }
+
+        // Chat integration
+        // Listen for incoming messages
+        this.chatHandler = (detail) => {
+            this.addChatMessage({
+                playerName: detail.playerName,
+                message: detail.message,
+                steamId: detail.steamId,
+                color: detail.color,
+            });
         };
-        if (this.gameState.chatHistory) this.gameState.chatHistory.push(msgData);
-        this.addChatMessage({ ...msgData, playerName: 'You' });
-        chatInput.value = '';
-      }
-    };
+        onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, this.chatHandler);
 
-    if (chatSend) chatSend.addEventListener('click', sendChat);
-    if (chatInput) chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') sendChat();
-      e.stopPropagation();
-    });
-  }
+        // Chat input
+        const chatInput = this.container.querySelector('#lobby-chat-input');
+        const chatSend = this.container.querySelector('#lobby-chat-send');
 
-  /**
+        const sendChat = () => {
+            const text = chatInput.value.trim();
+            if (text && this.gameState) {
+                const localPlayer = this.gameState.getLocalPlayer?.() || this.gameState.players?.get(this.gameState.localPlayerId);
+                const playerColor = localPlayer?.color || '#a78bfa';
+
+                this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
+                    message: text,
+                    playerName: this.gameState.network.playerName,
+                    steamId: this.gameState.localPlayerId,
+                    color: playerColor,
+                    timestamp: Date.now(),
+                });
+
+                // Add to local history/UI
+                const msgData = {
+                    message: text,
+                    playerName: this.gameState.network.playerName,
+                    steamId: this.gameState.localPlayerId,
+                    color: playerColor,
+                    timestamp: Date.now(),
+                };
+                if (this.gameState.chatHistory) this.gameState.chatHistory.push(msgData);
+                this.addChatMessage({ ...msgData, playerName: 'You' });
+                chatInput.value = '';
+            }
+        };
+
+        if (chatSend) chatSend.addEventListener('click', sendChat);
+        if (chatInput) chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendChat();
+            e.stopPropagation();
+        });
+    }
+
+    /**
  * Show the waiting room
  */
-  show() {
-    if (!this.container) {
-      console.error('❌ Waiting room container not created');
-      return;
-    }
+    show() {
+        if (!this.container) {
+            console.error('❌ Waiting room container not created');
+            return;
+        }
 
-    if (!this.gameState) {
-      console.warn('⚠️ No game state set for waiting room');
-    }
+        if (!this.gameState) {
+            console.warn('⚠️ No game state set for waiting room');
+        }
 
-    console.log('📋 Showing waiting room...');
-    this.container.classList.remove('hidden');
+        console.log('📋 Showing waiting room...');
+        this.container.classList.remove('hidden');
 
-    // Update UI after a brief delay to ensure DOM is ready
-    setTimeout(() => {
-      this.updateUI();
+        // Update UI after a brief delay to ensure DOM is ready
+        setTimeout(() => {
+            this.updateUI();
 
-      // Load chat history
-      const chatEl = this.container.querySelector('#chat-messages');
-      if (chatEl && this.gameState && this.gameState.chatHistory) {
-        // Clear current (except welcome message?) - keeping welcome message at top
-        // Actually, if we just append, we might duplicate.
-        // Let's clear and re-render to be safe.
-        chatEl.innerHTML = `
+            // Load chat history
+            const chatEl = this.container.querySelector('#chat-messages');
+            if (chatEl && this.gameState && this.gameState.chatHistory) {
+                // Clear current (except welcome message?) - keeping welcome message at top
+                // Actually, if we just append, we might duplicate.
+                // Let's clear and re-render to be safe.
+                chatEl.innerHTML = `
               <div class="system-message">
                 Welcome to the lobby!
               </div>
           `;
 
-        this.gameState.chatHistory.forEach(msg => {
-          if (!msg.playerName) {
-            // System message
-            this.addChatMessage(msg.text || msg.message, true);
-          } else {
-            // Player message - pass full object for color support
-            this.addChatMessage(msg);
-          }
-        });
-      }
-    }, 50);
+                this.gameState.chatHistory.forEach((msg) => {
+                    if (!msg.playerName) {
+                        // System message
+                        this.addChatMessage(msg.text || msg.message, true);
+                    } else {
+                        // Player message - pass full object for color support
+                        this.addChatMessage(msg);
+                    }
+                });
+            }
+        }, 50);
 
-    // Update every second
-    this.updateInterval = setInterval(() => this.updateUI(), 1000);
+        // Update every second
+        this.updateInterval = setInterval(() => this.updateUI(), 1000);
 
-    // Listen for player list changes and update immediately
-    this.playerListChangeHandler = () => {
-      console.log('🔄 Player list changed, updating UI...');
-      this._logRosterChanges();
-      this.updateUI();
-    };
-    this.playerListChangeUnsub = onMultiplayerEvent(
-      MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED,
-      this.playerListChangeHandler,
-    );
+        // Listen for player list changes and update immediately
+        this.playerListChangeHandler = () => {
+            console.log('🔄 Player list changed, updating UI...');
+            this._logRosterChanges();
+            this.updateUI();
+        };
+        this.playerListChangeUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED,
+            this.playerListChangeHandler,
+        );
 
-    console.log('✅ Waiting room visible');
-  }
+        console.log('✅ Waiting room visible');
+    }
 
-  /**
+    /**
  * Hide the waiting room
  */
-  hide() {
-    this.container.classList.add('hidden');
+    hide() {
+        this.container.classList.add('hidden');
 
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
+
+        // Remove event listener
+        if (this.playerListChangeUnsub) {
+            this.playerListChangeUnsub();
+            this.playerListChangeUnsub = null;
+            this.playerListChangeHandler = null;
+        }
     }
 
-    // Remove event listener
-    if (this.playerListChangeUnsub) {
-      this.playerListChangeUnsub();
-      this.playerListChangeUnsub = null;
-      this.playerListChangeHandler = null;
-    }
-  }
-
-  /**
+    /**
  * Update UI with current game state
  */
-  updateUI() {
-    if (!this.gameState) {
-      console.warn('⚠️ updateUI called but no gameState');
-      return;
+    updateUI() {
+        if (!this.gameState) {
+            console.warn('⚠️ updateUI called but no gameState');
+            return;
+        }
+
+        try {
+            // Update match info
+            this.updateMatchInfo();
+
+            // Update player list
+            this.updatePlayerList();
+
+            // Update controls
+            this.updateControls();
+        } catch (err) {
+            console.error('❌ Error updating waiting room UI:', err);
+        }
     }
 
-    try {
-      // Update match info
-      this.updateMatchInfo();
-
-      // Update player list
-      this.updatePlayerList();
-
-      // Update controls
-      this.updateControls();
-    } catch (err) {
-      console.error('❌ Error updating waiting room UI:', err);
-    }
-  }
-
-  /**
+    /**
  * Update match info panel
  */
-  updateMatchInfo() {
-    const config = this.gameState.matchConfig;
+    updateMatchInfo() {
+        const config = this.gameState.matchConfig;
 
-    // Max players
-    const maxPlayersValue = document.getElementById('max-players-value');
-    const maxPlayersCount = document.getElementById('max-players-count');
+        // Max players
+        const maxPlayersValue = document.getElementById('max-players-value');
+        const maxPlayersCount = document.getElementById('max-players-count');
 
-    if (maxPlayersValue) maxPlayersValue.textContent = config.maxPlayers;
-    if (maxPlayersCount) maxPlayersCount.textContent = config.maxPlayers;
+        if (maxPlayersValue) maxPlayersValue.textContent = config.maxPlayers;
+        if (maxPlayersCount) maxPlayersCount.textContent = config.maxPlayers;
 
-    // Win condition
-    const conditionText = this.getConditionText(config.endCondition);
-    const winConditionValue = document.getElementById('win-condition-value');
-    if (winConditionValue) winConditionValue.textContent = conditionText;
+        // Win condition
+        const conditionText = this.getConditionText(config.endCondition);
+        const winConditionValue = document.getElementById('win-condition-value');
+        if (winConditionValue) winConditionValue.textContent = conditionText;
 
-    // Room Name & ID
-    const roomNameEl = document.getElementById('room-name');
-    if (roomNameEl && this.gameState.lobbyName) {
-      roomNameEl.textContent = this.gameState.lobbyName;
+        // Room Name & ID
+        const roomNameEl = document.getElementById('room-name');
+        if (roomNameEl && this.gameState.lobbyName) {
+            roomNameEl.textContent = this.gameState.lobbyName;
+        }
+
+        const lobbyIdEl = document.getElementById('lobby-id-display');
+        if (lobbyIdEl && this.gameState.lobbyId) {
+            lobbyIdEl.textContent = this.gameState.lobbyId;
+        }
+
+        // Target value
+        let targetText = config.endConditionValue;
+        if (config.endCondition === 'points') {
+            targetText = `${config.endConditionValue}K`;
+        } else if (config.endCondition === 'time') {
+            targetText = `${config.endConditionValue} min`;
+        } else if (config.endCondition === 'never') {
+            targetText = 'N/A';
+        }
+        const winTargetValue = document.getElementById('win-target-value');
+        if (winTargetValue) winTargetValue.textContent = targetText;
+
+        // Objective summary callout
+        const objectiveEl = document.getElementById('lobby-objective');
+        if (objectiveEl) {
+            const cond = conditionText.toLowerCase();
+            if (config.endCondition === 'never') {
+                objectiveEl.textContent = '∞ Endless — no win condition';
+            } else if (config.endCondition === 'time') {
+                objectiveEl.textContent = `🎯 ${targetText} — most ${cond} wins`;
+            } else {
+                objectiveEl.textContent = `🎯 First to ${targetText} ${cond}`;
+            }
+        }
+
+        // Host name
+        const hostPlayer = Array.from(this.gameState.players.values())
+            .find((p) => p.steamId === this.gameState.network.hostSteamId);
+        const hostNameValue = document.getElementById('host-name-value');
+        if (hostNameValue) {
+            hostNameValue.textContent = hostPlayer ? hostPlayer.name : 'Unknown';
+        }
     }
 
-    const lobbyIdEl = document.getElementById('lobby-id-display');
-    if (lobbyIdEl && this.gameState.lobbyId) {
-      lobbyIdEl.textContent = this.gameState.lobbyId;
-    }
-
-    // Target value
-    let targetText = config.endConditionValue;
-    if (config.endCondition === 'points') {
-      targetText = `${config.endConditionValue}K`;
-    } else if (config.endCondition === 'time') {
-      targetText = `${config.endConditionValue} min`;
-    } else if (config.endCondition === 'never') {
-      targetText = 'N/A';
-    }
-    const winTargetValue = document.getElementById('win-target-value');
-    if (winTargetValue) winTargetValue.textContent = targetText;
-
-    // Objective summary callout
-    const objectiveEl = document.getElementById('lobby-objective');
-    if (objectiveEl) {
-      const cond = conditionText.toLowerCase();
-      if (config.endCondition === 'never') {
-        objectiveEl.textContent = '∞ Endless — no win condition';
-      } else if (config.endCondition === 'time') {
-        objectiveEl.textContent = `🎯 ${targetText} — most ${cond} wins`;
-      } else {
-        objectiveEl.textContent = `🎯 First to ${targetText} ${cond}`;
-      }
-    }
-
-    // Host name
-    const hostPlayer = Array.from(this.gameState.players.values())
-      .find((p) => p.steamId === this.gameState.network.hostSteamId);
-    const hostNameValue = document.getElementById('host-name-value');
-    if (hostNameValue) {
-      hostNameValue.textContent = hostPlayer ? hostPlayer.name : 'Unknown';
-    }
-  }
-
-  /**
+    /**
  * Get condition text
  */
-  getConditionText(condition) {
-    const map = {
-      frags: 'Frags',
-      time: 'Time Limit',
-      points: 'Score Target',
-      lines: 'Lines Cleared',
-      never: 'Never (Manual)',
-    };
-    return map[condition] || condition;
-  }
+    getConditionText(condition) {
+        const map = {
+            frags: 'Frags',
+            time: 'Time Limit',
+            points: 'Score Target',
+            lines: 'Lines Cleared',
+            never: 'Never (Manual)',
+        };
+        return map[condition] || condition;
+    }
 
-  /**
+    /**
  * Update player list
  */
-  updatePlayerList() {
-    const listEl = document.getElementById('player-list');
-    if (!listEl) return;
-    const players = Array.from(this.gameState.players.values());
+    updatePlayerList() {
+        const listEl = document.getElementById('player-list');
+        if (!listEl) return;
+        const players = Array.from(this.gameState.players.values());
 
-    // Dirty-check: updateUI() calls this every 1000ms AND it fires on every
-    // PLAYER_LIST_CHANGED. Without this it re-logged per-player, re-batched avatars,
-    // and rebuilt innerHTML once a second even when nothing changed — the console
-    // "📊 [LOBBY] Updating player list" flood. Skip all of it when the roster is
-    // visually identical (covers name/ready/color/host/local/count changes).
-    const hostId = this.gameState.network?.hostSteamId;
-    const localId = this.gameState.localPlayerId;
-    const sig = `${players.length}@${localId || ''}|` + players
-      .map((p) => `${p.steamId}:${p.name}:${p.isReady ? 1 : 0}:${p.color}:${p.steamId === hostId ? 1 : 0}`)
-      .sort()
-      .join('|');
-    if (sig === this._lastPlayerListSig) return;
-    this._lastPlayerListSig = sig;
+        // Dirty-check: updateUI() calls this every 1000ms AND it fires on every
+        // PLAYER_LIST_CHANGED. Without this it re-logged per-player, re-batched avatars,
+        // and rebuilt innerHTML once a second even when nothing changed — the console
+        // "📊 [LOBBY] Updating player list" flood. Skip all of it when the roster is
+        // visually identical (covers name/ready/color/host/local/count changes).
+        const hostId = this.gameState.network?.hostSteamId;
+        const localId = this.gameState.localPlayerId;
+        const sig = `${players.length}@${localId || ''}|` + players
+            .map((p) => `${p.steamId}:${p.name}:${p.isReady ? 1 : 0}:${p.color}:${p.steamId === hostId ? 1 : 0}`)
+            .sort()
+            .join('|');
+        if (sig === this._lastPlayerListSig) return;
+        this._lastPlayerListSig = sig;
 
-    console.log(`📊 [LOBBY] Updating player list: ${players.length} players`);
-    players.forEach((p) => console.log(`   - ${p.name} (${p.steamId}) - Color: ${p.color}`));
+        console.log(`📊 [LOBBY] Updating player list: ${players.length} players`);
+        players.forEach((p) => console.log(`   - ${p.name} (${p.steamId}) - Color: ${p.color}`));
 
-    // Update count
-    document.getElementById('player-count').textContent = players.length;
+        // Update count
+        document.getElementById('player-count').textContent = players.length;
 
-    // Batch preload all avatars in parallel for faster rendering
-    const steamIds = players.map(p => p.steamId).filter(Boolean);
-    steamService.getAvatarsBatch(steamIds, 'medium').catch(err => {
-      console.warn('[LobbyWaitingRoom] Failed to preload avatars:', err.message);
-    });
-
-    // Clear and rebuild player cards with real avatars
-    listEl.innerHTML = '';
-
-    players.forEach((player) => {
-      const isHost = player.steamId === this.gameState.network.hostSteamId;
-      const isLocal = player.steamId === this.gameState.localPlayerId;
-      const isReady = player.isReady || isHost;
-      const playerColor = sanitizeCssColor(player.color, '#808080');
-
-      // Create card container (visual styling owned by lobby-room-aaa.css;
-      // the per-player neon colour is passed through as a CSS var)
-      const cardEl = document.createElement('div');
-      cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''}`.trim();
-      cardEl.style.setProperty('--player-color', playerColor);
-
-      // Color strip (per-player neon)
-      const colorStrip = document.createElement('div');
-      colorStrip.className = 'player-color-strip';
-      cardEl.appendChild(colorStrip);
-
-      // Player avatar + name. Render the name via the PlayerCard component's
-      // built-in label (showName) — the reliable path used elsewhere in the app —
-      // with a non-empty fallback so a card is never nameless.
-      const displayName = player.name || (isLocal ? 'You' : 'Player');
-      const playerCard = createPlayerCard({
-        steamId: player.steamId,
-        name: displayName,
-        color: playerColor,
-        size: 'medium',
-        showName: true,
-        vertical: true,
-      });
-      cardEl.appendChild(playerCard);
-
-      // Player status
-      const statusEl = document.createElement('div');
-      statusEl.className = 'player-status';
-      statusEl.textContent = isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER';
-      cardEl.appendChild(statusEl);
-
-      // Ready badge
-      const badgeEl = document.createElement('div');
-      badgeEl.className = 'player-ready-badge';
-      badgeEl.textContent = isReady ? 'READY' : 'WAITING';
-      cardEl.appendChild(badgeEl);
-
-      // Host admin: a kick button on every OTHER player's card (host-only, can't kick self/host).
-      if (this.gameState.isHost && !isHost && !isLocal && this.gameState.kickPlayer) {
-        cardEl.style.position = cardEl.style.position || 'relative';
-        const kickBtn = document.createElement('button');
-        kickBtn.className = 'player-kick-btn';
-        kickBtn.textContent = '✕';
-        kickBtn.title = `Kick ${displayName}`;
-        kickBtn.style.cssText = 'position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;border:1px solid rgba(248,113,113,0.5);background:rgba(248,113,113,0.18);color:#fca5a5;font-size:12px;line-height:1;cursor:pointer;z-index:5;padding:0;';
-        kickBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (confirm(`Kick ${displayName} from the match?`)) {
-            this.gameState.kickPlayer(player.steamId);
-          }
+        // Batch preload all avatars in parallel for faster rendering
+        const steamIds = players.map((p) => p.steamId).filter(Boolean);
+        steamService.getAvatarsBatch(steamIds, 'medium').catch((err) => {
+            console.warn('[LobbyWaitingRoom] Failed to preload avatars:', err.message);
         });
-        cardEl.appendChild(kickBtn);
-      }
 
-      listEl.appendChild(cardEl);
-    });
+        // Clear and rebuild player cards with real avatars
+        listEl.innerHTML = '';
 
-    // Empty "waiting" ghost slots up to max capacity, so the grid always reads as N/max
-    const maxPlayers = parseInt(document.getElementById('max-players-count')?.textContent, 10) || players.length || 8;
-    for (let i = players.length; i < maxPlayers; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'lobby-player-card empty-slot';
-      slot.innerHTML = '<div class="empty-slot-icon">+</div><div class="empty-slot-label">Waiting for player…</div>';
-      listEl.appendChild(slot);
+        players.forEach((player) => {
+            const isHost = player.steamId === this.gameState.network.hostSteamId;
+            const isLocal = player.steamId === this.gameState.localPlayerId;
+            const isReady = player.isReady || isHost;
+            const playerColor = sanitizeCssColor(player.color, '#808080');
+
+            // Create card container (visual styling owned by lobby-room-aaa.css;
+            // the per-player neon colour is passed through as a CSS var)
+            const cardEl = document.createElement('div');
+            cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''}`.trim();
+            cardEl.style.setProperty('--player-color', playerColor);
+
+            // Color strip (per-player neon)
+            const colorStrip = document.createElement('div');
+            colorStrip.className = 'player-color-strip';
+            cardEl.appendChild(colorStrip);
+
+            // Player avatar + name. Render the name via the PlayerCard component's
+            // built-in label (showName) — the reliable path used elsewhere in the app —
+            // with a non-empty fallback so a card is never nameless.
+            const displayName = player.name || (isLocal ? 'You' : 'Player');
+            const playerCard = createPlayerCard({
+                steamId: player.steamId,
+                name: displayName,
+                color: playerColor,
+                size: 'medium',
+                showName: true,
+                vertical: true,
+            });
+            cardEl.appendChild(playerCard);
+
+            // Player status
+            const statusEl = document.createElement('div');
+            statusEl.className = 'player-status';
+            statusEl.textContent = isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER';
+            cardEl.appendChild(statusEl);
+
+            // Ready badge
+            const badgeEl = document.createElement('div');
+            badgeEl.className = 'player-ready-badge';
+            badgeEl.textContent = isReady ? 'READY' : 'WAITING';
+            cardEl.appendChild(badgeEl);
+
+            // Host admin: a kick button on every OTHER player's card (host-only, can't kick self/host).
+            if (this.gameState.isHost && !isHost && !isLocal && this.gameState.kickPlayer) {
+                cardEl.style.position = cardEl.style.position || 'relative';
+                const kickBtn = document.createElement('button');
+                kickBtn.className = 'player-kick-btn';
+                kickBtn.textContent = '✕';
+                kickBtn.title = `Kick ${displayName}`;
+                kickBtn.style.cssText = 'position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;border:1px solid rgba(248,113,113,0.5);background:rgba(248,113,113,0.18);color:#fca5a5;font-size:12px;line-height:1;cursor:pointer;z-index:5;padding:0;';
+                kickBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Kick ${displayName} from the match?`)) {
+                        this.gameState.kickPlayer(player.steamId);
+                    }
+                });
+                cardEl.appendChild(kickBtn);
+            }
+
+            listEl.appendChild(cardEl);
+        });
+
+        // Empty "waiting" ghost slots up to max capacity, so the grid always reads as N/max
+        const maxPlayers = parseInt(document.getElementById('max-players-count')?.textContent, 10) || players.length || 8;
+        for (let i = players.length; i < maxPlayers; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'lobby-player-card empty-slot';
+            slot.innerHTML = '<div class="empty-slot-icon">+</div><div class="empty-slot-label">Waiting for player…</div>';
+            listEl.appendChild(slot);
+        }
     }
-  }
 
-  /**
+    /**
  * Update control buttons
  */
-  updateControls() {
-    const { isHost } = this.gameState;
-    const players = Array.from(this.gameState.players.values());
-    const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
-    const minPlayers = 2; // Minimum 2 players to start
+    updateControls() {
+        const { isHost } = this.gameState;
+        const players = Array.from(this.gameState.players.values());
+        const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
+        const minPlayers = 2; // Minimum 2 players to start
 
-    // Ready-progress bar
-    const total = players.length;
-    const progressFill = document.getElementById('ready-progress-fill');
-    const progressLabel = document.getElementById('ready-progress-label');
-    if (progressFill) {
-      progressFill.style.width = total > 0 ? `${Math.round((readyCount / total) * 100)}%` : '0%';
-      progressFill.classList.toggle('all-ready', total > 0 && readyCount === total);
+        // Ready-progress bar
+        const total = players.length;
+        const progressFill = document.getElementById('ready-progress-fill');
+        const progressLabel = document.getElementById('ready-progress-label');
+        if (progressFill) {
+            progressFill.style.width = total > 0 ? `${Math.round((readyCount / total) * 100)}%` : '0%';
+            progressFill.classList.toggle('all-ready', total > 0 && readyCount === total);
+        }
+        if (progressLabel) {
+            const watching = this.gameState.getSpectatorCount ? this.gameState.getSpectatorCount() : 0;
+            progressLabel.textContent = `${readyCount}/${total} ready${watching > 0 ? ` · 👁 ${watching} watching` : ''}`;
+        }
+
+        const readyBtn = document.getElementById('ready-btn');
+        const startBtn = document.getElementById('start-match-btn');
+        const waitingText = document.getElementById('waiting-text');
+
+        if (isHost) {
+            // Show start button for host
+            readyBtn.style.display = 'none';
+            startBtn.style.display = 'block';
+
+            // Quadra-style: the host can START as soon as there are >=2 players — readiness
+            // is a courtesy signal, not a hard gate. One AFK/unready peer no longer blocks the
+            // whole lobby; unready peers still receive the seed and start with everyone.
+            const allReady = readyCount === players.length;
+            const canStart = players.length >= minPlayers;
+            startBtn.disabled = !canStart;
+            const notReady = players.length - readyCount;
+
+            if (players.length < minPlayers) {
+                startBtn.textContent = '🚀 START MATCH';
+                waitingText.textContent = `Waiting for ${minPlayers - players.length} more player(s)...`;
+                waitingText.className = 'waiting-indicator';
+            } else if (allReady) {
+                startBtn.textContent = '🚀 START MATCH';
+                waitingText.textContent = '✅ All players ready!';
+                waitingText.className = 'waiting-indicator ready';
+            } else {
+                // Enabled, but make it clear some players aren't ready yet.
+                startBtn.textContent = `🚀 Start anyway (${notReady} not ready)`;
+                waitingText.textContent = `${notReady} player(s) not ready — you can start anyway`;
+                waitingText.className = 'waiting-indicator';
+            }
+        } else {
+            // Show ready button for non-host
+            readyBtn.style.display = 'block';
+            startBtn.style.display = 'none';
+
+            const localPlayer = this.gameState.getLocalPlayer();
+            if (localPlayer && localPlayer.isReady) {
+                readyBtn.textContent = '✓ Ready';
+                readyBtn.classList.add('ready');
+                waitingText.textContent = 'Waiting for host to start...';
+            } else {
+                readyBtn.textContent = 'Ready Up';
+                readyBtn.classList.remove('ready');
+                waitingText.textContent = 'Click ready when you\'re set!';
+            }
+        }
     }
-    if (progressLabel) {
-      const watching = this.gameState.getSpectatorCount ? this.gameState.getSpectatorCount() : 0;
-      progressLabel.textContent = `${readyCount}/${total} ready${watching > 0 ? ` · 👁 ${watching} watching` : ''}`;
-    }
 
-    const readyBtn = document.getElementById('ready-btn');
-    const startBtn = document.getElementById('start-match-btn');
-    const waitingText = document.getElementById('waiting-text');
-
-    if (isHost) {
-      // Show start button for host
-      readyBtn.style.display = 'none';
-      startBtn.style.display = 'block';
-
-      // Quadra-style: the host can START as soon as there are >=2 players — readiness
-      // is a courtesy signal, not a hard gate. One AFK/unready peer no longer blocks the
-      // whole lobby; unready peers still receive the seed and start with everyone.
-      const allReady = readyCount === players.length;
-      const canStart = players.length >= minPlayers;
-      startBtn.disabled = !canStart;
-      const notReady = players.length - readyCount;
-
-      if (players.length < minPlayers) {
-        startBtn.textContent = '🚀 START MATCH';
-        waitingText.textContent = `Waiting for ${minPlayers - players.length} more player(s)...`;
-        waitingText.className = 'waiting-indicator';
-      } else if (allReady) {
-        startBtn.textContent = '🚀 START MATCH';
-        waitingText.textContent = '✅ All players ready!';
-        waitingText.className = 'waiting-indicator ready';
-      } else {
-        // Enabled, but make it clear some players aren't ready yet.
-        startBtn.textContent = `🚀 Start anyway (${notReady} not ready)`;
-        waitingText.textContent = `${notReady} player(s) not ready — you can start anyway`;
-        waitingText.className = 'waiting-indicator';
-      }
-    } else {
-      // Show ready button for non-host
-      readyBtn.style.display = 'block';
-      startBtn.style.display = 'none';
-
-      const localPlayer = this.gameState.getLocalPlayer();
-      if (localPlayer && localPlayer.isReady) {
-        readyBtn.textContent = '✓ Ready';
-        readyBtn.classList.add('ready');
-        waitingText.textContent = 'Waiting for host to start...';
-      } else {
-        readyBtn.textContent = 'Ready Up';
-        readyBtn.classList.remove('ready');
-        waitingText.textContent = 'Click ready when you\'re set!';
-      }
-    }
-  }
-
-  /**
+    /**
  * Toggle ready state
  */
-  toggleReady() {
-    const localPlayer = this.gameState.getLocalPlayer();
-    if (!localPlayer) return;
+    toggleReady() {
+        const localPlayer = this.gameState.getLocalPlayer();
+        if (!localPlayer) return;
 
-    const newReadyState = !localPlayer.isReady;
-    this.gameState.setReady(newReadyState);
+        const newReadyState = !localPlayer.isReady;
+        this.gameState.setReady(newReadyState);
 
-    // Add chat message
-    this.addChatMessage(`You are now ${newReadyState ? 'ready' : 'not ready'}`);
+        // Add chat message
+        this.addChatMessage(`You are now ${newReadyState ? 'ready' : 'not ready'}`);
 
-    // Update UI immediately
-    this.updateUI();
-    this._logRosterChanges();
-  }
+        // Update UI immediately
+        this.updateUI();
+        this._logRosterChanges();
+    }
 
-  /**
+    /**
  * Start the match (host only)
  */
-  startMatch() {
-    if (!this.gameState.isHost) {
-      console.warn('Only host can start match');
-      return;
-    }
+    startMatch() {
+        if (!this.gameState.isHost) {
+            console.warn('Only host can start match');
+            return;
+        }
 
-    const players = Array.from(this.gameState.players.values());
-    const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
+        const players = Array.from(this.gameState.players.values());
+        const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
 
-    if (players.length < 2) {
-      alert('Need at least 2 players to start');
-      return;
-    }
+        if (players.length < 2) {
+            alert('Need at least 2 players to start');
+            return;
+        }
 
-    // No all-ready gate: the host may start with >=2 players even if some haven't readied
-    // (Quadra-style drop-in feel). Unready peers still get LOBBY_GAME_START + the seed.
-    if (readyCount < players.length) {
-      console.log(`🚀 Host starting with ${players.length - readyCount} player(s) not ready`);
-    }
+        // No all-ready gate: the host may start with >=2 players even if some haven't readied
+        // (Quadra-style drop-in feel). Unready peers still get LOBBY_GAME_START + the seed.
+        if (readyCount < players.length) {
+            console.log(`🚀 Host starting with ${players.length - readyCount} player(s) not ready`);
+        }
 
-    console.log('🚀 Host starting match!');
+        console.log('🚀 Host starting match!');
 
-    // Start the match - this will trigger countdown
-    this.gameState.startMatch();
+        // Start the match - this will trigger countdown
+        this.gameState.startMatch();
 
-    // Hide waiting room
-    this.hide();
+        // Hide waiting room
+        this.hide();
 
     // Note: Don't call onMatchStart callback here!
     // The callback will be triggered by MATCH_STARTED event after countdown completes
     // This ensures host follows the same flow as peers (countdown -> setup UI)
-  }
+    }
 
-  /**
+    /**
  * Leave the lobby
  */
-  leaveLobby() {
-    const confirmed = confirm('Are you sure you want to leave the lobby?');
-    if (!confirmed) return;
+    leaveLobby() {
+        const confirmed = confirm('Are you sure you want to leave the lobby?');
+        if (!confirmed) return;
 
-    console.log('👋 Leaving lobby');
+        console.log('👋 Leaving lobby');
 
-    // Cleanup
-    if (this.gameState) {
-      this.gameState.cleanup();
+        // Cleanup
+        if (this.gameState) {
+            this.gameState.cleanup();
+        }
+
+        // Hide waiting room
+        this.hide();
+
+        // Call callback to return to lobby browser
+        if (this.onLeaveLobby) {
+            this.onLeaveLobby();
+        }
     }
 
-    // Hide waiting room
-    this.hide();
-
-    // Call callback to return to lobby browser
-    if (this.onLeaveLobby) {
-      this.onLeaveLobby();
-    }
-  }
-
-  /**
+    /**
    * Get a player's color from the game state
    * @param {string} steamId - The player's Steam ID
    * @returns {string|null} The player's color hex code or null
    */
-  getPlayerColor(steamId) {
-    if (!steamId || !this.gameState?.players) return null;
-    const player = this.gameState.players.get(steamId);
-    return player?.color || null;
-  }
+    getPlayerColor(steamId) {
+        if (!steamId || !this.gameState?.players) return null;
+        const player = this.gameState.players.get(steamId);
+        return player?.color || null;
+    }
 
-  /**
+    /**
    * Add chat message
    * @param {Object|string} message - Message object with playerName/message/steamId/color, or string for system messages
    * @param {boolean} isSystem - Whether this is a system message (only used for string messages)
    */
-  addChatMessage(message, isSystem = true) {
-    if (!this.container) return;
-    const chatEl = this.container.querySelector('#chat-messages');
-    if (!chatEl) return;
+    addChatMessage(message, isSystem = true) {
+        if (!this.container) return;
+        const chatEl = this.container.querySelector('#chat-messages');
+        if (!chatEl) return;
 
-    const msgDiv = document.createElement('div');
+        const msgDiv = document.createElement('div');
 
-    // Handle both object format and string format
-    if (typeof message === 'string') {
-      // Legacy string format or system message
-      const msgClass = isSystem ? 'system-message' : 'player-message';
-      msgDiv.className = msgClass;
-      msgDiv.textContent = message;
-    } else {
-      // Object format with player info
-      const playerColor = sanitizeCssColor(
-        this.getPlayerColor(message.steamId) || message.color,
-      );
-      msgDiv.className = 'player-message';
-      msgDiv.innerHTML = `
+        // Handle both object format and string format
+        if (typeof message === 'string') {
+            // Legacy string format or system message
+            const msgClass = isSystem ? 'system-message' : 'player-message';
+            msgDiv.className = msgClass;
+            msgDiv.textContent = message;
+        } else {
+            // Object format with player info
+            const playerColor = sanitizeCssColor(
+                this.getPlayerColor(message.steamId) || message.color,
+            );
+            msgDiv.className = 'player-message';
+            msgDiv.innerHTML = `
         <span class="color-indicator" style="background: ${playerColor};"></span>
         <span class="author" style="color: ${playerColor};">${escapeHtml(message.playerName)}:</span>
         <span class="text">${escapeHtml(message.message)}</span>
       `;
+        }
+
+        chatEl.appendChild(msgDiv);
+        chatEl.scrollTop = chatEl.scrollHeight;
     }
 
-    chatEl.appendChild(msgDiv);
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-
-  /**
+    /**
  * Append an entry to the lobby Activity Log.
  */
-  addActivityLogEntry(text, type = 'info') {
-    if (!this.container) return;
-    const listEl = this.container.querySelector('#activity-log-list');
-    if (!listEl) return;
-    const entry = document.createElement('div');
-    entry.className = `activity-log-entry activity-${type}`;
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    entry.innerHTML = `<span class="activity-dot"></span><span class="activity-text">${this.escapeHtml(text)}</span><span class="activity-time">${time}</span>`;
-    listEl.appendChild(entry);
-    listEl.scrollTop = listEl.scrollHeight;
-  }
+    addActivityLogEntry(text, type = 'info') {
+        if (!this.container) return;
+        const listEl = this.container.querySelector('#activity-log-list');
+        if (!listEl) return;
+        const entry = document.createElement('div');
+        entry.className = `activity-log-entry activity-${type}`;
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        entry.innerHTML = `<span class="activity-dot"></span><span class="activity-text">${this.escapeHtml(text)}</span><span class="activity-time">${time}</span>`;
+        listEl.appendChild(entry);
+        listEl.scrollTop = listEl.scrollHeight;
+    }
 
-  /**
+    /**
  * Diff the roster against the last snapshot and log join / leave / ready changes.
  */
-  _logRosterChanges() {
-    if (!this.gameState) return;
-    const hostId = this.gameState.network?.hostSteamId;
-    const next = new Map();
-    Array.from(this.gameState.players.values()).forEach((p) => {
-      next.set(p.steamId, { name: p.name, ready: !!(p.isReady || p.steamId === hostId) });
-    });
+    _logRosterChanges() {
+        if (!this.gameState) return;
+        const hostId = this.gameState.network?.hostSteamId;
+        const next = new Map();
+        Array.from(this.gameState.players.values()).forEach((p) => {
+            next.set(p.steamId, { name: p.name, ready: !!(p.isReady || p.steamId === hostId) });
+        });
 
-    // First sync: seed the snapshot, then log everyone ALREADY present so a client that
-    // joins an existing lobby sees the full roster (host + others) instead of an empty
-    // Activity Log. This makes the log consistent for EVERYONE — not just whoever was
-    // watching from the moment the lobby opened.
-    if (!this._activitySnapshot) {
-      this._activitySnapshot = next;
-      this.addActivityLogEntry('Lobby ready — waiting for players', 'info');
-      next.forEach((info) => this.addActivityLogEntry(`${info.name} joined`, 'join'));
-      return;
+        // First sync: seed the snapshot, then log everyone ALREADY present so a client that
+        // joins an existing lobby sees the full roster (host + others) instead of an empty
+        // Activity Log. This makes the log consistent for EVERYONE — not just whoever was
+        // watching from the moment the lobby opened.
+        if (!this._activitySnapshot) {
+            this._activitySnapshot = next;
+            this.addActivityLogEntry('Lobby ready — waiting for players', 'info');
+            next.forEach((info) => this.addActivityLogEntry(`${info.name} joined`, 'join'));
+            return;
+        }
+
+        next.forEach((info, id) => {
+            const prev = this._activitySnapshot.get(id);
+            if (!prev) {
+                this.addActivityLogEntry(`${info.name} joined`, 'join');
+            } else if (prev.ready !== info.ready) {
+                this.addActivityLogEntry(`${info.name} ${info.ready ? 'is ready' : 'is not ready'}`, info.ready ? 'ready' : 'unready');
+            }
+        });
+        this._activitySnapshot.forEach((info, id) => {
+            if (!next.has(id)) this.addActivityLogEntry(`${info.name} left`, 'leave');
+        });
+        this._activitySnapshot = next;
     }
 
-    next.forEach((info, id) => {
-      const prev = this._activitySnapshot.get(id);
-      if (!prev) {
-        this.addActivityLogEntry(`${info.name} joined`, 'join');
-      } else if (prev.ready !== info.ready) {
-        this.addActivityLogEntry(`${info.name} ${info.ready ? 'is ready' : 'is not ready'}`, info.ready ? 'ready' : 'unready');
-      }
-    });
-    this._activitySnapshot.forEach((info, id) => {
-      if (!next.has(id)) this.addActivityLogEntry(`${info.name} left`, 'leave');
-    });
-    this._activitySnapshot = next;
-  }
-
-  /**
+    /**
  * Escape HTML
  */
-  escapeHtml(text) {
-    return escapeHtml(text);
-  }
+    escapeHtml(text) {
+        return escapeHtml(text);
+    }
 
-  /**
+    /**
  * Destroy the waiting room
  */
-  destroy() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-    }
+    destroy() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
 
-    if (this.container) {
-      this.container.remove();
+        if (this.container) {
+            this.container.remove();
+        }
     }
-  }
 }

@@ -77,8 +77,8 @@ export class NeonDistrictPost {
         // ── Cinematic post (AAA Phase 3) ───────────────────────────────────────
         // Radial chromatic aberration (3c), far-only DOF bokeh (3a), anamorphic
         // light streaks (3b), film grain (3c) and a procedural filmic grade (3d).
-        this.uAberration = uniform(params?.aberration ?? 0.0);     // base radial RGB split
-        this.uAberrationBoost = uniform(0.0);                       // transient (combo/glitch)
+        this.uAberration = uniform(params?.aberration ?? 0.0); // base radial RGB split
+        this.uAberrationBoost = uniform(0.0); // transient (combo/glitch)
         this.uGrainIntensity = uniform(params?.grainIntensity ?? 0.0);
         this.enableDOF = params?.enableDOF ?? false;
         this.uDofFocus = uniform(params?.dofFocus ?? 0.32);
@@ -93,8 +93,8 @@ export class NeonDistrictPost {
 
         // ── 6b. Rain on the lens ───────────────────────────────────────────────
         this.enableLensDroplets = params?.enableLensDroplets ?? false;
-        this.uLensDropletAmount = uniform(0.0);  // driven by rain intensity each frame
-        this.uLensAspect = uniform(16 / 9);      // updated in setSize so beads stay round
+        this.uLensDropletAmount = uniform(0.0); // driven by rain intensity each frame
+        this.uLensAspect = uniform(16 / 9); // updated in setSize so beads stay round
 
         const vignetteOffset = float(params?.vignetteOffset ?? 1.0);
         const vignetteDarkness = float(params?.vignetteDarkness ?? 0.3);
@@ -130,7 +130,8 @@ export class NeonDistrictPost {
             const c2 = scenePassColor.sample(uv.add(vec2(o.negate(), o)));
             const c3 = scenePassColor.sample(uv.add(vec2(o, o.negate())));
             const c4 = scenePassColor.sample(uv.add(vec2(o.negate(), o.negate())));
-            const dofColor = c0.add(c1).add(c2).add(c3).add(c4).mul(float(0.2));
+            const dofColor = c0.add(c1).add(c2).add(c3).add(c4)
+                .mul(float(0.2));
             baseSample = mix(caColor, dofColor, coc);
         }
 
@@ -207,7 +208,7 @@ export class NeonDistrictPost {
         let gradedRgb = composited.xyz;
         if (this.enableGrade) {
             const luma = dot(gradedRgb, vec3(0.299, 0.587, 0.114));
-            const shadowTint = vec3(-0.02, 0.015, 0.04);   // cool/teal lift in shadows
+            const shadowTint = vec3(-0.02, 0.015, 0.04); // cool/teal lift in shadows
             const highlightTint = vec3(0.05, -0.01, 0.04); // magenta in highlights
             const splitToned = gradedRgb
                 .add(shadowTint.mul(float(1.0).sub(luma)))

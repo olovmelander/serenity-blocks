@@ -62,7 +62,7 @@ const hash3 = /* @__PURE__ */ Fn(([p_immutable]) => {
     p.assign(vec3(
         dot(p, vec3(127.1, 311.7, 74.7)),
         dot(p, vec3(269.5, 183.3, 246.1)),
-        dot(p, vec3(113.5, 271.9, 124.6))
+        dot(p, vec3(113.5, 271.9, 124.6)),
     ));
     return fract(sin(p).mul(43758.5453123)).mul(2.0).sub(1.0);
 });
@@ -91,7 +91,7 @@ const noise3D = /* @__PURE__ */ Fn(([p_immutable]) => {
     return mix(
         mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y),
         mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y),
-        u.z
+        u.z,
     );
 });
 
@@ -258,7 +258,7 @@ export function createDuneMaterial(params) {
         const windRipple = noise3D(vec3(
             windDot.mul(0.8),
             worldPos.y.mul(0.1),
-            uTime.mul(0.01)
+            uTime.mul(0.01),
         ));
 
         const n1 = noise3D(ripplePos.add(vec3(0.0, 0.0, uTime.mul(0.015))));
@@ -269,7 +269,7 @@ export function createDuneMaterial(params) {
         const disturbedNormal = normalize(normal.add(vec3(
             n1.add(windRipple.mul(0.5)),
             0.0,
-            n2
+            n2,
         ).mul(rippleIntensity)));
 
         // --- 2. DIFFUSE LIGHTING (Arrakis harsh sunlight) ---
@@ -292,7 +292,7 @@ export function createDuneMaterial(params) {
         const shadowMix = clamp(
             shadow.mul(0.45).add(slopeShadow.mul(0.35)).add(directionalShadow.mul(0.5)),
             0.0,
-            1.0
+            1.0,
         );
         finalColor.assign(mix(finalColor, uColorA, shadowMix.mul(0.55)));
 
@@ -341,7 +341,7 @@ export function createDuneMaterial(params) {
         const dustIntensity = clamp(
             vWormTrail.mul(float(0.22).add(dustNoise.mul(0.12))),
             0.0,
-            0.35
+            0.35,
         );
         finalColor.assign(mix(finalColor, dustColor, dustIntensity.mul(step(0.12, vWormTrail))));
 
@@ -692,7 +692,9 @@ export function createSandSmokeMaterial(params = {}) {
             const camDist = length(cameraPosition.sub(center));
             const nearFade = smoothstep(6.0, 64.0, camDist);
             const distFade = float(1.0).sub(smoothstep(1200.0, 1950.0, camDist));
-            const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(density).mul(deadMask).mul(distFade).mul(nearFade);
+            const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(density).mul(deadMask)
+                .mul(distFade)
+                .mul(nearFade);
 
             const colorVar = mix(float(0.85), float(1.15), rand);
             vSmokeColor.assign(uColor.mul(colorVar));
@@ -773,8 +775,8 @@ export function createSandSmokeMaterial(params = {}) {
 
     // Opacity based on life (fade in quickly, fade out slowly)
     const ageGL = float(1.0).sub(aLife);
-    const fadeIn = smoothstep(0.0, 0.08, ageGL);   // ramp up over first 8% of life
-    const fadeOut = smoothstep(0.0, 0.3, aLife);    // fade out over last 30%
+    const fadeIn = smoothstep(0.0, 0.08, ageGL); // ramp up over first 8% of life
+    const fadeOut = smoothstep(0.0, 0.3, aLife); // fade out over last 30%
     const alpha = uOpacity.mul(fadeIn).mul(fadeOut);
 
     const smokeBase = mix(uColor, uColor.mul(0.6), aRand);

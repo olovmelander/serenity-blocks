@@ -36,6 +36,6 @@ export async function loadGltfCached(url) {
         scene: sceneClone,
         animations: gltf.animations || [],
         cameras: gltf.cameras || [],
-        asset: gltf.asset || {}
+        asset: gltf.asset || {},
     };
 }

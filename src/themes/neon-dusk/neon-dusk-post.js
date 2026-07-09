@@ -113,7 +113,8 @@ export class NeonDuskPost {
             const c2 = sceneColor.sample(uv.add(vec2(o.negate(), o)));
             const c3 = sceneColor.sample(uv.add(vec2(o, o.negate())));
             const c4 = sceneColor.sample(uv.add(vec2(o.negate(), o.negate())));
-            const dofColor = c0.add(c1).add(c2).add(c3).add(c4).mul(float(0.2));
+            const dofColor = c0.add(c1).add(c2).add(c3).add(c4)
+                .mul(float(0.2));
             baseSample = mix(caColor, dofColor, coc);
         }
 

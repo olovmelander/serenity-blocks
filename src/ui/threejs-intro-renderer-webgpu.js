@@ -933,26 +933,26 @@ export default class ThreeJSIntroRendererWebGPU {
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
-            case 0:
-                x = (Math.random() - 0.5) * spanW;
-                y = halfH + marginY;
-                vy = -Math.abs(vy) - SPAWN_INWARD_DRIFT;
-                break;
-            case 1:
-                x = (Math.random() - 0.5) * spanW;
-                y = -halfH - marginY;
-                vy = Math.abs(vy) + SPAWN_INWARD_DRIFT;
-                break;
-            case 2:
-                x = -halfW - marginX;
-                y = (Math.random() - 0.5) * spanH;
-                vx = Math.abs(vx) + SPAWN_INWARD_DRIFT;
-                break;
-            default:
-                x = halfW + marginX;
-                y = (Math.random() - 0.5) * spanH;
-                vx = -Math.abs(vx) - SPAWN_INWARD_DRIFT;
-                break;
+        case 0:
+            x = (Math.random() - 0.5) * spanW;
+            y = halfH + marginY;
+            vy = -Math.abs(vy) - SPAWN_INWARD_DRIFT;
+            break;
+        case 1:
+            x = (Math.random() - 0.5) * spanW;
+            y = -halfH - marginY;
+            vy = Math.abs(vy) + SPAWN_INWARD_DRIFT;
+            break;
+        case 2:
+            x = -halfW - marginX;
+            y = (Math.random() - 0.5) * spanH;
+            vx = Math.abs(vx) + SPAWN_INWARD_DRIFT;
+            break;
+        default:
+            x = halfW + marginX;
+            y = (Math.random() - 0.5) * spanH;
+            vx = -Math.abs(vx) - SPAWN_INWARD_DRIFT;
+            break;
         }
 
         const slot = this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
@@ -996,35 +996,35 @@ export default class ThreeJSIntroRendererWebGPU {
     createTetrominoShape(type) {
         const shape = new THREE.Shape();
         switch (type) {
-            case 'I':
-                shape.moveTo(-4, -1); shape.lineTo(4, -1); shape.lineTo(4, 1); shape.lineTo(-4, 1); shape.lineTo(-4, -1);
-                break;
-            case 'O':
-                shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-                break;
-            case 'T':
-                shape.moveTo(-3, -1); shape.lineTo(3, -1); shape.lineTo(3, 1); shape.lineTo(1, 1);
-                shape.lineTo(1, 3); shape.lineTo(-1, 3); shape.lineTo(-1, 1); shape.lineTo(-3, 1); shape.lineTo(-3, -1);
-                break;
-            case 'S':
-                shape.moveTo(-3, -2); shape.lineTo(1, -2); shape.lineTo(1, 0); shape.lineTo(3, 0);
-                shape.lineTo(3, 2); shape.lineTo(-1, 2); shape.lineTo(-1, 0); shape.lineTo(-3, 0); shape.lineTo(-3, -2);
-                break;
-            case 'Z':
-                shape.moveTo(-1, -2); shape.lineTo(3, -2); shape.lineTo(3, 0); shape.lineTo(1, 0);
-                shape.lineTo(1, 2); shape.lineTo(-3, 2); shape.lineTo(-3, 0); shape.lineTo(-1, 0); shape.lineTo(-1, -2);
-                break;
-            case 'J':
-                shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, 3); shape.lineTo(0, 3);
-                shape.lineTo(0, -1); shape.lineTo(-2, -1); shape.lineTo(-2, -3);
-                break;
-            case 'L':
-                shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, -1); shape.lineTo(0, -1);
-                shape.lineTo(0, 3); shape.lineTo(-2, 3); shape.lineTo(-2, -3);
-                break;
-            default:
-                shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-                break;
+        case 'I':
+            shape.moveTo(-4, -1); shape.lineTo(4, -1); shape.lineTo(4, 1); shape.lineTo(-4, 1); shape.lineTo(-4, -1);
+            break;
+        case 'O':
+            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
+            break;
+        case 'T':
+            shape.moveTo(-3, -1); shape.lineTo(3, -1); shape.lineTo(3, 1); shape.lineTo(1, 1);
+            shape.lineTo(1, 3); shape.lineTo(-1, 3); shape.lineTo(-1, 1); shape.lineTo(-3, 1); shape.lineTo(-3, -1);
+            break;
+        case 'S':
+            shape.moveTo(-3, -2); shape.lineTo(1, -2); shape.lineTo(1, 0); shape.lineTo(3, 0);
+            shape.lineTo(3, 2); shape.lineTo(-1, 2); shape.lineTo(-1, 0); shape.lineTo(-3, 0); shape.lineTo(-3, -2);
+            break;
+        case 'Z':
+            shape.moveTo(-1, -2); shape.lineTo(3, -2); shape.lineTo(3, 0); shape.lineTo(1, 0);
+            shape.lineTo(1, 2); shape.lineTo(-3, 2); shape.lineTo(-3, 0); shape.lineTo(-1, 0); shape.lineTo(-1, -2);
+            break;
+        case 'J':
+            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, 3); shape.lineTo(0, 3);
+            shape.lineTo(0, -1); shape.lineTo(-2, -1); shape.lineTo(-2, -3);
+            break;
+        case 'L':
+            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, -1); shape.lineTo(0, -1);
+            shape.lineTo(0, 3); shape.lineTo(-2, 3); shape.lineTo(-2, -3);
+            break;
+        default:
+            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
+            break;
         }
         return shape;
     }

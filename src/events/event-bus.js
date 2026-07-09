@@ -69,5 +69,5 @@ export const EVENTS = {
     CONTEXT_RESTORED: 'contextRestored',
 
     // Performance Adapters
-    PERFORMANCE_DOWNSCALE: 'performanceDownscale'
+    PERFORMANCE_DOWNSCALE: 'performanceDownscale',
 };

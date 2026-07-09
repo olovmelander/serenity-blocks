@@ -105,9 +105,9 @@ export class BoardJuice {
         this.scaleY = new SpringValue(stiffness * 1.5, damping * 1.2);
 
         // Clamping limits — tight for subtle motion
-        this.maxTranslate = options.maxTranslate ?? 3;     // px
-        this.maxRotation = options.maxRotation ?? 0.6;      // degrees
-        this.maxScale = options.maxScale ?? 0.015;           // ±1.5% from 1.0
+        this.maxTranslate = options.maxTranslate ?? 3; // px
+        this.maxRotation = options.maxRotation ?? 0.6; // degrees
+        this.maxScale = options.maxScale ?? 0.015; // ±1.5% from 1.0
 
         // Animation loop
         this._rafId = null;
@@ -227,10 +227,9 @@ export class BoardJuice {
         const sy = 1 + clamp(this.scaleY.value, -this.maxScale, this.maxScale);
 
         // Apply CSS transform
-        this.element.style.transform =
-            `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) ` +
-            `rotate(${rot.toFixed(3)}deg) ` +
-            `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+        this.element.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) `
+            + `rotate(${rot.toFixed(3)}deg) `
+            + `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
 
         this._rafId = requestAnimationFrame(this._boundTick);
     }

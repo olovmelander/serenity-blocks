@@ -982,9 +982,9 @@ export class ThemesTab {
         this.currentTheme = themeId;
 
         // Update settings and save to disk
-        this.settingsManager.update({ 
+        this.settingsManager.update({
             backgroundTheme: themeId,
-            backgroundMode: 'Specific'
+            backgroundMode: 'Specific',
         });
         this.settingsManager.save();
         console.log('[ThemesTab] Theme saved to settings:', themeId, 'mode set to Specific');

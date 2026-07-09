@@ -34,8 +34,6 @@ const HOST_AUTHORITATIVE_MESSAGE_TYPES = new Set([
     'game:round:restart',
 ]);
 
-
-
 export class SteamNetworking {
     constructor() {
         this.initialized = false;
@@ -277,7 +275,7 @@ export class SteamNetworking {
         if (this.mockMode) {
             // Mock data
             const lobbies = this.loadMockLobbies();
-            const lobby = lobbies.find(l => l.id === lobbyId);
+            const lobby = lobbies.find((l) => l.id === lobbyId);
             if (lobby) {
                 if (key === 'game_name') return lobby.gameName;
                 if (key === 'end_condition') return lobby.endCondition;
@@ -373,7 +371,8 @@ export class SteamNetworking {
         const sendType = this._resolveDelivery(options.delivery);
 
         // Send via steamworks.js preload API
-        ipcRenderer.invoke('steam:sendP2PPacket',
+        ipcRenderer.invoke(
+            'steam:sendP2PPacket',
             targetSteamId,
             envelope,
             sendType,
@@ -406,7 +405,7 @@ export class SteamNetworking {
             });
 
             if (SteamConfig.debugMode) {
-                    console.log('🧪 Mock broadcast:', messageType);
+                console.log('🧪 Mock broadcast:', messageType);
             }
             return;
         }
@@ -1142,7 +1141,7 @@ export class SteamNetworking {
                     this._envDropWarn[reason] = now;
                     console.warn(`[Net] DROP inbound pkt from ${fromSteamId}: ${reason} mismatch `
                         + `(msgType=${envelope.msgType}, theirs=${envelope[reason]}, ours=${this[reason]}) `
-                        + `— possible host split-brain (throttled 1/2s).`);
+                        + '— possible host split-brain (throttled 1/2s).');
                 }
                 return false;
             }
@@ -1231,13 +1230,13 @@ export class SteamNetworking {
         // Steam P2P send types (matches steamworks.js constants)
         // 0 = Unreliable, 1 = UnreliableNoDelay, 2 = Reliable, 3 = ReliableWithBuffering
         switch (delivery) {
-            case 'unreliable':
-                return 0;
-            case 'unreliable_no_delay':
-                return 1;
-            case 'reliable':
-            default:
-                return 2;
+        case 'unreliable':
+            return 0;
+        case 'unreliable_no_delay':
+            return 1;
+        case 'reliable':
+        default:
+            return 2;
         }
     }
 
@@ -1373,7 +1372,9 @@ export class SteamNetworking {
 
     _snapshotByteSummary(samples = []) {
         if (!Array.isArray(samples) || samples.length === 0) {
-            return { count: 0, p50: 0, p95: 0, max: 0 };
+            return {
+                count: 0, p50: 0, p95: 0, max: 0,
+            };
         }
         const sorted = [...samples].sort((a, b) => a - b);
         const percentile = (p) => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))];

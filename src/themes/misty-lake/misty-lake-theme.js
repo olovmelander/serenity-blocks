@@ -1310,10 +1310,18 @@ export default class MistyLakeTheme extends BaseTheme {
 
         // Distribution: left-near, right-near, far-left foreground
         const clumps = [
-            { cx: -22, cz: -3, radius: 5.5, frac: 0.35 },
-            { cx: 24, cz: -3, radius: 5.5, frac: 0.35 },
-            { cx: -32, cz: -18, radius: 6.0, frac: 0.20 },
-            { cx: 32, cz: -18, radius: 6.0, frac: 0.10 },
+            {
+                cx: -22, cz: -3, radius: 5.5, frac: 0.35,
+            },
+            {
+                cx: 24, cz: -3, radius: 5.5, frac: 0.35,
+            },
+            {
+                cx: -32, cz: -18, radius: 6.0, frac: 0.20,
+            },
+            {
+                cx: 32, cz: -18, radius: 6.0, frac: 0.10,
+            },
         ];
 
         clumps.forEach((clump) => {
@@ -1438,8 +1446,12 @@ export default class MistyLakeTheme extends BaseTheme {
         `;
 
         const heroConfigs = [
-            { x: -24, y: 12, z: 4, w: 22, h: 36, mirror: 1.0 },
-            { x: 24, y: 12, z: 4, w: 22, h: 36, mirror: -1.0 },
+            {
+                x: -24, y: 12, z: 4, w: 22, h: 36, mirror: 1.0,
+            },
+            {
+                x: 24, y: 12, z: 4, w: 22, h: 36, mirror: -1.0,
+            },
         ];
 
         heroConfigs.forEach((config) => {

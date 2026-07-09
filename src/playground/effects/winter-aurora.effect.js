@@ -133,7 +133,8 @@ export function create({ scene, params }) {
     const s1 = sin(az.mul(16.0).add(uTime.mul(0.14)));
     const s2 = sin(az.mul(33.0).sub(uTime.mul(0.09)));
     const s3 = sin(az.mul(6.0).add(1.7));
-    const shaftRaw = s1.mul(0.5).add(s2.mul(0.3)).add(s3.mul(0.2)).mul(0.5).add(0.5);
+    const shaftRaw = s1.mul(0.5).add(s2.mul(0.3)).add(s3.mul(0.2)).mul(0.5)
+        .add(0.5);
     const shafts = float(0.26).add(pow(shaftRaw, float(2.6)));
     // Stylized reference grade: use the curtain DENSITY (× pillar mask) as
     // luminance and tint it with a horizontal emerald(left) → teal(right)

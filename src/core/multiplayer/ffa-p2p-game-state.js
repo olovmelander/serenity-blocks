@@ -398,7 +398,12 @@ export class FFAGameStateP2P {
         // ON by default; silence with ?netDiag=0 / localStorage 'serenity.netDiag'='0'.
         this._netDiagEnabled = readNetFlag('netDiag', true);
         this._netDiag = {
-            rx: 0, boardsApplied: 0, genDrops: 0, lockSkips: 0, decodeErrors: 0, lastLogAt: 0,
+            rx: 0,
+            boardsApplied: 0,
+            genDrops: 0,
+            lockSkips: 0,
+            decodeErrors: 0,
+            lastLogAt: 0,
             lastPacketStats: null,
         };
         this._netEventLogEnabled = readNetFlag('netEventLog', true);
@@ -2517,7 +2522,7 @@ export class FFAGameStateP2P {
                 if (diverged) {
                     this._desyncCount = (this._desyncCount || 0) + 1;
                     if (this._desyncCount >= 3 && (Date.now() - (this._lastResyncAt || 0)) > 3000) {
-                        console.warn(`⚠️ [peerLocalSim] divergence after host caught up `
+                        console.warn('⚠️ [peerLocalSim] divergence after host caught up '
                             + `(score ${lp.gameState.score}/${lpData.score}, lines ${lp.gameState.lines}/${lpData.lines}) → resync`);
                         this._lastResyncAt = Date.now();
                         this._requestResync();
