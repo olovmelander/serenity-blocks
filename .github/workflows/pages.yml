@@ -24,18 +24,29 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # Supply-chain (Phase 0.5): never run install scripts in CI. esbuild/rollup
+      # ship platform binaries as optional deps; electron's postinstall download
+      # is not needed for typecheck/lint/test.
+      - run: npm ci --ignore-scripts
       # Type-checking is a HARD gate. It is opt-in (checkJs:false; only files with
       # `// @ts-check` plus the shared *.d.ts contracts are checked), so it is green
       # today and stays green as modules are annotated. See tsconfig.json.
       - run: npm run typecheck
-      # Lint is not yet a HARD gate: until the repo-wide LF renormalize lands
-      # (see .gitattributes) ESLint is buried under ~324k CRLF-style problems,
-      # and ~5.5k genuine findings still need triage. Surface it without failing
-      # CI; flip continue-on-error to false once the lint baseline is clean.
-      - run: npm run lint
-        continue-on-error: true
+      # Lint is a HARD gate via the error-count ratchet (Phase 0.3, ADR-0002):
+      # fails when errors exceed the committed lint-ratchet.json baseline, so the
+      # count can only shrink. Replace with a plain `npm run lint` once it hits 0.
+      - run: npm run lint:ci
       - run: npm test
+      # Release-gate scaffolding (Phase 0.4): dev mode — asserts the observability
+      # scaffolding exists and warns (not fails) on the placeholder Steam AppID.
+      # SERENITY_RELEASE=1 (packaging path only) turns the AppID check hard.
+      - run: npm run check:release-gates
+      # Supply-chain (Phase 0.5): the shipped dependency surface must be clean —
+      # hard gate. Full-tree audit is a visible warning lane (known breaking-bump
+      # advisories: electron, esbuild-via-vite).
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=high
+        continue-on-error: true
 
   build:
     needs: test
@@ -47,7 +58,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

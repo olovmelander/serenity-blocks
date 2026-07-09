@@ -1,0 +1,22 @@
+# Supply-chain gate (ARCHITECTURAL_REMEDIATION_PLAN.md Phase 0.5).
+# Weekly batched update PRs for the two ecosystems that can affect shipped bits.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        dependency-type: development
+    ignore:
+      # Native Steam modules are pinned exactly (Phase 0.5); bump deliberately,
+      # with a packaged-build smoke test, never via bot PR.
+      - dependency-name: steamworks.js
+      - dependency-name: ez-steam-api
+      - dependency-name: koffi
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
