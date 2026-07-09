@@ -217,6 +217,11 @@ Primary sources are cited inline throughout; the load-bearing ones:
 
 **Exit criteria:** CI is green and a red typecheck/test/lint/release-gate push cannot merge; local lint is usable; Dependabot + audits live; the doc index, ADR seed set, and flag registry exist.
 
+**Implementation note (2026-07-09):** Phase 0 is locally finalized on `cleanup/repository-files`:
+`typecheck`, `lint:ci`, `test`, `check:release-gates`, prod `npm audit --omit=dev --audit-level=high`,
+line-ending check, and `build` pass. Strict `SERENITY_RELEASE=1` release gates block AppID 480 as expected.
+The full-tree audit remains the intended warning lane for Electron/esbuild breaking-upgrade advisories.
+
 ---
 
 ## Phase 1 — Release blockers: correctness & security  *(S–M, ~1 week)*
@@ -706,7 +711,6 @@ The per-theme perf campaigns keep finding the same classes: per-frame `THREE.Col
 **Working-tree measurements** in this document were taken 2026-07-02→04 on branch `cleanup/repository-files` by direct measurement (`git ls-files --eol`, full ESLint JSON run, full Vitest run, `npm audit`, `du`, envelope byte-measurement via the real `BinaryEncoder`, and file reads of every config cited). Line references will drift as the tree moves — re-verify before executing an item whose stamp is stale.
 
 **Primary sources** are linked inline in §5 (research foundations) and in each phase. The evidence dossiers behind this revision are committed to **[docs/architecture-evidence/2026-07/](architecture-evidence/2026-07/)**: five subsystem analyses (`core-sim.md`, `netcode.md`, `rendering.md`, `platform.md`, `delivery.md`), the Quadra deep-dive (`quadra.md`), five research reports (`research-*.md`), and the envelope byte-measurement script (`measure-envelope.mjs`). When this plan cites "the evidence report" for an area, that directory is the reference; treat the dossiers as dated snapshots, this document as the roadmap.
-
 
 
 

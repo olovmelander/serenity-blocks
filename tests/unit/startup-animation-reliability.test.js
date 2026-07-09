@@ -292,6 +292,44 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
+function mockPerformanceNow(initialNow = 0) {
+    let currentNow = initialNow;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => currentNow);
+    return {
+        set(value) {
+            currentNow = value;
+        },
+        advance(ms) {
+            currentNow += ms;
+            return currentNow;
+        },
+        get value() {
+            return currentNow;
+        },
+        restore() {
+            spy.mockRestore();
+        },
+    };
+}
+
+function installRafQueue() {
+    const queue = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+        queue.push(callback);
+        return queue.length;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    return {
+        get length() {
+            return queue.length;
+        },
+        runNext() {
+            const callback = queue.shift();
+            if (callback) callback();
+        },
+    };
+}
+
 beforeEach(() => {
     rendererMocks.webgpuInit.mockReset();
     rendererMocks.webgpuDestroy.mockReset();
@@ -413,6 +451,29 @@ describe('intro startup reliability', () => {
 });
 
 describe('boot warp startup decision', () => {
+    it('defaults boot warp timing to 6500ms and clamps short URL overrides', async () => {
+        const {
+            BOOT_WARP_DEFAULT_DURATION_MS,
+            BOOT_WARP_FADE_PROGRESS,
+            BOOT_WARP_MIN_VISIBLE_MS,
+            BOOT_WARP_REVEAL_PROGRESS,
+            resolveBootWarpTiming,
+        } = await import('../../src/ui/boot-warp-startup.js');
+
+        const defaultTiming = resolveBootWarpTiming(new URLSearchParams());
+        expect(BOOT_WARP_DEFAULT_DURATION_MS).toBe(6500);
+        expect(BOOT_WARP_MIN_VISIBLE_MS).toBe(5000);
+        expect(defaultTiming.durationMs).toBe(BOOT_WARP_DEFAULT_DURATION_MS);
+        expect(defaultTiming.minVisibleMs).toBe(BOOT_WARP_MIN_VISIBLE_MS);
+
+        const shortTiming = resolveBootWarpTiming(new URLSearchParams('warpDur=100'));
+        const visibleWindowMs = shortTiming.durationMs * (BOOT_WARP_FADE_PROGRESS - BOOT_WARP_REVEAL_PROGRESS);
+        expect(shortTiming.requestedDurationMs).toBe(100);
+        expect(shortTiming.durationMs).toBe(6250);
+        expect(shortTiming.durationMs).toBeGreaterThanOrEqual(shortTiming.minDurationMs);
+        expect(visibleWindowMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
+    });
+
     it('declines the warp when intro renderer readiness exceeds the boot budget', async () => {
         const { waitForIntroRendererDecision } = await import('../../src/ui/boot-warp-startup.js');
         const clearTimeoutFn = vi.fn();
@@ -536,6 +597,91 @@ describe('boot warp startup decision', () => {
         expect(BOOT_WARP_MAX_PREWARM_ATTEMPTS).toBeGreaterThanOrEqual(1);
         expect(BOOT_WARP_MAX_PREWARM_ATTEMPTS).toBeLessThanOrEqual(5);
     });
+
+    it('keeps the warp visible for the minimum before fade or title reveal', async () => {
+        const clock = mockPerformanceNow(100);
+        const {
+            BOOT_WARP_MIN_VISIBLE_MS,
+            playBootWarpHandoff,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const events = [];
+        const warpTransition = {
+            play: vi.fn(async ({ onProgress }) => {
+                events.push(`play:${clock.value}`);
+                onProgress(1, { firstFrameRendered: true });
+                return {
+                    status: 'complete',
+                    firstFrameRendered: true,
+                    durationMs: 6500,
+                    progress: 1,
+                };
+            }),
+            fadeOut: vi.fn(() => {
+                events.push(`fade:${clock.value}`);
+                return Promise.resolve();
+            }),
+        };
+        const introAnimation = {
+            revealTitle: vi.fn((source) => events.push(`title:${source}:${clock.value}`)),
+        };
+        const dismissStartupShell = vi.fn((reason) => events.push(`dismiss:${reason}:${clock.value}`));
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            urlParams: new URLSearchParams('warpDur=100'),
+            introAnimation,
+            dismissStartupShell,
+            soundManager: { playOneShotFile: vi.fn() },
+            setTimeoutFn: (callback, ms) => {
+                events.push(`wait:${ms}`);
+                clock.advance(ms);
+                callback();
+                return 1;
+            },
+        });
+
+        expect(result.shellDismissed).toBe(true);
+        expect(result.visibleMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
+        expect(events).toEqual([
+            'play:100',
+            'dismiss:warp-handoff:100',
+            `wait:${BOOT_WARP_MIN_VISIBLE_MS}`,
+            `fade:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
+            `title:warp-progress:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
+        ]);
+        clock.restore();
+    });
+
+    it('falls back without quick-dismissing when play fails before the first visible frame', async () => {
+        const { playBootWarpHandoff } = await import('../../src/ui/boot-warp-startup.js');
+        const warpTransition = {
+            play: vi.fn(async () => ({
+                status: 'render-failed-before-visible',
+                firstFrameRendered: false,
+                durationMs: 6500,
+                progress: 0,
+            })),
+            fadeOut: vi.fn(),
+        };
+        const introAnimation = { revealTitle: vi.fn() };
+        const dismissStartupShell = vi.fn();
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            introAnimation,
+            dismissStartupShell,
+        });
+
+        expect(result).toMatchObject({
+            status: 'render-failed-before-visible',
+            shellDismissed: false,
+            firstFrameRendered: false,
+            visibleMs: 0,
+        });
+        expect(warpTransition.fadeOut).not.toHaveBeenCalled();
+        expect(introAnimation.revealTitle).not.toHaveBeenCalled();
+        expect(dismissStartupShell).not.toHaveBeenCalled();
+    });
 });
 
 describe('boot warp prewarm budget', () => {
@@ -565,5 +711,66 @@ describe('boot warp prewarm budget', () => {
         await expect(resultPromise).resolves.toBe(false);
         expect(transition.lastPrewarmStatus).toBe('prewarm-timeout');
         expect(rendererMocks.bootRendererDispose).toHaveBeenCalled();
+    });
+
+    it('does not consume progress while waiting for the first play frame', async () => {
+        installDom();
+        const clock = mockPerformanceNow(1000);
+        const raf = installRafQueue();
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+        await transition.prewarm({ timeoutMs: 100 });
+
+        const progress = [];
+        const playPromise = transition.play({
+            durationMs: 6500,
+            onProgress: (p) => progress.push(p),
+        });
+
+        expect(raf.length).toBe(1);
+        clock.advance(9000);
+        raf.runNext();
+        await Promise.resolve();
+
+        expect(progress[0]).toBe(0);
+
+        clock.advance(6500);
+        raf.runNext();
+        await expect(playPromise).resolves.toMatchObject({
+            status: 'complete',
+            firstFrameRendered: true,
+            progress: 1,
+        });
+        clock.restore();
+    });
+
+    it('reports render-failed-before-visible when first play render throws', async () => {
+        installDom();
+        installRafQueue();
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+        await transition.prewarm({ timeoutMs: 100 });
+        rendererMocks.bootRender.mockImplementationOnce(() => {
+            throw new Error('first frame exploded');
+        });
+
+        const resultPromise = transition.play({ durationMs: 6500 });
+        requestAnimationFrame.mock.calls[0][0]();
+
+        await expect(resultPromise).resolves.toMatchObject({
+            status: 'render-failed-before-visible',
+            firstFrameRendered: false,
+        });
+    });
+
+    it('skips boot warp for explicit disable and forced WebGL flags', async () => {
+        vi.stubGlobal('navigator', { gpu: {} });
+        vi.stubGlobal('window', {
+            matchMedia: () => ({ matches: false }),
+        });
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+
+        expect(BootWarpTransition.isSupported(new URLSearchParams('noBootWarp=1'))).toBe(false);
+        expect(BootWarpTransition.isSupported(new URLSearchParams('forceWebGL=1'))).toBe(false);
     });
 });

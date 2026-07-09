@@ -82,10 +82,9 @@ export class DemoManager {
 
     /**
      * List demos with optional filtering and sorting
-     * @param {Object} options - Filter options
      * @returns {Promise<Array>} List of demos
      */
-    async listDemos(options = {}) {
+    async listDemos() {
         if (!this.db) await this.init();
 
         return new Promise((resolve, reject) => {
