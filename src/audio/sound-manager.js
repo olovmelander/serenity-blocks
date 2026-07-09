@@ -57,6 +57,10 @@ export class SoundManager {
         this.volumeFadeToken = 0;
         this.musicGainNode = null;
         this.musicGainWired = false;
+        this.sfxBusNode = null;
+        this.sfxLimiterNode = null;
+        this.preloadAudioElement = null;
+        this.preloadedTrackKey = null;
         this.lastAnalyzerBootstrapAtMs = 0;
         this.analyzerBootstrapCooldownMs = 800;
         this.lastAnalyzerBootstrapError = null;
@@ -107,12 +111,121 @@ export class SoundManager {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.musicGainNode = this.audioContext.createGain();
             this.musicGainNode.gain.value = this.getMusicVolume();
+            this.ensureSfxBus();
             this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
-            this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
+            this.sfxPlayer = new SoundEffectPlayer(
+                this.soundSets,
+                this.soundSet,
+                this.createTone.bind(this),
+                this.createRichTone.bind(this),
+            );
         }
         this.bindRuntimeAudioHooks();
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
+        }
+    }
+
+    ensureSfxBus() {
+        if (!this.audioContext) return null;
+        if (this.sfxBusNode && this.sfxLimiterNode) {
+            return this.sfxBusNode;
+        }
+
+        const sfxBus = this.audioContext.createGain();
+        sfxBus.gain.value = 1.0;
+
+        const limiter = this.audioContext.createDynamicsCompressor();
+        limiter.threshold.value = -8;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 12;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.08;
+
+        sfxBus.connect(limiter);
+        limiter.connect(this.audioContext.destination);
+
+        this.sfxBusNode = sfxBus;
+        this.sfxLimiterNode = limiter;
+        return this.sfxBusNode;
+    }
+
+    getToneDestination(isMusic = false) {
+        if (!this.audioContext) return null;
+        if (isMusic) {
+            return this.audioContext.destination;
+        }
+        return this.ensureSfxBus() || this.audioContext.destination;
+    }
+
+    disposeSfxBus() {
+        if (this.sfxBusNode) {
+            try {
+                this.sfxBusNode.disconnect();
+            } catch {
+                // Already disconnected.
+            }
+        }
+        if (this.sfxLimiterNode) {
+            try {
+                this.sfxLimiterNode.disconnect();
+            } catch {
+                // Already disconnected.
+            }
+        }
+        this.sfxBusNode = null;
+        this.sfxLimiterNode = null;
+    }
+
+    /**
+     * Play a one-shot audio FILE (e.g. the boot warp whoosh) through the SFX bus, honoring
+     * mute + SFX volume. Decodes once and caches the buffer. Best-effort — never throws.
+     * Uses XHR (works with file:// in packaged Electron) + Web Audio so it routes through
+     * the same limiter/volume as the procedural SFX.
+     * @param {string} url  relative or absolute audio URL
+     * @param {{volume?: number}} [options]
+     * @returns {Promise<void>}
+     */
+    async playOneShotFile(url, options = {}) {
+        if (!url) return;
+        try {
+            this.resumeAudioContext();
+            if (!this.audioContext || this.isMuted) return;
+            const resolved = this.normalizeAudioUrl(url) || url;
+
+            if (!this.oneShotBuffers) this.oneShotBuffers = new Map();
+            let buffer = this.oneShotBuffers.get(resolved);
+            if (!buffer) {
+                const encoded = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', resolved, true);
+                    xhr.responseType = 'arraybuffer';
+                    xhr.onload = () => {
+                        if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) {
+                            resolve(xhr.response);
+                        } else {
+                            reject(new Error(`HTTP ${xhr.status} for ${resolved}`));
+                        }
+                    };
+                    xhr.onerror = () => reject(new Error(`network error for ${resolved}`));
+                    xhr.send();
+                });
+                buffer = await this.audioContext.decodeAudioData(encoded);
+                this.oneShotBuffers.set(resolved, buffer);
+            }
+
+            // Re-check after the async load/decode (mute could have flipped meanwhile).
+            if (this.isMuted || !this.audioContext) return;
+
+            const source = this.audioContext.createBufferSource();
+            source.buffer = buffer;
+            const gain = this.audioContext.createGain();
+            gain.gain.value = clampUnitVolume(options.volume ?? 1, 1) * this.getSfxVolume();
+            source.connect(gain);
+            gain.connect(this.getToneDestination(false) || this.audioContext.destination);
+            source.start();
+        } catch (error) {
+            console.warn('[SoundManager] one-shot file play failed:', url, error);
         }
     }
 
@@ -316,9 +429,10 @@ export class SoundManager {
 
         const osc = this.audioContext.createOscillator();
         const gain = this.audioContext.createGain();
+        const destination = this.getToneDestination(isMusic);
 
         osc.connect(gain);
-        gain.connect(this.audioContext.destination);
+        gain.connect(destination);
 
         osc.type = type;
         osc.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
@@ -355,7 +469,7 @@ export class SoundManager {
 
         const now = this.audioContext.currentTime;
         const masterGain = this.audioContext.createGain();
-        masterGain.connect(this.audioContext.destination);
+        masterGain.connect(this.getToneDestination(isMusic));
 
         // Master Envelope
         masterGain.gain.setValueAtTime(0, now);
@@ -423,9 +537,13 @@ export class SoundManager {
 
             if (noise.type === 'pink') {
                 // Pink noise approximation
-                let b0; let b1; let b2; let b3; let b4; let b5; let
-                    b6;
-                b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                let b0 = 0.0;
+                let b1 = 0.0;
+                let b2 = 0.0;
+                let b3 = 0.0;
+                let b4 = 0.0;
+                let b5 = 0.0;
+                let b6 = 0.0;
                 for (let i = 0; i < bufferSize; i++) {
                     const white = Math.random() * 2 - 1;
                     b0 = 0.99886 * b0 + white * 0.0555179;
@@ -472,6 +590,7 @@ export class SoundManager {
 
         // Populate the dropdown
         this.populateMusicDropdown();
+        this.preloadDefaultTrack();
 
         return this;
     }
@@ -509,6 +628,40 @@ export class SoundManager {
         const songPath = getSongPath(trackKey, this.songsData);
         if (!songPath) return null;
         return this.normalizeAudioUrl(songPath);
+    }
+
+    shouldPreloadMusicTrack() {
+        if (typeof window === 'undefined' || typeof Audio === 'undefined') {
+            return false;
+        }
+
+        if (window.electronAPI || window.electronDisplay) {
+            return false;
+        }
+
+        return window.location?.protocol !== 'file:';
+    }
+
+    preloadDefaultTrack() {
+        if (!this.shouldPreloadMusicTrack()) {
+            return;
+        }
+
+        const trackUrl = this.resolveTrackUrl(this.musicTrack);
+        if (!trackUrl || this.preloadedTrackKey === this.musicTrack) {
+            return;
+        }
+
+        if (this.preloadAudioElement) {
+            this.preloadAudioElement.src = '';
+            this.preloadAudioElement = null;
+        }
+
+        this.preloadAudioElement = new Audio();
+        this.preloadAudioElement.preload = 'auto';
+        this.preloadAudioElement.src = trackUrl;
+        this.preloadAudioElement.load();
+        this.preloadedTrackKey = this.musicTrack;
     }
 
     resolveTrackKeyFromUrl(url) {
@@ -612,6 +765,8 @@ export class SoundManager {
         requestToken,
         useFade = true,
         forceSwitch = false,
+        fadeOutMs = this.trackFadeOutMs,
+        fadeInMs = this.trackFadeInMs,
     }) {
         this.assertTrackRequestIsCurrent(requestToken);
 
@@ -648,7 +803,7 @@ export class SoundManager {
         }
 
         if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
-            await this.fadeMusicVolume(0, this.trackFadeOutMs);
+            await this.fadeMusicVolume(0, fadeOutMs);
         } else {
             this.cancelMusicVolumeFade();
         }
@@ -682,7 +837,7 @@ export class SoundManager {
         this.assertTrackRequestIsCurrent(requestToken);
 
         if (shouldFadeIn) {
-            await this.fadeMusicVolume(this.getMusicVolume(), this.trackFadeInMs);
+            await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
         }
 
         this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
@@ -692,7 +847,7 @@ export class SoundManager {
      * Sets the active music track
      * @param {string} trackName - Track name/key
      */
-    setTrack(trackName) {
+    setTrack(trackName, options = {}) {
         if (!this.trackNames.includes(trackName)) return;
         const previousTrack = this.musicTrack;
         const didSelectionChange = previousTrack !== trackName;
@@ -703,17 +858,25 @@ export class SoundManager {
         this.musicTrack = trackName;
         this.lastRequestedTrackKey = trackName;
 
-        // Update settings if available
-        if (didSelectionChange && typeof settings !== 'undefined') {
-            settings.musicTrack = trackName;
-            if (typeof saveSettings === 'function') saveSettings();
+        // Persist the selection via the real settings manager (matches the
+        // applyAutoThemeChange path below). The previous globalThis.saveSettings
+        // call was a no-op — no such global exists.
+        if (didSelectionChange && this.settingsManager) {
+            this.settingsManager.update({ musicTrack: trackName });
+            this.settingsManager.save();
         }
 
         const dropdown = document.getElementById('music-track');
         if (dropdown) dropdown.value = trackName;
 
         if (!this.isMuted && !isAlreadyAudible && !hasPendingSameRequest) {
-            this.startBackgroundMusic({ trackKey: trackName, reason: 'set-track' });
+            this.startBackgroundMusic({
+                trackKey: trackName,
+                reason: options.reason || 'set-track',
+                forceSwitch: options.forceSwitch,
+                fadeOutMs: options.fadeOutMs,
+                fadeInMs: options.fadeInMs,
+            });
         }
 
         // Apply auto theme change if enabled
@@ -872,6 +1035,252 @@ export class SoundManager {
         if (this.sfxPlayer) this.sfxPlayer.playGarbageSend();
     }
 
+    playOdysseyStinger(stingerName, options = {}) {
+        if (!this.audioContext) {
+            this.resumeAudioContext();
+        }
+        if (!this.audioContext || this.isMuted) return;
+
+        const intensity = clampUnitVolume(options.intensity ?? 1, 1);
+        const volume = 0.32 * intensity;
+        const play = (params, delayMs = 0) => {
+            const run = () => this.createRichTone({
+                ...params,
+                volume: (params.volume ?? volume) * intensity,
+            });
+            if (delayMs > 0) {
+                setTimeout(run, delayMs);
+            } else {
+                run();
+            }
+        };
+
+        switch (stingerName) {
+        case 'steam-quench':
+            play({
+                oscillators: [{
+                    type: 'sine',
+                    freq: 72,
+                    gain: 0.45,
+                }],
+                noise: {
+                    type: 'pink',
+                    gain: 0.12,
+                },
+                filter: {
+                    type: 'lowpass',
+                    frequency: 420,
+                    Q: 0.8,
+                    envAmount: -240,
+                },
+                envelope: {
+                    attack: 0.02, decay: 0.35, sustain: 0.15, release: 0.45,
+                },
+                duration: 0.45,
+                volume,
+            });
+            play({
+                oscillators: [{
+                    type: 'triangle',
+                    freq: 420,
+                    gain: 0.16,
+                }],
+                noise: {
+                    type: 'white',
+                    gain: 0.08,
+                },
+                filter: {
+                    type: 'bandpass',
+                    frequency: 900,
+                    Q: 1.2,
+                },
+                envelope: {
+                    attack: 0.01, decay: 0.16, sustain: 0.02, release: 0.16,
+                },
+                duration: 0.16,
+                volume: volume * 0.65,
+            }, 110);
+            break;
+        case 'surface-breach':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 196,
+                        gain: 0.24,
+                    },
+                    {
+                        type: 'triangle',
+                        freq: 392,
+                        gain: 0.16,
+                        delay: 0.04,
+                    },
+                ],
+                noise: {
+                    type: 'white',
+                    gain: 0.07,
+                },
+                filter: {
+                    type: 'highpass',
+                    frequency: 320,
+                    Q: 0.7,
+                },
+                envelope: {
+                    attack: 0.015, decay: 0.32, sustain: 0.1, release: 0.38,
+                },
+                duration: 0.42,
+                volume,
+            });
+            break;
+        case 'ridgeline-rise':
+            [110, 147, 196].forEach((freq, index) => play({
+                oscillators: [{
+                    type: 'triangle',
+                    freq,
+                    gain: 0.22,
+                }],
+                filter: {
+                    type: 'lowpass',
+                    frequency: 620 + index * 180,
+                    Q: 0.6,
+                },
+                envelope: {
+                    attack: 0.08, decay: 0.25, sustain: 0.18, release: 0.55,
+                },
+                duration: 0.44,
+                volume: volume * 0.62,
+            }, index * 90));
+            break;
+        case 'summit-liftoff':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 262,
+                        gain: 0.2,
+                    },
+                    {
+                        type: 'sine',
+                        freq: 524,
+                        gain: 0.12,
+                        delay: 0.08,
+                    },
+                ],
+                noise: {
+                    type: 'pink',
+                    gain: 0.05,
+                },
+                filter: {
+                    type: 'highpass',
+                    frequency: 260,
+                    Q: 0.6,
+                    envAmount: 900,
+                },
+                envelope: {
+                    attack: 0.12, decay: 0.45, sustain: 0.2, release: 0.75,
+                },
+                duration: 0.62,
+                volume,
+            });
+            break;
+        case 'atmosphere-edge':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 55,
+                        gain: 0.34,
+                    },
+                    {
+                        type: 'triangle',
+                        freq: 220,
+                        gain: 0.1,
+                        delay: 0.12,
+                    },
+                ],
+                filter: {
+                    type: 'lowpass',
+                    frequency: 280,
+                    Q: 1.4,
+                    envAmount: 360,
+                },
+                envelope: {
+                    attack: 0.18, decay: 0.7, sustain: 0.18, release: 0.9,
+                },
+                duration: 0.78,
+                volume: volume * 1.08,
+            });
+            break;
+        case 'lensing-engage':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 38,
+                        gain: 0.5,
+                    },
+                    {
+                        type: 'sawtooth',
+                        freq: 76,
+                        gain: 0.09,
+                    },
+                ],
+                noise: {
+                    type: 'pink',
+                    gain: 0.05,
+                },
+                filter: {
+                    type: 'lowpass',
+                    frequency: 180,
+                    Q: 2.2,
+                    envAmount: -90,
+                },
+                envelope: {
+                    attack: 0.04, decay: 0.55, sustain: 0.22, release: 0.75,
+                },
+                duration: 0.68,
+                volume: volume * 1.1,
+            });
+            break;
+        case 'neon-snap':
+            play({
+                oscillators: [
+                    {
+                        type: 'square',
+                        freq: 440,
+                        gain: 0.16,
+                    },
+                    {
+                        type: 'sawtooth',
+                        freq: 880,
+                        gain: 0.1,
+                        delay: 0.025,
+                    },
+                    {
+                        type: 'sine',
+                        freq: 55,
+                        gain: 0.32,
+                    },
+                ],
+                filter: {
+                    type: 'bandpass',
+                    frequency: 1200,
+                    Q: 1.8,
+                    envAmount: 500,
+                },
+                envelope: {
+                    attack: 0.004, decay: 0.22, sustain: 0.08, release: 0.28,
+                },
+                duration: 0.28,
+                volume: volume * 1.18,
+            });
+            break;
+        default:
+            this.playLevelUp();
+            break;
+        }
+    }
+
     cancelMusicVolumeFade() {
         this.volumeFadeToken += 1;
         if (this.volumeFadeFrame !== null) {
@@ -1025,7 +1434,13 @@ export class SoundManager {
      * Starts background music (MP3 file from songs folder)
      */
     startBackgroundMusic(options = {}) {
-        const { trackKey = this.musicTrack, reason = 'start-background-music', forceSwitch = false } = options;
+        const {
+            trackKey = this.musicTrack,
+            reason = 'start-background-music',
+            forceSwitch = false,
+            fadeOutMs = undefined,
+            fadeInMs = undefined,
+        } = options;
         if (this.isMuted) return;
         const songPath = this.resolveTrackUrl(trackKey);
         if (!songPath) return;
@@ -1040,6 +1455,8 @@ export class SoundManager {
             trackKey,
             reason,
             forceSwitch,
+            fadeOutMs,
+            fadeInMs,
         });
         this.currentTrackId = Symbol();
         return switchPromise;
@@ -1079,6 +1496,8 @@ export class SoundManager {
                         requestToken,
                         useFade: true,
                         forceSwitch,
+                        fadeOutMs: options.fadeOutMs,
+                        fadeInMs: options.fadeInMs,
                     });
                 } catch (error) {
                     if (error?.name === 'AbortError') {
@@ -1092,6 +1511,8 @@ export class SoundManager {
                             requestToken,
                             useFade: false,
                             forceSwitch: true,
+                            fadeOutMs: options.fadeOutMs,
+                            fadeInMs: options.fadeInMs,
                         });
                     } catch (fallbackError) {
                         if (fallbackError?.name !== 'AbortError') {
@@ -1191,6 +1612,24 @@ export class SoundManager {
             this.audioElement = null;
         }
 
+        if (this.preloadAudioElement) {
+            this.preloadAudioElement.src = '';
+            this.preloadAudioElement = null;
+        }
+
+        this.disposeSfxBus();
+
+        // Explicitly close the single AudioContext on full app teardown, mirroring
+        // the disposal already applied to the SFX bus and analyser. close() returns
+        // a promise; fire-and-forget, then null the context and its gain node.
+        // (Remediation Phase 2 — previously the context was left to GC.)
+        if (this.audioContext && typeof this.audioContext.close === 'function'
+            && this.audioContext.state !== 'closed') {
+            this.audioContext.close().catch(() => { /* already closing/closed */ });
+        }
+        this.audioContext = null;
+        this.musicGainNode = null;
+
         this.playPromise = null;
         this.currentTrackId = null;
         this.pendingTrackKey = null;
@@ -1198,6 +1637,7 @@ export class SoundManager {
         this.lastAppliedTrackKey = null;
         this.musicInterval = null;
         this.pendingThemeLinkedTrack = null;
+        this.preloadedTrackKey = null;
     }
 
     /**

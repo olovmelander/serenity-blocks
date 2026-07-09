@@ -18,6 +18,7 @@ type WindStreakParams = {
 
 type WindStreakConfig = {
     count: number;
+    pointsPerStreak?: number;
     length: number;
     thickness: number;
     baseRadius: number;
@@ -64,7 +65,11 @@ export class TornadoWindStreaks {
     }
 
     private createWindStreaksMerged(config: WindStreakConfig) {
-        const pointsPerStreak = 50;
+        // Tier-scaled point density along each streak (was a hard-coded 50 that
+        // escaped QUALITY_PRESETS). Streaks are soft overlapping additive sprites
+        // (edgeFade + sizeAttenuation) so lowering density is sub-perceptual while
+        // cutting the wind-streak fill that dominates the tornado column.
+        const pointsPerStreak = config.pointsPerStreak ?? 50;
         const totalPoints = config.count * pointsPerStreak;
 
         const geometry = new THREE.BufferGeometry();

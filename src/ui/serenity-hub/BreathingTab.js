@@ -65,15 +65,20 @@ export class BreathingTab {
    */
     getTechniqueEmoji(id) {
         const iconMap = {
-            'deep-relaxation': 'wave',
-            'box-breathing': 'square',
-            'calm-sleep': 'moon',
-            energizing: 'bolt',
-            coherence: 'heart',
-            triangle: 'triangle',
-            'wim-hof': 'flame',
+            'deep-relaxation': 'aurora-dreams',
+            'box-breathing': 'sacred-geometry',
+            'calm-sleep': 'moonlit-waters',
+            energizing: 'solar-flare',
+            coherence: 'heart-glow',
+            triangle: 'crystal-prism',
+            'wim-hof': 'volcanic-fire',
+            'ocean-breath': 'ocean-tide',
+            'zen-garden': 'zen-garden',
+            'cosmic-breath': 'cosmic-nebula',
+            'forest-breath': 'ancient-forest',
+            'electric-storm': 'electric-storm',
         };
-        return csIcon(iconMap[id] || 'lotus', 30);
+        return csIcon(iconMap[id] || 'breath', 30);
     }
 
     /**

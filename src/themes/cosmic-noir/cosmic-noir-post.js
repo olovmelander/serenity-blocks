@@ -23,9 +23,9 @@ import {
     fract,
     max,
     sin,
+    Fn,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 
 export class CosmicNoirPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -72,27 +72,51 @@ export class CosmicNoirPost {
         this.uScreenAspect = uniform(1.0);
 
         const uv = viewportUV;
-
-        // Gravitational Lensing Distortion
-        const dir = uv.sub(this.uBhScreenPos);
-        const dirAspect = vec2(dir.x.mul(this.uScreenAspect), dir.y);
-        const distToBh = length(dirAspect);
-
         const lensingRadius = float(0.35); // Radius of maximal bending
-        const lensPower = float(0.045).mul(this.uLensingStrength); // Strength of the bend
-        const lensingAmount = lensPower.mul(smoothstep(float(0.0), lensingRadius, distToBh)).div(max(distToBh, 0.01));
-        const lensedUV = clamp(uv.sub(dir.mul(lensingAmount)), vec2(0.0), vec2(1.0));
 
-        const vigDist = length(uv.sub(0.5).mul(2.0));
-        const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), vigDist);
-        const baseSample = sceneColor.sample(lensedUV);
-        const vignetted = mix(
-            baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
-            baseSample,
-            vig,
-        );
+        // Gravitational lensing + vignette evaluated at an arbitrary screen UV, sampling the scene
+        // texture directly. Previously the lensed+vignetted result was fed into chromaticAberration(),
+        // which wraps its input in convertToTexture() — forcing a full-screen render-to-texture pass
+        // every frame purely so the R/G/B split could sample it. Inlining lets the split sample the
+        // scene texture directly, collapsing two post passes into one. Pixel-identical to the old
+        // graph (it even skips the intermediate RTT's requantization).
+        const sampleVignettedScene = Fn(([p]) => {
+            const dir = p.sub(this.uBhScreenPos);
+            const dirAspect = vec2(dir.x.mul(this.uScreenAspect), dir.y);
+            const distToBh = length(dirAspect);
+            const lensPower = float(0.045).mul(this.uLensingStrength);
+            const lensingAmount = lensPower
+                .mul(smoothstep(float(0.0), lensingRadius, distToBh))
+                .div(max(distToBh, 0.01));
+            const lensedUV = clamp(p.sub(dir.mul(lensingAmount)), vec2(0.0), vec2(1.0));
 
-        const chroma = chromaticAberration(vignetted, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
+            const vigDist = length(p.sub(0.5).mul(2.0));
+            const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), vigDist);
+            const sampled = sceneColor.sample(lensedUV);
+            return mix(
+                sampled.mul(float(1.0).sub(this.uVignetteDarkness)),
+                sampled,
+                vig,
+            );
+        });
+
+        // Manual chromatic aberration mirroring ChromaticAberrationNode's stepped-scale + radial
+        // offset (center 0.5,0.5; scale 1.1), but sampling the scene directly — no RTT.
+        const caCenter = vec2(0.5, 0.5);
+        const caScale = float(1.1);
+        const caStrength = this.uChromaticStrength;
+        const caOffset = uv.sub(caCenter);
+        const caDist = length(caOffset);
+        const redScale = float(1.0).add(caScale.mul(0.02).mul(caStrength));
+        const blueScale = float(1.0).sub(caScale.mul(0.02).mul(caStrength));
+        const aberration = caStrength.mul(caDist);
+        const redUV = caCenter.add(caOffset.mul(redScale)).add(caOffset.mul(aberration).mul(0.01));
+        const blueUV = caCenter.add(caOffset.mul(blueScale)).add(caOffset.mul(aberration).mul(-0.01));
+
+        const centerSample = sampleVignettedScene(uv); // green + alpha (greenUV == uv)
+        const redSample = sampleVignettedScene(redUV);
+        const blueSample = sampleVignettedScene(blueUV);
+        const chroma = vec4(redSample.r, centerSample.g, blueSample.b, centerSample.a);
         const combined = chroma.add(this.bloomNode);
 
         const exposed = combined.mul(this.uExposure);

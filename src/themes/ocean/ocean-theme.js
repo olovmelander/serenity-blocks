@@ -35,7 +35,7 @@ import {
     createSeabedNodeMaterial,
     createSeaweedNodeMaterial,
     createSeagrassMeadowNodeMaterial,
-    createCoralNodeMaterial,
+    createCoralOvergrowthNodeMaterial,
     createJellyfishNodeMaterial,
     createPlanktonNodeMaterial,
     createBubbleNodeMaterial,
@@ -1164,8 +1164,8 @@ export default class OceanTheme extends BaseTheme {
         // Critical visuals — block the first visible frame.
         // Water + seabed + atmosphere (god rays, haze) + lighting give the
         // "underwater void with shafts" look that defines the theme.
-        if (!this.flags.noWater) this.createWaterSurface();
-        if (!this.flags.noSeabed) this.createSeabed();
+        if (!this.flags.noWater) { this.createWaterSurface(); this.freezeStaticTransforms(this.waterSurface); }
+        if (!this.flags.noSeabed) { this.createSeabed(); this.freezeStaticTransforms(this.seabed); }
         if (!this.flags.noAtmosphere) this.createCinematicAtmosphere();
         this.createLighting();
 
@@ -1190,8 +1190,16 @@ export default class OceanTheme extends BaseTheme {
             () => { if (!this.flags.noPlankton) this.createPlankton(); },
             () => { if (!this.flags.noAtmosphere) this.finalizeCinematicAtmosphere(); },
             () => { if (!this.flags.noCoral) this.createCoralReef(); },
-            () => { if (!this.flags.noSeaweed) this.createSeaweed(); },
-            () => { if (!this.flags.noSeagrass) this.createSeagrassMeadow(); },
+            () => {
+                if (this.flags.noSeaweed) return;
+                this.createSeaweed();
+                this.freezeStaticTransforms(this.seaweedInstances);
+            },
+            () => {
+                if (this.flags.noSeagrass) return;
+                this.createSeagrassMeadow();
+                this.freezeStaticTransforms(this.seagrassMeadowInstances);
+            },
             () => { if (!this.flags.noDwellers) this.createReefDwellers(); },
             () => { if (!this.flags.noRareFauna) this.createRareFauna(); },
             () => { if (!this.flags.noGameplayFx) this.createGameplayEffects(); },
@@ -1883,10 +1891,16 @@ export default class OceanTheme extends BaseTheme {
      * Checks if a point (x, z) is occupied by a rock or coral.
      * Used to prevent seaweed, seagrass, and fish from clipping through geometry.
      */
-    isPointOccupied(x, z, radius = 2.0) {
+    isPointOccupied(x, z, radius = 2.0, occupancy = null) {
         if (!this.atmosphereSystem) return false;
 
-        const data = this.atmosphereSystem.getOccupancyData();
+        // Callers in tight placement loops pass a snapshot fetched once before
+        // the loop. getOccupancyData() rebuilds two {x,z,radius} arrays via
+        // .map() on every call, so without this cache a single seaweed/seagrass
+        // build allocated ~18k throwaway arrays. The reef-wall/occluder data
+        // only mutates later on async GLB-upgrade timers, never mid-build-loop,
+        // so the snapshot yields identical collision decisions.
+        const data = occupancy || this.atmosphereSystem.getOccupancyData();
 
         // 1. Check hero rock clusters
         for (const cluster of data.clusters) {
@@ -1978,6 +1992,9 @@ export default class OceanTheme extends BaseTheme {
             const bladeTypes = new Float32Array(count);
             const dummy = new THREE.Object3D();
             const habitatVariants = { shortGrass: 0, ribbonKelp: 0, tallAccentBlades: 0 };
+            // Fetch the collision snapshot once for the whole placement loop
+            // instead of rebuilding it on every isPointOccupied() call.
+            const occupancy = this.atmosphereSystem?.getOccupancyData() || null;
 
             for (let i = 0; i < count; i++) {
                 let sideBias = 0;
@@ -2003,10 +2020,10 @@ export default class OceanTheme extends BaseTheme {
 
                 // Collision Check: If this point is inside a rock/coral, try one quick nudge
                 // before giving up (to keep distribution dense but clean).
-                if (this.isPointOccupied(x, z, 1.5)) {
+                if (this.isPointOccupied(x, z, 1.5, occupancy)) {
                     x += (Math.random() - 0.5) * 8;
                     z += (Math.random() - 0.5) * 8;
-                    if (this.isPointOccupied(x, z, 1.0)) {
+                    if (this.isPointOccupied(x, z, 1.0, occupancy)) {
                         // Still occupied? Skip this blade.
                         i--;
                         continue;
@@ -2367,12 +2384,14 @@ export default class OceanTheme extends BaseTheme {
             const phases = new Float32Array(count);
             const colorVars = new Float32Array(count);
             const dummy = new THREE.Object3D();
+            // Fetch the collision snapshot once for the whole placement loop.
+            const occupancy = this.atmosphereSystem?.getOccupancyData() || null;
 
             for (let i = 0; i < count; i++) {
                 const { x, z } = place();
 
                 // Collision Check
-                if (this.isPointOccupied(x, z, 0.8)) {
+                if (this.isPointOccupied(x, z, 0.8, occupancy)) {
                     i--;
                     continue;
                 }
@@ -2537,6 +2556,20 @@ export default class OceanTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
     // CORAL REEF - Detailed colorful coral formations
     // ═══════════════════════════════════════════════════════════════════════════
+    // Freeze a fully-static subtree's transforms: the renderer otherwise
+    // recomposes a Matrix4 + multiplies the world matrix for every node every
+    // frame. These nodes never move (their animation is in-shader via uTime,
+    // and instanced offsets live in instanceMatrix, not the node transform), so
+    // baking the matrix once is bit-for-bit identical. Never call this on
+    // per-frame-repositioned nodes (billboards, fish, dwellers, fauna).
+    freezeStaticTransforms(root) {
+        if (!root) return;
+        root.traverse((node) => {
+            node.matrixAutoUpdate = false;
+            node.updateMatrix();
+        });
+    }
+
     createCoralReef() {
         const count = this.activePreset.coralCount;
         const spread = 140;
@@ -2726,33 +2759,68 @@ export default class OceanTheme extends BaseTheme {
         }
 
         typeNames.forEach((typeName) => {
-            buckets[typeName].forEach((matrices, colorIndex) => {
-                if (matrices.length === 0) return;
-                let material;
-                if (this.isWebGPU) {
-                    material = createCoralNodeMaterial(coralColors[colorIndex]);
-                    this._tslUniforms = this._tslUniforms || [];
-                    this._tslUniforms.push(material.userData);
-                } else {
-                    material = new THREE.MeshLambertMaterial({
+            const colorBuckets = buckets[typeName];
+            if (this.isWebGPU) {
+                // WS 4.2 pattern: the 6 colour buckets for this geometry differ
+                // only by a tint, so collapse them into ONE InstancedMesh that
+                // carries the tint per-instance via `aInstanceColor`. Up to 48
+                // coral draw-calls/materials become 8. Pixel-identical: the
+                // overgrowth material is the same node graph with the tint
+                // uniform swapped for the attribute, fed the same linear RGB.
+                let total = 0;
+                colorBuckets.forEach((matrices) => { total += matrices.length; });
+                if (total === 0) return;
+
+                const material = createCoralOvergrowthNodeMaterial();
+                this._tslUniforms = this._tslUniforms || [];
+                this._tslUniforms.push(material.userData);
+
+                const geometry = geometries[typeName].clone();
+                const mesh = new THREE.InstancedMesh(geometry, material, total);
+                const instanceColors = new Float32Array(total * 3);
+                let idx = 0;
+                colorBuckets.forEach((matrices, colorIndex) => {
+                    const col = coralColors[colorIndex];
+                    matrices.forEach((matrix) => {
+                        mesh.setMatrixAt(idx, matrix);
+                        instanceColors[idx * 3] = col.r;
+                        instanceColors[idx * 3 + 1] = col.g;
+                        instanceColors[idx * 3 + 2] = col.b;
+                        idx += 1;
+                    });
+                });
+                geometry.setAttribute(
+                    'aInstanceColor',
+                    new THREE.InstancedBufferAttribute(instanceColors, 3),
+                );
+                mesh.instanceMatrix.needsUpdate = true;
+                this.coralGroup.add(mesh);
+            } else {
+                // WebGL fallback keeps per-colour buckets: MeshLambertMaterial's
+                // emissive tint can't ride a per-instance diffuse attribute, so
+                // collapsing would change the look.
+                colorBuckets.forEach((matrices, colorIndex) => {
+                    if (matrices.length === 0) return;
+                    const material = new THREE.MeshLambertMaterial({
                         color: coralColors[colorIndex],
                         emissive: coralColors[colorIndex].clone().multiplyScalar(0.2),
                         emissiveIntensity: 0.44,
                         side: THREE.DoubleSide,
                     });
-                }
-                const mesh = new THREE.InstancedMesh(
-                    geometries[typeName].clone(),
-                    material,
-                    matrices.length,
-                );
-                matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
-                mesh.instanceMatrix.needsUpdate = true;
-                this.coralGroup.add(mesh);
-            });
+                    const mesh = new THREE.InstancedMesh(
+                        geometries[typeName].clone(),
+                        material,
+                        matrices.length,
+                    );
+                    matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+                    mesh.instanceMatrix.needsUpdate = true;
+                    this.coralGroup.add(mesh);
+                });
+            }
         });
         typeNames.forEach((typeName) => geometries[typeName].dispose());
 
+        this.freezeStaticTransforms(this.coralGroup);
         this.scene.add(this.coralGroup);
     }
 
@@ -3310,6 +3378,13 @@ export default class OceanTheme extends BaseTheme {
         const reefWarmth = new THREE.PointLight(0xffc890, 0.28, 115, 2.2);
         reefWarmth.position.set(54, 8, -34);
         this.scene.add(reefWarmth);
+
+        // Lights never move; bake their transforms so the renderer stops
+        // recomposing a matrix for each one every frame.
+        [ambient, directional, hemisphere, foregroundFill, reefWarmth].forEach((light) => {
+            light.matrixAutoUpdate = false;
+            light.updateMatrix();
+        });
     }
 
     isNodeMaterial(material) {
@@ -3560,18 +3635,31 @@ export default class OceanTheme extends BaseTheme {
         }
     }
 
-    setBillboardInstance(mesh, index, x, y, z) {
-        if (!mesh || !this.camera || !this.billboardDummy) return;
-        this.billboardDummy.position.set(x, y, z);
-        this.billboardDummy.quaternion.copy(this.camera.quaternion);
-        this.billboardDummy.scale.setScalar(1);
-        this.billboardDummy.updateMatrix();
-        mesh.setMatrixAt(index, this.billboardDummy.matrix);
+    // Write a camera-facing instance matrix straight into the InstancedMesh's
+    // flat buffer. `rotEl` is the camera-rotation matrix's elements (unit scale),
+    // shared by every instance in a population — hoisting that quaternion->matrix
+    // build out of the per-instance loop is the whole point. Output is
+    // byte-identical to setMatrixAt(compose(pos, camera.quaternion, scale 1))
+    // because Matrix4.makeRotationFromQuaternion IS compose(0, q, 1); we only
+    // overwrite the translation columns (12/13/14) per instance.
+    writeBillboardInstance(array, index, rotEl, x, y, z) {
+        const o = index * 16;
+        array[o] = rotEl[0]; array[o + 1] = rotEl[1]; array[o + 2] = rotEl[2]; array[o + 3] = 0;
+        array[o + 4] = rotEl[4]; array[o + 5] = rotEl[5]; array[o + 6] = rotEl[6]; array[o + 7] = 0;
+        array[o + 8] = rotEl[8]; array[o + 9] = rotEl[9]; array[o + 10] = rotEl[10]; array[o + 11] = 0;
+        array[o + 12] = x; array[o + 13] = y; array[o + 14] = z; array[o + 15] = 1;
     }
 
     updateOceanBillboards(time, phase = -1) {
         if (!this.isWebGPU || !this.camera) return;
         this.camera.updateMatrixWorld();
+
+        // The camera-facing rotation is identical for every billboard in a
+        // population, so build it once per call instead of recomposing it from
+        // the quaternion for each of the hundreds of instances.
+        if (!this._billboardRot) this._billboardRot = new THREE.Matrix4();
+        this._billboardRot.makeRotationFromQuaternion(this.camera.quaternion);
+        const rot = this._billboardRot.elements;
 
         // Debug skip flags fully suppress the per-population update path even
         // when the mesh still exists in the scene — lets us measure pure CPU
@@ -3582,12 +3670,14 @@ export default class OceanTheme extends BaseTheme {
 
         if (doJellyfish && this.jellyfishMesh && this.jellyfishData) {
             const { positions, phases, count } = this.jellyfishData;
+            const arr = this.jellyfishMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
                 const ph = phases[i];
-                this.setBillboardInstance(
-                    this.jellyfishMesh,
+                this.writeBillboardInstance(
+                    arr,
                     i,
+                    rot,
                     positions[i3] + Math.sin(time * 0.18 + ph * 1.3) * 1.35,
                     positions[i3 + 1] + Math.sin(time * 0.38 + ph) * 2.2,
                     positions[i3 + 2] + Math.sin(time * 0.22 + ph * 0.8) * 1.1,
@@ -3598,12 +3688,14 @@ export default class OceanTheme extends BaseTheme {
 
         if (doPlankton && this.planktonMesh && this.planktonData) {
             const { positions, phases, count } = this.planktonData;
+            const arr = this.planktonMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
                 const ph = phases[i];
-                this.setBillboardInstance(
-                    this.planktonMesh,
+                this.writeBillboardInstance(
+                    arr,
                     i,
+                    rot,
                     positions[i3]
                     + Math.sin(time * 0.1 + ph * 1.2) * (0.52 + this.currentStrength * 0.26),
                     positions[i3 + 1] + Math.sin(time * 0.14 + ph) * 0.45,
@@ -3618,14 +3710,16 @@ export default class OceanTheme extends BaseTheme {
             const {
                 positions, speeds, phases, lifeOffsets, columnSpread, count,
             } = this.bubbleBillboardData;
+            const arr = this.bubbleMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
                 const ph = phases[i];
                 const travel = (lifeOffsets[i] + time * speeds[i] * 0.035) % 1;
                 const drift = columnSpread[i] * (0.12 + travel * 0.26) * (1 + this.currentStrength * 0.16);
-                this.setBillboardInstance(
-                    this.bubbleMesh,
+                this.writeBillboardInstance(
+                    arr,
                     i,
+                    rot,
                     positions[i3]
                     + Math.sin(time * 1.35 + ph + travel * 6.0) * drift
                     + travel * this.currentStrength * 0.9,
@@ -4463,7 +4557,7 @@ export default class OceanTheme extends BaseTheme {
         this.disposeSceneContents();
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

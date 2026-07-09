@@ -488,6 +488,7 @@ const PlanktonShader = {
 export default class LuminousTidesTheme extends BaseTheme {
     constructor() {
         super('luminous-tides');
+        this.resourceProfile = 'heavy-gpu';
 
         this.renderer = null;
         this.scene = null;

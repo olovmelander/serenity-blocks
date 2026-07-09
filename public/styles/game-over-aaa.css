@@ -206,6 +206,18 @@ body.electron-app #game-over-modal .modal-content {
     margin-bottom: 0;
 }
 
+#game-over-modal .ranking-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#game-over-modal .ranking-icon-svg {
+    color: var(--cs-gold);
+    filter: drop-shadow(0 0 14px rgba(var(--cs-gold-rgb), 0.34));
+}
+
 #game-over-modal .stat-badge {
     display: inline-block;
     margin-top: 12px;

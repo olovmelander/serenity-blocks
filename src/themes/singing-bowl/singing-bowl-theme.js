@@ -1170,7 +1170,7 @@ export default class SingingBowlTheme extends BaseTheme {
 
         // Cleanup Three.js
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('singing-bowl-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

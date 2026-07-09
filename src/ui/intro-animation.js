@@ -7,6 +7,54 @@
 import { INTRO_PHASES } from './intro-visual-config.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 
+const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
+    'a[href]',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'label[for]',
+    'summary',
+    '[contenteditable="true"]',
+    '[role="button"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="radio"]',
+    '[role="checkbox"]',
+    '[role="combobox"]',
+    '[role="link"]',
+    '[data-cursor-interactive="true"]',
+    '.game-mode-card',
+    '.main-menu-player-card',
+    '.floating-settings-btn',
+    '.serenity-hub-icon',
+    '.replays-icon',
+    '.highscores-icon',
+    '.cosmic-select__trigger',
+    '.cosmic-select__option',
+    '.cosmic-select__listbox',
+    '.cosmic-segmented__seg',
+].join(', ');
+
+function isElementVisible(element) {
+    if (!element) return false;
+    const style = typeof window !== 'undefined'
+        ? window.getComputedStyle?.(element)
+        : null;
+    if (style?.display === 'none' || style?.visibility === 'hidden') return false;
+    return element.getClientRects?.().length > 0;
+}
+
+function hasBlockingIntroModal() {
+    if (typeof document === 'undefined') return false;
+    if (document.body?.classList.contains('serenity-hub-open')) return true;
+
+    const modals = document.querySelectorAll('.modal.visible, [role="dialog"].visible');
+    return Array.from(modals).some((modal) => modal.id !== 'start-modal' && isElementVisible(modal));
+}
+
 export class IntroAnimation {
     constructor() {
         this.container = null;
@@ -30,14 +78,24 @@ export class IntroAnimation {
         this.boundAnimate = this.animate.bind(this);
         this.phaseTimers = [];
         this.lastTitleBoundsSync = 0;
+        // Title-bounds sync settling: the 3D title glow only needs the wordmark's rect while
+        // the title is animating (intro reveal + shrink-to-logo). Once it stops moving, its rect
+        // is static, so we stop the per-frame getBoundingClientRect() — that read (landing after
+        // the cursor/renderer dirty layout each frame) forced a synchronous reflow every frame on
+        // the idle menu. Re-armed by scheduleMenuLogoLayoutUpdate() on any layout-affecting event.
+        this._titleBoundsSettled = false;
+        this._lastTitleRect = null;
+        this._titleStableCount = 0;
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
         this.menuLayoutRaf = null;
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
         this.menuLayoutObservedElement = null;
+        this.tetrominoPointerListenerInstalled = false;
         this.boundMenuLayoutUpdate = this.scheduleMenuLogoLayoutUpdate.bind(this);
         this.boundMenuModalChange = this.handleMenuModalChange.bind(this);
+        this.boundIntroTetrominoPointerDown = this.handleIntroTetrominoPointerDown.bind(this);
         const params = typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search)
             : new URLSearchParams();
@@ -51,7 +109,7 @@ export class IntroAnimation {
      * Initialize and show the intro animation
      * @returns {Promise<void>} Resolves when user dismisses the intro
      */
-    async show(soundManager = null) {
+    async show(soundManager = null, options = {}) {
         if (this.hasCompleted) {
             return Promise.resolve();
         }
@@ -66,6 +124,36 @@ export class IntroAnimation {
         this.clearPhaseTimers();
         this.isActive = true;
         this.isAnimating = true;
+        // When deferred, hold the "SERENITY BLOCKS" title hidden + un-animated until
+        // revealTitle() — used so the boot warp transition plays out FIRST and the
+        // title's reveal animation plays fresh afterwards, not wasted behind the warp.
+        this.titleDeferred = options.deferTitle === true;
+        this.titleRevealed = !this.titleDeferred;
+        // "Press any key / click / tap to begin" is LOCKED until the title reveals, so the
+        // boot transition can't be skipped before "SERENITY BLOCKS" appears; the prompt +
+        // interaction then unlock IN SYNC with the title. Non-deferred intros allow it
+        // immediately, as before.
+        this.interactionEnabled = !this.titleDeferred;
+        // Readiness gate: resolves once initRenderer() has settled (WebGPU device created,
+        // or WebGL fallback, or failure) so callers can reliably read getWebGPUDevice()
+        // BEFORE deciding whether the boot warp can share the intro's device. Without this,
+        // a cold/slow WebGPU init that outruns the 1500ms boot race leaves getWebGPUDevice()
+        // null → the warp makes a 3rd context → blank on heavy themes.
+        this._rendererReadyResolve = null;
+        this.rendererReady = new Promise((resolve) => { this._rendererReadyResolve = resolve; });
+        // Safety net: never let a deferred title stay hidden if the external reveal trigger
+        // is somehow missed (warp error, etc.). Armed HERE, in show()'s synchronous prefix,
+        // NOT after createIntroHTML — the boot flow calls postponeTitleSafety() while
+        // createIntroHTML may still be awaiting a cold renderer init, and re-arming the
+        // 4500ms default afterwards would silently CLOBBER that postpone (title +
+        // PRESS-ANY-KEY would then unlock behind the opaque ident/warp on a cold first
+        // run). Arming synchronously guarantees any later postpone is the last writer.
+        // A too-early 'safety' fire is harmless: revealTitle before the DOM exists makes
+        // createIntroHTML build the title visible (state-aware hold classes).
+        this.clearTitleRevealSafety();
+        if (this.titleDeferred) {
+            this._titleRevealSafety = setTimeout(() => this.revealTitle('safety'), 4500);
+        }
         await this.createIntroHTML();
         this.setupEventListeners();
 
@@ -85,6 +173,79 @@ export class IntroAnimation {
     }
 
     /**
+     * Play the deferred "SERENITY BLOCKS" title reveal now. Idempotent — safe to call
+     * from any handoff branch (and a safety timer). Called once the boot warp / startup
+     * transition has finished so the reveal animation plays fresh on the settled intro
+     * instead of being wasted behind the covering transition.
+     */
+    revealTitle(source = 'manual') {
+        if (this.titleRevealed) {
+            return;
+        }
+        this.titleRevealed = true;
+        this.clearTitleRevealSafety();
+        performanceMonitor.recordEvent('startup_intro_title_revealed', { source });
+        const titleContainer = this.container?.querySelector('.intro-title-container');
+        if (titleContainer) {
+            titleContainer.classList.remove('intro-title-hold');
+            // Force a reflow so the (previously animation:none) reveal restarts from 0%.
+            this._titleReflow = titleContainer.offsetWidth;
+        }
+
+        // Reveal the "PRESS ANY KEY" prompt + unlock interaction WITH the title (the theme is
+        // warmed BEFORE the warp now, so there's nothing to gate on).
+        this.enableInteraction();
+    }
+
+    /**
+     * Push the deferred-title safety timer out to `ms` from now. Called by the boot
+     * flow once the warp transition is COMMITTED: on a cold first run the warp's
+     * prewarm compile can exceed the default 4500ms safety, which would otherwise
+     * reveal the title + unlock "PRESS ANY KEY" behind the still-opaque warp canvas
+     * (wasted reveal animation + invisible intro dismissal on a stray keypress).
+     * The warp path reveals explicitly at p>=0.9 and again after the handoff, so the
+     * postponed timer is purely the stalled-warp backstop.
+     * @param {number} ms
+     */
+    postponeTitleSafety(ms) {
+        if (this.titleRevealed) return;
+        this.clearTitleRevealSafety();
+        this._titleRevealSafety = setTimeout(() => this.revealTitle('postponed-safety'), ms);
+        performanceMonitor.recordEvent('startup_intro_title_safety_postponed', { ms });
+    }
+
+    clearTitleRevealSafety() {
+        if (this._titleRevealSafety) {
+            clearTimeout(this._titleRevealSafety);
+            this._titleRevealSafety = null;
+        }
+    }
+
+    resolveRendererReady() {
+        this._rendererReadyResolve?.();
+        this._rendererReadyResolve = null;
+    }
+
+    /**
+     * Unlock begin-interaction and reveal the "PRESS ANY KEY" prompt in sync with the
+     * title. Idempotent.
+     */
+    enableInteraction() {
+        if (this.interactionEnabled) {
+            return;
+        }
+        this.interactionEnabled = true;
+        const prompt = this.container?.querySelector('.intro-prompt.intro-prompt-hold');
+        if (prompt) {
+            prompt.classList.remove('intro-prompt-hold');
+            // Reflow, then run the no-delay reveal so the prompt fades in WITH the title
+            // (its base rule has a 3s animation-delay that would otherwise hold it back).
+            this._promptReflow = prompt.offsetWidth;
+            prompt.classList.add('intro-prompt-shown');
+        }
+    }
+
+    /**
      * Animation loop for Three.js renderer
      */
     animate(time) {
@@ -97,7 +258,7 @@ export class IntroAnimation {
         if (this.threeRenderer) {
             const pulse = this.getMusicPulse();
             this.threeRenderer.setAudioPulse?.(pulse);
-            this.threeRenderer.update();
+            this.threeRenderer.update(typeof time === 'number' ? time / 1000 : undefined);
             const menuLogoActive = Boolean(this.container?.querySelector('.intro-title-container.shrink-to-logo'));
             if (this.isActive || this.container?.classList?.contains('background-only') || menuLogoActive) {
                 this.syncTitleBounds(time);
@@ -178,6 +339,11 @@ export class IntroAnimation {
     }
 
     scheduleMenuLogoLayoutUpdate() {
+        // Any layout-affecting event (resize, modal open/close, cards ResizeObserver, or the
+        // shrink-to-logo transition) can move/resize the title, so re-arm the per-frame
+        // title-bounds sync until it settles again.
+        this._titleBoundsSettled = false;
+        this._titleStableCount = 0;
         if (typeof requestAnimationFrame !== 'function') {
             this.updateMenuLogoLayout();
             return;
@@ -213,9 +379,21 @@ export class IntroAnimation {
             return;
         }
 
+        // The resting menu logo now renders at font-size = natural × --menu-logo-scale
+        // (crisp vector glyphs, not a transform-downscaled bitmap). Neutralize that
+        // scale to 1 before measuring, or we'd measure the already-shrunk wordmark and
+        // the computed scale would drift smaller on every layout pass. Reading
+        // offsetWidth forces a synchronous reflow, so the measurement reflects the
+        // natural size; the real scale is reapplied below before the frame paints.
+        const prevScale = titleContainer.style.getPropertyValue('--menu-logo-scale');
+        titleContainer.style.setProperty('--menu-logo-scale', '1');
         const naturalWidth = titleContainer.offsetWidth;
         const naturalHeight = titleContainer.offsetHeight;
         if (naturalWidth <= 0 || naturalHeight <= 0) {
+            // Restore the prior scale so a transient zero-size measurement can't leave
+            // the wordmark stuck at full (unscaled) size.
+            if (prevScale) titleContainer.style.setProperty('--menu-logo-scale', prevScale);
+            else titleContainer.style.removeProperty('--menu-logo-scale');
             return;
         }
 
@@ -284,10 +462,14 @@ export class IntroAnimation {
 
     syncTitleBounds(timeMs = performance.now()) {
         if (!this.threeRenderer?.setTitleBounds || !this.container) return;
-        // Sync ~every frame so the renderer's title glow tracks the wordmark
-        // smoothly during the fast shrink-to-logo move (a coarse throttle made the
-        // glow lag/trail downward behind the rising text). Reading one element's
-        // rect is cheap, and the shrink already dirties layout each frame anyway.
+        // Once the title has settled (menu idle / logo at rest) its rect is static, so stop
+        // reading layout every frame — that per-frame getBoundingClientRect(), landing right
+        // after the cursor/renderer dirty layout, forced a synchronous reflow on every frame.
+        // scheduleMenuLogoLayoutUpdate() re-arms this on resize/modal/observer/shrink so the
+        // glow keeps tracking the wordmark smoothly whenever it actually moves.
+        if (this._titleBoundsSettled) return;
+        // Sync ~every frame while animating so the renderer's title glow tracks the wordmark
+        // smoothly during the fast shrink-to-logo move (a coarse throttle made the glow lag).
         if (timeMs - this.lastTitleBoundsSync < 16) return;
 
         const titleContainer = this.container.querySelector('.intro-title-container');
@@ -302,6 +484,25 @@ export class IntroAnimation {
             height: rect.height,
         });
         this.lastTitleBoundsSync = timeMs;
+
+        // Settle detection: when the rect stops changing between syncs the title has finished
+        // moving, so after a few stable frames we stop the per-frame reads (until re-armed).
+        const last = this._lastTitleRect;
+        const stable = last
+            && Math.abs(last.x - rect.left) < 0.5 && Math.abs(last.y - rect.top) < 0.5
+            && Math.abs(last.w - rect.width) < 0.5 && Math.abs(last.h - rect.height) < 0.5;
+        if (stable) {
+            this._titleStableCount += 1;
+            if (this._titleStableCount >= 6) this._titleBoundsSettled = true;
+        } else {
+            this._titleStableCount = 0;
+            this._lastTitleRect = {
+                x: rect.left,
+                y: rect.top,
+                w: rect.width,
+                h: rect.height,
+            };
+        }
     }
 
     waitForMenuBgReady(timeoutMs = 2200) {
@@ -372,11 +573,48 @@ export class IntroAnimation {
     /**
      * Initialize the 3D renderer. Tries WebGPU first, falls back to WebGL.
      */
+    replaceRendererCanvasForFallback(canvas) {
+        if (!canvas || typeof document === 'undefined') {
+            return canvas;
+        }
+
+        const fallbackCanvas = document.createElement('canvas');
+        fallbackCanvas.id = canvas.id || 'intro-webgl-canvas';
+        if (canvas.style && fallbackCanvas.style) {
+            fallbackCanvas.style.cssText = canvas.style.cssText;
+            if (!fallbackCanvas.style.cssText) {
+                fallbackCanvas.style.position = canvas.style.position || 'absolute';
+                fallbackCanvas.style.top = canvas.style.top || '0';
+                fallbackCanvas.style.left = canvas.style.left || '0';
+                fallbackCanvas.style.width = canvas.style.width || '100%';
+                fallbackCanvas.style.height = canvas.style.height || '100%';
+                fallbackCanvas.style.zIndex = canvas.style.zIndex || '0';
+            }
+        }
+
+        const parent = canvas.parentNode;
+        if (parent?.replaceChild) {
+            parent.replaceChild(fallbackCanvas, canvas);
+        } else if (parent?.appendChild) {
+            parent.appendChild(fallbackCanvas);
+        }
+
+        if (this.threeCanvas === canvas) {
+            this.threeCanvas = fallbackCanvas;
+        }
+        performanceMonitor.recordEvent('startup_intro_renderer_canvas_replaced', {
+            reason: 'webgpu-timeout',
+        });
+        return fallbackCanvas;
+    }
+
     async initRenderer(canvas) {
         const initStartedAt = typeof performance !== 'undefined' && performance.now
             ? performance.now()
             : Date.now();
         const hasWebGPU = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+        let rendererCanvas = canvas;
+        let fallbackReason = 'none';
         performanceMonitor.recordEvent('startup_intro_renderer_init_started', {
             introV2: this.flags.introV2,
             hasWebGPU,
@@ -384,10 +622,41 @@ export class IntroAnimation {
 
         // Keep a fallback path for rollout / regression checks.
         if (this.flags.introV2 && hasWebGPU) {
+            let webgpuRenderer = null;
             try {
                 const { default: WebGPURenderer } = await import('./threejs-intro-renderer-webgpu.js');
-                const webgpuRenderer = new WebGPURenderer(canvas);
-                const success = await webgpuRenderer.init();
+                webgpuRenderer = new WebGPURenderer(rendererCanvas);
+                // Budget the init: a stalled requestAdapter/requestDevice would otherwise
+                // hang createIntroHTML -> show() -> the whole boot at `await introPromise`.
+                const initPromise = webgpuRenderer.init();
+                let initTimedOut = false;
+                let timeoutId = null;
+                let success = false;
+                try {
+                    success = await Promise.race([
+                        initPromise,
+                        new Promise((resolve) => {
+                            timeoutId = setTimeout(() => { initTimedOut = true; resolve(false); }, 10000);
+                        }),
+                    ]);
+                } finally {
+                    if (timeoutId !== null) {
+                        clearTimeout(timeoutId);
+                    }
+                }
+                if (initTimedOut) {
+                    fallbackReason = 'webgpu-timeout';
+                    rendererCanvas = this.replaceRendererCanvasForFallback(rendererCanvas);
+                    // The orphaned init may still resolve later and would then hold a live
+                    // GPUDevice + render loop for the whole session. Destroy it on arrival.
+                    initPromise
+                        .then(() => { webgpuRenderer.destroy?.(); })
+                        .catch(() => { /* failed anyway - nothing live to clean */ });
+                    performanceMonitor.recordEvent('startup_intro_renderer_webgpu_timeout', {
+                        timeoutMs: 10000,
+                    });
+                    console.warn('[IntroAnimation] WebGPU init timed out, falling back to WebGL');
+                }
                 if (success) {
                     this.threeRenderer = webgpuRenderer;
                     this.isWebGPU = true;
@@ -399,35 +668,53 @@ export class IntroAnimation {
                             : Date.now()) - initStartedAt,
                     });
                     console.log('[IntroAnimation] WebGPU renderer initialized');
-                    return;
+                    return 'webgpu';
                 }
-                // WebGPU init returned false, fall through to WebGL
-                webgpuRenderer.destroy?.();
+                if (!initTimedOut) {
+                    fallbackReason = 'webgpu-init-failed';
+                    webgpuRenderer.destroy?.();
+                }
             } catch (err) {
+                fallbackReason = 'webgpu-exception';
+                webgpuRenderer?.destroy?.();
                 console.warn('[IntroAnimation] WebGPU init failed, falling back to WebGL:', err);
             }
         }
 
-        // Fallback: WebGL renderer
-        const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
-        this.threeRenderer = new ThreeJSIntroRenderer(canvas);
-        if (this.threeRenderer.init()) {
-            this.isWebGPU = false;
-            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
-                backend: 'webgl',
-                durationMs: (typeof performance !== 'undefined' && performance.now
-                    ? performance.now()
-                    : Date.now()) - initStartedAt,
-            });
-            console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
-        } else {
-            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
-                backend: 'failed',
-                durationMs: (typeof performance !== 'undefined' && performance.now
-                    ? performance.now()
-                    : Date.now()) - initStartedAt,
-            });
+        try {
+            const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
+            const webglRenderer = new ThreeJSIntroRenderer(rendererCanvas);
+            if (webglRenderer.init()) {
+                this.threeRenderer = webglRenderer;
+                this.isWebGPU = false;
+                performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                    backend: 'webgl',
+                    fallbackReason,
+                    durationMs: (typeof performance !== 'undefined' && performance.now
+                        ? performance.now()
+                        : Date.now()) - initStartedAt,
+                });
+                console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
+                return 'webgl';
+            }
+
+            webglRenderer.destroy?.();
+            fallbackReason = 'webgl-init-failed';
+        } catch (error) {
+            fallbackReason = 'webgl-exception';
+            console.warn('[IntroAnimation] WebGL fallback init failed:', error);
         }
+
+        this.threeRenderer = null;
+        this.isWebGPU = false;
+        performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+            backend: 'failed',
+            fallbackReason,
+            durationMs: (typeof performance !== 'undefined' && performance.now
+                ? performance.now()
+                : Date.now()) - initStartedAt,
+        });
+        return 'failed';
     }
 
     /**
@@ -436,6 +723,16 @@ export class IntroAnimation {
      */
     setSoundManager(soundManager) {
         this.soundManager = soundManager;
+    }
+
+    /**
+     * The intro's live GPUDevice (or null on WebGL/uninited) — shared with the boot warp so
+     * it doesn't create a 3rd WebGPU context (which blanked the warp when a heavy theme was
+     * already warmed). See BootWarpTransition({ device }).
+     * @returns {GPUDevice|null}
+     */
+    getWebGPUDevice() {
+        return this.threeRenderer?.getDevice?.() || null;
     }
 
     /**
@@ -488,18 +785,42 @@ export class IntroAnimation {
         this.threeCanvas.style.zIndex = '0'; // Behind CSS overlays
         this.container.appendChild(this.threeCanvas);
 
-        // Initialize renderer: try WebGPU first, fall back to WebGL
-        await this.initRenderer(this.threeCanvas);
+        // Initialize renderer: try WebGPU first, fall back to WebGL. This must never
+        // prevent the DOM/CSS title + prompt from being created.
+        try {
+            await this.initRenderer(this.threeCanvas);
+        } catch (error) {
+            this.threeRenderer = null;
+            this.isWebGPU = false;
+            console.warn('[IntroAnimation] Renderer init crashed, continuing with DOM fallback:', error);
+            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                backend: 'failed',
+                fallbackReason: 'unhandled-exception',
+                message: error?.message || String(error),
+            });
+        } finally {
+            // Signal readiness: the renderer settled (or definitively failed), so
+            // getWebGPUDevice() is reliable for the boot-warp device-share decision.
+            this.resolveRendererReady();
+        }
         this.setLoadingState(false);
 
         // Phase 5: CSS particles/orbs removed; visuals are now GPU-native in both WebGPU and WebGL paths.
-        this.threeRenderer.setBackgroundMode?.(false);
+        this.threeRenderer?.setBackgroundMode?.(false);
 
         // PERFORMANCE: Removed foreground particles - WebGL handles foreground particles
 
         // Create title container
         const titleContainer = document.createElement('div');
         titleContainer.className = 'intro-title-container';
+        if (this.titleDeferred && !this.titleRevealed) {
+            // Applied BEFORE the element is laid out, so the CSS reveal never fires
+            // early; revealTitle() removes it to play the animation fresh. The
+            // !titleRevealed guard covers the cold-boot race where the CSS-fallback
+            // path calls revealTitle() before this DOM exists — then the title must
+            // be created VISIBLE (its reveal plays on insertion), never held forever.
+            titleContainer.classList.add('intro-title-hold');
+        }
 
         // Create title with individual letters
         const title = this.createAnimatedTitle();
@@ -525,6 +846,12 @@ export class IntroAnimation {
         // Create prompt text
         const prompt = document.createElement('div');
         prompt.className = 'intro-prompt';
+        if (this.titleDeferred && !this.interactionEnabled) {
+            // Don't invite "press to begin" until the title has appeared + interaction
+            // unlocks. Same cold-boot race guard as the title above: if interaction was
+            // already unlocked before this DOM existed, create the prompt visible.
+            prompt.classList.add('intro-prompt-hold');
+        }
         prompt.innerHTML = 'PRESS ANY KEY / CLICK / TAP TO BEGIN';
         this.container.appendChild(prompt);
 
@@ -539,6 +866,7 @@ export class IntroAnimation {
         document.body.appendChild(this.container);
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
+        this.installTetrominoPointerListener();
     }
 
     /**
@@ -610,11 +938,95 @@ export class IntroAnimation {
         }, 100);
     }
 
+    installTetrominoPointerListener() {
+        if (this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+            return;
+        }
+
+        window.addEventListener('pointerdown', this.boundIntroTetrominoPointerDown, {
+            capture: true,
+            passive: true,
+        });
+        this.tetrominoPointerListenerInstalled = true;
+    }
+
+    removeTetrominoPointerListener() {
+        if (!this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+            return;
+        }
+
+        window.removeEventListener('pointerdown', this.boundIntroTetrominoPointerDown, true);
+        this.tetrominoPointerListenerInstalled = false;
+    }
+
+    shouldHandleTetrominoPointer(event) {
+        if (!event
+            || this.isActive
+            || !this.isAnimating
+            || !this.container
+            || !document.body.contains(this.container)
+            || !this.threeRenderer?.triggerTetrominoBounceAt) {
+            return false;
+        }
+
+        if (event.isPrimary === false || (Number.isInteger(event.button) && event.button !== 0)) {
+            return false;
+        }
+
+        if (hasBlockingIntroModal()) {
+            return false;
+        }
+
+        const pathTarget = typeof event.composedPath === 'function'
+            ? event.composedPath()[0]
+            : event.target;
+        const target = pathTarget instanceof Element ? pathTarget : null;
+        if (!target) {
+            return true;
+        }
+
+        if (target.closest(INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR)) {
+            return false;
+        }
+
+        const modal = target.closest('.modal.visible, [role="dialog"].visible');
+        if (modal && modal.id !== 'start-modal') {
+            return false;
+        }
+
+        return true;
+    }
+
+    handleIntroTetrominoPointerDown(event) {
+        if (!this.shouldHandleTetrominoPointer(event)) {
+            return;
+        }
+
+        try {
+            const result = this.threeRenderer.triggerTetrominoBounceAt(event.clientX, event.clientY);
+            if (result && typeof result.catch === 'function') {
+                result.catch((error) => {
+                    console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+                });
+            }
+        } catch (error) {
+            console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+        }
+    }
+
     /**
      * Handle user interaction (click, key press, tap, gamepad)
      */
     handleInteraction() {
         if (!this.isActive) return;
+        // Ignore begin-input until the title has appeared (locked through the boot transition).
+        if (!this.interactionEnabled) return;
+        // Single-shot: once "begin" fires, ignore further presses (no double sound/dismiss).
+        this.interactionEnabled = false;
+
+        // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
+        // Honors mute/volume; best-effort so a missing/blocked file never blocks the dismiss.
+        this.soundManager?.playOneShotFile?.('assets/audio/intro/begin.ogg', { volume: 0.8 });
 
         // Dismiss only the text, keep the background
         const prompt = this.container?.querySelector('.intro-prompt');
@@ -721,6 +1133,7 @@ export class IntroAnimation {
         if (!this.isActive) return;
 
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
         this.isActive = false;
 
         // Remove event listeners
@@ -757,11 +1170,14 @@ export class IntroAnimation {
         }
 
         this.threeRenderer?.setBackgroundMode?.(true);
+        this.installTetrominoPointerListener();
         this.setRendererPhase(INTRO_PHASES.DISMISS);
 
         // Signal completion near the midpoint of the warp to mask theme loading hitch.
         if (this.onComplete) {
-            const handoverPromise = new Promise(resolve => setTimeout(resolve, 380));
+            const handoverPromise = new Promise((resolve) => {
+                setTimeout(resolve, 380);
+            });
             handoverPromise.then(() => {
                 if (this.onComplete) {
                     this.onComplete();
@@ -797,6 +1213,7 @@ export class IntroAnimation {
         this.isActive = false;
         this.isAnimating = false;
         this.hasCompleted = true;
+        this.removeTetrominoPointerListener();
 
         // Remove event listeners if still attached
         if (this.container) {
@@ -856,6 +1273,8 @@ export class IntroAnimation {
      */
     skip() {
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
+        this.removeTetrominoPointerListener();
         if (this.container) {
             this.container.classList.add('hidden');
         }
@@ -885,6 +1304,8 @@ export class IntroAnimation {
      */
     reset() {
         this.clearPhaseTimers();
+        this.clearTitleRevealSafety();
+        this.removeTetrominoPointerListener();
         this.hasCompleted = false;
         this.isActive = false;
         this.isAnimating = false;
@@ -948,6 +1369,7 @@ export class IntroAnimation {
                 this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
                 this.startRenderLoop();
             }
+            this.installTetrominoPointerListener();
             return;
         }
 
@@ -1017,6 +1439,7 @@ export class IntroAnimation {
         this.setupMenuLogoLayoutTracking();
         this.scheduleMenuLogoLayoutUpdate();
         this.syncTitleBounds(performance.now());
+        this.installTetrominoPointerListener();
 
         // Trigger animations
         requestAnimationFrame(() => {

@@ -231,6 +231,12 @@ export class FragTracker {
         this.gameState.gamePhase = 'finished';
         this.gameState.winner = winner;
 
+        // Advertise the match as finished so the lobby browser shows a late arrival a
+        // disabled "Finished" (not "Join (next round)") through the results window — they
+        // can still Watch, but can't drop into an over match. Flips back to 'open' on
+        // return-to-lobby (resetReadyStates → broadcastPlayerList).
+        this.gameState._advertiseLobbyState?.();
+
         console.log('🎊 MATCH OVER!');
         console.log(`🏆 WINNER: ${winner?.name || 'Draw'}`);
 
@@ -303,10 +309,13 @@ export class FragTracker {
 
         const finalStats = Array.from(this.gameState.players.values()).map((p) => {
             const attack = attackStatsById.get(p.steamId);
-            const apm = Math.round(((attack && attack.totalAttacks) || 0) / minutes);
+            const attacksSent = (attack && attack.totalAttacks) || 0;
+            const attackLinesSent = (attack && attack.totalLinesSent) || 0;
+            const apm = Math.round(attacksSent / minutes);
             const piecesPlaced = p.gameState.piecesPlaced || 0;
             const bpm = Math.round(piecesPlaced / minutes); // BPM = Blocks(Pieces) Per Minute (matches SP)
             const ppm = Math.round(p.gameState.score / minutes); // PPM = Points Per Minute (matches SP)
+            const pps = Number((piecesPlaced / Math.max(durationMs / 1000, 0.001)).toFixed(2));
 
             return {
                 steamId: p.steamId,
@@ -319,6 +328,9 @@ export class FragTracker {
                 apm,
                 ppm,
                 bpm,
+                pps,
+                attacksSent,
+                attackLinesSent,
                 isAlive: p.isAlive,
                 placement: 0,
             };

@@ -351,7 +351,6 @@ export class ThemesTab {
             Galaxy: 'galaxy',
             'Rainy Window': 'rain',
             'Koi Pond': 'fish',
-            Meadow: 'flower',
             'Cosmic Chimes': 'chime',
             'Singing Bowl': 'bowl',
             Starlight: 'star',
@@ -983,9 +982,12 @@ export class ThemesTab {
         this.currentTheme = themeId;
 
         // Update settings and save to disk
-        this.settingsManager.update({ backgroundTheme: themeId });
+        this.settingsManager.update({ 
+            backgroundTheme: themeId,
+            backgroundMode: 'Specific'
+        });
         this.settingsManager.save();
-        console.log('[ThemesTab] Theme saved to settings:', themeId);
+        console.log('[ThemesTab] Theme saved to settings:', themeId, 'mode set to Specific');
 
         // Update UI
         this.updateThemeSelection();

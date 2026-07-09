@@ -2,7 +2,11 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 100000;
+    /* Must sit above EVERYTHING — including portaled overlays like the cosmic
+       <select> dropdown (z-index 2147483000), which is appended to <body> and
+       would otherwise render on top of the cursor and make it vanish behind
+       the open menu. pointer-events:none keeps clicks passing through. */
+    z-index: 2147483647;
     overflow: hidden;
     opacity: 0;
     transition: opacity 220ms ease;

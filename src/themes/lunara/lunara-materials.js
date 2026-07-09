@@ -38,8 +38,12 @@ import {
     texture,
     uniform,
     uv,
+    pointUV,
+    storage,
+    vertexIndex,
     vec2,
     vec3,
+    vec4,
     oneMinus,
     max,
 } from 'three/tsl';
@@ -911,6 +915,7 @@ export function createLunaraMountainMaterialWebGPU(params = {}) {
     const uHazeAmount = uniform(params.hazeAmount ?? 0.55);
     const uLightDir = uniform(params.lightDir ?? new THREE.Vector3(-0.4, 0.5, 0.6));
     const uTime = uniform(0);
+    const uDetailStrength = uniform(params.detailStrength ?? 0.08);
 
     const material = new WEBGPU.MeshBasicNodeMaterial();
     material.fog = true;
@@ -919,7 +924,14 @@ export function createLunaraMountainMaterialWebGPU(params = {}) {
     const heightFactor = clamp(positionLocal.y.mul(0.04).add(0.5), float(0.0), float(1.0));
     const base = mix(uColor.mul(0.7), uColor, heightFactor);
     const horizonHaze = pow(oneMinus(heightFactor), float(2.0)).mul(uHazeAmount);
-    const baseColor = mix(base, uHaze, horizonHaze);
+    let baseColor = mix(base, uHaze, horizonHaze);
+    if (params.detailMap) {
+        const detailScale = params.detailScale ?? 0.012;
+        const detailSample = texture(params.detailMap, positionLocal.xz.mul(detailScale)).rgb;
+        const detailLuma = dot(detailSample, vec3(0.299, 0.587, 0.114));
+        const tooth = mix(float(1.0), mix(float(0.88), float(1.12), detailLuma), uDetailStrength);
+        baseColor = baseColor.mul(tooth);
+    }
 
     // Moon rim-light along the silhouette, biased toward the lit side.
     const n = normalize(normalWorld);
@@ -939,11 +951,12 @@ export function createLunaraMountainMaterialWebGPU(params = {}) {
     material.emissiveNode = rimColor.mul(0.5).add(capColor.mul(0.6)).add(finalColor.mul(0.04));
 
     return setUserData(material, {
-        uColor, uHaze, uHazeAmount, uLightDir, uTime,
+        uColor, uHaze, uHazeAmount, uLightDir, uTime, uDetailStrength,
     }, { mrtRole: 'mountain' });
 }
 
 export function createLunaraMountainMaterialWebGL(params = {}) {
+    const hasDetailMap = Boolean(params.detailMap);
     const uniforms = THREE.UniformsUtils.merge([
         THREE.UniformsLib.fog,
         {
@@ -951,6 +964,10 @@ export function createLunaraMountainMaterialWebGL(params = {}) {
             uHaze: { value: params.haze ?? new THREE.Color(0x6e3aae) },
             uHazeAmount: { value: params.hazeAmount ?? 0.55 },
             uLightDir: { value: (params.lightDir ?? new THREE.Vector3(-0.4, 0.5, 0.6)).clone().normalize() },
+            uDetailMap: { value: params.detailMap ?? null },
+            uDetailScale: { value: params.detailScale ?? 0.012 },
+            uDetailStrength: { value: params.detailStrength ?? 0.08 },
+            uUseDetailMap: { value: hasDetailMap ? 1 : 0 },
         },
     ]);
 
@@ -960,11 +977,13 @@ export function createLunaraMountainMaterialWebGL(params = {}) {
         side: THREE.DoubleSide,
         vertexShader: `
             varying float vHeight;
+            varying vec2 vDetailUv;
             varying vec3 vNormal;
             varying vec3 vViewDir;
             #include <fog_pars_vertex>
             void main() {
                 vHeight = position.y;
+                vDetailUv = position.xz;
                 vNormal = normalize(mat3(modelMatrix) * normal);
                 vec4 worldPos = modelMatrix * vec4(position, 1.0);
                 vViewDir = normalize(cameraPosition - worldPos.xyz);
@@ -978,7 +997,12 @@ export function createLunaraMountainMaterialWebGL(params = {}) {
             uniform vec3 uHaze;
             uniform float uHazeAmount;
             uniform vec3 uLightDir;
+            uniform sampler2D uDetailMap;
+            uniform float uDetailScale;
+            uniform float uDetailStrength;
+            uniform float uUseDetailMap;
             varying float vHeight;
+            varying vec2 vDetailUv;
             varying vec3 vNormal;
             varying vec3 vViewDir;
             #include <fog_pars_fragment>
@@ -987,6 +1011,11 @@ export function createLunaraMountainMaterialWebGL(params = {}) {
                 vec3 base = mix(uColor * 0.7, uColor, heightFactor);
                 float horizonHaze = pow(1.0 - heightFactor, 2.0) * uHazeAmount;
                 vec3 baseColor = mix(base, uHaze, horizonHaze);
+                if (uUseDetailMap > 0.5) {
+                    vec3 detailSample = texture2D(uDetailMap, vDetailUv * uDetailScale).rgb;
+                    float detailLuma = dot(detailSample, vec3(0.299, 0.587, 0.114));
+                    baseColor *= mix(1.0, mix(0.88, 1.12, detailLuma), uDetailStrength);
+                }
 
                 vec3 n = normalize(vNormal);
                 vec3 view = normalize(vViewDir);
@@ -1016,19 +1045,23 @@ export function createLunaraCrystalMaterialWebGPU(params = {}) {
     const baseColor = params.color ?? new THREE.Color(0x9468d6);
     const emissiveColor = params.emissive ?? new THREE.Color(0xc086ff);
 
-    // Physical material so it picks up scene.environment IBL (real reflections)
-    // and can optionally bend the scene behind it via transmission.
-    const material = new WEBGPU.MeshPhysicalNodeMaterial();
+    const fastMaterial = params.fast === true;
+    const material = fastMaterial
+        ? new WEBGPU.MeshStandardNodeMaterial()
+        : new WEBGPU.MeshPhysicalNodeMaterial();
     material.color = baseColor.clone();
     material.metalness = params.metalness ?? 0.0;
     material.roughness = params.roughness ?? 0.08;
     material.side = WEBGPU.DoubleSide;
     material.vertexColors = true;
-    material.clearcoat = 0.55;
-    material.clearcoatRoughness = 0.18;
     material.envMapIntensity = params.envMapIntensity ?? 1.3;
 
-    if (params.useTransmission) {
+    if (!fastMaterial) {
+        material.clearcoat = 0.55;
+        material.clearcoatRoughness = 0.18;
+    }
+
+    if (!fastMaterial && params.useTransmission) {
         // True refraction — gated to hero crystals on Ultra/Extreme WebGPU.
         material.transmission = params.transmission ?? 0.92;
         material.ior = params.ior ?? 1.8;
@@ -1039,7 +1072,7 @@ export function createLunaraCrystalMaterialWebGPU(params = {}) {
         material.depthWrite = true;
     } else {
         material.transparent = true;
-        material.depthWrite = false;
+        material.depthWrite = params.depthWrite ?? fastMaterial;
         material.opacity = params.opacity ?? 0.85;
     }
 
@@ -1056,9 +1089,12 @@ export function createLunaraCrystalMaterialWebGPU(params = {}) {
     const heightNorm = clamp(positionLocal.y.mul(0.294).add(0.5), float(0.0), float(1.0));
     const tipRamp = pow(heightNorm, float(2.0));
 
-    // Internal fracture planes via voronoi — faceted "cut crystal" interior.
-    const fractureDist = voronoi3(positionLocal.mul(1.5).add(vec3(0.0, uTime.mul(0.04), 0.0)));
-    const fracture = oneMinus(smoothstep(float(0.0), float(0.14), fractureDist));
+    let fracture = float(0.0);
+    if (!fastMaterial) {
+        // Internal fracture planes via voronoi — faceted "cut crystal" interior.
+        const fractureDist = voronoi3(positionLocal.mul(1.5).add(vec3(0.0, uTime.mul(0.04), 0.0)));
+        fracture = oneMinus(smoothstep(float(0.0), float(0.14), fractureDist));
+    }
 
     // Bright internal spine running up the crystal core.
     const spineDist = clamp(abs(positionLocal.x.add(positionLocal.z)).mul(0.7), float(0.0), float(1.0));
@@ -1417,6 +1453,357 @@ export function createLunaraMoteMaterialWebGL(params = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Reaction particles — event-driven additive resonance sparks
+// ---------------------------------------------------------------------------
+
+export function createLunaraReactionParticleMaterialWebGPU(params = {}) {
+    const count = Math.max(1, params.count ?? 1);
+    const positionLifeBuffer = params.positionLifeBuffer;
+    const colorEnergyBuffer = params.colorEnergyBuffer;
+    const miscBuffer = params.miscBuffer;
+    const styleTimingBuffer = params.styleTimingBuffer;
+
+    if (!positionLifeBuffer || !colorEnergyBuffer || !miscBuffer || !styleTimingBuffer) {
+        throw new Error('createLunaraReactionParticleMaterialWebGPU requires storage buffers');
+    }
+
+    const uTime = uniform(0);
+    const uSizeMul = uniform(params.sizeMul ?? 1.0);
+    const uEmissiveMul = uniform(params.emissiveMul ?? 1.0);
+
+    const lifeStore = storage(positionLifeBuffer, 'vec4', count);
+    const colorStore = storage(colorEnergyBuffer, 'vec4', count);
+    const miscStore = storage(miscBuffer, 'vec4', count);
+    const timingStore = storage(styleTimingBuffer, 'vec4', count);
+
+    const lifeData = lifeStore.element(vertexIndex);
+    const colorData = colorStore.element(vertexIndex);
+    const miscData = miscStore.element(vertexIndex);
+    const timingData = timingStore.element(vertexIndex);
+
+    const lifeNorm = clamp(lifeData.w.div(max(miscData.z, float(0.001))), float(0.0), float(1.0));
+    const age = float(1.0).sub(lifeNorm);
+    const birth = smoothstep(float(0.0), float(0.1), age);
+    const delayGate = oneMinus(smoothstep(float(0.0), float(0.055), timingData.y));
+    const typeLift = smoothstep(float(0.65), float(1.8), timingData.x).mul(0.25).add(1.0);
+    const fade = birth.mul(lifeNorm).mul(delayGate);
+    const twinkle = sin(uTime.mul(8.0).add(miscData.y.mul(6.283185))).mul(0.18).add(0.9);
+    const size = miscData.x
+        .mul(uSizeMul)
+        .mul(max(timingData.z, float(0.65)).mul(0.22).add(0.86))
+        .mul(fade.mul(0.95).add(0.08))
+        .mul(twinkle)
+        .mul(float(420.0).div(positionView.z.negate()));
+    const energy = colorData.w.mul(fade);
+    const coreLift = smoothstep(float(0.78), float(1.0), lifeNorm).mul(0.55);
+    const brightness = energy.mul(1.95).add(coreLift).add(0.24).mul(typeLift);
+    const particleColor = colorData.xyz.mul(brightness);
+
+    const material = new WEBGPU.PointsNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.blending = WEBGPU.AdditiveBlending;
+    material.fog = false;
+    material.sizeNode = clamp(size, float(0.0), float(34.0));
+    material.colorNode = particleColor;
+    material.opacityNode = clamp(energy.mul(1.18), float(0.0), float(1.0));
+    material.emissiveNode = particleColor.mul(uEmissiveMul);
+
+    return setUserData(material, {
+        uTime,
+        uSizeMul,
+        uEmissiveMul,
+    }, { emitsBloom: true, mrtRole: 'reactionParticle' });
+}
+
+export function createLunaraReactionParticleMaterialWebGL(params = {}) {
+    if (params.nodeCompatible === false) {
+        const uniforms = {
+            uTime: { value: 0 },
+            uSizeMul: { value: params.sizeMul ?? 1.0 },
+            uEmissiveMul: { value: params.emissiveMul ?? 1.0 },
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true,
+            vertexShader: `
+                attribute float aLife;
+                attribute float aMaxLife;
+                attribute float aSize;
+                attribute float aEnergy;
+                attribute float aPhase;
+                attribute float aType;
+                attribute float aDelay;
+                attribute float aStretch;
+                uniform float uTime;
+                uniform float uSizeMul;
+                varying vec3 vColor;
+                varying float vAlpha;
+                varying float vEnergy;
+                void main() {
+                    float lifeNorm = clamp(aLife / max(aMaxLife, 0.001), 0.0, 1.0);
+                    float age = 1.0 - lifeNorm;
+                    float birth = smoothstep(0.0, 0.1, age);
+                    float delayGate = 1.0 - smoothstep(0.0, 0.055, aDelay);
+                    float fade = birth * lifeNorm * delayGate;
+                    float typeLift = smoothstep(0.65, 1.8, aType) * 0.25 + 1.0;
+                    float twinkle = sin(uTime * 8.0 + aPhase * 6.283185) * 0.18 + 0.9;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = clamp(aSize * uSizeMul * (fade * 0.95 + 0.08) * twinkle * (300.0 / -mvPosition.z) * (0.86 + max(aStretch, 0.65) * 0.22), 0.0, 22.0);
+                    vColor = color;
+                    vEnergy = aEnergy * fade * typeLift;
+                    vAlpha = clamp(vEnergy * 0.52, 0.0, 0.5);
+                }
+            `,
+            fragmentShader: `
+                uniform float uEmissiveMul;
+                varying vec3 vColor;
+                varying float vAlpha;
+                varying float vEnergy;
+                void main() {
+                    vec2 c = gl_PointCoord - 0.5;
+                    float d = length(c) * 2.0;
+                    if (d > 1.0 || vAlpha <= 0.001) discard;
+                    float disc = smoothstep(1.0, 0.0, d);
+                    float core = smoothstep(0.46, 0.0, d);
+                    float alpha = vAlpha * disc;
+                    vec3 col = vColor * (0.28 + vEnergy * 0.72 + core * 0.42) * uEmissiveMul;
+                    gl_FragColor = vec4(col, alpha);
+                }
+            `,
+        });
+
+        return setUserData(material, uniforms, { emitsBloom: true, mrtRole: 'reactionParticle' });
+    }
+
+    const uTime = uniform(0);
+    const uSizeMul = uniform(params.sizeMul ?? 1.0);
+    const uEmissiveMul = uniform(params.emissiveMul ?? 1.0);
+
+    const aLife = attribute('aLife');
+    const aMaxLife = attribute('aMaxLife');
+    const aSize = attribute('aSize');
+    const aEnergy = attribute('aEnergy');
+    const aPhase = attribute('aPhase');
+    const aType = attribute('aType');
+    const aDelay = attribute('aDelay');
+    const aStretch = attribute('aStretch');
+    const aColor = attribute('color', 'vec3');
+
+    const lifeNorm = clamp(aLife.div(max(aMaxLife, float(0.001))), float(0.0), float(1.0));
+    const age = float(1.0).sub(lifeNorm);
+    const birth = smoothstep(float(0.0), float(0.1), age);
+    const delayGate = oneMinus(smoothstep(float(0.0), float(0.055), aDelay));
+    const fade = birth.mul(lifeNorm).mul(delayGate);
+    const typeLift = smoothstep(float(0.65), float(1.8), aType).mul(0.25).add(1.0);
+    const twinkle = sin(uTime.mul(8.0).add(aPhase.mul(6.283185))).mul(0.18).add(0.9);
+    const size = aSize
+        .mul(uSizeMul)
+        .mul(max(aStretch, float(0.65)).mul(0.22).add(0.86))
+        .mul(fade.mul(0.95).add(0.08))
+        .mul(twinkle)
+        .mul(float(420.0).div(positionView.z.negate()));
+    const energy = aEnergy.mul(fade);
+    const center = pointUV.sub(0.5);
+    const dist = length(center).mul(2.0);
+    const disc = smoothstep(float(1.0), float(0.0), dist);
+    const core = smoothstep(float(0.46), float(0.0), dist);
+    const brightness = float(0.5).add(energy.mul(1.85)).add(core.mul(1.3)).mul(typeLift);
+    const color = aColor.mul(brightness).mul(uEmissiveMul);
+    const alpha = clamp(energy.mul(1.08).mul(disc), float(0.0), float(1.0));
+
+    const material = new WEBGPU.PointsNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.blending = WEBGPU.AdditiveBlending;
+    material.fog = false;
+    material.vertexColors = true;
+    material.sizeNode = clamp(size, float(0.0), float(34.0));
+    material.colorNode = color;
+    material.opacityNode = alpha;
+    material.emissiveNode = color.mul(alpha.mul(0.55));
+
+    return setUserData(material, {
+        uTime,
+        uSizeMul,
+        uEmissiveMul,
+    }, { emitsBloom: true, mrtRole: 'reactionParticle' });
+}
+
+export function createLunaraHeroShardMaterialWebGPU(params = {}) {
+    const uEmissiveMul = uniform(params.emissiveMul ?? 1.0);
+    const aColor = attribute('aColor', 'vec3');
+    const aAlpha = attribute('aAlpha');
+
+    const centered = uv().sub(0.5);
+    const cross = abs(centered.x).mul(2.0);
+    const along = abs(centered.y).mul(2.0);
+    const width = max(float(0.16), oneMinus(along.mul(0.78)));
+    const body = oneMinus(smoothstep(width.mul(0.52), width, cross));
+    const tipFade = oneMinus(smoothstep(float(0.86), float(1.0), along));
+    const core = oneMinus(smoothstep(float(0.0), float(0.46), cross));
+    const alpha = clamp(aAlpha.mul(body).mul(tipFade), float(0.0), float(0.95));
+    const shardColor = aColor.mul(float(0.45).add(alpha.mul(1.8)).add(core.mul(0.85)));
+
+    const material = new WEBGPU.MeshBasicNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.side = WEBGPU.DoubleSide;
+    material.blending = WEBGPU.AdditiveBlending;
+    material.fog = false;
+    material.colorNode = shardColor;
+    material.opacityNode = alpha;
+    material.emissiveNode = shardColor.mul(alpha.mul(1.15).mul(uEmissiveMul));
+
+    return setUserData(material, { uEmissiveMul }, { emitsBloom: true, mrtRole: 'reactionShard' });
+}
+
+export function createLunaraHeroShardMaterialWebGL(params = {}) {
+    const uniforms = {
+        uEmissiveMul: { value: params.emissiveMul ?? 1.0 },
+    };
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        vertexShader: `
+            attribute vec3 aColor;
+            attribute float aAlpha;
+            varying vec2 vUv;
+            varying vec3 vColor;
+            varying float vAlpha;
+            void main() {
+                vUv = uv;
+                vColor = aColor;
+                vAlpha = aAlpha;
+                vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * modelViewMatrix * worldPos;
+            }
+        `,
+        fragmentShader: `
+            uniform float uEmissiveMul;
+            varying vec2 vUv;
+            varying vec3 vColor;
+            varying float vAlpha;
+            void main() {
+                vec2 centered = vUv - 0.5;
+                float cross = abs(centered.x) * 2.0;
+                float along = abs(centered.y) * 2.0;
+                float width = max(0.16, 1.0 - along * 0.78);
+                float body = 1.0 - smoothstep(width * 0.52, width, cross);
+                float tipFade = 1.0 - smoothstep(0.86, 1.0, along);
+                float core = 1.0 - smoothstep(0.0, 0.46, cross);
+                float alpha = clamp(vAlpha * body * tipFade, 0.0, 0.9);
+                if (alpha <= 0.002) discard;
+                vec3 col = vColor * (0.42 + alpha * 1.55 + core * 0.68) * uEmissiveMul;
+                gl_FragColor = vec4(col, alpha);
+            }
+        `,
+    });
+    return setUserData(material, uniforms, { emitsBloom: true, mrtRole: 'reactionShard' });
+}
+
+export function createLunaraReactionRibbonMaterialWebGPU(params = {}) {
+    const uColorA = uniform(params.colorA ?? new THREE.Color(0x7cf2ff));
+    const uColorB = uniform(params.colorB ?? new THREE.Color(0xff7ac8));
+    const uProgress = uniform(0);
+    const uOpacity = uniform(params.opacity ?? 0.55);
+    const uThickness = uniform(params.thickness ?? 0.08);
+    const uArc = uniform(params.arc ?? 0.16);
+
+    const coord = uv();
+    const x = coord.x;
+    const curve = sin(x.mul(Math.PI)).mul(uArc);
+    const distance = abs(coord.y.sub(0.5).sub(curve));
+    const line = oneMinus(smoothstep(uThickness, uThickness.mul(2.8), distance));
+    const edgeFade = smoothstep(float(0.0), float(0.08), x)
+        .mul(oneMinus(smoothstep(float(0.9), float(1.0), x)));
+    const travel = smoothstep(uProgress.sub(0.42), uProgress, x)
+        .mul(oneMinus(smoothstep(uProgress.add(0.08), uProgress.add(0.36), x)));
+    const lifeFade = oneMinus(smoothstep(float(0.72), float(1.0), uProgress));
+    const alpha = clamp(line.mul(edgeFade).mul(lifeFade).mul(uOpacity).mul(float(0.28).add(travel.mul(1.35))), float(0.0), float(0.9));
+    const ribbonColor = mix(uColorA, uColorB, smoothstep(float(0.0), float(1.0), x)).mul(float(0.5).add(travel.mul(1.7)));
+
+    const material = new WEBGPU.MeshBasicNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.side = WEBGPU.DoubleSide;
+    material.blending = WEBGPU.AdditiveBlending;
+    material.fog = false;
+    material.colorNode = ribbonColor;
+    material.opacityNode = alpha;
+    material.emissiveNode = ribbonColor.mul(alpha.mul(1.7));
+
+    return setUserData(material, {
+        uColorA, uColorB, uProgress, uOpacity, uThickness, uArc,
+    }, { emitsBloom: true, mrtRole: 'reactionRibbon' });
+}
+
+export function createLunaraReactionRibbonMaterialWebGL(params = {}) {
+    const uniforms = {
+        uColorA: { value: params.colorA ?? new THREE.Color(0x7cf2ff) },
+        uColorB: { value: params.colorB ?? new THREE.Color(0xff7ac8) },
+        uProgress: { value: 0 },
+        uOpacity: { value: params.opacity ?? 0.55 },
+        uThickness: { value: params.thickness ?? 0.08 },
+        uArc: { value: params.arc ?? 0.16 },
+    };
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 uColorA;
+            uniform vec3 uColorB;
+            uniform float uProgress;
+            uniform float uOpacity;
+            uniform float uThickness;
+            uniform float uArc;
+            varying vec2 vUv;
+            void main() {
+                float x = vUv.x;
+                float curve = sin(x * 3.14159265) * uArc;
+                float distanceToLine = abs(vUv.y - 0.5 - curve);
+                float line = 1.0 - smoothstep(uThickness, uThickness * 2.8, distanceToLine);
+                float edgeFade = smoothstep(0.0, 0.08, x) * (1.0 - smoothstep(0.9, 1.0, x));
+                float travel = smoothstep(uProgress - 0.42, uProgress, x)
+                    * (1.0 - smoothstep(uProgress + 0.08, uProgress + 0.36, x));
+                float lifeFade = 1.0 - smoothstep(0.72, 1.0, uProgress);
+                float alpha = clamp(line * edgeFade * lifeFade * uOpacity * (0.24 + travel * 1.18), 0.0, 0.72);
+                if (alpha <= 0.002) discard;
+                vec3 col = mix(uColorA, uColorB, smoothstep(0.0, 1.0, x)) * (0.44 + travel * 1.25);
+                gl_FragColor = vec4(col, alpha);
+            }
+        `,
+    });
+    return setUserData(material, uniforms, { emitsBloom: true, mrtRole: 'reactionRibbon' });
+}
+
+// ---------------------------------------------------------------------------
 // Volumetric fog card — additive scrolling noise
 // ---------------------------------------------------------------------------
 
@@ -1518,14 +1905,19 @@ export function createLunaraGroundMaterialWebGPU(params = {}) {
         material.normalMap = params.normalMap;
         material.normalScale = new THREE.Vector2(0.3, 0.3);
     }
+    if (params.roughnessMap) {
+        material.roughnessMap = params.roughnessMap;
+    }
 
     const uBaseColor = uniform(baseColor);
     const uVeinColor = uniform(veinColor);
     const uVeinStrength = uniform(params.veinStrength ?? 0.55);
+    const uDetailStrength = uniform(params.detailStrength ?? 0.14);
     const uTime = uniform(0);
 
     // Planar coordinates (x, world -z). z is displaced height, so use xy.
     const p = positionLocal.xy;
+    const detailScale = params.detailScale ?? 0.035;
 
     // Voronoi crack network → mineral veins concentrated along cell borders.
     const cell = voronoi3(vec3(p.mul(0.045), uTime.mul(0.01)));
@@ -1533,7 +1925,13 @@ export function createLunaraGroundMaterialWebGPU(params = {}) {
 
     // FBM tonal variation so the sand isn't a flat colour.
     const detail = fbm3(vec3(p.mul(0.02), float(0.0)), 4);
-    const tone = uBaseColor.mul(detail.mul(0.5).add(0.78));
+    let surfaceTooth = float(1.0);
+    if (params.detailMap) {
+        const detailSample = texture(params.detailMap, p.mul(detailScale)).rgb;
+        const detailLuma = dot(detailSample, vec3(0.299, 0.587, 0.114));
+        surfaceTooth = mix(float(1.0), mix(float(0.86), float(1.14), detailLuma), uDetailStrength);
+    }
+    const tone = uBaseColor.mul(detail.mul(0.5).add(0.78)).mul(surfaceTooth);
 
     material.colorNode = tone;
     material.emissiveNode = uVeinColor.mul(veinMask.mul(uVeinStrength));
@@ -1541,14 +1939,20 @@ export function createLunaraGroundMaterialWebGPU(params = {}) {
     // Matte mineral valley: keep it rough overall, with only a faint "damp"
     // softening in the narrow centre seam (not a mirror — that read as water).
     const valleyMask = oneMinus(smoothstep(float(0.0), float(18.0), abs(p.x)));
-    material.roughnessNode = mix(
+    let roughnessBase = mix(
         float(0.92),
         float(0.7),
         valleyMask.mul(detail.mul(0.4).add(0.6)),
     );
+    if (params.roughnessMap) {
+        const roughSample = texture(params.roughnessMap, p.mul(detailScale)).r;
+        const mappedRoughness = roughSample.mul(0.18).add(0.76);
+        roughnessBase = mix(roughnessBase, mappedRoughness, float(0.25));
+    }
+    material.roughnessNode = roughnessBase;
 
     return setUserData(material, {
-        uVeinColor, uVeinStrength, uTime,
+        uVeinColor, uVeinStrength, uDetailStrength, uTime,
     }, { emitsBloom: true, mrtRole: 'ground' });
 }
 
@@ -1569,17 +1973,28 @@ export function createLunaraGroundMaterialWebGL(params = {}) {
         material.normalMap = params.normalMap;
         material.normalScale = new THREE.Vector2(0.3, 0.3);
     }
+    if (params.roughnessMap) {
+        material.roughnessMap = params.roughnessMap;
+    }
 
     const uniforms = {
         uTime: { value: 0 },
         uVeinColor: { value: veinColor },
         uVeinStrength: { value: params.veinStrength ?? 0.55 },
+        uDetailMap: { value: params.detailMap ?? null },
+        uDetailScale: { value: params.detailScale ?? 0.035 },
+        uDetailStrength: { value: params.detailStrength ?? 0.14 },
+        uUseDetailMap: { value: params.detailMap ? 1 : 0 },
     };
 
     material.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = uniforms.uTime;
         shader.uniforms.uVeinColor = uniforms.uVeinColor;
         shader.uniforms.uVeinStrength = uniforms.uVeinStrength;
+        shader.uniforms.uDetailMap = uniforms.uDetailMap;
+        shader.uniforms.uDetailScale = uniforms.uDetailScale;
+        shader.uniforms.uDetailStrength = uniforms.uDetailStrength;
+        shader.uniforms.uUseDetailMap = uniforms.uUseDetailMap;
         shader.vertexShader = shader.vertexShader.replace(
             '#include <common>',
             `#include <common>
@@ -1596,8 +2011,21 @@ export function createLunaraGroundMaterialWebGL(params = {}) {
              uniform float uTime;
              uniform vec3 uVeinColor;
              uniform float uVeinStrength;
+             uniform sampler2D uDetailMap;
+             uniform float uDetailScale;
+             uniform float uDetailStrength;
+             uniform float uUseDetailMap;
              varying vec2 vGroundUv;
              ${LUNARA_GLSL_NOISE3}`,
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <color_fragment>',
+            `#include <color_fragment>
+             if (uUseDetailMap > 0.5) {
+                 vec3 detailSample = texture2D(uDetailMap, vGroundUv * uDetailScale).rgb;
+                 float detailLuma = dot(detailSample, vec3(0.299, 0.587, 0.114));
+                 diffuseColor.rgb *= mix(1.0, mix(0.86, 1.14, detailLuma), uDetailStrength);
+             }`,
         );
         // Faint damp seam down the narrow valley centre (matte, not a mirror).
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -1690,11 +2118,11 @@ export function createLunaraShockwaveMaterialWebGL(params = {}) {
             void main() {
                 vec2 c = vUv - 0.5;
                 float d = length(c) * 2.0;
-                float ring = smoothstep(uProgress - 0.06, uProgress, d)
-                           * smoothstep(uProgress + 0.06, uProgress, d);
+                float ring = smoothstep(uProgress - 0.04, uProgress, d)
+                           * smoothstep(uProgress + 0.04, uProgress, d);
                 float fade = 1.0 - uProgress;
-                float a = ring * uOpacity * fade;
-                gl_FragColor = vec4(uColor * (1.0 + a), a);
+                float a = ring * uOpacity * fade * 0.28;
+                gl_FragColor = vec4(uColor * (0.42 + a * 0.45), a);
             }
         `,
     });

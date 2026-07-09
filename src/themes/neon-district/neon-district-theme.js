@@ -66,6 +66,7 @@ import {
     float,
     sin,
     cos,
+    atan,
     mod,
     mix,
     step,
@@ -486,7 +487,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.prewarmPromise = null;
         this.prewarmRequested = false;
         this.syncLoadEnabled = false;
+        this.buildingLoadPromise = null;
+        this.buildingLoadInProgress = false;
+        this.buildingLoadComplete = true;
         this.backgroundLoadPromise = null;
+        this.backgroundLoadInProgress = false;
+        this.backgroundLoadComplete = false;
+        this.deferredMaterialLoadPromise = null;
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
         this.sceneInitialized = false;
         this.isCreatingScene = false;
         this.isAnimating = false;
@@ -926,12 +935,25 @@ export default class NeonDistrictTheme extends BaseTheme {
                 console.log('[NeonDistrict] Phase 1 complete - core rendering active');
             } else {
                 // Start building creation in chunks - DO NOT AWAIT
-                // This allows the first frame to render immediately with sky/street
-                this.createBuildings().then(() => {
-                    if (this.isActive) {
-                        this.loadRemainingContentInBackground();
-                    }
-                });
+                // This allows the first frame to render immediately with sky/street.
+                // Startup still observes this promise and waits before the boot warp,
+                // so the transition does not compete with chunked building generation.
+                this.buildingLoadInProgress = true;
+                this.buildingLoadComplete = false;
+                this.buildingLoadPromise = this.createBuildings()
+                    .then(() => {
+                        if (this.isActive) {
+                            return this.loadRemainingContentInBackground();
+                        }
+                        return null;
+                    })
+                    .catch((error) => {
+                        console.warn('[NeonDistrict] Background building load failed:', error);
+                    })
+                    .finally(() => {
+                        this.buildingLoadInProgress = false;
+                        this.buildingLoadComplete = true;
+                    });
             }
 
             console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
@@ -940,36 +962,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.isCreatingScene = false;
         }
 
-        // Music playback: legacy themes may receive AudioManager (loadBuffer/playBuffer),
-        // but modern runtime injects SoundManager and handles global music flow.
+        // Music is handled by the global SoundManager flow. The previous
+        // theme-local AudioBuffer path depended on a legacy AudioManager with
+        // loadBuffer/playBuffer (src/utils/audio-manager.js), which was dead code
+        // and has been removed (remediation Phase 2). The injected this.audioManager
+        // is the SoundManager, which never exposed loadBuffer/playBuffer, so that
+        // branch could never execute.
         if (this.audioManager) {
-            console.log('[NeonDistrict] Attempting to play music...');
-            const hasLegacyBufferApi = typeof this.audioManager?.loadBuffer === 'function'
-                && typeof this.audioManager?.playBuffer === 'function';
-
-            if (hasLegacyBufferApi) {
-                // Use the path from songs.json (verified as ./assets/music/neon-district.mp3)
-                // Note: In development, path is relative to public/
-                const musicPath = './assets/music/neon-district.mp3';
-
-                this.audioManager.loadBuffer(musicPath).then((buffer) => {
-                    if (!this.isActive) {
-                        return;
-                    }
-
-                    this.stopLegacyMusicSource();
-                    this.musicSource = this.audioManager.playBuffer(buffer, {
-                        loop: true,
-                        volume: 0.5, // Not too loud
-                        startTime: 0,
-                    });
-                    console.log('[NeonDistrict] Music playing:', musicPath);
-                }).catch((err) => {
-                    console.warn('[NeonDistrict] Music failed to load:', err);
-                });
-            } else {
-                console.info('[NeonDistrict] Skipping theme-local music; using global SoundManager playback flow.');
-            }
+            console.info('[NeonDistrict] Using global SoundManager playback flow.');
         }
     }
 
@@ -1133,8 +1133,16 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
         });
 
-        // Process queue using requestIdleCallback
-        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0);
+        // Process queue using requestIdleCallback. Startup uses these in-progress
+        // flags to wait before prewarming the boot warp, so the warp does not contend
+        // with deferred WebGPU content from the first gameplay theme.
+        this.backgroundLoadInProgress = true;
+        this.backgroundLoadComplete = false;
+        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0)
+            .finally(() => {
+                this.backgroundLoadInProgress = false;
+                this.backgroundLoadComplete = true;
+            });
         return this.backgroundLoadPromise;
     }
 
@@ -1163,12 +1171,20 @@ export default class NeonDistrictTheme extends BaseTheme {
                     ? Math.max(2, Math.min(16, deadline.timeRemaining()))
                     : 8;
 
-                // Process items - support async work items
+                // Process items - support async work items. Each item is exception-
+                // guarded: a throw/rejection must never abandon this promise, because
+                // the startup boot-warp gate watches backgroundLoadInProgress — an
+                // unsettled promise would pin the flag true and force every boot to the
+                // 45s idle-wait cap. A failed item is logged and skipped, not fatal.
                 while (index < queue.length && (performance.now() - startTime) < budget) {
-                    const result = queue[index]();
-                    // If work item returns a promise (async prewarm), await it
-                    if (result instanceof Promise) {
-                        await result;
+                    try {
+                        const result = queue[index]();
+                        // If work item returns a promise (async prewarm), await it
+                        if (result instanceof Promise) {
+                            await result;
+                        }
+                    } catch (error) {
+                        console.warn('[NeonDistrict] Background work item failed (skipped):', error);
                     }
                     index++;
                 }
@@ -3864,7 +3880,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         const posXWrapped = mod(posX.add(wrapRange), span).sub(wrapRange);
         const posXFinal = mix(posX, posXWrapped, multiDir);
 
-        const bank = bankAmp.mul(cos(uTime.mul(0.2)).negate());
+        // Bank like a coordinated aircraft: roll ∝ lateral acceleration of the
+        // wobble (anti-phase of each profile's sway) at the per-vehicle phase —
+        // replacing the global cos(uTime) metronome that rolled the whole fleet
+        // in lockstep.
+        const bankAccLow = sin(t.mul(0.5));
+        const bankAccMid = cos(t.mul(0.2));
+        const bankAccHigh = cos(t.mul(0.1));
+        const bankAcc = mix(bankAccLow, mix(bankAccMid, bankAccHigh, highMask), midMask);
+        const bank = bankAcc.negate().mul(bankAmp);
         const cY = cos(heading);
         const sY = sin(heading);
         const cZ = cos(bank);
@@ -4607,71 +4631,82 @@ export default class NeonDistrictTheme extends BaseTheme {
             const textureLoader = new THREE.TextureLoader();
             const texturePath = './textures/neon-district/';
 
-            Promise.all([
+            this.deferredMaterialLoadInProgress = true;
+            this.deferredMaterialLoadComplete = false;
+            this.deferredMaterialLoadPromise = Promise.all([
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_diff_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_nor_gl_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_rough_2k.jpg`, resolve, undefined, () => resolve(null))),
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_ao_2k.jpg`, resolve, undefined, () => resolve(null))),
-            ]).then(async ([diffuseMap, normalMap, roughnessMap, aoMap]) => {
-                if (!this.isActive) return;
+            ])
+                .then(async ([diffuseMap, normalMap, roughnessMap, aoMap]) => {
+                    if (!this.isActive) return;
 
-                // Configure textures for high quality tiling
-                [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
-                    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-                    tex.repeat.set(4, 18);
-                    tex.anisotropy = 8; // Balanced for perf and less shimmer
-                });
+                    // Configure textures for high quality tiling
+                    [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
+                        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                        tex.repeat.set(4, 18);
+                        tex.anisotropy = 8; // Balanced for perf and less shimmer
+                    });
 
-                // Recreate material with textures
-                // PHASE 1: Pass quality for procedural shadow gating
-                const upgradedGround = createWetGroundNodeMaterial({
-                    diffuseMap,
-                    normalMap,
-                    roughnessMap,
-                    aoMap,
-                    quality: this.currentQualityName, // Phase 1: gate shadows
-                    reflectorNode: this.reflectionsEnabled ? this.groundReflector : null,
-                });
+                    // Recreate material with textures
+                    // PHASE 1: Pass quality for procedural shadow gating
+                    const upgradedGround = createWetGroundNodeMaterial({
+                        diffuseMap,
+                        normalMap,
+                        roughnessMap,
+                        aoMap,
+                        quality: this.currentQualityName, // Phase 1: gate shadows
+                        reflectorNode: this.reflectionsEnabled ? this.groundReflector : null,
+                    });
 
-                // Update the ground mesh material
-                if (this.ground && upgradedGround.material) {
-                    // PERF: Pause rendering while swapping material to avoid mid-frame compilation
-                    this.isPrewarming = true;
-
-                    this.ground.material.dispose();
-                    this.ground.material = upgradedGround.material;
-                    this.wetGroundUniforms = upgradedGround.uniforms;
-                    this.groundMaterial = upgradedGround.material;
-
-                    // IMPORTANT: Update groundUniforms references to new uniforms
-                    // Otherwise animation loop updates stale uniforms and ripples don't animate
-                    if (this.groundUniforms) {
-                        if (this.wetGroundUniforms?.uTime) {
-                            this.groundUniforms.uTime = this.wetGroundUniforms.uTime;
-                        } else if (!this.groundUniforms.uTime) {
-                            this.groundUniforms.uTime = { value: 0 };
-                        }
-                    }
-
-                    // Apply scene environment for reflections
-                    if (this.scene.environment) {
-                        this.groundMaterial.envMap = this.scene.environment;
-                        this.groundMaterial.envMapIntensity = 0.9;
-                    }
-
-                    // PERF: Prewarm the new material before resuming render
-                    if (this.renderer?.compileAsync) {
+                    // Update the ground mesh material
+                    if (this.ground && upgradedGround.material) {
+                        // PERF: Pause rendering while swapping material to avoid mid-frame compilation
+                        this.isPrewarming = true;
                         try {
-                            await this.renderer.compileAsync(this.scene, this.camera);
-                            console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
-                        } catch (e) {
-                            console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                            this.ground.material.dispose();
+                            this.ground.material = upgradedGround.material;
+                            this.wetGroundUniforms = upgradedGround.uniforms;
+                            this.groundMaterial = upgradedGround.material;
+
+                            // IMPORTANT: Update groundUniforms references to new uniforms
+                            // Otherwise animation loop updates stale uniforms and ripples don't animate
+                            if (this.groundUniforms) {
+                                if (this.wetGroundUniforms?.uTime) {
+                                    this.groundUniforms.uTime = this.wetGroundUniforms.uTime;
+                                } else if (!this.groundUniforms.uTime) {
+                                    this.groundUniforms.uTime = { value: 0 };
+                                }
+                            }
+
+                            // Apply scene environment for reflections
+                            if (this.scene.environment) {
+                                this.groundMaterial.envMap = this.scene.environment;
+                                this.groundMaterial.envMapIntensity = 0.9;
+                            }
+
+                            // PERF: Prewarm the new material before resuming render
+                            if (this.renderer?.compileAsync) {
+                                try {
+                                    await this.renderer.compileAsync(this.scene, this.camera);
+                                    console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
+                                } catch (e) {
+                                    console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                                }
+                            }
+                        } finally {
+                            this.isPrewarming = false;
                         }
                     }
-
-                    this.isPrewarming = false;
-                }
-            });
+                })
+                .catch((error) => {
+                    console.warn('[NeonDistrict] Wet ground texture upgrade failed:', error);
+                })
+                .finally(() => {
+                    this.deferredMaterialLoadInProgress = false;
+                    this.deferredMaterialLoadComplete = true;
+                });
         } else {
             // Create PLACEHOLDER material first (instant display)
             wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
@@ -5567,6 +5602,30 @@ export default class NeonDistrictTheme extends BaseTheme {
         const v = Math.min(this.skyFlashIntensity, 1.5);
         if (this.skyFlashUniform) {
             this.skyFlashUniform.value = v;
+        }
+
+        // The city reacts too: each strike cold-lifts the fog tint and rides the
+        // shared bloomBoost decay, so the whole canyon breathes with the flash
+        // instead of only the sky plane behind it. Uniform writes only.
+        if (v > 0.01) {
+            this.bloomBoost = Math.max(this.bloomBoost, v * 0.18);
+        }
+        if (this.post?.fogColor && this.post?.fogColorFar) {
+            if (v > 0.01) {
+                if (!this._fogFlashBase) {
+                    this._fogFlashBase = this.post.fogColor.value.clone();
+                    this._fogFlashBaseFar = this.post.fogColorFar.value.clone();
+                    this._fogFlashTint = new THREE.Color(0x96aaff); // pale storm blue
+                }
+                const lift = Math.min(v, 1.0) * 0.35;
+                this.post.fogColor.value.copy(this._fogFlashBase).lerp(this._fogFlashTint, lift);
+                this.post.fogColorFar.value.copy(this._fogFlashBaseFar).lerp(this._fogFlashTint, lift * 1.3);
+                this._fogFlashActive = true;
+            } else if (this._fogFlashActive) {
+                this.post.fogColor.value.copy(this._fogFlashBase);
+                this.post.fogColorFar.value.copy(this._fogFlashBaseFar);
+                this._fogFlashActive = false;
+            }
         }
     }
 
@@ -7214,11 +7273,19 @@ export default class NeonDistrictTheme extends BaseTheme {
             const heading = Math.atan2(dirX, dirZ);
             dummy.rotation.set(0, heading, 0);
 
-            // Bank into turns
-            if (data.lane > 1) {
-                const bank = (data.lane === 4) ? 0.05 : 0.2;
-                dummy.rotation.z = -Math.cos(time * 0.2) * bank;
+            // Bank like a coordinated aircraft: roll follows the lateral
+            // acceleration of the wobble (anti-phase of the sway), per profile
+            // and per-vehicle phase — mirrors the GPU flight shader.
+            const bankAmp = data.lane > 1 ? ((data.lane === 4) ? 0.05 : 0.2) : 0.1;
+            let bankAcc;
+            if (wobbleProfile === 'low') {
+                bankAcc = Math.sin(time * 0.5);
+            } else if (wobbleProfile === 'mid') {
+                bankAcc = Math.cos(time * 0.2);
+            } else {
+                bankAcc = Math.cos(time * 0.1);
             }
+            dummy.rotation.z = -bankAcc * bankAmp;
 
             dummy.updateMatrix();
             bodyMatrix.copy(dummy.matrix);
@@ -7313,22 +7380,32 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Glossy car paint: clearcoat over a metallic base so it mirrors the neon
         // city. White base × per-car instanceColor (set below) = varied paint.
         const bodyMat = new THREE.MeshPhysicalNodeMaterial({
-            color: 0xffffff, roughness: 0.32, metalness: 0.55,
-            clearcoat: 1.0, clearcoatRoughness: 0.12, envMapIntensity: 1.1,
+            color: 0xffffff, roughness: 0.26, metalness: 0.55,
+            clearcoat: 1.0, clearcoatRoughness: 0.1, envMapIntensity: 1.3,
         });
         bodyMat.emissiveNode = vec3(0.0, 0.0, 0.0);
 
         // Dark tinted reflective glass for the greenhouse.
         const canopyMat = new THREE.MeshPhysicalNodeMaterial({
             color: 0x04060c, roughness: 0.07, metalness: 0.5,
-            clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.4,
+            clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.6,
         });
         canopyMat.emissiveNode = this.colorToVec3(0x0a1830).mul(float(0.25));
 
-        // Matte dark tyres.
+        // Matte dark tyres with five-spoke shading — a smooth cylinder shades
+        // identically at every angle, so without this the wheel roll set in
+        // updateGroundTraffic would be invisible. Local-space pattern, so it
+        // rotates with the instance matrix; hub and tread stay tyre-dark.
         const wheelMat = new THREE.MeshStandardNodeMaterial({
             color: 0x0a0a0e, roughness: 0.75, metalness: 0.15,
         });
+        const wheelAngle = atan(positionLocal.y, positionLocal.z); // axle = local X
+        const wheelRadius = positionLocal.yz.length().div(1.8);
+        const wheelSpokes = sin(wheelAngle.mul(5.0)).mul(0.5).add(0.5);
+        const wheelSpokeBand = smoothstep(0.25, 0.55, wheelRadius)
+            .mul(smoothstep(0.98, 0.8, wheelRadius));
+        wheelMat.colorNode = vec3(0.04, 0.04, 0.055)
+            .mul(wheelSpokes.mul(wheelSpokeBand).mul(1.4).add(0.6));
         wheelMat.emissiveNode = vec3(0.0, 0.0, 0.0);
 
         const headMat = new THREE.MeshBasicNodeMaterial({
@@ -7443,6 +7520,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         this.updateGroundTraffic(0); // seed transforms before first render
+        this.applyVehicleEnvMap(this.scene?.environment);
         console.log(`[NeonDistrict] Ground traffic created (${count} cars)`);
     }
 
@@ -7506,20 +7584,23 @@ export default class NeonDistrictTheme extends BaseTheme {
             inst.glow.setMatrixAt(i, light.matrix);
 
             // Parts placed in the car's local frame (wheels, lights).
-            const place = (mesh, idx, lx, ly, lz, faceRot) => {
+            const place = (mesh, idx, lx, ly, lz, faceRot, spinX = 0) => {
                 v.set(lx, ly, lz);
                 dummy.localToWorld(v);
                 light.position.copy(v);
-                light.rotation.set(0, rotY + faceRot, 0);
+                light.rotation.set(spinX, rotY + faceRot, 0);
                 light.scale.setScalar(car.scale);
                 light.updateMatrix();
                 mesh.setMatrixAt(idx, light.matrix);
             };
-            // Four wheels (r=1.8 → centre y=1.8 touches road).
-            place(inst.wheel, i * 4, -4.6, 1.8, 7.6, 0);
-            place(inst.wheel, i * 4 + 1, 4.6, 1.8, 7.6, 0);
-            place(inst.wheel, i * 4 + 2, -4.6, 1.8, -7.6, 0);
-            place(inst.wheel, i * 4 + 3, 4.6, 1.8, -7.6, 0);
+            // Four wheels (r=1.8 → centre y=1.8 touches road), rolling with
+            // travel: Euler 'XYZ' applies the X spin in the world frame after
+            // the yaw, and world ω_x = v_z/r holds for both travel directions.
+            const wheelSpin = car.z / (1.8 * car.scale);
+            place(inst.wheel, i * 4, -4.6, 1.8, 7.6, 0, wheelSpin);
+            place(inst.wheel, i * 4 + 1, 4.6, 1.8, 7.6, 0, wheelSpin);
+            place(inst.wheel, i * 4 + 2, -4.6, 1.8, -7.6, 0, wheelSpin);
+            place(inst.wheel, i * 4 + 3, 4.6, 1.8, -7.6, 0, wheelSpin);
             // Head/tail light pairs.
             place(inst.head, i * 2, -3.0, 2.3, 13.6, 0);
             place(inst.head, i * 2 + 1, 3.0, 2.3, 13.6, 0);
@@ -7579,7 +7660,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const data = this.vehicleData[i];
             const headingValue = Math.atan2(data.dirX ?? 0, data.dirZ ?? 1);
             const profile = profileValue(data.wobbleProfile || (data.lane <= 1 ? 'low' : (data.lane <= 3 ? 'mid' : 'high')));
-            const bank = data.lane > 1 ? (data.lane === 4 ? 0.05 : 0.2) : 0.0;
+            const bank = data.lane > 1 ? (data.lane === 4 ? 0.05 : 0.2) : 0.1; // low lanes get a gentle roll too
             const wrap = data.wrapRange || this.vehicleRange || 2500;
             const multiDirection = data.multiDirection ? 1 : 0;
             const dirX = data.dirX ?? 0;
@@ -7927,26 +8008,36 @@ export default class NeonDistrictTheme extends BaseTheme {
             tailGeometry: new THREE.CircleGeometry(0.95, 10),
             navGeometry: new THREE.SphereGeometry(0.5, 6, 6),
 
-            // Materials (shared across all spinners) — glossy reflective hull.
-            bodyMaterial: new THREE.MeshStandardNodeMaterial({
-                color: 0x1c1d28,
-                roughness: 0.22,
-                metalness: 0.78,
+            // Materials (shared across all spinners) — glossy clearcoat paint that
+            // mirrors the neon city (same recipe as the ground cars / intro pieces).
+            // Base colour is lifted slightly off-black: metalness tints reflections
+            // by base colour, so a near-black hull would swallow the neon.
+            bodyMaterial: new THREE.MeshPhysicalNodeMaterial({
+                color: 0x232531,
+                roughness: 0.16,
+                metalness: 0.75,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.08,
+                envMapIntensity: 1.5,
                 emissive: 0x0a0b16,
                 emissiveIntensity: 0.3,
             }),
             // Dark tinted glass greenhouse with a faintly lit cockpit.
-            canopyMaterial: new THREE.MeshStandardNodeMaterial({
+            canopyMaterial: new THREE.MeshPhysicalNodeMaterial({
                 color: 0x06080f,
-                roughness: 0.06,
-                metalness: 0.55,
+                roughness: 0.05,
+                metalness: 0.5,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.04,
+                envMapIntensity: 1.8,
                 transparent: true,
                 opacity: 0.6,
             }),
             engineMaterial: new THREE.MeshStandardNodeMaterial({
                 color: 0x282834,
-                roughness: 0.26,
-                metalness: 0.82,
+                roughness: 0.2,
+                metalness: 0.85,
+                envMapIntensity: 1.2,
             }),
             exhaustCyanMaterial: new THREE.MeshBasicNodeMaterial({
                 color: 0x33ffff,
@@ -7989,6 +8080,35 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.spinnerResources.canopyGeometry.rotateX(Math.PI);
         this.spinnerResources.engineGeometry.rotateX(Math.PI / 2);
         this.spinnerResources.tailGeometry.rotateY(Math.PI);
+
+        // Wire reflections if the environment already exists (creation order can
+        // go either way; createPurpleEnvironmentMap covers the other order).
+        this.applyVehicleEnvMap(this.scene?.environment);
+    }
+
+    // Vehicle paint/glass reflections — node materials ignore
+    // material.envMapIntensity unless the material owns its own envMap (three
+    // r181 falls back to scene.environmentIntensity otherwise), so the shared
+    // PMREM environment is wired per-material here — like groundMaterial —
+    // letting each surface keep its declared intensity.
+    applyVehicleEnvMap(envMap) {
+        if (!envMap) return;
+        const assign = (mat) => {
+            if (!mat || mat.envMap === envMap) return;
+            mat.envMap = envMap;
+            mat.needsUpdate = true;
+        };
+        const r = this.spinnerResources;
+        if (r) {
+            assign(r.bodyMaterial);
+            assign(r.canopyMaterial);
+            assign(r.engineMaterial);
+        }
+        const g = this.groundCarInstances;
+        if (g) {
+            assign(g.body?.material);
+            assign(g.canopy?.material);
+        }
     }
 
     // Cyberpunk Spinner - detailed flying vehicle (uses shared resources)
@@ -8107,6 +8227,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         pmremGenerator.dispose();
         this.proceduralEnvMap = envMap;
+        this.applyVehicleEnvMap(envMap);
         console.log('[NeonDistrict] Purple neon environment map created');
 
         // AAA PHASE 1b: asynchronously upgrade to a real (tinted) city HDRI so the
@@ -8167,6 +8288,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                         this.groundMaterial.envMapIntensity = 0.7;
                         this.groundMaterial.needsUpdate = true;
                     }
+
+                    // Re-point vehicle reflections BEFORE the old env is disposed.
+                    this.applyVehicleEnvMap(hdrEnv);
 
                     // Dispose the now-unused procedural cube PMREM
                     if (previousEnv && previousEnv === this.proceduralEnvMap && previousEnv.dispose) {
@@ -9623,6 +9747,15 @@ export default class NeonDistrictTheme extends BaseTheme {
                         0.7 + flicker * flickerAmount + this.lightPulseIntensity * 0.3 + surgeBoost,
                         1.0,
                     );
+
+                    // Real neon sputters out rather than just dimming: a slow
+                    // per-sign window opens a ~1s episode every ~20s, and a fast
+                    // chop stutters the tube while it lasts.
+                    const episode = Math.sin(this.time * 0.31 + sign.userData.flickerPhase * 2.7);
+                    if (episode > 0.96) {
+                        const stutter = Math.sin(this.time * 27.0 + sign.userData.flickerPhase * 9.1);
+                        if (stutter > -0.2) sign.material.opacity *= 0.25;
+                    }
                 }
             }
 
@@ -9777,6 +9910,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         this.applyRenderScale(true);
+        // pause() cancels the RAF loop but leaves `isAnimating` true, so startAnimation()'s
+        // "already running" guard would no-op and the loop would never restart (frozen
+        // theme after a pre-warm pause→resume). Reset it so the loop actually restarts.
+        this.isAnimating = false;
+        // A resuming theme is no longer pre-warming; clear the flag so the render loop
+        // doesn't keep SKIPPING its render (isPrewarming short-circuits the loop) if the
+        // pre-warm was parked mid-prewarmScene.
+        this.isPrewarming = false;
         this.startAnimation();
         return true;
     }
@@ -10041,7 +10182,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Dispose renderer
         if (this.renderer) {
-            // this.renderer.dispose(); // Moved to stop()
+            // this.disposeRenderer(this.renderer, { nullInstance: false }); // Moved to stop()
             // this.renderer = null; // Moved to stop()
         }
 
@@ -10056,7 +10197,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.sceneInitialized = false;
         this.isCreatingScene = false;
         this.isAnimating = false;
+        this.buildingLoadPromise = null;
+        this.buildingLoadInProgress = false;
+        this.buildingLoadComplete = true;
         this.backgroundLoadPromise = null;
+        this.backgroundLoadInProgress = false;
+        this.backgroundLoadComplete = false;
+        this.deferredMaterialLoadPromise = null;
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
         this.prewarmPromise = null;
         this.prewarmRequested = false;
         this.prewarmEnabled = false;

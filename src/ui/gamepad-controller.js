@@ -6,6 +6,10 @@
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
+import { COLS, ROWS } from '../core/constants.js';
+
+const INSTANT_DAS_REPEAT_LIMIT = COLS;
+const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
 
 /**
  * Button mappings for standard gamepad (Xbox layout)
@@ -53,6 +57,25 @@ const DEFAULT_GAMEPAD_CONFIG = {
     softDrop: { type: 'button', index: BUTTON_MAP.D_DOWN, axisPositive: AXIS_MAP.LEFT_STICK_Y },
     hardDrop: { type: 'button', index: BUTTON_MAP.B },
     pause: { type: 'button', index: BUTTON_MAP.START },
+};
+
+const DEFAULT_SERENITY_GAMEPAD_BINDINGS = {
+    toggleHub: BUTTON_MAP.Y,
+    toggleBreathing: BUTTON_MAP.X,
+    randomTheme: BUTTON_MAP.L_STICK,
+    toggleFullscreen: BUTTON_MAP.R_STICK,
+    previousTrack: BUTTON_MAP.LB,
+    nextTrack: BUTTON_MAP.RB,
+    volumeDown: BUTTON_MAP.LT,
+    volumeUp: BUTTON_MAP.RT,
+    toggleControlHints: BUTTON_MAP.SELECT,
+    openSettings: BUTTON_MAP.START,
+    previousBreathingTechnique: BUTTON_MAP.D_UP,
+    nextBreathingTechnique: BUTTON_MAP.D_DOWN,
+    confirmSelection: BUTTON_MAP.A,
+    closeHub: BUTTON_MAP.B,
+    navigateLeft: BUTTON_MAP.D_LEFT,
+    navigateRight: BUTTON_MAP.D_RIGHT,
 };
 
 /**
@@ -106,6 +129,7 @@ export class GamepadController {
         ];
         this.dasDelay = 120;
         this.dasInterval = 40;
+        this.softDropInterval = 50;
 
         // Custom bindings for each player
         this.customBindings = [null, null, null, null];
@@ -123,6 +147,14 @@ export class GamepadController {
         // Callback functions
         this.onPauseCallback = null;
         this.onResumeCallback = null;
+        this.handleGamepadConnected = (event) => this.onGamepadConnected(event);
+        this.handleGamepadDisconnected = (event) => this.onGamepadDisconnected(event);
+        this.handleVisibilityChange = () => {
+            if (document.hidden) {
+                this.clearAllDasTimers();
+            }
+        };
+        this.isInitialized = false;
         // Gate menu toggles until Start is released after a press
         this.waitingForStartRelease = [false, false, false, false];
         this.selectEditState = {
@@ -148,20 +180,22 @@ export class GamepadController {
             return false;
         }
 
+        if (this.isInitialized) {
+            this.checkConnectedGamepads();
+            return true;
+        }
+
         // Listen for gamepad connections
-        window.addEventListener('gamepadconnected', (e) => this.onGamepadConnected(e));
-        window.addEventListener('gamepaddisconnected', (e) => this.onGamepadDisconnected(e));
+        window.addEventListener('gamepadconnected', this.handleGamepadConnected);
+        window.addEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
 
         // Clear DAS timers when tab loses focus (gamepad polling stops but timers persist)
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                this.clearAllDasTimers();
-            }
-        });
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
         // Check for already connected gamepads
         this.checkConnectedGamepads();
 
+        this.isInitialized = true;
         console.log('[Gamepad] Gamepad support initialized');
         return true;
     }
@@ -404,6 +438,7 @@ export class GamepadController {
     }
 
     advanceGameplayInput(timestamp = performance.now()) {
+        if (this.lastGameplayTime === timestamp) return;
         const delta = Math.max(0, Math.min(100, timestamp - (this.lastGameplayTime ?? timestamp)));
         this.lastGameplayTime = timestamp;
 
@@ -1372,7 +1407,10 @@ export class GamepadController {
         // Handle START button for settings (for player 1 only)
         // BUT skip if menu navigation is enabled (menus handle their own START button)
         if (slot === 0 && !this.menuNavigationEnabled) {
-            const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
+            const settingsButton = this.serenityModeActive
+                ? this.getSerenityGamepadBindings().openSettings
+                : BUTTON_MAP.START;
+            const startPressed = Number.isInteger(settingsButton) && gamepad.buttons[settingsButton]?.pressed;
 
             if (this.waitingForStartRelease[slot]) {
                 if (!startPressed) {
@@ -1540,7 +1578,7 @@ export class GamepadController {
             if (actions.requestSoftDrop || actions.softDrop) {
                 (actions.requestSoftDrop || actions.softDrop)();
                 performanceMonitor.recordInputAction();
-                this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.(), 50);
+                this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.());
             }
         } else if (!downPressed && prevDown) {
             this.stopDas(slot, 'down');
@@ -1629,14 +1667,13 @@ export class GamepadController {
     /**
      * Start DAS (Delayed Auto Shift) for continuous movement
      */
-    startDas(slot, direction, action, interval = null) {
+    startDas(slot, direction, action) {
         this.dasActions[slot][direction] = action;
         const state = this.dasState[slot][direction];
         state.active = true;
         state.delayAccumulator = 0;
         state.intervalAccumulator = 0;
         state.isRepeating = false;
-        // Interval is currently stored globally in this.dasInterval, but we could store it on state if needed.
     }
 
     /**
@@ -1645,14 +1682,23 @@ export class GamepadController {
     processDasTimers(slot, delta) {
         if (!this.gameActions || !this.enabled) return;
 
-        const processDirection = (dir, customInterval = false) => {
+        const processDirection = (dir) => {
             const state = this.dasState[slot][dir];
             const action = this.dasActions[slot][dir];
             if (!state.active || !action) return;
 
             // For downward movement map to continuous softDrop, custom interval or 50ms default
             if (dir === 'down') {
-                const interval = 50;
+                const interval = this.softDropInterval;
+                if (interval <= 0) {
+                    for (let i = 0; i < INSTANT_SOFT_DROP_REPEAT_LIMIT; i++) {
+                        if (action() === false) {
+                            break;
+                        }
+                    }
+                    state.intervalAccumulator = 0;
+                    return;
+                }
                 state.intervalAccumulator += delta;
                 while (state.intervalAccumulator >= interval) {
                     state.intervalAccumulator -= interval;
@@ -1662,21 +1708,41 @@ export class GamepadController {
             }
 
             // For left/right movement
+            const runInstantRepeat = () => {
+                for (let i = 0; i < INSTANT_DAS_REPEAT_LIMIT; i++) {
+                    if (action() === false) {
+                        break;
+                    }
+                }
+                state.intervalAccumulator = 0;
+            };
+
             if (!state.isRepeating) {
                 state.delayAccumulator += delta;
                 if (state.delayAccumulator >= this.dasDelay) {
                     state.isRepeating = true;
                     state.intervalAccumulator = state.delayAccumulator - this.dasDelay;
+
+                    if (this.dasInterval <= 0) {
+                        runInstantRepeat();
+                        return;
+                    }
+
                     action();
 
-                    while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                    while (state.intervalAccumulator >= this.dasInterval) {
                         state.intervalAccumulator -= this.dasInterval;
                         action();
                     }
                 }
             } else {
+                if (this.dasInterval <= 0) {
+                    runInstantRepeat();
+                    return;
+                }
+
                 state.intervalAccumulator += delta;
-                while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                while (state.intervalAccumulator >= this.dasInterval) {
                     state.intervalAccumulator -= this.dasInterval;
                     action();
                 }
@@ -1760,9 +1826,10 @@ export class GamepadController {
     /**
      * Update DAS settings
      */
-    updateDasSettings(dasDelay, dasInterval) {
+    updateDasSettings(dasDelay, dasInterval, softDropInterval = this.softDropInterval) {
         this.dasDelay = dasDelay;
         this.dasInterval = dasInterval;
+        this.softDropInterval = softDropInterval;
     }
 
     /**
@@ -1795,6 +1862,23 @@ export class GamepadController {
         this.serenityModeActive = true;
         this.serenityModeCallbacks = callbacks;
         console.log('[Gamepad] Serenity Mode enabled');
+    }
+
+    getSerenityGamepadBindings() {
+        const savedBindings = window.settingsManager?.get?.()?.serenityGamepadBindings
+            || window.settings?.serenityGamepadBindings
+            || {};
+
+        return {
+            ...DEFAULT_SERENITY_GAMEPAD_BINDINGS,
+            ...savedBindings,
+        };
+    }
+
+    isSerenityButtonPressed(gamepad, bindings, action) {
+        const buttonIndex = bindings[action];
+        const button = Number.isInteger(buttonIndex) ? gamepad.buttons[buttonIndex] : null;
+        return button ? button.pressed === true || button.value > 0.3 : false;
     }
 
     /**
@@ -1841,164 +1925,130 @@ export class GamepadController {
 
         const prevState = this.previousStates[slot];
         const callbacks = this.serenityModeCallbacks;
+        const bindings = this.getSerenityGamepadBindings();
+        const buttonActive = (action) => this.isSerenityButtonPressed(gamepad, bindings, action);
+        const onButtonPress = (action, stateKey, handler) => {
+            const pressed = buttonActive(action);
+            if (pressed && !prevState[stateKey]) {
+                handler();
+            }
+            prevState[stateKey] = pressed;
+            return pressed;
+        };
 
-        // Y button - Toggle Serenity Hub (Legacy, now on SELECT)
-        const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
-        if (yPressed && !prevState.serenityY) {
-            // callbacks.toggleHub?.(); // Disabled on Y button
+        const now = performance.now();
+        if (!this._serenityHubToggleCooldown) this._serenityHubToggleCooldown = 0;
+
+        const hubTogglePressed = buttonActive('toggleHub');
+        const hubToggleCooldownActive = now - this._serenityHubToggleCooldown < 500;
+        if (hubTogglePressed && !prevState.serenityToggleHub && !hubToggleCooldownActive) {
+            const hubIsOpen = callbacks.isHubOpen?.();
+            console.log('[Gamepad] Serenity hub toggle pressed - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
+            callbacks.toggleHub?.();
+            this._serenityHubToggleCooldown = now;
         }
-        prevState.serenityY = yPressed;
+        prevState.serenityToggleHub = hubTogglePressed;
 
-        // X button - Toggle Breathing
-        const xPressed = gamepad.buttons[BUTTON_MAP.X]?.pressed;
-        if (xPressed && !prevState.serenityX) {
+        onButtonPress('toggleBreathing', 'serenityToggleBreathing', () => {
             callbacks.toggleBreathing?.();
-        }
-        prevState.serenityX = xPressed;
+        });
 
-        // L3 (Left stick click) - Random Theme
-        const l3Pressed = gamepad.buttons[BUTTON_MAP.L_STICK]?.pressed;
-        if (l3Pressed && !prevState.serenityL3) {
+        onButtonPress('randomTheme', 'serenityRandomTheme', () => {
             callbacks.randomTheme?.();
-        }
-        prevState.serenityL3 = l3Pressed;
+        });
 
-        // R3 (Right stick click) - Toggle Fullscreen
-        const r3Pressed = gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed;
-        // Skip fullscreen toggle if Exploration Mode is enabled (it uses R3)
-        if (r3Pressed && !prevState.serenityR3 && !this.explorationCallbacks) {
-            callbacks.toggleFullscreen?.();
-        }
-        prevState.serenityR3 = r3Pressed;
+        onButtonPress('toggleFullscreen', 'serenityToggleFullscreen', () => {
+            if (!this.explorationCallbacks) {
+                callbacks.toggleFullscreen?.();
+            }
+        });
 
-        // LB - Previous Track (Closed) or Switch Tab Left (Open)
-        const lbPressed = gamepad.buttons[BUTTON_MAP.LB]?.pressed;
-        if (lbPressed && !prevState.serenityLB) {
+        onButtonPress('toggleControlHints', 'serenityToggleControlHints', () => {
+            callbacks.toggleHints?.();
+        });
+
+        onButtonPress('previousTrack', 'serenityPreviousTrack', () => {
             if (callbacks.isHubOpen?.()) {
                 callbacks.switchTabLeft?.();
             } else {
                 callbacks.previousTrack?.();
             }
-        }
-        prevState.serenityLB = lbPressed;
+        });
 
-        // RB - Next Track (Closed) or Switch Tab Right (Open)
-        const rbPressed = gamepad.buttons[BUTTON_MAP.RB]?.pressed;
-        if (rbPressed && !prevState.serenityRB) {
+        onButtonPress('nextTrack', 'serenityNextTrack', () => {
             if (callbacks.isHubOpen?.()) {
                 callbacks.switchTabRight?.();
             } else {
                 callbacks.nextTrack?.();
             }
-        }
-        prevState.serenityRB = rbPressed;
+        });
 
-        // SELECT - Toggle Serenity Hub
-        const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
-        const wasSelectPressed = prevState.serenitySelect;
-
-        // Check cooldown to prevent double-triggering when states are cleared
-        // Store cooldown outside of prevState so it survives state clearing
-        const now = performance.now();
-        if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
-        const cooldownActive = now - this._serenitySelectCooldown < 500; // 500ms cooldown
-
-        // Only trigger on rising edge (button just pressed) and not in cooldown
-        if (selectPressed && !wasSelectPressed && !cooldownActive) {
-            const hubIsOpen = callbacks.isHubOpen?.();
-            console.log('[Gamepad] SELECT pressed - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
-            callbacks.toggleHub?.();
-
-            // Set cooldown to prevent re-triggering if states get cleared
-            this._serenitySelectCooldown = now;
-        }
-
-        // Always update the previous state
-        prevState.serenitySelect = selectPressed;
-
-        // D-Pad Up - Previous Breathing Technique (when hub is closed)
-        const dpadUpPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed;
-        if (dpadUpPressed && !prevState.serenityDPadUp) {
-            const hubOpen = callbacks.isHubOpen?.();
-            console.log('[Gamepad] D-Pad Up pressed, hub open:', hubOpen);
-            if (!hubOpen) {
-                console.log('[Gamepad] Calling previousBreathingTechnique');
+        onButtonPress('previousBreathingTechnique', 'serenityPreviousBreathingTechnique', () => {
+            if (callbacks.isHubOpen?.()) {
+                callbacks.navigate?.('up');
+            } else {
                 callbacks.previousBreathingTechnique?.();
             }
-        }
-        prevState.serenityDPadUp = dpadUpPressed;
+        });
 
-        // D-Pad Down - Next Breathing Technique (when hub is closed)
-        const dpadDownPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed;
-        if (dpadDownPressed && !prevState.serenityDPadDown) {
-            const hubOpen = callbacks.isHubOpen?.();
-            console.log('[Gamepad] D-Pad Down pressed, hub open:', hubOpen);
-            if (!hubOpen) {
-                console.log('[Gamepad] Calling nextBreathingTechnique');
+        onButtonPress('nextBreathingTechnique', 'serenityNextBreathingTechnique', () => {
+            if (callbacks.isHubOpen?.()) {
+                callbacks.navigate?.('down');
+            } else {
                 callbacks.nextBreathingTechnique?.();
             }
-        }
-        prevState.serenityDPadDown = dpadDownPressed;
+        });
 
-        // NOTE: START button is handled by the global toggleSettings function,
-        // not here in Serenity Mode to avoid conflicts
-
-        // Triggers for volume (analog)
-        const ltValue = gamepad.buttons[BUTTON_MAP.LT].value;
-        const rtValue = gamepad.buttons[BUTTON_MAP.RT].value;
-
-        if (ltValue > 0.3) {
+        if (buttonActive('volumeDown')) {
             callbacks.volumeDown?.();
         }
 
-        if (rtValue > 0.3) {
+        if (buttonActive('volumeUp')) {
             callbacks.volumeUp?.();
         }
 
         // Hub-specific controls (only when hub is open)
         if (callbacks.isHubOpen?.()) {
-            // A button - Confirm selection
-            const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
-            if (aPressed && !prevState.serenityA) {
+            onButtonPress('confirmSelection', 'serenityConfirmSelection', () => {
                 callbacks.confirmSelection?.();
-            }
-            prevState.serenityA = aPressed;
+            });
 
-            // B button - Close hub
-            const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
-            if (bPressed && !prevState.serenityB) {
+            onButtonPress('closeHub', 'serenityCloseHub', () => {
                 callbacks.closeHub?.();
-            }
-            prevState.serenityB = bPressed;
+            });
+
+            onButtonPress('navigateLeft', 'serenityNavigateLeft', () => {
+                callbacks.navigate?.('left');
+            });
+
+            onButtonPress('navigateRight', 'serenityNavigateRight', () => {
+                callbacks.navigate?.('right');
+            });
 
             // D-Pad for navigation
-            const dpadLeft = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
-                || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
-            if (dpadLeft && !prevState.serenityDLeft) {
+            const stickLeft = gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+            if (stickLeft && !prevState.serenityStickLeft) {
                 callbacks.navigate?.('left');
             }
-            prevState.serenityDLeft = dpadLeft;
+            prevState.serenityStickLeft = stickLeft;
 
-            const dpadRight = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
-                || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
-            if (dpadRight && !prevState.serenityDRight) {
+            const stickRight = gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+            if (stickRight && !prevState.serenityStickRight) {
                 callbacks.navigate?.('right');
             }
-            prevState.serenityDRight = dpadRight;
+            prevState.serenityStickRight = stickRight;
 
-            const dpadUp = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
-                || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
-            if (dpadUp && !prevState.serenityDUp) {
+            const stickUp = gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+            if (stickUp && !prevState.serenityStickUp) {
                 callbacks.navigate?.('up');
             }
-            prevState.serenityDUp = dpadUp;
+            prevState.serenityStickUp = stickUp;
 
-            const dpadDown = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
-                || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
-            if (dpadDown && !prevState.serenityDDown) {
+            const stickDown = gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+            if (stickDown && !prevState.serenityStickDown) {
                 callbacks.navigate?.('down');
             }
-            prevState.serenityDDown = dpadDown;
+            prevState.serenityStickDown = stickDown;
 
             // Right stick for scrolling
             const rightStickY = gamepad.axes[AXIS_MAP.RIGHT_STICK_Y];
@@ -2014,8 +2064,10 @@ export class GamepadController {
     destroy() {
         this.disable();
         this.disableSerenityMode();
-        window.removeEventListener('gamepadconnected', this.onGamepadConnected);
-        window.removeEventListener('gamepaddisconnected', this.onGamepadDisconnected);
+        window.removeEventListener('gamepadconnected', this.handleGamepadConnected);
+        window.removeEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
+        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+        this.isInitialized = false;
         console.log('[Gamepad] Controller manager destroyed');
     }
 }

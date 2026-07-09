@@ -121,8 +121,15 @@ function createPlayer(id, name) {
         nextPieces: [{ type: 'Z' }, { type: 'S' }],
         garbageEntries: [
             { type: 'line', attackerId: 'attacker_1', holeMask: 0x55 },
-            { type: 'line', attackerId: 'attacker_2', holeMask: 0xAA }
+            { type: 'blind', attackerId: 'attacker_2', holeMask: 0xAA, duration: 4.5 },
+            { type: 'full_blind', attackerId: 'attacker_1', holeMask: 0x00, duration: 6.2 }
         ],
+        blindTimers: {
+            field: 4.5,
+            fieldMax: 6.0,
+            pending: 3.2,
+            pendingMax: 4.0
+        },
         lockedPieces: [] // Skipped by encoder
     };
 }
@@ -140,12 +147,6 @@ runTest('Basic Round Trip', () => {
         players: [createPlayer('p1', 'Player 1')],
         gamePhase: 'playing',
         winner: null,
-        timestamp: 1000, // Not encoded in binary header? Wait, header has timestamp?
-        // Header has: magic, version, playerCount, gamePhase, reserved, tick.
-        // It does NOT have timestamp in the header definition I read?
-        // Let's check: view.setUint32(offset, snapshot.tick || 0, true);
-        // It does NOT encode timestamp. Decoder adds Date.now().
-
         tick: 100
     };
 
@@ -162,6 +163,21 @@ runTest('Basic Round Trip', () => {
     assertEquals(p1.name, 'Player 1', 'Name match');
     assertEquals(p1.score, 123456, 'Score match');
     assertEquals(p1.grid[0][0].type, 'I', 'Grid cell type match');
+
+    // Check blind timers
+    assert(p1.blindTimers !== undefined, 'blindTimers exists');
+    assertEquals(p1.blindTimers.field, 4.5, 'field timer match');
+    assertEquals(p1.blindTimers.fieldMax, 6.0, 'fieldMax timer match');
+    assertEquals(p1.blindTimers.pending, 3.2, 'pending timer match');
+    assertEquals(p1.blindTimers.pendingMax, 4.0, 'pendingMax timer match');
+
+    // Check garbage entry types & durations
+    assertEquals(p1.garbageEntries.length, 3, 'garbage entries count match');
+    assertEquals(p1.garbageEntries[0].type, 'line', 'garbage entry 0 type match');
+    assertEquals(p1.garbageEntries[1].type, 'blind', 'garbage entry 1 type match');
+    assertEquals(p1.garbageEntries[1].duration, 4.5, 'garbage entry 1 duration match');
+    assertEquals(p1.garbageEntries[2].type, 'full_blind', 'garbage entry 2 type match');
+    assertEquals(p1.garbageEntries[2].duration, 6.2, 'garbage entry 2 duration match');
 });
 
 runTest('UTF-8 String Handling', () => {

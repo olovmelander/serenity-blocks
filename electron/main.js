@@ -15,10 +15,16 @@
  * Original 4543-line main.js backed up as main-original.js.
  */
 
-import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu } from 'electron';
-import { join, dirname } from 'path';
+import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell, session } from 'electron';
+import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { appendFileSync, mkdirSync } from 'fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import inspector from 'node:inspector';
+import {
+    createContentSecurityPolicy,
+    extractInlineScriptHashes,
+} from './content-security-policy.js';
+import { buildDebugToolsStatus } from './debug-tools.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -28,7 +34,9 @@ const isWindows = process.platform === 'win32';
 // GPU configuration — minimal, sensible defaults
 // ---------------------------------------------------------------------------
 app.commandLine.appendSwitch('force-high-performance-gpu');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
+if (process.env.SERENITY_ENABLE_GPU_RASTERIZATION === '1') {
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+}
 app.commandLine.appendSwitch('enable-webgl');
 
 // ---------------------------------------------------------------------------
@@ -69,6 +77,38 @@ function emitRuntimeEvent(type, payload = {}) {
     }
 }
 
+function isAllowedAppNavigation(targetUrl) {
+    try {
+        const parsed = new URL(targetUrl);
+        if (!isPackaged) {
+            return ['http://localhost:5173', 'http://127.0.0.1:5173'].includes(parsed.origin);
+        }
+
+        if (parsed.protocol !== 'file:') {
+            return false;
+        }
+
+        const distRoot = resolve(app.getAppPath(), 'dist');
+        const targetPath = resolve(fileURLToPath(parsed));
+        return targetPath === join(distRoot, 'index.html') || targetPath.startsWith(`${distRoot}${sep}`);
+    } catch {
+        return false;
+    }
+}
+
+function openExternalIfWebUrl(targetUrl) {
+    try {
+        const parsed = new URL(targetUrl);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            shell.openExternal(targetUrl).catch((err) => {
+                console.warn('[Electron] Failed to open external URL:', err.message);
+            });
+        }
+    } catch {
+        // Ignore malformed URLs.
+    }
+}
+
 // ---------------------------------------------------------------------------
 // IPC Handlers — Display Management
 // ---------------------------------------------------------------------------
@@ -81,6 +121,7 @@ ipcMain.handle('get-displays', () => {
         scaleFactor: display.scaleFactor,
         rotation: display.rotation,
         internal: display.internal,
+        displayFrequency: display.displayFrequency,
     }));
 });
 
@@ -213,6 +254,11 @@ ipcMain.handle('steam:getDiagnostics', () => ({ pending: true, phase: 'stub' }))
 const diagnosticsEnabled = process.env.SERENITY_ENABLE_DIAGNOSTICS === '1';
 const loggingEnabled = process.env.SERENITY_ENABLE_LOGGING === '1';
 
+let remoteDebuggingPort = null;
+let remoteDebuggingUrl = null;
+let mainInspectorPort = null;
+let mainInspectorUrl = null;
+
 let _diagnosticsLogPath = null;
 
 function getDiagnosticsLogPath() {
@@ -271,11 +317,118 @@ if (diagnosticsEnabled) {
         } catch { return {}; }
     });
 
+    // Renderer remote debugging (CDP) — the packaged app never exposed an
+    // attach point for chrome-devtools MCP / webgpu_inspector before this;
+    // they could only ever reach the Vite dev-server tab. Loopback-only by
+    // default (Chromium binds 127.0.0.1 unless --remote-debugging-address is
+    // also passed), and only opens when diagnostics are explicitly enabled.
+    remoteDebuggingPort = Number(process.env.SERENITY_REMOTE_DEBUGGING_PORT) || 9222;
+    app.commandLine.appendSwitch('remote-debugging-port', String(remoteDebuggingPort));
+    remoteDebuggingUrl = `http://127.0.0.1:${remoteDebuggingPort}`;
+    console.log(`[Electron] Renderer remote debugging enabled at ${remoteDebuggingUrl}`);
+
+    // Main-process (Node) inspector — separate opt-in, off even with
+    // diagnostics enabled unless a port is explicitly requested.
+    const inspectPortArg = process.argv.find((arg) => arg.startsWith('--serenity-main-inspect-port='));
+    const requestedInspectPort = Number(process.env.SERENITY_MAIN_INSPECT_PORT)
+        || (inspectPortArg ? Number(inspectPortArg.split('=')[1]) : 0);
+    if (requestedInspectPort) {
+        try {
+            inspector.open(requestedInspectPort, '127.0.0.1', false);
+            mainInspectorPort = requestedInspectPort;
+            mainInspectorUrl = inspector.url();
+            console.log(`[Electron] Main-process inspector enabled at ${mainInspectorUrl}`);
+        } catch (err) {
+            console.warn('[Electron] Failed to open main-process inspector:', err.message);
+        }
+    }
+
+    ipcMain.removeHandler('desktop:get-debug-tools-status');
+    ipcMain.handle('desktop:get-debug-tools-status', () => buildDebugToolsStatus({
+        isPackagedWindowsApp: isPackaged && isWindows,
+        remoteDebuggingPort,
+        remoteDebuggingUrl,
+        mainInspectorPort,
+        mainInspectorUrl,
+        logPaths: { main: getDiagnosticsLogPath(), userData: app.getPath('userData') },
+    }));
+
+    ipcMain.removeHandler('desktop:get-devtools-diagnostics');
+    ipcMain.handle('desktop:get-devtools-diagnostics', () => ({
+        remoteDebuggingUrl,
+        logPath: getDiagnosticsLogPath(),
+        entries: [],
+    }));
+
     console.log('[Electron] Diagnostics enabled (SERENITY_ENABLE_DIAGNOSTICS=1)');
 }
 
 if (loggingEnabled) {
     console.log(`[Electron] Structured logging enabled → ${getDiagnosticsLogPath()}`);
+}
+
+// ---------------------------------------------------------------------------
+// Content-Security-Policy
+// ---------------------------------------------------------------------------
+//
+// The renderer previously ran with NO CSP at all (allow-everything), so any
+// markup-injection bug would execute script with full renderer privileges.
+// We install a strict policy from the main process via onHeadersReceived so it
+// covers the packaged file:// load as well as the dev server.
+//
+// Key protections (both modes): no remote script origins, NO arbitrary inline
+// <script> (only the hashed first-party startup blocks below are allowed), no
+// eval of JS, no plugins/objects, no <base> hijack, no framing. We still allow
+// inline STYLES ('unsafe-inline' in style-src only — the app sets inline styles
+// pervasively) and the Google webfonts.
+//
+// Packaged note: file:// subresources must keep loading, so `file:` is allowed
+// in the resource directives. Self-hosting the two webfonts (a later phase)
+// would let style-src/font-src drop the Google origins entirely.
+//
+// Inline startup scripts: index.html ships two TRUSTED first-party inline
+// <script> blocks (the startup bridge, and the startup shell that installs the
+// global error/unhandledrejection handlers + the white-screen watchdog). A
+// no-'unsafe-inline' policy would silently block them and disable that safety
+// net, so we allow them by sha256 hash computed AT RUNTIME from the exact
+// dist/index.html Chromium loads — self-maintaining, never drifts, and still
+// blocks any INJECTED inline script. (Worst case, if hashing fails, we fall
+// back to the current behavior: blocked inline + working app.)
+//
+// Escape hatch: set SERENITY_DISABLE_CSP=1 to bypass while diagnosing a
+// CSP-related white-screen in a packaged build.
+function computeInlineScriptHashes() {
+    try {
+        const indexPath = join(app.getAppPath(), 'dist', 'index.html');
+        const html = readFileSync(indexPath, 'utf8');
+        // Match only attribute-less classic inline scripts (<script>...</script>).
+        // Module scripts are externalized by Vite to a `src` (covered by 'self').
+        return extractInlineScriptHashes(html);
+    } catch (err) {
+        console.warn('[Electron] Could not hash inline startup scripts for CSP:', err.message);
+        return [];
+    }
+}
+
+function installContentSecurityPolicy() {
+    if (process.env.SERENITY_DISABLE_CSP === '1') {
+        console.warn('[Electron] CSP disabled via SERENITY_DISABLE_CSP=1');
+        return;
+    }
+
+    const policy = createContentSecurityPolicy({
+        mode: isPackaged ? 'packaged' : 'dev',
+        inlineScriptHashes: isPackaged ? computeInlineScriptHashes() : [],
+    });
+
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [policy],
+            },
+        });
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +445,29 @@ function createWindow() {
         backgroundColor: '#000000',
         show: true,
         webPreferences: {
-            preload: join(__dirname, 'preload.mjs'),
+            preload: join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false,  // Required for ES module preload (.mjs)
+            sandbox: true,
             backgroundThrottling: false,
+            additionalArguments: diagnosticsEnabled ? ['--serenity-diagnostics-enabled'] : [],
         },
     });
+
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        openExternalIfWebUrl(url);
+        return { action: 'deny' };
+    });
+
+    const blockUnexpectedNavigation = (event, url) => {
+        if (isAllowedAppNavigation(url)) {
+            return;
+        }
+        event.preventDefault();
+        openExternalIfWebUrl(url);
+    };
+    mainWindow.webContents.on('will-navigate', blockUnexpectedNavigation);
+    mainWindow.webContents.on('will-redirect', blockUnexpectedNavigation);
 
     if (isPackaged && isWindows) {
         mainWindow.maximize();
@@ -332,9 +501,15 @@ function createWindow() {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
-    // Window focus events → renderer
+    // Window focus events → renderer.
+    // Only report "unfocused" on a TRUE minimize — a plain focus loss (alt-tab, a
+    // second window, glancing at the other machine during an online match) must NOT
+    // throttle the renderer/game to 10 FPS mid-match. (blur fires on any focus loss;
+    // isMinimized() distinguishes a real minimize from alt-tab.)
     mainWindow.on('blur', () => {
-        emitRuntimeEvent('window-focus-changed', { focused: false });
+        if (mainWindow.isMinimized()) {
+            emitRuntimeEvent('window-focus-changed', { focused: false });
+        }
     });
     mainWindow.on('focus', () => {
         emitRuntimeEvent('window-focus-changed', { focused: true });
@@ -402,6 +577,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+    installContentSecurityPolicy();
     createWindow();
 
     // Power monitor → renderer

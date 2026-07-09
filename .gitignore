@@ -53,3 +53,20 @@ google-credentials.json
 
 # Validation/screenshot artifacts
 artifacts/
+
+# Repository cleanup: generated or local-only outputs
+/.vite/
+/theme-screenshots/
+/assets/
+/docs/validation/
+debug_output.txt
+test_output*.txt
+
+# Playground / capture artifacts (local-only screenshot outputs)
+/.playground-shots/
+/playground_*_current.png
+/docs/_captures/
+/docs/perf-captures/
+
+# Odyssey GLB optimize backups (rollback source is git HEAD; never commit the uncompressed originals)
+src/rendering/odyssey/assets/_originals/

@@ -98,6 +98,46 @@ export class TetrominoStyleManager {
     }
 
     /**
+     * Resolve premium depth-effect parameters for the Phaser (main-canvas) renderer.
+     * Returns continuous, fused-shape-only effects (gradient + outer rim + gloss);
+     * never per-cell. A theme opts out by setting renderMode 'flat' or
+     * effects.premium === false, or tunes via effects.phaser / rendererOverrides.phaser.
+     *
+     * @param {string} pieceType
+     * @returns {{gradient:boolean, highlight:number, shadow:number, rim:boolean,
+     *   rimAlpha:number, rimWidthFactor:number, gloss:boolean, glossAlpha:number}}
+     */
+    getPhaserEffects(pieceType) {
+        if (!this.cachedConfig) this._cacheCurrentStyle();
+        const cfg = this.cachedConfig || DEFAULT_CONFIG;
+        const eff = cfg.effects || {};
+
+        const base = {
+            gradient: true,
+            highlight: 0.18,
+            shadow: 0.18,
+            rim: true,
+            rimAlpha: 0.42,
+            rimWidthFactor: 0.05,
+            gloss: true,
+            glossAlpha: 0.22,
+        };
+
+        // Explicit opt-out for flat/accessibility themes.
+        if (cfg.renderMode === 'flat' || eff.premium === false) {
+            base.gradient = false;
+            base.rim = false;
+            base.gloss = false;
+        }
+
+        return {
+            ...base,
+            ...(eff.phaser || {}),
+            ...((cfg.rendererOverrides && cfg.rendererOverrides.phaser) || {}),
+        };
+    }
+
+    /**
      * Get all piece colors at once (for efficiency when rendering multiple pieces)
      * @returns {Object} Object mapping piece types to colors
      */

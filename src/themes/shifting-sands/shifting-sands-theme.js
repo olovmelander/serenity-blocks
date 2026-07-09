@@ -1485,7 +1485,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         // Cleanup Three.js renderer
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const c = document.getElementById('shifting-sands-theme');
             if (c && c.contains(this.renderer.domElement)) c.removeChild(this.renderer.domElement);
         }

@@ -471,6 +471,11 @@ export class OceanReefDwellerSystem {
         this.speciesUsed = []; // indices into REEF_SPECIES
         this.speciesFishRanges = new Map(); // speciesIdx -> { start, count }
         this.dummy = new THREE.Object3D();
+        // Reused for the per-dweller matrix compose: building the yaw quaternion
+        // directly (setFromAxisAngle) and composing avoids the Euler object's
+        // _onChange Euler->quaternion round-trip on every instance every tick.
+        this._dwellerQuat = new THREE.Quaternion();
+        this._dwellerUp = new THREE.Vector3(0, 1, 0);
         this.elapsed = 0;
 
         // GLB seahorse layer
@@ -743,9 +748,10 @@ export class OceanReefDwellerSystem {
                 const dx = f.x - anchor.x;
                 const dz = f.z - anchor.z;
                 const angle = Math.atan2(dz, dx);
-                this.dummy.rotation.set(0, -angle + Math.PI * 0.5, 0);
-
-                this.dummy.updateMatrix();
+                // Yaw-only quaternion straight into a compose — byte-identical to
+                // rotation.set(0, yaw, 0) + updateMatrix(), without the Euler sync.
+                this._dwellerQuat.setFromAxisAngle(this._dwellerUp, -angle + Math.PI * 0.5);
+                this.dummy.matrix.compose(this.dummy.position, this._dwellerQuat, this.dummy.scale);
                 mesh.setMatrixAt(i, this.dummy.matrix);
             }
             mesh.instanceMatrix.needsUpdate = true;

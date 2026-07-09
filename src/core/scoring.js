@@ -1,3 +1,4 @@
+// @ts-check
 // =================================================================================
 // SCORING - Score calculation and level progression for Serenity Blocks
 // Implements Quadra-style scoring system
@@ -57,56 +58,15 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
     return subtotal + levelBonus;
 }
 
-/**
- * Calculate score for line clears (legacy wrapper)
- * @deprecated Use calculateQuadraLineScore for full Quadra scoring
- * @param {number} linesCleared - Number of lines cleared (1-4)
- * @param {number} currentLevel - Current game level
- * @returns {number} Points earned
- */
-export function calculateLineScore(linesCleared, currentLevel) {
-    const baseScore = SCORE_VALUES[linesCleared] || 0;
-    return baseScore * currentLevel;
-}
-
-/**
- * Calculate score for soft drop
- * @param {number} rowsDropped - Number of rows dropped
- * @param {number} currentLevel - Current game level
- * @returns {number} Points earned (1 point per row * level)
- */
-export function calculateSoftDropScore(rowsDropped, currentLevel) {
-    return rowsDropped * currentLevel;
-}
-
-/**
- * Calculate score for hard drop
- * @param {number} rowsDropped - Number of rows dropped
- * @param {number} currentLevel - Current game level
- * @returns {number} Points earned (2 points per row * level)
- */
-export function calculateHardDropScore(rowsDropped, currentLevel) {
-    return rowsDropped * 2 * currentLevel;
-}
-
-/**
- * Calculate new level based on lines cleared
- * Level increases every 10 lines
- * @param {number} totalLines - Total lines cleared
- * @returns {number} Current level (1-based)
- */
-export function calculateLevel(totalLines) {
-    return Math.floor(totalLines / 10) + 1;
-}
-
-/**
- * Calculate lines needed for next level
- * @param {number} totalLines - Total lines cleared
- * @returns {number} Lines remaining until next level
- */
-export function getLinesUntilNextLevel(totalLines) {
-    return 10 - (totalLines % 10);
-}
+// NOTE (remediation Phase 2): the live level/line progression — 15 lines per
+// level — is implemented in processPhysics (src/core/physics.js) and seeded by
+// GameState.linesUntilNextLevel. The following pre-Quadra helpers were removed
+// here because they had ZERO call sites and contradicted the live rule:
+//   - calculateLevel / getLinesUntilNextLevel  (encoded a wrong 10-line cadence)
+//   - calculateLineScore / calculateSoftDropScore / calculateHardDropScore
+//     (additive pre-Quadra scoring, superseded by calculateQuadraLineScore)
+// Do NOT re-introduce a progression helper here without making physics.js
+// consume it, so the rule keeps a single source of truth.
 
 /**
  * Get drop interval (speed) for a given level

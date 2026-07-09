@@ -41,6 +41,34 @@ function waitForAnimationFrame(durationMs) {
     });
 }
 
+function advanceReplaySimulationClock(gameState, durationMs) {
+    if (!gameState?.isReplay) return;
+
+    const delay = Math.max(0, Number(durationMs) || 0);
+    if (delay <= 0) return;
+
+    const currentSimTime = Number.isFinite(gameState.simTimeMs)
+        ? gameState.simTimeMs
+        : (Number.isFinite(gameState.lastTime) ? gameState.lastTime : 0);
+    gameState.simTimeMs = currentSimTime + delay;
+    gameState.lastTime = gameState.simTimeMs;
+
+    const tickMs = Number(gameState.simTickMs) || (1000 / 60);
+    gameState.simFrame = Math.max(0, Math.round(gameState.simTimeMs / tickMs));
+
+    if (gameState.hitStopRemaining > 0) {
+        gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delay);
+    }
+}
+
+async function waitForPhysicsDelay(gameState, durationMs) {
+    advanceReplaySimulationClock(gameState, durationMs);
+
+    if (!gameState?.isSeeking) {
+        await waitForAnimationFrame(durationMs);
+    }
+}
+
 /**
  * Determines if a specific board position is part of a given piece
  * @param {number} boardX - X coordinate on the board
@@ -166,7 +194,8 @@ export async function applyGravity(
     // Note: Viewport optimization removed - it was causing stuck pieces
     // All pieces must be processed for gravity to work correctly
     // The performance gain wasn't worth the correctness issues
-    const visiblePieces = lockedPieces;
+    const visiblePieces = [...lockedPieces]
+        .sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
 
     // PERFORMANCE: Only rebuild once at the start
     // The grid is already current from the previous physics phase
@@ -210,9 +239,7 @@ export async function applyGravity(
         // PERFORMANCE CRITICAL: NO REBUILD HERE!
         // Grid is kept up-to-date through incremental updates below
 
-        // Process blocks from bottom to top to prevent double-processing
-        visiblePieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
-
+        // Process blocks from bottom to top to prevent double-processing.
         for (const piece of visiblePieces) {
             let canFall = true;
 
@@ -282,9 +309,11 @@ export async function applyGravity(
             // Use requestAnimationFrame-based timing for smooth, consistent gravity
             if (!gameState.isSeeking) {
                 const startTime = performance.now();
-                await waitForAnimationFrame(gravityDelay);
+                await waitForPhysicsDelay(gameState, gravityDelay);
                 const actualDelay = performance.now() - startTime;
                 physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
+            } else {
+                await waitForPhysicsDelay(gameState, gravityDelay);
             }
         }
     }
@@ -300,7 +329,7 @@ export async function applyGravity(
  */
 export function detectFullLines(boardData) {
     const fullLines = [];
-    for (let y = boardData.length - 1; y >= 0; y--) {
+    for (let y = boardData.length - 1; y >= HIDDEN_ROWS; y--) {
         const isFull = boardData[y].every((cell) => cell !== null);
         if (isFull) {
             const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');
@@ -766,6 +795,12 @@ export async function processPhysics(gameState, callbacks) {
             gameState.level++;
             gameState.linesUntilNextLevel += 15; // Quadra: 15 lines per level
             gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
+            // Odyssey speed-up modifier: keep the drop interval 1.5x shorter at every level-up so the
+            // effect survives the recompute. Gated on speedMultiplier (only the Odyssey modifier sets
+            // it) → shared single-player physics is byte-identical (masterplan §2 #3 / C2).
+            if (gameState.speedMultiplier) {
+                gameState.dropInterval /= gameState.speedMultiplier;
+            }
 
             if (callbacks.playLevelUp) callbacks.playLevelUp();
             if (callbacks.onLevelUp) callbacks.onLevelUp(gameState.level);
@@ -781,7 +816,15 @@ export async function processPhysics(gameState, callbacks) {
         // Quadra-style scoring: uses depth (lines), level, complexity (cascades), and perfect clear
         // Perfect clear is detected later after all cascades complete, so we pass false here
         // and add the perfect clear bonus at the end if the board is empty
-        const points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
+        let points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
+        // Odyssey combo-multiplier modifier: scale the line-clear score by the combo built up on
+        // prior consecutive-clearing locks. Gated on comboMultiplierEnabled — a flag ONLY the
+        // Odyssey ModifierStack sets — so shared single-player/multiplayer physics is byte-identical.
+        // The multiplier is fixed per lock (maintained at end of processPhysics), so every cascade
+        // wave of this lock shares it. (masterplan §2 #3 / C2)
+        if (gameState.comboMultiplierEnabled && gameState.comboMultiplier > 1) {
+            points = Math.round(points * gameState.comboMultiplier);
+        }
         gameState.score += points;
 
         if (callbacks.playLineClear) callbacks.playLineClear();
@@ -792,8 +835,27 @@ export async function processPhysics(gameState, callbacks) {
                 holeColumns,
                 waveHoleMasks.map((mask) => mask.slice()),
                 fullLines.slice(),
+                cascadeCount,
             );
         }
+
+        // T-spin and B2B tracking — evaluated on the manual clear (cascade 1) per lock.
+        const isTSpin = cascadeCount === 1 && Boolean(gameState.comboState?.tSpin);
+        const isDifficultClear = fullLines.length >= 4 || isTSpin;
+
+        if (isTSpin && callbacks.onTSpin) {
+            callbacks.onTSpin(fullLines.length);
+        }
+        if (isDifficultClear) {
+            if (gameState.b2bActive && callbacks.onB2B) {
+                callbacks.onB2B(true);
+            }
+            gameState.b2bActive = true;
+        } else if (cascadeCount === 1) {
+            // Reset B2B only on the manual clear; cascade stages don't break the chain.
+            gameState.b2bActive = false;
+        }
+
         if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, cascadeCount);
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
@@ -810,10 +872,10 @@ export async function processPhysics(gameState, callbacks) {
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
         // Progressive speed multiplier: Faster for responsive cascades
-        // Cascade 1: 1.0x (120ms total) - Quick but visible
-        // Cascade 2-4: 0.8x (96ms) - Faster for cascades
-        // Cascade 5-9: 0.6x (72ms) - Quick cascade speed
-        // Cascade 10+: 0.5x (60ms) - Very fast for mega cascades
+        // Cascade 1: 1.0x (70ms total) - Quick but visible
+        // Cascade 2-4: 0.8x (56ms) - Faster for cascades
+        // Cascade 5-9: 0.6x (42ms) - Quick cascade speed
+        // Cascade 10+: 0.5x (35ms) - Very fast for mega cascades
         const speedMultiplier = cascadeCount === 1 ? 1.0
             : cascadeCount <= 4 ? 0.8
                 : cascadeCount <= 9 ? 0.6 : 0.5;
@@ -828,9 +890,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(50 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 30 * speedMultiplier);
 
         // Stage 2: Keep original colors, slightly dimmed - smooth transition
         fullLines.forEach((y) => {
@@ -842,9 +902,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(40 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
 
         // Stage 3: Keep original colors, fade to transparent - smooth final fade
         fullLines.forEach((y) => {
@@ -856,9 +914,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        if (!gameState.isSeeking) {
-            await waitForAnimationFrame(30 * speedMultiplier);
-        }
+        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
@@ -890,8 +946,12 @@ export async function processPhysics(gameState, callbacks) {
     // Quadra-style Perfect Clear Bonus
     // Award bonus points when the entire board is cleared
     if (sendForClean && depth > 0) {
-        const perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
+        let perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
             - calculateQuadraLineScore(depth, gameState.level, complexity, false);
+        // Scale the perfect-clear bonus by the same Odyssey combo multiplier for a coherent chain.
+        if (gameState.comboMultiplierEnabled && gameState.comboMultiplier > 1) {
+            perfectClearBonus = Math.round(perfectClearBonus * gameState.comboMultiplier);
+        }
         gameState.score += perfectClearBonus;
         physicsLog(`[Physics] Perfect clear bonus: +${perfectClearBonus} points (depth=${depth})`);
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(perfectClearBonus);
@@ -929,6 +989,17 @@ export async function processPhysics(gameState, callbacks) {
         gameState.comboState.manualColumns = [...manualHoleColumns];
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;
+    }
+
+    // Odyssey combo-multiplier modifier: maintain the consecutive-clear counter ONCE per lock.
+    // processPhysics runs exactly once per lock (the cascade loop above no-ops on a non-clearing
+    // lock), so this is the correct single anchor: a clearing lock advances the chain, a
+    // non-clearing lock resets it. The multiplier is read by the score-award sites on the NEXT
+    // lock, so the first clear of a chain is neutral (x1) and each consecutive clear escalates
+    // (x1.5, x2, …). Gated so shared single-player physics is unaffected. (masterplan §2 #3 / C2)
+    if (gameState.comboMultiplierEnabled) {
+        gameState.comboCount = linesClearedThisTurn > 0 ? (gameState.comboCount || 0) + 1 : 0;
+        gameState.comboMultiplier = 1 + (gameState.comboCount * 0.5);
     }
 
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);

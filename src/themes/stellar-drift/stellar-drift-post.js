@@ -22,9 +22,9 @@ import {
     dot,
     fract,
     sin,
+    Fn,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 
 export class StellarDriftPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -63,18 +63,45 @@ export class StellarDriftPost {
         this.uDitherStrength = uniform(params.ditherStrength ?? 0.0016);
 
         const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
-        const baseSample = sceneColor.sample(uv);
+        const centered = uv.sub(0.5).mul(2.0); // preserved: reused by the speed-line pattern below
+        const dist = length(centered);         // preserved: reused by the speed-line pattern below
 
-        const vignetteColor = mix(
-            baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
-            baseSample,
-            vignette,
-        );
+        // Vignette-at-UV that samples the scene texture directly. Wrapped in Fn so each chromatic
+        // tap re-evaluates the vignette at its own UV -- exactly what chromaticAberration(vignetteColor,
+        // ...) did via convertToTexture(): a full-screen render-to-texture EVERY frame purely so the
+        // R/G/B split could re-sample the vignetted image. Inlining collapses that RTT pass into the
+        // taps. It is pixel-identical (verified term-for-term against ChromaticAberrationNode); at rest
+        // uChromaticStrength decays to 0 so redUV==blueUV==uv and all three taps return the identical
+        // vignetted value. The only difference vs the old path is skipping the intermediate RTT's
+        // bilinear resample + requantization, which is sub-pixel (if anything, slightly more accurate).
+        const sampleVignettedScene = Fn(([p]) => {
+            const vigDist = length(p.sub(0.5).mul(2.0));
+            const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), vigDist);
+            const sampled = sceneColor.sample(p);
+            return mix(
+                sampled.mul(float(1.0).sub(this.uVignetteDarkness)),
+                sampled,
+                vig,
+            );
+        });
 
-        const chroma = chromaticAberration(vignetteColor, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
+        // Manual chromatic aberration, term-for-term with ChromaticAberrationNode(strength,
+        // center=(0.5,0.5), scale=1.1): redScale=1+scale*0.02*strength, blueScale=1-..., green at
+        // the original uv, rOffset=offset*(strength*dist)*0.01, bOffset=*-0.01, alpha from uv.
+        const caCenter = vec2(0.5, 0.5);
+        const caScale = float(1.1);
+        const caStrength = this.uChromaticStrength;
+        const caOffset = uv.sub(caCenter);
+        const caDist = length(caOffset);
+        const redScale = float(1.0).add(caScale.mul(0.02).mul(caStrength));
+        const blueScale = float(1.0).sub(caScale.mul(0.02).mul(caStrength));
+        const aberration = caStrength.mul(caDist);
+        const redUV = caCenter.add(caOffset.mul(redScale)).add(caOffset.mul(aberration).mul(0.01));
+        const blueUV = caCenter.add(caOffset.mul(blueScale)).add(caOffset.mul(aberration).mul(-0.01));
+        const centerSample = sampleVignettedScene(uv); // green + alpha (greenUV == uv, gOffset == 0)
+        const redSample = sampleVignettedScene(redUV);
+        const blueSample = sampleVignettedScene(blueUV);
+        const chroma = vec4(redSample.r, centerSample.g, blueSample.b, centerSample.a);
         const bloomCombined = chroma.add(this.bloomNode);
 
         const radialPattern = sin(dot(centered, vec2(37.0, 19.0)).add(this.uTime.mul(9.0))).mul(0.5).add(0.5);

@@ -20,27 +20,46 @@
  * window.addEventListener('scroll', throttledScroll);
  */
 export function throttle(func, limit) {
-    let inThrottle;
-    let lastFunc;
-    let lastRan;
+    let timeoutId = null;
+    let lastRan = null;
+    let lastArgs = null;
+    let lastContext = null;
 
-    return function executedFunction(...args) {
-        const context = this;
-
-        if (!inThrottle) {
-            func.apply(context, args);
-            lastRan = Date.now();
-            inThrottle = true;
-        } else {
-            clearTimeout(lastFunc);
-            lastFunc = setTimeout(() => {
-                if ((Date.now() - lastRan) >= limit) {
-                    func.apply(context, args);
-                    lastRan = Date.now();
-                }
-            }, Math.max(limit - (Date.now() - lastRan), 0));
-        }
+    const invoke = () => {
+        timeoutId = null;
+        lastRan = Date.now();
+        func.apply(lastContext, lastArgs);
+        lastArgs = null;
+        lastContext = null;
     };
+
+    function throttled(...args) {
+        const now = Date.now();
+        lastArgs = args;
+        lastContext = this;
+
+        const remaining = lastRan === null ? 0 : limit - (now - lastRan);
+        if (lastRan === null || remaining <= 0) {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            invoke();
+        } else if (!timeoutId) {
+            timeoutId = setTimeout(invoke, remaining);
+        }
+    }
+
+    throttled.cancel = () => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        lastArgs = null;
+        lastContext = null;
+    };
+
+    return throttled;
 }
 
 /**

@@ -3135,6 +3135,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     this.capabilities.supportsCompute = typeof renderer.compute === 'function';
                 } else {
                     renderer.dispose();
+                    renderer.forceContextLoss?.();
+                    renderer.domElement?.remove?.();
                 }
             } catch (error) {
                 console.warn('[ElectricDreams] WebGPU init failed, using WebGL fallback:', error);
@@ -5778,10 +5780,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
             this.handleMicroGameplayEvent('hard-drop', data);
         });
 
-        const holdUnsub = eventBus.on(EVENTS.HOLD, (data) => {
-            this.handleMicroGameplayEvent('hold', data);
-        });
-
         const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
             this.handleLevelUpEvent(data);
         });
@@ -5793,7 +5791,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
             pieceMoveUnsub,
             pieceRotateUnsub,
             hardDropUnsub,
-            holdUnsub,
             levelUpUnsub,
         );
         if (!this.boundResizeHandler) {
@@ -6919,7 +6916,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.disposePostProcessingStack();
 
         // Dispose renderer & composer
-        if (this.renderer) this.renderer.dispose();
+        if (this.renderer) this.disposeRenderer(this.renderer, { nullInstance: false });
 
         this.scene = null;
         this.camera = null;

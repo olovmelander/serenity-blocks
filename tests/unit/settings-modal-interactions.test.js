@@ -12,6 +12,7 @@ import {
 import {
     activateControlsSubtab,
     activateSettingsTab,
+    initializeSettingsUI,
 } from '../../src/ui/settings.js';
 
 function createClassList(initial = []) {
@@ -182,5 +183,79 @@ describe('settings modal interactions', () => {
         controller.onModalShown({ detail: { modalName: 'settings' } });
         expect(settingsModal.classList.contains('is-scrolling')).toBe(false);
         expect(body.classList.contains('settings-scroll-active')).toBe(false);
+    });
+
+    it('synchronizes the background-mode element value when settingsChanged is fired', () => {
+        const createDummyElement = (type = 'div') => ({
+            style: {},
+            classList: createClassList(),
+            addEventListener: vi.fn(),
+            value: '',
+            checked: false,
+        });
+
+        const bgModeSelect = createDummyElement('select');
+        bgModeSelect.value = 'Level';
+
+        const body = { classList: createClassList() };
+
+        const listeners = [];
+        const windowMock = {
+            electronAPI: {},
+            dispatchEvent: vi.fn((event) => {
+                listeners.forEach(({ type, handler }) => {
+                    if (type === event.type) {
+                        handler(event);
+                    }
+                });
+            }),
+            addEventListener: vi.fn((type, handler) => {
+                listeners.push({ type, handler });
+            }),
+            removeEventListener: vi.fn(),
+        };
+
+        vi.stubGlobal('window', windowMock);
+
+        vi.stubGlobal('document', {
+            body,
+            getElementById: vi.fn((id) => {
+                if (id === 'background-mode') return bgModeSelect;
+                return createDummyElement();
+            }),
+            querySelectorAll: vi.fn(() => []),
+            querySelector: vi.fn(() => null),
+        });
+
+        const settings = {
+            backgroundMode: 'Level',
+            musicVolume: 0.5,
+            sfxVolume: 0.5,
+            randomThemeInterval: 300,
+        };
+
+        const settingsManager = {
+            get: vi.fn(() => settings),
+            update: vi.fn((newSettings) => {
+                Object.assign(settings, newSettings);
+            }),
+            save: vi.fn(),
+        };
+
+        const callbacks = {};
+
+        initializeSettingsUI(settingsManager, callbacks);
+
+        // Update mock settings to have Specific mode
+        settings.backgroundMode = 'Specific';
+
+        // Dispatch settingsChanged
+        const event = {
+            type: 'settingsChanged',
+            detail: { backgroundMode: 'Specific' },
+        };
+        windowMock.dispatchEvent(event);
+
+        expect(bgModeSelect.value).toBe('Specific');
     });
 });

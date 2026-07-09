@@ -2122,10 +2122,13 @@ export default class SolarEclipseTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement?.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
+            this.disposeRenderer(this.renderer, { nullInstance: false });
+        }
+
+        this.bloomPass?.dispose?.();
+        this.chromaticPass?.dispose?.();
+        if (this.composer) {
+            this.disposeComposer(this.composer);
         }
 
         this.shootingStars.forEach((star) => {

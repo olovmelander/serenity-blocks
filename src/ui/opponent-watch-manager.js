@@ -1,6 +1,8 @@
 import { COLORS, SHAPES } from '../core/constants.js';
-import { drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
+import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canvas-drawing-utils.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
+import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
 
 const DEFAULT_EFFECTS = {
     glowRadius: 0,
@@ -28,9 +30,32 @@ export class OpponentWatchManager {
         this.container = container;
         this.watchedPlayers = []; // Max 4 player IDs
         this.playerBoards = new Map(); // playerId -> { canvas, ctx, nextCtx, name, element }
+        // Phase 1+2: per-opponent CanvasBoardEffects overlay (transient line-clear FLASH +
+        // combo). Keyed by the same playerKey as playerBoards. Lives on a separate overlay
+        // canvas — never writes the opponent grid, so it cannot fight the snapshot interp.
+        this._boardEffects = new Map();
         this.allPlayers = [];
         this.localPlayerId = null;
         this.maxVisible = 4;
+        // Current grid layout (cols×rows), kept in sync with the actual CSS grid so
+        // _handleResize sizes each mini-canvas to the REAL cell, not a hardcoded 2x2.
+        this._gridCols = 2;
+        this._gridRows = 2;
+        // Spectator "spotlight": a large main-board canvas that renders ONE selected
+        // player (a spectator has no board of their own). Driven by the same animation
+        // loop + draw code as the mini-boards. spotlightMode makes a mini-board CLICK
+        // pick the spotlight player instead of toggling the watch set.
+        this.spotlightCanvas = null;
+        this.spotlightCtx = null;
+        this.spotlightPlayerId = null;
+        this.spotlightMode = false;
+        this.onSpotlightChange = null;
+        this._spotlightSig = null;
+        this._spotlightShownId = null;
+        this._spotlightHeaderSig = null; // id|frags|alive — fires onChange so the header stays live
+        // {garbageMeter, garbageFill, garbageSegments} for the spotlight's pending-garbage bar.
+        this._spotlightGarbage = null;
+        this._spotlightGarbageSig = null;
         this.autoWatchEnabled = true;
         this.autoWatchSignature = '';
         this.selectionSignature = '';
@@ -47,10 +72,46 @@ export class OpponentWatchManager {
         // === PERFORMANCE OPTIMIZATIONS ===
         // Persistent color cache - reused across all renders (saves ~240 Map allocations/sec)
         this._colorCache = new Map();
+        this._styleConfigCache = new Map();
         // Dirty-checking hashes - only redraw when state changes
         this._boardHashes = new Map(); // playerId -> board hash
         this._pieceHashes = new Map(); // playerId -> piece signature
         this._lastNextPieces = new Map(); // playerId -> nextPieces signature
+        // Smoothness/perf: only repaint a mini-board when its grid/piece/blind actually
+        // changed, instead of an unconditional 60–144fps CPU flood-fill per opponent (which
+        // competed with the local board + WebGPU theme for main-thread time → micro-stutter).
+        // The clear-FLASH overlay self-animates on its OWN canvas, so skipping the grid
+        // repaint here never affects it. Toggle OFF: ?opponentDirtyCheck=0.
+        this._renderSigs = new Map(); // playerId -> last-rendered signature
+        this._opponentDirtyCheck = (() => {
+            try {
+                const p = new URLSearchParams(window.location.search);
+                if (p.get('owmDirtyCheck') === '0') return false;
+                if (p.get('opponentDirtyCheck') === '0') return false;
+                if (typeof localStorage !== 'undefined') {
+                    if (localStorage.getItem('serenity.owmDirtyCheck') === '0') return false;
+                    if (localStorage.getItem('serenity.opponentDirtyCheck') === '0') return false;
+                }
+            } catch (e) { /* default on */ }
+            return true;
+        })();
+
+        // Issue 3: opponent mini-boards must use the ACTIVE THEME's tetromino palette, the same
+        // as every board on screen. The per-board TetrominoStyleManager already re-reads the
+        // theme on THEME_CHANGED, but our PERSISTENT _colorCache memoizes pieceType→color and was
+        // never invalidated — it shadowed the refresh, so opponent pieces stayed on the previous
+        // theme's colors. Clear the color cache (and the render-dirty signatures, so the repaint
+        // isn't suppressed) on theme/settings changes so all boards stay in lockstep.
+        this._onThemeOrSettingChange = () => {
+            this._colorCache.clear();
+            this._styleConfigCache.clear();
+            this._renderSigs.clear();
+            this.styleManager?.refresh?.();
+        };
+        this._themeUnsub = eventBus.on(EVENTS.THEME_CHANGED, this._onThemeOrSettingChange);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('settingsChanged', this._onThemeOrSettingChange);
+        }
 
         this.animationFrameId = null;
         this.startAnimationLoop();
@@ -77,13 +138,38 @@ export class OpponentWatchManager {
     }
 
     /**
+     * Count occupied cells in the visible playfield (rows 4..23) — same range as
+     * _computeBoardHash. Used to classify a board change as a piece LOCK (small positive
+     * delta) vs a garbage insert (large positive) vs a line clear (negative).
+     * @private
+     */
+    _countOccupiedCells(grid) {
+        if (!grid) return 0;
+        let count = 0;
+        for (let row = 4; row < 24; row++) {
+            const gridRow = grid[row];
+            if (!gridRow) continue;
+            for (let col = 0; col < 10; col++) {
+                if (gridRow[col]) count++;
+            }
+        }
+        return count;
+    }
+
+    /**
      * Compute fast hash for piece state (for dirty-checking)
      * @private
      */
     _computePieceHash(piece) {
-        if (!piece) return 0;
-        const type = piece.type || piece.shape?.[0]?.[0] || 0;
-        return (type << 24) | ((piece.x || 0) << 16) | ((piece.y || 0) << 8) | (piece.rotation || 0);
+        if (!piece) return 'none';
+        const type = piece.type
+            || piece.shapeKey
+            || piece.id
+            || (piece.shape ? piece.shape.map((row) => row.join('')).join('/') : 'unknown');
+        const x = Number.isFinite(Number(piece.x)) ? Number(piece.x) : 0;
+        const y = Number.isFinite(Number(piece.y)) ? Number(piece.y) : 0;
+        const rotation = Number.isFinite(Number(piece.rotation)) ? Number(piece.rotation) : 0;
+        return `${type}|${Math.round(x * 10)}|${Math.round(y * 10)}|${rotation}`;
     }
 
     /**
@@ -161,10 +247,14 @@ export class OpponentWatchManager {
             : this.container.querySelector('.watch-grid');
         if (!grid) return;
 
-        // Calculate available space for a single opponent cell
-        // 2 columns, 2 rows, 4px gap
-        const cellW = (grid.clientWidth - 4) / 2;
-        const cellH = (grid.clientHeight - 4) / 2;
+        // Calculate available space for a single opponent cell using the ACTUAL grid
+        // layout (cols×rows), not a hardcoded 2x2 — otherwise a spectator's wider/taller
+        // grid (e.g. 1x2 for two players, 2x4 for eight) sized canvases for the wrong cell,
+        // leaving boards cramped with empty space. 4px gap between tracks.
+        const cols = this._gridCols || 2;
+        const rows = this._gridRows || 2;
+        const cellW = (grid.clientWidth - 4 * (cols - 1)) / cols;
+        const cellH = (grid.clientHeight - 4 * (rows - 1)) / rows;
 
         if (cellW <= 0 || cellH <= 0) return;
 
@@ -198,7 +288,13 @@ export class OpponentWatchManager {
         // Also account for garbage meter width + gap inside grid-frame
         const garbageMeterWidth = 10 + 3; // 10px meter + 3px gap
 
-        const maxCanvasHeight = cellH - verticalChrome;
+        // Safety margin: the measured chrome can run a few px short (sub-pixel rounding,
+        // flex gaps, the frame border), which let the canvas spill ~6px BELOW its frame →
+        // the bottom playfield row got clipped by the frame's overflow:hidden, most visibly
+        // with 2 stacked boards that fill the column. Reserve a little headroom so the full
+        // board (all 20 rows + floor) always fits inside the frame and the cell.
+        const CHROME_SAFETY_PX = 16;
+        const maxCanvasHeight = cellH - verticalChrome - CHROME_SAFETY_PX;
         const maxCanvasWidth = cellW - horizontalChrome - garbageMeterWidth;
 
         // Determine dimensions keeping strictly 1:2 aspect ratio (width:height)
@@ -211,12 +307,72 @@ export class OpponentWatchManager {
             canvasW = canvasH / 2;
         }
 
+        // Cap opponent board height so multi-opponent layouts don't dwarf the hero/spotlight.
+        // COUNT-AWARE (Quadra shows a lone watched board near full size): a single opponent
+        // (1v1) is allowed to be LARGE; the cap tightens as the roster grows. For 1 opponent
+        // the column width is the real bound (≈ left-column width), so this only guards height.
+        const visibleCount = this.watchedPlayers.length || 1;
+        let maxOpponentCanvasH;
+        if (visibleCount <= 1) {
+            // 1v1: prominent but clearly SECONDARY to the hero (the left column width alone
+            // would make it ~full-height, which read as too big — bound the height too).
+            maxOpponentCanvasH = Math.min(760, window.innerHeight * 0.5);
+        } else if (visibleCount <= 2) {
+            maxOpponentCanvasH = Math.min(620, window.innerHeight * 0.55);
+        } else {
+            maxOpponentCanvasH = Math.min(440, window.innerHeight * 0.42);
+        }
+        if (canvasH > maxOpponentCanvasH) {
+            canvasH = maxOpponentCanvasH;
+            canvasW = canvasH / 2;
+        }
+
         // Apply sensible minimum bound (min 50px width)
         canvasW = Math.max(50, Math.floor(canvasW));
         canvasH = canvasW * 2;
 
         grid.style.setProperty('--mini-canvas-width-px', `${canvasW}px`);
         grid.style.setProperty('--mini-canvas-height-px', `${canvasH}px`);
+    }
+
+    /**
+     * Choose a grid shape (cols×rows) that fits the actual number of visible boards into
+     * the panel, instead of a fixed 2x2 (which left 2 spectator boards stranded in the top
+     * row of an 8-cell grid). Aspect-aware: a tall/narrow panel grows ROWS (max 2 cols), a
+     * short/wide panel (responsive row layout) grows COLS. Sets the grid template inline so
+     * _handleResize (which reads _gridCols/_gridRows) sizes each canvas to the real cell.
+     */
+    _applyGridLayout(count) {
+        const n = Math.max(1, count | 0);
+        const grid = this.container?.classList?.contains('watch-grid')
+            ? this.container
+            : this.container?.querySelector?.('.watch-grid');
+
+        let cols;
+        let rows;
+        if (n === 1) {
+            cols = 1; rows = 1;
+        } else {
+            const w = grid ? grid.clientWidth : 0;
+            const h = grid ? grid.clientHeight : 1;
+            const wide = w > h * 1.2; // short/wide panel (e.g. responsive horizontal layout)
+            if (wide) {
+                cols = Math.min(n, 4);
+                rows = Math.ceil(n / cols);
+            } else {
+                // Tall/narrow panel: two boards stack (1 col, bigger), 3+ use 2 cols.
+                cols = n <= 2 ? 1 : 2;
+                rows = Math.ceil(n / cols);
+            }
+        }
+
+        this._gridCols = cols;
+        this._gridRows = rows;
+
+        if (grid) {
+            grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+        }
     }
 
     _normalizeId(id) {
@@ -227,6 +383,135 @@ export class OpponentWatchManager {
     _getPlayerId(player) {
         if (!player) return '';
         return this._normalizeId(player.id ?? player.steamId);
+    }
+
+    /**
+     * Phase 1+2: play a transient staged line-clear FLASH on an OPPONENT's mini-board.
+     * `rows` are ABSOLUTE full-board indices (CanvasBoardEffects subtracts HIDDEN_ROWS
+     * internally, matching the mini-board's grid draw). No-op for unwatched ids. Never
+     * writes the grid — purely an overlay, so it can't fight the snapshot interpolator.
+     */
+    triggerOpponentClear(playerId, { rows = [], lineCount = rows.length, color = '#ffffff' } = {}) {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        fx.triggerLineClearFlash(rows, lineCount, color);
+        fx.triggerLineClearImpact?.(lineCount);
+    }
+
+    /**
+     * Phase 1+2: show a combo badge on an OPPONENT's mini-board (cascade depth >= 2).
+     */
+    triggerOpponentCombo(playerId, comboCount, color = '#ffd166') {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        fx.triggerCombo(comboCount, color);
+    }
+
+    triggerOpponentPieceLock(playerId, color = '#6ee7b7') {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        fx.triggerPieceLockPulse?.(color);
+    }
+
+    _maybeTriggerSettledBoardPulse(playerId, board, state) {
+        if (!board || !state?.grid) return;
+        const boardHash = this._computeBoardHash(state.grid);
+        const cellCount = this._countOccupiedCells(state.grid);
+        // First observation for this board: seed the baselines, never pulse on join.
+        if (board.settledGridHash === undefined || board.settledGridHash === null) {
+            board.settledGridHash = boardHash;
+            board.settledCellCount = cellCount;
+            return;
+        }
+        if (boardHash === board.settledGridHash) return;
+
+        const prevCount = Number.isFinite(board.settledCellCount) ? board.settledCellCount : cellCount;
+        board.settledGridHash = boardHash;
+        board.settledCellCount = cellCount;
+
+        // Only a piece LOCK lands a few new cells (1..4). A garbage insert adds a whole block of
+        // rows at once (large positive delta) and already shows its own red garbage flash; a line
+        // clear removes cells (delta <= 0) and already shows the clear flash. Skip both so the teal
+        // lock-pulse stays a LOCK cue instead of conflating with the dedicated garbage/clear feedback.
+        const delta = cellCount - prevCount;
+        if (delta < 1 || delta > 4) return;
+
+        const player = this._getPlayerById(playerId);
+        const color = state.color || player?.color || '#6ee7b7';
+        this.triggerOpponentPieceLock(playerId, color);
+    }
+
+    triggerOpponentHardDrop(playerId, dropData = {}, color = '#fbbf24') {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+
+        const piece = dropData?.piece || {};
+        const shape = piece.shape || [];
+        let minX = 0;
+        let maxX = 0;
+        let found = false;
+        shape.forEach((row) => {
+            row.forEach((cell, col) => {
+                if (!cell) return;
+                minX = found ? Math.min(minX, col) : col;
+                maxX = found ? Math.max(maxX, col) : col;
+                found = true;
+            });
+        });
+
+        const blockSize = fx.blockSize || (fx.width / 10);
+        const pieceX = Number.isFinite(Number(piece.x)) ? Number(piece.x) : 4;
+        let landingY = 16;
+        if (Number.isFinite(Number(dropData?.endY))) {
+            landingY = Number(dropData.endY);
+        } else if (Number.isFinite(Number(piece.y))) {
+            landingY = Number(piece.y);
+        }
+        const visualMinX = found ? minX : 0;
+        const visualMaxX = found ? maxX : 1;
+        const centerX = ((pieceX + visualMinX + ((visualMaxX - visualMinX + 1) / 2)) * blockSize);
+        const centerY = ((landingY - 4 + 0.5) * blockSize);
+        const burstX = Number.isFinite(centerX) ? centerX : fx.width / 2;
+        const burstY = Number.isFinite(centerY) ? centerY : fx.height * 0.7;
+
+        fx.spawnBurstParticles?.(
+            Math.max(0, Math.min(fx.width, burstX)),
+            Math.max(0, Math.min(fx.height, burstY)),
+            fx.isFocused ? 15 : 12,
+            220,
+            color,
+        );
+        fx.triggerPieceLockPulse?.(color);
+    }
+
+    triggerOpponentGarbage(playerId, color = '#f87171') {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        fx.triggerGarbageFlash?.(color);
+    }
+
+    triggerOpponentPerfectClear(playerId, depth = 0, color = '#ffffff') {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        if (fx.triggerPerfectClear) {
+            fx.triggerPerfectClear(depth, color);
+            return;
+        }
+        fx.triggerFlash?.(color, 1.2, 600);
+        fx.spawnBurstParticles?.(fx.width / 2, fx.height / 2, fx.isFocused ? 48 : 32, 260, '#9ff7ff');
+    }
+
+    setOpponentDeadState(playerId, isDead = true) {
+        const fx = this._boardEffects.get(this._normalizeId(playerId));
+        if (!fx) return;
+        fx.setDeadState?.(isDead);
+    }
+
+    clearOpponentEffectStates() {
+        this._boardEffects.forEach((fx) => {
+            fx.clearDeaths?.();
+            fx.clearAll?.();
+        });
     }
 
     _isPopupVisible() {
@@ -272,21 +557,31 @@ export class OpponentWatchManager {
         }
         this.styleManager = new TetrominoStyleManager(themeManager, settingsManager);
         this.styleManager.init();
+        // The cache may hold fallback COLORS[] entries computed before the style manager existed
+        // (first paints before themeManager/settingsManager were ready). Drop them so the very
+        // first themed paint isn't shadowed by a stale fallback.
+        this._colorCache.clear();
+        this._styleConfigCache.clear();
         return this.styleManager;
     }
 
     _getStyleConfig(pieceKey, fallbackColor) {
         const fallback = fallbackColor || COLORS[pieceKey] || '#808080';
+        const cacheKey = `${pieceKey || 'unknown'}|${fallback}`;
+        if (this._styleConfigCache?.has(cacheKey)) {
+            return this._styleConfigCache.get(cacheKey);
+        }
         const manager = this._getStyleManager();
-        if (!manager) {
-            return {
+        const styleConfig = manager
+            ? manager.getStyleForPiece(pieceKey)
+            : {
                 color: fallback,
                 renderMode: 'solid',
                 effects: { ...DEFAULT_EFFECTS },
                 rendererOverrides: {},
             };
-        }
-        return manager.getStyleForPiece(pieceKey);
+        this._styleConfigCache?.set(cacheKey, styleConfig);
+        return styleConfig;
     }
 
     _getThemedColor(pieceType, fallbackColor, cache) {
@@ -303,10 +598,43 @@ export class OpponentWatchManager {
         return resolved;
     }
 
+    _getPieceFallbackColor(piece, pieceType) {
+        let fallbackColor = piece?.color;
+        if (typeof fallbackColor === 'string' && COLORS[fallbackColor]) {
+            fallbackColor = COLORS[fallbackColor];
+        }
+        return fallbackColor || COLORS[pieceType] || '#808080';
+    }
+
+    _buildPieceStyleConfig(pieceType, fallbackColor, colorCache) {
+        const pieceColor = this._getThemedColor(pieceType, fallbackColor, colorCache);
+        const baseStyle = this._getStyleConfig(pieceType, pieceColor);
+        const styleConfig = {
+            ...baseStyle,
+            color: pieceColor || baseStyle?.color || fallbackColor || '#808080',
+            effects: { ...(baseStyle?.effects || DEFAULT_EFFECTS) },
+            rendererOverrides: { ...(baseStyle?.rendererOverrides || {}) },
+        };
+        const resolvedColor = styleConfig.color;
+        if (resolvedColor) {
+            if (styleConfig.effects.glowColor) styleConfig.effects.glowColor = resolvedColor;
+            if (styleConfig.effects.outlineColor) styleConfig.effects.outlineColor = resolvedColor;
+        }
+        return styleConfig;
+    }
+
     _getCellId(cell, worldX, worldY) {
         if (!cell) return null;
         if (typeof cell === 'object') {
-            return cell.id ?? cell.pieceId ?? cell.shapeKey ?? `${worldX}:${worldY}`;
+            const base = cell.id ?? cell.pieceId ?? cell.shapeKey ?? `${worldX}:${worldY}`;
+            // Garbage rows from different attackers share shapeKey 'GARBAGE' but differ in color.
+            // Fold color into the component key so the flood-fill in _drawCohesiveGrid doesn't
+            // merge two differently-coloured garbage regions into one (drawn in a single colour).
+            const t = cell.type || cell.shapeKey;
+            if ((t === 'GARBAGE' || t === 'CLEAN_GARBAGE') && cell.color) {
+                return `${base}:${cell.color}`;
+            }
+            return base;
         }
         return `${worldX}:${worldY}`;
     }
@@ -369,10 +697,27 @@ export class OpponentWatchManager {
         this.watchedPlayers.forEach((playerId) => {
             const player = this._getPlayerById(playerId);
             const board = this.playerBoards.get(playerId);
-            if (player && board && player.grid) {
-                this._renderMiniBoard(board.ctx, player.grid, player.currentPiece);
+            if (!(player && board && player.grid)) return;
+
+            if (this._opponentDirtyCheck) {
+                // Repaint only when the board/piece/blind actually changed. A blind veil
+                // counts down continuously, so fold its (rounded) value into the signature
+                // to keep animating it; everything else is event-driven (≈30Hz snapshots),
+                // not per-frame. The separate clear-FLASH overlay canvas is unaffected.
+                const bt = player.blindTimers;
+                const blindSig = bt ? `${Math.round((bt.field || 0) * 5)}:${Math.round((bt.pending || 0) * 5)}` : '';
+                const sig = `${this._computeBoardHash(player.grid)}|${this._computePieceHash(player.currentPiece)}|${blindSig}`;
+                if (this._renderSigs.get(playerId) === sig) return;
+                this._renderSigs.set(playerId, sig);
             }
+
+            this._renderMiniBoard(board.ctx, player.grid, player.currentPiece, player.blindTimers);
         });
+
+        // Spectator main board: render the selected player full-size each frame.
+        if (this.spotlightCtx) {
+            this._renderSpotlight();
+        }
     }
 
     toggleAutoWatch() {
@@ -465,6 +810,202 @@ export class OpponentWatchManager {
      * Set all players in the match
      * @param {Array} players - Array of player objects { id, name, isAlive, frags, grid }
      */
+    /**
+     * Set how many opponent boards to show at once. The base grid is 2x2 (4 cells); a
+     * spectator / eliminated player watches the FULL roster, so toggle a `full-roster`
+     * class that widens the CSS grid to fit up to 8 — otherwise the 5th–8th boards render
+     * clipped off-screen (wasted DOM/canvas). Re-runs auto-select so the change takes effect.
+     */
+    setMaxVisible(n) {
+        this.maxVisible = n;
+        // Keep the legacy class for any auxiliary styling; the actual grid shape is now
+        // driven inline by _applyGridLayout (from the live board count) in updateDisplay.
+        this.container?.classList?.toggle('full-roster', n > 4);
+        this.autoSelectOpponents({ preserveCurrent: false });
+    }
+
+    /**
+     * Register a large "spotlight" canvas (the spectator's main board). Once set, a mini-board
+     * CLICK selects the spotlight player instead of toggling the watch set, and the chosen
+     * player's board is rendered full-size on this canvas by the animation loop.
+     * @param {HTMLCanvasElement} canvasEl
+     * @param {{ onChange?: (player) => void, garbage?: {meter:HTMLElement, fill:HTMLElement, segments:HTMLElement} }} [opts]
+     *   onChange fires when the spotlight player changes; garbage wires the spotlight's pending-garbage meter.
+     */
+    setSpotlight(canvasEl, { onChange, garbage } = {}) {
+        if (!canvasEl) return;
+        this.spotlightCanvas = canvasEl;
+        this.spotlightCtx = canvasEl.getContext('2d');
+        this.spotlightMode = true;
+        if (onChange) this.onSpotlightChange = onChange;
+        // Adapt the passed garbage elements to the {garbageMeter, garbageFill, garbageSegments}
+        // shape _updateGarbageMeter reads (the same path the mini-boards use).
+        this._spotlightGarbage = garbage && garbage.fill
+            ? { garbageMeter: garbage.meter, garbageFill: garbage.fill, garbageSegments: garbage.segments }
+            : null;
+        this._spotlightGarbageSig = null;
+        this._spotlightSig = null;
+        this._spotlightShownId = null;
+        this._spotlightHeaderSig = null;
+    }
+
+    /**
+     * Choose which player the spotlight (main board) shows. Sticky: an explicit pick is kept
+     * even after that player is eliminated (a spectator may want to watch their elimination).
+     */
+    setSpotlightPlayer(playerId) {
+        const id = this._normalizeId(playerId);
+        if (!id) return;
+        this.spotlightPlayerId = id;
+        this._spotlightSig = null; // force a repaint
+        const player = this._getPlayerById(id);
+        if (player) {
+            this._spotlightShownId = id;
+            this._spotlightHeaderSig = `${id}|${player.frags || 0}|${player.isAlive !== false ? 1 : 0}`;
+            this._highlightSpotlightBoard(id);
+            if (typeof this.onSpotlightChange === 'function') {
+                try { this.onSpotlightChange(player); } catch (e) { /* label update is non-essential */ }
+            }
+        }
+    }
+
+    /** The player object the spotlight should currently show (explicit pick, else a default). */
+    _resolveSpotlightPlayer() {
+        if (this.spotlightPlayerId) {
+            const picked = this._getPlayerById(this.spotlightPlayerId);
+            if (picked) return picked;
+        }
+        // Default: a watched, alive player; else any watched; else any player.
+        const watched = this.watchedPlayers.map((id) => this._getPlayerById(id)).filter(Boolean);
+        return watched.find((p) => p.isAlive !== false) || watched[0] || this.allPlayers[0] || null;
+    }
+
+    _highlightSpotlightBoard(pid) {
+        this.playerBoards.forEach((board, id) => {
+            const el = board.element;
+            if (!el) return;
+            const on = (id === pid);
+            el.classList.toggle('spotlighted', on);
+            if (on) {
+                // The selection highlight (outline + glow) uses the SELECTED player's colour.
+                const color = this._getPlayerById(id)?.color || '#5eead4';
+                el.style.setProperty('--spotlight-color', color);
+            } else {
+                el.style.removeProperty('--spotlight-color');
+            }
+        });
+    }
+
+    /**
+     * Size the spotlight canvas to the largest 1:2 board that fits its stage, as EXPLICIT
+     * inline px. We don't use CSS aspect-ratio + height:100% because the flex cross-axis
+     * stretch (wide column) + _renderMiniBoard's getBoundingClientRect feedback drove a
+     * runaway height (canvas sized by width → 2× tall → overflow). availH is bounded by the
+     * viewport so a transient inflated layout can't blow it up.
+     */
+    _resizeSpotlight() {
+        const canvas = this.spotlightCanvas;
+        // The canvas now sits inside a board-row (garbage bar + canvas), so measure the STAGE
+        // by class, not parentElement (which is the row), for the height/runaway-safe sizing.
+        const stage = canvas?.closest('.spectator-spotlight-stage') || canvas?.parentElement;
+        if (!canvas || !stage) return;
+        // Measure WIDTH from the stable center column (.main-board-panel — a fixed grid track,
+        // its width is layout-driven not content-driven) and HEIGHT from the stage (flex:1, it
+        // already excludes the header/hint). We must NOT take width from the stage: we shrink the
+        // card to hug the board below, which shrinks the stage, which would feed back into a
+        // stage-based width measurement (the documented spotlight runaway). The column is constant.
+        const panel = canvas.closest('.main-board-panel');
+        const card = document.getElementById('online-player-card');
+        const fullW = panel ? panel.clientWidth : stage.clientWidth;
+        // Reserve room for the pending-garbage bar (20px) + its gap (6px) beside the board so
+        // the board + bar together fit the column instead of overflowing it.
+        const garbageCol = this._spotlightGarbage ? 26 : 0;
+        const availW = fullW - garbageCol;
+        const vh = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : (stage.clientHeight || 0);
+        const availH = Math.min(stage.clientHeight || 0, vh);
+        if (availW <= 0 || availH <= 0) return;
+        let w = Math.min(availW, Math.floor(availH / 2));
+        w = Math.max(40, w);
+        const h = w * 2;
+        // Match the garbage bar's height to the board so it reads like the main board's meter.
+        if (this._spotlightGarbage?.garbageMeter && this._spotlightGarbage.garbageMeter.style.height !== `${h}px`) {
+            this._spotlightGarbage.garbageMeter.style.height = `${h}px`;
+        }
+        // Use !important: a global `.phaser-board-container canvas { width:100% !important }`
+        // rule (main.css) would otherwise force the canvas to fill the stage (→ wrong aspect
+        // + a getBoundingClientRect feedback blowup). Our explicit 1:2 size must win.
+        if (canvas.style.width !== `${w}px` || canvas.style.height !== `${h}px`) {
+            canvas.style.setProperty('width', `${w}px`, 'important');
+            canvas.style.setProperty('height', `${h}px`, 'important');
+        }
+        // Hug the board: shrink the card toward the board width (it's centered by the panel's
+        // justify-content) so there are no wide transparent side-gaps showing the theme through
+        // the frame. +40 ≈ the host/peer board↔frame margin; clamped so it never exceeds the column.
+        if (card) {
+            const cardW = `${Math.min(w + 40 + garbageCol, fullW)}px`;
+            if (card.style.width !== cardW) card.style.width = cardW;
+        }
+    }
+
+    /** Render the spotlight player's board onto the large main-board canvas. */
+    _renderSpotlight() {
+        if (!this.spotlightCtx) return;
+        this._resizeSpotlight();
+        const player = this._resolveSpotlightPlayer();
+        if (!player) return;
+
+        const pid = this._getPlayerId(player);
+        if (pid !== this._spotlightShownId) {
+            this._spotlightShownId = pid;
+            this._spotlightSig = null;
+            this._highlightSpotlightBoard(pid);
+        }
+        // Fire onChange on player switch AND when the header values (frags/alive) change, so
+        // the big header stays live while the same player is spotlighted (not frozen at pick).
+        const headerSig = `${pid}|${player.frags || 0}|${player.isAlive !== false ? 1 : 0}`;
+        if (headerSig !== this._spotlightHeaderSig) {
+            this._spotlightHeaderSig = headerSig;
+            if (typeof this.onSpotlightChange === 'function') {
+                try { this.onSpotlightChange(player); } catch (e) { /* non-essential */ }
+            }
+        }
+
+        // Pending-garbage meter (mirrors the main board's bar) — updated before the board
+        // dirty-check so it stays live even when the board itself hasn't changed this frame.
+        this._updateSpotlightGarbage(player);
+
+        if (!player.grid) return;
+
+        if (this._opponentDirtyCheck) {
+            const bt = player.blindTimers;
+            const blindSig = bt ? `${Math.round((bt.field || 0) * 5)}:${Math.round((bt.pending || 0) * 5)}` : '';
+            const sig = `${this._computeBoardHash(player.grid)}|${this._computePieceHash(player.currentPiece)}|${blindSig}`;
+            if (this._spotlightSig === sig) return;
+            this._spotlightSig = sig;
+        }
+
+        this._renderMiniBoard(this.spotlightCtx, player.grid, player.currentPiece, player.blindTimers);
+    }
+
+    /**
+     * Drive the spotlight's pending-garbage bar from the watched player. Reuses the same
+     * _updateGarbageMeter path as the mini-boards, but only repaints when the amount/queue
+     * actually changes (the meter is checked every RAF, so a per-frame innerHTML rebuild of the
+     * segments would be wasteful).
+     */
+    _updateSpotlightGarbage(player) {
+        const g = this._spotlightGarbage;
+        if (!g || !g.garbageFill || !player) return;
+        const q = player.garbageQueue;
+        const amount = (q && typeof q.getTotalLines === 'function')
+            ? q.getTotalLines()
+            : Number(player.garbagePending ?? player.pendingGarbage ?? 0);
+        const sig = `${this._getPlayerId(player)}|${amount}|${q?.entries?.length || 0}`;
+        if (sig === this._spotlightGarbageSig) return;
+        this._spotlightGarbageSig = sig;
+        this._updateGarbageMeter(g, player);
+    }
+
     setPlayers(players) {
         // Filter out the local player
         this.allPlayers = players.filter((p) => {
@@ -554,6 +1095,11 @@ export class OpponentWatchManager {
 
         console.log('[OpponentWatch] Updating display. Watched:', this.watchedPlayers);
 
+        // Phase 1+2: dispose per-opponent clear-effect overlays before tearing down the
+        // boards (removes their overlay canvas/textLayer + stops their idle-gated RAF).
+        this._boardEffects.forEach((fx) => { try { fx.destroy(); } catch (e) { /* noop */ } });
+        this._boardEffects.clear();
+
         // Clear container
         this.container.innerHTML = '';
         this.playerBoards.clear();
@@ -579,6 +1125,7 @@ export class OpponentWatchManager {
 
             // Store using the original ID from the player object to match updateFromState
             this.playerBoards.set(playerKey, {
+                playerKey,
                 canvas,
                 ctx: canvas.getContext('2d'),
                 nextCtxs: nextCanvases.map(c => c.getContext('2d')),
@@ -588,14 +1135,34 @@ export class OpponentWatchManager {
                 frame: boardFrame,
                 isEliminated: player.isAlive === false,
                 deathAnimationActive: false,
+                settledGridHash: player.grid ? this._computeBoardHash(player.grid) : null,
+                settledCellCount: player.grid ? this._countOccupiedCells(player.grid) : null,
                 name: player.name,
                 element: boardEl,
             });
 
+            // Phase 1+2: attach a transient clear-FLASH/combo overlay to this opponent's
+            // frame. It paints on its OWN overlay canvas (z-12) over the mini-board and
+            // never writes player.grid, so the snapshot/interp path keeps owning the grid.
+            if (boardFrame) {
+                try {
+                    const fxW = canvas.width || canvas.clientWidth || 80;
+                    const fxH = canvas.height || canvas.clientHeight || 160;
+                    this._boardEffects.set(playerKey, new CanvasBoardEffects(boardFrame, {
+                        width: fxW,
+                        height: fxH,
+                        blockSize: fxW / 10,
+                        baseCanvas: canvas,
+                    }));
+                } catch (e) {
+                    // Effects are non-essential — never let them break the board render.
+                }
+            }
+
             // Initial render
             if (player.grid) {
                 // Use the map entry we just created (using player.id)
-                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece);
+                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece, player.blindTimers);
             }
             if (player.nextPieces && this.playerBoards.get(playerKey).nextCtxs) {
                 this._renderNextQueue(this.playerBoards.get(playerKey).nextCtxs, player.nextPieces);
@@ -603,8 +1170,9 @@ export class OpponentWatchManager {
             this._updateGarbageMeter(this.playerBoards.get(playerKey), player);
         });
 
-        // Recalculate canvas sizes now that boards are in the DOM
-        // (dynamic chrome measurement needs rendered elements)
+        // Shape the grid to the actual number of boards, then recalculate canvas sizes now
+        // that boards are in the DOM (dynamic chrome measurement needs rendered elements).
+        this._applyGridLayout(this.watchedPlayers.length);
         this._handleResize();
     }
 
@@ -624,7 +1192,11 @@ export class OpponentWatchManager {
     _createMiniBoardElement(player) {
         const div = document.createElement('div');
         const playerId = this._getPlayerId(player);
-        div.className = `opponent-mini-board ${player.isAlive === false ? 'dead' : ''}`;
+        // A late joiner waiting to spawn is isAlive:false but NOT eliminated — start in the
+        // "waiting" state (the next updateFromState attaches the ⏳ overlay), not "dead".
+        const startWaiting = player.awaitingSpawn === true;
+        const startDead = player.isAlive === false && !startWaiting;
+        div.className = `opponent-mini-board ${startDead ? 'dead' : ''} ${startWaiting ? 'waiting' : ''}`.trim();
         div.dataset.playerId = playerId;
 
         div.innerHTML = `
@@ -647,8 +1219,21 @@ export class OpponentWatchManager {
             <span class="opponent-frags">⚔️ ${player.frags || 0}</span>
         `;
 
-        // Click to swap/unwatch
-        div.onclick = () => this.toggleWatch(playerId);
+        // Click: in spectator spotlight mode, promote this board to the main view; otherwise
+        // toggle whether it's in the watch set.
+        div.onclick = () => {
+            if (this.spotlightMode) {
+                this.setSpotlightPlayer(playerId);
+            } else {
+                this.toggleWatch(playerId);
+            }
+        };
+
+        // Reflect current spotlight selection on freshly (re)built boards (in the player's colour).
+        if (this.spotlightMode && this._spotlightShownId === playerId) {
+            div.classList.add('spotlighted');
+            div.style.setProperty('--spotlight-color', player.color || '#5eead4');
+        }
 
         return div;
     }
@@ -687,6 +1272,8 @@ export class OpponentWatchManager {
             if (!stateId) return;
             const board = this.playerBoards.get(stateId);
             if (board) {
+                this._maybeTriggerSettledBoardPulse(stateId, board, state);
+
                 // PERF: Dirty-checking - only redraw if state changed
                 // OBSOLETE: _renderMiniBoard is now called in animation loop for smooth ghost pieces
                 /*
@@ -713,22 +1300,45 @@ export class OpponentWatchManager {
                     }
                 }
 
-                // Update alive status + death animation
-                const isDead = state.isAlive === false;
+                // Update alive status. A late joiner WAITING to spawn next round is isAlive:false
+                // but NOT eliminated — show a distinct "next round" overlay, NEVER the skull.
+                const isWaiting = state.awaitingSpawn === true;
+                const isDead = state.isAlive === false && !isWaiting;
                 const wasDead = board.isEliminated === true;
-                if (isDead && !wasDead) {
-                    board.isEliminated = true;
-                    board.element.classList.add('dead');
-                    this._showOpponentDeathAnimation(board);
-                } else if (!isDead && wasDead) {
-                    board.isEliminated = false;
+
+                // Waiting overlay (idempotent). Switching to waiting clears any stale death overlay.
+                if (isWaiting && !board.isWaiting) {
+                    board.isWaiting = true;
+                    if (wasDead) { board.isEliminated = false; this._clearOpponentDeathState(board); }
+                    this.setOpponentDeadState(stateId, false);
                     board.element.classList.remove('dead');
-                    this._clearOpponentDeathState(board);
-                } else if (isDead) {
-                    board.element.classList.add('dead');
-                    this._ensureOpponentDeathOverlay(board);
-                } else {
-                    board.element.classList.remove('dead');
+                    board.element.classList.add('waiting');
+                    this._showOpponentWaitingOverlay(board);
+                } else if (!isWaiting && board.isWaiting) {
+                    board.isWaiting = false;
+                    board.element.classList.remove('waiting');
+                    this._clearOpponentWaitingOverlay(board);
+                }
+
+                if (!isWaiting) {
+                    if (isDead && !wasDead) {
+                        board.isEliminated = true;
+                        board.element.classList.add('dead');
+                        this.setOpponentDeadState(stateId, true);
+                        this._showOpponentDeathAnimation(board);
+                    } else if (!isDead && wasDead) {
+                        board.isEliminated = false;
+                        board.element.classList.remove('dead');
+                        this.setOpponentDeadState(stateId, false);
+                        this._clearOpponentDeathState(board);
+                    } else if (isDead) {
+                        board.element.classList.add('dead');
+                        this.setOpponentDeadState(stateId, true);
+                        this._ensureOpponentDeathOverlay(board);
+                    } else {
+                        board.element.classList.remove('dead');
+                        this.setOpponentDeadState(stateId, false);
+                    }
                 }
 
                 // Update disconnect status
@@ -1027,6 +1637,69 @@ export class OpponentWatchManager {
         this._createOpponentDeathOverlay(container);
     }
 
+    // Late joiner waiting to spawn next round — NOT eliminated. Distinct teal "next round"
+    // overlay (⏳), never the skull/ELIMINATED.
+    _showOpponentWaitingOverlay(board) {
+        if (!board) return;
+        const container = board.frame || board.element;
+        if (!container || container.querySelector('.waiting-overlay')) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'waiting-overlay';
+        overlay.innerHTML = `
+            <div class="waiting-content">
+                <div class="waiting-icon">⏳</div>
+                <div class="waiting-text">NEXT ROUND</div>
+            </div>
+        `;
+        overlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(8, 10, 23, 0.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 95;
+            pointer-events: none;
+            border-radius: inherit;
+        `;
+
+        const content = overlay.querySelector('.waiting-content');
+        content.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 8px;';
+
+        const icon = overlay.querySelector('.waiting-icon');
+        icon.style.cssText = `
+            font-size: 38px;
+            filter: drop-shadow(0 0 12px rgba(94, 234, 212, 0.5));
+            animation: opp-waiting-pulse 1.8s ease-in-out infinite;
+        `;
+
+        const text = overlay.querySelector('.waiting-text');
+        text.style.cssText = `
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #5eead4;
+            text-shadow: 0 0 14px rgba(94, 234, 212, 0.45);
+        `;
+
+        if (getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+        }
+
+        container.appendChild(overlay);
+    }
+
+    _clearOpponentWaitingOverlay(board) {
+        const container = board?.frame || board?.element;
+        if (!container) return;
+        const overlay = container.querySelector('.waiting-overlay');
+        if (overlay) overlay.remove();
+    }
+
     _showDisconnectOverlay(board) {
         const container = board.frame || board.element;
         if (!container) return;
@@ -1079,6 +1752,9 @@ export class OpponentWatchManager {
     _clearOpponentDeathState(board) {
         const container = board?.frame || board?.element;
         if (!container) return;
+        if (board?.playerKey) {
+            this.setOpponentDeadState(board.playerKey, false);
+        }
 
         const deathOverlay = container.querySelector('.death-overlay');
         if (deathOverlay) {
@@ -1142,7 +1818,7 @@ export class OpponentWatchManager {
         const renderRows = (list, isWatched) => list.map((player) => {
             const id = this._getPlayerId(player);
             const state = stateMap.get(id) || player;
-            const isDead = state.isAlive === false;
+            const isDead = state.isAlive === false && state.awaitingSpawn !== true;
             const toggleLabel = isWatched ? '-' : '+';
             return `
                 <button class="opponent-selection-item ${isWatched ? 'watched' : ''} ${isDead ? 'dead' : ''}" type="button" data-player-id="${id}" aria-pressed="${isWatched}">
@@ -1192,7 +1868,7 @@ export class OpponentWatchManager {
      * Render a mini-board to canvas
      * Uses 8px block size for compact display
      */
-    _renderMiniBoard(ctx, grid, currentPiece) {
+    _renderMiniBoard(ctx, grid, currentPiece, blindTimers) {
         if (!ctx || !grid) return;
 
         // Dynamically get the parent frame's actual dimensions or the element's client dimensions
@@ -1207,6 +1883,13 @@ export class OpponentWatchManager {
         if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
             canvas.width = displayWidth;
             canvas.height = displayHeight;
+            // Phase 1+2: keep this opponent's clear-FLASH overlay matched to the resized
+            // mini canvas so the row stripes line up (match by baseCanvas).
+            if (this._boardEffects && this._boardEffects.size) {
+                this._boardEffects.forEach((fx) => {
+                    if (fx.baseCanvas === canvas) fx.resize(displayWidth, displayHeight, displayWidth / 10);
+                });
+            }
         }
 
         // Tetris board is ALWAYS exactly 10 blocks wide.
@@ -1222,10 +1905,36 @@ export class OpponentWatchManager {
         // Render cohesive opponent grid blocks
         this._drawCohesiveGrid(ctx, grid, blockSize, this._colorCache);
 
+        // Render Quadra blind blackout veils
+        if (blindTimers) {
+            if (blindTimers.field > 0) {
+                const ratio = blindTimers.field / (blindTimers.fieldMax || 4.0);
+                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
+                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (blindTimers.pending > 0) {
+                const ratio = blindTimers.pending / (blindTimers.pendingMax || 4.0);
+                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
+                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
+                for (let r = 4; r < grid.length; r++) {
+                    const gridRow = grid[r];
+                    if (!gridRow) continue;
+                    const hasGarbage = gridRow.some(cell => {
+                        if (!cell) return false;
+                        const type = typeof cell === 'object' ? cell.type : cell;
+                        return type === 'garbage' || type === 'clean_garbage';
+                    });
+                    if (hasGarbage) {
+                        ctx.fillRect(0, (r - 4) * blockSize, canvas.width, blockSize);
+                    }
+                }
+            }
+        }
+
         if (currentPiece && currentPiece.shape) {
             const ghostY = this._calculateGhostY(currentPiece, grid);
             if (ghostY > currentPiece.y) {
-                this._drawGhostPiece(ctx, currentPiece, ghostY, blockSize);
+                this._drawGhostPiece(ctx, currentPiece, ghostY, blockSize, this._colorCache);
             }
             this._drawCurrentPiece(ctx, currentPiece, blockSize, this._colorCache);
         }
@@ -1345,30 +2054,16 @@ export class OpponentWatchManager {
         }
     }
 
-    _drawGhostPiece(ctx, piece, pieceY, blockSize) {
+    _drawGhostPiece(ctx, piece, pieceY, blockSize, colorCache = this._colorCache) {
         const { shape } = piece;
         if (!shape) return;
 
-        for (let row = 0; row < shape.length; row++) {
-            for (let col = 0; col < shape[row].length; col++) {
-                if (!shape[row][col]) continue;
-
-                const worldY = pieceY + row;
-                const drawRow = worldY - 4;
-                const drawCol = piece.x + col;
-
-                if (drawRow >= 0 && drawRow < 20 && drawCol >= 0 && drawCol < 10) {
-                    const alpha = this._getGhostAlpha(drawCol, worldY);
-                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-                    ctx.fillRect(
-                        Math.round(drawCol * blockSize),
-                        Math.round(drawRow * blockSize),
-                        blockSize,
-                        blockSize,
-                    );
-                }
-            }
-        }
+        const pieceType = piece.type || piece.shapeKey;
+        const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
+        const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
+        const offsetX = piece.x * blockSize;
+        const offsetY = (Math.floor(pieceY) - 4) * blockSize;
+        drawPieceStyledUnified(ctx, shape, offsetX, offsetY, blockSize, styleConfig, true, 1.0);
     }
 
     _drawCurrentPiece(ctx, piece, blockSize, colorCache) {
@@ -1376,49 +2071,8 @@ export class OpponentWatchManager {
         if (!shape) return;
 
         const pieceType = piece.type || piece.shapeKey;
-        let fallbackColor = piece.color;
-        if (typeof fallbackColor === 'string' && window.themeManager?.colors?.[fallbackColor]) { // In OpponentWatchManager COLORS is imported actually. Wait, let me just assume COLORS is around. Actually, we had a `COLORS` reference. I'll rely on whatever was there to avoid undefined variables. The original code literally said `COLORS[fallbackColor]`. Let me keep what was in the original `_drawCurrentPiece`.
-            // Wait, let's look back at my previous view_file.
-            // if (typeof fallbackColor === 'string' && COLORS[fallbackColor]) {
-            //     fallbackColor = COLORS[fallbackColor];
-            // }
-            // Let's just do exactly that.
-        }
-        if (typeof fallbackColor === 'string' && COLORS[fallbackColor]) {
-            fallbackColor = COLORS[fallbackColor];
-        }
-        if (!fallbackColor && pieceType) {
-            fallbackColor = COLORS[pieceType];
-        }
-        const pieceColor = this._getThemedColor(pieceType, fallbackColor, colorCache);
-
-        let baseStyle = this._getStyleConfig(pieceType);
-        let styleConfig;
-        if (baseStyle) {
-            styleConfig = { ...baseStyle, effects: { ...(baseStyle.effects || {}) } };
-            if (pieceColor) {
-                styleConfig.color = pieceColor;
-                if (styleConfig.effects.glowColor) styleConfig.effects.glowColor = pieceColor;
-                if (styleConfig.effects.outlineColor) styleConfig.effects.outlineColor = pieceColor;
-            }
-        } else {
-            styleConfig = {
-                color: pieceColor || '#808080',
-                renderMode: 'solid',
-                effects: {
-                    glowRadius: 0,
-                    glowIntensity: 0,
-                    glowColor: pieceColor || '#808080',
-                    outline: false,
-                    outlineWidth: 0,
-                    outlineColor: pieceColor || '#808080',
-                    pulse: false,
-                    pulseSpeed: 0,
-                    pulseAmplitude: 0,
-                },
-                rendererOverrides: {},
-            };
-        }
+        const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
+        const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
 
         const offsetX = piece.x * blockSize;
         const offsetY = (piece.y - 4) * blockSize;
@@ -1427,7 +2081,7 @@ export class OpponentWatchManager {
     }
 
     _calculateGhostY(piece, grid) {
-        let ghostY = piece.y;
+        let ghostY = Math.floor(Number(piece.y) || 0);
         while (this._canPlacePiece(piece, grid, piece.x, ghostY + 1)) {
             ghostY++;
         }
@@ -1479,6 +2133,15 @@ export class OpponentWatchManager {
     destroy() {
         this.stopAnimationLoop();
 
+        if (this._themeUnsub) {
+            try { this._themeUnsub(); } catch (e) { /* noop */ }
+            this._themeUnsub = null;
+        }
+        if (this._onThemeOrSettingChange && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this._onThemeOrSettingChange);
+            this._onThemeOrSettingChange = null;
+        }
+
         if (this.boundResize) {
             window.removeEventListener('resize', this.boundResize);
             this.boundResize = null;
@@ -1488,9 +2151,18 @@ export class OpponentWatchManager {
             this.resizeObserver = null;
         }
 
+        this._boardEffects.forEach((fx) => { try { fx.destroy(); } catch (e) { /* noop */ } });
+        this._boardEffects.clear();
         this.playerBoards.clear();
         this.watchedPlayers = [];
         this.allPlayers = [];
+        this.spotlightCanvas = null;
+        this.spotlightCtx = null;
+        this.spotlightPlayerId = null;
+        this.spotlightMode = false;
+        this.onSpotlightChange = null;
+        this._spotlightGarbage = null;
+        this._spotlightGarbageSig = null;
         if (this.boundDocClick) {
             document.removeEventListener('click', this.boundDocClick);
             this.boundDocClick = null;

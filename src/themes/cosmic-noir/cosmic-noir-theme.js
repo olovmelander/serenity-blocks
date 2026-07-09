@@ -80,6 +80,8 @@ function parseCosmicNoirFlags() {
         seed: null,
         fixedDeltaMs: null,
         fixedPixelRatio: null,
+        atmoShells: null,
+        renderScale: null,
         usePost: false,
         useMRT: false,
         useCompute: false,
@@ -117,6 +119,10 @@ function parseCosmicNoirFlags() {
         'fixedDt',
     );
     const fixedPixelRatio = readNumber('cosmicNoirFixedPixelRatio', 'fixedPixelRatio');
+    // A/B override for the atmosphere shell count (perf vs. depth). Falls back to the preset.
+    const atmoShells = readNumber('cosmicNoirAtmoShells');
+    // A/B override for the scene-buffer render scale (perf vs. sharpness). Falls back to the preset.
+    const renderScale = readNumber('cosmicNoirRenderScale');
 
     return {
         ...defaults,
@@ -131,6 +137,12 @@ function parseCosmicNoirFlags() {
         fixedDeltaMs: Number.isFinite(fixedDeltaMs) && fixedDeltaMs > 0 ? fixedDeltaMs : null,
         fixedPixelRatio: Number.isFinite(fixedPixelRatio) && fixedPixelRatio > 0
             ? fixedPixelRatio
+            : null,
+        atmoShells: Number.isFinite(atmoShells) && atmoShells > 0
+            ? Math.round(atmoShells)
+            : null,
+        renderScale: Number.isFinite(renderScale) && renderScale > 0
+            ? Math.min(2.0, Math.max(0.5, renderScale))
             : null,
     };
 }
@@ -177,7 +189,10 @@ const QUALITY_PRESETS = {
         computeSparkCount: 50000,
         bloomStrength: 0.5,
         bloomRadius: 0.45,
-        bloomDownsample: 0.9,
+        // Bloom is a heavily-blurred glow, so a lower internal buffer is near-invisible but cuts
+        // bloom pixel work ~(0.9/0.65)^2 ≈ 1.9x. 0.65 = Winter/chromadelic parity. The adaptive
+        // shedder (Math.min(base, floor) below) only steps this further DOWN under load.
+        bloomDownsample: 0.65,
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 64,
@@ -189,8 +204,8 @@ const QUALITY_PRESETS = {
         diskFbmOctaves: 5,
         planetFbmOctaves: 4,
         // Geometry tessellation
-        atmosphereDetail: 64,
-        diskSegments: 128,
+        atmosphereDetail: 48,
+        diskSegments: 96,
     },
     Ultra: {
         starCount: 50000,
@@ -200,7 +215,7 @@ const QUALITY_PRESETS = {
         computeSparkCount: 36000,
         bloomStrength: 0.45,
         bloomRadius: 0.4,
-        bloomDownsample: 0.85,
+        bloomDownsample: 0.65, // Winter/chromadelic parity (was 0.85); near-invisible blurred glow
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 56,
@@ -210,8 +225,8 @@ const QUALITY_PRESETS = {
         atmosphereFbmOctaves: 5,
         diskFbmOctaves: 4,
         planetFbmOctaves: 4,
-        atmosphereDetail: 64,
-        diskSegments: 96,
+        atmosphereDetail: 48,
+        diskSegments: 72,
     },
     High: {
         starCount: 30000,
@@ -221,18 +236,21 @@ const QUALITY_PRESETS = {
         computeSparkCount: 26000,
         bloomStrength: 0.4,
         bloomRadius: 0.35,
-        bloomDownsample: 0.8,
+        bloomDownsample: 0.65, // Winter/chromadelic parity (was 0.8); near-invisible blurred glow
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 48,
         glowLayers: 6,
-        atmosphereLayers: 2,
+        // 1 shell by default on High (perf); ?cosmicNoirAtmoShells=2 restores the double shell.
+        atmosphereLayers: 1,
         dustParticles: 280,
         atmosphereFbmOctaves: 4,  // gasA=4, gasB=3, tendril=3
         diskFbmOctaves: 3,
         planetFbmOctaves: 4,
-        atmosphereDetail: 48,
-        diskSegments: 64,
+        atmosphereDetail: 40,
+        diskSegments: 48,
+        // Scene buffer rendered at 0.92x then upscaled (perf); ?cosmicNoirRenderScale=1 = native.
+        postRenderScale: 0.92,
     },
     Medium: {
         starCount: 15000,
@@ -252,8 +270,8 @@ const QUALITY_PRESETS = {
         atmosphereFbmOctaves: 3,  // gasA=3, gasB=2, tendril=2
         diskFbmOctaves: 3,
         planetFbmOctaves: 3,
-        atmosphereDetail: 40,
-        diskSegments: 48,
+        atmosphereDetail: 36,
+        diskSegments: 40,
     },
     Low: {
         starCount: 8000,
@@ -306,6 +324,18 @@ const ADAPTIVE_PIXEL_RATIO_CAPS = {
     Medium: 1.2,
     Low: 1.2,
     Minimal: 1.2,
+};
+
+// Reactive envelope channels + decay rates. Hoisted to module scope so the per-frame
+// updateReactiveEnvelope() does not allocate a fresh object + Object.keys() array every frame.
+const REACTIVE_ENVELOPE_KEYS = ['pulse', 'bloom', 'spark', 'atmosphere', 'star', 'shake'];
+const REACTIVE_ENVELOPE_DECAY_RATES = {
+    pulse: 3.0,
+    bloom: 2.6,
+    spark: 3.4,
+    atmosphere: 2.2,
+    star: 4.2,
+    shake: 8.0,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +466,26 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.tempScreenVector = new THREE.Vector3();
         this.tempBhScreenPos = new THREE.Vector2(0.5, 0.5);
 
+        // Reusable scratch objects for the per-frame hot path (avoid GC churn).
+        this._adaptivePostParams = {
+            resolutionScale: 1.0,
+            bloomDownsample: 0.8,
+            chromaticEnabled: true,
+            lensingStrength: 1.0,
+        };
+        this._postUpdatePayload = {
+            bhScreenPos: null,
+            bloomStrength: 0,
+            bloomRadius: 0,
+            bloomThreshold: 0,
+            chromaticStrength: 0,
+            chromaticEnabled: true,
+            lensingStrength: 1.0,
+            resolutionScale: 1.0,
+            bloomDownsample: 0.8,
+            vignetteDarkness: 0.8,
+        };
+
         // State
         this.eventUnsubscribers = [];
 
@@ -465,12 +515,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.lastMrtDowngrade = null;
         this.loggedMrtPlatformGuard = false;
         this.adaptiveBudgetState = null;
+        this.baseRenderScale = 1.0;
         this.lastRendererWidth = 0;
         this.lastRendererHeight = 0;
         this.lastRendererPixelRatio = 0;
         this.lastAppliedPostResolutionScale = 1;
-        this.lastAppliedAdaptiveLodKey = '';
-        this.lastPostUpdateSignature = '';
+        this.lastAppliedAdaptiveLodKey = -1;
 
         console.log('[CosmicNoir] Hybrid WebGPU/WebGL theme constructed');
     }
@@ -513,6 +563,14 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     initializeAdaptiveBudgetState() {
         const baseCap = this.getBasePixelRatioCap();
+        // Baseline scene-buffer render scale (flag override → preset → native). Multiplied into the
+        // adaptive resolution scale in getAdaptivePostParams(), so adaptive load-shedding stacks on
+        // top of it. ?cosmicNoirRenderScale=1 forces native for A/B.
+        this.baseRenderScale = THREE.MathUtils.clamp(
+            this.flags.renderScale ?? this.qualityPreset.postRenderScale ?? 1.0,
+            0.5,
+            2.0,
+        );
         this.adaptiveBudgetState = {
             basePixelRatioCap: baseCap,
             targetFrameMs: this.getAdaptiveTargetFrameMs(),
@@ -535,8 +593,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.lastRendererHeight = 0;
         this.lastRendererPixelRatio = 0;
         this.lastAppliedPostResolutionScale = 1;
-        this.lastAppliedAdaptiveLodKey = '';
-        this.lastPostUpdateSignature = '';
+        this.lastAppliedAdaptiveLodKey = -1;
     }
 
     getRendererPixelRatio() {
@@ -557,12 +614,14 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     getAdaptivePostParams() {
         const budget = this.adaptiveBudgetState;
-        return {
-            resolutionScale: budget?.postResolutionScale ?? 1.0,
-            bloomDownsample: budget?.bloomDownsample ?? this.qualityPreset.bloomDownsample ?? 0.8,
-            chromaticEnabled: budget?.chromaticEnabled ?? true,
-            lensingStrength: budget?.lensingStrength ?? 1.0,
-        };
+        // Reuse a single scratch object — callers read it synchronously and never retain it.
+        const params = this._adaptivePostParams;
+        // Baseline render scale × adaptive load-shed scale = effective scene-buffer resolution.
+        params.resolutionScale = (budget?.postResolutionScale ?? 1.0) * (this.baseRenderScale ?? 1.0);
+        params.bloomDownsample = budget?.bloomDownsample ?? this.qualityPreset.bloomDownsample ?? 0.8;
+        params.chromaticEnabled = budget?.chromaticEnabled ?? true;
+        params.lensingStrength = budget?.lensingStrength ?? 1.0;
+        return params;
     }
 
     applyAdaptiveBudgetState(force = false) {
@@ -755,15 +814,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         const budget = this.adaptiveBudgetState;
         if (!budget) return;
 
-        const lodKey = [
-            budget.transientScale,
-            budget.sparkScale,
-            budget.gasSwirlScale,
-            budget.waveScale,
-            budget.farStarScale,
-        ].map((value) => Number(value || 1).toFixed(2)).join(':');
-        if (!force && lodKey === this.lastAppliedAdaptiveLodKey) return;
-        this.lastAppliedAdaptiveLodKey = lodKey;
+        // Numeric signature (each scale rounded to 0.01, same granularity as the old toFixed(2)
+        // key) packed into one integer — avoids the per-frame array + 5 strings + join allocation.
+        const q = (value) => Math.round((value || 1) * 100);
+        const lodSig = ((((q(budget.transientScale) * 256
+            + q(budget.sparkScale)) * 256
+            + q(budget.gasSwirlScale)) * 256
+            + q(budget.waveScale)) * 256
+            + q(budget.farStarScale));
+        if (!force && lodSig === this.lastAppliedAdaptiveLodKey) return;
+        this.lastAppliedAdaptiveLodKey = lodSig;
 
         if (Array.isArray(this.starfieldLayers)) {
             this.starfieldLayers.forEach((layer) => {
@@ -827,6 +887,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
         if (!Number.isFinite(parsed.fixedPixelRatio) && Number.isFinite(previous.fixedPixelRatio)) {
             parsed.fixedPixelRatio = previous.fixedPixelRatio;
+        }
+        if (!Number.isFinite(parsed.atmoShells) && Number.isFinite(previous.atmoShells)) {
+            parsed.atmoShells = previous.atmoShells;
+        }
+        if (!Number.isFinite(parsed.renderScale) && Number.isFinite(previous.renderScale)) {
+            parsed.renderScale = previous.renderScale;
         }
         this.flags = parsed;
     }
@@ -2326,7 +2392,13 @@ export default class CosmicNoirTheme extends BaseTheme {
         const planetSize = 280;
         const atmosphereSize = planetSize * 1.25;
         const innerAtmosphereSize = planetSize * 1.12;
-        const atmosphereLayerCount = Math.max(1, this.qualityPreset.atmosphereLayers ?? 2);
+        // Shell count: preset default, overridable via ?cosmicNoirAtmoShells=N for live A/B.
+        // The inner shell is a full additive sphere of near-planet overdraw; High ships with 1 by
+        // default (dropping it is a fill win with only a subtle loss of atmospheric depth).
+        const atmosphereLayerCount = Math.max(
+            1,
+            this.flags.atmoShells ?? this.qualityPreset.atmosphereLayers ?? 2,
+        );
         const noiseMap = this.ensureSharedNoiseTexture();
 
         const atmosphereDetail = this.qualityPreset.atmosphereDetail ?? 64;
@@ -2620,8 +2692,30 @@ export default class CosmicNoirTheme extends BaseTheme {
             uniforms.uTime.value = this.time;
         }
 
-        d.activeWindows = d.activeWindows.filter((entry) => entry.expiresAt > this.time);
-        d.activeEstimate = d.activeWindows.reduce((sum, entry) => sum + entry.count, 0);
+        // Idle fast-path: with no live bursts, skip the per-frame filter()/reduce() allocation.
+        // End state (estimate 0, invisible, draw range 0) is identical to the general path.
+        if (d.activeWindows.length === 0) {
+            d.activeEstimate = 0;
+            if (this.gasSwirl.visible) {
+                this.gasSwirl.visible = false;
+                this.gasSwirl.geometry.setDrawRange(0, 0);
+            }
+            return;
+        }
+
+        // Compact expired windows in place (no new array) and sum counts in the same pass.
+        let writeIdx = 0;
+        let estimate = 0;
+        for (let i = 0; i < d.activeWindows.length; i += 1) {
+            const entry = d.activeWindows[i];
+            if (entry.expiresAt > this.time) {
+                d.activeWindows[writeIdx] = entry;
+                writeIdx += 1;
+                estimate += entry.count;
+            }
+        }
+        d.activeWindows.length = writeIdx;
+        d.activeEstimate = estimate;
         this.gasSwirl.visible = d.activeEstimate > 0;
         if (this.gasSwirl.visible) {
             this.gasSwirl.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
@@ -3147,15 +3241,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         if (this.starfield && Array.isArray(this.starfieldUniforms)) {
-            this.starfieldUniforms.forEach((uniforms) => {
-                if (!uniforms) return;
+            for (let i = 0; i < this.starfieldUniforms.length; i += 1) {
+                const uniforms = this.starfieldUniforms[i];
+                if (!uniforms) continue;
                 if (uniforms.uTime) {
                     uniforms.uTime.value = this.time;
                 }
                 if (uniforms.uEventBoost) {
                     uniforms.uEventBoost.value = this.starEventBoost;
                 }
-            });
+            }
         }
 
         if (this.ambientDust && this.ambientDustUniforms) {
@@ -3434,18 +3529,20 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Starfield depth layers with independent parallax and drift.
         if (this.starfield && this.camera) {
-            this.starfieldLayers.forEach((layer) => {
+            const camPos = this.camera.position;
+            for (let i = 0; i < this.starfieldLayers.length; i += 1) {
+                const layer = this.starfieldLayers[i];
                 const parallax = layer.userData?.parallax ?? 1.0;
                 const spinY = layer.userData?.spinY ?? 0.003;
                 const spinZ = layer.userData?.spinZ ?? 0.001;
                 layer.position.set(
-                    this.camera.position.x * parallax,
-                    this.camera.position.y * parallax,
-                    this.camera.position.z * parallax,
+                    camPos.x * parallax,
+                    camPos.y * parallax,
+                    camPos.z * parallax,
                 );
                 layer.rotation.y = this.time * spinY;
                 layer.rotation.z = this.time * spinZ;
-            });
+            }
         }
 
         if (this.ambientDust && this.camera) {
@@ -3503,18 +3600,19 @@ export default class CosmicNoirTheme extends BaseTheme {
                 ? this.qualityPreset.bloomStrength
                 : this.qualityPreset.bloomStrength * 0.42;
             const adaptivePost = this.getAdaptivePostParams();
-            this.postProcessing.update({
-                bhScreenPos: this.tempBhScreenPos,
-                bloomStrength: bloomBaseStrength * (1.0 + reactiveBloomBoost),
-                bloomRadius: this.qualityPreset.bloomRadius,
-                bloomThreshold: this.flags.useMRT ? 0.0 : 0.88,
-                chromaticStrength: (this.flags.useMRT ? 0.004 : 0.0022) + reactiveBloomBoost * 0.0012,
-                chromaticEnabled: adaptivePost.chromaticEnabled,
-                lensingStrength: adaptivePost.lensingStrength,
-                resolutionScale: adaptivePost.resolutionScale,
-                bloomDownsample: adaptivePost.bloomDownsample,
-                vignetteDarkness: (this.flags.useMRT ? 0.82 : 0.86) - reactiveBloomBoost * 0.03,
-            });
+            // Fill the reusable payload object instead of allocating a fresh literal every frame.
+            const payload = this._postUpdatePayload;
+            payload.bhScreenPos = this.tempBhScreenPos;
+            payload.bloomStrength = bloomBaseStrength * (1.0 + reactiveBloomBoost);
+            payload.bloomRadius = this.qualityPreset.bloomRadius;
+            payload.bloomThreshold = this.flags.useMRT ? 0.0 : 0.88;
+            payload.chromaticStrength = (this.flags.useMRT ? 0.004 : 0.0022) + reactiveBloomBoost * 0.0012;
+            payload.chromaticEnabled = adaptivePost.chromaticEnabled;
+            payload.lensingStrength = adaptivePost.lensingStrength;
+            payload.resolutionScale = adaptivePost.resolutionScale;
+            payload.bloomDownsample = adaptivePost.bloomDownsample;
+            payload.vignetteDarkness = (this.flags.useMRT ? 0.82 : 0.86) - reactiveBloomBoost * 0.03;
+            this.postProcessing.update(payload);
         } else if (this.bloomPass) {
             const fallbackBloomBoost = Math.min(
                 0.65,
@@ -3537,7 +3635,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         const frameMs = frameEndMs - frameStartMs;
         this.updateAdaptiveBudgetState(frameMs);
         this.applyAdaptiveBudgetState();
-        this.recordBaselineSample(frameMs);
+        // Record the REAL frame interval (rAF delta), not the CPU dispatch span, so the baseline
+        // report's FPS reflects actual presented frame rate. (The adaptive controller still uses the
+        // dispatch span — driving it off the vsync-capped real interval would falsely shed quality on
+        // displays whose refresh is below the target FPS.) Clamp stall spikes out of the stats.
+        const realFrameMs = Math.min(measuredDelta * 1000, 100);
+        this.recordBaselineSample(realFrameMs);
     }
 
     renderFrame() {
@@ -3821,23 +3924,13 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     updateReactiveEnvelope(delta) {
-        const decayRates = {
-            pulse: 3.0,
-            bloom: 2.6,
-            spark: 3.4,
-            atmosphere: 2.2,
-            star: 4.2,
-            shake: 8.0,
-        };
-
-        Object.keys(this.reactiveEnvelope).forEach((key) => {
-            const decayRate = decayRates[key] ?? 3.0;
-            const decay = Math.max(0.0, 1.0 - delta * decayRate);
-            this.reactiveEnvelope[key] *= decay;
-            if (this.reactiveEnvelope[key] < 0.01) {
-                this.reactiveEnvelope[key] = 0;
-            }
-        });
+        const envelope = this.reactiveEnvelope;
+        for (let i = 0; i < REACTIVE_ENVELOPE_KEYS.length; i += 1) {
+            const key = REACTIVE_ENVELOPE_KEYS[i];
+            const decay = Math.max(0.0, 1.0 - delta * REACTIVE_ENVELOPE_DECAY_RATES[key]);
+            const next = envelope[key] * decay;
+            envelope[key] = next < 0.01 ? 0 : next;
+        }
     }
 
     setupEventListeners() {
@@ -4226,7 +4319,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         const { domElement } = this.renderer;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[CosmicNoir] renderer dispose failed:', error);
         }
@@ -4309,6 +4402,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         };
         this.loggedMrtPlatformGuard = false;
         this.adaptiveBudgetState = null;
+        this.baseRenderScale = 1.0;
         this.lastRendererWidth = 0;
         this.lastRendererHeight = 0;
         this.lastRendererPixelRatio = 0;

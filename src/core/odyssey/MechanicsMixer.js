@@ -15,7 +15,6 @@ const BASE_RULES = {
         levelProgression: true, // Speed increases with lines
         scoring: 'standard', // Standard Tetris scoring
         lockDelay: 500, // Lock delay in ms
-        holdEnabled: true,
         previewCount: 5,
     },
 
@@ -25,7 +24,6 @@ const BASE_RULES = {
         levelProgression: false, // Fixed speed
         scoring: 'combo-focused', // Combo-weighted scoring
         lockDelay: 500,
-        holdEnabled: true,
         previewCount: 5,
     },
 
@@ -35,7 +33,6 @@ const BASE_RULES = {
         levelProgression: true, // But keep level progression
         scoring: 'hybrid', // Mixed scoring
         lockDelay: 500,
-        holdEnabled: true,
         previewCount: 5,
     },
 };
@@ -150,7 +147,8 @@ export class MechanicsMixer {
     configureFromLevel(levelConfig) {
         const { mechanics } = levelConfig;
 
-        // Set base mode
+        // Set base mode (setBaseMode already clears prior overrides, so per-level config is
+        // isolated even though the engine + mixer are reused across levels — see the mixer test).
         this.setBaseMode(mechanics.baseMode || 'standard');
 
         // Apply speed overrides
@@ -160,9 +158,6 @@ export class MechanicsMixer {
 
         // Apply piece overrides
         if (mechanics.pieces) {
-            if (mechanics.pieces.holdEnabled !== undefined) {
-                this.override('holdEnabled', mechanics.pieces.holdEnabled);
-            }
             if (mechanics.pieces.previewCount !== undefined) {
                 this.override('previewCount', mechanics.pieces.previewCount);
             }

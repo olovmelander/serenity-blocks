@@ -76,13 +76,15 @@ function tslFbm(p, octaves = 3) {
     return v;
 }
 
-export function createBlackHoleCoreNodeMaterial() {
+export function createBlackHoleCoreNodeMaterial(params = {}) {
+    const noiseOctaves = Math.max(1, Math.floor(params.noiseOctaves ?? 3));
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         side: DoubleSide,
         depthWrite: false,
-        blending: AdditiveBlending,
+        blending: NormalBlending,
     });
+    material.forceSinglePass = true;
 
     const uTime = uniform(0);
     const uIntensity = uniform(1.0);
@@ -105,7 +107,7 @@ export function createBlackHoleCoreNodeMaterial() {
     const photonRing = exp(photonDist.mul(photonDist).negate().mul(3.0)).mul(uIntensity).mul(2.5);
 
     const shimmerCoord = uvCoord.mul(12.0).add(uTime.mul(0.8));
-    const shimmer = tslFbm(shimmerCoord, 3).mul(0.4);
+    const shimmer = tslFbm(shimmerCoord, noiseOctaves).mul(0.4);
 
     // Mask shimmer exactly to the photon ring
     const shimmerMask = smoothstep(float(0.4), float(0.22), dist).mul(float(1.0).sub(black));
@@ -132,13 +134,15 @@ export function createBlackHoleCoreNodeMaterial() {
     return material;
 }
 
-export function createAccretionDiskNodeMaterial() {
+export function createAccretionDiskNodeMaterial(params = {}) {
+    const noiseOctaves = Math.max(1, Math.floor(params.noiseOctaves ?? 3));
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         side: DoubleSide,
         depthWrite: false,
         blending: NormalBlending,
     });
+    material.forceSinglePass = true;
 
     const uTime = uniform(0);
     const uIntensity = uniform(1.0);
@@ -155,7 +159,7 @@ export function createAccretionDiskNodeMaterial() {
     const rotatedAngle = angle.add(uTime.mul(uRotationSpeed).mul(0.15));
 
     const turbUv = vec2(rotatedAngle.mul(2.0), normalizedRadius.mul(8.0));
-    const turb = tslFbm(turbUv.add(uTime.mul(0.1)), 3);
+    const turb = tslFbm(turbUv.add(uTime.mul(0.1)), noiseOctaves);
 
     const spirals = sin(rotatedAngle.mul(3.0).add(normalizedRadius.mul(15.0)).add(turb.mul(3.0)));
     const spiralFactor = spirals.mul(0.3).add(0.7);
@@ -202,7 +206,9 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal, options = 
     const fbmOctaves = Math.max(1, Math.floor(options.fbmOctaves ?? 2));
     // Ray march is capped at steps*stepSize = maxMarch. Beyond that, further steps are no-ops.
     // maxMarchSq lets us cheaply short-circuit wasted iterations once the ray has drifted too far.
-    const stepSizeValue = 32.0;
+    // stepSize is configurable so step count can be lowered (cheaper) while keeping the same total
+    // march reach (steps*stepSize) — preserves how far rays travel so the disk isn't clipped.
+    const stepSizeValue = Math.max(8, Number(options.stepSize) || 32.0);
     const maxMarch = steps * stepSizeValue * 1.1;
     const maxMarchSq = maxMarch * maxMarch;
 
@@ -444,6 +450,7 @@ export function createPhotonSphereNodeMaterial() {
         side: DoubleSide,
         blending: AdditiveBlending,
     });
+    material.forceSinglePass = true;
 
     const uTime = uniform(0);
     const uIntensity = uniform(1.0);
@@ -578,6 +585,7 @@ export function createNebulaCloudNodeMaterial(map, params = {}) {
         side: DoubleSide,
         blending: AdditiveBlending,
     });
+    material.forceSinglePass = true;
 
     const texNode = map ? texture(map) : null;
     const sample = texNode ? texNode.sample(uv()) : vec4(1.0, 1.0, 1.0, 1.0);

@@ -78,26 +78,44 @@ export class MultiplayerScoreboardOverlay {
     updatePlayers(players) {
         if (!players || !Array.isArray(players)) return;
 
-        this.players = [...players].sort((a, b) => {
-            const aVal = a[this.sortBy] || 0;
-            const bVal = b[this.sortBy] || 0;
-            return bVal - aVal;
-        });
+        // Deterministic total order (see OnlineScoreboard): primary metric → frags →
+        // score → lines → stable id, so tied players never swap on input-order wobble.
+        this.players = [...players].sort((a, b) => this._compare(a, b));
 
         this.render();
+    }
+
+    _compare(a, b) {
+        const primary = (b[this.sortBy] || 0) - (a[this.sortBy] || 0);
+        if (primary) return primary;
+        if ((b.frags || 0) !== (a.frags || 0)) return (b.frags || 0) - (a.frags || 0);
+        if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+        if ((b.lines || 0) !== (a.lines || 0)) return (b.lines || 0) - (a.lines || 0);
+        return String(a.id ?? '').localeCompare(String(b.id ?? ''));
     }
 
     render() {
         if (!this.listContainer) return;
 
+        // Dirty-check: skip the innerHTML rebuild when nothing rendered changed.
+        const sig = this.players.map((p) => `${p.id}|${p.name}|${p.frags || 0}|${p.score || 0}|`
+            + `${p.lines || 0}|${p.isAlive !== false ? 1 : 0}|${p.awaitingSpawn === true ? 1 : 0}|${p.id === this.localPlayerId ? 1 : 0}`).join('~');
+        if (sig === this._lastRenderSig) return;
+        this._lastRenderSig = sig;
+
         const html = this.players.map((player, index) => {
             const isLocal = player.id === this.localPlayerId;
-            const isDead = player.isAlive === false;
-            const status = isDead ? 'Dead' : 'Alive';
+            // A late joiner waiting to spawn is isAlive:false but NOT eliminated.
+            const isWaiting = player.awaitingSpawn === true;
+            const isDead = player.isAlive === false && !isWaiting;
+            let status = 'Alive';
+            if (isWaiting) status = 'Waiting';
+            else if (isDead) status = 'Dead';
 
             const classes = ['scoreboard-overlay-row'];
             if (isLocal) classes.push('local-player');
             if (isDead) classes.push('dead');
+            if (isWaiting) classes.push('waiting');
 
             return `
                 <div class="${classes.join(' ')}">

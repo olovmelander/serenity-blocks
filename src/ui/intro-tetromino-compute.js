@@ -30,8 +30,16 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import {
+    INTRO_TETROMINO_BLOCK_OFFSETS_FLAT,
+    INTRO_TETROMINO_BLOCK_RADIUS,
+    INTRO_TETROMINO_MAX_SPEED,
+    INTRO_TETROMINO_ROTATION_KICK,
+    clampVectorMagnitude,
+} from './intro-tetromino-interactions.js';
 
 const MAX_TETROMINOS = 50;
+const MAX_ROTATION_SPEED = 0.05;
 
 export class IntroTetrominoCompute {
     constructor() {
@@ -58,7 +66,7 @@ export class IntroTetrominoCompute {
         // Block offset lookup: 7 shapes × 4 blocks × vec2 (x, y)
         // Each block is 2×2 units; offsets are block centers in local space.
         // Positions derived from actual shape outlines in createTetrominoShape().
-        this.blockOffsetData = new Float32Array(7 * 4 * 2);
+        this.blockOffsetData = new Float32Array(INTRO_TETROMINO_BLOCK_OFFSETS_FLAT);
         const offsets = [
             // I: 8×2 horizontal bar
             [-3, 0], [-1, 0], [1, 0], [3, 0],
@@ -82,6 +90,7 @@ export class IntroTetrominoCompute {
             this.blockOffsetData[i * 2] = offsets[i][0] * renderScale;
             this.blockOffsetData[i * 2 + 1] = offsets[i][1] * renderScale;
         }
+        this.blockOffsetData.set(INTRO_TETROMINO_BLOCK_OFFSETS_FLAT);
         this.blockOffsetBuffer = new THREE.StorageBufferAttribute(this.blockOffsetData, 2);
 
         this.uDelta = uniform(0);
@@ -191,7 +200,7 @@ export class IntroTetrominoCompute {
 
         const delta = this.uDelta;
         const activeCount = this.uActiveCount;
-        const maxSpeed = float(0.2);
+        const maxSpeed = float(INTRO_TETROMINO_MAX_SPEED);
         const restitution = float(0.8);
         // Bounds are well beyond the visible screen so tetrominos only
         // disappear when truly off-screen, not while still visible.
@@ -231,9 +240,9 @@ export class IntroTetrominoCompute {
                 // === Compound block collision ===
                 // Each tetromino = 4 blocks (2×2 each, scaled by 0.75 = 1.5×1.5 visual).
                 // Block radius = 0.75 (half of 1.5 visual block size).
-                const blockRadius = float(0.75);
-                const blockRadiusSum = float(1.5);
-                const blockRadiusSumSq = float(2.25);
+                const blockRadius = float(INTRO_TETROMINO_BLOCK_RADIUS);
+                const blockRadiusSum = float(INTRO_TETROMINO_BLOCK_RADIUS * 2);
+                const blockRadiusSumSq = float((INTRO_TETROMINO_BLOCK_RADIUS * 2) ** 2);
 
                 // My type index for block offset lookup
                 const myTypeInt = int(vel.w.add(float(0.5)));
@@ -371,7 +380,7 @@ export class IntroTetrominoCompute {
                 });
 
                 // === Rotation speed clamping ===
-                const maxRot = float(0.05);
+                const maxRot = float(MAX_ROTATION_SPEED);
                 rotSpd.x.assign(clamp(rotSpd.x, maxRot.negate(), maxRot));
                 rotSpd.y.assign(clamp(rotSpd.y, maxRot.negate(), maxRot));
                 rotSpd.z.assign(clamp(rotSpd.z, maxRot.negate(), maxRot));
@@ -437,6 +446,83 @@ export class IntroTetrominoCompute {
     getRotSpeedBuffer() { return this.rotSpeedBuffer; }
 
     static get MAX_TETROMINOS() { return MAX_TETROMINOS; }
+
+    _copySlotFromLiveData(target, source, slot) {
+        if (!target || !source) return;
+
+        const i4 = slot * 4;
+        if (source.length < i4 + 4) return;
+
+        target[i4] = source[i4];
+        target[i4 + 1] = source[i4 + 1];
+        target[i4 + 2] = source[i4 + 2];
+        target[i4 + 3] = source[i4 + 3];
+    }
+
+    /**
+     * Apply a cursor poke to one live storage-buffer slot.
+     * Used by the WebGPU renderer after an on-demand readback hit test.
+     */
+    applyClickImpulseToSlot(
+        slot,
+        liveState = {},
+        impulse = {},
+        rotationKick = INTRO_TETROMINO_ROTATION_KICK,
+    ) {
+        if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_TETROMINOS) {
+            return false;
+        }
+
+        const i4 = slot * 4;
+        const {
+            positions,
+            velocities,
+            rotations,
+            rotSpeeds,
+        } = liveState || {};
+
+        const positionSource = positions?.length >= i4 + 4 ? positions : this.positionData;
+        if (positionSource[i4 + 3] <= 0.5) {
+            return false;
+        }
+
+        this._copySlotFromLiveData(this.positionData, positions, slot);
+        this._copySlotFromLiveData(this.velocityData, velocities, slot);
+        this._copySlotFromLiveData(this.rotationData, rotations, slot);
+        this._copySlotFromLiveData(this.rotSpeedData, rotSpeeds, slot);
+
+        const velocity = clampVectorMagnitude({
+            x: this.velocityData[i4] + (Number.isFinite(impulse?.x) ? impulse.x : 0),
+            y: this.velocityData[i4 + 1] + (Number.isFinite(impulse?.y) ? impulse.y : 0),
+            z: this.velocityData[i4 + 2] + (Number.isFinite(impulse?.z) ? impulse.z : 0),
+        }, INTRO_TETROMINO_MAX_SPEED);
+
+        this.velocityData[i4] = velocity.x;
+        this.velocityData[i4 + 1] = velocity.y;
+        this.velocityData[i4 + 2] = velocity.z;
+        this.positionData[i4 + 3] = 1.0;
+        this.rotationData[i4 + 3] = 1.0;
+
+        const kick = Math.max(0, Number.isFinite(rotationKick) ? rotationKick : INTRO_TETROMINO_ROTATION_KICK);
+        this.rotSpeedData[i4] = Math.max(
+            -MAX_ROTATION_SPEED,
+            Math.min(MAX_ROTATION_SPEED, this.rotSpeedData[i4] + (Math.random() - 0.5) * kick * 2),
+        );
+        this.rotSpeedData[i4 + 1] = Math.max(
+            -MAX_ROTATION_SPEED,
+            Math.min(MAX_ROTATION_SPEED, this.rotSpeedData[i4 + 1] + (Math.random() - 0.5) * kick * 2),
+        );
+        this.rotSpeedData[i4 + 2] = Math.max(
+            -MAX_ROTATION_SPEED,
+            Math.min(MAX_ROTATION_SPEED, this.rotSpeedData[i4 + 2] + (Math.random() - 0.5) * kick * 2),
+        );
+
+        this._markSlotUpdated(this.velocityBuffer, slot);
+        this._markSlotUpdated(this.rotationBuffer, slot);
+        this._markSlotUpdated(this.rotSpeedBuffer, slot);
+
+        return true;
+    }
 
     /**
      * Kick active tetrominos outward for warp-dismiss transitions.

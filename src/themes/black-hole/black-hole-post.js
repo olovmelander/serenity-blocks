@@ -12,24 +12,24 @@ import {
     viewportUV,
     uniform,
     clamp,
+    Fn,
     float,
     length,
     mix,
     smoothstep,
     vec2,
     vec3,
+    vec4,
     dot,
-    fract,
-    sin,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 
 export class BlackHolePost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
         this.bloomDownsample = params.bloomDownsample ?? 0.8;
+        this.enableChromatic = params.enableChromatic ?? true;
         this.postProcessing = new THREE.PostProcessing(renderer);
 
         this.scenePass = pass(scene, camera);
@@ -47,7 +47,10 @@ export class BlackHolePost {
 
         const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
         this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
+            originalBloomSetSize(
+                Math.max(1, Math.floor(width * this.bloomDownsample)),
+                Math.max(1, Math.floor(height * this.bloomDownsample)),
+            );
         };
 
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0006);
@@ -61,17 +64,45 @@ export class BlackHolePost {
         this.uTint = uniform(new THREE.Color(1.04, 0.98, 1.08));
 
         const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.6), dist);
-        const baseSample = sceneColor.sample(uv);
-        const vignetteColor = mix(
-            baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
-            baseSample,
-            vignette,
-        );
 
-        const chroma = chromaticAberration(vignetteColor, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
+        // Vignette-at-UV sampling the scene texture directly. Mirrors the old
+        // mix(baseSample*(1-darkness), baseSample, vignette). Wrapped in Fn so each chromatic
+        // tap re-evaluates the vignette at its own UV — exactly what the old
+        // chromaticAberration(vignetteColor, ...) did: it wraps its input in convertToTexture(),
+        // forcing a full-screen render-to-texture pass EVERY frame purely so the R/G/B split
+        // could re-sample the vignetted image. Inlining collapses that extra pass into the taps.
+        // Pixel-identical (it even skips the intermediate RTT's requantization + bilinear resample).
+        const sampleVignettedScene = Fn(([p]) => {
+            const vigDist = length(p.sub(0.5).mul(2.0));
+            const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.6), vigDist);
+            const sampled = sceneColor.sample(p);
+            return mix(
+                sampled.mul(float(1.0).sub(this.uVignetteDarkness)),
+                sampled,
+                vig,
+            );
+        });
+
+        let chroma;
+        if (this.enableChromatic) {
+            // Mirrors ChromaticAberrationNode(strength, center=(0.5,0.5), scale=1.1) term-for-term.
+            const caCenter = vec2(0.5, 0.5);
+            const caScale = float(1.1);
+            const caStrength = this.uChromaticStrength;
+            const caOffset = uv.sub(caCenter);
+            const caDist = length(caOffset);
+            const redScale = float(1.0).add(caScale.mul(0.02).mul(caStrength));
+            const blueScale = float(1.0).sub(caScale.mul(0.02).mul(caStrength));
+            const aberration = caStrength.mul(caDist);
+            const redUV = caCenter.add(caOffset.mul(redScale)).add(caOffset.mul(aberration).mul(0.01));
+            const blueUV = caCenter.add(caOffset.mul(blueScale)).add(caOffset.mul(aberration).mul(-0.01));
+            const centerSample = sampleVignettedScene(uv); // green + alpha (greenUV == uv, gOffset = 0)
+            const redSample = sampleVignettedScene(redUV);
+            const blueSample = sampleVignettedScene(blueUV);
+            chroma = vec4(redSample.r, centerSample.g, blueSample.b, centerSample.a);
+        } else {
+            chroma = sampleVignettedScene(uv);
+        }
         const combined = chroma.add(this.bloomNode);
 
         const exposed = combined.mul(this.uExposure);
@@ -104,7 +135,7 @@ export class BlackHolePost {
         if (params.bloomThreshold !== undefined) {
             this.bloomNode.threshold.value = params.bloomThreshold;
         }
-        if (params.chromaticStrength !== undefined) {
+        if (this.enableChromatic && params.chromaticStrength !== undefined) {
             this.uChromaticStrength.value = params.chromaticStrength;
         }
         if (params.vignetteOffset !== undefined) {

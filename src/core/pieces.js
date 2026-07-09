@@ -52,6 +52,7 @@ export function spawnPiece(isValidPositionFn) {
     const piece = {
         shapeKey,
         shape,
+        rotation: 0,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
         y: spawnY,
         color: COLORS[shapeKey],
@@ -78,6 +79,7 @@ export function createPiece(shapeKey, x = 0, y = 0) {
     return {
         shapeKey,
         shape: SHAPES[shapeKey],
+        rotation: 0,
         x,
         y,
         color: COLORS[shapeKey],

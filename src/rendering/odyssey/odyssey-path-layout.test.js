@@ -1,17 +1,16 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {
     resolveSurfaceWorldAuroraPreviewState,
     updateSurfaceWorldEnvironment,
     resolveSurfaceWorldVisibilityState,
 } from './chapter-environments/surface-world.js';
-import {
-    SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES,
-    resolveMountainAuroraPreviewOpacity,
-} from './chapter-environments/shared/mountain-aurora.js';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
+import { getCanonicalMountainRangeWorldSpecs } from './chapter-environments/shared/canonical-mountain-range.js';
+import { mountainCpuDisplacement } from './chapter-environments/shared/mountain-language.js';
 import {
+    getActiveOdysseyChapterPositions,
     getOdysseyPathCurve,
     getOdysseyPathPointAt,
     resetOdysseyPathLayout,
@@ -32,7 +31,7 @@ describe('odyssey path layout', () => {
         const forestAwakeningTangent = curve.getTangentAt(0.204);
         expect(forestAwakeningPoint.x).toBeGreaterThanOrEqual(-40);
         expect(forestAwakeningPoint.x).toBeLessThanOrEqual(-20);
-        expect(forestAwakeningPoint.z).toBeGreaterThanOrEqual(-40);
+        expect(forestAwakeningPoint.z).toBeGreaterThanOrEqual(-48);
         expect(forestAwakeningPoint.z).toBeLessThanOrEqual(-20);
         expect(forestAwakeningTangent.y).toBeGreaterThanOrEqual(0.14);
 
@@ -47,10 +46,41 @@ describe('odyssey path layout', () => {
 
         const earlyChapter5Point = getOdysseyPathPointAt(0.556);
         expect(earlyChapter5Point.x).toBeLessThanOrEqual(-185);
-        expect(earlyChapter5Point.z).toBeLessThanOrEqual(-530);
+        expect(earlyChapter5Point.z).toBeLessThanOrEqual(-500);
 
         const chapter6StartPoint = getOdysseyPathPointAt(0.648);
-        expect(chapter6StartPoint.z).toBeLessThanOrEqual(-635);
+        expect(chapter6StartPoint.z).toBeLessThanOrEqual(-550);
+
+        const earlyChapter6Point = getOdysseyPathPointAt(0.685);
+        expect(earlyChapter6Point.z).toBeLessThanOrEqual(-590);
+    });
+
+    it('keeps the Sky Drift spline above and in front of the canonical summit mass', () => {
+        const positions = getActiveOdysseyChapterPositions();
+        const ch5Start = positions[4];
+        const ch6Start = positions[5];
+        const heroSpecs = getCanonicalMountainRangeWorldSpecs();
+        let minClearance = Infinity;
+
+        for (let i = 0; i <= 80; i += 1) {
+            const t = ch5Start + (ch6Start - ch5Start) * (i / 80);
+            const point = getOdysseyPathPointAt(t);
+            heroSpecs.forEach((spec) => {
+                const mountainHeight = mountainCpuDisplacement(
+                    point.x - spec.worldPosition.x,
+                    point.z - spec.worldPosition.z,
+                    {
+                        size: spec.size,
+                        height: spec.height,
+                        seed: spec.seed,
+                    },
+                );
+                const peakSurfaceY = spec.worldPosition.y + mountainHeight;
+                minClearance = Math.min(minClearance, point.y - peakSurfaceY);
+            });
+        }
+
+        expect(minClearance).toBeGreaterThan(60);
     });
 
     it('uses the same sampled curve in the path renderer and shared path helpers', async () => {
@@ -118,15 +148,10 @@ describe('odyssey path layout', () => {
         expect(aboveSurface.surfaceOpacity).toBe(1);
     });
 
-    it('fades in the chapter 3 aurora preview during the late mountain approach', () => {
-        expect(resolveMountainAuroraPreviewOpacity(0.26)).toBe(0);
-        expect(resolveMountainAuroraPreviewOpacity(0.30)).toBeGreaterThan(0);
-        expect(resolveMountainAuroraPreviewOpacity(0.33)).toBeGreaterThanOrEqual(0.9);
-
+    it('keeps the chapter 3 aurora preview disabled for the Sky Drift handoff', () => {
         const previewState = resolveSurfaceWorldAuroraPreviewState(0.30);
-        expect(previewState.previewVisible).toBe(true);
-        expect(previewState.previewOpacity).toBeGreaterThan(0);
-        expect(SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES).toEqual([0.35, 0.25, 0.18]);
+        expect(previewState.previewVisible).toBe(false);
+        expect(previewState.previewOpacity).toBe(0);
     });
 
     it('uses progress-based probing when updating the surface world environment', () => {
@@ -155,7 +180,10 @@ describe('odyssey path layout', () => {
             },
         };
 
-        updateSurfaceWorldEnvironment(group, 0, 1, camera, 0.204);
+        // Probe PAST the chapter-entry ramp (the creative plan fades all surface
+        // elements in across the first ~7% of Chapter 3 so the landscape slab cannot
+        // pop at the breach) — this test verifies the progress-based probing itself.
+        updateSurfaceWorldEnvironment(group, 0, 1, camera, 0.24);
 
         expect(element.visible).toBe(true);
         expect(uniform.value).toBeGreaterThan(0.9);

@@ -515,13 +515,17 @@ export const emberFragmentShader = `
     void main() {
         vec2 uv = gl_PointCoord;
         float dist = length(uv - 0.5);
-        
+
         if (dist > 0.5) discard;
-        
+
         // Glowy center
         float strength = 1.0 - (dist * 2.0);
         strength = pow(strength, 2.0);
-        
+
+        // Write the output (was missing — left the fragment shader with no color
+        // output, which floods WebGL with "missing fragment shader outputs" and
+        // leaves the embers invisible). vAlpha is the per-particle age fade.
+        gl_FragColor = vec4(vColor, strength * vAlpha);
     }
 `;
 

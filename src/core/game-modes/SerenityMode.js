@@ -1,7 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { setGlobalRenderScale } from '../../themes/base-theme.js';
 
-import { GAME_MODES } from '../constants.js';
+import { DEFAULT_SETTINGS, GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 
@@ -25,6 +25,8 @@ export class SerenityMode extends BaseGameMode {
         this.cleanupHandlers = [];
         this.cursorTimeout = null;
         this.keyboardOverlayTimeout = null;
+        this.gamepadPollInterval = null;
+        this.gamepadPollingCleanupRegistered = false;
         this.breathingIndicatorActive = false;
 
         // Interactive effects state
@@ -128,7 +130,13 @@ export class SerenityMode extends BaseGameMode {
         // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed
         // Don't auto-show breathing indicator - user must press Space to enable
         // This keeps focus on the beautiful themes
-        console.log('[Serenity] Serenity mode active - Press H for Serenity Hub, Space for breathing guide');
+        const serenityKeys = this._getSerenityKeyBindings();
+        console.log(
+            '[Serenity] Serenity mode active - Hub:',
+            serenityKeys.toggleHub,
+            'Breathing:',
+            serenityKeys.toggleBreathing,
+        );
     }
 
     /**
@@ -184,6 +192,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Show cursor again by removing hidden class
         document.body.classList.remove('cursor-hidden');
+        this._clearGamepadPolling();
     }
 
     /**
@@ -211,6 +220,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
+        this.gamepadPollingCleanupRegistered = false;
 
         // Clear timeouts
         if (this.cursorTimeout) {
@@ -486,6 +496,37 @@ export class SerenityMode extends BaseGameMode {
      * Handle key press
      * @private
      */
+    _getSerenityKeyBindings() {
+        const savedBindings = this.deps.settingsManager?.get?.()?.serenityKeyBindings || {};
+        return {
+            ...DEFAULT_SETTINGS.serenityKeyBindings,
+            ...savedBindings,
+        };
+    }
+
+    _normalizeSerenityKey(key) {
+        if (key === ' ') return 'Space';
+        if (key === 'Esc') return 'Escape';
+        return key && key.length === 1 ? key.toLowerCase() : key;
+    }
+
+    _matchesSerenityKey(inputKey, bindingKey) {
+        const normalizedInput = this._normalizeSerenityKey(inputKey);
+        const normalizedBinding = this._normalizeSerenityKey(bindingKey);
+
+        if (normalizedInput === normalizedBinding) {
+            return true;
+        }
+
+        return (normalizedBinding === '/' && normalizedInput === '?')
+            || (normalizedBinding === '?' && normalizedInput === '/');
+    }
+
+    _getSerenityActionForKey(event) {
+        const bindings = this._getSerenityKeyBindings();
+        return Object.keys(bindings).find((action) => this._matchesSerenityKey(event.key, bindings[action]));
+    }
+
     _onKeyPress(event) {
         if (!this.isRunning) return;
 
@@ -495,24 +536,22 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
 
-        const { key } = event;
+        const action = this._getSerenityActionForKey(event);
 
-        // Handle hardcoded Serenity-specific keys
-        switch (key.toLowerCase()) {
-            case 'escape': // Exit to main menu
+        switch (action) {
+            case 'exitToMenu':
                 this._exitToMenu();
                 break;
 
-            case 'h': // Toggle Serenity Hub - Keep this hardcoded for now as it's specific to this mode
+            case 'toggleHub':
                 if (this.serenityHub) {
                     this.serenityHub.toggle();
                 }
-                event.preventDefault(); // Prevent global high score handler
-                event.stopPropagation(); // Stop event from bubbling
+                event.preventDefault();
+                event.stopPropagation();
                 break;
 
-            case '?': // Show keyboard shortcuts (legacy)
-            case '/': // Toggle control hints
+            case 'toggleControlHints':
                 if (this.serenityHub) {
                     this.serenityHub.toggleButtonHints();
                 } else {
@@ -520,21 +559,21 @@ export class SerenityMode extends BaseGameMode {
                 }
                 break;
 
-            case ' ': // Toggle breathing indicator
+            case 'toggleBreathing':
                 this._toggleBreathingIndicator();
-                event.preventDefault(); // Prevent page scroll
+                event.preventDefault();
                 break;
 
-            case 't': // Cycle breathing technique
+            case 'cycleBreathingTechnique':
                 this._cycleBreathingTechnique();
                 event.preventDefault();
                 break;
 
-            case 'b': // Random theme
+            case 'randomTheme':
                 this._randomTheme();
                 break;
 
-            case 'f': // Toggle fullscreen
+            case 'toggleFullscreen':
                 this._toggleFullscreen();
                 break;
         }
@@ -625,26 +664,35 @@ export class SerenityMode extends BaseGameMode {
      */
     _showKeyboardShortcuts() {
         let overlay = document.getElementById('serenity-shortcuts-overlay');
+        const bindings = this._getSerenityKeyBindings();
+        const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        })[char]);
+        const key = (action) => escapeHtml(bindings[action] || '');
 
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'serenity-shortcuts-overlay';
             overlay.className = 'serenity-shortcuts-overlay';
-            overlay.innerHTML = `
-                <div class="shortcuts-content">
-                    <h3>Serenity Mode Controls</h3>
-                    <div class="shortcut"><kbd>Click/Tap</kbd> Trigger Theme Effects</div>
-                    <div class="shortcut"><kbd>H</kbd> Open Serenity Hub</div>
-                    <div class="shortcut"><kbd>B</kbd> Random Theme</div>
-                    <div class="shortcut"><kbd>Space</kbd> Toggle Breathing Guide</div>
-                    <div class="shortcut"><kbd>I</kbd> Show Technique Info</div>
-                    <div class="shortcut"><kbd>T</kbd> Cycle Breathing Technique</div>
-                    <div class="shortcut"><kbd>F</kbd> Toggle Fullscreen</div>
-                    <div class="shortcut"><kbd>ESC</kbd> Exit to Menu</div>
-                </div>
-            `;
             document.body.appendChild(overlay);
         }
+
+        overlay.innerHTML = `
+            <div class="shortcuts-content">
+                <h3>Serenity Mode Controls</h3>
+                <div class="shortcut"><kbd>Click/Tap</kbd> Trigger Theme Effects</div>
+                <div class="shortcut"><kbd>${key('toggleHub')}</kbd> Open Serenity Hub</div>
+                <div class="shortcut"><kbd>${key('randomTheme')}</kbd> Random Theme</div>
+                <div class="shortcut"><kbd>${key('toggleBreathing')}</kbd> Toggle Breathing Guide</div>
+                <div class="shortcut"><kbd>${key('cycleBreathingTechnique')}</kbd> Cycle Breathing Technique</div>
+                <div class="shortcut"><kbd>${key('toggleFullscreen')}</kbd> Toggle Fullscreen</div>
+                <div class="shortcut"><kbd>${key('exitToMenu')}</kbd> Exit to Menu</div>
+            </div>
+        `;
 
         overlay.classList.add('visible');
 
@@ -803,16 +851,22 @@ export class SerenityMode extends BaseGameMode {
 
         // Gamepad button polling (if gamepad is connected)
         if (this.deps.gamepadController) {
+            this._clearGamepadPolling();
             this.gamepadPollInterval = setInterval(this.handleGamepadButton, 100);
-            this.cleanupHandlers.push(() => {
-                if (this.gamepadPollInterval) {
-                    clearInterval(this.gamepadPollInterval);
-                    this.gamepadPollInterval = null;
-                }
-            });
+            if (!this.gamepadPollingCleanupRegistered) {
+                this.cleanupHandlers.push(() => this._clearGamepadPolling());
+                this.gamepadPollingCleanupRegistered = true;
+            }
         }
 
         console.log('[Serenity] Interactive effects enabled - Click, tap, or press gamepad buttons to trigger theme effects');
+    }
+
+    _clearGamepadPolling() {
+        if (this.gamepadPollInterval) {
+            clearInterval(this.gamepadPollInterval);
+            this.gamepadPollInterval = null;
+        }
     }
 
     /**

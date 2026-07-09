@@ -1,0 +1,27 @@
+{
+  "//": "Incremental type-checking harness (remediation Phase 3). No emit — esbuild/Vite still transpiles, so this is type-checking only. Adoption is OPT-IN: checkJs is false, so only files with a `// @ts-check` pragma (plus the shared *.d.ts contracts) are checked. This keeps `npm run typecheck` green from day one; ratchet coverage by adding `// @ts-check` to a module once it is clean, then eventually flip checkJs to true. Start with the pure simulation core + network protocol + event buses, where the snapshot/event shape-drift risk is highest.",
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/core/types.d.ts",
+    "src/core/**/*.js",
+    "src/events/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.test.js",
+    "**/__tests__/**"
+  ]
+}

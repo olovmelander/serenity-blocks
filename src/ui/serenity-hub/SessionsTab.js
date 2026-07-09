@@ -123,6 +123,24 @@ export class SessionsTab {
         this.setupEventListeners();
     }
 
+    getSessionIcon(sessionId, size = 26) {
+        const iconMap = {
+            BASE: 'hale-base',
+            ELIXIR: 'hale-elixir',
+            REST: 'hale-rest',
+            FLOW: 'hale-flow',
+        };
+        return csIcon(iconMap[sessionId] || 'breath', size);
+    }
+
+    getIntensityClass(sessionId) {
+        const intensityMap = {
+            ELIXIR: 'high',
+            REST: 'gentle',
+        };
+        return intensityMap[sessionId] || 'moderate';
+    }
+
     render() {
         if (!this.container) return;
 
@@ -131,10 +149,7 @@ export class SessionsTab {
                 <!-- Base Session Card -->
                 <div class="session-card" data-session="BASE">
                     <div class="session-icon base-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 8v8M8 12h8"></path>
-                        </svg>
+                        ${this.getSessionIcon('BASE')}
                     </div>
                     <div class="session-info">
                         <h3>Hale Base</h3>
@@ -150,9 +165,7 @@ export class SessionsTab {
                 <!-- Elixir Session Card -->
                 <div class="session-card" data-session="ELIXIR">
                     <div class="session-icon elixir-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                        </svg>
+                        ${this.getSessionIcon('ELIXIR')}
                     </div>
                     <div class="session-info">
                         <h3>Hale Elixir</h3>
@@ -168,9 +181,7 @@ export class SessionsTab {
                 <!-- Rest Session Card -->
                 <div class="session-card" data-session="REST">
                     <div class="session-icon rest-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                        </svg>
+                        ${this.getSessionIcon('REST')}
                     </div>
                     <div class="session-info">
                         <h3>Hale Rest</h3>
@@ -186,9 +197,7 @@ export class SessionsTab {
                 <!-- Flow Session Card -->
                 <div class="session-card" data-session="FLOW">
                     <div class="session-icon flow-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                        </svg>
+                        ${this.getSessionIcon('FLOW')}
                     </div>
                     <div class="session-info">
                         <h3>Hale Flow</h3>
@@ -398,6 +407,7 @@ export class SessionsTab {
         // Get session info
         const info = this.SESSION_INFO[sessionId];
         const sessionType = sessionId.toLowerCase();
+        prep.className = `session-prep session-${sessionType}`;
 
         // Update session header
         const sessionName = prep.querySelector('.prep-session-name');
@@ -408,13 +418,12 @@ export class SessionsTab {
         if (sessionName) sessionName.textContent = info.name;
         if (sessionIcon) {
             sessionIcon.className = `prep-session-icon ${sessionType}`;
+            sessionIcon.innerHTML = this.getSessionIcon(sessionId, 24);
         }
         if (duration) duration.textContent = info.duration;
         if (intensity) {
             intensity.textContent = info.intensity;
-            const intensityClass = sessionId === 'ELIXIR' ? 'high'
-                : sessionId === 'REST' ? 'gentle' : 'moderate';
-            intensity.className = `prep-intensity ${intensityClass}`;
+            intensity.className = `prep-intensity ${this.getIntensityClass(sessionId)}`;
         }
 
         // Update session description

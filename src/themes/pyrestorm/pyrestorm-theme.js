@@ -1878,7 +1878,7 @@ export default class PyrestormTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             if (this.renderer.domElement && this.renderer.domElement.parentElement) {
                 this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
             }

@@ -17,6 +17,30 @@ const DEFAULT_EFFECTS = {
     pulseAmplitude: 0,
 };
 
+/**
+ * Trim a piece shape matrix down to its occupied bounding box so previews are
+ * sized/centred on the actual piece (e.g. the I-piece is 4×4 with blank rows).
+ * @param {Array<Array<number>>} shape
+ * @returns {Array<Array<number>>}
+ */
+function trimShape(shape) {
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    shape.forEach((row, y) => row.forEach((cell, x) => {
+        if (cell > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+    }));
+    if (maxX < minX) return shape; // empty, shouldn't happen
+    const trimmed = [];
+    for (let y = minY; y <= maxY; y++) {
+        trimmed.push(shape[y].slice(minX, maxX + 1));
+    }
+    return trimmed;
+}
+
 let cachedNextPieces = [];
 let listenersRegistered = false;
 let unsubscribeThemeChanged = null;
@@ -64,12 +88,32 @@ function getStyleManager() {
 function resolveStyleConfig(pieceKey) {
     const fallbackColor = COLORS[pieceKey] || '#808080';
     const manager = getStyleManager();
+    const base = manager ? manager.getStyleForPiece(pieceKey) : createFallbackStyle(fallbackColor);
 
-    if (!manager) {
-        return createFallbackStyle(fallbackColor);
-    }
-
-    return manager.getStyleForPiece(pieceKey);
+    // Render next-queue previews EXACTLY like the on-board (Phaser) pieces: the
+    // premium "solid" treatment (gradient + gloss + white rim). The Phaser canvas
+    // ignores theme glow/gradient/outline, so the queue must too — otherwise themed
+    // pieces pick up a dark theme outline and glow the board never shows. We keep
+    // only the themed COLOR.
+    return {
+        ...base,
+        renderMode: 'solid',
+        effects: {
+            ...base.effects,
+            outline: false,
+            glowRadius: 0,
+            glowIntensity: 0,
+        },
+        rendererOverrides: {
+            ...base.rendererOverrides,
+            canvas: {
+                ...(base.rendererOverrides?.canvas || {}),
+                outline: false,
+                glowRadius: 0,
+                glowIntensity: 0,
+            },
+        },
+    };
 }
 
 function getEffectiveEffects(styleConfig) {
@@ -126,7 +170,7 @@ function handleSettingsChanged(event) {
 export function drawPiece(canvas, pieceKey) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const shape = SHAPES[pieceKey];
+    const shape = trimShape(SHAPES[pieceKey]);
     const styleConfig = resolveStyleConfig(pieceKey);
 
     const rows = shape.length;

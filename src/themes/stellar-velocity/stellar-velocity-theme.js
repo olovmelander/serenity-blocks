@@ -1838,7 +1838,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.removeRendererResilienceListeners();
         const domElement = this.renderer.domElement;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[StellarVelocity] renderer dispose failed:', error);
         }

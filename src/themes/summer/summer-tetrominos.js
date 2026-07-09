@@ -1,57 +1,61 @@
 /**
- * Summer Theme - Tetromino Visual Configuration
+ * Summer "Midsommar Solstice" Theme — Tetromino Visual Configuration
  *
- * Sun-faded citrus, dune gold, and sea-breeze turquoise for playful, hazy warmth.
+ * Golden-hour split-complementary palette: warm sunset accents (golden, peach, Falu
+ * red) against calming layered greens and lake-blues — the same harmony as the
+ * environment (sky #85B9D1 · peach #F8A898 · golden #FCD581 · pine #2A4B38 ·
+ * canopy #4A7C59 · grass #97AD43 · Falu #A23629 · lake #5B92A8).
  */
 
 export const SUMMER_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#71e6ff', // Ocean spray
-        O: '#ffe58f', // Noon sun
-        T: '#ffb4d6', // Bougainvillea pop
-        S: '#8deba3', // Palm frond
-        Z: '#ff8a63', // Sunset coral
-        J: '#6bb0ff', // Horizon blue
-        L: '#ffd28a', // Sandstone glow
-        GARBAGE: '#3e2f1c', // Driftwood shadow
+        I: '#5B92A8', // lake blue (teal)
+        O: '#FCD581', // golden yellow
+        T: '#F8A898', // sunset peach
+        S: '#97AD43', // sunlit grass
+        Z: '#A23629', // Falu red accent
+        J: '#85B9D1', // soft sky blue
+        L: '#4A7C59', // midtone canopy green
+        GARBAGE: '#2A4B38', // deep pine — foundation / shadowed blocks
+        CLEAN_GARBAGE: '#6F8A70',
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 12,
-        glowIntensity: 0.8,
-        glowColor: '#ffe5b2',
+        glowRadius: 11,
+        glowIntensity: 0.7,
+        glowColor: '#FCD581', // golden-hour glow
 
         outline: true,
-        outlineWidth: 1.7,
-        outlineColor: '#2c1c0d',
+        outlineWidth: 1.6,
+        outlineColor: 'lighten',
 
         pulse: true,
-        pulseSpeed: 0.04,
-        pulseAmplitude: 0.24,
+        pulseSpeed: 0.032,
+        pulseAmplitude: 0.18,
 
         shimmer: true,
-        shimmerSpeed: 0.06,
-        shimmerIntensity: 0.22,
+        shimmerSpeed: 0.045,
+        shimmerIntensity: 0.16,
 
         trails: true,
-        trailLength: 0.2,
-        trailOpacity: 0.32,
+        trailLength: 0.16,
+        trailOpacity: 0.3,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 10,
-            glowIntensity: 0.72,
-            outlineWidth: 1.5,
+            glowRadius: 8,
+            glowIntensity: 0.6,
+            outlineWidth: 1.4,
         },
         phaser: {
-            glowRadius: 14,
-            glowIntensity: 0.88,
-            outlineWidth: 2.0,
+            glowRadius: 13,
+            glowIntensity: 0.78,
+            outlineWidth: 1.9,
         },
     },
 };

@@ -6,6 +6,20 @@
     gap: 12px;
 }
 
+.single-player-piece-previews {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    width: var(--board-width);
+    gap: 10px;
+}
+
+.player-next-pieces.single-player-next {
+    flex: 1 1 auto;
+    width: auto !important;
+    min-width: 0;
+}
+
 .player-next-pieces.single-player-next .player-next-piece {
     width: 72px;
     height: 72px;

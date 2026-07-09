@@ -27,6 +27,7 @@ const SAVE_VERSION = 1;
 /**
  * @typedef {Object} OdysseyStatistics
  * @property {number} totalPlayTime - Total time spent in Odyssey Mode (seconds)
+ * @property {number} totalAttempts - Cumulative level attempts (completions + failures)
  * @property {number} totalLinesCleared - Cumulative lines cleared
  * @property {number} totalScore - Cumulative score
  * @property {number} highestCombo - Best combo achieved
@@ -50,6 +51,7 @@ export class OdysseyStateManager {
         // Statistics
         this.statistics = {
             totalPlayTime: 0,
+            totalAttempts: 0,
             totalLinesCleared: 0,
             totalScore: 0,
             highestCombo: 0,
@@ -189,6 +191,7 @@ export class OdysseyStateManager {
         this.completedLevels = new Map();
         this.statistics = {
             totalPlayTime: 0,
+            totalAttempts: 0,
             totalLinesCleared: 0,
             totalScore: 0,
             highestCombo: 0,
@@ -334,7 +337,10 @@ export class OdysseyStateManager {
      */
     recordAttempt(levelId) {
         this.currentLevelAttempts++;
-        // Attempts are only persisted on completion
+        // Persist to the aggregate so FAILED attempts aren't lost (the per-level completion
+        // record's `attempts` only counts completions — masterplan §2 #5).
+        this.statistics.totalAttempts = (this.statistics.totalAttempts || 0) + 1;
+        this.save();
     }
 
     // =============================
@@ -346,9 +352,10 @@ export class OdysseyStateManager {
      * @param {Object} sessionStats
      */
     updateStatistics(sessionStats) {
-        if (sessionStats.time) {
-            this.statistics.totalPlayTime += sessionStats.time;
-        }
+        // NOTE: totalPlayTime is accumulated ONLY by endSession() (whole-session wall-clock =
+        // the documented "total time spent in Odyssey Mode"). Adding per-level results.time here
+        // too double-counted it, since the session duration already contains those level times
+        // (masterplan §2 #5).
         if (sessionStats.lines) {
             this.statistics.totalLinesCleared += sessionStats.lines;
         }

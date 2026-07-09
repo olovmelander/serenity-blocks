@@ -1,0 +1,1 @@
+{"ok":true,"backend":"WebGPU","fps":null,"avgFps":60,"onePercentLow":null,"drawCalls":null,"rendererInfo":null,"keys":["avgDrawCalls","avgFps","avgLines","avgPoints","avgTriangles","backend","budget","capabilities","flags","frameTimeStdDevMs","frameTimeVarianceMs2","frames","geometries","gpuMemoryEstimateMb","heapUsedMb","low1Fps","p99Ms","preset","sequence","textures"]}

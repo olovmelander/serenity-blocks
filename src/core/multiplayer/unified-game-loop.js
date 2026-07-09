@@ -5,6 +5,7 @@
  */
 
 import { processAutoDrop } from '../game.js';
+import { decrementBlindTimers } from '../blind.js';
 
 /**
  * Unified game loop manager for multiplayer
@@ -17,6 +18,11 @@ export class UnifiedMultiplayerLoop {
         this.animationId = null;
         this.isPaused = false;
         this.isGameOver = false;
+        this.externalPlayerUpdate = false;
+        // Competitive online MP must NEVER pause the sim (pausing desyncs the netcode).
+        // When this latch is set, pause() is a no-op so no menu/visibility/background-tab
+        // path can freeze a live match. Set via setNeverPause(true) while online.
+        this.neverPause = false;
 
         // Performance tracking
         this.frameCount = 0;
@@ -93,8 +99,23 @@ export class UnifiedMultiplayerLoop {
      * Pause the game loop
      */
     pause() {
+        if (this.neverPause) {
+            console.warn('[UnifiedLoop] pause() ignored — online match is live (never-pause latch set)');
+            return;
+        }
         this.isPaused = true;
         console.log('[UnifiedLoop] Paused');
+    }
+
+    /**
+     * Latch that makes pause() a no-op (competitive online MP must never pause).
+     * @param {boolean} value
+     */
+    setNeverPause(value) {
+        this.neverPause = !!value;
+        if (this.neverPause) {
+            this.isPaused = false; // ensure we're not already paused when the latch goes on
+        }
     }
 
     /**
@@ -130,8 +151,11 @@ export class UnifiedMultiplayerLoop {
             this.lastFpsTime = currentTime;
         }
 
-        // Update all players in a single pass
-        this.updatePlayers(delta);
+        // Update all players in a single pass. Host-authoritative fixed-step
+        // netcode can opt out and call updatePlayers() itself at the sim tick rate.
+        if (!this.externalPlayerUpdate) {
+            this.updatePlayers(delta);
+        }
 
         // Callback for rendering
         if (this.onRender) {
@@ -159,6 +183,20 @@ export class UnifiedMultiplayerLoop {
             const player = this.players[i];
             const { state } = player;
 
+            // Skip if game is over or player is explicitly dead
+            if (state.isGameOver === true || state.isAlive === false) {
+                continue;
+            }
+
+            // Tick down active blind blackout timers (delta is in ms, we need seconds)
+            decrementBlindTimers(state, delta / 1000);
+
+            // Handle hit-stop decrement and freeze
+            if (state.hitStopRemaining > 0) {
+                state.hitStopRemaining = Math.max(0, state.hitStopRemaining - delta);
+                continue;
+            }
+
             // Skip if player is processing physics or has no current piece
             if (state.isProcessingPhysics || !state.currentPiece) {
                 continue;
@@ -172,6 +210,10 @@ export class UnifiedMultiplayerLoop {
                 player.physics,
             );
         }
+    }
+
+    setExternalPlayerUpdate(enabled) {
+        this.externalPlayerUpdate = enabled === true;
     }
 
     /**
