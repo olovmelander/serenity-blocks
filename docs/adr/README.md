@@ -12,6 +12,13 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 |---|---|---|
 | [0001](0001-phaser-three-are-runtime-dependencies.md) | phaser and three are runtime `dependencies` | accepted |
 | [0002](0002-lint-policy-decisions.md) | Lint policy: no-bitwise off, unresolved-import ignores, max-len warns | accepted |
+| [0003](0003-incremental-typescript-via-ts-check.md) | Incremental TypeScript via `@ts-check` | accepted |
+| [0004](0004-host-authoritative-p2p.md) | Host-authoritative P2P is the multiplayer model | accepted |
+| [0005](0005-no-wasm-physics.md) | Do not add WASM physics for the puzzle simulation | accepted |
+| [0006](0006-no-sim-worker-offload-for-now.md) | No simulation Worker offload for now | accepted |
+| [0007](0007-webgpu-tsl-definition-of-done.md) | WebGPU/TSL visual changes require screenshot validation | accepted |
+| [0008](0008-hybrid-renderer-and-webgl-holdouts.md) | Hybrid renderer split and WebGL holdouts are intentional | accepted |
+| [0009](0009-theme-codegen-pipeline-removed.md) | Do not rebuild the old theme code-generation pipeline | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.

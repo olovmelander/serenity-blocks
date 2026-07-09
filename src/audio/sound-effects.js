@@ -1072,10 +1072,8 @@ export class SoundEffectPlayer {
 
     /**
      * Plays the line clear sound effect.
-     * @param {number} [cascadeCount=1] - Current cascade depth (1 = manual clear).
-     *   Values > 1 trigger an additional rising chime on top of the base clear sound.
      */
-    playLineClear(cascadeCount = 1) {
+    playLineClear() {
         this.soundSets[this.soundSet].lineClear();
     }
 
@@ -1088,7 +1086,7 @@ export class SoundEffectPlayer {
     playCascadeChime(cascadeCount) {
         if (!this._createTone) return;
         const semitones = (cascadeCount - 1) * 2; // 2 semitones per stage
-        const pitchFactor = Math.pow(1.05946, semitones);
+        const pitchFactor = 1.05946 ** semitones;
         const baseFreq = 523.25; // C5
         const freq = baseFreq * pitchFactor;
         // A short, bright bell tone that rises with each cascade.
