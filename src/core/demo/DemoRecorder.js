@@ -203,10 +203,14 @@ export class DemoRecorder {
      * @private
      */
     _captureSettings(settings = {}) {
+        // Input-timing settings live under dasDelay/dasInterval/softDropInterval
+        // (ui/settings.js DEFAULT_CONFIG) — the old das/arr keys never existed and
+        // always captured undefined. Schema is redefined properly in plan §5.7.
         return {
             themeBasedTetrominos: settings.themeBasedTetrominos,
-            das: settings.das,
-            arr: settings.arr,
+            dasDelay: settings.dasDelay,
+            dasInterval: settings.dasInterval,
+            softDropInterval: settings.softDropInterval,
         };
     }
 }

@@ -8,7 +8,7 @@
 
 import { SteamConfig } from './config.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
-import { NetworkImpairmentHarness, readNetworkImpairmentConfig } from '../network/network-impairment.js';
+import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -81,7 +81,14 @@ export class SteamNetworking {
 
         // Mock P2P communication channel (for cross-window messaging)
         this.broadcastChannel = null;
-        this.networkImpairment = new NetworkImpairmentHarness(readNetworkImpairmentConfig());
+        // Impairment harness is dev/test-gated (plan §1.4): live config only in
+        // mock mode, Vite dev, or explicit ?netImpair opt-in — a poisoned
+        // localStorage entry must never drop/delay real Steam packets.
+        this.networkImpairment = new NetworkImpairmentHarness(resolveImpairmentBootConfig({
+            mockMode: this.mockMode,
+            isDev: Boolean(import.meta.env?.DEV),
+            search: (typeof window !== 'undefined' && window.location?.search) || '',
+        }));
         this.networkImpairmentTimers = new Set();
         this.packetStats = {
             sent: 0,
