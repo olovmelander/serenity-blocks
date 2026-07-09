@@ -26,6 +26,12 @@
 import * as THREE from 'three/webgpu';
 import { createWarpParticles } from './boot-warp-transition-scene.js';
 import { markStartup } from './startup-debug.js';
+import {
+    BOOT_WARP_DEFAULT_DURATION_MS,
+    BOOT_WARP_FADE_PROGRESS,
+    BOOT_WARP_REVEAL_PROGRESS,
+    BOOT_WARP_TITLE_PROGRESS,
+} from './boot-warp-startup.js';
 
 const CANVAS_ID = 'boot-warp-canvas';
 let nextTransitionId = 1;
@@ -310,14 +316,22 @@ export class BootWarpTransition {
     /**
      * Play the transition, driving progress 0→1 over `durationMs`.
      * @param {object} [opts]
-     * @param {number} [opts.durationMs] default 2600
-     * @param {(p:number)=>void} [opts.onProgress]
-     * @returns {Promise<void>}
+     * @param {number} [opts.durationMs] default BOOT_WARP_DEFAULT_DURATION_MS
+     * @param {(p:number, state:object)=>void} [opts.onProgress]
+     * @returns {Promise<object>}
      */
     play(opts = {}) {
-        const durationMs = Math.max(600, opts.durationMs || 2600);
+        const durationMs = Math.max(600, opts.durationMs || BOOT_WARP_DEFAULT_DURATION_MS);
         const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
-        if (!this._ready || this._disposed || !this.warp) return Promise.resolve();
+        if (!this._ready || this._disposed || !this.warp) {
+            return Promise.resolve({
+                status: 'not-ready',
+                firstFrameRendered: false,
+                durationMs,
+                elapsedMs: 0,
+                progress: 0,
+            });
+        }
 
         this._playing = true;
         markStartup('boot-warp:play-start', {
@@ -329,46 +343,72 @@ export class BootWarpTransition {
             fadeOverlap: false,
             titleReveal: false,
         };
-        const start = (typeof performance !== 'undefined' && performance.now)
-            ? performance.now() : Date.now();
+        let start = null;
+        let firstFrameRendered = false;
 
         return new Promise((resolve) => {
             const loop = () => {
-                if (this._disposed) {
-                    markStartup('boot-warp:play-disposed', { id: this.debugId }, { level: 'warn' });
-                    resolve();
-                    return;
-                }
                 const now = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now() : Date.now();
+                if (start === null) {
+                    start = now;
+                }
                 const elapsed = now - start;
                 const p = Math.min(elapsed / durationMs, 1);
+
+                if (this._disposed) {
+                    markStartup('boot-warp:play-disposed', { id: this.debugId }, { level: 'warn' });
+                    resolve({
+                        status: 'disposed',
+                        firstFrameRendered,
+                        durationMs,
+                        elapsedMs: elapsed,
+                        progress: p,
+                    });
+                    return;
+                }
                 try {
                     this.warp.setProgress(p);
                     this.warp.setTime(elapsed / 1000);
                     this.renderer.compute(this.warp.computeNode);
                     this.renderer.render(this.scene, this.camera);
+                    if (!firstFrameRendered) {
+                        firstFrameRendered = true;
+                        markStartup('boot-warp:first-frame', {
+                            id: this.debugId,
+                            progress: p,
+                            elapsedMs: Math.round(elapsed * 10) / 10,
+                        });
+                    }
                 } catch (e) {
+                    const status = firstFrameRendered ? 'render-failed' : 'render-failed-before-visible';
                     markStartup('boot-warp:play-render-failed', {
                         id: this.debugId,
+                        status,
                         progress: p,
                         message: e?.message || String(e),
                     }, { level: 'error' });
                     // eslint-disable-next-line no-console
                     console.error('[BootWarp] render failed:', e);
                     this._playing = false;
-                    resolve();
+                    resolve({
+                        status,
+                        firstFrameRendered,
+                        durationMs,
+                        elapsedMs: elapsed,
+                        progress: p,
+                    });
                     return;
                 }
-                if (!progressMarks.revealShell && p >= 0.06) {
+                if (!progressMarks.revealShell && p >= BOOT_WARP_REVEAL_PROGRESS) {
                     progressMarks.revealShell = true;
                     markStartup('boot-warp:progress-reveal-shell', { id: this.debugId, progress: p });
                 }
-                if (!progressMarks.fadeOverlap && p >= 0.8) {
+                if (!progressMarks.fadeOverlap && p >= BOOT_WARP_FADE_PROGRESS) {
                     progressMarks.fadeOverlap = true;
                     markStartup('boot-warp:progress-fade-overlap', { id: this.debugId, progress: p });
                 }
-                if (!progressMarks.titleReveal && p >= 0.9) {
+                if (!progressMarks.titleReveal && p >= BOOT_WARP_TITLE_PROGRESS) {
                     progressMarks.titleReveal = true;
                     markStartup('boot-warp:progress-title-reveal', { id: this.debugId, progress: p });
                 }
@@ -377,7 +417,11 @@ export class BootWarpTransition {
                     // dismiss, title reveal) must not kill this rAF loop with the play()
                     // promise unresolved — that would hang the boot behind the warp.
                     try {
-                        onProgress(p);
+                        onProgress(p, {
+                            firstFrameRendered,
+                            elapsedMs: elapsed,
+                            durationMs,
+                        });
                     } catch (progressError) {
                         markStartup('boot-warp:progress-callback-failed', {
                             id: this.debugId,
@@ -393,7 +437,13 @@ export class BootWarpTransition {
                 } else {
                     this._playing = false;
                     markStartup('boot-warp:play-complete', { id: this.debugId });
-                    resolve();
+                    resolve({
+                        status: 'complete',
+                        firstFrameRendered,
+                        durationMs,
+                        elapsedMs: elapsed,
+                        progress: p,
+                    });
                 }
             };
             this._raf = requestAnimationFrame(loop);

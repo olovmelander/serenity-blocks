@@ -121,42 +121,82 @@ export function create({
     }
     scene.add(track(new THREE.Mesh(new THREE.SphereGeometry(4000, 48, 24), skyMat)));
 
-    // ════ PLANETS — distant twilight worlds (repo textures, terminator-lit silhouettes) ════
-    // Anchor-moon always present for depth; the full ensemble + saturn ring bloom in at the
-    // Cosmos beat (uCosmos). Small, tinted-down, upper-sky, out of the center wedge; mirrored free.
+    // ════ PLANETS — HUGE backlit worlds (hatom phase-5): crescent rims + atmospheric halos ════
+    // Anchor-moon always present for depth; the giant ensemble + saturn ring + light-wisp streaks
+    // bloom in at the Cosmos beat (uCosmos), framing the upper corners; mirrored in the lake free.
     const planets = new THREE.Group();
+    const cosmosGroup = new THREE.Group(); // ensemble — visibility-gated in update() (zero cost while dormant)
+    planets.add(cosmosGroup);
+    const haloSprites = []; // additive atmosphere billboards, camera-billboarded each frame
     {
         const TEXBASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/'}textures/`;
         const loader = new THREE.TextureLoader();
-        const sun = normalize(vec3(0.4, -0.05, 1.0)); // lit from the horizon glow
-        const makePlanet = (file, rad, x, y, z, tint, always) => {
+        const beamAim = new THREE.Vector3(0, 150, -110); // every planet is lit from the central sky axis
+        const makePlanet = (file, rad, x, y, z, tint, opts) => {
             const map = loader.load(TEXBASE + file);
             map.colorSpace = THREE.SRGBColorSpace;
             disposeTextures.push(map);
+            const parent = opts.always ? planets : cosmosGroup;
+            const sunJs = beamAim.clone().sub(new THREE.Vector3(x, y, z)).normalize();
+            const sunV = vec3(sunJs.x, sunJs.y, sunJs.z);
             const mat = new THREE.MeshBasicNodeMaterial();
             const N = normalize(normalWorld);
             const Vv = normalize(cameraPosition.sub(positionWorld));
             const ndv = clamp(dot(N, Vv), 0.0, 1.0);
-            const lit = clamp(dot(N, sun).mul(0.8).add(0.10), 0.05, 1.0); // crescent terminator (dark night side)
-            const rim = pow(float(1.0).sub(ndv), float(3.5)); // thin warm limb
-            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit).mul(0.75)
-                .add(vec3(1.0, 0.55, 0.4).mul(rim).mul(0.4)); // dim + tinted → distant twilight world, not a bright globe
+            const lit = clamp(dot(N, sunV).mul(0.9).add(0.06), 0.03, 1.0); // hard crescent terminator
+            const limb = pow(float(1.0).sub(ndv), float(4.5)); // grazing-limb mask
+            const litSide = smoothstep(0.0, 0.55, dot(N, sunV));
+            // dim tinted body (near-silhouette night side) + the hatom signature: an INTENSE warm
+            // crescent arc on the sunward limb (bloom-eligible) + a faint cool ring on the dark limb.
+            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit).mul(0.7)
+                .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent))
+                .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.16));
             mat.toneMapped = false;
             mat.fog = false;
             mat.transparent = true;
-            mat.opacityNode = always ? float(0.92) : uCosmos.mul(0.92);
-            const mesh = new THREE.Mesh(new THREE.SphereGeometry(rad, 32, 24), mat);
+            mat.opacityNode = opts.always ? float(0.92) : uCosmos.mul(0.92);
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(rad, 48, 32), mat);
             mesh.position.set(x, y, z);
-            planets.add(mesh);
+            parent.add(mesh);
+            if (opts.halo > 0) {
+                // atmospheric halo — an additive ring annulus hugging the disc, biased to the lit side
+                const hm = new THREE.MeshBasicNodeMaterial();
+                const hd = uv().sub(0.5).mul(2.0);
+                const hl = length(hd); // 0 centre → 1 quad edge; the disc edge sits at ~0.69
+                const ring = smoothstep(0.60, 0.69, hl).mul(smoothstep(0.82, 0.70, hl));
+                const glow = smoothstep(0.55, 0.70, hl).mul(smoothstep(1.0, 0.72, hl)).mul(0.5);
+                const bias = clamp(dot(hd, vec2(sunJs.x, sunJs.y)), 0.0, 1.0).mul(0.75).add(0.35);
+                hm.colorNode = vec3(1.55, 1.15, 0.9).mul(ring.mul(1.5).add(glow)).mul(bias).mul(opts.halo);
+                hm.transparent = true;
+                hm.blending = THREE.AdditiveBlending;
+                hm.depthWrite = false;
+                hm.depthTest = false; // halo reads beyond/over the silhouette
+                hm.toneMapped = false;
+                hm.fog = false;
+                hm.opacityNode = opts.always ? float(0.5) : uCosmos;
+                const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.9, rad * 2.9), hm);
+                halo.position.set(x, y, z);
+                halo.renderOrder = 3;
+                parent.add(halo);
+                haloSprites.push(halo);
+            }
         };
         if (tier >= 1) {
-            makePlanet('2k_moon.jpg', 12, -185, 235, -520, [0.42, 0.40, 0.56], true); // anchor moon
+            makePlanet('2k_moon.jpg', 14, -185, 235, -520, [0.42, 0.40, 0.56], {
+                always: true, crescent: 0.55, halo: 0.35,
+            });
             if (tier >= 2) {
-                makePlanet('2k_jupiter.jpg', 24, 255, 300, -650, [0.55, 0.34, 0.40], false);
-                makePlanet('2k_neptune.jpg', 17, -330, 330, -700, [0.32, 0.40, 0.72], false);
+                makePlanet('2k_jupiter.jpg', 85, -315, 300, -710, [0.55, 0.36, 0.42], {
+                    always: false, crescent: 2.3, halo: 1.0,
+                });
+                makePlanet('2k_neptune.jpg', 66, 335, 335, -735, [0.34, 0.42, 0.74], {
+                    always: false, crescent: 2.1, halo: 1.0,
+                });
             }
             if (tier >= 3) {
-                makePlanet('2k_saturn.jpg', 20, 110, 285, -680, [0.60, 0.48, 0.36], false);
+                makePlanet('2k_saturn.jpg', 46, 150, 252, -655, [0.62, 0.50, 0.38], {
+                    always: false, crescent: 1.7, halo: 0.8,
+                });
                 // procedural banded ring (avoids the RingGeometry uv issue)
                 const ringMat = new THREE.MeshBasicNodeMaterial();
                 const rr = length(uv().sub(0.5)); // 0 centre → 0.5 edge (RingGeometry uv is a disc)
@@ -166,14 +206,72 @@ export function create({
                 ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr)).mul(uCosmos).mul(0.75);
                 ringMat.transparent = true; ringMat.side = THREE.DoubleSide;
                 ringMat.toneMapped = false; ringMat.fog = false; ringMat.depthWrite = false;
-                const ring = new THREE.Mesh(new THREE.RingGeometry(28, 46, 56), ringMat);
-                ring.position.set(110, 285, -680);
+                const ring = new THREE.Mesh(new THREE.RingGeometry(64, 104, 64), ringMat);
+                ring.position.set(150, 252, -655);
                 ring.rotation.set(Math.PI * 0.42, 0.3, 0);
-                planets.add(ring);
+                cosmosGroup.add(ring);
+                // light-wisp streaks — soft horizontal luminous bands crossing between the worlds
+                for (let si = 0; si < 2; si += 1) {
+                    const sm2 = new THREE.MeshBasicNodeMaterial();
+                    const su = uv();
+                    const sband = pow(smoothstep(0.5, 0.0, abs(su.y.sub(0.5))), float(2.0));
+                    const sn = mx_fractal_noise_float(
+                        vec3(su.x.mul(7.0).sub(uTime.mul(0.015 + si * 0.008)), su.y.mul(3.0), 2.0 + si * 5.0), 2,
+                    ).mul(0.5).add(0.5);
+                    sm2.colorNode = mix(vec3(0.75, 0.62, 1.0), vec3(1.0, 0.78, 0.62), su.x)
+                        .mul(sband).mul(pow(sn, float(2.2))).mul(uCosmos).mul(0.30);
+                    sm2.transparent = true;
+                    sm2.blending = THREE.AdditiveBlending;
+                    sm2.depthWrite = false;
+                    sm2.toneMapped = false;
+                    sm2.fog = false;
+                    const streak = new THREE.Mesh(new THREE.PlaneGeometry(1900, 110), sm2);
+                    streak.position.set(-60 + si * 160, 268 + si * 42, -640 - si * 60);
+                    streak.renderOrder = 2;
+                    cosmosGroup.add(streak);
+                }
             }
         }
     }
     scene.add(track(planets));
+
+    // ════ COSMOS MONOLITH — a near-black slab rising from the lake at the climax (hatom phase-5) ════
+    let monolith = null;
+    let monoBeam = null;
+    if (tier >= 2) {
+        const monoMat = new THREE.MeshBasicNodeMaterial();
+        const mf = mx_fractal_noise_float(positionLocal.mul(0.22), 3).mul(0.5).add(0.5);
+        const etch = smoothstep(0.035, 0.0, abs(mf.sub(0.5))); // faint glowing etched seams
+        const mN = normalize(normalWorld);
+        const mV = normalize(cameraPosition.sub(positionWorld));
+        const mFres = pow(clamp(float(1.0).sub(dot(mN, mV)), 0.0, 1.0), float(3.0));
+        monoMat.colorNode = vec3(0.008, 0.007, 0.016)
+            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.30))
+            .add(vec3(0.5, 0.6, 0.95).mul(mFres).mul(0.10));
+        monoMat.toneMapped = false;
+        monolith = new THREE.Mesh(new THREE.BoxGeometry(13, 44, 4.5), monoMat);
+        monolith.position.set(38, -46, -128); // submerged; rises with uCosmos in update()
+        monolith.rotation.y = 0.22;
+        monolith.visible = false;
+        scene.add(track(monolith));
+        // the vertical light beam standing behind the slab
+        const beamMat = new THREE.MeshBasicNodeMaterial();
+        const bu = uv();
+        const bx2 = abs(bu.x.sub(0.5)).mul(2.0);
+        const shaft = pow(smoothstep(1.0, 0.0, bx2), float(2.4));
+        const bFade = smoothstep(1.0, 0.12, bu.y).mul(smoothstep(0.0, 0.22, bu.y));
+        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35).add(0.65);
+        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak).mul(uCosmos).mul(0.34);
+        beamMat.transparent = true;
+        beamMat.blending = THREE.AdditiveBlending;
+        beamMat.depthWrite = false;
+        beamMat.toneMapped = false;
+        beamMat.fog = false;
+        monoBeam = new THREE.Mesh(new THREE.PlaneGeometry(24, 170), beamMat);
+        monoBeam.position.set(38, 62, -134);
+        monoBeam.visible = false;
+        scene.add(track(monoBeam));
+    }
 
     // ════ TWILIGHT FILL RIG (V4 1.1) — colored bounce so darks read as plum/indigo, not grey-black ════
     // The hero relic is a practical light: a warm amber radial bounce onto the terrain, escalation-gated so

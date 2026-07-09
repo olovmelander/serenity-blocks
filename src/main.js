@@ -85,6 +85,7 @@ import {
     BOOT_WARP_PREWARM_TIMEOUT_MS,
     BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
     BOOT_WARP_MAX_PREWARM_ATTEMPTS,
+    playBootWarpHandoff,
     waitForStartupThemeIdle,
     waitForIntroRendererDecision,
 } from './ui/boot-warp-startup.js';
@@ -5590,9 +5591,7 @@ async function bootstrap() {
                     // (blank on heavy themes) even though a shareable device was seconds away.
                     // rendererReady settles on WebGPU success AND on WebGL fallback/failure.
                     markStartup('boot-warp:intro-decision-start');
-                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation, {
-                        timeoutMs: BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
-                    });
+                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation);
                     markStartup('boot-warp:intro-decision-complete', introWarpDecision);
                     if (introWarpDecision.canAttemptWarp) {
                         const getStartupTheme = () => app?.themeManager?.pendingThemeInstance
