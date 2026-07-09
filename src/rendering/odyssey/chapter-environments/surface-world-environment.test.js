@@ -92,7 +92,9 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         const profile = ODYSSEY_CHAPTER_PROFILES.find((chapter) => chapter.id === 3);
         expect(profile.atmosphere.ambientIntensity).toBeLessThan(0.7);
         expect(profile.atmosphere.exposure).toBeLessThanOrEqual(1);
-        expect(profile.path.emissiveColor).toBe(0x96a842);
+        // Masterplan D2 dim (0x96a842 → 0x687d31): live capture showed the ch3 path was the
+        // journey's worst figure-ground offender — the pin follows chapter-profile.js.
+        expect(profile.path.emissiveColor).toBe(0x687d31);
         expect(profile.path.widthScale).toBeLessThanOrEqual(0.9);
 
         const group = createSurfaceWorldEnvironment();
