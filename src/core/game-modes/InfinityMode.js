@@ -406,20 +406,16 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Called when game is paused
+     * Called when game is paused. Sim mirror + hybrid-loop pause live in
+     * BaseGameMode (§4.6 slice 2); minimap/exploration are mode-specific.
      */
+    _getPausableGameState() {
+        return this.gameState || null;
+    }
+
     onPause(options = {}) {
         super.onPause();
         console.log('[Infinity] Game paused');
-
-        // Sync pause state to gameState
-        if (this.gameState) {
-            this.gameState.isPaused = true;
-        }
-
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.pauseHybridLoop();
-        }
 
         // Trigger minimap pause highlight effect (only if not in exploration mode)
         if (this.minimap && !this.isInExplorationMode) {
@@ -433,16 +429,6 @@ export class InfinityMode extends BaseGameMode {
     onResume() {
         super.onResume();
         console.log('[Infinity] Game resumed');
-
-        // Sync pause state to gameState
-        if (this.gameState) {
-            this.gameState.isPaused = false;
-            this.gameState.lastTime = performance.now();
-        }
-
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.resumeHybridLoop();
-        }
 
         // Reset exploration mode flag if somehow still set
         this.isInExplorationMode = false;

@@ -402,8 +402,14 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Called when game is paused
+     * Called when game is paused. Sim mirror + hybrid-loop pause live in
+     * BaseGameMode (§4.6 slice 2); the countdown guard, level clock, and
+     * tall-board camera are Odyssey-specific.
      */
+    _getPausableGameState() {
+        return this.gameState || null;
+    }
+
     onPause(options = {}) {
         if (this.entryPhase === 'countdown') {
             console.log('[Odyssey] Ignoring pause request during level start cue');
@@ -411,14 +417,6 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         super.onPause();
-
-        if (this.gameState) {
-            this.gameState.isPaused = true;
-        }
-
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.pauseHybridLoop();
-        }
 
         // Pause level timer + start accumulating paused wall-time so the clock excludes
         // time spent in the pause menu (masterplan §2 #2).
@@ -459,15 +457,6 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         super.onResume();
-
-        if (this.gameState) {
-            this.gameState.isPaused = false;
-            this.gameState.lastTime = performance.now();
-        }
-
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.resumeHybridLoop();
-        }
 
         // Fold the just-ended pause interval into the paused-time accumulator before the
         // clock resumes (masterplan §2 #2).

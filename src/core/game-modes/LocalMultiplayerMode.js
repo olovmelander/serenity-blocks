@@ -568,26 +568,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Called when game is paused
+     * Pause/resume wiring lives in BaseGameMode (§4.6 slice 2) — this mode's
+     * pausable sim is the shared multiplayerState (its own rAF loop early-outs
+     * on multiplayerState.isPaused).
      */
-    onPause() {
-        super.onPause();
-
-        if (this.multiplayerState) {
-            this.multiplayerState.isPaused = true;
-        }
-    }
-
-    /**
-     * Called when game is resumed
-     */
-    onResume() {
-        super.onResume();
-
-        if (this.multiplayerState) {
-            this.multiplayerState.isPaused = false;
-            this.multiplayerState.lastTime = performance.now();
-        }
+    _getPausableGameState() {
+        return this.multiplayerState || null;
     }
 
     /**
