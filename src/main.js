@@ -81,14 +81,11 @@ import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
+import { playBootWarpStartupSequence } from './ui/boot-warp-orchestrator.js';
 import {
-    BOOT_WARP_PREWARM_TIMEOUT_MS,
-    BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
-    BOOT_WARP_MAX_PREWARM_ATTEMPTS,
-    playBootWarpHandoff,
-    waitForStartupThemeIdle,
-    waitForIntroRendererDecision,
-} from './ui/boot-warp-startup.js';
+    STARTUP_IDENT_MIN_VISIBLE_MS,
+    createStartupPipelineController,
+} from './ui/startup-pipeline-controller.js';
 import { markStartup } from './ui/startup-debug.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
@@ -687,7 +684,7 @@ function initStartupLogo() {
  * @param {number} ms
  * @returns {Promise<void>}
  */
-function waitForStartupLogoMinVisible(ms = 4000) {
+function waitForStartupLogoMinVisible(ms = STARTUP_IDENT_MIN_VISIBLE_MS) {
     if (!startupShellShownAt) return Promise.resolve();
     const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     const remaining = ms - (now - startupShellShownAt);
@@ -5422,14 +5419,18 @@ let app = null;
  * Initialize and start the application
  */
 async function bootstrap() {
+    let startupPipeline = null;
+
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
-        // Cold-boot KPI anchor: the single number that matters for a Steam
-        // player's first impression is bootstrap-start → interactive menu.
-        // Recorded at the first-usable-frame marker below (remediation Phase 8).
-        const bootstrapStartedAt = (typeof performance !== 'undefined' && performance.now)
-            ? performance.now()
-            : 0;
+        startupPipeline = createStartupPipelineController({
+            introAnimation,
+        });
+        startupPipeline.start();
+        if (typeof window !== 'undefined') {
+            window.startupPipeline = startupPipeline;
+        }
+
         await resolveDesktopRuntimeConfig();
         if (typeof window !== 'undefined') {
             desktopBootCoordinator = createBootStageCoordinator({
@@ -5451,6 +5452,7 @@ async function bootstrap() {
             earlyStartModal.classList.remove('visible');
         }
         document.body.classList.remove('start-modal-open');
+        document.body.classList.remove('startup-intro-skipped');
         await revealStartupShell();
 
         const deferStartupAudio = shouldDeferStartupAudio();
@@ -5465,7 +5467,12 @@ async function bootstrap() {
             updateStartupShellStatus(safeMode ? 'Preparing safe startup shell' : 'Preparing minimal menu shell');
         } else {
             updateStartupShellStatus('Loading audio systems');
-            await ensureIntroMusicIsPlaying();
+            ensureIntroMusicIsPlaying().catch((error) => {
+                performanceMonitor.recordEvent('startup_intro_music_failed', {
+                    message: error?.message || String(error),
+                });
+                console.warn('[Startup] Intro music initialization failed:', error);
+            });
         }
 
         updateStartupShellStatus('Loading game systems');
@@ -5507,29 +5514,45 @@ async function bootstrap() {
             } else {
                 console.log('⏭️ Skipping intro animation due to URL flag...');
             }
-            if (introAnimation?.skip) {
-                introAnimation.skip();
-            } else if (introAnimation?.dismiss) {
-                introAnimation.dismiss();
-            }
-            app = await appInitPromise;
-        } else {
+            startupPipeline.skipIntro(
+                useMinimalPackagedStartup ? 'minimal-startup-profile' : 'url-flag',
+            );
+        }
+
+        app = await appInitPromise;
+        startupPipeline.markAppReady({
+            windowsProfile: desktopRuntimeConfig.windowsProfile,
+            safeMode,
+        });
+        const startupMenuModal = document.getElementById('start-modal');
+        if (!app?.modalManager && !startupMenuModal) {
+            throw new Error('Start menu surface was not initialized');
+        }
+        startupPipeline.markMenuReady({
+            modalManagerReady: Boolean(app?.modalManager),
+            modalDomReady: Boolean(startupMenuModal),
+        });
+        app?.setBootCoordinator?.(desktopBootCoordinator);
+
+        if (startupPipeline.snapshot().introStatus !== 'skipped') {
+            startupPipeline.markIntroRunning({ mode: 'interactive' });
+            startupPipeline.armIntroSkipInput(() => introAnimation.titleRevealed);
+            const waitForPipelineStep = startupPipeline.waitForStep;
+
             // AAA boot order: finish app init, load + warm the first gameplay theme while
             // the studio ident covers the screen, then start the intro behind that shell.
             // The optional warp may only run after the intro renderer has settled, because
             // it must reuse the intro GPUDevice when a warmed heavy theme is already alive.
-            app = await appInitPromise;
-            app?.setBootCoordinator?.(desktopBootCoordinator);
             // Mount the cosmic cursor NOW so it's visible from the START of the boot
             // experience (studio ident → warp → intro), not only once the menu appears.
             // Idempotent + cheap when idle; the deferred menu-idle path skips it if mounted.
             app?.mountCustomCursor?.();
-            await app?.prepareFirstThemeBeforeIntro?.();
+            await waitForPipelineStep(app?.prepareFirstThemeBeforeIntro?.());
 
             // Hold the studio ident on screen for at least 4s (reveal ~1.5s + a held
             // beat) before the reveal transition, so it lands as a deliberate, tone-
             // setting ident even when the warm above was fast/skipped.
-            await waitForStartupLogoMinVisible(4000);
+            await waitForPipelineStep(waitForStartupLogoMinVisible(STARTUP_IDENT_MIN_VISIBLE_MS));
 
             desktopBootCoordinator?.mark('intro-started', {
                 mode: 'interactive',
@@ -5546,9 +5569,12 @@ async function bootstrap() {
             // it plays FRESH once the transition (warp or CSS) finishes — see revealTitle()
             // after the handoff below.
             markStartup('intro:show-start', { deferTitle: true });
-            const introPromise = introAnimation.show(sharedSoundManager, { deferTitle: true });
+            const introPromise = introAnimation.show(sharedSoundManager, {
+                deferTitle: true,
+                signal: startupPipeline.signal,
+            });
             let introPhaseGate = 'timeout';
-            await Promise.race([
+            await waitForPipelineStep(Promise.race([
                 new Promise((resolve) => {
                     window.addEventListener('intro:phaseChanged', () => {
                         introPhaseGate = 'phase-changed';
@@ -5556,250 +5582,33 @@ async function bootstrap() {
                     }, { once: true });
                 }),
                 new Promise((resolve) => { setTimeout(resolve, 1500); }),
-            ]);
+            ]));
             markStartup('intro:first-phase-gate', { result: introPhaseGate });
 
-            // Masterpiece reveal: a PRE-WARMED WebGPU compute-particle transition —
-            // the ident diamond ignites into a hyperspace dive that seeds the intro
-            // nebula. Compiled up-front while the ident still covers the screen so it
-            // never hitches; falls back to the CSS crossfade reveal when WebGPU/compute
-            // is unavailable (or the GPU can't spare a second context).
-            let warpTransition = null;
-            try {
-                const { BootWarpTransition } = await import('./ui/boot-warp-transition.js');
-                const bootWarpSupported = BootWarpTransition.isSupported(urlParams);
-                markStartup('boot-warp:support-check', { supported: bootWarpSupported });
-                if (!bootWarpSupported) {
-                    performanceMonitor.recordEvent('startup_boot_warp_skipped', {
-                        reason: 'unsupported-or-disabled',
-                    });
-                    markStartup('boot-warp:skip', {
-                        reason: 'unsupported-or-disabled',
-                    });
-                    console.info('[Startup] Boot warp skipped: unsupported or disabled');
-                }
-
-                if (bootWarpSupported) {
-                    // The warp is required for supported startup paths, but heavy themes
-                    // can take longer to finish deferred GPU compilation. Hold the title
-                    // reveal while we wait dynamically, so the user sees logo -> warp ->
-                    // intro instead of the prompt unlocking behind the studio ident.
-                    introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
-                    markStartup('boot-warp:title-safety-held', {
-                        ms: BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
-                    });
-
-                    // The device-share decision below needs the intro renderer to actually
-                    // EXIST first: on a cold first boot (empty shader cache / slower GPU) the
-                    // intro's WebGPU init can outlast the 1500ms phase race above, and reading
-                    // the device too early returns null → the warp would create a 3rd context
-                    // (blank on heavy themes) even though a shareable device was seconds away.
-                    // rendererReady settles on WebGPU success AND on WebGL fallback/failure.
-                    markStartup('boot-warp:intro-decision-start');
-                    const introWarpDecision = await waitForIntroRendererDecision(introAnimation);
-                    markStartup('boot-warp:intro-decision-complete', introWarpDecision);
-                    if (introWarpDecision.canAttemptWarp) {
-                        const getStartupTheme = () => app?.themeManager?.pendingThemeInstance
-                            || app?.themeManager?.activeTheme
-                            || null;
-                        markStartup('boot-warp:theme-wait-start');
-                        const themeIdleState = await waitForStartupThemeIdle(getStartupTheme, {
-                            onProgress: (event, state) => {
-                                const level = event === 'still-busy' ? 'warn' : undefined;
-                                markStartup(`boot-warp:theme-wait-${event}`, state, { level });
-                                if (event === 'still-busy') {
-                                    introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
-                                    console.info('[Startup] Waiting for startup theme before warp', state);
-                                }
-                            },
-                        });
-                        markStartup('boot-warp:theme-ready', themeIdleState);
-
-                        const retryablePrewarmStatuses = new Set([
-                            'prewarm-timeout',
-                            'prewarm-exception',
-                            'setup-failed',
-                            'webgpu-init-failed',
-                        ]);
-                        let prewarmAttempt = 0;
-
-                        while (!warpTransition && prewarmAttempt < BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
-                            prewarmAttempt += 1;
-                            const prewarmTimeoutMs = Math.min(
-                                BOOT_WARP_PREWARM_TIMEOUT_MS + ((prewarmAttempt - 1) * 3500),
-                                20000,
-                            );
-
-                            // Share the intro's GPUDevice with the warp. A warmed HEAVY theme
-                            // (electric-dreams-v3, neon-district…) already holds its own WebGPU
-                            // device for its fluid sim; a separate warp device would be the 3rd
-                            // context and (on this class of GPU) silently falls back to WebGL → an
-                            // invisible warp. Reusing the intro's device keeps it at 2 contexts
-                            // (theme + intro/warp), the count that renders reliably. The device is
-                            // null only when the intro settled on WebGL — then the warp's own
-                            // device is at most the 2nd context and safe.
-                            const candidate = new BootWarpTransition({
-                                device: introAnimation.getWebGPUDevice?.() || null,
-                            });
-                            markStartup('boot-warp:prewarm-requested', {
-                                attempt: prewarmAttempt,
-                                sharedDevice: Boolean(introAnimation.getWebGPUDevice?.()),
-                                timeoutMs: prewarmTimeoutMs,
-                            });
-                            // eslint-disable-next-line no-await-in-loop -- retries are inherently sequential
-                            const primed = await candidate.prewarm({
-                                timeoutMs: prewarmTimeoutMs,
-                            });
-                            markStartup('boot-warp:prewarm-result', {
-                                attempt: prewarmAttempt,
-                                primed,
-                                status: candidate.lastPrewarmStatus,
-                            });
-                            if (primed) {
-                                warpTransition = candidate;
-                                // The warp is committed: push the intro's 4500ms deferred-title
-                                // safety past the play window, so a slow cold-cache frame can't
-                                // reveal + unlock input behind the opaque warp canvas.
-                                introAnimation.postponeTitleSafety?.(20000);
-                                performanceMonitor.recordEvent('startup_boot_warp_committed', {
-                                    introDecision: introWarpDecision.reason,
-                                    attempt: prewarmAttempt,
-                                    timeoutMs: prewarmTimeoutMs,
-                                });
-                                markStartup('boot-warp:committed', {
-                                    introDecision: introWarpDecision.reason,
-                                    attempt: prewarmAttempt,
-                                    timeoutMs: prewarmTimeoutMs,
-                                });
-                            } else {
-                                const status = candidate.lastPrewarmStatus || 'prewarm-failed';
-                                candidate.dispose();
-                                if (!retryablePrewarmStatuses.has(status)) {
-                                    performanceMonitor.recordEvent('startup_boot_warp_skipped', {
-                                        reason: status,
-                                        introDecision: introWarpDecision.reason,
-                                        attempt: prewarmAttempt,
-                                    });
-                                    markStartup('boot-warp:skip', {
-                                        reason: status,
-                                        introDecision: introWarpDecision.reason,
-                                        attempt: prewarmAttempt,
-                                    }, { level: 'warn' });
-                                    console.info('[Startup] Boot warp unavailable:', status);
-                                    break;
-                                }
-
-                                markStartup('boot-warp:prewarm-retry', {
-                                    reason: status,
-                                    attempt: prewarmAttempt,
-                                }, { level: 'warn' });
-                                console.info('[Startup] Retrying boot warp prewarm:', status);
-                                if (prewarmAttempt < BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
-                                    // Re-check theme idle only when another attempt will
-                                    // actually run — the exhausted case falls straight
-                                    // through to the CSS reveal without another wait.
-                                    const onRetryIdleProgress = (event, state) => {
-                                        if (event !== 'still-busy') return;
-                                        introAnimation.postponeTitleSafety?.(BOOT_WARP_REQUIRED_TITLE_SAFETY_MS);
-                                        markStartup('boot-warp:theme-wait-still-busy', state, { level: 'warn' });
-                                    };
-                                    // eslint-disable-next-line no-await-in-loop -- retries are sequential
-                                    await waitForStartupThemeIdle(getStartupTheme, {
-                                        onProgress: onRetryIdleProgress,
-                                    });
-                                }
-                            }
-                        }
-                        if (!warpTransition && prewarmAttempt >= BOOT_WARP_MAX_PREWARM_ATTEMPTS) {
-                            // Retryable failures kept recurring — a deterministic fault, not a
-                            // transient stall. Fall back to the CSS reveal instead of retrying
-                            // forever behind the ident.
-                            performanceMonitor.recordEvent('startup_boot_warp_skipped', {
-                                reason: 'prewarm-retries-exhausted',
-                                attempts: prewarmAttempt,
-                            });
-                            markStartup('boot-warp:skip', {
-                                reason: 'prewarm-retries-exhausted',
-                                attempts: prewarmAttempt,
-                            }, { level: 'warn' });
-                            console.info('[Startup] Boot warp unavailable after retries — CSS reveal');
-                        }
-                    } else {
-                        // The intro renderer has not settled inside the boot budget. Its
-                        // WebGPU init may still be in flight, so skip the warp and keep the
-                        // known-safe CSS reveal instead of creating an own-device warp.
-                        performanceMonitor.recordEvent('startup_boot_warp_skipped', {
-                            reason: introWarpDecision.reason,
-                        });
-                        markStartup('boot-warp:skip', {
-                            reason: introWarpDecision.reason,
-                        }, { level: 'warn' });
-                        console.info('[Startup] Boot warp skipped:', introWarpDecision.reason);
-                    }
-                }
-            } catch (error) {
-                console.warn('[Main] Boot warp prewarm failed (falling back to CSS reveal):', error);
-                performanceMonitor.recordEvent('startup_boot_warp_skipped', {
-                    reason: 'prewarm-exception',
-                    message: error?.message || String(error),
-                });
-                markStartup('boot-warp:skip', {
-                    reason: 'prewarm-exception',
-                    message: error?.message || String(error),
-                }, { level: 'warn' });
-                warpTransition = null;
-            }
-
-            if (warpTransition) {
-                // Timed handoff: the warp must render at least one frame, then stay
-                // visible for the configured minimum before the title/fade can advance.
-                try {
-                    const handoffResult = await playBootWarpHandoff({
-                        warpTransition,
-                        urlParams,
-                        introAnimation,
-                        soundManager: sharedSoundManager,
-                        dismissStartupShell,
-                    });
-                    if (!handoffResult.shellDismissed) {
-                        markStartup('boot-warp:handoff-fallback', {
-                            status: handoffResult.status,
-                            firstFrameRendered: handoffResult.firstFrameRendered,
-                        }, { level: 'warn' });
-                        warpTransition.dispose();
-                        warpTransition = null;
-                        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
-                        dismissStartupShell('intro-begin');
-                    }
-                } catch (error) {
-                    console.warn('[Main] Boot warp play failed:', error);
-                    performanceMonitor.recordEvent('startup_boot_warp_play_failed', {
-                        message: error?.message || String(error),
-                    });
-                    markStartup('boot-warp:play-failed', {
-                        message: error?.message || String(error),
-                    }, { level: 'warn' });
-                    if (!startupShellDismissed) {
-                        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
-                        dismissStartupShell('intro-begin');
-                    }
-                } finally {
-                    warpTransition?.dispose();
-                }
-            } else {
-                // Fallback: original CSS crossfade splash -> intro reveal.
-                markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
-                dismissStartupShell('intro-begin');
-            }
+            await playBootWarpStartupSequence({
+                app,
+                urlParams,
+                introAnimation,
+                soundManager: sharedSoundManager,
+                dismissStartupShell,
+                isStartupShellDismissed: () => startupShellDismissed,
+                startupPipeline,
+            });
             // The covering transition is done (warp faded, or CSS shell dismissed) — now play
             // the held "SERENITY BLOCKS" title reveal fresh on the settled, already-warm intro.
             // (Theme is warmed BEFORE the warp; the warp shared the intro's GPU device, so no
             // 3rd context blanked it. First entry is an instant resume.)
-            markStartup('intro:title-reveal-request', { source: 'post-transition' });
-            introAnimation.revealTitle?.('post-transition');
-            await introPromise;
-            markStartup('intro:complete');
-            console.log('✨ Intro animation complete!');
+            if (startupPipeline.snapshot().introStatus === 'running') {
+                markStartup('intro:title-reveal-request', { source: 'post-transition' });
+                introAnimation.revealTitle?.('post-transition');
+                await waitForPipelineStep(introPromise);
+            }
+            if (startupPipeline.snapshot().introStatus === 'running') {
+                await waitForPipelineStep(introAnimation.waitForMenuBgReady?.(2200));
+                startupPipeline.markIntroDone();
+                markStartup('intro:complete');
+                console.log('✨ Intro animation complete!');
+            }
         }
 
         if (!app) {
@@ -5811,14 +5620,14 @@ async function bootstrap() {
         });
         void app?.startEssentialDesktopServices?.('core-ready');
 
-        if (!useMinimalPackagedStartup) {
-            await introAnimation.waitForMenuBgReady?.(2200);
-        } else {
+        if (useMinimalPackagedStartup) {
             performanceMonitor.recordEvent('startup_initial_theme_deferred', {
                 windowsProfile: desktopRuntimeConfig.windowsProfile,
                 safeMode,
             });
         }
+
+        const menuPipelineSnapshot = await startupPipeline.waitForMenuVisible();
 
         // Show the start modal only after intro transitions into menu background.
         if (app?.modalManager) {
@@ -5831,22 +5640,21 @@ async function bootstrap() {
         }
 
         await onNextPaint();
-        dismissStartupShell(skipIntro || useMinimalPackagedStartup ? 'menu-ready' : 'intro-complete');
+        dismissStartupShell(
+            menuPipelineSnapshot.introStatus === 'skipped' ? 'menu-ready' : 'intro-complete',
+        );
         await reportDesktopStartupPhase('first-usable-frame', {
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,
         });
-        // Derived cold-boot KPI: one aggregate number for regression tracking,
-        // rather than leaving the scattered per-phase markers un-summarised.
-        if (bootstrapStartedAt && typeof performance !== 'undefined' && performance.now) {
-            const timeToInteractiveMenuMs = Math.round(performance.now() - bootstrapStartedAt);
-            performanceMonitor.recordEvent('startup_time_to_interactive_menu', {
-                timeToInteractiveMenuMs,
-                windowsProfile: desktopRuntimeConfig.windowsProfile,
-                safeMode,
-            });
-            console.log(`⏱️  Cold boot → interactive menu: ${timeToInteractiveMenuMs}ms`);
+        if (typeof window !== 'undefined') {
+            window.startupPipelineSnapshot = startupPipeline.snapshot();
         }
+        console.log(
+            `[Startup] Menu ready in ${Math.round(menuPipelineSnapshot.metrics.timeToMenuReadyMs)}ms; `
+            + `intro ${menuPipelineSnapshot.introStatus} in `
+            + `${Math.round(menuPipelineSnapshot.metrics.introDurationMs || 0)}ms`,
+        );
         app?.markBootStage?.('menu-ready', {
             safeMode,
         });
@@ -6314,6 +6122,7 @@ async function bootstrap() {
             console.log('  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows');
         }
     } catch (error) {
+        startupPipeline?.dispose();
         console.error('❌ Failed to bootstrap application:', error);
         const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
         startupShell?.fail?.('Failed to start Serenity Blocks', error?.message || error);

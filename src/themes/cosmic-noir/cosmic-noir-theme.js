@@ -76,6 +76,9 @@ function parseCosmicNoirFlags() {
         noAdaptiveScale: false,
         mrtAudit: false,
         baseline: false,
+        perf: false,
+        preserveDrawingBuffer: false,
+        webgpuMsaa: null,
         seed: null,
         fixedDeltaMs: null,
         fixedPixelRatio: null,
@@ -109,6 +112,18 @@ function parseCosmicNoirFlags() {
         }
         return null;
     };
+    const readOptionalBool = (...keys) => {
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!params.has(key)) continue;
+            const value = params.get(key);
+            if (value === null || value === '') return true;
+            const normalized = value.toLowerCase();
+            if (normalized === '1' || normalized === 'true' || normalized === 'yes') return true;
+            if (normalized === '0' || normalized === 'false' || normalized === 'no') return false;
+        }
+        return null;
+    };
 
     const seed = readNumber('cosmicNoirSeed', 'seed');
     const fixedDeltaMs = readNumber(
@@ -132,6 +147,9 @@ function parseCosmicNoirFlags() {
         noAdaptiveScale: readBool('cosmicNoirNoAdaptiveScale'),
         mrtAudit: readBool('cosmicNoirMrtAudit'),
         baseline: readBool('cosmicNoirBaseline', 'baseline'),
+        perf: readBool('cosmicNoirPerf', 'perf'),
+        preserveDrawingBuffer: readBool('cosmicNoirPreserveDrawingBuffer'),
+        webgpuMsaa: readOptionalBool('cosmicNoirMsaa'),
         seed: Number.isFinite(seed) ? seed : null,
         fixedDeltaMs: Number.isFinite(fixedDeltaMs) && fixedDeltaMs > 0 ? fixedDeltaMs : null,
         fixedPixelRatio: Number.isFinite(fixedPixelRatio) && fixedPixelRatio > 0
@@ -192,6 +210,7 @@ const QUALITY_PRESETS = {
         // bloom pixel work ~(0.9/0.65)^2 ≈ 1.9x. 0.65 = Winter/chromadelic parity. The adaptive
         // shedder (Math.min(base, floor) below) only steps this further DOWN under load.
         bloomDownsample: 0.65,
+        enableWebGpuMsaa: true,
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 64,
@@ -215,6 +234,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.45,
         bloomRadius: 0.4,
         bloomDownsample: 0.65, // Winter/chromadelic parity (was 0.85); near-invisible blurred glow
+        enableWebGpuMsaa: true,
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 56,
@@ -236,6 +256,9 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.4,
         bloomRadius: 0.35,
         bloomDownsample: 0.65, // Winter/chromadelic parity (was 0.8); near-invisible blurred glow
+        // The 0.92x scene buffer plus bloom/grade smooths edges already. Avoiding 4x MSAA is a
+        // measured frame-time win with no visible loss in the headed High capture.
+        enableWebGpuMsaa: false,
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 48,
@@ -260,6 +283,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.35,
         bloomRadius: 0.3,
         bloomDownsample: 0.7,
+        enableWebGpuMsaa: false,
         enablePostProcessing: true,
         enableCompute: true,
         planetDetail: 36,
@@ -281,6 +305,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.25,
         bloomRadius: 0.25,
         bloomDownsample: 0.6,
+        enableWebGpuMsaa: false,
         enablePostProcessing: false,
         enableCompute: false,
         planetDetail: 24,
@@ -302,6 +327,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.2,
         bloomRadius: 0.2,
         bloomDownsample: 0.5,
+        enableWebGpuMsaa: false,
         enablePostProcessing: false,
         enableCompute: false,
         planetDetail: 16,
@@ -504,8 +530,30 @@ export default class CosmicNoirTheme extends BaseTheme {
         this._comboShockwaveColor = new THREE.Color(0xb8b8c8);
         this._wavePoolScratchColor = new THREE.Color(0x888888);
         this.baselineFrames = [];
+        this.baselineCpuFrames = [];
         this.baselineRenderStats = [];
-        this.baselineMaxFrames = 3600;
+        this.baselineGpuTimingSamples = [];
+        // Covers a 10-minute capture even on very high-refresh displays. The perf harness
+        // resets between scenarios, so normal captures remain much smaller than this ceiling.
+        this.baselineMaxFrames = 180000;
+        this.baselineCaptureGeneration = 0;
+        this.performanceInstrumentationEnabled = this.flags.perf || this.flags.baseline;
+        this.gpuTimestampState = {
+            supported: false,
+            enabled: false,
+            pending: null,
+            renderedFramesSinceResolve: 0,
+            renderFrameCallsSinceResolve: 0,
+            computeFrameCallsSinceResolve: 0,
+            lastRenderFrameId: null,
+            lastComputeFrameId: null,
+            resolveEveryFrames: 24,
+            resolveAtContextCount: 512,
+            pauseAtContextCount: 768,
+            pausedForBackpressure: false,
+        };
+        this._performanceTargetSize = new THREE.Vector2();
+        this._gpuTimestampWarningLogged = false;
         this.compileStats = {
             status: 'idle',
             durationMs: 0,
@@ -609,6 +657,13 @@ export default class CosmicNoirTheme extends BaseTheme {
             baseCap,
         );
         return Number(pixelRatio.toFixed(2));
+    }
+
+    getWebGpuAntialiasEnabled() {
+        if (typeof this.flags.webgpuMsaa === 'boolean') {
+            return this.flags.webgpuMsaa;
+        }
+        return this.getAntialiasEnabled() && this.qualityPreset?.enableWebGpuMsaa === true;
     }
 
     getAdaptivePostParams() {
@@ -878,6 +933,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         parsed.noAdaptiveScale = parsed.noAdaptiveScale || previous.noAdaptiveScale === true;
         parsed.mrtAudit = parsed.mrtAudit || previous.mrtAudit === true;
         parsed.baseline = parsed.baseline || previous.baseline === true;
+        parsed.perf = parsed.perf || previous.perf === true;
+        parsed.preserveDrawingBuffer = parsed.preserveDrawingBuffer
+            || previous.preserveDrawingBuffer === true;
+        if (parsed.webgpuMsaa === null && typeof previous.webgpuMsaa === 'boolean') {
+            parsed.webgpuMsaa = previous.webgpuMsaa;
+        }
         if (!Number.isFinite(parsed.seed) && Number.isFinite(previous.seed)) {
             parsed.seed = previous.seed;
         }
@@ -894,6 +955,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             parsed.renderScale = previous.renderScale;
         }
         this.flags = parsed;
+        this.performanceInstrumentationEnabled = parsed.perf || parsed.baseline;
     }
 
     initializeDeterministicState() {
@@ -917,33 +979,280 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     resetBaselineCapture() {
         this.baselineFrames = [];
+        this.baselineCpuFrames = [];
         this.baselineRenderStats = [];
-        this.compileStats = {
-            status: 'idle',
-            durationMs: 0,
-            message: null,
-        };
-        this.lastMrtDowngrade = null;
+        this.baselineGpuTimingSamples = [];
+        this.baselineCaptureGeneration += 1;
+
+        if (this.gpuTimestampState) {
+            this.gpuTimestampState.renderedFramesSinceResolve = 0;
+            this.gpuTimestampState.renderFrameCallsSinceResolve = 0;
+            this.gpuTimestampState.computeFrameCallsSinceResolve = 0;
+        }
     }
 
-    recordBaselineSample(frameMs) {
-        if (!this.flags.baseline || !Number.isFinite(frameMs) || frameMs <= 0) return;
+    trimBaselineSamples(samples) {
+        if (samples.length > this.baselineMaxFrames) {
+            samples.splice(0, samples.length - this.baselineMaxFrames);
+        }
+    }
 
-        this.baselineFrames.push(frameMs);
-        if (this.baselineFrames.length > this.baselineMaxFrames) {
-            this.baselineFrames.shift();
+    recordBaselineSample(frameMs, cpuFrameMs = null) {
+        if (!this.performanceInstrumentationEnabled || !Number.isFinite(frameMs) || frameMs <= 0) {
+            return;
         }
 
+        this.baselineFrames.push(frameMs);
+        this.trimBaselineSamples(this.baselineFrames);
+
+        if (Number.isFinite(cpuFrameMs) && cpuFrameMs >= 0) {
+            this.baselineCpuFrames.push(cpuFrameMs);
+            this.trimBaselineSamples(this.baselineCpuFrames);
+        }
+
+        const renderInfo = this.renderer?.info?.render || {};
+        const computeInfo = this.renderer?.info?.compute || {};
+        const drawCalls = renderInfo.drawCalls ?? renderInfo.calls ?? 0;
         this.baselineRenderStats.push({
-            calls: this.renderer?.info?.render?.calls ?? 0,
-            triangles: this.renderer?.info?.render?.triangles ?? 0,
-            points: this.renderer?.info?.render?.points ?? 0,
+            // Keep `calls` as a compatibility alias for existing capture tooling. It is now
+            // the real per-frame draw count instead of r181's cumulative render invocation count.
+            calls: drawCalls,
+            drawCalls,
+            renderPasses: renderInfo.frameCalls ?? 0,
+            computeCalls: computeInfo.frameCalls ?? 0,
+            triangles: renderInfo.triangles ?? 0,
+            points: renderInfo.points ?? 0,
+            lines: renderInfo.lines ?? 0,
             textures: this.renderer?.info?.memory?.textures ?? 0,
             geometries: this.renderer?.info?.memory?.geometries ?? 0,
         });
-        if (this.baselineRenderStats.length > this.baselineMaxFrames) {
-            this.baselineRenderStats.shift();
+        this.trimBaselineSamples(this.baselineRenderStats);
+    }
+
+    summarizeTimingSamples(values) {
+        const samples = values.filter((value) => Number.isFinite(value) && value >= 0);
+        if (!samples.length) {
+            return {
+                sampleCount: 0,
+                avgMs: null,
+                p50Ms: null,
+                p95Ms: null,
+                p99Ms: null,
+                maxMs: null,
+            };
         }
+
+        const sorted = [...samples].sort((a, b) => a - b);
+        const percentile = (ratio) => sorted[
+            Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))
+        ];
+        return {
+            sampleCount: sorted.length,
+            avgMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
+            p50Ms: percentile(0.5),
+            p95Ms: percentile(0.95),
+            p99Ms: percentile(0.99),
+            maxMs: sorted[sorted.length - 1],
+        };
+    }
+
+    getPerformanceTargetDimensions() {
+        let drawingBufferWidth = null;
+        let drawingBufferHeight = null;
+        if (this.renderer?.getDrawingBufferSize) {
+            this.renderer.getDrawingBufferSize(this._performanceTargetSize);
+            drawingBufferWidth = this._performanceTargetSize.width;
+            drawingBufferHeight = this._performanceTargetSize.height;
+        }
+
+        const sceneTarget = this.postProcessing?.scenePass?.renderTarget;
+        const bloomTarget = this.postProcessing?.bloomNode?._renderTargetBright;
+        return {
+            drawingBufferWidth,
+            drawingBufferHeight,
+            sceneWidth: sceneTarget?.width ?? null,
+            sceneHeight: sceneTarget?.height ?? null,
+            bloomWidth: bloomTarget?.width ?? null,
+            bloomHeight: bloomTarget?.height ?? null,
+        };
+    }
+
+    configurePerformanceInstrumentation() {
+        const requested = this.performanceInstrumentationEnabled === true;
+        if (this.renderer?.info) {
+            // Three r181 requires applications with their own rAF loop to own the reset when
+            // collecting per-frame counters. Outside the opt-in path, retain Three's default.
+            this.renderer.info.autoReset = !requested;
+        }
+
+        let supported = false;
+        if (requested && this.isWebGPU && this.renderer?.backend?.isWebGPUBackend) {
+            try {
+                supported = this.renderer.hasFeature?.('timestamp-query') === true;
+            } catch (error) {
+                supported = false;
+                if (!this._gpuTimestampWarningLogged) {
+                    this._gpuTimestampWarningLogged = true;
+                    console.warn('[CosmicNoirPerf] Timestamp capability probe failed:', error.message);
+                }
+            }
+        }
+
+        this.gpuTimestampState = {
+            supported,
+            enabled: supported && this.renderer?.backend?.trackTimestamp === true,
+            pending: null,
+            renderedFramesSinceResolve: 0,
+            renderFrameCallsSinceResolve: 0,
+            computeFrameCallsSinceResolve: 0,
+            lastRenderFrameId: null,
+            lastComputeFrameId: null,
+            resolveEveryFrames: 24,
+            resolveAtContextCount: 512,
+            pauseAtContextCount: 768,
+            pausedForBackpressure: false,
+        };
+    }
+
+    updateGpuTimestampCapture() {
+        const state = this.gpuTimestampState;
+        const { renderer } = this;
+        if (!state?.enabled || !renderer?.backend?.isWebGPUBackend) return;
+
+        if (!state.pausedForBackpressure) {
+            state.renderedFramesSinceResolve += 1;
+            state.renderFrameCallsSinceResolve += renderer.info?.render?.frameCalls ?? 0;
+            state.computeFrameCallsSinceResolve += renderer.info?.compute?.frameCalls ?? 0;
+        }
+
+        const maxPendingContexts = Math.max(
+            state.renderFrameCallsSinceResolve,
+            state.computeFrameCallsSinceResolve,
+        );
+        if (state.pending) {
+            // r181's query-pool overflow path is unsafe. Stop allocating timestamp queries if a
+            // readback is unusually slow; rendering itself continues and tracking resumes later.
+            if (!state.pausedForBackpressure && maxPendingContexts >= state.pauseAtContextCount) {
+                renderer.backend.trackTimestamp = false;
+                state.pausedForBackpressure = true;
+            }
+            return;
+        }
+
+        const cadenceReached = state.renderedFramesSinceResolve >= state.resolveEveryFrames;
+        const budgetReached = maxPendingContexts >= state.resolveAtContextCount;
+        if (!cadenceReached && !budgetReached) return;
+
+        this.resolveGpuTimestampBatch();
+    }
+
+    resolveGpuTimestampBatch() {
+        const state = this.gpuTimestampState;
+        const { renderer } = this;
+        if (!state?.enabled || state.pending || !renderer?.backend?.isWebGPUBackend) return;
+
+        const renderFresh = state.renderFrameCallsSinceResolve > 0;
+        const computeFresh = state.computeFrameCallsSinceResolve > 0;
+        if (!renderFresh && !computeFresh) return;
+
+        const capture = {
+            generation: this.baselineCaptureGeneration,
+            frameWindow: state.renderedFramesSinceResolve,
+            renderFrameCalls: state.renderFrameCallsSinceResolve,
+            computeFrameCalls: state.computeFrameCallsSinceResolve,
+        };
+        state.renderedFramesSinceResolve = 0;
+        state.renderFrameCallsSinceResolve = 0;
+        state.computeFrameCallsSinceResolve = 0;
+
+        const renderPromise = renderFresh
+            ? renderer.resolveTimestampsAsync(THREE_WEBGPU.TimestampQuery.RENDER)
+            : Promise.resolve(null);
+        const computePromise = computeFresh
+            ? renderer.resolveTimestampsAsync(THREE_WEBGPU.TimestampQuery.COMPUTE)
+            : Promise.resolve(null);
+
+        const pending = Promise.all([renderPromise, computePromise])
+            .then(([renderMs, computeMs]) => {
+                if (
+                    this.renderer !== renderer
+                    || this.baselineCaptureGeneration !== capture.generation
+                    || !this.performanceInstrumentationEnabled
+                ) {
+                    return;
+                }
+
+                const renderFrames = renderFresh
+                    ? renderer.backend.getTimestampFrames(THREE_WEBGPU.TimestampQuery.RENDER)
+                    : [];
+                const computeFrames = computeFresh
+                    ? renderer.backend.getTimestampFrames(THREE_WEBGPU.TimestampQuery.COMPUTE)
+                    : [];
+                const renderFrameId = renderFrames.at(-1) ?? null;
+                const computeFrameId = computeFrames.at(-1) ?? null;
+                // r181 returns the query pool's cached lastValue when an internal map/readback
+                // fails. Frame IDs let us reject that stale value without blocking the render loop.
+                const renderFrameIsNew = renderFresh
+                    && renderFrameId !== null
+                    && renderFrameId !== state.lastRenderFrameId;
+                const computeFrameIsNew = computeFresh
+                    && computeFrameId !== null
+                    && computeFrameId !== state.lastComputeFrameId;
+                const normalizedRenderMs = renderFrameIsNew && Number.isFinite(renderMs)
+                    ? renderMs
+                    : null;
+                const normalizedComputeMs = computeFrameIsNew && Number.isFinite(computeMs)
+                    ? computeMs
+                    : null;
+
+                if (renderFrameIsNew) state.lastRenderFrameId = renderFrameId;
+                if (computeFrameIsNew) state.lastComputeFrameId = computeFrameId;
+                if (!renderFrameIsNew && !computeFrameIsNew) return;
+
+                const matchingFrame = renderFrameIsNew
+                    && computeFrameIsNew
+                    && renderFrameId === computeFrameId;
+
+                this.baselineGpuTimingSamples.push({
+                    ...capture,
+                    renderMs: normalizedRenderMs,
+                    computeMs: normalizedComputeMs,
+                    renderFrameId,
+                    computeFrameId,
+                    matchingFrame,
+                    totalMs: matchingFrame
+                        && normalizedRenderMs !== null
+                        && normalizedComputeMs !== null
+                        ? normalizedRenderMs + normalizedComputeMs
+                        : null,
+                    resolvedAtMs: typeof performance !== 'undefined'
+                        ? performance.now()
+                        : Date.now(),
+                });
+                this.trimBaselineSamples(this.baselineGpuTimingSamples);
+            })
+            .catch((error) => {
+                state.enabled = false;
+                if (renderer.backend) renderer.backend.trackTimestamp = false;
+                if (!this._gpuTimestampWarningLogged) {
+                    this._gpuTimestampWarningLogged = true;
+                    console.warn('[CosmicNoirPerf] GPU timestamp readback disabled:', error);
+                }
+            })
+            .finally(() => {
+                if (state.pending === pending) state.pending = null;
+                if (
+                    state.enabled
+                    && state.pausedForBackpressure
+                    && this.renderer === renderer
+                    && renderer.backend
+                ) {
+                    renderer.backend.trackTimestamp = true;
+                    state.pausedForBackpressure = false;
+                }
+            });
+
+        state.pending = pending;
     }
 
     getBaselineReport() {
@@ -965,29 +1274,41 @@ export default class CosmicNoirTheme extends BaseTheme {
         const low1Fps = low1AvgMs > 0 ? 1000 / low1AvgMs : 0;
 
         const totals = this.baselineRenderStats.reduce((acc, sample) => ({
-            calls: acc.calls + sample.calls,
-            triangles: acc.triangles + sample.triangles,
-            points: acc.points + sample.points,
-            textures: acc.textures + sample.textures,
-            geometries: acc.geometries + sample.geometries,
+            calls: acc.calls + (sample.calls ?? 0),
+            renderPasses: acc.renderPasses + (sample.renderPasses ?? 0),
+            computeCalls: acc.computeCalls + (sample.computeCalls ?? 0),
+            triangles: acc.triangles + (sample.triangles ?? 0),
+            points: acc.points + (sample.points ?? 0),
+            lines: acc.lines + (sample.lines ?? 0),
+            textures: acc.textures + (sample.textures ?? 0),
+            geometries: acc.geometries + (sample.geometries ?? 0),
         }), {
             calls: 0,
+            renderPasses: 0,
+            computeCalls: 0,
             triangles: 0,
             points: 0,
+            lines: 0,
             textures: 0,
             geometries: 0,
         });
 
         const peaks = this.baselineRenderStats.reduce((acc, sample) => ({
-            calls: Math.max(acc.calls, sample.calls),
-            triangles: Math.max(acc.triangles, sample.triangles),
-            points: Math.max(acc.points, sample.points),
-            textures: Math.max(acc.textures, sample.textures),
-            geometries: Math.max(acc.geometries, sample.geometries),
+            calls: Math.max(acc.calls, sample.calls ?? 0),
+            renderPasses: Math.max(acc.renderPasses, sample.renderPasses ?? 0),
+            computeCalls: Math.max(acc.computeCalls, sample.computeCalls ?? 0),
+            triangles: Math.max(acc.triangles, sample.triangles ?? 0),
+            points: Math.max(acc.points, sample.points ?? 0),
+            lines: Math.max(acc.lines, sample.lines ?? 0),
+            textures: Math.max(acc.textures, sample.textures ?? 0),
+            geometries: Math.max(acc.geometries, sample.geometries ?? 0),
         }), {
             calls: 0,
+            renderPasses: 0,
+            computeCalls: 0,
             triangles: 0,
             points: 0,
+            lines: 0,
             textures: 0,
             geometries: 0,
         });
@@ -1016,15 +1337,35 @@ export default class CosmicNoirTheme extends BaseTheme {
             p95FrameMs: p95Ms,
             p99FrameMs: p99Ms,
             avgDrawCalls: totals.calls / renderSamples,
+            avgRenderPasses: totals.renderPasses / renderSamples,
+            avgComputeCalls: totals.computeCalls / renderSamples,
             avgTriangles: totals.triangles / renderSamples,
             avgPoints: totals.points / renderSamples,
+            avgLines: totals.lines / renderSamples,
             avgTextures: totals.textures / renderSamples,
             avgGeometries: totals.geometries / renderSamples,
             peakDrawCalls: peaks.calls,
+            peakRenderPasses: peaks.renderPasses,
+            peakComputeCalls: peaks.computeCalls,
             peakTriangles: peaks.triangles,
             peakPoints: peaks.points,
+            peakLines: peaks.lines,
             peakTextures: peaks.textures,
             peakGeometries: peaks.geometries,
+            cpuTiming: {
+                updateAndSubmitMs: this.summarizeTimingSamples(this.baselineCpuFrames),
+            },
+            gpuTiming: {
+                supported: this.gpuTimestampState?.supported === true,
+                enabled: this.gpuTimestampState?.enabled === true,
+                renderMs: this.summarizeTimingSamples(
+                    this.baselineGpuTimingSamples.map((sample) => sample.renderMs),
+                ),
+                computeMs: this.summarizeTimingSamples(
+                    this.baselineGpuTimingSamples.map((sample) => sample.computeMs),
+                ),
+            },
+            targetDimensions: this.getPerformanceTargetDimensions(),
             seed: this.flags.seed,
             fixedDeltaMs: this.flags.fixedDeltaMs,
             compile: { ...this.compileStats },
@@ -1038,6 +1379,12 @@ export default class CosmicNoirTheme extends BaseTheme {
                 dustParticles: this.qualityPreset?.dustParticles ?? 0,
                 pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
                 postResolutionScale: this.adaptiveBudgetState?.postResolutionScale ?? 1.0,
+                antialias: this.isWebGPU
+                    ? (this.renderer?.samples ?? 0) > 0
+                    : this.getAntialiasEnabled(),
+                antialiasPreference: this.getAntialiasEnabled(),
+                rendererSamples: this.renderer?.samples ?? null,
+                preserveDrawingBuffer: this.flags.preserveDrawingBuffer === true,
             },
             adaptiveState: {
                 targetFrameMs: adaptive.targetFrameMs ?? null,
@@ -1072,6 +1419,9 @@ export default class CosmicNoirTheme extends BaseTheme {
                 noCompute: this.flags.noCompute,
                 noAdaptiveScale: this.flags.noAdaptiveScale,
                 fixedPixelRatio: this.flags.fixedPixelRatio,
+                perf: this.flags.perf,
+                preserveDrawingBuffer: this.flags.preserveDrawingBuffer,
+                webgpuMsaa: this.flags.webgpuMsaa,
             },
             capturedAt: new Date().toISOString(),
         };
@@ -1113,7 +1463,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             reset: () => this.resetBaselineCapture(),
             getSamples: () => ({
                 frames: [...this.baselineFrames],
+                cpu: [...this.baselineCpuFrames],
                 render: [...this.baselineRenderStats],
+                gpu: [...this.baselineGpuTimingSamples],
             }),
         };
 
@@ -1537,6 +1889,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.refreshFlagsForScene();
         this.initializeDeterministicState();
+        this.lastMrtDowngrade = null;
         this.resetBaselineCapture();
         this.clock = new THREE.Clock();
 
@@ -1595,13 +1948,14 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.setupResizeHandler();
         this.setupEventListeners();
 
-        if (this.flags.baseline) {
+        if (this.performanceInstrumentationEnabled) {
             this.installBaselineHelpers();
-            console.log('[CosmicNoirBaseline] Baseline capture enabled', {
+            console.log('[CosmicNoirPerf] Performance capture enabled', {
                 preset: quality,
                 backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
                 seed: this.flags.seed,
                 fixedDeltaMs: this.flags.fixedDeltaMs,
+                gpuTimestamps: this.gpuTimestampState.enabled,
             });
         }
 
@@ -1630,6 +1984,9 @@ export default class CosmicNoirTheme extends BaseTheme {
                 noCompute: this.flags.noCompute,
                 noAdaptiveScale: this.flags.noAdaptiveScale,
                 fixedPixelRatio: this.flags.fixedPixelRatio,
+                perf: this.flags.perf,
+                preserveDrawingBuffer: this.flags.preserveDrawingBuffer,
+                webgpuMsaa: this.flags.webgpuMsaa,
             },
         });
         console.log('[CosmicNoir] Scene created successfully');
@@ -1642,15 +1999,19 @@ export default class CosmicNoirTheme extends BaseTheme {
     async initRenderer(container) {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        const preserveDrawingBuffer = this.flags.baseline === true;
+        const preserveDrawingBuffer = this.flags.preserveDrawingBuffer === true;
+        const trackTimestamp = this.performanceInstrumentationEnabled === true;
+        const webgpuAntialias = this.getWebGpuAntialiasEnabled();
         let webgpuRenderer = null;
 
         if (!this.flags.forceWebGL) {
             try {
                 webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
+                    antialias: webgpuAntialias,
+                    powerPreference: 'high-performance',
                     alpha: false,
                     preserveDrawingBuffer,
+                    trackTimestamp,
                 });
                 await webgpuRenderer.init();
             } catch (error) {
@@ -1701,6 +2062,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.renderer.autoClear = false;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0;
+        this.configurePerformanceInstrumentation();
 
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
@@ -3196,6 +3558,10 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (!this.shouldRenderFrame()) return;
 
+        if (this.performanceInstrumentationEnabled && this.renderer.info?.reset) {
+            this.renderer.info.reset();
+        }
+
         const frameStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const measuredDelta = this.clock.getDelta();
         const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
@@ -3645,7 +4011,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         // dispatch span — driving it off the vsync-capped real interval would falsely shed quality on
         // displays whose refresh is below the target FPS.) Clamp stall spikes out of the stats.
         const realFrameMs = Math.min(measuredDelta * 1000, 100);
-        this.recordBaselineSample(realFrameMs);
+        this.recordBaselineSample(realFrameMs, frameMs);
+        this.updateGpuTimestampCapture();
     }
 
     renderFrame() {
@@ -4324,6 +4691,13 @@ export default class CosmicNoirTheme extends BaseTheme {
     disposeRendererResources(removeCanvas = true) {
         if (!this.renderer) return;
 
+        if (this.gpuTimestampState) {
+            this.gpuTimestampState.enabled = false;
+        }
+        if (this.renderer.backend?.trackTimestamp) {
+            this.renderer.backend.trackTimestamp = false;
+        }
+        this.baselineCaptureGeneration += 1;
         this.renderer.onDeviceLost = null;
         const { domElement } = this.renderer;
         try {

@@ -81,6 +81,16 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
   Read for particles/simulation work.
 - `docs/post-processing.md` — PostProcessing, `pass()`, MRT, every r181 display effect
   with verified import paths. Read for bloom/grade/DoF/etc.
+- `docs/noise-and-utility-nodes.md` — built-in noise (mx_* / triNoise3D), per-instance
+  variation, billboarding, UV/blend utilities. Read BEFORE hand-rolling noise or
+  desync logic for any theme effect.
+- `docs/scene-techniques.md` — reflector() mirrors, soft particles, GPU feedback
+  textures (trails/ripples), in-playground grade preview, fake lighting for unlit
+  scenes, glass refraction, height fog. Read when building or upgrading a theme's
+  hero visual.
+- `docs/performance.md` — this repo's perf playbook: GPU timestamps, frame gating,
+  fill-rate triage, TSL cost traps, tier scaling. Read before ANY perf pass and
+  after adding a heavy effect.
 - `docs/wgsl-integration.md` — `wgslFn` for raw WGSL. Read only when TSL can't express it.
 - `docs/device-loss.md` — GPU device-loss recovery. Read when the iGPU TDRs or the
   renderer dies mid-session.

@@ -26,6 +26,10 @@ export const MULTIPLAYER_EVENTS = {
     PERFECT_CLEAR: 'ffa:perfect-clear',
     JOIN_REJECTED: 'ffa:join-rejected', // host refused our join (e.g. lobby full)
     KICKED: 'ffa:kicked', // the host kicked us from the match
+    // Emitted by host-migration.js on epoch adoption. Was emitted with an
+    // UNDEFINED name for months (key missing from this map — the bug class the
+    // event-contract test now guards); subscriber lands with plan §4.1.
+    HOST_MIGRATED: 'ffa:host-migrated',
 };
 
 export function emitMultiplayerEvent(event, payload) {

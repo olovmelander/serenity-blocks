@@ -90,6 +90,8 @@ export class BootWarpTransition {
         this._ready = false;
         this._disposed = false;
         this._playing = false;
+        this._playResolve = null;
+        this._playState = null;
         this.lastPrewarmStatus = null;
         markStartup('boot-warp:constructed', {
             id: this.debugId,
@@ -348,6 +350,21 @@ export class BootWarpTransition {
         let firstFrameRendered = false;
 
         return new Promise((resolve) => {
+            this._playResolve = resolve;
+            this._playState = {
+                firstFrameRendered: false,
+                durationMs,
+                elapsedMs: 0,
+                progress: 0,
+            };
+            const finish = (result) => {
+                if (!this._playResolve) return;
+                const activeResolve = this._playResolve;
+                this._playResolve = null;
+                this._playState = result;
+                this._playing = false;
+                activeResolve(result);
+            };
             const loop = () => {
                 const now = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now() : Date.now();
@@ -356,10 +373,16 @@ export class BootWarpTransition {
                 }
                 const elapsed = now - start;
                 const p = Math.min(elapsed / durationMs, 1);
+                this._playState = {
+                    firstFrameRendered,
+                    durationMs,
+                    elapsedMs: elapsed,
+                    progress: p,
+                };
 
                 if (this._disposed) {
                     markStartup('boot-warp:play-disposed', { id: this.debugId }, { level: 'warn' });
-                    resolve({
+                    finish({
                         status: 'disposed',
                         firstFrameRendered,
                         durationMs,
@@ -375,6 +398,7 @@ export class BootWarpTransition {
                     this.renderer.render(this.scene, this.camera);
                     if (!firstFrameRendered) {
                         firstFrameRendered = true;
+                        this._playState.firstFrameRendered = true;
                         markStartup('boot-warp:first-frame', {
                             id: this.debugId,
                             progress: p,
@@ -391,8 +415,7 @@ export class BootWarpTransition {
                     }, { level: 'error' });
                     // eslint-disable-next-line no-console
                     console.error('[BootWarp] render failed:', e);
-                    this._playing = false;
-                    resolve({
+                    finish({
                         status,
                         firstFrameRendered,
                         durationMs,
@@ -436,9 +459,8 @@ export class BootWarpTransition {
                 if (p < 1) {
                     this._raf = requestAnimationFrame(loop);
                 } else {
-                    this._playing = false;
                     markStartup('boot-warp:play-complete', { id: this.debugId });
-                    resolve({
+                    finish({
                         status: 'complete',
                         firstFrameRendered,
                         durationMs,
@@ -488,6 +510,17 @@ export class BootWarpTransition {
         }
         this._disposed = true;
         this._playing = false;
+        if (this._playResolve) {
+            const activeResolve = this._playResolve;
+            this._playResolve = null;
+            activeResolve({
+                status: 'disposed',
+                firstFrameRendered: this._playState?.firstFrameRendered === true,
+                durationMs: this._playState?.durationMs || 0,
+                elapsedMs: this._playState?.elapsedMs || 0,
+                progress: this._playState?.progress || 0,
+            });
+        }
         if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }
         try { if (this.warp) { this.scene?.remove(this.warp.mesh); this.warp.dispose(); } } catch { /* noop */ }
         try { this.renderer?.dispose(); } catch { /* noop */ }
@@ -497,6 +530,7 @@ export class BootWarpTransition {
         this.camera = null;
         this.warp = null;
         this.canvas = null;
+        this._playState = null;
     }
 }
 
