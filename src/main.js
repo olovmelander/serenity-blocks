@@ -60,6 +60,7 @@ import { createBoardScene } from './rendering/phaser/board-scene.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
+import { initViewportBroadcaster } from './utils/viewport.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
 import { FrameRateController } from './core/frame-rate-controller.js';
@@ -2935,17 +2936,18 @@ class SerenityBlocks {
      * Setup event listeners
      */
     setupEventListeners() {
-        // Window resize — debounced to prevent F11/fullscreen freeze.
-        // Without debounce, 30+ theme/renderer resize listeners fire simultaneously
-        // doing sync GPU framebuffer reallocation (setSize, EffectComposer, bloom).
-        let resizeTimer;
-        const resizeHandler = () => {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-                this.handleResize();
-            }, 150);
-        };
-        window.addEventListener('resize', resizeHandler);
+        // Window resize — the ONE debounced source is the viewport broadcaster
+        // (plan §4.4): it owns the single window listener, debounces 150ms, dedups
+        // identical dimensions, and broadcasts EVENTS.VIEWPORT_RESIZED. Without
+        // that funnel, 30+ theme/renderer resize listeners fire simultaneously
+        // doing sync GPU framebuffer reallocation (setSize, EffectComposer, bloom)
+        // — the F11/fullscreen freeze. New consumers subscribe to the event (or
+        // pull getViewport()); never add a raw window resize listener.
+        initViewportBroadcaster();
+        const unsubscribeViewport = eventBus.on(
+            EVENTS.VIEWPORT_RESIZED,
+            () => this.handleResize(),
+        );
 
         // Theme change events (from event bus)
         const unsubscribeThemeChanged = eventBus.on(EVENTS.THEME_CHANGED, ({ themeName }) => {
@@ -3105,7 +3107,7 @@ class SerenityBlocks {
 
         this.cleanupHandlers.push(() => {
             unsubscribeThemeChanged();
-            window.removeEventListener('resize', resizeHandler);
+            unsubscribeViewport();
             window.removeEventListener('settingsChanged', settingsHandler);
             window.removeEventListener('startGameWithMode', startGameWithModeHandler);
             window.removeEventListener('gameModeChanged', gameModeHandler);
