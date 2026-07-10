@@ -4,6 +4,7 @@
  */
 
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
+import { initGpuLossCoordinator } from '../utils/gpu-loss-coordinator.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { computeScenePixelRatio } from '../utils/desktop-performance-policy.js';
 
@@ -887,6 +888,9 @@ export class BaseTheme {
      */
     setupRendererResilience(renderer, options = {}) {
         this._resilienceUnsubs = this._resilienceUnsubs || [];
+        // Ensure the ONE CONTEXT_LOST consumer is live (plan §4.2): otherwise a
+        // loss this theme emits onto the bus is observed by nobody. Idempotent.
+        initGpuLossCoordinator();
 
         if (renderer?.domElement) {
             const unsub = gpuResilience.monitorWebGL(renderer.domElement, {
