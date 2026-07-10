@@ -43,7 +43,9 @@ export {
 // NOTE (remediation Phase 2): the orphaned `CHAPTER_ENVIRONMENTS` map was
 // removed here. It was a dynamic-loading registry that listed only 6 of the 8
 // chapters (missing black-hole-transcendence and urban-dreams), was imported by
-// nothing, and had already drifted two chapters behind the live loader. The
-// authoritative chapter wiring lives in ChapterEnvironmentManager.js
-// (CHAPTER_MODULE_LOADERS + CHAPTER_EXPORT_NAMES). Do not re-add a parallel
-// chapter registry here — Phase 4 consolidates all chapter lists into one source.
+// nothing, and had already drifted two chapters behind the live loader.
+// Phase 4.5 consolidated the wiring: the ONE authoritative chapter↔scene
+// registry is ./registry.js (CHAPTER_SCENES + derived export names), consumed
+// by ChapterEnvironmentManager and pinned by
+// tests/unit/chapter-registry-consistency.test.js. Do not re-add a parallel
+// chapter list here or anywhere else.

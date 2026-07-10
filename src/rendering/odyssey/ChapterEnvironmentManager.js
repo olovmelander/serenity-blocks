@@ -19,6 +19,7 @@ import {
     getChapterProfile,
     getChapterTransitionForChapter,
 } from './chapter-environments/shared/chapter-profile.js';
+import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-environments/registry.js';
 import {
     SEAM_34_COLOUR_HALF_WIDTH,
     SEAM_34_ALPINE_BRIDGE,
@@ -26,68 +27,11 @@ import {
     SEAM_56_AURORA_BRIDGE,
 } from './chapter-environments/shared/seam-bridges.js';
 
-/**
- * Dynamic chapter module map — each entry returns a Promise that loads the module
- * only when requested. This avoids bundling all 6 heavy shader/geometry chapters
- * into the initial load.
- */
-const CHAPTER_MODULE_LOADERS = {
-    1: () => import('./chapter-environments/earth-core.js'),
-    2: () => import('./chapter-environments/deep-ocean.js'),
-    3: () => import('./chapter-environments/surface-world.js'),
-    4: () => import('./chapter-environments/mountain-peaks.js'),
-    5: () => import('./chapter-environments/sky-drift.js'),
-    6: () => import('./chapter-environments/cosmic-expanse.js'),
-    7: () => import('./chapter-environments/black-hole-transcendence.js'),
-    8: () => import('./chapter-environments/urban-dreams.js'),
-};
-
-/**
- * Maps chapter IDs to the export names used in each module.
- * Pattern: CONFIG_NAME, CREATE_FN_NAME, UPDATE_FN_NAME
- */
-const CHAPTER_EXPORT_NAMES = {
-    1: {
-        config: 'EARTH_CORE_CONFIG',
-        create: 'createEarthCoreEnvironment',
-        update: 'updateEarthCoreEnvironment',
-    },
-    2: {
-        config: 'DEEP_OCEAN_CONFIG',
-        create: 'createDeepOceanEnvironment',
-        update: 'updateDeepOceanEnvironment',
-    },
-    3: {
-        config: 'SURFACE_WORLD_CONFIG',
-        create: 'createSurfaceWorldEnvironment',
-        update: 'updateSurfaceWorldEnvironment',
-    },
-    4: {
-        config: 'MOUNTAIN_PEAKS_CONFIG',
-        create: 'createMountainPeaksEnvironment',
-        update: 'updateMountainPeaksEnvironment',
-    },
-    5: {
-        config: 'SKY_DRIFT_CONFIG',
-        create: 'createSkyDriftEnvironment',
-        update: 'updateSkyDriftEnvironment',
-    },
-    6: {
-        config: 'COSMIC_EXPANSE_CONFIG',
-        create: 'createCosmicExpanseEnvironment',
-        update: 'updateCosmicExpanseEnvironment',
-    },
-    7: {
-        config: 'BLACK_HOLE_TRANSCENDENCE_CONFIG',
-        create: 'createBlackHoleTranscendenceEnvironment',
-        update: 'updateBlackHoleTranscendenceEnvironment',
-    },
-    8: {
-        config: 'URBAN_DREAMS_CONFIG',
-        create: 'createUrbanDreamsEnvironment',
-        update: 'updateUrbanDreamsEnvironment',
-    },
-};
+// Chapter↔module wiring lives in the ONE registry (plan §4.5):
+// chapter-environments/registry.js. Loaders are explicit dynamic-import thunks
+// there (on-demand chunks, nothing heavy in the initial load); export names
+// derive from the sceneId convention, pinned by
+// tests/unit/chapter-registry-consistency.test.js.
 
 const CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [];
 const CHAPTER_ENVIRONMENTS_BY_ID = new Map(
@@ -109,11 +53,11 @@ async function loadChapterModule(chapterId) {
         return _loadedModules.get(chapterId);
     }
 
-    const loader = CHAPTER_MODULE_LOADERS[chapterId];
-    if (!loader) return null;
+    const entry = getChapterScene(chapterId);
+    if (!entry) return null;
 
-    const mod = await loader();
-    const names = CHAPTER_EXPORT_NAMES[chapterId];
+    const mod = await entry.load();
+    const names = exportNamesForScene(entry.sceneId);
 
     const result = {
         config: mod[names.config],
@@ -943,7 +887,7 @@ export class ChapterEnvironmentManager {
      * @param {Function} [options.onEnvironmentCreated] - Hook run after each environment loads
      */
     loadChaptersInBackground(alreadyLoaded = [], options = {}) {
-        const allChapterIds = Object.keys(CHAPTER_MODULE_LOADERS).map(Number);
+        const allChapterIds = CHAPTER_SCENES.map((entry) => entry.id);
         const remaining = allChapterIds.filter((id) => !alreadyLoaded.includes(id));
         const canRunTask = typeof options.canRunTask === 'function'
             ? options.canRunTask
