@@ -1,0 +1,23 @@
+{
+  "note": "Performance budgets (plan §9.2). Nulls = budget declared, baseline pending — visible and lintable, never silently unfalsifiable. Gate on p95 frame-time, never FPS. Pin adaptive systems (tier + effectScale=1 + fixed pixelRatio) in every capture.",
+  "capturedAt": "2026-07-10",
+  "machine": "dev-iGPU unless noted per row; RTX5080-laptop for nightly lane",
+  "budgets": {
+    "timeToMenuReadyMs": { "baseline": null, "max": 4000, "note": "ends at MENU_READY (plan §4.7 KPI decomposition); capture via startup-debug trace" },
+    "introDurationMs": { "baseline": null, "max": null, "note": "product choice, tracked not gated" },
+    "cascadeInputLatencyP95Ms": { "baseline": 300, "max": 17, "note": "Phase 5.2 KPI — input-to-sim-application during cascades; baseline is the measured 330-400ms class floor" },
+    "frameP95Ms": {
+      "perSurface": { "odyssey": null, "heavy-theme-worst": null },
+      "maxPerTier": { "60hz": 16.6, "120hz": 8.3, "144hz": 6.9 },
+      "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" }
+    },
+    "snapshotBytesP95": { "baseline": 490, "max": 80, "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B" },
+    "reliableMsgsPerSec": { "baseline": null, "max": null },
+    "busEventsPerSec": { "baseline": null, "max": null, "note": "Phase 4.1 back-pressure metric" },
+    "desyncsPerMatch": { "baseline": null, "max": 0, "note": "gates each Phase 5.0 cutover-ladder stage" },
+    "gpuLossRecoveredRatio": { "baseline": null, "min": null, "note": "Phase 4.2 reliability budget" },
+    "savestateSerializeMs": { "baseline": null, "max": 0.5, "note": "Phase 5.9 compact binary savestate at 60Hz" },
+    "installerBytes": { "baseline": 625923068, "max": 450000000, "note": "baseline = 2026-07-01 installer; Phase 8.2 media diet" },
+    "appAsarBytes": { "baseline": 677591834, "max": 262144000, "note": "music currently rides inside app.asar; Phase 8.2 asarUnpack" }
+  }
+}

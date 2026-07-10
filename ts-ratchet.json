@@ -1,0 +1,10 @@
+{
+  "note": "Files that carry // @ts-check and may never lose it (Phase 3a, grow-only). Grow via scripts/ts-ratchet-check.mjs --update.",
+  "capturedAt": "2026-07-10",
+  "checkedFiles": [
+    "src/core/constants.js",
+    "src/core/flags.js",
+    "src/core/network/message-types.js",
+    "src/core/scoring.js"
+  ]
+}
