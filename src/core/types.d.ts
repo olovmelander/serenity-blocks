@@ -29,6 +29,10 @@ interface BoardCell {
 interface GarbageEntrySnapshot {
   type: string;
   attackerId?: string;
+  /** Burst identity — with lineIndex forms the idempotent-adopt dedupe key
+   *  `attackId:lineIndex` (garbageIdempotent flag). Distinct from attackerId. */
+  attackId?: string | number;
+  lineIndex?: number;
   color?: string;
   holeMask?: number[] | number | null;
   variant?: string;
@@ -66,6 +70,8 @@ interface PlayerSnapshot {
   lockedPieces?: unknown[];
   blindTimers: BlindTimersSnapshot | null;
   lastInputSeq?: number;
+  /** Late joiner waiting for the next spawn window (≠ eliminated) — drives the ⏳ overlay. */
+  awaitingSpawn?: boolean;
 }
 
 /** The full authoritative snapshot broadcast at the state-sync rate. */
@@ -77,6 +83,24 @@ interface StateSnapshot {
   tick: number;
   /** DJB2 digest for desync detection — carried in the network envelope wrapper. */
   digest?: string;
+  /** Round fence: snapshots from a previous round generation are dropped on apply. */
+  roundGeneration?: number;
+  /** Host-migration epoch fence (migrationEpoch flag): stale-host packets are rejected. */
+  migrationEpoch?: number;
+  /** Host's watch-only spectator count, mirrored to peers for lobby display. */
+  spectatorCount?: number;
+}
+
+/**
+ * Download-join / resync progress owned by the joining peer while a chunked
+ * state transfer is in flight (downloadJoin flag; plan §6A.6 replaces these
+ * implicit flags with an explicit joinState machine).
+ */
+interface DownloadJoinState {
+  downloadJoinInProgress: boolean;
+  resyncId?: string | null;
+  expectedChunks?: number;
+  receivedChunks?: number;
 }
 
 // ---------------------------------------------------------------------------

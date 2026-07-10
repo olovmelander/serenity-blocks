@@ -1,3 +1,4 @@
+// @ts-check
 import { optimizedEventBus } from '../utils/event-optimizer.js';
 
 export const MULTIPLAYER_EVENTS = {

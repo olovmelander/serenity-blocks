@@ -1,8 +1,22 @@
+// @ts-check
+/**
+ * Synchronous event bus — option-less listeners run in registration order,
+ * same frame (222 theme subscriptions rely on effects starting the frame they
+ * are emitted; plan §4.1 preserves this ordering guarantee when the buses
+ * unify). NOTE: emit() silently no-ops on unknown/undefined names — the
+ * event-name contract test (tests/unit/event-contract.test.js) is the guard.
+ */
 class EventBus {
     constructor() {
+        /** @type {Map<string, Set<(payload?: any) => void>>} */
         this.listeners = new Map();
     }
 
+    /**
+     * @param {string} eventName
+     * @param {(payload?: any) => void} handler
+     * @returns {() => void} unsubscribe
+     */
     on(eventName, handler) {
         if (!this.listeners.has(eventName)) {
             this.listeners.set(eventName, new Set());
@@ -11,6 +25,11 @@ class EventBus {
         return () => this.off(eventName, handler);
     }
 
+    /**
+     * @param {string} eventName
+     * @param {(payload?: any) => void} handler
+     * @returns {() => void} unsubscribe
+     */
     once(eventName, handler) {
         const off = this.on(eventName, (...args) => {
             off();
@@ -19,6 +38,10 @@ class EventBus {
         return off;
     }
 
+    /**
+     * @param {string} eventName
+     * @param {(payload?: any) => void} handler
+     */
     off(eventName, handler) {
         const handlers = this.listeners.get(eventName);
         if (handlers) {
@@ -29,6 +52,10 @@ class EventBus {
         }
     }
 
+    /**
+     * @param {string} eventName
+     * @param {unknown} [payload]
+     */
     emit(eventName, payload) {
         const handlers = this.listeners.get(eventName);
         if (handlers) {
