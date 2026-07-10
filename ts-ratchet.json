@@ -8,6 +8,10 @@
     "src/core/network/message-types.js",
     "src/core/scoring.js",
     "src/events/event-bus.js",
-    "src/events/multiplayer-events.js"
+    "src/events/gameplay-events.js",
+    "src/events/multiplayer-events.js",
+    "src/rendering/odyssey/chapter-environments/registry.js",
+    "src/utils/gpu-loss-coordinator.js",
+    "src/utils/viewport.js"
   ]
 }
