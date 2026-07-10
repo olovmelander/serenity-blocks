@@ -86,7 +86,9 @@ export class SteamNetworking {
         // localStorage entry must never drop/delay real Steam packets.
         this.networkImpairment = new NetworkImpairmentHarness(resolveImpairmentBootConfig({
             mockMode: this.mockMode,
-            isDev: Boolean(import.meta.env?.DEV),
+            // Plain import.meta.env.DEV (no optional chaining) — the exact token
+            // Vite statically replaces in builds; the proven idiom here (OdysseyMode).
+            isDev: Boolean(import.meta.env.DEV),
             search: (typeof window !== 'undefined' && window.location?.search) || '',
         }));
         this.networkImpairmentTimers = new Set();
