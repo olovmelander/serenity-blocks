@@ -33,6 +33,9 @@ import {
 import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+} from '../../events/gameplay-events.js';
 import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
@@ -2714,7 +2717,7 @@ export class OdysseyMode extends BaseGameMode {
                 // Metrics are tracked by hybridEngine.buildPhysicsCallbacks() wrapper
 
                 // Emit event
-                eventBus.emit(EVENTS.LINE_CLEAR, {
+                emitLineClear({
                     lineCount,
                     clearedRows,
                     cascadeCount,
@@ -2723,7 +2726,7 @@ export class OdysseyMode extends BaseGameMode {
                 });
             },
             onTSpin: (lineCount) => {
-                eventBus.emit(EVENTS.TSPIN, { lineCount, source: 'odyssey' });
+                emitTSpin({ lineCount, source: 'odyssey' });
                 this.deps.soundManager?.sfxPlayer?.playTSpin?.();
                 const boardScene = this._getBoardScene?.();
                 if (boardScene?.sharedEffects?.playTSpinEffect) {
@@ -2731,21 +2734,12 @@ export class OdysseyMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
-                eventBus.emit(EVENTS.B2B, { active: true, source: 'odyssey' });
+                emitB2B({ source: 'odyssey' });
                 this.deps.soundManager?.sfxPlayer?.playB2B?.();
                 const boardScene = this._getBoardScene?.();
                 if (boardScene?.sharedEffects?.playB2BChange) {
                     boardScene.sharedEffects.playB2BChange(true);
                 }
-            },
-            onPerfectClear: (depth, perfectClearBonus) => {
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus, source: 'odyssey' });
-                this.deps.soundManager?.sfxPlayer?.playPerfectClear?.();
-                const boardScene = this._getBoardScene?.();
-                if (boardScene?.sharedEffects?.playPerfectClear) {
-                    boardScene.sharedEffects.playPerfectClear(depth);
-                }
-                if (this.boardJuice) { this.boardJuice.dip(2); this.boardJuice.bounce(); }
             },
             onLevelUp: () => this.deps.soundManager?.sfxPlayer?.playLevelUp(),
             onHardDrop: (dropData) => {
@@ -2769,7 +2763,7 @@ export class OdysseyMode extends BaseGameMode {
             triggerCombo: (comboCount) => {
                 // Metrics are tracked by hybridEngine.buildPhysicsCallbacks() wrapper
 
-                eventBus.emit(EVENTS.COMBO, {
+                emitCombo({
                     comboCount,
                     source: 'odyssey',
                     levelId: this.currentLevelId,
@@ -2828,7 +2822,7 @@ export class OdysseyMode extends BaseGameMode {
                 }
             },
             onPieceLock: (piece) => {
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
 
                 const boardScene = this._getBoardScene();
                 if (boardScene?.createPieceLockRipple) {
@@ -2847,12 +2841,17 @@ export class OdysseyMode extends BaseGameMode {
                     this.gameState.hitStopRemaining = 110;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                emitPerfectClear({ depth, perfectClearBonus, source: 'odyssey' });
+                // Restored by the §4.6 duplicate-key fix: this object literal
+                // defined onPerfectClear TWICE; the shadowed first copy carried
+                // the SFX + board juice, so perfect clears had been silent here.
+                this.deps.soundManager?.sfxPlayer?.playPerfectClear?.();
 
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playPerfectClear) {
                     boardScene.sharedEffects.playPerfectClear(depth);
                 }
+                if (this.boardJuice) { this.boardJuice.dip(2); this.boardJuice.bounce(); }
             },
             spawnPiece: () => {
                 spawnPiece(
@@ -2909,8 +2908,8 @@ export class OdysseyMode extends BaseGameMode {
         this._showGoalCompleteOverlay();
 
         // Trigger theme combo effects for victory celebration
-        eventBus.emit(EVENTS.COMBO, { comboCount: 10 });
-        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, comboCount: 10 });
+        emitCombo({ comboCount: 10 });
+        emitLineClear({ lineCount: 4, comboCount: 10 });
 
         // Update HUD to show victory lap state
         if (this.odysseyHUD) {

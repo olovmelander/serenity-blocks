@@ -14,6 +14,9 @@ import { MatchConfigModal } from '../../ui/match-config-modal.js';
 import { MatchResultsModal } from '../../ui/match-results-modal.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear,
+} from '../../events/gameplay-events.js';
 import { OpponentWatchManager } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
@@ -1377,7 +1380,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (!this.mainBoardScene) return;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.LINE_CLEAR, {
+                emitLineClear({
                     lineCount: detail.rows?.length || 0,
                     clearedRows: detail.rows || [],
                 });
@@ -1426,7 +1429,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const comboCount = detail.comboCount || 0;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount });
 
                 // Show combo popup
                 if (settings.comboPopupEffect && this.mainBoardScene.showComboPopup) {
@@ -1478,7 +1481,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const { piece } = detail;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
 
                 // Create piece lock ripple effect
                 if (piece && this.mainBoardScene.createPieceLockRipple) {
@@ -1551,7 +1554,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     return;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, {
+                emitPerfectClear({
                     depth: detail.depth,
                     perfectClearBonus: detail.perfectClearBonus,
                     source: 'online',

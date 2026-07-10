@@ -108,21 +108,35 @@ interface DownloadJoinState {
 // ---------------------------------------------------------------------------
 
 /**
- * Payload shapes for the synchronous EventBus (events/event-bus.js). LINE_CLEAR
- * is emitted with several shapes across modes/themes; the union documents the
- * superset so listeners optional-check fields rather than assume them.
+ * Canonical gameplay-event payloads (plan §4.6). The ONE producer is
+ * events/gameplay-events.js — modes call its emit helpers, never
+ * eventBus.emit directly (pinned by tests/unit/gameplay-event-payloads.test.js).
+ * Field names are load-bearing for ~212 theme subscriptions: never rename
+ * lineCount/comboCount/piece/depth/active; never add a `detail` key.
  */
+interface GameplayEventTags {
+  /** Mode/context tag, e.g. 'odyssey', 'infinity', 'serenity-interaction'. */
+  source?: string;
+  /** Odyssey level id. */
+  levelId?: string | number;
+  /** Local-MP board number (1-based) — selects the per-player canvas rect. */
+  player?: number;
+  /** Interaction origin (Serenity click/tap). */
+  position?: { x: number; y: number };
+}
+
 interface EventPayloadMap {
-  LINE_CLEAR: {
+  LINE_CLEAR: GameplayEventTags & {
     lineCount: number;
-    clearedRows?: number[];
-    cascadeCount?: number;
+    clearedRows: number[]; // always present (default [])
+    cascadeCount: number; // always present (default 1)
     comboCount?: number;
-    player?: number;
   };
-  COMBO: { comboCount: number; lineCount?: number };
-  PIECE_LOCK: { x?: number; y?: number; shapeKey?: string };
-  PERFECT_CLEAR: { lineCount?: number };
+  COMBO: GameplayEventTags & { comboCount: number };
+  PIECE_LOCK: GameplayEventTags & { piece: unknown | null };
+  PERFECT_CLEAR: GameplayEventTags & { depth: number; perfectClearBonus?: number };
+  TSPIN: GameplayEventTags & { lineCount: number };
+  B2B: GameplayEventTags & { active: boolean };
 }
 
 // ---------------------------------------------------------------------------

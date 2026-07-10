@@ -27,6 +27,9 @@ import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+} from '../../events/gameplay-events.js';
+import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
@@ -913,10 +916,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const cascadeCount = rest[3] ?? 1;
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
+                emitLineClear({ lineCount, clearedRows, cascadeCount, player: playerNum });
             },
             onTSpin: (lineCount) => {
-                eventBus.emit(EVENTS.TSPIN, { lineCount, player: playerNum });
+                emitTSpin({ lineCount, player: playerNum });
                 this.deps.soundManager.sfxPlayer.playTSpin?.();
                 const scene = this.boardScenes?.[playerNum - 1];
                 if (scene?.sharedEffects?.playTSpinEffect) {
@@ -924,7 +927,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
-                eventBus.emit(EVENTS.B2B, { active: true, player: playerNum });
+                emitB2B({ player: playerNum });
                 this.deps.soundManager.sfxPlayer.playB2B?.();
                 const scene = this.boardScenes?.[playerNum - 1];
                 if (scene?.sharedEffects?.playB2BChange) {
@@ -932,7 +935,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onPieceLock: (piece) => {
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece, player: playerNum });
             },
             onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.deps.settingsManager?.get() || {};
@@ -979,7 +982,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     playerState.hitStopRemaining = 110;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                emitPerfectClear({ depth, perfectClearBonus, player: playerNum });
                 this.deps.soundManager.sfxPlayer.playPerfectClear?.();
 
                 const scene = this.boardScenes?.[playerNum - 1];
@@ -991,7 +994,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount, player: playerNum });
                 const settings = this.deps.settingsManager.get();
                 // Show combo effects on all active board scenes
                 this.boardScenes.forEach((scene) => {
