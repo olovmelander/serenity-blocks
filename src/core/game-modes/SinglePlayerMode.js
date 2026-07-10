@@ -25,6 +25,9 @@ import {
 } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+} from '../../events/gameplay-events.js';
 import { DemoRecorder } from '../demo/DemoRecorder.js';
 import { DemoPlayer } from '../demo/DemoPlayer.js';
 import { DemoManager } from '../demo/DemoManager.js';
@@ -830,10 +833,10 @@ export class SinglePlayerMode extends BaseGameMode {
 
                 // Emit event for theme reactions
                 console.log('[SinglePlayer] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
+                emitLineClear({ lineCount, clearedRows, cascadeCount });
             },
             onTSpin: (lineCount) => {
-                eventBus.emit(EVENTS.TSPIN, { lineCount });
+                emitTSpin({ lineCount });
                 this.deps.soundManager.sfxPlayer.playTSpin?.();
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playTSpinEffect) {
@@ -841,7 +844,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
-                eventBus.emit(EVENTS.B2B, { active: true });
+                emitB2B();
                 this.deps.soundManager.sfxPlayer.playB2B?.();
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playB2BChange) {
@@ -862,7 +865,7 @@ export class SinglePlayerMode extends BaseGameMode {
             triggerCombo: (comboCount) => {
                 // Emit event for theme reactions
                 console.log('[SinglePlayer] Emitting COMBO event, comboCount:', comboCount);
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount });
 
                 const settings = this.deps.settingsManager.get();
                 const boardScene = this._getBoardScene();
@@ -916,7 +919,7 @@ export class SinglePlayerMode extends BaseGameMode {
             onPerfectClear: (depth, perfectClearBonus) => {
                 this._applyPerfectClearTiming();
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                emitPerfectClear({ depth, perfectClearBonus });
                 this.deps.soundManager.sfxPlayer.playPerfectClear?.();
 
                 const boardScene = this._getBoardScene();
@@ -933,7 +936,7 @@ export class SinglePlayerMode extends BaseGameMode {
             // Piece lock ripple effect
             onPieceLock: (piece) => {
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {

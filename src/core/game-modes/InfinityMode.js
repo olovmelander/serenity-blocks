@@ -18,6 +18,9 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+} from '../../events/gameplay-events.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
@@ -888,7 +891,7 @@ export class InfinityMode extends BaseGameMode {
 
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
+                emitLineClear({ lineCount, clearedRows, cascadeCount });
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {
@@ -909,7 +912,7 @@ export class InfinityMode extends BaseGameMode {
                 }
             },
             onTSpin: (lineCount) => {
-                eventBus.emit(EVENTS.TSPIN, { lineCount, source: 'infinity' });
+                emitTSpin({ lineCount, source: 'infinity' });
                 this.deps.soundManager.sfxPlayer.playTSpin?.();
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playTSpinEffect) {
@@ -917,19 +920,11 @@ export class InfinityMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
-                eventBus.emit(EVENTS.B2B, { active: true, source: 'infinity' });
+                emitB2B({ source: 'infinity' });
                 this.deps.soundManager.sfxPlayer.playB2B?.();
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playB2BChange) {
                     boardScene.sharedEffects.playB2BChange(true);
-                }
-            },
-            onPerfectClear: (depth, perfectClearBonus) => {
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus, source: 'infinity' });
-                this.deps.soundManager.sfxPlayer.playPerfectClear?.();
-                const boardScene = this._getBoardScene();
-                if (boardScene?.sharedEffects?.playPerfectClear) {
-                    boardScene.sharedEffects.playPerfectClear(depth);
                 }
             },
             onLevelUp: () => {
@@ -967,7 +962,7 @@ export class InfinityMode extends BaseGameMode {
             triggerCombo: (comboCount) => {
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting COMBO event, comboCount:', comboCount);
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount });
 
                 // Track max combo
                 if (this.gameState.infinityStats && comboCount > this.gameState.infinityStats.maxCombo) {
@@ -1074,7 +1069,7 @@ export class InfinityMode extends BaseGameMode {
             // Piece lock ripple effect
             onPieceLock: (piece) => {
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
@@ -1117,7 +1112,11 @@ export class InfinityMode extends BaseGameMode {
                     this.gameState.hitStopRemaining = 110;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                emitPerfectClear({ depth, perfectClearBonus, source: 'infinity' });
+                // Restored by the §4.6 duplicate-key fix: this object literal
+                // defined onPerfectClear TWICE; the shadowed first copy carried
+                // the SFX, so perfect clears had been silent in this mode.
+                this.deps.soundManager.sfxPlayer.playPerfectClear?.();
 
                 const boardScene = this._getBoardScene();
                 if (boardScene?.sharedEffects?.playPerfectClear) {
