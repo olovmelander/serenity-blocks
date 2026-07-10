@@ -1,5 +1,8 @@
 // @ts-check
-import { optimizedEventBus } from '../utils/event-optimizer.js';
+// Multiplayer events ride the ONE unified bus (plan §4.1 — optimizer retired).
+// Names are ffa:-prefixed so they never collide with the camelCase EVENTS
+// namespace on the same bus.
+import { eventBus } from './event-bus.js';
 
 export const MULTIPLAYER_EVENTS = {
     PLAYER_LIST_CHANGED: 'ffa:player-list-changed',
@@ -33,19 +36,27 @@ export const MULTIPLAYER_EVENTS = {
     HOST_MIGRATED: 'ffa:host-migrated',
 };
 
+/** @param {string} event @param {unknown} [payload] */
 export function emitMultiplayerEvent(event, payload) {
-    optimizedEventBus.emit(event, payload);
+    eventBus.emit(event, payload);
 }
 
+/**
+ * @param {string} event
+ * @param {(payload?: any) => void} handler
+ * @param {import('./event-bus.js').ListenerOptions} [options]
+ * @returns {() => void} unsubscribe
+ */
 export function onMultiplayerEvent(event, handler, options = {}) {
-    optimizedEventBus.on(event, handler, options);
-    return () => optimizedEventBus.off(event, handler);
+    return eventBus.on(event, handler, options);
 }
 
+/** @param {string} event @param {(payload?: any) => void} handler */
 export function offMultiplayerEvent(event, handler) {
-    optimizedEventBus.off(event, handler);
+    eventBus.off(event, handler);
 }
 
+/** @param {string} event @param {(payload?: any) => void} handler */
 export function onceMultiplayerEvent(event, handler) {
-    optimizedEventBus.once(event, handler);
+    return eventBus.once(event, handler);
 }
