@@ -96,7 +96,24 @@ export class BaseGameMode {
     }
 
     /**
+     * The mode's pausable sim-state object, or null (plan §4.6 slice 2).
+     * Template hook: BaseGameMode.onPause/onResume mirror `isPaused` into it
+     * and reset its clock on resume — the exact lines that were copy-pasted
+     * across four modes. Single/Infinity/Odyssey return this.gameState,
+     * LocalMultiplayer returns this.multiplayerState; Serenity/Online (no
+     * pausable sim / never-pause competitive rule) keep this null default —
+     * deliberately opt-IN, so a mode that never wired pause cannot have its
+     * sim frozen by the base class.
+     * @returns {{ isPaused?: boolean, lastTime?: number } | null}
+     */
+    _getPausableGameState() {
+        return null;
+    }
+
+    /**
      * Called when the game is paused (settings menu, etc.)
+     * Owns the shared wiring: mode flag + sim-state mirror + hybrid-loop pause.
+     * Overrides keep mode-specific work and call super.onPause() first.
      */
     onPause() {
         if (!this.isRunning) {
@@ -105,10 +122,15 @@ export class BaseGameMode {
 
         console.log(`[${this.getModeId()}] Game paused`);
         this.isPaused = true;
+
+        const sim = this._getPausableGameState();
+        if (sim) sim.isPaused = true;
+        if (this.usingHybridLoop) this.deps?.frameRateController?.pauseHybridLoop?.();
     }
 
     /**
-     * Called when the game is resumed from pause
+     * Called when the game is resumed from pause.
+     * Resets the sim clock so the pause gap never enters a frame delta.
      */
     onResume() {
         if (!this.isRunning || !this.isPaused) {
@@ -117,6 +139,13 @@ export class BaseGameMode {
 
         console.log(`[${this.getModeId()}] Game resumed`);
         this.isPaused = false;
+
+        const sim = this._getPausableGameState();
+        if (sim) {
+            sim.isPaused = false;
+            sim.lastTime = performance.now();
+        }
+        if (this.usingHybridLoop) this.deps?.frameRateController?.resumeHybridLoop?.();
     }
 
     /**

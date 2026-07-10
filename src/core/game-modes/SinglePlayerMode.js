@@ -340,19 +340,15 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     /**
-     * Called when game is paused
+     * Called when game is paused. Sim mirror + hybrid-loop pause live in
+     * BaseGameMode (§4.6 slice 2); only demo playback is mode-specific.
      */
+    _getPausableGameState() {
+        return this.gameState || null;
+    }
+
     onPause() {
         super.onPause();
-
-        if (this.gameState) {
-            this.gameState.isPaused = true;
-        }
-
-        // Pause hybrid loop (stops setTimeout scheduling but keeps RAF for render)
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.pauseHybridLoop();
-        }
 
         if (this.isPlayingDemo) {
             this.demoPlayer.pausePlayback();
@@ -364,16 +360,6 @@ export class SinglePlayerMode extends BaseGameMode {
      */
     onResume() {
         super.onResume();
-
-        if (this.gameState) {
-            this.gameState.isPaused = false;
-            this.gameState.lastTime = performance.now();
-        }
-
-        // Resume hybrid loop
-        if (this.usingHybridLoop) {
-            this.deps.frameRateController?.resumeHybridLoop();
-        }
 
         if (this.isPlayingDemo) {
             this.demoPlayer.resumePlayback();
