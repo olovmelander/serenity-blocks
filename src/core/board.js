@@ -1,9 +1,16 @@
+// @ts-check
 // =================================================================================
 // BOARD - Board management and collision detection for Serenity Blocks
 // =================================================================================
+//
+// Grid contract: `BoardGrid` cells are the ambient `BoardCell` interface from
+// core/types.d.ts — the same shape the MP snapshot mirrors over the wire.
 
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
 
+/** @typedef {Array<Array<BoardCell | null>>} BoardGrid */
+
+/** @returns {BoardGrid} */
 export function createBoardGrid() {
     return Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
 }
