@@ -19,6 +19,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0007](0007-webgpu-tsl-definition-of-done.md) | WebGPU/TSL visual changes require screenshot validation | accepted |
 | [0008](0008-hybrid-renderer-and-webgl-holdouts.md) | Hybrid renderer split and WebGL holdouts are intentional | accepted |
 | [0009](0009-theme-codegen-pipeline-removed.md) | Do not rebuild the old theme code-generation pipeline | accepted |
+| [0010](0010-tornado-ts-in-typecheck-island.md) | Tornado `.ts` files join the typecheck island; three stays untyped | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.
