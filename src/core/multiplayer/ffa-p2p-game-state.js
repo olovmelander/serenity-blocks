@@ -32,6 +32,7 @@ import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
 import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
 import { createBlindTimers, applyBlindEffect, applyFullBlindEffect } from '../blind.js';
 import { readFlag as readNetFlag } from '../flags.js';
+import { seededRandom } from '../../utils/helpers.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -2244,19 +2245,15 @@ export class FFAGameStateP2P {
     }
 
     /**
-    * Create seeded random number generator
-    * This ensures all players get the same piece sequence!
+    * Create seeded random number generator — all players get the same piece
+    * sequence. Delegates to the ONE LCG (utils/helpers.js, plan §5.6a): the
+    * former inline clone here drew the identical sequence but returned a bare
+    * function with NO getState/setState/.seed seam, so demo-snapshot RNG
+    * capture was silently null for FFA boards (restore was a no-op). The §5.6
+    * sfc32 replacement (src/core/rng.js) adopts behind the rngV2 flag.
     */
     createSeededRNG(seed) {
-        let state = seed % 233280;
-        if (state < 0) state += 233280;
-        console.log(`🎲 [RNG] Created generator with seed=${seed} (state=${state})`);
-
-        return function () {
-            // Linear congruential generator (LCG)
-            state = (state * 9301 + 49297) % 233280;
-            return state / 233280;
-        };
+        return seededRandom(seed);
     }
 
     /**
