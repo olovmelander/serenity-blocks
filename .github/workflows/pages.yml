@@ -44,6 +44,10 @@ jobs:
       # resize-listener sprawl — shrink-only, baselines in
       # architecture-fitness.json.
       - run: node scripts/architecture-fitness-check.mjs
+      # Import-boundary rules (Phase 3d layer 1): core-stays-headless,
+      # themes-are-islands, no-electron-in-renderer, with a shrink-only
+      # known-violations baseline in .dependency-cruiser.cjs.
+      - run: npm run check:boundaries
       - run: npm test
       # Release-gate scaffolding (Phase 0.4): dev mode — asserts the observability
       # scaffolding exists and warns (not fails) on the placeholder Steam AppID.
