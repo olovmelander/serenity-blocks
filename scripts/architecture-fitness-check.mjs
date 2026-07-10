@@ -89,10 +89,14 @@ const METRICS = {
         return { value: total, detail: top(perFile, 8) };
     },
 
-    // Resize-listener sprawl (plan §4.4 broadcaster): may only shrink.
+    // Resize-listener sprawl (plan §4.4): every raw window resize listener
+    // OUTSIDE the canonical broadcaster (src/utils/viewport.js) may only shrink;
+    // migrate them to EVENTS.VIEWPORT_RESIZED. The broadcaster owns the one
+    // allowed listener and is exempt.
     'resize-listeners': () => {
-        const { total } = countMatches(trackedJs, /addEventListener\(\s*['"]resize['"]/g);
-        return { value: total };
+        const files = trackedJs.filter((f) => f !== 'src/utils/viewport.js');
+        const { total, perFile } = countMatches(files, /addEventListener\(\s*['"]resize['"]/g);
+        return { value: total, detail: top(perFile, 6) };
     },
 
     // One event bus is the §4.1 end-state; no third implementation may appear.

@@ -243,4 +243,9 @@ export const EVENTS = {
 
     // Performance Adapters
     PERFORMANCE_DOWNSCALE: 'performanceDownscale',
+
+    // Viewport (plan §4.4): the ONE debounced window-resize broadcast
+    // (src/utils/viewport.js). Payload { width, height, dpr }. Subscribe here
+    // instead of adding a per-surface window resize listener.
+    VIEWPORT_RESIZED: 'viewportResized',
 };
