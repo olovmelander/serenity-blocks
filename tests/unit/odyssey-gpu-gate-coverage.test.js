@@ -1,27 +1,24 @@
 /**
- * GPU-gate coverage tripwire (plan Phase 3c.1).
+ * GPU-gate coverage tripwire (plan Phase 3c.1 / 4.5).
  *
  * The validation script's SCENES list was hand-synced and silently omitted
  * chapter 3 (surface-world) — exempting it from the WGSL/TSL gate for months.
- * This pins: every chapter wired in ChapterEnvironmentManager's
- * CHAPTER_MODULE_LOADERS is covered by the validation script AND loadable by
- * the pilot page. Static source scan (the modules import three, so importing
- * them in node is not an option here).
+ * This pins: every chapter in the ONE registry (chapter-environments/
+ * registry.js, plan §4.5) is covered by the validation script AND loadable by
+ * the pilot page. The registry is pure data (no three import) so it is
+ * imported directly; the script/pilot are still source-scanned.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CHAPTER_SCENES } from '../../src/rendering/odyssey/chapter-environments/registry.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(path.join(repoRoot, p), 'utf8');
 
 function chapterBasenames() {
-    const src = read('src/rendering/odyssey/ChapterEnvironmentManager.js');
-    const block = src.match(/CHAPTER_MODULE_LOADERS\s*=\s*{([\s\S]*?)^};/m)?.[1]
-        ?? src.match(/CHAPTER_MODULE_LOADERS\s*=\s*{([\s\S]*?)};/)?.[1];
-    expect(block, 'CHAPTER_MODULE_LOADERS not found').toBeTruthy();
-    const names = [...block.matchAll(/chapter-environments\/([a-z0-9-]+)\.js/g)].map((m) => m[1]);
+    const names = CHAPTER_SCENES.map((entry) => entry.sceneId);
     expect(names.length).toBeGreaterThanOrEqual(8);
     return names;
 }
