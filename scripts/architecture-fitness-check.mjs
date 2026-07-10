@@ -96,8 +96,10 @@ const METRICS = {
     },
 
     // One event bus is the §4.1 end-state; no third implementation may appear.
+    // Today: src/events/event-bus.js + src/utils/event-optimizer.js (the
+    // optimizer is deleted by §4.1). Basename-matched so relocation can't hide one.
     'event-bus-files': () => {
-        const buses = trackedJs.filter((f) => /src\/events\/.*(?:bus|optimizer)/.test(f));
+        const buses = trackedJs.filter((f) => /(?:^|\/)(?:event-bus|event-optimizer|event-emitter)[^/]*\.js$/.test(f));
         return { value: buses.length, detail: buses };
     },
 };

@@ -17,7 +17,7 @@ import {
     float, vec2, vec3, vec4, uniform, positionLocal, normalLocal, normalWorld, positionWorld,
     cameraPosition, normalize, dot, clamp, smoothstep, abs, mix, sin, pow, fract, length,
     screenUV, uv, atan2, floor, pass, viewportUV, attribute, cos, texture, texture3D,
-    reflector, mx_noise_float, mx_fractal_noise_float, positionGeometry,
+    reflector, mx_noise_float, mx_fractal_noise_float, positionGeometry, step,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
@@ -1040,6 +1040,167 @@ export function create({
     dust.frustumCulled = false;
     scene.add(track(dust));
 
+    // ════ RELIC BURSTS (FX) — the heart exhales: pooled one-shot spore bursts, pure GPU vertex math ════
+    // One Points pool partitioned across BURST_SLOTS slots; applyPulse writes a slot's uniforms
+    // (emitter / colour+density / shape) and the burst plays out entirely in the vertex shader —
+    // radial shoot with exponential decel, then a slow ambient float across the scene, then fade.
+    // Zero per-frame uploads; the ringNodes uniform-pool pattern extended to particles (WebGL-safe).
+    const BURST_SLOTS = 5;
+    let BURST_POOL;
+    if (tier <= 1) BURST_POOL = 240; else if (tier <= 2) BURST_POOL = 400; else BURST_POOL = 600;
+    const burstA = Array.from({ length: BURST_SLOTS }, () => uniform(new THREE.Vector4(0, 0, 0, -1e3))); // xyz + t0
+    const burstB = Array.from({ length: BURST_SLOTS }, () => uniform(new THREE.Vector4(1, 1, 1, 0))); // rgb + density
+    const burstC = Array.from({ length: BURST_SLOTS }, () => uniform(new THREE.Vector4(20, 3, 0, 0.3))); // maxR,life,swirl,upBias
+    let burstNext = 0;
+    const spawnBurst = (px, py, pz, col, density, maxR, life, swirl, upBias) => {
+        const i = burstNext; burstNext = (burstNext + 1) % BURST_SLOTS;
+        burstA[i].value.set(px, py, pz, uTime.value);
+        burstB[i].value.set(col[0], col[1], col[2], Math.min(1, density));
+        burstC[i].value.set(maxR, life, swirl, upBias);
+    };
+    const burstMat = new THREE.PointsNodeMaterial();
+    {
+        const dirA = attribute('aDir', 'vec3');
+        const tanA = attribute('aTan', 'vec3');
+        const sdB = attribute('aSeed', 'vec3');
+        const slotA = attribute('aSlot', 'float');
+        // accumulate this particle's slot params via masks (no dynamic uniform indexing → WebGL-safe)
+        // GOTCHA: use the .xyz SWIZZLE on the vec4 uniforms — building vec3(u.x,u.y,u.z) from
+        // component swizzles silently breaks the accumulate on this stack (probe-bisected).
+        let emit = vec3(0.0); let t0 = float(0.0); let colr = vec3(0.0); let dens = float(0.0);
+        let maxR = float(0.0); let lifeU = float(0.0); let swirl = float(0.0); let upB = float(0.0);
+        for (let i = 0; i < BURST_SLOTS; i += 1) {
+            const m = float(1.0).sub(clamp(abs(slotA.sub(float(i))), 0.0, 1.0));
+            emit = emit.add(burstA[i].xyz.mul(m));
+            t0 = t0.add(burstA[i].w.mul(m));
+            colr = colr.add(burstB[i].xyz.mul(m));
+            dens = dens.add(burstB[i].w.mul(m));
+            maxR = maxR.add(burstC[i].x.mul(m));
+            lifeU = lifeU.add(burstC[i].y.mul(m));
+            swirl = swirl.add(burstC[i].z.mul(m));
+            upB = upB.add(burstC[i].w.mul(m));
+        }
+        const lifeS = lifeU.max(0.001);
+        const age = clamp(uTime.sub(t0), 0.0, lifeS);
+        const n = age.div(lifeS); // 0..1 over the burst's life (idle slots: t0=-1e3 → n=1 → invisible)
+        const aliveB = float(1.0).sub(step(dens, sdB.x)); // density gates how MANY pool particles fire
+        // phase 1: radial shoot, exponential decel toward a per-particle max radius
+        const shoot = float(1.0).sub(age.mul(-1.7).exp());
+        const rr = maxR.mul(shoot).mul(sdB.y.mul(0.55).add(0.55));
+        const dirEff = normalize(mix(dirA, vec3(0.0, 1.0, 0.0), upB));
+        // phase 2: slow ambient float ramps in as the shoot settles (spores drift across the scene)
+        const fl = smoothstep(0.4, 1.6, age);
+        const driftB = vec3(
+            sin(uTime.mul(0.45).add(sdB.z.mul(21.0))),
+            sin(uTime.mul(0.34).add(sdB.x.mul(17.0))).mul(0.6).add(0.25),
+            cos(uTime.mul(0.40).add(sdB.y.mul(23.0))),
+        ).mul(fl).mul(n.mul(7.0).add(2.0));
+        const spiral = tanA.mul(swirl).mul(rr).mul(sin(age.mul(2.2).add(sdB.z.mul(6.28))).mul(0.55));
+        burstMat.positionNode = emit.add(dirEff.mul(rr)).add(spiral).add(driftB);
+        const fadeB = smoothstep(0.0, 0.05, n).mul(smoothstep(1.0, 0.55, n)).mul(aliveB);
+        burstMat.colorNode = colr.mul(float(1.0).sub(n.mul(0.35))); // cool slightly as they age
+        burstMat.opacityNode = fadeB.mul(0.9);
+        burstMat.sizeNode = sdB.z.mul(1.9).add(1.1).mul(n.mul(0.5).add(0.75)).mul(fadeB.mul(0.5).add(0.5));
+        burstMat.transparent = true;
+        burstMat.blending = THREE.AdditiveBlending;
+        burstMat.depthWrite = false;
+        burstMat.toneMapped = false;
+        burstMat.fog = false;
+    }
+    const burstGeo = new THREE.BufferGeometry();
+    {
+        const bPos = new Float32Array(BURST_POOL * 3); // zeros — real position is computed in-shader
+        const bDir = new Float32Array(BURST_POOL * 3);
+        const bTan = new Float32Array(BURST_POOL * 3);
+        const bSeed = new Float32Array(BURST_POOL * 3);
+        const bSlot = new Float32Array(BURST_POOL);
+        const dv = new THREE.Vector3(); const tv = new THREE.Vector3(); const UPV = new THREE.Vector3(0, 1, 0);
+        for (let i = 0; i < BURST_POOL; i += 1) {
+            do {
+                dv.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+            } while (dv.lengthSq() > 1 || dv.lengthSq() < 1e-4);
+            dv.normalize();
+            tv.crossVectors(dv, UPV);
+            if (tv.lengthSq() < 1e-4) tv.set(1, 0, 0); else tv.normalize();
+            bDir[i * 3] = dv.x; bDir[i * 3 + 1] = dv.y; bDir[i * 3 + 2] = dv.z;
+            bTan[i * 3] = tv.x; bTan[i * 3 + 1] = tv.y; bTan[i * 3 + 2] = tv.z;
+            bSeed[i * 3] = Math.random(); bSeed[i * 3 + 1] = Math.random(); bSeed[i * 3 + 2] = Math.random();
+            bSlot[i] = i % BURST_SLOTS;
+        }
+        burstGeo.setAttribute('position', new THREE.Float32BufferAttribute(bPos, 3));
+        burstGeo.setAttribute('aDir', new THREE.Float32BufferAttribute(bDir, 3));
+        burstGeo.setAttribute('aTan', new THREE.Float32BufferAttribute(bTan, 3));
+        burstGeo.setAttribute('aSeed', new THREE.Float32BufferAttribute(bSeed, 3));
+        burstGeo.setAttribute('aSlot', new THREE.Float32BufferAttribute(bSlot, 1));
+    }
+    const bursts = new THREE.Points(burstGeo, burstMat);
+    bursts.frustumCulled = false;
+    scene.add(track(bursts));
+
+    // ════ RESONANCE ORBIT — combo heartbeat: wisps circling the relic while a chain is alive ════
+    const uComboGlow = uniform(0);
+    let ORBIT_COUNT;
+    if (tier <= 1) ORBIT_COUNT = 40; else if (tier <= 2) ORBIT_COUNT = 64; else ORBIT_COUNT = 96;
+    const orbitMat = new THREE.PointsNodeMaterial();
+    {
+        const oSd = attribute('aSeed', 'vec3');
+        const oAng = uTime.mul(oSd.x.mul(0.5).add(0.35)).add(oSd.y.mul(6.283));
+        const oRad = oSd.z.mul(7.0).add(13.0); // just outside the glass shell
+        const oy = sin(uTime.mul(0.8).add(oSd.x.mul(9.0))).mul(3.5).add(oSd.y.sub(0.5).mul(7.0));
+        orbitMat.positionNode = vec3(cos(oAng).mul(oRad), oy, sin(oAng).mul(oRad)).add(uRelicPos);
+        const oBlink = sin(uTime.mul(2.4).add(oSd.z.mul(30.0))).mul(0.5).add(0.5).mul(0.5).add(0.5);
+        orbitMat.colorNode = mix(vec3(0.95, 0.33, 0.60), vec3(0.40, 0.85, 1.0), oSd.x);
+        orbitMat.opacityNode = uComboGlow.mul(oBlink).mul(0.85);
+        orbitMat.sizeNode = oSd.y.mul(1.6).add(1.2).mul(uComboGlow.mul(0.6).add(0.4));
+        orbitMat.transparent = true;
+        orbitMat.blending = THREE.AdditiveBlending;
+        orbitMat.depthWrite = false;
+        orbitMat.toneMapped = false;
+        orbitMat.fog = false;
+    }
+    const orbitGeo = new THREE.BufferGeometry();
+    {
+        const oPos = new Float32Array(ORBIT_COUNT * 3);
+        const oSeed = new Float32Array(ORBIT_COUNT * 3);
+        for (let i = 0; i < ORBIT_COUNT * 3; i += 1) oSeed[i] = Math.random();
+        orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(oPos, 3));
+        orbitGeo.setAttribute('aSeed', new THREE.Float32BufferAttribute(oSeed, 3));
+    }
+    const orbit = new THREE.Points(orbitGeo, orbitMat);
+    orbit.frustumCulled = false;
+    orbit.visible = false; // gated by combo glow in update()
+    scene.add(track(orbit));
+
+    // ════ HEART SHOCKWAVE — an expanding ring of light at the relic for the big beats ════
+    const uWave = uniform(new THREE.Vector4(-1e3, 1.4, 0, 0)); // t0, duration, amp
+    const uWaveCol = uniform(new THREE.Color(1.0, 0.75, 0.45));
+    const waveMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const wq = uv().sub(0.5).mul(2.0);
+        const wr = length(wq);
+        const wProg = clamp(uTime.sub(uWave.x).div(uWave.y.max(0.001)), 0.0, 1.0);
+        const wRing = smoothstep(0.045, 0.0, abs(wr.sub(wProg.mul(0.92))))
+            .mul(float(1.0).sub(wProg)).mul(uWave.z);
+        // kept WELL below bloom — the ring reads as a passing pressure-front, not a flash-bang
+        // (additive + billboarded, and the reflector doubles it)
+        waveMat.colorNode = uWaveCol.mul(wRing).mul(0.28);
+        waveMat.transparent = true;
+        waveMat.blending = THREE.AdditiveBlending;
+        waveMat.depthWrite = false;
+        waveMat.toneMapped = false;
+        waveMat.fog = false;
+    }
+    const wave = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), waveMat);
+    wave.position.set(0, 19, -95);
+    wave.renderOrder = 3;
+    wave.visible = false;
+    haloSprites.push(wave); // camera-billboarded with the planet halos
+    scene.add(track(wave));
+    const triggerWave = (col, amp, dur) => {
+        uWave.value.set(uTime.value, dur, amp, 0);
+        uWaveCol.value.setRGB(col[0], col[1], col[2]);
+    };
+
     // ════ AURORA SPIRIT — the Ascension wing of light ════
     // Pure additive light (never geometry, never occludes the board): a broad
     // wing-arc of flowing feathers with an amber heart → magenta → cyan tips.
@@ -1235,28 +1396,72 @@ export function create({
         const k = intensity;
         const RX = 0; const RZ = -95; // rings emit under the relic on the water
         switch (kind) {
-        case 'lineClear':
-            sFlare = Math.min(1, sFlare + (0.14 + 0.06 * (payload.lines || 1)) * k);
-            spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * (payload.lines || 1)) * k);
+        case 'lineClear': {
+            const lines = payload.lines || 1;
+            const tetris = lines >= 4;
+            sFlare = Math.min(1, sFlare + (0.14 + 0.06 * lines) * k);
+            spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * lines) * k);
+            // "Lumen Spores" — the heart exhales golden seeds that scatter and float over the lake
+            const ep = uRelicPos.value;
+            if (tetris) {
+                spawnBurst(ep.x, ep.y, ep.z, [1.3, 1.05, 0.7], 0.9 * k, 140, 6.0, 0, 0.28);
+                triggerWave([1.0, 0.75, 0.45], 0.6 * k, 1.6);
+            } else {
+                spawnBurst(ep.x, ep.y, ep.z, [1.15, 0.72, 0.30], (0.30 + 0.12 * lines) * k, 52 + 18 * lines, 4.2, 0, 0.30);
+            }
             break;
-        case 'combo':
-            sCombo = Math.min(0.55, (payload.count || 0) * 0.06) * k;
-            if ((payload.count || 0) > 1) spawnRing(RX, RZ, 0.5 * k);
+        }
+        case 'combo': {
+            const count = payload.count || 0;
+            sCombo = Math.min(0.55, count * 0.06) * k;
+            if (count > 1) spawnRing(RX, RZ, 0.5 * k);
+            // "Resonance" — wisps orbit the heart (passive, via uComboGlow); every 3rd link sheds a magenta pulse
+            if (count >= 3 && count % 3 === 0) {
+                const ep = uRelicPos.value;
+                spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.35, 0.65], (0.25 + 0.03 * count) * k, 40 + 5 * count, 3.5, 0.5, 0.35);
+            }
             break;
-        case 'tspin':
+        }
+        case 'tspin': {
             sFlare = Math.min(1, sFlare + 0.32 * k);
             spawnRing(RX, RZ, 0.95 * k);
+            // "Chrysalis Twist" — a cyan helix corkscrews out of the heart
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [0.50, 0.92, 1.15], 0.55 * k, 85, 4.5, 1.0, 0.25);
+            triggerWave([0.5, 0.9, 1.1], 0.45 * k, 1.3);
             break;
+        }
         case 'b2b': if (payload.active) sFlare = Math.min(1, sFlare + 0.16 * k); break;
-        case 'perfectClear':
+        case 'perfectClear': {
             sFlare = Math.min(1, sFlare + 0.5 * k);
             spawnRing(RX, RZ, 1.2 * k); spawnRing(RX, RZ, 0.85 * k);
+            // "Ascension Bloom" — the heart releases everything: a violet-white sky-filling bloom
+            // (far shell) inside a warm inner burst, with the biggest shockwave
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.80, 1.25], 1.0 * k, 210, 7.0, 0.25, 0.20);
+            spawnBurst(ep.x, ep.y, ep.z, [1.25, 0.90, 0.50], 0.8 * k, 110, 5.0, 0, 0.45);
+            triggerWave([0.9, 0.8, 1.2], 0.95 * k, 2.2);
             break;
-        case 'levelUp': sBaseline = Math.min(0.85, sBaseline + 0.07 * k); break;
-        case 'pieceLock': case 'hardDrop':
+        }
+        case 'levelUp': {
+            sBaseline = Math.min(0.85, sBaseline + 0.07 * k);
+            // "The Waking Deepens" — a slow golden updraft as the world stirs another degree
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [1.1, 0.85, 0.40], 0.5 * k, 95, 6.0, 0.2, 0.55);
+            break;
+        }
+        case 'pieceLock': case 'hardDrop': {
             sFlare = Math.min(1, sFlare + 0.03 * k);
             spawnRing(RX, RZ, 0.16 * k);
+            // "Heartbeat" — a faint, dim exhale of embers off the shell (fires every few seconds —
+            // deliberately sparse + sub-bloom so a 30-minute session never tires the eye)
+            const ep = uRelicPos.value;
+            const hard = kind === 'hardDrop';
+            const dens = hard ? 0.20 : 0.13;
+            const reach = hard ? 21 : 15;
+            spawnBurst(ep.x, ep.y, ep.z, [0.62, 0.38, 0.16], dens * k, reach, 1.9, 0, 0.5);
             break;
+        }
         default: break;
         }
     };
@@ -1328,6 +1533,11 @@ export function create({
             // gated; raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
             const ce = uCosmos.value;
             streakGroup.visible = ce > 0.001;
+            // FX: combo resonance orbit intensity follows the live combo boost; the shockwave +
+            // orbit meshes are visibility-gated so idle frames pay nothing for them.
+            uComboGlow.value = Math.min(1, sCombo * 2.4);
+            orbit.visible = uComboGlow.value > 0.02;
+            wave.visible = (time - uWave.value.x) < uWave.value.y;
             if (monolith) {
                 const es = ce * ce * (3 - 2 * ce); // smoothstep ease
                 monolith.position.y = -46 + 60 * es;

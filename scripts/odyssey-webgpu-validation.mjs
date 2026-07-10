@@ -26,9 +26,13 @@ const FORCE_WEBGL = process.env.ODYSSEY_FORCE_WEBGL === '1';
 const SHOW = process.env.ODYSSEY_SHOW_WINDOW === '1';
 const ARTIFACT_DIR = path.join(ROOT, 'artifacts', 'odyssey', 'webgpu-validation', FORCE_WEBGL ? 'webgl2' : 'webgpu');
 
+// Every chapter in ChapterEnvironmentManager's CHAPTER_MODULE_LOADERS must be
+// listed here (plus the 3 non-chapter pilot scenes) — chapter 3 was silently
+// exempt for months. Pinned by tests/unit/odyssey-gpu-gate-coverage.test.js.
 const SCENES = [
-    'deep-ocean', 'earth-core', 'mountain-peaks', 'sky-drift', 'cosmic-expanse',
-    'black-hole-transcendence', 'urban-dreams', 'path', 'level-nodes', 'threshold-breach',
+    'deep-ocean', 'earth-core', 'surface-world', 'mountain-peaks', 'sky-drift',
+    'cosmic-expanse', 'black-hole-transcendence', 'urban-dreams',
+    'path', 'level-nodes', 'threshold-breach',
 ];
 
 const SHADER_ERR = /WGSL|ShaderModule|RenderPipeline|No stack defined|not declared|TSL:|uv.*not found|attribute.*not found/i;

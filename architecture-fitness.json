@@ -3,7 +3,7 @@
   "capturedAt": "2026-07-10",
   "metrics": {
     "lines:ffa-p2p-game-state": 5189,
-    "lines:main": 6504,
+    "lines:main": 6152,
     "lines:OdysseyMode": 4938,
     "lines:LocalMultiplayerMode": 4269,
     "lines:OnlineMultiplayerMode": 3280,
@@ -13,6 +13,6 @@
     "core-dom-globals": 565,
     "core-raf-drivers": 32,
     "resize-listeners": 58,
-    "event-bus-files": 1
+    "event-bus-files": 2
   }
 }

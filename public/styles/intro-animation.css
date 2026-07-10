@@ -810,6 +810,12 @@ body.start-modal-open .main-menu-logo {
     display: none !important;
 }
 
+/* The watchdog and explicit skip paths dispose the cinematic renderer. In that
+   terminal state the normal DOM logo becomes the stable menu identity. */
+body.startup-intro-skipped.start-modal-open .main-menu-logo {
+    display: block !important;
+}
+
 /* Electron: prefer a normal DOM logo in the menu. Keeping the shrunken intro
    title alive behind the cards creates a composited/filtered layer that can go
    soft in packaged Windows builds. */
