@@ -15,6 +15,7 @@ import {
     LOCK_RESET_LIMIT,
 } from './constants.js';
 import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
+import { insertGarbageEntries } from './garbage.js';
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
@@ -328,6 +329,41 @@ export function markBoardDirty(gameState) {
 
 export function canPlacePiece(gameState, piece, checkX, checkY) {
     return isValidPositionCached(gameState, piece, checkX, checkY);
+}
+
+/**
+ * THE garbage-application boundary (remediation plan §5.1 slice 1).
+ *
+ * insertGarbageEntries mutates lockedPieces by ALIAS (shifts every piece up,
+ * pushes garbage rows, settles floaters) and never repairs the derived
+ * representations — before this boundary, its five callers hand-rolled the
+ * grid/cache repair three different ways (one deferred the rebuild to the
+ * renderer's per-frame self-heal, a latent collision-vs-render hazard).
+ *
+ * Placement is computed from lockedPieces — the source of truth — never from
+ * a possibly-stale boardGrid; afterwards boardGrid is rebuilt and the cache
+ * invalidated in ONE place. Callers must not touch the arrays.
+ *
+ * @param {Object} gameState
+ * @param {Array<Object>} entries - Garbage entries (see garbage.js)
+ * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
+ * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
+ *   settledSteps: number, linesAfterInsertion: number[]} | null}
+ */
+export function applyGarbage(gameState, entries, options = {}) {
+    if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
+
+    const result = insertGarbageEntries(gameState.lockedPieces, entries, {
+        debug: options.debug,
+        settleFloatingBlocks: options.settleFloatingBlocks,
+    });
+
+    if (gameState.boardGrid) {
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    }
+    markBoardDirty(gameState);
+
+    return result;
 }
 
 export function getGhostLandingY(gameState) {

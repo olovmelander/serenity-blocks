@@ -3,9 +3,9 @@
  * Manages two independent game states with garbage interaction
  */
 
-import { GameState, markBoardDirty } from './game.js';
+import { GameState, applyGarbage } from './game.js';
 import {
-    GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
+    GarbageQueue, calculateGarbage, ATTACK_TYPES,
 } from './garbage.js';
 import { processPhysics } from './physics.js';
 
@@ -144,8 +144,10 @@ export class MultiplayerGameState {
             };
         }
 
-        const result = insertGarbageEntries(gameState.lockedPieces, burst, options);
-        markBoardDirty(gameState);
+        // Board mutation + grid/cache repair live in the ONE boundary (§5.1) —
+        // this caller previously only marked dirty and relied on the renderer's
+        // per-frame rebuild to heal the grid before the next collision read.
+        const result = applyGarbage(gameState, burst, options);
         return result;
     }
 
