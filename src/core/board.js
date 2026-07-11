@@ -56,6 +56,34 @@ export function markBoardDirty(gameState) {
     }
 }
 
+/**
+ * Rebuild boardGrid from lockedPieces ONLY when the board actually changed
+ * (§5.1: retires the renderer's unconditional per-frame rebuild).
+ *
+ * Change detection is two-channel, and both are required:
+ * - in-place mutations bump gameState.boardVersion via markBoardDirty();
+ * - restores/expansion REPLACE the boardGrid object — and may adopt a
+ *   snapshot's boardVersion that numerically collides with the current one
+ *   (demo seeks), so object identity is checked too.
+ *
+ * Bookkeeping is per-gameState (local multiplayer renders several boards).
+ * A writer that neither marks dirty nor replaces the grid was already broken
+ * for collision (ensureBoardCache trusts the same signals) — this makes the
+ * renderer trust them equally instead of masking the bug every frame.
+ * @param {Object} gameState
+ */
+export function syncBoardGridForRender(gameState) {
+    if (!gameState || !gameState.boardGrid) return;
+    const version = gameState.boardVersion || 0;
+    if (gameState._renderGridRef === gameState.boardGrid
+        && gameState._renderGridVersion === version) {
+        return;
+    }
+    rebuildBoardGridFromPieces(gameState.lockedPieces || [], gameState.boardGrid);
+    gameState._renderGridRef = gameState.boardGrid;
+    gameState._renderGridVersion = version;
+}
+
 export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid()) {
     clearBoardGrid(targetGrid);
 

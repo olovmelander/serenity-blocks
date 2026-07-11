@@ -13,6 +13,7 @@
     "core-dom-globals": 565,
     "core-raf-drivers": 32,
     "resize-listeners": 58,
-    "event-bus-files": 1
+    "event-bus-files": 1,
+    "board-write-sites": 17
   }
 }
