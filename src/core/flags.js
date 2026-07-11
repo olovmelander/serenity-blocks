@@ -171,6 +171,9 @@ export const FLAG_REGISTRY = [
     {
         name: 'fixedTick', default: false, purpose: '60Hz fixed-tick simulation (integer accumulators, unified clamp) — plan §5.3', kind: 'refactor', graduationBar: 'plan §5.0 cutover ladder: differential gate → online-MP default-on → solo → one release with legacy rollback → delete legacy + flag together', reader: 'local',
     },
+    {
+        name: 'cascadeShadow', default: false, purpose: 'production differential: run the pure §5.2 resolveCascade in shadow against legacy processPhysics on every lock, diff end-state + hole masks, log divergence — plan §5.10', kind: 'refactor', graduationBar: 'plan §5.10 legacy-deletion gate (≥50 clean sessions, ≥5 human) → resolver cutover replaces legacy processPhysics; flag dies with the legacy path', reader: 'flags',
+    },
 ];
 
 /** @param {string} name @returns {boolean} */

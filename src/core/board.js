@@ -27,6 +27,35 @@ export function cloneBoardGrid(grid) {
     return grid.map((row) => row.map((cell) => (cell ? { ...cell } : null)));
 }
 
+/**
+ * Invalidate the ghost-piece landing cache after any board/piece change.
+ * @param {Object} gameState
+ */
+export function invalidateGhostCache(gameState) {
+    if (!gameState) return;
+    if (!gameState.ghostCache) {
+        gameState.ghostCache = { piece: null, y: 0 };
+    }
+    gameState.ghostCacheDirty = true;
+    gameState.ghostCache.piece = null;
+}
+
+/**
+ * Mark the board render/collision caches stale after board content changed.
+ * Lives here (not game.js) so sim modules can flag dirtiness without
+ * importing the game module — keeps core dependency edges acyclic.
+ * @param {Object} gameState
+ */
+export function markBoardDirty(gameState) {
+    if (gameState) {
+        gameState.boardCacheDirty = true;
+        // Increment board version for rendering change detection
+        // This allows the renderer to know when the board content has changed
+        gameState.boardVersion = (gameState.boardVersion || 0) + 1;
+        invalidateGhostCache(gameState);
+    }
+}
+
 export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid()) {
     clearBoardGrid(targetGrid);
 
