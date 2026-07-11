@@ -1,6 +1,5 @@
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop */
 import * as THREE from 'three';
-import { loadGltfCached } from './ocean-asset-loader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
@@ -9,6 +8,7 @@ import {
     dot,
     float,
     max as tslMax,
+    materialColor,
     mix,
     normalize as tslNormalize,
     normalWorld,
@@ -20,6 +20,7 @@ import {
     uniform,
     vec3,
 } from 'three/tsl';
+import { loadGltfCached } from './ocean-asset-loader.js';
 import { tslCausticProjection } from './ocean-tsl-helpers.js';
 import {
     OCEAN_FAUNA_ASSET_VERSION,
@@ -31,6 +32,7 @@ import {
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const DEFAULT_COOLDOWN = [9999, 9999];
 const MIN_FIRST_SPAWN_DELAY = 90;
+const ASSET_PRELOAD_LEAD_TIME = 24;
 const PLAYFIELD_SAFE_Z = -82;
 
 // ── Shark predator-prey behavior ────────────────────────────────────────────
@@ -477,13 +479,16 @@ export class OceanRareFaunaSystem {
         this.getGameplayEffects = getGameplayEffects;
         this.rng = rng;
         this.settings = normalizeSettings(preset?.rareFauna);
+        this.disposed = false;
+        this.loadGeneration = 0;
 
         this.assets = new Map();
         this.assetStatus = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, 'idle']));
         this.assetRuntime = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, null]));
         this.assetErrors = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, null]));
         this.instancePool = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, []]));
-        this.loadPromise = null;
+        this.assetLoadPromises = new Map();
+        this.pendingLoadKind = null;
         this.activeCreatures = [];
         const offsets = RARE_FAUNA_KINDS.map((_, i) => randRange(
             this.rng,
@@ -512,19 +517,42 @@ export class OceanRareFaunaSystem {
     }
 
     init() {
-        if (this.settings.enabled && this.settings.maxActive > 0) {
-            this.ensureAssetsLoaded();
-        }
+        // First cameo is at least 90 s away. updatePreloadSchedule() already
+        // starts the chosen asset 24 s before it is due, so loading a multi-MB
+        // whale/manta during theme boot only creates avoidable startup spikes.
     }
 
-    ensureAssetsLoaded() {
-        if (this.loadPromise) return this.loadPromise;
-        this.loadPromise = (async () => {
-            const promises = RARE_FAUNA_KINDS.map((kind) => this.loadAsset(kind));
-            const results = await Promise.all(promises);
-            return results;
-        })();
-        return this.loadPromise;
+    getNextScheduledKind() {
+        return RARE_FAUNA_KINDS.reduce((nextKind, kind) => (
+            !nextKind || this.nextByKind[kind] < this.nextByKind[nextKind] ? kind : nextKind
+        ), null);
+    }
+
+    ensureAssetLoaded(kind) {
+        if (!kind) return Promise.resolve(null);
+        if (this.assets.has(kind)) return Promise.resolve(this.assets.get(kind));
+        if (this.assetLoadPromises.has(kind)) return this.assetLoadPromises.get(kind);
+        if (this.assetStatus[kind] === 'missing' || this.assetStatus[kind] === 'error') {
+            return Promise.resolve(null);
+        }
+
+        const promise = this.loadAsset(kind).finally(() => {
+            this.assetLoadPromises.delete(kind);
+        });
+        this.assetLoadPromises.set(kind, promise);
+        return promise;
+    }
+
+    queueAssetLoad(kind) {
+        if (!kind) return Promise.resolve(null);
+        if (this.pendingLoadKind) {
+            return this.assetLoadPromises.get(this.pendingLoadKind) ?? Promise.resolve(null);
+        }
+
+        this.pendingLoadKind = kind;
+        return this.ensureAssetLoaded(kind).finally(() => {
+            if (this.pendingLoadKind === kind) this.pendingLoadKind = null;
+        });
     }
 
     async loadAsset(kind) {
@@ -540,6 +568,7 @@ export class OceanRareFaunaSystem {
     }
 
     async loadAssetCandidate(kind, candidates, index, lastError) {
+        if (this.disposed) return null;
         if (index >= candidates.length) {
             this.assetStatus[kind] = 'error';
             console.warn(`🌊 [Ocean] Rare fauna ${kind} assets failed to load:`, lastError);
@@ -547,8 +576,15 @@ export class OceanRareFaunaSystem {
         }
 
         const asset = candidates[index];
+        const generation = this.loadGeneration;
         try {
             const gltf = await loadGltfCached(asset.url);
+            // The theme may have been evicted while the network/cache request
+            // was in flight. Do not populate a disposed scene.
+            if (this.disposed || generation !== this.loadGeneration || !this.scene) {
+                disposeObject(gltf.scene);
+                return null;
+            }
             this.prepareAsset(gltf.scene);
             const record = { gltf, asset, fallbackUsed: asset.fallback === true };
             this.assets.set(kind, record);
@@ -558,6 +594,7 @@ export class OceanRareFaunaSystem {
             this.prewarmCreatureInstances(kind, record);
             return record;
         } catch (error) {
+            if (this.disposed || generation !== this.loadGeneration) return null;
             this.assetErrors[kind] = {
                 assetId: asset.id,
                 message: error?.message || String(error),
@@ -610,13 +647,13 @@ export class OceanRareFaunaSystem {
                     map: mat.map ?? null,
                     normalMap: mat.normalMap ?? null,
                     roughnessMap: mat.roughnessMap ?? null,
-                    metalnessMap: mat.metalnessMap ?? null,
-                    roughness: mat.roughness !== undefined ? mat.roughness : 0.4,
-                    metalness: mat.metalness !== undefined ? mat.metalness : 0.1,
+                    metalnessMap: null,
+                    roughness: Math.min(0.68, Math.max(0.34, mat.roughness ?? 0.46)),
+                    metalness: 0.0,
                     envMapIntensity: 1.2,
                     vertexColors: hasVertexColors,
                     transparent: true,
-                    depthWrite: true,
+                    depthWrite: false,
                     opacity: 0,
                     side: mat.side ?? THREE.DoubleSide,
                     fog: true,
@@ -632,10 +669,10 @@ export class OceanRareFaunaSystem {
                     float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
                     float(2.5),
                 );
-                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.45);
+                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
 
                 // Add animated caustics overlay
-                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.28);
+                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
 
                 const isTurtle = child.name.toLowerCase().includes('turtle')
                     || (mat.name && mat.name.toLowerCase().includes('turtle'))
@@ -653,13 +690,13 @@ export class OceanRareFaunaSystem {
 
                     // Mix with original color but lean towards procedural pattern
                     nodeMat.colorNode = mix(
-                        vec3(nodeMat.color.r, nodeMat.color.g, nodeMat.color.b),
+                        materialColor.rgb,
                         shellColor,
                         float(0.65),
                     );
 
                     // More intense rim for turtle
-                    const turtleRim = vec3(0.2, 0.6, 0.55).mul(rimFresnel).mul(0.6);
+                    const turtleRim = vec3(0.2, 0.6, 0.55).mul(rimFresnel).mul(0.16);
                     nodeMat.emissiveNode = causticColor.add(turtleRim);
                 } else {
                     nodeMat.emissiveNode = causticColor.add(rimColor);
@@ -760,6 +797,7 @@ export class OceanRareFaunaSystem {
         const dt = clamp(delta || 0.016, 0.001, 0.05);
         this.updateActiveCreatures(dt, time, glowIntensity);
         this.updateQuietWindow(time, currentStrength, gameplayIntensity);
+        this.prefetchUpcomingAsset(time);
 
         if (!this.settings.enabled || this.settings.maxActive <= 0) return;
         if (this.activeCreatures.length >= this.settings.maxActive) return;
@@ -768,11 +806,22 @@ export class OceanRareFaunaSystem {
         const kind = this.selectDueKind(time);
         if (!kind) return;
         if (!this.areAssetsReady(kind)) {
-            this.ensureAssetsLoaded();
+            this.queueAssetLoad(kind);
             return;
         }
 
         this.spawnCreature(kind, time, { forced: false });
+    }
+
+    prefetchUpcomingAsset(time) {
+        if (!this.settings.enabled || this.settings.maxActive <= 0 || this.pendingLoadKind) return;
+        let nextKind = null;
+        for (const kind of RARE_FAUNA_KINDS) {
+            if (this.assetStatus[kind] !== 'idle') continue;
+            if (!nextKind || this.nextByKind[kind] < this.nextByKind[nextKind]) nextKind = kind;
+        }
+        if (!nextKind || this.nextByKind[nextKind] - time > ASSET_PRELOAD_LEAD_TIME) return;
+        this.queueAssetLoad(nextKind);
     }
 
     updateQuietWindow(time, currentStrength, gameplayIntensity) {
@@ -1393,11 +1442,15 @@ export class OceanRareFaunaSystem {
     }
 
     selectDueKind(time) {
-        const candidates = RARE_FAUNA_KINDS.filter((kind) => time >= this.nextByKind[kind]);
-        if (candidates.length > 0) {
-            return candidates[Math.floor(this.rng() * candidates.length)];
-        }
-        return null;
+        const candidates = RARE_FAUNA_KINDS.filter((kind) => (
+            time >= this.nextByKind[kind]
+            && this.assetStatus[kind] !== 'missing'
+            && this.assetStatus[kind] !== 'error'
+        ));
+        if (candidates.length === 0) return null;
+        const readyCandidates = candidates.filter((kind) => this.areAssetsReady(kind));
+        const pool = readyCandidates.length > 0 ? readyCandidates : candidates;
+        return pool[Math.floor(this.rng() * pool.length)];
     }
 
     areAssetsReady(kind = null) {
@@ -1409,7 +1462,7 @@ export class OceanRareFaunaSystem {
 
     async forceSpawn(kind = 'turtle') {
         const normalizedKind = RARE_FAUNA_KINDS.includes(kind) ? kind : 'turtle';
-        await this.ensureAssetsLoaded();
+        await this.ensureAssetLoaded(normalizedKind);
         return this.spawnCreature(normalizedKind, this.lastUpdateTime, { forced: true });
     }
 
@@ -1776,6 +1829,8 @@ export class OceanRareFaunaSystem {
     }
 
     dispose() {
+        this.disposed = true;
+        this.loadGeneration += 1;
         this.activeCreatures.forEach((creature) => {
             this.releaseCreature(creature);
         });
@@ -1793,7 +1848,8 @@ export class OceanRareFaunaSystem {
         }
         this.scene = null;
         this.camera = null;
-        this.loadPromise = null;
+        this.assetLoadPromises.clear();
+        this.pendingLoadKind = null;
     }
 }
 

@@ -901,7 +901,8 @@ describe('boot warp startup decision', () => {
         const { playBootWarpStartupSequence } = await import(
             '../../src/ui/boot-warp-orchestrator.js'
         );
-        const dismissStartupShell = vi.fn();
+        const shellDismissal = deferred();
+        const dismissStartupShell = vi.fn(() => shellDismissal.promise);
         const startupPipeline = {
             signal: new AbortController().signal,
             waitForStep: (value) => Promise.resolve(value),
@@ -922,6 +923,15 @@ describe('boot warp startup decision', () => {
         });
         expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin');
         expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
+
+        let surfaceReady = false;
+        result.surfaceReadyPromise.then(() => { surfaceReady = true; });
+        await Promise.resolve();
+        expect(surfaceReady).toBe(false);
+
+        shellDismissal.resolve();
+        await result.surfaceReadyPromise;
+        expect(surfaceReady).toBe(true);
     });
 });
 

@@ -27,7 +27,10 @@ export const OCEAN_CORAL_AUTHORING_CONTRACT = {
 };
 
 const CORAL_MODULES = typeof import.meta.glob === 'function'
-    ? import.meta.glob('./assets/corals/**/*.glb', {
+    ? import.meta.glob([
+        './assets/corals/**/*.glb',
+        '!./assets/corals/**/*-rigged.glb',
+    ], {
         eager: true,
         query: '?url',
         import: 'default',

@@ -2,7 +2,7 @@
  * Ocean Theme — Camera State Machine
  *
  * Three moods with smooth 2.5s lerp:
- *   - Drift    : fov 58, reef-forward pitch sway, focalZ 42. Default.
+ *   - Drift    : fov 54, reef-forward pitch sway, focalZ 42. Default.
  *   - Cathedral: fov 50, high pitch sway 0.13 (tilts up to shafts), focalZ 78.
  *                Triggered probabilistically when god rays visible upper half.
  *   - Trail    : fov 63, large dolly amp, focalZ 28.
@@ -19,7 +19,7 @@ const MOODS = {
 
 const MOOD_PARAMS = {
     [MOODS.DRIFT]: {
-        fov: 58,
+        fov: 54,
         pitchSway: 0.065,
         focalZ: 42,
         dollyAmp: 4.2,
@@ -66,9 +66,14 @@ export class OceanCamera {
         this.currentParams = { ...MOOD_PARAMS[MOODS.DRIFT] };
         this.fromParams = { ...MOOD_PARAMS[MOODS.DRIFT] };
         this.toParams = { ...MOOD_PARAMS[MOODS.DRIFT] };
+        if (this.camera) {
+            this.camera.fov = this.currentParams.fov;
+            this.camera.updateProjectionMatrix();
+        }
 
         // Focal depth for DOF
         this.focalDepth = normalizeFocalDepth(30, camera);
+        this.updateResult = { focalDepth: this.focalDepth };
 
         // Shake impulse state. Magnitude decays exponentially; per-frame noise
         // is overlaid on top of the existing drift so mood transitions are
@@ -196,8 +201,10 @@ export class OceanCamera {
         this.currentPointerY += (this.targetPointerY - this.currentPointerY) * delta * 1.5;
 
         // Combine pointer parallax
-        const parallaxX = this.currentPointerX * 22.0; // Increased from 12.0
-        const parallaxY = this.currentPointerY * 11.0; // Increased from 6.0
+        // Preserve the authored sun/monument frame while retaining a gentle
+        // sense of underwater parallax at the pointer extremes.
+        const parallaxX = this.currentPointerX * 14.0;
+        const parallaxY = this.currentPointerY * 7.0;
 
         // Smooth continuous camera drift (underwater floating feel)
         const drift1 = Math.sin(time * 0.045) * 9;
@@ -216,7 +223,10 @@ export class OceanCamera {
         const shakeNoiseY = Math.sin(time * 53.1 + 1.7) * Math.cos(time * 29.3);
         const shakeNoiseZ = Math.sin(time * 41.9 + 0.4) * Math.cos(time * 37.5);
 
-        this.camera.position.x = parallaxX + drift1 + Math.sin(time * 0.12) * 2.4 + shakeNoiseX * shakeMag * 1.0;
+        this.camera.position.x = parallaxX
+            + drift1
+            + Math.sin(time * 0.12) * 2.4
+            + shakeNoiseX * shakeMag;
         this.camera.position.y = 24
             + parallaxY
             + Math.sin(time * 0.07) * 4
@@ -228,10 +238,16 @@ export class OceanCamera {
             + shakeNoiseZ * shakeMag * 0.4;
 
         // Look-at target that drifts gently — Cathedral adds upward pitch
-        const lookX = this.currentPointerX * 25.0 + drift2 * 0.4 + Math.sin(time * 0.04) * 3 + shakeNoiseY * shakeMag * 0.6;
+        const lookX = this.currentPointerX * 16.0
+            + drift2 * 0.4
+            + Math.sin(time * 0.04) * 3
+            + shakeNoiseY * shakeMag * 0.6;
         const pitchOffset = Math.sin(time * 0.06) * p.pitchSway * 50;
-        const lookY = this.currentPointerY * 12.0 + 12 + Math.sin(time * 0.055) * 3.4 + pitchOffset + shakeNoiseX * shakeMag * 0.5;
-        const lookZ = -24 + Math.cos(time * 0.045) * 7 + shakeNoiseZ * shakeMag * 0.3;
+        const lookY = this.currentPointerY * 8.0 + 8
+            + Math.sin(time * 0.055) * 3.4
+            + pitchOffset
+            + shakeNoiseX * shakeMag * 0.5;
+        const lookZ = -34 + Math.cos(time * 0.045) * 7 + shakeNoiseZ * shakeMag * 0.3;
         this.camera.lookAt(lookX, lookY, lookZ);
 
         // Subtle camera roll for extra underwater feel
@@ -239,8 +255,9 @@ export class OceanCamera {
 
         // Update normalized focal depth for the post pass.
         this.focalDepth = normalizeFocalDepth(p.focalZ, this.camera);
+        this.updateResult.focalDepth = this.focalDepth;
 
-        return { focalDepth: this.focalDepth };
+        return this.updateResult;
     }
 
     collectSignoff() {
@@ -255,6 +272,7 @@ export class OceanCamera {
 
     dispose() {
         this.camera = null;
+        this.updateResult = null;
     }
 }
 
