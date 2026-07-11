@@ -75,9 +75,9 @@ module.exports = {
         },
         {
             name: 'no-circular',
-            comment: 'Circular imports (plan §3d) — warn while the baseline is measured; ratchet '
-                + 'the count down before flipping to error.',
-            severity: 'warn',
+            comment: 'Circular imports (plan §3d) — count reached ZERO 2026-07-11 (game⇄physics and '
+                + 'game⇄infinity-grid broken by moving markBoardDirty to board.js); now a hard gate.',
+            severity: 'error',
             from: {},
             to: { circular: true },
         },
