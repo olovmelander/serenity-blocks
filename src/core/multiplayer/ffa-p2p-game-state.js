@@ -16,6 +16,7 @@ import {
     hardDrop,
     canPlacePiece,
     applyGarbage,
+    restoreBoardState,
 } from '../game.js';
 import { GarbageQueue } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
@@ -3082,23 +3083,14 @@ export class FFAGameStateP2P {
                 // Stats: authoritative for everyone EXCEPT the local player mid-hold, and
                 // EXCEPT peerOwns (the peer owns its own score/lines/level — the local sim
                 // computes them; the desync digest still compares them as a backstop).
+                // MONOTONIC for the local player under holdStats: score/lines/level never
+                // decrease within a round, so a latency-lagged host frame can't pull them
+                // BELOW our prediction (the regress-then-jump on hold release); a genuinely
+                // AHEAD host still wins via max(). forceLocal hard resync sets
+                // ownsLocalPiece=false and hard-adopts. Writes live in the §5.1 boundary.
+                let statsMode = 'hold';
                 if (!peerOwns && !holdLocalStats) {
-                    if (ownsLocalPiece && this._holdStatsEnabled) {
-                        // MONOTONIC adopt for the local player: score/lines/level never
-                        // decrease within a round, so never let a latency-lagged host frame
-                        // pull them BELOW our prediction (the residual regress-then-jump on
-                        // hold release). The host always catches up to the predicted value
-                        // within ~RTT; if the host is genuinely AHEAD (we under-predicted),
-                        // max() still adopts the higher authoritative value. forceLocal hard
-                        // resync sets ownsLocalPiece=false and hard-adopts via the else.
-                        player.gameState.score = Math.max(player.gameState.score || 0, playerData.score || 0);
-                        player.gameState.lines = Math.max(player.gameState.lines || 0, playerData.lines || 0);
-                        player.gameState.level = Math.max(player.gameState.level || 0, playerData.level || 0);
-                    } else {
-                        player.gameState.score = playerData.score;
-                        player.gameState.lines = playerData.lines;
-                        player.gameState.level = playerData.level;
-                    }
+                    statsMode = (ownsLocalPiece && this._holdStatsEnabled) ? 'monotonic' : 'adopt';
                 }
                 player.frags = playerData.frags;
                 player.isAlive = playerData.isAlive;
@@ -3136,36 +3128,33 @@ export class FFAGameStateP2P {
                 // Board grid: authoritative for everyone EXCEPT peerOwns (the peer owns its
                 // own grid/piece as a local sim — re-basing it per-frame to a stale host
                 // frame is the root of the higher-then-reset / glitch / jump artifacts).
-                if (shouldApplyBoardState && !holdLocalBoard && !peerOwns) {
-                    // Settled board grid is authoritative for everyone.
-                    if (playerData.grid) {
-                        player.gameState.boardGrid = playerData.grid;
-                        player.gameState.grid = playerData.grid;
-                    }
-                    player.gameState.lockedPieces = playerData.lockedPieces || [];
-                    player.gameState.boardCache = null;
-                    player.gameState.boardCacheDirty = true;
-
-                    if (ownsLocalPiece) {
-                        this._reconcileLocalPiece(player.gameState, playerData.currentPiece);
-                    } else {
-                        player.gameState.currentPiece = playerData.currentPiece ? {
-                            ...playerData.currentPiece,
-                        } : null;
-                    }
-                }
-
-                if (shouldApplyBoardState && !holdLocalBoard && !peerOwns) {
-                    // Speed (dropInterval) and the preview queue are authoritative. The
-                    // gravity phase (dropCounter) stays LOCAL for the local player so its
-                    // fall stays smooth and prediction-driven. (peerOwns: the peer owns its
-                    // own dropInterval/nextPieces/dropCounter — derived from the shared seed
-                    // + its own level, so they match the host deterministically.)
-                    player.gameState.dropInterval = playerData.dropInterval || 1000;
-                    player.gameState.nextPieces = playerData.nextPieces ? [...playerData.nextPieces] : [];
-                    if (!ownsLocalPiece) {
-                        player.gameState.dropCounter = playerData.dropCounter || 0;
-                    }
+                // Speed (dropInterval) + preview queue are authoritative; the gravity phase
+                // (dropCounter) stays LOCAL for the local player so its fall stays smooth
+                // and prediction-driven. (peerOwns: the peer derives dropInterval/nextPieces/
+                // dropCounter from the shared seed + its own level, matching the host
+                // deterministically.) All WRITES live in the §5.1 restore boundary; only
+                // the policy is computed here.
+                const adoptBoard = shouldApplyBoardState && !holdLocalBoard && !peerOwns;
+                restoreBoardState(player.gameState, {
+                    grid: playerData.grid,
+                    lockedPieces: playerData.lockedPieces,
+                    currentPiece: playerData.currentPiece,
+                    nextPieces: playerData.nextPieces,
+                    dropInterval: playerData.dropInterval,
+                    dropCounter: playerData.dropCounter,
+                    score: playerData.score,
+                    lines: playerData.lines,
+                    level: playerData.level,
+                }, {
+                    statsMode,
+                    adoptBoard,
+                    mirrorGrid: true,
+                    keepCurrentPiece: ownsLocalPiece,
+                    adoptSpeed: adoptBoard,
+                    adoptDropCounter: !ownsLocalPiece,
+                });
+                if (adoptBoard && ownsLocalPiece) {
+                    this._reconcileLocalPiece(player.gameState, playerData.currentPiece);
                 }
 
                 // Reconstruct the garbage queue from the host snapshot (drives the GARBAGE
@@ -4380,14 +4369,13 @@ export class FFAGameStateP2P {
         // grid with an older (in-flight) 30Hz snapshot.
         if (typeof data.hostTick === 'number') player._lastLockHostTick = data.hostTick;
 
-        if (Array.isArray(data.grid)) {
-            player.gameState.boardGrid = data.grid;
-            player.gameState.grid = data.grid;
-        }
-        player.gameState.currentPiece = data.currentPiece ? { ...data.currentPiece } : null;
+        // Writes live in the §5.1 restore boundary (lock-events adopt board +
+        // piece only; stats ride the 30Hz snapshots).
+        restoreBoardState(player.gameState, {
+            grid: Array.isArray(data.grid) ? data.grid : null,
+            currentPiece: data.currentPiece,
+        }, { adoptBoard: true, mirrorGrid: true });
         player.gameState.isGameOver = !!data.topOut;
-        player.gameState.boardCache = null;
-        player.gameState.boardCacheDirty = true;
 
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.PIECE_LOCK, {
             steamId: data.playerSteamId,

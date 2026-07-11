@@ -332,6 +332,73 @@ export function canPlacePiece(gameState, piece, checkX, checkY) {
 }
 
 /**
+ * Sanctioned bulk board/stat restore (remediation plan §5.1 slice 2).
+ *
+ * The MP snapshot-adoption paths bulk-assigned board/stat fields inline —
+ * the exact "permanent bypass" the plan warns any mutation boundary against.
+ * This function owns those WRITES; callers keep computing the policy (the
+ * hold/peerOwns/reconcile rules stay in ffa-p2p-game-state.js, expressed as
+ * the flags below instead of scattered field pokes).
+ *
+ * demo-state.js restoreGameStateSnapshot remains the OTHER sanctioned bulk
+ * restore (full ~40-field demo seek); it collapses into this boundary when
+ * §5.9's compact savestate redefines the snapshot schema.
+ *
+ * @param {Object} gameState
+ * @param {Object} snapshot
+ *   {grid?, lockedPieces?, currentPiece?, nextPieces?, dropInterval?,
+ *    dropCounter?, score?, lines?, level?}
+ * @param {Object} policy
+ * @param {'adopt'|'monotonic'|'hold'} [policy.statsMode='hold']
+ *   adopt = authoritative overwrite; monotonic = never let a lagged frame
+ *   pull score/lines/level below the local prediction (max()); hold = leave.
+ * @param {boolean} [policy.adoptBoard=false] write grid/pieces + invalidate cache
+ * @param {boolean} [policy.mirrorGrid=false] also set gameState.grid (the MP
+ *   wire mirror — ffa-only 4th representation)
+ * @param {boolean} [policy.keepCurrentPiece=false] caller reconciles the piece
+ *   itself (peer-owns-local-piece path)
+ * @param {boolean} [policy.adoptSpeed=false] dropInterval + nextPieces
+ * @param {boolean} [policy.adoptDropCounter=false] gravity phase (remote boards
+ *   only — the local player's fall stays prediction-driven)
+ */
+export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
+    if (!gameState) return;
+
+    if (policy.statsMode === 'adopt') {
+        gameState.score = snapshot.score;
+        gameState.lines = snapshot.lines;
+        gameState.level = snapshot.level;
+    } else if (policy.statsMode === 'monotonic') {
+        gameState.score = Math.max(gameState.score || 0, snapshot.score || 0);
+        gameState.lines = Math.max(gameState.lines || 0, snapshot.lines || 0);
+        gameState.level = Math.max(gameState.level || 0, snapshot.level || 0);
+    }
+
+    if (policy.adoptBoard) {
+        if (snapshot.grid) {
+            gameState.boardGrid = snapshot.grid;
+            if (policy.mirrorGrid) gameState.grid = snapshot.grid;
+        }
+        if ('lockedPieces' in snapshot) {
+            gameState.lockedPieces = snapshot.lockedPieces || [];
+        }
+        if (!policy.keepCurrentPiece && 'currentPiece' in snapshot) {
+            gameState.currentPiece = snapshot.currentPiece ? { ...snapshot.currentPiece } : null;
+        }
+        gameState.boardCache = null;
+        gameState.boardCacheDirty = true;
+    }
+
+    if (policy.adoptSpeed) {
+        gameState.dropInterval = snapshot.dropInterval || 1000;
+        gameState.nextPieces = snapshot.nextPieces ? [...snapshot.nextPieces] : [];
+        if (policy.adoptDropCounter) {
+            gameState.dropCounter = snapshot.dropCounter || 0;
+        }
+    }
+}
+
+/**
  * THE garbage-application boundary (remediation plan §5.1 slice 1).
  *
  * insertGarbageEntries mutates lockedPieces by ALIAS (shifts every piece up,
