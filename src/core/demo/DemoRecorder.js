@@ -3,7 +3,9 @@
  * Captures accepted gameplay commands on the authoritative simulation frame.
  */
 
-import { captureGameStateSnapshot, isStableDemoCheckpointState } from './demo-state.js';
+import {
+    captureGameStateSnapshot, isStableDemoCheckpointState, computeBoardDigest,
+} from './demo-state.js';
 
 export const DEMO_VERSION = '2.0';
 export const DEMO_TICK_MS = 1000 / 60;
@@ -155,10 +157,18 @@ export class DemoRecorder {
     /**
      * Stop recording and finalize demo.
      * @param {Object} finalStats - Final game statistics
+     * @param {Object} [gameState] - Final game state; when provided, a terminal
+     *   checkpoint is forced and the final board digest is recorded so the demo
+     *   carries a verifiable outcome (plan §5.0 step 4: cutover comparisons
+     *   diff FINAL BOARD digests — metadata previously had only score/lines).
      * @returns {Object} The recorded demo object
      */
-    stopRecording(finalStats = {}) {
+    stopRecording(finalStats = {}, gameState = null) {
         if (!this.isRecording || !this.demo) return null;
+
+        if (gameState) {
+            this.recordCheckpoint(gameState, true);
+        }
 
         this.isRecording = false;
 
@@ -183,6 +193,8 @@ export class DemoRecorder {
             level: finalStats.level || 1,
             inputCount: this.demo.inputs.length,
             seed: this.demo.initialState.seed,
+            finalBoardDigest: gameState ? computeBoardDigest(gameState.boardGrid) : null,
+            gameOver: Boolean(gameState?.isGameOver),
             ...finalStats,
         };
 

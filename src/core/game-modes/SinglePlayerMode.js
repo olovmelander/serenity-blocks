@@ -415,7 +415,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 durationMs: this.gameState?.simTimeMs,
                 durationFrames: this.gameState?.simFrame,
                 piecesPlaced: this.gameState?.piecesPlaced,
-            });
+            }, this.gameState); // terminal checkpoint + final board digest (§5.0)
             this.lastRecordedDemo = demo;
             this.isRecording = false;
             console.log('[SinglePlayer] Recording stopped. Demo captured:', !!demo, 'Inputs:', demo?.inputs?.length);
