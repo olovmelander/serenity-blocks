@@ -106,6 +106,17 @@ const METRICS = {
         const buses = trackedJs.filter((f) => /(?:^|\/)(?:event-bus|event-optimizer|event-emitter)[^/]*\.js$/.test(f));
         return { value: buses.length, detail: buses };
     },
+
+    // Board-state write sites (plan §5.1): direct lockedPieces/boardGrid
+    // REPLACEMENT assignments may only shrink — new board mutations go through
+    // the sanctioned boundaries (applyGarbage/restoreBoardState/lockPiece/
+    // processPhysics) which repair grid + caches in one place. Assignment-only
+    // on purpose: `=` (not `==`/`===`) catches the grid/array-swap class the
+    // renderer's retired per-frame rebuild used to mask.
+    'board-write-sites': () => {
+        const { total, perFile } = countMatches(trackedJs, /\.(?:lockedPieces|boardGrid)\s*=[^=]/g);
+        return { value: total, detail: top(perFile, 8) };
+    },
 };
 
 function lineCount(file) {
