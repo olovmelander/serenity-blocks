@@ -8,12 +8,11 @@
  * - Connects victory/failure evaluation
  */
 
-import { rebuildBoardGridFromPieces } from '../board.js';
-import { GameState, markBoardDirty } from '../game.js';
+import { GameState, applyGarbage } from '../game.js';
 import {
     ROWS, HIDDEN_ROWS, LEVEL_SPEEDS,
 } from '../constants.js';
-import { columnsToMask, insertGarbageEntries, maskArrayToBits } from '../garbage.js';
+import { columnsToMask, maskArrayToBits } from '../garbage.js';
 import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
@@ -138,18 +137,12 @@ export class GameplayHybridEngine {
         }
 
         const entries = buildStartingRowEntries(rowCount, this.levelConfig?.id || 0);
-        const result = insertGarbageEntries(this.gameState.lockedPieces, entries, {
-            boardGrid: this.gameState.boardGrid,
-            settleFloatingBlocks: false,
-        });
+        // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
+        const result = applyGarbage(this.gameState, entries, { settleFloatingBlocks: false });
 
-        if (result.topOut) {
+        if (result?.topOut) {
             this.gameState.isGameOver = true;
-            return;
         }
-
-        rebuildBoardGridFromPieces(this.gameState.lockedPieces, this.gameState.boardGrid);
-        markBoardDirty(this.gameState);
     }
 
     /**

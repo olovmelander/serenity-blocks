@@ -14,11 +14,10 @@ import {
     rotate,
     softDrop,
     hardDrop,
-    markBoardDirty,
     canPlacePiece,
+    applyGarbage,
 } from '../game.js';
-import { rebuildBoardGridFromPieces } from '../board.js';
-import { GarbageQueue, insertGarbageEntries } from '../garbage.js';
+import { GarbageQueue } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
 import { processPhysics } from '../physics.js';
 import { PLAYER_COLORS } from '../constants.js';
@@ -1936,10 +1935,8 @@ export class FFAGameStateP2P {
         const killerName = attackerName || (killerId ? this.players.get(killerId)?.name : null);
         const isSelfKill = !killerId || killerId === steamId;
 
-        const result = insertGarbageEntries(player.gameState.lockedPieces, burst, {
-            boardGrid: player.gameState.boardGrid,
-            debug: this.debugGarbage,
-        });
+        // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
+        const result = applyGarbage(player.gameState, burst, { debug: this.debugGarbage });
 
         if (!result || result.topOut) {
             this._logGarbage(`💀 ${player.name} topped out from garbage insertion!`);
@@ -1980,13 +1977,6 @@ export class FFAGameStateP2P {
             });
             return;
         }
-
-        if (player.gameState.boardGrid) {
-            rebuildBoardGridFromPieces(player.gameState.lockedPieces, player.gameState.boardGrid);
-            player.gameState.boardCache = null;
-            player.gameState.boardCacheDirty = true;
-        }
-        markBoardDirty(player.gameState);
 
         // PHASE 3.2: Dispatch garbage insertion event for visual effects
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
@@ -4254,17 +4244,9 @@ export class FFAGameStateP2P {
                     variant: entry.variant || 'normal',
                 }));
 
-                const result = insertGarbageEntries(gameState.lockedPieces, normalizedBurst, {
-                    boardGrid: gameState.boardGrid,
-                    debug: this.debugGarbage,
-                });
-
-                if (result && !result.topOut && gameState.boardGrid) {
-                    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
-                    gameState.boardCache = null;
-                    gameState.boardCacheDirty = true;
-                }
-                markBoardDirty(gameState);
+                // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
+                // Peer prediction ignores topOut — death is host-authoritative.
+                applyGarbage(gameState, normalizedBurst, { debug: this.debugGarbage });
 
                 // Dispatch event for UI feedback
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
