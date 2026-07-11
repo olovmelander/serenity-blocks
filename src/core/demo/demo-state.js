@@ -34,6 +34,34 @@ export function isStableDemoCheckpointState(gameState) {
     return Boolean(gameState.currentPiece);
 }
 
+/**
+ * Deterministic digest of a board grid (plan §5.0 step 4 / §5.10): the
+ * verifiable half of a demo's final outcome — cutover comparisons diff final
+ * BOARD digests, not just score/lines. DJB2 over row:col:type of occupied
+ * cells in fixed scan order; returns an unsigned hex string. Cosmetic fields
+ * (color, id) are deliberately excluded — theme-dependent state must never
+ * enter a digest (plan §5.11 digest hygiene).
+ * @param {Array<Array<{type?: string}|null>>} boardGrid
+ * @returns {string|null}
+ */
+export function computeBoardDigest(boardGrid) {
+    if (!Array.isArray(boardGrid)) return null;
+    let hash = 5381;
+    for (let y = 0; y < boardGrid.length; y += 1) {
+        const row = boardGrid[y];
+        if (!Array.isArray(row)) continue;
+        for (let x = 0; x < row.length; x += 1) {
+            const cell = row[x];
+            if (!cell) continue;
+            const token = `${y}:${x}:${cell.type || ''}`;
+            for (let i = 0; i < token.length; i += 1) {
+                hash = ((hash * 33) ^ token.charCodeAt(i)) >>> 0;
+            }
+        }
+    }
+    return hash.toString(16);
+}
+
 export function isStableDemoCheckpointSnapshot(snapshot) {
     if (!snapshot) return false;
     if (snapshot.isGameOver) return true;
