@@ -10,7 +10,7 @@
  * clones of the same inputs.
  */
 import { describe, it, expect } from 'vitest';
-import { processPhysics } from '../../src/core/physics.js';
+import { processPhysicsLegacy, processPhysicsResolved } from '../../src/core/physics.js';
 import { resolveCascade } from '../../src/core/cascade-resolver.js';
 import { createBoardGrid } from '../../src/core/board.js';
 import { computeBoardDigest } from '../../src/core/demo/demo-state.js';
@@ -23,10 +23,11 @@ function clonePieces(pieces) {
     return pieces.map((p) => ({ ...p, shape: p.shape.map((r) => r.slice()) }));
 }
 
-/** Legacy driver: real gameState + recording callbacks, delays skipped. */
-async function runLegacy(pieces, context) {
-    const gs = {
-        boardGrid: createBoardGrid(),
+function makeGameState(pieces, context) {
+    return {
+        boardGrid: context.boardHeight
+            ? Array.from({ length: context.boardHeight }, () => Array(COLS).fill(null))
+            : createBoardGrid(),
         lockedPieces: clonePieces(pieces),
         score: 1000, // non-zero so deltas are real deltas
         lines: context.lines,
@@ -42,11 +43,17 @@ async function runLegacy(pieces, context) {
         comboMultiplierEnabled: context.comboMultiplierEnabled,
         comboMultiplier: context.comboMultiplier,
         comboCount: context.comboCount,
+        speedMultiplier: context.speedMultiplier,
     };
+}
+
+/** Legacy driver: real gameState + recording callbacks, delays skipped. */
+async function runLegacy(pieces, context) {
+    const gs = makeGameState(pieces, context);
     const events = {
         scoreAdds: [], lineClears: [], gravitySteps: 0, garbage: null, perfect: null, b2b: 0,
     };
-    await processPhysics(gs, {
+    await processPhysicsLegacy(gs, {
         onScoreAdd: (points) => events.scoreAdds.push(points),
         onLineClear: (count, holeCols, masks, rows, wave) => events.lineClears.push({
             count, holeCols: [...holeCols], masks: masks.map((m) => m.slice()), rows: [...rows], wave,
@@ -57,6 +64,28 @@ async function runLegacy(pieces, context) {
         onB2B: () => { events.b2b += 1; },
     });
     return { gs, events };
+}
+
+/** Record EVERY callback (render ticks included) as [name, ...scalarized args]. */
+function fullRecorder(log) {
+    const scalarize = (a) => {
+        if (a === null || a === undefined || typeof a !== 'object') return a;
+        if (Array.isArray(a)) return a.join(',');
+        return '<obj>';
+    };
+    return new Proxy({}, {
+        get(_t, prop) {
+            if (typeof prop !== 'string') return undefined;
+            return (...args) => { log.push([prop, ...args.map(scalarize)]); };
+        },
+    });
+}
+
+async function runWithFullLog(impl, pieces, context) {
+    const gs = makeGameState(pieces, context);
+    const log = [];
+    await impl(gs, fullRecorder(log));
+    return { gs, log };
 }
 
 function compare(pieces, context, label) {
@@ -109,6 +138,24 @@ function compare(pieces, context, label) {
             expect(result.comboCountAfter, `${label}: comboCount`).toBe(gs.comboCount);
             expect(result.comboMultiplierAfter, `${label}: comboMultiplier`).toBe(gs.comboMultiplier);
         }
+
+        // ── §5.2 cutover leg: the V2 replay must equal legacy on the FULL
+        // callback log (order + scalarized args, render ticks included) and
+        // the complete end state. This is the dual-path certification the
+        // flag flip rides on. ──
+        const legacyRun = await runWithFullLog(processPhysicsLegacy, pieces, context);
+        const v2Run = await runWithFullLog(processPhysicsResolved, pieces, context);
+        expect(v2Run.log, `${label}: v2 full callback log`).toEqual(legacyRun.log);
+        expect(computeBoardDigest(v2Run.gs.boardGrid), `${label}: v2 board digest`)
+            .toBe(computeBoardDigest(legacyRun.gs.boardGrid));
+        ['score', 'lines', 'level', 'linesUntilNextLevel', 'dropInterval', 'b2bActive',
+            'comboCount', 'comboMultiplier'].forEach((field) => {
+            expect(v2Run.gs[field], `${label}: v2 ${field}`).toBe(legacyRun.gs[field]);
+        });
+        expect(v2Run.gs.lockedPieces.length, `${label}: v2 piece count`).toBe(legacyRun.gs.lockedPieces.length);
+        expect(JSON.stringify(v2Run.gs.comboState ?? null), `${label}: v2 comboState`)
+            .toBe(JSON.stringify(legacyRun.gs.comboState ?? null));
+        expect(v2Run.gs.lineClearCounts, `${label}: v2 lineClearCounts`).toEqual(legacyRun.gs.lineClearCounts);
     })();
 }
 
@@ -186,6 +233,21 @@ describe('resolveCascade ≡ processPhysics (structured scenarios)', () => {
         baseContext({ comboMultiplierEnabled: true, comboMultiplier: 2, comboCount: 2 }),
         'combo-mult',
     ));
+    it('odyssey speed multiplier divides the recomputed drop interval on level-up', () => compare(
+        [fullRowPiece(BOTTOM), block(0, BOTTOM - 4)],
+        baseContext({ linesUntilNextLevel: 1, speedMultiplier: 1.5 }),
+        'speed-mult',
+    ));
+    it('tall Infinity-style board (40 rows) cascades identically', () => {
+        const tallBottom = 40 - 1;
+        return compare([
+            fullRowPiece(tallBottom),
+            {
+                pieceId: 'gap', color: '#777', type: 'garbage', x: 1, y: tallBottom - 1, shape: [Array(COLS - 1).fill(1)],
+            },
+            block(0, tallBottom - 9, 'high-faller'), // falls 8 rows into the gap
+        ], baseContext({ boardHeight: 40 }), 'tall-board');
+    });
 });
 
 describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
@@ -244,6 +306,30 @@ describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
             await compare(pieces, context, `case-${i}`);
         }
     }, 60000);
+
+    it('v2 advances the replay sim-clock identically to legacy (demo alignment)', async () => {
+        const pieces = [
+            fullRowPiece(BOTTOM),
+            {
+                pieceId: 'gap', color: '#777', type: 'garbage', x: 1, y: BOTTOM - 1, shape: [Array(COLS - 1).fill(1)],
+            },
+            block(0, BOTTOM - 2, 'faller'),
+        ];
+        const context = baseContext();
+        const runs = [];
+        for (const impl of [processPhysicsLegacy, processPhysicsResolved]) {
+            const gs = makeGameState(pieces, context);
+            gs.isReplay = true; // isSeeking already true → delays skipped but clock advances
+            gs.simTimeMs = 5000;
+            // eslint-disable-next-line no-await-in-loop
+            await impl(gs, {});
+            runs.push(gs);
+        }
+        expect(runs[1].simTimeMs).toBe(runs[0].simTimeMs);
+        expect(runs[1].simFrame).toBe(runs[0].simFrame);
+        expect(runs[1].lastTime).toBe(runs[0].lastTime);
+        expect(runs[0].simTimeMs).toBeGreaterThan(5000); // the clock actually moved
+    });
 
     it('resolver purity: inputs are never mutated', () => {
         const pieces = [fullRowPiece(BOTTOM), block(0, BOTTOM - 3)];

@@ -33,7 +33,7 @@ import {
 import { rebuildBoardGridFromPieces, cloneBoardGrid, updatePiecePositionInGrid } from './board.js';
 import {
     detectFullLines, removeClearedLines, findConnectedComponents, isPartOfPiece,
-} from './physics.js';
+} from './cascade-helpers.js';
 import { calculateQuadraLineScore } from './scoring.js';
 
 /** Deep-clone locked pieces (removeClearedLines mutates p.shape rows). */

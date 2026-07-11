@@ -26,7 +26,7 @@
  *    at level 1 (single=275) and the cascade bonus (wave-2 single=495).
  */
 import { describe, it, expect } from 'vitest';
-import { processPhysics } from '../../src/core/physics.js';
+import { processPhysicsLegacy, processPhysicsResolved } from '../../src/core/physics.js';
 import { createBoardGrid } from '../../src/core/board.js';
 import { COLS, ROWS, HIDDEN_ROWS } from '../../src/core/constants.js';
 
@@ -78,7 +78,13 @@ function recorder(log) {
 const gravitySteps = (log) => log.filter(([n]) => n === 'onGravityStep').length;
 const withoutGravity = (log) => log.filter(([n]) => n !== 'onGravityStep');
 
-describe('processPhysics callback schedule (the §5.2 animation-replay contract)', () => {
+// Both implementations must reproduce the SAME golden schedules: legacy is
+// the recording source; the §5.2 resolver replay (cascadeV2) is certified
+// against the identical pins — this is the cutover's primary behavioral gate.
+describe.each([
+    ['legacy', processPhysicsLegacy],
+    ['cascadeV2 replay', processPhysicsResolved],
+])('processPhysics callback schedule — %s (the §5.2 animation-replay contract)', (_impl, processPhysics) => {
     it('single clear: full wave sequence, payloads, and gravity-step count', async () => {
         const gs = makeState({ lockedPieces: [fullRowPiece(BOTTOM), loneBlock(0, BOTTOM - 4)] });
         const log = [];

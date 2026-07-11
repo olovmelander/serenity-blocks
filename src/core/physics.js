@@ -11,6 +11,18 @@ import {
     cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid, markBoardDirty,
 } from './board.js';
 import { calculateQuadraLineScore } from './scoring.js';
+import {
+    isPartOfPiece, findConnectedComponents, detectFullLines, removeClearedLines,
+} from './cascade-helpers.js';
+import { resolveCascade } from './cascade-resolver.js';
+import { readFlag } from './flags.js';
+
+// Shared cascade primitives moved to cascade-helpers.js (plan §5.2 — one
+// implementation for both the legacy loop and the pure resolver, no cycle).
+// Re-exported here for existing consumers.
+export {
+    isPartOfPiece, findConnectedComponents, detectFullLines, removeClearedLines,
+};
 
 const PHYSICS_DEBUG = false;
 const physicsLog = (...args) => {
@@ -70,109 +82,9 @@ async function waitForPhysicsDelay(gameState, durationMs) {
     }
 }
 
-/**
- * Determines if a specific board position is part of a given piece
- * @param {number} boardX - X coordinate on the board
- * @param {number} boardY - Y coordinate on the board
- * @param {Object} piece - The piece to check against
- * @returns {boolean} True if the position is part of the piece
- */
-export function isPartOfPiece(boardX, boardY, piece) {
-    const localX = boardX - piece.x;
-    const localY = boardY - piece.y;
-    if (
-        localY >= 0
-        && localY < piece.shape.length
-        && localX >= 0
-        && localX < piece.shape[0].length
-    ) {
-        return piece.shape[localY][localX] > 0;
-    }
-    return false;
-}
+/* moved to cascade-helpers.js: isPartOfPiece */
 
-/**
- * Splits the board into connected components (individual blocks or clusters)
- * Uses flood fill algorithm to find connected blocks with the same ID
- * @param {Array<Array>} boardData - The current board state
- * @returns {Array<Object>} Array of piece objects representing connected components
- */
-export function findConnectedComponents(boardData) {
-    const pieces = [];
-    const visited = Array.from({ length: boardData.length }, () => Array(boardData[0].length).fill(false));
-
-    for (let r = 0; r < boardData.length; r++) {
-        for (let c = 0; c < boardData[0].length; c++) {
-            if (boardData[r][c] !== null && !visited[r][c]) {
-                const cellData = boardData[r][c];
-                const component = [];
-                const queue = [[r, c]];
-                visited[r][c] = true;
-
-                let minR = r;
-                let maxR = r;
-                let minC = c;
-                let maxC = c;
-
-                // Flood fill to find all connected blocks
-                while (queue.length > 0) {
-                    const [row, col] = queue.shift();
-                    component.push({ r: row, c: col });
-
-                    minR = Math.min(minR, row);
-                    maxR = Math.max(maxR, row);
-                    minC = Math.min(minC, col);
-                    maxC = Math.max(maxC, col);
-
-                    // Check 4 adjacent cells (up, down, left, right)
-                    [
-                        [-1, 0],
-                        [1, 0],
-                        [0, -1],
-                        [0, 1],
-                    ].forEach(([dr, dc]) => {
-                        const nr = row + dr;
-                        const nc = col + dc;
-                        if (
-                            nr >= 0
-                            && nr < boardData.length
-                            && nc >= 0
-                            && nc < boardData[0].length
-                            && !visited[nr][nc]
-                            && boardData[nr][nc] !== null
-                            && boardData[nr][nc].id === cellData.id
-                        ) {
-                            visited[nr][nc] = true;
-                            queue.push([nr, nc]);
-                        }
-                    });
-                }
-
-                // Create shape array for this component
-                const shape = Array.from({ length: maxR - minR + 1 }, () => Array(maxC - minC + 1).fill(0));
-                component.forEach(({ r, c }) => {
-                    shape[r - minR][c - minC] = 1;
-                });
-
-                const shapeKey = cellData.type || cellData.color;
-                // Preserve attacker's player color for garbage blocks
-                // Check cellData.color first before falling back to COLORS lookup
-                const baseColor = cellData.color || COLORS[shapeKey] || '#808080';
-                pieces.push({
-                    x: minC,
-                    y: minR,
-                    shape,
-                    shapeKey,
-                    type: shapeKey,
-                    color: baseColor,
-                    pieceId: cellData.id,
-                });
-            }
-        }
-    }
-
-    return pieces;
-}
+/* moved to cascade-helpers.js: findConnectedComponents */
 
 /**
  * Applies gravity to blocks after line clears, making them fall independently
@@ -323,25 +235,7 @@ export async function applyGravity(
     // No need for final rebuild!
 }
 
-/**
- * Detects all complete lines on the board
- * @param {Array<Array>} boardData - The current board state
- * @returns {Array<number>} Array of Y coordinates of full lines
- */
-export function detectFullLines(boardData) {
-    const fullLines = [];
-    for (let y = boardData.length - 1; y >= HIDDEN_ROWS; y--) {
-        const isFull = boardData[y].every((cell) => cell !== null);
-        if (isFull) {
-            const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');
-            if (hasGarbage) {
-                physicsLog(`[detectFullLines] Line ${y} is full and contains GARBAGE blocks`);
-            }
-            fullLines.push(y);
-        }
-    }
-    return fullLines;
-}
+/* moved to cascade-helpers.js: detectFullLines */
 
 /**
  * Calculate garbage hole columns for cascade clears (Quadra-authentic fallback)
@@ -581,32 +475,7 @@ function getContiguousSpan(columns) {
     return span;
 }
 
-/**
- * Removes cleared lines from locked pieces
- * @param {Array<Object>} lockedPieces - Array of locked pieces
- * @param {Array<number>} fullLines - Y coordinates of lines to remove
- * @returns {Array<Object>} New array of pieces with cleared lines removed
- */
-export function removeClearedLines(lockedPieces, fullLines) {
-    const newPieces = [];
-
-    lockedPieces.forEach((p) => {
-        const newShape = [];
-        p.shape.forEach((row, localY) => {
-            const globalY = p.y + localY;
-            if (!fullLines.includes(globalY)) {
-                newShape.push(row);
-            }
-        });
-
-        if (newShape.length > 0) {
-            p.shape = newShape;
-            newPieces.push(p);
-        }
-    });
-
-    return newPieces;
-}
+/* moved to cascade-helpers.js: removeClearedLines */
 
 /**
  * Main physics processing loop - QUADRA-ACCURATE IMPLEMENTATION
@@ -627,7 +496,7 @@ export function removeClearedLines(lockedPieces, fullLines) {
  * @param {Object} callbacks - Callback functions
  * @returns {Promise<void>} Resolves when all physics processing is complete
  */
-export async function processPhysics(gameState, callbacks) {
+export async function processPhysicsLegacy(gameState, callbacks) {
     let linesClearedThisTurn = 0;
     let cascadeCount = 0;
 
@@ -1007,4 +876,185 @@ export async function processPhysics(gameState, callbacks) {
 
     // CRITICAL: Invalidate board cache so collision detection uses fresh data
     markBoardDirty(gameState);
+}
+
+/**
+ * §5.2 cutover path: resolve the entire cascade synchronously up front, then
+ * replay the precomputed waves as the flash/gravity animation.
+ *
+ * The callback schedule, per-wave state-commit points (ADR-0011:
+ * commit-per-wave), delay sequence, and sim-clock advancement are identical to
+ * processPhysicsLegacy — pinned by physics-callback-schedule.test.js running
+ * both implementations against the same goldens, and by the dual-path
+ * differential suite. The hole-mask capture machinery (movedArray /
+ * preGravityBoard) does not run here: masks come precomputed from the
+ * resolver. Board mutation between waves re-executes the same deterministic
+ * helpers the resolver used (cascade-helpers.js), so piece/grid evolution is
+ * equal by construction.
+ *
+ * @param {Object} gameState
+ * @param {Object} callbacks - same 19-callback surface as the legacy path
+ * @returns {Promise<void>}
+ */
+export async function processPhysicsResolved(gameState, callbacks) {
+    const result = resolveCascade(gameState.lockedPieces, {
+        boardHeight: gameState.boardGrid?.length,
+        level: gameState.level,
+        lines: gameState.lines,
+        linesUntilNextLevel: gameState.linesUntilNextLevel,
+        dropInterval: gameState.dropInterval,
+        disableLevelProgression: gameState.disableLevelProgression,
+        b2bActive: gameState.b2bActive,
+        speedMultiplier: gameState.speedMultiplier,
+        lastPlacedPieceX: gameState.lastPlacedPieceX,
+        comboState: gameState.comboState,
+        comboMultiplierEnabled: gameState.comboMultiplierEnabled,
+        comboMultiplier: gameState.comboMultiplier,
+        comboCount: gameState.comboCount,
+    });
+
+    for (const wave of result.waves) {
+        // One live array per wave, threaded through flash + clear exactly like
+        // the legacy loop's `fullLines` (triggerFlash consumers get the same
+        // reference the flash stages iterate).
+        const fullLines = wave.fullLines.slice();
+
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+
+        if (gameState.lineClearCounts) {
+            const count = fullLines.length;
+            gameState.lineClearCounts[count] = (gameState.lineClearCounts[count] || 0) + 1;
+        }
+
+        if (wave.cascadeCount >= 2 && callbacks.triggerCombo) {
+            callbacks.triggerCombo(wave.cascadeCount);
+        }
+        if (wave.cascadeCount >= 2 && callbacks.triggerCascadeWave) {
+            callbacks.triggerCascadeWave(wave.cascadeCount);
+        }
+
+        // --- Per-wave state commit (ADR-0011) — legacy timeline point ---
+        const oldLevel = gameState.level;
+        gameState.lines += fullLines.length;
+        gameState.linesUntilNextLevel -= fullLines.length;
+        if (wave.leveledTo !== null) {
+            gameState.level = wave.leveledTo;
+            gameState.linesUntilNextLevel += 15;
+            gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
+            if (gameState.speedMultiplier) {
+                gameState.dropInterval /= gameState.speedMultiplier;
+            }
+            if (callbacks.playLevelUp) callbacks.playLevelUp();
+            if (callbacks.onLevelUp) callbacks.onLevelUp(gameState.level);
+        } else if (gameState.linesUntilNextLevel <= 0) {
+            // Counter reset when level progression is disabled.
+            gameState.linesUntilNextLevel += 15;
+        }
+        if (oldLevel !== gameState.level && callbacks.updateBackground) {
+            callbacks.updateBackground(gameState.level);
+        }
+
+        gameState.score += wave.points;
+        if (callbacks.playLineClear) callbacks.playLineClear();
+        if (callbacks.onScoreAdd) callbacks.onScoreAdd(wave.points);
+        if (callbacks.onLineClear) {
+            callbacks.onLineClear(
+                fullLines.length,
+                wave.holeColumns.slice(),
+                wave.holeMasks.map((mask) => mask.slice()),
+                fullLines.slice(),
+                wave.cascadeCount,
+            );
+        }
+
+        if (wave.tSpin && callbacks.onTSpin) {
+            callbacks.onTSpin(fullLines.length);
+        }
+        const isDifficultClear = fullLines.length >= 4 || wave.tSpin;
+        if (isDifficultClear) {
+            if (wave.b2bFired && callbacks.onB2B) {
+                callbacks.onB2B(true);
+            }
+            gameState.b2bActive = true;
+        } else if (wave.cascadeCount === 1) {
+            gameState.b2bActive = false;
+        }
+
+        if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, wave.cascadeCount);
+        if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
+        if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
+
+        // --- Flash stages: verbatim legacy animation (30/20/20ms × class) ---
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        const markedBoard = cloneBoardGrid(gameState.boardGrid);
+        const flashStages = [[1.0, 30], [0.6, 20], [0.2, 20]];
+        for (const [alpha, delay] of flashStages) {
+            fullLines.forEach((y) => {
+                for (let x = 0; x < COLS; x++) {
+                    if (markedBoard[y][x]) {
+                        markedBoard[y][x].alpha = alpha;
+                    }
+                }
+            });
+            if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
+            if (callbacks.draw) callbacks.draw();
+            // eslint-disable-next-line no-await-in-loop
+            await waitForPhysicsDelay(gameState, delay * wave.speedMultiplierClass);
+        }
+
+        // --- Clear + split + settle (same deterministic helpers) ---
+        gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        gameState.lockedPieces = findConnectedComponents(gameState.boardGrid);
+        // eslint-disable-next-line no-await-in-loop
+        await applyGravity(gameState, callbacks.draw, null, callbacks);
+    }
+
+    if (result.cascadeCount > 0 && callbacks.onCascadeComplete) {
+        callbacks.onCascadeComplete(result.cascadeCount);
+    }
+
+    if (result.perfectClear) {
+        gameState.score += result.perfectClear.bonus;
+        if (callbacks.onScoreAdd) callbacks.onScoreAdd(result.perfectClear.bonus);
+        if (callbacks.onPerfectClear) {
+            callbacks.onPerfectClear(result.perfectClear.depth, result.perfectClear.bonus);
+        }
+    }
+
+    if (result.linesClearedThisTurn > 0 && callbacks.onGarbageReady) {
+        callbacks.onGarbageReady(result.garbageSummary);
+    }
+
+    if (gameState.comboState) {
+        const after = result.comboStateAfter;
+        gameState.comboState.depth = after.depth;
+        gameState.comboState.complexity = after.complexity;
+        gameState.comboState.holeMask = after.holeMask.map((mask) => mask.slice());
+        gameState.comboState.sendForClean = after.sendForClean;
+        gameState.comboState.manualColumns = [...after.manualColumns];
+        gameState.comboState.lockFootprint = [];
+        gameState.comboState.sourceColor = null;
+    }
+
+    if (gameState.comboMultiplierEnabled) {
+        gameState.comboCount = result.comboCountAfter;
+        gameState.comboMultiplier = result.comboMultiplierAfter;
+    }
+
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    markBoardDirty(gameState);
+}
+
+/**
+ * The live entry point every mode calls. Dispatches to the §5.2 resolver
+ * replay behind the cascadeV2 flag (registry: src/core/flags.js); legacy is
+ * the rollback lever until the §5.10 soak clears, then both flag and legacy
+ * path are deleted together.
+ */
+export async function processPhysics(gameState, callbacks) {
+    if (readFlag('cascadeV2', false)) {
+        return processPhysicsResolved(gameState, callbacks);
+    }
+    return processPhysicsLegacy(gameState, callbacks);
 }
