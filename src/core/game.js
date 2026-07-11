@@ -14,13 +14,20 @@ import {
     LOCK_DELAY_MS,
     LOCK_RESET_LIMIT,
 } from './constants.js';
-import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
+import {
+    generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
+} from './board.js';
 import { insertGarbageEntries } from './garbage.js';
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
 import { createBlindTimers } from './blind.js';
+import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
+
+// Re-export: markBoardDirty moved to board.js (cycle break); external callers
+// still import it from here until the §5.1 leftover un-exports it entirely.
+export { markBoardDirty };
 
 function resolveActiveTetrominoColor(shapeKey) {
     const defaultColor = COLORS[shapeKey] || '#808080';
@@ -87,14 +94,7 @@ function ensureBoardCache(gameState) {
     return gameState.boardCache;
 }
 
-function invalidateGhostCache(gameState) {
-    if (!gameState) return;
-    if (!gameState.ghostCache) {
-        gameState.ghostCache = { piece: null, y: 0 };
-    }
-    gameState.ghostCacheDirty = true;
-    gameState.ghostCache.piece = null;
-}
+// invalidateGhostCache + markBoardDirty live in board.js (imported above).
 
 function hasLockedCells(grid) {
     if (!grid) return false;
@@ -317,16 +317,6 @@ function isValidPositionCached(gameState, piece, checkX, checkY) {
     return true;
 }
 
-export function markBoardDirty(gameState) {
-    if (gameState) {
-        gameState.boardCacheDirty = true;
-        // Increment board version for rendering change detection
-        // This allows the renderer to know when the board content has changed
-        gameState.boardVersion = (gameState.boardVersion || 0) + 1;
-        invalidateGhostCache(gameState);
-    }
-}
-
 export function canPlacePiece(gameState, piece, checkX, checkY) {
     return isValidPositionCached(gameState, piece, checkX, checkY);
 }
@@ -363,6 +353,8 @@ export function canPlacePiece(gameState, piece, checkX, checkY) {
  */
 export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
     if (!gameState) return;
+    // Board changed outside the lock path — invalidates in-flight §5.10 shadow samples.
+    gameState.boardMutationEpoch = (gameState.boardMutationEpoch || 0) + 1;
 
     if (policy.statsMode === 'adopt') {
         gameState.score = snapshot.score;
@@ -419,6 +411,8 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  */
 export function applyGarbage(gameState, entries, options = {}) {
     if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
+    // Board changed outside the lock path — invalidates in-flight §5.10 shadow samples.
+    gameState.boardMutationEpoch = (gameState.boardMutationEpoch || 0) + 1;
 
     const result = insertGarbageEntries(gameState.lockedPieces, entries, {
         debug: options.debug,
@@ -592,6 +586,8 @@ export class GameState {
      * Resets the game state to initial values
      */
     reset() {
+        // A restart mid-physics invalidates in-flight §5.10 shadow samples.
+        this.boardMutationEpoch = (this.boardMutationEpoch || 0) + 1;
         this.lockedPieces = [];
         if (this.currentPiece) {
             piecePool.release(this.currentPiece);
@@ -1134,10 +1130,14 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
 
     // Start physics processing
     if (physicsCallbacks) {
+        // §5.10 shadow differential: clone the resolver inputs before legacy
+        // physics mutates, diff after it completes (pre/post tap points).
+        const shadowSample = cascadeShadowEnabled() ? armCascadeShadow(gameState) : null;
         gameState.isProcessingPhysics = true;
         gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
             .then(() => {
                 gameState.isProcessingPhysics = false;
+                if (shadowSample) settleCascadeShadow(shadowSample, gameState);
                 if (
                     !gameState.isGameOver
                     && !gameState.isStopped

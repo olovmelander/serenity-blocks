@@ -4,7 +4,7 @@
  */
 
 import { COLS } from './constants.js';
-import { markBoardDirty } from './game.js';
+import { markBoardDirty } from './board.js';
 
 /**
  * Create initial infinity grid

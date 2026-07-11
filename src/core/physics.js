@@ -7,8 +7,9 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
-import { cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid } from './board.js';
-import { markBoardDirty } from './game.js';
+import {
+    cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid, markBoardDirty,
+} from './board.js';
 import { calculateQuadraLineScore } from './scoring.js';
 
 const PHYSICS_DEBUG = false;
