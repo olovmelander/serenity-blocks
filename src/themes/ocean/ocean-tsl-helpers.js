@@ -5,10 +5,8 @@
  */
 
 import {
-    clamp,
     cos,
     dot,
-    exp,
     float,
     floor,
     fract,
@@ -152,12 +150,32 @@ export function tslCausticProjection(worldXZ, time, scale = 0.15) {
  * @param {float} density - overall fog density multiplier (default 1.0)
  */
 export function tslDepthGradedFog(color, worldY, viewDist, density = 1.0) {
-    const shallowFog = vec3(0.05, 0.52, 0.70);
-    const deepFog = vec3(0.02, 0.28, 0.48);
-    const depthMix = smoothstep(float(-25.0), float(24.0), worldY);
-    const fogColor = mix(deepFog, shallowFog, depthMix);
-    const distFog = float(1.0).sub(exp(viewDist.negate().mul(float(0.0036).mul(density))));
-    return mix(color, fogColor, clamp(distFog.mul(0.48), float(0.0), float(0.62)));
+    // scene.fogNode owns fog color and opacity. Material helpers only model
+    // wavelength loss so fog is never stacked across three separate layers.
+    const deepWeight = float(1.0).sub(
+        smoothstep(float(-25.0), float(24.0), worldY),
+    );
+    const attenuationStrength = float(density).mul(
+        float(0.72).add(deepWeight.mul(0.28)),
+    );
+    return tslWarmCoolAttenuation(color, viewDist, attenuationStrength);
+}
+
+/**
+ * Preserve warm coral and sand locally, then remove red wavelengths with
+ * distance while retaining blue detail. This is deliberately multiplicative
+ * so the original material value structure survives the attenuation.
+ */
+export function tslWarmCoolAttenuation(color, viewDist, strength = 1.0) {
+    const farWeight = smoothstep(float(46.0), float(172.0), viewDist)
+        .mul(strength)
+        .clamp(float(0.0), float(1.0));
+    const absorption = mix(
+        vec3(1.0),
+        vec3(0.62, 0.84, 1.02),
+        farWeight.mul(0.72),
+    );
+    return color.mul(absorption);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

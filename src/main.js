@@ -659,6 +659,7 @@ async function reportDesktopStartupPhase(phase, payload = {}) {
 let startupShellDismissed = false;
 let startupShellReadyReported = false;
 let startupShellShownAt = 0;
+let startupShellDismissPromise = null;
 
 /**
  * If a studio-logo image `src` is set on #startup-logo-image, reveal it and hide the
@@ -710,7 +711,7 @@ async function revealStartupShell() {
 
 function dismissStartupShell(reason = 'ready', options = {}) {
     if (startupShellDismissed) {
-        return;
+        return startupShellDismissPromise || Promise.resolve();
     }
 
     startupShellDismissed = true;
@@ -718,7 +719,8 @@ function dismissStartupShell(reason = 'ready', options = {}) {
 
     const shell = document.getElementById('startup-shell');
     if (!shell) {
-        return;
+        startupShellDismissPromise = Promise.resolve();
+        return startupShellDismissPromise;
     }
 
     // Quick handoff: the WebGPU particle warp is taking over the reveal, so we only
@@ -729,8 +731,13 @@ function dismissStartupShell(reason = 'ready', options = {}) {
         performanceMonitor.recordEvent('startup_shell_dismissed', { reason, quick: true });
         // Outlast the 420ms cross-dissolve so the opaque shell covers the whole handoff
         // (no black frame can flash between shell-gone and warp-still-brightening).
-        setTimeout(() => { shell.remove(); }, 620);
-        return;
+        startupShellDismissPromise = new Promise((resolve) => {
+            setTimeout(() => {
+                shell.remove();
+                resolve();
+            }, 620);
+        });
+        return startupShellDismissPromise;
     }
 
     shell.classList.add('is-hidden');
@@ -743,9 +750,13 @@ function dismissStartupShell(reason = 'ready', options = {}) {
     }, 2800);
     // Outlast the ~2.75s "Diamond Ignition → Nebula Birth" reveal so the shell (and its
     // white-out) isn't yanked mid-develop-out — which would pop a hard cut/black.
-    setTimeout(() => {
-        shell.remove();
-    }, 2900);
+    startupShellDismissPromise = new Promise((resolve) => {
+        setTimeout(() => {
+            shell.remove();
+            resolve();
+        }, 2900);
+    });
+    return startupShellDismissPromise;
 }
 
 /**
@@ -780,6 +791,7 @@ class SerenityBlocks {
         this.cloudSyncManager = null;
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.customCursor = null;
+        this.customCursorMountAllowed = false;
         this.cleanupHandlers = [];
         this.isCleaningUp = false;
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
@@ -915,14 +927,17 @@ class SerenityBlocks {
         this.startBackgroundScene();
     }
 
+    allowCustomCursorMount() {
+        this.customCursorMountAllowed = true;
+        this.mountCustomCursor();
+    }
+
     /**
-     * Mount the cosmic cursor. Idempotent — safe to call EARLY (during the boot splash,
-     * so the cursor is visible from the very start) AND from the deferred menu-idle path.
-     * Cheap when idle (throttled rAF, only paints on pointer movement) and it still honors
-     * the customCursorEnabled setting via the cursor's own shouldRender() gate.
+     * Mount the cosmic cursor only after startup has exposed an interactive surface.
+     * Deferred services may call this earlier, but the gate keeps the ident and warp clean.
      */
     mountCustomCursor() {
-        if (this.customCursor) {
+        if (!this.customCursorMountAllowed || this.customCursor) {
             return;
         }
         this.customCursor = new CustomCursor({
@@ -1548,8 +1563,12 @@ class SerenityBlocks {
             }
             // Always force-restart the animation loop on resume to ensure
             // the RAF chain is running, regardless of _wasPaused state.
-            if (typeof theme.animate === 'function') {
-                theme._wasPaused = false;
+            // restartRenderLoop() covers themes such as Ocean that expose
+            // startAnimation() rather than animate().
+            theme._wasPaused = false;
+            if (typeof theme.restartRenderLoop === 'function') {
+                requestAnimationFrame(() => theme.restartRenderLoop());
+            } else if (typeof theme.animate === 'function') {
                 requestAnimationFrame(() => theme.animate());
             }
         }
@@ -5545,10 +5564,6 @@ async function bootstrap() {
             // the studio ident covers the screen, then start the intro behind that shell.
             // The optional warp may only run after the intro renderer has settled, because
             // it must reuse the intro GPUDevice when a warmed heavy theme is already alive.
-            // Mount the cosmic cursor NOW so it's visible from the START of the boot
-            // experience (studio ident → warp → intro), not only once the menu appears.
-            // Idempotent + cheap when idle; the deferred menu-idle path skips it if mounted.
-            app?.mountCustomCursor?.();
             await waitForPipelineStep(app?.prepareFirstThemeBeforeIntro?.());
 
             // Hold the studio ident on screen for at least 4s (reveal ~1.5s + a held
@@ -5587,7 +5602,7 @@ async function bootstrap() {
             ]));
             markStartup('intro:first-phase-gate', { result: introPhaseGate });
 
-            await playBootWarpStartupSequence({
+            const bootWarpResult = await playBootWarpStartupSequence({
                 app,
                 urlParams,
                 introAnimation,
@@ -5603,6 +5618,12 @@ async function bootstrap() {
             if (startupPipeline.snapshot().introStatus === 'running') {
                 markStartup('intro:title-reveal-request', { source: 'post-transition' });
                 introAnimation.revealTitle?.('post-transition');
+                Promise.resolve(bootWarpResult.surfaceReadyPromise)
+                    .then(() => app?.allowCustomCursorMount?.())
+                    .catch((error) => {
+                        console.warn('[Startup] Cursor reveal gate failed:', error);
+                        app?.allowCustomCursorMount?.();
+                    });
                 await waitForPipelineStep(introPromise);
             }
             if (startupPipeline.snapshot().introStatus === 'running') {
@@ -5642,9 +5663,12 @@ async function bootstrap() {
         }
 
         await onNextPaint();
-        dismissStartupShell(
+        const shellDismissalPromise = dismissStartupShell(
             menuPipelineSnapshot.introStatus === 'skipped' ? 'menu-ready' : 'intro-complete',
         );
+        Promise.resolve(shellDismissalPromise)
+            .then(() => app?.allowCustomCursorMount?.())
+            .catch((error) => console.warn('[Startup] Menu cursor gate failed:', error));
         await reportDesktopStartupPhase('first-usable-frame', {
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,

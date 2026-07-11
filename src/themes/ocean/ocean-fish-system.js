@@ -8,7 +8,6 @@ import {
     cameraPosition,
     clamp as tslClamp,
     dot,
-    exp,
     float,
     length,
     max as tslMax,
@@ -17,6 +16,7 @@ import {
     normalize,
     normalWorld,
     positionLocal,
+    positionGeometry,
     positionWorld,
     pow as tslPow,
     pow,
@@ -25,11 +25,9 @@ import {
     smoothstep,
     uniform,
     vec3,
-    texture,
-    vec2,
 } from 'three/tsl';
 import { loadGltfCached } from './ocean-asset-loader.js';
-import { tslCausticProjection } from './ocean-tsl-helpers.js';
+import { tslCausticProjection, tslWarmCoolAttenuation } from './ocean-tsl-helpers.js';
 import {
     OCEAN_FAUNA_ASSET_VERSION,
     OCEAN_HERO_FISH_ASSETS,
@@ -41,16 +39,106 @@ const FORWARD = new THREE.Vector3(1, 0, 0);
 const FISH_AREA_X = 135;
 const FISH_AREA_Z = 135;
 const SURFACE_Y = 60;
-const SCHOOL_COUNT = 6;
 const HERO_ASSET_MAX_ACTIVE = 7;
 
+// Authored screen-space lanes replace six interchangeable random clouds.
+// The same fish budget now resolves into a cool far canopy, two readable
+// midwater ribbons, and one sparse near accent with protected negative space.
+const SCHOOL_LANES = Object.freeze([
+    Object.freeze({
+        weight: 0.25,
+        speciesIndex: 1,
+        center: Object.freeze([-24, 51, -84]),
+        orbit: Object.freeze([28, 3, 11]),
+        scaleRange: Object.freeze([0.72, 1.0]),
+        speedRange: Object.freeze([3.8, 5.2]),
+        rate: 0.055,
+        direction: 1,
+        phase: 0.35,
+        ribbonLength: 58,
+        ribbonArch: 5.5,
+        ribbonDepth: 13,
+        tint: Object.freeze([0.36, 0.58, 0.66]),
+        tintMix: 0.52,
+    }),
+    Object.freeze({
+        weight: 0.18,
+        speciesIndex: 1,
+        center: Object.freeze([54, 39, -120]),
+        orbit: Object.freeze([18, 2, 8]),
+        scaleRange: Object.freeze([0.55, 0.78]),
+        speedRange: Object.freeze([3.4, 4.7]),
+        rate: 0.047,
+        direction: -1,
+        phase: 1.9,
+        ribbonLength: 42,
+        ribbonArch: 3.5,
+        ribbonDepth: -10,
+        tint: Object.freeze([0.31, 0.5, 0.6]),
+        tintMix: 0.66,
+    }),
+    Object.freeze({
+        weight: 0.23,
+        speciesIndex: 0,
+        center: Object.freeze([-38, 35, -28]),
+        orbit: Object.freeze([20, 4, 9]),
+        scaleRange: Object.freeze([1.2, 1.65]),
+        speedRange: Object.freeze([4.4, 6.1]),
+        rate: 0.068,
+        direction: 1,
+        phase: 3.25,
+        ribbonLength: 46,
+        ribbonArch: 6.5,
+        ribbonDepth: 10,
+        tint: null,
+        tintMix: 0,
+    }),
+    Object.freeze({
+        weight: 0.22,
+        speciesIndex: 2,
+        center: Object.freeze([40, 43, -54]),
+        orbit: Object.freeze([17, 3, 8]),
+        scaleRange: Object.freeze([1.05, 1.48]),
+        speedRange: Object.freeze([4.1, 5.8]),
+        rate: 0.061,
+        direction: -1,
+        phase: 4.7,
+        ribbonLength: 40,
+        ribbonArch: 5.2,
+        ribbonDepth: -9,
+        tint: null,
+        tintMix: 0,
+    }),
+    Object.freeze({
+        weight: 0.12,
+        speciesIndex: 3,
+        center: Object.freeze([-46, 27, 10]),
+        orbit: Object.freeze([14, 2, 6]),
+        scaleRange: Object.freeze([1.55, 2.1]),
+        speedRange: Object.freeze([4.8, 6.4]),
+        rate: 0.075,
+        direction: 1,
+        phase: 5.6,
+        ribbonLength: 28,
+        ribbonArch: 3.8,
+        ribbonDepth: 6,
+        tint: null,
+        tintMix: 0,
+    }),
+]);
+const SCHOOL_COUNT = SCHOOL_LANES.length;
+
 const textureLoader = new THREE.TextureLoader();
+const FISH_SCALE_NORMAL_URL = new URL(
+    './assets/textures/fish-scales-normal.png',
+    import.meta.url,
+).href;
 let fishScaleNormalMap = null;
 function getFishScaleNormalMap() {
     if (!fishScaleNormalMap) {
         fishScaleNormalMap = typeof document === 'undefined'
             ? new THREE.Texture()
-            : textureLoader.load('/src/themes/ocean/assets/textures/fish-scales-normal.png');
+            : textureLoader.load(FISH_SCALE_NORMAL_URL);
         fishScaleNormalMap.wrapS = THREE.RepeatWrapping;
         fishScaleNormalMap.wrapT = THREE.RepeatWrapping;
     }
@@ -364,7 +452,7 @@ function createFishNodeMaterial(species) {
     const aMisc = attribute('aMisc', 'vec4');
     const aPackedBase = attribute('aBaseColor', 'vec4');
     const aBodyCoord = tslClamp(
-        positionLocal.x
+        positionGeometry.x
             .add(float(species.bodyLength * 0.77))
             .mul(float(1 / (species.bodyLength * 1.32))),
         float(0.0),
@@ -405,15 +493,12 @@ function createFishNodeMaterial(species) {
         .mul(tailWeight);
     material.positionNode = positionLocal.add(vec3(float(0.0), swimLift, bend));
 
-    const scaleTilingX = float(18.0);
-    const scaleTilingY = float(24.0);
-    const scaleUV = vec2(aBodyCoord.mul(scaleTilingX), positionLocal.y.mul(scaleTilingY));
-    const texNormal = texture(getFishScaleNormalMap(), scaleUV).xyz.mul(2.0).sub(1.0);
-
-    const baseNormal = normalize(normalWorld);
-    const normal = normalize(baseNormal.add(texNormal.mul(1.4)));
+    // At school-fish screen size the tangent-space scale sample aliased and was
+    // previously added directly to a world normal. The geometric normal is both
+    // cleaner and one texture lookup cheaper per fragment.
+    const normal = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const lightDir = normalize(vec3(0.22, 0.94, -0.2));
+    const lightDir = normalize(vec3(-0.1, 0.9, -0.42));
     const diffuse = tslMax(dot(normal, lightDir), float(0.0)).mul(0.68).add(0.42);
     const rim = pow(float(1.0).sub(tslMax(dot(normal, viewDir), float(0.0))), float(2.0));
     const spec = pow(
@@ -430,7 +515,9 @@ function createFishNodeMaterial(species) {
         aBodyCoord.mul(float(species.stripeFrequency)).add(aPattern.mul(6.28318)),
     );
     const stripe = smoothstep(float(0.42), float(0.92), stripeWave).mul(species.patternStrength);
-    const lateralLine = smoothstep(float(0.04), float(0.0), abs(normal.y)).mul(0.14);
+    const lateralLine = float(1.0)
+        .sub(smoothstep(float(0.0), float(0.04), abs(normal.y)))
+        .mul(0.14);
 
     const causticA = sin(positionWorld.x.mul(0.18).add(uTime.mul(0.9)).add(aShimmer.mul(6.0)));
     const causticB = sin(positionWorld.z.mul(0.16).sub(uTime.mul(0.72)));
@@ -454,15 +541,8 @@ function createFishNodeMaterial(species) {
     );
 
     const viewDist = length(cameraPosition.sub(positionWorld));
-    color = mix(
-        color,
-        vec3(0.035, 0.3, 0.31),
-        smoothstep(float(48.0), float(168.0), viewDist).mul(0.13),
-    );
+    color = tslWarmCoolAttenuation(color, viewDist, float(0.72));
     color = color.mul(float(1.0).add(aHero.mul(0.08)));
-
-    const fog = float(1.0).sub(exp(viewDist.negate().mul(0.009)));
-    color = mix(color, vec3(0.02, 0.2, 0.25), tslClamp(fog.mul(0.55), float(0.0), float(0.72)));
 
     material.colorNode = color.add(aBaseColor.mul(0.1)); // Visibility lift
     material.emissiveNode = vec3(0.0);
@@ -558,14 +638,14 @@ function createFishMaterial(species, isWebGPU = false) {
                 vec3 scaleNormal = texture2D(uNormalMap, vScaleUV).xyz * 2.0 - 1.0;
                 vec3 normal = normalize(baseNormal + scaleNormal * 1.2);
                 vec3 viewDir = normalize(cameraPosition - vWorldPos);
-                vec3 lightDir = normalize(vec3(0.22, 0.94, -0.2));
+                vec3 lightDir = normalize(vec3(-0.1, 0.9, -0.42));
 
                 float diffuse = max(dot(normal, lightDir), 0.0) * 0.74 + 0.34;
                 float rim = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.2);
                 float spec = pow(max(dot(reflect(-lightDir, normal), viewDir), 0.0), 38.0);
                 float stripeWave = sin(vBodyCoord * uStripeFrequency + vPattern * 6.28318);
                 float stripe = smoothstep(0.42, 0.92, stripeWave) * uPatternStrength;
-                float lateralLine = smoothstep(0.04, 0.0, abs(normal.y)) * 0.14;
+                float lateralLine = (1.0 - smoothstep(0.0, 0.04, abs(normal.y))) * 0.14;
 
                 float causticA = sin(vWorldPos.x * 0.18 + uTime * 0.9 + vShimmer * 6.0);
                 float causticB = sin(vWorldPos.z * 0.16 - uTime * 0.72);
@@ -601,6 +681,8 @@ export class OceanFishSystem {
         this.getSeabedHeight = getSeabedHeight;
         this.isPointOccupied = (x, z, r) => (isPointOccupied ? isPointOccupied(x, z, r) : false);
         this.isWebGPU = isWebGPU;
+        this.disposed = false;
+        this.loadGeneration = 0;
 
         this.meshes = [];
         this.materials = [];
@@ -692,8 +774,8 @@ export class OceanFishSystem {
     init() {
         if (!this.scene || this.totalFish <= 0) return;
 
-        this.assignSpecies();
         this.seedSchools();
+        this.assignSpecies();
         this.seedFishState();
         this.createMeshes();
         this.activateInitialPopulation();
@@ -704,7 +786,18 @@ export class OceanFishSystem {
 
     assignSpecies() {
         const speciesCounts = new Uint16Array(SPECIES.length);
-        for (let i = 0; i < this.totalFish; i++) {
+        for (let s = 0; s < SCHOOL_COUNT; s++) {
+            const { speciesIndex } = SCHOOL_LANES[s];
+            for (let i = this.schoolStarts[s]; i < this.schoolEnds[s]; i++) {
+                this.speciesIndices[i] = speciesIndex;
+                this.localIndices[i] = speciesCounts[speciesIndex];
+                speciesCounts[speciesIndex]++;
+            }
+        }
+
+        // Procedural hero fish retain deterministic species variety; only the
+        // schooling layer is deliberately color-coherent.
+        for (let i = this.totalSchoolFish; i < this.totalFish; i++) {
             const pick = (i * 37) % 100;
             let speciesIndex = 0;
             if (pick >= 40 && pick < 66) speciesIndex = 1;
@@ -719,31 +812,30 @@ export class OceanFishSystem {
     }
 
     seedSchools() {
-        const basePerSchool = Math.floor(this.totalSchoolFish / SCHOOL_COUNT);
         let start = 0;
         for (let s = 0; s < SCHOOL_COUNT; s++) {
-            const extra = s < this.totalSchoolFish % SCHOOL_COUNT ? 1 : 0;
-            const count = basePerSchool + extra;
+            const lane = SCHOOL_LANES[s];
+            const count = s === SCHOOL_COUNT - 1
+                ? this.totalSchoolFish - start
+                : Math.floor(this.totalSchoolFish * lane.weight);
             this.schoolStarts[s] = start;
             this.schoolEnds[s] = start + count;
             start += count;
 
             const i4 = s * 4;
             const i3 = s * 3;
-            const sideLane = s % 3 === 1 ? -1 : 1;
-            const centerSchool = s % 3 === 2;
-            const depthLayer = s / Math.max(1, SCHOOL_COUNT - 1);
-            this.schoolSeeds[i4] = centerSchool ? randRange(-46, 46) : sideLane * randRange(44, 105);
-            this.schoolSeeds[i4 + 1] = randRange(20, 52) + Math.sin(depthLayer * Math.PI) * 10;
-            this.schoolSeeds[i4 + 2] = randRange(-122, -14) + depthLayer * 34;
+            this.schoolSeeds[i4] = lane.center[0];
+            this.schoolSeeds[i4 + 1] = lane.center[1];
+            this.schoolSeeds[i4 + 2] = lane.center[2];
 
-            // Collision Check: If the school center is inside a rock, nudge it out
+            // Keep authored framing intact: collision correction is deliberately
+            // small instead of rerouting a lane to the opposite side.
             if (this.isPointOccupied(this.schoolSeeds[i4], this.schoolSeeds[i4 + 2], 12)) {
-                this.schoolSeeds[i4] += sideLane * 20;
-                this.schoolSeeds[i4 + 2] += 20;
+                this.schoolSeeds[i4] += (lane.center[0] < 0 ? -1 : 1) * 9;
+                this.schoolSeeds[i4 + 2] += 8;
             }
 
-            this.schoolSeeds[i4 + 3] = randRange(0, Math.PI * 2);
+            this.schoolSeeds[i4 + 3] = lane.phase;
             this.schoolGoals[i3] = this.schoolSeeds[i4];
             this.schoolGoals[i3 + 1] = this.schoolSeeds[i4 + 1];
             this.schoolGoals[i3 + 2] = this.schoolSeeds[i4 + 2];
@@ -758,6 +850,7 @@ export class OceanFishSystem {
         // cinematic swim-in that hides startup population cost behind motion.
         const SPAWN_X = 175;
         for (let s = 0; s < SCHOOL_COUNT; s++) {
+            const lane = SCHOOL_LANES[s];
             const start = this.schoolStarts[s];
             const end = this.schoolEnds[s];
             const seed = s * 4;
@@ -778,7 +871,7 @@ export class OceanFishSystem {
                 const angle = randRange(0, Math.PI * 2);
                 const radius = randRange(4, 18);
                 const i3 = i * 3;
-                const speed = randRange(4.2, 7.2);
+                const speed = randRange(lane.speedRange[0], lane.speedRange[1]);
 
                 this.schoolIndices[i] = s;
                 this.positions[i3] = spawnX + Math.cos(angle) * radius;
@@ -790,7 +883,7 @@ export class OceanFishSystem {
                 this.velocities[i3 + 1] = randRange(-0.25, 0.25);
                 this.velocities[i3 + 2] = randRange(-0.6, 0.6);
                 this.speeds[i] = speed;
-                this.scales[i] = randRange(1.25, 2.15);
+                this.scales[i] = randRange(lane.scaleRange[0], lane.scaleRange[1]);
                 this.phases[i] = randRange(0, Math.PI * 2);
                 this.laneY[i] = cy;
             }
@@ -900,19 +993,43 @@ export class OceanFishSystem {
             for (let i = 0; i < this.totalFish; i++) {
                 if (this.speciesIndices[i] !== speciesIndex) continue;
                 const local = this.localIndices[i];
-                const colorJitter = randRange(0.82, 1.16);
-                const accentJitter = randRange(0.88, 1.22);
+                const lane = i < this.totalSchoolFish
+                    ? SCHOOL_LANES[this.schoolIndices[i]]
+                    : null;
+                const tintMix = lane?.tintMix ?? 0;
+                const tint = lane?.tint;
+                const baseR = tint
+                    ? species.base.r * (1 - tintMix) + tint[0] * tintMix
+                    : species.base.r;
+                const baseG = tint
+                    ? species.base.g * (1 - tintMix) + tint[1] * tintMix
+                    : species.base.g;
+                const baseB = tint
+                    ? species.base.b * (1 - tintMix) + tint[2] * tintMix
+                    : species.base.b;
+                const accentTintMix = tintMix * 0.42;
+                const accentR = tint
+                    ? species.accent.r * (1 - accentTintMix) + tint[0] * accentTintMix
+                    : species.accent.r;
+                const accentG = tint
+                    ? species.accent.g * (1 - accentTintMix) + tint[1] * accentTintMix
+                    : species.accent.g;
+                const accentB = tint
+                    ? species.accent.b * (1 - accentTintMix) + tint[2] * accentTintMix
+                    : species.accent.b;
+                const colorJitter = randRange(0.95, 1.05);
+                const accentJitter = randRange(0.94, 1.08);
                 misc[local * 4] = this.phases[i];
                 misc[local * 4 + 1] = this.speeds[i];
                 misc[local * 4 + 2] = Math.random();
                 misc[local * 4 + 3] = Math.random();
-                baseColor[local * 4] = clamp(species.base.r * colorJitter, 0, 1);
-                baseColor[local * 4 + 1] = clamp(species.base.g * colorJitter, 0, 1);
-                baseColor[local * 4 + 2] = clamp(species.base.b * colorJitter, 0, 1);
+                baseColor[local * 4] = clamp(baseR * colorJitter, 0, 1);
+                baseColor[local * 4 + 1] = clamp(baseG * colorJitter, 0, 1);
+                baseColor[local * 4 + 2] = clamp(baseB * colorJitter, 0, 1);
                 baseColor[local * 4 + 3] = this.heroFlags[i];
-                accentColor[local * 4] = clamp(species.accent.r * accentJitter, 0, 1);
-                accentColor[local * 4 + 1] = clamp(species.accent.g * accentJitter, 0, 1);
-                accentColor[local * 4 + 2] = clamp(species.accent.b * accentJitter, 0, 1);
+                accentColor[local * 4] = clamp(accentR * accentJitter, 0, 1);
+                accentColor[local * 4 + 1] = clamp(accentG * accentJitter, 0, 1);
+                accentColor[local * 4 + 2] = clamp(accentB * accentJitter, 0, 1);
                 accentColor[local * 4 + 3] = 0;
             }
 
@@ -949,9 +1066,12 @@ export class OceanFishSystem {
         if (this.heroAssetLoadPromise) return;
 
         this.heroAssetLoadStarted = true;
+        const generation = this.loadGeneration;
         this.heroAssetLoadPromise = (async () => {
-            const promises = OCEAN_HERO_FISH_ASSETS.map((asset) => this.loadHeroAsset(asset));
-            const results = await Promise.all(promises);
+            const assetsToLoad = OCEAN_HERO_FISH_ASSETS.slice(0, this.heroAssetCount);
+            const promises = assetsToLoad.map((asset) => this.loadHeroAsset(asset));
+            await Promise.all(promises);
+            if (this.disposed || generation !== this.loadGeneration || !this.scene) return [];
             this.spawnHeroAssetInstances();
             return this.heroAssetRecords;
         })();
@@ -959,10 +1079,15 @@ export class OceanFishSystem {
 
     async loadHeroAsset(asset) {
         if (this.heroAssetRecords.has(asset.id)) return this.heroAssetRecords.get(asset.id);
+        const generation = this.loadGeneration;
         this.heroAssetStatus[asset.id] = 'loading';
 
         try {
             const gltf = await loadGltfCached(asset.url);
+            if (this.disposed || generation !== this.loadGeneration || !this.scene) {
+                disposeObject(gltf.scene);
+                return null;
+            }
             this.prepareHeroAsset(gltf.scene);
             const record = { gltf, asset };
             this.heroAssetRecords.set(asset.id, record);
@@ -1006,13 +1131,13 @@ export class OceanFishSystem {
                     map: source.map ?? null,
                     normalMap: source.normalMap ?? null,
                     roughnessMap: source.roughnessMap ?? null,
-                    metalnessMap: source.metalnessMap ?? null,
-                    roughness: source.roughness !== undefined ? source.roughness : 0.4,
-                    metalness: source.metalness !== undefined ? source.metalness : 0.1,
+                    metalnessMap: null,
+                    roughness: Math.min(0.62, Math.max(0.3, source.roughness ?? 0.42)),
+                    metalness: 0.0,
                     envMapIntensity: 1.2,
                     transparent: true,
                     opacity: 0,
-                    depthWrite: true,
+                    depthWrite: false,
                     side: source.side ?? THREE.DoubleSide,
                     vertexColors: hasVertexColors,
                     fog: true,
@@ -1027,8 +1152,8 @@ export class OceanFishSystem {
                     float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
                     float(2.5),
                 );
-                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.45);
-                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.28);
+                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
+                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
 
                 nodeMat.emissiveNode = causticColor.add(rimColor);
                 if (source.emissiveMap) {
@@ -1308,6 +1433,7 @@ export class OceanFishSystem {
 
     updateSchoolGoals(elapsed) {
         for (let s = 0; s < SCHOOL_COUNT; s++) {
+            const lane = SCHOOL_LANES[s];
             const i4 = s * 4;
             const i3 = s * 3;
             const phase = this.schoolSeeds[i4 + 3];
@@ -1315,9 +1441,11 @@ export class OceanFishSystem {
             this.schoolThreatOffsets[i3 + 1] *= 0.86;
             this.schoolThreatOffsets[i3 + 2] *= 0.92;
 
-            const baseX = this.schoolSeeds[i4] + Math.sin(elapsed * 0.12 + phase) * 42;
-            const baseY = this.schoolSeeds[i4 + 1] + Math.sin(elapsed * 0.09 + phase * 1.7) * 8;
-            const baseZ = this.schoolSeeds[i4 + 2] + Math.cos(elapsed * 0.1 + phase * 0.8) * 48;
+            const theta = elapsed * lane.rate * lane.direction + phase;
+            const baseX = this.schoolSeeds[i4] + Math.sin(theta) * lane.orbit[0];
+            const baseY = this.schoolSeeds[i4 + 1]
+                + Math.sin(theta * 0.71 + phase) * lane.orbit[1];
+            const baseZ = this.schoolSeeds[i4 + 2] + Math.cos(theta) * lane.orbit[2];
             this.schoolGoals[i3] = clamp(baseX + this.schoolThreatOffsets[i3], -FISH_AREA_X, FISH_AREA_X);
             this.schoolGoals[i3 + 1] = clamp(baseY + this.schoolThreatOffsets[i3 + 1], 14, SURFACE_Y);
             this.schoolGoals[i3 + 2] = clamp(baseZ + this.schoolThreatOffsets[i3 + 2], -FISH_AREA_Z, FISH_AREA_Z);
@@ -1409,6 +1537,7 @@ export class OceanFishSystem {
         const gridNext = this._boidGridNext;
 
         for (let s = 0; s < SCHOOL_COUNT; s++) {
+            const lane = SCHOOL_LANES[s];
             const start = this.schoolStarts[s];
             const end = Math.min(this.schoolEnds[s], this.activeSchoolFish);
             if (end <= start) continue;
@@ -1416,6 +1545,12 @@ export class OceanFishSystem {
             const gx = this.schoolGoals[goalIndex];
             const gy = this.schoolGoals[goalIndex + 1];
             const gz = this.schoolGoals[goalIndex + 2];
+            // One coherent breath per authored lane: the school contracts and
+            // opens as a single organism without adding per-fish trig work.
+            const ribbonPulse = Math.sin(elapsed * 0.24 + lane.phase * 1.7);
+            const ribbonLength = lane.ribbonLength * (1 + ribbonPulse * 0.09);
+            const ribbonDepth = lane.ribbonDepth * (1 - ribbonPulse * 0.075);
+            const ribbonArch = lane.ribbonArch * (1 + ribbonPulse * 0.055);
 
             if (camera) {
                 const ddx = gx - camX;
@@ -1469,9 +1604,11 @@ export class OceanFishSystem {
                 const skipNeighbors = distToCamSq >= 150 * 150;
                 const skipInfluences = distToCamSq >= 80 * 80;
 
-                let desiredX = (gx - px) * 0.018;
-                let desiredY = (gy - py) * 0.026;
-                let desiredZ = (gz - pz) * 0.018;
+                const ribbonU = this.phases[i] / (Math.PI * 2) - 0.5;
+                const ribbonY = (1 - 4 * ribbonU * ribbonU) * ribbonArch;
+                let desiredX = (gx + ribbonU * ribbonLength - px) * 0.018;
+                let desiredY = (gy + ribbonY - py) * 0.026;
+                let desiredZ = (gz + ribbonU * ribbonDepth - pz) * 0.018;
                 let sepX = 0;
                 let sepY = 0;
                 let sepZ = 0;
@@ -1551,8 +1688,6 @@ export class OceanFishSystem {
                 desiredX += sepX * 0.12;
                 desiredY += sepY * 0.1;
                 desiredZ += sepZ * 0.12;
-                desiredX += Math.sin(elapsed * 0.65 + this.phases[i]) * 0.12;
-                desiredZ += Math.cos(elapsed * 0.55 + this.phases[i] * 1.4) * 0.1;
                 let environmentalSpeedBoost = 1;
 
                 if (gameplaySurge > 0.02) {
@@ -1925,6 +2060,8 @@ export class OceanFishSystem {
     }
 
     dispose() {
+        this.disposed = true;
+        this.loadGeneration += 1;
         this.heroAssetCreatures.forEach((creature) => {
             this.scene?.remove(creature.group);
             creature.materials.forEach((material) => material.dispose());

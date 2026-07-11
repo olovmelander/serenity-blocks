@@ -64,8 +64,8 @@ import * as WolfhourPostFactories from './wolfhour-post.js';
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Minimal: {
-        starCount: 5000,
-        mountainSegments: 32,
+        starCount: 3200,
+        mountainSegments: 28,
         nebulaResolution: 512,
         spiritCount: 0,
         spiritComputeCount: 0,
@@ -86,7 +86,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 5,
         maxCosmicRifts: 1,
         maxCelestialBeams: 0,
-        maxMeteorCrashes: 2,
+        maxMeteorCrashes: 0,
         starTwinkleSpeed: 0.5,
         enableDiffraction: false,
         enableGroundFog: false,
@@ -95,8 +95,8 @@ const QUALITY_PRESETS = {
         cameraShakeScale: 0.15,
     },
     Low: {
-        starCount: 10000,
-        mountainSegments: 64,
+        starCount: 6500,
+        mountainSegments: 52,
         nebulaResolution: 512,
         spiritCount: 3,
         spiritComputeCount: 0,
@@ -117,7 +117,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 8,
         maxCosmicRifts: 2,
         maxCelestialBeams: 0,
-        maxMeteorCrashes: 6,
+        maxMeteorCrashes: 0,
         starTwinkleSpeed: 0.7,
         enableDiffraction: false,
         enableGroundFog: false,
@@ -126,8 +126,8 @@ const QUALITY_PRESETS = {
         cameraShakeScale: 0.2,
     },
     Medium: {
-        starCount: 20000,
-        mountainSegments: 112,
+        starCount: 14000,
+        mountainSegments: 92,
         nebulaResolution: 1024,
         spiritCount: 8,
         spiritComputeCount: 24,
@@ -139,8 +139,8 @@ const QUALITY_PRESETS = {
         enableCompute: true,
         computeStarTwinkle: false,
         computeSpirits: true,
-        computeMeteorTrails: true,
-        computeDebris: true,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0.3,
         bloomDownsample: 0.58,
         debrisPerCrash: 72,
@@ -148,7 +148,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 14,
         maxCosmicRifts: 3,
         maxCelestialBeams: 2,
-        maxMeteorCrashes: 8,
+        maxMeteorCrashes: 0,
         starTwinkleSpeed: 1.0,
         enableDiffraction: true,
         enableGroundFog: true,
@@ -157,8 +157,8 @@ const QUALITY_PRESETS = {
         cameraShakeScale: 0.45,
     },
     High: {
-        starCount: 38000,
-        mountainSegments: 176,
+        starCount: 26000,
+        mountainSegments: 144,
         nebulaResolution: 1024,
         spiritCount: 15,
         spiritComputeCount: 48,
@@ -170,16 +170,16 @@ const QUALITY_PRESETS = {
         enableCompute: true,
         computeStarTwinkle: false,
         computeSpirits: true,
-        computeMeteorTrails: true,
-        computeDebris: true,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0.5,
-        bloomDownsample: 0.62,
+        bloomDownsample: 0.58,
         debrisPerCrash: 96,
         meteorTrailSegments: 56,
         maxStarBursts: 20,
         maxCosmicRifts: 4,
         maxCelestialBeams: 4,
-        maxMeteorCrashes: 10,
+        maxMeteorCrashes: 1,
         starTwinkleSpeed: 1.0,
         enableDiffraction: true,
         enableGroundFog: true,
@@ -188,8 +188,8 @@ const QUALITY_PRESETS = {
         cameraShakeScale: 0.6,
     },
     Ultra: {
-        starCount: 55000,
-        mountainSegments: 208,
+        starCount: 38000,
+        mountainSegments: 176,
         nebulaResolution: 2048,
         spiritCount: 25,
         spiritComputeCount: 72,
@@ -201,16 +201,16 @@ const QUALITY_PRESETS = {
         enableCompute: true,
         computeStarTwinkle: false,
         computeSpirits: true,
-        computeMeteorTrails: true,
-        computeDebris: true,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0.6,
-        bloomDownsample: 0.68,
+        bloomDownsample: 0.61,
         debrisPerCrash: 128,
         meteorTrailSegments: 60,
         maxStarBursts: 25,
         maxCosmicRifts: 5,
         maxCelestialBeams: 6,
-        maxMeteorCrashes: 12,
+        maxMeteorCrashes: 2,
         starTwinkleSpeed: 1.0,
         enableDiffraction: true,
         enableGroundFog: true,
@@ -219,8 +219,8 @@ const QUALITY_PRESETS = {
         cameraShakeScale: 0.8,
     },
     Extreme: {
-        starCount: 90000,
-        mountainSegments: 288,
+        starCount: 52000,
+        mountainSegments: 224,
         nebulaResolution: 2048,
         spiritCount: 80,
         spiritComputeCount: 96,
@@ -232,16 +232,16 @@ const QUALITY_PRESETS = {
         enableCompute: true,
         computeStarTwinkle: false,
         computeSpirits: true,
-        computeMeteorTrails: true,
-        computeDebris: true,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0.8,
-        bloomDownsample: 0.74,
+        bloomDownsample: 0.64,
         debrisPerCrash: 150,
         meteorTrailSegments: 64,
         maxStarBursts: 30,
         maxCosmicRifts: 6,
         maxCelestialBeams: 8,
-        maxMeteorCrashes: 15,
+        maxMeteorCrashes: 2,
         starTwinkleSpeed: 1.2,
         enableDiffraction: true,
         enableGroundFog: true,
@@ -256,25 +256,25 @@ const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Ext
 const QUALITY_BUDGETS = {
     Extreme: {
         targetFps: 60,
-        maxDrawCalls: 40,
+        maxDrawCalls: 46,
         maxTriangles: 2000000,
         maxPoints: 250000,
     },
     Ultra: {
         targetFps: 60,
-        maxDrawCalls: 35,
+        maxDrawCalls: 46,
         maxTriangles: 1500000,
         maxPoints: 150000,
     },
     High: {
         targetFps: 60,
-        maxDrawCalls: 30,
+        maxDrawCalls: 42,
         maxTriangles: 1000000,
         maxPoints: 100000,
     },
     Medium: {
         targetFps: 60,
-        maxDrawCalls: 25,
+        maxDrawCalls: 34,
         maxTriangles: 500000,
         maxPoints: 60000,
     },
@@ -307,7 +307,7 @@ const REACTIVE_TOKEN_COSTS = Object.freeze({
     rift: 1,
     wave: 1,
     meteor: 2,
-    crash: 4,
+    crash: 3,
 });
 
 const REACTIVE_TOKEN_EXPIRY_MS = Object.freeze({
@@ -424,6 +424,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.baselineFrames = [];
         this.baselineRenderStats = [];
         this.baselineMaxFrames = 3600;
+        this.baselineTimestampFrame = 0;
+        this.baselineTimestampResolvePending = false;
+        this.baselineGpuTimings = { renderMs: null, computeMs: null };
 
         // Three.js core
         this.renderer = null;
@@ -438,6 +441,11 @@ export default class WolfhourTheme extends BaseTheme {
         this.mountainBaseFill = null;
         this.starfield = null;
         this.nebulaPlanes = [];
+        this.moon = null;
+        this.moonHalo = null;
+        this.moonTexture = null;
+        this.moonNodeData = null;
+        this.moonHaloNodeData = null;
         this.groundFog = null;
         this.spirits = null;
         this.ambientParticles = null;
@@ -451,7 +459,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.cosmicWaves = [];
         this.meteors = []; // Shooting star meteors
         this.lastMeteorTime = 0; // Time of last meteor spawn
-        this.nextMeteorDelay = 2 + this.random() * 2; // 2-4 seconds
+        this.nextMeteorDelay = 4 + this.random() * 3; // 4-7 seconds
         this.meteorCrashes = []; // Dramatic meteor crash impacts
         this.effectPools = {
             starBurst: [],
@@ -480,6 +488,19 @@ export default class WolfhourTheme extends BaseTheme {
         this.reactiveTokenExpiryMs = { ...REACTIVE_TOKEN_EXPIRY_MS };
         this.meteorTrailBatchCompute = null;
         this.debrisBatchCompute = null;
+        this.lunarReaction = {
+            startTime: Number.NEGATIVE_INFINITY,
+            duration: 1.1,
+            strength: 0,
+            combo: 0,
+        };
+        this.lastReactiveOrigin = null;
+        this.reactiveOriginScratch = {
+            raycaster: new THREE.Raycaster(),
+            plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -100),
+            ndc: new THREE.Vector2(),
+            world: new THREE.Vector3(),
+        };
 
         // Effect state (smooth decay)
         this.effectState = {
@@ -509,7 +530,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
         this.qualityChangeHandler = null;
+        this.performancePolicyChangeHandler = null;
         this.qualityRebuildPending = false;
+        this.runtimeRebuildInFlight = false;
         this.runtimeRebuildTimeouts = new Set();
         this.lastCameraFrustum = null;
 
@@ -557,6 +580,12 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
+        const policyTier = typeof window !== 'undefined'
+            ? window.desktopPerformancePolicy?.qualityTier
+            : null;
+        if (policyTier) {
+            return normalizeQuality(policyTier);
+        }
         if (typeof window !== 'undefined' && window.settings) {
             if (window.settings.effectQuality) {
                 return normalizeQuality(window.settings.effectQuality);
@@ -589,6 +618,10 @@ export default class WolfhourTheme extends BaseTheme {
     resetBaselineSamples() {
         this.baselineFrames = [];
         this.baselineRenderStats = [];
+        this.baselineLastWallTimeMs = null;
+        this.baselineTimestampFrame = 0;
+        this.baselineTimestampResolvePending = false;
+        this.baselineGpuTimings = { renderMs: null, computeMs: null };
         this.reactiveQueue.length = 0;
         this.reactiveMetrics.queueMaxDepth = 0;
         this.reactiveMetrics.tokensDropped = 0;
@@ -596,17 +629,19 @@ export default class WolfhourTheme extends BaseTheme {
         this.reactiveMetrics.spawnDurationsMs = [];
     }
 
-    trackBaselineFrame(deltaSeconds) {
-        if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+    trackBaselineFrame(wallDeltaSeconds) {
+        if (!Number.isFinite(wallDeltaSeconds) || wallDeltaSeconds <= 0) return;
 
-        const frameMs = deltaSeconds * 1000;
+        const frameMs = wallDeltaSeconds * 1000;
         this.baselineFrames.push(frameMs);
         if (this.baselineFrames.length > this.baselineMaxFrames) {
             this.baselineFrames.shift();
         }
 
         this.baselineRenderStats.push({
-            calls: this.renderer?.info?.render?.calls ?? 0,
+            calls: this.renderer?.info?.render?.drawCalls
+                ?? this.renderer?.info?.render?.calls
+                ?? 0,
             triangles: this.renderer?.info?.render?.triangles ?? 0,
             points: this.renderer?.info?.render?.points ?? 0,
             lines: this.renderer?.info?.render?.lines ?? 0,
@@ -616,6 +651,34 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.baselineRenderStats.length > this.baselineMaxFrames) {
             this.baselineRenderStats.shift();
         }
+    }
+
+    resolveBaselineGpuTimestamps() {
+        if (
+            this.flags.baseline !== true
+            || typeof this.renderer?.resolveTimestampsAsync !== 'function'
+            || this.baselineTimestampResolvePending
+        ) {
+            return;
+        }
+
+        this.baselineTimestampFrame += 1;
+        if (this.baselineTimestampFrame % 60 !== 0) return;
+        this.baselineTimestampResolvePending = true;
+
+        const renderQuery = this.renderer.resolveTimestampsAsync(THREE_WEBGPU.TimestampQuery.RENDER);
+        const computeQuery = this.renderer.resolveTimestampsAsync(THREE_WEBGPU.TimestampQuery.COMPUTE);
+        Promise.all([renderQuery, computeQuery])
+            .then(([renderMs, computeMs]) => {
+                if (Number.isFinite(renderMs)) this.baselineGpuTimings.renderMs = renderMs;
+                if (Number.isFinite(computeMs)) this.baselineGpuTimings.computeMs = computeMs;
+            })
+            .catch((error) => {
+                console.warn('[WolfhourBaseline] GPU timestamp resolve failed.', error);
+            })
+            .finally(() => {
+                this.baselineTimestampResolvePending = false;
+            });
     }
 
     estimateGpuMemoryMb(memoryInfo = this.renderer?.info?.memory) {
@@ -727,11 +790,19 @@ export default class WolfhourTheme extends BaseTheme {
         });
 
         const budget = this.performanceBudget || QUALITY_BUDGETS.High;
+        const targetFps = budget.targetFps ?? 60;
+        const avgFps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+        const minAvgFps = budget.minAvgFps ?? targetFps * 0.9;
+        const maxP95FrameMs = budget.maxP95FrameMs ?? (1000 / targetFps) * 1.35;
         const budgetResult = {
-            targetFps: budget.targetFps ?? 60,
+            targetFps,
+            minAvgFps,
+            maxP95FrameMs,
             maxDrawCalls: budget.maxDrawCalls ?? null,
             maxTriangles: budget.maxTriangles ?? null,
             maxPoints: budget.maxPoints ?? null,
+            avgFps,
+            p95FrameMs,
             avgDrawCalls: totals.calls / renderSamples,
             avgTriangles: totals.triangles / renderSamples,
             avgPoints: totals.points / renderSamples,
@@ -750,6 +821,9 @@ export default class WolfhourTheme extends BaseTheme {
         if (Number.isFinite(budget.maxPoints)) {
             budgetResult.pass = budgetResult.pass && peaks.points <= budget.maxPoints;
         }
+        budgetResult.pass = budgetResult.pass
+            && avgFps >= minAvgFps
+            && p95FrameMs <= maxP95FrameMs;
 
         const memoryInfo = this.renderer?.info?.memory || {};
         const heapUsedMb = (typeof performance !== 'undefined' && performance.memory?.usedJSHeapSize)
@@ -761,7 +835,7 @@ export default class WolfhourTheme extends BaseTheme {
             quality: this.activeQualityLevel,
             frameCount,
             avgFrameMs,
-            avgFps: avgFrameMs > 0 ? 1000 / avgFrameMs : 0,
+            avgFps,
             p50FrameMs,
             p95FrameMs,
             p99FrameMs,
@@ -776,6 +850,7 @@ export default class WolfhourTheme extends BaseTheme {
             textures: memoryInfo.textures ?? null,
             geometries: memoryInfo.geometries ?? null,
             gpuMemoryEstimateMb: this.estimateGpuMemoryMb(memoryInfo),
+            gpuTimings: { ...this.baselineGpuTimings },
             heapUsedMb,
             flags: {
                 forceWebGL: this.flags.forceWebGL === true,
@@ -1027,6 +1102,13 @@ export default class WolfhourTheme extends BaseTheme {
                 this.debrisBatchCompute = null;
             }
         }
+
+        const hasComputeWork = this.starTwinkleCompute
+            || this.meteorTrailBatchCompute
+            || this.debrisBatchCompute;
+        if (!hasComputeWork) {
+            this.flags.useCompute = false;
+        }
     }
 
     disposeComputeSystems() {
@@ -1078,10 +1160,9 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.scheduleRuntimeRebuild(() => {
             this.computeFallbackPending = false;
-            this.resetRuntimeScene();
-            if (this.container) {
-                this.createScene();
-            }
+            this.rebuildRuntimeScene('computeFallback').catch((rebuildError) => {
+                console.error('[Wolfhour] Compute fallback rebuild failed.', rebuildError);
+            });
         }, 0);
     }
 
@@ -1227,6 +1308,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.createStarfield();
         this.createNebulaBackdrop();
+        this.createMoonHero();
         this.createMountains();
         this.createGroundFog();
         this.setupPostProcessing();
@@ -1293,7 +1375,9 @@ export default class WolfhourTheme extends BaseTheme {
                 const renderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
+                    powerPreference: 'high-performance',
                     preserveDrawingBuffer: this.flags.baseline === true,
+                    trackTimestamp: this.flags.baseline === true,
                 });
 
                 await renderer.init();
@@ -1361,8 +1445,10 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Setup Device-Loss handling
         if (this.isWebGPU && this.renderer.backend && this.renderer.backend.device) {
+            const rendererAtRegistration = this.renderer;
             this.renderer.backend.device.lost.then((info) => {
-                this.handleDeviceLost(info);
+                if (!this.isActive || this.renderer !== rendererAtRegistration) return;
+                this.handleDeviceLost(info, rendererAtRegistration);
             });
         }
         this.webglContextLostHandler = (e) => {
@@ -1394,7 +1480,8 @@ export default class WolfhourTheme extends BaseTheme {
         console.log(`[Wolfhour] Renderer initialized (WebGPU: ${this.isWebGPU}, WebGL: ${this.isWebGL})`);
     }
 
-    handleDeviceLost(info) {
+    handleDeviceLost(info, rendererAtLoss = this.renderer) {
+        if (!this.isActive || this.renderer !== rendererAtLoss) return;
         console.error('[Wolfhour] Device lost detected!', info);
 
         if (this.animationFrameId) {
@@ -1409,11 +1496,11 @@ export default class WolfhourTheme extends BaseTheme {
         this.disposeComputeSystems();
 
         this.scheduleRuntimeRebuild(() => {
+            if (!this.isActive || this.renderer !== rendererAtLoss) return;
             console.log('[Wolfhour] Rebuilding scene on fallback renderer after device loss...');
-            this.resetRuntimeScene();
-            if (this.container) {
-                this.createScene();
-            }
+            this.rebuildRuntimeScene('deviceLoss').catch((rebuildError) => {
+                console.error('[Wolfhour] Device-loss fallback rebuild failed.', rebuildError);
+            });
         }, 1000);
     }
 
@@ -1486,6 +1573,13 @@ export default class WolfhourTheme extends BaseTheme {
             top: this.camera.top,
             bottom: this.camera.bottom,
         };
+
+        const heroX = THREE.MathUtils.clamp(this.camera.right * 0.43, 300, 410);
+        if (this.moon) this.moon.position.x = heroX;
+        if (this.moonHalo) {
+            this.moonHalo.position.x = heroX;
+            this.moonHalo.updateMatrix();
+        }
 
         const pixelRatio = this.getEffectivePixelRatio();
         this.renderer.setPixelRatio(pixelRatio);
@@ -1580,15 +1674,25 @@ export default class WolfhourTheme extends BaseTheme {
         const quad = new THREE.PlaneGeometry(1, 1);
         const instancedMesh = new THREE.InstancedMesh(quad, material, count);
 
-        // Copy instance matrices from position attribute (just translation)
-        const dummy = new THREE.Object3D();
+        // Translation-only instances: fill the matrices directly. This avoids tens of
+        // thousands of Object3D.updateMatrix()/setMatrixAt() calls for the starfield.
         const posAttr = pointsGeometry.attributes.position;
+        const matrices = instancedMesh.instanceMatrix.array;
         for (let i = 0; i < count; i++) {
-            dummy.position.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-            dummy.updateMatrix();
-            instancedMesh.setMatrixAt(i, dummy.matrix);
+            const offset = i * 16;
+            matrices[offset] = 1;
+            matrices[offset + 5] = 1;
+            matrices[offset + 10] = 1;
+            matrices[offset + 12] = posAttr.getX(i);
+            matrices[offset + 13] = posAttr.getY(i);
+            matrices[offset + 14] = posAttr.getZ(i);
+            matrices[offset + 15] = 1;
         }
         instancedMesh.instanceMatrix.needsUpdate = true;
+        instancedMesh.userData.sourcePositions = posAttr.array;
+        instancedMesh.frustumCulled = false;
+        instancedMesh.updateMatrix();
+        instancedMesh.matrixAutoUpdate = false;
 
         // Copy all other explicit attributes as InstancedBufferAttributes
         for (const key in pointsGeometry.attributes) {
@@ -1599,6 +1703,35 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         return instancedMesh;
+    }
+
+    getParticlePositionArray(particleObject) {
+        if (particleObject?.isInstancedMesh && particleObject.userData?.sourcePositions) {
+            return particleObject.userData.sourcePositions;
+        }
+        return particleObject?.geometry?.attributes?.position?.array || null;
+    }
+
+    syncInstancedParticlePositions(particleObject) {
+        if (!particleObject?.isInstancedMesh) {
+            if (particleObject?.geometry?.attributes?.position) {
+                particleObject.geometry.attributes.position.needsUpdate = true;
+            }
+            return;
+        }
+
+        const positions = particleObject.userData?.sourcePositions;
+        if (!positions) return;
+        const matrices = particleObject.instanceMatrix.array;
+        const count = Math.min(particleObject.count, Math.floor(positions.length / 3));
+        for (let i = 0; i < count; i += 1) {
+            const i3 = i * 3;
+            const i16 = i * 16;
+            matrices[i16 + 12] = positions[i3];
+            matrices[i16 + 13] = positions[i3 + 1];
+            matrices[i16 + 14] = positions[i3 + 2];
+        }
+        particleObject.instanceMatrix.needsUpdate = true;
     }
 
     createStarfield() {
@@ -1725,6 +1858,7 @@ export default class WolfhourTheme extends BaseTheme {
             mesh.userData.speed = config.speed;
             mesh.userData.startX = config.x;
             mesh.userData.wrapBoundary = config.size * 1.5;
+            mesh.userData.texture = config.texture;
             if (nodeData) mesh.userData.nodeData = nodeData;
 
             this.nebulaPlanes.push(mesh);
@@ -1735,6 +1869,92 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
     // FBM Mountain System
     // ─────────────────────────────────────────────────────────────────────────
+
+    createMoonHero() {
+        const textureLoader = new THREE.TextureLoader();
+        const moonTexture = textureLoader.load('./textures/2k_moon.jpg');
+        moonTexture.colorSpace = THREE.SRGBColorSpace;
+        moonTexture.anisotropy = Math.min(8, this.renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+        this.moonTexture = moonTexture;
+
+        let moonMaterial;
+        let haloMaterial;
+        let moonNodeData = null;
+        let haloNodeData = null;
+
+        if (
+            this.isWebGPU
+            && this.materialFactories?.createMoonNodeMaterial
+            && this.materialFactories?.createLunarHaloNodeMaterial
+        ) {
+            moonNodeData = this.materialFactories.createMoonNodeMaterial({ texture: moonTexture });
+            haloNodeData = this.materialFactories.createLunarHaloNodeMaterial();
+            moonMaterial = moonNodeData.material;
+            haloMaterial = haloNodeData.material;
+        } else {
+            moonMaterial = new THREE.MeshBasicMaterial({
+                map: moonTexture,
+                color: new THREE.Color(0xb8c6e2),
+            });
+            haloMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(0x829fe8) },
+                    uOpacity: { value: 0.075 },
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uColor;
+                    uniform float uOpacity;
+                    varying vec2 vUv;
+                    void main() {
+                        float radius = length(vUv - 0.5) * 2.0;
+                        float corona = smoothstep(0.28, 0.44, radius)
+                            * (1.0 - smoothstep(0.46, 1.0, radius));
+                        float rim = 1.0 - smoothstep(0.018, 0.065, abs(radius - 0.52));
+                        float alpha = (corona * 0.72 + rim * 0.28) * uOpacity;
+                        gl_FragColor = vec4(uColor, alpha);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true,
+                side: THREE.DoubleSide,
+            });
+        }
+
+        const segments = ['Minimal', 'Low'].includes(this.activeQualityLevel) ? 32 : 48;
+        const moon = new THREE.Mesh(
+            new THREE.SphereGeometry(245, segments, Math.max(20, Math.floor(segments * 0.58))),
+            moonMaterial,
+        );
+        const heroX = THREE.MathUtils.clamp((this.camera?.right || 900) * 0.43, 300, 410);
+        moon.position.set(heroX, 175, -1620);
+        moon.rotation.y = -0.34;
+        moon.renderOrder = -1610;
+        moon.frustumCulled = false;
+        if (moonNodeData) moon.userData.nodeData = moonNodeData;
+
+        const halo = new THREE.Mesh(new THREE.PlaneGeometry(1180, 1180), haloMaterial);
+        halo.position.set(heroX, 175, -1655);
+        halo.renderOrder = -1645;
+        halo.frustumCulled = false;
+        halo.updateMatrix();
+        halo.matrixAutoUpdate = false;
+        if (haloNodeData) halo.userData.nodeData = haloNodeData;
+
+        this.moon = moon;
+        this.moonHalo = halo;
+        this.moonNodeData = moonNodeData;
+        this.moonHaloNodeData = haloNodeData;
+        this.scene.add(halo, moon);
+    }
 
     createMountains() {
         // Mountain range with 8 peaks - atmospheric depth via layer value and position
@@ -2024,6 +2244,8 @@ export default class WolfhourTheme extends BaseTheme {
             mesh.userData.baseRidgeStrength = nodeData.uniforms?.uRidgeStrength?.value ?? 0.25;
             mesh.userData.baseSnowAmount = nodeData.uniforms?.uSnowAmount?.value ?? 0.22;
         }
+        mesh.updateMatrix();
+        mesh.matrixAutoUpdate = false;
         return mesh;
     }
 
@@ -2050,6 +2272,8 @@ export default class WolfhourTheme extends BaseTheme {
         if (nodeData) {
             mesh.userData.nodeData = nodeData;
         }
+        mesh.updateMatrix();
+        mesh.matrixAutoUpdate = false;
 
         this.mountainBaseFill = mesh;
         this.scene.add(mesh);
@@ -2094,6 +2318,8 @@ export default class WolfhourTheme extends BaseTheme {
         if (fogResult) {
             fog.userData.nodeData = fogResult;
         }
+        fog.updateMatrix();
+        fog.matrixAutoUpdate = false;
 
         this.groundFog = fog;
         this.scene.add(fog);
@@ -2246,10 +2472,10 @@ export default class WolfhourTheme extends BaseTheme {
             }
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock();
+                this.onPieceLock(data);
             }
         });
 
@@ -2277,25 +2503,50 @@ export default class WolfhourTheme extends BaseTheme {
         this.teardownQualityListener();
         this.qualityChangeHandler = (event) => {
             const changed = event?.detail || {};
-            if (
-                !Object.prototype.hasOwnProperty.call(changed, 'effectQuality')
-                && !Object.prototype.hasOwnProperty.call(changed, 'graphicsQuality')
-            ) {
-                return;
+            const qualityChanged = Object.prototype.hasOwnProperty.call(changed, 'effectQuality')
+                || Object.prototype.hasOwnProperty.call(changed, 'graphicsQuality');
+            const renderScaleChanged = Object.prototype.hasOwnProperty.call(changed, 'renderScale')
+                || changed?.type === 'renderScale';
+            if (!qualityChanged && !renderScaleChanged) return;
+
+            if (renderScaleChanged) {
+                this.handleResize();
             }
 
+            if (!qualityChanged) return;
             const runtimeQuality = this.getCurrentQualityLevel();
             if (runtimeQuality === this.activeQualityLevel) return;
             this.requestRuntimeQualityRebuild('settingsChanged');
         };
+        this.performancePolicyChangeHandler = (event) => {
+            const policy = event?.detail || window.desktopPerformancePolicy;
+            const runtimeQuality = normalizeQuality(policy?.qualityTier || this.getCurrentQualityLevel());
+            if (runtimeQuality !== this.activeQualityLevel) {
+                this.requestRuntimeQualityRebuild('desktopPerformancePolicyChanged');
+                return;
+            }
+            // main.js publishes the policy event immediately before it updates the
+            // shared render scale. Resize on the next task so we read the new scale.
+            this.scheduleRuntimeRebuild(() => {
+                if (this.isActive) this.handleResize();
+            }, 0);
+        };
         window.addEventListener('settingsChanged', this.qualityChangeHandler);
+        window.addEventListener('desktopPerformancePolicyChanged', this.performancePolicyChangeHandler);
     }
 
     teardownQualityListener() {
         if (typeof window === 'undefined') return;
         if (!this.qualityChangeHandler) return;
         window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        if (this.performancePolicyChangeHandler) {
+            window.removeEventListener(
+                'desktopPerformancePolicyChanged',
+                this.performancePolicyChangeHandler,
+            );
+        }
         this.qualityChangeHandler = null;
+        this.performancePolicyChangeHandler = null;
     }
 
     requestRuntimeQualityRebuild(reason = 'settingsChanged') {
@@ -2304,16 +2555,170 @@ export default class WolfhourTheme extends BaseTheme {
         console.log(`[Wolfhour] Rebuilding scene after quality update (${reason})`);
         this.scheduleRuntimeRebuild(() => {
             this.qualityRebuildPending = false;
-            this.resetRuntimeScene();
-            if (this.container) {
-                this.createScene();
-            }
+            this.rebuildRuntimeScene(reason).catch((rebuildError) => {
+                console.error('[Wolfhour] Quality rebuild failed.', rebuildError);
+            });
         }, 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Gameplay Effects
     // ─────────────────────────────────────────────────────────────────────────
+
+    getVisibleBoardRect(data = {}) {
+        if (typeof document === 'undefined') return null;
+        const detail = data?.detail || data;
+        const player = detail?.player ?? detail?.playerId ?? null;
+        const selectors = [];
+        if (player !== null && player !== undefined) {
+            selectors.push(`#p${player}-phaser-container canvas`);
+        }
+        selectors.push(
+            '#phaser-game-container canvas',
+            '#main-game-canvas',
+            '#single-player-game-canvas',
+        );
+
+        for (let i = 0; i < selectors.length; i += 1) {
+            const element = document.querySelector(selectors[i]);
+            if (!element) continue;
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            if (
+                style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && Number(style.opacity || 1) > 0
+                && rect.width > 32
+                && rect.height > 64
+            ) {
+                return rect;
+            }
+        }
+        return null;
+    }
+
+    screenToReactionWorld(screenX, screenY, z = 100) {
+        if (!this.camera || typeof window === 'undefined') return null;
+        const scratch = this.reactiveOriginScratch;
+        scratch.ndc.set(
+            (screenX / Math.max(1, window.innerWidth)) * 2 - 1,
+            1 - (screenY / Math.max(1, window.innerHeight)) * 2,
+        );
+        scratch.plane.constant = -z;
+        this.camera.updateMatrixWorld();
+        scratch.raycaster.setFromCamera(scratch.ndc, this.camera);
+        const hit = scratch.raycaster.ray.intersectPlane(scratch.plane, scratch.world);
+        if (!hit) return null;
+        return { x: hit.x, y: hit.y, z };
+    }
+
+    resolvePieceLockOrigin(data = {}) {
+        const detail = data?.detail || data;
+        const piece = detail?.piece;
+        const shape = Array.isArray(piece?.shape) ? piece.shape : null;
+        let centroidX = Number(piece?.x) + 0.5;
+        let centroidY = Number(piece?.y) + 0.5;
+
+        if (shape && Number.isFinite(piece?.x) && Number.isFinite(piece?.y)) {
+            let sumX = 0;
+            let sumY = 0;
+            let occupied = 0;
+            shape.forEach((row, rowIndex) => {
+                if (!Array.isArray(row)) return;
+                row.forEach((cell, columnIndex) => {
+                    if (!cell) return;
+                    sumX += piece.x + columnIndex + 0.5;
+                    sumY += piece.y + rowIndex + 0.5;
+                    occupied += 1;
+                });
+            });
+            if (occupied > 0) {
+                centroidX = sumX / occupied;
+                centroidY = sumY / occupied;
+            }
+        }
+
+        const u = THREE.MathUtils.clamp(Number.isFinite(centroidX) ? centroidX / 10 : 0.5, 0, 1);
+        const visibleY = Number.isFinite(centroidY) ? centroidY - 4 : 10;
+        const v = THREE.MathUtils.clamp(visibleY / 20, 0, 1);
+        const side = u < 0.5 ? -1 : 1;
+        const rect = this.getVisibleBoardRect(data);
+        const margin = rect ? Math.max(32, rect.width * 0.14) : window.innerWidth * 0.07;
+        const sideLaneX = side < 0 ? 0.31 : 0.69;
+        let boardEdgeX = window.innerWidth * sideLaneX;
+        if (rect) boardEdgeX = side < 0 ? rect.left - margin : rect.right + margin;
+        const screenX = rect
+            ? boardEdgeX
+            : window.innerWidth * sideLaneX;
+        const screenY = rect
+            ? rect.top + v * rect.height
+            : window.innerHeight * (0.18 + v * 0.64);
+
+        return this.screenToReactionWorld(
+            THREE.MathUtils.clamp(screenX, 24, window.innerWidth - 24),
+            THREE.MathUtils.clamp(screenY, 24, window.innerHeight - 24),
+            100,
+        );
+    }
+
+    resolveLineClearOrigin(data = {}) {
+        const detail = data?.detail || data;
+        const explicit = detail?.position;
+        if (Number.isFinite(explicit?.x) && Number.isFinite(explicit?.y)) {
+            return this.screenToReactionWorld(explicit.x, explicit.y, 100);
+        }
+
+        const rows = Array.isArray(detail?.clearedRows) ? detail.clearedRows : [];
+        if (!rows.length) return this.lastReactiveOrigin;
+        const meanRow = rows.reduce((sum, row) => sum + Number(row || 0), 0) / rows.length;
+        const v = THREE.MathUtils.clamp((meanRow - 4 + 0.5) / 20, 0, 1);
+        const rect = this.getVisibleBoardRect(data);
+        const screenX = rect ? rect.right + Math.max(32, rect.width * 0.14) : window.innerWidth * 0.69;
+        const screenY = rect ? rect.top + v * rect.height : window.innerHeight * (0.18 + v * 0.64);
+        return this.screenToReactionWorld(
+            THREE.MathUtils.clamp(screenX, 24, window.innerWidth - 24),
+            THREE.MathUtils.clamp(screenY, 24, window.innerHeight - 24),
+            100,
+        );
+    }
+
+    triggerLunarReaction({ strength = 1, combo = 0, duration = 1.1 } = {}) {
+        this.lunarReaction.startTime = this.time;
+        this.lunarReaction.duration = duration;
+        this.lunarReaction.strength = strength;
+        this.lunarReaction.combo = combo;
+    }
+
+    updateLunarReaction() {
+        const reaction = this.lunarReaction;
+        const elapsed = this.time - reaction.startTime;
+        const progress = THREE.MathUtils.clamp(elapsed / Math.max(0.001, reaction.duration), 0, 1);
+        const envelope = Math.sin(progress * Math.PI);
+
+        if (this.moonHaloNodeData?.uniforms) {
+            const { uniforms } = this.moonHaloNodeData;
+            uniforms.uTime.value = this.time;
+            uniforms.uProgress.value = progress;
+            uniforms.uStrength.value = reaction.strength;
+            uniforms.uCombo.value = reaction.combo;
+        } else if (this.moonHalo?.material) {
+            const opacity = 0.075
+                + envelope * (0.12 + reaction.combo * 0.12) * reaction.strength;
+            if (this.moonHalo.material.uniforms?.uOpacity) {
+                this.moonHalo.material.uniforms.uOpacity.value = opacity;
+            } else {
+                this.moonHalo.material.opacity = opacity;
+            }
+        }
+        if (this.moonNodeData?.uniforms?.uPulse) {
+            this.moonNodeData.uniforms.uPulse.value = envelope
+                * reaction.strength
+                * (0.42 + reaction.combo * 0.45);
+        }
+        if (this.moon) {
+            this.moon.rotation.y = -0.34 + Math.sin(this.time * 0.05) * 0.025;
+        }
+    }
 
     getReactiveBudgetCredits() {
         const quality = normalizeQuality(this.activeQualityLevel || this.getCurrentQualityLevel());
@@ -2323,6 +2728,7 @@ export default class WolfhourTheme extends BaseTheme {
     enqueueReactiveToken(type, payload = {}, createdAtMs = performance.now()) {
         const expiryMs = this.reactiveTokenExpiryMs[type];
         if (!Number.isFinite(expiryMs)) return;
+        if (this.getReactivePoolCapacity(type) <= 0) return;
 
         this.reactiveQueue.push({
             type,
@@ -2340,7 +2746,9 @@ export default class WolfhourTheme extends BaseTheme {
         const burstCount = Math.max(0, Math.floor(count));
         const startAt = performance.now();
         for (let i = 0; i < burstCount; i += 1) {
-            const spacing = type === 'meteor' ? 120 : type === 'crash' ? 380 : 35;
+            let spacing = 35;
+            if (type === 'meteor') spacing = 120;
+            else if (type === 'crash') spacing = 380;
             const createdAtMs = startAt + (i * spacing);
             this.enqueueReactiveToken(type, payload, createdAtMs);
         }
@@ -2368,33 +2776,30 @@ export default class WolfhourTheme extends BaseTheme {
         let created = false;
         if (token.type === 'starBurst') {
             const before = this.starBursts.length;
-            this.createStarBurst();
+            this.createStarBurst(token.payload);
             created = this.starBursts.length > before;
         } else if (token.type === 'beam') {
             const before = this.celestialBeams.length;
-            this.createCelestialBeam();
+            this.createCelestialBeam(token.payload);
             created = this.celestialBeams.length > before;
         } else if (token.type === 'rift') {
             const before = this.cosmicRifts.length;
-            this.createCosmicRift();
+            this.createCosmicRift(token.payload);
             created = this.cosmicRifts.length > before;
         } else if (token.type === 'wave') {
             const before = this.cosmicWaves.length;
-            this.createCosmicWave();
+            this.createCosmicWave(token.payload);
             created = this.cosmicWaves.length > before;
         } else if (token.type === 'meteor') {
             const before = this.meteors.length;
-            this.createMeteor();
+            this.createMeteor(token.payload);
             created = this.meteors.length > before;
         } else if (token.type === 'crash') {
             const before = this.meteorCrashes.length;
-            this.createMeteorCrash();
+            this.createMeteorCrash(token.payload);
             created = this.meteorCrashes.length > before;
         }
 
-        if (!created) {
-            this.reactiveMetrics.poolMisses += 1;
-        }
         return created;
     }
 
@@ -2403,20 +2808,35 @@ export default class WolfhourTheme extends BaseTheme {
 
         const now = performance.now();
         const adaptivePacingEnabled = this.flags.noAdaptivePacing !== true;
-        let credits = adaptivePacingEnabled ? this.getReactiveBudgetCredits() : Number.POSITIVE_INFINITY;
+        const maxCredits = this.getReactiveBudgetCredits();
+        let credits = adaptivePacingEnabled ? maxCredits : Number.POSITIVE_INFINITY;
+        const attemptedTokens = new Set();
 
         while (this.reactiveQueue.length > 0 && credits > 0) {
-            const token = this.reactiveQueue[0];
-
-            if (token.expiresAtMs <= now) {
-                this.reactiveQueue.shift();
-                this.applyReactiveExpiryEnvelope(token);
-                continue;
+            for (let i = this.reactiveQueue.length - 1; i >= 0; i -= 1) {
+                const queuedToken = this.reactiveQueue[i];
+                const queuedCost = this.reactiveTokenCosts[queuedToken.type] ?? 1;
+                if (queuedToken.expiresAtMs <= now
+                    || (adaptivePacingEnabled && queuedCost > maxCredits)) {
+                    this.reactiveQueue.splice(i, 1);
+                    this.applyReactiveExpiryEnvelope(queuedToken);
+                }
             }
-            if (token.createdAtMs > now) break;
 
+            let tokenIndex = -1;
+            for (let i = 0; i < this.reactiveQueue.length; i += 1) {
+                const queuedToken = this.reactiveQueue[i];
+                if (attemptedTokens.has(queuedToken) || queuedToken.createdAtMs > now) continue;
+                const queuedCost = this.reactiveTokenCosts[queuedToken.type] ?? 1;
+                if (!adaptivePacingEnabled || queuedCost <= credits) {
+                    tokenIndex = i;
+                    break;
+                }
+            }
+            if (tokenIndex < 0) break;
+
+            const token = this.reactiveQueue[tokenIndex];
             const cost = this.reactiveTokenCosts[token.type] ?? 1;
-            if (adaptivePacingEnabled && cost > credits) break;
 
             const spawnStart = performance.now();
             const created = this.spawnReactiveToken(token);
@@ -2424,40 +2844,46 @@ export default class WolfhourTheme extends BaseTheme {
             this.recordReactiveSpawnDuration(spawnDuration);
 
             if (created) {
-                this.reactiveQueue.shift();
+                this.reactiveQueue.splice(tokenIndex, 1);
                 if (adaptivePacingEnabled) {
                     credits -= cost;
                 }
                 continue;
             }
 
-            // Pool is saturated this frame; try next frame until token expires.
-            break;
+            // A saturated effect type must not block unrelated ready reactions. Record
+            // one miss per token, then try other ready work this frame.
+            if (!token.poolMissRecorded) {
+                token.poolMissRecorded = true;
+                this.reactiveMetrics.poolMisses += 1;
+            }
+            attemptedTokens.add(token);
         }
     }
 
-    onPieceLock() {
-        this.enqueueReactiveToken('starBurst');
+    onPieceLock(data = {}) {
+        const origin = this.resolvePieceLockOrigin(data);
+        if (origin) this.lastReactiveOrigin = { ...origin };
+        this.enqueueReactiveToken('starBurst', { origin });
 
+        this.effectState.starBurstIntensity = Math.max(this.effectState.starBurstIntensity, 0.72);
         this.effectState.mountainPulse = 0.8;
         this.effectState.mountainShockwave = 1.0; // Trigger vertex wave
         this.effectState.ambientScatter = Math.max(this.effectState.ambientScatter, 0.85);
         this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.35);
-
-        if (this.isWebGPU && this.starfieldNodeData) {
-            this.starfieldNodeData.uniforms.uEventBoost.value = 0.5;
-        } else if (this.starfield) {
-            this.starfield.material.uniforms.uEventBoost.value = 0.5;
-        }
+        this.triggerLunarReaction({ strength: 1.0, combo: 0.12, duration: 1.25 });
     }
 
     onLineClear(data) {
         const lineCount = data?.detail?.lineCount ?? data?.lineCount ?? 1;
+        const origin = this.resolveLineClearOrigin(data);
+        if (origin) this.lastReactiveOrigin = { ...origin };
+        const payload = { origin };
 
-        this.enqueueReactiveBurst('beam', Math.min(lineCount, 2));
+        this.enqueueReactiveBurst('beam', Math.min(lineCount, 2), payload);
 
         // Create horizontal ripple
-        this.enqueueReactiveToken('wave');
+        this.enqueueReactiveToken('wave', payload);
 
         this.effectState.nebulaBoost = 0.1 + lineCount * 0.02;
         this.effectState.bloomBoost = 0.05 + lineCount * 0.02;
@@ -2470,24 +2896,44 @@ export default class WolfhourTheme extends BaseTheme {
             this.effectState.nebulaColorShift,
             Math.min(0.18 + lineCount * 0.08, 0.85),
         );
+        this.triggerLunarReaction({
+            strength: Math.min(0.5 + lineCount * 0.09, 0.86),
+            combo: Math.min(lineCount / 8, 0.5),
+            duration: 1.25,
+        });
     }
 
     onCombo(data) {
         const comboCount = data?.detail?.comboCount ?? data?.comboCount ?? 0;
+        const payload = { origin: this.lastReactiveOrigin, reactive: true };
 
         if (comboCount >= 3) {
-            this.enqueueReactiveToken('rift');
+            // Replace low-priority ambience with the authored meteor shower so a combo
+            // cannot inherit two extra trail/head draw pairs from an unlucky idle phase.
+            for (let i = this.meteors.length - 1; i >= 0; i -= 1) {
+                if (this.meteors[i].userData.reactive !== true) {
+                    this.releaseMeteor(i, this.meteors[i]);
+                }
+            }
+            this.lastMeteorTime = this.time;
+            this.nextMeteorDelay = 4 + this.random() * 3;
+        }
+
+        if (comboCount >= 3) {
+            this.enqueueReactiveToken('rift', payload);
             this.effectState.cosmicRiftIntensity = Math.min(comboCount * 0.2, 1.0);
         }
 
         if (comboCount >= 3) {
-            const starCount = Math.min(comboCount - 1, 4);
-            this.enqueueReactiveBurst('meteor', starCount);
+            const maxComboMeteors = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 4 : 3;
+            const starCount = Math.min(comboCount - 1, maxComboMeteors);
+            this.enqueueReactiveBurst('meteor', starCount, payload);
         }
 
         if (comboCount >= 5) {
-            const crashCount = comboCount >= 10 ? 2 : 1;
-            this.enqueueReactiveBurst('crash', crashCount);
+            const crashCapacity = this.getReactivePoolCapacity('crash');
+            const crashCount = comboCount >= 10 && crashCapacity >= 2 ? 2 : 1;
+            this.enqueueReactiveBurst('crash', crashCount, payload);
         }
 
         // Surge intensity removed as per spirit removal
@@ -2504,15 +2950,22 @@ export default class WolfhourTheme extends BaseTheme {
             this.effectState.mountainPulse,
             Math.min(comboCount * 0.1, 0.8),
         );
-
-        if (this.isWebGPU && this.starfieldNodeData) {
-            this.starfieldNodeData.uniforms.uEventBoost.value = Math.min(comboCount * 0.1, 0.5);
-        } else if (this.starfield) {
-            this.starfield.material.uniforms.uEventBoost.value = Math.min(comboCount * 0.1, 0.5);
-        }
+        this.effectState.starBurstIntensity = Math.max(
+            this.effectState.starBurstIntensity,
+            Math.min(0.25 + comboCount * 0.065, 0.82),
+        );
+        this.effectState.cameraShake = Math.max(
+            this.effectState.cameraShake,
+            Math.min(comboCount * 0.045, 0.48),
+        );
+        this.triggerLunarReaction({
+            strength: Math.min(0.62 + comboCount * 0.045, 1),
+            combo: Math.min(comboCount / 8, 1),
+            duration: 1.9,
+        });
     }
 
-    onLevelUp(data) {
+    onLevelUp() {
         // Subtle bloom boost on level up
         this.effectState.bloomBoost = 0.2;
         this.effectState.spiritSurge = 0.3;
@@ -2520,6 +2973,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.ambientSwirl = Math.max(this.effectState.ambientSwirl, 0.5);
         this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.5);
         this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.35);
+        this.triggerLunarReaction({ strength: 0.7, combo: 0.45, duration: 1.55 });
         // Trigger multiple beams
         this.enqueueReactiveBurst('beam', 3);
     }
@@ -2546,9 +3000,20 @@ export default class WolfhourTheme extends BaseTheme {
         if (type === 'beam') return this.qualityPreset.maxCelestialBeams;
         if (type === 'rift') return this.qualityPreset.maxCosmicRifts;
         if (type === 'wave') return 4;
-        if (type === 'meteor') return 10;
+        if (type === 'meteor') {
+            return ['Minimal', 'Low'].includes(this.activeQualityLevel) ? 3 : 6;
+        }
         if (type === 'crash') return this.qualityPreset.maxMeteorCrashes;
         return 0;
+    }
+
+    getReactivePoolWarmCount(type) {
+        const capacity = this.getReactivePoolCapacity(type);
+        if (capacity <= 0) return 0;
+        if (type === 'starBurst') return Math.min(capacity, 3);
+        if (type === 'meteor') return Math.min(capacity, 2);
+        if (type === 'crash') return Math.min(capacity, 1);
+        return Math.min(capacity, 1);
     }
 
     getReactivePoolTotal(type, activeList) {
@@ -2556,7 +3021,7 @@ export default class WolfhourTheme extends BaseTheme {
         return activeList.length + pool.length;
     }
 
-    acquireReactiveEffect(type, activeList, buildFn, resetFn) {
+    acquireReactiveEffect(type, activeList, buildFn, resetFn, payload = {}) {
         const pool = this.effectPools[type] || [];
         const capacity = this.getReactivePoolCapacity(type);
 
@@ -2572,7 +3037,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.scene.add(effect);
         }
 
-        resetFn.call(this, effect);
+        resetFn.call(this, effect, payload);
         effect.userData.active = true;
         effect.visible = true;
         activeList.push(effect);
@@ -2614,12 +3079,36 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectPools.meteor.length = 0;
         this.effectPools.crash.length = 0;
 
-        this.preallocateReactivePool('starBurst', this.getReactivePoolCapacity('starBurst'), this.buildStarBurstEffect);
-        this.preallocateReactivePool('beam', this.getReactivePoolCapacity('beam'), this.buildCelestialBeamEffect);
-        this.preallocateReactivePool('rift', this.getReactivePoolCapacity('rift'), this.buildCosmicRiftEffect);
-        this.preallocateReactivePool('wave', this.getReactivePoolCapacity('wave'), this.buildCosmicWaveEffect);
-        this.preallocateReactivePool('meteor', this.getReactivePoolCapacity('meteor'), this.buildMeteorEffect);
-        this.preallocateReactivePool('crash', this.getReactivePoolCapacity('crash'), this.buildMeteorCrashEffect);
+        this.preallocateReactivePool(
+            'starBurst',
+            this.getReactivePoolWarmCount('starBurst'),
+            this.buildStarBurstEffect,
+        );
+        this.preallocateReactivePool(
+            'beam',
+            this.getReactivePoolWarmCount('beam'),
+            this.buildCelestialBeamEffect,
+        );
+        this.preallocateReactivePool(
+            'rift',
+            this.getReactivePoolWarmCount('rift'),
+            this.buildCosmicRiftEffect,
+        );
+        this.preallocateReactivePool(
+            'wave',
+            this.getReactivePoolWarmCount('wave'),
+            this.buildCosmicWaveEffect,
+        );
+        this.preallocateReactivePool(
+            'meteor',
+            this.getReactivePoolWarmCount('meteor'),
+            this.buildMeteorEffect,
+        );
+        this.preallocateReactivePool(
+            'crash',
+            this.getReactivePoolWarmCount('crash'),
+            this.buildMeteorCrashEffect,
+        );
     }
 
     prewarmReactiveMaterials() {
@@ -2705,36 +3194,39 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         const burst = this._createInstancedParticleMesh(geometry, material);
-        burst.userData.duration = 0.8;
+        burst.userData.duration = 0.95;
         burst.userData.particleCount = particleCount;
         if (nodeData) burst.userData.nodeData = nodeData;
 
         return burst;
     }
 
-    resetStarBurstEffect(burst) {
-        const positions = burst.geometry.attributes.position.array;
+    resetStarBurstEffect(burst, payload = {}) {
+        const positions = this.getParticlePositionArray(burst);
         const velocities = burst.geometry.attributes.aVelocity.array;
         const sizes = burst.geometry.attributes.aSize.array;
         const particleCount = burst.userData.particleCount;
-        const cx = (this.random() - 0.5) * 800;
-        const cy = (this.random() - 0.5) * 400;
+        const origin = payload?.origin || this.lastReactiveOrigin;
+        const side = this.random() > 0.5 ? 1 : -1;
+        const cx = Number.isFinite(origin?.x) ? origin.x : side * (280 + this.random() * 170);
+        const cy = Number.isFinite(origin?.y) ? origin.y : -40 + (this.random() - 0.5) * 220;
+        const cz = Number.isFinite(origin?.z) ? origin.z : 100;
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
             positions[i3] = cx;
             positions[i3 + 1] = cy;
-            positions[i3 + 2] = 100;
+            positions[i3 + 2] = cz;
 
             const angle = this.random() * Math.PI * 2;
-            const speed = 200 + this.random() * 300;
+            const speed = 180 + this.random() * 300;
             velocities[i3] = Math.cos(angle) * speed;
             velocities[i3 + 1] = Math.sin(angle) * speed;
             velocities[i3 + 2] = (this.random() - 0.5) * 100;
-            sizes[i] = 15 + this.random() * 25;
+            sizes[i] = 18 + this.random() * 28;
         }
 
-        burst.geometry.attributes.position.needsUpdate = true;
+        this.syncInstancedParticlePositions(burst);
         burst.geometry.attributes.aVelocity.needsUpdate = true;
         burst.geometry.attributes.aSize.needsUpdate = true;
         burst.userData.startTime = this.time;
@@ -2745,12 +3237,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createStarBurst() {
+    createStarBurst(payload = {}) {
         return !!this.acquireReactiveEffect(
             'starBurst',
             this.starBursts,
             this.buildStarBurstEffect,
             this.resetStarBurstEffect,
+            payload,
         );
     }
 
@@ -2787,10 +3280,14 @@ export default class WolfhourTheme extends BaseTheme {
         return beam;
     }
 
-    resetCelestialBeamEffect(beam) {
+    resetCelestialBeamEffect(beam, payload = {}) {
         const beamWidth = 40 + this.random() * 60;
+        const origin = payload?.origin || this.lastReactiveOrigin;
+        const beamX = Number.isFinite(origin?.x)
+            ? origin.x + (this.random() - 0.5) * 50
+            : (this.random() - 0.5) * 1000;
         beam.scale.set(beamWidth, 4000, 1);
-        beam.position.set((this.random() - 0.5) * 1000, -200, -800);
+        beam.position.set(beamX, -200, -800);
         beam.rotation.z = (this.random() - 0.5) * 0.1;
         beam.userData.startTime = this.time;
 
@@ -2803,12 +3300,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createCelestialBeam() {
+    createCelestialBeam(payload = {}) {
         return !!this.acquireReactiveEffect(
             'beam',
             this.celestialBeams,
             this.buildCelestialBeamEffect,
             this.resetCelestialBeamEffect,
+            payload,
         );
     }
 
@@ -2843,14 +3341,15 @@ export default class WolfhourTheme extends BaseTheme {
         return rift;
     }
 
-    resetCosmicRiftEffect(rift) {
+    resetCosmicRiftEffect(rift, payload = {}) {
         const riftLength = 100 + this.random() * 150;
         const riftWidth = 3 + this.random() * 4;
+        const origin = payload?.origin || this.lastReactiveOrigin;
         rift.scale.set(riftLength, riftWidth, 1);
         rift.position.set(
-            (this.random() - 0.5) * 1200,
-            this.random() * 300 + 100,
-            -200,
+            Number.isFinite(origin?.x) ? origin.x : (this.random() - 0.5) * 1000,
+            Number.isFinite(origin?.y) ? origin.y + 80 : this.random() * 300 + 80,
+            Number.isFinite(origin?.z) ? origin.z - 300 : -200,
         );
         rift.rotation.z = (this.random() - 0.5) * 0.4;
         rift.userData.startTime = this.time;
@@ -2864,12 +3363,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createCosmicRift() {
+    createCosmicRift(payload = {}) {
         return !!this.acquireReactiveEffect(
             'rift',
             this.cosmicRifts,
             this.buildCosmicRiftEffect,
             this.resetCosmicRiftEffect,
+            payload,
         );
     }
 
@@ -2904,8 +3404,13 @@ export default class WolfhourTheme extends BaseTheme {
         return wave;
     }
 
-    resetCosmicWaveEffect(wave) {
-        wave.position.z = 50;
+    resetCosmicWaveEffect(wave, payload = {}) {
+        const origin = payload?.origin || this.lastReactiveOrigin;
+        wave.position.set(
+            Number.isFinite(origin?.x) ? origin.x : 0,
+            Number.isFinite(origin?.y) ? origin.y : 0,
+            50,
+        );
         wave.userData.startTime = this.time;
         if (wave.userData.nodeData?.uniforms) {
             wave.userData.nodeData.uniforms.uTime.value = 0;
@@ -2916,12 +3421,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createCosmicWave() {
+    createCosmicWave(payload = {}) {
         return !!this.acquireReactiveEffect(
             'wave',
             this.cosmicWaves,
             this.buildCosmicWaveEffect,
             this.resetCosmicWaveEffect,
+            payload,
         );
     }
 
@@ -3290,20 +3796,30 @@ export default class WolfhourTheme extends BaseTheme {
             trailNodeData,
             headNodeData,
             trailSlot: -1,
+            reactive: false,
         };
 
         return meteor;
     }
 
-    resetMeteorEffect(meteor) {
+    resetMeteorEffect(meteor, payload = {}) {
         const data = meteor.userData;
+        const origin = payload?.origin || this.lastReactiveOrigin;
+        data.reactive = payload?.reactive === true;
         data.startTime = this.time;
         data.duration = 2.5 + this.random() * 1.5;
-        data.startX = (this.random() - 0.5) * 1200;
-        data.startY = 200 + this.random() * 250;
         data.startZ = -1800 - this.random() * 500;
-        data.angle = -0.3 - this.random() * 0.5;
         data.direction = this.random() > 0.5 ? 1 : -1;
+        if (Number.isFinite(origin?.x) && Number.isFinite(origin?.y)) {
+            const approachDistance = 420 + this.random() * 280;
+            data.startX = origin.x - data.direction * approachDistance;
+            data.startY = THREE.MathUtils.clamp(origin.y + 300 + this.random() * 160, 180, 470);
+            data.angle = Math.atan2(origin.y - data.startY, approachDistance);
+        } else {
+            data.startX = (this.random() - 0.5) * 1200;
+            data.startY = 200 + this.random() * 250;
+            data.angle = -0.3 - this.random() * 0.5;
+        }
         data.speed = 400 + this.random() * 200;
         data.trailLength = 150 + this.random() * 100;
 
@@ -3312,7 +3828,11 @@ export default class WolfhourTheme extends BaseTheme {
             data.trailSlot = -1;
         }
 
-        if (this.meteorTrailBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeMeteorTrails === true) {
+        if (
+            this.meteorTrailBatchCompute
+            && this.shouldUseCompute()
+            && this.qualityPreset.computeMeteorTrails === true
+        ) {
             const slot = this.meteorTrailBatchCompute.acquireSlot();
             if (slot >= 0) {
                 data.trailSlot = slot;
@@ -3362,12 +3882,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createMeteor() {
+    createMeteor(payload = {}) {
         return !!this.acquireReactiveEffect(
             'meteor',
             this.meteors,
             this.buildMeteorEffect,
             this.resetMeteorEffect,
+            payload,
         );
     }
 
@@ -3383,12 +3904,12 @@ export default class WolfhourTheme extends BaseTheme {
     updateMeteors() {
         if (this.time - this.lastMeteorTime > this.nextMeteorDelay) {
             const r = this.random();
-            const spawnCount = r > 0.7 ? 3 : r > 0.3 ? 2 : 1;
+            const spawnCount = this.activeQualityLevel === 'Extreme' && r > 0.82 ? 2 : 1;
             for (let s = 0; s < spawnCount; s += 1) {
                 this.createMeteor();
             }
             this.lastMeteorTime = this.time;
-            this.nextMeteorDelay = 2 + this.random() * 2;
+            this.nextMeteorDelay = 4 + this.random() * 3;
         }
 
         for (let i = this.meteors.length - 1; i >= 0; i -= 1) {
@@ -3669,12 +4190,20 @@ export default class WolfhourTheme extends BaseTheme {
         return crash;
     }
 
-    resetMeteorCrashEffect(crash) {
+    resetMeteorCrashEffect(crash, payload = {}) {
         const data = crash.userData;
         // Prefer foreground/mid peaks (z >= -1000) — distant peaks make the trail too small to read.
         const candidateMountains = this.mountains.filter((m) => m.position.z >= -1000);
         const pool = candidateMountains.length > 0 ? candidateMountains : this.mountains;
-        const targetMountain = pool[Math.floor(this.random() * pool.length)];
+        const originX = payload?.origin?.x;
+        let targetMountain = pool[Math.floor(this.random() * pool.length)];
+        if (Number.isFinite(originX)) {
+            targetMountain = pool.reduce((closest, mountain) => {
+                const currentDistance = Math.abs(mountain.position.x - originX);
+                const closestDistance = Math.abs(closest.position.x - originX);
+                return currentDistance < closestDistance ? mountain : closest;
+            }, pool[0]);
+        }
         data.targetX = targetMountain.position.x + (this.random() - 0.5) * 200;
         // Land on the visible peak ridge (mountain.position.y is the base, peaks rise ~380-520 above it).
         data.targetY = targetMountain.position.y + 460 + this.random() * 80;
@@ -3747,12 +4276,13 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
-    createMeteorCrash() {
+    createMeteorCrash(payload = {}) {
         return !!this.acquireReactiveEffect(
             'crash',
             this.meteorCrashes,
             this.buildMeteorCrashEffect,
             this.resetMeteorCrashEffect,
+            payload,
         );
     }
 
@@ -3786,7 +4316,7 @@ export default class WolfhourTheme extends BaseTheme {
         data.shockwave.visible = true;
         data.dustCloud.visible = true;
 
-        const debrisPositions = data.debris.geometry.attributes.position.array;
+        const debrisPositions = this.getParticlePositionArray(data.debris);
         const debrisVelocities = data.debris.geometry.attributes.aVelocity.array;
         const debrisSizes = data.debris.geometry.attributes.aSize.array;
         const debrisRotations = data.debris.geometry.attributes.aRotation.array;
@@ -3819,7 +4349,7 @@ export default class WolfhourTheme extends BaseTheme {
                 this.setDebrisSlotOffset(data.debris.geometry, 0);
             }
         } else {
-            data.debris.geometry.attributes.position.needsUpdate = true;
+            this.syncInstancedParticlePositions(data.debris);
             this.setDebrisSlotOffset(data.debris.geometry, 0);
         }
 
@@ -3832,7 +4362,7 @@ export default class WolfhourTheme extends BaseTheme {
             data.shockwave.material.uniforms.uOpacity.value = 1;
         }
 
-        const dustPositions = data.dustCloud.geometry.attributes.position.array;
+        const dustPositions = this.getParticlePositionArray(data.dustCloud);
         const dustCount = data.dustCloud.geometry.attributes.aSize.count;
         const dustImpactZ = targetZ + 40;
         for (let i = 0; i < dustCount; i += 1) {
@@ -3841,7 +4371,7 @@ export default class WolfhourTheme extends BaseTheme {
             dustPositions[i3 + 1] = targetY + this.random() * 60;
             dustPositions[i3 + 2] = dustImpactZ;
         }
-        data.dustCloud.geometry.attributes.position.needsUpdate = true;
+        this.syncInstancedParticlePositions(data.dustCloud);
 
         this.effectState.bloomBoost = 0.3;
         this.effectState.mountainShockwave = 1.5;
@@ -3854,7 +4384,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.45);
     }
 
-    updateMeteorCrashes(deltaTime) {
+    updateMeteorCrashes() {
         for (let i = this.meteorCrashes.length - 1; i >= 0; i -= 1) {
             const crash = this.meteorCrashes[i];
             const data = crash.userData;
@@ -3972,7 +4502,16 @@ export default class WolfhourTheme extends BaseTheme {
             // The rAF is already scheduled above so the loop self-heals; bailing here stops this heavy
             // scene from burning GPU (uniform pushes + 5 compute dispatches + post) while backgrounded.
             // Foreground output is unchanged.
-            if (!this.shouldRenderFrame()) return;
+            if (!this.shouldRenderFrame()) {
+                this.baselineLastWallTimeMs = null;
+                return;
+            }
+
+            const wallNowMs = performance.now();
+            const wallDeltaSeconds = Number.isFinite(this.baselineLastWallTimeMs)
+                ? (wallNowMs - this.baselineLastWallTimeMs) / 1000
+                : null;
+            this.baselineLastWallTimeMs = wallNowMs;
 
             let deltaTime;
             if (this.fixedDeltaSeconds) {
@@ -3989,6 +4528,7 @@ export default class WolfhourTheme extends BaseTheme {
 
             // Subtle camera drift animation for immersive feel
             this.updateCameraAnimation(deltaTime);
+            this.updateLunarReaction();
 
             // Update time uniforms — branch by backend
             if (this.isWebGPU && this.materialFactories) {
@@ -4024,7 +4564,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateEffects(deltaTime);
             this.processReactiveQueue();
             this.updateMeteors(deltaTime); // Shooting star system
-            this.updateMeteorCrashes(deltaTime); // Meteor crash system
+            this.updateMeteorCrashes(); // Meteor crash system
             this.updateComputeSystems(deltaTime);
 
             if (this.isWebGPU) {
@@ -4044,8 +4584,9 @@ export default class WolfhourTheme extends BaseTheme {
                 this.renderer.render(this.scene, this.camera);
             }
 
-            if (this.flags.baseline) {
-                this.trackBaselineFrame(deltaTime);
+            if (this.flags.baseline && Number.isFinite(wallDeltaSeconds)) {
+                this.resolveBaselineGpuTimestamps();
+                this.trackBaselineFrame(wallDeltaSeconds);
             }
         };
 
@@ -4171,21 +4712,56 @@ export default class WolfhourTheme extends BaseTheme {
     getBaselineSequence(name = 'default') {
         const sequences = {
             default: [
-                { event: EVENTS.PIECE_LOCK, payload: {} },
-                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 2 } },
+                {
+                    event: EVENTS.PIECE_LOCK,
+                    payload: {
+                        piece: {
+                            x: 2, y: 17, shape: [[1, 1, 1], [0, 1, 0]], pieceId: 101,
+                        },
+                    },
+                },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 2, clearedRows: [18, 19] } },
                 { event: EVENTS.COMBO, payload: { comboCount: 3 } },
-                { event: EVENTS.PIECE_LOCK, payload: {} },
-                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                {
+                    event: EVENTS.PIECE_LOCK,
+                    payload: {
+                        piece: {
+                            x: 6, y: 18, shape: [[1, 1], [1, 1]], pieceId: 102,
+                        },
+                    },
+                },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4, clearedRows: [16, 17, 18, 19] } },
                 { event: EVENTS.COMBO, payload: { comboCount: 5 } },
             ],
             stress: [
-                { event: EVENTS.PIECE_LOCK, payload: {} },
-                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                {
+                    event: EVENTS.PIECE_LOCK,
+                    payload: {
+                        piece: {
+                            x: 1, y: 17, shape: [[1, 1, 1, 1]], pieceId: 201,
+                        },
+                    },
+                },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4, clearedRows: [16, 17, 18, 19] } },
                 { event: EVENTS.COMBO, payload: { comboCount: 6 } },
-                { event: EVENTS.PIECE_LOCK, payload: {} },
+                {
+                    event: EVENTS.PIECE_LOCK,
+                    payload: {
+                        piece: {
+                            x: 7, y: 16, shape: [[1, 0], [1, 0], [1, 1]], pieceId: 202,
+                        },
+                    },
+                },
                 { event: EVENTS.COMBO, payload: { comboCount: 8 } },
-                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
-                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4, clearedRows: [16, 17, 18, 19] } },
+                {
+                    event: EVENTS.PIECE_LOCK,
+                    payload: {
+                        piece: {
+                            x: 4, y: 18, shape: [[1, 1], [1, 1]], pieceId: 203,
+                        },
+                    },
+                },
                 { event: EVENTS.COMBO, payload: { comboCount: 10 } },
             ],
         };
@@ -4228,7 +4804,7 @@ export default class WolfhourTheme extends BaseTheme {
                         : step.payload;
 
                     // Manually route sequence events safely
-                    if (step.event === EVENTS.PIECE_LOCK) this.onPieceLock();
+                    if (step.event === EVENTS.PIECE_LOCK) this.onPieceLock(payload);
                     else if (step.event === EVENTS.LINE_CLEAR) this.onLineClear(payload);
                     else if (step.event === EVENTS.COMBO) this.onCombo(payload);
                     else if (step.event === EVENTS.LEVEL_UP) this.onLevelUp(payload);
@@ -4329,8 +4905,43 @@ export default class WolfhourTheme extends BaseTheme {
         super.releaseInactiveResources();
     }
 
-    resetRuntimeScene() {
+    async rebuildRuntimeScene(reason = 'runtimeUpdate') {
+        if (!this.isActive || this.runtimeRebuildInFlight) return false;
+
+        const { container } = this;
+        if (!container?.isConnected) return false;
+
+        this.runtimeRebuildInFlight = true;
+        try {
+            this.resetRuntimeScene({ preserveLifecycle: true });
+            await this.createScene();
+            if (!this.isActive || !this.renderer || !this.scene) {
+                throw new Error(`Runtime rebuild did not restore an active scene (${reason})`);
+            }
+            this.hasStarted = true;
+            this.lifecycleState = 'running';
+            console.log(`[Wolfhour] Runtime rebuild complete (${reason})`);
+            return true;
+        } catch (error) {
+            console.error(`[Wolfhour] Runtime rebuild failed (${reason}).`, error);
+            if (this.isActive) this.resetRuntimeScene();
+            throw error;
+        } finally {
+            this.runtimeRebuildInFlight = false;
+        }
+    }
+
+    resetRuntimeScene({ preserveLifecycle = false } = {}) {
+        const { isActive: wasActive, container } = this;
         this.stop();
+
+        if (preserveLifecycle && wasActive && container?.isConnected) {
+            this.isActive = true;
+            this.isPaused = false;
+            this.lifecycleState = 'starting';
+            this.container = container;
+            container.classList.add('active');
+        }
 
         // Restore console.warn if we filtered the uv attribute warning
         this.restoreConsoleWarnFilter();
@@ -4376,8 +4987,31 @@ export default class WolfhourTheme extends BaseTheme {
         this.nebulaPlanes.forEach((n) => {
             n.geometry.dispose();
             this.disposeMaterialResources(n.material);
+            n.userData?.texture?.dispose?.();
         });
         this.nebulaPlanes = [];
+
+        if (this.moon) {
+            this.moon.geometry.dispose();
+            this.disposeMaterialResources(this.moon.material);
+            this.moon = null;
+        }
+        if (this.moonHalo) {
+            this.moonHalo.geometry.dispose();
+            this.disposeMaterialResources(this.moonHalo.material);
+            this.moonHalo = null;
+        }
+        this.moonTexture?.dispose?.();
+        this.moonTexture = null;
+        this.moonNodeData = null;
+        this.moonHaloNodeData = null;
+        this.lunarReaction = {
+            startTime: Number.NEGATIVE_INFINITY,
+            duration: 1.1,
+            strength: 0,
+            combo: 0,
+        };
+        this.lastReactiveOrigin = null;
 
         [...this.starBursts, ...this.effectPools.starBurst].forEach((b) => this.disposeObjectResources(b));
         this.starBursts = [];

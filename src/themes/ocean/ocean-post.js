@@ -66,6 +66,10 @@ export class OceanPost {
 
         // Scene pass + MRT
         this.scenePass = pass(scene, camera);
+        // PassNode.updateBefore() re-derives its physical target size from the
+        // renderer every frame in three r181. setResolutionScale() is the only
+        // persistent way to retain Ocean's tier-authored internal scene scale.
+        this.scenePass.setResolutionScale(this.sceneScale);
         if (this.useMRT) {
             this.scenePass.setMRT(mrt({ output, emissive }));
         }
@@ -76,12 +80,26 @@ export class OceanPost {
 
         // Bloom — bumped strength + lowered threshold so warm coral tips and
         // god-ray motes contribute. Matches the reference photo's bright glow.
-        this.bloomNode = bloom(
-            bloomSource,
-            params.bloomStrength ?? 0.32,
-            params.bloomRadius ?? 0.5,
-            params.bloomThreshold ?? 0.78,
-        );
+        const bloomStrength = params.bloomStrength ?? 0.32;
+        this.bloomNode = bloomStrength > 0
+            ? bloom(
+                bloomSource,
+                bloomStrength,
+                params.bloomRadius ?? 0.5,
+                params.bloomThreshold ?? 0.78,
+            )
+            : null;
+        if (this.bloomNode) {
+            // BloomNode has the same r181 size synchronization behavior. Wrap
+            // its sizing hook so automatic resizes retain Ocean's downsample.
+            const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
+            this.bloomNode.setSize = (width, height) => {
+                originalBloomSetSize(
+                    Math.max(1, width * this.sceneScale * this.bloomScale),
+                    Math.max(1, height * this.sceneScale * this.bloomScale),
+                );
+            };
+        }
 
         // Uniforms — daylight tuning, dialed back from the initial overshoot.
         // Exposure modest, absorption fog restored enough to give distance
@@ -125,8 +143,6 @@ export class OceanPost {
         // cyan so the falloff still feels like underwater depth, not flat
         // overcast haze. Sits between the original cobalt and the earlier
         // too-bright pale cyan.
-        const deepWater = vec3(0.10, 0.40, 0.58);
-
         const getLinearDepth = (sampleUv) => {
             const depthSample = depthTexture.sample(sampleUv).x;
             const viewZ = perspectiveDepthToViewZ(depthSample, this.uCameraNear, this.uCameraFar);
@@ -145,7 +161,15 @@ export class OceanPost {
                 float(0.0),
                 float(0.68),
             );
-            return vec4(mix(sample.rgb, deepWater, absorption), sample.a);
+            // Fog color and ordered ranges belong to scene.fogNode. This pass
+            // performs only wavelength-dependent transmission, preserving dark
+            // graphic silhouettes instead of lifting them toward cyan.
+            const transmittance = mix(
+                vec3(1.0),
+                vec3(0.58, 0.82, 0.98),
+                absorption,
+            );
+            return vec4(sample.rgb.mul(transmittance), sample.a);
         };
 
         // Resolve linear scene depth at the base UV once and share the node:
@@ -298,7 +322,9 @@ export class OceanPost {
             : vec3(0.0);
 
         // ── Vignette ──
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
+        const vignette = float(1.0).sub(
+            smoothstep(this.uVignetteOffset.sub(0.5), this.uVignetteOffset, dist),
+        );
         const vignetteColor = mix(
             chromated.mul(float(1.0).sub(this.uVignetteDarkness)),
             chromated,
@@ -306,8 +332,10 @@ export class OceanPost {
         );
 
         // ── Combine: scene + god rays + bloom ──
-        // bloomNode outputs a vec4; adding it to a vec3 is fine (xyz channels combine).
-        const combined = vignetteColor.add(vec4(shaftColor, float(0.0))).add(this.bloomNode);
+        // Bloom is omitted from the graph entirely on tiers that author zero
+        // strength; a zero uniform still executes all eleven bloom passes.
+        const combinedBase = vignetteColor.add(vec4(shaftColor, float(0.0)));
+        const combined = this.bloomNode ? combinedBase.add(this.bloomNode) : combinedBase;
 
         // ── Exposure ──
         const exposed = combined.rgb.mul(this.uExposure);
@@ -326,33 +354,52 @@ export class OceanPost {
         // Strong teal shadows / warm gold highlights with punchy contrast — the
         // tonemap output is otherwise too uniform-cyan to read as "underwater
         // sanctuary". Push the split harder than a typical desaturated grade.
-        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+        const gradeEnabled = (params.gradeStrength ?? 0) > 0;
+        if (gradeEnabled) {
+            const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
 
-        const shadowTint = vec3(0.0, 0.08, 0.20);
-        const shadowMask = float(1.0).sub(smoothstep(float(0.05), float(0.42), luma));
-        graded = graded.add(shadowTint.mul(shadowMask.mul(0.32)).mul(this.uGradeStrength));
+            const shadowTint = vec3(0.78, 0.98, 1.08);
+            const shadowMask = float(1.0).sub(smoothstep(float(0.05), float(0.42), luma));
+            graded = mix(
+                graded,
+                graded.mul(shadowTint),
+                shadowMask.mul(0.32).mul(this.uGradeStrength),
+            );
 
-        const warmHighlight = vec3(0.40, 0.30, 0.10);
-        const highlightMask = smoothstep(float(0.42), float(0.92), luma);
-        graded = graded.add(warmHighlight.mul(highlightMask.mul(0.14)).mul(this.uGradeStrength));
-        graded = graded.add(vec3(0.12, 0.18, 0.22).mul(gameplayCaustic.mul(0.35)));
-        graded = graded.add(
-            vec3(0.12, 0.08, 0.04).mul(highlightMask).mul(this.uComboSurge.mul(0.28)),
-        );
+            const warmHighlight = vec3(1.09, 1.035, 0.96);
+            const highlightMask = smoothstep(float(0.42), float(0.92), luma);
+            graded = mix(
+                graded,
+                graded.mul(warmHighlight),
+                highlightMask.mul(0.24).mul(this.uGradeStrength),
+            );
+            graded = graded.add(vec3(0.12, 0.18, 0.22).mul(gameplayCaustic.mul(0.35)));
+            graded = graded.add(
+                vec3(0.12, 0.08, 0.04).mul(highlightMask).mul(this.uComboSurge.mul(0.28)),
+            );
 
-        const midBlue = vec3(0.01, 0.14, 0.28);
-        graded = graded.add(
-            midBlue.mul(float(1.0).sub(highlightMask)).mul(0.10).mul(this.uGradeStrength),
-        );
-        const surfaceAzureLift = smoothstep(float(0.52), float(1.0), uv.y)
-            .mul(float(1.0).sub(shadowMask))
-            .mul(this.uGradeStrength);
-        graded = graded.add(vec3(0.02, 0.12, 0.24).mul(surfaceAzureLift.mul(0.12)));
+            const midBlue = vec3(0.93, 1.02, 1.08);
+            graded = mix(
+                graded,
+                graded.mul(midBlue),
+                float(1.0).sub(highlightMask).mul(0.16).mul(this.uGradeStrength),
+            );
+            const surfaceAzureLift = smoothstep(float(0.52), float(1.0), uv.y)
+                .mul(float(1.0).sub(shadowMask))
+                .mul(this.uGradeStrength);
+            graded = mix(
+                graded,
+                graded.mul(vec3(0.97, 1.025, 1.075)),
+                surfaceAzureLift.mul(0.2),
+            );
 
-        // Punchier contrast — the previous 1.12 was too soft for AAA-style depth.
-        // Increased to 1.18 for better silhouette separation.
-        graded = mix(graded, graded.sub(0.5).mul(1.18).add(0.5), this.uGradeStrength);
+            // Punchier contrast — the previous 1.12 was too soft for AAA-style depth.
+            // Increased to 1.18 for better silhouette separation.
+            graded = mix(graded, graded.sub(0.5).mul(1.18).add(0.5), this.uGradeStrength);
+        }
 
+        // PostProcessing applies the renderer's output color transform around
+        // this linear working-space node (outputColorTransform defaults true).
         this.postProcessing.outputNode = vec4(graded, combined.a);
         this.postProcessing.needsUpdate = true;
         this.size = { width: 0, height: 0 };
@@ -374,8 +421,12 @@ export class OceanPost {
         if (params.bloomStrength !== undefined && this.bloomNode?.strength) {
             this.bloomNode.strength.value = params.bloomStrength;
         }
-        if (params.bloomRadius !== undefined) this.bloomNode.radius.value = params.bloomRadius;
-        if (params.bloomThreshold !== undefined) this.bloomNode.threshold.value = params.bloomThreshold;
+        if (params.bloomRadius !== undefined && this.bloomNode?.radius) {
+            this.bloomNode.radius.value = params.bloomRadius;
+        }
+        if (params.bloomThreshold !== undefined && this.bloomNode?.threshold) {
+            this.bloomNode.threshold.value = params.bloomThreshold;
+        }
         if (params.exposure !== undefined) this.uExposure.value = params.exposure;
         if (params.gradeStrength !== undefined) this.uGradeStrength.value = params.gradeStrength;
         if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;
@@ -423,19 +474,13 @@ export class OceanPost {
     setSize(width, height) {
         this.size.width = width;
         this.size.height = height;
-        const sceneWidth = Math.max(1, Math.floor(width * this.sceneScale));
-        const sceneHeight = Math.max(1, Math.floor(height * this.sceneScale));
-        this.scenePass.setSize(sceneWidth, sceneHeight);
-        if (this.bloomNode?._separableBlurMaterials?.length) {
-            const w = Math.max(1, Math.floor(sceneWidth * this.bloomScale));
-            const h = Math.max(1, Math.floor(sceneHeight * this.bloomScale));
-            this.bloomNode.setSize(w, h);
-        }
+        // PassNode/BloomNode update from renderer size during updateBefore().
+        // Persistent tier scaling is installed in the constructor above.
     }
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        this.bloomNode?.dispose();
         this.postProcessing.dispose();
     }
 }
@@ -532,7 +577,7 @@ const OCEAN_GRADE_SHADER = {
             graded += vec3(0.03, 0.13, 0.13) * uGameplayPulse * surfaceGlow * 0.16;
 
             float dist = length(vUv - 0.5);
-            float vignette = smoothstep(0.82, 0.24, dist);
+            float vignette = 1.0 - smoothstep(0.24, 0.82, dist);
             graded *= mix(1.0 - uVignette, 1.0, vignette);
             graded += vec3(0.0, 0.028, 0.038) * smoothstep(0.66, 1.0, 1.0 - vUv.y);
 

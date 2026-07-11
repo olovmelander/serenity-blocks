@@ -32,9 +32,11 @@ export async function playBootWarpStartupSequence(options = {}) {
     } = options;
     const waitForStep = startupPipeline?.waitForStep || ((value) => Promise.resolve(value));
     const signal = startupPipeline?.signal || null;
+    let surfaceReadyPromise = Promise.resolve();
     const requestCssFallback = () => {
         markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
-        dismissStartupShell?.('intro-begin');
+        surfaceReadyPromise = Promise.resolve(dismissStartupShell?.('intro-begin'));
+        return surfaceReadyPromise;
     };
     let warpTransition = null;
     let handoffResult = {
@@ -194,7 +196,7 @@ export async function playBootWarpStartupSequence(options = {}) {
 
     if (!warpTransition) {
         requestCssFallback();
-        return handoffResult;
+        return { ...handoffResult, surfaceReadyPromise };
     }
 
     try {
@@ -239,5 +241,5 @@ export async function playBootWarpStartupSequence(options = {}) {
         warpTransition.dispose();
     }
 
-    return handoffResult;
+    return { ...handoffResult, surfaceReadyPromise };
 }

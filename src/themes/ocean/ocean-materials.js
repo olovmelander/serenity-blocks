@@ -12,9 +12,11 @@ import {
     DoubleSide,
     FrontSide,
     MeshBasicNodeMaterial,
+    MeshStandardNodeMaterial,
 } from 'three/webgpu';
 import {
     abs,
+    atan,
     attribute,
     cameraPosition,
     clamp,
@@ -24,12 +26,12 @@ import {
     fract,
     length,
     max,
-    min,
     mix,
     modelViewMatrix,
     normalize,
     normalWorld,
     positionLocal,
+    positionGeometry,
     positionWorld,
     pow,
     sin,
@@ -43,12 +45,12 @@ import {
 } from 'three/tsl';
 
 import {
-    tslHash,
     tslNoise,
     tslFbm,
     tslGerstnerSum,
     tslCausticProjection,
     tslDepthGradedFog,
+    tslWarmCoolAttenuation,
 } from './ocean-tsl-helpers.js';
 
 // WS 4.1: tileable noise texture shared across material instances. Generated
@@ -102,6 +104,9 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
     // Surface-local shimmer only. Real screen-space refraction is applied in OceanPost
     // where the resolved scene texture is available without feedback artifacts.
     const uSurfaceShimmerStrength = uniform(params.surfaceShimmerStrength ?? 0.35);
+    const uSunCenter = uniform(params.sunCenter ?? new THREE.Vector2(-12, -100));
+    const uSunRadius = uniform(params.sunRadius ?? 46);
+    const uSunApertureStrength = uniform(params.sunApertureStrength ?? 1.0);
 
     const posXZ = positionLocal.xz;
     const wave = tslGerstnerSum(posXZ, uTime);
@@ -130,32 +135,51 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
 
     // Fresnel — view-dependent rim that brightens edges of waves
     const viewDir = normalize(cameraPosition.sub(positionWorld));
+    // The surface is DoubleSide and viewed from below. Use the facing-agnostic
+    // cosine so normal incidence stays transparent and only grazing angles
+    // receive the Fresnel lift.
     const fresnel = pow(
-        float(1.0).sub(max(dot(normalWorld.negate(), viewDir), float(0.0))),
+        float(1.0).sub(abs(dot(normalWorld, viewDir))),
         float(2.5),
     );
     color = color.add(crestColor.mul(fresnel.mul(0.2)));
 
-    // ── Surface shimmer ──
-    // Sample two slightly offset caustic patterns to create a chromatic surface cue.
-    // The horizontal offset is driven by the wave horizontal displacement (wave.x/wave.z),
-    // which is the "view through wavy water" cue. Doing this in 3 channels with slight
-    // separation gives a subtle chromatic dispersion as in real underwater optics.
+    // Two animated texture taps form the surface shimmer. This replaces three
+    // broad procedural caustic graphs while retaining a subtle chromatic split.
     const refractOffset = vec2(wave.x, wave.z).mul(uSurfaceShimmerStrength.mul(0.35));
-    const causticBase = tslCausticProjection(positionWorld.xz, uTime, 0.15);
-    const causticR = tslCausticProjection(
-        positionWorld.xz.add(refractOffset.mul(1.2)),
-        uTime,
-        0.15,
+    const surfaceNoiseTex = getSharedSeabedNoiseTexture();
+    const surfaceUv = positionWorld.xz.mul(0.0175);
+    const shimmerA = texture(
+        surfaceNoiseTex,
+        surfaceUv.add(refractOffset.mul(0.018)).add(vec2(uTime.mul(0.006), uTime.mul(-0.004))),
+    ).r;
+    const shimmerB = texture(
+        surfaceNoiseTex,
+        surfaceUv.mul(1.37).sub(refractOffset.mul(0.014)).add(vec2(uTime.mul(-0.0045), uTime.mul(0.0055))),
+    ).g;
+    const causticBase = pow(abs(shimmerA.sub(shimmerB)), float(2.35));
+    const causticChroma = vec3(
+        causticBase.mul(1.08),
+        causticBase,
+        causticBase.mul(0.94),
     );
-    const causticB = tslCausticProjection(
-        positionWorld.xz.sub(refractOffset.mul(1.2)),
-        uTime,
-        0.15,
-    );
-    const causticChroma = vec3(causticR, causticBase, causticB);
     color = color.add(crestColor.mul(causticBase.mul(0.22)));
     color = color.add(causticChroma.mul(uSurfaceShimmerStrength.mul(0.075)));
+
+    // Near-white surface opening: integrated into the existing water draw so
+    // every tier keeps the same focal hierarchy without another pass.
+    const sunDistance = length(positionWorld.xz.sub(uSunCenter)).div(uSunRadius);
+    const sunBody = float(1.0).sub(smoothstep(float(0.05), float(1.0), sunDistance));
+    const sunCore = float(1.0).sub(smoothstep(float(0.0), float(0.28), sunDistance));
+    const sunSparkle = causticBase.mul(sunBody).mul(0.42);
+    const sunEnergy = sunBody.mul(0.58).add(sunCore.mul(1.42)).add(sunSparkle)
+        .mul(uSunApertureStrength);
+    const sunColor = mix(
+        vec3(0.22, 0.88, 1.0),
+        vec3(1.0, 0.92, 0.68),
+        sunCore.mul(0.82).add(causticBase.mul(0.1)),
+    );
+    color = color.add(sunColor.mul(sunEnergy));
 
     // Foam at crests
     const foam = smoothstep(float(0.35), float(0.65), displacement);
@@ -166,15 +190,25 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
     // doesn't artifact at the plane border.
     const distFromCenter = length(uv().sub(0.5)).mul(2.0);
     const edgeFade = float(1.0).sub(smoothstep(float(0.75), float(1.0), distFromCenter));
-    const alpha = edgeFade.mul(0.3);
+    const alpha = edgeFade.mul(float(0.3).add(sunBody.mul(uSunApertureStrength).mul(0.34)));
 
     material.colorNode = color;
     material.positionNode = displacedPosition;
     material.opacityNode = alpha;
-    // Tag foam as emissive for bloom (cap to avoid blowing out the screen)
-    material.emissiveNode = min(foamColor.mul(foam.mul(0.28)), vec3(0.25));
+    // Keep foam restrained; reserve most HDR energy for the surface aperture.
+    // Ocean uses color-source bloom (not selective MRT), so adding the same
+    // aperture to emissive doubles its energy before bloom. Keep the HDR crown
+    // in colorNode and let the composite pass extract it once.
+    material.emissiveNode = vec3(0.0);
 
-    material.userData = { uTime, uWaveIntensity, uSurfaceShimmerStrength };
+    material.userData = {
+        uTime,
+        uWaveIntensity,
+        uSurfaceShimmerStrength,
+        uSunCenter,
+        uSunRadius,
+        uSunApertureStrength,
+    };
     return material;
 }
 
@@ -188,15 +222,18 @@ export function createSeabedNodeMaterial(params = {}) {
     const uTime = uniform(0);
     const uRippleStrength = uniform(params.rippleStrength ?? 2.4);
     const uCausticStrength = uniform(params.causticStrength ?? 1.10);
+    const detailLevel = String(params.detailLevel || 'High');
+    const lowDetail = detailLevel === 'Minimal' || detailLevel === 'Low';
+    const extremeDetail = detailLevel === 'Extreme';
 
     // Warm peach-cream sandbed — pushed further toward the reference reef-canyon
     // photo's warm sun-baked sand. Previous (0.34, 0.40, 0.46) shadow read as
     // cool grey/snow under the god-ray bloom; warming the shadows toward a
     // peach undertone fixes the "icy beach" look.
-    const sandShadow = vec3(0.68, 0.62, 0.52);
-    const sandMid = vec3(0.88, 0.84, 0.74);
-    const sandLit = vec3(0.98, 0.96, 0.88); // Bright shell-sand highlight on ripple crests
-    const reefShelf = vec3(0.26, 0.36, 0.44);
+    const sandShadow = vec3(0.22, 0.12, 0.045);
+    const sandMid = vec3(0.52, 0.28, 0.09);
+    const sandLit = vec3(0.82, 0.48, 0.16); // Warm mineral highlight on ripple crests
+    const reefShelf = vec3(0.14, 0.30, 0.36);
 
     const height = positionWorld.y;
     const hf = smoothstep(float(-25.0), float(10.0), height);
@@ -205,10 +242,23 @@ export function createSeabedNodeMaterial(params = {}) {
     // Procedural sand ripple bands — shared height field fuels both colour modulation
     // and an analytic per-fragment normal so ripple sides catch/lose light directionally.
     const currentDirNode = vec2(0.22, 0.97);
+    const seabedNoiseTex = getSharedSeabedNoiseTexture();
+    // The data texture contains 256 value-noise cells per UV repeat. Convert
+    // the old analytic-noise frequencies into texture UVs; sampling at the
+    // raw frequency would make the texture 256x denser and produce severe
+    // shimmer/moire across the seabed.
+    const noiseTexelScale = float(1.0 / 256.0);
 
     const rippleHeight = (xz) => {
         // Perturb the coordinates using low frequency noise
-        const perturbed = xz.add(tslNoise(xz.mul(0.04)).mul(3.5));
+        let perturbed = xz;
+        if (!lowDetail) {
+            const warp = texture(
+                seabedNoiseTex,
+                xz.mul(float(0.015).mul(noiseTexelScale)),
+            ).r.sub(0.5).mul(7.0);
+            perturbed = xz.add(warp);
+        }
 
         // Phase of the sand waves aligned to the current
         const theta = dot(perturbed, currentDirNode).mul(0.88);
@@ -225,7 +275,14 @@ export function createSeabedNodeMaterial(params = {}) {
             .add(0.5);
 
         // Mix waves and add high-frequency noise
-        return skewedWave.mul(0.7).add(skewedMed.mul(0.3)).add(tslFbm(xz.mul(0.6), 2).mul(0.2));
+        let microVariation = float(0.0);
+        if (!lowDetail) {
+            microVariation = texture(
+                seabedNoiseTex,
+                xz.mul(float(0.13).mul(noiseTexelScale)),
+            ).g.mul(0.12);
+        }
+        return skewedWave.mul(0.7).add(skewedMed.mul(0.3)).add(microVariation);
     };
 
     const pxz = positionWorld.xz;
@@ -252,31 +309,43 @@ export function createSeabedNodeMaterial(params = {}) {
     // texels — bilinear filtering then matches the visual density of the
     // original procedural noise. Channels: R=grain, G=microGrit, B=sparklePhase,
     // A=sparkleIntensity. Sample wrap via RepeatWrapping (set on the DataTexture).
-    const seabedNoiseTex = getSharedSeabedNoiseTexture();
     const grainEps = float(0.08);
     // World→UV factor for grain: matches the original 22 Hz feature density.
-    const grainUvScale = float(22.0 / 4.0); // ~4 texels per noise cycle.
+    const grainUvScale = float(22.0 / 256.0);
     const grainUv0 = pxz.mul(grainUvScale);
-    const g0 = texture(seabedNoiseTex, grainUv0).r;
-    const gx = texture(seabedNoiseTex, grainUv0.add(vec2(grainEps.mul(grainUvScale), float(0.0)))).r;
-    const gz = texture(seabedNoiseTex, grainUv0.add(vec2(float(0.0), grainEps.mul(grainUvScale)))).r;
+    const detailTexel = texture(seabedNoiseTex, grainUv0);
+    const g0 = detailTexel.r;
 
     // Micro normal contribution (decreases at distance to prevent aliasing)
     // WS 2.2: tightened fade range (20→40 instead of 35→75) — the sub-pixel
     // grain/sparkle is invisible past ~40m anyway, so cutting earlier lets the
     // GPU dead-code-eliminate the dependent micro-color math on most pixels.
     const microFalloff = float(1.0).sub(smoothstep(float(20.0), float(40.0), viewDist));
-    const grainN = float(0.24).mul(microFalloff);
-    const grainNormal = vec3(
-        g0.sub(gx).mul(grainN),
-        float(0.0),
-        g0.sub(gz).mul(grainN),
-    );
+    // Keep the grain below the silhouette scale of the broad dune ripples.
+    // Stronger values turn into unstable, carpet-like aliasing at gameplay
+    // distance and hide the authored current direction.
+    const grainN = float(0.055).mul(microFalloff);
+    let grainNormal = vec3(0.0);
+    if (!lowDetail) {
+        const gx = texture(
+            seabedNoiseTex,
+            grainUv0.add(vec2(grainEps.mul(grainUvScale), float(0.0))),
+        ).r;
+        const gz = texture(
+            seabedNoiseTex,
+            grainUv0.add(vec2(float(0.0), grainEps.mul(grainUvScale))),
+        ).r;
+        grainNormal = vec3(
+            g0.sub(gx).mul(grainN),
+            float(0.0),
+            g0.sub(gz).mul(grainN),
+        );
+    }
     const finalNormal = normalize(litNormal.add(grainNormal));
 
     // Ripple crest warmth — only where the analytic normal faces the sun do we lift
     // toward warm shell-sand, giving the photo's directional ridge highlight.
-    const lightDir = normalize(vec3(0.16, 0.92, -0.18));
+    const lightDir = normalize(vec3(-0.1, 0.9, -0.42));
     const ridgeWarmth = pow(max(dot(rippleNormal, lightDir), float(0.0)), float(2.4));
 
     const terraceBands = sin(positionWorld.z.mul(0.19).add(positionWorld.x.mul(0.035)))
@@ -288,15 +357,18 @@ export function createSeabedNodeMaterial(params = {}) {
 
     // 1. Procedural silt & sediment channels (organic brown/grey patches)
     const siltColor = vec3(0.38, 0.34, 0.28);
-    const siltNoise = tslFbm(positionWorld.xz.mul(0.045), 3);
-    let siltWeight = smoothstep(float(0.42), float(0.72), siltNoise).mul(0.68);
+    const siltNoise = texture(
+        seabedNoiseTex,
+        positionWorld.xz.mul(float(0.012).mul(noiseTexelScale)),
+    ).b;
+    let siltWeight = smoothstep(float(0.38), float(0.7), siltNoise).mul(0.46);
 
     // Stoss / Lee shading adjustments based on alignment with dominant current direction
     const stossAlign = dot(rippleNormal.xz, currentDirNode);
 
     // Lee side (deposition of organic silt)
     const leeWeight = smoothstep(float(-0.55), float(-0.02), stossAlign.negate());
-    siltWeight = clamp(siltWeight.add(leeWeight.mul(0.45)), float(0.0), float(0.88));
+    siltWeight = clamp(siltWeight.add(leeWeight.mul(0.25)), float(0.0), float(0.65));
     color = mix(color, siltColor, siltWeight);
 
     // Stoss side (erosion of silt, clean sand facing the flow)
@@ -304,63 +376,97 @@ export function createSeabedNodeMaterial(params = {}) {
 
     // 2. Deep ripple valley shadowing (darken troughs, highlight crests)
     const h0Clamped = clamp(h0, float(0.0), float(1.0));
-    const rippleValleyDarkening = mix(float(0.65), float(1.0), h0Clamped);
+    const rippleValleyDarkening = mix(float(0.78), float(1.0), h0Clamped);
     color = color.mul(rippleValleyDarkening);
 
     // 3. Micro-grit color overlay
-    const sandGrainNoise = tslFbm(positionWorld.xz.mul(0.085), 3);
-    color = color.mul(float(0.88).add(sandGrainNoise.mul(0.16)));
+    const sandGrainNoise = detailTexel.r;
+    color = color.mul(float(0.975).add(sandGrainNoise.mul(0.045)));
     // WS 4.1: microGrit from the G channel of the shared seabed noise texture.
     // freq 48 maps to ~5 texels/cycle which preserves the original gritty look.
-    const microGrit = texture(seabedNoiseTex, positionWorld.xz.mul(float(48.0 / 5.0))).g;
+    const microGrit = lowDetail
+        ? detailTexel.g
+        : texture(seabedNoiseTex, positionWorld.xz.mul(float(48.0 / 256.0))).g;
     // WS 2.2: gate micro-grit color modulation by the same near-field falloff.
-    color = color.mul(float(0.92).add(microGrit.mul(float(0.12).mul(microFalloff))));
+    color = color.mul(float(0.985).add(microGrit.mul(float(0.025).mul(microFalloff))));
 
     // Ripple crest warmth & stoss exposure highlights
     color = mix(color, sandLit, ridgeWarmth.mul(0.46).add(stossWeight.mul(0.28)));
 
     // Caustics: focused on the stoss slopes and crests, and faded in the troughs
-    const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.13);
+    const causticUv = positionWorld.xz.mul(float(0.13 / 256.0));
+    const causticA = texture(
+        seabedNoiseTex,
+        causticUv.add(vec2(uTime.mul(0.018), uTime.mul(0.011))),
+    ).a;
+    let caustic = abs(causticA.sub(0.5)).mul(2.0);
+    if (!lowDetail) {
+        const causticB = texture(
+            seabedNoiseTex,
+            causticUv.mul(1.37).add(vec2(uTime.mul(-0.014), uTime.mul(0.019))),
+        ).b;
+        caustic = abs(causticA.sub(causticB)).mul(1.65).clamp(0.0, 1.0);
+    }
+    caustic = pow(caustic, float(3.2));
     const sharpCaustic = pow(caustic, float(1.4));
     const causticHeightMod = mix(float(0.45), float(1.0), h0Clamped);
     const causticSlopeMod = mix(float(0.6), float(1.0), smoothstep(float(-0.25), float(0.25), stossAlign));
     const causticIntensity = sharpCaustic.mul(causticHeightMod).mul(causticSlopeMod);
     const causticFalloff = float(1.0).sub(smoothstep(float(80.0), float(220.0), viewDist));
     const causticGain = uCausticStrength.mul(causticFalloff);
-    color = color.add(vec3(0.85, 0.98, 0.92).mul(causticIntensity).mul(causticGain).mul(0.45));
+    const causticColor = vec3(0.52, 0.76, 0.66)
+        .mul(causticIntensity)
+        .mul(causticGain)
+        .mul(0.24);
 
     // Specular lighting on wet/crystalline sand
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const halfVector = normalize(lightDir.add(viewDir));
     const specularDot = max(dot(finalNormal, halfVector), float(0.0));
-    const specular = pow(specularDot, float(42.0)).mul(0.18).mul(rippleFalloff);
-    color = color.add(vec3(0.9, 0.98, 0.95).mul(specular));
+    const specular = pow(specularDot, float(26.0)).mul(0.1).mul(rippleFalloff);
+    const specularColor = vec3(0.9, 0.98, 0.95).mul(specular);
 
     // Twinkling, view-dependent glinting sparkles.
     // WS 4.1: sparkle phase from B channel, intensity from A channel of the
     // shared seabed noise texture. Sample frequencies match the original
     // 12 Hz / 24 Hz density (texels-per-cycle ratio tuned for visual parity).
-    const sparklePhase = texture(seabedNoiseTex, positionWorld.xz.mul(float(12.0 / 3.0))).b;
-    const twinkle = sin(uTime.mul(2.2).add(sparklePhase.mul(6.28)));
-    const viewGlint = dot(viewDir, finalNormal);
-    const sparkleSrc = texture(seabedNoiseTex, positionWorld.xz.mul(float(24.0 / 3.0))).a;
-    const sparkle = pow(sparkleSrc, float(14.0))
-        .mul(twinkle.mul(0.5).add(0.5))
-        .mul(float(1.0).add(viewGlint.mul(0.5)));
-    color = color.add(vec3(0.95, 0.98, 0.88).mul(sparkle).mul(0.32).mul(microFalloff));
+    let sparkleColor = vec3(0.0);
+    if (extremeDetail) {
+        const sparklePhase = texture(
+            seabedNoiseTex,
+            positionWorld.xz.mul(float(12.0 / 256.0)),
+        ).b;
+        const twinkle = sin(uTime.mul(2.2).add(sparklePhase.mul(6.28)));
+        const viewGlint = dot(viewDir, finalNormal);
+        const sparkleSrc = texture(
+            seabedNoiseTex,
+            positionWorld.xz.mul(float(24.0 / 256.0)),
+        ).a;
+        const sparkle = pow(sparkleSrc, float(14.0))
+            .mul(twinkle.mul(0.5).add(0.5))
+            .mul(float(1.0).add(viewGlint.mul(0.5)));
+        sparkleColor = vec3(0.95, 0.98, 0.88)
+            .mul(sparkle)
+            .mul(0.045)
+            .mul(microFalloff);
+    }
 
     // Diffuse lighting via the ripple-perturbed normal — lit/shadow sides on every band.
-    const light = max(float(0.34), dot(finalNormal, lightDir));
+    const light = max(float(0.52), dot(finalNormal, lightDir));
     color = color.mul(light);
 
     // Height-based Ambient Occlusion (crevices and deep valleys are darker)
     const heightFactorAO = smoothstep(float(-25.0), float(8.0), height);
-    const heightAO = mix(float(0.35), float(1.0), heightFactorAO);
+    const heightAO = mix(float(0.82), float(1.0), heightFactorAO);
     color = color.mul(heightAO);
 
     // Depth-based color absorption (deeper is darker blue/green tint)
     const depthFactor = smoothstep(float(-35.0), float(10.0), height);
-    color = mix(color.mul(0.25), color, depthFactor);
+    color = mix(color.mul(vec3(0.72, 0.82, 0.88)), color, depthFactor);
+
+    // Light transport contributions belong after diffuse/occlusion so caustic
+    // lines and wet-sand glints stay readable instead of being darkened twice.
+    color = color.add(causticColor).add(specularColor).add(sparkleColor);
 
     color = tslDepthGradedFog(color, height, viewDist, float(1.0));
 
@@ -394,10 +500,17 @@ export function createSeaweedNodeMaterial(params = {}) {
     const bladeFlutter = sin(aHeight.mul(18.0).add(aPhase)).mul(aHeight).mul(ribbonMask.mul(0.035));
 
     const phaseX = uTime.mul(1.1).add(aPhase).add(aHeight.mul(4.5));
-    const swayX = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(float(1.1).add(ribbonMask.mul(0.22)));
-
-    const phaseZ = uTime.mul(0.88).add(aPhase.mul(0.8)).add(aHeight.mul(3.6));
-    const swayZ = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(float(0.77).add(ribbonMask.mul(0.15)));
+    const primarySway = sin(phaseX)
+        .mul(heightSq)
+        .mul(uCurrentStrength)
+        .mul(float(1.12).add(ribbonMask.mul(0.22)));
+    const phaseZ = uTime.mul(1.58).add(aPhase.mul(0.8)).add(aHeight.mul(6.2));
+    const crossFlutter = cos(phaseZ)
+        .mul(heightSq)
+        .mul(uCurrentStrength)
+        .mul(float(0.18).add(ribbonMask.mul(0.05)));
+    const swayX = primarySway.mul(0.22).sub(crossFlutter.mul(0.976));
+    const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     // Colors
     const base = vec3(0.06, 0.28, 0.20);
@@ -417,18 +530,10 @@ export function createSeaweedNodeMaterial(params = {}) {
     const sssColor = vec3(0.18, 0.42, 0.18);
     color = color.add(sssColor.mul(sssStrength));
 
-    // Caustics on lower 30%
-    // WS 3.3: distance-fade caustic contribution. At ~11k seaweed blades on
-    // Extreme, the per-fragment tslCausticProjection (~3 noise samples) is a
-    // major fillrate cost. Beyond ~70m it's invisible against fog anyway —
-    // multiply by a near-field falloff so far blades skip the visible effect
-    // (the noise calls themselves may still execute, but downstream color
-    // math drops out and the GPU compiler often DCE's pure noise feeding zero).
+    // Dense blades rely on height tint and warm tip backlight. Keeping broad
+    // procedural caustics on the seabed avoids repeating the noise graph over
+    // thousands of overlapping transparent-width blade fragments.
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
-    const causticFalloff = float(1.0).sub(smoothstep(float(40.0), float(70.0), viewDist));
-    const causticMask = float(1.0).sub(smoothstep(float(0.0), float(0.3), aHeight));
-    const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.2);
-    color = color.add(vec3(0.06, 0.27, 0.22).mul(caustic.mul(causticMask).mul(causticFalloff).mul(0.2)));
 
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
 
@@ -460,10 +565,11 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     // Reference organic sway equations
     const heightSq = aHeight.mul(aHeight);
     const phaseX = uTime.mul(1.1).add(aPhase).add(aHeight.mul(4.5));
-    const swayX = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.1);
-
-    const phaseZ = uTime.mul(0.88).add(aPhase.mul(0.8)).add(aHeight.mul(3.6));
-    const swayZ = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.77);
+    const primarySway = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.0);
+    const phaseZ = uTime.mul(1.62).add(aPhase.mul(0.8)).add(aHeight.mul(6.0));
+    const crossFlutter = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.17);
+    const swayX = primarySway.mul(0.22).sub(crossFlutter.mul(0.976));
+    const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     // Reference organic olive green to light gold-green palette.
     const base = vec3(0.18, 0.42, 0.20);
@@ -475,7 +581,7 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     color = color.mul(float(0.85).add(aColorVar.mul(0.3)));
 
     // Diffuse lighting based on vertex normal
-    const lightDir = normalize(vec3(0.16, 0.92, -0.18));
+    const lightDir = normalize(vec3(-0.1, 0.9, -0.42));
     const diffuse = max(float(0.24), dot(normalWorld, lightDir));
     color = color.mul(diffuse);
 
@@ -486,14 +592,9 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     const sssColor = vec3(0.4, 0.88, 0.3);
     color = color.add(sssColor.mul(sssStrength));
 
-    // Dynamic water caustics projected onto seagrass blades.
-    // WS 3.3: distance-fade for the same reason as seaweed — seagrass meadows
-    // can hit ~4k blades on Extreme, and far caustics are invisible.
+    // Seabed caustics show through this sparse geometry; the blade shader can
+    // stay focused on sway, diffuse response, and cheap tip backscatter.
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
-    const causticFalloff = float(1.0).sub(smoothstep(float(40.0), float(70.0), viewDist));
-    const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
-    color = color.add(vec3(0.5, 0.96, 0.7).mul(caustic).mul(aHeight).mul(causticFalloff)
-        .mul(0.26));
 
     // Depth-graded fog wash to blend seagrass into the deep water column
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
@@ -521,13 +622,11 @@ export function createCoralNodeMaterial(baseColor) {
     const uGlowIntensity = uniform(0.8);
     const tintColor = uniform(baseColor);
 
-    const breathing = sin(uTime.mul(1.4)).mul(0.06).add(1.0);
-
     const pattern = tslFbm(
         positionWorld.xz.mul(0.32).add(vec2(positionWorld.y.mul(0.1), positionWorld.y.mul(0.07))),
         2,
     );
-    let color = tintColor.mul(breathing).mul(float(0.98).add(pattern.mul(0.18)));
+    let color = tintColor.mul(float(0.98).add(pattern.mul(0.18)));
 
     // Base AO — bottom 35% of the coral's local Y darkens toward a deep sand-shadow
     // tint so colonies appear anchored to the seabed instead of floating.
@@ -552,7 +651,18 @@ export function createCoralNodeMaterial(baseColor) {
     const tipColor = tintColor.add(coolRim.mul(0.12)).mul(tipGlow);
 
     material.colorNode = color.add(tipColor);
-    material.positionNode = positionLocal.mul(breathing);
+    const flex = smoothstep(float(0.25), float(2.4), positionGeometry.y);
+    const currentWave = sin(
+        uTime.mul(0.82)
+            .add(positionWorld.x.mul(0.045))
+            .add(positionWorld.z.mul(0.034)),
+    ).mul(flex.mul(flex));
+    // positionLocal already contains the InstancedMesh transform in r181.
+    // Replacing it with raw positionGeometry collapses every overgrowth
+    // instance to the source geometry origin.
+    material.positionNode = positionLocal.add(
+        vec3(currentWave.mul(0.13), float(0.0), currentWave.mul(0.34)),
+    );
     material.emissiveNode = vec3(0);
 
     material.userData = { uTime, uGlowIntensity };
@@ -572,13 +682,11 @@ export function createCoralOvergrowthNodeMaterial() {
     const uGlowIntensity = uniform(0.8);
     const aInstanceColor = attribute('aInstanceColor');
 
-    const breathing = sin(uTime.mul(1.4)).mul(0.06).add(1.0);
-
     const pattern = tslFbm(
         positionWorld.xz.mul(0.32).add(vec2(positionWorld.y.mul(0.1), positionWorld.y.mul(0.07))),
         2,
     );
-    let color = aInstanceColor.mul(breathing).mul(float(0.98).add(pattern.mul(0.18)));
+    let color = aInstanceColor.mul(float(0.98).add(pattern.mul(0.18)));
 
     const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
     const aoColor = vec3(0.01, 0.04, 0.08);
@@ -595,10 +703,69 @@ export function createCoralOvergrowthNodeMaterial() {
     const tipColor = aInstanceColor.add(coolRim.mul(0.12)).mul(tipGlow);
 
     material.colorNode = color.add(tipColor);
-    material.positionNode = positionLocal.mul(breathing);
+    const flex = smoothstep(float(0.25), float(2.4), positionGeometry.y);
+    const currentWave = sin(
+        uTime.mul(0.82)
+            .add(positionWorld.x.mul(0.045))
+            .add(positionWorld.z.mul(0.034)),
+    ).mul(flex.mul(flex));
+    material.positionNode = positionGeometry.add(
+        vec3(currentWave.mul(0.13), float(0.0), currentWave.mul(0.34)),
+    );
     material.emissiveNode = vec3(0);
 
     material.userData = { uTime, uGlowIntensity };
+    return material;
+}
+
+/**
+ * One dielectric material for the modular BatchedMesh coral family. BatchedMesh
+ * multiplies colorNode by its per-instance color texture in r181, so this graph
+ * only supplies lighting/attenuation and tip-flex motion.
+ */
+export function createModularCoralNodeMaterial() {
+    const material = new MeshStandardNodeMaterial({
+        color: 0xffffff,
+        roughness: 0.78,
+        metalness: 0.0,
+        side: FrontSide,
+    });
+    const uTime = uniform(0);
+    const uCurrentStrength = uniform(0.5);
+    const aFlex = attribute('aFlex');
+    const flex = aFlex.mul(aFlex);
+    const spatialPhase = positionLocal.x.mul(0.047).add(positionLocal.z.mul(0.036));
+    const primary = sin(uTime.mul(0.72).add(spatialPhase))
+        .mul(flex)
+        .mul(uCurrentStrength)
+        .mul(0.34);
+    const flutter = sin(uTime.mul(1.46).sub(spatialPhase.mul(0.76)).add(aFlex.mul(3.2)))
+        .mul(flex)
+        .mul(uCurrentStrength)
+        .mul(0.055);
+    // r181 applies BatchedMesh transforms to positionLocal before evaluating
+    // positionNode. Outputting positionGeometry here would discard every
+    // colony transform and collapse the batch at its source-module origin.
+    material.positionNode = positionLocal.add(vec3(
+        primary.mul(0.22).sub(flutter.mul(0.976)),
+        float(0.0),
+        primary.mul(0.976).add(flutter.mul(0.22)),
+    ));
+
+    const viewDistance = length(cameraPosition.sub(positionWorld));
+    const upLight = normalWorld.y.mul(0.5).add(0.5);
+    const valueShape = vec3(float(0.78).add(upLight.mul(0.24)));
+    material.colorNode = tslWarmCoolAttenuation(
+        valueShape,
+        viewDistance,
+        float(0.82),
+    );
+    material.emissiveNode = vec3(0.0);
+    material.userData = {
+        uTime,
+        uCurrentStrength,
+        modularCoralMaterial: true,
+    };
     return material;
 }
 
@@ -624,14 +791,11 @@ export function createJellyfishNodeMaterial() {
 
     const aColor = attribute('aColor');
     const aPhase = attribute('aPhase');
-    const aSize = attribute('aSize');
 
     // Bell pulse
     const pulse = sin(uTime.mul(1.8).add(aPhase))
         .mul(0.25)
         .add(float(0.72).add(uGlowIntensity.mul(0.04)));
-    material.positionNode = positionLocal.mul(aSize.mul(pulse));
-
     // Dome shape
     const radial = safeBillboardRadialFalloff();
     const alpha = pow(radial, float(1.8)).mul(pulse);
@@ -666,14 +830,11 @@ export function createPlanktonNodeMaterial(params = {}) {
     const uCurrentStrength = uniform(0.5);
 
     const aPhase = attribute('aPhase');
-    const aSize = attribute('aSize');
     // Twinkle
     const glow = sin(uTime.mul(0.72).add(aPhase.mul(3.5)))
         .mul(0.5)
         .add(0.5);
     const glowScaled = glow.mul(uGlowIntensity.mul(0.32));
-
-    material.positionNode = positionLocal.mul(aSize.add(glowScaled.mul(1.2)));
 
     const radial = safeBillboardRadialFalloff();
     const alpha = pow(radial, float(2.8));
@@ -704,8 +865,6 @@ export function createBubbleNodeMaterial() {
     });
 
     const uTime = uniform(0);
-    const uCurrentStrength = uniform(0.5);
-
     // ── Unpacked from 2 packed instanced buffers (WebGPU 8-buffer limit) ──
     // aBubblePack1.xyzw = speed, phase, size, lifeOffset
     // aBubblePack2.xy   = columnSpread, micro
@@ -713,14 +872,10 @@ export function createBubbleNodeMaterial() {
     const pack2 = attribute('aBubblePack2', 'vec2');
     const aSpeed = pack1.x;
     const aPhase = pack1.y;
-    const aSize = pack1.z;
     const aLifeOffset = pack1.w;
-    const aColumnSpread = pack2.x;
     const aMicro = pack2.y;
 
     const travel = fract(aLifeOffset.add(uTime.mul(aSpeed).mul(0.035)));
-    const columnScale = float(1.0).add(aColumnSpread.mul(0.01));
-    material.positionNode = positionLocal.mul(aSize.mul(columnScale));
 
     // Ring shell + inner glass
     const localUv = uv();
@@ -754,7 +909,7 @@ export function createBubbleNodeMaterial() {
     material.opacityNode = alpha.mul(0.2);
     material.emissiveNode = vec3(0.0);
 
-    material.userData = { uTime, uCurrentStrength };
+    material.userData = { uTime };
     return material;
 }
 
@@ -782,12 +937,25 @@ export function createGameplayRippleNodeMaterial(params = {}) {
     let color;
 
     if (isShockwave) {
-        const inner = smoothstep(float(0.7), float(0.78), centerDist);
-        const outer = float(1.0).sub(smoothstep(float(0.78), float(0.86), centerDist));
+        // RingGeometry spans normalized radii 0.92..1.0. The old 0.70..0.86
+        // mask never intersected the mesh, so every WebGPU shockwave was fully
+        // transparent. This feather matches the actual geometry and adds the
+        // phase-locked caustic-crown language proven in the playground.
+        const inner = smoothstep(float(0.92), float(0.945), centerDist);
+        const outer = float(1.0).sub(smoothstep(float(0.985), float(1.0), centerDist));
         ring = inner.mul(outer);
-        shimmer = float(0.92).add(sin(centerDist.mul(34.0).sub(uTime.mul(5.4))).mul(0.08));
-        color = mix(vec3(0.38, 0.92, 1.0), vec3(1.0, 0.96, 0.84), uWarmth).mul(
-            ring.mul(shimmer),
+        const centered = localUv.sub(0.5);
+        const angle = atan(centered.y, centered.x);
+        const warpedAngle = angle.mul(11.0).add(
+            sin(angle.mul(3.0).sub(uTime.mul(0.42))).mul(1.35),
+        );
+        const spokes = pow(abs(sin(warpedAngle.add(uTime.mul(0.55)))), float(13.0));
+        const pearls = pow(abs(sin(angle.mul(5.0).sub(uTime.mul(1.15)))), float(24.0));
+        const crown = spokes.mul(0.72).add(pearls.mul(0.34));
+        shimmer = float(0.78).add(sin(centerDist.mul(34.0).sub(uTime.mul(5.4))).mul(0.12));
+        const warmth = clamp(uWarmth.add(crown.mul(0.58)), float(0.0), float(1.0));
+        color = mix(vec3(0.015, 0.50, 0.66), vec3(0.82, 0.38, 0.06), warmth).mul(
+            ring.mul(shimmer).mul(float(0.46).add(crown.mul(0.34))),
         );
     } else {
         ring = smoothstep(float(0.24), float(0.52), centerDist).mul(
@@ -822,10 +990,7 @@ export function createGameplaySiltNodeMaterial() {
     const uTime = uniform(0);
     const aBurstOpacity = attribute('aBurstOpacity');
     const aLife = attribute('aLife');
-    const aSize = attribute('aSize');
     const aPhase = attribute('aPhase');
-
-    material.positionNode = positionLocal.mul(aSize.mul(float(0.75).add(aLife.mul(0.55))));
 
     const radial = safeBillboardRadialFalloff();
     const dustCore = pow(radial, float(1.8));
@@ -851,14 +1016,9 @@ export function createGameplayBubbleNodeMaterial() {
     const uTime = uniform(0);
     const aBurstOpacity = attribute('aBurstOpacity');
     const aLife = attribute('aLife');
-    const aSize = attribute('aSize');
     const aPhase = attribute('aPhase');
 
     const shimmer = sin(uTime.mul(1.6).add(aPhase)).mul(0.08).add(1.0);
-    material.positionNode = positionLocal.mul(
-        aSize.mul(shimmer).mul(float(0.84).add(aLife.mul(0.36))),
-    );
-
     const localUv = uv();
     const d = length(localUv.sub(0.5)).mul(2.0);
     const shell = smoothstep(float(0.66), float(0.84), d).mul(
@@ -870,7 +1030,8 @@ export function createGameplayBubbleNodeMaterial() {
     const highlightPos = localUv.sub(vec2(0.32, 0.28));
     const highlight = float(1.0).sub(smoothstep(float(0.0), float(0.18), length(highlightPos)));
     const alpha = shell.mul(0.6).add(core).add(highlight.mul(0.24)).mul(aLife)
-        .mul(aBurstOpacity);
+        .mul(aBurstOpacity)
+        .mul(shimmer);
     const color = vec3(0.58, 0.92, 1.0)
         .mul(shell.add(core))
         .add(vec3(0.92, 1.0, 1.0).mul(highlight.mul(0.36)));
@@ -897,10 +1058,10 @@ export function createGameplayCausticRibbonNodeMaterial(params = {}) {
     const localUv = uv();
 
     const sideFade = smoothstep(float(0.0), float(0.12), localUv.x).mul(
-        smoothstep(float(1.0), float(0.88), localUv.x),
+        float(1.0).sub(smoothstep(float(0.88), float(1.0), localUv.x)),
     );
     const crossFade = smoothstep(float(0.0), float(0.16), localUv.y).mul(
-        smoothstep(float(1.0), float(0.72), localUv.y),
+        float(1.0).sub(smoothstep(float(0.72), float(1.0), localUv.y)),
     );
     const waveA = abs(sin(localUv.x.mul(28.0).add(localUv.y.mul(10.0)).sub(uTime.mul(2.2))));
     const waveB = abs(sin(localUv.x.mul(45.0).sub(uTime.mul(1.6))));
@@ -938,11 +1099,12 @@ export function createVolumetricShaftNodeMaterial(params = {}) {
 
     const u = uv();
     const core = smoothstep(float(0.0), float(0.28), u.x).mul(
-        smoothstep(float(1.0), float(0.72), u.x),
+        float(1.0).sub(smoothstep(float(0.72), float(1.0), u.x)),
     );
-    const vertical = smoothstep(float(0.0), float(0.22), u.y).mul(
-        smoothstep(float(1.0), float(0.42), u.y),
-    );
+    // Keep the complete surface-to-seabed column. The previous mask confined
+    // energy to UV y 0.22-0.42, visually severing every beam from its source.
+    const floorFade = smoothstep(float(0.0), float(0.15), u.y);
+    const topWeight = mix(float(0.38), float(1.0), pow(u.y, float(0.58)));
     const streak = sin(
         u.y
             .mul(32.0)
@@ -950,26 +1112,25 @@ export function createVolumetricShaftNodeMaterial(params = {}) {
             .add(aSeed),
     );
     const fine = sin(u.x.mul(18.0).sub(uTime.mul(0.8)).add(aSeed.mul(1.7)));
-    const dust = tslHash(vec2(u.x.add(aSeed).mul(26.0), u.y.add(aSeed).mul(68.0)));
-    const shimmer = float(0.72).add(streak.mul(0.18)).add(fine.mul(0.08)).add(dust.mul(0.07));
-    const ray = core.mul(vertical).mul(shimmer);
+    const shimmer = float(0.78).add(streak.mul(0.13)).add(fine.mul(0.07));
+    const ray = core.mul(floorFade).mul(topWeight).mul(shimmer);
 
     // Distance fade — rough proxy via view-space depth
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
-    const distanceFade = float(1.0).sub(smoothstep(float(70.0), float(230.0), viewDist));
+    const distanceFade = float(1.0).sub(smoothstep(float(90.0), float(280.0), viewDist));
     const currentPulse = float(0.86).add(uCurrentStrength.mul(0.08));
 
     const shaftColor = vec3(0.43, 0.91, 0.92);
     const warmColor = vec3(1.0, 0.86, 0.54);
-    const colorBase = mix(shaftColor, warmColor, pow(u.y, float(2.4)).mul(0.3));
-    const colorOut = colorBase.mul(ray).mul(float(0.74).add(uGlowIntensity.mul(0.08)));
-    const alpha = ray.mul(distanceFade).mul(uRayStrength).mul(currentPulse).mul(0.42);
+    const colorBase = mix(shaftColor, warmColor, pow(u.y, float(2.8)).mul(0.46));
+    const colorOut = colorBase.mul(float(0.82).add(uGlowIntensity.mul(0.1)));
+    const alpha = ray.mul(distanceFade).mul(uRayStrength).mul(currentPulse).mul(0.54);
 
     material.colorNode = colorOut;
     material.opacityNode = alpha;
     // Shafts feed bloom + post god-ray amplifier — the brighter the source the
     // longer the post-FX shafts reach across the screen.
-    material.emissiveNode = colorOut.mul(alpha.mul(1.1));
+    material.emissiveNode = colorOut.mul(ray.mul(0.52));
 
     material.userData = {
         uTime,
@@ -1002,10 +1163,10 @@ export function createHazeLayerNodeMaterial(params = {}) {
     const n2 = tslNoise(u.mul(vec2(10.0, 4.0)).sub(flow.mul(1.8)));
     const body = smoothstep(float(0.05), float(0.75), n1.mul(0.7).add(n2.mul(0.3)));
     const edge = smoothstep(float(0.0), float(0.18), u.y).mul(
-        smoothstep(float(1.0), float(0.72), u.y),
+        float(1.0).sub(smoothstep(float(0.72), float(1.0), u.y)),
     );
     const sideFade = smoothstep(float(0.0), float(0.08), u.x).mul(
-        smoothstep(float(1.0), float(0.9), u.x),
+        float(1.0).sub(smoothstep(float(0.9), float(1.0), u.x)),
     );
 
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
@@ -1091,8 +1252,6 @@ export function createBeamDustNodeMaterial() {
     const uCurrentStrength = uniform(0.5);
 
     const aPhase = attribute('aPhase');
-    const aSize = attribute('aSize');
-
     const pulse = float(0.5).add(sin(uTime.mul(0.5).add(aPhase)).mul(0.42));
 
     // WS A3: world-space drift computed in the vertex shader, eliminating the
@@ -1106,8 +1265,9 @@ export function createBeamDustNodeMaterial() {
     const driftZ = cos(uTime.mul(0.08).add(aPhase.mul(1.3))).mul(0.65);
     const drift = vec3(driftX, driftY, driftZ);
 
-    const sized = positionLocal.mul(aSize.mul(float(1.0).add(uCurrentStrength.mul(0.4))));
-    material.positionNode = sized.add(drift);
+    // Instance matrices own billboard size. Scaling positionLocal here would
+    // also scale the instance translation in r181 and fling dust out of view.
+    material.positionNode = positionLocal.add(drift);
 
     const radial = safeBillboardRadialFalloff();
     const alpha = pow(radial, float(1.7)).mul(pulse);
@@ -1148,7 +1308,7 @@ export function createBiomeSilhouetteNodeMaterial(params = {}) {
     // Mountain-ish profile: high at horizons, low at edges
     const verticalGradient = smoothstep(float(0.05), float(0.65), float(1.0).sub(u.y));
     const fade = smoothstep(float(0.0), float(0.18), u.x).mul(
-        smoothstep(float(1.0), float(0.82), u.x),
+        float(1.0).sub(smoothstep(float(0.82), float(1.0), u.x)),
     );
     const mask = smoothstep(float(0.32), float(0.62), shape).mul(verticalGradient).mul(fade);
 
@@ -1184,12 +1344,9 @@ export function createGlowAnchorNodeMaterial(params = {}) {
 
     const aColor = attribute('aColor');
     const aPhase = attribute('aPhase');
-    const aSize = attribute('aSize');
-
     const pulse = float(0.76)
         .add(sin(uTime.mul(1.15).add(aPhase)).mul(0.18))
         .add(uGlowIntensity.mul(0.08));
-    material.positionNode = positionLocal.mul(aSize.mul(pulse));
 
     const radial = safeBillboardRadialFalloff();
     const core = pow(radial, float(4.0));

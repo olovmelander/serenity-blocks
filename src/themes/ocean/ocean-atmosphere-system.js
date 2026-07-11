@@ -1,7 +1,6 @@
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop */
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadGltfCached } from './ocean-asset-loader.js';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
     attribute,
@@ -24,7 +23,9 @@ import {
     length,
     modelViewMatrix,
     vec4,
+    materialColor,
 } from 'three/tsl';
+import { loadGltfCached } from './ocean-asset-loader.js';
 import {
     createVolumetricShaftNodeMaterial,
     createHazeLayerNodeMaterial,
@@ -54,16 +55,21 @@ import {
     getHeroReefAssetRecords,
     summarizeReefAssetManifest,
 } from './ocean-reef-assets.js';
-import { tslCausticProjection, tslDepthGradedFog } from './ocean-tsl-helpers.js';
+import {
+    tslCausticProjection,
+    tslDepthGradedFog,
+    tslWarmCoolAttenuation,
+} from './ocean-tsl-helpers.js';
+import { OCEAN_SHAFT_LAYOUT } from './ocean-lighting-rig.js';
 
 const SHAFT_COLOR = new THREE.Color(0x8ae8ff);
 const SHAFT_WARMTH = new THREE.Color(0xfff5d6);
-const FOG_COLOR = new THREE.Color(0x1a8fb8);
+const FOG_COLOR = new THREE.Color(0x0b526b);
 // Vibrant tropical-reef palette — matches reference reef-canyon photo.
 // Lifted from near-black to mid-tone blue-grey with warm-stone highlights so
 // rocks read as a daylit reef shelf rather than a deep abyss.
-const ROCK_LOW = new THREE.Color().setRGB(0.20, 0.18, 0.28);
-const ROCK_HIGH = new THREE.Color().setRGB(0.70, 0.62, 0.48);
+const ROCK_LOW = new THREE.Color().setRGB(0.07, 0.19, 0.23);
+const ROCK_HIGH = new THREE.Color().setRGB(0.30, 0.24, 0.12);
 
 const ROCK_REEF_CLUSTERS = [
     { x: 76, z: 34, radius: 28 },
@@ -77,25 +83,25 @@ const ROCK_REEF_CLUSTERS = [
     // the sandy valley. Scaled up to dominate the foreground silhouette.
     // Quality-preset slicing keeps these in view down to Medium.
     {
-        x: -62, z: 60, scale: 4.0, ry: 0.35, kind: 'purple-tube-sponge',
+        x: -26, z: 34, scale: 2.5, ry: 0.35, kind: 'purple-tube-sponge',
     }, // FG far-left framing pillar
     {
-        x: 64, z: 58, scale: 4.1, ry: -0.42, kind: 'magenta-vase-coral',
+        x: 28, z: 32, scale: 3.0, ry: -0.42, kind: 'branching-coral',
     }, // FG far-right framing pillar
     {
-        x: -52, z: 52, scale: 3.4, ry: -0.18, kind: 'anemone-coral',
+        x: -34, z: 10, scale: 2.45, ry: -0.18, kind: 'table-coral',
     }, // FG left base cluster
     {
-        x: 50, z: 50, scale: 3.6, ry: 0.22, kind: 'fan-coral',
+        x: 36, z: 12, scale: 2.5, ry: 0.22, kind: 'table-coral',
     }, // FG right base cluster
     // ── Midground hero corals ────────────────────────────────────────────
     // First 10 slots dominate at High/Ultra — new vibrant sponges + corals
     // interleaved with original heroes to match the reference reef photo.
     {
-        x: -42, z: 24, scale: 2.7, ry: -0.45, kind: 'branching-coral',
+        x: -43, z: -20, scale: 2.7, ry: -0.45, kind: 'branching-coral',
     }, // Left Reef Base
     {
-        x: 44, z: 22, scale: 2.6, ry: 0.38, kind: 'orange-tube-sponge',
+        x: 45, z: -24, scale: 2.35, ry: 0.38, kind: 'fan-coral',
     }, // Right Arch Base
     {
         x: -56, z: 18, scale: 2.35, ry: 0.82, kind: 'table-coral',
@@ -231,43 +237,43 @@ const HERO_KELP_PLACEMENTS = [
 // Other reef pieces (arches, walls, far stacks) carry the mid-distance silhouette.
 const HERO_REEF_PLACEMENTS = [
     {
-        idHint: 'reef-arch-coral-01',
-        x: 76,
-        z: 16,
-        scale: 1.15,
-        rx: 0.02,
-        ry: -0.58,
-        rz: 0.0,
+        idHint: 'reef-stack-far-01',
+        x: 38,
+        z: -58,
+        scale: 1.18,
+        rx: -0.015,
+        ry: -0.2,
+        rz: 0.025,
         yOffset: 0.0,
-        kind: 'foreground-coral-arch',
+        kind: 'sun-pillar',
     },
     {
         idHint: 'reef-wall-left-01',
-        x: -78,
-        z: 10,
-        scale: 1.25,
+        x: -45,
+        z: -26,
+        scale: 0.88,
         rx: -0.04,
-        ry: 0.46,
+        ry: 0.34,
         rz: 0.02,
-        yOffset: 0.6,
+        yOffset: 0.35,
         kind: 'left-canyon-wall',
     },
     {
         idHint: 'reef-arch-mid-01',
-        x: 0,
-        z: -95,
+        x: -8,
+        z: -104,
         scale: 1.28,
         rx: -0.02,
-        ry: 0.02,
-        rz: 0.0,
+        ry: 0.06,
+        rz: -0.01,
         yOffset: 0.1,
         kind: 'mid-canyon-arch',
     },
     {
         idHint: 'reef-stack-far-01',
-        x: -132,
-        z: -148,
-        scale: 0.95,
+        x: -94,
+        z: -144,
+        scale: 0.82,
         rx: 0.0,
         ry: 0.62,
         rz: -0.02,
@@ -276,9 +282,9 @@ const HERO_REEF_PLACEMENTS = [
     },
     {
         idHint: 'reef-stack-far-01',
-        x: 134,
-        z: -142,
-        scale: 0.86,
+        x: 108,
+        z: -152,
+        scale: 0.78,
         rx: 0.0,
         ry: -0.78,
         rz: 0.02,
@@ -289,22 +295,22 @@ const HERO_REEF_PLACEMENTS = [
 
 const CORAL_CARPET_PLACEMENTS = [
     {
-        x: -54, z: 50, scale: 3.8, ry: -0.18, kind: 'purple-blue-coral-carpet',
+        x: -34, z: 34, scale: 2.45, ry: -0.18, kind: 'purple-blue-coral-carpet',
     },
     {
-        x: 54, z: 47, scale: 3.6, ry: 0.2, kind: 'orange-tube-sponge-cluster',
+        x: 36, z: 29, scale: 2.4, ry: 0.2, kind: 'orange-tube-sponge-cluster',
     },
     {
-        x: -74, z: 18, scale: 3.2, ry: 0.72, kind: 'green-yellow-plate-coral',
+        x: -43, z: 4, scale: 2.35, ry: 0.72, kind: 'green-yellow-plate-coral',
     },
     {
-        x: 82, z: 14, scale: 3.4, ry: -0.64, kind: 'blue-brush-coral',
+        x: 45, z: 0, scale: 2.4, ry: -0.64, kind: 'blue-brush-coral',
     },
     {
-        x: -94, z: -48, scale: 4.1, ry: 1.08, kind: 'purple-blue-coral-carpet',
+        x: -50, z: -42, scale: 2.7, ry: 1.08, kind: 'purple-blue-coral-carpet',
     },
     {
-        x: 96, z: -42, scale: 4.0, ry: -1.0, kind: 'orange-tube-sponge-cluster',
+        x: 52, z: -46, scale: 2.65, ry: -1.0, kind: 'orange-tube-sponge-cluster',
     },
     {
         x: -124, z: -112, scale: 4.5, ry: 0.56, kind: 'green-yellow-plate-coral',
@@ -325,6 +331,13 @@ const CORAL_CARPET_PLACEMENTS = [
         x: 124, z: -34, scale: 3.8, ry: -1.1, kind: 'orange-tube-sponge-cluster',
     },
 ];
+
+const CORAL_CARPET_TINTS = Object.freeze({
+    'purple-blue-coral-carpet': 0x9a6bd0,
+    'orange-tube-sponge-cluster': 0xef7448,
+    'green-yellow-plate-coral': 0xa8c96c,
+    'blue-brush-coral': 0x49a8c4,
+});
 
 const IMPORTED_SEABED_DETAIL_PLACEMENTS = [
     {
@@ -420,14 +433,6 @@ function selectUniqueRecordsForPlacements(records, placements, pickRecord) {
 
 // Walks a GLTF scene graph and returns the first Mesh encountered (Blender
 // rock GLBs typically contain a single mesh, sometimes wrapped in transforms).
-function extractFirstMesh(root) {
-    let found = null;
-    root.traverse((obj) => {
-        if (!found && obj.isMesh && obj.geometry) found = obj;
-    });
-    return found;
-}
-
 function addNormalizedHeightAttribute(geometry, attributeName = 'aHeroKelpHeight') {
     const position = geometry?.attributes?.position;
     if (!position || geometry.getAttribute(attributeName)) return;
@@ -515,9 +520,6 @@ function createLayeredRockGeometry(seed, subdivisions = 3, strength = 0.5) {
         const h2 = hash(x * 4.0, y * 22.0, z * 4.0);
 
         // Create "shelves" by quantizing Y displacement influence.
-        const layer = Math.floor(y * 8.0) / 8.0;
-        const layerNoise = hash(seed * 0.5, layer, 0.0);
-
         const dx = (h1 - 0.5) * strength * 1.2 + (h2 - 0.5) * strength * 0.4;
         const dy = (h1 - 0.5) * strength * 0.15; // Keep vertical noise low for layering
         const dz = (h1 - 0.5) * strength * 1.2 + (h2 - 0.5) * strength * 0.4;
@@ -622,12 +624,22 @@ function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
 // share materials by source so two children with the same source GLB
 // material end up sharing the same converted material instance (required
 // for the merge to actually group them).
-function mergeMeshesByMaterial(root) {
+function mergeMeshesByMaterial(root, { disposeSourceGeometries = false } = {}) {
     if (!root) return;
     root.updateMatrixWorld(true);
     const rootInverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const geometrySignature = (geometry) => {
+        const attributes = Object.entries(geometry.attributes)
+            .sort(([nameA], [nameB]) => nameA.localeCompare(nameB))
+            .map(([name, attribute]) => [
+                name,
+                attribute.itemSize,
+                attribute.normalized === true,
+                attribute.array?.constructor?.name || attribute.data?.array?.constructor?.name,
+            ].join(':'));
+        return `${geometry.index ? 'indexed' : 'plain'}|${attributes.join('|')}`;
+    };
     const byMaterial = new Map(); // material → { geometries: [], origin: parentGroup }
-    const meshesToRemove = [];
 
     root.traverse((child) => {
         if (!child.isMesh || !child.geometry) return;
@@ -635,7 +647,7 @@ function mergeMeshesByMaterial(root) {
         // splitting the geometry by material group, which is more invasive
         // than this surgical pass warrants.
         if (Array.isArray(child.material)) return;
-        const material = child.material;
+        const { material } = child;
         if (!material) return;
 
         child.updateMatrixWorld(true);
@@ -647,25 +659,34 @@ function mergeMeshesByMaterial(root) {
         const geo = child.geometry.clone();
         geo.applyMatrix4(childToRoot);
 
-        if (!byMaterial.has(material)) byMaterial.set(material, []);
-        byMaterial.get(material).push(geo);
-        meshesToRemove.push(child);
-    });
-
-    // Drop the per-child meshes (geometries are already cloned into the merge buckets).
-    meshesToRemove.forEach((mesh) => {
-        if (mesh.parent) mesh.parent.remove(mesh);
+        if (!byMaterial.has(material)) byMaterial.set(material, new Map());
+        const signatureBuckets = byMaterial.get(material);
+        const signature = geometrySignature(geo);
+        if (!signatureBuckets.has(signature)) {
+            signatureBuckets.set(signature, { geometries: [], sources: [] });
+        }
+        const bucket = signatureBuckets.get(signature);
+        bucket.geometries.push(geo);
+        bucket.sources.push(child);
     });
 
     let mergedCount = 0;
-    byMaterial.forEach((geometries, material) => {
+    const mergeBucket = ({ geometries, sources }, material) => {
         if (geometries.length === 0) return;
         // mergeGeometries returns null on attribute mismatch — fall back to
         // the first geometry alone so we never silently lose meshes.
         const merged = geometries.length === 1
             ? geometries[0]
-            : (BufferGeometryUtils.mergeGeometries(geometries, false) || geometries[0]);
-        if (!merged) return;
+            : BufferGeometryUtils.mergeGeometries(geometries, false);
+        if (!merged) {
+            geometries.forEach((geometry) => geometry.dispose());
+            return;
+        }
+
+        sources.forEach((source) => {
+            if (source.parent) source.parent.remove(source);
+            if (disposeSourceGeometries) source.geometry?.dispose?.();
+        });
         const mesh = new THREE.Mesh(merged, material);
         mesh.name = `${root.name || 'merged'}:m${mergedCount}`;
         mesh.frustumCulled = true;
@@ -678,6 +699,9 @@ function mergeMeshesByMaterial(root) {
         if (geometries.length > 1) {
             geometries.forEach((g) => { if (g !== merged) g.dispose(); });
         }
+    };
+    byMaterial.forEach((signatureBuckets, material) => {
+        signatureBuckets.forEach((bucket) => mergeBucket(bucket, material));
     });
 }
 
@@ -733,9 +757,11 @@ function createHeroKelpNodeMaterial() {
     const heightSq = aHeight.mul(aHeight);
     const phase = positionWorld.x.mul(0.035).add(positionWorld.z.mul(0.026));
     const phaseX = uTime.mul(1.1).add(phase).add(aHeight.mul(4.5));
-    const swayX = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.15);
-    const phaseZ = uTime.mul(0.88).add(phase.mul(0.8)).add(aHeight.mul(3.6));
-    const swayZ = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.8);
+    const primarySway = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.15);
+    const phaseZ = uTime.mul(1.56).add(phase.mul(0.8)).add(aHeight.mul(6.1));
+    const crossFlutter = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.19);
+    const swayX = primarySway.mul(0.22).sub(crossFlutter.mul(0.976));
+    const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     const base = vec3(0.015, 0.16, 0.12);
     const mid = vec3(0.065, 0.35, 0.24);
@@ -811,9 +837,11 @@ function createImportedSeabedPlantNodeMaterial() {
     const heightSq = aHeight.mul(aHeight);
     const phase = positionWorld.x.mul(0.04).add(positionWorld.z.mul(0.031));
     const phaseX = uTime.mul(1.1).add(phase).add(aHeight.mul(4.5));
-    const swayX = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.1);
-    const phaseZ = uTime.mul(0.88).add(phase.mul(0.8)).add(aHeight.mul(3.6));
-    const swayZ = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.77);
+    const primarySway = sin(phaseX).mul(heightSq).mul(uCurrentStrength).mul(1.08);
+    const phaseZ = uTime.mul(1.58).add(phase.mul(0.8)).add(aHeight.mul(6.0));
+    const crossFlutter = cos(phaseZ).mul(heightSq).mul(uCurrentStrength).mul(0.18);
+    const swayX = primarySway.mul(0.22).sub(crossFlutter.mul(0.976));
+    const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     const base = vec3(0.025, 0.18, 0.12);
     const mid = vec3(0.11, 0.46, 0.31);
@@ -822,7 +850,7 @@ function createImportedSeabedPlantNodeMaterial() {
     color = mix(color, tip, smoothstep(float(0.58), float(1.0), aHeight));
 
     // Diffuse lighting based on normal
-    const lightDir = tslNormalize(vec3(0.16, 0.92, -0.18));
+    const lightDir = tslNormalize(vec3(-0.1, 0.9, -0.42));
     const diffuse = tslMax(float(0.24), dot(normalWorld, lightDir));
     color = color.mul(diffuse);
 
@@ -908,7 +936,7 @@ function createImportedSeabedPlantShaderMaterial() {
                 color = mix(color, tip, smoothstep(0.58, 1.0, vHeight));
 
                 // Diffuse lighting
-                vec3 lightDir = normalize(vec3(0.16, 0.92, -0.18));
+                vec3 lightDir = normalize(vec3(-0.1, 0.9, -0.42));
                 float diffuse = max(0.24, dot(normalize(vNormal), lightDir));
                 color *= diffuse;
 
@@ -947,20 +975,24 @@ function createImportedSeabedPlantShaderMaterial() {
 // gives the assets enough chroma now. We keep emissive low and let the
 // ambient/directional lighting carry the vibrance.
 const TRIPOSR_VERTEX_COLOR_BOOST = 1.35;
-const TRIPOSR_EMISSIVE_BOOST = 0.22;
+const TRIPOSR_EMISSIVE_BOOST = 0.08;
 const TRIPOSR_TINT_ATTENUATION = 0.55;
 const TRIPOSR_FALLBACK_BASE_BOOST = 1.25;
 
 function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     const baseColor = sourceMaterial?.color || new THREE.Color(0xc06a52);
+    const baseSurface = materialColor.rgb;
+    const roughness = Math.min(0.92, Math.max(0.68, sourceMaterial?.roughness ?? 0.78));
     const material = new MeshStandardNodeMaterial({
         color: baseColor,
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
-        metalnessMap: sourceMaterial?.metalnessMap ?? null,
-        roughness: sourceMaterial?.roughness ?? 0.74,
-        metalness: sourceMaterial?.metalness ?? 0.02,
+        roughness,
+        // Coral is a wet dielectric. Imported metallic channels made shaded
+        // faces collapse toward black because Ocean intentionally has no IBL.
+        metalnessMap: null,
+        metalness: 0.0,
         envMapIntensity: 1.08,
         // WS B2: hero coral is always viewed from in front of the camera.
         // FrontSide halves fragment shading vs DoubleSide.
@@ -972,6 +1004,7 @@ function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     const uTime = uniform(0);
     const uGlowIntensity = uniform(0.8);
     const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
+    const viewDistance = length(cameraPosition.sub(positionWorld));
     const rim = pow(float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))), float(2.35));
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.14);
     const warmRim = vec3(1.0, 0.58, 0.34).mul(rim).mul(0.28);
@@ -988,10 +1021,20 @@ function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     // reads green, not cyan).
     if (opts.vertexColors) {
         const vColor = attribute('color', 'vec3');
-        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).mul(vColor).mul(TRIPOSR_VERTEX_COLOR_BOOST).add(tint.mul(TRIPOSR_TINT_ATTENUATION));
+        material.colorNode = tslWarmCoolAttenuation(
+            baseSurface.mul(vColor)
+                .mul(TRIPOSR_VERTEX_COLOR_BOOST)
+                .add(tint.mul(TRIPOSR_TINT_ATTENUATION)),
+            viewDistance,
+            float(0.88),
+        );
         material.emissiveNode = vColor.mul(TRIPOSR_EMISSIVE_BOOST);
     } else {
-        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).add(tint);
+        material.colorNode = tslWarmCoolAttenuation(
+            baseSurface.add(tint),
+            viewDistance,
+            float(0.88),
+        );
         material.emissiveNode = vec3(0);
     }
 
@@ -1019,9 +1062,9 @@ function createHeroCoralStandardMaterial(sourceMaterial, opts = {}) {
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
-        metalnessMap: sourceMaterial?.metalnessMap ?? null,
-        roughness: sourceMaterial?.roughness ?? 0.74,
-        metalness: sourceMaterial?.metalness ?? 0.02,
+        roughness: Math.min(0.92, Math.max(0.68, sourceMaterial?.roughness ?? 0.78)),
+        metalnessMap: null,
+        metalness: 0.0,
         vertexColors: !!opts.vertexColors,
         emissive: emissiveColor,
         emissiveIntensity: opts.vertexColors ? 1 : 0,
@@ -1036,14 +1079,16 @@ function createHeroCoralStandardMaterial(sourceMaterial, opts = {}) {
 
 function createHeroReefNodeMaterial(sourceMaterial) {
     const baseColor = sourceMaterial?.color || new THREE.Color(0x1c4c5a);
+    const baseSurface = materialColor.rgb;
+    const roughness = Math.min(0.97, Math.max(0.8, sourceMaterial?.roughness ?? 0.88));
     const material = new MeshStandardNodeMaterial({
         color: baseColor,
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
-        metalnessMap: sourceMaterial?.metalnessMap ?? null,
-        roughness: sourceMaterial?.roughness ?? 0.82,
-        metalness: sourceMaterial?.metalness ?? 0.0,
+        roughness,
+        metalnessMap: null,
+        metalness: 0.0,
         envMapIntensity: 1.18,
         // WS B2: hero reef walls are background scenery — backfaces never visible.
         side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
@@ -1054,6 +1099,7 @@ function createHeroReefNodeMaterial(sourceMaterial) {
     const uTime = uniform(0);
     const uGlowIntensity = uniform(0.8);
     const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
+    const viewDistance = length(cameraPosition.sub(positionWorld));
     const rim = pow(float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))), float(2.1));
     const upLight = tslMax(normalWorld.y, float(0.0));
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.12);
@@ -1063,11 +1109,15 @@ function createHeroReefNodeMaterial(sourceMaterial) {
 
     // Slope-based sand accumulation (sand settles on horizontal shelves)
     const slope = normalWorld.y;
-    const sandColor = vec3(0.82, 0.74, 0.56); // matching sandMid
+    const sandColor = vec3(0.58, 0.36, 0.12);
     const sandWeight = smoothstep(float(0.45), float(0.85), slope);
     // WS B1: rim + caustic move from emissiveNode → colorNode so the reef
     // doesn't contribute to MRT emissive (god-ray Loop / bloom samples).
-    material.colorNode = mix(baseColor, sandColor, sandWeight).add(tint);
+    material.colorNode = tslWarmCoolAttenuation(
+        mix(baseSurface, sandColor, sandWeight).add(tint),
+        viewDistance,
+        float(0.82),
+    );
     material.emissiveNode = vec3(0);
 
     material.userData = {
@@ -1089,9 +1139,9 @@ function createHeroReefStandardMaterial(sourceMaterial) {
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
-        metalnessMap: sourceMaterial?.metalnessMap ?? null,
-        roughness: sourceMaterial?.roughness ?? 0.82,
-        metalness: sourceMaterial?.metalness ?? 0.0,
+        roughness: Math.min(0.97, Math.max(0.8, sourceMaterial?.roughness ?? 0.88)),
+        metalnessMap: null,
+        metalness: 0.0,
         emissive: 0x000000,
         emissiveIntensity: 0,
         envMapIntensity: 1.18,
@@ -1237,6 +1287,8 @@ export class OceanAtmosphereSystem {
             statuses: {},
             errors: {},
         };
+        this.disposed = false;
+        this.upgradeGeneration = 0;
         this.upgradeQueue = [];
         this.upgradeQueueRunning = false;
     }
@@ -1255,14 +1307,10 @@ export class OceanAtmosphereSystem {
 
         // These builders define the atmospheric look (god ray shafts, depth
         // haze, distant silhouettes, glow anchors, dust motes). They must be
-        // present on the first visible frame.
-        //
-        // createVolumetricShafts() is intentionally skipped: the post-processing
-        // pipeline (ocean-post.js god-ray TSL Loop) already renders the radiant
-        // shafts from emissive MRT samples, making the additive-blended cone
-        // meshes here visually redundant and a meaningful overdraw cost. If a
-        // visual A/B shows the post pass isn't enough, re-enable this call.
-        // this.createVolumetricShafts();
+        // present on the first visible frame. Shafts share one merged geometry
+        // and replace the much more expensive full-screen ray-march on normal
+        // quality tiers.
+        if (!this.skipFlags.shafts) this.createVolumetricShafts();
         if (!this.skipFlags.haze) this.createHazeLayers();
         if (!this.skipFlags.reefSilhouettes) this.createReefSilhouettes();
         if (!this.skipFlags.bioSilhouettes) this.createBiomeSilhouettes();
@@ -1294,16 +1342,27 @@ export class OceanAtmosphereSystem {
     }
 
     scheduleAssetUpgrade(task, delayMs = 600) {
+        const generation = this.upgradeGeneration;
         const timer = setTimeout(() => {
             this.assetUpgradeTimers = this.assetUpgradeTimers.filter((item) => item !== timer);
-            if (!this.group || !this.scene) return;
+            if (
+                this.disposed
+                || generation !== this.upgradeGeneration
+                || !this.group
+                || !this.scene
+            ) return;
             task();
         }, delayMs);
         this.assetUpgradeTimers.push(timer);
     }
 
     enqueueUpgradeTask(task) {
-        this.upgradeQueue.push(task);
+        if (this.disposed) return;
+        const generation = this.upgradeGeneration;
+        this.upgradeQueue.push(async () => {
+            if (this.disposed || generation !== this.upgradeGeneration) return;
+            await task();
+        });
         if (!this.upgradeQueueRunning) {
             this.processUpgradeQueue().catch((err) => {
                 console.warn('🌊 [Ocean] upgrade queue error:', err);
@@ -1313,7 +1372,7 @@ export class OceanAtmosphereSystem {
 
     async processUpgradeQueue() {
         this.upgradeQueueRunning = true;
-        while (this.upgradeQueue.length > 0) {
+        while (!this.disposed && this.upgradeQueue.length > 0) {
             const task = this.upgradeQueue.shift();
             try {
                 await task();
@@ -1323,6 +1382,21 @@ export class OceanAtmosphereSystem {
             await new Promise((resolve) => { setTimeout(resolve, 30); });
         }
         this.upgradeQueueRunning = false;
+    }
+
+    isUpgradeStale(generation) {
+        return this.disposed
+            || generation !== this.upgradeGeneration
+            || !this.group
+            || !this.scene;
+    }
+
+    disposeSettledGltfResults(results) {
+        results.forEach((result) => {
+            if (result.status === 'fulfilled' && result.value?.scene) {
+                disposeObject(result.value.scene);
+            }
+        });
     }
 
     /**
@@ -1342,8 +1416,10 @@ export class OceanAtmosphereSystem {
     // visible immediately; compact GLBs may replace only the records used by
     // the current quality preset when explicitly enabled.
     createHeroReefWalls() {
-        const count = Math.max(0, Math.floor(this.settings.reefWallCount ?? 0));
-        this.heroReefStats.requestedCount = count;
+        const requestedCount = Math.max(0, Math.floor(this.settings.reefWallCount ?? 0));
+        const count = Math.min(requestedCount, HERO_REEF_PLACEMENTS.length);
+        this.heroReefStats.requestedCount = requestedCount;
+        this.heroReefStats.placementCapacity = HERO_REEF_PLACEMENTS.length;
         if (count <= 0) return;
 
         const placements = HERO_REEF_PLACEMENTS.slice(0, count).map((placement, i) => {
@@ -1381,10 +1457,11 @@ export class OceanAtmosphereSystem {
         group.userData.assetStatus = 'procedural-fallback';
         group.userData.kind = placement.kind;
 
+        const reefColor = placement.kind === 'sun-pillar' ? 0x123e48 : 0x4f948c;
         const material = this.isWebGPU
-            ? createHeroReefNodeMaterial({ color: new THREE.Color(0x1b5660) })
+            ? createHeroReefNodeMaterial({ color: new THREE.Color(reefColor) })
             : new THREE.MeshStandardMaterial({
-                color: new THREE.Color(0x1b5660),
+                color: new THREE.Color(placement.kind === 'sun-pillar' ? 0x092f3a : 0x1b5660),
                 emissive: new THREE.Color(0x06333a),
                 emissiveIntensity: 0.1,
                 roughness: 0.86,
@@ -1392,6 +1469,118 @@ export class OceanAtmosphereSystem {
                 side: THREE.DoubleSide,
             });
         if (this.isWebGPU) this.tslUserData.push(material.userData);
+
+        if (placement.kind === 'sun-pillar') {
+            // ABZU-style asymmetric scale landmark: a leaning monolith with a
+            // broad reef shelf. All pieces merge into one draw, so its impact
+            // comes from silhouette and placement rather than runtime density.
+            for (let level = 0; level < 7; level += 1) {
+                const geometry = createDisplacedRockGeometry(
+                    placement.index * 401 + level * 31 + 7,
+                    2,
+                    0.3,
+                );
+                const rock = new THREE.Mesh(geometry, material);
+                rock.position.set(
+                    level * 0.22 + Math.sin(level * 0.9) * 0.2,
+                    1.15 + level * 1.08,
+                    Math.cos(level * 1.3) * 0.18,
+                );
+                rock.rotation.set(
+                    0.04 * Math.sin(level),
+                    level * 0.2,
+                    -0.035 - level * 0.007,
+                );
+                rock.scale.set(2.15 - level * 0.08, 1.72, 1.72 - level * 0.04);
+                group.add(rock);
+            }
+
+            for (let shelf = 0; shelf < 7; shelf += 1) {
+                const geometry = createDisplacedRockGeometry(
+                    placement.index * 503 + shelf * 37 + 13,
+                    2,
+                    0.27,
+                );
+                const rock = new THREE.Mesh(geometry, material);
+                const offset = shelf - 3;
+                rock.position.set(
+                    1.15 + offset * 1.48,
+                    8.85 - Math.abs(offset) * 0.15,
+                    Math.sin(shelf * 1.45) * 0.28,
+                );
+                rock.rotation.set(0.05 * Math.sin(shelf), shelf * 0.28, offset * -0.025);
+                rock.scale.set(1.7, 0.58, 2.05 - Math.abs(offset) * 0.08);
+                group.add(rock);
+            }
+
+            // A lower cantilever breaks the tower's vertical rhythm and gives
+            // fish a readable scale reference as they cross the negative space.
+            for (let spur = 0; spur < 3; spur += 1) {
+                const geometry = createDisplacedRockGeometry(
+                    placement.index * 607 + spur * 43 + 19,
+                    2,
+                    0.29,
+                );
+                const rock = new THREE.Mesh(geometry, material);
+                rock.position.set(-1.6 - spur * 1.2, 4.75 + spur * 0.28, 0.1);
+                rock.rotation.set(0.02, spur * 0.34, 0.1);
+                rock.scale.set(1.55, 0.62, 1.45);
+                group.add(rock);
+            }
+
+            mergeMeshesByMaterial(group, { disposeSourceGeometries: true });
+            group.position.set(placement.x, placement.y, placement.z);
+            group.rotation.set(placement.rx, placement.ry, placement.rz);
+            group.scale.setScalar(placement.scale * 3.2);
+            group.frustumCulled = false;
+            return group;
+        }
+
+        if (placement.kind === 'mid-canyon-arch') {
+            // A readable cathedral landmark: paired weathered pillars plus a
+            // broken stone crown. It remains one draw after the merge below.
+            [-1, 1].forEach((side) => {
+                for (let level = 0; level < 4; level += 1) {
+                    const geometry = createDisplacedRockGeometry(
+                        placement.index * 211 + (side + 1) * 47 + level * 19,
+                        2,
+                        0.28,
+                    );
+                    const rock = new THREE.Mesh(geometry, material);
+                    rock.position.set(
+                        side * (3.2 + level * 0.08),
+                        1.12 + level * 1.65,
+                        Math.sin(level * 1.7 + side) * 0.22,
+                    );
+                    rock.rotation.set(side * 0.025, level * 0.18, side * -0.035);
+                    rock.scale.set(1.72 - level * 0.08, 1.16, 1.55);
+                    group.add(rock);
+                }
+            });
+            for (let crown = 0; crown < 5; crown += 1) {
+                const geometry = createDisplacedRockGeometry(
+                    placement.index * 307 + crown * 29,
+                    2,
+                    0.26,
+                );
+                const rock = new THREE.Mesh(geometry, material);
+                rock.position.set(
+                    -4 + crown * 2,
+                    7.35 - Math.abs(crown - 2) * 0.24,
+                    Math.sin(crown * 1.4) * 0.18,
+                );
+                rock.rotation.set(0.03 * Math.sin(crown), crown * 0.16, (crown - 2) * -0.025);
+                rock.scale.set(1.58, 0.92, 1.48);
+                group.add(rock);
+            }
+
+            mergeMeshesByMaterial(group, { disposeSourceGeometries: true });
+            group.position.set(placement.x, placement.y, placement.z);
+            group.rotation.set(placement.rx, placement.ry, placement.rz);
+            group.scale.setScalar(placement.scale * 3.2);
+            group.frustumCulled = false;
+            return group;
+        }
 
         const shelfCount = placement.kind === 'mid-canyon-arch' ? 5 : 7;
         for (let i = 0; i < shelfCount; i++) {
@@ -1431,6 +1620,9 @@ export class OceanAtmosphereSystem {
             group.add(rock);
         }
 
+        // Every procedural child shares one material, so collapse the 14-21
+        // permanent rock draws into one static mesh before placing the wall.
+        mergeMeshesByMaterial(group, { disposeSourceGeometries: true });
         group.position.set(placement.x, placement.y, placement.z);
         group.rotation.set(placement.rx, placement.ry, placement.rz);
         group.scale.setScalar(placement.scale * 3.2);
@@ -1439,6 +1631,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeHeroReefWallsFromGLB(placements) {
+        const generation = this.upgradeGeneration;
         const allRecords = getHeroReefAssetRecords();
         this.heroReefStats.manifest = summarizeReefAssetManifest().heroReef;
         const pickRecord = (records, placement, index) => {
@@ -1454,6 +1647,10 @@ export class OceanAtmosphereSystem {
         });
         const promises = records.map((record) => loadGltfCached(record.url));
         const results = await Promise.allSettled(promises);
+        if (this.isUpgradeStale(generation)) {
+            this.disposeSettledGltfResults(results);
+            return;
+        }
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1781,6 +1978,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeForegroundRocksFromGLB(placements, material, providedUrls = null) {
+        const generation = this.upgradeGeneration;
         const urls = providedUrls || getHeroRockAssetUrls();
         if (!urls.length) return;
 
@@ -1799,6 +1997,10 @@ export class OceanAtmosphereSystem {
             }
         });
         await Promise.all(promises);
+        if (this.isUpgradeStale(generation)) {
+            sceneCache.forEach((scene) => disposeObject(scene));
+            return;
+        }
 
         placements.forEach((p, i) => {
             const url = urls[i % urls.length];
@@ -1928,6 +2130,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeCoralCarpetPatchesFromGLB(placements) {
+        const generation = this.upgradeGeneration;
         const allRecords = getCoralCarpetAssetRecords();
         this.coralCarpetStats.manifest = summarizeCoralAssetManifest().heroCorals
             .filter((record) => record.placementRole === 'carpet-patch');
@@ -1944,6 +2147,10 @@ export class OceanAtmosphereSystem {
         });
         const promises = records.map((record) => loadGltfCached(record.url));
         const results = await Promise.allSettled(promises);
+        if (this.isUpgradeStale(generation)) {
+            this.disposeSettledGltfResults(results);
+            return;
+        }
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1971,6 +2178,18 @@ export class OceanAtmosphereSystem {
             root.rotation.y = placement.ry;
             const scale = placement.scale * record.runtimeScale;
             root.scale.setScalar(scale);
+            const authoredTint = CORAL_CARPET_TINTS[placement.kind];
+            if (authoredTint !== undefined) {
+                root.traverse((child) => {
+                    if (!child.isMesh) return;
+                    const materials = Array.isArray(child.material)
+                        ? child.material
+                        : [child.material];
+                    materials.forEach((material) => {
+                        material?.color?.setHex(authoredTint);
+                    });
+                });
+            }
             setSeabedAnchoredPosition(root, placement.x, placement.y, placement.z, scale);
             root.frustumCulled = true; // WS A2: GLB has valid bounds
 
@@ -2076,6 +2295,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeHeroCoralsFromGLB(placements) {
+        const generation = this.upgradeGeneration;
         const allRecords = getHeroCoralAssetRecords()
             .filter((record) => record.placementRole !== 'carpet-patch');
         this.heroCoralStats.manifest = summarizeCoralAssetManifest().heroCorals
@@ -2093,6 +2313,10 @@ export class OceanAtmosphereSystem {
         });
         const promises = records.map((record) => loadGltfCached(record.url));
         const results = await Promise.allSettled(promises);
+        if (this.isUpgradeStale(generation)) {
+            this.disposeSettledGltfResults(results);
+            return;
+        }
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -2261,6 +2485,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeHeroKelpFromGLB(placements) {
+        const generation = this.upgradeGeneration;
         const records = getHeroKelpAssetRecords();
         this.heroKelpStats.manifest = summarizeKelpAssetManifest().heroKelp;
         if (!records.length) return;
@@ -2271,6 +2496,10 @@ export class OceanAtmosphereSystem {
         });
         const promises = records.map((record) => loadGltfCached(record.url));
         const results = await Promise.allSettled(promises);
+        if (this.isUpgradeStale(generation)) {
+            this.disposeSettledGltfResults(results);
+            return;
+        }
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -2357,6 +2586,7 @@ export class OceanAtmosphereSystem {
     }
 
     async upgradeImportedSeabedDetailsFromGLB(placements) {
+        const generation = this.upgradeGeneration;
         const plantRecords = getSeabedPlantAssetRecords();
         const seaweedRecords = getHeroKelpAssetRecords()
             .filter((record) => record.sourceMode?.startsWith('third-party'));
@@ -2387,6 +2617,10 @@ export class OceanAtmosphereSystem {
         });
         const promises = records.map((record) => loadGltfCached(record.url));
         const results = await Promise.allSettled(promises);
+        if (this.isUpgradeStale(generation)) {
+            this.disposeSettledGltfResults(results);
+            return;
+        }
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -2516,26 +2750,30 @@ export class OceanAtmosphereSystem {
 
         for (let i = 0; i < rayCount; i++) {
             const layer = i % 3;
-            const x = randRange(-150, 150);
-            const z = randRange(-145, 55) - layer * 12;
-            const topY = randRange(66, 82);
-            const bottomY = randRange(-38, 4);
-            const topWidth = randRange(9, 20) * (1 + layer * 0.22);
-            const bottomWidth = topWidth * randRange(2.5, 4.8);
-            const tilt = randRange(-0.24, 0.24);
-            const seed = Math.random() * 100;
+            const layout = OCEAN_SHAFT_LAYOUT[i % OCEAN_SHAFT_LAYOUT.length];
+            const {
+                topX,
+                topZ,
+                bottomX,
+                bottomZ,
+                topY,
+                bottomY,
+                topWidth,
+                bottomWidth,
+                seed,
+            } = layout;
 
             const verts = [
-                [-topWidth, topY, 0, 0, 1],
-                [topWidth, topY, 0, 1, 1],
-                [bottomWidth, bottomY, tilt * (topY - bottomY), 1, 0],
-                [-topWidth, topY, 0, 0, 1],
-                [bottomWidth, bottomY, tilt * (topY - bottomY), 1, 0],
-                [-bottomWidth, bottomY, tilt * (topY - bottomY), 0, 0],
+                [topX - topWidth, topY, topZ, 0, 1],
+                [topX + topWidth, topY, topZ, 1, 1],
+                [bottomX + bottomWidth, bottomY, bottomZ, 1, 0],
+                [topX - topWidth, topY, topZ, 0, 1],
+                [bottomX + bottomWidth, bottomY, bottomZ, 1, 0],
+                [bottomX - bottomWidth, bottomY, bottomZ, 0, 0],
             ];
 
             verts.forEach((vertex) => {
-                positions.push(x + vertex[0], vertex[1], z + vertex[2]);
+                positions.push(vertex[0], vertex[1], vertex[2]);
                 uvs.push(vertex[3], vertex[4]);
                 seeds.push(seed);
                 layers.push(layer);
@@ -2556,6 +2794,7 @@ export class OceanAtmosphereSystem {
             const rays = new THREE.Mesh(geometry, tslMaterial);
             rays.renderOrder = -8;
             this.group.add(rays);
+            this.volumetricShafts.push(rays);
             this.tslUserData.push(tslMaterial.userData);
             return;
         }
@@ -2602,20 +2841,21 @@ export class OceanAtmosphereSystem {
                 }
 
                 void main() {
-                    float core = smoothstep(0.0, 0.28, vUv.x) * smoothstep(1.0, 0.72, vUv.x);
-                    float vertical = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.42, vUv.y);
+                    float core = smoothstep(0.0, 0.28, vUv.x)
+                        * (1.0 - smoothstep(0.72, 1.0, vUv.x));
+                    float floorFade = smoothstep(0.0, 0.15, vUv.y);
+                    float topWeight = mix(0.38, 1.0, pow(vUv.y, 0.58));
                     float streak = sin((vUv.y * 32.0) + (uTime * (1.2 + vLayer * 0.25)) + vSeed);
                     float fine = sin((vUv.x * 18.0) - (uTime * 0.8) + (vSeed * 1.7));
-                    float dust = hash(floor((vUv + vSeed) * vec2(26.0, 68.0)));
-                    float shimmer = 0.72 + streak * 0.18 + fine * 0.08 + dust * 0.07;
-                    float ray = core * vertical * shimmer;
+                    float shimmer = 0.78 + streak * 0.13 + fine * 0.07;
+                    float ray = core * floorFade * topWeight * shimmer;
 
-                    float distanceFade = 1.0 - smoothstep(70.0, 230.0, vDist);
+                    float distanceFade = 1.0 - smoothstep(90.0, 280.0, vDist);
                     float currentPulse = 0.86 + uCurrentStrength * 0.08;
-                    vec3 color = mix(uShaftColor, uWarmColor, pow(vUv.y, 3.0) * 0.22);
-                    color *= ray * (0.65 + uGlowIntensity * 0.08);
+                    vec3 color = mix(uShaftColor, uWarmColor, pow(vUv.y, 2.8) * 0.46);
+                    color *= 0.82 + uGlowIntensity * 0.10;
 
-                    float alpha = ray * distanceFade * uRayStrength * currentPulse * 0.58;
+                    float alpha = ray * distanceFade * uRayStrength * currentPulse * 0.54;
                     gl_FragColor = vec4(color, alpha);
                 }
             `,
@@ -2629,6 +2869,7 @@ export class OceanAtmosphereSystem {
         rays.renderOrder = -8;
         this.uniforms.push(uniforms);
         this.group.add(rays);
+        this.volumetricShafts.push(rays);
     }
 
     createHazeLayers() {
@@ -2697,8 +2938,10 @@ export class OceanAtmosphereSystem {
                     float n1 = noise(vUv * vec2(4.0, 2.2) + flow);
                     float n2 = noise(vUv * vec2(10.0, 4.0) - flow * 1.8);
                     float body = smoothstep(0.05, 0.75, n1 * 0.7 + n2 * 0.3);
-                    float edge = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.72, vUv.y);
-                    float sideFade = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
+                    float edge = smoothstep(0.0, 0.18, vUv.y)
+                        * (1.0 - smoothstep(0.72, 1.0, vUv.y));
+                    float sideFade = smoothstep(0.0, 0.08, vUv.x)
+                        * (1.0 - smoothstep(0.9, 1.0, vUv.x));
                     float distFade = smoothstep(24.0, 190.0, vDist);
                     float alpha = body * edge * sideFade * distFade * uHazeStrength * 0.04;
 
@@ -2740,8 +2983,6 @@ export class OceanAtmosphereSystem {
         }
         // Smooth icosphere kept for god-ray occluders + arches — those need
         // massy backgrounds, lumpy noise would distract behind volumetric shafts.
-        const smoothRockGeometry = new THREE.IcosahedronGeometry(1, 2);
-
         // Bucket size: ceil(count / variants), trimmed for the last bucket.
         const perVariant = Math.ceil(reefCount / VARIANT_COUNT);
 
@@ -3039,7 +3280,9 @@ export class OceanAtmosphereSystem {
             this.group.add(glows);
             this.tslUserData.push(tslMaterial.userData);
             this.glowBillboardMesh = glows;
-            this.glowBillboardData = { positions, phases, count: glowCount };
+            this.glowBillboardData = {
+                positions, phases, sizes, count: glowCount,
+            };
             return;
         }
 
@@ -3133,7 +3376,9 @@ export class OceanAtmosphereSystem {
                 const i3 = i * 3;
                 dummy.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2]);
                 dummy.rotation.set(0, 0, 0);
-                dummy.scale.setScalar(1);
+                // Bake local quad size into the instance matrix. Shader-side
+                // positionLocal scaling also scaled this world translation in r181.
+                dummy.scale.setScalar(sizes[i] * 1.2);
                 dummy.updateMatrix();
                 dust.setMatrixAt(i, dummy.matrix);
             }
@@ -3201,20 +3446,22 @@ export class OceanAtmosphereSystem {
         this.uniforms.push(uniforms);
     }
 
-    setBillboardInstance(mesh, index, x, y, z) {
+    setBillboardInstance(mesh, index, x, y, z, scale = 1) {
         if (!mesh || !this.camera || !this.billboardDummy) return;
         this.billboardDummy.position.set(x, y, z);
         this.billboardDummy.quaternion.copy(this.camera.quaternion);
-        this.billboardDummy.scale.setScalar(1);
+        this.billboardDummy.scale.setScalar(scale);
         this.billboardDummy.updateMatrix();
         mesh.setMatrixAt(index, this.billboardDummy.matrix);
     }
 
-    updateBillboards(elapsed, currentStrength) {
+    updateBillboards(elapsed, currentStrength, glowIntensity = 0.8) {
         if (!this.isWebGPU || !this.camera) return;
 
         if (this.glowBillboardMesh && this.glowBillboardData) {
-            const { positions, phases, count } = this.glowBillboardData;
+            const {
+                positions, phases, sizes, count,
+            } = this.glowBillboardData;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
                 this.setBillboardInstance(
@@ -3223,6 +3470,11 @@ export class OceanAtmosphereSystem {
                     positions[i3],
                     positions[i3 + 1] + Math.sin(elapsed * 0.35 + phases[i]) * 0.5,
                     positions[i3 + 2],
+                    sizes[i] * (
+                        0.76
+                        + Math.sin(elapsed * 1.15 + phases[i]) * 0.18
+                        + glowIntensity * 0.08
+                    ),
                 );
             }
             this.glowBillboardMesh.instanceMatrix.needsUpdate = true;
@@ -3282,7 +3534,9 @@ export class OceanAtmosphereSystem {
         // Glow + dust billboard meshes (up to ~504 instances at Extreme) update
         // at 30 Hz on the odd-frame stride group. Slow drift; visually identical.
         // ?oceanNoAtmosphereBillboards=1 sets skipBillboards to suppress entirely.
-        if (billboardHeavyTick && !skipBillboards) this.updateBillboards(elapsed, currentStrength);
+        if (billboardHeavyTick && !skipBillboards) {
+            this.updateBillboards(elapsed, currentStrength, glowIntensity);
+        }
     }
 
     collectSignoff() {
@@ -3361,8 +3615,12 @@ export class OceanAtmosphereSystem {
     }
 
     dispose() {
+        this.disposed = true;
+        this.upgradeGeneration += 1;
         this.assetUpgradeTimers?.forEach((timer) => clearTimeout(timer));
         this.assetUpgradeTimers = [];
+        this.upgradeQueue = [];
+        this.upgradeQueueRunning = false;
         if (this.group) {
             this.scene?.remove(this.group);
             disposeObject(this.group);

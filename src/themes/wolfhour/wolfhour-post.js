@@ -33,7 +33,7 @@ export const WOLFHOUR_POST_PROFILES = Object.freeze({
         profile: 'off',
         useFilmGrain: false,
         silverTintStrength: 0.0,
-        bloomDownsample: 0.58,
+        bloomDownsample: 0.56,
         ditherStrength: 0.0012,
         bloomRadius: 0.5,
         bloomThreshold: 0.25,
@@ -84,7 +84,7 @@ export const WOLFHOUR_POST_PROFILES = Object.freeze({
         profile: 'full',
         useFilmGrain: true,
         silverTintStrength: 0.18,
-        bloomDownsample: 0.62,
+        bloomDownsample: 0.58,
         ditherStrength: 0.0018,
         bloomRadius: 0.54,
         bloomThreshold: 0.2,
@@ -101,7 +101,7 @@ export const WOLFHOUR_POST_PROFILES = Object.freeze({
         profile: 'full',
         useFilmGrain: true,
         silverTintStrength: 0.21,
-        bloomDownsample: 0.68,
+        bloomDownsample: 0.61,
         ditherStrength: 0.002,
         bloomRadius: 0.56,
         bloomThreshold: 0.18,
@@ -118,7 +118,7 @@ export const WOLFHOUR_POST_PROFILES = Object.freeze({
         profile: 'full',
         useFilmGrain: true,
         silverTintStrength: 0.24,
-        bloomDownsample: 0.74,
+        bloomDownsample: 0.64,
         ditherStrength: 0.0022,
         bloomRadius: 0.58,
         bloomThreshold: 0.16,
@@ -197,7 +197,9 @@ export class WolfhourPost {
 
         const centered = uv.sub(0.5).mul(2.0);
         const dist = length(centered);
-        const vignetteMask = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.55), dist);
+        const vignetteMask = float(1.0).sub(
+            smoothstep(this.uVignetteOffset.sub(0.55), this.uVignetteOffset, dist),
+        );
         const vignetteColor = mix(
             tinted.mul(float(1.0).sub(this.uVignetteDarkness)),
             tinted,
@@ -218,16 +220,19 @@ export class WolfhourPost {
         graded = mix(vec3(gradedLuma), graded, this.uSaturation);
         graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
 
-        const grainNoise = fract(
-            sin(
-                dot(
-                    uv.mul(148.37).add(vec2(this.uTime.mul(0.73), this.uTime.mul(1.17))),
-                    vec2(12.9898, 78.233),
-                ),
-            ).mul(43758.5453),
-        );
-        const grain = grainNoise.sub(0.5).mul(this.uGrainStrength);
-        const withGrain = clamp(graded.add(vec3(grain)), float(0.0), float(1.0));
+        let withGrain = graded;
+        if (this.useFilmGrain) {
+            const grainNoise = fract(
+                sin(
+                    dot(
+                        uv.mul(148.37).add(vec2(this.uTime.mul(0.73), this.uTime.mul(1.17))),
+                        vec2(12.9898, 78.233),
+                    ),
+                ).mul(43758.5453),
+            );
+            const grain = grainNoise.sub(0.5).mul(this.uGrainStrength);
+            withGrain = clamp(graded.add(vec3(grain)), float(0.0), float(1.0));
+        }
 
         const ditherNoise = fract(sin(dot(uv.mul(311.7), vec2(127.1, 269.5))).mul(43758.5453));
         const dither = ditherNoise.sub(0.5).mul(this.uDitherStrength);
