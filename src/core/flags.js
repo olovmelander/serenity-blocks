@@ -174,6 +174,9 @@ export const FLAG_REGISTRY = [
     {
         name: 'cascadeShadow', default: false, purpose: 'production differential: run the pure §5.2 resolveCascade in shadow against legacy processPhysics on every lock, diff end-state + hole masks, log divergence — plan §5.10', kind: 'refactor', graduationBar: 'plan §5.10 legacy-deletion gate (≥50 clean sessions, ≥5 human) → resolver cutover replaces legacy processPhysics; flag dies with the legacy path', reader: 'flags',
     },
+    {
+        name: 'cascadeV2', default: false, purpose: '§5.2 cutover: processPhysics dispatches to the resolver-driven wave replay (resolveCascade first, animation replays precomputed waves; commit-per-wave per ADR-0011) instead of the legacy discover-as-you-animate loop', kind: 'refactor', graduationBar: 'plan §5.0 cutover ladder: §5.10 soak clean (shadow + cascadeV2 together = runtime self-check) → online-MP default-on → solo → one release with legacy rollback → delete processPhysicsLegacy + flag together', reader: 'flags',
+    },
 ];
 
 /** @param {string} name @returns {boolean} */
