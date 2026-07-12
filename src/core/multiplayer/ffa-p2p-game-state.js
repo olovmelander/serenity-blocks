@@ -2608,7 +2608,7 @@ export class FFAGameStateP2P {
     }
 
     _recordNetEvent(type, data = {}) {
-        if (!this._netEventLogEnabled || !this.isHost || !type) return null;
+        if (!this._netEventLogEnabled || !type || (!this.isHost && type !== 'sim_clock_warp')) return null;
         if (!Array.isArray(this._netEventLog)) this._netEventLog = [];
         const nextId = (Number(this._netEventLogSeq) || 0) + 1;
         this._netEventLogSeq = nextId;
