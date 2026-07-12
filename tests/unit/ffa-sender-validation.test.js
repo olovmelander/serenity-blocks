@@ -18,6 +18,7 @@ function makeStub(overrides = {}) {
     return Object.assign(Object.create(FFAGameStateP2P.prototype), {
         isHost: false,
         localPlayerId: 'LOCAL',
+        roundGeneration: 0,
         network: { hostSteamId: HOST },
         players: new Map(),
         _spoofDrops: 0,
@@ -26,7 +27,9 @@ function makeStub(overrides = {}) {
 }
 
 describe('hole a — LOBBY_GAME_START (match start on another peer)', () => {
-    const msg = (from) => ({ from, data: { sharedSeed: 42, config: {} } });
+    const msg = (from) => ({
+        from, data: { sharedSeed: 42, config: {}, roundGeneration: 0 },
+    });
 
     it('rejects a non-host sender', () => {
         const stub = makeStub({ startMatch: vi.fn() });
@@ -42,14 +45,44 @@ describe('hole a — LOBBY_GAME_START (match start on another peer)', () => {
     });
 
     it('adopts the host match generation before resetting the local board', () => {
-        const stub = makeStub({ roundGeneration: 4, startMatch: vi.fn() });
+        const stub = makeStub({
+            roundGeneration: 4,
+            pendingInputs: [{ seq: 9 }],
+            inputHistory: [{ seq: 9 }],
+            inputSequence: 9,
+            _ffaInputGroupSequence: 3,
+            startMatch: vi.fn(),
+        });
         stub._handleLobbyGameStart({
             from: HOST,
             data: { sharedSeed: 42, config: {}, roundGeneration: 5 },
         });
 
         expect(stub.roundGeneration).toBe(5);
+        expect(stub.pendingInputs).toEqual([]);
+        expect(stub.inputSequence).toBe(0);
         expect(stub.startMatch).toHaveBeenCalledOnce();
+    });
+
+    it('rejects stale or duplicate match-start generations', () => {
+        const stale = makeStub({ roundGeneration: 4, startMatch: vi.fn() });
+        stale._handleLobbyGameStart({
+            from: HOST,
+            data: { sharedSeed: 42, config: {}, roundGeneration: 3 },
+        });
+        expect(stale.roundGeneration).toBe(4);
+        expect(stale.startMatch).not.toHaveBeenCalled();
+
+        const duplicate = makeStub({
+            roundGeneration: 4,
+            _lastLobbyStartGeneration: 4,
+            startMatch: vi.fn(),
+        });
+        duplicate._handleLobbyGameStart({
+            from: HOST,
+            data: { sharedSeed: 42, config: {}, roundGeneration: 4 },
+        });
+        expect(duplicate.startMatch).not.toHaveBeenCalled();
     });
 
     it('fails open when the transport did not stamp a sender', () => {

@@ -11,6 +11,7 @@
 
 export const FIXED_TICK_HZ = 60;
 export const FIXED_TICK_MS = 1000 / FIXED_TICK_HZ;
+export const FIXED_TICK_MAX_DEBT_MS = 300;
 
 const DEFAULT_MAX_STEPS = 5;
 const MIN_TICK_MS = 1;
@@ -63,6 +64,7 @@ export function elapsedMsToTicks(elapsedMs, tickMs = FIXED_TICK_MS) {
  * @property {number} [tickMs] Canonical duration of one simulation tick.
  * @property {number} [maxSteps] Maximum ticks to execute for this update.
  * @property {number} [maxElapsedMs] Clamp applied to newly elapsed wall time.
+ * @property {number} [maxDebtMs] Maximum total wall-time debt retained for catch-up.
  * @property {number} [maxCarryTicks] Owed ticks retained after step overflow.
  * @property {number} [boundaryEpsilonMs] Floating-point tolerance (may reduce/disable the default).
  */
@@ -72,14 +74,18 @@ export function elapsedMsToTicks(elapsedMs, tickMs = FIXED_TICK_MS) {
  * @property {number} steps
  * @property {number} tickMs
  * @property {number} maxSteps
+ * @property {number} maxDebtMs
  * @property {number} acceptedElapsedMs
  * @property {boolean} elapsedWasClamped
+ * @property {number} requestedAccumulatedMs Total debt before the overload policy.
+ * @property {boolean} debtWasClamped Whether excess wall-time debt was rebased.
+ * @property {number} warpedMs Wall time discarded by the overload policy.
  * @property {number} accumulatedMs Total owed time before executing steps.
  * @property {number} remainderBeforeCarryCapMs Owed time after steps, before overflow policy.
  *   May be a tiny negative correction when epsilon admits a boundary tick early.
  * @property {number} remainderMs Owed time to carry into the next update (including correction debt).
  * @property {boolean} overflowed Whether the step budget left at least one full tick owed.
- * @property {number} discardedMs Owed catch-up time dropped by the overflow policy.
+ * @property {number} discardedMs Owed catch-up time dropped by debt and carry policies.
  */
 
 /**
@@ -105,6 +111,11 @@ export function planFixedTicks(accumulatorMs, elapsedMs, policy = {}) {
     const requestedMaxElapsedMs = Number(policy.maxElapsedMs);
     const maxElapsedMs = Number.isFinite(requestedMaxElapsedMs) && requestedMaxElapsedMs >= 0
         ? requestedMaxElapsedMs
+        : Number.POSITIVE_INFINITY;
+
+    const requestedMaxDebtMs = Number(policy.maxDebtMs);
+    const maxDebtMs = Number.isFinite(requestedMaxDebtMs) && requestedMaxDebtMs >= 0
+        ? requestedMaxDebtMs
         : Number.POSITIVE_INFINITY;
 
     const requestedCarryTicks = Number(policy.maxCarryTicks);
@@ -138,9 +149,12 @@ export function planFixedTicks(accumulatorMs, elapsedMs, policy = {}) {
         || numericElapsedMs !== acceptedElapsedMs;
 
     const accumulatedCandidateMs = safeAccumulatorMs + acceptedElapsedMs;
-    const accumulatedMs = Number.isFinite(accumulatedCandidateMs)
+    const requestedAccumulatedMs = Number.isFinite(accumulatedCandidateMs)
         ? accumulatedCandidateMs
         : acceptedElapsedMs;
+    const accumulatedMs = Math.min(requestedAccumulatedMs, maxDebtMs);
+    const warpedMs = Math.max(0, requestedAccumulatedMs - accumulatedMs);
+    const debtWasClamped = warpedMs > 0;
     const owedSteps = Math.max(0, Math.floor((accumulatedMs + boundaryEpsilonMs) / tickMs));
     const steps = Math.min(owedSteps, maxSteps);
 
@@ -157,12 +171,16 @@ export function planFixedTicks(accumulatorMs, elapsedMs, policy = {}) {
         steps,
         tickMs,
         maxSteps,
+        maxDebtMs,
         acceptedElapsedMs,
         elapsedWasClamped,
+        requestedAccumulatedMs,
+        debtWasClamped,
+        warpedMs,
         accumulatedMs,
         remainderBeforeCarryCapMs,
         remainderMs,
         overflowed,
-        discardedMs: remainderBeforeCarryCapMs - remainderMs,
+        discardedMs: warpedMs + remainderBeforeCarryCapMs - remainderMs,
     };
 }

@@ -10,6 +10,7 @@ import {
     FFA_INPUT_PER_ORDINAL_LIMIT,
     flushFfaInputBatches,
     processFfaInputBatch,
+    resetFfaInputEpoch,
     validateFfaFixedInputGroup,
 } from '../../src/core/multiplayer/ffa-input-batching.js';
 import { planFixedTicks } from '../../src/core/fixed-tick-clock.js';
@@ -44,6 +45,102 @@ function createGame(count) {
 }
 
 describe('FFA peer input batching', () => {
+    it('starts each round with a fresh producer and host transport epoch', () => {
+        const game = {
+            pendingInputs: [{ seq: 8 }],
+            inputHistory: [{ seq: 8 }],
+            inputSequence: 8,
+            _ffaInputGroupSequence: 3,
+            _pendingFfaInputGroup: { id: 3 },
+            players: new Map([['PEER', { lastInputSeq: 8 }]]),
+        };
+
+        resetFfaInputEpoch(game);
+
+        expect(game.pendingInputs).toEqual([]);
+        expect(game.inputHistory).toEqual([]);
+        expect(game.inputSequence).toBe(0);
+        expect(game._ffaInputGroupSequence).toBe(0);
+        expect(game._pendingFfaInputGroup).toBeNull();
+        expect(game.players.get('PEER').lastInputSeq).toBe(0);
+    });
+
+    it('fences stale grouped packets before they can poison new-round reassembly', () => {
+        const host = {
+            isHost: true,
+            _fixedTickEnabled: true,
+            roundGeneration: 0,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
+            inputJitterBuffer: { currentTick: 0, processCursor: -2 },
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
+        };
+        const oldChunk = {
+            inputs: Array.from({ length: 20 }, (_, index) => ({
+                type: 'drop',
+                data: { type: 'soft' },
+                seq: index + 1,
+                fixedTickOrdinal: 1,
+                simTick: 1,
+            })),
+            fixedTickBaseOrdinal: 1,
+            fixedTickGroupId: 1,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 2,
+            fixedTickGroupFinal: false,
+        };
+        processFfaInputBatch(host, 'PEER', oldChunk, 1000);
+
+        resetFfaInputEpoch(host);
+        host.roundGeneration = 1;
+        processFfaInputBatch(host, 'PEER', oldChunk, 1000);
+
+        const fresh = (id) => ({
+            inputs: [{
+                type: 'drop', data: { type: 'soft' }, seq: id, fixedTickOrdinal: id, simTick: id,
+            }],
+            fixedTickBaseOrdinal: id,
+            fixedTickGroupId: id,
+            fixedTickRoundGeneration: 1,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+        processFfaInputBatch(host, 'PEER', fresh(1), 1000);
+        processFfaInputBatch(host, 'PEER', fresh(2), 1000);
+
+        expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq)).toEqual([1, 2]);
+        expect(host.kickPlayer).not.toHaveBeenCalled();
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'fixed_input_round',
+        });
+    });
+
+    it('rejects stale grouped legacy input before dispatching it to a reset board', () => {
+        const host = {
+            isHost: true,
+            _fixedTickEnabled: false,
+            roundGeneration: 2,
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+        };
+        processFfaInputBatch(host, 'PEER', {
+            inputs: [{ type: 'move', data: { direction: -1 }, seq: 9 }],
+            fixedTickGroupId: 9,
+            fixedTickRoundGeneration: 1,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        }, 1000);
+
+        expect(host.processPlayerInput).not.toHaveBeenCalled();
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'fixed_input_round',
+        });
+    });
+
     it('splits an ordered stream at the host validation limit', () => {
         const game = createGame(41);
 
@@ -292,6 +389,7 @@ describe('FFA peer input batching', () => {
             inputJitterBuffer: { currentTick: 0, processCursor: -2 },
             processPlayerInput: vi.fn(),
             _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
         };
         const packet = (groupId, seq, ordinal, options = {}) => ({
             inputs: [{
@@ -316,12 +414,14 @@ describe('FFA peer input batching', () => {
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_progression',
         });
+        expect(host.kickPlayer).not.toHaveBeenCalled();
 
         processFfaInputBatch(host, 'PEER', packet(3, 3, 3), 1000);
         expect(host.processPlayerInput).toHaveBeenCalledOnce();
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_progression',
         });
+        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
 
         processFfaInputBatch(host, 'PEER', packet(2, 2, 2), 1000);
         processFfaInputBatch(host, 'PEER', packet(3, 3, 3), 1000);
@@ -368,6 +468,7 @@ describe('FFA peer input batching', () => {
             inputJitterBuffer: { currentTick: 0, processCursor: -2 },
             processPlayerInput: vi.fn(),
             _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
         };
         const packet = (groupId, seq) => ({
             inputs: [{
@@ -390,6 +491,7 @@ describe('FFA peer input batching', () => {
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_progression',
         });
+        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
 
         processFfaInputBatch(host, 'PEER', packet(1, 1), 1000);
         processFfaInputBatch(host, 'PEER', packet(2, 2), 1000);
@@ -497,6 +599,47 @@ describe('FFA peer input batching', () => {
             'PEER',
             'fixed_input_backpressure_overflow',
         );
+    });
+
+    it('deduplicates a blocked complete group without consuming pending capacity', () => {
+        const host = {
+            isHost: true,
+            _fixedTickEnabled: true,
+            roundGeneration: 0,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
+            inputJitterBuffer: { currentTick: 0, processCursor: -2, clockEpoch: 0 },
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
+        };
+        const packet = (id) => ({
+            inputs: [{
+                type: 'drop', data: { type: 'soft' }, seq: id, fixedTickOrdinal: id, simTick: id,
+            }],
+            fixedTickBaseOrdinal: id,
+            fixedTickGroupId: id,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+        for (let id = 1; id <= 34; id += 1) {
+            processFfaInputBatch(host, 'PEER', packet(id), 1000);
+        }
+        for (let retry = 0; retry < 300; retry += 1) {
+            processFfaInputBatch(host, 'PEER', packet(34), 1000);
+        }
+
+        expect(host.processPlayerInput).toHaveBeenCalledTimes(33);
+        expect(host.kickPlayer).not.toHaveBeenCalled();
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'fixed_input_pending_duplicate',
+        });
+
+        host.inputJitterBuffer.currentTick = 1;
+        host.inputJitterBuffer.processCursor = -1;
+        expect(drainFfaInputBatches(host)).toBe(1);
+        expect(host.processPlayerInput).toHaveBeenCalledTimes(34);
     });
 
     it.each([30, 60, 144])(

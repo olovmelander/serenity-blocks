@@ -462,11 +462,11 @@ The Riot/Factorio retrofit playbook, adapted:
   - **The animation-replay contract is a real deliverable, not an implementation detail:** `processPhysics` fires **18 distinct callbacks** (`triggerCombo`, `onLineClear`, `onScoreAdd`, `onLevelUp`, `onTSpin`/`onB2B`, flash stages, `onGravityStep`, `onCascadeComplete`, `onPerfectClear`, `onGarbageReady`, …). Write the schedule — which callback fires at which wave/sim-time with which payload — *before* extraction, and pin it with a characterization test; otherwise 60+ theme/juice consumers break unreviewably.
   - **Decision to make now, not defer:** score/level currently mutate *per wave inside the loop* and 30 Hz snapshots can capture mid-cascade values. Choose **commit-per-wave** (replaying waves mutates incrementally — recommended: preserves wire-visible timing) or commit-at-end (accept the snapshot-timing change and pin it with a test). Record as an ADR either way.
   - **The replay clock:** `waitForPhysicsDelay → advanceReplaySimulationClock` keeps `simTimeMs` honest across animation delays; the pure core must consume deterministic sim-time per wave or every existing demo's input timestamps misalign. Existing golden demos (`demo-replay-clock.test.js`, `ffa-demo-replay-determinism.test.js`) must stay green throughout — they are the abort tripwire.
-- **Why (the player-facing KPI):** input primitives hard-return while `isProcessingPhysics`; a 4-wave cascade blocks input **330–400 ms** (70 ms × speed per wave + 16 ms per gravity step), >1 s on deep Infinity cascades; only 4 moves are buffered, drops are discarded. Post-5.2 resolution is sub-ms and input applies next tick: **KPI = p95 input-to-sim-application during cascades, >300 ms → ≤ 16.7 ms.**
+- **Why (the player-facing KPI):** input primitives hard-return while `isProcessingPhysics`; a 4-wave cascade blocks input **330–400 ms** (70 ms × speed per wave + 16 ms per gravity step), >1 s on deep Infinity cascades; only 4 moves are buffered, drops are discarded. Pure resolution makes next-tick input possible, but the later replay/input-decoupling flip must stop async animation from holding `isProcessingPhysics` before it is achieved: **KPI = p95 input-to-sim-application during cascades, >300 ms → ≤ 16.7 ms.**
 - **Validation:** golden-demo suite byte-identical before/after; hole-mask outputs equal the legacy path over the banked-log corpus; the 5.10 shadow diff clean over ≥50 sessions. **Abort:** if hole-mask parity can't be reproduced, stop and fix parity before any cutover — do not ship divergent garbage fairness.
 
 ### 5.3 Fixed-tick simulation *(L)*
-- **What:** a 60 Hz canonical tick (`simTickMs` = 16.667 — guideline DAS/ARR/lock-delay are natively 60 Hz-frame quantities; TETR.IO's engine is the same shape). `processAutoDrop` is already a real fixed-step accumulator; the un-quantized remainder is **five scattered accumulators**: DAS floats on the `InputController` singleton (`controls.js:123-155`, with live `window.settings` reads per call), lock-delay (`game.js:207-209`), hit-stop (decremented in *three* places), blind timers (two places), and `simFrame` itself (derived by rounding, not stepped). Convert all to integer tick counters in snapshotted state; ban float ms accumulators in sim state (fitness rule, 3d). Unify the delta-clamp policy (today: 100 ms in two places, unclamped in `updateGame`) into the runner with Quadra's explicit catch-up rule: owed >300 ms → warp forward with a log; sleep/background-tab resume → clamp, never simulate the pause.
+- **What:** a 60 Hz canonical tick (`simTickMs` = 16.667 — guideline DAS/ARR/lock-delay are natively 60 Hz-frame quantities; TETR.IO's engine is the same shape). `processAutoDrop` is already a real fixed-step accumulator; the un-quantized remainder is **five scattered accumulators**: DAS floats on the `InputController` singleton (`controls.js:123-155`, with live `window.settings` reads per call), lock-delay (`game.js:207-209`), hit-stop (decremented in *three* places), blind timers (two places), and `simFrame` itself (derived by rounding, not stepped). Convert all to integer tick counters in snapshotted state; ban float ms accumulators in sim state (fitness rule, 3d). Unify the delta-clamp policy (today: 100 ms in two places, unclamped in `updateGame`) into the runner. ADR-0012 applies the Quadra overload lesson without manufacturing un-simulated state: retain/catch up at most 300 ms, rebase and log excess wall-time debt, preserve contiguous tick IDs; sleep/background-tab resume clamps and never simulates the pause.
 - **Subsumes:** the default-off `simTickNetcode` host accumulator (`ffa:374-377,455-476`) — fold it in rather than maintaining a parallel tick.
 - **Electron nuance:** rAF throttles in occluded windows; online matches must keep simulating — drive the sim from the setTimeout path (`frame-rate-controller.js` already can), rAF is only the render trigger (this is also `UnifiedMultiplayerLoop.neverPause`'s job — see 5.5).
 - **Validation:** the 5.9 multi-rate soak (same input stream at 30/60/144 fps + pause/resume → identical digests) becomes runnable and green.
@@ -482,7 +482,7 @@ The first integer timer family is also dark and dual-clocked: lock delay owns `l
 `lockTimerTicks`, snapshots restore those fields with legacy-ms derivation, and the explicit
 one-canonical-tick `processAutoDrop` path reaches the same tick-30 lock at 30/60/144 Hz. The legacy
 millisecond path remains unchanged as rollback (including its characterized 30 Hz float-boundary
-delay); the integer path remains dark until a live mode adapter calls the shared tick.
+delay); the default-off FFA `fixedTick` adapter is now its first live consumer.
 
 Hit-stop is now the second dark dual-clock family: `hitStopTicks` round-trips through demo
 checkpoints with legacy-ms backfill, and `consumeFixedHitStopTick` quantizes direct 30/70/110 ms
@@ -499,14 +499,17 @@ wire fields while exact integer counters are snapshotted and restored. The fixed
 same expiry tick at 30/60/144 Hz, detects direct legacy writes before consuming a tick, and clears an
 explicit `null` FFA blind snapshot instead of retaining stale state.
 
-The first default-off live consumer is also landed under the canonical `fixedTick` flag (with
-`simTickNetcode` accepted only as a compatibility fallback). Both FFA host and peers run the shared
-tick before render; held local input advances once per canonical tick, and the host stamps
-`fixed60-v1`/`legacy-variable-v1` into match configuration so peer-local flags cannot split the
-clock. The cutover preserves the established online lock-score rule. Host promotion deliberately
-rolls back to 30 Hz legacy timing and announces that clock because migration snapshots do not yet
-contain complete continuation state. Match start, migration, resync, and promotion all use one
-atomic clock transition that retargets live loop ownership and clears accumulator/held-input timing.
+FFA is the first default-off consumer under the canonical `fixedTick` flag (with `simTickNetcode`
+accepted only as a compatibility fallback). When enabled, `UnifiedMultiplayerLoop` gives host and
+peers one recursive-timeout simulation owner; each callback passes monotonic elapsed time to
+`runFfaFixedTicks`, the sole step/catch-up planner, while rAF performs render/stats only. Held input
+advances once per canonical tick, and the host stamps `fixed60-v1`/`legacy-variable-v1` into match
+configuration so peer-local flags cannot split the clock. Generation fences invalidate stale timer
+and rAF callbacks across stop/restart, pause/resume, and live fixed/legacy ownership changes. The
+cutover preserves the established online lock-score rule. Host promotion deliberately rolls back to
+30 Hz legacy timing and announces that clock because migration snapshots do not yet contain complete
+continuation state. Match start, migration, resync, and promotion all use one atomic clock transition
+that retargets live loop ownership and clears accumulator/held-input timing.
 
 Peer held-input actions generated on separate catch-up ticks now carry a canonical sim-tick/ordinal
 stamp. The host maps the structurally validated stream onto a persistent per-peer host schedule, so
@@ -520,18 +523,21 @@ the host exposes nothing to scheduling until every indexed chunk is present. Seq
 round generation, one sim tick per ordinal, the five-ordinal span, the shared 64-edge allowance,
 and the 40-repeat-per-tick producer shape are validated atomically. The first observed sequence must
 continue the host's last applied ACK; within a round, group ID and sequence are exact-contiguous and
-sim-tick/ordinal gaps must agree, while a new host-stamped round permits the ordinal reset. Jitter
-buffer clears carry an explicit clock epoch, and full-game restarts now advance/broadcast/adopt the
-round generation before either side resets its board clock.
+sim-tick/ordinal gaps must agree. Each accepted host-stamped round resets the input sequence, group
+sequence, pending/history queues, ACK/progression maps, and jitter clock epoch as one round boundary
+before new-round input ingress. Stale grouped traffic is rejected by generation before chunk
+assembly, so a late partial cannot poison a reused group ID or dispatch legacy commands into the
+fresh board.
 
 Validated commands receive persistent host targets with a 32-tick future window. Complete groups
 beyond that window stay in a FIFO (bounded at 256 groups and 4,096 commands) and drain on each host
 fixed tick instead of being rejected and wedging exact continuity; bound overflow explicitly removes
-the peer with `fixed_input_backpressure_overflow`. Incomplete, duplicated, replayed, oversized, or
-malformed groups fail closed. Reliable loss still needs Phase 6A's group ACK/retry/backpressure
-protocol; same-round sequence gaps deliberately do not advance the max ACK. Only the structural and
-progression brand bypasses the jitter-sensitive wall-arrival counter; ungrouped/legacy traffic
-retains the 140-input limit. The
+the peer with `fixed_input_backpressure_overflow`. Incomplete, duplicated, oversized, or malformed
+groups fail closed; exact replays are ignored, while a forward same-round continuity gap explicitly
+removes the peer with `fixed_input_continuity_gap` instead of leaving the stream wedged. Phase 6A
+still owns group ACK/retry and recovery when a reliable group or restart control packet itself is
+lost. Only the structural and progression brand bypasses the jitter-sensitive wall-arrival counter;
+ungrouped/legacy traffic retains the 140-input limit. The
 30/60/144 Hz instant-SDF harness and an exact five-tick/64-edge producer-maximum fixture pin the
 packet and group bounds.
 
@@ -549,14 +555,19 @@ The spawning command is also an input-phase boundary: later same-tick commands r
 prediction or wire enqueue, so zero-interval soft-drop repeats cannot drive a newly spawned piece or
 overflow the peer batch limit.
 
-This is a guarded consumer, not 5.3 graduation or the full input-unblock KPI. `fixedTick` remains
-default-off while animated full-row/cascade completion and its deferred move/rotate replay are still
-scheduled by rAF/timeouts outside the tick. Fixed clock now fails closed to legacy when the jitter
-buffer is disabled; local-MP input adapters remain legacy; hot-potato and match deadlines use wall
-time; promotion snapshots omit complete RNG/clock/lock/input continuation; and the
-browser-hidden timeout-backed scheduler is unfinished.
-The unified background-resume/>300 ms warp policy, remaining mode adapters, and legacy-loop collapse
-also remain open.
+Composition tests run the real FFA planner and produce equal simulation-tick counts with 30/60/144 Hz
+render callbacks. The overload policy now carries all debt through 300 ms across bounded callbacks;
+only excess wall time emits `sim_clock_warp`, and tick IDs stay contiguous per ADR-0012. Packaged
+Electron keeps timers active while occluded via
+`backgroundThrottling: false`; ordinary browsers remain unproven.
+
+This is not 5.3 graduation or the full input-unblock KPI. `fixedTick` remains default-off while
+animated cascade completion and its deferred move/rotate replay run through animation promises and
+timers outside the canonical tick. The fixed clock fails closed to legacy when the jitter buffer is
+disabled. Cascade animation/input decoupling, local-MP and remaining mode adapters, automatic
+authoritative recovery after a unilateral clock warp, ordinary-browser background-resume behavior,
+wall-time hot-potato/deadlines, complete migration continuation state, and legacy-loop collapse
+remain open.
 
 ### 5.4 One DAS engine, per-player state *(M)*
 - **What:** unify keyboard (`controls.js:111-173`) and gamepad (`gamepad-controller.js:1682-1755`) DAS into one `advanceDas(state, ticks, config)`. **Design constraints discovered:** DAS state must be **per-player, keyed into each `GameState`** (the singleton's `p2_*` slots belong to a different player's board in local MP); the singleton reduces to key→edge detection. Pick one config-propagation model (keyboard reads `window.settings` live; gamepad caches with explicit updates — cache + explicit update wins; live global reads violate the 3d boundary). Preserve the timer-clearing semantics on pause/resume/visibility — the four call sites: `pauseGame`/`resumeGame` clears (`game.js:1275-1277`, `game.js:1288-1291`), the `visibilitychange` clear (`controls.js:546-553`), and the resume clear at `main.js:4795-4796`. Per-player handling (DAS/ARR/SDF) becomes a **sim input** — into the match handshake and the replay header, TTRM-style.

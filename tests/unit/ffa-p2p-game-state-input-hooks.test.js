@@ -291,7 +291,7 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state._applySnapshotState).toHaveBeenCalledOnce();
     });
 
-    it('clamps fixed sim catch-up after a long host frame', () => {
+    it('retains sub-300 ms debt for bounded catch-up without a clock warp', () => {
         const { state } = createBareGameState({ isHost: true });
         state._fixedTickEnabled = true;
         state.SIM_TICK_MS = 10;
@@ -302,11 +302,30 @@ describe('FFAGameStateP2P local input hooks', () => {
 
         expect(state.simTick).toBe(2);
         expect(state.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledTimes(2);
-        expect(state._simTickAccumulatorMs).toBe(10);
-        expect(state._recordNetEvent).toHaveBeenCalledWith('sim_tick_clamped', expect.objectContaining({
+        expect(state._simTickAccumulatorMs).toBe(35);
+        expect(state._recordNetEvent).not.toHaveBeenCalledWith('sim_clock_warp', expect.anything());
+    });
+
+    it('rebases only debt beyond 300 ms without jumping canonical tick IDs', () => {
+        const { state } = createBareGameState({ isHost: true });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 2;
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 1000);
+
+        expect(state.simTick).toBe(2);
+        expect(state.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledTimes(2);
+        expect(state._simTickAccumulatorMs).toBe(280);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('sim_clock_warp', {
+            requestedDebtMs: 1000,
+            retainedDebtMs: 300,
+            warpedMs: 700,
+            maxDebtMs: 300,
             maxSteps: 2,
             tickMs: 10,
-        }));
+        });
     });
 
     it('falls back to 30 Hz legacy timing when a fixed host is promoted', () => {

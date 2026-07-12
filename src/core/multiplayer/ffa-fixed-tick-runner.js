@@ -1,10 +1,18 @@
-import { planFixedTicks } from '../fixed-tick-clock.js';
+import {
+    FIXED_TICK_MAX_DEBT_MS,
+    FIXED_TICK_MS,
+    planFixedTicks,
+} from '../fixed-tick-clock.js';
 import {
     createFfaFixedInputAdapter,
     finishFfaFixedBufferedInputs,
     takeFfaFixedBufferedInputs,
 } from './ffa-fixed-input-adapter.js';
 import { drainFfaInputBatches } from './ffa-input-batching.js';
+
+function roundMilliseconds(value) {
+    return Math.round(value * 1000) / 1000;
+}
 
 /** Run the default-off canonical clock for one FFA render update. */
 export function runFfaFixedTicks(game, frameDelta, currentTime, wallTime = 0) {
@@ -17,13 +25,27 @@ export function runFfaFixedTicks(game, frameDelta, currentTime, wallTime = 0) {
         return 0;
     }
 
+    const configuredTickMs = Number(game.SIM_TICK_MS);
+    const tickMs = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+        ? configuredTickMs
+        : FIXED_TICK_MS;
     const tickPlan = planFixedTicks(game._simTickAccumulatorMs, frameDelta, {
-        tickMs: game.SIM_TICK_MS,
+        tickMs,
         maxSteps: game.MAX_SIM_STEPS_PER_FRAME,
-        maxElapsedMs: 250,
-        maxCarryTicks: 1,
+        maxDebtMs: FIXED_TICK_MAX_DEBT_MS,
+        maxCarryTicks: FIXED_TICK_MAX_DEBT_MS / tickMs,
     });
     game._simTickAccumulatorMs = tickPlan.accumulatedMs;
+    if (tickPlan.debtWasClamped) {
+        game._recordNetEvent?.('sim_clock_warp', {
+            requestedDebtMs: roundMilliseconds(tickPlan.requestedAccumulatedMs),
+            retainedDebtMs: roundMilliseconds(tickPlan.accumulatedMs),
+            warpedMs: roundMilliseconds(tickPlan.warpedMs),
+            maxDebtMs: tickPlan.maxDebtMs,
+            maxSteps: tickPlan.maxSteps,
+            tickMs: roundMilliseconds(tickPlan.tickMs),
+        });
+    }
     if (!Number.isFinite(game._fixedInputTimeMs)) {
         const frameTime = Number(currentTime);
         game._fixedInputTimeMs = Number.isFinite(frameTime)
@@ -70,13 +92,6 @@ export function runFfaFixedTicks(game, frameDelta, currentTime, wallTime = 0) {
     }
 
     game._simTickAccumulatorMs = tickPlan.remainderBeforeCarryCapMs;
-    if (tickPlan.overflowed) {
-        game._recordNetEvent?.('sim_tick_clamped', {
-            accumulatorMs: Math.round(game._simTickAccumulatorMs),
-            maxSteps: tickPlan.maxSteps,
-            tickMs: Math.round(tickPlan.tickMs * 1000) / 1000,
-        });
-    }
     game._simTickAccumulatorMs = tickPlan.remainderMs;
     return tickPlan.steps;
 }
