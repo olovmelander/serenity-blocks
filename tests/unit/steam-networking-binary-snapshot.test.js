@@ -130,6 +130,8 @@ describe('SteamNetworking binary snapshot handling', () => {
         expect(received[1].roundGeneration).toBe(3);
         expect(received[1].migrationEpoch).toBe(2);
         expect(received[1].digest).toBe('current-digest');
+        expect(network.incomingSnapshotBaselines.get(HOST_ID).players[0])
+            .not.toHaveProperty('lastInputSeq');
 
         const stats = network.getPacketStats();
         expect(stats.keyframesReceived).toBe(1);

@@ -69,9 +69,21 @@ describe('FFA late-joiner awaitingSpawn flag', () => {
     });
 
     it('serializes awaitingSpawn into the state snapshot for every player', () => {
-        const state = makeHost({ gamePhase: 'playing' });
+        const hotPotatoState = {
+            enabled: true,
+            holderId: 'HOST',
+            previousHolderId: null,
+            expiresAt: 5000,
+            durationMs: 12000,
+            penaltyLines: 6,
+            generation: 2,
+            lastEvent: null,
+        };
+        const state = makeHost({ gamePhase: 'playing', hotPotatoState });
         state.addPlayer('HOST', 'Host', true);
         state.addPlayer('LATE', 'Latecomer', false);
+        state.players.get('HOST').lastAttackerId = 'LATE';
+        state.players.get('HOST')._lockSeq = 7;
 
         const snapshot = state.buildStateSnapshot();
         const byId = Object.fromEntries(snapshot.players.map((p) => [p.steamId, p]));
@@ -80,6 +92,15 @@ describe('FFA late-joiner awaitingSpawn flag', () => {
         expect(byId.LATE.awaitingSpawn).toBe(true);
         // The eliminated/late distinction is independent of isAlive on the wire.
         expect(byId.LATE.isAlive).toBe(false);
+        expect(byId.HOST.lastAttackerId).toBe('LATE');
+        expect(byId.HOST.lockSeq).toBe(7);
+        expect(snapshot).toMatchObject({
+            simTick: 0,
+            snapshotSeq: 0,
+            roundGeneration: 1,
+            migrationEpoch: 0,
+            hotPotatoState,
+        });
     });
 
     it('renderAllPlayers copies awaitingSpawn into the RENDER_FRAME payload (the live host+peer feed)', () => {

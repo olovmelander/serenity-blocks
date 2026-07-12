@@ -46,6 +46,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+import { tslAbzuGrade } from './ocean-tsl-helpers.js';
 
 // 5-tap Poisson disc sample offsets (unit disc)
 const POISSON_TAPS = [
@@ -109,6 +110,7 @@ export class OceanPost {
         this.uTime = uniform(0);
         this.uExposure = uniform(params.exposure ?? 1.08);
         this.uGradeStrength = uniform(params.gradeStrength ?? 0.85);
+        this.uBlackLift = uniform(params.blackLift ?? 0.04);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.18);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.12);
         this.uFogDensity = uniform(params.fogDensity ?? 0.34);
@@ -316,9 +318,10 @@ export class OceanPost {
             );
             return sum;
         })();
-        // Warm gold tint for god rays
+        // Creamy surface light separates from the cool water column without
+        // turning the aperture and fish highlights mustard-yellow.
         const shaftColor = shaftsEnabled
-            ? shafts.mul(this.uShaftStrength.add(this.uComboSurge.mul(0.7))).mul(vec3(1.0, 0.88, 0.62))
+            ? shafts.mul(this.uShaftStrength.add(this.uComboSurge.mul(0.7))).mul(vec3(1.0, 0.93, 0.78))
             : vec3(0.0);
 
         // ── Vignette ──
@@ -351,51 +354,32 @@ export class OceanPost {
         let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
 
         // ── Abzu-inspired split-tone grade ──
-        // Strong teal shadows / warm gold highlights with punchy contrast — the
-        // tonemap output is otherwise too uniform-cyan to read as "underwater
-        // sanctuary". Push the split harder than a typical desaturated grade.
+        // Shared with the fixed-time playground proof: chromatic navy shadows,
+        // cyan water mids, and a peach-cream shoulder in one existing pass.
         const gradeEnabled = (params.gradeStrength ?? 0) > 0;
         if (gradeEnabled) {
+            graded = tslAbzuGrade(graded, this.uGradeStrength, this.uBlackLift);
             const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
 
-            const shadowTint = vec3(0.78, 0.98, 1.08);
-            const shadowMask = float(1.0).sub(smoothstep(float(0.05), float(0.42), luma));
-            graded = mix(
-                graded,
-                graded.mul(shadowTint),
-                shadowMask.mul(0.32).mul(this.uGradeStrength),
-            );
-
-            const warmHighlight = vec3(1.09, 1.035, 0.96);
-            const highlightMask = smoothstep(float(0.42), float(0.92), luma);
-            graded = mix(
-                graded,
-                graded.mul(warmHighlight),
-                highlightMask.mul(0.24).mul(this.uGradeStrength),
-            );
+            const shadowMask = float(1.0).sub(smoothstep(float(0.045), float(0.38), luma));
+            const highlightMask = smoothstep(float(0.46), float(0.88), luma);
             graded = graded.add(vec3(0.12, 0.18, 0.22).mul(gameplayCaustic.mul(0.35)));
             graded = graded.add(
                 vec3(0.12, 0.08, 0.04).mul(highlightMask).mul(this.uComboSurge.mul(0.28)),
             );
 
-            const midBlue = vec3(0.93, 1.02, 1.08);
-            graded = mix(
-                graded,
-                graded.mul(midBlue),
-                float(1.0).sub(highlightMask).mul(0.16).mul(this.uGradeStrength),
-            );
             const surfaceAzureLift = smoothstep(float(0.52), float(1.0), uv.y)
                 .mul(float(1.0).sub(shadowMask))
                 .mul(this.uGradeStrength);
             graded = mix(
                 graded,
-                graded.mul(vec3(0.97, 1.025, 1.075)),
-                surfaceAzureLift.mul(0.2),
+                graded.mul(vec3(0.985, 1.008, 1.025)),
+                surfaceAzureLift.mul(0.14),
             );
 
-            // Punchier contrast — the previous 1.12 was too soft for AAA-style depth.
-            // Increased to 1.18 for better silhouette separation.
-            graded = mix(graded, graded.sub(0.5).mul(1.18).add(0.5), this.uGradeStrength);
+            // Gameplay additions happen after the cinematic grade, then clamp
+            // once so combo warmth cannot escape the display range.
+            graded = clamp(graded, float(0.0), float(1.0));
         }
 
         // PostProcessing applies the renderer's output color transform around
@@ -429,6 +413,7 @@ export class OceanPost {
         }
         if (params.exposure !== undefined) this.uExposure.value = params.exposure;
         if (params.gradeStrength !== undefined) this.uGradeStrength.value = params.gradeStrength;
+        if (params.blackLift !== undefined) this.uBlackLift.value = params.blackLift;
         if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;
         if (params.vignetteOffset !== undefined) this.uVignetteOffset.value = params.vignetteOffset;
         if (params.shaftStrength !== undefined) this.uShaftStrength.value = params.shaftStrength;

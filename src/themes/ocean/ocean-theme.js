@@ -149,22 +149,22 @@ const OCEAN_READABILITY_ZONE = {
 
 const OCEAN_REEF_GARDENS = [
     {
-        x: -43, z: 46, radius: 13, warmth: 0.95,
+        x: -42, z: 22, radius: 12, warmth: 0.95,
     },
     {
-        x: 45, z: 42, radius: 14, warmth: 1.0,
+        x: 44, z: 20, radius: 13, warmth: 1.0,
     },
     {
-        x: -58, z: -38, radius: 22, warmth: 0.72,
+        x: -54, z: -24, radius: 20, warmth: 0.72,
     },
     {
-        x: 62, z: -48, radius: 24, warmth: 0.78,
+        x: 57, z: -30, radius: 21, warmth: 0.78,
     },
     {
-        x: -76, z: -105, radius: 30, warmth: 0.48,
+        x: -68, z: -82, radius: 26, warmth: 0.48,
     },
     {
-        x: 80, z: -112, radius: 30, warmth: 0.5,
+        x: 72, z: -88, radius: 27, warmth: 0.5,
     },
 ];
 
@@ -404,7 +404,14 @@ export default class OceanTheme extends BaseTheme {
                     mantaRayCooldown: [9999, 9999],
                     dolphinCooldown: [9999, 9999],
                 },
-                postProcessing: { grade: false, bloom: false, postProcessingEnabled: true },
+                postProcessing: {
+                    grade: true,
+                    bloom: false,
+                    gradeStrength: 0.38,
+                    vignette: 0.12,
+                    blackLift: 0.03,
+                    postProcessingEnabled: true,
+                },
             },
             Medium: {
                 seaweedCount: 2500,
@@ -465,7 +472,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.58,
                     sceneScale: 0.94,
                     gradeStrength: 0.58,
-                    vignette: 0.24,
+                    vignette: 0.20,
                     blackLift: 0.035,
                     postProcessingEnabled: true,
                 },
@@ -529,7 +536,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.55,
                     sceneScale: 0.90,
                     gradeStrength: 0.66,
-                    vignette: 0.26,
+                    vignette: 0.20,
                     blackLift: 0.04,
                     postProcessingEnabled: true,
                 },
@@ -596,7 +603,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.45,
                     sceneScale: 0.82,
                     gradeStrength: 0.72,
-                    vignette: 0.27,
+                    vignette: 0.21,
                     blackLift: 0.045,
                     postProcessingEnabled: true,
                 },
@@ -665,7 +672,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.4,
                     sceneScale: 0.78,
                     gradeStrength: 0.76,
-                    vignette: 0.28,
+                    vignette: 0.22,
                     blackLift: 0.05,
                     postProcessingEnabled: true,
                 },
@@ -1136,7 +1143,7 @@ export default class OceanTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         // Tropical-cyan clear, slightly deeper than the fog so the horizon
         // dome reads as bright water rather than featureless overcast.
-        this.renderer.setClearColor(0x07546e);
+        this.renderer.setClearColor(0x075a74);
 
         if (!this.isWebGPU) {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1272,12 +1279,15 @@ export default class OceanTheme extends BaseTheme {
         // already null-safes every subsystem, so partial scenes render fine
         // while we fill in. Each step is no-op'd if its debug flag is set so
         // the user can isolate the cost of each subsystem with ?oceanNoX=1.
+        const atmosphereBuildSteps = this.flags.noAtmosphere
+            ? []
+            : (this.atmosphereSystem?.prepareDeferredBuildSteps?.() || []);
         const steps = [
             () => { if (!this.flags.noFish) this.createFishSchools(); },
             () => { if (!this.flags.noJellyfish) this.createJellyfish(); },
             () => { if (!this.flags.noBubbles) this.createBubbles(); },
             () => { if (!this.flags.noPlankton) this.createPlankton(); },
-            () => { if (!this.flags.noAtmosphere) this.finalizeCinematicAtmosphere(); },
+            ...atmosphereBuildSteps.map(({ run }) => run),
             () => { if (!this.flags.noCoral) this.createCoralReef(); },
             () => {
                 if (this.flags.noSeaweed) return;
@@ -1307,7 +1317,8 @@ export default class OceanTheme extends BaseTheme {
         // Names parallel to `steps` for ?oceanLogStartup= timing logs.
         const stepNames = [
             'createFishSchools', 'createJellyfish', 'createBubbles', 'createPlankton',
-            'finalizeCinematicAtmosphere', 'createCoralReef', 'createSeaweed',
+            ...atmosphereBuildSteps.map(({ name }) => name),
+            'createCoralReef', 'createSeaweed',
             'createSeagrassMeadow', 'createReefDwellers', 'createRareFauna',
         ];
         const { logStartup } = this.flags;
@@ -3445,13 +3456,13 @@ export default class OceanTheme extends BaseTheme {
             const column = columns[i % columnCount];
             const angle = Math.random() * Math.PI * 2;
             const radius = Math.random() * column.spread;
-            const isMicro = Math.random() < 0.72;
+            const isMicro = Math.random() < 0.84;
             positions[i * 3] = column.x + Math.cos(angle) * radius;
             positions[i * 3 + 1] = column.y;
             positions[i * 3 + 2] = column.z + Math.sin(angle) * radius;
             speeds[i] = isMicro ? randRangeLocal(0.72, 1.65) : randRangeLocal(0.38, 0.9);
             phases[i] = Math.random() * 6.28;
-            sizes[i] = isMicro ? randRangeLocal(0.55, 1.65) : randRangeLocal(1.8, 4.2);
+            sizes[i] = isMicro ? randRangeLocal(0.4, 1.15) : randRangeLocal(1.2, 2.6);
             lifeOffsets[i] = Math.random();
             columnSpread[i] = column.spread;
             micro[i] = isMicro ? 1 : 0;
@@ -3602,10 +3613,10 @@ export default class OceanTheme extends BaseTheme {
         // Ambient softer (so sand floor doesn't blow out), directional sun
         // moderate (so corals cast definition), hemisphere modest. The
         // overall scene still reads bright/tropical but with depth.
-        const ambient = new THREE.AmbientLight(0x3f7892, 0.22);
+        const ambient = new THREE.AmbientLight(0x4b849b, 0.36);
         this.scene.add(ambient);
 
-        const directional = new THREE.DirectionalLight(0xffe7bd, 2.35);
+        const directional = new THREE.DirectionalLight(0xffe5c2, 1.82);
         directional.position.set(
             OCEAN_LIGHTING_RIG.sunCenter.x,
             OCEAN_LIGHTING_RIG.surfaceY + 52,
@@ -3616,27 +3627,26 @@ export default class OceanTheme extends BaseTheme {
 
         // Cool water-column fill above, warm sand bounce below. This gives PBR
         // fish and corals dimensional faces without adding per-object lights.
-        const hemisphere = new THREE.HemisphereLight(0xb2edf4, 0x7c513c, 0.62);
+        const hemisphere = new THREE.HemisphereLight(0xc1f1f4, 0x91605a, 0.76);
         this.scene.add(hemisphere);
 
-        const foregroundFill = new THREE.PointLight(0x78d9e1, 0.42, 160, 2.0);
-        foregroundFill.position.set(-34, 20, 48);
-        this.scene.add(foregroundFill);
-
-        const reefWarmth = new THREE.PointLight(0xffb878, 0.62, 115, 2.2);
-        reefWarmth.position.set(54, 8, -34);
-        this.scene.add(reefWarmth);
+        const staticLights = [ambient, directional, directional.target, hemisphere];
+        if (!['Minimal', 'Low'].includes(this.currentQuality)) {
+            const reefWarmth = new THREE.PointLight(0xffbf9b, 0.38, 115, 2.2);
+            reefWarmth.position.set(54, 8, -34);
+            this.scene.add(reefWarmth);
+            staticLights.push(reefWarmth);
+        }
+        if (['Ultra', 'Extreme'].includes(this.currentQuality)) {
+            const foregroundFill = new THREE.PointLight(0x83d8df, 0.26, 160, 2.0);
+            foregroundFill.position.set(-34, 20, 48);
+            this.scene.add(foregroundFill);
+            staticLights.push(foregroundFill);
+        }
 
         // Lights never move; bake their transforms so the renderer stops
         // recomposing a matrix for each one every frame.
-        [
-            ambient,
-            directional,
-            directional.target,
-            hemisphere,
-            foregroundFill,
-            reefWarmth,
-        ].forEach((light) => {
+        staticLights.forEach((light) => {
             light.matrixAutoUpdate = false;
             light.updateMatrix();
         });
@@ -3733,6 +3743,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: post.bloomScale ?? 0.6,
                     sceneScale: post.sceneScale ?? 1.0,
                     gradeStrength: post.grade ? (post.gradeStrength ?? 0.92) : 0.0,
+                    blackLift: post.blackLift ?? 0.04,
                     // Tighter vignette + moodier exposure + denser atmospheric fog
                     // push the scene toward the reference photo's deeper-saturated,
                     // stronger-god-ray-contrast underwater look.

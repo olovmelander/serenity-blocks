@@ -15,8 +15,10 @@ import {
     smoothstep,
     toneMapping,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { tslAbzuGrade } from '../../themes/ocean/ocean-tsl-helpers.js';
 
 export const meta = {
     id: 'ocean-silhouette-fog-volume',
@@ -31,8 +33,8 @@ function ellipsoidMask(center, radii, featherStart = 0.58) {
 
 function warmNearCoolFar(baseColor) {
     const viewDistance = length(cameraPosition.sub(positionWorld));
-    const farWeight = smoothstep(float(48.0), float(156.0), viewDistance);
-    const redAbsorption = mix(vec3(1.0), vec3(0.62, 0.84, 1.02), farWeight.mul(0.72));
+    const farWeight = smoothstep(float(56.0), float(184.0), viewDistance);
+    const redAbsorption = mix(vec3(1.0), vec3(0.66, 0.86, 1.0), farWeight.mul(0.68));
     return baseColor.mul(redAbsorption);
 }
 
@@ -112,7 +114,7 @@ function addChunkyCoralFamily(scene, material, x, z, scale = 1, branches = 7) {
 }
 
 export function create({ scene, camera, renderer }) {
-    scene.background = new THREE.Color(0x075b7d);
+    scene.background = new THREE.Color(0x075a76);
 
     camera.near = 0.1;
     camera.far = 240;
@@ -137,28 +139,28 @@ export function create({ scene, camera, renderer }) {
         float(0.84),
     );
     const depthColor = mix(
-        vec3(0.025, 0.33, 0.48),
-        vec3(0.012, 0.14, 0.27),
+        vec3(0.025, 0.34, 0.50),
+        vec3(0.009, 0.14, 0.28),
         clamp(farDissolve.add(canyonVolume.mul(0.34)).add(lowWater.mul(0.16)), 0, 1),
     );
     scene.fogNode = fog(depthColor, fogFactor);
 
-    const floorMaterial = createRockMaterial([0.28, 0.16, 0.065], [0.72, 0.45, 0.18]);
+    const floorMaterial = createRockMaterial([0.22, 0.10, 0.075], [0.82, 0.50, 0.28]);
     const floorGeometry = new THREE.PlaneGeometry(220, 210, 1, 1);
     floorGeometry.rotateX(-Math.PI / 2);
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.position.set(0, -9, -48);
     scene.add(floor);
 
-    const rockMaterial = createRockMaterial([0.008, 0.045, 0.085], [0.055, 0.19, 0.23]);
+    const rockMaterial = createRockMaterial([0.008, 0.045, 0.08], [0.08, 0.21, 0.24]);
     const monuments = [
         addMonument(scene, rockMaterial, -28, 4, 24, 5.2, -0.07),
         addMonument(scene, rockMaterial, 24, -50, 34, 6.4, 0.035),
         addMonument(scene, rockMaterial, -8, -132, 47, 7.4, -0.025),
     ];
 
-    const warmCoral = createCoralMaterial([0.54, 0.12, 0.10], [1.0, 0.55, 0.28]);
-    const pinkCoral = createCoralMaterial([0.42, 0.08, 0.24], [1.0, 0.54, 0.62]);
+    const warmCoral = createCoralMaterial([0.58, 0.22, 0.18], [0.96, 0.58, 0.42]);
+    const pinkCoral = createCoralMaterial([0.48, 0.18, 0.32], [0.92, 0.55, 0.67]);
     const corals = [
         addChunkyCoralFamily(scene, warmCoral, -22, -8, 1.65, 8),
         addChunkyCoralFamily(scene, pinkCoral, 25, -18, 1.85, 9),
@@ -166,24 +168,25 @@ export function create({ scene, camera, renderer }) {
         addChunkyCoralFamily(scene, warmCoral, 38, -78, 1.45, 8),
     ];
 
-    const hemi = new THREE.HemisphereLight(0xc6fbff, 0x071b2b, 0.72);
-    const sun = new THREE.DirectionalLight(0xffe6b3, 2.45);
+    const hemi = new THREE.HemisphereLight(0xc1f1f4, 0x49343a, 0.72);
+    const sun = new THREE.DirectionalLight(0xffe5c2, 1.95);
     sun.position.set(-18, 52, 22);
-    const warmFill = new THREE.PointLight(0xff9a5a, 5.5, 50, 2.0);
+    const warmFill = new THREE.PointLight(0xffbf9b, 1.6, 50, 2.0);
     warmFill.position.set(-20, 2, -2);
     scene.add(hemi, sun, warmFill);
 
     const scenePass = pass(scene, camera);
     const sceneColor = scenePass.getTextureNode('output');
-    const bloomNode = bloom(sceneColor, 0.12, 0.38, 0.82);
+    const bloomNode = bloom(sceneColor, 0.085, 0.36, 0.88);
     const post = new THREE.PostProcessing(renderer);
     post.outputColorTransform = false;
-    const graded = toneMapping(
+    const toneMapped = toneMapping(
         THREE.ACESFilmicToneMapping,
-        0.92,
+        0.86,
         sceneColor.add(bloomNode),
-    ).mul(color(0.96, 1.015, 1.04));
-    post.outputNode = renderOutput(graded, THREE.NoToneMapping);
+    ).rgb.mul(color(0.985, 1.005, 1.015));
+    const graded = tslAbzuGrade(toneMapped, float(0.66), float(0.04));
+    post.outputNode = renderOutput(vec4(graded, float(1.0)), THREE.NoToneMapping);
 
     return {
         cameraRadius: 64,

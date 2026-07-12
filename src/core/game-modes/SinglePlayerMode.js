@@ -166,13 +166,27 @@ export class SinglePlayerMode extends BaseGameMode {
      * Called when user clicks "Start Game"
      */
     async onStart(options = {}) {
+        if (options.demo && !this.demoPlayer.loadDemo(options.demo)) {
+            throw new Error('Unsupported or invalid demo data');
+        }
         await super.onStart();
 
         console.log('[SinglePlayer] ========== ONSTART CALLED ==========');
         console.log('[SinglePlayer] Starting game...', options);
 
-        // Initialize game state (lazy initialization)
-        this.gameState = new GameState();
+        const replaySettings = options.demo
+            ? this.demoPlayer.demo.initialState.settings
+            : null;
+        const inputHandlingSettings = replaySettings || this.deps.settingsManager.get();
+        const hitStopEnabled = replaySettings
+            ? replaySettings.hitStopEnabled
+            : !this._prefersReducedMotion();
+        // Input handling is match state, not a live UI dependency. Replays
+        // latch their recorded handling; new matches latch current settings.
+        this.gameState = new GameState({
+            inputHandling: inputHandlingSettings,
+            hitStopEnabled,
+        });
 
         // Reset game over processing flag so game over can trigger again
         this.isProcessingGameOver = false;
@@ -185,11 +199,6 @@ export class SinglePlayerMode extends BaseGameMode {
             this.isPlayingDemo = true;
             this.isRecording = false;
 
-            // Load the demo data into the DemoPlayer
-            if (!this.demoPlayer.loadDemo(options.demo)) {
-                console.error('[SinglePlayer] Failed to load demo data');
-                return;
-            }
             console.log('[SinglePlayer] Demo loaded successfully');
 
             // Store demo for "Watch Again" functionality
@@ -777,13 +786,13 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     _applyHardDropTiming() {
-        if (!this._prefersReducedMotion() && this.gameState) {
+        if (this.gameState?.hitStopEnabled) {
             this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
         }
     }
 
     _applyLineClearImpactTiming(lineCount) {
-        if (this._prefersReducedMotion() || !this.gameState) return;
+        if (!this.gameState?.hitStopEnabled) return;
 
         const boardScene = this._getBoardScene();
         let hitStop = 0;
@@ -799,7 +808,7 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     _applyPerfectClearTiming() {
-        if (!this._prefersReducedMotion() && this.gameState) {
+        if (this.gameState?.hitStopEnabled) {
             this.gameState.hitStopRemaining = 110;
         }
     }

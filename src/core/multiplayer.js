@@ -74,7 +74,8 @@ export class MultiplayerGameState {
 
         const totalLines = attack.getTotalLines();
         console.log(
-            `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}, clean=${attack.sendForClean}`,
+            `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, `
+            + `combo=${attack.complexity}, clean=${attack.sendForClean}`,
         );
         console.log(
             `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`,
@@ -247,7 +248,8 @@ export class MultiplayerGameState {
     applyFullBlindEffect(gameState, duration, attack) {
         if (!gameState || duration <= 0) return;
         console.log(
-            `[MultiplayerState] Applying FULL blind effect for duration=${duration} (attack ${attack?.id || 'unknown'})`,
+            `[MultiplayerState] Applying FULL blind effect for duration=${duration} `
+            + `(attack ${attack?.id || 'unknown'})`,
         );
         gameState.blindTimers.field = Math.max(gameState.blindTimers.field || 0, duration);
         this.applyBlindEffect(gameState, duration);

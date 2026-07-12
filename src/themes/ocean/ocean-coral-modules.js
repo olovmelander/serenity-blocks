@@ -81,11 +81,11 @@ const DEFAULT_READABILITY_ZONE = Object.freeze({
     zMax: 70,
 });
 
-const WARM_PALETTE = Object.freeze([0xf0785d, 0xffa83d, 0xd96791, 0xb56acb, 0xf2b45f]);
+const WARM_PALETTE = Object.freeze([0xf18a78, 0xf3ad6f, 0xdf7d9a, 0xb987c9, 0xe9ca78]);
 
-const MID_PALETTE = Object.freeze([0xcf6658, 0xd9904d, 0x986ab5, 0x4f9b91, 0xd27b9e]);
+const MID_PALETTE = Object.freeze([0xd77970, 0xd99569, 0x9a7db3, 0x62a79d, 0xc887a3]);
 
-const COOL_PALETTE = Object.freeze([0x5579a2, 0x4e8b95, 0x736795, 0x4c867d, 0x8b708e]);
+const COOL_PALETTE = Object.freeze([0x638ba7, 0x5b9ca4, 0x7e78a0, 0x579289, 0x917d97]);
 
 const ROLE_MODULE_POOLS = Object.freeze({
     foreground: Object.freeze([
@@ -635,9 +635,9 @@ export function createCoralPlacementPlan({
         const moduleId = i < MODULE_IDS.length
             ? MODULE_IDS[i]
             : modulePool[Math.floor(random() * modulePool.length)];
-        let baseScale = 0.95 + random() * 0.42;
-        if (role === 'foreground') baseScale = 1.82 + random() * 0.86;
-        else if (role === 'midground') baseScale = 1.38 + random() * 0.68;
+        let baseScale = 1.0 + random() * 0.42;
+        if (role === 'foreground') baseScale = 1.45 + random() * 0.62;
+        else if (role === 'midground') baseScale = 1.28 + random() * 0.62;
         const verticalBias = moduleId === 'staghorn-crown' || moduleId === 'fan-bouquet'
             ? 1.08 + random() * 0.18
             : 0.9 + random() * 0.17;

@@ -68,8 +68,8 @@ const FOG_COLOR = new THREE.Color(0x0b526b);
 // Vibrant tropical-reef palette — matches reference reef-canyon photo.
 // Lifted from near-black to mid-tone blue-grey with warm-stone highlights so
 // rocks read as a daylit reef shelf rather than a deep abyss.
-const ROCK_LOW = new THREE.Color().setRGB(0.07, 0.19, 0.23);
-const ROCK_HIGH = new THREE.Color().setRGB(0.30, 0.24, 0.12);
+const ROCK_LOW = new THREE.Color().setRGB(0.08, 0.20, 0.24);
+const ROCK_HIGH = new THREE.Color().setRGB(0.36, 0.29, 0.18);
 
 const ROCK_REEF_CLUSTERS = [
     { x: 76, z: 34, radius: 28 },
@@ -333,10 +333,10 @@ const CORAL_CARPET_PLACEMENTS = [
 ];
 
 const CORAL_CARPET_TINTS = Object.freeze({
-    'purple-blue-coral-carpet': 0x9a6bd0,
-    'orange-tube-sponge-cluster': 0xef7448,
-    'green-yellow-plate-coral': 0xa8c96c,
-    'blue-brush-coral': 0x49a8c4,
+    'purple-blue-coral-carpet': 0xa17bc2,
+    'orange-tube-sponge-cluster': 0xe99067,
+    'green-yellow-plate-coral': 0xa9c67a,
+    'blue-brush-coral': 0x55a6bd,
 });
 
 const IMPORTED_SEABED_DETAIL_PLACEMENTS = [
@@ -631,11 +631,12 @@ function mergeMeshesByMaterial(root, { disposeSourceGeometries = false } = {}) {
     const geometrySignature = (geometry) => {
         const attributes = Object.entries(geometry.attributes)
             .sort(([nameA], [nameB]) => nameA.localeCompare(nameB))
-            .map(([name, attribute]) => [
+            .map(([name, bufferAttribute]) => [
                 name,
-                attribute.itemSize,
-                attribute.normalized === true,
-                attribute.array?.constructor?.name || attribute.data?.array?.constructor?.name,
+                bufferAttribute.itemSize,
+                bufferAttribute.normalized === true,
+                bufferAttribute.array?.constructor?.name
+                    || bufferAttribute.data?.array?.constructor?.name,
             ].join(':'));
         return `${geometry.index ? 'indexed' : 'plain'}|${attributes.join('|')}`;
     };
@@ -1321,7 +1322,11 @@ export class OceanAtmosphereSystem {
     }
 
     initDeferred() {
-        if (!this.scene || this._deferredInitialized) return;
+        this.prepareDeferredBuildSteps().forEach(({ run }) => run());
+    }
+
+    prepareDeferredBuildSteps() {
+        if (!this.scene || this._deferredInitialized) return [];
         this._deferredInitialized = true;
         if (!this._criticalInitialized) {
             // Defensive: make sure the group is in the scene if a caller
@@ -1329,16 +1334,38 @@ export class OceanAtmosphereSystem {
             this.scene.add(this.group);
         }
 
-        // Heavy procedural anchors. Most of these get GLB-swapped via the
-        // upgrade queue anyway, so the procedural fallbacks are scenery the
-        // user can comfortably see fade in over the next few frames.
-        // Gated by Phase 1 diagnostic flags so we can A/B each component.
-        if (!this.skipFlags.heroReef) this.createHeroReefWalls();
-        if (!this.skipFlags.foregroundRocks) this.createForegroundRocks();
-        if (!this.skipFlags.coralCarpets) this.createCoralCarpetPatches();
-        if (!this.skipFlags.heroCoral) this.createHeroCorals();
-        if (!this.skipFlags.heroKelp) this.createHeroKelp();
-        if (!this.skipFlags.importedSeabed) this.createImportedSeabedDetails();
+        // Keep each procedural anchor family in its own idle slice. High used
+        // to build all six in one ~59 ms callback, creating a visible startup
+        // hitch even though the critical water/fog pass was already ready.
+        return [
+            ...(!this.skipFlags.heroReef ? this.prepareHeroReefWallBuildSteps() : []),
+            {
+                name: 'atmosphereForegroundRocks',
+                run: () => {
+                    if (!this.skipFlags.foregroundRocks) this.createForegroundRocks();
+                },
+            },
+            {
+                name: 'atmosphereCoralCarpets',
+                run: () => {
+                    if (!this.skipFlags.coralCarpets) this.createCoralCarpetPatches();
+                },
+            },
+            {
+                name: 'atmosphereHeroCoral',
+                run: () => { if (!this.skipFlags.heroCoral) this.createHeroCorals(); },
+            },
+            {
+                name: 'atmosphereHeroKelp',
+                run: () => { if (!this.skipFlags.heroKelp) this.createHeroKelp(); },
+            },
+            {
+                name: 'atmosphereImportedSeabed',
+                run: () => {
+                    if (!this.skipFlags.importedSeabed) this.createImportedSeabedDetails();
+                },
+            },
+        ];
     }
 
     scheduleAssetUpgrade(task, delayMs = 600) {
@@ -1416,11 +1443,17 @@ export class OceanAtmosphereSystem {
     // visible immediately; compact GLBs may replace only the records used by
     // the current quality preset when explicitly enabled.
     createHeroReefWalls() {
+        this.prepareHeroReefWallBuildSteps().forEach(({ run }) => run());
+    }
+
+    prepareHeroReefWallBuildSteps() {
+        if (this._heroReefBuildPrepared) return [];
+        this._heroReefBuildPrepared = true;
         const requestedCount = Math.max(0, Math.floor(this.settings.reefWallCount ?? 0));
         const count = Math.min(requestedCount, HERO_REEF_PLACEMENTS.length);
         this.heroReefStats.requestedCount = requestedCount;
         this.heroReefStats.placementCapacity = HERO_REEF_PLACEMENTS.length;
-        if (count <= 0) return;
+        if (count <= 0) return [];
 
         const placements = HERO_REEF_PLACEMENTS.slice(0, count).map((placement, i) => {
             const y = this.getSeabedHeight(placement.x, placement.z) + placement.yOffset;
@@ -1434,20 +1467,30 @@ export class OceanAtmosphereSystem {
             };
         });
 
-        placements.forEach((placement) => {
-            const placeholder = this.createProceduralHeroReefWall(placement);
-            this.heroReefWalls[placement.index] = placeholder;
-            this.heroReefStats.placeholderCount += 1;
-            this.group.add(placeholder);
+        const steps = placements.map((placement) => ({
+            name: `atmosphereHeroReef:${placement.index}`,
+            run: () => {
+                if (this.disposed || !this.group) return;
+                const placeholder = this.createProceduralHeroReefWall(placement);
+                this.heroReefWalls[placement.index] = placeholder;
+                this.heroReefStats.placeholderCount += 1;
+                this.group.add(placeholder);
+            },
+        }));
+        steps.push({
+            name: 'atmosphereHeroReefFinalize',
+            run: () => {
+                if (this.disposed) return;
+                if (this.settings.reefWallGlbEnabled === true) {
+                    this.enqueueUpgradeTask(() => this.upgradeHeroReefWallsFromGLB(placements));
+                } else {
+                    this.heroReefStats.manifest = summarizeReefAssetManifest().heroReef;
+                    this.heroReefStats.glbAutoLoadDisabled = true;
+                    this.heroReefStats.optimizationNote = 'organic-procedural-anchors-skip-blocky-wall-glbs';
+                }
+            },
         });
-
-        if (this.settings.reefWallGlbEnabled === true) {
-            this.enqueueUpgradeTask(() => this.upgradeHeroReefWallsFromGLB(placements));
-        } else {
-            this.heroReefStats.manifest = summarizeReefAssetManifest().heroReef;
-            this.heroReefStats.glbAutoLoadDisabled = true;
-            this.heroReefStats.optimizationNote = 'organic-procedural-anchors-skip-blocky-wall-glbs';
-        }
+        return steps;
     }
 
     createProceduralHeroReefWall(placement) {
@@ -1858,11 +1901,11 @@ export class OceanAtmosphereSystem {
         if (!placements.length || density <= 0) return;
 
         const palette = [
-            new THREE.Color(0x9d4edd), // vibrant purple
-            new THREE.Color(0xff7006), // vibrant orange
-            new THREE.Color(0xff007f), // vibrant pink
-            new THREE.Color(0x00b4d8), // vibrant turquoise
-            new THREE.Color(0xeec900), // vibrant yellow
+            new THREE.Color(0xb987c9), // orchid
+            new THREE.Color(0xef8b68), // peach coral
+            new THREE.Color(0xe47f9e), // dusty rose
+            new THREE.Color(0x5ba7ad), // muted turquoise
+            new THREE.Color(0xe8c875), // warm gold
         ];
 
         // WS 4.2: one material total (was 5) — color is supplied per-instance.
@@ -2072,10 +2115,10 @@ export class OceanAtmosphereSystem {
         group.userData.kind = placement.kind;
 
         const paletteByKind = {
-            'purple-blue-coral-carpet': 0x6548a6,
-            'orange-tube-sponge-cluster': 0xf08a31,
-            'green-yellow-plate-coral': 0x8fca72,
-            'blue-brush-coral': 0x278fb5,
+            'purple-blue-coral-carpet': 0xa17bc2,
+            'orange-tube-sponge-cluster': 0xe99067,
+            'green-yellow-plate-coral': 0xa9c67a,
+            'blue-brush-coral': 0x55a6bd,
         };
         const tint = new THREE.Color(paletteByKind[placement.kind] || 0x8f6db6);
         const material = this.isWebGPU
@@ -2240,10 +2283,10 @@ export class OceanAtmosphereSystem {
         group.userData.assetStatus = 'procedural-fallback';
 
         const palette = [
-            new THREE.Color(0xc86e54),
-            new THREE.Color(0xc58a4d),
-            new THREE.Color(0x8d597f),
-            new THREE.Color(0x4d9688),
+            new THREE.Color(0xd98776),
+            new THREE.Color(0xd7a26a),
+            new THREE.Color(0xa17bab),
+            new THREE.Color(0x5f9f94),
         ];
         const tint = palette[placement.index % palette.length];
         const material = this.isWebGPU
@@ -3203,14 +3246,14 @@ export class OceanAtmosphereSystem {
         const count = Math.max(0, Math.floor(this.settings.biomeSilhouetteCount ?? 4));
         if (count <= 0) return;
 
-        const geometry = new THREE.PlaneGeometry(220, 90);
+        const geometry = new THREE.PlaneGeometry(165, 90);
         const tslMaterial = createBiomeSilhouetteNodeMaterial();
 
         for (let i = 0; i < count; i++) {
             const side = i % 2 === 0 ? -1 : 1;
             const t = i / (count - 1 || 1);
             const plane = new THREE.Mesh(geometry, tslMaterial);
-            plane.position.set(side * randRange(60, 140), 30 + t * 12, -180 - t * 20);
+            plane.position.set(side * randRange(92, 155), 30 + t * 12, -180 - t * 20);
             plane.rotation.y = side * randRange(0.05, 0.18);
             plane.renderOrder = -12;
             plane.userData.isBiomeSilhouette = true;
@@ -3226,10 +3269,10 @@ export class OceanAtmosphereSystem {
         if (glowCount <= 0) return;
 
         const glowColors = [
-            new THREE.Color(0x35f0d0),
-            new THREE.Color(0x86f3a8),
-            new THREE.Color(0xd397ff),
-            new THREE.Color(0xffaa69),
+            new THREE.Color(0x70d8ca),
+            new THREE.Color(0xa9d5a2),
+            new THREE.Color(0xba9bd0),
+            new THREE.Color(0xe7a978),
         ];
         const positions = new Float32Array(glowCount * 3);
         const colors = new Float32Array(glowCount * 3);
@@ -3251,7 +3294,7 @@ export class OceanAtmosphereSystem {
             colors[i * 3] = color.r * intensity;
             colors[i * 3 + 1] = color.g * intensity;
             colors[i * 3 + 2] = color.b * intensity;
-            sizes[i] = randRange(6, 18);
+            sizes[i] = randRange(4, 10);
             phases[i] = randRange(0, Math.PI * 2);
         }
 

@@ -3,7 +3,7 @@
  *
  * Extracted from the two drifting clones:
  * - keyboard: InputController.processDasDirection/processSoftDrop
- *   (src/ui/controls.js — reads window.settings LIVE each frame)
+ *   (src/ui/controls.js — reads the global settings object LIVE each frame)
  * - gamepad: GamepadController.processDasTimers
  *   (src/ui/gamepad-controller.js — caches config with explicit updates)
  *
@@ -21,8 +21,10 @@
  * wins; live global reads violate the §3d core boundary). State is a plain
  * object so it can be keyed per-player into each GameState (the singleton's
  * p2_* slots belong to a different player's board) and serialized into the
- * §5.7 match artifact. Deltas are the caller's clock — under §5.3 this
- * becomes integer ticks × simTickMs without touching this module.
+ * §5.7 match artifact. The arithmetic is deliberately unit-generic: delta,
+ * delay, interval, and accumulators must all use the same caller-owned unit.
+ * Legacy adapters pass milliseconds; the fixed path passes integer 60 kHz
+ * input-clock units and brands its state so the two cannot type-alias.
  *
  * Ships dark: nothing imports this yet. Wiring replaces the two clones in a
  * later slice; the differential table tests pin engine ≡ live-keyboard-clone
@@ -65,14 +67,14 @@ export function clearDasTimers(state) {
 }
 
 /**
- * Advance one held direction by deltaMs.
+ * Advance one held direction in caller-owned clock units.
  * @param {ReturnType<typeof createDasDirectionState>} state
- * @param {number} deltaMs - elapsed time (caller-clamped, like the legacy 100ms cap)
+ * @param {number} deltaUnits - elapsed caller-clock units
  * @param {{dasDelay: number, dasInterval: number, instantLimit: number}} config
  * @param {() => (boolean|void)} action - performs one move; `false` = blocked
  * @returns {number} how many times action fired
  */
-export function advanceDas(state, deltaMs, config, action) {
+export function advanceDas(state, deltaUnits, config, action) {
     if (!state.active) return 0;
     const { dasDelay, dasInterval, instantLimit } = config;
     let fired = 0;
@@ -86,7 +88,7 @@ export function advanceDas(state, deltaMs, config, action) {
     };
 
     if (!state.isRepeating) {
-        state.delayAccumulator += deltaMs;
+        state.delayAccumulator += deltaUnits;
         if (state.delayAccumulator >= dasDelay) {
             state.isRepeating = true;
             // First repeat exactly at the delay threshold; overshoot carries.
@@ -111,7 +113,7 @@ export function advanceDas(state, deltaMs, config, action) {
             return fired;
         }
 
-        state.intervalAccumulator += deltaMs;
+        state.intervalAccumulator += deltaUnits;
         while (state.intervalAccumulator >= dasInterval) {
             state.intervalAccumulator -= dasInterval;
             act();
@@ -121,14 +123,14 @@ export function advanceDas(state, deltaMs, config, action) {
 }
 
 /**
- * Advance a held soft drop by deltaMs (no delay phase).
+ * Advance a held soft drop in caller-owned clock units (no delay phase).
  * @param {ReturnType<typeof createSoftDropState>} state
- * @param {number} deltaMs
+ * @param {number} deltaUnits - elapsed caller-clock units
  * @param {{softDropInterval: number, instantLimit: number}} config
  * @param {() => (boolean|void)} action
  * @returns {number} how many times action fired
  */
-export function advanceSoftDrop(state, deltaMs, config, action) {
+export function advanceSoftDrop(state, deltaUnits, config, action) {
     if (!state.active) return 0;
     const { softDropInterval, instantLimit } = config;
     let fired = 0;
@@ -141,7 +143,7 @@ export function advanceSoftDrop(state, deltaMs, config, action) {
         state.intervalAccumulator = 0;
         return fired;
     }
-    state.intervalAccumulator += deltaMs;
+    state.intervalAccumulator += deltaUnits;
     while (state.intervalAccumulator >= softDropInterval) {
         state.intervalAccumulator -= softDropInterval;
         act();

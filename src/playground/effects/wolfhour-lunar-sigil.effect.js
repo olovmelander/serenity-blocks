@@ -5,11 +5,12 @@ import {
     createLunarHaloNodeMaterial,
     createMoonNodeMaterial,
 } from '../../themes/wolfhour/wolfhour-materials.js';
+import { createLunarHaloFallbackMaterial } from '../../themes/wolfhour/wolfhour-fallback-materials.js';
 
 export const meta = {
     id: 'wolfhour-lunar-sigil',
     title: 'Wolfhour - Lunar Sigil',
-    description: 'Phase-locked lock/combo pulse, wolf-moon corona, and silver mountain silhouette.',
+    description: 'Phase-locked accumulating lock/combo pulses around the wolf-moon corona.',
 };
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
@@ -59,8 +60,11 @@ function createRidgeGeometry(T, {
 function disposeTree(root) {
     root.traverse((object) => {
         object.geometry?.dispose?.();
-        if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose?.());
-        else object.material?.dispose?.();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+            material?.map?.dispose?.();
+            material?.dispose?.();
+        });
     });
 }
 
@@ -121,14 +125,11 @@ export function create({
     moon.rotation.y = -0.34;
     group.add(moon);
 
-    const haloResult = createLunarHaloNodeMaterial();
-    const {
-        uTime,
-        uProgress,
-        uStrength,
-        uCombo,
-    } = haloResult.uniforms;
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(760, 760), haloResult.material);
+    const useFallbackHalo = params.get('fallbackHalo') === '1';
+    const haloResult = useFallbackHalo ? null : createLunarHaloNodeMaterial({ maxPulses: 4 });
+    const haloMaterial = haloResult?.material
+        ?? createLunarHaloFallbackMaterial(THREE);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(760, 760), haloMaterial);
     halo.position.set(172, 132, -500);
     group.add(halo);
 
@@ -164,6 +165,12 @@ export function create({
 
     let eventName = (params.get('event') || 'lock').toLowerCase();
     let eventStart = performance.now() / 1000;
+    let currentProgress = 0;
+    let currentStrength = 1;
+    let currentCombo = 0.12;
+    let activePulseCount = 0;
+    let currentMoonEnergy = 0;
+    let pulseProgress = [];
     const setEvent = (name, startTime = performance.now() / 1000) => {
         eventName = name;
         eventStart = startTime;
@@ -172,6 +179,7 @@ export function create({
         if (event.key === '0') setEvent('lock', performance.now() / 1000);
         else if (event.key === '3') setEvent('combo3', performance.now() / 1000);
         else if (event.key === '7') setEvent('combo7', performance.now() / 1000);
+        else if (event.key === '9') setEvent('stacked', performance.now() / 1000);
     };
     window.addEventListener('keydown', onKey);
 
@@ -179,10 +187,15 @@ export function create({
         setEvent,
         snapshot: () => ({
             event: eventName,
-            progress: uProgress.value,
-            strength: uStrength.value,
-            combo: uCombo.value,
+            progress: currentProgress,
+            strength: currentStrength,
+            combo: currentCombo,
+            activePulses: activePulseCount,
+            pulseProgress: [...pulseProgress],
+            pulseData: haloResult?.pulseValues?.map((value) => value.toArray()) || [],
+            moonEnergy: currentMoonEnergy,
             backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2',
+            halo: useFallbackHalo ? 'texture-fallback' : 'tsl',
         }),
     };
     window.__WOLFHOUR_LUNAR_SIGIL__ = diagnostics;
@@ -199,19 +212,65 @@ export function create({
             let comboCount = 0;
             if (eventName === 'combo7') comboCount = 7;
             else if (eventName === 'combo3') comboCount = 3;
-            const duration = comboCount > 0 ? 1.9 : 1.25;
-            const progress = clamp01(localTime / duration);
-            const eventEnvelope = Math.sin(progress * Math.PI);
             const comboStrength = Math.min(0.62 + comboCount * 0.045, 1);
             const comboMix = Math.min(comboCount / 8, 1);
+            const schedule = eventName === 'stacked'
+                ? [
+                    {
+                        start: 0, duration: 1.25, strength: 1, combo: 0.12,
+                    },
+                    {
+                        start: 0.24, duration: 1.9, strength: 0.755, combo: 0.375,
+                    },
+                    {
+                        start: 0.48, duration: 1.9, strength: 0.845, combo: 0.625,
+                    },
+                    {
+                        start: 0.72, duration: 1.9, strength: 0.935, combo: 0.875,
+                    },
+                ]
+                : [{
+                    start: 0,
+                    duration: comboCount > 0 ? 1.9 : 1.25,
+                    strength: comboCount > 0 ? comboStrength : 1,
+                    combo: comboCount > 0 ? comboMix : 0.12,
+                }];
 
-            uTime.value = time;
-            uProgress.value = progress;
-            uStrength.value = comboCount > 0 ? comboStrength : 1;
-            uCombo.value = comboCount > 0 ? comboMix : 0.12;
-            uLunarPulse.value = eventEnvelope
-                * uStrength.value
-                * (0.42 + uCombo.value * 0.45);
+            activePulseCount = 0;
+            currentMoonEnergy = 0;
+            pulseProgress = [];
+            schedule.forEach((pulse, index) => {
+                const progress = clamp01((localTime - pulse.start) / pulse.duration);
+                const hasStarted = localTime >= pulse.start;
+                const isActive = hasStarted && progress < 1;
+                const envelope = isActive ? Math.sin(progress * Math.PI) : 0;
+                if (isActive) activePulseCount += 1;
+                pulseProgress.push(progress);
+                currentMoonEnergy += envelope
+                    * pulse.strength
+                    * (0.42 + pulse.combo * 0.45);
+                haloResult?.pulseValues?.[index]?.set(
+                    pulse.start,
+                    1 / pulse.duration,
+                    pulse.strength,
+                    pulse.combo,
+                );
+            });
+            for (let i = schedule.length; i < (haloResult?.maxPulses || 0); i += 1) {
+                haloResult.pulseValues[i].set(0, 0, 0, 0);
+            }
+
+            const latestPulse = schedule[schedule.length - 1];
+            currentProgress = pulseProgress[pulseProgress.length - 1] ?? 0;
+            currentStrength = latestPulse.strength;
+            currentCombo = latestPulse.combo;
+            if (haloResult?.uniforms) {
+                haloResult.uniforms.uTime.value = localTime;
+            } else {
+                haloMaterial.opacity = Math.min(0.42, 0.075 + currentMoonEnergy * 0.18);
+            }
+            currentMoonEnergy = Math.min(currentMoonEnergy, 1.8);
+            uLunarPulse.value = currentMoonEnergy;
             moon.rotation.y = -0.34 + Math.sin(time * 0.05) * 0.025;
         },
         render() {

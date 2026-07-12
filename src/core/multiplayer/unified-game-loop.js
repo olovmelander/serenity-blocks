@@ -6,6 +6,7 @@
 
 import { processAutoDrop } from '../game.js';
 import { decrementBlindTimers } from '../blind.js';
+import { advanceTick } from '../simulation-tick.js';
 
 /**
  * Unified game loop manager for multiplayer
@@ -37,10 +38,10 @@ export class UnifiedMultiplayerLoop {
 
     /**
      * Register a player for unified updates
-     * @param {number} playerId - Player identifier
+     * @param {string|number} playerId - Player identifier
      * @param {Object} playerState - Player game state
-     * @param {Function} physicsCallbacks - Physics callbacks for this player
-     * @param {Function} soundCallback - Sound callback for drops
+     * @param {Object} physicsCallbacks - Physics callbacks for this player
+     * @param {Function|null} soundCallback - Sound callback for drops
      */
     registerPlayer(playerId, playerState, physicsCallbacks, soundCallback) {
         this.players.push({
@@ -151,9 +152,13 @@ export class UnifiedMultiplayerLoop {
             this.lastFpsTime = currentTime;
         }
 
-        // Update all players in a single pass. Host-authoritative fixed-step
-        // netcode can opt out and call updatePlayers() itself at the sim tick rate.
-        if (!this.externalPlayerUpdate) {
+        // Externally owned fixed simulation must run before this frame renders.
+        // Legacy paths retain their historical players→render→stats→custom order.
+        const externalUpdate = this.externalPlayerUpdate;
+        if (externalUpdate && this.onUpdate) {
+            this.onUpdate(currentTime, delta);
+        }
+        if (!externalUpdate) {
             this.updatePlayers(delta);
         }
 
@@ -168,7 +173,7 @@ export class UnifiedMultiplayerLoop {
         }
 
         // Callback for custom update logic
-        if (this.onUpdate) {
+        if (!externalUpdate && this.onUpdate) {
             this.onUpdate(currentTime, delta);
         }
     }
@@ -209,6 +214,47 @@ export class UnifiedMultiplayerLoop {
                 player.sound || (() => {}),
                 player.physics,
             );
+        }
+    }
+
+    /**
+     * Advance each live board by one canonical tick.
+     * A function keeps the original advance-only API; an adapter may also own
+     * command application and observe the resulting dispositions.
+     * @param {Function|Object|null} [inputAdapter]
+     */
+    updatePlayersFixedTick(inputAdapter = null) {
+        const advanceInput = typeof inputAdapter === 'function'
+            ? inputAdapter
+            : inputAdapter?.advanceInput;
+        const applyInput = typeof inputAdapter === 'object'
+            ? inputAdapter?.applyInput
+            : null;
+        const onTickResult = typeof inputAdapter === 'object'
+            ? inputAdapter?.onTickResult
+            : null;
+
+        for (let i = 0; i < this.players.length; i++) {
+            const player = this.players[i];
+            const { state } = player;
+            if (state.isGameOver === true || state.isAlive === false) continue;
+
+            const result = advanceTick(state, {
+                advanceInput: advanceInput
+                    ? (context) => advanceInput(player.id, context)
+                    : undefined,
+                applyInput: applyInput
+                    ? (command) => applyInput(player.id, command)
+                    : undefined,
+                advancePhysics: (tickMs) => processAutoDrop(
+                    state,
+                    tickMs,
+                    player.sound,
+                    player.physics,
+                    { fixedTick: true },
+                ),
+            });
+            onTickResult?.(player.id, result);
         }
     }
 

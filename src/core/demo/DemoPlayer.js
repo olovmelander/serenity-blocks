@@ -8,7 +8,13 @@ import {
     updateGame, fillBag, move, rotate, softDrop, hardDrop,
 } from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
-import { DEMO_CHECKPOINT_INTERVAL_FRAMES, DEMO_TICK_MS } from './DemoRecorder.js';
+import {
+    DEMO_CHECKPOINT_INTERVAL_FRAMES,
+    DEMO_COMMAND_INPUT_FORMAT,
+    DEMO_TICK_MS,
+    LEGACY_DEMO_HIT_STOP_ENABLED,
+} from './DemoRecorder.js';
+import { clearPlayerInput } from '../player-input-state.js';
 import {
     captureGameStateSnapshot,
     isStableDemoCheckpointSnapshot,
@@ -17,6 +23,24 @@ import {
 } from './demo-state.js';
 
 const SPEED_CHOICES = [0.5, 1, 2, 4];
+const DEMO_COMMAND_ACTIONS = new Set(['move', 'rotate', 'softDrop', 'hardDrop']);
+const DEMO_ROTATION_DIRECTIONS = new Set(['left', 'right', 'flip']);
+
+function isValidDemoCommand(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+    if (!DEMO_COMMAND_ACTIONS.has(input.a)) return false;
+
+    const hasFrame = Object.prototype.hasOwnProperty.call(input, 'f');
+    const hasTimestamp = Object.prototype.hasOwnProperty.call(input, 't');
+    if (!hasFrame && !hasTimestamp) return false;
+    if (hasFrame && (!Number.isFinite(input.f) || input.f < 0)) return false;
+    if (hasTimestamp && (!Number.isFinite(input.t) || input.t < 0)) return false;
+    if (input.q !== undefined && typeof input.q !== 'boolean') return false;
+
+    if (input.a === 'move') return input.d === -1 || input.d === 1;
+    if (input.a === 'rotate') return DEMO_ROTATION_DIRECTIONS.has(input.d);
+    return input.d === undefined || input.d === null;
+}
 
 function nowMs() {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -78,12 +102,62 @@ export class DemoPlayer {
      * @returns {boolean} True if loaded successfully
      */
     loadDemo(demoData) {
+        if (this.isPlaying) this.stopPlayback({ notify: false });
+        this.demo = null;
+        this.currentInputIndex = 0;
+        this.playheadMs = 0;
+        this.lastSimulatedTime = 0;
+        this.checkpoints = [];
+        this.lastCheckpointFrame = 0;
+        this.tickMs = DEMO_TICK_MS;
+
         if (!demoData || !Array.isArray(demoData.inputs)) {
             console.error('[DemoPlayer] Invalid demo data');
             return false;
         }
+        const version = String(demoData.version ?? '1.0');
+        const knownLegacyVersion = version === '1.0' || version === '2.0';
+        if (!knownLegacyVersion) {
+            console.error(`[DemoPlayer] Unsupported demo rules version: ${version}`);
+            return false;
+        }
+        if (
+            !demoData.initialState
+            || typeof demoData.initialState !== 'object'
+            || !Number.isFinite(demoData.initialState.seed)
+        ) {
+            console.error('[DemoPlayer] Demo is missing a finite initial seed');
+            return false;
+        }
+        const declaredTickMs = demoData.sim?.tickMs;
+        if (
+            (version === '2.0' && declaredTickMs === undefined)
+            || (declaredTickMs !== undefined && (
+                !Number.isFinite(declaredTickMs)
+                || Math.abs(declaredTickMs - DEMO_TICK_MS) > 0.0001
+            ))
+        ) {
+            console.error(`[DemoPlayer] Unsupported simulation tick: ${declaredTickMs}`);
+            return false;
+        }
+        const declaredInputFormat = demoData.sim?.inputFormat;
+        const inputFormat = declaredInputFormat ?? DEMO_COMMAND_INPUT_FORMAT;
+        if (inputFormat !== DEMO_COMMAND_INPUT_FORMAT) {
+            console.error(`[DemoPlayer] Unsupported input format: ${inputFormat}`);
+            return false;
+        }
+        if (!demoData.inputs.every(isValidDemoCommand)) {
+            console.error('[DemoPlayer] Demo contains an invalid command entry');
+            return false;
+        }
 
-        this.demo = this._normalizeDemo(demoData);
+        try {
+            this.demo = this._normalizeDemo(demoData);
+        } catch (error) {
+            console.error('[DemoPlayer] Failed to normalize demo data:', error);
+            this.demo = null;
+            return false;
+        }
         this.tickMs = this.demo.sim.tickMs;
         this.currentInputIndex = 0;
         this.playheadMs = 0;
@@ -161,9 +235,11 @@ export class DemoPlayer {
         this._cancelScheduledFrame();
 
         if (this.gameState) {
+            clearPlayerInput(this.gameState.playerInput);
             this.gameState.isReplay = false;
             this.gameState.isSeeking = false;
             this.gameState.suppressExternalInput = false;
+            this.gameState.isPaused = false;
         }
 
         if (notify && this.onPlaybackEnd) {
@@ -202,6 +278,9 @@ export class DemoPlayer {
                 isReplay: true,
                 isSeeking: true,
                 suppressExternalInput: true,
+                // V1/v2 demos store already-expanded accepted commands. Their
+                // checkpoint input engine must stay dark or DAS repeats apply twice.
+                restorePlayerInput: false,
             });
             this.currentInputIndex = checkpoint.inputIndex || 0;
             this.lastSimulatedTime = this._checkpointTime(checkpoint);
@@ -429,6 +508,7 @@ export class DemoPlayer {
         this.gameState.isReplay = true;
         this.gameState.isSeeking = false;
         this.gameState.suppressExternalInput = true;
+        this.gameState.hitStopEnabled = this.demo.initialState.settings.hitStopEnabled;
 
         const { seed } = this.demo.initialState;
         this.gameState.randomGenerator = seededRandom(seed);
@@ -567,6 +647,12 @@ export class DemoPlayer {
 
     _normalizeDemo(demoData) {
         const tickMs = Number(demoData.sim?.tickMs) || DEMO_TICK_MS;
+        const declaredSettings = demoData.initialState.settings;
+        const initialSettings = declaredSettings
+            && typeof declaredSettings === 'object'
+            && !Array.isArray(declaredSettings)
+            ? declaredSettings
+            : {};
         const inputs = demoData.inputs
             .map((input, index) => {
                 const frame = Number.isFinite(input.f)
@@ -625,11 +711,21 @@ export class DemoPlayer {
 
         return {
             ...demoData,
-            version: demoData.version || '1.0',
+            version: demoData.version ?? '1.0',
+            initialState: {
+                ...demoData.initialState,
+                settings: {
+                    ...initialSettings,
+                    hitStopEnabled: typeof initialSettings.hitStopEnabled === 'boolean'
+                        ? initialSettings.hitStopEnabled
+                        : LEGACY_DEMO_HIT_STOP_ENABLED,
+                },
+            },
             sim: {
                 tickMs,
                 startFrame: demoData.sim?.startFrame || 0,
                 durationFrames,
+                inputFormat: demoData.sim?.inputFormat ?? DEMO_COMMAND_INPUT_FORMAT,
             },
             inputs,
             checkpoints,

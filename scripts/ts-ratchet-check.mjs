@@ -23,8 +23,14 @@ const update = process.argv.includes('--update');
 
 const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
 
-// Enumerate pragma'd files via git (tracked files only, cross-platform).
-const tracked = execFileSync('git', ['ls-files', 'src/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
+// Enumerate tracked plus non-ignored untracked sources. A new checked module
+// must satisfy the ratchet before it is staged; otherwise adding it to the
+// baseline creates a false "lost pragma" failure in a normal dirty worktree.
+const tracked = execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '--', 'src/**/*.js'],
+    { cwd: repoRoot, encoding: 'utf8' },
+)
     .split('\n').filter(Boolean);
 const pragmad = tracked.filter((file) => {
     const head = readFileSync(path.join(repoRoot, file), 'utf8').slice(0, 200);

@@ -7,6 +7,7 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
 import { COLS, ROWS } from '../core/constants.js';
+import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -109,6 +110,9 @@ export class GamepadController {
         this.pollInterval = null;
         this.gameActions = null;
         this.enabled = false;
+        this.fixedTickInputAdapter = null;
+        this.fixedTickTouchedStates = Array.from({ length: 4 }, () => new Set());
+        this.fixedTickHeldActions = Array.from({ length: 4 }, () => new Map());
 
         // Serenity Mode support
         this.serenityModeActive = false;
@@ -319,6 +323,7 @@ export class GamepadController {
         this.gamepads[slot] = null;
         this.connected[slot] = false;
         this.previousStates[slot] = {};
+        this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
 
         window.dispatchEvent(new CustomEvent('gamepadStatusChanged', {
@@ -371,6 +376,182 @@ export class GamepadController {
      */
     setGameActions(gameActions) {
         this.gameActions = gameActions;
+    }
+
+    setFixedTickInputAdapter(adapter = null) {
+        this.clearFixedTickInput();
+        for (let slot = 0; slot < this.dasState.length; slot += 1) {
+            this.clearDasTimers(slot);
+        }
+        this.fixedTickInputAdapter = adapter
+            && typeof adapter.isEnabled === 'function'
+            && typeof adapter.resolveGameState === 'function'
+            ? adapter
+            : null;
+    }
+
+    resolveFixedTickOwnership(slot) {
+        const adapter = this.fixedTickInputAdapter;
+        if (!adapter) return { claimed: false, gameState: null };
+
+        let gameState = null;
+        try {
+            gameState = adapter.resolveGameState(slot) || null;
+            return {
+                claimed: adapter.isEnabled({ playerIndex: slot, gameState }) === true,
+                gameState,
+            };
+        } catch (error) {
+            console.error('[Gamepad] Fixed-tick input adapter failed:', error);
+            return { claimed: true, gameState: null };
+        }
+    }
+
+    isFixedTickPlayerClaimed(slot) {
+        return this.resolveFixedTickOwnership(slot).claimed;
+    }
+
+    getFixedTickStamp(gameState, slot) {
+        const adapter = this.fixedTickInputAdapter;
+        const fallback = {
+            tick: Math.max(0, Math.floor(Number(gameState?.simFrame) || 0)) + 1,
+            subframe: 0,
+        };
+        if (typeof adapter?.stamp !== 'function') return fallback;
+
+        try {
+            const stamp = adapter.stamp({
+                gameState, playerIndex: slot, fallback,
+            }) || fallback;
+            return {
+                tick: Number.isInteger(stamp.tick) && stamp.tick >= fallback.tick
+                    ? stamp.tick
+                    : fallback.tick,
+                subframe: Number.isInteger(stamp.subframe)
+                    ? Math.min(9, Math.max(0, stamp.subframe))
+                    : 0,
+            };
+        } catch (error) {
+            console.error('[Gamepad] Fixed-tick input stamp failed:', error);
+            return fallback;
+        }
+    }
+
+    acceptFixedTickSource(gameState, slot) {
+        const { fixedTickInputAdapter: adapter } = this;
+        if (typeof adapter?.acceptSource !== 'function') return true;
+        try {
+            return adapter.acceptSource({ gameState, playerIndex: slot }) === true;
+        } catch (error) {
+            console.error('[Gamepad] Fixed-tick source policy failed:', error);
+            return false;
+        }
+    }
+
+    releaseFixedTickSource(slot) {
+        const { fixedTickInputAdapter: adapter } = this;
+        if (typeof adapter?.releaseSource !== 'function') return;
+        try {
+            adapter.releaseSource({ playerIndex: slot });
+        } catch (error) {
+            console.error('[Gamepad] Fixed-tick source release failed:', error);
+        }
+    }
+
+    enqueueFixedTickEdge(gameState, slot, action, value, phase) {
+        if (!gameState?.playerInput) return null;
+        const edge = enqueueInputEdge(gameState.playerInput, {
+            ...this.getFixedTickStamp(gameState, slot),
+            action,
+            value,
+            phase,
+        });
+        this.fixedTickTouchedStates[slot].add(gameState.playerInput);
+        return edge;
+    }
+
+    pressFixedTickAction(slot, holdKey, action, value) {
+        const { claimed, gameState } = this.resolveFixedTickOwnership(slot);
+        if (!claimed) return { handled: false, accepted: false };
+        const held = this.fixedTickHeldActions[slot];
+        if (holdKey && held.has(holdKey)) return { handled: true, accepted: false };
+        if (
+            !gameState?.playerInput
+            || gameState.isPaused
+            || gameState.isGameOver
+            || gameState.isStopped
+            || gameState.isAlive === false
+            || gameState.isReplay
+            || gameState.isSeeking
+            || gameState.suppressExternalInput
+        ) {
+            if (holdKey) {
+                held.set(holdKey, {
+                    gameState, action, value, cleared: true,
+                });
+            }
+            return { handled: true, accepted: false };
+        }
+        if (!this.acceptFixedTickSource(gameState, slot)) {
+            if (holdKey) {
+                held.set(holdKey, {
+                    gameState, action, value, cleared: true,
+                });
+            }
+            return { handled: true, accepted: false };
+        }
+
+        const edge = this.enqueueFixedTickEdge(gameState, slot, action, value, 'down');
+        if (holdKey) {
+            held.set(holdKey, {
+                gameState, action, value, cleared: !edge,
+            });
+        }
+        return { handled: true, accepted: Boolean(edge) };
+    }
+
+    releaseFixedTickAction(slot, holdKey) {
+        const held = this.fixedTickHeldActions[slot];
+        const record = held.get(holdKey);
+        held.delete(holdKey);
+        if (!record) {
+            return {
+                handled: this.resolveFixedTickOwnership(slot).claimed,
+                accepted: false,
+            };
+        }
+        if (record.cleared || !record.gameState?.playerInput) {
+            return { handled: true, accepted: false };
+        }
+
+        const ownership = this.resolveFixedTickOwnership(slot);
+        if (!ownership.claimed || ownership.gameState !== record.gameState) {
+            clearPlayerInput(record.gameState.playerInput);
+            return { handled: true, accepted: false };
+        }
+        const edge = this.enqueueFixedTickEdge(
+            record.gameState,
+            slot,
+            record.action,
+            record.value,
+            'up',
+        );
+        return { handled: true, accepted: Boolean(edge) };
+    }
+
+    clearFixedTickInput({ dropPhysicalLatches = false, slot = null } = {}) {
+        const slots = Number.isInteger(slot)
+            ? [slot]
+            : this.fixedTickTouchedStates.map((_, index) => index);
+        slots.forEach((slotIndex) => {
+            this.fixedTickTouchedStates[slotIndex].forEach((state) => clearPlayerInput(state));
+            this.fixedTickTouchedStates[slotIndex].clear();
+            this.releaseFixedTickSource(slotIndex);
+        });
+        slots.map((slotIndex) => this.fixedTickHeldActions[slotIndex]).forEach((held) => {
+            if (dropPhysicalLatches) held.clear();
+            else held.forEach((record) => { record.cleared = true; });
+        });
     }
 
     /**
@@ -1563,6 +1744,8 @@ export class GamepadController {
             return;
         }
 
+        const fixedTickClaimed = this.isFixedTickPlayerClaimed(slot);
+
         // Process movement (D-pad left/right or left stick X)
         const leftPressed = this.isButtonPressed(gamepad, config.moveLeft)
             || this.isAxisNegative(gamepad, config.moveLeft.axisNegative);
@@ -1575,26 +1758,40 @@ export class GamepadController {
         // Handle left movement
         if (leftPressed && !prevLeft) {
             // Initial press
-            if (actions.requestMove || actions.move) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, 'left', 'move', -1);
+                if (result.accepted) performanceMonitor.recordInputAction();
+                this.stopDas(slot, 'left');
+            } else if (actions.requestMove || actions.move) {
                 (actions.requestMove || actions.move)(-1);
                 performanceMonitor.recordInputAction();
                 this.startDas(slot, 'left', () => (actions.requestMove || actions.move)?.(-1));
             }
         } else if (!leftPressed && prevLeft) {
             // Release
+            if (fixedTickClaimed || this.fixedTickHeldActions[slot].has('left')) {
+                this.releaseFixedTickAction(slot, 'left');
+            }
             this.stopDas(slot, 'left');
         }
 
         // Handle right movement
         if (rightPressed && !prevRight) {
             // Initial press
-            if (actions.requestMove || actions.move) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, 'right', 'move', 1);
+                if (result.accepted) performanceMonitor.recordInputAction();
+                this.stopDas(slot, 'right');
+            } else if (actions.requestMove || actions.move) {
                 (actions.requestMove || actions.move)(1);
                 performanceMonitor.recordInputAction();
                 this.startDas(slot, 'right', () => (actions.requestMove || actions.move)?.(1));
             }
         } else if (!rightPressed && prevRight) {
             // Release
+            if (fixedTickClaimed || this.fixedTickHeldActions[slot].has('right')) {
+                this.releaseFixedTickAction(slot, 'right');
+            }
             this.stopDas(slot, 'right');
         }
 
@@ -1607,12 +1804,19 @@ export class GamepadController {
         const prevDown = prevState.softDrop || false;
 
         if (downPressed && !prevDown) {
-            if (actions.requestSoftDrop || actions.softDrop) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, 'down', 'softDrop', null);
+                if (result.accepted) performanceMonitor.recordInputAction();
+                this.stopDas(slot, 'down');
+            } else if (actions.requestSoftDrop || actions.softDrop) {
                 (actions.requestSoftDrop || actions.softDrop)();
                 performanceMonitor.recordInputAction();
                 this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.());
             }
         } else if (!downPressed && prevDown) {
+            if (fixedTickClaimed || this.fixedTickHeldActions[slot].has('down')) {
+                this.releaseFixedTickAction(slot, 'down');
+            }
             this.stopDas(slot, 'down');
         }
 
@@ -1620,21 +1824,30 @@ export class GamepadController {
 
         // Process rotation buttons (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.rotateRight, prevState, 'rotateRight')) {
-            if (actions.requestRotate || actions.rotate) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, null, 'rotate', 'right');
+                if (result.accepted) performanceMonitor.recordInputAction();
+            } else if (actions.requestRotate || actions.rotate) {
                 (actions.requestRotate || actions.rotate)('right');
                 performanceMonitor.recordInputAction();
             }
         }
 
         if (this.isButtonJustPressed(gamepad, config.rotateLeft, prevState, 'rotateLeft')) {
-            if (actions.requestRotate || actions.rotate) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, null, 'rotate', 'left');
+                if (result.accepted) performanceMonitor.recordInputAction();
+            } else if (actions.requestRotate || actions.rotate) {
                 (actions.requestRotate || actions.rotate)('left');
                 performanceMonitor.recordInputAction();
             }
         }
 
         if (this.isButtonJustPressed(gamepad, config.flip, prevState, 'flip')) {
-            if (actions.requestRotate || actions.rotate) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, null, 'rotate', 'flip');
+                if (result.accepted) performanceMonitor.recordInputAction();
+            } else if (actions.requestRotate || actions.rotate) {
                 (actions.requestRotate || actions.rotate)('flip');
                 performanceMonitor.recordInputAction();
             }
@@ -1642,7 +1855,10 @@ export class GamepadController {
 
         // Process hard drop (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.hardDrop, prevState, 'hardDrop')) {
-            if (actions.requestHardDrop || actions.hardDrop) {
+            if (fixedTickClaimed) {
+                const result = this.pressFixedTickAction(slot, null, 'hardDrop', null);
+                if (result.accepted) performanceMonitor.recordInputAction();
+            } else if (actions.requestHardDrop || actions.hardDrop) {
                 (actions.requestHardDrop || actions.hardDrop)();
                 performanceMonitor.recordInputAction();
             }
@@ -1713,6 +1929,10 @@ export class GamepadController {
      */
     processDasTimers(slot, delta) {
         if (!this.gameActions || !this.enabled) return;
+        if (this.isFixedTickPlayerClaimed(slot)) {
+            this.clearDasTimers(slot);
+            return;
+        }
 
         const processDirection = (dir) => {
             const state = this.dasState[slot][dir];
@@ -1809,6 +2029,7 @@ export class GamepadController {
      * Clear all DAS timers for all gamepads
      */
     clearAllDasTimers() {
+        this.clearFixedTickInput();
         for (let i = 0; i < this.gamepads.length; i++) {
             this.clearDasTimers(i);
         }
@@ -2095,6 +2316,8 @@ export class GamepadController {
      */
     destroy() {
         this.disable();
+        this.clearFixedTickInput({ dropPhysicalLatches: true });
+        this.fixedTickInputAdapter = null;
         this.disableSerenityMode();
         window.removeEventListener('gamepadconnected', this.handleGamepadConnected);
         window.removeEventListener('gamepaddisconnected', this.handleGamepadDisconnected);

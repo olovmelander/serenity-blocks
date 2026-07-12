@@ -5,6 +5,7 @@
  */
 
 import {
+    clamp,
     cos,
     dot,
     float,
@@ -167,13 +168,13 @@ export function tslDepthGradedFog(color, worldY, viewDist, density = 1.0) {
  * so the original material value structure survives the attenuation.
  */
 export function tslWarmCoolAttenuation(color, viewDist, strength = 1.0) {
-    const farWeight = smoothstep(float(46.0), float(172.0), viewDist)
+    const farWeight = smoothstep(float(56.0), float(184.0), viewDist)
         .mul(strength)
         .clamp(float(0.0), float(1.0));
     const absorption = mix(
         vec3(1.0),
-        vec3(0.62, 0.84, 1.02),
-        farWeight.mul(0.72),
+        vec3(0.66, 0.86, 1.0),
+        farWeight.mul(0.68),
     );
     return color.mul(absorption);
 }
@@ -208,26 +209,56 @@ export function tslUnderwaterAbsorption(sceneColor, linearDepth, density = 1.0, 
  * @param {vec3} color    - input color (linear)
  * @param {float} strength - grade intensity (0→1)
  */
-export function tslAbzuGrade(color, strength) {
+export function tslAbzuGrade(color, strength, blackLift = 0.04) {
     const luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    const shadowMask = float(1.0).sub(smoothstep(float(0.045), float(0.38), luma));
+    const highlightMask = smoothstep(float(0.46), float(0.88), luma);
+    const midMask = clamp(
+        float(1.0).sub(shadowMask).sub(highlightMask),
+        float(0.0),
+        float(1.0),
+    );
 
-    // Shadow tint (teal)
-    const shadowTint = vec3(0.0, 0.12, 0.16);
-    const shadowMask = float(1.0).sub(smoothstep(float(0.05), float(0.46), luma));
+    // Contrast precedes the chromatic floor so low values cannot be crushed
+    // back to black after the shadow lift.
+    let graded = mix(
+        color,
+        color.sub(0.43).mul(1.095).add(0.43),
+        strength,
+    );
+    graded = clamp(graded, float(0.0), float(1.0));
+    graded = graded.add(
+        vec3(0.22, 0.58, 1.0).mul(blackLift).mul(shadowMask).mul(strength),
+    );
+    graded = mix(
+        graded,
+        graded.mul(vec3(0.9, 1.0, 1.055)),
+        shadowMask.mul(0.32).mul(strength),
+    );
+    graded = mix(
+        graded,
+        graded.mul(vec3(0.955, 1.012, 1.04)),
+        midMask.mul(0.24).mul(strength),
+    );
 
-    // Highlight warmth (gold)
-    const warmHighlight = vec3(0.18, 0.14, 0.06);
-    const highlightMask = smoothstep(float(0.36), float(0.92), luma);
+    const creamyHighlight = graded
+        .mul(vec3(1.055, 1.012, 0.94))
+        .add(vec3(0.022, 0.01, 0.0));
+    graded = mix(
+        graded,
+        creamyHighlight,
+        highlightMask.mul(0.38).mul(strength),
+    );
 
-    // Mid teal
-    const midTeal = vec3(0.02, 0.21, 0.22);
-
-    let graded = color.add(shadowTint.mul(shadowMask.mul(0.22)));
-    graded = graded.add(midTeal.mul(float(1.0).sub(highlightMask)).mul(0.08));
-    graded = graded.add(warmHighlight.mul(highlightMask.mul(0.14)));
-
-    // Slight contrast boost
-    graded = graded.sub(0.5).mul(1.06).add(0.5);
-
-    return mix(color, graded, strength);
+    const postLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+    const saturationAmount = float(1.0)
+        .add(midMask.mul(0.075))
+        .sub(highlightMask.mul(0.15))
+        .sub(shadowMask.mul(0.035));
+    graded = mix(
+        graded,
+        mix(vec3(postLuma), graded, saturationAmount),
+        strength,
+    );
+    return clamp(graded, float(0.0), float(1.0));
 }

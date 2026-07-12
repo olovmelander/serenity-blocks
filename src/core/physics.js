@@ -896,8 +896,9 @@ export async function processPhysicsLegacy(gameState, callbacks) {
  * @param {Object} callbacks - same 19-callback surface as the legacy path
  * @returns {Promise<void>}
  */
-export async function processPhysicsResolved(gameState, callbacks) {
-    const result = resolveCascade(gameState.lockedPieces, {
+/** Build the pure resolver context from live state. */
+function createResolverContext(gameState) {
+    return {
         boardHeight: gameState.boardGrid?.length,
         level: gameState.level,
         lines: gameState.lines,
@@ -911,7 +912,63 @@ export async function processPhysicsResolved(gameState, callbacks) {
         comboMultiplierEnabled: gameState.comboMultiplierEnabled,
         comboMultiplier: gameState.comboMultiplier,
         comboCount: gameState.comboCount,
-    });
+    };
+}
+
+function finalizeResolvedPhysics(gameState, callbacks, result) {
+    if (result.cascadeCount > 0 && callbacks.onCascadeComplete) {
+        callbacks.onCascadeComplete(result.cascadeCount);
+    }
+
+    if (result.perfectClear) {
+        gameState.score += result.perfectClear.bonus;
+        if (callbacks.onScoreAdd) callbacks.onScoreAdd(result.perfectClear.bonus);
+        if (callbacks.onPerfectClear) {
+            callbacks.onPerfectClear(result.perfectClear.depth, result.perfectClear.bonus);
+        }
+    }
+
+    if (result.linesClearedThisTurn > 0 && callbacks.onGarbageReady) {
+        callbacks.onGarbageReady(result.garbageSummary);
+    }
+
+    if (gameState.comboState) {
+        const after = result.comboStateAfter;
+        gameState.comboState.depth = after.depth;
+        gameState.comboState.complexity = after.complexity;
+        gameState.comboState.holeMask = after.holeMask.map((mask) => mask.slice());
+        gameState.comboState.sendForClean = after.sendForClean;
+        gameState.comboState.manualColumns = [...after.manualColumns];
+        gameState.comboState.lockFootprint = [];
+        gameState.comboState.sourceColor = null;
+    }
+
+    if (gameState.comboMultiplierEnabled) {
+        gameState.comboCount = result.comboCountAfter;
+        gameState.comboMultiplier = result.comboMultiplierAfter;
+    }
+
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    markBoardDirty(gameState);
+}
+
+/**
+ * Canonical-tick fast path for a stable lock. It is intentionally limited to
+ * zero-wave results; any full row remains on the certified async replay.
+ */
+export function tryProcessNoClearSync(gameState, callbacks = {}) {
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    if (detectFullLines(gameState.boardGrid).length > 0) return false;
+
+    const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
+    if (result.waves.length > 0) return false;
+    finalizeResolvedPhysics(gameState, callbacks, result);
+    return true;
+}
+
+/** Replay the precomputed result with the certified callback and delay schedule. */
+export async function processPhysicsResolved(gameState, callbacks) {
+    const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
 
     for (const wave of result.waves) {
         // One live array per wave, threaded through flash + clear exactly like
@@ -1010,40 +1067,7 @@ export async function processPhysicsResolved(gameState, callbacks) {
         await applyGravity(gameState, callbacks.draw, null, callbacks);
     }
 
-    if (result.cascadeCount > 0 && callbacks.onCascadeComplete) {
-        callbacks.onCascadeComplete(result.cascadeCount);
-    }
-
-    if (result.perfectClear) {
-        gameState.score += result.perfectClear.bonus;
-        if (callbacks.onScoreAdd) callbacks.onScoreAdd(result.perfectClear.bonus);
-        if (callbacks.onPerfectClear) {
-            callbacks.onPerfectClear(result.perfectClear.depth, result.perfectClear.bonus);
-        }
-    }
-
-    if (result.linesClearedThisTurn > 0 && callbacks.onGarbageReady) {
-        callbacks.onGarbageReady(result.garbageSummary);
-    }
-
-    if (gameState.comboState) {
-        const after = result.comboStateAfter;
-        gameState.comboState.depth = after.depth;
-        gameState.comboState.complexity = after.complexity;
-        gameState.comboState.holeMask = after.holeMask.map((mask) => mask.slice());
-        gameState.comboState.sendForClean = after.sendForClean;
-        gameState.comboState.manualColumns = [...after.manualColumns];
-        gameState.comboState.lockFootprint = [];
-        gameState.comboState.sourceColor = null;
-    }
-
-    if (gameState.comboMultiplierEnabled) {
-        gameState.comboCount = result.comboCountAfter;
-        gameState.comboMultiplier = result.comboMultiplierAfter;
-    }
-
-    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
-    markBoardDirty(gameState);
+    finalizeResolvedPhysics(gameState, callbacks, result);
 }
 
 /**

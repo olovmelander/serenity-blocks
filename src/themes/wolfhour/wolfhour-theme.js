@@ -58,6 +58,7 @@ import {
 import * as WolfhourMaterialFactories from './wolfhour-materials.js';
 import * as WolfhourComputeFactories from './wolfhour-compute.js';
 import * as WolfhourPostFactories from './wolfhour-post.js';
+import { createLunarHaloFallbackMaterial } from './wolfhour-fallback-materials.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -319,6 +320,32 @@ const REACTIVE_TOKEN_EXPIRY_MS = Object.freeze({
     crash: 900,
 });
 
+const MAX_LUNAR_REACTION_SLOTS = 6;
+const LUNAR_REACTION_SLOTS_BY_QUALITY = Object.freeze({
+    Minimal: 2,
+    Low: 2,
+    Medium: 3,
+    High: 4,
+    Ultra: 6,
+    Extreme: 6,
+});
+
+const EFFECT_STATE_CAPS = Object.freeze({
+    starBurstIntensity: 1.35,
+    cosmicRiftIntensity: 1.2,
+    celestialBeamIntensity: 1.0,
+    mountainPulse: 1.4,
+    mountainShockwave: 1.8,
+    spiritSurge: 1.0,
+    bloomBoost: 0.9,
+    nebulaBoost: 0.7,
+    nebulaColorShift: 1.0,
+    nebulaDefinition: 1.25,
+    ambientScatter: 1.0,
+    ambientSwirl: 1.0,
+    cameraShake: 0.9,
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Deterministic Flags Pipeline
 // ─────────────────────────────────────────────────────────────────────────────
@@ -488,13 +515,21 @@ export default class WolfhourTheme extends BaseTheme {
         this.reactiveTokenExpiryMs = { ...REACTIVE_TOKEN_EXPIRY_MS };
         this.meteorTrailBatchCompute = null;
         this.debrisBatchCompute = null;
-        this.lunarReaction = {
-            startTime: Number.NEGATIVE_INFINITY,
-            duration: 1.1,
-            strength: 0,
-            combo: 0,
-        };
+        this.lunarReactions = Array.from(
+            { length: MAX_LUNAR_REACTION_SLOTS },
+            () => ({
+                active: false,
+                startTime: Number.NEGATIVE_INFINITY,
+                duration: 1.1,
+                strength: 0,
+                combo: 0,
+                serial: 0,
+            }),
+        );
+        this.lunarReactionSerial = 0;
         this.lastReactiveOrigin = null;
+        this.reactiveOriginsByPlayer = new Map();
+        this.comboProgressByPlayer = new Map();
         this.reactiveOriginScratch = {
             raycaster: new THREE.Raycaster(),
             plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -100),
@@ -518,6 +553,7 @@ export default class WolfhourTheme extends BaseTheme {
             ambientSwirl: 0,
             cameraShake: 0,
         };
+        this.effectStateCaps = { ...EFFECT_STATE_CAPS };
 
         // Animation
         this.time = 0;
@@ -1888,7 +1924,9 @@ export default class WolfhourTheme extends BaseTheme {
             && this.materialFactories?.createLunarHaloNodeMaterial
         ) {
             moonNodeData = this.materialFactories.createMoonNodeMaterial({ texture: moonTexture });
-            haloNodeData = this.materialFactories.createLunarHaloNodeMaterial();
+            haloNodeData = this.materialFactories.createLunarHaloNodeMaterial({
+                maxPulses: this.getLunarReactionSlotCapacity(),
+            });
             moonMaterial = moonNodeData.material;
             haloMaterial = haloNodeData.material;
         } else {
@@ -1896,37 +1934,7 @@ export default class WolfhourTheme extends BaseTheme {
                 map: moonTexture,
                 color: new THREE.Color(0xb8c6e2),
             });
-            haloMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    uColor: { value: new THREE.Color(0x829fe8) },
-                    uOpacity: { value: 0.075 },
-                },
-                vertexShader: `
-                    varying vec2 vUv;
-                    void main() {
-                        vUv = uv;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform vec3 uColor;
-                    uniform float uOpacity;
-                    varying vec2 vUv;
-                    void main() {
-                        float radius = length(vUv - 0.5) * 2.0;
-                        float corona = smoothstep(0.28, 0.44, radius)
-                            * (1.0 - smoothstep(0.46, 1.0, radius));
-                        float rim = 1.0 - smoothstep(0.018, 0.065, abs(radius - 0.52));
-                        float alpha = (corona * 0.72 + rim * 0.28) * uOpacity;
-                        gl_FragColor = vec4(uColor, alpha);
-                    }
-                `,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                depthTest: true,
-                side: THREE.DoubleSide,
-            });
+            haloMaterial = createLunarHaloFallbackMaterial(THREE);
         }
 
         const segments = ['Minimal', 'Low'].includes(this.activeQualityLevel) ? 32 : 48;
@@ -2669,7 +2677,10 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         const rows = Array.isArray(detail?.clearedRows) ? detail.clearedRows : [];
-        if (!rows.length) return this.lastReactiveOrigin;
+        if (!rows.length) {
+            return this.reactiveOriginsByPlayer.get(this.getReactivePlayerKey(data))
+                || this.lastReactiveOrigin;
+        }
         const meanRow = rows.reduce((sum, row) => sum + Number(row || 0), 0) / rows.length;
         const v = THREE.MathUtils.clamp((meanRow - 4 + 0.5) / 20, 0, 1);
         const rect = this.getVisibleBoardRect(data);
@@ -2682,38 +2693,136 @@ export default class WolfhourTheme extends BaseTheme {
         );
     }
 
+    getReactivePlayerKey(data = {}) {
+        const detail = data?.detail || data;
+        return String(detail?.player ?? detail?.playerId ?? 'local');
+    }
+
+    getLunarReactionSlotCapacity() {
+        const quality = normalizeQuality(this.activeQualityLevel || this.getCurrentQualityLevel());
+        return LUNAR_REACTION_SLOTS_BY_QUALITY[quality]
+            ?? LUNAR_REACTION_SLOTS_BY_QUALITY.High;
+    }
+
+    addEffectState(changes = {}) {
+        Object.entries(changes).forEach(([key, amount]) => {
+            if (!Object.hasOwn(this.effectState, key) || !Number.isFinite(amount) || amount <= 0) {
+                return;
+            }
+            const cap = this.effectStateCaps[key] ?? 1;
+            this.effectState[key] = Math.min(cap, this.effectState[key] + amount);
+        });
+    }
+
     triggerLunarReaction({ strength = 1, combo = 0, duration = 1.1 } = {}) {
-        this.lunarReaction.startTime = this.time;
-        this.lunarReaction.duration = duration;
-        this.lunarReaction.strength = strength;
-        this.lunarReaction.combo = combo;
+        const capacity = Math.min(
+            this.getLunarReactionSlotCapacity(),
+            this.moonHaloNodeData?.maxPulses ?? MAX_LUNAR_REACTION_SLOTS,
+        );
+        const safeDuration = Math.max(0.001, Number(duration) || 1.1);
+
+        for (let i = 0; i < capacity; i += 1) {
+            const reaction = this.lunarReactions[i];
+            if (reaction.active && this.time - reaction.startTime >= reaction.duration) {
+                reaction.active = false;
+            }
+        }
+
+        let slotIndex = this.lunarReactions
+            .slice(0, capacity)
+            .findIndex((reaction) => !reaction.active);
+
+        if (slotIndex < 0) {
+            // The pool is deliberately bounded. If every ring is live, replace the one
+            // nearest natural expiry so the strongest/newest reactions remain intact.
+            let leastRemainingLife = Number.POSITIVE_INFINITY;
+            let leastStrength = Number.POSITIVE_INFINITY;
+            for (let i = 0; i < capacity; i += 1) {
+                const reaction = this.lunarReactions[i];
+                const remainingLife = Math.max(
+                    0,
+                    reaction.duration - (this.time - reaction.startTime),
+                );
+                if (
+                    remainingLife < leastRemainingLife
+                    || (remainingLife === leastRemainingLife && reaction.strength < leastStrength)
+                ) {
+                    slotIndex = i;
+                    leastRemainingLife = remainingLife;
+                    leastStrength = reaction.strength;
+                }
+            }
+        }
+
+        const reaction = this.lunarReactions[Math.max(0, slotIndex)];
+        reaction.active = true;
+        reaction.startTime = this.time;
+        reaction.duration = safeDuration;
+        reaction.strength = THREE.MathUtils.clamp(Number(strength) || 0, 0, 1.35);
+        reaction.combo = THREE.MathUtils.clamp(Number(combo) || 0, 0, 1);
+        reaction.serial = ++this.lunarReactionSerial;
+
+        this.moonHaloNodeData?.pulseValues?.[slotIndex]?.set(
+            reaction.startTime,
+            1 / reaction.duration,
+            reaction.strength,
+            reaction.combo,
+        );
+        return slotIndex;
     }
 
     updateLunarReaction() {
-        const reaction = this.lunarReaction;
-        const elapsed = this.time - reaction.startTime;
-        const progress = THREE.MathUtils.clamp(elapsed / Math.max(0.001, reaction.duration), 0, 1);
-        const envelope = Math.sin(progress * Math.PI);
-
         if (this.moonHaloNodeData?.uniforms) {
-            const { uniforms } = this.moonHaloNodeData;
-            uniforms.uTime.value = this.time;
-            uniforms.uProgress.value = progress;
-            uniforms.uStrength.value = reaction.strength;
-            uniforms.uCombo.value = reaction.combo;
-        } else if (this.moonHalo?.material) {
-            const opacity = 0.075
-                + envelope * (0.12 + reaction.combo * 0.12) * reaction.strength;
-            if (this.moonHalo.material.uniforms?.uOpacity) {
-                this.moonHalo.material.uniforms.uOpacity.value = opacity;
-            } else {
-                this.moonHalo.material.opacity = opacity;
-            }
+            this.moonHaloNodeData.uniforms.uTime.value = this.time;
         }
-        if (this.moonNodeData?.uniforms?.uPulse) {
-            this.moonNodeData.uniforms.uPulse.value = envelope
+
+        const capacity = Math.min(
+            this.getLunarReactionSlotCapacity(),
+            this.moonHaloNodeData?.maxPulses ?? MAX_LUNAR_REACTION_SLOTS,
+        );
+        let moonEnergy = 0;
+        let fallbackEnergy = 0;
+
+        for (let i = 0; i < MAX_LUNAR_REACTION_SLOTS; i += 1) {
+            const reaction = this.lunarReactions[i];
+            const pulseValue = this.moonHaloNodeData?.pulseValues?.[i];
+            if (i >= capacity || !reaction.active) {
+                pulseValue?.set(0, 0, 0, 0);
+                continue;
+            }
+
+            const elapsed = this.time - reaction.startTime;
+            const progress = THREE.MathUtils.clamp(
+                elapsed / Math.max(0.001, reaction.duration),
+                0,
+                1,
+            );
+            if (progress >= 1) {
+                reaction.active = false;
+                pulseValue?.set(0, 0, 0, 0);
+                continue;
+            }
+
+            const envelope = Math.sin(progress * Math.PI);
+            moonEnergy += envelope
                 * reaction.strength
                 * (0.42 + reaction.combo * 0.45);
+            fallbackEnergy += envelope
+                * reaction.strength
+                * (0.12 + reaction.combo * 0.12);
+            pulseValue?.set(
+                reaction.startTime,
+                1 / reaction.duration,
+                reaction.strength,
+                reaction.combo,
+            );
+        }
+
+        if (!this.moonHaloNodeData && this.moonHalo?.material) {
+            this.moonHalo.material.opacity = Math.min(0.42, 0.075 + fallbackEnergy);
+        }
+        if (this.moonNodeData?.uniforms?.uPulse) {
+            this.moonNodeData.uniforms.uPulse.value = Math.min(1.8, moonEnergy);
         }
         if (this.moon) {
             this.moon.rotation.y = -0.34 + Math.sin(this.time * 0.05) * 0.025;
@@ -2757,19 +2866,11 @@ export default class WolfhourTheme extends BaseTheme {
     applyReactiveExpiryEnvelope(token) {
         this.reactiveMetrics.tokensDropped += 1;
         const heavy = token.type === 'meteor' || token.type === 'crash';
-
-        this.effectState.bloomBoost = Math.max(
-            this.effectState.bloomBoost,
-            heavy ? 0.18 : 0.08,
-        );
-        this.effectState.nebulaDefinition = Math.max(
-            this.effectState.nebulaDefinition,
-            heavy ? 0.65 : 0.45,
-        );
-        this.effectState.cameraShake = Math.max(
-            this.effectState.cameraShake,
-            heavy ? 0.42 : 0.16,
-        );
+        this.addEffectState({
+            bloomBoost: heavy ? 0.18 : 0.08,
+            nebulaDefinition: heavy ? 0.65 : 0.45,
+            cameraShake: heavy ? 0.42 : 0.16,
+        });
     }
 
     spawnReactiveToken(token) {
@@ -2862,22 +2963,36 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     onPieceLock(data = {}) {
+        const playerKey = this.getReactivePlayerKey(data);
         const origin = this.resolvePieceLockOrigin(data);
-        if (origin) this.lastReactiveOrigin = { ...origin };
+        if (origin) {
+            this.lastReactiveOrigin = { ...origin };
+            this.reactiveOriginsByPlayer.set(playerKey, { ...origin });
+        }
+        this.comboProgressByPlayer.set(playerKey, 0);
         this.enqueueReactiveToken('starBurst', { origin });
 
-        this.effectState.starBurstIntensity = Math.max(this.effectState.starBurstIntensity, 0.72);
-        this.effectState.mountainPulse = 0.8;
-        this.effectState.mountainShockwave = 1.0; // Trigger vertex wave
-        this.effectState.ambientScatter = Math.max(this.effectState.ambientScatter, 0.85);
-        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.35);
+        this.addEffectState({
+            starBurstIntensity: 0.72,
+            mountainPulse: 0.8,
+            mountainShockwave: 1.0,
+            ambientScatter: 0.85,
+            nebulaDefinition: 0.35,
+        });
         this.triggerLunarReaction({ strength: 1.0, combo: 0.12, duration: 1.25 });
     }
 
-    onLineClear(data) {
-        const lineCount = data?.detail?.lineCount ?? data?.lineCount ?? 1;
+    onLineClear(data = {}) {
+        const lineCount = Math.max(
+            1,
+            Number(data?.detail?.lineCount ?? data?.lineCount) || 1,
+        );
+        const playerKey = this.getReactivePlayerKey(data);
         const origin = this.resolveLineClearOrigin(data);
-        if (origin) this.lastReactiveOrigin = { ...origin };
+        if (origin) {
+            this.lastReactiveOrigin = { ...origin };
+            this.reactiveOriginsByPlayer.set(playerKey, { ...origin });
+        }
         const payload = { origin };
 
         this.enqueueReactiveBurst('beam', Math.min(lineCount, 2), payload);
@@ -2885,17 +3000,13 @@ export default class WolfhourTheme extends BaseTheme {
         // Create horizontal ripple
         this.enqueueReactiveToken('wave', payload);
 
-        this.effectState.nebulaBoost = 0.1 + lineCount * 0.02;
-        this.effectState.bloomBoost = 0.05 + lineCount * 0.02;
-        this.effectState.mountainPulse = Math.min(lineCount * 0.3, 1.0);
-        this.effectState.nebulaDefinition = Math.max(
-            this.effectState.nebulaDefinition,
-            Math.min(0.35 + lineCount * 0.1, 0.9),
-        );
-        this.effectState.nebulaColorShift = Math.max(
-            this.effectState.nebulaColorShift,
-            Math.min(0.18 + lineCount * 0.08, 0.85),
-        );
+        this.addEffectState({
+            nebulaBoost: 0.1 + lineCount * 0.02,
+            bloomBoost: 0.05 + lineCount * 0.02,
+            mountainPulse: Math.min(lineCount * 0.3, 1.0),
+            nebulaDefinition: Math.min(0.35 + lineCount * 0.1, 0.9),
+            nebulaColorShift: Math.min(0.18 + lineCount * 0.08, 0.85),
+        });
         this.triggerLunarReaction({
             strength: Math.min(0.5 + lineCount * 0.09, 0.86),
             combo: Math.min(lineCount / 8, 0.5),
@@ -2903,61 +3014,57 @@ export default class WolfhourTheme extends BaseTheme {
         });
     }
 
-    onCombo(data) {
-        const comboCount = data?.detail?.comboCount ?? data?.comboCount ?? 0;
-        const payload = { origin: this.lastReactiveOrigin, reactive: true };
+    onCombo(data = {}) {
+        const comboCount = Math.max(
+            0,
+            Math.floor(Number(data?.detail?.comboCount ?? data?.comboCount) || 0),
+        );
+        const playerKey = this.getReactivePlayerKey(data);
+        if (comboCount <= 0) {
+            this.comboProgressByPlayer.set(playerKey, 0);
+            return;
+        }
+
+        const storedCombo = this.comboProgressByPlayer.get(playerKey) || 0;
+        const previousCombo = comboCount < storedCombo ? 0 : storedCombo;
+        if (comboCount === previousCombo) return;
+        this.comboProgressByPlayer.set(playerKey, comboCount);
+
+        const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
+        const payload = { origin, reactive: true };
+        const newlyCrossedComboSteps = Math.max(0, comboCount - Math.max(previousCombo, 2));
 
         if (comboCount >= 3) {
-            // Replace low-priority ambience with the authored meteor shower so a combo
-            // cannot inherit two extra trail/head draw pairs from an unlucky idle phase.
-            for (let i = this.meteors.length - 1; i >= 0; i -= 1) {
-                if (this.meteors[i].userData.reactive !== true) {
-                    this.releaseMeteor(i, this.meteors[i]);
-                }
-            }
+            // Preserve every active meteor. Delaying the next ambient spawn protects the
+            // bounded pool while the authored combo shower accumulates alongside it.
             this.lastMeteorTime = this.time;
             this.nextMeteorDelay = 4 + this.random() * 3;
-        }
-
-        if (comboCount >= 3) {
-            this.enqueueReactiveToken('rift', payload);
-            this.effectState.cosmicRiftIntensity = Math.min(comboCount * 0.2, 1.0);
-        }
-
-        if (comboCount >= 3) {
+            const riftCount = Math.min(Math.max(1, newlyCrossedComboSteps), 2);
+            this.enqueueReactiveBurst('rift', riftCount, payload);
             const maxComboMeteors = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 4 : 3;
-            const starCount = Math.min(comboCount - 1, maxComboMeteors);
-            this.enqueueReactiveBurst('meteor', starCount, payload);
+            const meteorCount = Math.min(
+                newlyCrossedComboSteps + (previousCombo < 3 ? 1 : 0),
+                maxComboMeteors,
+            );
+            this.enqueueReactiveBurst('meteor', meteorCount, payload);
         }
 
-        if (comboCount >= 5) {
-            const crashCapacity = this.getReactivePoolCapacity('crash');
-            const crashCount = comboCount >= 10 && crashCapacity >= 2 ? 2 : 1;
+        const crashCapacity = this.getReactivePoolCapacity('crash');
+        let crashCount = 0;
+        if (previousCombo < 5 && comboCount >= 5 && crashCapacity >= 1) crashCount += 1;
+        if (previousCombo < 10 && comboCount >= 10 && crashCapacity >= 2) crashCount += 1;
+        if (crashCount > 0) {
             this.enqueueReactiveBurst('crash', crashCount, payload);
         }
 
-        // Surge intensity removed as per spirit removal
-        this.effectState.nebulaDefinition = Math.max(
-            this.effectState.nebulaDefinition,
-            Math.min(0.28 + comboCount * 0.08, 1.0),
-        );
-        this.effectState.nebulaColorShift = Math.max(
-            this.effectState.nebulaColorShift,
-            Math.min(0.2 + comboCount * 0.1, 1.0),
-        );
-
-        this.effectState.mountainPulse = Math.max(
-            this.effectState.mountainPulse,
-            Math.min(comboCount * 0.1, 0.8),
-        );
-        this.effectState.starBurstIntensity = Math.max(
-            this.effectState.starBurstIntensity,
-            Math.min(0.25 + comboCount * 0.065, 0.82),
-        );
-        this.effectState.cameraShake = Math.max(
-            this.effectState.cameraShake,
-            Math.min(comboCount * 0.045, 0.48),
-        );
+        this.addEffectState({
+            cosmicRiftIntensity: comboCount >= 3 ? Math.min(comboCount * 0.2, 1.0) : 0,
+            nebulaDefinition: Math.min(0.28 + comboCount * 0.08, 1.0),
+            nebulaColorShift: Math.min(0.2 + comboCount * 0.1, 1.0),
+            mountainPulse: Math.min(comboCount * 0.1, 0.8),
+            starBurstIntensity: Math.min(0.25 + comboCount * 0.065, 0.82),
+            cameraShake: Math.min(comboCount * 0.045, 0.48),
+        });
         this.triggerLunarReaction({
             strength: Math.min(0.62 + comboCount * 0.045, 1),
             combo: Math.min(comboCount / 8, 1),
@@ -2966,13 +3073,14 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     onLevelUp() {
-        // Subtle bloom boost on level up
-        this.effectState.bloomBoost = 0.2;
-        this.effectState.spiritSurge = 0.3;
-        this.effectState.mountainPulse = 0.3;
-        this.effectState.ambientSwirl = Math.max(this.effectState.ambientSwirl, 0.5);
-        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.5);
-        this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.35);
+        this.addEffectState({
+            bloomBoost: 0.2,
+            spiritSurge: 0.3,
+            mountainPulse: 0.3,
+            ambientSwirl: 0.5,
+            nebulaDefinition: 0.5,
+            nebulaColorShift: 0.35,
+        });
         this.triggerLunarReaction({ strength: 0.7, combo: 0.45, duration: 1.55 });
         // Trigger multiple beams
         this.enqueueReactiveBurst('beam', 3);
@@ -4373,15 +4481,14 @@ export default class WolfhourTheme extends BaseTheme {
         }
         this.syncInstancedParticlePositions(data.dustCloud);
 
-        this.effectState.bloomBoost = 0.3;
-        this.effectState.mountainShockwave = 1.5;
-        this.effectState.mountainPulse = 1.0;
-        this.effectState.cameraShake = Math.max(
-            this.effectState.cameraShake,
-            0.85 * (this.qualityPreset.cameraShakeScale || 1.0),
-        );
-        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.65);
-        this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.45);
+        this.addEffectState({
+            bloomBoost: 0.3,
+            mountainShockwave: 1.5,
+            mountainPulse: 1.0,
+            cameraShake: 0.85 * (this.qualityPreset.cameraShakeScale || 1.0),
+            nebulaDefinition: 0.65,
+            nebulaColorShift: 0.45,
+        });
     }
 
     updateMeteorCrashes() {
@@ -5005,13 +5112,18 @@ export default class WolfhourTheme extends BaseTheme {
         this.moonTexture = null;
         this.moonNodeData = null;
         this.moonHaloNodeData = null;
-        this.lunarReaction = {
-            startTime: Number.NEGATIVE_INFINITY,
-            duration: 1.1,
-            strength: 0,
-            combo: 0,
-        };
+        this.lunarReactions.forEach((reaction) => {
+            reaction.active = false;
+            reaction.startTime = Number.NEGATIVE_INFINITY;
+            reaction.duration = 1.1;
+            reaction.strength = 0;
+            reaction.combo = 0;
+            reaction.serial = 0;
+        });
+        this.lunarReactionSerial = 0;
         this.lastReactiveOrigin = null;
+        this.reactiveOriginsByPlayer.clear();
+        this.comboProgressByPlayer.clear();
 
         [...this.starBursts, ...this.effectPools.starBurst].forEach((b) => this.disposeObjectResources(b));
         this.starBursts = [];

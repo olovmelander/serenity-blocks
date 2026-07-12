@@ -7,7 +7,9 @@
  * from/hostSteamId allows) so mock transports and races can't break legit
  * traffic; the structural replacement is the §6A.3 default-deny role table.
  */
-import { describe, it, expect, vi } from 'vitest';
+import {
+    describe, it, expect, vi,
+} from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 
 const HOST = 'HOST_ID';
@@ -37,6 +39,17 @@ describe('hole a — LOBBY_GAME_START (match start on another peer)', () => {
         const stub = makeStub({ startMatch: vi.fn() });
         stub._handleLobbyGameStart(msg(HOST));
         expect(stub.startMatch).toHaveBeenCalledWith(42, {}, { inProgress: false });
+    });
+
+    it('adopts the host match generation before resetting the local board', () => {
+        const stub = makeStub({ roundGeneration: 4, startMatch: vi.fn() });
+        stub._handleLobbyGameStart({
+            from: HOST,
+            data: { sharedSeed: 42, config: {}, roundGeneration: 5 },
+        });
+
+        expect(stub.roundGeneration).toBe(5);
+        expect(stub.startMatch).toHaveBeenCalledOnce();
     });
 
     it('fails open when the transport did not stamp a sender', () => {
@@ -131,7 +144,11 @@ describe('hole d — LOBBY_PLAYER_JOINED (forged joins + roster rewrite)', () =>
         const stub = makeStub({ addPlayer: vi.fn(), spectatorCount: 0 });
         stub._handleLobbyPlayerJoined({
             from: 'EVIL',
-            data: { players: [{ steamId: 'GHOST', name: 'Ghost', isReady: true, isAlive: true }] },
+            data: {
+                players: [{
+                    steamId: 'GHOST', name: 'Ghost', isReady: true, isAlive: true,
+                }],
+            },
         });
         expect(stub.addPlayer).not.toHaveBeenCalled();
         expect(stub.players.size).toBe(0);

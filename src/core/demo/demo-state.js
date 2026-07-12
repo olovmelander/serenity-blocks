@@ -1,5 +1,7 @@
 import { createBoardGrid } from '../board.js';
-import { createBlindTimers } from '../blind.js';
+import { restoreBlindTimers } from '../blind.js';
+import { durationMsToTicks, elapsedMsToTicks } from '../fixed-tick-clock.js';
+import { clearPlayerInput, restorePlayerInputState } from '../player-input-state.js';
 import { piecePool } from '../../utils/object-pool.js';
 import { seededRandom } from '../../utils/helpers.js';
 
@@ -72,6 +74,11 @@ export function isStableDemoCheckpointSnapshot(snapshot) {
 export function captureGameStateSnapshot(gameState) {
     if (!gameState) return null;
 
+    const hitStopCounterIsSynchronized = Number.isInteger(gameState.hitStopTicks)
+        && gameState.hitStopTicks >= 0
+        && gameState.hitStopRemaining === gameState._hitStopTickSourceMs
+        && gameState.simTickMs === gameState._hitStopTickDurationMs;
+
     return {
         simTickMs: gameState.simTickMs,
         simTimeMs: gameState.simTimeMs,
@@ -82,8 +89,10 @@ export function captureGameStateSnapshot(gameState) {
         pieceSpawnTime: gameState.pieceSpawnTime,
         piecesPlaced: gameState.piecesPlaced,
         lockDelay: gameState.lockDelay,
+        lockDelayTicks: durationMsToTicks(gameState.lockDelay, gameState.simTickMs),
         lockResetLimit: gameState.lockResetLimit,
         lockTimer: gameState.lockTimer,
+        lockTimerTicks: gameState.lockTimerTicks,
         lockResetCount: gameState.lockResetCount,
         isGrounded: gameState.isGrounded,
         lockGroundedSince: gameState.lockGroundedSince,
@@ -112,10 +121,15 @@ export function captureGameStateSnapshot(gameState) {
         isProcessingPhysics: Boolean(gameState.isProcessingPhysics),
         isStopped: gameState.isStopped,
         isAlive: gameState.isAlive,
+        hitStopEnabled: gameState.hitStopEnabled !== false,
         hitStopRemaining: gameState.hitStopRemaining,
+        hitStopTicks: hitStopCounterIsSynchronized
+            ? gameState.hitStopTicks
+            : durationMsToTicks(gameState.hitStopRemaining, gameState.simTickMs),
         lastMoveWasRotation: gameState.lastMoveWasRotation,
         b2bActive: gameState.b2bActive,
         inputQueue: clonePlain(gameState.inputQueue),
+        playerInput: clonePlain(gameState.playerInput),
 
         isInfinityMode: gameState.isInfinityMode,
         currentTopRow: gameState.currentTopRow,
@@ -155,9 +169,15 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.dropCounter = snapshot.dropCounter || 0;
     gameState.pieceSpawnTime = snapshot.pieceSpawnTime;
     gameState.piecesPlaced = snapshot.piecesPlaced || 0;
-    gameState.lockDelay = snapshot.lockDelay;
-    gameState.lockResetLimit = snapshot.lockResetLimit;
+    gameState.lockDelay = snapshot.lockDelay ?? gameState.lockDelay;
+    gameState.lockDelayTicks = Number.isFinite(snapshot.lockDelayTicks)
+        ? Math.max(0, Math.floor(snapshot.lockDelayTicks))
+        : durationMsToTicks(gameState.lockDelay, gameState.simTickMs);
+    gameState.lockResetLimit = snapshot.lockResetLimit ?? gameState.lockResetLimit;
     gameState.lockTimer = snapshot.lockTimer || 0;
+    gameState.lockTimerTicks = Number.isFinite(snapshot.lockTimerTicks)
+        ? Math.max(0, Math.floor(snapshot.lockTimerTicks))
+        : elapsedMsToTicks(gameState.lockTimer, gameState.simTickMs);
     gameState.lockResetCount = snapshot.lockResetCount || 0;
     gameState.isGrounded = Boolean(snapshot.isGrounded);
     gameState.lockGroundedSince = snapshot.lockGroundedSince ?? null;
@@ -210,18 +230,34 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.isPaused = Boolean(snapshot.isPaused);
     gameState.isStopped = Boolean(snapshot.isStopped);
     gameState.isAlive = snapshot.isAlive !== false;
+    if (typeof snapshot.hitStopEnabled === 'boolean') {
+        gameState.hitStopEnabled = snapshot.hitStopEnabled;
+    }
     gameState.hitStopRemaining = snapshot.hitStopRemaining || 0;
+    gameState.hitStopTicks = Number.isFinite(snapshot.hitStopTicks)
+        ? Math.max(0, Math.floor(snapshot.hitStopTicks))
+        : durationMsToTicks(gameState.hitStopRemaining, gameState.simTickMs);
+    // Keep the legacy millisecond rollback value untouched. These markers let
+    // the dark fixed path honor an explicit restored tick counter on its first
+    // consume even if a migrated snapshot's two representations disagree.
+    gameState._hitStopTickSourceMs = gameState.hitStopRemaining;
+    gameState._hitStopTickDurationMs = gameState.simTickMs;
     gameState.isProcessingPhysics = false;
     gameState.latestPhysicsPromise = null;
     gameState.lastMoveWasRotation = Boolean(snapshot.lastMoveWasRotation);
     gameState.b2bActive = Boolean(snapshot.b2bActive);
     gameState.inputQueue = clonePlain(snapshot.inputQueue) || null;
+    if (options.restorePlayerInput === false) {
+        clearPlayerInput(gameState.playerInput);
+    } else {
+        restorePlayerInputState(gameState.playerInput, snapshot.playerInput);
+    }
 
     gameState.currentTopRow = snapshot.currentTopRow || 0;
     gameState.cameraRow = snapshot.cameraRow || 0;
     gameState.lastPlacedPieceX = clonePlain(snapshot.lastPlacedPieceX) || [];
     gameState.comboState = clonePlain(snapshot.comboState) || {};
-    gameState.blindTimers = clonePlain(snapshot.blindTimers) || createBlindTimers();
+    restoreBlindTimers(gameState, snapshot.blindTimers);
     gameState.garbageAttackSequence = snapshot.garbageAttackSequence || 0;
     gameState.handicap = snapshot.handicap ?? 2;
     gameState.handicaps = clonePlain(snapshot.handicaps) || {};

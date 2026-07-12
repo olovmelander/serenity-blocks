@@ -16,6 +16,7 @@ import {
     Fn,
     If,
     uniform,
+    uniformArray,
     attribute,
     storage,
     vertexIndex,
@@ -547,11 +548,20 @@ export function createMoonNodeMaterial(params = {}) {
     };
 }
 
-export function createLunarHaloNodeMaterial() {
+export function createLunarHaloNodeMaterial(params = {}) {
+    const maxPulses = THREE.MathUtils.clamp(
+        Math.floor(params.maxPulses ?? 4),
+        1,
+        6,
+    );
     const uTime = uniform(0);
-    const uProgress = uniform(0);
-    const uStrength = uniform(0);
-    const uCombo = uniform(0);
+    // startTime, inverseDuration, strength, combo tint. Each slot advances from
+    // uTime independently, so a new combo cannot rewind an older lunar ring.
+    const pulseValues = Array.from(
+        { length: maxPulses },
+        () => new THREE.Vector4(0, 0, 0, 0),
+    );
+    const uPulseData = uniformArray(pulseValues, 'vec4');
 
     const p = uv().sub(vec2(0.5));
     const radius = length(p).mul(2.0);
@@ -571,42 +581,66 @@ export function createLunarHaloNodeMaterial() {
     ).mul(0.5).add(0.5);
     const atmosphericNoise = mix(broadArc, fineArc, 0.32);
     const arcScatter = smoothstep(0.18, 0.82, atmosphericNoise);
-    const envelope = sin(clamp(uProgress, 0.0, 1.0).mul(Math.PI));
-    const comboEnvelope = uCombo.mul(envelope);
     const baseCorona = float(1.0).sub(smoothstep(0.42, 1.0, radius))
         .mul(smoothstep(0.28, 0.48, radius))
         .mul(float(0.58).add(atmosphericNoise.mul(0.52)));
-    const pulseRadius = float(0.48).add(uProgress.mul(0.46));
-    const pulseRing = float(1.0).sub(smoothstep(0.008, 0.034, abs(radius.sub(pulseRadius))))
-        .mul(envelope)
-        .mul(uStrength)
-        .mul(float(0.46).add(arcScatter.mul(0.54)));
-    const echoRadius = float(0.36).add(uProgress.mul(0.62));
-    const echoRing = float(1.0).sub(smoothstep(0.01, 0.055, abs(radius.sub(echoRadius))))
-        .mul(pow(envelope, 1.4))
-        .mul(comboEnvelope);
-    const spokeMask = pow(max(cos(angle.mul(8.0).add(uTime.mul(0.12))), 0.0), 12.0)
+    const spokeShape = pow(max(cos(angle.mul(8.0).add(uTime.mul(0.12))), 0.0), 12.0)
         .mul(float(1.0).sub(smoothstep(0.38, 0.98, radius)))
-        .mul(smoothstep(0.3, 0.58, radius))
-        .mul(float(0.22).add(comboEnvelope.mul(0.78)))
-        .mul(float(0.42).add(envelope.mul(0.58)));
-    const glyphBand = float(1.0).sub(smoothstep(0.006, 0.025, abs(radius.sub(0.72))))
-        .mul(pow(abs(sin(angle.mul(6.0))), 20.0))
-        .mul(comboEnvelope)
-        .mul(envelope);
+        .mul(smoothstep(0.3, 0.58, radius));
+    const glyphShape = float(1.0).sub(smoothstep(0.006, 0.025, abs(radius.sub(0.72))))
+        .mul(pow(abs(sin(angle.mul(6.0))), 20.0));
+
+    let pulseRingSum = float(0);
+    let echoRingSum = float(0);
+    let spokeSum = float(0);
+    let glyphSum = float(0);
+    let tintSum = float(0);
+
+    // Compile-time unroll keeps uniform indexing simple in three r181. Quality tiers
+    // choose the slot count, so low presets do not pay for High's overlap budget.
+    for (let i = 0; i < maxPulses; i += 1) {
+        const pulse = uPulseData.element(i);
+        const progress = clamp(uTime.sub(pulse.x).mul(pulse.y), 0.0, 1.0);
+        const strength = max(pulse.z, 0.0);
+        const combo = clamp(pulse.w, 0.0, 1.0);
+        const envelope = sin(progress.mul(Math.PI)).mul(strength);
+        const comboEnvelope = combo.mul(envelope);
+        const pulseRadius = float(0.48).add(progress.mul(0.46));
+        const pulseRing = float(1.0)
+            .sub(smoothstep(0.008, 0.034, abs(radius.sub(pulseRadius))))
+            .mul(envelope)
+            .mul(float(0.46).add(arcScatter.mul(0.54)));
+        const echoRadius = float(0.36).add(progress.mul(0.62));
+        const echoRing = float(1.0)
+            .sub(smoothstep(0.01, 0.055, abs(radius.sub(echoRadius))))
+            .mul(pow(max(envelope, 0.0), 1.4))
+            .mul(combo);
+        const spoke = spokeShape
+            .mul(envelope)
+            .mul(float(0.22).add(combo.mul(0.78)));
+        const glyph = glyphShape.mul(comboEnvelope).mul(envelope);
+
+        pulseRingSum = pulseRingSum.add(pulseRing);
+        echoRingSum = echoRingSum.add(echoRing);
+        spokeSum = spokeSum.add(spoke);
+        glyphSum = glyphSum.add(glyph);
+        tintSum = tintSum.add(comboEnvelope.mul(0.72).add(pulseRing.mul(0.2)));
+    }
+
     const alpha = clamp(
         baseCorona.mul(float(0.075).add(sin(uTime.mul(0.7)).mul(0.014)))
-            .add(pulseRing.mul(0.74))
-            .add(echoRing.mul(0.3))
-            .add(spokeMask.mul(0.16))
-            .add(glyphBand.mul(0.46)),
+            .add(spokeShape.mul(0.015))
+            .add(pulseRingSum.mul(0.74))
+            .add(echoRingSum.mul(0.3))
+            .add(spokeSum.mul(0.16))
+            .add(glyphSum.mul(0.46)),
         0.0,
-        0.88,
+        0.92,
     );
     const haloColor = mix(
         vec3(0.56, 0.68, 1.0),
         vec3(0.85, 0.77, 1.0),
-        clamp(comboEnvelope.mul(0.72).add(pulseRing.mul(0.2)), 0.0, 1.0),
+        clamp(tintSum, 0.0, 1.0),
     );
 
     const material = new MeshBasicNodeMaterial({
@@ -622,12 +656,10 @@ export function createLunarHaloNodeMaterial() {
 
     return {
         material,
-        uniforms: {
-            uTime,
-            uProgress,
-            uStrength,
-            uCombo,
-        },
+        uniforms: { uTime },
+        pulseValues,
+        pulseData: uPulseData,
+        maxPulses,
         meta: { emitsBloom: true },
     };
 }

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
-    GAME_MODES, COLS, ROWS, BLOCK_SIZE,
+    GAME_MODES, COLS, ROWS,
 } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
@@ -13,7 +13,6 @@ import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
 import { MatchConfigModal } from '../../ui/match-config-modal.js';
 import { MatchResultsModal } from '../../ui/match-results-modal.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
-import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear,
 } from '../../events/gameplay-events.js';
@@ -26,10 +25,17 @@ import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
-import { performanceMonitor } from '../../utils/performance-monitor.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
 // local readOnlineNetFlag clone; identical URL → localStorage → default semantics.
 import { readFlag as readOnlineNetFlag } from '../flags.js';
+import {
+    configureOnlineFixedInput,
+    installOnlineFixedGamepadAdapter,
+    installOnlineFixedKeyboardAdapter,
+    latchOnlineFixedInputHandling,
+    removeOnlineFixedGamepadAdapter,
+    removeOnlineFixedKeyboardAdapter,
+} from '../multiplayer/online-fixed-input.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
@@ -79,6 +85,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
         this.originalInputs = {};
+        this._fixedTickKeyboardAdapter = null;
+        this._fixedTickGamepadAdapter = null;
         this.playerColors = new Map();
         this.garbageFlashTimers = {};
         this.scoreboardToggleHandler = null;
@@ -2771,28 +2779,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _configureLocalInputHooks(gameState) {
-        if (!gameState?.setLocalInputHooks) {
-            return;
-        }
-
-        gameState.setLocalInputHooks({
-            advance: (currentTime, delta) => this._advanceHeldGameplayInput(currentTime, delta),
-            reset: () => this._resetHeldGameplayInput(),
-        });
-    }
-
-    _advanceHeldGameplayInput(currentTime, delta) {
-        if (typeof window !== 'undefined') {
-            window.inputController?.updateDAS?.(delta);
-        }
-        this.deps.gamepadController?.advanceGameplayInput?.(currentTime);
-    }
-
-    _resetHeldGameplayInput() {
-        if (typeof window !== 'undefined') {
-            window.inputController?.clearTimers?.();
-        }
-        this.deps.gamepadController?.clearAllDasTimers?.();
+        configureOnlineFixedInput(this, gameState);
     }
 
     _setupScoreboardOverlayHotkey() {
@@ -2824,6 +2811,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Hook into global input functions so keyboard controls work
      */
     _hookInputs() {
+        latchOnlineFixedInputHandling(this);
+        installOnlineFixedKeyboardAdapter(this);
+        installOnlineFixedGamepadAdapter(this);
         if (this.originalInputs.move) {
             return;
         }
@@ -2899,6 +2889,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Restore original global input hooks
      */
     _restoreInputs() {
+        removeOnlineFixedKeyboardAdapter(this);
+        removeOnlineFixedGamepadAdapter(this);
         Object.keys(this.originalInputs).forEach((fnName) => {
             window[fnName] = this.originalInputs[fnName];
         });
@@ -2958,17 +2950,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             if (document.hidden) {
                 // Pause local input to prevent ghost key repeats
-                this._resetHeldGameplayInput();
-                if (typeof window !== 'undefined' && window.inputController) {
-                    window.inputController.keyMap = {};
-                }
+                this.ffaGameState?.localInputHooks?.reset?.();
+                this.deps.inputController.keyMap = {};
                 console.log('[OnlineMultiplayer] Tab hidden - local input paused, network loop continues');
             } else {
                 // Reset input timing on return to prevent burst moves
-                this._resetHeldGameplayInput();
-                if (typeof window !== 'undefined' && window.inputController) {
-                    window.inputController.keyMap = {};
-                }
+                this.ffaGameState?.localInputHooks?.reset?.();
+                this.deps.inputController.keyMap = {};
                 console.log('[OnlineMultiplayer] Tab visible - local input resumed');
             }
         };

@@ -144,6 +144,7 @@ export class HostMigration {
             snapshot,
             newHostId: this.gameState.localPlayerId,
             migrationEpoch: this.gameState.migrationEpoch || 0,
+            simulationClock: this.gameState.matchConfig?.simulationClock,
         });
 
         // Also fire standard state update just in case

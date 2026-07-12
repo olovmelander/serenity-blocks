@@ -12,6 +12,7 @@ import {
     advanceDas, advanceSoftDrop,
 } from '../../src/core/das.js';
 import { InputController } from '../../src/ui/controls.js';
+import { GamepadController } from '../../src/ui/gamepad-controller.js';
 import { RandomStream } from '../../src/core/rng.js';
 import { COLS, ROWS } from '../../src/core/constants.js';
 
@@ -21,6 +22,24 @@ function heldState() {
     const s = createDasDirectionState();
     startDas(s);
     return s;
+}
+
+function runDasStep(state, delta, config, blockAfter) {
+    let moves = 0;
+    advanceDas(state, delta, config, () => {
+        moves += 1;
+        return moves < blockAfter;
+    });
+    return moves;
+}
+
+function runSoftDropStep(state, delta, config, blockAfter) {
+    let moves = 0;
+    advanceSoftDrop(state, delta, config, () => {
+        moves += 1;
+        return moves < blockAfter;
+    });
+    return moves;
 }
 
 describe('advanceDas golden tables (§5.4)', () => {
@@ -139,6 +158,70 @@ describe('engine ≡ live keyboard clone (seeded differential)', () => {
                 expect(engineMoves, `case ${caseIdx} step ${i} (interval ${interval})`).toBe(legacyMoves);
             }
             expect(engineState, `case ${caseIdx} final state`).toEqual(legacyState);
+        }
+    });
+});
+
+describe('engine ≡ live gamepad clone (seeded differential)', () => {
+    it('matches cached-config direction and soft-drop timers', () => {
+        const rng = new RandomStream('das-5.4', 'gamepad');
+        const controller = new GamepadController();
+        controller.enabled = true;
+        controller.gameActions = {};
+
+        for (let caseIdx = 0; caseIdx < 200; caseIdx += 1) {
+            const config = {
+                dasDelay: [0, 40, 120, 170][rng.nextInt(4)],
+                dasInterval: [0, 10, 40, 80][rng.nextInt(4)],
+                softDropInterval: [0, 20, 50, 90][rng.nextInt(4)],
+            };
+            controller.updateDasSettings(
+                config.dasDelay,
+                config.dasInterval,
+                config.softDropInterval,
+            );
+
+            const directionState = heldState();
+            const softDropState = createSoftDropState();
+            softDropState.active = true;
+            let gamepadDirectionMoves = 0;
+            let gamepadSoftDropMoves = 0;
+            let directionBlockAfter = Infinity;
+            let softDropBlockAfter = Infinity;
+            controller.startDas(0, 'left', () => {
+                gamepadDirectionMoves += 1;
+                return gamepadDirectionMoves < directionBlockAfter;
+            });
+            controller.startDas(0, 'down', () => {
+                gamepadSoftDropMoves += 1;
+                return gamepadSoftDropMoves < softDropBlockAfter;
+            });
+
+            const steps = 1 + rng.nextInt(12);
+            for (let step = 0; step < steps; step += 1) {
+                const delta = rng.nextInt(101);
+                directionBlockAfter = rng.nextInt(4) === 0 ? 1 + rng.nextInt(3) : Infinity;
+                softDropBlockAfter = rng.nextInt(4) === 0 ? 1 + rng.nextInt(3) : Infinity;
+                const engineDirectionMoves = runDasStep(directionState, delta, {
+                    ...config,
+                    instantLimit: COLS,
+                }, directionBlockAfter);
+                const engineSoftDropMoves = runSoftDropStep(softDropState, delta, {
+                    softDropInterval: config.softDropInterval,
+                    instantLimit: ROWS,
+                }, softDropBlockAfter);
+                controller.processDasTimers(0, delta);
+
+                expect(gamepadDirectionMoves, `direction case ${caseIdx} step ${step}`)
+                    .toBe(engineDirectionMoves);
+                expect(gamepadSoftDropMoves, `soft drop case ${caseIdx} step ${step}`)
+                    .toBe(engineSoftDropMoves);
+                gamepadDirectionMoves = 0;
+                gamepadSoftDropMoves = 0;
+            }
+
+            expect(controller.dasState[0].left).toMatchObject(directionState);
+            expect(controller.dasState[0].down).toMatchObject(softDropState);
         }
     });
 });
