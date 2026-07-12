@@ -392,6 +392,34 @@ describe('FFA fixed buffered input adapter', () => {
         expect(game.attackRouter.updateHotPotato).not.toHaveBeenCalled();
     });
 
+    it('records discarded wall-time debt before a canonical tick can throw', () => {
+        const { game } = createHarness();
+        const error = new Error('tick failed');
+        game.unifiedLoop = {
+            updatePlayersFixedTick: vi.fn(() => {
+                throw error;
+            }),
+        };
+        game.useJitterBuffer = true;
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+
+        expect(() => runFfaFixedTicks(game, 1000, 1000)).toThrow(error);
+
+        expect(game._recordNetEvent).toHaveBeenCalledWith('sim_clock_warp', {
+            requestedDebtMs: 1000,
+            retainedDebtMs: 300,
+            warpedMs: 700,
+            maxDebtMs: 300,
+            maxSteps: 5,
+            tickMs: 10,
+        });
+        expect(game.simTick).toBe(1);
+        expect(game._simTickAccumulatorMs).toBe(290);
+    });
+
     it('pins host-held input to the current jitter slot before cursor advance', () => {
         const {
             game, gameState, order, playerId,

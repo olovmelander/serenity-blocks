@@ -7,6 +7,11 @@
 import { processAutoDrop } from '../game.js';
 import { decrementBlindTimers } from '../blind.js';
 import { advanceTick } from '../simulation-tick.js';
+import { FIXED_TICK_MS } from '../fixed-tick-clock.js';
+
+function readLoopTime() {
+    return performance.now();
+}
 
 /**
  * Unified game loop manager for multiplayer
@@ -17,6 +22,12 @@ export class UnifiedMultiplayerLoop {
         this.players = [];
         this.lastTime = 0;
         this.animationId = null;
+        this.externalUpdateTimerId = null;
+        this.externalUpdateIntervalMs = FIXED_TICK_MS;
+        this.externalUpdateLastTime = 0;
+        this.externalUpdateGeneration = 0;
+        this.runGeneration = 0;
+        this.isRunning = false;
         this.isPaused = false;
         this.isGameOver = false;
         this.externalPlayerUpdate = false;
@@ -75,21 +86,28 @@ export class UnifiedMultiplayerLoop {
      * Start the unified game loop
      */
     start() {
-        this.lastTime = performance.now();
+        if (this.isRunning) return;
+        this.lastTime = readLoopTime();
         this.lastFpsTime = this.lastTime;
         this.isPaused = false;
         this.isGameOver = false;
         this.frameCount = 0;
+        this.isRunning = true;
+        this.runGeneration += 1;
+        this._startExternalUpdateDriver();
 
         console.log('[UnifiedLoop] Starting loop');
-        this.loop(this.lastTime);
+        this.loop(this.lastTime, this.runGeneration);
     }
 
     /**
      * Stop the game loop
      */
     stop() {
-        if (this.animationId) {
+        this.isRunning = false;
+        this.runGeneration += 1;
+        this._stopExternalUpdateDriver();
+        if (this.animationId !== null) {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
@@ -105,6 +123,7 @@ export class UnifiedMultiplayerLoop {
             return;
         }
         this.isPaused = true;
+        this._stopExternalUpdateDriver();
         console.log('[UnifiedLoop] Paused');
     }
 
@@ -113,9 +132,11 @@ export class UnifiedMultiplayerLoop {
      * @param {boolean} value
      */
     setNeverPause(value) {
+        const wasPaused = this.isPaused;
         this.neverPause = !!value;
         if (this.neverPause) {
             this.isPaused = false; // ensure we're not already paused when the latch goes on
+            if (wasPaused) this._startExternalUpdateDriver();
         }
     }
 
@@ -124,7 +145,8 @@ export class UnifiedMultiplayerLoop {
      */
     resume() {
         this.isPaused = false;
-        this.lastTime = performance.now();
+        this.lastTime = readLoopTime();
+        this._startExternalUpdateDriver();
         console.log('[UnifiedLoop] Resumed');
     }
 
@@ -132,9 +154,10 @@ export class UnifiedMultiplayerLoop {
      * Main game loop - called every frame
      * @param {number} currentTime - Current timestamp from RAF
      */
-    loop(currentTime) {
+    loop(currentTime, generation = this.runGeneration) {
+        if (!this.isRunning || generation !== this.runGeneration) return;
         // Schedule next frame
-        this.animationId = requestAnimationFrame((t) => this.loop(t));
+        this.animationId = requestAnimationFrame((t) => this.loop(t, generation));
 
         // Check exit conditions
         if (this.isGameOver) return;
@@ -152,12 +175,9 @@ export class UnifiedMultiplayerLoop {
             this.lastFpsTime = currentTime;
         }
 
-        // Externally owned fixed simulation must run before this frame renders.
+        // External fixed simulation has a timeout owner; rAF only observes it.
         // Legacy paths retain their historical players→render→stats→custom order.
         const externalUpdate = this.externalPlayerUpdate;
-        if (externalUpdate && this.onUpdate) {
-            this.onUpdate(currentTime, delta);
-        }
         if (!externalUpdate) {
             this.updatePlayers(delta);
         }
@@ -175,6 +195,58 @@ export class UnifiedMultiplayerLoop {
         // Callback for custom update logic
         if (!externalUpdate && this.onUpdate) {
             this.onUpdate(currentTime, delta);
+        }
+    }
+
+    _stopExternalUpdateDriver() {
+        this.externalUpdateGeneration += 1;
+        if (this.externalUpdateTimerId !== null) {
+            clearTimeout(this.externalUpdateTimerId);
+            this.externalUpdateTimerId = null;
+        }
+    }
+
+    _scheduleExternalUpdateDriver(generation) {
+        if (
+            !this.isRunning
+            || !this.externalPlayerUpdate
+            || this.isPaused
+            || this.isGameOver
+            || generation !== this.externalUpdateGeneration
+        ) return;
+        this.externalUpdateTimerId = setTimeout(
+            () => this._runExternalUpdateDriver(generation),
+            this.externalUpdateIntervalMs,
+        );
+    }
+
+    _startExternalUpdateDriver() {
+        this._stopExternalUpdateDriver();
+        if (!this.isRunning || !this.externalPlayerUpdate || this.isPaused || this.isGameOver) return;
+        this.externalUpdateLastTime = readLoopTime();
+        this._scheduleExternalUpdateDriver(this.externalUpdateGeneration);
+    }
+
+    _runExternalUpdateDriver(generation) {
+        if (
+            !this.isRunning
+            || !this.externalPlayerUpdate
+            || this.isPaused
+            || this.isGameOver
+            || generation !== this.externalUpdateGeneration
+        ) return;
+        this.externalUpdateTimerId = null;
+        const currentTime = readLoopTime();
+        const delta = Math.max(0, currentTime - this.externalUpdateLastTime);
+        this.externalUpdateLastTime = currentTime;
+        this._scheduleExternalUpdateDriver(generation);
+        try {
+            this.onUpdate?.(currentTime, delta);
+        } catch (error) {
+            // A partially applied multi-board tick is not safe to continue.
+            // Invalidate the pre-scheduled successor before surfacing the fault.
+            this._stopExternalUpdateDriver();
+            throw error;
         }
     }
 
@@ -258,8 +330,20 @@ export class UnifiedMultiplayerLoop {
         }
     }
 
-    setExternalPlayerUpdate(enabled) {
-        this.externalPlayerUpdate = enabled === true;
+    setExternalPlayerUpdate(enabled, intervalMs = FIXED_TICK_MS) {
+        const nextEnabled = enabled === true;
+        const numericInterval = Number(intervalMs);
+        const nextInterval = Number.isFinite(numericInterval) && numericInterval > 0
+            ? numericInterval
+            : FIXED_TICK_MS;
+        const changed = nextEnabled !== this.externalPlayerUpdate
+            || nextInterval !== this.externalUpdateIntervalMs;
+        this.externalPlayerUpdate = nextEnabled;
+        this.externalUpdateIntervalMs = nextInterval;
+        if (!this.isRunning || !changed) return;
+        this.lastTime = readLoopTime();
+        if (nextEnabled) this._startExternalUpdateDriver();
+        else this._stopExternalUpdateDriver();
     }
 
     /**
@@ -281,6 +365,7 @@ export class UnifiedMultiplayerLoop {
      */
     setGameOver() {
         this.isGameOver = true;
+        this._stopExternalUpdateDriver();
         this.players.forEach((p) => {
             if (p.state) {
                 p.state.isGameOver = true;

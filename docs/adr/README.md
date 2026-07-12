@@ -21,6 +21,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0009](0009-theme-codegen-pipeline-removed.md) | Do not rebuild the old theme code-generation pipeline | accepted |
 | [0010](0010-tornado-ts-in-typecheck-island.md) | Tornado `.ts` files join the typecheck island; three stays untyped | accepted |
 | [0011](0011-cascade-cutover-commits-per-wave.md) | Cascade cutover: resolver replay commits state per wave | accepted |
+| [0012](0012-fixed-tick-overload-rebases-wall-time.md) | Fixed-tick overload rebases wall time, not tick IDs | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.

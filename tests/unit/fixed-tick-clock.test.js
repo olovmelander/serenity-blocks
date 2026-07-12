@@ -7,6 +7,7 @@ import {
     durationMsToTicks,
     elapsedMsToTicks,
     FIXED_TICK_HZ,
+    FIXED_TICK_MAX_DEBT_MS,
     FIXED_TICK_MS,
     planFixedTicks,
 } from '../../src/core/fixed-tick-clock.js';
@@ -30,6 +31,7 @@ describe('fixed tick clock', () => {
     it('defines the canonical simulation rate as 60 Hz', () => {
         expect(FIXED_TICK_HZ).toBe(60);
         expect(FIXED_TICK_MS).toBeCloseTo(1000 / 60, 12);
+        expect(FIXED_TICK_MAX_DEBT_MS).toBe(300);
     });
 
     it('quantizes configured durations upward without inflating exact boundaries', () => {
@@ -165,6 +167,75 @@ describe('fixed tick clock', () => {
             maxCarryTicks: 1,
         });
         expect(carried).toMatchObject({ steps: 1, remainderMs: 0, overflowed: false });
+    });
+
+    it.each([
+        [299, 299, 0],
+        [300, 300, 0],
+        [301, 300, 1],
+    ])('rebases only debt beyond 300 ms (%i ms)', (elapsedMs, accumulatedMs, warpedMs) => {
+        const plan = planFixedTicks(0, elapsedMs, {
+            tickMs: 10,
+            maxSteps: 5,
+            maxDebtMs: FIXED_TICK_MAX_DEBT_MS,
+            maxCarryTicks: 30,
+        });
+
+        expect(plan).toMatchObject({
+            requestedAccumulatedMs: elapsedMs,
+            accumulatedMs,
+            debtWasClamped: warpedMs > 0,
+            warpedMs,
+            discardedMs: warpedMs,
+        });
+    });
+
+    it('includes prior accumulator debt when applying the wall-time cap', () => {
+        const plan = planFixedTicks(50, 251, {
+            tickMs: 10,
+            maxSteps: 5,
+            maxDebtMs: FIXED_TICK_MAX_DEBT_MS,
+            maxCarryTicks: 30,
+        });
+
+        expect(plan).toMatchObject({
+            requestedAccumulatedMs: 301,
+            accumulatedMs: 300,
+            warpedMs: 1,
+            remainderMs: 250,
+        });
+    });
+
+    it('retains the full bounded debt and drains it without further loss', () => {
+        const policy = {
+            maxSteps: 5,
+            maxDebtMs: FIXED_TICK_MAX_DEBT_MS,
+            maxCarryTicks: FIXED_TICK_MAX_DEBT_MS / FIXED_TICK_MS,
+        };
+        const stalled = planFixedTicks(0, 1000, policy);
+
+        expect(stalled.steps).toBe(5);
+        expect(stalled.requestedAccumulatedMs).toBe(1000);
+        expect(stalled.accumulatedMs).toBe(FIXED_TICK_MAX_DEBT_MS);
+        expect(stalled.warpedMs).toBe(700);
+        expect(stalled.remainderMs).toBeCloseTo(300 - (5 * FIXED_TICK_MS), 8);
+        expect(stalled.discardedMs).toBe(700);
+
+        let { remainderMs } = stalled;
+        let drainedSteps = 0;
+        for (let update = 0; update < 4; update += 1) {
+            const plan = planFixedTicks(remainderMs, FIXED_TICK_MS, policy);
+            const {
+                discardedMs, remainderMs: nextRemainderMs, steps, warpedMs,
+            } = plan;
+            expect(warpedMs).toBe(0);
+            expect(discardedMs).toBeCloseTo(0, 8);
+            drainedSteps += steps;
+            remainderMs = nextRemainderMs;
+        }
+
+        expect(drainedSteps).toBe(17);
+        expect(remainderMs).toBeCloseTo(0, 8);
     });
 
     it('resets an invalid accumulator instead of propagating non-finite debt', () => {

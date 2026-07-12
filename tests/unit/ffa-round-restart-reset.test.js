@@ -34,6 +34,11 @@ function restartStub(gameState) {
         isHost: true,
         localPlayerId: 'HOST',
         roundGeneration: 0,
+        pendingInputs: [{ seq: 8 }],
+        inputHistory: [{ seq: 8 }],
+        inputSequence: 8,
+        _ffaInputGroupSequence: 2,
+        _pendingFfaInputGroup: { id: 2 },
         _readyBarrierEnabled: false, // instant-restart path
         players: new Map([['HOST', player]]),
         matchConfig: { startLevel: 1 },
@@ -92,6 +97,11 @@ describe('FFA round restart — in-place gameState reset (no object swap)', () =
         FFAGameStateP2P.prototype.restartMatch.call(stub);
         expect(stats.jitterCleared).toBe(1); // stale round inputs flushed
         expect(stats.loopStarted).toBe(1);
+        expect(stub.pendingInputs).toEqual([]);
+        expect(stub.inputHistory).toEqual([]);
+        expect(stub.inputSequence).toBe(0);
+        expect(stub._ffaInputGroupSequence).toBe(0);
+        expect(stub._pendingFfaInputGroup).toBeNull();
     });
 
     it('A4b: re-arms the heartbeat during the restart (after stopping state sync)', () => {

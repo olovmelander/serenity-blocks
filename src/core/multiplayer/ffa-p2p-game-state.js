@@ -40,9 +40,12 @@ import { hasActiveHitStop } from '../simulation-tick.js';
 import {
     readFfaFixedTick, rollbackFixedTickOnPromotion, transitionFfaSimulationClock,
 } from './ffa-fixed-tick-policy.js';
+import { handleFfaRoundRestart, parseFfaRoundGeneration, readFfaRoundAdvance } from './ffa-round-policy.js';
 import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
 import { resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
-import { flushFfaInputBatches, processFfaInputBatch, resetFfaInputTransport } from './ffa-input-batching.js';
+import {
+    flushFfaInputBatches, processFfaInputBatch, resetFfaInputEpoch, resetFfaInputTransport,
+} from './ffa-input-batching.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
@@ -455,7 +458,7 @@ export class FFAGameStateP2P {
     _setUnifiedLoopExternalPlayerUpdate(enabled) {
         if (!this.unifiedLoop) return;
         if (typeof this.unifiedLoop.setExternalPlayerUpdate === 'function') {
-            this.unifiedLoop.setExternalPlayerUpdate(enabled === true);
+            this.unifiedLoop.setExternalPlayerUpdate(enabled === true, this.SIM_TICK_MS);
         } else {
             this.unifiedLoop.externalPlayerUpdate = enabled === true;
         }
@@ -683,9 +686,9 @@ export class FFAGameStateP2P {
 
         console.log(`👋 Player permanently removed: ${player.name}`);
         resetFfaInputTransport(this, steamId);
+        this.inputJitterBuffer?.removePlayer?.(steamId);
         this.players.delete(steamId);
 
-        // Clean up validator data (host only)
         if (this.isHost && this.inputValidator) {
             this.inputValidator.resetPlayer(steamId);
         }
@@ -1037,15 +1040,7 @@ export class FFAGameStateP2P {
             }
         });
 
-        this.network.on(MessageTypes.GAME_ROUND_RESTART, (msg) => {
-            if (this.isHost) return; // Host handles locally via performRoundRestart
-
-            const data = msg.data || {};
-            console.log('🔄 Peer received restart command:', data);
-
-            // Use shared method
-            this.performRoundRestart(data);
-        });
+        this.network.on(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
 
         // Ready-barrier: HOST collects per-player readies for the pending round.
         this.network.on(MessageTypes.GAME_ROUND_READY, (msg) => {
@@ -1252,11 +1247,17 @@ export class FFAGameStateP2P {
             return;
         }
         console.log('📬 Peer received game start from host!');
-        const generation = Number(msg.data?.roundGeneration);
-        if (Number.isSafeInteger(generation) && generation >= 0) this.roundGeneration = generation;
+        const generation = parseFfaRoundGeneration(msg.data?.roundGeneration);
+        if (
+            generation === null
+            || generation < this.roundGeneration
+            || generation === this._lastLobbyStartGeneration
+        ) return;
+        resetFfaInputEpoch(this);
+        this.roundGeneration = generation;
+        this._lastLobbyStartGeneration = generation;
         this.startMatch(msg.data.sharedSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
-        // Note: MATCH_STARTED event will be emitted AFTER countdown completes
-        // (see startMatch -> showCountdown callback)
+        // MATCH_STARTED emits after the startMatch countdown completes.
     }
 
     _handleLobbyPlayerReady(msg) {
@@ -1318,13 +1319,9 @@ export class FFAGameStateP2P {
         const includeZero = data.includeZero === true;
         const instantStart = data.instantStart === true;
 
-        // Adopt the host's new round generation immediately, so any stale round-N
-        // snapshot that arrives after this restart is fenced off in _applySnapshotState.
-        if (typeof data.roundGeneration === 'number') {
-            this.roundGeneration = data.roundGeneration;
-        } else {
-            this.roundGeneration += 1;
-        }
+        const generation = readFfaRoundAdvance(this.roundGeneration, data?.roundGeneration);
+        if (generation === null) return;
+        this.roundGeneration = generation;
         // Drop the stale receive baseline so a delta from before the restart can't
         // decode against round-1 data; the peer waits for the host's fresh keyframe.
         this.network.resetSnapshotBaselines?.();
@@ -1336,6 +1333,7 @@ export class FFAGameStateP2P {
         // Stop current game
         this.stopGameLoop();
         this.stopStateSyncLoop();
+        resetFfaInputEpoch(this);
 
         // Reset trackers
         if (this.fragTracker) {
@@ -1454,7 +1452,6 @@ export class FFAGameStateP2P {
 
     checkRematchThreshold() {
         if (!this.isHost) return;
-        const required = Math.ceil(this.players.size / 2) + 1; // Majority + 1 or just majority? Let's say majority
         const total = this.players.size;
         const votes = this.rematchVotes.size;
 
@@ -4531,6 +4528,7 @@ export class FFAGameStateP2P {
         // Stop current game
         this.stopGameLoop();
         this.stopStateSyncLoop();
+        resetFfaInputEpoch(this);
         // stopStateSyncLoop() also stops the heartbeat, but the round doesn't actually
         // start (which re-arms it via startStateSyncLoop) until AFTER the ready-barrier
         // wait / countdown — a multi-second window. Without a heartbeat in that window the
@@ -4829,6 +4827,7 @@ export class FFAGameStateP2P {
         // Stop current game
         this.stopGameLoop();
         this.stopStateSyncLoop();
+        resetFfaInputEpoch(this);
         // Keep the heartbeat alive across the reset → startMatch countdown window so a
         // peer doesn't false-migrate while the host rebuilds the game (see restartMatch).
         // startMatch() re-arms it too; this just closes the brief gap. Idempotent.

@@ -47,6 +47,9 @@ export function create({
 }) {
     const uTime = uniform(0);
     const uS = uniform(clamp01(num(params, 'S', 0)));
+    // Crystal combo-resonance surge — mirrors uComboGlow (declared much later); hoisted here so
+    // the crystal materials can read it without a temporal-dead-zone ReferenceError.
+    const uCombo = uniform(0);
     // Desynced multi-rate throb (V4 1.4): the hero breathes instead of blinking as one LED.
     const pulseBody = sin(uTime.mul(0.70)).mul(0.5).add(0.5); // slow body swell
     const pulseVein = sin(uTime.mul(1.55).add(1.3)).mul(0.5).add(0.5); // faster vein flicker (phase-offset)
@@ -725,76 +728,254 @@ export function create({
     god.position.set(0, 66, -104); // behind the (repositioned) relic
     scene.add(track(god));
 
-    // ════ CRYSTAL CLUSTERS — rooted, varied clumps growing from the shore (hatom) ════
-    // Faceted spires grouped into clusters in the LEFT/RIGHT shore zones (protected centre wedge
-    // keeps the board readable), rooted below the waterline. One InstancedMesh = 1 draw (vs 22).
-    const shardMat = new THREE.MeshStandardNodeMaterial();
-    {
-        const N = normalize(normalWorld);
-        const V = normalize(cameraPosition.sub(positionWorld));
-        const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.2));
-        // 1.4 desynced per-instance breath (aPhase/aRate set as InstancedBufferAttributes below)
-        const aPhase = attribute('aPhase', 'float');
-        const aRate = attribute('aRate', 'float');
-        const breath = sin(uTime.mul(aRate).add(aPhase.mul(6.283))).mul(0.5).add(0.5);
-        shardMat.color = new THREE.Color(0.05, 0.10, 0.20);
-        shardMat.metalness = 0.12;
-        shardMat.roughness = 0.08; // glassier → sharper reflection of the enriched env map
-        shardMat.emissiveNode = vec3(0.40, 0.85, 1.0).mul(f).mul(0.9)
-            .add(vec3(0.30, 0.70, 1.0).mul(uS).mul(0.3))
-            .mul(breath.mul(0.35).add(0.82)); // 0.82..1.17 breathing glow (desynced per spire)
-        // 1.4 micro top-sway: use positionGeometry (raw attr, NOT reassigned by InstanceNode) → true
-        // cone-local [-0.5,0.5] so the bend stays base-0/tip-1 instead of saturating post-instance.
-        const swayMask = positionGeometry.y.add(0.5).clamp(0.0, 1.0);
-        const sway = sin(uTime.mul(aRate.mul(0.6)).add(aPhase.mul(6.283))).mul(swayMask).mul(0.05);
-        shardMat.positionNode = positionLocal.add(vec3(sway, 0.0, sway.mul(0.5)));
-        shardMat.transparent = true;
-        shardMat.opacityNode = clamp(float(0.55).add(f.mul(0.45)), 0.0, 1.0);
-        shardMat.depthWrite = false;
-    }
-    const clusterCenters = [
-        [-30, -55], [-52, -78], [-24, -40], [-66, -62], [-42, -100],
-        [30, -55], [52, -78], [24, -40], [66, -62], [42, -100],
-    ];
-    const clusterN = tier <= 1 ? 5 : (tier <= 2 ? 7 : 10);
-    const spiresPer = tier <= 1 ? 3 : (tier <= 2 ? 4 : 5);
-    const crnd = (i) => { const s = Math.sin(i * 91.7 + 4.1) * 43758.5453; return s - Math.floor(s); };
-    const crystalGeo = new THREE.ConeGeometry(1.1, 1, 6); // unit-height 6-facet spire, scaled per instance
-    const crystals = new THREE.InstancedMesh(crystalGeo, shardMat, clusterN * spiresPer);
-    {
-        const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
-        const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
-        let idx = 0;
-        for (let c = 0; c < clusterN; c += 1) {
-            const [cx, cz] = clusterCenters[c];
-            for (let sp = 0; sp < spiresPer; sp += 1) {
-                const j = idx * 7 + 1;
-                const dx = (crnd(j) - 0.5) * 9;
-                const dz = (crnd(j + 1) - 0.5) * 9;
-                const h = 6 + crnd(j + 2) * 16; // height 6..22
-                const rad = 0.8 + crnd(j + 6) * 0.7;
-                _e.set((crnd(j + 3) - 0.5) * 0.5, crnd(j + 4) * 6.28, (crnd(j + 5) - 0.5) * 0.5);
-                _q.setFromEuler(_e);
-                _s.set(rad, h, rad);
-                _p.set(cx + dx, h * 0.5 - 2.0, cz + dz); // base sunk ~2u below the waterline (rooted)
-                _m.compose(_p, _q, _s);
-                crystals.setMatrixAt(idx, _m);
-                idx += 1;
+    // ════ CRYSTAL CLUSTERS — Lunara-quality faceted glass spires along the shore ════
+    // Cut-crystal facets (flat normals) + PBR glass (hero transmission on tier≥2, like the egg) +
+    // a living emissive interior (fresnel rim + tip-ramp + internal fracture + spine + band),
+    // per-instance "twilight relic-shard" colour, meticulously composed L/R receding clusters with a
+    // protected centre wedge + warm heroes flanking the relic. Field = 1 draw, heroes = 1 draw.
+    const crystalRich = tier >= 3; // High/Ultra/Extreme: internal fracture + DoubleSide + sharp env
+    const heroCountByTier = [0, 0, 3, 4, 5, 6];
+    const fieldCountByTier = [18, 26, 38, 50, 58, 66];
+    const heroCount = useTransmission ? (heroCountByTier[tier] ?? 4) : 0; // glass heroes only on tier≥2
+    const fieldCount = fieldCountByTier[tier] ?? 50;
+
+    // Faceted tapered ELLIPTICAL spire, UNIT height so positionGeometry.y stays ≈[-0.53,0.52]
+    // regardless of per-instance scale (keeps the tip/spine ramps scale-invariant). Flat per-face
+    // normals (toNonIndexed + computeVertexNormals) = cut-crystal glint. Winding is verified outward.
+    const buildFacetedCrystalGeometry = (sides, radii, skew, seed) => {
+        let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+        const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        const ringY = [-0.48, -0.08, 0.28];
+        const ringTwist = [0.0, 0.17, -0.08];
+        const pos = [];
+        for (let r = 0; r < 3; r += 1) {
+            for (let i = 0; i < sides; i += 1) {
+                const a = (i / sides) * Math.PI * 2 + ringTwist[r];
+                const rad = radii[r] * (0.86 + rnd() * 0.25); // per-vertex chip jitter
+                const zSquash = 0.72 + rnd() * 0.06; // elliptical cross-section (Lunara signature)
+                pos.push(
+                    Math.cos(a) * rad + Math.sin(i * 1.7 + r) * skew,
+                    ringY[r],
+                    Math.sin(a) * rad * zSquash + Math.cos(i * 1.4 + r) * skew,
+                );
             }
         }
-        crystals.instanceMatrix.needsUpdate = true;
-        // 1.4 per-instance breath phase/rate (InstancedBufferAttribute → read via attribute() in the material)
-        const aPhaseArr = new Float32Array(clusterN * spiresPer);
-        const aRateArr = new Float32Array(clusterN * spiresPer);
-        for (let i = 0; i < clusterN * spiresPer; i += 1) {
-            aPhaseArr[i] = crnd(i * 13 + 2);
-            aRateArr[i] = 0.5 + crnd(i * 13 + 7) * 0.7; // 0.5..1.2 desynced rates
+        const apexIdx = pos.length / 3;
+        pos.push(skew * 0.5, 0.52, skew * -0.25); // apex
+        const baseIdx = apexIdx + 1;
+        pos.push(0, -0.53, 0); // base centre
+        const idx = [];
+        const ring = (r, i) => r * sides + (i % sides);
+        for (let r = 0; r < 2; r += 1) { // stitch ring bands (outward winding)
+            for (let i = 0; i < sides; i += 1) {
+                const a0 = ring(r, i); const a1 = ring(r, i + 1);
+                const b0 = ring(r + 1, i); const b1 = ring(r + 1, i + 1);
+                idx.push(a0, b0, a1, a1, b0, b1);
+            }
         }
-        crystalGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(aPhaseArr, 1));
-        crystalGeo.setAttribute('aRate', new THREE.InstancedBufferAttribute(aRateArr, 1));
+        for (let i = 0; i < sides; i += 1) idx.push(ring(2, i), apexIdx, ring(2, i + 1)); // apex fan
+        for (let i = 0; i < sides; i += 1) idx.push(ring(0, i + 1), baseIdx, ring(0, i)); // base fan
+        const indexed = new THREE.BufferGeometry();
+        indexed.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        indexed.setIndex(idx);
+        const faceted = indexed.toNonIndexed();
+        indexed.dispose();
+        faceted.computeVertexNormals();
+        faceted.computeBoundingSphere();
+        return faceted;
+    };
+
+    // Shared emissive/position/opacity node graph so field + hero read identical. All crystal-LOCAL
+    // masks use positionGeometry (NOT positionLocal — InstanceNode instance-transforms positionLocal
+    // first, which would make tip/spine ramps read world-space Y and saturate).
+    const makeCrystalNodes = (emissiveColorVec, withFracture) => {
+        const N = normalize(normalWorld);
+        const V = normalize(cameraPosition.sub(positionWorld));
+        const fres = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.4)); // grazing-edge rim
+        const gY = positionGeometry.y;
+        const tipRamp = pow(clamp(gY.mul(0.95).add(0.5), 0.0, 1.0), float(2.0)); // tips glow brightest
+        const spineD = clamp(abs(positionGeometry.x.add(positionGeometry.z)).mul(1.4), 0.0, 1.0);
+        const spine = pow(spineD.oneMinus(), float(3.0)); // internal core light-pipe
+        const band = sin(gY.mul(4.0).add(uTime.mul(0.4))).mul(0.5).add(0.5); // animated vertical band
+        let fracture = float(0.0);
+        if (withFracture) {
+            // Internal fracture planes — REUSE the egg's crack-isoline idiom (not Lunara's voronoi3),
+            // slowly drifting in Y so the interior facets shimmer. Heaviest term → tier≥3 only.
+            const fField = mx_fractal_noise_float(positionGeometry.mul(1.6).add(vec3(0.0, uTime.mul(0.04), 0.0)), 3).mul(0.5).add(0.5);
+            fracture = smoothstep(float(0.12), float(0.0), abs(fField.sub(0.5)));
+        }
+        const aPhase = attribute('aPhase', 'float');
+        const aRate = attribute('aRate', 'float');
+        const aTint = attribute('aTint', 'vec3'); // per-instance full-bright glow hue
+        const breath = sin(uTime.mul(aRate).add(aPhase.mul(6.283))).mul(0.5).add(0.5)
+            .mul(0.35)
+            .add(0.82); // 0.82..1.17 desynced breathing glow
+        const interior = mix(emissiveColorVec, aTint, float(0.6)).mul(band.mul(0.35).add(0.65));
+        const wake = float(0.30).add(uS.mul(1.10)).add(uCombo.mul(0.50)); // dormant→awake + combo surge
+        const emissiveFactor = fres.mul(0.42)
+            .add(tipRamp.mul(0.42)).add(fracture.mul(0.32)).add(spine.mul(0.38))
+            .add(0.12);
+        const emissiveNode = interior.mul(emissiveFactor).mul(wake).mul(breath);
+        // top-sway (same idiom as the old shard: positionGeometry mask, positionLocal base)
+        const swayMask = positionGeometry.y.add(0.5).clamp(0.0, 1.0);
+        const sway = sin(uTime.mul(aRate.mul(0.6)).add(aPhase.mul(6.283))).mul(swayMask).mul(0.05);
+        const positionNode = positionLocal.add(vec3(sway, 0.0, sway.mul(0.5)));
+        const opacityNode = clamp(float(0.62).add(fres.mul(0.36)), 0.0, 1.0); // glassy edge fade
+        return { emissiveNode, positionNode, opacityNode };
+    };
+
+    // Field material — rich MeshStandardNode; instanceColor is the (dark) albedo, aTint the glow.
+    const fieldMat = new THREE.MeshStandardNodeMaterial();
+    fieldMat.color = new THREE.Color(1, 1, 1);
+    fieldMat.vertexColors = true; // InstancedMesh instanceColor → albedo (repo-proven, lunara)
+    fieldMat.metalness = 0.0;
+    fieldMat.roughness = crystalRich ? 0.08 : 0.16;
+    fieldMat.envMapIntensity = crystalRich ? 1.3 : 0.9; // reflects the procedural PMREM env
+    fieldMat.side = crystalRich ? THREE.DoubleSide : THREE.FrontSide;
+    fieldMat.transparent = true;
+    fieldMat.depthWrite = true; // crisp self-occluding facets (was false for the faux-glass cones)
+    {
+        const nodes = makeCrystalNodes(vec3(0.75, 0.63, 1.0), crystalRich);
+        fieldMat.emissiveNode = nodes.emissiveNode;
+        fieldMat.positionNode = nodes.positionNode;
+        fieldMat.opacityNode = nodes.opacityNode;
     }
-    crystals.frustumCulled = false;
-    scene.add(track(crystals));
+
+    // Hero material — true-glass transmission (built only on tier≥2, piggybacks the egg's RT).
+    let heroMat = null;
+    if (heroCount > 0) {
+        heroMat = new THREE.MeshPhysicalNodeMaterial();
+        heroMat.color = new THREE.Color(1, 1, 1);
+        heroMat.vertexColors = true;
+        heroMat.metalness = 0.0;
+        heroMat.roughness = 0.06;
+        heroMat.envMapIntensity = 1.3;
+        heroMat.side = THREE.FrontSide; // matches the proven egg glass; thickness fakes the volume
+        heroMat.transparent = true;
+        heroMat.depthWrite = true;
+        heroMat.clearcoat = 0.55;
+        heroMat.clearcoatRoughness = 0.18;
+        heroMat.transmission = 0.92;
+        heroMat.ior = 1.8;
+        heroMat.thickness = 2.6;
+        heroMat.attenuationColor = new THREE.Color(1.0, 0.55, 0.30); // warm molten-relic interior
+        heroMat.attenuationDistance = 7.0;
+        const hn = makeCrystalNodes(vec3(1.0, 0.72, 0.42), crystalRich); // warm-biased emissive base
+        heroMat.emissiveNode = hn.emissiveNode;
+        heroMat.positionNode = hn.positionNode;
+    }
+
+    // ── Composition — 12 clusters, strict L/R alternation, receding −Z, weight↓/spread↑; first 2
+    // foreground brackets, first 6 hero. Envelope keeps |x|≥24 (board wedge) and holds the far shore
+    // wide so crystals FRAME the centre-far relic (0,19,−95) rather than cover it.
+    // Each entry = [x, z, spreadX, spreadZ, weight].
+    const CRYSTAL_CLUSTERS = [
+        [-28, -18, 5, 5, 1.70], [32, -22, 6, 5, 1.60],
+        [-32, -40, 6, 6, 1.50], [30, -46, 7, 6, 1.45],
+        [-50, -58, 9, 8, 1.35], [54, -64, 11, 9, 1.25],
+        [-44, -80, 13, 11, 1.05], [48, -86, 14, 12, 1.00],
+        [-64, -98, 16, 13, 0.85], [62, -104, 18, 14, 0.80],
+        [-52, -118, 20, 15, 0.60], [58, -122, 22, 16, 0.55],
+    ];
+    const clusterWeightSum = CRYSTAL_CLUSTERS.reduce((a, c) => a + c[4], 0);
+    // Warm-majority hero anchors flanking the relic (|x|≥28 → clear of the 9.5-radius relic + wedge).
+    // Each entry = [x, z, warm].
+    const HERO_ANCHORS = [
+        [-28, -92, 1], [32, -96, 1], [-36, -102, 1], [30, -88, 1],
+        [-30, -20, 0], [34, -24, 0],
+    ];
+    const RELIC = { x: 0, z: -95 };
+    const twilightSink = new THREE.Color(0x1a0e30); // deep near-black violet for far depth-sink
+    const pickHue = (rng, x, z, forceWarm) => {
+        const c = new THREE.Color();
+        if (forceWarm || (Math.hypot(x - RELIC.x, z - RELIC.z) < 42 && rng() < 0.35)) {
+            c.set(rng() < 0.5 ? 0xffb060 : 0xff7d9e); // amber / rose — relic-heart echo
+        } else {
+            const r = rng();
+            if (r < 0.16) c.set(0x76dfff); // icy cyan
+            else if (r < 0.32) c.set(0xff72d1); // magenta
+            else if (r < 0.46) c.set(0xd486ff); // purple
+            else c.set(0x8b61e8); // violet base
+        }
+        const far = Math.min(1, Math.max(0, (-z - 18) / 178));
+        return c.lerp(twilightSink, far * 0.45);
+    };
+
+    const buildCrystalMesh = (geo, mat, count, opts) => {
+        const mesh = new THREE.InstancedMesh(geo, mat, count);
+        let s = opts.seed % 2147483647; if (s <= 0) s += 2147483646;
+        const rng = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        const gaussian = () => (rng() + rng() + rng()) / 3 - 0.5;
+        const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
+        const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
+        const aPhaseArr = new Float32Array(count);
+        const aRateArr = new Float32Array(count);
+        const aTintArr = new Float32Array(count * 3);
+        for (let i = 0; i < count; i += 1) {
+            let cx; let cz; let sxSpread; let szSpread; let forceWarm = false;
+            // low tiers have no hero mesh → the first few field crystals stand in as pseudo-heroes.
+            const asHero = opts.hero || (opts.foldHeroes && i < opts.foldHeroes);
+            if (asHero) {
+                const a = HERO_ANCHORS[i % HERO_ANCHORS.length];
+                cx = a[0]; cz = a[1]; sxSpread = 4; szSpread = 4; forceWarm = a[2] === 1;
+            } else {
+                let pick = rng() * clusterWeightSum; // weighted pick over the FULL table (no left-bias bug)
+                let cl = CRYSTAL_CLUSTERS[0];
+                for (let k = 0; k < CRYSTAL_CLUSTERS.length; k += 1) {
+                    pick -= CRYSTAL_CLUSTERS[k][4];
+                    if (pick <= 0) { cl = CRYSTAL_CLUSTERS[k]; break; }
+                }
+                cx = cl[0]; cz = cl[1]; sxSpread = cl[2]; szSpread = cl[3];
+            }
+            let x = cx + gaussian() * sxSpread * 1.7; // tighter clumps (were scattering too wide)
+            const z = cz + gaussian() * szSpread * 1.7;
+            if (Math.abs(x) < 24) x = (x < 0 ? -1 : 1) * (24 + rng() * 10); // hard centre-wedge guard
+            const far = Math.min(1, Math.max(0, (-z - 18) / 178));
+            const near = 1 - far;
+            const isStub = !asHero && rng() < 0.42; // ~42% short stubs → silhouette variety
+            const statureMul = isStub ? (0.34 + rng() * 0.34) : (0.80 + rng() * 0.42);
+            // Chunky gem proportions (aspect ≈3-6:1, not needle-thin); heroes stay tall + dramatic.
+            const sy = (3.4 + rng() * 7.5 + (asHero ? near * 5.0 : near * 1.2))
+                * (asHero ? 1.35 : 1.0) * statureMul;
+            const widthBias = isStub ? (1.35 + rng() * 0.6) : (0.72 + rng() * 0.5);
+            const baseW = 1.25 + rng() * 0.7; // wider base → solid cut-gem read
+            const sxW = baseW * widthBias * (asHero ? 1.35 : 1.0); // heroes read as solid landmarks
+            const szW = sxW * (0.82 + rng() * 0.36);
+            const lean = (asHero ? 0.12 : 0.30) * (isStub ? 2.1 : 1.0); // heroes stand straighter
+            const sink = sy * 0.2 + 0.6 + rng() * 0.4; // bury ~20% of the height → scale-proof rooting
+            _e.set((rng() - 0.5) * lean, rng() * Math.PI * 2, (rng() - 0.5) * lean);
+            _q.setFromEuler(_e);
+            _s.set(sxW, sy, szW);
+            _p.set(x, 0.53 * sy - sink, z); // unit base at -0.53*sy → world base sits ≈sink below y=0
+            _m.compose(_p, _q, _s);
+            mesh.setMatrixAt(i, _m);
+            const hue = pickHue(rng, x, z, forceWarm);
+            mesh.setColorAt(i, hue.clone().multiplyScalar(0.38)); // dark body → silhouette read
+            aTintArr[i * 3] = hue.r; aTintArr[i * 3 + 1] = hue.g; aTintArr[i * 3 + 2] = hue.b;
+            aPhaseArr[i] = rng();
+            aRateArr[i] = 0.5 + rng() * 0.7; // desynced breath rate
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(aPhaseArr, 1));
+        geo.setAttribute('aRate', new THREE.InstancedBufferAttribute(aRateArr, 1));
+        geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(aTintArr, 3));
+        mesh.frustumCulled = false;
+        mesh.renderOrder = 0; // explicit — sorts between background veils (−1) and additive FX (1-3)
+        return mesh;
+    };
+
+    const fieldGeo = buildFacetedCrystalGeometry(crystalRich ? 6 : 5, [0.72, 0.56, 0.30], 0.16, 91713);
+    const fieldMesh = buildCrystalMesh(fieldGeo, fieldMat, fieldCount, {
+        seed: 91713, foldHeroes: tier <= 1 ? 4 : 0,
+    });
+    scene.add(track(fieldMesh));
+    let heroMesh = null;
+    if (heroCount > 0) {
+        const heroGeo = buildFacetedCrystalGeometry(6, [0.84, 0.70, 0.48], 0.10, 20477); // fatter neck, less twist → solid majestic heroes
+        heroMesh = buildCrystalMesh(heroGeo, heroMat, heroCount, { seed: 20477, hero: true });
+        scene.add(track(heroMesh));
+    }
 
     // ════ FOREGROUND BOULDERS — near-black silhouettes at the frame edges (depth stack) ════
     const boulderCountT = tier <= 1 ? 4 : (tier <= 2 ? 7 : (tier === 3 ? 10 : 14));
@@ -1590,6 +1771,7 @@ export function create({
                 waveColNodes[wi].value.setRGB(w.col[0], w.col[1], w.col[2]);
             }
             uComboGlow.value = Math.min(1, sCombo * 2.4);
+            uCombo.value = uComboGlow.value; // shore crystals resonate with the combo chain
             orbit.visible = uComboGlow.value > 0.02;
             let anyWaveAlive = false;
             for (let i = 0; i < WAVE_SLOTS; i += 1) {
@@ -1645,7 +1827,7 @@ export function create({
                 o.geometry?.dispose?.();
                 o.material?.dispose?.();
             });
-            skyMat.dispose(); peakMat.dispose(); shardMat.dispose();
+            skyMat.dispose(); peakMat.dispose(); fieldMat.dispose(); if (heroMat) heroMat.dispose();
             disposeTextures.forEach((t) => t.dispose?.());
             if (envTexture) { if (scene.environment === envTexture) scene.environment = null; envTexture.dispose?.(); }
             lutTex?.dispose?.(); // 2.2

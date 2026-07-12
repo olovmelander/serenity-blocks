@@ -2,6 +2,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { GameState } from '../../src/core/game.js';
+import { runFfaFixedTicks } from '../../src/core/multiplayer/ffa-fixed-tick-runner.js';
 import { UnifiedMultiplayerLoop } from '../../src/core/multiplayer/unified-game-loop.js';
 
 function createFallingState() {
@@ -27,8 +28,19 @@ function fixedLoopWith(state) {
     return loop;
 }
 
+function stubAnimationFrame() {
+    const callbacks = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    return callbacks;
+}
+
 describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
     afterEach(() => {
+        vi.useRealTimers();
         vi.unstubAllGlobals();
     });
 
@@ -144,10 +156,11 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         expect(gameOver.simFrame).toBe(0);
     });
 
-    it('runs external simulation before render without reordering the legacy path', () => {
+    it('keeps external rAF render-only without reordering the legacy path', () => {
         vi.stubGlobal('requestAnimationFrame', vi.fn());
         const externalOrder = [];
         const external = new UnifiedMultiplayerLoop();
+        external.isRunning = true;
         external.externalPlayerUpdate = true;
         external.onUpdate = () => externalOrder.push('update');
         external.onRender = () => externalOrder.push('render');
@@ -155,10 +168,11 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
 
         external.loop(16);
 
-        expect(externalOrder).toEqual(['update', 'render', 'stats']);
+        expect(externalOrder).toEqual(['render', 'stats']);
 
         const legacyOrder = [];
         const legacy = new UnifiedMultiplayerLoop();
+        legacy.isRunning = true;
         legacy.updatePlayers = () => legacyOrder.push('players');
         legacy.onUpdate = () => legacyOrder.push('update');
         legacy.onRender = () => legacyOrder.push('render');
@@ -167,5 +181,169 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         legacy.loop(16);
 
         expect(legacyOrder).toEqual(['players', 'render', 'stats', 'update']);
+    });
+
+    it('drives external fixed updates from timeouts without an rAF callback', () => {
+        vi.useFakeTimers();
+        const frames = stubAnimationFrame();
+        const loop = new UnifiedMultiplayerLoop();
+        const updates = [];
+        loop.setExternalPlayerUpdate(true, 10);
+        loop.onUpdate = (time, delta) => updates.push({ time, delta });
+        loop.onRender = vi.fn();
+
+        loop.start();
+        expect(frames).toHaveLength(1);
+        expect(updates).toEqual([]);
+        expect(loop.onRender).toHaveBeenCalledOnce();
+
+        vi.advanceTimersByTime(35);
+
+        expect(updates).toHaveLength(3);
+        expect(updates.map(({ delta }) => delta)).toEqual([10, 10, 10]);
+        expect(loop.onRender).toHaveBeenCalledOnce();
+        loop.stop();
+    });
+
+    it('keeps fixed tick count independent from 30/60/144 Hz render callbacks', () => {
+        vi.useFakeTimers();
+        stubAnimationFrame();
+        const rates = [30, 60, 144];
+        const loops = rates.map(() => {
+            const loop = new UnifiedMultiplayerLoop();
+            const fixedSteps = vi.spyOn(loop, 'updatePlayersFixedTick').mockImplementation(() => {});
+            const game = {
+                unifiedLoop: loop,
+                useJitterBuffer: true,
+                _simTickAccumulatorMs: 0,
+                SIM_TICK_MS: 1000 / 60,
+                MAX_SIM_STEPS_PER_FRAME: 8,
+                isHost: false,
+                simTick: 0,
+            };
+            loop.setExternalPlayerUpdate(true);
+            loop.onUpdate = (currentTime, delta) => {
+                runFfaFixedTicks(game, delta, currentTime);
+            };
+            loop.start();
+            return { loop, fixedSteps };
+        });
+
+        loops.forEach(({ loop }, index) => {
+            const renderRate = rates[index];
+            for (let frame = 1; frame <= renderRate; frame += 1) {
+                loop.loop((frame * 1000) / renderRate, loop.runGeneration);
+            }
+        });
+        vi.advanceTimersByTime(1000);
+
+        const tickCounts = loops.map(({ fixedSteps }) => fixedSteps.mock.calls.length);
+        expect(new Set(tickCounts).size).toBe(1);
+        expect(tickCounts[0]).toBeGreaterThanOrEqual(59);
+        loops.forEach(({ loop }) => loop.stop());
+    });
+
+    it('switches live ownership without double-updating or inheriting elapsed time', () => {
+        vi.useFakeTimers();
+        const frames = stubAnimationFrame();
+        const loop = new UnifiedMultiplayerLoop();
+        const updates = [];
+        loop.updatePlayers = vi.fn();
+        loop.onUpdate = (_time, delta) => updates.push({
+            owner: loop.externalPlayerUpdate ? 'fixed' : 'legacy',
+            delta,
+        });
+        loop.start();
+        expect(updates).toEqual([{ owner: 'legacy', delta: 0 }]);
+
+        loop.setExternalPlayerUpdate(true, 10);
+        frames.shift()(5);
+        expect(updates).toHaveLength(1);
+        vi.advanceTimersByTime(10);
+        expect(updates.at(-1)).toEqual({ owner: 'fixed', delta: 10 });
+
+        loop.setExternalPlayerUpdate(false);
+        vi.advanceTimersByTime(30);
+        expect(updates).toHaveLength(2);
+        frames.at(-1)(50);
+        expect(updates.at(-1)).toEqual({ owner: 'legacy', delta: 40 });
+        loop.stop();
+    });
+
+    it('stops paused time and keeps never-pause fixed simulation live', () => {
+        vi.useFakeTimers();
+        stubAnimationFrame();
+        const loop = new UnifiedMultiplayerLoop();
+        const updates = [];
+        loop.setExternalPlayerUpdate(true, 10);
+        loop.onUpdate = (_time, delta) => updates.push(delta);
+        loop.start();
+        vi.advanceTimersByTime(10);
+
+        loop.pause();
+        vi.advanceTimersByTime(50);
+        expect(updates).toEqual([10]);
+        loop.resume();
+        vi.advanceTimersByTime(10);
+        expect(updates).toEqual([10, 10]);
+
+        loop.setNeverPause(true);
+        loop.pause();
+        vi.advanceTimersByTime(10);
+        expect(updates).toEqual([10, 10, 10]);
+        loop.stop();
+    });
+
+    it('invalidates queued timeout and rAF callbacks on stop', () => {
+        const timers = [];
+        const frames = stubAnimationFrame();
+        vi.stubGlobal('setTimeout', vi.fn((callback) => {
+            timers.push(callback);
+            return timers.length;
+        }));
+        vi.stubGlobal('clearTimeout', vi.fn());
+        const loop = new UnifiedMultiplayerLoop();
+        loop.setExternalPlayerUpdate(true, 10);
+        loop.onUpdate = vi.fn();
+        loop.onRender = vi.fn();
+        loop.start();
+        const staleTimer = timers[0];
+        const staleFrame = frames[0];
+
+        loop.stop();
+        staleTimer();
+        staleFrame(10);
+
+        expect(loop.onUpdate).not.toHaveBeenCalled();
+        expect(loop.onRender).toHaveBeenCalledOnce();
+        expect(timers).toHaveLength(1);
+        expect(frames).toHaveLength(1);
+    });
+
+    it('invalidates the pre-scheduled fixed update when simulation throws', () => {
+        const timers = [];
+        stubAnimationFrame();
+        vi.stubGlobal('setTimeout', vi.fn((callback) => {
+            timers.push(callback);
+            return timers.length;
+        }));
+        vi.stubGlobal('clearTimeout', vi.fn());
+        const loop = new UnifiedMultiplayerLoop();
+        const error = new Error('partial tick');
+        loop.setExternalPlayerUpdate(true, 10);
+        loop.onUpdate = vi.fn(() => {
+            throw error;
+        });
+        loop.start();
+
+        expect(() => timers[0]()).toThrow(error);
+        expect(timers).toHaveLength(2);
+        expect(clearTimeout).toHaveBeenCalledWith(2);
+
+        timers[1]();
+
+        expect(loop.onUpdate).toHaveBeenCalledOnce();
+        expect(timers).toHaveLength(2);
+        loop.stop();
     });
 });

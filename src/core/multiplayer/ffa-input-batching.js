@@ -191,7 +191,14 @@ function validateFfaFixedInputProgress(game, steamId, fixedGroup) {
             !Number.isSafeInteger(lastAppliedSequence)
             || lastAppliedSequence < 0
             || metrics.firstSequence !== lastAppliedSequence + 1
-        ) return { valid: false, reason: 'fixed_input_progression' };
+        ) {
+            return {
+                valid: false,
+                reason: 'fixed_input_progression',
+                fatal: !Number.isSafeInteger(lastAppliedSequence)
+                    || metrics.firstSequence > lastAppliedSequence + 1,
+            };
+        }
     }
 
     if (previous) {
@@ -199,14 +206,16 @@ function validateFfaFixedInputProgress(game, steamId, fixedGroup) {
         if (
             metrics.groupId <= previous.groupId
             || metrics.firstSequence <= previous.lastSequence
-            || metrics.firstSimTick <= previous.lastSimTick
+        ) return { valid: false, reason: 'fixed_input_progression', fatal: false };
+        if (
+            metrics.firstSimTick <= previous.lastSimTick
             || (sameRound && metrics.groupId !== previous.groupId + 1)
             || (sameRound && metrics.firstSequence !== previous.lastSequence + 1)
             || (sameRound && metrics.firstOrdinal <= previous.lastOrdinal)
             || (sameRound
                 && metrics.firstSimTick - previous.lastSimTick
                     !== metrics.firstOrdinal - previous.lastOrdinal)
-        ) return { valid: false, reason: 'fixed_input_progression' };
+        ) return { valid: false, reason: 'fixed_input_progression', fatal: true };
     }
 
     const bufferTick = Number(game.inputJitterBuffer?.currentTick);
@@ -284,6 +293,24 @@ export function resetFfaInputTransport(game, steamId = null) {
     groups?.delete(steamId);
     progress?.delete(steamId);
     pending?.delete(steamId);
+}
+
+/** Discard unsent/reconciliation input from a board generation that just ended. */
+export function resetFfaInputProducer(game) {
+    if (Array.isArray(game?.pendingInputs)) game.pendingInputs.length = 0;
+    if (Array.isArray(game?.inputHistory)) game.inputHistory.length = 0;
+    if (game) {
+        game.inputSequence = 0;
+        game._ffaInputGroupSequence = 0;
+        game._pendingFfaInputGroup = null;
+    }
+}
+
+/** Start a fresh per-round input sequence and discard all prior transport state. */
+export function resetFfaInputEpoch(game) {
+    resetFfaInputProducer(game);
+    resetFfaInputTransport(game);
+    game?.players?.forEach((player) => { player.lastInputSeq = 0; });
 }
 
 /** Flush ordered peer inputs without exceeding the host's validation cap. */
@@ -487,6 +514,11 @@ export function drainFfaInputBatches(game, onlySteamId = null) {
             queue.shift();
             if (!fixedGroup.valid) {
                 recordFixedInputRejection(game, steamId, fixedGroup.reason);
+                if (fixedGroup.fatal) {
+                    queue.length = 0;
+                    game.kickPlayer?.(steamId, 'fixed_input_continuity_gap');
+                    break;
+                }
                 continue;
             }
             dispatchFfaInputGroup(
@@ -514,6 +546,15 @@ export function processFfaInputBatch(game, steamId, batchData, timestamp) {
         return;
     }
 
+    if (batchData.fixedTickGroupId != null) {
+        const packetRound = Number(batchData.fixedTickRoundGeneration);
+        const hostRound = Math.max(0, Math.floor(Number(game.roundGeneration) || 0));
+        if (!Number.isSafeInteger(packetRound) || packetRound !== hostRound) {
+            recordFixedInputRejection(game, steamId, 'fixed_input_round');
+            return;
+        }
+    }
+
     const inputs = assembleFfaInputBatch(game, steamId, batchData, packetInputs);
     if (!inputs) return;
     const fixedGroup = validateFfaFixedInputGroup(inputs, batchData, game._fixedTickEnabled);
@@ -524,6 +565,14 @@ export function processFfaInputBatch(game, steamId, batchData, timestamp) {
         }
         const pending = getHostPendingGroups(game);
         const queue = pending.get(steamId) || [];
+        const duplicatePending = queue.some((group) => (
+            group.fixedGroup.metrics.groupId === fixedGroup.metrics.groupId
+            && group.fixedGroup.metrics.roundGeneration === fixedGroup.metrics.roundGeneration
+        ));
+        if (duplicatePending) {
+            recordFixedInputRejection(game, steamId, 'fixed_input_pending_duplicate');
+            return;
+        }
         const pendingCommands = queue.reduce((total, group) => total + group.inputs.length, 0);
         if (
             queue.length >= FFA_FIXED_INPUT_PENDING_GROUP_LIMIT
