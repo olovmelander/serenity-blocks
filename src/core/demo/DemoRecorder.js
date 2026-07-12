@@ -10,6 +10,11 @@ import {
 export const DEMO_VERSION = '2.0';
 export const DEMO_TICK_MS = 1000 / 60;
 export const DEMO_CHECKPOINT_INTERVAL_FRAMES = 300;
+export const DEMO_COMMAND_INPUT_FORMAT = 'accepted-commands-v1';
+// V1 and early V2 artifacts predate the hit-stop policy field. They were
+// authored against the normal-motion rules by default, so replay them with
+// hit-stop enabled instead of consulting the playback machine's preferences.
+export const LEGACY_DEMO_HIT_STOP_ENABLED = true;
 
 function resolveFrame(gameState, tickMs = DEMO_TICK_MS) {
     if (Number.isFinite(gameState?.simFrame)) return Math.max(0, gameState.simFrame);
@@ -59,12 +64,13 @@ export class DemoRecorder {
                 tickMs: this.tickMs,
                 startFrame: simFrame,
                 durationFrames: 0,
+                inputFormat: DEMO_COMMAND_INPUT_FORMAT,
             },
             initialState: {
                 seed,
                 level: gameState.level,
                 dropInterval: gameState.dropInterval,
-                settings: this._captureSettings(settings),
+                settings: this._captureSettings(settings, gameState),
                 rulesVersion: DEMO_VERSION,
             },
             inputs: [],
@@ -214,15 +220,17 @@ export class DemoRecorder {
      * Capture relevant settings for replay.
      * @private
      */
-    _captureSettings(settings = {}) {
+    _captureSettings(settings = {}, gameState = null) {
+        const inputHandling = gameState?.playerInput?.config || {};
         // Input-timing settings live under dasDelay/dasInterval/softDropInterval
         // (ui/settings.js DEFAULT_CONFIG) — the old das/arr keys never existed and
         // always captured undefined. Schema is redefined properly in plan §5.7.
         return {
             themeBasedTetrominos: settings.themeBasedTetrominos,
-            dasDelay: settings.dasDelay,
-            dasInterval: settings.dasInterval,
-            softDropInterval: settings.softDropInterval,
+            dasDelay: inputHandling.dasDelay,
+            dasInterval: inputHandling.dasInterval,
+            softDropInterval: inputHandling.softDropInterval,
+            hitStopEnabled: gameState?.hitStopEnabled !== false,
         };
     }
 }

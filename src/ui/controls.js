@@ -16,10 +16,24 @@
  */
 
 import { COLS, ROWS } from '../core/constants.js';
+import {
+    clearPlayerInput,
+    enqueueInputEdge,
+} from '../core/player-input-state.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
+
+const FIXED_TICK_ACTIONS = Object.freeze({
+    moveLeft: { action: 'move', value: -1, held: true },
+    moveRight: { action: 'move', value: 1, held: true },
+    softDrop: { action: 'softDrop', value: null, held: true },
+    rotateRight: { action: 'rotate', value: 'right', held: false },
+    rotateLeft: { action: 'rotate', value: 'left', held: false },
+    flip: { action: 'rotate', value: 'flip', held: false },
+    hardDrop: { action: 'hardDrop', value: null, held: false },
+});
 
 /**
  * Input controller state management
@@ -58,6 +72,9 @@ export class InputController {
         this.handleKeyUp = null;
         this.handleVisibilityChange = null;
         this.handleClick = null;
+        this.fixedTickInputAdapter = null;
+        this.fixedTickHeldKeys = new Map();
+        this.fixedTickTouchedStates = new Set();
 
         // Sound initialization flag
         this.soundInitialized = false;
@@ -87,33 +104,235 @@ export class InputController {
         const interval = currentSettings.dasInterval;
         const softDropInterval = currentSettings.softDropInterval ?? 50;
 
-        // Process Player 1
-        this.processDasDirection(this.dasState.moveLeft, delay, interval, delta, () => {
-            if (this.gameActions.move) return this.gameActions.move(-1);
-            return false;
-        });
-        this.processDasDirection(this.dasState.moveRight, delay, interval, delta, () => {
-            if (this.gameActions.move) return this.gameActions.move(1);
-            return false;
-        });
-        this.processSoftDrop(this.dasState.softDrop, softDropInterval, delta, () => {
-            if (this.gameActions.softDrop) return this.gameActions.softDrop();
-            return false;
-        });
+        if (!this.isFixedTickPlayerClaimed(0)) {
+            this.processDasDirection(this.dasState.moveLeft, delay, interval, delta, () => {
+                if (this.gameActions.move) return this.gameActions.move(-1);
+                return false;
+            });
+            this.processDasDirection(this.dasState.moveRight, delay, interval, delta, () => {
+                if (this.gameActions.move) return this.gameActions.move(1);
+                return false;
+            });
+            this.processSoftDrop(this.dasState.softDrop, softDropInterval, delta, () => {
+                if (this.gameActions.softDrop) return this.gameActions.softDrop();
+                return false;
+            });
+        }
 
-        // Process Player 2
-        this.processDasDirection(this.dasState.p2_moveLeft, delay, interval, delta, () => {
-            if (this.gameActions.moveP2) return this.gameActions.moveP2(-1);
+        if (!this.isFixedTickPlayerClaimed(1)) {
+            this.processDasDirection(this.dasState.p2_moveLeft, delay, interval, delta, () => {
+                if (this.gameActions.moveP2) return this.gameActions.moveP2(-1);
+                return false;
+            });
+            this.processDasDirection(this.dasState.p2_moveRight, delay, interval, delta, () => {
+                if (this.gameActions.moveP2) return this.gameActions.moveP2(1);
+                return false;
+            });
+            this.processSoftDrop(this.dasState.p2_softDrop, softDropInterval, delta, () => {
+                if (this.gameActions.softDropP2) return this.gameActions.softDropP2();
+                return false;
+            });
+        }
+    }
+
+    setFixedTickInputAdapter(adapter = null) {
+        // Keep physical latches until keyup. Swapping modes while a key is
+        // physically held must not let a browser repeat re-arm either path.
+        this.clearFixedTickInput();
+        this.fixedTickInputAdapter = adapter
+            && typeof adapter.isEnabled === 'function'
+            && typeof adapter.resolveGameState === 'function'
+            ? adapter
+            : null;
+    }
+
+    resolveFixedTickOwnership(playerIndex) {
+        const adapter = this.fixedTickInputAdapter;
+        if (!adapter) return { claimed: false, gameState: null };
+
+        let gameState = null;
+        try {
+            gameState = adapter.resolveGameState(playerIndex) || null;
+            const claimed = adapter.isEnabled({ playerIndex, gameState }) === true;
+            return { claimed, gameState };
+        } catch (error) {
+            console.error('[Keyboard] Fixed-tick input adapter failed:', error);
+            return { claimed: true, gameState: null };
+        }
+    }
+
+    isFixedTickPlayerClaimed(playerIndex) {
+        return this.resolveFixedTickOwnership(playerIndex).claimed;
+    }
+
+    getFixedTickStamp(gameState, event, playerIndex) {
+        const adapter = this.fixedTickInputAdapter;
+        const fallback = {
+            tick: Math.max(0, Math.floor(Number(gameState?.simFrame) || 0)) + 1,
+            subframe: 0,
+        };
+        if (typeof adapter?.stamp !== 'function') return fallback;
+
+        try {
+            const stamp = adapter.stamp({
+                gameState, event, playerIndex, fallback,
+            }) || fallback;
+            return {
+                tick: Number.isInteger(stamp.tick) && stamp.tick >= fallback.tick
+                    ? stamp.tick
+                    : fallback.tick,
+                subframe: Number.isInteger(stamp.subframe)
+                    ? Math.min(9, Math.max(0, stamp.subframe))
+                    : 0,
+            };
+        } catch (error) {
+            console.error('[Keyboard] Fixed-tick input stamp failed:', error);
+            return fallback;
+        }
+    }
+
+    acceptFixedTickSource(gameState, playerIndex) {
+        const { fixedTickInputAdapter: adapter } = this;
+        if (typeof adapter?.acceptSource !== 'function') return true;
+        try {
+            return adapter.acceptSource({ gameState, playerIndex }) === true;
+        } catch (error) {
+            console.error('[Keyboard] Fixed-tick source policy failed:', error);
             return false;
+        }
+    }
+
+    releaseFixedTickSource() {
+        const { fixedTickInputAdapter: adapter } = this;
+        if (typeof adapter?.releaseSource !== 'function') return;
+        try {
+            adapter.releaseSource();
+        } catch (error) {
+            console.error('[Keyboard] Fixed-tick source release failed:', error);
+        }
+    }
+
+    enqueueFixedTickAction({
+        playerIndex,
+        logicalAction,
+        physicalKey,
+        event,
+        keyMapKey,
+    }) {
+        const descriptor = FIXED_TICK_ACTIONS[logicalAction];
+        if (!descriptor) return { handled: false, accepted: false };
+
+        const { claimed, gameState } = this.resolveFixedTickOwnership(playerIndex);
+        if (!claimed) return { handled: false, accepted: false };
+
+        const records = this.fixedTickHeldKeys.get(physicalKey) || [];
+        const alreadyLatched = records.some((record) => (
+            record.playerIndex === playerIndex && record.keyMapKey === keyMapKey
+        ));
+        if (alreadyLatched) return { handled: true, accepted: false };
+
+        const rememberPhysicalLatch = (cleared) => {
+            records.push({
+                playerIndex,
+                gameState,
+                action: descriptor.action,
+                value: descriptor.value,
+                held: descriptor.held,
+                keyMapKey,
+                cleared,
+            });
+            this.fixedTickHeldKeys.set(physicalKey, records);
+        };
+
+        if (event?.repeat === true) {
+            rememberPhysicalLatch(true);
+            return { handled: true, accepted: false };
+        }
+        if (
+            !gameState?.playerInput
+            || gameState.isPaused
+            || gameState.isGameOver
+            || gameState.isStopped
+            || gameState.isAlive === false
+            || gameState.isReplay
+            || gameState.isSeeking
+            || gameState.suppressExternalInput
+        ) {
+            rememberPhysicalLatch(true);
+            return { handled: true, accepted: false };
+        }
+        if (!this.acceptFixedTickSource(gameState, playerIndex)) {
+            rememberPhysicalLatch(true);
+            return { handled: true, accepted: false };
+        }
+
+        const stamp = this.getFixedTickStamp(gameState, event, playerIndex);
+        const edge = enqueueInputEdge(gameState.playerInput, {
+            ...stamp,
+            action: descriptor.action,
+            value: descriptor.value,
+            phase: 'down',
         });
-        this.processDasDirection(this.dasState.p2_moveRight, delay, interval, delta, () => {
-            if (this.gameActions.moveP2) return this.gameActions.moveP2(1);
-            return false;
+        this.fixedTickTouchedStates.add(gameState.playerInput);
+        rememberPhysicalLatch(!edge);
+        return { handled: true, accepted: Boolean(edge) };
+    }
+
+    releaseFixedTickKey(physicalKey, event) {
+        const records = this.fixedTickHeldKeys.get(physicalKey);
+        if (!records?.length) return { handled: false, accepted: 0 };
+        this.fixedTickHeldKeys.delete(physicalKey);
+
+        let accepted = 0;
+        records.forEach((record) => {
+            this.keyMap[record.keyMapKey] = false;
+            const { gameState } = record;
+            if (!record.held || record.cleared || !gameState?.playerInput) return;
+
+            const ownership = this.resolveFixedTickOwnership(record.playerIndex);
+            if (
+                !ownership.claimed
+                || ownership.gameState !== gameState
+                || gameState.isPaused
+                || gameState.isGameOver
+                || gameState.isStopped
+                || gameState.isAlive === false
+                || gameState.isReplay
+                || gameState.isSeeking
+                || gameState.suppressExternalInput
+            ) {
+                clearPlayerInput(gameState.playerInput);
+                return;
+            }
+
+            const stamp = this.getFixedTickStamp(gameState, event, record.playerIndex);
+            const edge = enqueueInputEdge(gameState.playerInput, {
+                ...stamp,
+                action: record.action,
+                value: record.value,
+                phase: 'up',
+            });
+            if (edge) accepted += 1;
         });
-        this.processSoftDrop(this.dasState.p2_softDrop, softDropInterval, delta, () => {
-            if (this.gameActions.softDropP2) return this.gameActions.softDropP2();
-            return false;
-        });
+        return { handled: true, accepted };
+    }
+
+    clearFixedTickInput({ dropPhysicalLatches = false } = {}) {
+        this.fixedTickTouchedStates.forEach((state) => clearPlayerInput(state));
+        this.fixedTickTouchedStates.clear();
+        this.releaseFixedTickSource();
+        if (dropPhysicalLatches) {
+            this.fixedTickHeldKeys.forEach((records) => {
+                records.forEach((record) => {
+                    this.keyMap[record.keyMapKey] = false;
+                });
+            });
+            this.fixedTickHeldKeys.clear();
+        } else {
+            this.fixedTickHeldKeys.forEach((records) => {
+                records.forEach((record) => { record.cleared = true; });
+            });
+        }
     }
 
     processDasDirection(state, dasDelay, dasInterval, delta, actionCallback) {
@@ -185,6 +404,7 @@ export class InputController {
      * Call this when pausing or resetting the game
      */
     clearTimers() {
+        this.clearFixedTickInput();
         // Reset all DAS states
         Object.keys(this.dasState).forEach((key) => {
             this.dasState[key].active = false;
@@ -225,6 +445,8 @@ export class InputController {
         this.removeKeyboardControls();
         this.removeClickControls();
         this.clearTimers();
+        this.clearFixedTickInput({ dropPhysicalLatches: true });
+        this.fixedTickInputAdapter = null;
         this.keyMap = {};
         this.gameActions = null;
         this.settings = null;
@@ -245,7 +467,7 @@ export class InputController {
  * Handles player 2 actions for local multiplayer
  * @private
  */
-function handlePlayer2Action(action, gameActions, inputController, settings) {
+function handlePlayer2Action(action, gameActions, inputController) {
     const {
         moveP2, rotateP2, softDropP2, hardDropP2,
         requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2,
@@ -327,6 +549,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     }
 
     console.log('[Keyboard] Setting up keyboard controls');
+    inputController.clearTimers();
     inputController.removeKeyboardControls();
 
     const {
@@ -386,12 +609,14 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
             // Get action from key binding (check this before auto-starting game)
             const key = e.key === ' ' ? 'Space' : e.key;
-            const action = Object.keys(currentSettings.keyBindings).find((k) => currentSettings.keyBindings[k] === key);
+            const action = Object.keys(currentSettings.keyBindings)
+                .find((k) => currentSettings.keyBindings[k] === key);
 
             // Also check player 2 bindings (for local multiplayer)
             let actionP2 = null;
             if (currentSettings.player2KeyBindings) {
-                actionP2 = Object.keys(currentSettings.player2KeyBindings).find((k) => currentSettings.player2KeyBindings[k] === key);
+                actionP2 = Object.keys(currentSettings.player2KeyBindings)
+                    .find((k) => currentSettings.player2KeyBindings[k] === key);
             }
 
             // Start game if on start/game-over modal
@@ -411,12 +636,36 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Handle player 2 input first (if applicable)
             if (actionP2 && !inputController.keyMap[`p2-${actionP2}`]) {
                 inputController.keyMap[`p2-${actionP2}`] = true;
-                handlePlayer2Action(actionP2, gameActions, inputController, currentSettings);
+                const fixedResult = inputController.enqueueFixedTickAction({
+                    playerIndex: 1,
+                    logicalAction: actionP2,
+                    physicalKey: key,
+                    event: e,
+                    keyMapKey: `p2-${actionP2}`,
+                });
+                if (fixedResult.handled) {
+                    if (fixedResult.accepted) performanceMonitor.recordInputAction();
+                } else {
+                    handlePlayer2Action(actionP2, gameActions, inputController);
+                }
             }
 
             // Then handle player 1 input
             if (!action || inputController.keyMap[action]) return;
             inputController.keyMap[action] = true;
+
+            const fixedResult = inputController.enqueueFixedTickAction({
+                playerIndex: 0,
+                logicalAction: action,
+                physicalKey: key,
+                event: e,
+                keyMapKey: action,
+            });
+            if (fixedResult.handled) {
+                if (action === 'hardDrop') e.preventDefault();
+                if (fixedResult.accepted) performanceMonitor.recordInputAction();
+                return;
+            }
 
             // Execute actions
             switch (action) {
@@ -494,6 +743,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     // Keyup handler
     const handleKeyUp = (e) => {
         try {
+            const key = e.key === ' ' ? 'Space' : e.key;
+            inputController.releaseFixedTickKey(key, e);
+
             // Block all input if settings modal is open
             const settingsModal = document.getElementById('settings-modal');
             if (settingsModal?.classList.contains('visible')) {
@@ -503,13 +755,14 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Get current settings dynamically to pick up keybinding changes
             const currentSettings = getCurrentSettings();
 
-            const key = e.key === ' ' ? 'Space' : e.key;
-            const action = Object.keys(currentSettings.keyBindings).find((k) => currentSettings.keyBindings[k] === key);
+            const action = Object.keys(currentSettings.keyBindings)
+                .find((k) => currentSettings.keyBindings[k] === key);
 
             // Also check player 2 bindings (for local multiplayer)
             let actionP2 = null;
             if (currentSettings.player2KeyBindings) {
-                actionP2 = Object.keys(currentSettings.player2KeyBindings).find((k) => currentSettings.player2KeyBindings[k] === key);
+                actionP2 = Object.keys(currentSettings.player2KeyBindings)
+                    .find((k) => currentSettings.player2KeyBindings[k] === key);
             }
 
             if (action) {

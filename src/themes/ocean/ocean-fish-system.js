@@ -154,8 +154,8 @@ const SPECIES = [
         tailHeight: 0.58,
         stripeFrequency: 16,
         patternStrength: 0.38,
-        base: new THREE.Color(0x16d9cc),
-        accent: new THREE.Color(0xffe26c),
+        base: new THREE.Color(0x35c7bd),
+        accent: new THREE.Color(0xeacb75),
     },
     {
         name: 'silver-sardine',
@@ -165,8 +165,8 @@ const SPECIES = [
         tailHeight: 0.42,
         stripeFrequency: 24,
         patternStrength: 0.18,
-        base: new THREE.Color(0xd2f5f9),
-        accent: new THREE.Color(0x2fa9b8),
+        base: new THREE.Color(0xb9dfe6),
+        accent: new THREE.Color(0x4b9fac),
     },
     {
         name: 'ember-anthias',
@@ -176,8 +176,8 @@ const SPECIES = [
         tailHeight: 0.5,
         stripeFrequency: 11,
         patternStrength: 0.44,
-        base: new THREE.Color(0xff5e3a),
-        accent: new THREE.Color(0xffd700),
+        base: new THREE.Color(0xe87b60),
+        accent: new THREE.Color(0xe7ba64),
     },
     {
         name: 'sunlit-bannerfish',
@@ -187,8 +187,8 @@ const SPECIES = [
         tailHeight: 0.5,
         stripeFrequency: 9,
         patternStrength: 0.56,
-        base: new THREE.Color(0xfff142),
-        accent: new THREE.Color(0x123456),
+        base: new THREE.Color(0xe8cf62),
+        accent: new THREE.Color(0x294b64),
     },
 ];
 
@@ -1247,8 +1247,8 @@ export class OceanFishSystem {
 
     collectHeroAssetMaterials(group, asset) {
         const tint = asset.id.includes('banner')
-            ? new THREE.Color(0xffeeb5)
-            : new THREE.Color(0x2fd0d1);
+            ? new THREE.Color(0xf0d89b)
+            : new THREE.Color(0x67bbc3);
         const materials = [];
 
         group.traverse((child) => {
@@ -1256,7 +1256,7 @@ export class OceanFishSystem {
             const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
             const cloned = sourceMaterials.map((material) => {
                 const nextMaterial = material.clone();
-                if (nextMaterial.color) nextMaterial.color.lerp(tint, 0.08);
+                if (nextMaterial.color) nextMaterial.color.lerp(tint, 0.14);
                 nextMaterial.transparent = true;
                 nextMaterial.opacity = 0;
                 nextMaterial.depthWrite = true;

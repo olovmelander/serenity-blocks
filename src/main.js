@@ -109,6 +109,7 @@ import { ThemeManager } from './themes/theme-manager.js';
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { seededRandom, hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
+import { createRuntimeValidation, installPreloadErrorRecovery } from './utils/release-observability.js';
 import {
     createDesktopPerformancePolicy,
     evaluateDynamicResolutionAdjustment,
@@ -795,7 +796,6 @@ class SerenityBlocks {
         this.cleanupHandlers = [];
         this.isCleaningUp = false;
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
-        this._handledPreloadError = false;
         this.globalSerenityHubInitPromise = null;
         this.desktopPerformancePolicy = null;
         this.desktopPerformanceOverrides = {};
@@ -1083,20 +1083,7 @@ class SerenityBlocks {
 
     setupBuildResilienceHandlers() {
         if (typeof window === 'undefined') return;
-
-        const handlePreloadError = (event) => {
-            console.error('[BuildResilience] Dynamic preload failed:', event);
-            event.preventDefault?.();
-
-            if (this._handledPreloadError) return;
-            this._handledPreloadError = true;
-            window.location.reload();
-        };
-
-        window.addEventListener('vite:preloadError', handlePreloadError);
-        this.cleanupHandlers.push(() => {
-            window.removeEventListener('vite:preloadError', handlePreloadError);
-        });
+        this.cleanupHandlers.push(installPreloadErrorRecovery({ windowRef: window }));
     }
 
     setupObservabilityHooks() {
@@ -1155,43 +1142,11 @@ class SerenityBlocks {
             console.warn('[DesktopGPU] Failed to fetch GPU health:', error?.message || error);
         });
 
-        window.runtimeValidation = {
-            runThemeSwitchSoak: async ({
-                themes = null,
-                iterations = 20,
-                delayMs = 250,
-            } = {}) => {
-                const cycleThemes = themes || this.themeManager?.getAvailableThemes?.() || [];
-                const startedAt = performance.now();
-
-                for (let i = 0; i < iterations; i += 1) {
-                    const themeName = cycleThemes[i % cycleThemes.length];
-                    if (!themeName) break;
-                    await this.themeManager.switchTheme(themeName);
-                    await new Promise((resolve) => setTimeout(resolve, delayMs));
-                }
-
-                const summary = {
-                    iterations,
-                    elapsedMs: performance.now() - startedAt,
-                    releaseGates: performanceMonitor.getReleaseGateSnapshot(),
-                };
-                console.log('[RuntimeValidation] Theme switch soak complete', summary);
-                return summary;
-            },
-            getReleaseGates: () => performanceMonitor.getReleaseGateSnapshot(),
-            captureDesktopBenchmark: async (stage = 'manual-benchmark', extra = {}) => {
-                const normalizedStage = typeof stage === 'string' && stage.trim()
-                    ? stage.trim()
-                    : 'manual-benchmark';
-                const report = await storeDesktopPerformanceReport(normalizedStage, this, extra);
-                return {
-                    stage: normalizedStage,
-                    report,
-                    releaseGates: performanceMonitor.getReleaseGateSnapshot(),
-                };
-            },
-        };
+        window.runtimeValidation = createRuntimeValidation({
+            themeManager: this.themeManager,
+            performanceMonitor,
+            storeDesktopBenchmark: (stage, extra) => storeDesktopPerformanceReport(stage, this, extra),
+        });
     }
 
     /**
@@ -2693,7 +2648,7 @@ class SerenityBlocks {
             settingsManager: this.settingsManager,
             highScoreManager: this.highScoreManager,
             modalManager: this.modalManager,
-            gamepadController: this.gamepadController,
+            gamepadController: this.gamepadController, inputController: this.inputController,
             frameRateController: this.frameRateController,
             BoardSceneClass: this.BoardSceneClass || null,
             MultiplayerBoardSceneClass: this.MultiplayerBoardSceneClass || null,

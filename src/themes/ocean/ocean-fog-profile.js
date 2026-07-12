@@ -65,8 +65,8 @@ export function createOceanFogNode(quality = 'High') {
         float(0.82),
     );
     const fogColor = mix(
-        vec3(0.035, 0.39, 0.52),
-        vec3(0.012, 0.16, 0.29),
+        vec3(0.04, 0.40, 0.54),
+        vec3(0.016, 0.19, 0.32),
         clamp(
             farDissolve.add(canyonVolume.mul(0.32)).add(lowWater.mul(0.16)),
             float(0.0),

@@ -22,6 +22,13 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
+import {
+    waveSlotsForTier,
+    resolveComboProgress,
+    accumulateComboBoost,
+    comboMilestonesCrossed,
+    pickExpiringSlotIndex,
+} from './vesper-chrysalis-director.js';
 
 export const meta = {
     id: 'vesper-chrysalis',
@@ -1059,12 +1066,14 @@ export function create({
     // Spawns are QUEUED and stamped inside update(time) — t0 must come from the exact same clock
     // update() writes into uTime. (Stamping from uTime.value at pulse time skews across playground
     // HMR remount epochs: bursts are born "in the past", age past life instantly, and never show.)
-    let burstNext = 0;
+    // The slot is chosen at STAMP time (in update, on the authoritative clock) so a fresh burst
+    // takes the slot NEAREST death — in-flight spore bursts keep playing instead of being
+    // round-robined out. This is the "pooled effects stay alive / accumulate" behavior.
+    const burstState = Array.from({ length: BURST_SLOTS }, () => ({ t0: -1e3, life: 0 }));
     const burstQueue = [];
     const spawnBurst = (px, py, pz, col, density, maxR, life, swirl, upBias) => {
-        const i = burstNext; burstNext = (burstNext + 1) % BURST_SLOTS;
         burstQueue.push({
-            i, px, py, pz, col, density, maxR, life, swirl, upBias,
+            px, py, pz, col, density, maxR, life, swirl, upBias,
         });
         if (burstQueue.length > BURST_SLOTS) burstQueue.shift(); // never backlog beyond the pool
     };
@@ -1165,19 +1174,35 @@ export function create({
     orbit.visible = false; // gated by combo glow in update()
     scene.add(track(orbit));
 
-    // ════ HEART SHOCKWAVE — an expanding ring of light at the relic for the big beats ════
-    const uWave = uniform(new THREE.Vector4(-1e3, 1.4, 0, 0)); // t0, duration, amp
-    const uWaveCol = uniform(new THREE.Color(1.0, 0.75, 0.45));
+    // ════ HEART SHOCKWAVE POOL — the big beats STACK as independent expanding rings (never reset) ════
+    // Galaxy-style: 2–6 concurrent slots by quality tier. Each slot advances from its OWN t0, so a
+    // fresh perfect-clear can't rewind a tetris ring already in flight. Summed in ONE fragment → the
+    // whole pool stays a single billboarded draw call (the ringNodes uniform-pool pattern reused).
+    const WAVE_SLOTS = waveSlotsForTier(tier);
+    const WAVE_AMP_CAP = 1.2; // safe cap so stacked rings never blow past the additive budget
+    const waveNodes = Array.from(
+        { length: WAVE_SLOTS },
+        () => uniform(new THREE.Vector4(-1e3, 1.4, 0, 0)),
+    ); // per slot: (t0, duration, amp, _)
+    const waveColNodes = Array.from(
+        { length: WAVE_SLOTS },
+        () => uniform(new THREE.Color(1.0, 0.75, 0.45)),
+    );
+    const waveState = Array.from({ length: WAVE_SLOTS }, () => ({ t0: -1e3, life: 1.4, amp: 0 }));
     const waveMat = new THREE.MeshBasicNodeMaterial();
     {
         const wq = uv().sub(0.5).mul(2.0);
         const wr = length(wq);
-        const wProg = clamp(uTime.sub(uWave.x).div(uWave.y.max(0.001)), 0.0, 1.0);
-        const wRing = smoothstep(0.045, 0.0, abs(wr.sub(wProg.mul(0.92))))
-            .mul(float(1.0).sub(wProg)).mul(uWave.z);
-        // kept WELL below bloom — the ring reads as a passing pressure-front, not a flash-bang
-        // (additive + billboarded, and the reflector doubles it)
-        waveMat.colorNode = uWaveCol.mul(wRing).mul(0.28);
+        let waveSum = vec3(0.0);
+        waveNodes.forEach((wn, i) => {
+            const wProg = clamp(uTime.sub(wn.x).div(wn.y.max(0.001)), 0.0, 1.0);
+            const wRing = smoothstep(0.045, 0.0, abs(wr.sub(wProg.mul(0.92))))
+                .mul(float(1.0).sub(wProg)).mul(wn.z);
+            waveSum = waveSum.add(waveColNodes[i].mul(wRing));
+        });
+        // kept WELL below bloom — each ring reads as a passing pressure-front, not a flash-bang
+        // (additive + billboarded, and the reflector doubles it free)
+        waveMat.colorNode = waveSum.mul(0.28);
         waveMat.transparent = true;
         waveMat.blending = THREE.AdditiveBlending;
         waveMat.depthWrite = false;
@@ -1190,9 +1215,13 @@ export function create({
     wave.visible = false;
     haloSprites.push(wave); // camera-billboarded with the planet halos
     scene.add(track(wave));
-    // Queued like the bursts — stamped with update()'s clock (see the burst-queue clock note).
-    let waveQueued = null;
-    const triggerWave = (col, amp, dur) => { waveQueued = { col, amp, dur }; };
+    // Queued like the bursts — the slot is picked + stamped with update()'s clock (see the burst-queue
+    // clock note); big beats queued in one frame each take their own slot instead of overwriting.
+    const waveQueue = [];
+    const triggerWave = (col, amp, dur) => {
+        waveQueue.push({ col, amp, dur });
+        if (waveQueue.length > WAVE_SLOTS) waveQueue.shift(); // never backlog beyond the pool
+    };
 
     // ════ AURORA SPIRIT — the Ascension wing of light ════
     // Pure additive light (never geometry, never occludes the board): a broad
@@ -1383,6 +1412,10 @@ export function create({
     let intensity = 1; // reactivity multiplier (0 = off; reduced-motion → ~0.45)
     let lastTime = null;
     let prevCamTime = null; // Wave 3: dt source for frame-rate-independent camera/cursor easing
+    const COMBO_BOOST_CAP = 0.55; // sCombo ceiling — combo energy holds/accumulates, never rewinds
+    // Per-player combo progress so one player's chain break can't reset another's milestone gating
+    // (single-player collapses to the 'local' key). The emit origin stays the shared hero relic.
+    const comboProgressByPlayer = new Map();
 
     const applyPulse = (kind, payload = {}) => {
         if (intensity <= 0) return;
@@ -1405,14 +1438,23 @@ export function create({
             break;
         }
         case 'combo': {
-            const count = payload.count || 0;
-            sCombo = Math.min(0.55, count * 0.06) * k;
-            if (count > 1) spawnRing(RX, RZ, 0.5 * k);
-            // "Resonance" — wisps orbit the heart (passive, via uComboGlow); every 3rd link sheds a magenta pulse
-            if (count >= 3 && count % 3 === 0) {
-                const ep = uRelicPos.value;
-                spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.35, 0.65], (0.25 + 0.03 * count) * k, 40 + 5 * count, 3.5, 0.5, 0.35);
+            const pkey = String(payload.player ?? 'local');
+            const { prev, count } = resolveComboProgress(comboProgressByPlayer.get(pkey) || 0, payload.count);
+            if (count <= prev) { // no new links crossed (dedup / stale repeat) — never re-spawn
+                comboProgressByPlayer.set(pkey, count);
+                break;
             }
+            comboProgressByPlayer.set(pkey, count);
+            // Combo energy ACCUMULATES to a safe cap and never rewinds mid-decay (Math.max hold).
+            sCombo = accumulateComboBoost(sCombo, count, 0.06 * k, COMBO_BOOST_CAP * k);
+            if (count > 1) spawnRing(RX, RZ, 0.5 * k);
+            // "Resonance" — wisps orbit the heart (passive, via uComboGlow); every 3rd NEWLY-crossed
+            // link sheds one magenta pulse. Milestone-gated (capped per event) so a repeated or jumped
+            // combo event can't spam bursts / spike FPS.
+            const ep = uRelicPos.value;
+            comboMilestonesCrossed(prev, count).forEach((m) => {
+                spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.35, 0.65], (0.25 + 0.03 * m) * k, 40 + 5 * m, 3.5, 0.5, 0.35);
+            });
             break;
         }
         case 'tspin': {
@@ -1530,19 +1572,30 @@ export function create({
             // combo orbit follows the live combo boost; shockwave + orbit are visibility-gated.
             while (burstQueue.length) {
                 const b = burstQueue.shift();
-                bPX[b.i].value = b.px; bPY[b.i].value = b.py; bPZ[b.i].value = b.pz; bT0[b.i].value = time;
-                bCR[b.i].value = b.col[0]; bCG[b.i].value = b.col[1]; bCB[b.i].value = b.col[2];
-                bDen[b.i].value = Math.min(1, b.density);
-                bRad[b.i].value = b.maxR; bLif[b.i].value = b.life; bSwl[b.i].value = b.swirl; bUp[b.i].value = b.upBias;
+                const bi = pickExpiringSlotIndex(burstState, time); // stack: never clobber a livelier burst
+                burstState[bi].t0 = time; burstState[bi].life = b.life;
+                bPX[bi].value = b.px; bPY[bi].value = b.py; bPZ[bi].value = b.pz; bT0[bi].value = time;
+                bCR[bi].value = b.col[0]; bCG[bi].value = b.col[1]; bCB[bi].value = b.col[2];
+                bDen[bi].value = Math.min(1, b.density);
+                bRad[bi].value = b.maxR; bLif[bi].value = b.life; bSwl[bi].value = b.swirl; bUp[bi].value = b.upBias;
             }
-            if (waveQueued) {
-                uWave.value.set(time, waveQueued.dur, waveQueued.amp, 0);
-                uWaveCol.value.setRGB(waveQueued.col[0], waveQueued.col[1], waveQueued.col[2]);
-                waveQueued = null;
+            while (waveQueue.length) {
+                const w = waveQueue.shift();
+                // pick the slot nearest death (bias toward weak) so a fresh beat stacks alongside
+                // live rings instead of clobbering the strongest one.
+                const wi = pickExpiringSlotIndex(waveState, time, 0.35);
+                const st = waveState[wi];
+                st.t0 = time; st.life = w.dur; st.amp = Math.min(WAVE_AMP_CAP, w.amp);
+                waveNodes[wi].value.set(time, st.life, st.amp, 0);
+                waveColNodes[wi].value.setRGB(w.col[0], w.col[1], w.col[2]);
             }
             uComboGlow.value = Math.min(1, sCombo * 2.4);
             orbit.visible = uComboGlow.value > 0.02;
-            wave.visible = (time - uWave.value.x) < uWave.value.y;
+            let anyWaveAlive = false;
+            for (let i = 0; i < WAVE_SLOTS; i += 1) {
+                if ((time - waveState[i].t0) < waveState[i].life) { anyWaveAlive = true; break; }
+            }
+            wave.visible = anyWaveAlive;
             if (monolith) {
                 const es = ce * ce * (3 - 2 * ce); // smoothstep ease
                 monolith.position.y = -46 + 60 * es;
@@ -1581,6 +1634,7 @@ export function create({
         dispose() {
             if (typeof window !== 'undefined') window.removeEventListener('mousemove', onMouse);
             if (window.__VESPER__) delete window.__VESPER__;
+            comboProgressByPlayer.clear();
             post?.dispose();
             if (reflection) { scene.remove(reflection.target); reflection.dispose?.(); }
             if (heroHemi) { scene.remove(heroHemi); heroHemi.dispose?.(); }

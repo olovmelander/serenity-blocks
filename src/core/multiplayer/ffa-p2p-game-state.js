@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * FFA P2P Game State - Host-Authoritative Multiplayer
  *
@@ -20,7 +21,6 @@ import {
 } from '../game.js';
 import { GarbageQueue } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
-import { processPhysics } from '../physics.js';
 import { PLAYER_COLORS } from '../constants.js';
 import { FFAAttackRouter } from './ffa-attack-router.js';
 import { FragTracker } from './frag-tracker.js';
@@ -30,8 +30,19 @@ import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
 import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
-import { createBlindTimers, applyBlindEffect, applyFullBlindEffect } from '../blind.js';
+import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
+import {
+    applyBlindEffect, applyFullBlindEffect, createBlindTimers, restoreBlindTimers,
+} from '../blind.js';
 import { readFlag as readNetFlag } from '../flags.js';
+import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
+import { hasActiveHitStop } from '../simulation-tick.js';
+import {
+    readFfaFixedTick, rollbackFixedTickOnPromotion, transitionFfaSimulationClock,
+} from './ffa-fixed-tick-policy.js';
+import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
+import { resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
+import { flushFfaInputBatches, processFfaInputBatch, resetFfaInputTransport } from './ffa-input-batching.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
@@ -39,9 +50,6 @@ const RESYNC_WINDOW = 4;
 const RESYNC_TIMEOUT_MS = 300;
 const RESYNC_MAX_RETRIES = 5;
 const DOWNLOAD_JOIN_TIMEOUT_MS = 15000;
-const MAX_ADAPTIVE_INPUT_LATE_TICKS = 30;
-const MAX_ADAPTIVE_INPUT_FUTURE_TICKS = 8;
-
 // Runtime flags resolve via the central registry reader (src/core/flags.js,
 // Phase 0.6): URL `?name=1`/`?name=0` → localStorage `serenity.<name>` → default.
 // The former local readNetFlag clone was consolidated there.
@@ -121,10 +129,10 @@ export class FFAGameStateP2P {
         // ready/win/elimination/attack/loop-registration (all of which iterate this.players).
         this.isSpectator = !!options.asSpectator;
         // Host-side: steamIds that joined as spectators (kept OUT of this.players).
-        this.spectators = new Set();
+        /** @type {Set<string>} */ this.spectators = new Set();
         // Spectator count for display on EVERY client (host = spectators.size; peers adopt
         // it from the host's player-list broadcast). See broadcastPlayerList / getSpectatorCount.
-        this.spectatorCount = 0;
+        /** @type {number} */ this.spectatorCount = 0;
 
         // All player states (Map<steamId, PlayerState>)
         this.players = new Map();
@@ -139,7 +147,8 @@ export class FFAGameStateP2P {
         this.lobbyName = null;
 
         // Match state
-        this.gamePhase = 'waiting'; // waiting, countdown, playing, finished
+        /** @type {GamePhase} */
+        this.gamePhase = 'waiting';
         this.sharedSeed = 0; // Deterministic RNG seed (same pieces for all)
         this.matchConfig = {
             endCondition: 'frags', // 'frags', 'time', 'points', 'lines', 'never'
@@ -154,6 +163,7 @@ export class FFAGameStateP2P {
             hotPotato: false,
             potatoDurationMs: 12000,
             potatoPenaltyLines: 6,
+            simulationClock: 'legacy-variable-v1',
         };
         this.winner = null;
         this.matchStartTime = 0;
@@ -194,14 +204,14 @@ export class FFAGameStateP2P {
         this.chat = new InGameChat(this);
         this.chatHistory = []; // Unified chat history
 
-        const simTickNetcodeEnabled = readNetFlag('simTickNetcode', false);
+        const fixedTickEnabled = readFfaFixedTick();
         const adaptiveInputJitterEnabled = readNetFlag('adaptiveInputJitter', false);
 
         // Phase 4: Input jitter buffer (host only)
         // Smooths input timing for fair gameplay across varying latencies
         this.inputJitterBuffer = this.isHost ? new InputJitterBuffer({
             bufferDepth: 2,
-            tickRate: simTickNetcodeEnabled ? 60 : 30,
+            tickRate: fixedTickEnabled ? 60 : 30,
             adaptive: adaptiveInputJitterEnabled,
         }) : null;
         this.useJitterBuffer = this.matchConfig?.useJitterBuffer !== false; // Enable by default
@@ -210,10 +220,7 @@ export class FFAGameStateP2P {
         this.unifiedLoop = unifiedLoop;
         this.loopRunning = false;
         this.loopCallbacksConfigured = false;
-        this.localInputHooks = {
-            advance: null,
-            reset: null,
-        };
+        this.setLocalInputHooks();
 
         // === PERFORMANCE OPTIMIZATIONS ===
         // Pre-allocated render payload - reused every frame (saves ~360 allocations/sec)
@@ -362,17 +369,20 @@ export class FFAGameStateP2P {
         // exactly like local. The per-line attackId:lineIndex dedup still filters every
         // drained entry, so idempotent-adopt is unaffected. Toggle OFF: ?garbageDrainAll=0.
         this._garbageDrainAll = readNetFlag('garbageDrainAll', true);
-        this._simTickNetcodeEnabled = simTickNetcodeEnabled;
+        this._fixedTickEnabled = fixedTickEnabled;
         this._adaptiveInputJitterEnabled = adaptiveInputJitterEnabled;
         this._downloadJoinEnabled = readNetFlag('downloadJoin', false);
         this._migrationEpochEnabled = readNetFlag('migrationEpoch', false);
         this.migrationEpoch = 0;
-        this.SIM_TICK_RATE = 60;
-        this.SIM_TICK_MS = 1000 / this.SIM_TICK_RATE;
+        this.SIM_TICK_RATE = FIXED_TICK_HZ;
+        this.SIM_TICK_MS = FIXED_TICK_MS;
         this.MAX_SIM_STEPS_PER_FRAME = 5;
         this._simTickAccumulatorMs = 0;
+        this._fixedInputTimeMs = null;
+        this._peerFixedInputSimTick = null;
+        this._activeFixedInputStamp = null;
         this.downloadJoinPeers = new Map();
-        this.downloadJoinInProgress = null;
+        /** @type {DownloadJoinProgress|null} */ this.downloadJoinInProgress = null;
 
         // Quadra-style ALL-PLAYERS-READY round syncpoint: instead of the host
         // instant-starting the next round and resuming 30Hz broadcasts before the
@@ -436,6 +446,8 @@ export class FFAGameStateP2P {
     setLocalInputHooks(hooks = {}) {
         this.localInputHooks = {
             advance: typeof hooks.advance === 'function' ? hooks.advance : null,
+            advanceFixed: typeof hooks.advanceFixed === 'function' ? hooks.advanceFixed : null,
+            applyFixed: typeof hooks.applyFixed === 'function' ? hooks.applyFixed : null,
             reset: typeof hooks.reset === 'function' ? hooks.reset : null,
         };
     }
@@ -449,35 +461,8 @@ export class FFAGameStateP2P {
         }
     }
 
-    _runFixedStepHostSimulation(frameDelta) {
-        if (!this.isHost || !this.unifiedLoop) return 0;
-
-        const safeDelta = Math.min(250, Math.max(0, Number(frameDelta) || 0));
-        const tickMs = Math.max(1, Number(this.SIM_TICK_MS) || (1000 / 60));
-        const maxSteps = Math.max(1, Number(this.MAX_SIM_STEPS_PER_FRAME) || 5);
-        this._simTickAccumulatorMs = (Number(this._simTickAccumulatorMs) || 0) + safeDelta;
-
-        let steps = 0;
-        while (this._simTickAccumulatorMs + 0.0001 >= tickMs && steps < maxSteps) {
-            this.simTick = (Number(this.simTick) || 0) + 1;
-            this.processBufferedInputs();
-            this.unifiedLoop.updatePlayers?.(tickMs);
-            this.updateAllPlayers(tickMs);
-            this.attackRouter?.updateHotPotato?.(Date.now());
-            this._simTickAccumulatorMs -= tickMs;
-            steps += 1;
-        }
-
-        if (steps >= maxSteps && this._simTickAccumulatorMs >= tickMs) {
-            this._recordNetEvent?.('sim_tick_clamped', {
-                accumulatorMs: Math.round(this._simTickAccumulatorMs),
-                maxSteps,
-                tickMs: Math.round(tickMs * 1000) / 1000,
-            });
-            this._simTickAccumulatorMs = Math.min(this._simTickAccumulatorMs, tickMs);
-        }
-
-        return steps;
+    _transitionSimulationClock(simulationClock) {
+        return transitionFfaSimulationClock(this, simulationClock);
     }
 
     /**
@@ -548,7 +533,7 @@ export class FFAGameStateP2P {
             name,
             color: playerColor, // NEW: Assign unique player color
             isLocal,
-            gameState: new GameState(),
+            gameState: new GameState({ lockBonusPolicy: 'legacy-max' }),
             garbageQueue: new GarbageQueue(),
             isAlive: !midMatchJoin, // mid-match joiner waits (dead) until the next round
             // Distinguishes a late joiner WAITING to spawn next round from a player who was
@@ -582,15 +567,13 @@ export class FFAGameStateP2P {
             if (this.loopRunning) {
                 this.syncUnifiedLoopPlayers();
             }
-            // Mid-match joiner: their client is still in 'waiting' (it never got the
-            // match-start LOBBY_GAME_START), so re-send it with inProgress so the client
-            // builds its game UI and shows the watch view without a misleading countdown.
-            // (queueResync is issued by the join handlers to deliver the board baseline.)
+            // Mid-match joiners need the live match metadata before their resync baseline.
             if (midMatchJoin) {
                 this.network.sendP2PMessage?.(steamId, MessageTypes.LOBBY_GAME_START, {
                     sharedSeed: this.sharedSeed,
                     config: this.matchConfig,
                     inProgress: true,
+                    roundGeneration: this.roundGeneration,
                 });
             }
         }
@@ -615,13 +598,12 @@ export class FFAGameStateP2P {
         this.broadcastPlayerList(); // give the spectator the full player roster to render
         this.queueResync(steamId); // + a current board baseline; then it rides the live stream
 
-        // If a match is ALREADY in progress, tell the spectator to set up its watch UI and
-        // go live now (its startMatch is countdown-free for spectators). At lobby start it
-        // receives the normal LOBBY_GAME_START broadcast like everyone else.
+        // A live spectator needs the match metadata before its resync baseline.
         if (this.gamePhase === 'playing') {
             this.network.sendP2PMessage(steamId, MessageTypes.LOBBY_GAME_START, {
                 sharedSeed: this.sharedSeed,
                 config: this.matchConfig,
+                roundGeneration: this.roundGeneration,
             });
         }
     }
@@ -636,10 +618,10 @@ export class FFAGameStateP2P {
      * then removes it from the roster IMMEDIATELY (no disconnect grace period — a kick is
      * deliberate) and broadcasts the updated list. Host-only; can't kick yourself.
      */
-    kickPlayer(steamId) {
+    kickPlayer(steamId, reason = 'kicked_by_host') {
         if (!this.isHost || !steamId || steamId === this.localPlayerId) return false;
         console.log(`👢 Host kicking ${steamId}`);
-        this.network.sendP2PMessage?.(steamId, MessageTypes.PLAYER_KICKED, { reason: 'kicked_by_host' });
+        this.network.sendP2PMessage?.(steamId, MessageTypes.PLAYER_KICKED, { reason });
         if (this.spectators?.has(steamId)) {
             this.spectators.delete(steamId);
             this.broadcastPlayerList(); // refresh the spectator count for everyone
@@ -700,6 +682,7 @@ export class FFAGameStateP2P {
         }
 
         console.log(`👋 Player permanently removed: ${player.name}`);
+        resetFfaInputTransport(this, steamId);
         this.players.delete(steamId);
 
         // Clean up validator data (host only)
@@ -954,6 +937,10 @@ export class FFAGameStateP2P {
             }
             // The successor is verified; adopt it as host and take its snapshot.
             this.network.hostSteamId = newHostId;
+            const simulationClock = msg.data?.simulationClock;
+            if (['fixed60-v1', 'legacy-variable-v1'].includes(simulationClock)) {
+                this._transitionSimulationClock(simulationClock);
+            }
             if (msg.data.snapshot) {
                 this.syncFromHost(msg.data.snapshot);
             }
@@ -1265,6 +1252,8 @@ export class FFAGameStateP2P {
             return;
         }
         console.log('📬 Peer received game start from host!');
+        const generation = Number(msg.data?.roundGeneration);
+        if (Number.isSafeInteger(generation) && generation >= 0) this.roundGeneration = generation;
         this.startMatch(msg.data.sharedSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
         // Note: MATCH_STARTED event will be emitted AFTER countdown completes
         // (see startMatch -> showCountdown callback)
@@ -1491,16 +1480,24 @@ export class FFAGameStateP2P {
         });
     }
 
-    _applyInputToPlayer(steamId, inputType, data, physicsCallbacks) {
+    _applyInputToPlayer(steamId, inputType, data, physicsCallbacks, timing = {}) {
         const player = this.players.get(steamId);
         if (!player || !player.isAlive) {
             return false;
         }
-
         const { gameState } = player;
-
-        // Buffer input if processing physics (prevents dropped inputs during animations)
-        // The queue is consumed in game.js spawnPiece()
+        if (this._fixedTickEnabled && hasActiveHitStop(gameState)) {
+            if (this.isHost && data?.seq > (player.lastInputSeq || 0)) player.lastInputSeq = data.seq;
+            this._recordNetEvent?.('input_rejected', {
+                steamId, inputType, seq: data?.seq, reason: 'hit_stop',
+            });
+            return false;
+        }
+        if (
+            timing.inputPhase === true
+            && gameState._fixedInputSpawnFrame === gameState.simFrame
+        ) return false;
+        // Buffer move/rotate while physics owns the piece; spawnPiece consumes the queue.
         if (gameState.isProcessingPhysics || !gameState.currentPiece) {
             if (inputType === 'move' || inputType === 'rotate') {
                 const queued = {
@@ -1519,7 +1516,6 @@ export class FFAGameStateP2P {
             }
             return false;
         }
-
         const callbacks = physicsCallbacks || this.buildPhysicsCallbacks(steamId);
 
         switch (inputType) {
@@ -1531,100 +1527,32 @@ export class FFAGameStateP2P {
             break;
         case 'drop':
             if (data.type === 'soft') {
-                softDrop(gameState, null, callbacks);
+                softDrop(gameState, null, callbacks, timing);
             } else if (data.type === 'hard') {
-                // Update callbacks to proxy the hard drop effect through to the client
                 const dropCallbacks = {
                     ...callbacks,
                     onHardDrop: (dropData) => {
                         if (callbacks.onHardDrop) callbacks.onHardDrop(dropData);
-                        // Provide a hook for local UI integration in FFA multiplayer
                         emitMultiplayerEvent('hard_drop_effect', { steamId, dropData });
                     },
                 };
-                hardDrop(gameState, null, dropCallbacks);
+                hardDrop(gameState, null, dropCallbacks, timing);
             }
             break;
         default:
             return false;
         }
-
         return true;
     }
 
-    _resolveBufferedInputTick(steamId, data = {}) {
-        const buffer = this.inputJitterBuffer;
-        const fallbackTick = Number(buffer?.currentTick) || 0;
-        const fallback = {
-            tick: fallbackTick,
-            rawTick: fallbackTick,
-            source: 'buffer',
-            lateClamped: false,
-            reject: false,
-        };
-
-        if (!this._adaptiveInputJitterEnabled || !buffer) return fallback;
-
-        // Host-local input should keep the proven short local buffer. Remote peers
-        // are the only source of network arrival jitter.
-        if (steamId === this.localPlayerId) {
-            return { ...fallback, source: 'local_buffer' };
-        }
-
-        const rawValue = data?.simTick ?? data?.hostSimTick ?? data?.clientSimTick;
-        const rawTick = Math.round(Number(rawValue));
-        if (!Number.isFinite(rawTick)) {
-            return { ...fallback, source: 'fallback_missing_sim_tick' };
-        }
-
-        const processCursor = Number(buffer.processCursor) || 0;
-        const currentTick = Number(buffer.currentTick) || 0;
-        const bufferDepth = Number(buffer.bufferDepth) || 2;
-        const maxTick = currentTick + bufferDepth + MAX_ADAPTIVE_INPUT_FUTURE_TICKS;
-
-        if (rawTick > maxTick) {
-            return {
-                ...fallback,
-                rawTick,
-                source: 'fallback_future_sim_tick',
-            };
-        }
-
-        const lateBy = processCursor - rawTick;
-        if (lateBy > MAX_ADAPTIVE_INPUT_LATE_TICKS) {
-            return {
-                tick: rawTick,
-                rawTick,
-                source: 'stale_sim_tick',
-                reject: true,
-                lateBy,
-            };
-        }
-
-        if (rawTick < processCursor) {
-            return {
-                tick: processCursor,
-                rawTick,
-                source: 'sim_tick_clamped_late',
-                lateClamped: true,
-                reject: false,
-                lateBy,
-            };
-        }
-
-        return {
-            tick: rawTick,
-            rawTick,
-            source: 'sim_tick',
-            lateClamped: false,
-            reject: false,
-        };
+    _resolveBufferedInputTick(steamId, data = {}, policy = {}) {
+        return resolveFfaBufferedInputTick(this, steamId, data, policy);
     }
 
     /**
     * Process player input (HOST ONLY)
     */
-    processPlayerInput(steamId, inputType, data, timestamp) {
+    processPlayerInput(steamId, inputType, data, timestamp, policy = {}) {
         if (!this.isHost) {
             console.warn('⚠️ Only host can process inputs');
             return;
@@ -1636,7 +1564,16 @@ export class FFAGameStateP2P {
         }
 
         // Validate input (anti-cheat)
-        const validation = this.inputValidator.validateInput(steamId, inputType, data, timestamp);
+        const validation = this.inputValidator.validateInput(
+            steamId,
+            inputType,
+            data,
+            timestamp,
+            {
+                fixedTick: this._fixedTickEnabled === true
+                    && (steamId === this.localPlayerId || policy.fixedTickCanonical === true),
+            },
+        );
         if (!validation.valid) {
             this._recordNetEvent?.('input_rejected', {
                 steamId,
@@ -1675,7 +1612,7 @@ export class FFAGameStateP2P {
             // exactly once, bufferDepth frames later. (Discarding data.tick also
             // drops the broken adaptive-offset signal, which was measured against
             // the same stale peer clock.)
-            const schedule = this._resolveBufferedInputTick(steamId, data);
+            const schedule = this._resolveBufferedInputTick(steamId, data, policy);
             if (schedule.reject) {
                 if (this.inputJitterBuffer.stats) this.inputJitterBuffer.stats.inputsDropped += 1;
                 this._recordNetEvent?.('input_rejected', {
@@ -1696,9 +1633,10 @@ export class FFAGameStateP2P {
                 data,
                 timestamp,
             }, {
-                jitterTick: schedule.rawTick,
+                jitterTick: schedule.jitterTick ?? schedule.rawTick,
                 scheduleSource: schedule.source,
                 lateClamped: schedule.lateClamped,
+                maxFutureTicks: schedule.maxFutureTicks,
                 receivedAt: Date.now(),
             });
             this._recordNetEvent?.(accepted ? 'input_buffered' : 'input_rejected', {
@@ -1768,15 +1706,22 @@ export class FFAGameStateP2P {
             this.processPlayerInput(this.localPlayerId, inputType, data, timestamp);
         } else {
             const seq = ++this.inputSequence;
+            const fixedStamp = this._fixedTickEnabled === true
+                && this._activeFixedInputStamp
+                && Number.isInteger(this._activeFixedInputStamp.simTick)
+                && Number.isInteger(this._activeFixedInputStamp.ordinal)
+                ? this._activeFixedInputStamp
+                : null;
             // Peer queues input for batch sending
             const queuedInput = {
                 type: inputType,
                 data,
                 tick: this.hostTick, // Use estimated host tick
-                simTick: this.simTick || 0, // Host simulation tick estimate for adaptive input scheduling
+                simTick: fixedStamp?.simTick ?? (this.simTick || 0),
                 seq,
                 timestamp,
             };
+            if (fixedStamp) queuedInput.fixedTickOrdinal = fixedStamp.ordinal;
             this.pendingInputs.push(queuedInput);
 
             if (!this.inputHistory) this.inputHistory = [];
@@ -1785,7 +1730,6 @@ export class FFAGameStateP2P {
                 this.inputHistory.splice(0, this.inputHistory.length - 120);
             }
 
-            // Apply prediction locally immediately
             this._applyLocalPrediction(inputType, data);
         }
     }
@@ -1795,61 +1739,14 @@ export class FFAGameStateP2P {
      */
     flushInputBatch() {
         if (this.isHost || this.pendingInputs.length === 0) return;
-
-        // Send all pending inputs in one batch message
-        this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_INPUT_BATCH, {
-            inputs: this.pendingInputs,
-            lastAck: this.lastAckedTick,
-            tick: this.hostTick,
-            simTick: this.simTick || 0,
-        });
-
-        // Clear queue (assuming reliability, or we implement retry queue later)
-        this.pendingInputs = [];
+        flushFfaInputBatches(this);
     }
 
     /**
      * Process a batch of inputs from a peer (HOST ONLY)
      */
     processInputBatch(steamId, batchData, timestamp) {
-        if (!this.isHost) return;
-
-        const { inputs } = batchData;
-        if (!Array.isArray(inputs)) return;
-
-        // Validate batch size (prevent massive spam)
-        if (inputs.length > 20) {
-            console.warn(`⚠️ Batch too large from ${steamId}: ${inputs.length}`);
-            return;
-        }
-
-        const seqs = inputs.map((input) => Number(input.seq)).filter((seq) => Number.isFinite(seq));
-        this._recordNetEvent?.('input_batch_accepted', {
-            steamId,
-            count: inputs.length,
-            minSeq: seqs.length ? Math.min(...seqs) : null,
-            maxSeq: seqs.length ? Math.max(...seqs) : null,
-            clientTick: batchData.tick,
-            lastAck: batchData.lastAck,
-        });
-
-        inputs.forEach((input) => {
-            // Validate input type
-            if (!['move', 'rotate', 'drop'].includes(input.type)) return;
-
-            // Process individual input
-            this.processPlayerInput(
-                steamId,
-                input.type,
-                {
-                    ...(input.data || {}),
-                    seq: input.seq,
-                    tick: input.tick,
-                    simTick: input.simTick ?? batchData.simTick,
-                },
-                input.timestamp || timestamp,
-            );
-        });
+        processFfaInputBatch(this, steamId, batchData, timestamp);
     }
 
     _applyLocalPrediction(inputType, data) {
@@ -1862,6 +1759,7 @@ export class FFAGameStateP2P {
             inputType,
             data,
             this.buildLocalPredictionCallbacks(this.localPlayerId),
+            this._activeFixedInputStamp ? { fixedTick: true, inputPhase: true } : undefined,
         );
 
         if (applied) {
@@ -2122,6 +2020,9 @@ export class FFAGameStateP2P {
             if (config) {
                 this.matchConfig = { ...this.matchConfig, ...config };
             }
+            this._transitionSimulationClock(
+                this._fixedTickEnabled ? 'fixed60-v1' : 'legacy-variable-v1',
+            );
 
             // Initialize all players with shared seed
             this.players.forEach((player) => {
@@ -2140,10 +2041,10 @@ export class FFAGameStateP2P {
                 reason: 'match_start',
             });
 
-            // Broadcast game start to all peers
             this.network.broadcastToAll(MessageTypes.LOBBY_GAME_START, {
                 sharedSeed: this.sharedSeed,
                 config: this.matchConfig,
+                roundGeneration: this.roundGeneration,
             });
 
             // Start state sync loop (30Hz)
@@ -2155,6 +2056,7 @@ export class FFAGameStateP2P {
             if (config) {
                 this.matchConfig = { ...this.matchConfig, ...config };
             }
+            this._transitionSimulationClock(this.matchConfig.simulationClock);
 
             // Initialize local player — a SPECTATOR owns no board, so skip it (otherwise
             // initializePlayerForMatch(undefined) crashes). A mid-match DROP-IN joiner also
@@ -2347,7 +2249,7 @@ export class FFAGameStateP2P {
             this._sendResyncToPeer(steamId);
         }
     }
-
+    /** @returns {AuthoritativeStateSnapshot} */
     buildStateSnapshot() {
         const players = Array.from(this.players.entries()).map(([steamId, player]) => ({
             steamId,
@@ -2362,13 +2264,11 @@ export class FFAGameStateP2P {
             garbagePending: player.garbageQueue.getTotalLines(),
             lastAttackerId: player.lastAttackerId || null,
             lockSeq: player._lockSeq || 0,
-
             grid: player.gameState.boardGrid,
             currentPiece: player.gameState.currentPiece,
             nextPieces: player.gameState.nextPieces,
             dropCounter: player.gameState.dropCounter,
             dropInterval: player.gameState.dropInterval,
-
             garbageEntries: player.garbageQueue.entries.map((entry) => ({
                 type: entry.type,
                 attackerId: entry.attackerId,
@@ -2390,7 +2290,6 @@ export class FFAGameStateP2P {
                 rulesHash: entry.rulesHash,
                 clearSummary: entry.clearSummary,
             })),
-
             lockedPieces: player.gameState.lockedPieces.map((piece) => ({
                 x: piece.x,
                 y: piece.y,
@@ -2398,20 +2297,16 @@ export class FFAGameStateP2P {
                 color: piece.color,
                 shapeKey: piece.shapeKey,
             })),
-
             blindTimers: player.gameState.blindTimers ? {
                 field: player.gameState.blindTimers.field,
                 fieldMax: player.gameState.blindTimers.fieldMax,
                 pending: player.gameState.blindTimers.pending,
                 pendingMax: player.gameState.blindTimers.pendingMax,
             } : null,
-
             lastInputSeq: player.lastInputSeq,
         }));
-
         // Phase 4: Calculate state digest for desync detection
         const stateDigest = this._calculateStateDigest(players);
-
         return {
             players,
             gamePhase: this.gamePhase,
@@ -2451,6 +2346,7 @@ export class FFAGameStateP2P {
         return (hash >>> 0).toString(16); // Unsigned hex string
     }
 
+    /** @returns {AuthoritativeStateSnapshot} */
     getFullState() {
         return this.buildStateSnapshot();
     }
@@ -2547,11 +2443,7 @@ export class FFAGameStateP2P {
         }
     }
 
-    /**
-    * Sync state from host (peer only)
-    * CRITICAL: Must trigger visual updates
-    * Phase 4: Includes desync detection
-    */
+    /** Sync state from the host and render it. @param {StateSnapshot} state */
     syncFromHost(state) {
         if (this.isHost) return;
 
@@ -2940,7 +2832,9 @@ export class FFAGameStateP2P {
         d.lastLogAt = now;
     }
 
-    _applySnapshotState(state, { forceLocal, reconcileLocal = false }) {
+    /** @param {StateSnapshot} state @param {{forceLocal: boolean, reconcileLocal?: boolean}} options */
+    _applySnapshotState(state, options) {
+        const { forceLocal, reconcileLocal = false } = options;
         if (this._netDiagEnabled) {
             this._netDiag.rx += 1;
             this._maybeFlushNetDiag();
@@ -3088,6 +2982,7 @@ export class FFAGameStateP2P {
                 // BELOW our prediction (the regress-then-jump on hold release); a genuinely
                 // AHEAD host still wins via max(). forceLocal hard resync sets
                 // ownsLocalPiece=false and hard-adopts. Writes live in the §5.1 boundary.
+                /** @type {'hold'|'monotonic'|'adopt'} */
                 let statsMode = 'hold';
                 if (!peerOwns && !holdLocalStats) {
                     statsMode = (ownsLocalPiece && this._holdStatsEnabled) ? 'monotonic' : 'adopt';
@@ -3213,13 +3108,8 @@ export class FFAGameStateP2P {
                 }
 
                 // Sync blind timers
-                if (playerData.blindTimers) {
-                    player.gameState.blindTimers = {
-                        field: playerData.blindTimers.field || 0,
-                        fieldMax: playerData.blindTimers.fieldMax || 0,
-                        pending: playerData.blindTimers.pending || 0,
-                        pendingMax: playerData.blindTimers.pendingMax || 0,
-                    };
+                if (playerData.blindTimers !== undefined) {
+                    restoreBlindTimers(player.gameState, playerData.blindTimers);
                 } else if (!player.gameState.blindTimers) {
                     player.gameState.blindTimers = createBlindTimers();
                 }
@@ -3340,7 +3230,7 @@ export class FFAGameStateP2P {
         const payload = this._buildResyncPayload({ resyncId, downloadEpoch });
         const bytes = encodeUtf8(JSON.stringify(payload));
         const chunkCount = Math.ceil(bytes.length / this.resyncChunkSize);
-        const header = payload.header || {};
+        const { header } = payload;
 
         const chunks = [];
         for (let i = 0; i < chunkCount; i += 1) {
@@ -3573,11 +3463,14 @@ export class FFAGameStateP2P {
                         snapshotBytes.byteOffset + snapshotBytes.byteLength,
                     );
                     const snapshot = getBinaryDecoder().decodeSnapshot(snapshotBuffer);
+                    if (!snapshot) throw new Error('Decoded resync snapshot is empty');
                     this.network.setIncomingSnapshotBaseline?.(msg.from || this.network.hostSteamId, snapshot);
-                    this._applyResyncState({
-                        ...snapshot,
-                        ...(payload.header || {}),
+                    const header = payload.header || {};
+                    const hydrated = hydrateBinarySnapshot(snapshot, {
+                        roundGeneration: header.roundGeneration,
+                        migrationEpoch: header.migrationEpoch,
                     });
+                    this._applyResyncState({ ...hydrated, ...header });
                 } else {
                     this._applyResyncState(payload);
                 }
@@ -3594,9 +3487,11 @@ export class FFAGameStateP2P {
         }
     }
 
+    /** @param {ResyncSnapshotState} state */
     _applyResyncState(state) {
         if (state.matchConfig) {
             this.matchConfig = { ...this.matchConfig, ...state.matchConfig };
+            this._transitionSimulationClock(this.matchConfig.simulationClock);
         }
         if (state.sharedSeed) {
             this.sharedSeed = state.sharedSeed;
@@ -3653,10 +3548,11 @@ export class FFAGameStateP2P {
             isDisconnected: p.isDisconnected || false, // Broadcast disconnect status
         }));
 
-        this.network.broadcastToAll(MessageTypes.LOBBY_PLAYER_JOINED, {
+        const roster = /** @type {LobbyRosterSnapshot} */ ({
             players: playerList,
             spectatorCount: this.spectators?.size || 0, // so every client can show "N watching"
         });
+        this.network.broadcastToAll(MessageTypes.LOBBY_PLAYER_JOINED, roster);
 
         // Keep the discoverable lobby entry's player count + status current so the
         // lobby browser shows Join / "Join (next round)" / Watch correctly for late arrivals.
@@ -3876,7 +3772,7 @@ export class FFAGameStateP2P {
             return;
         }
 
-        this._setUnifiedLoopExternalPlayerUpdate(this.isHost && this._simTickNetcodeEnabled);
+        this._setUnifiedLoopExternalPlayerUpdate(this._fixedTickEnabled);
 
         this.unifiedLoop.onRender = () => {
             this.renderAllPlayers();
@@ -3886,23 +3782,26 @@ export class FFAGameStateP2P {
             if (this.gamePhase !== 'playing') {
                 return;
             }
+            const hostWallTime = this.isHost ? Date.now() : 0;
 
-            this.localInputHooks.advance?.(currentTime, delta);
+            if (!this._fixedTickEnabled) {
+                this.localInputHooks.advance?.(currentTime, delta);
+            }
 
-            // Phase 5: Flush batched inputs (Peers only)
-            if (!this.isHost) {
+            if (!this.isHost && !this._fixedTickEnabled) {
                 this.flushInputBatch();
             }
 
+            if (this._fixedTickEnabled) {
+                runFfaFixedTicks(this, delta, currentTime, hostWallTime);
+                if (!this.isHost) this.flushInputBatch();
+            } else if (this.isHost) {
+                this.simTick = (Number(this.simTick) || 0) + 1;
+                this.processBufferedInputs(); // Process inputs from jitter buffer
+                this.updateAllPlayers();
+                this.attackRouter.updateHotPotato(hostWallTime);
+            }
             if (this.isHost) {
-                if (this._simTickNetcodeEnabled) {
-                    this._runFixedStepHostSimulation(delta);
-                } else {
-                    this.simTick = (Number(this.simTick) || 0) + 1;
-                    this.processBufferedInputs(); // Process inputs from jitter buffer
-                    this.updateAllPlayers(delta);
-                    this.attackRouter.updateHotPotato(Date.now());
-                }
                 this.maybeBroadcastPostPhysics(delta);
             }
         };
@@ -4008,7 +3907,7 @@ export class FFAGameStateP2P {
 
                 const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && player.gameState) {
+                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
                     let hitStop = 0;
                     if (lineCount >= 4) {
                         hitStop = 70;
@@ -4099,7 +3998,7 @@ export class FFAGameStateP2P {
 
                 const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && player.gameState) {
+                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
                     player.gameState.hitStopRemaining = Math.max(player.gameState.hitStopRemaining || 0, 30);
                 }
 
@@ -4116,7 +4015,7 @@ export class FFAGameStateP2P {
 
                 const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && player.gameState) {
+                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
                     player.gameState.hitStopRemaining = 110;
                 }
 
@@ -4443,7 +4342,13 @@ export class FFAGameStateP2P {
         this.network.hostSteamId = this.localPlayerId;
         this.handshakeComplete = true;
         this.attackRouter.isHost = true;
-
+        const fixedTickAfterPromotion = rollbackFixedTickOnPromotion(
+            this._fixedTickEnabled,
+            this._recordNetEvent?.bind(this),
+        );
+        this._transitionSimulationClock(
+            fixedTickAfterPromotion ? 'fixed60-v1' : 'legacy-variable-v1',
+        );
         if (!this.inputValidator) {
             this.inputValidator = new InputValidator();
         } else {
@@ -4453,12 +4358,12 @@ export class FFAGameStateP2P {
         if (!this.inputJitterBuffer) {
             this.inputJitterBuffer = new InputJitterBuffer({
                 bufferDepth: 2,
-                tickRate: this._simTickNetcodeEnabled ? 60 : 30,
+                tickRate: this._fixedTickEnabled ? 60 : 30,
                 adaptive: this._adaptiveInputJitterEnabled === true,
             });
         } else {
             this.inputJitterBuffer.adaptiveEnabled = this._adaptiveInputJitterEnabled === true;
-            this.inputJitterBuffer.tickRate = this._simTickNetcodeEnabled ? 60 : 30;
+            this.inputJitterBuffer.tickRate = this._fixedTickEnabled ? 60 : 30;
             this.inputJitterBuffer.tickInterval = 1000 / this.inputJitterBuffer.tickRate;
             this.inputJitterBuffer.clear();
         }
@@ -4478,7 +4383,7 @@ export class FFAGameStateP2P {
     */
     startGameLoop() {
         this.configureUnifiedLoopCallbacks();
-        this._setUnifiedLoopExternalPlayerUpdate(this.isHost && this._simTickNetcodeEnabled);
+        this._setUnifiedLoopExternalPlayerUpdate(this._fixedTickEnabled);
 
         if (this.isHost) {
             this.syncUnifiedLoopPlayers();
@@ -4497,8 +4402,10 @@ export class FFAGameStateP2P {
         }
 
         if (this.unifiedLoop && !this.loopRunning) {
-            if (this.isHost && this._simTickNetcodeEnabled) {
+            if (this._fixedTickEnabled) {
                 this._simTickAccumulatorMs = 0;
+                this._fixedInputTimeMs = null;
+                this._activeFixedInputStamp = null;
             }
             this.localInputHooks.reset?.();
             // Competitive online MP must NEVER pause (a pause desyncs the netcode) — latch the
@@ -4566,7 +4473,7 @@ export class FFAGameStateP2P {
     /**
     * Update all players' game states (HOST ONLY)
     */
-    updateAllPlayers(deltaTime) {
+    updateAllPlayers() {
         this.players.forEach((player, steamId) => {
             if (!player) return;
 
@@ -4925,6 +4832,7 @@ export class FFAGameStateP2P {
         // Keep the heartbeat alive across the reset → startMatch countdown window so a
         // peer doesn't false-migrate while the host rebuilds the game (see restartMatch).
         // startMatch() re-arms it too; this just closes the brief gap. Idempotent.
+        this.roundGeneration += 1;
         this.startHeartbeatLoop();
 
         // Reset trackers
@@ -5083,7 +4991,7 @@ export class FFAGameStateP2P {
 
                 // Use requestAnimationFrame for smooth UI updates
                 requestAnimationFrame(() => {
-                    countdownElement.textContent = count;
+                    countdownElement.textContent = String(count);
                     countdownElement.style.fontSize = '140px';
                     countdownElement.style.color = count >= 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
                     countdownElement.style.animation = 'none'; // Clear previous animation
@@ -5130,6 +5038,7 @@ export class FFAGameStateP2P {
     cleanup() {
         this.stopGameLoop();
         this.stopStateSyncLoop();
+        resetFfaInputTransport(this);
 
         if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
 

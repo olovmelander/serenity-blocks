@@ -18,12 +18,14 @@ import {
     generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
 } from './board.js';
 import { insertGarbageEntries } from './garbage.js';
-import { processPhysics } from './physics.js';
+import { processPhysics, tryProcessNoClearSync } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
 import { createBlindTimers } from './blind.js';
 import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
+import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
+import { createPlayerInputState, resetPlayerInputState } from './player-input-state.js';
 
 // Re-export: markBoardDirty moved to board.js (cycle break); external callers
 // still import it from here until the §5.1 leftover un-exports it entirely.
@@ -160,6 +162,69 @@ function getLockDelay(gameState) {
     return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_DELAY_MS;
 }
 
+function getLockDelayTicks(gameState) {
+    const derived = durationMsToTicks(getLockDelay(gameState), gameState?.simTickMs);
+    // lockDelay is still the public configuration boundary during migration.
+    // Refresh its integer mirror here so a later simTickMs change cannot leave
+    // fixed timing on a stale constructor-time value.
+    if (gameState) gameState.lockDelayTicks = derived;
+    return derived;
+}
+
+/**
+ * Consume exactly one canonical hit-stop tick without consulting wall time.
+ * Direct millisecond producers remain valid during the migration: a changed
+ * public value is re-quantized before the integer counter is consumed. The
+ * final frozen tick still returns true; gameplay resumes on the next tick.
+ *
+ * Ships dark until the shared advanceTick policy owns input ordering.
+ *
+ * @param {GameState} gameState
+ * @returns {boolean} true when this simulation tick must remain frozen
+ */
+export function consumeFixedHitStopTick(gameState) {
+    if (!gameState) return false;
+
+    const configuredTickMs = Number(gameState.simTickMs);
+    const tickMs = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+        ? configuredTickMs
+        : (1000 / 60);
+    const numericRemainingMs = Number(gameState.hitStopRemaining);
+    const remainingMs = Number.isFinite(numericRemainingMs) && numericRemainingMs > 0
+        ? numericRemainingMs
+        : 0;
+
+    // A restored explicit counter wins on the fixed path while the legacy path
+    // may continue reading the original millisecond value. Any direct producer
+    // write or tick-duration change invalidates that synchronization and is
+    // re-quantized at the public millisecond boundary.
+    const counterIsSynchronized = Number.isInteger(gameState.hitStopTicks)
+        && gameState.hitStopTicks >= 0
+        && remainingMs === gameState._hitStopTickSourceMs
+        && tickMs === gameState._hitStopTickDurationMs;
+    if (!counterIsSynchronized) {
+        if (remainingMs <= 0) {
+            gameState.hitStopRemaining = 0;
+            gameState.hitStopTicks = 0;
+            gameState._hitStopTickSourceMs = 0;
+            gameState._hitStopTickDurationMs = tickMs;
+            return false;
+        }
+        gameState.hitStopTicks = durationMsToTicks(remainingMs, tickMs);
+    }
+    if (gameState.hitStopTicks <= 0) {
+        gameState.hitStopRemaining = 0;
+        gameState._hitStopTickSourceMs = 0;
+        gameState._hitStopTickDurationMs = tickMs;
+        return false;
+    }
+    gameState.hitStopTicks = Math.max(0, gameState.hitStopTicks - 1);
+    gameState.hitStopRemaining = gameState.hitStopTicks * tickMs;
+    gameState._hitStopTickSourceMs = gameState.hitStopRemaining;
+    gameState._hitStopTickDurationMs = tickMs;
+    return true;
+}
+
 function getLockResetLimit(gameState) {
     const configured = Number(gameState?.lockResetLimit);
     return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_RESET_LIMIT;
@@ -168,6 +233,7 @@ function getLockResetLimit(gameState) {
 function resetLockState(gameState) {
     if (!gameState) return;
     gameState.lockTimer = 0;
+    gameState.lockTimerTicks = 0;
     gameState.lockResetCount = 0;
     gameState.isGrounded = false;
     gameState.lockGroundedSince = null;
@@ -185,7 +251,7 @@ function isCurrentPieceGrounded(gameState) {
     );
 }
 
-function updateGroundedState(gameState, delta = 0) {
+function updateGroundedState(gameState, delta = 0, elapsedTicks = null) {
     if (!gameState?.currentPiece) {
         resetLockState(gameState);
         return false;
@@ -194,6 +260,7 @@ function updateGroundedState(gameState, delta = 0) {
     const grounded = isCurrentPieceGrounded(gameState);
     if (!grounded) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.isGrounded = false;
         gameState.lockGroundedSince = null;
         return false;
@@ -202,11 +269,22 @@ function updateGroundedState(gameState, delta = 0) {
     if (!gameState.isGrounded) {
         gameState.isGrounded = true;
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.lockGroundedSince = gameState.lastTime || 0;
     }
 
-    if (Number.isFinite(delta) && delta > 0) {
+    if (Number.isInteger(elapsedTicks) && elapsedTicks >= 0) {
+        gameState.lockTimerTicks += elapsedTicks;
+        const configuredTickMs = Number(gameState.simTickMs);
+        const tickMs = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+            ? configuredTickMs
+            : (1000 / 60);
+        // Compatibility mirror for render/debug/legacy snapshot consumers.
+        // The integer counter is authoritative only when elapsedTicks is explicit.
+        gameState.lockTimer = gameState.lockTimerTicks * tickMs;
+    } else if (Number.isFinite(delta) && delta > 0) {
         gameState.lockTimer += delta;
+        gameState.lockTimerTicks = elapsedMsToTicks(gameState.lockTimer, gameState.simTickMs);
     }
 
     return true;
@@ -217,6 +295,7 @@ function maybeResetLockDelay(gameState, wasGrounded) {
 
     if (!isCurrentPieceGrounded(gameState)) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.isGrounded = false;
         gameState.lockGroundedSince = null;
         return;
@@ -224,15 +303,18 @@ function maybeResetLockDelay(gameState, wasGrounded) {
 
     if (gameState.lockResetCount < getLockResetLimit(gameState)) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.lockResetCount += 1;
         gameState.isGrounded = true;
         gameState.lockGroundedSince = gameState.lastTime || 0;
     }
 }
 
-function shouldLockGroundedPiece(gameState) {
+function shouldLockGroundedPiece(gameState, useTickTimer = false) {
     return getLockDelay(gameState) <= 0
-        || gameState.lockTimer >= getLockDelay(gameState)
+        || (useTickTimer
+            ? gameState.lockTimerTicks >= getLockDelayTicks(gameState)
+            : gameState.lockTimer >= getLockDelay(gameState))
         || gameState.lockResetCount >= getLockResetLimit(gameState);
 }
 
@@ -500,11 +582,15 @@ export class GameState {
         this.simTickMs = 1000 / 60;
         this.simTimeMs = 0;
         this.simFrame = 0;
+        this._fixedInputSpawnFrame = null;
         this.startTime = Date.now();
         this.piecesPlaced = 0;
+        this.lockBonusPolicy = options.lockBonusPolicy === 'legacy-max' ? 'legacy-max' : 'elapsed';
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
+        this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
         this.lockTimer = 0;
+        this.lockTimerTicks = 0;
         this.lockResetCount = 0;
         this.isGrounded = false;
         this.lockGroundedSince = null;
@@ -512,7 +598,11 @@ export class GameState {
         // Flags
         this.isGameOver = false;
         this.isPaused = false;
+        this.hitStopEnabled = options.hitStopEnabled !== false;
         this.hitStopRemaining = 0; // Tracks remaining hit-stop (impact freeze) milliseconds
+        this.hitStopTicks = 0;
+        this._hitStopTickSourceMs = 0;
+        this._hitStopTickDurationMs = this.simTickMs;
         this.isProcessingPhysics = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
@@ -529,6 +619,7 @@ export class GameState {
 
         // Input
         this.inputQueue = null;
+        this.playerInput = createPlayerInputState(options.inputHandling);
 
         // Animation
         this.animationId = null;
@@ -605,6 +696,7 @@ export class GameState {
         this.lastTime = 0;
         this.simTimeMs = 0;
         this.simFrame = 0;
+        this._fixedInputSpawnFrame = null;
         this.piecesPlaced = 0;
         this.pieceCounts = {
             I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
@@ -612,10 +704,15 @@ export class GameState {
         this.lineClearCounts = {
             1: 0, 2: 0, 3: 0, 4: 0,
         };
+        this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         resetLockState(this);
         this.isGameOver = false;
         this.isStopped = false;
         this.hitStopRemaining = 0;
+        this.hitStopTicks = 0;
+        this._hitStopTickSourceMs = 0;
+        this._hitStopTickDurationMs = this.simTickMs;
+        resetPlayerInputState(this.playerInput);
         this.isProcessingPhysics = false;
         this.isAlive = true;
         this.isReplay = false;
@@ -882,7 +979,9 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  * @param {Object} options - Drop behavior options
- * @param {boolean} options.preserveDropCounter - Keep accumulator remainder for fixed-step auto-drop
+ * @param {boolean} [options.preserveDropCounter=false] Keep accumulator remainder for auto-drop
+ * @param {boolean} [options.fixedTick=false] Lock through the canonical-tick continuation path
+ * @param {boolean} [options.inputPhase=false] Lock was initiated by canonical input
  * @returns {boolean} True if piece moved down, false if it locked
  */
 export function softDrop(gameState, playDropCallback, physicsCallbacks, options = {}) {
@@ -892,7 +991,9 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
         || gameState.isPaused
         || gameState.isGameOver
     ) return false;
-    const { preserveDropCounter = false } = options;
+    const {
+        preserveDropCounter = false, fixedTick = false, inputPhase = false,
+    } = options;
 
     if (canPlacePiece(
         gameState,
@@ -912,8 +1013,8 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
     }
 
     updateGroundedState(gameState, 0);
-    if (shouldLockGroundedPiece(gameState)) {
-        lockPiece(gameState, playDropCallback, physicsCallbacks);
+    if (shouldLockGroundedPiece(gameState, fixedTick)) {
+        lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick, inputPhase });
     }
     return false;
 }
@@ -926,25 +1027,39 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
  * @param {number} delta - Elapsed milliseconds since last update
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean}} [timing] Set true only from a canonical
+ *   one-tick runner. Omit/false to preserve the legacy millisecond behavior.
  */
-export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks) {
+export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks, timing = {}) {
     if (!gameState || !gameState.currentPiece || gameState.isProcessingPhysics) return;
     if (!Number.isFinite(delta) || delta <= 0) return;
+
+    const fixedTick = timing?.fixedTick === true;
+    if (fixedTick && gameState._fixedInputSpawnFrame === gameState.simFrame) return;
+    const configuredTickMs = Number(gameState.simTickMs);
+    let simulationDelta = delta;
+    if (fixedTick) {
+        simulationDelta = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+            ? configuredTickMs
+            : (1000 / 60);
+    }
+    const elapsedTicks = fixedTick ? 1 : null;
+    if (fixedTick) getLockDelayTicks(gameState);
 
     const dropInterval = Math.max(1, Number(gameState.dropInterval) || LEVEL_SPEEDS[0]);
     const MAX_DROP_STEPS_PER_UPDATE = 32;
 
-    if (updateGroundedState(gameState, delta)) {
-        if (shouldLockGroundedPiece(gameState)) {
-            lockPiece(gameState, playDropCallback, physicsCallbacks);
+    if (updateGroundedState(gameState, simulationDelta, elapsedTicks)) {
+        if (shouldLockGroundedPiece(gameState, fixedTick)) {
+            lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
             gameState.dropCounter = 0;
         } else {
-            gameState.dropCounter = Math.min(gameState.dropCounter + delta, dropInterval);
+            gameState.dropCounter = Math.min(gameState.dropCounter + simulationDelta, dropInterval);
         }
         return;
     }
 
-    gameState.dropCounter += delta;
+    gameState.dropCounter += simulationDelta;
 
     let steps = 0;
     while (
@@ -955,6 +1070,7 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
     ) {
         const moved = softDrop(gameState, playDropCallback, physicsCallbacks, {
             preserveDropCounter: true,
+            fixedTick,
         });
 
         if (!moved) {
@@ -978,8 +1094,9 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
  * @param {GameState} gameState - Current game state
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean, inputPhase?: boolean}} [timing] Canonical timing token
  */
-export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
+export function hardDrop(gameState, playDropCallback, physicsCallbacks, timing = {}) {
     if (
         !gameState?.currentPiece
         || gameState.isProcessingPhysics
@@ -1017,8 +1134,28 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
 
     // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
     resetLockState(gameState);
-    lockPiece(gameState, playDropCallback, physicsCallbacks);
+    lockPiece(gameState, playDropCallback, physicsCallbacks, timing);
     return true;
+}
+
+function completePhysicsAndSpawn(
+    gameState,
+    physicsCallbacks,
+    shadowSample = null,
+    spawnErrorLabel = '[Game] spawnPiece failed after physics:',
+) {
+    gameState.isProcessingPhysics = false;
+    if (shadowSample) settleCascadeShadow(shadowSample, gameState);
+    if (
+        gameState.isGameOver
+        || gameState.isStopped
+        || !physicsCallbacks.spawnPiece
+    ) return;
+    try {
+        physicsCallbacks.spawnPiece();
+    } catch (error) {
+        console.error(spawnErrorLabel, error);
+    }
 }
 
 /**
@@ -1026,8 +1163,9 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
  * @param {GameState} gameState - Current game state
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean, inputPhase?: boolean}} [timing] Canonical timing token
  */
-export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
+export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing = {}) {
     if (!gameState?.currentPiece || gameState.isGameOver) return;
 
     // Store piece reference before nulling for ripple effect
@@ -1040,7 +1178,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         const timeHeldMs = getGameplayTimeMs(gameState) - gameState.pieceSpawnTime;
         const frameMs = Number(gameState.simTickMs) || (1000 / 60);
         const framesElapsed = Math.max(0, timeHeldMs) / frameMs;
-        const lockBonus = Math.max(0, Math.floor((100 - framesElapsed) / 2));
+        const lockBonus = gameState.lockBonusPolicy === 'legacy-max'
+            ? 50
+            : Math.max(0, Math.floor((100 - framesElapsed) / 2));
         gameState.score += lockBonus;
     }
 
@@ -1134,37 +1274,27 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         // physics mutates, diff after it completes (pre/post tap points).
         const shadowSample = cascadeShadowEnabled() ? armCascadeShadow(gameState) : null;
         gameState.isProcessingPhysics = true;
+        if (timing?.fixedTick === true && tryProcessNoClearSync(gameState, physicsCallbacks)) {
+            gameState.latestPhysicsPromise = null;
+            completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
+            if (timing.inputPhase === true && gameState.currentPiece) {
+                gameState._fixedInputSpawnFrame = gameState.simFrame;
+            }
+            return;
+        }
         gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
             .then(() => {
-                gameState.isProcessingPhysics = false;
-                if (shadowSample) settleCascadeShadow(shadowSample, gameState);
-                if (
-                    !gameState.isGameOver
-                    && !gameState.isStopped
-                    && physicsCallbacks.spawnPiece
-                ) {
-                    try {
-                        physicsCallbacks.spawnPiece();
-                    } catch (error) {
-                        console.error('[Game] spawnPiece failed after physics:', error);
-                    }
-                }
+                completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
             })
             .catch((error) => {
                 console.error('[Game] Physics processing failed:', error);
-                gameState.isProcessingPhysics = false;
                 markBoardDirty(gameState);
-                if (
-                    !gameState.isGameOver
-                    && !gameState.isStopped
-                    && physicsCallbacks.spawnPiece
-                ) {
-                    try {
-                        physicsCallbacks.spawnPiece();
-                    } catch (spawnError) {
-                        console.error('[Game] Recovery spawn failed after physics error:', spawnError);
-                    }
-                }
+                completePhysicsAndSpawn(
+                    gameState,
+                    physicsCallbacks,
+                    null,
+                    '[Game] Recovery spawn failed after physics error:',
+                );
             });
     }
 }

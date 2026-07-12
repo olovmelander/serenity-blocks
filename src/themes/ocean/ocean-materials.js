@@ -39,6 +39,7 @@ import {
     texture,
     uniform,
     uv,
+    varyingProperty,
     vec2,
     vec3,
     vec4,
@@ -230,10 +231,10 @@ export function createSeabedNodeMaterial(params = {}) {
     // photo's warm sun-baked sand. Previous (0.34, 0.40, 0.46) shadow read as
     // cool grey/snow under the god-ray bloom; warming the shadows toward a
     // peach undertone fixes the "icy beach" look.
-    const sandShadow = vec3(0.22, 0.12, 0.045);
-    const sandMid = vec3(0.52, 0.28, 0.09);
-    const sandLit = vec3(0.82, 0.48, 0.16); // Warm mineral highlight on ripple crests
-    const reefShelf = vec3(0.14, 0.30, 0.36);
+    const sandShadow = vec3(0.30, 0.17, 0.12);
+    const sandMid = vec3(0.68, 0.42, 0.27);
+    const sandLit = vec3(0.94, 0.68, 0.44); // Warm shell highlight on ripple crests
+    const reefShelf = vec3(0.08, 0.21, 0.27);
 
     const height = positionWorld.y;
     const hf = smoothstep(float(-25.0), float(10.0), height);
@@ -353,22 +354,22 @@ export function createSeabedNodeMaterial(params = {}) {
         .add(0.5);
     const reefShelfMask = smoothstep(float(0.56), float(0.95), terraceBands)
         .mul(smoothstep(float(-23.0), float(-8.0), height));
-    color = color.add(reefShelf.mul(reefShelfMask.mul(0.18)));
+    color = color.add(reefShelf.mul(reefShelfMask.mul(0.10)));
 
     // 1. Procedural silt & sediment channels (organic brown/grey patches)
-    const siltColor = vec3(0.38, 0.34, 0.28);
+    const siltColor = vec3(0.31, 0.25, 0.21);
     const siltNoise = texture(
         seabedNoiseTex,
         positionWorld.xz.mul(float(0.012).mul(noiseTexelScale)),
     ).b;
-    let siltWeight = smoothstep(float(0.38), float(0.7), siltNoise).mul(0.46);
+    let siltWeight = smoothstep(float(0.38), float(0.7), siltNoise).mul(0.24);
 
     // Stoss / Lee shading adjustments based on alignment with dominant current direction
     const stossAlign = dot(rippleNormal.xz, currentDirNode);
 
     // Lee side (deposition of organic silt)
     const leeWeight = smoothstep(float(-0.55), float(-0.02), stossAlign.negate());
-    siltWeight = clamp(siltWeight.add(leeWeight.mul(0.25)), float(0.0), float(0.65));
+    siltWeight = clamp(siltWeight.add(leeWeight.mul(0.12)), float(0.0), float(0.34));
     color = mix(color, siltColor, siltWeight);
 
     // Stoss side (erosion of silt, clean sand facing the flow)
@@ -452,7 +453,7 @@ export function createSeabedNodeMaterial(params = {}) {
     }
 
     // Diffuse lighting via the ripple-perturbed normal — lit/shadow sides on every band.
-    const light = max(float(0.52), dot(finalNormal, lightDir));
+    const light = max(float(0.58), dot(finalNormal, lightDir));
     color = color.mul(light);
 
     // Height-based Ambient Occlusion (crevices and deep valleys are darker)
@@ -462,7 +463,7 @@ export function createSeabedNodeMaterial(params = {}) {
 
     // Depth-based color absorption (deeper is darker blue/green tint)
     const depthFactor = smoothstep(float(-35.0), float(10.0), height);
-    color = mix(color.mul(vec3(0.72, 0.82, 0.88)), color, depthFactor);
+    color = mix(color.mul(vec3(0.96, 0.98, 1.0)), color, depthFactor);
 
     // Light transport contributions belong after diffuse/occlusion so caustic
     // lines and wet-sand glints stay readable instead of being darkened twice.
@@ -631,8 +632,8 @@ export function createCoralNodeMaterial(baseColor) {
     // Base AO — bottom 35% of the coral's local Y darkens toward a deep sand-shadow
     // tint so colonies appear anchored to the seabed instead of floating.
     const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
-    const aoColor = vec3(0.01, 0.04, 0.08);
-    color = mix(color, aoColor, aoMask.mul(0.65));
+    const aoColor = vec3(0.035, 0.09, 0.12);
+    color = mix(color, aoColor, aoMask.mul(0.44));
 
     // Painterly Abzu rim: warm pink/gold lift on grazing angles.
     const warmBase = vec3(1.0, 0.62, 0.38);
@@ -689,8 +690,8 @@ export function createCoralOvergrowthNodeMaterial() {
     let color = aInstanceColor.mul(float(0.98).add(pattern.mul(0.18)));
 
     const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
-    const aoColor = vec3(0.01, 0.04, 0.08);
-    color = mix(color, aoColor, aoMask.mul(0.65));
+    const aoColor = vec3(0.035, 0.09, 0.12);
+    color = mix(color, aoColor, aoMask.mul(0.44));
 
     const warmBase = vec3(1.0, 0.62, 0.38);
     const coolRim = vec3(0.18, 0.72, 0.64);
@@ -754,13 +755,18 @@ export function createModularCoralNodeMaterial() {
 
     const viewDistance = length(cameraPosition.sub(positionWorld));
     const upLight = normalWorld.y.mul(0.5).add(0.5);
-    const valueShape = vec3(float(0.78).add(upLight.mul(0.24)));
+    const valueShape = vec3(float(0.94).add(upLight.mul(0.15)));
     material.colorNode = tslWarmCoolAttenuation(
         valueShape,
         viewDistance,
         float(0.82),
     );
-    material.emissiveNode = vec3(0.0);
+    // BatchedMesh exposes its per-colony tint through vBatchColor in r181.
+    // A very low subsurface lift keeps saturated coral sides readable under
+    // blue water without flattening the PBR key light or crossing bloom.
+    const batchColor = varyingProperty('vec3', 'vBatchColor');
+    material.emissiveNode = batchColor
+        .mul(float(0.10).add(upLight.mul(0.04)));
     material.userData = {
         uTime,
         uCurrentStrength,
@@ -906,7 +912,7 @@ export function createBubbleNodeMaterial() {
         .mul(fade);
 
     material.colorNode = colorFinal;
-    material.opacityNode = alpha.mul(0.2);
+    material.opacityNode = alpha.mul(0.12);
     material.emissiveNode = vec3(0.0);
 
     material.userData = { uTime };
@@ -1297,8 +1303,8 @@ export function createBiomeSilhouetteNodeMaterial(params = {}) {
     });
 
     const uTime = uniform(0);
-    const uFogColor = uniform(vec3(0.0, 0.149, 0.2));
-    const uSilhouetteColor = uniform(params.silhouetteColor ?? vec3(0.045, 0.15, 0.17));
+    const uFogColor = uniform(vec3(0.018, 0.20, 0.32));
+    const uSilhouetteColor = uniform(params.silhouetteColor ?? vec3(0.025, 0.13, 0.21));
 
     const u = uv();
     // FBM-driven silhouette mask: irregular cliff/kelp shape that's organic
@@ -1318,7 +1324,7 @@ export function createBiomeSilhouetteNodeMaterial(params = {}) {
     color = color.add(vec3(0.0, 0.02, 0.04).mul(mask));
 
     material.colorNode = color;
-    material.opacityNode = mask.mul(0.85);
+    material.opacityNode = mask.mul(0.55);
     material.emissiveNode = vec3(0.0);
 
     material.userData = { uTime };
@@ -1353,11 +1359,11 @@ export function createGlowAnchorNodeMaterial(params = {}) {
     const aura = pow(radial, float(1.7));
 
     const color = aColor.mul(core.mul(0.7).add(aura.mul(0.24))).mul(pulse);
-    const alpha = aura.mul(0.18).mul(pulse);
+    const alpha = aura.mul(0.07).mul(pulse);
 
     material.colorNode = color;
     material.opacityNode = alpha.mul(uOpacityScale);
-    material.emissiveNode = color.mul(alpha.mul(1.25).mul(uEmissiveScale));
+    material.emissiveNode = color.mul(alpha.mul(0.45).mul(uEmissiveScale));
 
     material.userData = {
         uTime,

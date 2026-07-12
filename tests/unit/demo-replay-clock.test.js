@@ -6,8 +6,14 @@ import {
     vi,
 } from 'vitest';
 import { DemoPlayer } from '../../src/core/demo/DemoPlayer.js';
-import { DemoRecorder, DEMO_TICK_MS } from '../../src/core/demo/DemoRecorder.js';
+import {
+    DemoRecorder,
+    DEMO_COMMAND_INPUT_FORMAT,
+    DEMO_TICK_MS,
+    LEGACY_DEMO_HIT_STOP_ENABLED,
+} from '../../src/core/demo/DemoRecorder.js';
 import { captureGameStateSnapshot, restoreGameStateSnapshot } from '../../src/core/demo/demo-state.js';
+import { startDas } from '../../src/core/das.js';
 import {
     GameState,
     fillBag,
@@ -15,6 +21,7 @@ import {
     spawnPiece,
 } from '../../src/core/game.js';
 import { processPhysics } from '../../src/core/physics.js';
+import { enqueueInputEdge } from '../../src/core/player-input-state.js';
 import { seededRandom } from '../../src/utils/helpers.js';
 
 function makeDemo(overrides = {}) {
@@ -75,7 +82,7 @@ describe('Demo replay clock', () => {
     });
 
     it('does not complete replay just because seek lands on a game-over state before duration', async () => {
-        let clock = 1000;
+        const clock = 1000;
         vi.spyOn(performance, 'now').mockImplementation(() => clock);
 
         const player = new DemoPlayer({});
@@ -134,11 +141,106 @@ describe('Demo replay clock', () => {
         expect(player.demo.inputs.map((input) => input.f)).toEqual([1, 3]);
         expect(player.demo.inputs.map((input) => input.a)).toEqual(['rotate', 'move']);
         expect(player.demo.inputs[1].t).toBe(Math.round(3 * DEMO_TICK_MS));
+        expect(player.demo.sim.inputFormat).toBe(DEMO_COMMAND_INPUT_FORMAT);
+        expect(player.demo.initialState.settings.hitStopEnabled)
+            .toBe(LEGACY_DEMO_HIT_STOP_ENABLED);
+    });
+
+    it('uses the deterministic legacy hit-stop default instead of target state', () => {
+        const player = new DemoPlayer({});
+        expect(player.loadDemo(makeDemo())).toBe(true);
+        player.gameState = new GameState({ hitStopEnabled: false });
+        player.callbacks = {};
+
+        player._resetState();
+
+        expect(player.gameState.hitStopEnabled).toBe(LEGACY_DEMO_HIT_STOP_ENABLED);
+    });
+
+    it('rejects input formats whose playback semantics are not implemented', () => {
+        const player = new DemoPlayer({});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(player.loadDemo(makeDemo({
+            sim: {
+                tickMs: DEMO_TICK_MS,
+                durationFrames: 1,
+                inputFormat: 'edges-v1',
+            },
+        }))).toBe(false);
+        expect(player.demo).toBeNull();
+    });
+
+    it('clears a previously loaded demo when a later load fails', () => {
+        const player = new DemoPlayer({});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        expect(player.loadDemo(makeDemo())).toBe(true);
+
+        expect(player.loadDemo(makeDemo({
+            sim: {
+                tickMs: DEMO_TICK_MS,
+                durationFrames: 1,
+                inputFormat: '',
+            },
+        }))).toBe(false);
+
+        expect(player.demo).toBeNull();
+        expect(player.checkpoints).toEqual([]);
+        expect(player.currentInputIndex).toBe(0);
+    });
+
+    it('rejects unknown demo rules versions before input-format inference', () => {
+        const player = new DemoPlayer({});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(player.loadDemo(makeDemo({
+            version: '99.0',
+            sim: { tickMs: DEMO_TICK_MS, durationFrames: 1 },
+        }))).toBe(false);
+        expect(player.demo).toBeNull();
+    });
+
+    it.each([
+        ['missing initial state', { initialState: undefined }],
+        ['negative tick', { sim: { tickMs: -16, durationFrames: 1 } }],
+        ['unknown rules', {
+            version: '99.0',
+            sim: {
+                tickMs: DEMO_TICK_MS,
+                durationFrames: 1,
+                inputFormat: DEMO_COMMAND_INPUT_FORMAT,
+            },
+        }],
+    ])('rejects a demo with %s', (_label, overrides) => {
+        const player = new DemoPlayer({});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(player.loadDemo(makeDemo(overrides))).toBe(false);
+        expect(player.demo).toBeNull();
+    });
+
+    it.each([
+        ['null entry', null],
+        ['unknown action', { t: 0, a: 'warp' }],
+        ['missing timing', { a: 'hardDrop' }],
+        ['negative timing', { t: -1, a: 'hardDrop' }],
+        ['invalid move direction', { t: 0, a: 'move', d: 0 }],
+        ['invalid rotate direction', { t: 0, a: 'rotate', d: 'clockwise' }],
+        ['unexpected drop payload', { t: 0, a: 'softDrop', d: 'fast' }],
+        ['non-boolean queued marker', { t: 0, a: 'hardDrop', q: 1 }],
+    ])('rejects the complete demo when it contains a %s', (_label, input) => {
+        const player = new DemoPlayer({});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(() => player.loadDemo(makeDemo({ inputs: [input] }))).not.toThrow();
+        expect(player.demo).toBeNull();
     });
 
     it('records accepted commands as v2 frame-indexed inputs', () => {
         const recorder = new DemoRecorder();
-        const state = new GameState();
+        const state = new GameState({
+            inputHandling: { dasDelay: 91, dasInterval: 23, softDropInterval: 17 },
+        });
         state.randomGenerator = seededRandom(11);
         fillBag(state.nextPieces, state.randomGenerator);
         spawnPiece(state);
@@ -157,9 +259,95 @@ describe('Demo replay clock', () => {
 
         expect(demo.version).toBe('2.0');
         expect(demo.sim.tickMs).toBe(DEMO_TICK_MS);
-        expect(demo.inputs).toEqual([{ f: 6, t: 100, a: 'move', d: -1 }]);
+        expect(demo.sim.inputFormat).toBe(DEMO_COMMAND_INPUT_FORMAT);
+        expect(demo.initialState.settings).toEqual({
+            themeBasedTetrominos: true,
+            dasDelay: 91,
+            dasInterval: 23,
+            softDropInterval: 17,
+            hitStopEnabled: true,
+        });
+        expect(demo.inputs).toEqual([{
+            f: 6,
+            t: 100,
+            a: 'move',
+            d: -1,
+        }]);
         expect(demo.metadata.durationFrames).toBe(6);
         expect(demo.checkpoints.length).toBeGreaterThan(0);
+    });
+
+    it('does not restore checkpoint DAS state for accepted-command demos', async () => {
+        const checkpointState = new GameState();
+        checkpointState.randomGenerator = seededRandom(17);
+        fillBag(checkpointState.nextPieces, checkpointState.randomGenerator);
+        spawnPiece(checkpointState);
+        checkpointState.simFrame = 60;
+        checkpointState.simTimeMs = 1000;
+        startDas(checkpointState.playerInput.das.moveLeft);
+        enqueueInputEdge(checkpointState.playerInput, {
+            tick: 61,
+            subframe: 0,
+            action: 'move',
+            value: -1,
+            phase: 'up',
+        });
+
+        const player = new DemoPlayer({});
+        player.loadDemo(makeDemo({
+            checkpoints: [{
+                f: 60,
+                t: 1000,
+                inputIndex: 0,
+                state: captureGameStateSnapshot(checkpointState),
+            }],
+        }));
+        player.gameState = new GameState();
+        player.callbacks = {};
+        player._advanceTo = vi.fn(async () => {});
+
+        await player.seek(1500);
+
+        expect(player.gameState.playerInput.das.moveLeft.active).toBe(false);
+        expect(player.gameState.playerInput.pendingEdges).toEqual([]);
+    });
+
+    it('clears replay-owned input state before returning control to live input', () => {
+        const player = new DemoPlayer({});
+        player.gameState = new GameState();
+        player.gameState.isPaused = true;
+        startDas(player.gameState.playerInput.das.moveRight);
+        enqueueInputEdge(player.gameState.playerInput, {
+            tick: 1,
+            subframe: 0,
+            action: 'move',
+            value: 1,
+            phase: 'up',
+        });
+
+        player.stopPlayback({ notify: false });
+
+        expect(player.gameState.playerInput.das.moveRight.active).toBe(false);
+        expect(player.gameState.playerInput.pendingEdges).toEqual([]);
+        expect(player.gameState.suppressExternalInput).toBe(false);
+        expect(player.gameState.isPaused).toBe(false);
+    });
+
+    it('restores the recorded hit-stop policy independently of local settings', () => {
+        const player = new DemoPlayer({});
+        player.loadDemo(makeDemo({
+            initialState: {
+                seed: 7,
+                level: 1,
+                settings: { hitStopEnabled: false },
+            },
+        }));
+        player.gameState = new GameState({ hitStopEnabled: true });
+        player.callbacks = {};
+
+        player._resetState();
+
+        expect(player.gameState.hitStopEnabled).toBe(false);
     });
 
     it('marks commands that were accepted into the post-physics input buffer', () => {
@@ -174,7 +362,13 @@ describe('Demo replay clock', () => {
         recorder.startRecording(state, {}, 13);
         recorder.recordCommand({ type: 'move', value: 1, queued: true }, state);
 
-        expect(recorder.getDemo().inputs).toEqual([{ f: 12, t: 200, a: 'move', d: 1, q: true }]);
+        expect(recorder.getDemo().inputs).toEqual([{
+            f: 12,
+            t: 200,
+            a: 'move',
+            d: 1,
+            q: true,
+        }]);
     });
 
     it('does not keep unstable mid-physics checkpoints in new recordings', () => {
@@ -264,10 +458,21 @@ describe('Demo replay clock', () => {
             applyCommand: vi.fn(() => true),
         };
 
-        await player._applyInput({ f: 60, t: 1000, a: 'move', d: -1, q: true }, callbacks);
+        await player._applyInput({
+            f: 60,
+            t: 1000,
+            a: 'move',
+            d: -1,
+            q: true,
+        }, callbacks);
 
         expect(callbacks.applyCommand).toHaveBeenCalledWith(
-            { type: 'move', value: -1, a: 'move', d: -1 },
+            {
+                type: 'move',
+                value: -1,
+                a: 'move',
+                d: -1,
+            },
             {
                 record: false,
                 muted: false,

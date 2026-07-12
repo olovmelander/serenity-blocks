@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Steam P2P Networking Wrapper
  * Handles Steam lobbies, P2P messaging, and matchmaking
@@ -9,6 +10,7 @@
 import { SteamConfig } from './config.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
+import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -50,6 +52,7 @@ export class SteamNetworking {
         this.matchNonce = null;
         this.sendSeqByChannel = new Map();
         this.recvSeqByPeer = new Map();
+        /** @type {Map<string, BinaryStateSnapshotV7>} */
         this.incomingSnapshotBaselines = new Map();
         this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
         this.outgoingSnapshotState = new Map();
@@ -337,7 +340,6 @@ export class SteamNetworking {
         const impairmentPlan = this.networkImpairment.planDelivery({
             channel: options.channel ?? 0,
             delivery: options.delivery ?? 'reliable',
-            messageType,
         });
 
         if (impairmentPlan.drop) {
@@ -433,10 +435,16 @@ export class SteamNetworking {
         });
     }
 
+    /**
+     * @param {string} messageType
+     * @param {StateSnapshot} data
+     * @param {{skipPeers?: Set<string>|string[]}} [options]
+     */
     broadcastSnapshot(messageType, data, options = {}) {
         if (!this.isHost) return;
 
         // Phase 4: Binary encoding for snapshots
+        /** @type {StateSnapshot|BinarySnapshotWrapperV7} */
         let encodedData = data;
         let isBinary = false;
 
@@ -476,6 +484,7 @@ export class SteamNetworking {
                 // receiver. Without lastInputSeq the peer can't prune its input
                 // history → it replays its whole history onto the board (glitches);
                 // without roundGeneration a stale snapshot can clobber the next round.
+                /** @type {Record<string, number>} */
                 const acks = {};
                 if (Array.isArray(data?.players)) {
                     for (const p of data.players) {
@@ -484,7 +493,7 @@ export class SteamNetworking {
                         }
                     }
                 }
-                encodedData = {
+                encodedData = /** @satisfies {BinarySnapshotWrapperV7} */ ({
                     _binary: true,
                     _delta: usedDelta, // Flag to tell receiver to use decodeDeltaSnapshot
                     _data: this._arrayBufferToBase64(binaryBuffer),
@@ -501,7 +510,7 @@ export class SteamNetworking {
                     // Debug stats
                     _originalSize: JSON.stringify(data).length,
                     _encodedSize: binaryBuffer.byteLength,
-                };
+                });
 
                 isBinary = true;
             } catch (err) {
@@ -515,17 +524,18 @@ export class SteamNetworking {
         // Intermediate deltas stay unreliable_no_delay for lowest latency — a lost
         // delta now self-heals on the next guaranteed keyframe instead of stranding
         // the opponent board for up to a full keyframe interval.
-        const isKeyframe = isBinary && encodedData._delta === false;
+        const binaryPayload = isBinary && '_binary' in encodedData ? encodedData : null;
+        const isKeyframe = binaryPayload?._delta === false;
         const skipPeers = options.skipPeers instanceof Set
             ? options.skipPeers
             : new Set(Array.isArray(options.skipPeers) ? options.skipPeers : []);
 
         this.connectedPeers.forEach((peerInfo, steamId) => {
             if (skipPeers.has(steamId)) return;
-            if (isBinary) {
+            if (binaryPayload) {
                 if (isKeyframe) this.packetStats.keyframesSent += 1;
-                else if (encodedData._delta === true) this.packetStats.deltasSent += 1;
-                this._recordSnapshotBytes('sent', encodedData._encodedSize || 0);
+                else if (binaryPayload._delta === true) this.packetStats.deltasSent += 1;
+                this._recordSnapshotBytes('sent', binaryPayload._encodedSize || 0);
             }
             if (isKeyframe) {
                 this._sendMessage(steamId, messageType, encodedData, {
@@ -640,20 +650,19 @@ export class SteamNetworking {
 
     _decodeEnvelopePayload(envelope, fromSteamId) {
         let { payload } = envelope;
-        const carriedDigest = payload && payload._digest;
-        const carriedGen = payload && payload._gen;
-        const carriedMigrationEpoch = payload && payload._migrationEpoch;
-        const carriedAcks = payload && payload._acks;
 
         if (payload && payload._binary === true && payload._data) {
+            const wrapper = payload;
             try {
                 if (!this.binaryDecoder) {
                     this.binaryDecoder = getBinaryDecoder();
                 }
-                const binaryBuffer = this._base64ToArrayBuffer(payload._data);
-                this._recordSnapshotBytes('received', payload._encodedSize || binaryBuffer.byteLength || 0);
+                const binaryBuffer = this._base64ToArrayBuffer(wrapper._data);
+                this._recordSnapshotBytes('received', wrapper._encodedSize || binaryBuffer.byteLength || 0);
 
-                if (payload._delta) {
+                /** @type {BinaryStateSnapshotV7|null} */
+                let packedSnapshot = null;
+                if (wrapper._delta) {
                     this.packetStats.deltasReceived += 1;
                     const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
                     if (!baseline) {
@@ -675,16 +684,26 @@ export class SteamNetworking {
                         }
                     }
 
-                    payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
+                    const decodedDelta = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, baseline);
+                    if (!decodedDelta) throw new Error('Decoded delta snapshot is empty');
+                    packedSnapshot = decodedDelta;
                 } else {
                     this.packetStats.keyframesReceived += 1;
-                    payload = this.binaryDecoder.decodeSnapshot(binaryBuffer);
-                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
+                    const decodedSnapshot = this.binaryDecoder.decodeSnapshot(binaryBuffer);
+                    if (!decodedSnapshot) throw new Error('Decoded keyframe snapshot is empty');
+                    packedSnapshot = decodedSnapshot;
+                    this.incomingSnapshotBaselines.set(fromSteamId, packedSnapshot);
                 }
+                payload = hydrateBinarySnapshot(packedSnapshot, {
+                    digest: wrapper._digest,
+                    roundGeneration: wrapper._gen,
+                    migrationEpoch: wrapper._migrationEpoch,
+                    acknowledgements: wrapper._acks,
+                });
             } catch (err) {
                 console.warn('Binary decoding failed, payload may be corrupted:', err);
                 this.packetStats.decodeFailures += 1;
-                if (payload?._delta) {
+                if (wrapper._delta) {
                     this.packetStats.deltaDecodeFailures += 1;
                     this._requestResync(fromSteamId, 'delta_decode_failed');
                 }
@@ -692,29 +711,10 @@ export class SteamNetworking {
             }
         }
 
-        if (carriedDigest !== undefined && carriedDigest !== null
-            && payload && typeof payload === 'object') {
-            payload.digest = carriedDigest;
-        }
-        if (carriedGen !== undefined && carriedGen !== null
-            && payload && typeof payload === 'object') {
-            payload.roundGeneration = carriedGen;
-        }
-        if (carriedMigrationEpoch !== undefined && carriedMigrationEpoch !== null
-            && payload && typeof payload === 'object') {
-            payload.migrationEpoch = carriedMigrationEpoch;
-        }
-        if (carriedAcks && payload && Array.isArray(payload.players)) {
-            payload.players.forEach((p) => {
-                if (p && carriedAcks[p.steamId] !== undefined) {
-                    p.lastInputSeq = carriedAcks[p.steamId];
-                }
-            });
-        }
-
         return { payload };
     }
 
+    /** @param {string} fromSteamId @param {BinaryStateSnapshotV7} snapshot */
     setIncomingSnapshotBaseline(fromSteamId, snapshot) {
         if (!fromSteamId || !snapshot || typeof snapshot !== 'object') return;
         this.incomingSnapshotBaselines.set(fromSteamId, snapshot);
