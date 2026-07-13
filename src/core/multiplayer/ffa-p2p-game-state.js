@@ -29,8 +29,6 @@ import { InGameChat } from '../../ui/ingame-chat.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
-import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
-import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
 import {
     applyBlindEffect, applyFullBlindEffect, createBlindTimers, restoreBlindTimers,
 } from '../blind.js';
@@ -38,93 +36,76 @@ import { readFlag as readNetFlag } from '../flags.js';
 import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
 import { hasActiveHitStop } from '../simulation-tick.js';
 import {
-    readFfaFixedTick, rollbackFixedTickOnPromotion, transitionFfaSimulationClock,
+    readFfaFixedTick,
+    resetFfaFixedClockProjection,
+    rollbackFixedTickOnPromotion,
+    transitionFfaSimulationClock,
 } from './ffa-fixed-tick-policy.js';
-import { handleFfaRoundRestart, parseFfaRoundGeneration, readFfaRoundAdvance } from './ffa-round-policy.js';
+import {
+    handleFfaRoundRestart,
+    normalizeFfaRoundSeed,
+    parseFfaRoundGeneration,
+    readFfaRoundAdvance,
+} from './ffa-round-policy.js';
 import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
 import { resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
 import {
-    flushFfaInputBatches, processFfaInputBatch, resetFfaInputEpoch, resetFfaInputTransport,
+    acknowledgeFfaInput, flushFfaInputBatches, processFfaInputBatch,
+    resetFfaInputEpoch, resetFfaInputTransport,
 } from './ffa-input-batching.js';
+import {
+    disposeResyncState,
+    drainPendingInboundResyncApply,
+    getDownloadJoinBlockedPeers,
+    handleResyncChunk,
+    RESYNC_CHUNK_SIZE,
+    RESYNC_MAX_RETRIES,
+    RESYNC_TIMEOUT_MS,
+    RESYNC_WINDOW,
+    resetInboundResyncState,
+    sendResyncChunk,
+    sendResyncWindow,
+    shouldDropLiveSnapshotDuringDownload,
+    tickResyncTransfer,
+} from './ffa/resync-coordinator.js';
+import { createNetworkHandlerRegistry } from './ffa/network-handler-registry.js';
+import { createFfaResyncContext } from './ffa/resync-context.js';
+import * as resyncRequest from './ffa/resync-request-handler.js';
+import * as resyncInputBarrier from './ffa/resync-input-barrier-adapter.js';
+import {
+    adoptFfaJoinSyncpoint,
+    computeFfaJoinSyncpoint,
+    drainFfaPendingResyncs,
+    publishFfaJoinSyncpoint,
+    queueFfaResync,
+} from './ffa/join-syncpoint.js';
+import * as joinLifecycle from './ffa/join-lifecycle.js';
+import {
+    broadcastSessionWelcome,
+    buildJoinProtocolOffer,
+    registerJoinHandshakeHandlers,
+} from './ffa/join-handshake.js';
+import { buildFfaResyncPayload } from './ffa/resync-payload.js';
+import * as resyncSidecar from './ffa/resync-sidecar.js';
+import {
+    countOccupiedFfaCells,
+    ffaCounterDelta,
+    sanitizeFfaNetEventData,
+    stableFfaRuleHash,
+} from './ffa/net-diagnostics.js';
 import { seededRandom } from '../../utils/helpers.js';
 
-const RESYNC_CHUNK_SIZE = 16 * 1024;
-const RESYNC_WINDOW = 4;
-const RESYNC_TIMEOUT_MS = 300;
-const RESYNC_MAX_RETRIES = 5;
-const DOWNLOAD_JOIN_TIMEOUT_MS = 15000;
+const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
 // Runtime flags resolve via the central registry reader (src/core/flags.js,
 // Phase 0.6): URL `?name=1`/`?name=0` → localStorage `serenity.<name>` → default.
 // The former local readNetFlag clone was consolidated there.
-
-const CRC32_TABLE = (() => {
-    const table = new Uint32Array(256);
-    for (let i = 0; i < 256; i += 1) {
-        let c = i;
-        for (let k = 0; k < 8; k += 1) {
-            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
-        }
-        table[i] = c >>> 0;
-    }
-    return table;
-})();
-
-const crc32 = (bytes) => {
-    let crc = 0 ^ -1;
-    for (let i = 0; i < bytes.length; i += 1) {
-        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[i]) & 0xFF];
-    }
-    return (crc ^ -1) >>> 0;
-};
-
-const encodeUtf8 = (str) => {
-    if (typeof TextEncoder !== 'undefined') {
-        return new TextEncoder().encode(str);
-    }
-    if (typeof Buffer !== 'undefined') {
-        return Uint8Array.from(Buffer.from(str, 'utf8'));
-    }
-    return Uint8Array.from(unescape(encodeURIComponent(str)).split('').map((c) => c.charCodeAt(0)));
-};
-
-const decodeUtf8 = (bytes) => {
-    if (typeof TextDecoder !== 'undefined') {
-        return new TextDecoder().decode(bytes);
-    }
-    if (typeof Buffer !== 'undefined') {
-        return Buffer.from(bytes).toString('utf8');
-    }
-    return decodeURIComponent(escape(String.fromCharCode(...bytes)));
-};
-
-const encodeBase64 = (bytes) => {
-    if (typeof Buffer !== 'undefined') {
-        return Buffer.from(bytes).toString('base64');
-    }
-    let binary = '';
-    bytes.forEach((b) => {
-        binary += String.fromCharCode(b);
-    });
-    return btoa(binary);
-};
-
-const decodeBase64 = (base64) => {
-    if (typeof Buffer !== 'undefined') {
-        return Uint8Array.from(Buffer.from(base64, 'base64'));
-    }
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-};
 
 export class FFAGameStateP2P {
     constructor(steamNetworking, localPlayerId, options = {}) {
         this.network = steamNetworking;
         this.localPlayerId = localPlayerId;
         this.isHost = steamNetworking.isHost;
+        this._disposed = false;
 
         // SPECTATOR (watch-only): a client that consumes the host's all-boards snapshot
         // stream and renders every player, but is NEVER in the simulated roster
@@ -245,15 +226,31 @@ export class FFAGameStateP2P {
         this.simTick = 0;
         this.snapshotSeq = 0;
         this._attackSeq = 0;
-        this.syncpoint = 'idle';
+        this._networkDispatch = {
+            depth: 0,
+            onDrained: () => {
+                this._processPendingResyncInputBarrier();
+                this._processPendingInboundResyncApply();
+                this._processPendingResyncs();
+            },
+        };
+        this.joinSyncpoint = computeFfaJoinSyncpoint(this);
+        this.syncpoint = this.joinSyncpoint.status;
         this.pendingResyncs = [];
         this.resyncTransfers = new Map();
         this.resyncBuffers = new Map();
+        this.completedResyncs = new Map();
+        this.pendingInboundResyncApply = null;
+        this.lastAppliedResyncFence = null;
+        this.hostResyncInputBarriers = new Map();
+        this.peerResyncInputBarrier = null;
+        this.resyncInputFrozen = false;
+        this.resyncRequestAtByPeer = new Map();
         this.resyncChunkSize = RESYNC_CHUNK_SIZE;
         this.resyncWindow = RESYNC_WINDOW;
         this.resyncTimeoutMs = RESYNC_TIMEOUT_MS;
         this.resyncMaxRetries = RESYNC_MAX_RETRIES;
-        this.handshakeComplete = this.isHost;
+        this.joinState = joinLifecycle.createJoinState({ isHost: this.isHost });
         this._announceTimer = null; // join-announce resend timer (peer side)
         // Monotonic round counter. Stamped into every snapshot + the round-restart
         // message so a peer can FENCE OFF stale authoritative state: a late
@@ -381,6 +378,7 @@ export class FFAGameStateP2P {
         this.SIM_TICK_MS = FIXED_TICK_MS;
         this.MAX_SIM_STEPS_PER_FRAME = 5;
         this._simTickAccumulatorMs = 0;
+        this._fixedTickApplicationDepth = 0;
         this._fixedInputTimeMs = null;
         this._peerFixedInputSimTick = null;
         this._activeFixedInputStamp = null;
@@ -424,6 +422,7 @@ export class FFAGameStateP2P {
         this._roundReadyExpected = null; // Snapshot of player ids expected to ack the pending round
         this._pendingRoundStart = null; // deferred startRound() thunk, fired on GAME_ROUND_START
         this._readyBarrierTimer = null;
+        this._countdownGeneration = 0;
 
         // Phase 5: Input Batching
         this.pendingInputs = []; // Array of inputs to send this tick
@@ -433,17 +432,21 @@ export class FFAGameStateP2P {
 
         // Setup network handlers
         this.setupNetworkHandlers();
-
-        // If peer, announce joining to host
-        if (!this.isHost) {
-            this.announceJoin();
-        }
     }
 
     _logGarbage(...args) {
         if (this.debugGarbage) {
             console.log(...args);
         }
+    }
+
+    get handshakeComplete() {
+        return joinLifecycle.isJoinHandshakeComplete(this.joinState);
+    }
+
+    /** @param {any} event @param {Record<string, unknown>} [details] */
+    _transitionJoin(event, details = {}) {
+        return joinLifecycle.transitionFfaJoinState(this, event, details);
     }
 
     setLocalInputHooks(hooks = {}) {
@@ -484,7 +487,7 @@ export class FFAGameStateP2P {
                 // Broadcast update so everyone knows they are back
                 if (this.isHost) {
                     this.broadcastPlayerList();
-                    this.queueResync(steamId); // Force immediate state sync
+                    resyncRequest.routeFfaResync(this, steamId, 'reconnect');
                 }
                 return true; // revived → present in the roster
             }
@@ -626,6 +629,7 @@ export class FFAGameStateP2P {
         console.log(`👢 Host kicking ${steamId}`);
         this.network.sendP2PMessage?.(steamId, MessageTypes.PLAYER_KICKED, { reason });
         if (this.spectators?.has(steamId)) {
+            this.network?.clearNegotiatedProtocol?.(steamId);
             this.spectators.delete(steamId);
             this.broadcastPlayerList(); // refresh the spectator count for everyone
             return true;
@@ -645,6 +649,7 @@ export class FFAGameStateP2P {
         // path below would early-return and leak them. Clean them out here on disconnect —
         // a spectator has no board, so there's no grace period to honour.
         if (this.spectators && this.spectators.has(steamId)) {
+            this.network?.clearNegotiatedProtocol?.(steamId);
             this.spectators.delete(steamId);
             console.log(`👁 Spectator left: ${steamId} — ${this.spectators.size} watching`);
             return;
@@ -656,7 +661,9 @@ export class FFAGameStateP2P {
         // Grace Period Logic:
         // If match is in progress, don't remove immediately. Mark as disconnected.
         if (this.gamePhase === 'playing' && player.isAlive && !player.isDisconnected) {
+            if (this.isHost) resyncInputBarrier.retireFfaPeerResync(this, steamId, 'disconnect');
             console.log(`⚠️ Player disconnected during match: ${player.name} - Entering Grace Period (10s)`);
+            this.network?.clearNegotiatedProtocol?.(steamId);
             player.isDisconnected = true;
             player.disconnectTime = Date.now();
 
@@ -679,12 +686,14 @@ export class FFAGameStateP2P {
     _finalizeRemovePlayer(steamId) {
         const player = this.players.get(steamId);
         if (!player) return;
+        if (this.isHost) resyncInputBarrier.retireFfaPeerResync(this, steamId, 'removed');
 
         if (player.disconnectTimeout) {
             clearTimeout(player.disconnectTimeout);
         }
 
         console.log(`👋 Player permanently removed: ${player.name}`);
+        this.network?.clearNegotiatedProtocol?.(steamId);
         resetFfaInputTransport(this, steamId);
         this.inputJitterBuffer?.removePlayer?.(steamId);
         this.players.delete(steamId);
@@ -715,13 +724,16 @@ export class FFAGameStateP2P {
    */
     announceJoin() {
         if (this.isHost) return;
+        this._transitionJoin(JOIN_EVENTS.ANNOUNCE);
+        this._joinHandshakeNonce = this.network.createHandshakeNonce?.() ?? null;
+        this._lastJoinProtocolOffer = null;
+        this._lastJoinRejection = null;
 
         // Legacy Steam P2P drops the FIRST packet to a peer until the receiver
         // accepts the session, so we resend the join announce until the host
-        // replies NET_WELCOME (sets handshakeComplete). Identity is sent via BOTH
-        // NET_HELLO (now carries the name) and LOBBY_PLAYER_JOINED, so the host can
-        // add us to the roster even if one of the two is lost. The host-id guard
-        // also prevents a BigInt(null) send crash if the owner hasn't resolved yet.
+        // replies NET_WELCOME (sets handshakeComplete). NET_HELLO is the sole
+        // roster admission path and carries identity plus the supported protocol
+        // range; retries cover first-packet loss without bypassing negotiation.
         if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
         let attempts = 0;
         const maxAttempts = 12;
@@ -730,17 +742,13 @@ export class FFAGameStateP2P {
             const hostId = this.network.hostSteamId;
             if (hostId) {
                 console.log(`📢 Announcing join to host ${hostId} (attempt ${attempts + 1}/${maxAttempts})...`);
+                const protocolOffer = buildJoinProtocolOffer(this);
                 this.network.sendP2PMessage(hostId, MessageTypes.NET_HELLO, {
-                    protocolVersion: this.network.protocolVersion,
+                    ...protocolOffer,
                     clientVersion: this.network.protocolVersion,
                     name: this.network.playerName,
                     asSpectator: this.isSpectator, // host keeps spectators OUT of the roster
                     featureFlags: [],
-                });
-                this.network.sendP2PMessage(hostId, MessageTypes.LOBBY_PLAYER_JOINED, {
-                    steamId: this.localPlayerId,
-                    name: this.network.playerName,
-                    asSpectator: this.isSpectator,
                 });
             } else {
                 console.warn('⚠️ Cannot announce join yet — host Steam ID not resolved');
@@ -759,101 +767,16 @@ export class FFAGameStateP2P {
    * Setup network message handlers
    */
     setupNetworkHandlers() {
+        this._networkHandlerRegistry?.dispose();
+        const registry = createNetworkHandlerRegistry(this.network, this._networkDispatch);
+        this._networkHandlerRegistry = registry;
+
         // === INPUT MESSAGES (Peer → Host) ===
 
-        this.network.on(MessageTypes.NET_HELLO, (msg) => {
-            if (!this.isHost) return;
-            const requested = msg.data?.protocolVersion;
-            let accepted = requested === this.network.protocolVersion;
-            let reason = accepted ? 'ok' : 'protocol_mismatch';
+        registerJoinHandshakeHandlers(this, registry);
+        resyncInputBarrier.registerFfaResyncInputBarrierHandlers(this, registry);
 
-            // Check for rejoin
-            const existing = this.players.get(msg.from);
-            if (existing && existing.isDisconnected) {
-                clearTimeout(existing.disconnectTimeout);
-                existing.isDisconnected = false;
-                existing.disconnectTimeout = null;
-                console.log(`♻️ Player rejoined via NET_HELLO: ${existing.name}`);
-                this.queueResync(msg.from);
-            } else if (accepted && msg.from !== this.localPlayerId && !this.players.has(msg.from)) {
-                if (msg.data?.asSpectator) {
-                    // Watch-only: NEVER roster them (no board, no ready, no win/attack).
-                    // Give them the roster + a baseline; they ride the live snapshot stream.
-                    this._registerSpectator(msg.from, msg.data?.name || 'Spectator');
-                } else {
-                    // New peer joining — add to the roster. NET_HELLO now carries the
-                    // name, so this is sufficient even if the peer's LOBBY_PLAYER_JOINED
-                    // is lost. Broadcast the updated list so everyone (incl. the new
-                    // peer) converges on the full roster.
-                    console.log(`📢 Host adding new peer via NET_HELLO: ${msg.data?.name || 'Player'} (${msg.from})`);
-                    const added = this.addPlayer(msg.from, msg.data?.name || 'Player');
-                    if (added) {
-                        this.queueResync(msg.from);
-                        this.broadcastPlayerList();
-                    } else {
-                        // addPlayer rejected the join (e.g. lobby full) — it already sent
-                        // JOIN_REJECTED. Tell the joiner accepted=false in the handshake too,
-                        // so it does NOT proceed thinking it's in a match it was never added to.
-                        accepted = false;
-                        reason = 'lobby_full';
-                    }
-                }
-            }
-
-            this.network.sendP2PMessage(msg.from, MessageTypes.NET_WELCOME, {
-                protocolVersion: this.network.protocolVersion,
-                featureFlags: [],
-                matchId: this.network.matchId,
-                matchNonce: this.network.matchNonce,
-                hostSteamId: this.network.hostSteamId,
-                accepted,
-                reason,
-            });
-        });
-
-        this.network.on(MessageTypes.NET_WELCOME, (msg) => {
-            if (this.isHost) return;
-            if (msg.data?.accepted) {
-                this.handshakeComplete = true;
-                if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
-                console.log('✅ NET_WELCOME received from host');
-            } else {
-                console.warn(`⚠️ NET_WELCOME rejected: ${msg.data?.reason || 'unknown'}`);
-                if (msg.data?.reason === 'lobby_full') {
-                    emitMultiplayerEvent(MULTIPLAYER_EVENTS.JOIN_REJECTED, { reason: 'lobby_full' });
-                }
-            }
-        });
-
-        // Host rejected the join outright (e.g. lobby full) before/instead of NET_WELCOME.
-        this.network.on(MessageTypes.JOIN_REJECTED, (msg) => {
-            if (this.isHost) return;
-            const reason = msg.data?.reason || 'rejected';
-            console.warn(`🚫 Join rejected by host: ${reason}`);
-            this.handshakeComplete = false;
-            if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.JOIN_REJECTED, { reason });
-        });
-
-        this.network.on(MessageTypes.GAME_INPUT_MOVE, (msg) => {
-            if (this.isHost) {
-                this.processPlayerInput(msg.from, 'move', msg.data, msg.timestamp);
-            }
-        });
-
-        this.network.on(MessageTypes.GAME_INPUT_ROTATE, (msg) => {
-            if (this.isHost) {
-                this.processPlayerInput(msg.from, 'rotate', msg.data, msg.timestamp);
-            }
-        });
-
-        this.network.on(MessageTypes.GAME_INPUT_DROP, (msg) => {
-            if (this.isHost) {
-                this.processPlayerInput(msg.from, 'drop', msg.data, msg.timestamp);
-            }
-        });
-
-        this.network.on(MessageTypes.GAME_INPUT_BATCH, (msg) => {
+        registry.register(MessageTypes.GAME_INPUT_BATCH, (msg) => {
             if (this.isHost) {
                 this.processInputBatch(msg.from, msg.data, msg.timestamp);
             }
@@ -861,47 +784,48 @@ export class FFAGameStateP2P {
 
         // === STATE SYNC MESSAGES (Host → Peers) ===
 
-        this.network.on(MessageTypes.GAME_STATE_FULL, (msg) => {
+        registry.register(MessageTypes.GAME_STATE_FULL, (msg) => {
             if (!this.isHost) {
                 if (this._shouldDropLiveSnapshotDuringDownload(msg.data, msg)) return;
+                this._transitionJoin(JOIN_EVENTS.LIVE_STATE_ACCEPTED, { snapshotSeq: msg.data?.snapshotSeq ?? null });
                 this.syncFromHost(msg.data);
             }
         });
 
-        this.network.on(MessageTypes.GAME_PLAYER_LOCK, (msg) => {
+        registry.register(MessageTypes.GAME_PLAYER_LOCK, (msg) => {
             this._applyAuthoritativeLock(msg.data);
         });
 
-        this.network.on(MessageTypes.GAME_LINES_CLEAR, (msg) => {
+        registry.register(MessageTypes.GAME_LINES_CLEAR, (msg) => {
             this._applyPlayerClear(msg.data);
         });
 
-        this.network.on(MessageTypes.GAME_STATE_RESYNC, (msg) => {
+        registry.register(MessageTypes.GAME_STATE_RESYNC, (msg) => {
             if (!this.isHost) {
                 this._handleResyncChunk(msg);
             }
         });
 
-        this.network.on(MessageTypes.GAME_STATE_RESYNC_ACK, (msg) => {
+        registry.register(MessageTypes.GAME_STATE_RESYNC_ACK, (msg) => {
             if (this.isHost) {
                 this._handleResyncAck(msg);
             }
         });
 
-        this.network.on(MessageTypes.GAME_SYNCPOINT, (msg) => {
+        registry.register(MessageTypes.GAME_SYNCPOINT, (msg) => {
             if (!this.isHost) {
-                this.syncpoint = msg.data?.syncpoint ?? this.syncpoint;
+                adoptFfaJoinSyncpoint(this, msg.data);
             }
         });
 
-        this.network.on(MessageTypes.LOBBY_PLAYER_JOINED, (msg) => this._handleLobbyPlayerJoined(msg));
+        registry.register(MessageTypes.LOBBY_PLAYER_JOINED, (msg) => this._handleLobbyPlayerJoined(msg));
 
-        this.network.on(MessageTypes.LOBBY_PLAYER_LEFT, (msg) => this._handleLobbyPlayerLeft(msg));
+        registry.register(MessageTypes.LOBBY_PLAYER_LEFT, (msg) => this._handleLobbyPlayerLeft(msg));
 
-        this.network.on(MessageTypes.LOBBY_GAME_START, (msg) => this._handleLobbyGameStart(msg));
+        registry.register(MessageTypes.LOBBY_GAME_START, (msg) => this._handleLobbyGameStart(msg));
 
         // HOST admin kicked us → bubble up so the mode can tear down + return to menu.
-        this.network.on(MessageTypes.PLAYER_KICKED, (msg) => {
+        registry.register(MessageTypes.PLAYER_KICKED, (msg) => {
             if (this.isHost) return; // a host can't kick itself
             // Only the HOST can kick — ignore a spoofed PLAYER_KICKED from a peer (only
             // block when we KNOW the sender isn't the host, so a missing from/host can't
@@ -912,21 +836,23 @@ export class FFAGameStateP2P {
             }
             console.warn(`👢 Kicked by host${msg.data?.reason ? ` (${msg.data.reason})` : ''}`);
             if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
-            this.handshakeComplete = false;
+            this._transitionJoin(JOIN_EVENTS.REJECT, { reason: msg.data?.reason || 'kicked' });
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.KICKED, { reason: msg.data?.reason || 'kicked' });
         });
 
-        this.network.on(MessageTypes.LOBBY_PLAYER_READY, (msg) => this._handleLobbyPlayerReady(msg));
+        registry.register(MessageTypes.LOBBY_PLAYER_READY, (msg) => this._handleLobbyPlayerReady(msg));
 
         // === HOST MIGRATION ===
 
-        this.network.on(MessageTypes.NET_HEARTBEAT, (msg) => this._handleNetHeartbeat(msg));
+        registry.register(MessageTypes.NET_HEARTBEAT, (msg) => this._handleNetHeartbeat(msg));
 
-        this.network.on(MessageTypes.GAME_HOST_MIGRATION_CLAIM, (msg) => {
+        registry.register(MessageTypes.GAME_HOST_MIGRATION_CLAIM, (msg) => {
+            if (this._disposed) return;
             this.hostMigration.handleClaim(msg);
         });
 
-        this.network.on(MessageTypes.GAME_HOST_MIGRATION_SYNC, (msg) => {
+        registry.register(MessageTypes.GAME_HOST_MIGRATION_SYNC, (msg) => {
+            if (this._disposed) return;
             const newHostId = msg.data?.newHostId;
             if (!this._verifyHostReassignment(msg.from, newHostId)) {
                 console.warn(`🛑 Rejecting migration sync from ${msg.from} (claimed new host: ${newHostId})`);
@@ -939,7 +865,13 @@ export class FFAGameStateP2P {
                 return;
             }
             // The successor is verified; adopt it as host and take its snapshot.
+            const previousHostId = this.network.hostSteamId;
             this.network.hostSteamId = newHostId;
+            this.onHostAuthorityChanged({
+                previousHostId,
+                newHostId,
+                source: 'migration_sync',
+            });
             const simulationClock = msg.data?.simulationClock;
             if (['fixed60-v1', 'legacy-variable-v1'].includes(simulationClock)) {
                 this._transitionSimulationClock(simulationClock);
@@ -951,15 +883,15 @@ export class FFAGameStateP2P {
 
         // === PHASE 3: FFA COMBAT & HOST MIGRATION ===
 
-        this.network.on('game:player:died', (msg) => {
+        registry.register(MessageTypes.GAME_PLAYER_DIED, (msg) => {
             console.log(`💀 ${msg.data.playerName} died`);
         });
 
-        this.network.on('game:player:frag', (msg) => {
+        registry.register(MessageTypes.GAME_PLAYER_FRAG, (msg) => {
             console.log(`🏆 ${msg.data.killerName} fragged ${msg.data.victimName}!`);
         });
 
-        this.network.on(MessageTypes.GAME_MATCH_END, (msg) => {
+        registry.register(MessageTypes.GAME_MATCH_END, (msg) => {
             const data = msg.data || {};
             const winnerName = data.winnerName || 'Draw';
             console.log(`🎊 MATCH OVER! Winner: ${winnerName}`);
@@ -987,12 +919,12 @@ export class FFAGameStateP2P {
             }
         });
 
-        this.network.on('game:garbage:sent', (msg) => {
+        registry.register(MessageTypes.GAME_GARBAGE_SENT, (msg) => {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
         });
 
         // Handle attack requests from peers (host routes attacks)
-        this.network.on('game:attack:request', (msg) => {
+        registry.register(MessageTypes.GAME_ATTACK_REQUEST, (msg) => {
             if (!this.isHost) return; // Only host routes attacks
 
             const attackerSteamId = msg.from; // from is set by steam-networking
@@ -1016,44 +948,32 @@ export class FFAGameStateP2P {
             }
         });
 
-        this.network.on('game:host:migrated', (msg) => {
-            const newHost = msg.data?.newHost;
-            if (!this._verifyHostReassignment(msg.from, newHost)) {
-                console.warn(`🛑 Rejecting host:migrated from ${msg.from} (claimed new host: ${newHost})`);
-                return;
-            }
-            console.log(`🔄 Host migrated to: ${msg.data.newHostName}`);
-            this.network.hostSteamId = newHost;
-        });
-
-        this.network.on('game:host:handoff', (msg) => {
-            // A handoff request makes the receiver try to become host, so it must
-            // only be honored from the current host (a planned handoff). Otherwise
-            // any peer could trigger every peer to claim host simultaneously.
-            if (msg.from !== this.network?.hostSteamId) {
-                console.warn(`🛑 Rejecting host:handoff from non-host ${msg.from}`);
-                return;
-            }
-            console.log(`🔄 Host handoff requested: ${msg.data.reason}`);
-            if (!this.isHost) {
-                this.hostMigration.becomeHost();
-            }
-        });
-
-        this.network.on(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
+        registry.register(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
 
         // Ready-barrier: HOST collects per-player readies for the pending round.
-        this.network.on(MessageTypes.GAME_ROUND_READY, (msg) => {
+        registry.register(MessageTypes.GAME_ROUND_READY, (msg) => {
             this._handleRoundReady(msg);
         });
 
         // Ready-barrier: PEER starts the round only when the host says everyone is go.
-        this.network.on(MessageTypes.GAME_ROUND_START, (msg) => this._handleRoundStartSignal(msg));
+        registry.register(MessageTypes.GAME_ROUND_START, (msg) => this._handleRoundStartSignal(msg));
         // PHASE 4.4: Chat messages
-        this.network.on('game:chat', (msg) => {
-            console.log(`💬 Chat from ${msg.data.playerName}: ${msg.data.message}`);
-
+        registry.register(MessageTypes.GAME_CHAT, (msg) => {
             const resolved = { ...msg.data };
+            if (this.isHost) {
+                const rosterPlayer = this.players?.get(msg.from);
+                const knownSpectator = this.spectators?.has(msg.from);
+                if (!rosterPlayer && !knownSpectator) return;
+
+                // Peer submissions never choose their relayed identity. Bind it
+                // to the Steam-authenticated transport sender before history/UI
+                // adoption and host rebroadcast.
+                resolved.steamId = msg.from;
+                resolved.playerName = rosterPlayer?.name || 'Spectator';
+                if (rosterPlayer?.color) resolved.color = rosterPlayer.color;
+            }
+            console.log(`💬 Chat from ${resolved.playerName}: ${resolved.message}`);
+
             if (!resolved.color && this.players) {
                 let player = this.players.get(resolved.steamId);
                 if (!player) {
@@ -1100,12 +1020,12 @@ export class FFAGameStateP2P {
             // If host, rebroadcast to other peers — excluding the original sender,
             // who already showed their own message locally (prevents a duplicate).
             if (this.isHost) {
-                this.broadcastToPeers('game:chat', resolved, msg.from);
+                this.broadcastToPeers(MessageTypes.GAME_CHAT, resolved, msg.from);
             }
         });
 
         // Rematch Voting
-        this.network.on('game:rematch:vote', (msg) => {
+        registry.register(MessageTypes.GAME_REMATCH_VOTE, (msg) => {
             const voterId = msg.from;
             if (!this.players.has(voterId)) return;
 
@@ -1119,7 +1039,7 @@ export class FFAGameStateP2P {
             }
         });
 
-        this.network.on('game:rematch:status', (msg) => {
+        registry.register(MessageTypes.GAME_REMATCH_STATUS, (msg) => {
             this.rematchVotes = new Set(msg.data.votes);
             this.checkRematchThreshold();
             // Emit event for UI
@@ -1168,13 +1088,19 @@ export class FFAGameStateP2P {
                 this._rejectSpoof('LOBBY_PLAYER_JOINED (forged join id)', msg);
                 return;
             }
+            if (!this.network.hasNegotiatedProtocol?.(msg.from)) {
+                this._rejectSpoof('LOBBY_PLAYER_JOINED (handshake incomplete)', msg);
+                return;
+            }
             console.log(`📢 Host received join from: ${msg.data.name} (${msg.data.steamId})`);
             if (msg.data.steamId !== this.localPlayerId) {
                 if (msg.data.asSpectator) {
                     this._registerSpectator(msg.data.steamId, msg.data.name);
                 } else {
-                    this.addPlayer(msg.data.steamId, msg.data.name);
-                    this.queueResync(msg.data.steamId);
+                    const knownPlayer = this.players.has(msg.data.steamId);
+                    if (this.addPlayer(msg.data.steamId, msg.data.name) && !knownPlayer) {
+                        resyncRequest.routeFfaResync(this, msg.data.steamId, 'join');
+                    }
                 }
             }
         }
@@ -1246,6 +1172,10 @@ export class FFAGameStateP2P {
             this._rejectSpoof('LOBBY_GAME_START', msg);
             return;
         }
+        // Seed zero is valid. Missing seed is not: reject before adopting the
+        // generation or clearing retained input for a match that cannot start.
+        const roundSeed = normalizeFfaRoundSeed(msg.data?.sharedSeed);
+        if (roundSeed === null) return;
         console.log('📬 Peer received game start from host!');
         const generation = parseFfaRoundGeneration(msg.data?.roundGeneration);
         if (
@@ -1256,7 +1186,7 @@ export class FFAGameStateP2P {
         resetFfaInputEpoch(this);
         this.roundGeneration = generation;
         this._lastLobbyStartGeneration = generation;
-        this.startMatch(msg.data.sharedSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
+        this.startMatch(roundSeed, msg.data.config, { inProgress: !!msg.data.inProgress });
         // MATCH_STARTED emits after the startMatch countdown completes.
     }
 
@@ -1313,6 +1243,10 @@ export class FFAGameStateP2P {
     }
 
     performRoundRestart(data) {
+        // Defensive direct-call fence in addition to handleFfaRoundRestart's
+        // wire seam. Never reset a live round around an absent seed; zero is valid.
+        const roundSeed = normalizeFfaRoundSeed(data?.newSeed);
+        if (roundSeed === null) return;
         const isFullReset = data.fullReset === true;
         const prefixText = data.prefixText || 'ROUND OVER';
         const countFrom = data.countFrom !== undefined ? data.countFrom : 3;
@@ -1322,6 +1256,9 @@ export class FFAGameStateP2P {
         const generation = readFfaRoundAdvance(this.roundGeneration, data?.roundGeneration);
         if (generation === null) return;
         this.roundGeneration = generation;
+        // `sharedSeed` is the current round's seed. Adopt it before any reset,
+        // ready-barrier deferral, or resync-visible download window opens.
+        this.sharedSeed = roundSeed;
         // Drop the stale receive baseline so a delta from before the restart can't
         // decode against round-1 data; the peer waits for the host's fresh keyframe.
         this.network.resetSnapshotBaselines?.();
@@ -1380,7 +1317,7 @@ export class FFAGameStateP2P {
         const startRound = () => {
             this.gamePhase = 'playing';
             this.players.forEach((player) => {
-                player.gameState.randomGenerator = this.createSeededRNG(data.newSeed);
+                player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
                 fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
                 spawnPiece(player.gameState, null, null);
             });
@@ -1433,13 +1370,13 @@ export class FFAGameStateP2P {
             this.broadcastRematchStatus();
             this.checkRematchThreshold();
         } else {
-            this.network.sendP2PMessage(this.network.hostSteamId, 'game:rematch:vote', {});
+            this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_REMATCH_VOTE, {});
         }
     }
 
     broadcastRematchStatus() {
         if (!this.isHost) return;
-        this.broadcastToPeers('game:rematch:status', {
+        this.broadcastToPeers(MessageTypes.GAME_REMATCH_STATUS, {
             votes: Array.from(this.rematchVotes),
         });
         // Also update local UI
@@ -1484,7 +1421,7 @@ export class FFAGameStateP2P {
         }
         const { gameState } = player;
         if (this._fixedTickEnabled && hasActiveHitStop(gameState)) {
-            if (this.isHost && data?.seq > (player.lastInputSeq || 0)) player.lastInputSeq = data.seq;
+            if (this.isHost) acknowledgeFfaInput(player, data?.seq);
             this._recordNetEvent?.('input_rejected', {
                 steamId, inputType, seq: data?.seq, reason: 'hit_stop',
             });
@@ -1556,9 +1493,8 @@ export class FFAGameStateP2P {
         }
 
         const player = this.players.get(steamId);
-        if (!player || !player.isAlive) {
-            return; // Player doesn't exist or is dead
-        }
+        if (!player) return;
+        if (!player.isAlive) { acknowledgeFfaInput(player, data?.seq); return; }
 
         // Validate input (anti-cheat)
         const validation = this.inputValidator.validateInput(
@@ -1572,6 +1508,7 @@ export class FFAGameStateP2P {
             },
         );
         if (!validation.valid) {
+            acknowledgeFfaInput(player, data?.seq);
             this._recordNetEvent?.('input_rejected', {
                 steamId,
                 inputType,
@@ -1611,6 +1548,7 @@ export class FFAGameStateP2P {
             // the same stale peer clock.)
             const schedule = this._resolveBufferedInputTick(steamId, data, policy);
             if (schedule.reject) {
+                acknowledgeFfaInput(player, data?.seq);
                 if (this.inputJitterBuffer.stats) this.inputJitterBuffer.stats.inputsDropped += 1;
                 this._recordNetEvent?.('input_rejected', {
                     steamId,
@@ -1646,6 +1584,7 @@ export class FFAGameStateP2P {
                 lateClamped: schedule.lateClamped,
                 reason: accepted ? 'buffered' : 'jitter_buffer',
             });
+            if (!accepted) acknowledgeFfaInput(player, data?.seq);
             return; // Buffered — applied later by processBufferedInputs().
         }
 
@@ -1664,6 +1603,10 @@ export class FFAGameStateP2P {
             callbacks,
         );
 
+        // Sequence acknowledgement means the validated command was consumed,
+        // even when gameplay disposition rejects it (matching the fixed adapter).
+        acknowledgeFfaInput(player, data?.seq);
+
         if (!applied) {
             return;
         }
@@ -1674,11 +1617,6 @@ export class FFAGameStateP2P {
             seq: data?.seq,
             buffered: false,
         });
-
-        // Update sequence number if provided
-        if (data.seq && data.seq > (player.lastInputSeq || 0)) {
-            player.lastInputSeq = data.seq;
-        }
 
         // CRITICAL: Force immediate visual update after input
         // Don't wait for next state sync (30Hz) - render immediately (60Hz)
@@ -1695,6 +1633,8 @@ export class FFAGameStateP2P {
         if (this.gamePhase !== 'playing') {
             return; // Can't send inputs if game isn't playing
         }
+        if (this.players.get(this.localPlayerId)?.isAlive === false) return;
+        if (this.resyncInputFrozen) return;
 
         const timestamp = Date.now();
 
@@ -1723,8 +1663,8 @@ export class FFAGameStateP2P {
 
             if (!this.inputHistory) this.inputHistory = [];
             this.inputHistory.push(queuedInput);
-            if (this.inputHistory.length > 120) {
-                this.inputHistory.splice(0, this.inputHistory.length - 120);
+            if (this.inputHistory.length > 4096) {
+                this.inputHistory.splice(0, this.inputHistory.length - 4096);
             }
 
             this._applyLocalPrediction(inputType, data);
@@ -2009,9 +1949,18 @@ export class FFAGameStateP2P {
         // countdown — it watches via the spectate view until the next round restart re-inits
         // it with the shared seed. (Host marks it isAlive:false in addPlayer.)
         const inProgress = !!options.inProgress;
-        if (this.isHost && !seed) {
-            // Host generates seed
-            this.sharedSeed = Math.floor(Math.random() * 1000000);
+        const seedWasProvided = seed !== null && seed !== undefined;
+        const suppliedSeed = normalizeFfaRoundSeed(seed);
+        // Invalid explicit values fail closed. Only an absent host seed means
+        // "generate one"; peers always require an authoritative wire seed.
+        if ((seedWasProvided && suppliedSeed === null) || (!this.isHost && suppliedSeed === null)) {
+            return;
+        }
+
+        if (this.isHost) {
+            // Hosts own seed selection. An explicit seed (including zero) is
+            // preserved; ordinary starts generate the unchanged legacy seed.
+            this.sharedSeed = suppliedSeed ?? Math.floor(Math.random() * 1000000);
 
             // Apply config if provided
             if (config) {
@@ -2028,15 +1977,7 @@ export class FFAGameStateP2P {
             this.attackRouter.resetHotPotato();
 
             const session = this.network.refreshMatchSession();
-            this.network.broadcastToAll(MessageTypes.NET_WELCOME, {
-                protocolVersion: session.protocolVersion,
-                featureFlags: [],
-                matchId: session.matchId,
-                matchNonce: session.matchNonce,
-                hostSteamId: session.hostSteamId,
-                accepted: true,
-                reason: 'match_start',
-            });
+            broadcastSessionWelcome(this, session);
 
             this.network.broadcastToAll(MessageTypes.LOBBY_GAME_START, {
                 sharedSeed: this.sharedSeed,
@@ -2047,9 +1988,9 @@ export class FFAGameStateP2P {
             // Start state sync loop (30Hz)
             this.startStateSyncLoop();
             this.startHeartbeatLoop();
-        } else if (!this.isHost && seed) {
+        } else {
             // Peer receives seed and config from host
-            this.sharedSeed = seed;
+            this.sharedSeed = suppliedSeed;
             if (config) {
                 this.matchConfig = { ...this.matchConfig, ...config };
             }
@@ -2062,7 +2003,7 @@ export class FFAGameStateP2P {
             // watch UI sets up like everyone else.
             if (!this.isSpectator && !inProgress) {
                 const localPlayer = this.players.get(this.localPlayerId);
-                this.initializePlayerForMatch(localPlayer, seed);
+                this.initializePlayerForMatch(localPlayer, suppliedSeed);
                 this.attackRouter.resetHotPotato();
             } else if (inProgress) {
                 // Mark our own board dead immediately (the host already has us isAlive:false)
@@ -2114,6 +2055,8 @@ export class FFAGameStateP2P {
     * Initialize a player for the match with deterministic RNG
     */
     initializePlayerForMatch(player, seed) {
+        const roundSeed = normalizeFfaRoundSeed(seed);
+        if (roundSeed === null) return false;
         // Reset game state
         player.gameState.reset();
         player.garbageQueue = new GarbageQueue();
@@ -2123,7 +2066,7 @@ export class FFAGameStateP2P {
 
         // Set deterministic RNG (same seed = same pieces for ALL players)
         // CRITICAL: All players must use the EXACT same seed for fair play
-        player.gameState.randomGenerator = this.createSeededRNG(seed);
+        player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
 
         // Fill initial bag with deterministic pieces
         fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
@@ -2131,7 +2074,8 @@ export class FFAGameStateP2P {
         // Spawn first piece (no game over callback needed at start)
         spawnPiece(player.gameState, null, null);
 
-        console.log(`✅ Player ${player.name} initialized with seed ${seed}`);
+        console.log(`✅ Player ${player.name} initialized with seed ${roundSeed}`);
+        return true;
     }
 
     /**
@@ -2143,7 +2087,9 @@ export class FFAGameStateP2P {
     * sfc32 replacement (src/core/rng.js) adopts behind the rngV2 flag.
     */
     createSeededRNG(seed) {
-        return seededRandom(seed);
+        const roundSeed = normalizeFfaRoundSeed(seed);
+        if (roundSeed === null) throw new TypeError('Invalid FFA round seed');
+        return seededRandom(roundSeed);
     }
 
     /**
@@ -2220,32 +2166,21 @@ export class FFAGameStateP2P {
         }
     }
 
-    _computeSyncpoint() {
-        if (this.gamePhase !== 'playing') return 'download';
-        const busy = Array.from(this.players.values()).some((player) => player.gameState?.isProcessingPhysics);
-        return busy ? 'busy' : 'idle';
+    _updateSyncpoint() { publishFfaJoinSyncpoint(this); }
+
+    _processPendingResyncInputBarrier() {
+        return resyncInputBarrier.drainFfaPeerResyncInputBarrier(this);
     }
 
-    _updateSyncpoint() {
-        const next = this._computeSyncpoint();
-        if (next !== this.syncpoint) {
-            this.syncpoint = next;
-            this.network.broadcastToAll(MessageTypes.GAME_SYNCPOINT, {
-                syncpoint: this.syncpoint,
-                tick: this.hostTick,
-                reason: 'state_change',
-            });
-        }
+    _getSatisfiedResyncInputRequirement(steamId) {
+        return resyncInputBarrier.getFfaSatisfiedResyncInputRequirement(this, steamId);
     }
 
     _processPendingResyncs() {
-        if (!this.isHost || this.pendingResyncs.length === 0) return;
-        if (this.syncpoint === 'busy') return;
-        const steamId = this.pendingResyncs.shift();
-        if (steamId) {
-            this._sendResyncToPeer(steamId);
-        }
+        const send = (id, _marker, barrier) => resyncInputBarrier.startFfaResyncTransfer(this, id, barrier);
+        drainFfaPendingResyncs(this, send);
     }
+
     /** @returns {AuthoritativeStateSnapshot} */
     buildStateSnapshot() {
         const players = Array.from(this.players.entries()).map(([steamId, player]) => ({
@@ -2570,14 +2505,8 @@ export class FFAGameStateP2P {
     /**
      * Phase 4: Request resync from host when desync detected
      */
-    _requestResync() {
-        if (this.isHost) return;
-
-        console.log('🔄 Requesting resync due to detected desync...');
-        this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
-            requestResync: true,
-            reason: 'desync_detected',
-        });
+    _requestResync(reason = 'desync_detected') {
+        return resyncRequest.requestFfaAuthoritativeResync(this, reason);
     }
 
     /**
@@ -2589,22 +2518,7 @@ export class FFAGameStateP2P {
     }
 
     _sanitizeNetEventData(value, depth = 0) {
-        if (value == null) return value;
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
-        if (depth >= 3) return '[truncated]';
-        if (Array.isArray(value)) {
-            return value.slice(0, 16).map((item) => this._sanitizeNetEventData(item, depth + 1));
-        }
-        if (typeof value === 'object') {
-            const out = {};
-            Object.entries(value).slice(0, 32).forEach(([key, item]) => {
-                if (typeof item !== 'function') {
-                    out[key] = this._sanitizeNetEventData(item, depth + 1);
-                }
-            });
-            return out;
-        }
-        return String(value);
+        return sanitizeFfaNetEventData(value, depth);
     }
 
     _recordNetEvent(type, data = {}) {
@@ -2645,35 +2559,11 @@ export class FFAGameStateP2P {
     }
 
     _countOccupiedCells(grid) {
-        if (!Array.isArray(grid)) return 0;
-        let cells = 0;
-        for (const row of grid) {
-            if (Array.isArray(row)) {
-                for (const cell of row) if (cell) cells += 1;
-            }
-        }
-        return cells;
+        return countOccupiedFfaCells(grid);
     }
 
     _stableRuleHash(value) {
-        const seen = new WeakSet();
-        const stable = (item) => {
-            if (item == null || typeof item !== 'object') return item;
-            if (seen.has(item)) return '[cycle]';
-            seen.add(item);
-            if (Array.isArray(item)) return item.map(stable);
-            return Object.keys(item).sort().reduce((out, key) => {
-                out[key] = stable(item[key]);
-                return out;
-            }, {});
-        };
-        const json = JSON.stringify(stable(value || {}));
-        let hash = 5381;
-        for (let i = 0; i < json.length; i += 1) {
-            hash = ((hash << 5) + hash) + json.charCodeAt(i);
-            hash &= hash;
-        }
-        return (hash >>> 0).toString(16);
+        return stableFfaRuleHash(value);
     }
 
     _createAttackMetadata(attackerSteamId, cascadeSummary = {}) {
@@ -2693,9 +2583,7 @@ export class FFAGameStateP2P {
     }
 
     _netDiagCounterDelta(current, previous, key) {
-        const nowValue = Number(current?.[key] || 0);
-        const prevValue = Number(previous?.[key] || 0);
-        return Math.max(0, nowValue - prevValue);
+        return ffaCounterDelta(current, previous, key);
     }
 
     prepareMigrationClaim() {
@@ -2794,8 +2682,8 @@ export class FFAGameStateP2P {
             ? Math.max(0, now - this.hostMigration.lastHeartbeatTime)
             : 0;
         const resyncInFlight = (this.resyncTransfers?.size || 0) + (this.resyncBuffers?.size || 0);
-        const bytesRxP95 = packetStats.snapshotBytesReceived?.p95 || 0;
-        const bytesTxP95 = packetStats.snapshotBytesSent?.p95 || 0;
+        const bytesRxP95 = packetStats.snapshotDeltaWireBytesReceived?.p95 || packetStats.snapshotBytesReceived?.p95 || 0;
+        const bytesTxP95 = packetStats.snapshotDeltaWireBytesSent?.p95 || packetStats.snapshotBytesSent?.p95 || 0;
         const impairmentText = impairmentStats.enabled
             ? `imp=drop${impairmentDelta('dropped')}/dup${impairmentDelta('duplicated')}/reord${impairmentDelta('reordered')}/delay${impairmentDelta('delayed')} `
             : '';
@@ -2829,9 +2717,9 @@ export class FFAGameStateP2P {
         d.lastLogAt = now;
     }
 
-    /** @param {StateSnapshot} state @param {{forceLocal: boolean, reconcileLocal?: boolean}} options */
+    /** @param {StateSnapshot} state @param {{forceLocal: boolean, reconcileLocal?: boolean, render?: boolean}} options */
     _applySnapshotState(state, options) {
-        const { forceLocal, reconcileLocal = false } = options;
+        const { forceLocal, reconcileLocal = false, render = true } = options;
         if (this._netDiagEnabled) {
             this._netDiag.rx += 1;
             this._maybeFlushNetDiag();
@@ -3119,381 +3007,135 @@ export class FFAGameStateP2P {
         }
         this.winner = state.winner;
 
-        // CRITICAL: Trigger rendering after state update
-        // Note: The render loop also calls this, but we call it here too
-        // to ensure immediate visual update when state arrives
-        this.renderAllPlayers();
+        if (render) this.renderAllPlayers();
     }
 
     _getDownloadJoinBlockedPeers() {
-        if (!this._downloadJoinEnabled || !this.downloadJoinPeers || this.downloadJoinPeers.size === 0) {
-            return new Set();
-        }
-
-        const now = Date.now();
-        const blocked = new Set();
-        this.downloadJoinPeers.forEach((download, steamId) => {
-            if (download?.startedAt && now - download.startedAt > DOWNLOAD_JOIN_TIMEOUT_MS) {
-                this.downloadJoinPeers.delete(steamId);
-                this._recordNetEvent?.('download_timeout', {
-                    steamId,
-                    resyncId: download.resyncId,
-                    downloadEpoch: download.downloadEpoch,
-                });
-                return;
-            }
-            blocked.add(steamId);
+        return getDownloadJoinBlockedPeers(this, {
+            now: () => Date.now(),
+            recordEvent: (event, details) => this._recordNetEvent?.(event, details),
         });
-        return blocked;
     }
 
     _shouldDropLiveSnapshotDuringDownload(state, msg = {}) {
-        if (!this._downloadJoinEnabled || !this.downloadJoinInProgress) return false;
-
-        const now = Date.now();
-        if (this.downloadJoinInProgress.startedAt
-            && now - this.downloadJoinInProgress.startedAt > DOWNLOAD_JOIN_TIMEOUT_MS) {
-            this._recordNetEvent?.('download_timeout', {
-                resyncId: this.downloadJoinInProgress.resyncId,
-                downloadEpoch: this.downloadJoinInProgress.downloadEpoch,
-                peerSide: true,
-            });
-            this.downloadJoinInProgress = null;
-            return false;
-        }
-
-        this._recordNetEvent?.('download_live_snapshot_dropped', {
-            resyncId: this.downloadJoinInProgress.resyncId,
-            downloadEpoch: this.downloadJoinInProgress.downloadEpoch,
-            snapshotSeq: state?.snapshotSeq,
-            simTick: state?.simTick,
-            from: msg.from,
+        return shouldDropLiveSnapshotDuringDownload(this, state, msg, {
+            now: () => Date.now(),
+            recordEvent: (event, details) => this._recordNetEvent?.(event, details),
+            onDownloadTimeout: (details) => this._transitionJoin(JOIN_EVENTS.DOWNLOAD_TIMED_OUT, details),
         });
-        return true;
     }
 
     queueResync(steamId) {
-        if (!this.isHost) return;
-        if (!steamId || steamId === this.localPlayerId) return;
-        this._recordNetEvent?.('resync_queued', {
-            steamId,
-            phase: this.gamePhase,
-            syncpoint: this.syncpoint,
-        });
-        if (this.gamePhase !== 'playing' || this.syncpoint !== 'busy') {
-            this._sendResyncToPeer(steamId);
-            return;
-        }
-        if (!this.pendingResyncs.includes(steamId)) {
-            this.pendingResyncs.push(steamId);
-        }
+        const send = (id, _marker, barrier) => resyncInputBarrier.startFfaResyncTransfer(this, id, barrier);
+        queueFfaResync(this, steamId, send);
     }
 
     _buildResyncPayload(meta = {}) {
-        const snapshotBytes = new Uint8Array(getBinaryEncoder().encodeSnapshot(this.buildStateSnapshot()));
-
-        return {
-            encoding: 'binary-v1',
-            header: {
-                matchConfig: this.matchConfig,
-                sharedSeed: this.sharedSeed,
-                matchStartTime: this.matchStartTime,
-                roundGeneration: this.roundGeneration,
-                simTick: this.simTick || 0,
-                snapshotSeq: this.snapshotSeq || 0,
-                migrationEpoch: this.migrationEpoch || 0,
-                downloadEpoch: meta.downloadEpoch || null,
-                resyncId: meta.resyncId || null,
-                sentAt: Date.now(),
-            },
-            snapshot: encodeBase64(snapshotBytes),
-        };
+        return buildFfaResyncPayload(this, meta);
     }
 
-    _sendResyncToPeer(steamId) {
-        if (!this.isHost) return;
+    _createResyncContext() {
+        return createFfaResyncContext(this);
+    }
 
-        // Coalesce: never start a second full-state transfer to a peer that already
-        // has one in flight. A burst of baseline-mismatch resync requests (e.g.
-        // reordered unreliable deltas) must fold into the active transfer instead of
-        // fanning out into N concurrent chunked transfers + N retransmit timers.
-        // Each transfer self-clears from resyncTransfers on completion/abort.
-        for (const t of this.resyncTransfers.values()) {
-            if (t.steamId === steamId) return;
+    onHostAuthorityChanged({ previousHostId, newHostId, source }) {
+        if (previousHostId === newHostId) return false;
+        resyncInputBarrier.cancelResyncInputBarriers(this, 'host_changed');
+        const retired = resetInboundResyncState(this);
+        if (previousHostId) {
+            this.network.incomingSnapshotBaselines?.delete(previousHostId);
+            this.network.lastResyncRequestAt?.delete(previousHostId);
         }
-
-        const resyncId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-        const downloadEpoch = this._downloadJoinEnabled ? resyncId : null;
-        const payload = this._buildResyncPayload({ resyncId, downloadEpoch });
-        const bytes = encodeUtf8(JSON.stringify(payload));
-        const chunkCount = Math.ceil(bytes.length / this.resyncChunkSize);
-        const { header } = payload;
-
-        const chunks = [];
-        for (let i = 0; i < chunkCount; i += 1) {
-            const start = i * this.resyncChunkSize;
-            const end = Math.min(bytes.length, start + this.resyncChunkSize);
-            const slice = bytes.slice(start, end);
-            chunks.push({
-                resyncId,
-                chunkIndex: i,
-                chunkCount,
-                byteOffset: start,
-                crc32: crc32(slice),
-                data: encodeBase64(slice),
-                downloadEpoch,
-                baselineSnapshotSeq: header.snapshotSeq,
-                baselineSimTick: header.simTick,
-                roundGeneration: header.roundGeneration,
-            });
-        }
-
-        const transfer = {
-            resyncId,
-            downloadEpoch,
-            steamId,
-            chunks,
-            inFlight: new Set(),
-            retries: new Map(),
-            lastSentAt: new Map(),
-            cursor: 0,
-            timer: null,
-            awaitingFinalSince: null,
-        };
-
-        this.resyncTransfers.set(resyncId, transfer);
-        if (this._downloadJoinEnabled) {
-            if (!this.downloadJoinPeers) this.downloadJoinPeers = new Map();
-            this.downloadJoinPeers.set(steamId, {
-                resyncId,
-                downloadEpoch,
-                startedAt: Date.now(),
-                snapshotSeq: header.snapshotSeq,
-                simTick: header.simTick,
-                roundGeneration: header.roundGeneration,
-            });
-        }
-        this._recordNetEvent?.('resync_started', {
-            steamId,
-            resyncId,
-            downloadEpoch,
-            chunkCount,
-            bytes: bytes.length,
+        this._recordNetEvent?.('resync_inbound_retired', {
+            previousHostId: previousHostId || null,
+            newHostId,
+            source,
+            ...retired,
         });
-        this._sendResyncWindow(transfer);
-        transfer.timer = setInterval(() => this._tickResyncTransfer(transfer), 50);
+        if (retired.discardedDownload) {
+            this._transitionJoin(JOIN_EVENTS.HOST_CHANGED, {
+                previousHostId: previousHostId || null,
+                newHostId,
+                source,
+            });
+        }
+        return true;
     }
+
+    _sendResyncToPeer(steamId) { this.queueResync(steamId); }
 
     _sendResyncWindow(transfer) {
-        while (transfer.inFlight.size < this.resyncWindow && transfer.cursor < transfer.chunks.length) {
-            const chunk = transfer.chunks[transfer.cursor];
-            this._sendResyncChunk(transfer, chunk);
-            transfer.cursor += 1;
-        }
+        sendResyncWindow(this._createResyncContext(), transfer);
     }
 
     _sendResyncChunk(transfer, chunk) {
-        this.network.sendP2PMessage(transfer.steamId, MessageTypes.GAME_STATE_RESYNC, chunk);
-        transfer.inFlight.add(chunk.chunkIndex);
-        transfer.lastSentAt.set(chunk.chunkIndex, Date.now());
-        const retryCount = transfer.retries.get(chunk.chunkIndex) || 0;
-        transfer.retries.set(chunk.chunkIndex, retryCount + 1);
+        sendResyncChunk(this._createResyncContext(), transfer, chunk);
     }
 
     _tickResyncTransfer(transfer) {
-        const now = Date.now();
-        let abort = false;
-        transfer.inFlight.forEach((chunkIndex) => {
-            const lastSent = transfer.lastSentAt.get(chunkIndex) || 0;
-            if (now - lastSent < this.resyncTimeoutMs) return;
-            const retryCount = transfer.retries.get(chunkIndex) || 0;
-            if (retryCount >= this.resyncMaxRetries) {
-                abort = true;
-                return;
-            }
-            const chunk = transfer.chunks[chunkIndex];
-            if (chunk) {
-                this._sendResyncChunk(transfer, chunk);
-            }
-        });
-
-        if (abort) {
-            clearInterval(transfer.timer);
-            transfer.timer = null;
-            this.resyncTransfers.delete(transfer.resyncId);
-            if (this._downloadJoinEnabled && this.downloadJoinPeers?.get(transfer.steamId)?.resyncId === transfer.resyncId) {
-                this.downloadJoinPeers.delete(transfer.steamId);
-            }
-            this._recordNetEvent?.('resync_aborted', {
-                steamId: transfer.steamId,
-                resyncId: transfer.resyncId,
-                inFlight: transfer.inFlight.size,
-            });
-            return;
-        }
-
-        if (transfer.inFlight.size === 0 && transfer.cursor >= transfer.chunks.length) {
-            if (!transfer.awaitingFinalSince) {
-                transfer.awaitingFinalSince = now;
-                return;
-            }
-            if (now - transfer.awaitingFinalSince < this.resyncTimeoutMs * this.resyncMaxRetries) {
-                return;
-            }
-
-            clearInterval(transfer.timer);
-            transfer.timer = null;
-            this.resyncTransfers.delete(transfer.resyncId);
-            if (this._downloadJoinEnabled && this.downloadJoinPeers?.get(transfer.steamId)?.resyncId === transfer.resyncId) {
-                this.downloadJoinPeers.delete(transfer.steamId);
-            }
-            this._recordNetEvent?.('resync_aborted', {
-                steamId: transfer.steamId,
-                resyncId: transfer.resyncId,
-                reason: 'final_ack_timeout',
-            });
+        if (this._disposed) return;
+        tickResyncTransfer(this._createResyncContext(), transfer);
+        if (!this.resyncTransfers.has(transfer.resyncId)) {
+            resyncInputBarrier.retireFfaTransferBarrier(this, transfer, 'transfer_ended');
         }
     }
 
     _handleResyncAck(msg) {
-        if (msg.data?.requestResync) {
-            this._recordNetEvent?.('resync_requested', {
-                steamId: msg.from,
-                reason: msg.data?.reason || 'unknown',
-            });
-            this.queueResync(msg.from);
-            return;
-        }
-
-        const { resyncId, chunkIndex, isFinal } = msg.data || {};
-        const transfer = this.resyncTransfers.get(resyncId);
-        if (!transfer || transfer.steamId !== msg.from) return;
-
-        if (typeof chunkIndex === 'number') {
-            transfer.inFlight.delete(chunkIndex);
-            this._sendResyncWindow(transfer);
-        }
-
-        if (isFinal) {
-            clearInterval(transfer.timer);
-            transfer.timer = null;
-            this.resyncTransfers.delete(resyncId);
-            if (this._downloadJoinEnabled && this.downloadJoinPeers?.get(msg.from)?.resyncId === resyncId) {
-                this.downloadJoinPeers.delete(msg.from);
-            }
-            this._recordNetEvent?.('resync_completed', {
-                steamId: msg.from,
-                resyncId,
-                downloadEpoch: transfer.downloadEpoch || null,
-            });
-        }
+        if (this._disposed) return;
+        resyncInputBarrier.handleFfaResyncAck(this, msg);
     }
 
     _handleResyncChunk(msg) {
-        const {
-            resyncId, chunkIndex, chunkCount, byteOffset, crc32: expectedCrc, data,
-            downloadEpoch, baselineSnapshotSeq, baselineSimTick, roundGeneration,
-        } = msg.data || {};
-        if (!resyncId || typeof chunkIndex !== 'number') return;
-
-        const bytes = decodeBase64(data || '');
-        if (expectedCrc !== crc32(bytes)) {
+        if (this._disposed) return;
+        const expectedHostId = this.network?.hostSteamId;
+        if (this.isHost || !msg?.from || !expectedHostId || msg.from !== expectedHostId) {
+            let reason = 'non_host_sender';
+            if (this.isHost) reason = 'host_receiver';
+            else if (!expectedHostId) reason = 'host_unresolved';
+            this._recordNetEvent?.('resync_chunk_rejected', {
+                from: msg?.from || null,
+                expectedHostId: expectedHostId || null,
+                reason,
+            });
             return;
         }
+        handleResyncChunk(this._createResyncContext(), msg);
+    }
 
-        if (this._downloadJoinEnabled && downloadEpoch) {
-            if (!this.downloadJoinInProgress || this.downloadJoinInProgress.downloadEpoch !== downloadEpoch) {
-                this.downloadJoinInProgress = {
-                    resyncId,
-                    downloadEpoch,
-                    startedAt: Date.now(),
-                    snapshotSeq: baselineSnapshotSeq,
-                    simTick: baselineSimTick,
-                    roundGeneration,
-                };
-                this._recordNetEvent?.('download_started', {
-                    resyncId,
-                    downloadEpoch,
-                    snapshotSeq: baselineSnapshotSeq,
-                    simTick: baselineSimTick,
-                    roundGeneration,
-                });
-            }
-        }
-
-        const buffer = this.resyncBuffers.get(resyncId) || {
-            chunkCount,
-            chunks: new Map(),
-            received: 0,
-            downloadEpoch,
-            baselineSnapshotSeq,
-            baselineSimTick,
-            roundGeneration,
-        };
-
-        if (!buffer.chunks.has(chunkIndex)) {
-            buffer.chunks.set(chunkIndex, { bytes, byteOffset });
-            buffer.received += 1;
-        }
-
-        this.resyncBuffers.set(resyncId, buffer);
-
-        this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
-            resyncId,
-            chunkIndex,
-            isFinal: false,
-        });
-
-        if (buffer.received === buffer.chunkCount) {
-            const totalLength = Array.from(buffer.chunks.values()).reduce((max, chunk) => Math.max(max, chunk.byteOffset + chunk.bytes.length), 0);
-            const merged = new Uint8Array(totalLength);
-            buffer.chunks.forEach((chunk) => {
-                merged.set(chunk.bytes, chunk.byteOffset);
-            });
-
-            try {
-                const payload = JSON.parse(decodeUtf8(merged));
-                if (payload?.encoding === 'binary-v1') {
-                    const snapshotBytes = decodeBase64(payload.snapshot || '');
-                    const snapshotBuffer = snapshotBytes.buffer.slice(
-                        snapshotBytes.byteOffset,
-                        snapshotBytes.byteOffset + snapshotBytes.byteLength,
-                    );
-                    const snapshot = getBinaryDecoder().decodeSnapshot(snapshotBuffer);
-                    if (!snapshot) throw new Error('Decoded resync snapshot is empty');
-                    this.network.setIncomingSnapshotBaseline?.(msg.from || this.network.hostSteamId, snapshot);
-                    const header = payload.header || {};
-                    const hydrated = hydrateBinarySnapshot(snapshot, {
-                        roundGeneration: header.roundGeneration,
-                        migrationEpoch: header.migrationEpoch,
-                    });
-                    this._applyResyncState({ ...hydrated, ...header });
-                } else {
-                    this._applyResyncState(payload);
-                }
-                this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
-                    resyncId,
-                    chunkIndex: null,
-                    isFinal: true,
-                });
-            } catch (err) {
-                console.error('❌ Failed to parse resync payload:', err);
-            }
-
-            this.resyncBuffers.delete(resyncId);
-        }
+    _processPendingInboundResyncApply() {
+        if (this._disposed || this.isHost || !this.pendingInboundResyncApply) return false;
+        return drainPendingInboundResyncApply(this._createResyncContext());
     }
 
     /** @param {ResyncSnapshotState} state */
     _applyResyncState(state) {
+        const carriesSharedSeed = Object.hasOwn(state, 'sharedSeed');
+        const resyncSeed = carriesSharedSeed
+            ? normalizeFfaRoundSeed(state.sharedSeed)
+            : null;
+        if (carriesSharedSeed && resyncSeed === null) {
+            this._recordNetEvent?.('resync_apply_rejected', { reason: 'invalid_round_seed' });
+            return false;
+        }
+        const inputPreflight = resyncInputBarrier.preflightFfaResyncInputBarrier(this, state);
+        if (!inputPreflight.accepted) {
+            this._recordNetEvent?.('resync_apply_rejected', inputPreflight);
+            return false;
+        }
+        const preflight = resyncSidecar.preflightFfaResyncApply(this, state);
+        if (!preflight.accepted) {
+            this._recordNetEvent?.('resync_apply_rejected', preflight);
+            return false;
+        }
+        let clockProjectionReset = false;
         if (state.matchConfig) {
             this.matchConfig = { ...this.matchConfig, ...state.matchConfig };
-            this._transitionSimulationClock(this.matchConfig.simulationClock);
+            clockProjectionReset = this._transitionSimulationClock(this.matchConfig.simulationClock);
         }
-        if (state.sharedSeed) {
-            this.sharedSeed = state.sharedSeed;
+        if (carriesSharedSeed) {
+            this.sharedSeed = resyncSeed;
         }
-        if (state.matchStartTime) {
+        if (Object.hasOwn(state, 'matchStartTime')) {
             this.matchStartTime = state.matchStartTime;
         }
         // A resync is authoritative current state — adopt its generation so the
@@ -3508,7 +3150,17 @@ export class FFAGameStateP2P {
             }
         });
 
-        this._applySnapshotState(state, { forceLocal: true });
+        this._applySnapshotState(state, { forceLocal: true, render: false });
+        if (state.resyncSidecar) {
+            resyncSidecar.applyFfaResyncSidecar(this, state.resyncSidecar, {
+                preservePlayerInputFor: this.localPlayerId,
+            });
+        }
+        if (!clockProjectionReset) resetFfaFixedClockProjection(this);
+        resyncInputBarrier.completeFfaResyncInputBarrier(this, inputPreflight.completion);
+        try { this.renderAllPlayers(); } catch (error) {
+            this._recordNetEvent?.('resync_render_failed', { message: String(error?.message || error) });
+        }
         if (this._downloadJoinEnabled && state.downloadEpoch) {
             this._recordNetEvent?.('download_applied', {
                 downloadEpoch: state.downloadEpoch,
@@ -3525,6 +3177,7 @@ export class FFAGameStateP2P {
         if (this.gamePhase === 'playing' && !this.loopRunning) {
             this.startGameLoop();
         }
+        return true;
     }
 
     /**
@@ -3638,7 +3291,7 @@ export class FFAGameStateP2P {
     sendGarbageAttack(cascadeSummary) {
         if (!this.isHost) {
             // Peers send attack info to host
-            this.network.sendP2PMessage(this.network.hostSteamId, 'game:attack:request', {
+            this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_ATTACK_REQUEST, {
                 cascadeSummary,
                 timestamp: Date.now(),
             });
@@ -3698,22 +3351,10 @@ export class FFAGameStateP2P {
     }
 
     /**
-    * Authority guard for host-reassignment messages (peer side).
-    *
-    * Returns true only when a host reassignment is legitimate:
-    *  - the message comes from the current (still-alive) host announcing a
-    *    planned handoff to a named successor, OR
-    *  - an election is in progress (THIS peer believes the host is gone) AND the
-    *    message comes from the legitimately-elected successor naming itself
-    *    (mirrors HostMigration.handleClaim's `isElectionInProgress` + candidate
-    *    checks).
-    *
-    * The election gate is essential: without it the lowest-id peer (always a
-    * valid `_getExpectedHostCandidateId`) could broadcast game:host:migrated /
-    * game:host:sync naming itself and seize a LIVE, HEALTHY host at any time,
-    * then have every subsequent host-authoritative message accepted as trusted —
-    * a full authority takeover. This is the Phase 1 quick fix; Phase 6 replaces
-    * the allowlist model with a default-deny one (see the remediation plan).
+    * Final stateful guard after the Phase 6A.3 transport route check. A current
+    * host may name a planned successor; a peer may name itself only while this
+    * receiver has an active election and that peer is the expected candidate.
+    * This is the election proof the static protocol catalog cannot express.
     */
     _verifyHostReassignment(senderId, claimedNewHostId) {
         if (!senderId || !claimedNewHostId) return false;
@@ -3776,21 +3417,22 @@ export class FFAGameStateP2P {
         };
 
         this.unifiedLoop.onUpdate = (currentTime, delta) => {
-            if (this.gamePhase !== 'playing') {
-                return;
-            }
+            this._processPendingResyncInputBarrier();
+            if (this._processPendingInboundResyncApply()) return;
+            if (this.gamePhase !== 'playing') return;
             const hostWallTime = this.isHost ? Date.now() : 0;
 
-            if (!this._fixedTickEnabled) {
-                this.localInputHooks.advance?.(currentTime, delta);
-            }
-
-            if (!this.isHost && !this._fixedTickEnabled) {
-                this.flushInputBatch();
-            }
+            if (!this._fixedTickEnabled) this.localInputHooks.advance?.(currentTime, delta);
+            if (!this.isHost && !this._fixedTickEnabled) this.flushInputBatch();
 
             if (this._fixedTickEnabled) {
+                const ownership = [this.roundGeneration, this.unifiedLoop.runGeneration];
                 runFfaFixedTicks(this, delta, currentTime, hostWallTime);
+                if (
+                    this.gamePhase !== 'playing' || !this._fixedTickEnabled
+                    || this.roundGeneration !== ownership[0]
+                    || this.unifiedLoop.runGeneration !== ownership[1]
+                ) return;
                 if (!this.isHost) this.flushInputBatch();
             } else if (this.isHost) {
                 this.simTick = (Number(this.simTick) || 0) + 1;
@@ -3820,7 +3462,11 @@ export class FFAGameStateP2P {
             if (inputs.length === 0) continue;
 
             const player = this.players.get(steamId);
-            if (!player || !player.isAlive) continue;
+            if (!player) continue;
+            if (!player.isAlive) {
+                inputs.forEach((input) => acknowledgeFfaInput(player, input.data?.seq));
+                continue;
+            }
 
             // Build callbacks once per player
             // Use local/remote callbacks as appropriate
@@ -3854,9 +3500,7 @@ export class FFAGameStateP2P {
                         tick: input._tick,
                     });
                 }
-                if (applied && input.data?.seq && input.data.seq > (player.lastInputSeq || 0)) {
-                    player.lastInputSeq = input.data.seq;
-                }
+                acknowledgeFfaInput(player, input.data?.seq);
             }
         }
 
@@ -4334,10 +3978,17 @@ export class FFAGameStateP2P {
     }
 
     promoteToHost() {
+        const previousHostId = this.network.hostSteamId;
         this.isHost = true;
         this.network.isHost = true;
         this.network.hostSteamId = this.localPlayerId;
-        this.handshakeComplete = true;
+        this.network.seedNegotiatedProtocolPeers?.(this.players.keys());
+        this.onHostAuthorityChanged({
+            previousHostId,
+            newHostId: this.localPlayerId,
+            source: 'promotion',
+        });
+        this._transitionJoin(JOIN_EVENTS.PROMOTE, { previousHostId: previousHostId || null });
         this.attackRouter.isHost = true;
         const fixedTickAfterPromotion = rollbackFixedTickOnPromotion(
             this._fixedTickEnabled,
@@ -4525,6 +4176,12 @@ export class FFAGameStateP2P {
 
         console.log('🔄 Restarting match...');
 
+        // Select and publish ownership of the next round seed before reset or
+        // any ready-barrier/resync-visible waiting window. This is deliberately
+        // still the legacy LCG seed source; rngV2 remains dark.
+        const newSeed = Math.floor(Math.random() * 1000000);
+        this.sharedSeed = newSeed;
+
         // Stop current game
         this.stopGameLoop();
         this.stopStateSyncLoop();
@@ -4595,7 +4252,6 @@ export class FFAGameStateP2P {
         this.network.resetSnapshotBaselines?.();
 
         // Broadcast round restart to all peers BEFORE starting the next round
-        const newSeed = Math.floor(Math.random() * 1000000);
         // With the ready-barrier ON the host defers the start until every player has
         // acked (GAME_ROUND_START), so the peers must NOT instant-start — they reset,
         // send GAME_ROUND_READY, and wait. With it OFF this is the legacy instant path.
@@ -4810,6 +4466,11 @@ export class FFAGameStateP2P {
             roundGeneration: this.roundGeneration,
         });
         startThunk();
+        // A reconnect that missed the deferred restart has no process-local
+        // thunk for GAME_ROUND_START to release. Keep its resync queued until
+        // the host has actually entered playing, then send authoritative state.
+        this._updateSyncpoint?.();
+        this._processPendingResyncs?.();
     }
 
     /**
@@ -4885,7 +4546,13 @@ export class FFAGameStateP2P {
     * @param {boolean} includeZero - Whether to include 0 in the countdown
     */
     showCountdown(callback, prefixText = null, countFrom = 5, includeZero = true) {
-        const countdownElement = document.getElementById('multiplayer-countdown');
+        const countdownGeneration = (this._countdownGeneration || 0) + 1;
+        this._countdownGeneration = countdownGeneration;
+        const runIfCurrent = (fn) => (...args) => {
+            if (this._countdownGeneration === countdownGeneration) fn(...args);
+        };
+        const countdownElement = typeof document === 'undefined'
+            ? null : document.getElementById('multiplayer-countdown');
 
         if (!countdownElement) {
             console.warn('⚠️ Countdown element not found');
@@ -4893,15 +4560,12 @@ export class FFAGameStateP2P {
             return;
         }
 
-        console.log('🎬 Starting countdown animation...', { prefixText });
-
         const minCount = includeZero ? 0 : 1;
         let count = Number.isFinite(countFrom) ? Math.floor(countFrom) : 5;
         if (count < minCount) {
             count = minCount;
         }
 
-        // Enhanced full-screen overlay with animation support
         const forceFullScreen = () => {
             countdownElement.style.cssText = `
         position: fixed !important;
@@ -4931,7 +4595,6 @@ export class FFAGameStateP2P {
       `;
         };
 
-        // Show prefix text first (if provided)
         if (prefixText) {
             forceFullScreen();
             countdownElement.textContent = prefixText;
@@ -4939,12 +4602,10 @@ export class FFAGameStateP2P {
             countdownElement.style.color = '#fbbf24'; // Yellow/gold
             countdownElement.style.animation = 'countdownFadeInScale 0.4s ease-out forwards';
 
-            console.log(`📢 Showing prefix: "${prefixText}"`);
-
-            setTimeout(() => {
+            setTimeout(runIfCurrent(() => {
                 countdownElement.style.animation = 'countdownFadeOut 0.2s ease-out forwards';
-                setTimeout(() => startCountdown(), 200);
-            }, 1400); // Show prefix for 1.4 seconds
+                setTimeout(runIfCurrent(startCountdown), 200);
+            }), 1400);
         } else {
             forceFullScreen();
             startCountdown();
@@ -4952,34 +4613,32 @@ export class FFAGameStateP2P {
 
         function startCountdown() {
             const showGo = () => {
-                requestAnimationFrame(() => {
+                requestAnimationFrame(runIfCurrent(() => {
                     countdownElement.textContent = 'GO!';
                     countdownElement.style.fontSize = '160px';
                     countdownElement.style.color = '#10b981'; // Bright Green
                     countdownElement.style.animation = 'none';
 
-                    // Force reflow
                     void countdownElement.offsetHeight;
 
                     countdownElement.style.animation = 'countdownGo 0.6s ease-out forwards';
 
                     emitMultiplayerEvent(MULTIPLAYER_EVENTS.COUNTDOWN, { count: 'GO' });
-                });
+                }));
 
-                // Fade out entire overlay and start game
-                setTimeout(() => {
-                    requestAnimationFrame(() => {
+                setTimeout(runIfCurrent(() => {
+                    requestAnimationFrame(runIfCurrent(() => {
                         countdownElement.style.transition = 'opacity 0.3s ease-out';
                         countdownElement.style.opacity = '0';
-                    });
+                    }));
 
-                    setTimeout(() => {
+                    setTimeout(runIfCurrent(() => {
                         countdownElement.style.display = 'none';
                         countdownElement.style.transition = '';
                         countdownElement.style.opacity = ''; // Reset opacity
                         if (callback) callback();
-                    }, 300);
-                }, 600);
+                    }), 300);
+                }), 600);
             };
 
             const showNumber = () => {
@@ -4988,31 +4647,27 @@ export class FFAGameStateP2P {
                     return;
                 }
 
-                // Use requestAnimationFrame for smooth UI updates
-                requestAnimationFrame(() => {
-                    countdownElement.textContent = String(count);
+                const displayCount = count;
+                requestAnimationFrame(runIfCurrent(() => {
+                    countdownElement.textContent = String(displayCount);
                     countdownElement.style.fontSize = '140px';
-                    countdownElement.style.color = count >= 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
+                    countdownElement.style.color = displayCount >= 3 ? '#ef4444' : displayCount === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
                     countdownElement.style.animation = 'none'; // Clear previous animation
 
-                    // Force reflow to restart animation
                     void countdownElement.offsetHeight;
 
                     countdownElement.style.animation = 'countdownPulse 0.5s ease-out forwards';
 
-                    console.log(`🔢 Showing countdown: ${count}`);
-
-                    // Broadcast countdown to all players
-                    emitMultiplayerEvent(MULTIPLAYER_EVENTS.COUNTDOWN, { count });
-                });
+                    emitMultiplayerEvent(MULTIPLAYER_EVENTS.COUNTDOWN, { count: displayCount });
+                }));
 
                 count--;
 
                 if (count >= minCount) {
-                    setTimeout(showNumber, 750); // Smooth timing between numbers
+                    setTimeout(runIfCurrent(showNumber), 750);
                 } else {
                     const goDelay = includeZero ? 0 : 750;
-                    setTimeout(showGo, goDelay);
+                    setTimeout(runIfCurrent(showGo), goDelay);
                 }
             };
 
@@ -5021,7 +4676,9 @@ export class FFAGameStateP2P {
     }
 
     hideCountdownOverlay() {
-        const countdownElement = document.getElementById('multiplayer-countdown');
+        this._countdownGeneration = (this._countdownGeneration || 0) + 1;
+        const countdownElement = typeof document === 'undefined'
+            ? null : document.getElementById('multiplayer-countdown');
         if (!countdownElement) return;
 
         countdownElement.style.display = 'none';
@@ -5035,8 +4692,15 @@ export class FFAGameStateP2P {
     * Clean up (leave match)
     */
     cleanup() {
+        this._transitionJoin(JOIN_EVENTS.CLOSE, { reason: 'cleanup' });
+        this._disposed = true;
+        this._networkHandlerRegistry?.dispose();
+        this.hideCountdownOverlay();
+        resyncInputBarrier.cancelResyncInputBarriers(this, 'cleanup');
+        disposeResyncState(this);
         this.stopGameLoop();
         this.stopStateSyncLoop();
+        this.hostMigration?.stopMonitoring?.();
         resetFfaInputTransport(this);
 
         if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }

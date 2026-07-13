@@ -15,6 +15,40 @@ const GRAPH_WIDTH = 240; // Width of frame time graph in pixels
 const GRAPH_HEIGHT = 50; // Height of frame time graph in pixels
 const SECTION_SAMPLE_SIZE = 90;
 
+function finiteDrawCount(value) {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * Resolve draw calls owned by the active theme plus the shared background renderer.
+ * Phaser board draws are intentionally excluded until that renderer exposes a
+ * compatible counter; the overlay labels this narrower contract explicitly.
+ *
+ * @param {Window|Object|null} windowRef
+ * @returns {number}
+ */
+export function resolveActiveThemeDrawCalls(windowRef = globalThis?.window) {
+    if (!windowRef) return 0;
+
+    const manager = windowRef.themeManager;
+    const sharedRenderer = manager?.webglRenderer ?? null;
+    const sharedCalls = finiteDrawCount(
+        sharedRenderer?.lastFrameDrawCalls ?? windowRef.activeDrawCalls,
+    );
+    const activeTheme = manager?.activeTheme;
+    const dedicatedRenderer = activeTheme?.renderer ?? null;
+
+    if (!activeTheme?.isActive || !dedicatedRenderer || dedicatedRenderer === sharedRenderer) {
+        return sharedCalls;
+    }
+
+    const renderInfo = dedicatedRenderer.info?.render ?? {};
+    const dedicatedCalls = finiteDrawCount(
+        renderInfo.drawCalls ?? renderInfo.calls,
+    );
+    return sharedCalls + dedicatedCalls;
+}
+
 function simplifyGPUName(raw = '') {
     if (!raw) return '';
 
@@ -1293,7 +1327,7 @@ export class PerformanceMonitor {
             memoryUsed,
             memoryLimit,
             frameDrops: Number.isFinite(this.metrics.frameDrops) ? this.metrics.frameDrops : 0,
-            drawCalls: typeof window !== 'undefined' ? window.activeDrawCalls || 0 : 0,
+            drawCalls: typeof window !== 'undefined' ? resolveActiveThemeDrawCalls(window) : 0,
             hotSections,
             collectionMode: this.collectionMode,
             themeSwitchCount: this.metrics.themeSwitchCount,
@@ -1377,7 +1411,7 @@ export class PerformanceMonitor {
             ` : ''}
             <div style="margin-top: 10px; color: #888; font-size: 11px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                 Drops: <span style="color: ${displayMetrics.frameDrops > 0 ? '#f00' : '#0f0'}">${displayMetrics.frameDrops}</span>
-                · Draws: <span style="color: #0ff">${displayMetrics.drawCalls}</span>
+                · Theme+shared draws: <span style="color: #0ff">${displayMetrics.drawCalls}</span>
                 · Uptime: ${displayMetrics.uptime}s
                 <br />Themes: <span style="color: #0ff">${displayMetrics.themeSwitchCount}</span>
                 · Restores: <span style="color: #0ff">${displayMetrics.contextRestoreCount}</span>

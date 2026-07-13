@@ -1,5 +1,5 @@
 {
   "note": "ESLint ERROR-count ceiling — shrink-only (Phase 0.3, ADR-0002). Lower via scripts/lint-ratchet-check.mjs --update; never raise.",
   "capturedAt": "2026-07-09",
-  "maxErrors": 1633
+  "maxErrors": 1605
 }

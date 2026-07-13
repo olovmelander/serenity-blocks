@@ -1,4 +1,5 @@
 import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
+import { acknowledgeFfaInput } from './ffa-input-batching.js';
 
 function inputQueueSize(queue) {
     if (Array.isArray(queue)) return queue.length;
@@ -47,12 +48,6 @@ function fromCanonicalCommand(command) {
     }
 }
 
-function updateLastInputSequence(player, seq) {
-    if (seq && seq > (player.lastInputSeq || 0)) {
-        player.lastInputSeq = seq;
-    }
-}
-
 /** Consume, but do not apply, the host's current fixed-tick input frame. */
 export function takeFfaFixedBufferedInputs(game) {
     if (!game?.isHost || !game.useJitterBuffer || !game.inputJitterBuffer) return null;
@@ -73,9 +68,11 @@ export function finishFfaFixedBufferedInputs(game, bufferedInputs) {
 export function createFfaFixedInputAdapter(game, {
     bufferedInputs = null,
     peerInputSimTick = null,
+    shouldContinue = null,
 } = {}) {
     const bufferedByCommand = new WeakMap();
     const callbacksByPlayer = new Map();
+    const ownershipContinues = () => !shouldContinue || shouldContinue();
 
     const getCallbacks = (playerId) => {
         if (!callbacksByPlayer.has(playerId)) {
@@ -91,19 +88,27 @@ export function createFfaFixedInputAdapter(game, {
 
     return {
         advanceInput(playerId, context) {
+            if (!ownershipContinues()) return;
             const player = game.players.get(playerId);
             const inputs = bufferedInputs?.get(playerId);
+            if (game.isHost && player && !player.isAlive && Array.isArray(inputs)) {
+                inputs.forEach((input) => acknowledgeFfaInput(player, input.data?.seq));
+            }
             if (game.isHost && player?.isAlive && Array.isArray(inputs)) {
-                inputs.forEach((input, index) => {
+                for (let index = 0; index < inputs.length; index += 1) {
+                    if (!ownershipContinues()) return;
+                    const input = inputs[index];
                     const command = toCanonicalCommand(input, context.tick, index);
-                    if (!command) return;
+                    if (!command) continue;
                     game.inputValidator?.trackInput?.(playerId, input.type, input.data);
+                    if (!ownershipContinues()) return;
                     bufferedByCommand.set(command, input);
                     context.emit(command);
-                });
+                    if (!ownershipContinues()) return;
+                }
             }
 
-            if (playerId !== game.localPlayerId) return;
+            if (playerId !== game.localPlayerId || !ownershipContinues()) return;
             game._fixedInputTimeMs += context.tickMs;
             const previousStamp = game._activeFixedInputStamp;
             game._activeFixedInputStamp = peerInputSimTick === null ? null : {
@@ -111,17 +116,23 @@ export function createFfaFixedInputAdapter(game, {
                 ordinal: context.tick,
             };
             try {
+                if (!ownershipContinues()) return;
                 game.localInputHooks.advanceFixed?.(context);
+                if (!ownershipContinues()) return;
                 game.localInputHooks.advance?.(game._fixedInputTimeMs, context.tickMs);
             } finally {
-                game._activeFixedInputStamp = previousStamp || null;
+                if (ownershipContinues()) {
+                    game._activeFixedInputStamp = previousStamp || null;
+                }
             }
         },
 
         applyInput(playerId, command) {
+            if (!ownershipContinues()) return false;
             if (!bufferedByCommand.has(command)) {
                 if (playerId !== game.localPlayerId) return false;
-                return game.localInputHooks.applyFixed?.(command) ?? false;
+                const applied = game.localInputHooks.applyFixed?.(command) ?? false;
+                return ownershipContinues() ? applied : false;
             }
 
             const mapped = fromCanonicalCommand(command);
@@ -136,6 +147,7 @@ export function createFfaFixedInputAdapter(game, {
                 getCallbacks(playerId),
                 { fixedTick: true, inputPhase: true },
             );
+            if (!ownershipContinues()) return false;
             if (applied) return true;
 
             const afterQueueSize = inputQueueSize(player.gameState.inputQueue);
@@ -149,17 +161,19 @@ export function createFfaFixedInputAdapter(game, {
         },
 
         onTickResult(playerId, result) {
+            if (!ownershipContinues()) return;
             const player = game.players.get(playerId);
             if (!player) return;
 
-            result.input.forEach(({ command, disposition }) => {
+            for (const { command, disposition } of result.input) {
+                if (!ownershipContinues()) return;
                 const bufferedInput = bufferedByCommand.get(command);
-                if (!bufferedInput) return;
+                if (!bufferedInput) continue;
                 const seq = bufferedInput.data?.seq;
                 // The jitter frame has been consumed regardless of simulation
-                // disposition. Advance the max ACK now so deferred/rejected
-                // commands cannot keep peer reconciliation permanently behind.
-                updateLastInputSequence(player, seq);
+                // disposition. Advance only the contiguous ACK prefix so a
+                // later command cannot conceal an earlier missing command.
+                acknowledgeFfaInput(player, seq);
 
                 if (disposition === INPUT_DISPOSITIONS.APPLIED) {
                     game._recordNetEvent?.('input_applied', {
@@ -191,7 +205,7 @@ export function createFfaFixedInputAdapter(game, {
                         reason: 'physics_busy',
                     });
                 }
-            });
+            }
         },
     };
 }

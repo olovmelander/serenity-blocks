@@ -3,6 +3,7 @@ import {
 } from 'vitest';
 import { MessageTypes } from '../../src/core/network/message-types.js';
 import {
+    acknowledgeFfaInput,
     assembleFfaInputBatch,
     drainFfaInputBatches,
     FFA_INPUT_BATCH_LIMIT,
@@ -11,6 +12,7 @@ import {
     flushFfaInputBatches,
     processFfaInputBatch,
     resetFfaInputEpoch,
+    stageFfaInputRecovery,
     validateFfaFixedInputGroup,
 } from '../../src/core/multiplayer/ffa-input-batching.js';
 import { planFixedTicks } from '../../src/core/fixed-tick-clock.js';
@@ -45,6 +47,84 @@ function createGame(count) {
 }
 
 describe('FFA peer input batching', () => {
+    it('rejects input from identities outside the authoritative player roster', () => {
+        const host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            players: new Map([['PEER', { isAlive: true, lastInputSeq: 0 }]]),
+            processPlayerInput: vi.fn(),
+            queueResync: vi.fn(),
+            _recordNetEvent: vi.fn(),
+        };
+
+        processFfaInputBatch(host, 'UNKNOWN', {
+            inputs: [{ type: 'move', data: { direction: -1 }, seq: 2 }],
+        }, 1000);
+
+        expect(host.processPlayerInput).not.toHaveBeenCalled();
+        expect(host.queueResync).not.toHaveBeenCalled();
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'UNKNOWN', reason: 'unknown_peer',
+        });
+    });
+
+    it('advances the authoritative input ACK only across a contiguous consumed prefix', () => {
+        const player = { lastInputSeq: 0 };
+
+        expect(acknowledgeFfaInput(player, 2)).toBe(false);
+        expect(player.lastInputSeq).toBe(0);
+        expect(acknowledgeFfaInput(player, 1)).toBe(true);
+        expect(player.lastInputSeq).toBe(2);
+        expect(acknowledgeFfaInput(player, 4)).toBe(false);
+        expect(acknowledgeFfaInput(player, 3)).toBe(true);
+        expect(player.lastInputSeq).toBe(4);
+        expect(acknowledgeFfaInput(player, 5000)).toBe(false);
+        expect(player.lastInputSeq).toBe(4);
+        expect(player._consumedInputSeqs.size).toBe(0);
+    });
+
+    it('restages unique unacknowledged history in sequence order for exact recovery', () => {
+        const game = {
+            inputSequence: 4,
+            inputHistory: [{ seq: 1 }, { seq: 3 }, { seq: 2 }],
+            pendingInputs: [{ seq: 3 }, { seq: 4 }],
+            _pendingFfaInputGroup: { id: 7, remaining: 2 },
+        };
+
+        expect(stageFfaInputRecovery(game)).toBe(4);
+        expect(game.pendingInputs.map(({ seq }) => seq)).toEqual([1, 2, 3, 4]);
+        expect(game._pendingFfaInputGroup).toBeNull();
+    });
+
+    it('splits recovery history at the canonical five-tick span', () => {
+        const game = createGame(0);
+        game.inputSequence = 6;
+        game.inputHistory = Array.from({ length: 6 }, (_, index) => ({
+            type: 'drop',
+            data: { type: 'soft' },
+            seq: index + 1,
+            fixedTickOrdinal: index + 1,
+            simTick: index + 11,
+        }));
+
+        stageFfaInputRecovery(game);
+        flushFfaInputBatches(game);
+
+        const payloads = game.network.sendP2PMessage.mock.calls
+            .map(([, , payload]) => payload);
+        const groupIds = [...new Set(payloads.map(({ fixedTickGroupId }) => fixedTickGroupId))];
+        expect(groupIds).toHaveLength(2);
+        groupIds.forEach((groupId) => {
+            const group = payloads.filter((payload) => payload.fixedTickGroupId === groupId);
+            expect(validateFfaFixedInputGroup(
+                group.flatMap(({ inputs }) => inputs),
+                group.at(-1),
+                true,
+            )).toMatchObject({ valid: true, reason: null });
+        });
+        expect(game._ffaInputRecoveryStaged).toBe(false);
+    });
+
     it('starts each round with a fresh producer and host transport epoch', () => {
         const game = {
             pendingInputs: [{ seq: 8 }],
@@ -123,6 +203,7 @@ describe('FFA peer input batching', () => {
             isHost: true,
             _fixedTickEnabled: false,
             roundGeneration: 2,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
             processPlayerInput: vi.fn(),
             _recordNetEvent: vi.fn(),
         };
@@ -139,6 +220,70 @@ describe('FFA peer input batching', () => {
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_round',
         });
+    });
+
+    it('rejects a legacy sequence gap and starts recovery until history fills it', () => {
+        const host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            gamePhase: 'playing',
+            _fixedTickEnabled: false,
+            roundGeneration: 2,
+            players: new Map([['PEER', { isAlive: true, lastInputSeq: 0 }]]),
+            hostResyncInputBarriers: new Map(),
+            pendingResyncs: [],
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            network: { sendP2PMessage: vi.fn() },
+        };
+        const packet = (groupId, seq) => ({
+            inputs: [{ type: 'move', data: { direction: -1 }, seq }],
+            fixedTickGroupId: groupId,
+            fixedTickRoundGeneration: 2,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+
+        processFfaInputBatch(host, 'PEER', packet(2, 2), 1000);
+        expect(host.processPlayerInput).not.toHaveBeenCalled();
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'legacy_input_gap',
+        });
+        expect(host.network.sendP2PMessage).toHaveBeenCalledWith(
+            'PEER',
+            MessageTypes.GAME_STATE_RESYNC_PREPARE,
+            expect.objectContaining({ inputFencePlayerId: 'PEER' }),
+        );
+
+        processFfaInputBatch(host, 'PEER', packet(3, 1), 1001);
+        processFfaInputBatch(host, 'PEER', packet(4, 2), 1002);
+        expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq)).toEqual([1, 2]);
+    });
+
+    it('trims a received legacy prefix when recovery replays the missing suffix', () => {
+        const host = {
+            isHost: true,
+            _fixedTickEnabled: false,
+            roundGeneration: 2,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+        };
+        const packet = (groupId, inputs) => ({
+            inputs,
+            fixedTickGroupId: groupId,
+            fixedTickRoundGeneration: 2,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+        const input = (seq) => ({ type: 'move', data: { direction: -1 }, seq });
+
+        processFfaInputBatch(host, 'PEER', packet(1, [input(1)]), 1000);
+        processFfaInputBatch(host, 'PEER', packet(3, [input(1), input(2)]), 1001);
+
+        expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq)).toEqual([1, 2]);
     });
 
     it('splits an ordered stream at the host validation limit', () => {
@@ -275,6 +420,38 @@ describe('FFA peer input batching', () => {
             .toEqual(createGame(41).pendingInputs);
     });
 
+    it('keeps a newer partial group when a delayed lower group arrives', () => {
+        const peer = createGame(21);
+        flushFfaInputBatches(peer);
+        const payloads = peer.network.sendP2PMessage.mock.calls
+            .map(([, , payload]) => payload);
+        const newer = payloads.map((payload) => ({
+            ...payload,
+            fixedTickGroupId: 5,
+        }));
+        const delayedLower = {
+            ...payloads[0],
+            fixedTickGroupId: 4,
+        };
+        const host = { _recordNetEvent: vi.fn() };
+
+        expect(assembleFfaInputBatch(host, 'PEER', newer[0], newer[0].inputs)).toBeNull();
+        expect(assembleFfaInputBatch(
+            host,
+            'PEER',
+            delayedLower,
+            delayedLower.inputs,
+        )).toBeNull();
+        expect(assembleFfaInputBatch(host, 'PEER', newer[1], newer[1].inputs))
+            .toEqual(createGame(21).pendingInputs);
+        expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'input_group_stale',
+        });
+        expect(host._recordNetEvent).not.toHaveBeenCalledWith('input_rejected', {
+            steamId: 'PEER', reason: 'input_group_superseded',
+        });
+    });
+
     it('rejects incomplete or inconsistent group metadata', () => {
         const peer = createGame(21);
         flushFfaInputBatches(peer);
@@ -380,16 +557,22 @@ describe('FFA peer input batching', () => {
         });
     });
 
-    it('rejects replay and same-round gaps without falsely acknowledging lost input', () => {
+    it('recovers a forward gap and dispatches each replayed group exactly once', () => {
         const host = {
             isHost: true,
+            localPlayerId: 'HOST',
+            gamePhase: 'playing',
             _fixedTickEnabled: true,
             roundGeneration: 0,
             simTick: 0,
+            players: new Map([['PEER', { isAlive: true, lastInputSeq: 0 }]]),
+            hostResyncInputBarriers: new Map(),
+            pendingResyncs: [],
             inputJitterBuffer: { currentTick: 0, processCursor: -2 },
             processPlayerInput: vi.fn(),
             _recordNetEvent: vi.fn(),
             kickPlayer: vi.fn(),
+            network: { sendP2PMessage: vi.fn() },
         };
         const packet = (groupId, seq, ordinal, options = {}) => ({
             inputs: [{
@@ -421,11 +604,18 @@ describe('FFA peer input batching', () => {
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_progression',
         });
-        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
+        expect(host.kickPlayer).not.toHaveBeenCalled();
+        expect(host.network.sendP2PMessage).toHaveBeenCalledWith(
+            'PEER',
+            MessageTypes.GAME_STATE_RESYNC_PREPARE,
+            expect.objectContaining({ inputFencePlayerId: 'PEER' }),
+        );
 
         processFfaInputBatch(host, 'PEER', packet(2, 2, 2), 1000);
         processFfaInputBatch(host, 'PEER', packet(3, 3, 3), 1000);
         expect(host.processPlayerInput).toHaveBeenCalledTimes(3);
+        expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq))
+            .toEqual([1, 2, 3]);
         expect(host.processPlayerInput.mock.calls.map((call) => call[2].fixedTickTargetTick))
             .toEqual([0, 1, 2]);
 
@@ -458,7 +648,7 @@ describe('FFA peer input batching', () => {
         expect(host.processPlayerInput.mock.lastCall[2].fixedTickTargetTick).toBe(0);
     });
 
-    it('requires the first observed group to continue the host applied sequence', () => {
+    it('trims a received fixed prefix and preserves ordinal scheduling for its suffix', () => {
         const host = {
             isHost: true,
             _fixedTickEnabled: true,
@@ -469,6 +659,51 @@ describe('FFA peer input batching', () => {
             processPlayerInput: vi.fn(),
             _recordNetEvent: vi.fn(),
             kickPlayer: vi.fn(),
+        };
+        const input = (seq) => ({
+            type: 'drop',
+            data: { type: 'soft' },
+            seq,
+            fixedTickOrdinal: seq,
+            simTick: seq + 99,
+        });
+        const packet = (groupId, inputs) => ({
+            inputs,
+            fixedTickBaseOrdinal: inputs[0].fixedTickOrdinal,
+            fixedTickGroupId: groupId,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+
+        processFfaInputBatch(host, 'PEER', packet(1, [input(1)]), 1000);
+        processFfaInputBatch(host, 'PEER', packet(3, [input(1), input(2)]), 1001);
+
+        expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq)).toEqual([1, 2]);
+        expect(host.processPlayerInput.mock.lastCall[2]).toMatchObject({
+            fixedTickOffset: 0,
+            fixedTickTargetTick: 1,
+        });
+        expect(host.kickPlayer).not.toHaveBeenCalled();
+    });
+
+    it('requires the first observed group to continue the host applied sequence', () => {
+        const host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            gamePhase: 'playing',
+            _fixedTickEnabled: true,
+            roundGeneration: 0,
+            simTick: 0,
+            players: new Map([['PEER', { isAlive: true, lastInputSeq: 0 }]]),
+            hostResyncInputBarriers: new Map(),
+            pendingResyncs: [],
+            inputJitterBuffer: { currentTick: 0, processCursor: -2 },
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
+            network: { sendP2PMessage: vi.fn() },
         };
         const packet = (groupId, seq) => ({
             inputs: [{
@@ -491,11 +726,92 @@ describe('FFA peer input batching', () => {
         expect(host._recordNetEvent).toHaveBeenCalledWith('input_rejected', {
             steamId: 'PEER', reason: 'fixed_input_progression',
         });
-        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
+        expect(host.kickPlayer).not.toHaveBeenCalled();
+        expect(host.network.sendP2PMessage).toHaveBeenCalledWith(
+            'PEER',
+            MessageTypes.GAME_STATE_RESYNC_PREPARE,
+            expect.objectContaining({ inputFencePlayerId: 'PEER' }),
+        );
 
         processFfaInputBatch(host, 'PEER', packet(1, 1), 1000);
         processFfaInputBatch(host, 'PEER', packet(2, 2), 1000);
         expect(host.processPlayerInput.mock.calls.map((call) => call[2].seq)).toEqual([1, 2]);
+    });
+
+    it('keeps impossible same-round fixed chronology fatal', () => {
+        const host = {
+            isHost: true,
+            _fixedTickEnabled: true,
+            roundGeneration: 0,
+            simTick: 0,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
+            inputJitterBuffer: { currentTick: 0, processCursor: -2 },
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
+        };
+        const packet = (groupId, seq, simTick) => ({
+            inputs: [{
+                type: 'drop',
+                data: { type: 'soft' },
+                seq,
+                fixedTickOrdinal: seq,
+                simTick,
+            }],
+            fixedTickBaseOrdinal: seq,
+            fixedTickGroupId: groupId,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+
+        processFfaInputBatch(host, 'PEER', packet(1, 1, 100), 1000);
+        processFfaInputBatch(host, 'PEER', packet(2, 2, 100), 1001);
+
+        expect(host.processPlayerInput).toHaveBeenCalledOnce();
+        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
+    });
+
+    it('does not let a forward sequence gap mask impossible fixed chronology', () => {
+        const host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            gamePhase: 'playing',
+            _fixedTickEnabled: true,
+            roundGeneration: 0,
+            simTick: 0,
+            players: new Map([['PEER', { isAlive: true, lastInputSeq: 0 }]]),
+            hostResyncInputBarriers: new Map(),
+            pendingResyncs: [],
+            inputJitterBuffer: { currentTick: 0, processCursor: -2 },
+            processPlayerInput: vi.fn(),
+            _recordNetEvent: vi.fn(),
+            kickPlayer: vi.fn(),
+            network: { sendP2PMessage: vi.fn() },
+        };
+        const packet = (groupId, seq, simTick) => ({
+            inputs: [{
+                type: 'drop',
+                data: { type: 'soft' },
+                seq,
+                fixedTickOrdinal: seq,
+                simTick,
+            }],
+            fixedTickBaseOrdinal: seq,
+            fixedTickGroupId: groupId,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+
+        processFfaInputBatch(host, 'PEER', packet(1, 1, 100), 1000);
+        processFfaInputBatch(host, 'PEER', packet(3, 3, 100), 1001);
+
+        expect(host.processPlayerInput).toHaveBeenCalledOnce();
+        expect(host.kickPlayer).toHaveBeenCalledWith('PEER', 'fixed_input_continuity_gap');
+        expect(host.network.sendP2PMessage).not.toHaveBeenCalled();
     });
 
     it('keeps consecutive groups on distinct persistent host schedule ticks', () => {
@@ -505,6 +821,7 @@ describe('FFA peer input batching', () => {
             _fixedTickEnabled: true,
             roundGeneration: 0,
             simTick: 500,
+            players: new Map([['PEER', { lastInputSeq: 0 }]]),
             inputJitterBuffer: { currentTick: 100, processCursor: 98 },
             processPlayerInput: vi.fn((_steamId, _type, data) => scheduled.push(data)),
             _recordNetEvent: vi.fn(),

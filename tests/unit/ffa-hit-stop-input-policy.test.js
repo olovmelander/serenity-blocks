@@ -54,6 +54,7 @@ describe('FFA deterministic hit-stop input policy', () => {
         ['drop', { type: 'hard', seq: 4 }],
     ])('rejects %s without mutating the frozen player', (inputType, data) => {
         const { state, player, gameState } = createState();
+        player.lastInputSeq = data.seq - 1;
         const pieceBefore = structuredClone(gameState.currentPiece);
 
         expect(state._applyInputToPlayer('PEER', inputType, data, {})).toBe(false);
@@ -123,6 +124,7 @@ describe('FFA deterministic hit-stop input policy', () => {
 
     it('rejects a delayed jitter-buffer input on the host and acknowledges its sequence', () => {
         const { state, player, gameState } = createState();
+        player.lastInputSeq = 8;
         state.useJitterBuffer = true;
         state.inputValidator = { trackInput: vi.fn() };
         state.inputJitterBuffer = {

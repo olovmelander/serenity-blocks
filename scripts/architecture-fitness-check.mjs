@@ -12,7 +12,7 @@
  *   node scripts/architecture-fitness-check.mjs            # gate (CI)
  *   node scripts/architecture-fitness-check.mjs --update   # lock in improvements
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -22,7 +22,9 @@ const baselinePath = path.join(repoRoot, 'architecture-fitness.json');
 const update = process.argv.includes('--update');
 
 const trackedJs = execFileSync('git', ['ls-files', 'src/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
-    .split('\n').filter(Boolean).map((f) => f.replace(/\\/g, '/'));
+    .split('\n')
+    .filter((file) => file && existsSync(path.join(repoRoot, file)))
+    .map((f) => f.replace(/\\/g, '/'));
 
 const fileCache = new Map();
 function read(file) {
@@ -105,6 +107,19 @@ const METRICS = {
     'event-bus-files': () => {
         const buses = trackedJs.filter((f) => /(?:^|\/)(?:event-bus|event-optimizer|event-emitter)[^/]*\.js$/.test(f));
         return { value: buses.length, detail: buses };
+    },
+
+    // One DAS implementation (plan §5.4): adapters may own clocks and lifecycle
+    // state, but repeat accumulator arithmetic lives only in src/core/das.js.
+    // Scan every tracked source so relocating either retired clone cannot evade
+    // the zero baseline.
+    'das-algorithm-clones': () => {
+        const files = trackedJs.filter((file) => file !== 'src/core/das.js');
+        const { total, perFile } = countMatches(
+            files,
+            /\b(?:delayAccumulator|intervalAccumulator)\s*\+=|\bwhile\s*\(\s*state\.intervalAccumulator\s*>=/g,
+        );
+        return { value: total, detail: top(perFile, 5) };
     },
 
     // Board-state write sites (plan §5.1): direct lockedPieces/boardGrid

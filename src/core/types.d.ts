@@ -275,7 +275,7 @@ interface BinarySnapshotWrapperV7 {
   _migrationEpoch?: number;
   _acks: Record<string, number>;
   _digest?: string;
-  _originalSize: number;
+  _originalSize?: number;
   _encodedSize: number;
 }
 
@@ -291,6 +291,7 @@ interface ResyncSnapshotState extends StateSnapshot {
   matchConfig?: Record<string, unknown>;
   sharedSeed?: number;
   matchStartTime?: number;
+  resyncSidecar?: Record<string | symbol, any>;
   downloadEpoch?: string | null;
   resyncId?: string | null;
   sentAt?: number;

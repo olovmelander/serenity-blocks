@@ -869,7 +869,7 @@ export class BinaryDecoder {
 
         const version = view.getUint8(offset++);
         if (version !== FORMAT_VERSION) {
-            console.warn(`Binary format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
+            throw new Error(`Binary format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
         }
 
         const playerCount = view.getUint8(offset++);
@@ -906,6 +906,12 @@ export class BinaryDecoder {
             const winnerName = this._readString(buffer, view, offset);
             offset = winnerName.offset;
             winner = { steamId: winnerSteamId.value, name: winnerName.value };
+        }
+
+        if (offset !== view.byteLength) {
+            throw new Error(
+                `Malformed binary snapshot: ${view.byteLength - offset} trailing bytes`,
+            );
         }
 
         return {
@@ -960,6 +966,9 @@ export class BinaryDecoder {
         }
 
         const version = view.getUint8(offset++);
+        if (version !== FORMAT_VERSION) {
+            throw new Error(`Binary delta format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
+        }
         const playerCount = view.getUint8(offset++);
         if (playerCount > MAX_BINARY_PLAYERS) {
             throw new Error(`Malformed binary delta: player count ${playerCount} exceeds ${MAX_BINARY_PLAYERS}`);
@@ -1016,6 +1025,12 @@ export class BinaryDecoder {
             // If encoder writes 0, it means no winner.
             // So we default to null.
             winner = null;
+        }
+
+        if (offset !== view.byteLength) {
+            throw new Error(
+                `Malformed binary delta: ${view.byteLength - offset} trailing bytes`,
+            );
         }
 
         return {

@@ -191,8 +191,9 @@ export class StardustSim {
                 });
             }
 
-            // 5. Damping + speed cap.
-            vXYZ.mulAssign(damping);
+            // 5. Damping + speed cap. Delta-normalized (pow to the 60 Hz-referenced
+            //    exponent) so drift speed matches at 60/120/144 Hz.
+            vXYZ.mulAssign(damping.pow(dt.mul(60.0)));
             const sp = length(vXYZ).toVar();
             If(sp.greaterThan(maxSpeed), () => {
                 vXYZ.mulAssign(maxSpeed.div(sp));
@@ -219,7 +220,9 @@ export class StardustSim {
 
             // 8. Energy ← speed (fast motes glow brighter; smoothed).
             const energyTarget = sp.div(maxSpeed).mul(0.6).add(0.4);
-            col.w.assign(col.w.add(energyTarget.sub(col.w).mul(0.1)));
+            // Delta-normalized smoothing (≈0.1 per frame at 60 Hz).
+            const energyLerp = dt.mul(-6.3).exp().oneMinus();
+            col.w.assign(col.w.add(energyTarget.sub(col.w).mul(energyLerp)));
 
             pos.x.assign(pXYZ.x);
             pos.y.assign(pXYZ.y);

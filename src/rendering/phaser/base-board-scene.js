@@ -5,6 +5,7 @@ import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { getGhostLandingY } from '../../core/game.js';
+import { projectInfinityPresentationCamera } from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
@@ -586,10 +587,11 @@ export function createBaseBoardScene(
                 // Buttery smooth camera lerp - slower lerp for smoother, more elegant transitions
                 camera.setLerp(0.08, 0.08);
 
-                if (this.gameState) {
-                    this.gameState.cameraRow = initialTopRow;
-                    this.gameState.cameraCenterRow = initialTopRow + visibleRows / 2;
-                }
+                projectInfinityPresentationCamera(
+                    this.gameState,
+                    initialTopRow,
+                    initialTopRow + visibleRows / 2,
+                );
 
                 console.log('[BaseBoardScene] Infinity camera initialized:');
                 console.log(`  - Total rows: ${totalRows}`);
@@ -644,10 +646,7 @@ export function createBaseBoardScene(
             this.cameraSettings.activeTopRow = currentTopRow;
             this.cameraSettings.currentTopRow = currentTopRow;
 
-            if (this.gameState) {
-                this.gameState.cameraRow = currentTopRow;
-                this.gameState.cameraCenterRow = centerRow;
-            }
+            projectInfinityPresentationCamera(this.gameState, currentTopRow, centerRow);
         }
 
         updateCameraBounds() {

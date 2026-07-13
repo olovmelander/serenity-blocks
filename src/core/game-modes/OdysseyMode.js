@@ -19,10 +19,6 @@ import {
     fillBag,
     gameLoop,
     updateGame,
-    move as coreMove,
-    rotate as coreRotate,
-    hardDrop as coreHardDrop,
-    softDrop as coreSoftDrop,
 } from '../game.js';
 import {
     checkInfinityGameOver,
@@ -39,6 +35,12 @@ import {
 import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
+import {
+    createOdysseyLevelSession,
+    drainOdysseyLevelSession,
+    fenceOdysseyPhysicsCallbacks,
+    retireOdysseyLevelSession,
+} from '../odyssey/odyssey-level-session.js';
 import { ThemeTransitionManager } from '../odyssey/ThemeTransitionManager.js';
 import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardController.js';
 import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntryTransition.js';
@@ -61,6 +63,7 @@ import {
 import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
+import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
 
 function isOdysseyLayoutEditorEnabled() {
     if (!import.meta.env.DEV || typeof window === 'undefined') {
@@ -129,7 +132,8 @@ export class OdysseyMode extends BaseGameMode {
         this.levelRegistry = getLevelRegistry();
         this.odysseyState = new OdysseyStateManager({ levelRegistry: this.levelRegistry });
 
-        // Phase 2: Gameplay Hybrid Engine
+        // Phase 2: Gameplay Hybrid Engine. A fresh instance replaces this per attempt so
+        // late callbacks cannot write metrics into the next run's evaluator.
         this.hybridEngine = new GameplayHybridEngine();
 
         // Current level state
@@ -142,8 +146,9 @@ export class OdysseyMode extends BaseGameMode {
         // in-progress pause; levelPausedMs is the total already-accumulated paused time.
         this.levelPausedMs = 0;
         this._pauseStartedAt = null;
-        // Per-level cache of the wrapped physics callbacks (masterplan §2 #9) — rebuilt when
-        // a new level reconfigures the hybridEngine, reused across every drop keypress.
+        this._levelSessionGeneration = 0;
+        this._activeLevelSession = null;
+        // Compatibility mirror of the active session's callback cache.
         this._physicsCallbacks = null;
         // Deferred board-park timer after level entry (masterplan §2 #9) — tracked so a fast
         // return-to-map can cancel it before it parks a just-resumed board.
@@ -165,8 +170,7 @@ export class OdysseyMode extends BaseGameMode {
         this.isInBoardView = true; // true = level select, false = playing level
         this.cleanupHandlers = [];
 
-        // Input overrides
-        this.originalInputs = {};
+        this._legacyInputOwner = null;
 
         // Performance throttling
         this.lastStatsUpdateTime = 0;
@@ -410,6 +414,46 @@ export class OdysseyMode extends BaseGameMode {
         return this.gameState || null;
     }
 
+    _isLevelSessionActive(session) {
+        return !!session
+            && !session.retired
+            && this._activeLevelSession === session
+            && this.gameState === session.gameState
+            && this.hybridEngine === session.hybridEngine;
+    }
+
+    _isLevelSessionCurrent(session, retirementGeneration) {
+        return !!session
+            && this._activeLevelSession === session
+            && session.retirementGeneration === retirementGeneration;
+    }
+
+    _retireLevelSession(session = this._activeLevelSession) {
+        const retirementGeneration = ++this._levelSessionGeneration;
+        if (!session) return null;
+
+        const ownsDrivers = this._activeLevelSession === session && !session.retired;
+        session.retirementGeneration = retirementGeneration;
+        if (ownsDrivers) {
+            this._restoreInputs();
+            if (this.deps.frameRateController?.isRunning) {
+                this.deps.frameRateController.stopHybridLoop();
+            }
+            if (this.levelTimerInterval) clearInterval(this.levelTimerInterval);
+            this.levelTimerInterval = null;
+            this.usingHybridLoop = false;
+        }
+        return retireOdysseyLevelSession(session);
+    }
+
+    async _drainLevelSession(session) {
+        try {
+            await drainOdysseyLevelSession(session);
+        } catch (error) {
+            console.warn('[Odyssey] In-flight physics rejected during retirement:', error);
+        }
+    }
+
     onPause(options = {}) {
         if (this.entryPhase === 'countdown') {
             console.log('[Odyssey] Ignoring pause request during level start cue');
@@ -491,43 +535,14 @@ export class OdysseyMode extends BaseGameMode {
      * Called when game ends
      */
     async onStop() {
+        // Invalidate callbacks and stop every driver before the first await. The captured
+        // state is the only state drained below; a replacement attempt remains untouched.
+        const session = this._retireLevelSession();
+        if (session?.gameState) session.gameState.isGameOver = true;
         await super.onStop();
 
         console.log('[Odyssey] Stopping...');
-
-        if (this.gameState) {
-            this.gameState.isGameOver = true;
-            this.gameState.isStopped = true;
-        }
-
-        // Stop standard RAF loop
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
-
-        // Stop hybrid loop if active
-        if (this.deps.frameRateController?.isRunning) {
-            this.deps.frameRateController.stopHybridLoop();
-        }
-        this.usingHybridLoop = false;
-
-        if (this.gameState?.latestPhysicsPromise) {
-            try {
-                await this.gameState.latestPhysicsPromise;
-            } catch (error) {
-                console.warn('[Odyssey] In-flight physics rejected during stop:', error);
-            } finally {
-                this.gameState.latestPhysicsPromise = null;
-                this.gameState.isProcessingPhysics = false;
-            }
-        }
-
-        // Stop level timer
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
-        }
+        await this._drainLevelSession(session);
 
         this._restoreTransitionMusicDuck(180);
         this.isEnteringLevel = false;
@@ -566,6 +581,11 @@ export class OdysseyMode extends BaseGameMode {
     async onDeactivate() {
         // Cancel the deferred board-park timer so it can't fire against a torn-down mode (§2 #9).
         this._cancelBoardParkTimer();
+        if (this.isRunning || this._activeLevelSession) {
+            await this.onStop();
+        } else {
+            this._retireLevelSession();
+        }
         await this._applyBoardAudioPolicy({ restoreTrack: true });
         await super.onDeactivate();
 
@@ -807,6 +827,7 @@ export class OdysseyMode extends BaseGameMode {
         } catch (error) {
             console.error('[Odyssey] Journey entry transition failed:', error);
             this.journeyEntryTransition?.abort?.('entry-error');
+            this._cleanupPreparedLevelStart();
             this.entryPhase = 'aborted';
             return false;
         } finally {
@@ -2014,54 +2035,49 @@ export class OdysseyMode extends BaseGameMode {
      */
     async completeLevel(results) {
         // Prevent multiple completions
-        if (this.levelCompleting) return;
+        const session = this._activeLevelSession;
+        if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
         this.levelCompleting = true;
+        const retirementGeneration = this._retireLevelSession(session).retirementGeneration;
+        const { gameState, hybridEngine, levelId } = session;
 
-        console.log(`[Odyssey] Level ${this.currentLevelId} completed!`, results);
-
-        // Stop game loop immediately
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
-
-        // Stop level timer
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
-        }
+        console.log(`[Odyssey] Level ${levelId} completed!`, results);
+        await this._drainLevelSession(session);
+        if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
 
         // Calculate final metrics
-        this.hybridEngine?.updateScore(this.gameState.score || 0);
+        hybridEngine?.updateScore(gameState.score || 0);
+        const metrics = hybridEngine?.getMetrics() || {};
         const finalResults = {
-            score: this.gameState.score,
-            time: this.levelMetrics.time,
-            lines: this.levelMetrics.lines,
-            cascades: this.levelMetrics.cascades,
-            maxCascadeDepth: this.levelMetrics.maxCascadeDepth,
-            combo: this.levelMetrics.combos,
-            tetrises: this.levelMetrics.tetrises,
+            score: gameState.score,
+            time: metrics.time,
+            lines: metrics.lines,
+            cascades: metrics.cascades,
+            maxCascadeDepth: metrics.maxCascadeDepth,
+            combo: metrics.combos,
+            tetrises: metrics.tetrises,
             ...results,
         };
 
         // Calculate stars
-        const stars = this._calculateStars(finalResults);
+        const stars = this._calculateStars(finalResults, hybridEngine);
         finalResults.stars = stars;
 
         // Evaluate bonuses
-        const bonuses = this._evaluateBonuses(finalResults);
+        const bonuses = this._evaluateBonuses(finalResults, hybridEngine);
         finalResults.bonuses = bonuses;
 
         // Save completion to odyssey state
-        this.odysseyState.completeLevel(this.currentLevelId, finalResults);
+        this.odysseyState.completeLevel(levelId, finalResults);
 
         // Sync Steam stats/leaderboards in the background (best-effort)
-        this._syncSteamStats(finalResults).catch((err) => {
+        this._syncSteamStats(finalResults, levelId).catch((err) => {
             console.warn('[Odyssey] Steam stats sync failed:', err.message);
         });
 
         // Show results
-        await this._showLevelResults(finalResults);
+        await this._showLevelResults(finalResults, session);
+        if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
 
         // Return to board view
         await this.returnToBoard();
@@ -2073,32 +2089,28 @@ export class OdysseyMode extends BaseGameMode {
      */
     async failLevel(reason = 'top-out') {
         // Prevent multiple completions/failures
-        if (this.levelCompleting) return;
+        const session = this._activeLevelSession;
+        if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
         this.levelCompleting = true;
+        const retirementGeneration = this._retireLevelSession(session).retirementGeneration;
 
-        console.log(`[Odyssey] Level ${this.currentLevelId} failed: ${reason}`);
-
-        // Stop game loop immediately
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
-
-        // Stop level timer
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
-        }
+        console.log(`[Odyssey] Level ${session.levelId} failed: ${reason}`);
+        await this._drainLevelSession(session);
+        if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
 
         // Victory Lap System: Clean up (in case of time failure during victory lap)
         this._hideGoalCompleteOverlay();
         this._removeVictoryLapInputs();
 
         // Record attempt
-        this.odysseyState.recordAttempt(this.currentLevelId);
+        this.odysseyState.recordAttempt(session.levelId);
 
         // Show failure screen and honor the player's choice.
         const { choice, modal } = await this._showLevelFailure(reason);
+        if (!this._isLevelSessionCurrent(session, retirementGeneration)) {
+            modal?.remove?.();
+            return;
+        }
 
         if (choice === 'retry') {
             // Instant in-place restart of the same level — no board round-trip.
@@ -2220,6 +2232,12 @@ export class OdysseyMode extends BaseGameMode {
         const palette = this._buildJourneyEntryPalette(completedLevelConfig);
         const timings = this._buildJourneyReturnTimings(completedLevelConfig);
         const qualityPreset = window.settings?.effectQuality || 'High';
+        const session = this._retireLevelSession();
+        const retirementGeneration = session?.retirementGeneration;
+        if (session?.gameState?.latestPhysicsPromise) {
+            await this._drainLevelSession(session);
+        }
+        if (session && !this._isLevelSessionCurrent(session, retirementGeneration)) return false;
 
         this.entryPhase = 'idle';
         this.themeRevealToken += 1;
@@ -2359,7 +2377,7 @@ export class OdysseyMode extends BaseGameMode {
      * Create GameState configured for the level
      * @private
      */
-    _createGameStateForLevel(levelConfig) {
+    _createGameStateForLevel(levelConfig, generation = this._levelSessionGeneration) {
         const { mechanics } = levelConfig;
 
         // New level → the hybridEngine is reconfigured below, so the cached physics-callback
@@ -2372,8 +2390,19 @@ export class OdysseyMode extends BaseGameMode {
         // _addStartingRows() call here double-seeded the board — the two hole patterns
         // intersected so most seeded rows started completely full and the first lock
         // mass-cleared them, gutting the dig/boss level design. Removed 2026-07 (masterplan §2 #1).
-        this.hybridEngine.configure(levelConfig);
-        this.gameState = this.hybridEngine.createGameState();
+        const hybridEngine = new GameplayHybridEngine();
+        hybridEngine.configure(levelConfig);
+        const gameState = hybridEngine.createGameState();
+        const session = createOdysseyLevelSession({
+            gameState,
+            generation,
+            hybridEngine,
+            levelConfig,
+            levelId: this.currentLevelId,
+        });
+        this.hybridEngine = hybridEngine;
+        this.gameState = gameState;
+        this._activeLevelSession = session;
 
         console.log(`[Odyssey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
     }
@@ -2411,6 +2440,14 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         console.log('[Odyssey] Preparing level gameplay under blackout...');
+        const levelConfig = this.currentLevelConfig;
+        const previousSession = this._retireLevelSession();
+        const preparationGeneration = this._levelSessionGeneration;
+        await this._drainLevelSession(previousSession);
+        if (
+            preparationGeneration !== this._levelSessionGeneration
+            || this.currentLevelConfig !== levelConfig
+        ) return false;
 
         // Reset completion flag for new level
         this.levelCompleting = false;
@@ -2421,25 +2458,11 @@ export class OdysseyMode extends BaseGameMode {
         this.isPaused = false;
         this.entryPhase = 'preparing';
 
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
-        }
-
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
-
-        if (this.deps.frameRateController?.isRunning) {
-            this.deps.frameRateController.stopHybridLoop();
-        }
-        this.usingHybridLoop = false;
-
         this._restoreInputs();
         this._cleanupOdysseyHUD();
         this._cleanupMinimap();
-        this._createGameStateForLevel(this.currentLevelConfig);
+        this._createGameStateForLevel(levelConfig, preparationGeneration);
+        const session = this._activeLevelSession;
 
         // Check if this is a tall board level
         const boardRows = this.currentLevelConfig?.mechanics?.board?.rows || 20;
@@ -2488,9 +2511,11 @@ export class OdysseyMode extends BaseGameMode {
         // Spawn first piece
         this.gameState.lastTime = performance.now();
         spawnPiece(
-            this.gameState,
-            () => this._refreshNextQueue(),
-            () => this._handleGameOver(),
+            session.gameState,
+            () => {
+                if (this._isLevelSessionActive(session)) this._refreshNextQueue();
+            },
+            () => this._handleGameOver(session),
         );
         this.boardScene?.syncFromGameState?.(this.gameState);
 
@@ -2515,19 +2540,24 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     beginLevelRun() {
-        if (!this.levelPrepared || this.levelRunStarted || !this.gameState) {
+        const session = this._activeLevelSession;
+        if (
+            !this.levelPrepared
+            || this.levelRunStarted
+            || !this._isLevelSessionActive(session)
+        ) {
             return false;
         }
 
         console.log('[Odyssey] Beginning level run...');
         this._hookInputs();
-        this.gameState.isPaused = false;
-        this.gameState.lastTime = performance.now();
+        session.gameState.isPaused = false;
+        session.gameState.lastTime = performance.now();
         this.levelStartTime = Date.now();
         this.levelPausedMs = 0;
         this._pauseStartedAt = null;
-        this._startLevelTimer();
-        this._startGameLoop();
+        this._startLevelTimer(session);
+        this._startGameLoop(session);
         this.isRunning = true;
         this.isPaused = false;
         this.levelRunStarted = true;
@@ -2549,20 +2579,8 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _cleanupPreparedLevelStart() {
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
-
-        if (this.deps.frameRateController?.isRunning) {
-            this.deps.frameRateController.stopHybridLoop();
-        }
-        this.usingHybridLoop = false;
-
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
-        }
+        const session = this._retireLevelSession();
+        void this._drainLevelSession(session);
 
         if (this.boardJuice) {
             this.boardJuice.destroy();
@@ -2589,12 +2607,13 @@ export class OdysseyMode extends BaseGameMode {
      * Start the game loop
      * @private
      */
-    _startGameLoop() {
-        if (!this.gameState) return;
+    _startGameLoop(session = this._activeLevelSession) {
+        if (!this._isLevelSessionActive(session)) return;
+        const { gameState, levelConfig } = session;
 
         // Cancel any existing loop
-        if (this.gameState.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
+        if (gameState.animationId) {
+            cancelAnimationFrame(gameState.animationId);
         }
 
         const { frameRateController } = this.deps;
@@ -2605,9 +2624,10 @@ export class OdysseyMode extends BaseGameMode {
         this.lastStatsUpdateTime = performance.now();
 
         const drawCallback = () => {
+            if (!this._isLevelSessionActive(session)) return;
             const boardScene = this._getBoardScene();
             if (boardScene) {
-                boardScene.syncFromGameState(this.gameState);
+                boardScene.syncFromGameState(gameState);
 
                 // Update camera position for tall boards
                 if (boardScene.cameraSettings && !boardScene.cameraSettings.manualControl) {
@@ -2617,6 +2637,7 @@ export class OdysseyMode extends BaseGameMode {
         };
 
         const statsCallback = () => {
+            if (!this._isLevelSessionActive(session)) return;
             const now = performance.now();
             if (now - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
                 this.lastStatsUpdateTime = now;
@@ -2633,26 +2654,26 @@ export class OdysseyMode extends BaseGameMode {
             this._checkVictoryConditions();
 
             // Check failure conditions for tall boards (Infinity Mode logic)
-            if (this.currentLevelConfig?.mechanics?.baseMode === 'infinity' || this.isTallBoard) {
-                if (!this.gameState.isGameOver && checkInfinityGameOver(this.gameState)) {
+            if (levelConfig?.mechanics?.baseMode === 'infinity' || this.isTallBoard) {
+                if (!gameState.isGameOver && checkInfinityGameOver(gameState)) {
                     console.log('[Odyssey] Game over condition met (Board Full)');
-                    this.gameState.isGameOver = true;
-                    this._handleGameOver();
+                    gameState.isGameOver = true;
+                    this._handleGameOver(session);
                 }
             }
         };
 
         const playDropCallback = () => this.deps.soundManager?.sfxPlayer?.playDrop();
-        const physicsCallbacks = this._getPhysicsCallbacks();
+        const physicsCallbacks = this._getPhysicsCallbacks(session);
 
         if (frameRateController?.needsHybridMode()) {
             this.usingHybridLoop = true;
             console.log('[Odyssey] Using hybrid loop for high FPS target');
 
             const logicUpdate = (time, _delta) => {
-                if (this.gameState.isGameOver || this.gameState.isPaused) return;
+                if (!this._isLevelSessionActive(session) || gameState.isGameOver || gameState.isPaused) return;
 
-                updateGame(time, this.gameState, {
+                updateGame(time, gameState, {
                     drawCallback: null,
                     updateStatsCallback: null,
                     playDropCallback,
@@ -2672,7 +2693,7 @@ export class OdysseyMode extends BaseGameMode {
 
             gameLoop(
                 performance.now(),
-                this.gameState,
+                gameState,
                 drawCallback,
                 statsCallback,
                 playDropCallback,
@@ -2685,15 +2706,14 @@ export class OdysseyMode extends BaseGameMode {
      * Get physics callbacks
      * @private
      */
-    _getPhysicsCallbacks() {
-        // Cached per level (masterplan §2 #9): this builds ~15 closures + a hybridEngine
-        // metric-tracking wrapper, and was previously rebuilt on EVERY hard/soft-drop keypress
-        // (window.hardDrop/softDrop). The closures read this.* dynamically so the cache never
-        // goes stale within a level; it is cleared in _createGameStateForLevel when the
-        // hybridEngine is reconfigured for the next level.
-        if (this._physicsCallbacks) {
-            return this._physicsCallbacks;
-        }
+    _getPhysicsCallbacks(session = this._activeLevelSession) {
+        if (!this._isLevelSessionActive(session)) return {};
+        if (session.physicsCallbacks) return session.physicsCallbacks;
+        const {
+            gameState,
+            hybridEngine,
+            levelId,
+        } = session;
 
         // Phase 2: Build base callbacks, then wrap with hybridEngine for metric tracking
         const baseCallbacks = {
@@ -2711,7 +2731,7 @@ export class OdysseyMode extends BaseGameMode {
                     clearedRows,
                     cascadeCount,
                     source: 'odyssey',
-                    levelId: this.currentLevelId,
+                    levelId,
                 });
             },
             onTSpin: (lineCount) => {
@@ -2734,8 +2754,8 @@ export class OdysseyMode extends BaseGameMode {
             onHardDrop: (dropData) => {
                 const settings = this.deps.settingsManager?.get() || {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+                if (!prefersReducedMotion) {
+                    gameState.hitStopRemaining = Math.max(gameState.hitStopRemaining || 0, 30);
                 }
 
                 this.deps.soundManager?.sfxPlayer?.playDrop();
@@ -2755,7 +2775,7 @@ export class OdysseyMode extends BaseGameMode {
                 emitCombo({
                     comboCount,
                     source: 'odyssey',
-                    levelId: this.currentLevelId,
+                    levelId,
                 });
 
                 const boardScene = this._getBoardScene();
@@ -2780,7 +2800,7 @@ export class OdysseyMode extends BaseGameMode {
             onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.deps.settingsManager?.get() || {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
+                if (!prefersReducedMotion) {
                     const boardScene = this._getBoardScene();
                     let hitStop = 0;
                     if (boardScene?.sharedEffects) {
@@ -2790,7 +2810,7 @@ export class OdysseyMode extends BaseGameMode {
                         hitStop = 70;
                     }
                     if (hitStop > 0) {
-                        this.gameState.hitStopRemaining = hitStop;
+                        gameState.hitStopRemaining = hitStop;
                     }
                 }
 
@@ -2826,8 +2846,8 @@ export class OdysseyMode extends BaseGameMode {
             onPerfectClear: (depth, perfectClearBonus) => {
                 const settings = this.deps.settingsManager?.get() || {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = 110;
+                if (!prefersReducedMotion) {
+                    gameState.hitStopRemaining = 110;
                 }
 
                 emitPerfectClear({ depth, perfectClearBonus, source: 'odyssey' });
@@ -2844,16 +2864,23 @@ export class OdysseyMode extends BaseGameMode {
             },
             spawnPiece: () => {
                 spawnPiece(
-                    this.gameState,
+                    gameState,
                     () => this._refreshNextQueue(),
-                    () => this._handleGameOver(),
+                    () => this._handleGameOver(session),
                 );
             },
         };
 
-        // Wrap callbacks with hybridEngine metric tracking, then cache for the level.
-        this._physicsCallbacks = this.hybridEngine.buildPhysicsCallbacks(baseCallbacks);
-        return this._physicsCallbacks;
+        // Fence presentation/state callbacks first, then let the attempt-owned engine wrap
+        // them. A retiring cascade may finish metrics in its old engine, but cannot touch UI
+        // or spawn into whichever attempt replaces it.
+        const fencedCallbacks = fenceOdysseyPhysicsCallbacks(
+            baseCallbacks,
+            () => this._isLevelSessionActive(session),
+        );
+        session.physicsCallbacks = hybridEngine.buildPhysicsCallbacks(fencedCallbacks);
+        this._physicsCallbacks = session.physicsCallbacks;
+        return session.physicsCallbacks;
     }
 
     // =============================
@@ -2864,22 +2891,23 @@ export class OdysseyMode extends BaseGameMode {
      * Check if victory conditions are met
      * @private
      */
-    _checkVictoryConditions() {
+    _checkVictoryConditions(session = this._activeLevelSession) {
         // Skip if already completing or no level config
-        if (this.levelCompleting || !this.currentLevelConfig || !this.gameState) return;
+        if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
+        const { gameState, hybridEngine } = session;
 
         // Phase 2: Use hybridEngine for victory/failure checking
-        if (this.hybridEngine.checkVictory()) {
+        if (hybridEngine.checkVictory()) {
             // Victory Lap System: Don't end level immediately, enter victory lap
-            if (!this.gameState.goalComplete) {
+            if (!gameState.goalComplete) {
                 console.log('[Odyssey] Goal complete! Entering Victory Lap...');
-                this._enterVictoryLap();
+                this._enterVictoryLap(session);
             }
             // During victory lap, victory conditions are already met - just keep playing
             return;
         }
 
-        if (this.hybridEngine.checkFailure()) {
+        if (hybridEngine.checkFailure()) {
             this.failLevel('time');
         }
     }
@@ -2888,10 +2916,11 @@ export class OdysseyMode extends BaseGameMode {
      * Enter victory lap mode - goal is complete but player can keep playing for stars
      * @private
      */
-    _enterVictoryLap() {
-        this.gameState.goalComplete = true;
-        this.gameState.victoryLapActive = true;
-        this.gameState.victoryLapStartTime = performance.now();
+    _enterVictoryLap(session = this._activeLevelSession) {
+        if (!this._isLevelSessionActive(session)) return;
+        session.gameState.goalComplete = true;
+        session.gameState.victoryLapActive = true;
+        session.gameState.victoryLapStartTime = performance.now();
 
         // Show goal complete overlay
         this._showGoalCompleteOverlay();
@@ -2925,10 +2954,11 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _finishVictoryLap() {
-        if (!this.gameState?.victoryLapActive) return;
+        const session = this._activeLevelSession;
+        if (!this._isLevelSessionActive(session) || !session.gameState.victoryLapActive) return;
 
         console.log('[Odyssey] Victory lap finished, completing level...');
-        this.gameState.victoryLapActive = false;
+        session.gameState.victoryLapActive = false;
 
         // Hide overlay
         this._hideGoalCompleteOverlay();
@@ -2938,8 +2968,8 @@ export class OdysseyMode extends BaseGameMode {
 
         // Emit event
         eventBus.emit(EVENTS.ODYSSEY_VICTORY_LAP_END, {
-            levelId: this.currentLevelId,
-            metrics: this.levelMetrics,
+            levelId: session.levelId,
+            metrics: session.hybridEngine.getMetrics(),
         });
 
         // Complete the level with final metrics
@@ -3004,29 +3034,30 @@ export class OdysseyMode extends BaseGameMode {
      * Calculate stars for level completion
      * @private
      */
-    _calculateStars() {
+    _calculateStars(_results, hybridEngine = this.hybridEngine) {
         // Phase 2: Use hybridEngine for star calculation
-        return this.hybridEngine.calculateStars();
+        return hybridEngine.calculateStars();
     }
 
     /**
      * Evaluate bonus objectives
      * @private
      */
-    _evaluateBonuses() {
+    _evaluateBonuses(_results, hybridEngine = this.hybridEngine) {
         // Phase 2: Use hybridEngine for bonus evaluation
-        return this.hybridEngine.evaluateBonuses();
+        return hybridEngine.evaluateBonuses();
     }
 
     /**
      * Handle game over (top-out)
      * @private
      */
-    async _handleGameOver() {
+    async _handleGameOver(session = this._activeLevelSession) {
+        if (!this._isLevelSessionActive(session)) return;
         console.log('[Odyssey] Game over (top-out)');
 
         // Victory Lap System: During victory lap, top-out completes the level (not a failure)
-        if (this.gameState?.victoryLapActive) {
+        if (session.gameState.victoryLapActive) {
             console.log('[Odyssey] Top-out during victory lap - completing level with current progress');
             this._finishVictoryLap();
             return;
@@ -4224,7 +4255,7 @@ export class OdysseyMode extends BaseGameMode {
      * Show level results
      * @private
      */
-    async _showLevelResults(results) {
+    async _showLevelResults(results, session = null) {
         console.log('[Odyssey] === Level Complete! ===');
         console.log(`[Odyssey] Stars: ${'★'.repeat(results.stars)}${'☆'.repeat(3 - results.stars)}`);
         console.log(`[Odyssey] Score: ${results.score}`);
@@ -4239,7 +4270,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Phase 6: Show proper results modal
         return new Promise((resolve) => {
-            const modal = this._createResultsModal(results, resolve);
+            const modal = this._createResultsModal(results, resolve, session);
             document.body.appendChild(modal);
         });
     }
@@ -4248,8 +4279,8 @@ export class OdysseyMode extends BaseGameMode {
      * Sync Steam stats and leaderboards (best-effort, non-blocking)
      * @private
      */
-    async _syncSteamStats(results) {
-        if (!results || !this.currentLevelId) {
+    async _syncSteamStats(results, levelId = this.currentLevelId) {
+        if (!results || !levelId) {
             return;
         }
 
@@ -4257,13 +4288,13 @@ export class OdysseyMode extends BaseGameMode {
         const durationSeconds = Math.max(1, Math.round(results.time || 0));
         const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
         const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
-        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${this.currentLevelId}`;
+        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
 
         const baseDetails = {
             score: results.score,
             duration: durationSeconds,
             linesCleared: results.lines,
-            highestLevel: this.currentLevelId,
+            highestLevel: levelId,
             stars: results.stars,
             totalStars,
             mode: 'odyssey',
@@ -4300,14 +4331,14 @@ export class OdysseyMode extends BaseGameMode {
      * Create a styled results modal
      * @private
      */
-    _createResultsModal(results, onClose) {
+    _createResultsModal(results, onClose, session = null) {
         // View extracted to ui/odyssey/ResultsModal.js (E1). Thread the few pieces of
         // mode state it needs; caller contract (returns the modal element) is unchanged.
         return createResultsModal({
             results,
             onClose,
-            levelConfig: this.currentLevelConfig,
-            levelId: this.currentLevelId,
+            levelConfig: session?.levelConfig || this.currentLevelConfig,
+            levelId: session?.levelId || this.currentLevelId,
             totalStars: this.odysseyState.getTotalStars(),
             formatTime: (ms) => this._formatTime(ms),
         });
@@ -4401,16 +4432,21 @@ export class OdysseyMode extends BaseGameMode {
         return Math.max(0, Date.now() - this.levelStartTime - this.levelPausedMs - pausedInProgress);
     }
 
-    _startLevelTimer() {
+    _startLevelTimer(session = this._activeLevelSession) {
+        if (!this._isLevelSessionActive(session)) return;
         if (this.levelTimerInterval) {
             clearInterval(this.levelTimerInterval);
         }
 
         this.levelTimerInterval = setInterval(() => {
-            if (this.levelStartTime && !this.gameState?.isPaused) {
+            if (
+                this._isLevelSessionActive(session)
+                && this.levelStartTime
+                && !session.gameState.isPaused
+            ) {
                 const elapsedTime = this._elapsedLevelMs() / 1000;
                 // Phase 2: Update time via hybridEngine
-                this.hybridEngine?.updateTime(elapsedTime);
+                session.hybridEngine.updateTime(elapsedTime);
             }
         }, 100);
     }
@@ -4420,6 +4456,13 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _hookInputs() {
+        const session = this._activeLevelSession;
+        if (!this._isLevelSessionActive(session)) return;
+        const { gameState } = session;
+        const canInput = () => this._isLevelSessionActive(session)
+            && !gameState.isPaused
+            && !gameState.isGameOver
+            && gameState.hitStopRemaining <= 0;
         this.originalInputs = {
             move: window.move,
             rotate: window.rotate,
@@ -4431,13 +4474,13 @@ export class OdysseyMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
+            if (!canInput()) return;
             // Odyssey mirror modifier: reverse left/right at the single input choke point (keyboard
             // tap, DAS auto-repeat, and gamepad all route through window.move) so shared physics and
             // single-player are untouched (masterplan §2 #3 / C2). Rotation is intentionally not
             // mirrored, matching standard mirror-mode.
-            const mdir = this.gameState.mirrorControls ? -dir : dir;
-            const moved = coreMove(this.gameState, mdir, () => this.deps.soundManager?.sfxPlayer?.playMove());
+            const mdir = gameState.mirrorControls ? -dir : dir;
+            const moved = coreMove(gameState, mdir, () => this.deps.soundManager?.sfxPlayer?.playMove());
             if (this.boardJuice) {
                 if (moved) {
                     this.boardJuice.nudge(mdir * 1.5, 0);
@@ -4449,32 +4492,32 @@ export class OdysseyMode extends BaseGameMode {
         };
 
         window.rotate = (dir) => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
-            coreRotate(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playRotate());
+            if (!canInput()) return;
+            coreRotate(gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playRotate());
             if (this.boardJuice) {
                 this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
             }
         };
 
         window.hardDrop = () => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
+            if (!canInput()) return;
             if (this.boardJuice) {
                 this.boardJuice.dip(3);
                 this.boardJuice.bounce();
             }
             coreHardDrop(
-                this.gameState,
+                gameState,
                 () => this.deps.soundManager?.sfxPlayer?.playDrop(),
-                this._getPhysicsCallbacks(),
+                this._getPhysicsCallbacks(session),
             );
         };
 
         window.softDrop = () => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
+            if (!canInput()) return;
             coreSoftDrop(
-                this.gameState,
+                gameState,
                 () => this.deps.soundManager?.sfxPlayer?.playDrop(),
-                this._getPhysicsCallbacks(),
+                this._getPhysicsCallbacks(session),
             );
         };
     }

@@ -26,9 +26,9 @@
  * Legacy adapters pass milliseconds; the fixed path passes integer 60 kHz
  * input-clock units and brands its state so the two cannot type-alias.
  *
- * Ships dark: nothing imports this yet. Wiring replaces the two clones in a
- * later slice; the differential table tests pin engine ≡ live-keyboard-clone
- * semantics until then.
+ * Both legacy millisecond UI paths and the fixed per-player input state now
+ * delegate here. Golden tables pin the shared semantics; adapter tests pin
+ * each caller's clock, configuration, state, and public-return contracts.
  */
 
 /** @returns {{active: boolean, delayAccumulator: number, intervalAccumulator: number, isRepeating: boolean}} */

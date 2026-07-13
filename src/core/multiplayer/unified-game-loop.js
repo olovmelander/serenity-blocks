@@ -294,8 +294,9 @@ export class UnifiedMultiplayerLoop {
      * A function keeps the original advance-only API; an adapter may also own
      * command application and observe the resulting dispositions.
      * @param {Function|Object|null} [inputAdapter]
+     * @param {Function|null} [shouldContinue] Abort if the enclosing sim ownership changes.
      */
-    updatePlayersFixedTick(inputAdapter = null) {
+    updatePlayersFixedTick(inputAdapter = null, shouldContinue = null) {
         const advanceInput = typeof inputAdapter === 'function'
             ? inputAdapter
             : inputAdapter?.advanceInput;
@@ -307,6 +308,7 @@ export class UnifiedMultiplayerLoop {
             : null;
 
         for (let i = 0; i < this.players.length; i++) {
+            if (shouldContinue && !shouldContinue()) break;
             const player = this.players[i];
             const { state } = player;
             if (state.isGameOver === true || state.isAlive === false) continue;
@@ -325,7 +327,9 @@ export class UnifiedMultiplayerLoop {
                     player.physics,
                     { fixedTick: true },
                 ),
+                shouldContinue,
             });
+            if (shouldContinue && !shouldContinue()) break;
             onTickResult?.(player.id, result);
         }
     }

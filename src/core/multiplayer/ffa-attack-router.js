@@ -13,6 +13,7 @@ import {
     createGarbageAttackFromColumns,
 } from '../garbage.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
+import { MessageTypes } from '../network/message-types.js';
 
 export class FFAAttackRouter {
     constructor(ffaGameState) {
@@ -108,7 +109,7 @@ export class FFAAttackRouter {
             generation: state.generation,
         };
 
-        this.gameState.network?.broadcastToAll?.('game:potato:update', state.lastEvent);
+        this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_UPDATE, state.lastEvent);
         return state.lastEvent;
     }
 
@@ -159,7 +160,7 @@ export class FFAAttackRouter {
         });
 
         holder.lastAttackerId = null;
-        this.gameState.network?.broadcastToAll?.('game:potato:detonate', {
+        this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_DETONATE, {
             holderId: holder.steamId,
             holderName: holder.name,
             lines: entries.filter((entry) => entry.type === 'line').length,
@@ -335,7 +336,7 @@ export class FFAAttackRouter {
         });
 
         // Broadcast attack event to all peers (they render it from the network msg)…
-        this.gameState.network.broadcastToAll('game:garbage:sent', garbagePayload);
+        this.gameState.network.broadcastToAll(MessageTypes.GAME_GARBAGE_SENT, garbagePayload);
         // …and emit a LOCAL echo so the HOST (which never receives its own broadcast)
         // also logs the attack in the Battle Log. Only the host runs routeAttack, so
         // this fires once on the host and never on peers — no double entry.

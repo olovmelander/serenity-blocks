@@ -11,7 +11,7 @@
       "maxPerTier": { "60hz": 16.6, "120hz": 8.3, "144hz": 6.9 },
       "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" }
     },
-    "snapshotBytesP95": { "baseline": 490, "max": 80, "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B" },
+    "snapshotDeltaWireBytesP95": { "baseline": 490, "max": 80, "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B; keyframes tracked separately" },
     "reliableMsgsPerSec": { "baseline": null, "max": null },
     "busEventsPerSec": { "baseline": null, "max": null, "note": "Phase 4.1 back-pressure metric" },
     "desyncsPerMatch": { "baseline": null, "max": 0, "note": "gates each Phase 5.0 cutover-ladder stage" },

@@ -108,6 +108,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.enableVolumetricNebula = false;
         this.enableConstellationLines = false;
         this.titleGlowEnabled = true;
+        this.titleEffectsEnabled = true;
 
         this.visualProfileId = 'cinematic_clean';
         this.visualProfile = getIntroVisualProfile(this.visualProfileId);
@@ -131,9 +132,16 @@ export default class ThreeJSIntroRendererWebGPU {
         this.dynamicQualityEnabled = false;
         this.computeFrameCounter = 0;
         this.spawnInterval = this.quality.spawnInterval;
+        this.tetrominoRecyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy();
 
         this.isBackgroundMode = false;
         this.audioPulse = 0;
+        // Theme-only reaction surge (default 0 → intro output identical). The selectable
+        // Serenity Warp theme drives these additively so combos surge the whole tunnel;
+        // the intro's own code NEVER sets them, so its visuals are unchanged.
+        this.reactionSurge = 0;
+        this.reactionBloom = 0;
+        this.reactionChroma = 0;
         this.warpStartTime = -1;
         this.warpDuration = 1.2;
         this.phase = INTRO_PHASES.BOOT;
@@ -152,6 +160,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTitleShaftStrength = uniform(1);
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
+        this.uTetrominoTitleAvoidance = uniform(1);
 
         // Phase B — cinematic grade uniforms (luma-preserving saturation, gentle
         // contrast, real chromatic aberration, multiply vignette).
@@ -310,6 +319,37 @@ export default class ThreeJSIntroRendererWebGPU {
 
         this.uTitleGlowCenter.value.set(cx, 1 - cy);
         this.uTitleGlowSize.value.set(sx, sy);
+    }
+
+    /**
+     * Toggle post effects that exist only to illuminate the intro wordmark.
+     * Selectable themes reuse this renderer without a DOM title, so they keep
+     * the full-bright nebula while disabling the otherwise orphaned centre glow
+     * and light shaft. The intro's default remains unchanged.
+     */
+    setTitleEffectsEnabled(enabled) {
+        this.titleEffectsEnabled = !!enabled;
+        this.applyQualitySettings();
+    }
+
+    /**
+     * Toggle the intro wordmark's tetromino-safe region. This is independent of
+     * the title glow: reusable themes can remove both effects while the intro
+     * keeps its existing title clearance by default.
+     */
+    setTetrominoTitleAvoidanceEnabled(enabled) {
+        this.uTetrominoTitleAvoidance.value = enabled ? 1 : 0;
+    }
+
+    /**
+     * Opt into conservative full-pool recycling without GPU-to-CPU readback.
+     * See IntroTetrominoCompute.setRecyclingPolicy() for supported policies.
+     */
+    setTetrominoRecyclingPolicy(policy = {}) {
+        const normalized = IntroTetrominoCompute.normalizeRecyclingPolicy(policy);
+        this.tetrominoRecyclingPolicy = normalized;
+        this.tetrominoCompute?.setRecyclingPolicy(normalized);
+        return { ...normalized };
     }
 
     getPhasePreset(phase) {
@@ -492,6 +532,7 @@ export default class ThreeJSIntroRendererWebGPU {
 
     initTetrominoCompute() {
         this.tetrominoCompute = new IntroTetrominoCompute();
+        this.tetrominoCompute.setRecyclingPolicy(this.tetrominoRecyclingPolicy);
         this.tetrominoCompute.createComputeNode();
     }
 
@@ -867,7 +908,12 @@ export default class ThreeJSIntroRendererWebGPU {
                 float(1.0),
                 titleDelta.y.div(this.uTitleGlowSize.y.mul(2.4)),
             ).oneMinus();
-            const titleVisibility = safeX.mul(safeY).oneMinus().toVar();
+            const titleSafeVisibility = safeX.mul(safeY).oneMinus().toVar();
+            const titleVisibility = mix(
+                float(1.0),
+                titleSafeVisibility,
+                this.uTetrominoTitleAvoidance,
+            ).toVar();
 
             // Collision scale pulse: flash (rot.w) drives a brief 20% scale-up
             const flash = stateRot.w.mul(typeMask);
@@ -1070,6 +1116,17 @@ export default class ThreeJSIntroRendererWebGPU {
         this.audioPulse = Math.max(0, Math.min(1, pulse));
     }
 
+    /**
+     * Opt-in whole-scene reaction surge, driven ONLY by the Serenity Warp theme.
+     * `surge` rides the existing warp machinery (camera dolly + particle streak + bloom);
+     * `bloom`/`chroma` are additive post punches. All default to 0 → intro unchanged.
+     */
+    setReactionState(state = {}) {
+        if (Number.isFinite(state.surge)) this.reactionSurge = Math.max(0, Math.min(1, state.surge));
+        if (Number.isFinite(state.bloom)) this.reactionBloom = Math.max(0, Math.min(1.5, state.bloom));
+        if (Number.isFinite(state.chroma)) this.reactionChroma = Math.max(0, Math.min(1.5, state.chroma));
+    }
+
     setBackgroundMode(enabled) {
         this.isBackgroundMode = !!enabled;
         if (this.particleCompute) {
@@ -1207,6 +1264,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTime.value = this.simulationTime;
         this.uAudioPulse.value = this.audioPulse;
         this.updateWarp(this.simulationTime);
+        // Combo surge rides the SAME warp machinery as the boot reveal / dismiss
+        // (camera dolly + particle streak + bloom). reactionSurge is 0 unless the
+        // Serenity Warp theme drives it, so warpEff === uWarp for the intro itself.
+        const warpEff = Math.min(1, this.uWarp.value + this.reactionSurge);
 
         // D2 — slow "breath" macro-cycle (~24s): the whole scene gently inhales and
         // exhales TOGETHER (bloom + nebula + title swell + a micro camera dolly), so
@@ -1218,29 +1279,34 @@ export default class ThreeJSIntroRendererWebGPU {
         // Idle Lissajous drift + warp dolly + breath dolly, then pointer parallax.
         // apply() adds the cursor-driven offset and performs the final lookAt,
         // so it must come after the base position is set.
-        const cameraDriftScale = (1 + this.uWarp.value * 1.5) / Math.max(0.1, phase.cameraDriftMul);
+        const cameraDriftScale = (1 + warpEff * 1.5) / Math.max(0.1, phase.cameraDriftMul);
         const t = this.simulationTime * 0.2;
         this.camera.position.x = (Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X) / cameraDriftScale;
         this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
-        this.camera.position.z = 40 - this.uWarp.value * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
+        this.camera.position.z = 40 - warpEff * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
         this.cameraParallax.apply(this.camera, delta);
 
         this.uBloomStrength.value = this.quality.bloom
-            ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
-                + (breath * 0.03)
+            ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (warpEff * 0.1)
+                + (breath * 0.03) + (this.reactionBloom * 0.28)
             : 0;
         const isMenuBackground = this.isBackgroundMode || this.phase === INTRO_PHASES.MENU_BG;
         this.uGodRayStrength.value = this.quality.godRays;
-        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (this.uWarp.value * 0.05);
-        this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
-        this.uTitleShaftStrength.value = isMenuBackground ? 0 : 1;
+        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (warpEff * 0.05);
+        this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03)
+            + (this.reactionChroma * 0.14);
+        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !isMenuBackground ? 1 : 0;
         const titleGlowBase = 0.06 * phase.titleGlowMul + this.audioPulse * 0.012 + breath * 0.008;
-        this.uTitleGlowStrength.value = this.titleGlowEnabled && !isMenuBackground ? titleGlowBase : 0;
+        this.uTitleGlowStrength.value = this.titleEffectsEnabled
+            && this.titleGlowEnabled
+            && !isMenuBackground
+            ? titleGlowBase
+            : 0;
 
         if (this.particleCompute) {
             this.particleCompute.setAttractionStrength(this.quality.attraction * phase.attractionMul);
             this.particleCompute.setAudioPulse(this.audioPulse);
-            this.particleCompute.setWarpFactor(this.uWarp.value);
+            this.particleCompute.setWarpFactor(warpEff);
             this.particleCompute.setEventIntensity(Math.max(0.4, phase.particleMul));
             this.particleCompute.update(delta, this.simulationTime);
         }
@@ -1356,8 +1422,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.spawnInterval = this.quality.spawnInterval;
         this.uDoFStrength.value = this.isBackgroundMode ? 0 : this.quality.dof;
         this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
-        this.uTitleGlowStrength.value = this.isBackgroundMode ? 0 : this.uTitleGlowStrength.value;
-        this.uTitleShaftStrength.value = this.isBackgroundMode ? 0 : 1;
+        if (this.isBackgroundMode || !this.titleEffectsEnabled) {
+            this.uTitleGlowStrength.value = 0;
+        }
+        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !this.isBackgroundMode ? 1 : 0;
 
         if (this.renderer) {
             this.renderer.setPixelRatio(this._renderPixelRatio());

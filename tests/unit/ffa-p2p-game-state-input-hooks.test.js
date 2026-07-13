@@ -154,6 +154,31 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.updateAllPlayers).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ['host', true],
+        ['peer', false],
+    ])('fences %s post-tick work when a synchronous restart replaces loop ownership', (_role, isHost) => {
+        const { state, callOrder } = createBareGameState({ isHost });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.roundGeneration = 3;
+        state.unifiedLoop.runGeneration = 7;
+        state.unifiedLoop.updatePlayersFixedTick.mockImplementationOnce(() => {
+            callOrder.push('loopUpdatePlayersFixed');
+            state.roundGeneration = 4;
+            state.unifiedLoop.runGeneration = 9;
+            state.gamePhase = 'playing';
+            state._fixedTickEnabled = true;
+        });
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 10);
+
+        expect(callOrder).toEqual(['loopUpdatePlayersFixed']);
+        expect(state.flushInputBatch).not.toHaveBeenCalled();
+        expect(state.maybeBroadcastPostPhysics).not.toHaveBeenCalled();
+    });
+
     it('stamps peer inputs from separate catch-up ticks distinctly', () => {
         const { state } = createBareGameState({ isHost: false });
         state._fixedTickEnabled = true;
@@ -184,6 +209,40 @@ describe('FFAGameStateP2P local input hooks', () => {
         );
         expect(state._activeFixedInputStamp).toBeNull();
         expect(state._peerFixedInputSimTick).toBe(2);
+    });
+
+    it('does not allocate, queue, or predict peer commands while exact resync is frozen', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state.isSpectator = false;
+        state.resyncInputFrozen = true;
+        state.inputSequence = 11;
+        state.pendingInputs = [];
+        state.inputHistory = [];
+        state._applyLocalPrediction = vi.fn();
+
+        state.sendInput('move', { direction: -1 });
+
+        expect(state.inputSequence).toBe(11);
+        expect(state.pendingInputs).toEqual([]);
+        expect(state.inputHistory).toEqual([]);
+        expect(state._applyLocalPrediction).not.toHaveBeenCalled();
+    });
+
+    it('does not create a command stream for an eliminated or awaiting local player', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state.isSpectator = false;
+        state.players.get(state.localPlayerId).isAlive = false;
+        state.inputSequence = 3;
+        state.pendingInputs = [];
+        state.inputHistory = [];
+        state._applyLocalPrediction = vi.fn();
+
+        state.sendInput('drop', { type: 'hard' });
+
+        expect(state.inputSequence).toBe(3);
+        expect(state.pendingInputs).toEqual([]);
+        expect(state.inputHistory).toEqual([]);
+        expect(state._applyLocalPrediction).not.toHaveBeenCalled();
     });
 
     it('marks peer prediction fixed only while the canonical input stamp is active', () => {
@@ -280,7 +339,7 @@ describe('FFAGameStateP2P local input hooks', () => {
         state._applyResyncState({
             matchConfig: { simulationClock: 'legacy-variable-v1' },
             roundGeneration: 0,
-            players: [],
+            players: [{ steamId: 'local-player' }],
         });
 
         expect(state._fixedTickEnabled).toBe(false);
@@ -403,6 +462,15 @@ describe('FFAGameStateP2P local input hooks', () => {
     it('resets held input during cleanup and clears hook references', () => {
         const { state, callOrder } = createBareGameState({ isHost: true });
         state.loopRunning = true;
+        const transferTimer = setInterval(() => {}, 1000);
+        const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+        state.resyncTransfers = new Map([['R1', { timer: transferTimer }]]);
+        state.resyncBuffers = new Map([['R2', {}]]);
+        state.pendingResyncs = ['peer'];
+        state.resyncRequestAtByPeer = new Map([['peer', 100]]);
+        state.downloadJoinPeers = new Map([['peer', {}]]);
+        state.downloadJoinInProgress = { resyncId: 'R2' };
+        state.hostMigration = { stopMonitoring: vi.fn() };
 
         state.cleanup();
 
@@ -419,5 +487,14 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.players.size).toBe(0);
         expect(state.gamePhase).toBe('waiting');
         expect(state.winner).toBeNull();
+        expect(clearIntervalSpy).toHaveBeenCalledWith(transferTimer);
+        expect(state.resyncTransfers.size).toBe(0);
+        expect(state.resyncBuffers.size).toBe(0);
+        expect(state.pendingResyncs).toEqual([]);
+        expect(state.resyncRequestAtByPeer.size).toBe(0);
+        expect(state.downloadJoinPeers.size).toBe(0);
+        expect(state.downloadJoinInProgress).toBeNull();
+        expect(state.hostMigration.stopMonitoring).toHaveBeenCalledOnce();
+        expect(state._disposed).toBe(true);
     });
 });

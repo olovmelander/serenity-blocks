@@ -11,6 +11,9 @@ import { LEVEL_SPEEDS } from '../constants.js';
 import {
     DEMO_CHECKPOINT_INTERVAL_FRAMES,
     DEMO_COMMAND_INPUT_FORMAT,
+    DEMO_FIXED_CLOCK_VERSION,
+    DEMO_FIXED_SIMULATION_CLOCK,
+    DEMO_LEGACY_SIMULATION_CLOCK,
     DEMO_TICK_MS,
     LEGACY_DEMO_HIT_STOP_ENABLED,
 } from './DemoRecorder.js';
@@ -94,6 +97,7 @@ export class DemoPlayer {
         this.checkpoints = [];
         this.lastCheckpointFrame = 0;
         this.seekToken = 0;
+        this.lastLoadError = null;
     }
 
     /**
@@ -110,15 +114,35 @@ export class DemoPlayer {
         this.checkpoints = [];
         this.lastCheckpointFrame = 0;
         this.tickMs = DEMO_TICK_MS;
+        this.lastLoadError = null;
 
         if (!demoData || !Array.isArray(demoData.inputs)) {
             console.error('[DemoPlayer] Invalid demo data');
             return false;
         }
         const version = String(demoData.version ?? '1.0');
-        const knownLegacyVersion = version === '1.0' || version === '2.0';
-        if (!knownLegacyVersion) {
+        const knownVersion = version === '1.0'
+            || version === '2.0'
+            || version === DEMO_FIXED_CLOCK_VERSION;
+        if (!knownVersion) {
             console.error(`[DemoPlayer] Unsupported demo rules version: ${version}`);
+            return false;
+        }
+        const simulationClock = demoData.sim?.simulationClock
+            ?? DEMO_LEGACY_SIMULATION_CLOCK;
+        if (
+            version === DEMO_FIXED_CLOCK_VERSION
+            && simulationClock !== DEMO_FIXED_SIMULATION_CLOCK
+        ) {
+            this.lastLoadError = `${DEMO_FIXED_CLOCK_VERSION} demos require `
+                + `${DEMO_FIXED_SIMULATION_CLOCK}`;
+            console.error(`[DemoPlayer] ${this.lastLoadError}`);
+            return false;
+        }
+        if (simulationClock !== DEMO_LEGACY_SIMULATION_CLOCK) {
+            this.lastLoadError = `Unsupported simulation clock: ${simulationClock}; `
+                + `${DEMO_LEGACY_SIMULATION_CLOCK} is the only implemented replay clock`;
+            console.error(`[DemoPlayer] ${this.lastLoadError}`);
             return false;
         }
         if (
@@ -131,7 +155,7 @@ export class DemoPlayer {
         }
         const declaredTickMs = demoData.sim?.tickMs;
         if (
-            (version === '2.0' && declaredTickMs === undefined)
+            (version !== '1.0' && declaredTickMs === undefined)
             || (declaredTickMs !== undefined && (
                 !Number.isFinite(declaredTickMs)
                 || Math.abs(declaredTickMs - DEMO_TICK_MS) > 0.0001
@@ -723,6 +747,8 @@ export class DemoPlayer {
             },
             sim: {
                 tickMs,
+                simulationClock: demoData.sim?.simulationClock
+                    ?? DEMO_LEGACY_SIMULATION_CLOCK,
                 startFrame: demoData.sim?.startFrame || 0,
                 durationFrames,
                 inputFormat: demoData.sim?.inputFormat ?? DEMO_COMMAND_INPUT_FORMAT,

@@ -107,10 +107,12 @@ export class HostMigration {
         const migrationEpoch = this.gameState.prepareMigrationClaim?.() ?? this.gameState.migrationEpoch ?? 0;
         console.log('👑 I am the new host! Broadcasting claim...');
 
-        // Broadcast CLAIM message
-        // Note: We might need to send this to individual peers if broadcast assumes host?
-        // But in P2P mesh (Steam), usually we can send to everyone.
-        // Assuming network.broadcastToAll works even if not host (it should just iter peers)
+        // A peer normally receives only host traffic, so its transport map may not
+        // contain the other roster peers. Seed those known identities before the
+        // one permitted peer broadcast; otherwise real Steam sends CLAIM/SYNC only
+        // to the retired host while mock BroadcastChannel tests falsely pass.
+        this._seedMigrationPeersFromRoster();
+
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_CLAIM, {
             newHostId: this.gameState.localPlayerId,
             migrationEpoch,
@@ -118,6 +120,25 @@ export class HostMigration {
 
         // Actually become host
         this.becomeHost(migrationEpoch);
+    }
+
+    _seedMigrationPeersFromRoster() {
+        if (!(this.network.connectedPeers instanceof Map)
+            || !(this.gameState.players instanceof Map)) return;
+
+        this.gameState.players.forEach((player, rosterId) => {
+            const steamId = player?.steamId || rosterId;
+            if (!steamId
+                || steamId === this.gameState.localPlayerId
+                || player?.isDisconnected
+                || this.network.connectedPeers.has(steamId)) return;
+
+            this.network.connectedPeers.set(steamId, {
+                steamId,
+                name: player?.name,
+                migrationSeeded: true,
+            });
+        });
     }
 
     /**
@@ -135,6 +156,7 @@ export class HostMigration {
         }
 
         this.gameState.promoteToHost?.();
+        this.network.seedNegotiatedProtocolPeers?.(this.network.connectedPeers?.keys?.() || []);
 
         console.log('🚀 Migration complete. I am now the host.');
 
@@ -186,7 +208,13 @@ export class HostMigration {
 
         console.log(`🗳️ Accepting new host: ${newHostId}`);
 
+        const previousHostId = this.network.hostSteamId;
         this.network.hostSteamId = newHostId;
+        this.gameState.onHostAuthorityChanged?.({
+            previousHostId,
+            newHostId,
+            source: 'migration_claim',
+        });
         this.lastHeartbeatTime = Date.now(); // Reset timeout
         this.isElectionInProgress = false;
 

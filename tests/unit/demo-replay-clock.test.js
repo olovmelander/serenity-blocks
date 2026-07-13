@@ -9,6 +9,9 @@ import { DemoPlayer } from '../../src/core/demo/DemoPlayer.js';
 import {
     DemoRecorder,
     DEMO_COMMAND_INPUT_FORMAT,
+    DEMO_FIXED_CLOCK_VERSION,
+    DEMO_FIXED_SIMULATION_CLOCK,
+    DEMO_LEGACY_SIMULATION_CLOCK,
     DEMO_TICK_MS,
     LEGACY_DEMO_HIT_STOP_ENABLED,
 } from '../../src/core/demo/DemoRecorder.js';
@@ -157,6 +160,44 @@ describe('Demo replay clock', () => {
         expect(player.gameState.hitStopEnabled).toBe(LEGACY_DEMO_HIT_STOP_ENABLED);
     });
 
+    it.each([
+        ['a missing clock stamp', undefined],
+        ['an explicit legacy clock stamp', DEMO_LEGACY_SIMULATION_CLOCK],
+    ])('loads %s through the legacy replay clock', (_label, simulationClock) => {
+        const player = new DemoPlayer({});
+        const demo = makeDemo({
+            sim: {
+                tickMs: DEMO_TICK_MS,
+                durationFrames: 1,
+                ...(simulationClock ? { simulationClock } : {}),
+            },
+        });
+
+        expect(player.loadDemo(demo)).toBe(true);
+        expect(player.demo.sim.simulationClock).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
+        expect(player.lastLoadError).toBeNull();
+    });
+
+    it('rejects fixed-clock artifacts until DemoPlayer has a fixed replay adapter', () => {
+        const player = new DemoPlayer({});
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(player.loadDemo(makeDemo({
+            version: DEMO_FIXED_CLOCK_VERSION,
+            sim: {
+                tickMs: DEMO_TICK_MS,
+                durationFrames: 1,
+                simulationClock: DEMO_FIXED_SIMULATION_CLOCK,
+            },
+        }))).toBe(false);
+
+        expect(player.demo).toBeNull();
+        expect(player.lastLoadError).toMatch(/Unsupported simulation clock: fixed60-v1/);
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(
+            /fixed60-v1.*legacy-variable-v1 is the only implemented replay clock/,
+        ));
+    });
+
     it('rejects input formats whose playback semantics are not implemented', () => {
         const player = new DemoPlayer({});
         vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -258,7 +299,9 @@ describe('Demo replay clock', () => {
         });
 
         expect(demo.version).toBe('2.0');
+        expect(demo.initialState.rulesVersion).toBe('2.0');
         expect(demo.sim.tickMs).toBe(DEMO_TICK_MS);
+        expect(demo.sim.simulationClock).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
         expect(demo.sim.inputFormat).toBe(DEMO_COMMAND_INPUT_FORMAT);
         expect(demo.initialState.settings).toEqual({
             themeBasedTetrominos: true,
@@ -275,6 +318,38 @@ describe('Demo replay clock', () => {
         }]);
         expect(demo.metadata.durationFrames).toBe(6);
         expect(demo.checkpoints.length).toBeGreaterThan(0);
+    });
+
+    it('stamps fixed-clock recordings so legacy playback cannot misinterpret them', () => {
+        const recorder = new DemoRecorder();
+        const state = new GameState();
+
+        recorder.startRecording(
+            state,
+            {},
+            17,
+            'single-player',
+            DEMO_FIXED_SIMULATION_CLOCK,
+        );
+
+        expect(recorder.getDemo().sim.simulationClock).toBe(DEMO_FIXED_SIMULATION_CLOCK);
+        expect(recorder.getDemo().version).toBe(DEMO_FIXED_CLOCK_VERSION);
+        expect(recorder.getDemo().initialState.rulesVersion).toBe(DEMO_FIXED_CLOCK_VERSION);
+        expect(['1.0', '2.0']).not.toContain(recorder.getDemo().version);
+    });
+
+    it('refuses to stamp an undeclared simulation clock as a legacy artifact', () => {
+        const recorder = new DemoRecorder();
+
+        expect(() => recorder.startRecording(
+            new GameState(),
+            {},
+            19,
+            'single-player',
+            'experimental-clock',
+        )).toThrow('Unsupported demo simulation clock: experimental-clock');
+        expect(recorder.getDemo()).toBeNull();
+        expect(recorder.isRecording).toBe(false);
     });
 
     it('does not restore checkpoint DAS state for accepted-command demos', async () => {

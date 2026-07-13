@@ -46,6 +46,7 @@ export default class SummerTheme extends BaseTheme {
         this.animationLoopStarted = false;
         this.boundResize = null;
         this.eventUnsubscribers = [];
+        this.reducedMotionQuery = null;
     }
 
     async createScene() {
@@ -92,28 +93,76 @@ export default class SummerTheme extends BaseTheme {
     setupEventListeners() {
         this.applyIntensity();
 
-        const allow = () => this.isActive !== false
+        // Ambient atmosphere (director) is gated by backgroundComboEffects. The
+        // discrete "Midsummer Promise" FX (dew seal + ring dance) are additionally
+        // gated per the plan: lock needs pieceLockRipple too; combo needs only
+        // backgroundComboEffects. LINE_CLEAR is forwarded for order-independent
+        // combo correlation but emits no discrete particle of its own.
+        const allowAmbient = () => this.isActive !== false
             && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
+        const allowCombo = () => allowAmbient();
+        const allowLock = () => allowCombo()
+            && (typeof window === 'undefined' || window.settings?.pieceLockRipple !== false);
 
         this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.PIECE_LOCK, () => { if (allow()) this.director.onPieceLock(); }),
-            eventBus.on(EVENTS.HARD_DROP, () => { if (allow()) this.director.onHardDrop(); }),
-            eventBus.on(EVENTS.COMBO, (d) => { if (allow()) this.director.onCombo(d?.comboCount ?? d?.combo ?? 0); }),
-            eventBus.on(EVENTS.LINE_CLEAR, (d) => { if (allow()) this.director.onLineClear(d?.lineCount ?? 0, d?.comboCount ?? 0); }),
-            eventBus.on(EVENTS.TSPIN, (d) => { if (allow()) this.director.onTSpin(d?.lineCount ?? 0); }),
-            eventBus.on(EVENTS.PERFECT_CLEAR, () => { if (allow()) this.director.onPerfectClear(); }),
-            eventBus.on(EVENTS.LEVEL_UP, () => { if (allow()) this.director.onLevelUp(); }),
+            eventBus.on(EVENTS.PIECE_LOCK, (d) => {
+                if (allowLock()) this.runtime?.pulse?.('PIECE_LOCK', d);
+                if (allowAmbient()) this.director.onPieceLock();
+            }),
+            eventBus.on(EVENTS.HARD_DROP, () => { if (allowAmbient()) this.director.onHardDrop(); }),
+            eventBus.on(EVENTS.COMBO, (d) => {
+                if (allowCombo()) this.runtime?.pulse?.('COMBO', d);
+                if (allowAmbient()) this.director.onCombo(d?.comboCount ?? d?.combo ?? 0);
+            }),
+            eventBus.on(EVENTS.LINE_CLEAR, (d) => {
+                if (allowCombo()) this.runtime?.pulse?.('LINE_CLEAR', d);
+                if (allowAmbient()) this.director.onLineClear(d?.lineCount ?? 0, d?.comboCount ?? 0);
+            }),
+            eventBus.on(EVENTS.TSPIN, (d) => { if (allowAmbient()) this.director.onTSpin(d?.lineCount ?? 0); }),
+            eventBus.on(EVENTS.PERFECT_CLEAR, () => { if (allowAmbient()) this.director.onPerfectClear(); }),
+            eventBus.on(EVENTS.LEVEL_UP, () => { if (allowAmbient()) this.director.onLevelUp(); }),
         );
+
+        // Re-apply the discrete FX quality / reduced-motion when the OS media query
+        // flips; setup-time intensity alone is insufficient (plan §7.6).
+        if (typeof window !== 'undefined' && window.matchMedia) {
+            this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+            const onReduce = () => this.applyIntensity();
+            if (this.reducedMotionQuery.addEventListener) {
+                this.registerEventListener(this.reducedMotionQuery, 'change', onReduce);
+            }
+        }
+    }
+
+    resolveEffectQuality() {
+        if (typeof window === 'undefined') return 'High';
+        return window.settings?.effectQuality || window.settings?.graphicsQuality || 'High';
+    }
+
+    prefersReducedMotion() {
+        if (typeof window === 'undefined') return false;
+        return window.settings?.reducedMotion === true
+            || this.reducedMotionQuery?.matches === true
+            || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     }
 
     applyIntensity() {
-        let mult = 1;
-        if (typeof window !== 'undefined') {
-            if (window.settings?.backgroundComboEffects === false) mult = 0;
-            const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-            if (reduce) mult = Math.min(mult, 0.45);
-        }
+        const comboEnabled = typeof window === 'undefined'
+            || window.settings?.backgroundComboEffects !== false;
+        const reduce = this.prefersReducedMotion();
+
+        // Ambient director: soft multiplier (0 when disabled, damped for reduced motion).
+        let mult = comboEnabled ? 1 : 0;
+        if (reduce) mult = Math.min(mult, 0.45);
         this.director.setIntensity(mult);
+
+        // Discrete FX: designed reduced-motion form (not just lower opacity), and a
+        // hard 0 intensity when combo effects are disabled.
+        this.runtime?.configureGameplay?.({
+            quality: this.resolveEffectQuality(),
+            reducedMotion: reduce,
+            intensity: comboEnabled ? 1 : 0,
+        });
     }
 
     teardownEventListeners() {

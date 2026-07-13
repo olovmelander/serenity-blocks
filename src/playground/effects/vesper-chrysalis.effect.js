@@ -10,13 +10,14 @@
  * Preview raw (playground = NoToneMapping); the theme adds ACES + bloom + grade.
  *   ?effect=vesper-chrysalis&orbit=0&t=6            dormant
  *   ?effect=vesper-chrysalis&orbit=0&t=6&S=0.6       spill (waking)
+ *   ?effect=vesper-chrysalis&orbit=0&t=6&quality=Low low-tier composition check
  * Live sweep:  window.__VESPER__.setS(0.6)
  */
 import * as THREE from 'three/webgpu';
 import {
     float, vec2, vec3, vec4, uniform, positionLocal, normalLocal, normalWorld, positionWorld,
     cameraPosition, normalize, dot, clamp, smoothstep, abs, mix, sin, pow, fract, length,
-    screenUV, uv, atan2, floor, pass, viewportUV, attribute, cos, texture, texture3D,
+    screenUV, uv, atan, floor, pass, viewportUV, attribute, cos, texture, texture3D,
     reflector, mx_noise_float, mx_fractal_noise_float, positionGeometry,
     Fn, cameraProjectionMatrix, cameraViewMatrix,
 } from 'three/tsl';
@@ -42,6 +43,105 @@ const num = (p, k, d) => {
 };
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// Five separated rock islands replace the former 95×62 left-side mound. Their
+// footprints preserve a clear centre wedge while giving both crystal banks a
+// readable base and deliberate water gaps between depth planes.
+const SHORE_ISLANDS = [
+    {
+        x: -55, z: -58, rx: 18.5, rz: 11.5, crown: 5.0, rotation: -0.10, seed: 1207,
+    },
+    {
+        x: -78, z: -88, rx: 12.5, rz: 7.5, crown: 3.4, rotation: 0.18, seed: 2333,
+    },
+    {
+        x: -49, z: -113, rx: 9, rz: 5.5, crown: 2.7, rotation: -0.22, seed: 3469,
+    },
+    {
+        x: 47, z: -64, rx: 16.5, rz: 9.5, crown: 4.0, rotation: 0.14, seed: 4591,
+    },
+    {
+        x: 85, z: -101, rx: 11.5, rz: 7.2, crown: 3.2, rotation: -0.20, seed: 5717,
+    },
+];
+const ISLAND_SEQUENCE = [0, 3, 1, 4, 0, 3, 2, 0, 4, 1, 3];
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+const makeRng = (seed) => {
+    let state = seed % 2147483647;
+    if (state <= 0) state += 2147483646;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+};
+
+const sampleIslandSurface = (island, localX, localZ) => {
+    const r = Math.min(1, Math.hypot(localX / island.rx, localZ / island.rz));
+    if (r <= 0.38) return THREE.MathUtils.lerp(island.crown, island.crown * 0.82, r / 0.38);
+    if (r <= 0.72) return THREE.MathUtils.lerp(island.crown * 0.82, island.crown * 0.42, (r - 0.38) / 0.34);
+    return THREE.MathUtils.lerp(island.crown * 0.42, 1.15, (r - 0.72) / 0.28);
+};
+
+const islandLocalToWorld = (island, localX, localZ) => {
+    const c = Math.cos(island.rotation);
+    const s = Math.sin(island.rotation);
+    return {
+        x: island.x + localX * c + localZ * s,
+        z: island.z - localX * s + localZ * c,
+    };
+};
+
+const buildIslandGeometry = (island) => {
+    const segments = 14;
+    const rng = makeRng(island.seed);
+    const edgeScale = Array.from({ length: segments }, () => 0.90 + rng() * 0.20);
+    const angleJitter = Array.from({ length: segments }, () => (rng() - 0.5) * 0.08);
+    const heightJitter = Array.from({ length: segments }, () => (rng() - 0.5) * 0.34);
+    const rings = [
+        { radius: 0.38, height: island.crown * 0.82, irregularity: 0.35 },
+        { radius: 0.72, height: island.crown * 0.42, irregularity: 0.65 },
+        { radius: 1.00, height: 1.15, irregularity: 1.00 },
+        { radius: 1.08, height: -1.10, irregularity: 1.00 },
+        { radius: 0.74, height: -3.2 - island.crown * 0.12, irregularity: 0.80 },
+    ];
+    const positions = [0, island.crown, 0];
+    rings.forEach((ring, ringIndex) => {
+        for (let i = 0; i < segments; i += 1) {
+            const angle = (i / segments) * Math.PI * 2 + angleJitter[i];
+            const radial = ring.radius * THREE.MathUtils.lerp(1, edgeScale[i], ring.irregularity);
+            const jitter = heightJitter[i] * (ringIndex < 2 ? 0.45 : 1.0);
+            positions.push(
+                Math.cos(angle) * island.rx * radial,
+                ring.height + jitter,
+                Math.sin(angle) * island.rz * radial,
+            );
+        }
+    });
+    const bottomIndex = positions.length / 3;
+    positions.push(0, -3.5 - island.crown * 0.12, 0);
+    const index = [];
+    const at = (ring, segment) => 1 + ring * segments + (segment % segments);
+    for (let i = 0; i < segments; i += 1) index.push(0, at(0, i + 1), at(0, i));
+    for (let ring = 0; ring < rings.length - 1; ring += 1) {
+        for (let i = 0; i < segments; i += 1) {
+            const a0 = at(ring, i); const a1 = at(ring, i + 1);
+            const b0 = at(ring + 1, i); const b1 = at(ring + 1, i + 1);
+            index.push(a0, a1, b0, a1, b1, b0);
+        }
+    }
+    for (let i = 0; i < segments; i += 1) {
+        index.push(at(rings.length - 1, i), at(rings.length - 1, i + 1), bottomIndex);
+    }
+    const indexed = new THREE.BufferGeometry();
+    indexed.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    indexed.setIndex(index);
+    const geometry = indexed.toNonIndexed();
+    indexed.dispose();
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
+};
+
 export function create({
     scene, camera, renderer, sizes, params,
 }) {
@@ -61,7 +161,9 @@ export function create({
 
     // 6-tier quality presets (Minimal<Low<Medium<High<Ultra<Extreme). Audit-verified:
     // High/Ultra/Extreme stay VISUALLY IDENTICAL; the heavier cuts are scoped to Medium and below.
-    const qName = (typeof window !== 'undefined' && window.settings?.graphicsQuality) || 'High';
+    const qName = params?.get?.('quality')
+        || (typeof window !== 'undefined' && window.settings?.graphicsQuality)
+        || 'High';
     const tier = ({
         Minimal: 0, Low: 1, Medium: 2, High: 3, Ultra: 4, Extreme: 5,
     })[qName] ?? 3;
@@ -75,7 +177,6 @@ export function create({
     const bloomStrength = tier >= 3 ? 0.72 : (tier >= 1 ? 0.58 : 0.5);
     const bloomDS = tier >= 3 ? 0.6 : 0.5; // cheaper bloom downsample below High
     const emberCountT = tier <= 1 ? 130 : (tier <= 2 ? 260 : (tier === 3 ? 360 : 420));
-    const shardCountT = tier <= 1 ? 12 : (tier <= 2 ? 18 : 22);
     const reflTaps = tier <= 1 ? 1 : (tier <= 3 ? 3 : 5); // wet-mirror soft-reflection kernel taps (V4 1.3)
     const wantNebula = tier >= 2; // sky nebula lobe (V4 2.7)
     const nebOct = tier <= 2 ? 2 : (tier === 3 ? 3 : 4); // nebula fbm octaves by tier
@@ -109,7 +210,7 @@ export function create({
             s = s.add(mix(vec3(0.34, 0.10, 0.42), vec3(0.12, 0.20, 0.5), neb).mul(neb).mul(sideMask).mul(0.11));
         }
         // 2.7 two-layer stars with twinkle + slight colour temperature (coarse bloom-eligible + fine dim)
-        const P = floor(vec2(atan2(dir.x, dir.z).mul(30.0), y.mul(48.0)));
+        const P = floor(vec2(atan(dir.x, dir.z).mul(30.0), y.mul(48.0)));
         const seed = mx_noise_float(vec3(P.x, P.y, 1.0)).mul(0.5).add(0.5);
         const twk = sin(uTime.mul(2.3).add(seed.mul(40.0))).mul(0.5).add(0.5).mul(0.6)
             .add(0.4);
@@ -119,7 +220,7 @@ export function create({
             .mul(smoothstep(0.08, 0.32, y))
             .mul(twk)
             .mul(float(0.9).add(uS.mul(1.1))));
-        const P2 = floor(vec2(atan2(dir.x, dir.z).mul(72.0), y.mul(110.0)));
+        const P2 = floor(vec2(atan(dir.x, dir.z).mul(72.0), y.mul(110.0)));
         const seed2 = mx_noise_float(vec3(P2.x, P2.y, 5.0)).mul(0.5).add(0.5);
         const twk2 = sin(uTime.mul(3.1).add(seed2.mul(55.0))).mul(0.5).add(0.5);
         s = s.add(vec3(0.70, 0.78, 1.0).mul(pow(seed2, float(70.0))).mul(smoothstep(0.06, 0.30, y)).mul(twk2)
@@ -607,15 +708,24 @@ export function create({
             const bio = pow(flow, float(3.0)).mul(smoothstep(-320.0, -10.0, positionWorld.z).oneMinus());
             water = water.add(vec3(0.55, 0.14, 0.62).mul(bio).mul(0.4));
         }
-        // Wave 3: winding sparkle path — a granular glowing ring encircling the mound (hatom
-        // phase-1's luminous trail). Off-centre-left; sparkle tips just kiss the bloom threshold.
+        // Granular shoreline glints trace the separate island footprints. The old single 56u
+        // ring advertised the oversized mound; these narrow elliptical bands reinforce the
+        // new archipelago and leave the protected centre wedge dark.
         if (tier >= 2) {
-            const mdx = positionWorld.x.add(58.0);
-            const mdz = positionWorld.z.add(74.0);
-            const mdist = mdx.mul(mdx).add(mdz.mul(mdz)).sqrt();
-            const pathBand = smoothstep(10.0, 2.0, abs(mdist.sub(56.0)));
+            let pathBand = float(0.0);
+            SHORE_ISLANDS.forEach((island) => {
+                const dx = positionWorld.x.sub(island.x);
+                const dz = positionWorld.z.sub(island.z);
+                const c = Math.cos(island.rotation);
+                const s = Math.sin(island.rotation);
+                const lx = dx.mul(c).sub(dz.mul(s));
+                const lz = dx.mul(s).add(dz.mul(c));
+                const ellipse = lx.div(island.rx).pow(2.0).add(lz.div(island.rz).pow(2.0)).sqrt();
+                const band = smoothstep(0.035, 0.14, abs(ellipse.sub(1.04))).oneMinus();
+                pathBand = pathBand.add(band);
+            });
             const spark = pow(mx_noise_float(positionWorld.mul(0.7).add(uTime.mul(0.12))).abs(), float(5.0));
-            const pathGlow = pathBand.mul(spark.mul(1.1).add(0.28));
+            const pathGlow = clamp(pathBand, 0.0, 1.0).mul(spark.mul(0.9).add(0.22));
             water = water.add(vec3(0.85, 0.25, 0.60).mul(pathGlow).mul(uS.mul(0.5).add(0.5)).mul(0.30));
         }
         // Expanding combo rings — bioluminescent bands that grow from the emit point (mirrored free).
@@ -735,7 +845,7 @@ export function create({
     // protected centre wedge + warm heroes flanking the relic. Field = 1 draw, heroes = 1 draw.
     const crystalRich = tier >= 3; // High/Ultra/Extreme: internal fracture + DoubleSide + sharp env
     const heroCountByTier = [0, 0, 3, 4, 5, 6];
-    const fieldCountByTier = [18, 26, 38, 50, 58, 66];
+    const fieldCountByTier = [12, 17, 23, 30, 34, 38];
     const heroCount = useTransmission ? (heroCountByTier[tier] ?? 4) : 0; // glass heroes only on tier≥2
     const fieldCount = fieldCountByTier[tier] ?? 50;
 
@@ -865,24 +975,28 @@ export function create({
         heroMat.positionNode = hn.positionNode;
     }
 
-    // ── Composition — 12 clusters, strict L/R alternation, receding −Z, weight↓/spread↑; first 2
-    // foreground brackets, first 6 hero. Envelope keeps |x|≥24 (board wedge) and holds the far shore
-    // wide so crystals FRAME the centre-far relic (0,19,−95) rather than cover it.
-    // Each entry = [x, z, spreadX, spreadZ, weight].
-    const CRYSTAL_CLUSTERS = [
-        [-28, -18, 5, 5, 1.70], [32, -22, 6, 5, 1.60],
-        [-32, -40, 6, 6, 1.50], [30, -46, 7, 6, 1.45],
-        [-50, -58, 9, 8, 1.35], [54, -64, 11, 9, 1.25],
-        [-44, -80, 13, 11, 1.05], [48, -86, 14, 12, 1.00],
-        [-64, -98, 16, 13, 0.85], [62, -104, 18, 14, 0.80],
-        [-52, -118, 20, 15, 0.60], [58, -122, 22, 16, 0.55],
-    ];
-    const clusterWeightSum = CRYSTAL_CLUSTERS.reduce((a, c) => a + c[4], 0);
-    // Warm-majority hero anchors flanking the relic (|x|≥28 → clear of the 9.5-radius relic + wedge).
-    // Each entry = [x, z, warm].
+    // Curated hero anchors live in normalized island-local coordinates. Field crystals use a
+    // balanced golden-angle sequence across the same five islands, creating discrete clumps with
+    // visible rock and water between them instead of one continuous left-side silhouette.
     const HERO_ANCHORS = [
-        [-28, -92, 1], [32, -96, 1], [-36, -102, 1], [30, -88, 1],
-        [-30, -20, 0], [34, -24, 0],
+        {
+            island: 0, ux: 0.46, uz: -0.05, warm: true,
+        },
+        {
+            island: 3, ux: -0.40, uz: 0.02, warm: true,
+        },
+        {
+            island: 1, ux: 0.24, uz: -0.02, warm: false,
+        },
+        {
+            island: 4, ux: -0.20, uz: -0.04, warm: false,
+        },
+        {
+            island: 2, ux: 0.10, uz: 0.02, warm: true,
+        },
+        {
+            island: 0, ux: -0.34, uz: 0.16, warm: false,
+        },
     ];
     const RELIC = { x: 0, z: -95 };
     const twilightSink = new THREE.Color(0x1a0e30); // deep near-black violet for far depth-sink
@@ -905,52 +1019,63 @@ export function create({
         const mesh = new THREE.InstancedMesh(geo, mat, count);
         let s = opts.seed % 2147483647; if (s <= 0) s += 2147483646;
         const rng = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
-        const gaussian = () => (rng() + rng() + rng()) / 3 - 0.5;
         const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
         const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
         const aPhaseArr = new Float32Array(count);
         const aRateArr = new Float32Array(count);
         const aTintArr = new Float32Array(count * 3);
+        const islandOrdinals = new Array(SHORE_ISLANDS.length).fill(0);
         for (let i = 0; i < count; i += 1) {
-            let cx; let cz; let sxSpread; let szSpread; let forceWarm = false;
             // low tiers have no hero mesh → the first few field crystals stand in as pseudo-heroes.
             const asHero = opts.hero || (opts.foldHeroes && i < opts.foldHeroes);
+            let islandIndex; let localX; let localZ; let forceWarm = false;
             if (asHero) {
-                const a = HERO_ANCHORS[i % HERO_ANCHORS.length];
-                cx = a[0]; cz = a[1]; sxSpread = 4; szSpread = 4; forceWarm = a[2] === 1;
+                const anchor = HERO_ANCHORS[i % HERO_ANCHORS.length];
+                islandIndex = anchor.island;
+                const island = SHORE_ISLANDS[islandIndex];
+                localX = anchor.ux * island.rx;
+                localZ = anchor.uz * island.rz;
+                forceWarm = anchor.warm;
             } else {
-                let pick = rng() * clusterWeightSum; // weighted pick over the FULL table (no left-bias bug)
-                let cl = CRYSTAL_CLUSTERS[0];
-                for (let k = 0; k < CRYSTAL_CLUSTERS.length; k += 1) {
-                    pick -= CRYSTAL_CLUSTERS[k][4];
-                    if (pick <= 0) { cl = CRYSTAL_CLUSTERS[k]; break; }
-                }
-                cx = cl[0]; cz = cl[1]; sxSpread = cl[2]; szSpread = cl[3];
+                const fieldIndex = Math.max(0, i - (opts.foldHeroes || 0));
+                islandIndex = ISLAND_SEQUENCE[fieldIndex % ISLAND_SEQUENCE.length];
+                const island = SHORE_ISLANDS[islandIndex];
+                const ordinal = islandOrdinals[islandIndex];
+                islandOrdinals[islandIndex] += 1;
+                const angle = ordinal * GOLDEN_ANGLE + island.seed * 0.013 + (rng() - 0.5) * 0.34;
+                const radius = 0.22 + Math.sqrt(rng()) * 0.46;
+                localX = Math.cos(angle) * island.rx * radius;
+                localZ = Math.sin(angle) * island.rz * radius;
             }
-            let x = cx + gaussian() * sxSpread * 1.7; // tighter clumps (were scattering too wide)
-            const z = cz + gaussian() * szSpread * 1.7;
-            if (Math.abs(x) < 24) x = (x < 0 ? -1 : 1) * (24 + rng() * 10); // hard centre-wedge guard
-            const far = Math.min(1, Math.max(0, (-z - 18) / 178));
-            const near = 1 - far;
-            const isStub = !asHero && rng() < 0.42; // ~42% short stubs → silhouette variety
-            const statureMul = isStub ? (0.34 + rng() * 0.34) : (0.80 + rng() * 0.42);
-            // Chunky gem proportions (aspect ≈3-6:1, not needle-thin); heroes stay tall + dramatic.
-            const sy = (3.4 + rng() * 7.5 + (asHero ? near * 5.0 : near * 1.2))
-                * (asHero ? 1.35 : 1.0) * statureMul;
-            const widthBias = isStub ? (1.35 + rng() * 0.6) : (0.72 + rng() * 0.5);
-            const baseW = 1.25 + rng() * 0.7; // wider base → solid cut-gem read
-            const sxW = baseW * widthBias * (asHero ? 1.35 : 1.0); // heroes read as solid landmarks
+            const island = SHORE_ISLANDS[islandIndex];
+            const world = islandLocalToWorld(island, localX, localZ);
+            const { x, z } = world;
+            const depthScale = Math.max(0.65, Math.min(1, (z + 125) / 72));
+            const isStub = !asHero && rng() < 0.34;
+            let sy;
+            if (asHero) sy = (8.8 + rng() * 3.6) * depthScale;
+            else if (isStub) sy = (2.6 + rng() * 2.2) * depthScale;
+            else sy = (4.6 + rng() * 4.3) * depthScale;
+            // Chunky gem proportions (aspect ≈3-6:1, not needle-thin); heroes stay broad landmarks.
+            let widthBase;
+            if (asHero) widthBase = 2.45;
+            else if (isStub) widthBase = 1.9;
+            else widthBase = 1.5;
+            const sxW = widthBase * (0.86 + rng() * 0.28);
             const szW = sxW * (0.82 + rng() * 0.36);
-            const lean = (asHero ? 0.12 : 0.30) * (isStub ? 2.1 : 1.0); // heroes stand straighter
-            const sink = sy * 0.2 + 0.6 + rng() * 0.4; // bury ~20% of the height → scale-proof rooting
+            let lean = 0.20;
+            if (asHero) lean = 0.12;
+            else if (isStub) lean = 0.26;
+            const surfaceY = sampleIslandSurface(island, localX, localZ);
+            const sink = sy * (asHero ? 0.12 : 0.16) + 0.18;
             _e.set((rng() - 0.5) * lean, rng() * Math.PI * 2, (rng() - 0.5) * lean);
             _q.setFromEuler(_e);
             _s.set(sxW, sy, szW);
-            _p.set(x, 0.53 * sy - sink, z); // unit base at -0.53*sy → world base sits ≈sink below y=0
+            _p.set(x, surfaceY + 0.53 * sy - sink, z);
             _m.compose(_p, _q, _s);
             mesh.setMatrixAt(i, _m);
             const hue = pickHue(rng, x, z, forceWarm);
-            mesh.setColorAt(i, hue.clone().multiplyScalar(0.38)); // dark body → silhouette read
+            mesh.setColorAt(i, hue.clone().multiplyScalar(0.42)); // dark body with enough lift for faceted read
             aTintArr[i * 3] = hue.r; aTintArr[i * 3 + 1] = hue.g; aTintArr[i * 3 + 2] = hue.b;
             aPhaseArr[i] = rng();
             aRateArr[i] = 0.5 + rng() * 0.7; // desynced breath rate
@@ -978,7 +1103,10 @@ export function create({
     }
 
     // ════ FOREGROUND BOULDERS — near-black silhouettes at the frame edges (depth stack) ════
-    const boulderCountT = tier <= 1 ? 4 : (tier <= 2 ? 7 : (tier === 3 ? 10 : 14));
+    let boulderCountT = 8;
+    if (tier <= 1) boulderCountT = 4;
+    else if (tier <= 2) boulderCountT = 5;
+    else if (tier === 3) boulderCountT = 6;
     const bnoise = (x, y) => { const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return s - Math.floor(s); };
     const boulderMat = new THREE.MeshBasicNodeMaterial();
     {
@@ -1020,6 +1148,18 @@ export function create({
         // z capped ≤ +16 so they stay ≥~18u from the lens even at the full Cosmos dolly-in).
         const aspect = (sizes?.width || 1280) / (sizes?.height || 720);
         const cornerX = 36 * Math.tan((58 / 2) * (Math.PI / 180)) * aspect * 0.85;
+        const overlapsIsland = (worldX, worldZ, scale) => SHORE_ISLANDS.some((island) => {
+            const dx = worldX - island.x;
+            const dz = worldZ - island.z;
+            const c = Math.cos(island.rotation);
+            const s = Math.sin(island.rotation);
+            const localX = dx * c - dz * s;
+            const localZ = dx * s + dz * c;
+            return Math.hypot(
+                localX / (island.rx + scale * 0.45),
+                localZ / (island.rz + scale * 0.35),
+            ) < 1;
+        });
         for (let i = 0; i < boulderCountT; i += 1) {
             const side = i % 2 === 0 ? -1 : 1;
             let sc = 5 + bnoise(i, 3) * 13; // 5..18
@@ -1029,6 +1169,11 @@ export function create({
                 sc = 11 + i * 3;
                 x = side * cornerX;
                 z = 6 + i * 5; // +6 / +11 (≤ +16 cap)
+            }
+            if (i >= 2 && overlapsIsland(x, z, sc)) {
+                x = side * (96 + bnoise(i, 8) * 28);
+                z = -18 - bnoise(i, 9) * 60;
+                sc *= 0.75;
             }
             _e.set(bnoise(i, 4) * 3, bnoise(i, 5) * 6, bnoise(i, 6) * 3);
             _q.setFromEuler(_e);
@@ -1042,55 +1187,48 @@ export function create({
     boulders.frustumCulled = false;
     scene.add(track(boulders));
 
-    // ════ BIOLUMINESCENT RIVERBED MOUND — dark rock + glowing magenta veins (off-centre) ════
-    // The signature hatom "living terrain" element. Kept dim (sub-bloom) + off-centre so it never
-    // backlights the board. Displaced plane → a low mound rising from the shore behind the crystals.
-    if (tier >= 2) {
-        const moundMat = new THREE.MeshBasicNodeMaterial();
-        {
-            const pl = positionLocal;
-            // 2.5 domain-warp (High+) so the vein network churns organically rather than scrolling rigidly
-            let vp = vec2(pl.x.mul(0.06), pl.y.mul(0.06).add(uTime.mul(0.03)));
-            if (tier >= 3) {
-                const w = mx_noise_float(vec3(pl.x.mul(0.03), pl.y.mul(0.03), uTime.mul(0.02))).mul(0.4);
-                vp = vp.add(w);
-            }
-            const vf = mx_fractal_noise_float(vec3(vp.x, vp.y, 0.0), 3).mul(0.5).add(0.5);
-            const vein = smoothstep(0.055, 0.0, abs(vf.sub(0.5))); // glowing vein isolines
-            // Wave 3: GRANULAR twinkling speckle (hatom's phase-1 mound reads as glowing sand) —
-            // per-grain phase from a second noise so individual grains shimmer independently.
-            const speck = pow(mx_noise_float(pl.mul(0.55)).abs(), float(4.0)); // fine moss speckle
-            const grainPh = mx_noise_float(pl.mul(0.9)).mul(20.0);
-            const tw3 = sin(uTime.mul(2.0).add(grainPh)).mul(0.5).add(0.5).mul(0.9)
-                .add(0.5);
-            let speckSum = speck.mul(tw3);
-            if (tier >= 3) { // extra fine glitter layer on High+
-                speckSum = speckSum.add(pow(mx_noise_float(pl.mul(1.6)).abs(), float(6.0)).mul(tw3).mul(0.8));
-            }
-            const veinCol = vec3(0.9, 0.2, 0.6).mul(vein.mul(0.5).add(speckSum.mul(0.22)));
-            const Nm = normalize(normalWorld); // valid after computeVertexNormals() below
-            moundMat.colorNode = vec3(0.02, 0.012, 0.03)
-                .add(veinCol.mul(float(0.45).add(uS.mul(0.55))))
-                .add(hemiFillNode(Nm).mul(0.4)) // 1.1 colored ambient
-                .add(eggBounceNode(Nm).mul(0.6)); // 1.1 warm egg bounce
-            moundMat.toneMapped = false;
+    // ════ CRYSTAL ISLANDS — five separated low-poly rock crowns with visible wet skirts ════
+    // The old displaced plane formed one 95×62 near-black canopy and buried lake-rooted crystals.
+    // These compact, asymmetric islands expose water gaps, carry the crystals at sampled surface Y,
+    // and use a narrow shoreline lift so their silhouettes survive the LUT/vignette black crush.
+    const islandMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const N = normalize(normalWorld);
+        const P = positionWorld;
+        const top = smoothstep(0.58, 0.90, N.y);
+        const key = clamp(dot(N, normalize(vec3(-0.35, 0.78, 0.52))), 0.0, 1.0);
+        const waterline = smoothstep(0.22, 1.35, abs(P.y.sub(0.10))).oneMinus()
+            .mul(smoothstep(0.30, 0.72, N.y).oneMinus());
+        const crown = smoothstep(0.5, 4.5, P.y).mul(top);
+        const fillMask = top.mul(0.55).add(0.35);
+        let livingDetail = vec3(0.0);
+        if (tier >= 2) {
+            const field = mx_fractal_noise_float(P.mul(0.18).add(vec3(0.0, uTime.mul(0.012), 0.0)), tier >= 3 ? 3 : 2)
+                .mul(0.5).add(0.5);
+            const fineVein = smoothstep(0.025, 0.075, abs(field.sub(0.5))).oneMinus().mul(top);
+            const speck = pow(mx_noise_float(P.mul(0.62)).abs(), float(5.0)).mul(top);
+            const twinkle = sin(uTime.mul(1.4).add(mx_noise_float(P.mul(0.9)).mul(18.0))).mul(0.18).add(0.82);
+            livingDetail = vec3(0.62, 0.13, 0.42).mul(fineVein).mul(0.075)
+                .add(vec3(0.36, 0.18, 0.52).mul(speck).mul(twinkle).mul(0.055));
         }
-        const moundGeo = new THREE.PlaneGeometry(95, 62, 48, 30);
-        const mp = moundGeo.attributes.position;
-        const mn = (x, y) => { const s = Math.sin(x * 12.9 + y * 78.2) * 43758.5; return s - Math.floor(s); };
-        for (let i = 0; i < mp.count; i += 1) {
-            const x = mp.getX(i); const y = mp.getY(i);
-            const r = Math.sqrt(x * x + y * y) / 46;
-            const dome = Math.max(0, 1 - r * r) * 11; // radial mound
-            mp.setZ(i, dome + (mn(x * 0.3, y * 0.3) - 0.5) * 4.5); // + rocky roughness
-        }
-        mp.needsUpdate = true;
-        moundGeo.computeVertexNormals(); // 1.1 REQUIRED: displaced plane normals are uniform otherwise → flat hemi fill
-        const mound = new THREE.Mesh(moundGeo, moundMat);
-        mound.rotation.x = -Math.PI / 2; // lay flat (displacement → +y)
-        mound.position.set(-58, -1, -74); // off-centre-left, behind the crystals
-        scene.add(track(mound));
+        islandMat.colorNode = mix(vec3(0.014, 0.008, 0.032), vec3(0.090, 0.028, 0.125), top)
+            .add(vec3(0.20, 0.08, 0.27).mul(key).mul(0.40).mul(fillMask))
+            .add(hemiFillNode(N).mul(0.62).mul(fillMask))
+            .add(eggBounceNode(N).mul(0.62))
+            .add(vec3(0.50, 0.12, 0.38).mul(waterline).mul(0.25))
+            .add(vec3(0.13, 0.06, 0.23).mul(crown).mul(0.20))
+            .add(livingDetail.mul(float(0.45).add(uS.mul(0.55))));
+        islandMat.toneMapped = false;
     }
+    const islands = new THREE.Group();
+    SHORE_ISLANDS.forEach((island) => {
+        const mesh = new THREE.Mesh(buildIslandGeometry(island), islandMat);
+        mesh.position.set(island.x, 0, island.z);
+        mesh.rotation.y = island.rotation;
+        mesh.renderOrder = 0;
+        islands.add(mesh);
+    });
+    scene.add(track(islands));
 
     // 2.5 cheap curl-ish swirl velocity from a 2D noise field (ONE call per point → 2 noise/vert, reused for x/z)
     const curlDrift = (px, pz, t, amp) => vec2(

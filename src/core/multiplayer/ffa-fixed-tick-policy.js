@@ -13,6 +13,15 @@ export function rollbackFixedTickOnPromotion(enabled, recordEvent) {
     return false;
 }
 
+/** Reset projected peer time after an authoritative hard state replacement. */
+export function resetFfaFixedClockProjection(game) {
+    game._simTickAccumulatorMs = 0;
+    game._fixedInputTimeMs = null;
+    game._peerFixedInputSimTick = null;
+    game._activeFixedInputStamp = null;
+    game.localInputHooks?.reset?.();
+}
+
 /** Adopt an authoritative FFA clock without leaving a live loop half-switched. */
 export function transitionFfaSimulationClock(game, simulationClock) {
     const fixedTickRequested = simulationClock === 'fixed60-v1';
@@ -34,11 +43,7 @@ export function transitionFfaSimulationClock(game, simulationClock) {
     }
 
     if (changed) {
-        game._simTickAccumulatorMs = 0;
-        game._fixedInputTimeMs = null;
-        game._peerFixedInputSimTick = null;
-        game._activeFixedInputStamp = null;
-        game.localInputHooks?.reset?.();
+        resetFfaFixedClockProjection(game);
     }
 
     return changed;

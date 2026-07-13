@@ -113,6 +113,14 @@ export const FLAG_REGISTRY = [
     {
         name: 'desyncCheck', default: true, purpose: 'peer-local-sim divergence backstop (digest compare → forceLocal resync); plan §1.2', kind: 'permanent-ops', reader: 'flags',
     },
+    {
+        name: 'wireV2',
+        default: false,
+        purpose: 'opt-in protocol-v2 raw snapshot frames for the plan §6A.4 two-peer bandwidth soak',
+        kind: 'refactor',
+        expiry: '2026-09-30',
+        reader: 'flags',
+    },
 
     // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js) ──
     {

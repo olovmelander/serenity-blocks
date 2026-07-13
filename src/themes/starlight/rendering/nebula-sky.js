@@ -68,7 +68,7 @@ export function createNebulaSky() {
         // it reads as 3D occlusion. Kept dim — a whisper, not a smear.
         const bandN = normalize(vec3(0.30, 0.42, 0.86));
         const planeDist = abs(dot(dir, bandN));
-        const band = smoothstep(0.28, 0.0, planeDist).toVar();
+        const band = smoothstep(0.0, 0.28, planeDist).oneMinus().toVar();
         const lane = valueNoise2(dir.xy.mul(6.0).add(dir.zz.mul(2.0)));
         band.mulAssign(float(1.0).sub(smoothstep(0.4, 0.7, lane).mul(0.7)));
         nebColor.addAssign(MWCORE.mul(band.mul(0.7)));

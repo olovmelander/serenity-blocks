@@ -193,9 +193,10 @@ export default class StarlightTheme extends BaseTheme {
         this.shockwaveRenderer = createShockwaveRenderer(this.shockwaves);
         this.scene.add(this.shockwaveRenderer.mesh);
 
-        // Constellations — self-drawing figures (ambient + big-moment triggers).
+        // Constellations — earned figures only (ambient accumulation off by default per
+        // plan §4.5: long-lived visual memory is one earned sign, not a clutter of ambient ones).
         if (this._constellationsEnabledForTier()) {
-            this.constellations = new ConstellationController({ ambient: true });
+            this.constellations = new ConstellationController({ ambient: false });
             this.constellationRenderer = createConstellationRenderer(this.constellations);
             this.scene.add(this.constellationRenderer.group);
         }
@@ -372,11 +373,13 @@ export default class StarlightTheme extends BaseTheme {
                 }
 
                 // Decay event FX punches (fast taps, not sustained boosts).
+                // Delta-normalized (exp of the 60 Hz-referenced per-frame factors) so the
+                // punch tail matches at 60/120/144 Hz instead of decaying faster on high-refresh.
                 const fx = this.fxState;
-                fx.bloomPunch *= 0.86;
-                fx.vignettePunch *= 0.82;
-                fx.chromaPunch *= 0.8;
-                fx.flashPunch *= 0.78;
+                fx.bloomPunch *= Math.exp(-9.05 * delta); // ≈0.86 / frame @60Hz
+                fx.vignettePunch *= Math.exp(-11.9 * delta); // ≈0.82
+                fx.chromaPunch *= Math.exp(-13.4 * delta); // ≈0.80
+                fx.flashPunch *= Math.exp(-14.9 * delta); // ≈0.78
 
                 // Render — through the post pipeline when enabled, else direct.
                 if (this.postPipeline?.isEnabled()) {

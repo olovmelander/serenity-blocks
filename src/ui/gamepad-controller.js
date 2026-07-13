@@ -7,6 +7,7 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
 import { COLS, ROWS } from '../core/constants.js';
+import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
@@ -1941,64 +1942,19 @@ export class GamepadController {
 
             // For downward movement map to continuous softDrop, custom interval or 50ms default
             if (dir === 'down') {
-                const interval = this.softDropInterval;
-                if (interval <= 0) {
-                    for (let i = 0; i < INSTANT_SOFT_DROP_REPEAT_LIMIT; i++) {
-                        if (action() === false) {
-                            break;
-                        }
-                    }
-                    state.intervalAccumulator = 0;
-                    return;
-                }
-                state.intervalAccumulator += delta;
-                while (state.intervalAccumulator >= interval) {
-                    state.intervalAccumulator -= interval;
-                    action();
-                }
+                advanceSoftDrop(state, delta, {
+                    softDropInterval: this.softDropInterval,
+                    instantLimit: INSTANT_SOFT_DROP_REPEAT_LIMIT,
+                }, action);
                 return;
             }
 
             // For left/right movement
-            const runInstantRepeat = () => {
-                for (let i = 0; i < INSTANT_DAS_REPEAT_LIMIT; i++) {
-                    if (action() === false) {
-                        break;
-                    }
-                }
-                state.intervalAccumulator = 0;
-            };
-
-            if (!state.isRepeating) {
-                state.delayAccumulator += delta;
-                if (state.delayAccumulator >= this.dasDelay) {
-                    state.isRepeating = true;
-                    state.intervalAccumulator = state.delayAccumulator - this.dasDelay;
-
-                    if (this.dasInterval <= 0) {
-                        runInstantRepeat();
-                        return;
-                    }
-
-                    action();
-
-                    while (state.intervalAccumulator >= this.dasInterval) {
-                        state.intervalAccumulator -= this.dasInterval;
-                        action();
-                    }
-                }
-            } else {
-                if (this.dasInterval <= 0) {
-                    runInstantRepeat();
-                    return;
-                }
-
-                state.intervalAccumulator += delta;
-                while (state.intervalAccumulator >= this.dasInterval) {
-                    state.intervalAccumulator -= this.dasInterval;
-                    action();
-                }
-            }
+            advanceDas(state, delta, {
+                dasDelay: this.dasDelay,
+                dasInterval: this.dasInterval,
+                instantLimit: INSTANT_DAS_REPEAT_LIMIT,
+            }, action);
         };
 
         processDirection('left');
