@@ -4458,68 +4458,15 @@ export class OdysseyMode extends BaseGameMode {
     _hookInputs() {
         const session = this._activeLevelSession;
         if (!this._isLevelSessionActive(session)) return;
-        const { gameState } = session;
-        const canInput = () => this._isLevelSessionActive(session)
-            && !gameState.isPaused
-            && !gameState.isGameOver
-            && gameState.hitStopRemaining <= 0;
-        this.originalInputs = {
-            move: window.move,
-            rotate: window.rotate,
-            hardDrop: window.hardDrop,
-            softDrop: window.softDrop,
-        };
-
-        // Initialize BoardJuice for reactive board motion
         this._initBoardJuice();
-
-        window.move = (dir) => {
-            if (!canInput()) return;
-            // Odyssey mirror modifier: reverse left/right at the single input choke point (keyboard
-            // tap, DAS auto-repeat, and gamepad all route through window.move) so shared physics and
-            // single-player are untouched (masterplan §2 #3 / C2). Rotation is intentionally not
-            // mirrored, matching standard mirror-mode.
-            const mdir = gameState.mirrorControls ? -dir : dir;
-            const moved = coreMove(gameState, mdir, () => this.deps.soundManager?.sfxPlayer?.playMove());
-            if (this.boardJuice) {
-                if (moved) {
-                    this.boardJuice.nudge(mdir * 1.5, 0);
-                    this.boardJuice.tilt(mdir * 0.4);
-                } else {
-                    this.boardJuice.nudge(mdir * 0.8, 0);
-                }
-            }
-        };
-
-        window.rotate = (dir) => {
-            if (!canInput()) return;
-            coreRotate(gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playRotate());
-            if (this.boardJuice) {
-                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
-            }
-        };
-
-        window.hardDrop = () => {
-            if (!canInput()) return;
-            if (this.boardJuice) {
-                this.boardJuice.dip(3);
-                this.boardJuice.bounce();
-            }
-            coreHardDrop(
-                gameState,
-                () => this.deps.soundManager?.sfxPlayer?.playDrop(),
-                this._getPhysicsCallbacks(session),
-            );
-        };
-
-        window.softDrop = () => {
-            if (!canInput()) return;
-            coreSoftDrop(
-                gameState,
-                () => this.deps.soundManager?.sfxPlayer?.playDrop(),
-                this._getPhysicsCallbacks(session),
-            );
-        };
+        this._legacyInputOwner?.dispose();
+        this._legacyInputOwner = installOdysseyLegacyInputWrapper({
+            gameState: session.gameState,
+            isActive: () => this._isLevelSessionActive(session),
+            juice: this.boardJuice,
+            physicsCallbacks: this._getPhysicsCallbacks(session),
+            soundPlayer: this.deps.soundManager?.sfxPlayer,
+        });
     }
 
     /**
@@ -4544,12 +4491,8 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _restoreInputs() {
-        Object.keys(this.originalInputs).forEach((fnName) => {
-            if (this.originalInputs[fnName]) {
-                window[fnName] = this.originalInputs[fnName];
-            }
-        });
-        this.originalInputs = {};
+        this._legacyInputOwner?.dispose();
+        this._legacyInputOwner = null;
     }
 
     /**
