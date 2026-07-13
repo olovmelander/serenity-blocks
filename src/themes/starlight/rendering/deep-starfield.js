@@ -136,8 +136,8 @@ export function createDeepStarfield(options = {}) {
         // 4-point diffraction glints — only the brightest ~1.5% of stars.
         const ax = abs(uvc.x);
         const ay = abs(uvc.y);
-        const spikeH = smoothstep(0.5, 0.0, ay.mul(7.0)).mul(smoothstep(0.5, 0.0, ax));
-        const spikeV = smoothstep(0.5, 0.0, ax.mul(7.0)).mul(smoothstep(0.5, 0.0, ay));
+        const spikeH = smoothstep(0.0, 0.5, ay.mul(7.0)).oneMinus().mul(smoothstep(0.0, 0.5, ax).oneMinus());
+        const spikeV = smoothstep(0.0, 0.5, ax.mul(7.0)).oneMinus().mul(smoothstep(0.0, 0.5, ay).oneMinus());
         const hero = step(0.985, seed);
         const spikes = spikeH.add(spikeV).mul(hero).mul(0.5);
 

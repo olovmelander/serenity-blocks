@@ -7,6 +7,8 @@ import {
 } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
+import { DOWNLOAD_JOIN_TIMEOUT_MS } from '../../src/core/multiplayer/ffa/resync-coordinator.js';
+import { JOIN_LIFECYCLE_STATES } from '../../src/core/multiplayer/ffa/join-lifecycle.js';
 
 function makeHost(overrides = {}) {
     const state = Object.assign(Object.create(FFAGameStateP2P.prototype), {
@@ -88,7 +90,7 @@ describe('FFA download-then-stream join fence', () => {
         expect(state.downloadJoinPeers.get('PEER')).toMatchObject({
             resyncId: transfer.resyncId,
             downloadEpoch: transfer.resyncId,
-            snapshotSeq: 44,
+            snapshotSeq: 45,
             simTick: 120,
             roundGeneration: 3,
         });
@@ -97,7 +99,7 @@ describe('FFA download-then-stream join fence', () => {
         expect(type).toBe(MessageTypes.GAME_STATE_RESYNC);
         expect(chunk).toMatchObject({
             downloadEpoch: transfer.resyncId,
-            baselineSnapshotSeq: 44,
+            baselineSnapshotSeq: 45,
             baselineSimTick: 120,
             roundGeneration: 3,
         });
@@ -140,6 +142,7 @@ describe('FFA download-then-stream join fence', () => {
     it('drops live snapshots on the peer while a download baseline is in progress', () => {
         const state = Object.assign(Object.create(FFAGameStateP2P.prototype), {
             _downloadJoinEnabled: true,
+            joinState: JOIN_LIFECYCLE_STATES.DOWNLOADING,
             downloadJoinInProgress: {
                 resyncId: 'r1',
                 downloadEpoch: 'r1',
@@ -154,9 +157,69 @@ describe('FFA download-then-stream join fence', () => {
         }, { from: 'HOST' })).toBe(true);
     });
 
+    it('keeps the host block through the timeout boundary, then expires it with telemetry', () => {
+        const startedAt = 1_000;
+        const state = makeHost({
+            downloadJoinPeers: new Map([['PEER', {
+                resyncId: 'r1',
+                downloadEpoch: 'r1',
+                startedAt,
+            }]]),
+        });
+        const now = vi.spyOn(Date, 'now');
+
+        now.mockReturnValue(startedAt + DOWNLOAD_JOIN_TIMEOUT_MS);
+        expect(state._getDownloadJoinBlockedPeers()).toEqual(new Set(['PEER']));
+        expect(state.downloadJoinPeers.has('PEER')).toBe(true);
+
+        now.mockReturnValue(startedAt + DOWNLOAD_JOIN_TIMEOUT_MS + 1);
+        expect(state._getDownloadJoinBlockedPeers()).toEqual(new Set());
+        expect(state.downloadJoinPeers.has('PEER')).toBe(false);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('download_timeout', {
+            steamId: 'PEER',
+            resyncId: 'r1',
+            downloadEpoch: 'r1',
+        });
+    });
+
+    it('keeps the peer fence through the timeout boundary, then accepts live state', () => {
+        const startedAt = 1_000;
+        const state = Object.assign(Object.create(FFAGameStateP2P.prototype), {
+            _downloadJoinEnabled: true,
+            joinState: JOIN_LIFECYCLE_STATES.DOWNLOADING,
+            downloadJoinInProgress: {
+                resyncId: 'r1',
+                downloadEpoch: 'r1',
+                startedAt,
+            },
+            _recordNetEvent: vi.fn(),
+        });
+        const now = vi.spyOn(Date, 'now');
+
+        now.mockReturnValue(startedAt + DOWNLOAD_JOIN_TIMEOUT_MS);
+        expect(state._shouldDropLiveSnapshotDuringDownload(
+            { snapshotSeq: 45, simTick: 122 },
+            { from: 'HOST' },
+        )).toBe(true);
+
+        now.mockReturnValue(startedAt + DOWNLOAD_JOIN_TIMEOUT_MS + 1);
+        expect(state._shouldDropLiveSnapshotDuringDownload(
+            { snapshotSeq: 46, simTick: 123 },
+            { from: 'HOST' },
+        )).toBe(false);
+        expect(state.downloadJoinInProgress).toBeNull();
+        expect(state.joinState).toBe(JOIN_LIFECYCLE_STATES.LIVE);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('download_timeout', {
+            resyncId: 'r1',
+            downloadEpoch: 'r1',
+            peerSide: true,
+        });
+    });
+
     it('clears the peer download fence after the resync snapshot applies', () => {
         const state = Object.assign(Object.create(FFAGameStateP2P.prototype), {
             _downloadJoinEnabled: true,
+            joinState: JOIN_LIFECYCLE_STATES.DOWNLOADING,
             downloadJoinInProgress: {
                 resyncId: 'r1',
                 downloadEpoch: 'r1',
@@ -183,6 +246,43 @@ describe('FFA download-then-stream join fence', () => {
         expect(state.downloadJoinInProgress).toBeNull();
         expect(state._applySnapshotState).toHaveBeenCalledWith(expect.objectContaining({
             downloadEpoch: 'r1',
-        }), { forceLocal: true });
+        }), { forceLocal: true, render: false });
+    });
+
+    it('retires an old-host download fence so successor live snapshots are accepted', () => {
+        const state = Object.assign(Object.create(FFAGameStateP2P.prototype), {
+            _downloadJoinEnabled: true,
+            joinState: JOIN_LIFECYCLE_STATES.DOWNLOADING,
+            resyncBuffers: new Map([['old-r', {}]]),
+            downloadJoinInProgress: {
+                resyncId: 'old-r',
+                downloadEpoch: 'old-r',
+                startedAt: Date.now(),
+            },
+            network: {
+                incomingSnapshotBaselines: new Map([['OLD', {}]]),
+                lastResyncRequestAt: new Map([['OLD', Date.now()]]),
+            },
+            _recordNetEvent: vi.fn(),
+        });
+
+        expect(state._shouldDropLiveSnapshotDuringDownload(
+            { snapshotSeq: 45, simTick: 122 },
+            { from: 'OLD' },
+        )).toBe(true);
+
+        state.onHostAuthorityChanged({
+            previousHostId: 'OLD',
+            newHostId: 'NEW',
+            source: 'migration_claim',
+        });
+
+        expect(state._shouldDropLiveSnapshotDuringDownload(
+            { snapshotSeq: 46, simTick: 123 },
+            { from: 'NEW' },
+        )).toBe(false);
+        expect(state.resyncBuffers.size).toBe(0);
+        expect(state.network.incomingSnapshotBaselines.has('OLD')).toBe(false);
+        expect(state.joinState).toBe(JOIN_LIFECYCLE_STATES.LIVE);
     });
 });

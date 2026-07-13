@@ -106,6 +106,28 @@ describe('canonical simulation advanceTick', () => {
         })).toThrow('applyInput must return a boolean or InputDisposition');
     });
 
+    it('cancels post-input hit-stop and physics when lifecycle ownership changes', () => {
+        const state = new GameState();
+        let ownsTick = true;
+        const advancePhysics = vi.fn();
+
+        const result = advanceTick(state, {
+            advanceInput: () => {
+                state.reset();
+                state.hitStopRemaining = 30;
+                ownsTick = false;
+            },
+            advancePhysics,
+            shouldContinue: () => ownsTick,
+        });
+
+        expect(result.physicsAdvanced).toBe(false);
+        expect(result.frozen).toBe(false);
+        expect(state.hitStopRemaining).toBe(30);
+        expect(state.hitStopTicks).toBe(0);
+        expect(advancePhysics).not.toHaveBeenCalled();
+    });
+
     it('ingests a release during hit-stop and produces no ghost repeat after thaw', () => {
         const state = new GameState({ inputHandling: { dasDelay: 0, dasInterval: 0 } });
         state.hitStopRemaining = 30;

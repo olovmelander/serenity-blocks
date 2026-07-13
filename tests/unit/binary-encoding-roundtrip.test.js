@@ -61,6 +61,14 @@ function makeSnapshot(players) {
     };
 }
 
+function appendTrailingByte(buffer, value = 0xa5) {
+    const bytes = new Uint8Array(buffer);
+    const tailed = new Uint8Array(bytes.byteLength + 1);
+    tailed.set(bytes);
+    tailed[bytes.byteLength] = value;
+    return tailed.buffer;
+}
+
 describe('binary snapshot encoding', () => {
     it('round-trips a full snapshot preserving identity, stats, phase and tick', () => {
         const encoder = getBinaryEncoder();
@@ -359,6 +367,52 @@ describe('binary snapshot encoding', () => {
         // A FULL snapshot is not a delta → null (caller must not treat it as one).
         const fullBuffer = encoder.encodeSnapshot(current);
         expect(decoder.peekDeltaBaselineTick(fullBuffer)).toBeNull();
+    });
+
+    it('rejects a different packed-body format instead of interpreting it under v7', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', score: 100 })]);
+        const current = makeSnapshot([makePlayer({ steamId: '1000', score: 250 })]);
+        const full = new Uint8Array(encoder.encodeSnapshot(baseline));
+        const delta = new Uint8Array(encoder.encodeDeltaSnapshot(current, baseline));
+        full[4] = 6;
+        delta[4] = 6;
+
+        expect(() => decoder.decodeSnapshot(full.buffer)).toThrow(/version mismatch/);
+        expect(() => decoder.decodeDeltaSnapshot(delta.buffer, baseline)).toThrow(/version mismatch/);
+    });
+
+    it('rejects trailing bytes after otherwise valid full and delta v7 bodies', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', score: 100 })]);
+        const current = makeSnapshot([makePlayer({ steamId: '1000', score: 250 })]);
+        current.tick = 100;
+        current.simTick = 1235;
+        current.snapshotSeq = 57;
+
+        const baselineBody = encoder.encodeSnapshot(baseline);
+        const decodedBaseline = decoder.decodeSnapshot(baselineBody);
+        const fullBody = encoder.encodeSnapshot(current);
+        const deltaBody = encoder.encodeDeltaSnapshot(current, baseline);
+
+        expect(decoder.decodeSnapshot(fullBody)).toMatchObject({
+            tick: 100,
+            simTick: 1235,
+            snapshotSeq: 57,
+        });
+        expect(decoder.decodeDeltaSnapshot(deltaBody, decodedBaseline)).toMatchObject({
+            tick: 100,
+            simTick: 1235,
+            snapshotSeq: 57,
+        });
+        expect(() => decoder.decodeSnapshot(appendTrailingByte(fullBody)))
+            .toThrow(/trailing bytes/);
+        expect(() => decoder.decodeDeltaSnapshot(
+            appendTrailingByte(deltaBody),
+            decodedBaseline,
+        )).toThrow(/trailing bytes/);
     });
 
     it('returns null for a delta when the player roster changes (forcing a full snapshot)', () => {

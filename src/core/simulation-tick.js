@@ -48,6 +48,7 @@ export function hasActiveHitStop(gameState) {
  *   }) => void,
  *   applyInput?: (command: InputCommand) => InputDisposition|boolean,
  *   advancePhysics?: (tickMs: number) => void,
+ *   shouldContinue?: () => boolean,
  * }} [options]
  * @returns {AdvanceTickResult}
  */
@@ -96,6 +97,20 @@ export function advanceTick(gameState, options = {}) {
         tickMs,
         emit,
     });
+
+    // Input callbacks may synchronously end/restart a round. The lifecycle
+    // owner resets the board in place, so stale post-input work must not consume
+    // the new round's hit-stop or advance its physics.
+    if (options.shouldContinue && !options.shouldContinue()) {
+        return {
+            tick: gameState.simFrame,
+            tickMs,
+            simTimeMs: gameState.simTimeMs,
+            input,
+            frozen: false,
+            physicsAdvanced: false,
+        };
+    }
 
     // Consume once after input: pre-existing freezes reject this tick's batch;
     // hit-stop produced by an accepted command freezes before gravity and makes

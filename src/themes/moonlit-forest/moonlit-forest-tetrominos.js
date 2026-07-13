@@ -10,52 +10,52 @@ export const MOONLIT_FOREST_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#c0d8f0', // Moonbeam silver - pale silvery moonlight rays
-        O: '#00d9ff', // Glowing mushroom cyan - bioluminescent fungi
-        T: '#a78bfa', // Mystical purple - enchanted forest magic
-        S: '#4a9b6b', // Forest emerald - lush tree foliage
-        Z: '#2c4a5a', // Shadowy teal - deep forest night
-        J: '#ffa726', // Amber eyes - glowing wildlife and fireflies
-        L: '#6ee7b7', // Moss aqua - undergrowth and forest floor
-        GARBAGE: '#1a2820', // Deep shadow - darkest forest depths
+        I: '#c5d8dc', // Neutral silver moon key
+        O: '#62d9bd', // Bioluminescent fungal teal
+        T: '#9d89c7', // Bark-violet forest magic
+        S: '#5f9f82', // Moonlit moss
+        Z: '#7194a5', // Mist blue — lifted so it remains legible in deep shadow
+        J: '#ebcb69', // Rare firefly gold
+        L: '#82baa8', // Pale fern green
+        GARBAGE: '#344854', // Cool slate with enough separation from the foreground
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 12,
-        glowIntensity: 0.75,
+        glowRadius: 10,
+        glowIntensity: 0.62,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 1.8,
-        outlineColor: 'rgba(192, 216, 240, 0.3)', // Soft moonlight outline
+        outlineWidth: 1.65,
+        outlineColor: 'rgba(197, 216, 220, 0.38)',
 
         // Pulse like glowing mushrooms and breathing forest
         pulse: true,
         pulseSpeed: 0.042, // Gentle, organic pulsing
-        pulseAmplitude: 0.21, // Noticeable bioluminescence
+        pulseAmplitude: 0.14,
 
         // Shimmer like moonlight filtering through leaves
         shimmer: true,
         shimmerSpeed: 0.048,
-        shimmerIntensity: 0.18,
+        shimmerIntensity: 0.12,
 
         // Trails like moonbeams through mist
         trails: true,
         trailLength: 0.14,
-        trailOpacity: 0.28,
+        trailOpacity: 0.2,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 10,
-            glowIntensity: 0.7,
+            glowRadius: 9,
+            glowIntensity: 0.58,
             outlineWidth: 1.6,
         },
         phaser: {
-            glowRadius: 14,
-            glowIntensity: 0.8,
+            glowRadius: 12,
+            glowIntensity: 0.68,
             outlineWidth: 2.0,
         },
     },

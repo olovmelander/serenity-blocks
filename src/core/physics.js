@@ -915,6 +915,47 @@ function createResolverContext(gameState) {
     };
 }
 
+// Prepared results are intentionally process-local capabilities. Keeping the
+// origin out-of-band means callers may freeze the pure resolver result while
+// replay can still reject a stale or cloned result before touching live state.
+const preparedPhysicsOrigins = new WeakMap();
+
+function captureResolvedPhysicsOrigin(gameState, context = createResolverContext(gameState)) {
+    return JSON.stringify({
+        context,
+        lineClearCounts: gameState.lineClearCounts,
+        lockedPieces: gameState.lockedPieces,
+        score: gameState.score,
+    });
+}
+
+function assertPreparedPhysicsOrigin(gameState, result) {
+    const preparation = preparedPhysicsOrigins.get(result);
+    if (preparation === undefined) {
+        throw new Error('Resolved physics replay requires a result from prepareResolvedPhysics()');
+    }
+    if (JSON.stringify(result) !== preparation.result) {
+        throw new Error('Cannot replay a prepared cascade result after it was mutated');
+    }
+    if (captureResolvedPhysicsOrigin(gameState) !== preparation.origin) {
+        throw new Error('Cannot replay a stale prepared cascade after simulation state changed');
+    }
+}
+
+/**
+ * Compute the resolver-driven cascade future without callbacks or live-state
+ * mutation. Replay remains a separate, commit-per-wave operation (ADR-0011).
+ */
+export function prepareResolvedPhysics(gameState) {
+    const context = createResolverContext(gameState);
+    const result = resolveCascade(gameState.lockedPieces, context);
+    preparedPhysicsOrigins.set(result, {
+        origin: captureResolvedPhysicsOrigin(gameState, context),
+        result: JSON.stringify(result),
+    });
+    return result;
+}
+
 function finalizeResolvedPhysics(gameState, callbacks, result) {
     if (result.cascadeCount > 0 && callbacks.onCascadeComplete) {
         callbacks.onCascadeComplete(result.cascadeCount);
@@ -960,15 +1001,21 @@ export function tryProcessNoClearSync(gameState, callbacks = {}) {
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
     if (detectFullLines(gameState.boardGrid).length > 0) return false;
 
+    // This result is finalized immediately, so avoid provenance serialization
+    // reserved for results that cross the prepare/replay seam.
     const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
     if (result.waves.length > 0) return false;
     finalizeResolvedPhysics(gameState, callbacks, result);
     return true;
 }
 
-/** Replay the precomputed result with the certified callback and delay schedule. */
-export async function processPhysicsResolved(gameState, callbacks) {
-    const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
+/** Replay a prepared result with the certified callback and delay schedule. */
+export async function processPhysicsResolved(
+    gameState,
+    callbacks,
+    result = prepareResolvedPhysics(gameState),
+) {
+    assertPreparedPhysicsOrigin(gameState, result);
 
     for (const wave of result.waves) {
         // One live array per wave, threaded through flash + clear exactly like

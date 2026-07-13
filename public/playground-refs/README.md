@@ -13,3 +13,6 @@ reference instantly (no need to save it here first).
 Files served from `public/` are available at the site root, so `public/playground-refs/x.png`
 is reachable at `/playground-refs/x.png`. This folder is for throwaway iteration targets;
 nothing here is bundled into theme code.
+
+Project-owned generated references should include a same-name Markdown provenance sidecar.
+See `stillwater-composition-concept-2026-07.md` for the expected format.

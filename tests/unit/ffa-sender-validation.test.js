@@ -44,6 +44,62 @@ describe('hole a — LOBBY_GAME_START (match start on another peer)', () => {
         expect(stub.startMatch).toHaveBeenCalledWith(42, {}, { inProgress: false });
     });
 
+    it('accepts seed zero but rejects a missing seed before generation adoption', () => {
+        const zero = makeStub({ startMatch: vi.fn() });
+        zero._handleLobbyGameStart({
+            from: HOST,
+            data: { sharedSeed: 0, config: {}, roundGeneration: 0 },
+        });
+        expect(zero.startMatch).toHaveBeenCalledWith(0, {}, { inProgress: false });
+
+        const missing = makeStub({
+            roundGeneration: 4,
+            pendingInputs: [{ seq: 9 }],
+            startMatch: vi.fn(),
+        });
+        missing._handleLobbyGameStart({
+            from: HOST,
+            data: { config: {}, roundGeneration: 5 },
+        });
+        expect(missing.roundGeneration).toBe(4);
+        expect(missing.pendingInputs).toEqual([{ seq: 9 }]);
+        expect(missing.startMatch).not.toHaveBeenCalled();
+    });
+
+    it('canonicalizes numeric-string seeds and rejects invalid types before any mutation', () => {
+        const compatible = makeStub({ startMatch: vi.fn() });
+        compatible._handleLobbyGameStart({
+            from: HOST,
+            data: { sharedSeed: ' 42 ', config: {}, roundGeneration: 1 },
+        });
+        expect(compatible.roundGeneration).toBe(1);
+        expect(compatible.startMatch).toHaveBeenCalledWith(42, {}, { inProgress: false });
+
+        [false, true, '', 'not-a-seed', Number.NaN, Number.POSITIVE_INFINITY, [], {}]
+            .forEach((sharedSeed) => {
+                const invalid = makeStub({
+                    roundGeneration: 4,
+                    pendingInputs: [{ seq: 9 }],
+                    inputHistory: [{ seq: 9 }],
+                    inputSequence: 9,
+                    _ffaInputGroupSequence: 3,
+                    _lastLobbyStartGeneration: 3,
+                    startMatch: vi.fn(),
+                });
+                invalid._handleLobbyGameStart({
+                    from: HOST,
+                    data: { sharedSeed, config: {}, roundGeneration: 5 },
+                });
+                expect(invalid.roundGeneration).toBe(4);
+                expect(invalid.pendingInputs).toEqual([{ seq: 9 }]);
+                expect(invalid.inputHistory).toEqual([{ seq: 9 }]);
+                expect(invalid.inputSequence).toBe(9);
+                expect(invalid._ffaInputGroupSequence).toBe(3);
+                expect(invalid._lastLobbyStartGeneration).toBe(3);
+                expect(invalid.startMatch).not.toHaveBeenCalled();
+            });
+    });
+
     it('adopts the host match generation before resetting the local board', () => {
         const stub = makeStub({
             roundGeneration: 4,
@@ -152,7 +208,7 @@ describe('hole d — LOBBY_PLAYER_JOINED (forged joins + roster rewrite)', () =>
         const stub = makeStub({
             isHost: true,
             localPlayerId: HOST,
-            addPlayer: vi.fn(),
+            addPlayer: vi.fn(() => true),
             queueResync: vi.fn(),
             _registerSpectator: vi.fn(),
         });
@@ -165,7 +221,11 @@ describe('hole d — LOBBY_PLAYER_JOINED (forged joins + roster rewrite)', () =>
         const stub = makeStub({
             isHost: true,
             localPlayerId: HOST,
-            addPlayer: vi.fn(),
+            network: {
+                hostSteamId: HOST,
+                hasNegotiatedProtocol: () => true,
+            },
+            addPlayer: vi.fn(() => true),
             queueResync: vi.fn(),
         });
         stub._handleLobbyPlayerJoined({ from: 'PEER', data: { steamId: 'PEER', name: 'Real' } });

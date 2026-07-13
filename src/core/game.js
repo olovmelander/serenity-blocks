@@ -22,6 +22,12 @@ import { processPhysics, tryProcessNoClearSync } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
+import {
+    INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    normalizeInfinitySpawnPolicy,
+    resolveInfinitySpawnRow,
+    synchronizeInfinitySimulationCamera,
+} from './infinity-spawn-policy.js';
 import { createBlindTimers } from './blind.js';
 import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
 import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
@@ -363,9 +369,13 @@ function createActivePiece(gameState, shapeKey) {
     piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
 
     if (gameState.isInfinityMode) {
-        const cameraTopRow = gameState.cameraRow || 0;
-        const spawnOffset = 2;
-        piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
+        if (gameState.infinitySpawnPolicy === INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1) {
+            piece.y = resolveInfinitySpawnRow(gameState);
+        } else {
+            const cameraTopRow = gameState.cameraRow || 0;
+            const spawnOffset = 2;
+            piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
+        }
     } else {
         piece.y = HIDDEN_ROWS - 2;
     }
@@ -451,6 +461,10 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
     if (policy.adoptBoard) {
         if (snapshot.grid) {
             gameState.boardGrid = snapshot.grid;
+            if (gameState.isInfinityMode) {
+                gameState.board = snapshot.grid;
+                synchronizeInfinitySimulationCamera(gameState);
+            }
             if (policy.mirrorGrid) gameState.grid = snapshot.grid;
         }
         if ('lockedPieces' in snapshot) {
@@ -546,6 +560,15 @@ export class GameState {
         this.disableLevelProgression = options.disableLevelProgression || false;
         this.disableGarbage = options.disableGarbage || false;
         this.initialInfinityRows = options.initialInfinityRows || ROWS + HIDDEN_ROWS;
+        this.infinityVisibleRows = Number.isSafeInteger(options.infinityVisibleRows)
+            && options.infinityVisibleRows > 0
+            ? options.infinityVisibleRows
+            : ROWS;
+        this.infinitySpawnOffsetRows = Number.isSafeInteger(options.infinitySpawnOffsetRows)
+            && options.infinitySpawnOffsetRows >= 0
+            ? options.infinitySpawnOffsetRows
+            : 2;
+        this.infinitySpawnPolicy = normalizeInfinitySpawnPolicy(options.infinitySpawnPolicy);
 
         // Infinity mode tracking
         this.currentTopRow = 0; // Highest row with blocks
@@ -636,6 +659,7 @@ export class GameState {
             const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
             this.boardGrid = infinityGrid;
             this.board = infinityGrid;
+            synchronizeInfinitySimulationCamera(this);
             console.log('[GameState] Initialized infinity grid:', this.boardGrid.length, 'rows');
         } else {
             this.boardGrid = createBoardGrid();
@@ -730,6 +754,7 @@ export class GameState {
             const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
             this.boardGrid = infinityGrid;
             this.board = infinityGrid;
+            synchronizeInfinitySimulationCamera(this);
         } else {
             this.board = null;
             this.boardGrid = createBoardGrid();
@@ -759,8 +784,9 @@ export class GameState {
 function shuffleBag(rng) {
     const bag = [...PIECE_KEYS];
     for (let i = bag.length - 1; i > 0; i--) {
-        const randomValue = typeof rng === 'function' ? rng() : Math.random();
-        const j = Math.floor(randomValue * (i + 1));
+        const j = typeof rng?.nextInt === 'function'
+            ? rng.nextInt(i + 1)
+            : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * (i + 1));
         const swapIndex = Math.max(0, Math.min(i, j));
         const temp = bag[i];
         bag[i] = bag[swapIndex];

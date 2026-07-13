@@ -87,6 +87,15 @@ export class MoodDirector {
 
         this.time = 0;
         this.timeSinceActivity = 999;
+
+        // Combo milestone gate. The big ONE-SHOT "startle" flashes — the sunset ignite, the
+        // bird-flock scatter, and the camera kick — fire once when a new tier (combo 4 / 7 / 10) is
+        // first crossed, NOT on every combo event. A long combo streak otherwise re-ignites the sky
+        // and keeps the flock perpetually scattered/frantic every clear instead of letting it startle
+        // and re-form between milestones. Single global scene director (no per-player key needed —
+        // the COMBO event carries no player id and chain-break is handled by the decay easing).
+        this._comboTier = 0;
+        this._lastCombo = 0;
     }
 
     /** Eased mood warmth 0..1 — what the sky/grade read. Alias of radiance. */
@@ -172,17 +181,35 @@ export class MoodDirector {
 
     onCombo(combo = 0) {
         if (combo <= 0) return;
+        // A rising comboCount continues the chain; a DROP means a fresh chain → re-arm the milestone
+        // gate. A repeat of the same count (event replay) is a no-op so nothing double-fires.
+        if (combo < this._lastCombo) this._comboTier = 0;
+        else if (combo === this._lastCombo) return;
+        this._lastCombo = combo;
+
+        // Tiers 1/2/3 at combo 4/7/10. `crossed` is true only the first time a new tier is reached.
+        let tier = 0;
+        if (combo >= 10) tier = 3;
+        else if (combo >= 7) tier = 2;
+        else if (combo >= 4) tier = 1;
+        const crossed = tier > this._comboTier;
+        this._comboTier = Math.max(this._comboTier, tier);
+
         let accent;
         if (combo >= 7) accent = RADIANCE_ACCENTS.surge;
         else if (combo >= 4) accent = RADIANCE_ACCENTS.combo;
-        const big = combo >= 7;
+
         this.bump(Math.min(0.55, combo * 0.07), {
-            ignite: big ? 0.7 : 0,
+            // One-shot startles — gated to tier crossings so the sky/flock/camera pulse once per
+            // milestone and settle between, instead of re-firing every clear in a long combo.
+            ignite: crossed && tier >= 2 ? 0.7 : 0, // sunset ignition when crossing into surge (7+)
+            scatter: crossed ? 0.42 + tier * 0.18 : 0, // birds STARTLE once per tier, then re-form
+            camera: crossed ? 0.28 + tier * 0.12 : 0, // one camera kick per tier, not every clear
+            // Smooth glows keep scaling with combo (they read as continuous warming, not a startle,
+            // and decay fast) plus a brighter glitter burst on a milestone crossing.
             flare: Math.min(0.9, combo * 0.09),
-            sparkle: big ? 0.8 : combo * 0.07,
-            scatter: big ? 0.8 : combo * 0.06,
+            sparkle: crossed ? 0.5 + tier * 0.18 : combo * 0.045,
             bloom: Math.min(0.5, combo * 0.06),
-            camera: big ? 0.6 : 0.2,
             accent,
         });
     }
@@ -198,6 +225,8 @@ export class MoodDirector {
         this.target = this.idleFloor;
         this.timeSinceActivity = 0;
         this.cameraPunch = Math.max(this.cameraPunch, 0.5);
+        this._comboTier = 0;
+        this._lastCombo = 0;
     }
 
     update(delta = 0) {
@@ -267,6 +296,8 @@ export class MoodDirector {
         this.chromaPunch = 0;
         this.cameraPunch = 0;
         this.timeSinceActivity = 999;
+        this._comboTier = 0;
+        this._lastCombo = 0;
         this._setAccent(RADIANCE_ACCENTS.default);
         this.accent = hexToRgb(RADIANCE_ACCENTS.default);
     }

@@ -147,6 +147,13 @@ const RAW_THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'serenity-warp',
+        displayName: 'Serenity Warp',
+        module: './serenity-warp/serenity-warp-theme.js',
+        icon: './serenity-warp/serenity-warp-theme-icon.png',
+        group: 'cosmic',
+    },
+    {
         id: 'singing-bowl',
         displayName: 'Singing Bowl',
         module: './singing-bowl/singing-bowl-theme.js',
@@ -457,6 +464,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'galaxy',
     'rainy-window',
     'verdant-hills',
+    'serenity-warp',
     'singing-bowl',
     'starlight',
     'swedish-forest',

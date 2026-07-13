@@ -45,7 +45,8 @@ export function create({
     return {
         cameraRadius: 14,
         update(time, dt) {
-            const d = dt > 0 ? dt : 0.016;
+            // Respect a capture-mode dt of exactly 0 (freeze); only a missing dt falls back.
+            const d = Number.isFinite(dt) ? dt : 0.016;
             nebula.update(time);
             starfield.update(time);
             setProj();

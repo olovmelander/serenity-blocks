@@ -125,10 +125,13 @@ describe('FFA adaptive input jitter scheduling', () => {
             { fixedTickCanonical: false },
         );
 
-        state._fixedTickEnabled = false;
-        processPlayerInput.mockClear();
-        state.processInputBatch('PEER', { inputs, simTick: 100 }, 1234);
-        expect(processPlayerInput).toHaveBeenNthCalledWith(
+        const legacyProcessPlayerInput = vi.fn();
+        const legacyState = makeState({
+            _fixedTickEnabled: false,
+            processPlayerInput: legacyProcessPlayerInput,
+        });
+        legacyState.processInputBatch('PEER', { inputs, simTick: 100 }, 1234);
+        expect(legacyProcessPlayerInput).toHaveBeenNthCalledWith(
             1,
             'PEER',
             'move',

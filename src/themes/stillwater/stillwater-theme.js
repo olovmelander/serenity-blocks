@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { STILLWATER_TETROMINOS } from './stillwater-tetrominos.js';
 import trollUrl from './assets/troll.glb?url';
 import {
@@ -104,6 +105,40 @@ const COLORS = {
     goldenMote: new THREE.Color(0xffc040), // Warm gold
 };
 
+const STILLWATER_RANDOM_SEEDS = Object.freeze({
+    layout: 18641,
+    behavior: 90217,
+    reaction: 147031,
+});
+const RIPPLE_POOL_SIZE = 12;
+const TRANSIENT_BEAM_POOL_SIZE = 4;
+const BURST_PARTICLES_PER_EVENT = 12;
+const BURST_EVENT_CAPACITY = 12;
+const BURST_PARTICLE_CAPACITY = BURST_PARTICLES_PER_EVENT * BURST_EVENT_CAPACITY;
+const INACTIVE_PARTICLE_Y = -1000;
+
+function appendStillwaterOutputTransform(fragmentShader) {
+    if (!fragmentShader || fragmentShader.includes('#include <tonemapping_fragment>')) {
+        return fragmentShader;
+    }
+
+    const mainEnd = fragmentShader.lastIndexOf('\n}');
+    if (mainEnd < 0) return fragmentShader;
+
+    return `${fragmentShader.slice(0, mainEnd)}
+#include <tonemapping_fragment>
+#include <colorspace_fragment>${fragmentShader.slice(mainEnd)}`;
+}
+
+function smoothingAlpha(rate, delta) {
+    return 1 - Math.exp(-Math.max(0, rate) * Math.max(0, delta));
+}
+
+function decayWithHalfLife(value, halfLife, delta) {
+    if (value === 0) return 0;
+    return value * Math.exp((-Math.LN2 * Math.max(0, delta)) / halfLife);
+}
+
 export default class StillwaterTheme extends BaseTheme {
     constructor() {
         super('stillwater');
@@ -122,8 +157,15 @@ export default class StillwaterTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.mainGroup = null;
-        this.clock = new THREE.Clock();
-        this.animationFrame = null;
+        this.clock = new THREE.Clock(false);
+        this.elapsedTime = 0;
+        this.animationLoopStarted = false;
+        this._runtimeGeneration = 0;
+        this._heroLoadPromise = Promise.resolve(false);
+        this._animationDriver = this.safeAnimate(
+            () => this.renderFrame(),
+            { maxConsecutiveErrors: 3 },
+        );
 
         // Scene elements
         this.water = null;
@@ -133,6 +175,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.spiritLights = null;
         this.fogLayers = [];
         this.ripples = [];
+        this.ambientLightBeams = [];
         this.lightBeams = [];
 
         // New magical elements
@@ -142,9 +185,8 @@ export default class StillwaterTheme extends BaseTheme {
         this.lilies = [];
         this.trolls = [];
         this.canopyStars = null;
-        this.canopyStars = null;
         this.goldenMotes = null;
-        this.spiritBursts = [];
+        this.spiritBurstSystem = null;
 
         // Uniforms
         this.uniforms = {
@@ -184,14 +226,76 @@ export default class StillwaterTheme extends BaseTheme {
         // Hero 3D troll (TRELLIS.2-generated) standing by the pool
         this.heroTroll = null;
         this.heroTrollState = null;
+
+        this.resetRandomStreams();
     }
 
     getTetrominoConfig() {
         return STILLWATER_TETROMINOS;
     }
 
+    resetRandomStreams() {
+        this._layoutRandom = this.seededRandom(STILLWATER_RANDOM_SEEDS.layout);
+        this._behaviorRandom = this.seededRandom(STILLWATER_RANDOM_SEEDS.behavior);
+        this._reactionRandom = this.seededRandom(STILLWATER_RANDOM_SEEDS.reaction);
+    }
+
+    layoutRandom() {
+        return this._layoutRandom();
+    }
+
+    behaviorRandom() {
+        return this._behaviorRandom();
+    }
+
+    reactionRandom() {
+        return this._reactionRandom();
+    }
+
+    resetRuntimeState() {
+        this.resetRandomStreams();
+        this.clock.stop();
+        this.clock.elapsedTime = 0;
+        this.elapsedTime = 0;
+        this.animationLoopStarted = false;
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+        this.targetSpiritGlow = 1;
+        this.targetGlowIntensity = 0;
+        this.uniforms.time.value = 0;
+        this.uniforms.spiritGlow.value = 1;
+        this.uniforms.glowIntensity.value = 0;
+        this.currentSpiritIndex = 0;
+        this.nextSpiritIndex = 0;
+        this.spiritTransition = 1;
+        this.spiritWanderTimer = 0;
+        this.spiritWanderInterval = 12;
+        this.spiritState = 'visible';
+        this.spiritCurrentPos = { ...this.spiritSpawnPoints[0] };
+    }
+
+    isRuntimeCurrent(generation) {
+        return generation === this._runtimeGeneration
+            && this.isActive
+            && Boolean(this.scene)
+            && Boolean(this.mainGroup);
+    }
+
+    async whenFullReady() {
+        try {
+            return Boolean(await this._heroLoadPromise);
+        } catch {
+            return false;
+        }
+    }
+
     async createScene() {
         console.log('[Stillwater] Creating magical realm...');
+
+        const generation = ++this._runtimeGeneration;
+        this.resetRuntimeState();
 
         const container = document.getElementById('stillwater-theme');
         if (!container) {
@@ -236,6 +340,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0;
         container.appendChild(this.renderer.domElement);
+        this.setupRendererResilience(this.renderer);
 
         // ─────────────────────────────────────────────────────────────────────
         // MAIN GROUP
@@ -258,22 +363,25 @@ export default class StillwaterTheme extends BaseTheme {
         this.createGoldenMotes();
         this.createFloatingSpores();
         this.createTrolls();
-        this.createHeroTroll();
+        this.createHeroTroll(generation);
         this.createLightBeams();
+        this.createReactionPools();
         this.createMysticalFog();
         this.createCanopyStars();
         this.createForegroundFraming();
         this.createAuroraSky();
         this.setupEnchantedLighting();
+        this.configureShaderOutputContract();
+        this.prewarmReactionPools();
 
         // ─────────────────────────────────────────────────────────────────────
         // EVENTS
         // ─────────────────────────────────────────────────────────────────────
 
         this.setupEventListeners();
-        window.addEventListener('resize', this.boundResizeHandler);
+        this.registerEventListener(window, 'resize', this.boundResizeHandler);
 
-        this.animate();
+        this.startAnimationLoop();
 
         console.log('[Stillwater] Magical realm created.');
     }
@@ -308,7 +416,9 @@ export default class StillwaterTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createEnchantedWater() {
-        const geometry = new THREE.PlaneGeometry(80, 35, 48, 24);
+        // The Wave 0 water vertex shader is intentionally flat. Keep a single quad
+        // until the Wave 2 TSL lake pilot earns real vertex displacement.
+        const geometry = new THREE.PlaneGeometry(80, 35, 1, 1);
 
         // Add uniforms for dynamic spirit position tracking
         this.uniforms.spiritPos = { value: new THREE.Vector3(0, 2.5, -6) };
@@ -531,7 +641,7 @@ export default class StillwaterTheme extends BaseTheme {
 
         const trunk = new THREE.Mesh(geometry, material);
         trunk.position.set(
-            config.x + (Math.random() - 0.5) * 2,
+            config.x + (this.layoutRandom() - 0.5) * 2,
             config.height / 2,
             config.z,
         );
@@ -605,25 +715,25 @@ export default class StillwaterTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Distribute throughout scene with more near spirit
-            const isNearSpirit = Math.random() < 0.4;
+            const isNearSpirit = this.layoutRandom() < 0.4;
 
             if (isNearSpirit) {
                 // Cluster near spirit
-                positions[i3] = (Math.random() - 0.5) * 25;
-                positions[i3 + 1] = 3 + Math.random() * 12;
-                positions[i3 + 2] = -2 - Math.random() * 12;
+                positions[i3] = (this.layoutRandom() - 0.5) * 25;
+                positions[i3 + 1] = 3 + this.layoutRandom() * 12;
+                positions[i3 + 2] = -2 - this.layoutRandom() * 12;
             } else {
                 // Scatter throughout forest
-                positions[i3] = (Math.random() - 0.5) * 60;
-                positions[i3 + 1] = 2 + Math.random() * 18;
-                positions[i3 + 2] = -5 - Math.random() * 30;
+                positions[i3] = (this.layoutRandom() - 0.5) * 60;
+                positions[i3 + 1] = 2 + this.layoutRandom() * 18;
+                positions[i3 + 2] = -5 - this.layoutRandom() * 30;
             }
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
+            randoms[i] = this.layoutRandom();
+            phases[i] = this.layoutRandom() * Math.PI * 2;
 
             // Random magical color
-            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            const color = colorOptions[Math.floor(this.layoutRandom() * colorOptions.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
@@ -777,12 +887,12 @@ export default class StillwaterTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
 
-            positions[i3] = (Math.random() - 0.5) * 60;
-            positions[i3 + 1] = Math.random() * 20;
-            positions[i3 + 2] = -5 - Math.random() * 35;
+            positions[i3] = (this.layoutRandom() - 0.5) * 60;
+            positions[i3 + 1] = this.layoutRandom() * 20;
+            positions[i3 + 2] = -5 - this.layoutRandom() * 35;
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
+            randoms[i] = this.layoutRandom();
+            phases[i] = this.layoutRandom() * Math.PI * 2;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -897,7 +1007,7 @@ export default class StillwaterTheme extends BaseTheme {
 
             // Some trolls start peeking - calculate initial peek for uniforms
             const willStartPeeking = pos.startPeeking || false;
-            const peekInitial = willStartPeeking ? 0.4 + Math.random() * 0.3 : 0;
+            const peekInitial = willStartPeeking ? 0.4 + this.layoutRandom() * 0.3 : 0;
 
             // Each troll gets unique animation uniforms
             const trollUniforms = {
@@ -948,14 +1058,14 @@ export default class StillwaterTheme extends BaseTheme {
                 scale: pos.scale,
 
                 // Personality traits (fixed per troll)
-                curiosity: 0.4 + Math.random() * 0.4, // How bold this troll is
-                nervousness: 0.2 + Math.random() * 0.5, // How easily startled
-                playfulness: Math.random(), // New: likeliness to hop/dance
-                patience: 2 + Math.random() * 5, // How long before changing behavior
+                curiosity: 0.4 + this.layoutRandom() * 0.4, // How bold this troll is
+                nervousness: 0.2 + this.layoutRandom() * 0.5, // How easily startled
+                playfulness: this.layoutRandom(), // New: likeliness to hop/dance
+                patience: 2 + this.layoutRandom() * 5, // How long before changing behavior
 
                 // Current behavior state
                 behaviorState: willStartPeeking ? 'watching' : 'hiding',
-                stateTimer: willStartPeeking ? 2 + Math.random() * 3 : Math.random() * 2,
+                stateTimer: willStartPeeking ? 2 + this.layoutRandom() * 3 : this.layoutRandom() * 2,
 
                 // Animation Targets
                 targetPeek: peekInitial,
@@ -970,9 +1080,9 @@ export default class StillwaterTheme extends BaseTheme {
                 currentExpression: 0,
 
                 // Smooth animation values
-                breathPhase: Math.random() * Math.PI * 2,
-                headTilt: willStartPeeking ? (Math.random() - 0.5) * 0.1 : 0,
-                targetHeadTilt: willStartPeeking ? (Math.random() - 0.5) * 0.1 : 0,
+                breathPhase: this.layoutRandom() * Math.PI * 2,
+                headTilt: willStartPeeking ? (this.layoutRandom() - 0.5) * 0.1 : 0,
+                targetHeadTilt: willStartPeeking ? (this.layoutRandom() - 0.5) * 0.1 : 0,
                 bodyLean: willStartPeeking ? peekInitial * 0.05 : 0,
 
                 // Physics Animation
@@ -983,8 +1093,8 @@ export default class StillwaterTheme extends BaseTheme {
                 shiverIntensity: 0,
 
                 // Blinking
-                blinkTimer: 2 + Math.random() * 4,
-                blinkDuration: 0.12 + Math.random() * 0.08,
+                blinkTimer: 2 + this.layoutRandom() * 4,
+                blinkDuration: 0.12 + this.layoutRandom() * 0.08,
                 isBlinking: false,
 
                 // Spirit awareness
@@ -993,7 +1103,8 @@ export default class StillwaterTheme extends BaseTheme {
                 animationPhase: 0,
 
                 // Fidgeting
-                fidgetTimer: Math.random() * 2,
+                fidgetTimer: this.layoutRandom() * 2,
+                eyeDartTimer: 0.1 + this.layoutRandom() * 0.3,
                 fidgetOffset: new THREE.Vector3(0, 0, 0),
                 targetFidget: new THREE.Vector3(0, 0, 0),
 
@@ -1013,26 +1124,42 @@ export default class StillwaterTheme extends BaseTheme {
     // Distinct from the peeking billboard trolls above.
     // ═══════════════════════════════════════════════════════════════════════════
 
-    createHeroTroll() {
+    createHeroTroll(generation = this._runtimeGeneration) {
         const loader = new GLTFLoader();
-        loader.load(
-            trollUrl,
-            (gltf) => {
+        this._heroLoadPromise = loader.loadAsync(trollUrl)
+            .then((gltf) => {
                 const root = gltf.scene;
+                if (!this.isRuntimeCurrent(generation)) {
+                    this.disposeLoadedGltf(gltf);
+                    return false;
+                }
+
+                const originalMaterials = new Set();
                 // Pale baked colours multiplied down to a dark earthy green so the
                 // scene's moonlight + spirit glow (not the raw albedo) define its form.
-                const mat = new THREE.MeshStandardMaterial({
+                const material = new THREE.MeshStandardMaterial({
                     vertexColors: true,
                     color: new THREE.Color(0x6a6a52), // earthy multiplier; lit by the scene
                     roughness: 0.95,
                     metalness: 0.0,
+                    transparent: true,
+                    opacity: 0,
+                    depthWrite: false,
                 });
-                root.traverse((o) => {
-                    if (o.isMesh) {
-                        if (o.material && o.material.dispose) o.material.dispose();
-                        o.material = mat;
-                        o.frustumCulled = false;
-                    }
+                root.traverse((object) => {
+                    if (!object.isMesh) return;
+                    const materials = Array.isArray(object.material)
+                        ? object.material
+                        : [object.material];
+                    materials.filter(Boolean).forEach((entry) => originalMaterials.add(entry));
+                    object.material = material;
+                    object.geometry?.computeBoundingBox?.();
+                    object.geometry?.computeBoundingSphere?.();
+                    object.frustumCulled = true;
+                });
+                const originalTextures = new Set();
+                originalMaterials.forEach((entry) => {
+                    this.disposeMaterialResources(entry, originalTextures);
                 });
                 // NOTE: the back moss hills span z < -10, so the troll must stay at
                 // z > -10 to not be buried in the terrain. Walk it in the visible
@@ -1052,7 +1179,16 @@ export default class StillwaterTheme extends BaseTheme {
 
                 this.heroTroll = root;
                 this.heroTrollState = {
-                    mixer, dir: 1, minX: -range, maxX: range, speed: 1.2, groundY, walkZ,
+                    mixer,
+                    material,
+                    reveal: 0,
+                    revealComplete: false,
+                    dir: 1,
+                    minX: -range,
+                    maxX: range,
+                    speed: 1.2,
+                    groundY,
+                    walkZ,
                 };
                 this.mainGroup.add(root);
                 const _bb = new THREE.Box3().setFromObject(root);
@@ -1064,25 +1200,109 @@ export default class StillwaterTheme extends BaseTheme {
                     'max',
                     _bb.max.toArray().map((v) => +v.toFixed(1)),
                 );
-            },
-            undefined,
-            (err) => console.warn('[Stillwater] hero troll load failed:', err),
-        );
+                return true;
+            })
+            .catch((error) => {
+                if (this.isRuntimeCurrent(generation)) {
+                    console.warn('[Stillwater] hero troll load failed:', error);
+                }
+                return false;
+            });
+
+        return this._heroLoadPromise;
     }
 
-    updateHeroTroll(delta, elapsed) {
+    disposeMaterialResources(material, disposedTextures = new Set()) {
+        if (!material) return;
+        const disposeTexture = (value) => {
+            if (!value?.isTexture || disposedTextures.has(value)) return;
+            disposedTextures.add(value);
+            value.dispose?.();
+        };
+        Object.values(material).forEach((value) => {
+            disposeTexture(value);
+        });
+        Object.values(material.uniforms ?? {}).forEach((uniform) => {
+            disposeTexture(uniform?.value);
+        });
+        material.dispose?.();
+    }
+
+    disposeLoadedGltf(gltf) {
+        const root = gltf?.scene ?? gltf;
+        if (!root?.traverse) return;
+
+        const geometries = new Set();
+        const materials = new Set();
+        const skeletons = new Set();
+        const textures = new Set();
+        root.traverse((object) => {
+            if (object.geometry) geometries.add(object.geometry);
+            const objectMaterials = Array.isArray(object.material)
+                ? object.material
+                : [object.material];
+            objectMaterials.filter(Boolean).forEach((material) => materials.add(material));
+            if (object.skeleton) skeletons.add(object.skeleton);
+        });
+        geometries.forEach((geometry) => geometry.dispose?.());
+        materials.forEach((material) => this.disposeMaterialResources(material, textures));
+        skeletons.forEach((skeleton) => skeleton.dispose?.());
+    }
+
+    disposeSceneResources() {
+        if (!this.scene) return;
+
+        const geometries = new Set();
+        const materials = new Set();
+        const skeletons = new Set();
+        const textures = new Set();
+        this.scene.traverse((object) => {
+            if (object.geometry) geometries.add(object.geometry);
+            const objectMaterials = Array.isArray(object.material)
+                ? object.material
+                : [object.material];
+            objectMaterials.filter(Boolean).forEach((material) => materials.add(material));
+            if (object.skeleton) skeletons.add(object.skeleton);
+        });
+
+        geometries.forEach((geometry) => geometry.dispose?.());
+        materials.forEach((material) => this.disposeMaterialResources(material, textures));
+        skeletons.forEach((skeleton) => skeleton.dispose?.());
+        if (this.scene.background?.isTexture && !textures.has(this.scene.background)) {
+            this.scene.background.dispose?.();
+        }
+        this.scene.clear();
+    }
+
+    updateHeroTroll(delta) {
         if (!this.heroTroll || !this.heroTrollState) return;
         const s = this.heroTrollState;
         if (s.mixer) s.mixer.update(delta);
 
+        if (!s.revealComplete) {
+            s.reveal = Math.min(1, s.reveal + delta / 0.65);
+            s.material.opacity = s.reveal * s.reveal * (3 - 2 * s.reveal);
+            if (s.reveal >= 1) {
+                s.revealComplete = true;
+                s.material.transparent = false;
+                s.material.depthWrite = true;
+                s.material.needsUpdate = true;
+            }
+        }
+
         // Patrol the back of the glade: amble across, turn around at each end.
         this.heroTroll.position.x += s.dir * s.speed * delta;
-        if (this.heroTroll.position.x >= s.maxX) { this.heroTroll.position.x = s.maxX; s.dir = -1; } else if (this.heroTroll.position.x <= s.minX) { this.heroTroll.position.x = s.minX; s.dir = 1; }
+        if (this.heroTroll.position.x >= s.maxX) {
+            this.heroTroll.position.x = s.maxX;
+            s.dir = -1;
+        } else if (this.heroTroll.position.x <= s.minX) {
+            this.heroTroll.position.x = s.minX;
+            s.dir = 1;
+        }
 
         // Face the direction of travel (the model faces +Z by default).
         this.heroTroll.rotation.y = s.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-        // Faint vertical drift so it doesn't feel on rails.
-        this.heroTroll.position.y = s.groundY + Math.sin(elapsed * 2.0) * 0.05;
+        this.heroTroll.position.y = s.groundY;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1100,12 +1320,12 @@ export default class StillwaterTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Stars in the upper sky, spread out
-            positions[i3] = (Math.random() - 0.5) * 100;
-            positions[i3 + 1] = 25 + Math.random() * 25;
-            positions[i3 + 2] = -30 - Math.random() * 40;
+            positions[i3] = (this.layoutRandom() - 0.5) * 100;
+            positions[i3 + 1] = 25 + this.layoutRandom() * 25;
+            positions[i3 + 2] = -30 - this.layoutRandom() * 40;
 
-            randoms[i] = Math.random();
-            brightness[i] = 0.3 + Math.random() * 0.7;
+            randoms[i] = this.layoutRandom();
+            brightness[i] = 0.3 + this.layoutRandom() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1143,12 +1363,12 @@ export default class StillwaterTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Cluster around the spirit
-            positions[i3] = (Math.random() - 0.5) * 15;
-            positions[i3 + 1] = 3 + Math.random() * 10;
-            positions[i3 + 2] = -3 - Math.random() * 8;
+            positions[i3] = (this.layoutRandom() - 0.5) * 15;
+            positions[i3 + 1] = 3 + this.layoutRandom() * 10;
+            positions[i3 + 2] = -3 - this.layoutRandom() * 8;
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
+            randoms[i] = this.layoutRandom();
+            phases[i] = this.layoutRandom() * Math.PI * 2;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1214,8 +1434,144 @@ export default class StillwaterTheme extends BaseTheme {
             beam.rotation.z = config.rot;
             beam.rotation.x = 0.1; // Tilt fitting perspective
 
+            this.ambientLightBeams.push(beam);
+            this.mainGroup.add(beam);
+        }
+
+        const transientGeometry = new THREE.PlaneGeometry(5, 22);
+        for (let i = 0; i < TRANSIENT_BEAM_POOL_SIZE; i++) {
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uOpacity: { value: 0 },
+                    uColor: { value: COLORS.spiritAura },
+                },
+                vertexShader: lightBeamVertexShader,
+                fragmentShader: lightBeamFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const beam = new THREE.Mesh(transientGeometry, material);
+            beam.visible = false;
+            beam.userData = {
+                active: false,
+                life: 0,
+                serial: -1,
+            };
             this.lightBeams.push(beam);
             this.mainGroup.add(beam);
+        }
+    }
+
+    createReactionPools() {
+        const rippleGeometry = new THREE.PlaneGeometry(12, 12);
+        for (let i = 0; i < RIPPLE_POOL_SIZE; i++) {
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uOpacity: { value: 0 },
+                    uColor: { value: COLORS.ripple },
+                    uRadius: { value: 0.1 },
+                },
+                vertexShader: rippleVertexShader,
+                fragmentShader: rippleFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const ripple = new THREE.Mesh(rippleGeometry, material);
+            ripple.rotation.x = -Math.PI / 2;
+            ripple.visible = false;
+            ripple.userData = {
+                active: false,
+                life: 0,
+                speed: 0,
+                startTime: 0,
+                serial: -1,
+            };
+            this.ripples.push(ripple);
+            this.mainGroup.add(ripple);
+        }
+
+        const positions = new Float32Array(BURST_PARTICLE_CAPACITY * 3);
+        const colors = new Float32Array(BURST_PARTICLE_CAPACITY * 3);
+        const velocities = new Float32Array(BURST_PARTICLE_CAPACITY * 3);
+        const life = new Float32Array(BURST_PARTICLE_CAPACITY);
+        for (let i = 0; i < BURST_PARTICLE_CAPACITY; i++) {
+            positions[i * 3 + 1] = INACTIVE_PARTICLE_Y;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const positionAttribute = new THREE.BufferAttribute(positions, 3);
+        const colorAttribute = new THREE.BufferAttribute(colors, 3);
+        positionAttribute.setUsage(THREE.DynamicDrawUsage);
+        colorAttribute.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('position', positionAttribute);
+        geometry.setAttribute('color', colorAttribute);
+
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            vertexColors: true,
+            size: 0.4,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        const points = new THREE.Points(geometry, material);
+        points.visible = false;
+        points.frustumCulled = false;
+        points.userData = {
+            positions,
+            colors,
+            velocities,
+            life,
+            gravity: -4.5,
+            cursor: 0,
+            activeCount: 0,
+        };
+        this.spiritBurstSystem = points;
+        this.mainGroup.add(points);
+        this._reactionSerial = 0;
+    }
+
+    configureShaderOutputContract() {
+        this.scene.traverse((object) => {
+            const materials = Array.isArray(object.material)
+                ? object.material
+                : [object.material];
+            materials.filter(Boolean).forEach((material) => {
+                if (!material.isShaderMaterial) return;
+                material.fragmentShader = appendStillwaterOutputTransform(material.fragmentShader);
+                material.toneMapped = true;
+                material.needsUpdate = true;
+            });
+        });
+    }
+
+    prewarmReactionPools() {
+        if (!this.renderer || !this.scene || !this.camera || !this.spiritBurstSystem) return;
+
+        const transientObjects = [
+            ...this.ripples,
+            ...this.lightBeams,
+            this.spiritBurstSystem,
+        ];
+        const burstOpacity = this.spiritBurstSystem.material.opacity;
+        transientObjects.forEach((object) => {
+            object.visible = true;
+        });
+        this.spiritBurstSystem.material.opacity = 0;
+
+        try {
+            // One transparent startup render uploads the fixed buffers and compiles
+            // every reaction program before gameplay can trigger the corresponding slot.
+            this.renderer.render(this.scene, this.camera);
+        } finally {
+            transientObjects.forEach((object) => {
+                object.visible = false;
+            });
+            this.spiritBurstSystem.material.opacity = burstOpacity;
         }
     }
 
@@ -1225,7 +1581,7 @@ export default class StillwaterTheme extends BaseTheme {
 
     createForegroundFraming() {
         // Large dark silhouette trees close to camera
-        const positions = [
+        const treePositions = [
             {
                 x: -18, z: 15, r: 2.5, h: 25,
             },
@@ -1235,8 +1591,19 @@ export default class StillwaterTheme extends BaseTheme {
         ];
 
         const geometry = new THREE.CylinderGeometry(1, 1, 1, 16);
+        const trunkPositions = geometry.attributes.position;
+        for (let i = 0; i < trunkPositions.count; i++) {
+            if (trunkPositions.getY(i) > 0) {
+                trunkPositions.setX(
+                    i,
+                    trunkPositions.getX(i) + (this.layoutRandom() - 0.5) * 0.5,
+                );
+            }
+        }
+        trunkPositions.needsUpdate = true;
+        geometry.computeVertexNormals();
 
-        for (const pos of positions) {
+        for (const pos of treePositions) {
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: this.uniforms.time,
@@ -1253,16 +1620,6 @@ export default class StillwaterTheme extends BaseTheme {
             const tree = new THREE.Mesh(geometry, material);
             tree.position.set(pos.x, 5, pos.z);
             tree.scale.set(pos.r, pos.h, pos.r);
-
-            // Add slight curve
-            const positions = tree.geometry.attributes.position;
-            const { count } = positions;
-            for (let i = 0; i < count; i++) {
-                const y = positions.getY(i);
-                if (y > 0) {
-                    positions.setX(i, positions.getX(i) + (Math.random() - 0.5) * 0.5);
-                }
-            }
 
             this.trees.push(tree);
             this.scene.add(tree); // Add to scene directly to avoid mainGroup rotation/fog issues if any
@@ -1302,15 +1659,14 @@ export default class StillwaterTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     setupEventListeners() {
-        this.eventUnsubscribers.forEach((unsub) => unsub?.());
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
 
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (this.isActive) this.onLineClear(data.lineCount || 1);
+            if (this.isActive) this.onLineClear(data?.lineCount || 1);
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (this.isActive) this.onCombo(data.comboCount || 0);
+            if (this.isActive) this.onCombo(data?.comboCount || 0);
         });
 
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
@@ -1323,10 +1679,9 @@ export default class StillwaterTheme extends BaseTheme {
             this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
             this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
         };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     onLineClear(lineCount) {
@@ -1366,7 +1721,7 @@ export default class StillwaterTheme extends BaseTheme {
                     }
                 } else {
                     // Fresh jump from ground
-                    trollData.verticalVelocity = 8.0 + Math.random() * 4.0;
+                    trollData.verticalVelocity = 8.0 + this.reactionRandom() * 4.0;
                     trollData.isHopping = true;
                 }
 
@@ -1410,7 +1765,7 @@ export default class StillwaterTheme extends BaseTheme {
             const worldX = (data.piece.x - 4.5) * 2.6;
 
             // Z depth around water level (randomized slightly for depth)
-            const worldZ = 3 + (Math.random() - 0.5) * 3;
+            const worldZ = 3 + (this.reactionRandom() - 0.5) * 3;
 
             // Create ripple at specific location
             this.createRipple(0.5, worldX, worldZ);
@@ -1421,116 +1776,88 @@ export default class StillwaterTheme extends BaseTheme {
     }
 
     createRipple(intensity, x, z) {
-        const geometry = new THREE.PlaneGeometry(12, 12);
+        if (this.ripples.length === 0) return;
+        let ripple = this.ripples.find((entry) => !entry.userData.active);
+        if (!ripple) {
+            ripple = this.ripples.reduce((oldest, entry) => (
+                entry.userData.serial < oldest.userData.serial ? entry : oldest
+            ));
+        }
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uOpacity: { value: 0.5 },
-                uColor: { value: COLORS.ripple },
-                uRadius: { value: 0.1 },
-            },
-            vertexShader: rippleVertexShader,
-            fragmentShader: rippleFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const ripple = new THREE.Mesh(geometry, material);
-        ripple.rotation.x = -Math.PI / 2;
-
-        const posX = x !== undefined ? x : (Math.random() - 0.5) * 15;
-        const posZ = z !== undefined ? z : 3 + (Math.random() - 0.5) * 10;
+        const safeIntensity = Number.isFinite(intensity) ? Math.max(0, intensity) : 0.5;
+        const posX = Number.isFinite(x) ? x : (this.reactionRandom() - 0.5) * 15;
+        const posZ = Number.isFinite(z) ? z : 3 + (this.reactionRandom() - 0.5) * 10;
 
         ripple.position.set(posX, 0.1, posZ);
-
-        ripple.userData = {
-            life: 1.0,
-            speed: 0.2 + intensity * 0.1,
-            startTime: this.uniforms.time.value,
-        };
-
-        this.ripples.push(ripple);
-        this.mainGroup.add(ripple);
+        ripple.userData.active = true;
+        ripple.userData.life = 1;
+        ripple.userData.speed = 0.2 + safeIntensity * 0.1;
+        ripple.userData.startTime = this.uniforms.time.value;
+        ripple.userData.serial = this._reactionSerial++;
+        ripple.material.uniforms.uRadius.value = 0.1;
+        ripple.material.uniforms.uOpacity.value = 1;
+        ripple.visible = true;
     }
 
     createSpiritBurst(x, z) {
-        const particleCount = 12;
-        const geometry = new THREE.BufferGeometry();
-        const positions = [];
-        const velocities = [];
-        const phases = [];
+        const system = this.spiritBurstSystem;
+        if (!system) return;
 
-        for (let i = 0; i < particleCount; i++) {
-            // Start slightly above water
-            positions.push(x + (Math.random() - 0.5), 0.5 + Math.random() * 1.0, z + (Math.random() - 0.5));
+        const data = system.userData;
+        const start = data.cursor;
+        const originX = Number.isFinite(x) ? x : 0;
+        const originZ = Number.isFinite(z) ? z : 3;
+        for (let i = 0; i < BURST_PARTICLES_PER_EVENT; i++) {
+            const particleIndex = start + i;
+            const offset = particleIndex * 3;
+            if (data.life[particleIndex] <= 0) data.activeCount++;
 
-            // Upward and outward velocity
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 1.0 + Math.random() * 2.0;
-            const lift = 2.0 + Math.random() * 3.0;
+            data.positions[offset] = originX + (this.reactionRandom() - 0.5);
+            data.positions[offset + 1] = 0.5 + this.reactionRandom();
+            data.positions[offset + 2] = originZ + (this.reactionRandom() - 0.5);
 
-            velocities.push(
-                Math.cos(angle) * speed * 0.5, // X
-                lift, // Y
-                Math.sin(angle) * speed * 0.5, // Z
-            );
-
-            phases.push(Math.random() * Math.PI * 2);
+            const angle = this.reactionRandom() * Math.PI * 2;
+            const speed = 1 + this.reactionRandom() * 2;
+            data.velocities[offset] = Math.cos(angle) * speed * 0.5;
+            data.velocities[offset + 1] = 2 + this.reactionRandom() * 3;
+            data.velocities[offset + 2] = Math.sin(angle) * speed * 0.5;
+            data.life[particleIndex] = 1.2;
+            data.colors[offset] = COLORS.spiritCore.r;
+            data.colors[offset + 1] = COLORS.spiritCore.g;
+            data.colors[offset + 2] = COLORS.spiritCore.b;
         }
 
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        data.cursor = (start + BURST_PARTICLES_PER_EVENT) % BURST_PARTICLE_CAPACITY;
+        this.markBurstAttributeRange(system.geometry.attributes.position, start, BURST_PARTICLES_PER_EVENT);
+        this.markBurstAttributeRange(system.geometry.attributes.color, start, BURST_PARTICLES_PER_EVENT);
+        system.visible = true;
+    }
 
-        // Use a simple textured material (or just circular points)
-        // Reusing goldenMote colors but maybe slightly brighter/whiter for "impact"
-        const material = new THREE.PointsMaterial({
-            color: 0xfffcf0, // Bright white-gold
-            size: 0.4,
-            transparent: true,
-            opacity: 0.9,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const burst = new THREE.Points(geometry, material);
-        burst.userData = {
-            velocities,
-            life: 1.2,
-            gravity: -3.0,
-        };
-
-        this.spiritBursts.push(burst);
-        this.mainGroup.add(burst);
+    markBurstAttributeRange(attribute, startIndex, itemCount) {
+        attribute.clearUpdateRanges();
+        attribute.addUpdateRange(startIndex * attribute.itemSize, itemCount * attribute.itemSize);
+        attribute.needsUpdate = true;
     }
 
     createLightBeam() {
-        const geometry = new THREE.PlaneGeometry(5, 22);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uOpacity: { value: 1.0 },
-                uColor: { value: COLORS.spiritAura },
-            },
-            vertexShader: lightBeamVertexShader,
-            fragmentShader: lightBeamFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const beam = new THREE.Mesh(geometry, material);
+        if (this.lightBeams.length === 0) return;
+        let beam = this.lightBeams.find((entry) => !entry.userData.active);
+        if (!beam) {
+            beam = this.lightBeams.reduce((oldest, entry) => (
+                entry.userData.serial < oldest.userData.serial ? entry : oldest
+            ));
+        }
         beam.position.set(
-            (Math.random() - 0.5) * 25,
+            (this.reactionRandom() - 0.5) * 25,
             14,
-            -10 - Math.random() * 15,
+            -10 - this.reactionRandom() * 15,
         );
-        beam.rotation.z = (Math.random() - 0.5) * 0.15;
-
-        beam.userData = { life: 1.0 };
-
-        this.lightBeams.push(beam);
-        this.mainGroup.add(beam);
+        beam.rotation.z = (this.reactionRandom() - 0.5) * 0.15;
+        beam.userData.active = true;
+        beam.userData.life = 1;
+        beam.userData.serial = this._reactionSerial++;
+        beam.material.uniforms.uOpacity.value = 1;
+        beam.visible = true;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1553,7 +1880,7 @@ export default class StillwaterTheme extends BaseTheme {
                 // Pick next spawn point (different from current)
                 let nextIndex;
                 do {
-                    nextIndex = Math.floor(Math.random() * this.spiritSpawnPoints.length);
+                    nextIndex = Math.floor(this.behaviorRandom() * this.spiritSpawnPoints.length);
                 } while (nextIndex === this.currentSpiritIndex && this.spiritSpawnPoints.length > 1);
                 this.nextSpiritIndex = nextIndex;
             }
@@ -1599,7 +1926,7 @@ export default class StillwaterTheme extends BaseTheme {
                 this.spiritState = 'visible';
 
                 // Randomize next interval slightly
-                this.spiritWanderInterval = 10.0 + Math.random() * 6.0;
+                this.spiritWanderInterval = 10.0 + this.behaviorRandom() * 6.0;
             }
             break;
         }
@@ -1622,8 +1949,17 @@ export default class StillwaterTheme extends BaseTheme {
         if (this.goldenMotes && this.goldenMotes.position) {
             const targetX = this.spiritCurrentPos.x;
             const targetZ = this.spiritCurrentPos.z - 3;
-            this.goldenMotes.position.x = THREE.MathUtils.lerp(this.goldenMotes.position.x, targetX, delta * 0.5);
-            this.goldenMotes.position.z = THREE.MathUtils.lerp(this.goldenMotes.position.z, targetZ, delta * 0.5);
+            const moteFollowAlpha = smoothingAlpha(0.5, delta);
+            this.goldenMotes.position.x = THREE.MathUtils.lerp(
+                this.goldenMotes.position.x,
+                targetX,
+                moteFollowAlpha,
+            );
+            this.goldenMotes.position.z = THREE.MathUtils.lerp(
+                this.goldenMotes.position.z,
+                targetZ,
+                moteFollowAlpha,
+            );
         }
 
         // Update water reflection uniforms (pass spirit position and transition to water shader)
@@ -1701,25 +2037,25 @@ export default class StillwaterTheme extends BaseTheme {
                 switch (trollData.behaviorState) {
                 case 'hiding':
                     // DECISION: Peek, Doze, or Wait
-                    const rand = Math.random();
+                    const rand = this.behaviorRandom();
                     if (rand < curiosity * 0.7) {
                         // PEEK
                         trollData.behaviorState = 'peeking';
-                        trollData.targetPeek = 0.4 + Math.random() * 0.4;
-                        trollData.stateTimer = 2.0 + Math.random() * 3.0;
+                        trollData.targetPeek = 0.4 + this.behaviorRandom() * 0.4;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 3.0;
 
                         // Sub-behavior: Playful Wiggle?
-                        if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.4) {
+                        if (playfulness > 0.7 && !spiritVeryClose && this.behaviorRandom() < 0.4) {
                             trollData.behaviorState = 'wiggling';
                             trollData.targetPeek = 0.6;
-                            trollData.stateTimer = 1.5 + Math.random() * 1.5;
+                            trollData.stateTimer = 1.5 + this.behaviorRandom() * 1.5;
                             trollData.targetExpression = 0.5; // Happy eyes
                         }
                         // Sub-behavior: Nervous Sneak?
-                        else if (nervousness > 0.6 && Math.random() < 0.5) {
+                        else if (nervousness > 0.6 && this.behaviorRandom() < 0.5) {
                             trollData.behaviorState = 'sneaking';
                             trollData.targetPeek = 0.3;
-                            trollData.stateTimer = 2.0 + Math.random() * 2.0;
+                            trollData.stateTimer = 2.0 + this.behaviorRandom() * 2.0;
                             trollData.targetExpression = -0.8; // Suspicious squint
                         } else {
                             // Normal peek behavior
@@ -1734,7 +2070,7 @@ export default class StillwaterTheme extends BaseTheme {
                         // DOZE OFF (Rare, only if patient and safe)
                         trollData.behaviorState = 'dozing';
                         trollData.targetPeek = 0.15; // Barely visible
-                        trollData.stateTimer = 5.0 + Math.random() * 10.0; // Sleep for a while
+                        trollData.stateTimer = 5.0 + this.behaviorRandom() * 10.0; // Sleep for a while
                         trollData.targetExpression = 0.0;
                         trollData.isBlinking = true; // Eyes closed
                     } else {
@@ -1752,7 +2088,7 @@ export default class StillwaterTheme extends BaseTheme {
 
                 case 'sneaking':
                     // Done sneaking, retreat or watch
-                    if (Math.random() < 0.5) {
+                    if (this.behaviorRandom() < 0.5) {
                         trollData.behaviorState = 'retreating';
                         trollData.targetPeek = 0;
                         trollData.stateTimer = 1.0;
@@ -1765,7 +2101,7 @@ export default class StillwaterTheme extends BaseTheme {
 
                 case 'dozing':
                     // Wake up naturally - yawn or stretch
-                    if (Math.random() < 0.4) {
+                    if (this.behaviorRandom() < 0.4) {
                         // STRETCHING - wake up stretch
                         trollData.behaviorState = 'stretching';
                         trollData.animationPhase = 0;
@@ -1838,7 +2174,7 @@ export default class StillwaterTheme extends BaseTheme {
                 case 'mischief':
                     // All transition back to watching
                     trollData.behaviorState = 'watching';
-                    trollData.stateTimer = 1.5 + Math.random() * 1.0;
+                    trollData.stateTimer = 1.5 + this.behaviorRandom() * 1.0;
                     trollData.targetPeek = 0.5;
                     trollData.targetExpression = 0.0;
                     break;
@@ -1853,7 +2189,7 @@ export default class StillwaterTheme extends BaseTheme {
 
                 case 'tiptoeing':
                     // After tiptoeing, either retreat nervously or watch
-                    if (Math.random() < 0.5) {
+                    if (this.behaviorRandom() < 0.5) {
                         trollData.behaviorState = 'retreating';
                         trollData.targetPeek = 0;
                         trollData.stateTimer = 1.0;
@@ -1876,23 +2212,23 @@ export default class StillwaterTheme extends BaseTheme {
                 case 'peeking':
                 case 'watching': // Unified for simplicity now
                     // Decide next move
-                    if (spiritVeryClose || (Math.random() < nervousness * 0.3)) {
+                    if (spiritVeryClose || (this.behaviorRandom() < nervousness * 0.3)) {
                         // Retreat!
                         trollData.behaviorState = 'retreating';
                         trollData.targetPeek = 0;
                         trollData.stateTimer = 1.0;
                         trollData.targetExpression = 0.0;
-                    } else if (playfulness > 0.7 && Math.random() < 0.3) {
+                    } else if (playfulness > 0.7 && this.behaviorRandom() < 0.3) {
                         // Hop logic
                         trollData.isHopping = true;
                         trollData.verticalVelocity = 5.0 * scale;
                         trollData.stateTimer += 1.0;
-                    } else if (playfulness > 0.6 && Math.random() < 0.2) {
+                    } else if (playfulness > 0.6 && this.behaviorRandom() < 0.2) {
                         // Random Chuckle
                         trollData.behaviorState = 'chuckling';
                         trollData.stateTimer = 1.0;
                         trollData.targetExpression = 0.5;
-                    } else if (curiosity > 0.6 && Math.random() < 0.2) {
+                    } else if (curiosity > 0.6 && this.behaviorRandom() < 0.2) {
                         // CONFUSED? (Puppy head tilt)
                         trollData.behaviorState = 'confused';
                         trollData.stateTimer = 3.0;
@@ -1900,157 +2236,157 @@ export default class StillwaterTheme extends BaseTheme {
                         trollData.targetExpression = 0.5;
                     }
                     // Chance to RETURN from hiding spot if safe
-                    else if (Math.abs(trollData.currentOffset) > 0.1 && !spiritVisible && Math.random() < 0.2) {
+                    else if (Math.abs(trollData.currentOffset) > 0.1 && !spiritVisible && this.behaviorRandom() < 0.2) {
                         trollData.behaviorState = 'returning';
                         trollData.targetPeek = 0.5;
                         trollData.stateTimer = 3.0; // Max time to return
-                    } else if (Math.random() < 0.05) { // Rare Sianeeze
+                    } else if (this.behaviorRandom() < 0.05) { // Rare Sianeeze
                         // SNEEZING
                         trollData.behaviorState = 'sneezing';
                         trollData.stateTimer = 2.5;
                         trollData.animationPhase = 0;
                         trollData.targetPeek = 0.6;
-                    } else if (curiosity > 0.6 && Math.random() < 0.3) {
+                    } else if (curiosity > 0.6 && this.behaviorRandom() < 0.3) {
                         // Start sneakily looking around
                         trollData.behaviorState = 'sneaking';
                         trollData.targetPeek = 0.4;
                         trollData.stateTimer = 2.5;
                     }
                     // === NEW PLAYFUL ANIMATIONS ===
-                    else if (playfulness > 0.6 && Math.random() < 0.15) {
+                    else if (playfulness > 0.6 && this.behaviorRandom() < 0.15) {
                         // DANCING - rhythmic sway
                         trollData.behaviorState = 'dancing';
-                        trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                        trollData.stateTimer = 3.0 + this.behaviorRandom() * 2.0;
                         trollData.targetPeek = 0.7;
                         trollData.targetExpression = 0.8;
                         trollData.animationPhase = 0;
-                    } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.1) {
+                    } else if (playfulness > 0.5 && spiritVisible && this.behaviorRandom() < 0.1) {
                         // WAVING - friendly wave
                         trollData.behaviorState = 'waving';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.9;
                         trollData.targetExpression = 0.6;
-                    } else if (playfulness > 0.7 && Math.random() < 0.12) {
+                    } else if (playfulness > 0.7 && this.behaviorRandom() < 0.12) {
                         // BOUNCING - excited hops
                         trollData.behaviorState = 'bouncing';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = 0.7;
                         trollData.animationPhase = 0;
-                    } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                    } else if (playfulness > 0.6 && this.behaviorRandom() < 0.1) {
                         // GIGGLING - energetic laughter
                         trollData.behaviorState = 'giggling';
-                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                        trollData.stateTimer = 1.5 + this.behaviorRandom() * 0.5;
                         trollData.targetPeek = 0.5;
                         trollData.targetExpression = 0.8;
-                    } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.08) {
+                    } else if (playfulness > 0.5 && spiritVisible && this.behaviorRandom() < 0.08) {
                         // PEEKABOO - playful peek in/out
                         trollData.behaviorState = 'peekaboo';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.0;
                         trollData.animationPhase = 0;
                         trollData.targetExpression = 0.6;
-                    } else if (curiosity > 0.7 && spiritVisible && Math.random() < 0.12) {
+                    } else if (curiosity > 0.7 && spiritVisible && this.behaviorRandom() < 0.12) {
                         // CURIOUS_LEAN - lean far out to investigate
                         trollData.behaviorState = 'curious_lean';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.95;
                         trollData.targetExpression = 0.5;
-                    } else if (playfulness > 0.7 && Math.random() < 0.08) {
+                    } else if (playfulness > 0.7 && this.behaviorRandom() < 0.08) {
                         // CELEBRATING - excited celebration
                         trollData.behaviorState = 'celebrating';
-                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 3.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.8;
                         trollData.targetExpression = 1.0;
-                    } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                    } else if (playfulness > 0.6 && this.behaviorRandom() < 0.1) {
                         // SHIMMYING - quick shake
                         trollData.behaviorState = 'shimmying';
-                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                        trollData.stateTimer = 1.5 + this.behaviorRandom() * 0.5;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = 0.5;
-                    } else if (nervousness > 0.4 && curiosity > 0.5 && spiritVisible && Math.random() < 0.08) {
+                    } else if (nervousness > 0.4 && curiosity > 0.5 && spiritVisible && this.behaviorRandom() < 0.08) {
                         // TIPTOEING - sneaky tiny hops toward spirit
                         trollData.behaviorState = 'tiptoeing';
-                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 3.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.4;
                         trollData.targetExpression = -0.3;
                         trollData.animationPhase = 0;
                     }
                     // === 10 NEW ANIMATIONS ===
-                    else if (Math.random() < 0.06) {
+                    else if (this.behaviorRandom() < 0.06) {
                         // SCRATCHING - itchy troll scratches head/ear
                         trollData.behaviorState = 'scratching';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.5;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.5;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = 0.3;
                         trollData.animationPhase = 0;
-                    } else if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.04) {
+                    } else if (playfulness > 0.7 && !spiritVeryClose && this.behaviorRandom() < 0.04) {
                         // YODELING - troll throws head back and "yodels" silently
                         trollData.behaviorState = 'yodeling';
-                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 3.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.85;
                         trollData.targetExpression = 1.0;
                         trollData.animationPhase = 0;
-                    } else if (nervousness > 0.6 && spiritVeryClose && Math.random() < 0.15) {
+                    } else if (nervousness > 0.6 && spiritVeryClose && this.behaviorRandom() < 0.15) {
                         // SHIVERING - nervous shaking from fear
                         trollData.behaviorState = 'shivering';
-                        trollData.stateTimer = 2.5 + Math.random() * 1.5;
+                        trollData.stateTimer = 2.5 + this.behaviorRandom() * 1.5;
                         trollData.targetPeek = 0.3;
                         trollData.targetExpression = -0.6;
-                    } else if (curiosity > 0.7 && !spiritVisible && Math.random() < 0.05) {
+                    } else if (curiosity > 0.7 && !spiritVisible && this.behaviorRandom() < 0.05) {
                         // PONDERING - deep thought pose with chin resting
                         trollData.behaviorState = 'pondering';
-                        trollData.stateTimer = 4.0 + Math.random() * 2.0;
+                        trollData.stateTimer = 4.0 + this.behaviorRandom() * 2.0;
                         trollData.targetPeek = 0.55;
                         trollData.targetExpression = 0.2;
-                    } else if (nervousness > 0.3 && spiritVisible && Math.random() < 0.07) {
+                    } else if (nervousness > 0.3 && spiritVisible && this.behaviorRandom() < 0.07) {
                         // LISTENING - ears perked, frozen, listening intently
                         trollData.behaviorState = 'listening';
-                        trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.5 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.45;
                         trollData.targetExpression = 0.4;
-                    } else if (curiosity > 0.5 && Math.random() < 0.05) {
+                    } else if (curiosity > 0.5 && this.behaviorRandom() < 0.05) {
                         // SNIFFING - sniffing the air curiously
                         trollData.behaviorState = 'sniffing';
-                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.0 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.7;
                         trollData.targetExpression = 0.3;
                         trollData.animationPhase = 0;
-                    } else if (playfulness > 0.5 && Math.random() < 0.04) {
+                    } else if (playfulness > 0.5 && this.behaviorRandom() < 0.04) {
                         // CROAKING - frog-like croak/call (mouth wide)
                         trollData.behaviorState = 'croaking';
-                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                        trollData.stateTimer = 1.5 + this.behaviorRandom() * 0.5;
                         trollData.targetPeek = 0.65;
                         trollData.targetExpression = 0.9;
                         trollData.animationPhase = 0;
-                    } else if (!spiritVisible && patience > 3 && Math.random() < 0.03) {
+                    } else if (!spiritVisible && patience > 3 && this.behaviorRandom() < 0.03) {
                         // MOONGAZING - looking up at sky/aurora dreamily
                         trollData.behaviorState = 'moongazing';
-                        trollData.stateTimer = 5.0 + Math.random() * 3.0;
+                        trollData.stateTimer = 5.0 + this.behaviorRandom() * 3.0;
                         trollData.targetPeek = 0.75;
                         trollData.targetExpression = 0.1;
-                    } else if (nervousness > 0.5 && spiritVeryClose && Math.random() < 0.1) {
+                    } else if (nervousness > 0.5 && spiritVeryClose && this.behaviorRandom() < 0.1) {
                         // HUDDLING - curling into protective ball
                         trollData.behaviorState = 'huddling';
-                        trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                        trollData.stateTimer = 3.0 + this.behaviorRandom() * 2.0;
                         trollData.targetPeek = 0.2;
                         trollData.targetExpression = -0.5;
-                    } else if (playfulness > 0.7 && !spiritVisible && Math.random() < 0.04) {
+                    } else if (playfulness > 0.7 && !spiritVisible && this.behaviorRandom() < 0.04) {
                         // MISCHIEF - plotting something naughty, rubbing hands
                         trollData.behaviorState = 'mischief';
-                        trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                        trollData.stateTimer = 2.5 + this.behaviorRandom() * 1.0;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = -0.3;
                         trollData.animationPhase = 0;
                     } else {
                         // Continue watching
-                        trollData.targetPeek = 0.3 + Math.random() * 0.5;
+                        trollData.targetPeek = 0.3 + this.behaviorRandom() * 0.5;
                         trollData.stateTimer = 2.0;
                         if (spiritVisible) {
                             trollData.lookTarget.x = (this.spiritCurrentPos.x - baseX) * 0.1;
                             trollData.lookTarget.y = (this.spiritCurrentPos.y - baseY) * 0.1;
                         } else {
-                            trollData.lookTarget.x = (Math.random() - 0.5) * 1.5;
-                            trollData.lookTarget.y = (Math.random() - 0.5) * 1.0;
+                            trollData.lookTarget.x = (this.behaviorRandom() - 0.5) * 1.5;
+                            trollData.lookTarget.y = (this.behaviorRandom() - 0.5) * 1.0;
                         }
                     }
                     break;
@@ -2085,9 +2421,11 @@ export default class StillwaterTheme extends BaseTheme {
             // SNEAK LOGIC
             if (trollData.behaviorState === 'sneaking') {
                 // Rapidly look side to side
-                if (Math.random() < 0.1) {
-                    trollData.lookTarget.x = (Math.random() - 0.5) * 2.0; // Dart eyes
+                trollData.eyeDartTimer -= delta;
+                if (trollData.eyeDartTimer <= 0) {
+                    trollData.lookTarget.x = (this.behaviorRandom() - 0.5) * 2.0; // Dart eyes
                     trollData.targetHeadTilt = trollData.lookTarget.x * 0.2; // Head follows eyes
+                    trollData.eyeDartTimer = 0.08 + this.behaviorRandom() * 0.22;
                 }
                 // Bob up and down slightly
                 trollData.targetPeek = 0.3 + Math.sin(this.uniforms.time.value * 5.0) * 0.05;
@@ -2163,7 +2501,13 @@ export default class StillwaterTheme extends BaseTheme {
                 else if (cycle < -0.5) trollData.targetHeadTilt = -0.3;
 
                 trollData.targetExpression = 0.8; // Wide eyes
-                trollData.lookTarget.copy(this.spiritCurrentPos).sub(new THREE.Vector3(baseX, 0, baseZ)).normalize().multiplyScalar(0.5);
+                const spiritDeltaX = this.spiritCurrentPos.x - baseX;
+                const spiritDeltaY = this.spiritCurrentPos.y - baseY;
+                const spiritDeltaLength = Math.hypot(spiritDeltaX, spiritDeltaY) || 1;
+                trollData.lookTarget.set(
+                    (spiritDeltaX / spiritDeltaLength) * 0.5,
+                    (spiritDeltaY / spiritDeltaLength) * 0.5,
+                );
             }
 
             // CHUCKLING LOGIC
@@ -2299,8 +2643,10 @@ export default class StillwaterTheme extends BaseTheme {
                 }
                 // Nervous expression and darting eyes
                 trollData.targetExpression = -0.3;
-                if (Math.random() < 0.05) {
-                    trollData.lookTarget.x = (Math.random() - 0.5) * 1.5;
+                trollData.eyeDartTimer -= delta;
+                if (trollData.eyeDartTimer <= 0) {
+                    trollData.lookTarget.x = (this.behaviorRandom() - 0.5) * 1.5;
+                    trollData.eyeDartTimer = 0.18 + this.behaviorRandom() * 0.4;
                 }
                 trollData.squish = 0.9 + Math.abs(Math.sin(time * 8.0)) * 0.1;
             }
@@ -2618,10 +2964,18 @@ export default class StillwaterTheme extends BaseTheme {
                 }
             } else {
                 // Return to base Y (breathing handled separately)
-                mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, baseY, delta * 10.0);
+                mesh.position.y = THREE.MathUtils.lerp(
+                    mesh.position.y,
+                    baseY,
+                    smoothingAlpha(10, delta),
+                );
 
                 // Squish recovery (springy)
-                trollData.squish = THREE.MathUtils.lerp(trollData.squish, 1.0, delta * 8.0);
+                trollData.squish = THREE.MathUtils.lerp(
+                    trollData.squish,
+                    1.0,
+                    smoothingAlpha(8, delta),
+                );
             }
 
             // Shivering
@@ -2633,20 +2987,32 @@ export default class StillwaterTheme extends BaseTheme {
 
             // Smooth Peek Transition
             const peekSpeed = trollData.behaviorState === 'startled' ? 10.0 : 2.0;
-            trollData.currentPeek = THREE.MathUtils.lerp(trollData.currentPeek, trollData.targetPeek, delta * peekSpeed);
+            trollData.currentPeek = THREE.MathUtils.lerp(
+                trollData.currentPeek,
+                trollData.targetPeek,
+                smoothingAlpha(peekSpeed, delta),
+            );
 
             // Look Transition
-            trollData.currentLook.lerp(trollData.lookTarget, delta * 3.0);
+            trollData.currentLook.lerp(trollData.lookTarget, smoothingAlpha(3, delta));
             // Clamp look
             trollData.currentLook.x = Math.max(-1.0, Math.min(1.0, trollData.currentLook.x));
             trollData.currentLook.y = Math.max(-1.0, Math.min(1.0, trollData.currentLook.y));
 
             // Expression Transition
-            trollData.currentExpression = THREE.MathUtils.lerp(trollData.currentExpression, trollData.targetExpression, delta * 4.0);
+            trollData.currentExpression = THREE.MathUtils.lerp(
+                trollData.currentExpression,
+                trollData.targetExpression,
+                smoothingAlpha(4, delta),
+            );
 
             // Head Tilt Logic
             const tiltTarget = -trollData.currentLook.x * 0.1 + shiverOffset * 0.5;
-            trollData.headTilt = THREE.MathUtils.lerp(trollData.headTilt, tiltTarget, delta * 3.0);
+            trollData.headTilt = THREE.MathUtils.lerp(
+                trollData.headTilt,
+                tiltTarget,
+                smoothingAlpha(3, delta),
+            );
 
             // ─────────────────────────────────────────────────────────────────
             // TRANSFORM & UNIFORMS
@@ -2659,15 +3025,24 @@ export default class StillwaterTheme extends BaseTheme {
             // Fidgeting (subtle random movement)
             trollData.fidgetTimer -= delta;
             if (trollData.fidgetTimer <= 0) {
-                trollData.fidgetTimer = 2.0 + Math.random() * 3.0;
-                trollData.targetFidget.set((Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.05, 0);
+                trollData.fidgetTimer = 2.0 + this.behaviorRandom() * 3.0;
+                trollData.targetFidget.set(
+                    (this.behaviorRandom() - 0.5) * 0.05,
+                    (this.behaviorRandom() - 0.5) * 0.05,
+                    0,
+                );
             }
-            trollData.fidgetOffset.lerp(trollData.targetFidget, delta * 2.0);
+            trollData.fidgetOffset.lerp(trollData.targetFidget, smoothingAlpha(2, delta));
 
             // Position: base + movement offset + peek offset + fidget + breathing
             const peekOffset = -hideX * trollData.currentPeek;
             // Add wiggle offset and currentOffset (for fleeing/returning movement)
-            const finalX = baseX + trollData.currentOffset + peekOffset + trollData.fidgetOffset.x + (trollData.behaviorState === 'wiggling' ? wiggleOffset : 0);
+            const behaviorWiggle = trollData.behaviorState === 'wiggling' ? wiggleOffset : 0;
+            const finalX = baseX
+                + trollData.currentOffset
+                + peekOffset
+                + trollData.fidgetOffset.x
+                + behaviorWiggle;
 
             mesh.position.x = finalX; // Use computed X including wiggle
             mesh.position.y = baseY + breathAmount + trollData.fidgetOffset.y;
@@ -2682,7 +3057,7 @@ export default class StillwaterTheme extends BaseTheme {
                 trollData.blinkTimer = trollData.blinkDuration;
             } else if (trollData.isBlinking && trollData.blinkTimer <= 0) {
                 trollData.isBlinking = false;
-                trollData.blinkTimer = 2.0 + Math.random() * 4.0;
+                trollData.blinkTimer = 2.0 + this.behaviorRandom() * 4.0;
             }
 
             // Update Uniforms
@@ -2699,12 +3074,27 @@ export default class StillwaterTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     animate() {
-        if (!this.isActive) return;
+        this.startAnimationLoop();
+    }
 
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+    startAnimationLoop() {
+        if (this.animationLoopStarted || !this.isActive || !this.renderer) return;
 
-        const delta = this.clock.getDelta();
-        const elapsed = this.clock.getElapsedTime();
+        this.animationLoopStarted = true;
+        this.clock.start();
+        this.clock.getDelta();
+        this._animationDriver();
+    }
+
+    renderFrame() {
+        if (!this.isActive || this.isPaused || !this.renderer || !this.scene || !this.camera) return;
+
+        const rawDelta = this.clock.getDelta();
+        const delta = Number.isFinite(rawDelta)
+            ? THREE.MathUtils.clamp(rawDelta, 0, 0.1)
+            : 0;
+        this.elapsedTime += delta;
+        const elapsed = this.elapsedTime;
         this.uniforms.time.value = elapsed;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -2714,10 +3104,14 @@ export default class StillwaterTheme extends BaseTheme {
         this.uniforms.spiritGlow.value = THREE.MathUtils.lerp(
             this.uniforms.spiritGlow.value,
             this.targetSpiritGlow,
-            delta * 4,
+            smoothingAlpha(4, delta),
         );
         if (this.targetSpiritGlow > 1.0) {
-            this.targetSpiritGlow -= delta * 0.2;
+            this.targetSpiritGlow = 1 + decayWithHalfLife(
+                this.targetSpiritGlow - 1,
+                2.4,
+                delta,
+            );
         }
 
         // Spirit light intensity follows glow
@@ -2732,9 +3126,9 @@ export default class StillwaterTheme extends BaseTheme {
         this.uniforms.glowIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.glowIntensity.value,
             this.targetGlowIntensity,
-            delta * 3,
+            smoothingAlpha(3, delta),
         );
-        this.targetGlowIntensity *= 0.95;
+        this.targetGlowIntensity = decayWithHalfLife(this.targetGlowIntensity, 0.225, delta);
 
         // ─────────────────────────────────────────────────────────────────────
         // WANDERING SPIRIT
@@ -2747,34 +3141,33 @@ export default class StillwaterTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.updateTrollAnimations(delta);
-        this.updateHeroTroll(delta, elapsed);
+        this.updateHeroTroll(delta);
 
         // ─────────────────────────────────────────────────────────────────────
         // DREAMY DRIFT
         // ─────────────────────────────────────────────────────────────────────
 
         const driftTime = elapsed * 0.03;
-        this.mainGroup.position.x = Math.sin(driftTime) * 0.6;
-        this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 0.15;
-        this.mainGroup.rotation.y = Math.sin(driftTime * 0.5) * 0.008;
+        const driftX = Math.sin(driftTime) * 0.6;
+        const driftY = Math.cos(driftTime * 0.7) * 0.15;
 
         // ─────────────────────────────────────────────────────────────────────
         // RIPPLES
         // ─────────────────────────────────────────────────────────────────────
 
-        for (let i = this.ripples.length - 1; i >= 0; i--) {
-            const ripple = this.ripples[i];
+        for (const ripple of this.ripples) {
+            if (!ripple.userData.active) continue;
             const age = elapsed - ripple.userData.startTime;
 
             ripple.userData.life -= delta * 0.4;
             ripple.material.uniforms.uRadius.value = 0.1 + age * ripple.userData.speed;
-            ripple.material.uniforms.uOpacity.value = ripple.userData.life;
+            ripple.material.uniforms.uOpacity.value = Math.max(0, ripple.userData.life);
 
             if (ripple.userData.life <= 0 || ripple.material.uniforms.uRadius.value > 1.0) {
-                this.mainGroup.remove(ripple);
-                ripple.geometry.dispose();
-                ripple.material.dispose();
-                this.ripples.splice(i, 1);
+                ripple.userData.active = false;
+                ripple.userData.life = 0;
+                ripple.material.uniforms.uOpacity.value = 0;
+                ripple.visible = false;
             }
         }
 
@@ -2782,54 +3175,22 @@ export default class StillwaterTheme extends BaseTheme {
         // SPIRIT BURSTS
         // ─────────────────────────────────────────────────────────────────────
 
-        for (let i = this.spiritBursts.length - 1; i >= 0; i--) {
-            const burst = this.spiritBursts[i];
-            burst.userData.life -= delta;
-
-            // Quick fade out at end
-            burst.material.opacity = Math.min(burst.userData.life, 1.0);
-
-            if (burst.userData.life <= 0) {
-                this.mainGroup.remove(burst);
-                burst.geometry.dispose();
-                burst.material.dispose();
-                this.spiritBursts.splice(i, 1);
-                continue;
-            }
-
-            const positions = burst.geometry.attributes.position.array;
-            const { velocities } = burst.userData;
-            const { gravity } = burst.userData;
-
-            for (let j = 0; j < positions.length / 3; j++) {
-                const idx = j * 3;
-
-                // Apply velocity
-                positions[idx] += velocities[idx] * delta; // X
-                positions[idx + 1] += velocities[idx + 1] * delta; // Y
-                positions[idx + 2] += velocities[idx + 2] * delta; // Z
-
-                // Apply gravity to Y velocity
-                velocities[idx + 1] += gravity * delta;
-            }
-
-            burst.geometry.attributes.position.needsUpdate = true;
-        }
+        this.updateSpiritBurstSystem(delta);
 
         // ─────────────────────────────────────────────────────────────────────
         // LIGHT BEAMS
         // ─────────────────────────────────────────────────────────────────────
 
-        for (let i = this.lightBeams.length - 1; i >= 0; i--) {
-            const beam = this.lightBeams[i];
+        for (const beam of this.lightBeams) {
+            if (!beam.userData.active) continue;
             beam.userData.life -= delta * 0.3;
-            beam.material.uniforms.uOpacity.value = beam.userData.life;
+            beam.material.uniforms.uOpacity.value = Math.max(0, beam.userData.life);
 
             if (beam.userData.life <= 0) {
-                this.mainGroup.remove(beam);
-                beam.geometry.dispose();
-                beam.material.dispose();
-                this.lightBeams.splice(i, 1);
+                beam.userData.active = false;
+                beam.userData.life = 0;
+                beam.material.uniforms.uOpacity.value = 0;
+                beam.visible = false;
             }
         }
 
@@ -2838,14 +3199,19 @@ export default class StillwaterTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         if (this.camera) {
-            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const pointerAlpha = smoothingAlpha(2.2, delta);
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, pointerAlpha);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, pointerAlpha);
             const parallaxX = this.smoothedPointerX * 3.0;
             const parallaxY = -this.smoothedPointerY * 1.5;
-            this.camera.position.x = parallaxX;
-            this.camera.position.y = 6 + parallaxY;
+            this.camera.position.x = parallaxX + driftX;
+            this.camera.position.y = 6 + parallaxY + driftY;
             this.camera.position.z = 25;
-            this.camera.lookAt(parallaxX * 0.4, 6 + parallaxY * 0.4, -15);
+            this.camera.lookAt(
+                parallaxX * 0.4 + driftX * 0.25,
+                6 + parallaxY * 0.4 + driftY * 0.25,
+                -15,
+            );
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -2853,6 +3219,100 @@ export default class StillwaterTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.renderer.render(this.scene, this.camera);
+        this.recordPerformanceCounters();
+    }
+
+    updateSpiritBurstSystem(delta) {
+        const system = this.spiritBurstSystem;
+        if (!system || system.userData.activeCount <= 0) {
+            if (system) system.visible = false;
+            return;
+        }
+
+        const data = system.userData;
+        let activeCount = 0;
+        for (let particleIndex = 0; particleIndex < BURST_PARTICLE_CAPACITY; particleIndex++) {
+            if (data.life[particleIndex] <= 0) continue;
+
+            const offset = particleIndex * 3;
+            const nextLife = data.life[particleIndex] - delta;
+            if (nextLife <= 0) {
+                data.life[particleIndex] = 0;
+                data.positions[offset] = 0;
+                data.positions[offset + 1] = INACTIVE_PARTICLE_Y;
+                data.positions[offset + 2] = 0;
+                data.colors[offset] = 0;
+                data.colors[offset + 1] = 0;
+                data.colors[offset + 2] = 0;
+                continue;
+            }
+
+            data.life[particleIndex] = nextLife;
+            data.positions[offset] += data.velocities[offset] * delta;
+            data.positions[offset + 1] += data.velocities[offset + 1] * delta;
+            data.positions[offset + 2] += data.velocities[offset + 2] * delta;
+            data.velocities[offset + 1] += data.gravity * delta;
+
+            const brightness = Math.min(1, nextLife);
+            data.colors[offset] = COLORS.spiritCore.r * brightness;
+            data.colors[offset + 1] = COLORS.spiritCore.g * brightness;
+            data.colors[offset + 2] = COLORS.spiritCore.b * brightness;
+            activeCount++;
+        }
+
+        data.activeCount = activeCount;
+        const positionAttribute = system.geometry.attributes.position;
+        const colorAttribute = system.geometry.attributes.color;
+        this.markBurstAttributeRange(positionAttribute, 0, BURST_PARTICLE_CAPACITY);
+        this.markBurstAttributeRange(colorAttribute, 0, BURST_PARTICLE_CAPACITY);
+        system.visible = activeCount > 0;
+    }
+
+    getPerformanceSnapshot() {
+        const localInfo = this.renderer?.info ?? {};
+        const localRender = localInfo.render ?? {};
+        const localCalls = Number.isFinite(localRender.drawCalls ?? localRender.calls)
+            ? (localRender.drawCalls ?? localRender.calls)
+            : 0;
+        const sharedCalls = Number.isFinite(this.webglRenderer?.lastFrameDrawCalls)
+            ? this.webglRenderer.lastFrameDrawCalls
+            : 0;
+        let activeRipples = 0;
+        let activeBeams = 0;
+        for (const ripple of this.ripples) {
+            if (ripple.userData.active) activeRipples++;
+        }
+        for (const beam of this.lightBeams) {
+            if (beam.userData.active) activeBeams++;
+        }
+
+        return {
+            calls: localCalls + sharedCalls,
+            themeCalls: localCalls,
+            sharedCalls,
+            triangles: Number.isFinite(localRender.triangles) ? localRender.triangles : 0,
+            geometries: Number.isFinite(localInfo.memory?.geometries) ? localInfo.memory.geometries : 0,
+            textures: Number.isFinite(localInfo.memory?.textures) ? localInfo.memory.textures : 0,
+            programs: Array.isArray(localInfo.programs) ? localInfo.programs.length : 0,
+            activeRipples,
+            activeBeams,
+            activeBurstParticles: this.spiritBurstSystem?.userData.activeCount ?? 0,
+            rippleCapacity: this.ripples.length,
+            beamCapacity: this.lightBeams.length,
+            burstCapacity: BURST_PARTICLE_CAPACITY,
+        };
+    }
+
+    recordPerformanceCounters() {
+        if (!performanceMonitor?.enabled || !performanceMonitor?.recordCounters) return;
+        const snapshot = this.getPerformanceSnapshot();
+        performanceMonitor.recordCounters({
+            calls: snapshot.calls,
+            triangles: snapshot.triangles,
+            geometries: snapshot.geometries,
+            textures: snapshot.textures,
+            programs: snapshot.programs,
+        });
     }
 
     onWindowResize() {
@@ -2860,44 +3320,58 @@ export default class StillwaterTheme extends BaseTheme {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (!paused) return false;
+
+        this.animationLoopStarted = false;
+        this.clock.stop();
+        return true;
+    }
+
+    resume() {
+        const wasPaused = this.isPaused;
+        const resumed = super.resume();
+        if (!resumed) return false;
+
+        if (wasPaused) {
+            this.animationLoopStarted = false;
+            this.startAnimationLoop();
+        }
+        return true;
     }
 
     stop() {
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
+        const { renderer } = this;
+        this._runtimeGeneration++;
+        this.animationLoopStarted = false;
+        this.clock.stop();
+
+        // Mark the runtime inactive and cancel registered work before releasing
+        // anything a late RAF or GLB completion could otherwise touch.
+        super.stop();
+        this.cancelAnimationFrames();
+        this.clearTrackedResources();
+        this.clearEventUnsubscribers();
+        this.removeRendererResilience();
+
+        const mixer = this.heroTrollState?.mixer;
+        if (mixer) {
+            mixer.stopAllAction();
+            if (this.heroTroll) mixer.uncacheRoot(this.heroTroll);
         }
 
-        this.eventUnsubscribers.forEach((unsub) => unsub?.());
-        this.eventUnsubscribers = [];
-
-        window.removeEventListener('resize', this.boundResizeHandler);
-
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('stillwater-theme');
-            if (container && this.renderer.domElement.parentNode === container) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
+        this.disposeSceneResources();
+        if (renderer) this.disposeRenderer(renderer, { nullInstance: false });
 
         this.trees = [];
         this.mossMounds = [];
         this.fogLayers = [];
         this.ripples = [];
+        this.ambientLightBeams = [];
         this.lightBeams = [];
         this.mushrooms = [];
         this.lilies = [];
@@ -2917,9 +3391,16 @@ export default class StillwaterTheme extends BaseTheme {
         this.spores = null;
         this.canopyStars = null;
         this.goldenMotes = null;
+        this.spiritBurstSystem = null;
         this.heroTroll = null;
         this.heroTrollState = null;
+        this._heroLoadPromise = Promise.resolve(false);
+        this._reactionSerial = 0;
+        this.elapsedTime = 0;
+        this.clock.elapsedTime = 0;
+    }
 
-        super.stop();
+    cleanup() {
+        super.cleanup();
     }
 }

@@ -1,7 +1,7 @@
 /**
  * Dual-state theme tripwire (plan Phase 3c.5 / Phase 7).
  *
- * 19 themes deliberately maintain BOTH a live TSL path (WebGPURenderer) and a
+ * 17 themes deliberately maintain BOTH a live TSL path (WebGPURenderer) and a
  * GLSL ShaderMaterial fallback twin — the Phase 7 program retires the GLSL
  * branch theme by theme. This tripwire pins the set so it can only SHRINK
  * deliberately: a theme entering the mixed state (new GLSL in a TSL theme, or
@@ -12,7 +12,7 @@
  * ShaderMaterial evidence often lives in sibling files — scan whole theme dirs.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,9 +22,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // Phase 7 batch order (plan §7.2) — delete a name here when its GLSL twin is
 // retired. NEVER add a name: that is a new dual-maintenance burden.
 const DUAL_STATE_ALLOWLIST = [
-    'astral-weave', 'black-hole', 'chiral-gold', 'chromadelic-highway',
+    'astral-weave', 'chiral-gold', 'chromadelic-highway',
     'cosmic-noir', 'electric-dreams', 'fluid-dreams', 'ice-temple', 'lunara',
-    'moonlit-forest', 'neon-district', 'neon-dusk', 'ocean', 'stellar-drift',
+    'neon-district', 'neon-dusk', 'ocean', 'stellar-drift',
     'stellar-velocity', 'swedish-forest', 'synthwave-sunset', 'winter', 'wolfhour',
 ];
 
@@ -32,13 +32,19 @@ const WEBGPU_RE = /new\s+[\w$.]*WebGPURenderer\s*\(/;
 const SHADER_RE = /new\s+[\w$.]*ShaderMaterial\s*\(/;
 
 function measureDualStateThemes() {
-    const files = execFileSync('git', ['ls-files', 'src/themes/**/*.js', 'src/themes/**/*.ts'], { cwd: repoRoot, encoding: 'utf8' })
+    const files = execFileSync(
+        'git',
+        ['ls-files', 'src/themes/**/*.js', 'src/themes/**/*.ts'],
+        { cwd: repoRoot, encoding: 'utf8' },
+    )
         .split('\n').filter(Boolean).map((f) => f.replace(/\\/g, '/'));
     const byTheme = new Map();
     for (const file of files) {
         const themeId = file.split('/')[2];
         if (!themeId || !file.split('/')[3]) continue; // top-level files (theme-manager etc.)
-        const src = readFileSync(path.join(repoRoot, file), 'utf8');
+        const absolutePath = path.join(repoRoot, file);
+        if (!existsSync(absolutePath)) continue;
+        const src = readFileSync(absolutePath, 'utf8');
         const entry = byTheme.get(themeId) || { webgpu: false, shader: false };
         if (WEBGPU_RE.test(src)) entry.webgpu = true;
         if (SHADER_RE.test(src)) entry.shader = true;

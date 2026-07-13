@@ -16,6 +16,7 @@
  */
 
 import { COLS, ROWS } from '../core/constants.js';
+import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import {
     clearPlayerInput,
     enqueueInputEdge,
@@ -336,67 +337,18 @@ export class InputController {
     }
 
     processDasDirection(state, dasDelay, dasInterval, delta, actionCallback) {
-        if (!state.active) return;
-
-        const runInstantRepeat = () => {
-            for (let i = 0; i < INSTANT_DAS_REPEAT_LIMIT; i++) {
-                if (actionCallback() === false) {
-                    break;
-                }
-            }
-            state.intervalAccumulator = 0;
-        };
-
-        if (!state.isRepeating) {
-            state.delayAccumulator += delta;
-            if (state.delayAccumulator >= dasDelay) {
-                state.isRepeating = true;
-                // Execute first repeat exactly at the delay threshold
-                state.intervalAccumulator = state.delayAccumulator - dasDelay;
-
-                if (dasInterval <= 0) {
-                    runInstantRepeat();
-                    return;
-                }
-
-                actionCallback();
-
-                // If the lag spike was massive, execute multiple times
-                while (state.intervalAccumulator >= dasInterval) {
-                    state.intervalAccumulator -= dasInterval;
-                    actionCallback();
-                }
-            }
-        } else {
-            if (dasInterval <= 0) {
-                runInstantRepeat();
-                return;
-            }
-
-            state.intervalAccumulator += delta;
-            while (state.intervalAccumulator >= dasInterval) {
-                state.intervalAccumulator -= dasInterval;
-                actionCallback();
-            }
-        }
+        advanceDas(state, delta, {
+            dasDelay,
+            dasInterval,
+            instantLimit: INSTANT_DAS_REPEAT_LIMIT,
+        }, actionCallback);
     }
 
     processSoftDrop(state, dropInterval, delta, actionCallback) {
-        if (!state.active) return;
-        if (dropInterval <= 0) {
-            for (let i = 0; i < INSTANT_SOFT_DROP_REPEAT_LIMIT; i++) {
-                if (actionCallback() === false) {
-                    break;
-                }
-            }
-            state.intervalAccumulator = 0;
-            return;
-        }
-        state.intervalAccumulator += delta;
-        while (state.intervalAccumulator >= dropInterval) {
-            state.intervalAccumulator -= dropInterval;
-            actionCallback();
-        }
+        advanceSoftDrop(state, delta, {
+            softDropInterval: dropInterval,
+            instantLimit: INSTANT_SOFT_DROP_REPEAT_LIMIT,
+        }, actionCallback);
     }
 
     /**

@@ -14,7 +14,7 @@
  * never silently.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +23,10 @@ import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const files = execFileSync('git', ['ls-files', 'src/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
-    .split('\n').filter((f) => f && !f.endsWith('.test.js'));
+    .split('\n')
+    .filter((file) => file
+        && !file.endsWith('.test.js')
+        && existsSync(path.join(repoRoot, file)));
 
 // Shrink-only. Each entry is a known-dead reference: the key does not exist in
 // the map, so the subscription/emit never fires. Fix = subscribe to a real

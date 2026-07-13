@@ -1,10 +1,8 @@
 /**
- * §5.4 DAS engine pins: hand-computed golden repeat tables (the plan's
- * validation shape) + a seeded differential proving the pure engine is
- * bit-identical to the live keyboard clone (InputController.processDasDirection
- * / processSoftDrop) — fired counts per advance AND accumulator state. The
- * gamepad clone (GamepadController.processDasTimers) is a verbatim copy of the
- * same algorithm with cached config; its equivalence is proven at wiring time.
+ * §5.4 DAS engine pins: hand-computed golden repeat tables for the one pure
+ * engine, plus adapter-contract tests proving the legacy millisecond callers
+ * forward their state/config without changing public return or lifecycle
+ * semantics. The adapters deliberately retain their existing clock ownership.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -104,8 +102,8 @@ describe('advanceDas golden tables (§5.4)', () => {
     });
 });
 
-describe('engine ≡ live keyboard clone (seeded differential)', () => {
-    it('500 random advance sequences match InputController.processDasDirection exactly', () => {
+describe('legacy keyboard DAS adapter contract', () => {
+    it('forwards 500 random direction sequences with exact state and action counts', () => {
         const rng = new RandomStream('das-5.4', 'directions');
         const ic = new InputController();
         for (let caseIdx = 0; caseIdx < 500; caseIdx += 1) {
@@ -134,7 +132,7 @@ describe('engine ≡ live keyboard clone (seeded differential)', () => {
         }
     });
 
-    it('300 random soft-drop sequences match InputController.processSoftDrop exactly', () => {
+    it('forwards 300 random soft-drop sequences with exact state and action counts', () => {
         const rng = new RandomStream('das-5.4', 'softdrop');
         const ic = new InputController();
         for (let caseIdx = 0; caseIdx < 300; caseIdx += 1) {
@@ -160,10 +158,35 @@ describe('engine ≡ live keyboard clone (seeded differential)', () => {
             expect(engineState, `case ${caseIdx} final state`).toEqual(legacyState);
         }
     });
+
+    it('preserves undefined returns and the regular-versus-instant false contract', () => {
+        const controller = new InputController();
+        const regular = heldState();
+        let regularMoves = 0;
+        const regularResult = controller.processDasDirection(regular, 0, 10, 30, () => {
+            regularMoves += 1;
+            return false;
+        });
+        expect(regularResult).toBeUndefined();
+        expect(regularMoves).toBe(4);
+
+        const instant = heldState();
+        let instantMoves = 0;
+        const instantResult = controller.processDasDirection(instant, 0, 0, 30, () => {
+            instantMoves += 1;
+            return false;
+        });
+        expect(instantResult).toBeUndefined();
+        expect(instantMoves).toBe(1);
+
+        const softDrop = createSoftDropState();
+        softDrop.active = true;
+        expect(controller.processSoftDrop(softDrop, 10, 30, () => false)).toBeUndefined();
+    });
 });
 
-describe('engine ≡ live gamepad clone (seeded differential)', () => {
-    it('matches cached-config direction and soft-drop timers', () => {
+describe('legacy gamepad DAS adapter contract', () => {
+    it('forwards cached-config direction and soft-drop timers', () => {
         const rng = new RandomStream('das-5.4', 'gamepad');
         const controller = new GamepadController();
         controller.enabled = true;
@@ -223,5 +246,47 @@ describe('engine ≡ live gamepad clone (seeded differential)', () => {
             expect(controller.dasState[0].left).toMatchObject(directionState);
             expect(controller.dasState[0].down).toMatchObject(softDropState);
         }
+    });
+
+    it('applies explicit config updates on the next advance and keeps clear-as-stop semantics', () => {
+        const controller = new GamepadController();
+        controller.enabled = true;
+        controller.gameActions = {};
+        controller.updateDasSettings(20, 10, 10);
+        let moves = 0;
+        controller.startDas(0, 'left', () => {
+            moves += 1;
+            return false;
+        });
+
+        expect(controller.processDasTimers(0, 10)).toBeUndefined();
+        expect(moves).toBe(0);
+
+        controller.updateDasSettings(10, 0, 10);
+        expect(controller.processDasTimers(0, 0)).toBeUndefined();
+        expect(moves).toBe(1);
+
+        controller.clearDasTimers(0);
+        expect(controller.dasState[0].left.active).toBe(false);
+        expect(controller.dasState[0].right.active).toBe(false);
+        expect(controller.dasState[0].down.active).toBe(false);
+    });
+
+    it('keeps the null-action guard and uses the no-delay soft-drop path', () => {
+        const controller = new GamepadController();
+        controller.enabled = true;
+        controller.gameActions = {};
+        controller.updateDasSettings(120, 40, 0);
+        controller.dasState[0].left.active = true;
+        let drops = 0;
+        controller.startDas(0, 'down', () => {
+            drops += 1;
+            return false;
+        });
+
+        controller.processDasTimers(0, 1);
+
+        expect(controller.dasState[0].left.isRepeating).toBe(false);
+        expect(drops).toBe(1);
     });
 });

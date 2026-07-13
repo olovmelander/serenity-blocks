@@ -40,6 +40,8 @@ import {
 
 const MAX_TETROMINOS = 50;
 const MAX_ROTATION_SPEED = 0.05;
+const RECYCLING_MODE_OLDEST = 'oldest';
+const RECYCLING_MODE_MINIMUM_RESIDENCE = 'minimum-residence';
 
 export class IntroTetrominoCompute {
     constructor() {
@@ -47,6 +49,7 @@ export class IntroTetrominoCompute {
         this.activeCount = 0;
         this.spawnCursor = 0;
         this.spawnTimes = new Float32Array(MAX_TETROMINOS); // CPU-side spawn timestamps for eviction
+        this.recyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy();
 
         // Buffer layout: vec4 per tetromino
         // positionBuffer: xyz + active (1.0 or 0.0)
@@ -124,31 +127,63 @@ export class IntroTetrominoCompute {
     }
 
     /**
+     * Configure how a full CPU-side slot table is recycled.
+     *
+     * GPU compute can deactivate a slot without updating positionData on the CPU.
+     * Reading that state back for every spawn would stall the render pipeline, so
+     * the opt-in minimum-residence policy is deliberately conservative: once the
+     * CPU shadow appears full, it skips a spawn until the oldest slot has lived for
+     * at least minimumResidenceMs. The intro keeps its historical oldest-first
+     * policy unless a reusable theme explicitly opts in.
+     */
+    setRecyclingPolicy(policy = {}) {
+        this.recyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy(policy);
+        return { ...this.recyclingPolicy };
+    }
+
+    _getNow() {
+        if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+            return performance.now();
+        }
+        return Date.now();
+    }
+
+    _findSpawnSlot(now = this._getNow()) {
+        for (let i = 0; i < MAX_TETROMINOS; i++) {
+            const checkIdx = (this.spawnCursor + i) % MAX_TETROMINOS;
+            if (this.positionData[checkIdx * 4 + 3] < 0.5) {
+                return checkIdx;
+            }
+        }
+
+        let oldestTime = Infinity;
+        let oldestSlot = 0;
+        for (let i = 0; i < MAX_TETROMINOS; i++) {
+            if (this.spawnTimes[i] < oldestTime) {
+                oldestTime = this.spawnTimes[i];
+                oldestSlot = i;
+            }
+        }
+
+        if (this.recyclingPolicy.mode === RECYCLING_MODE_MINIMUM_RESIDENCE) {
+            const age = Math.max(0, now - oldestTime);
+            if (age < this.recyclingPolicy.minimumResidenceMs) {
+                return -1;
+            }
+        }
+
+        return oldestSlot;
+    }
+
+    /**
      * Spawn a tetromino at the given position with velocity.
      * Returns the index or -1 if full.
      */
     spawn(x, y, z, vx, vy, vz, typeIndex = 0) {
         // Find an inactive slot
-        let slot = -1;
-        for (let i = 0; i < MAX_TETROMINOS; i++) {
-            const checkIdx = (this.spawnCursor + i) % MAX_TETROMINOS;
-            if (this.positionData[checkIdx * 4 + 3] < 0.5) {
-                slot = checkIdx;
-                break;
-            }
-        }
-        if (slot === -1) {
-            // All slots full — evict the oldest tetromino (earliest spawn time)
-            let oldestTime = Infinity;
-            let oldestSlot = 0;
-            for (let i = 0; i < MAX_TETROMINOS; i++) {
-                if (this.spawnTimes[i] < oldestTime) {
-                    oldestTime = this.spawnTimes[i];
-                    oldestSlot = i;
-                }
-            }
-            slot = oldestSlot;
-        }
+        const now = this._getNow();
+        const slot = this._findSpawnSlot(now);
+        if (slot === -1) return -1;
 
         const i4 = slot * 4;
 
@@ -178,7 +213,7 @@ export class IntroTetrominoCompute {
 
         this.activeCount = Math.min(this.activeCount + 1, MAX_TETROMINOS);
         this.spawnCursor = (slot + 1) % MAX_TETROMINOS;
-        this.spawnTimes[slot] = performance.now();
+        this.spawnTimes[slot] = now;
 
         this._markSlotUpdated(this.positionBuffer, slot);
         this._markSlotUpdated(this.velocityBuffer, slot);
@@ -455,6 +490,19 @@ export class IntroTetrominoCompute {
     getRotSpeedBuffer() { return this.rotSpeedBuffer; }
 
     static get MAX_TETROMINOS() { return MAX_TETROMINOS; }
+
+    static normalizeRecyclingPolicy(policy = {}) {
+        const options = typeof policy === 'string' ? { mode: policy } : (policy || {});
+        const mode = options.mode === RECYCLING_MODE_MINIMUM_RESIDENCE
+            ? RECYCLING_MODE_MINIMUM_RESIDENCE
+            : RECYCLING_MODE_OLDEST;
+        const minimumResidenceMs = Math.max(
+            0,
+            Number.isFinite(options.minimumResidenceMs) ? options.minimumResidenceMs : 0,
+        );
+
+        return { mode, minimumResidenceMs };
+    }
 
     _copySlotFromLiveData(target, source, slot) {
         if (!target || !source) return;

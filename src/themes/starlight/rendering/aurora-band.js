@@ -50,7 +50,7 @@ export function createAuroraBand(options = {}) {
 
         // High, soft band with WIDE feathered falloff — so wisps fade gently
         // instead of being clipped flat into glowing rectangles.
-        const band = smoothstep(0.25, 0.6, elev).mul(smoothstep(1.05, 0.62, elev)).toVar();
+        const band = smoothstep(0.25, 0.6, elev).mul(smoothstep(0.62, 1.05, elev).oneMinus()).toVar();
 
         // FINE vertical curtains: horizontal-varying noise (thin streaks, not big
         // blobs), sparse threshold, slow drift.

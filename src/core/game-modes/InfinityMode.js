@@ -4,11 +4,24 @@ import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
 import {
-    GameState, spawnPiece, fillBag, gameLoop, updateGame,
+    GameState,
+    spawnPiece,
+    fillBag,
+    gameLoop,
+    updateGame,
+    move as coreMove,
+    rotate as coreRotate,
+    hardDrop as coreHardDrop,
+    softDrop as coreSoftDrop,
 } from '../game.js';
 import {
     expandGridIfNeeded, calculateTopRow, getGridStats, checkInfinityGameOver,
 } from '../infinity-grid.js';
+import {
+    INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    projectInfinityPresentationCamera,
+} from '../infinity-spawn-policy.js';
+import { maintainInfinitySimulation } from '../infinity-simulation-maintenance.js';
 import {
     updateStats,
     triggerLineClearFlash as triggerLineClearFlashCanvas,
@@ -17,13 +30,34 @@ import {
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
+import { installLegacyBoardJuiceInputWrapper } from '../../ui/infinity/legacy-board-juice-input-wrapper.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
 } from '../../events/gameplay-events.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import {
+    DEMO_FIXED_SIMULATION_CLOCK,
+    DEMO_LEGACY_SIMULATION_CLOCK,
+} from '../demo/DemoRecorder.js';
+import { readFlag } from '../flags.js';
+import {
+    createSinglePlayerFixedInputBinding,
+    createSinglePlayerFixedTickRuntime,
+    ownsSinglePlayerFixedTickRuntime,
+    runSinglePlayerFixedTicks,
+    startSinglePlayerFixedTickRuntime,
+    stopSinglePlayerFixedTickRuntime,
+} from './single-player-fixed-tick.js';
+import {
+    applyFixedHardDropHitStop,
+    applyFixedLineImpactHitStop,
+    applyFixedPerfectClearHitStop,
+} from '../fixed-hit-stop-policy.js';
+import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
 import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
+import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -100,10 +134,35 @@ export class InfinityMode extends BaseGameMode {
         this.isScrollBuffering = false;
         this._wheelHandler = null;
         this._scrollExitKeyHandler = null;
+        this._explorationSession = null;
+        this._explorationOwnsPause = false;
+        this._explorationTransitionGeneration = 0;
+        this._cameraSnapGeneration = 0;
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
         this.usingHybridLoop = false;
+
+        // Default-off canonical clock. FrameRateController remains the sole
+        // wall-time owner; this runtime fences one Infinity session.
+        this._fixedTickEnabled = false;
+        this._fixedTickRuntime = createSinglePlayerFixedTickRuntime();
+        this._fixedTickOwnership = null;
+        this._fixedTickInputBinding = null;
+        this._lastFixedTickClockWarp = null;
+
+        // Legacy window input decoration is session-owned. Fixed input bypasses
+        // these globals entirely and writes through the canonical dispatcher.
+        this._legacyBoardJuiceInputOwner = null;
+
+        // One immutable session owns every async stop/result continuation. The
+        // clock identity is latched so experimental clocks fail closed.
+        this._sessionSimulationClock = DEMO_LEGACY_SIMULATION_CLOCK;
+        this._sessionGeneration = 0;
+        this._activeSession = null;
+        this._stoppedSession = null;
+        this._stopPromise = null;
+        this.isProcessingGameOver = false;
     }
 
     /**
@@ -165,10 +224,47 @@ export class InfinityMode extends BaseGameMode {
     /**
      * Called when user clicks "Start Game"
      */
-    async onStart() {
+    async onStart(options = {}) {
+        // BaseGameMode exposes isRunning=false before an async Infinity teardown
+        // has drained physics. A replacement state cannot publish until that
+        // exact captured stop transaction completes.
+        const pendingStop = this._stopPromise;
+        if (pendingStop) {
+            await pendingStop;
+        }
+
+        if (this.isRunning) {
+            await super.onStart();
+            return;
+        }
+
         await super.onStart();
 
+        // Deactivation can win the microtask boundary inside BaseGameMode.
+        // In that case its stop owns the base running flag and this start must
+        // not construct a state after the mode has retired.
+        if (!this.isActive || !this.isRunning) {
+            return;
+        }
+
         console.log('[Infinity] Starting Infinity mode...');
+
+        const settings = this.deps.settingsManager.get();
+        const flagRequestedFixedTick = options.simulationClock === undefined
+            && readFlag('fixedTick', false);
+        this._fixedTickEnabled = flagRequestedFixedTick;
+        if (this._fixedTickEnabled && !this.deps.frameRateController?.startHybridLoop) {
+            console.warn('[Infinity] fixedTick requires FrameRateController; using legacy loop');
+            this._fixedTickEnabled = false;
+        }
+        if (options.simulationClock === undefined) {
+            this._sessionSimulationClock = this._fixedTickEnabled
+                ? DEMO_FIXED_SIMULATION_CLOCK
+                : DEMO_LEGACY_SIMULATION_CLOCK;
+        } else {
+            this._sessionSimulationClock = options.simulationClock;
+        }
+        const usesFixedRules = this._sessionSimulationClock === DEMO_FIXED_SIMULATION_CLOCK;
 
         // Initialize game state with infinity mode options
         this.gameState = new GameState({
@@ -177,7 +273,23 @@ export class InfinityMode extends BaseGameMode {
             disableLevelProgression: true, // Option A from plan: Fixed speed
             disableGarbage: true, // No garbage in infinity mode
             initialInfinityRows: 44,
+            ...(this._fixedTickEnabled ? {
+                infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+                infinityVisibleRows: this.visibleRows,
+                inputHandling: settings,
+            } : {}),
+            ...(usesFixedRules ? {
+                hitStopEnabled: !this._prefersReducedMotion(settings),
+            } : {}),
         });
+        const sessionGeneration = ++this._sessionGeneration;
+        this._activeSession = Object.freeze({
+            generation: sessionGeneration,
+            gameState: this.gameState,
+            simulationClock: this._sessionSimulationClock,
+        });
+        this._stoppedSession = null;
+        this.isProcessingGameOver = false;
 
         console.log('[Infinity] Game state initialized with infinity mode configuration');
         console.log('[Infinity] Initial grid size:', this.gameState.board.length, 'rows');
@@ -200,7 +312,6 @@ export class InfinityMode extends BaseGameMode {
         }
 
         // Apply effect quality from settings
-        const settings = this.deps.settingsManager.get();
         if (this.boardScene?.setEffectQuality) {
             this.boardScene.setEffectQuality(settings.effectQuality || 'high');
         }
@@ -215,10 +326,17 @@ export class InfinityMode extends BaseGameMode {
 
         // Spawn first piece
         this.gameState.lastTime = performance.now();
+        const sessionState = this.gameState;
         spawnPiece(
-            this.gameState,
-            () => this._refreshNextQueue(),
-            () => this._handleGameOver(),
+            sessionState,
+            () => {
+                if (
+                    this._activeSession?.generation !== sessionGeneration
+                    || this._activeSession.gameState !== sessionState
+                ) return;
+                this._refreshNextQueue(sessionState);
+            },
+            () => this._handleGameOver(sessionGeneration),
         );
 
         // Draw initial UI
@@ -234,95 +352,12 @@ export class InfinityMode extends BaseGameMode {
         this.minimap.show();
 
         // Setup minimap exploration event handlers
-        this.minimap.container.addEventListener('minimap-exploration-start', async () => {
-            if (this.gameState && !this.gameState.isPaused && !this.isInExplorationMode) {
-                console.log('[Infinity] Minimap exploration started - pausing game');
-
-                // Store current camera position for potential smooth return
-                this.explorationStartCameraRow = this.boardScene?.cameraSettings?.currentTopRow ?? 0;
-                this.isInExplorationMode = true;
-                this._lastExplorationTime = performance.now();
-
-                // Pause the game
-                this.gameState.isPaused = true;
-
-                // Enable manual camera control for exploration
-                if (this.boardScene) {
-                    this.boardScene.enableManualCameraControl();
-                }
-
-                // Trigger minimap pause visual feedback
-                if (this.minimap) {
-                    this.minimap.onPause();
-                }
-
-                // Lazy init cosmic exploration effect
-                if (!this.cosmicExploration) {
-                    try {
-                        const { CosmicExplorationEffect } = await import('../../ui/effects/CosmicExplorationEffect.js');
-                        this.cosmicExploration = new CosmicExplorationEffect({
-                            quality: this.deps.settingsManager.get('graphicsQuality') || 'High',
-                            gameState: this.gameState,
-                        });
-                    } catch (err) {
-                        console.error('[Infinity] Failed to load cosmic exploration effect:', err);
-                    }
-                }
-                if (this.cosmicExploration) {
-                    this.cosmicExploration.start();
-                }
-            }
+        this.minimap.container.addEventListener('minimap-exploration-start', () => {
+            this._beginMinimapExploration();
         });
 
         this.minimap.container.addEventListener('minimap-exploration-end', () => {
-            if (this.isInExplorationMode) {
-                console.log('[Infinity] Minimap exploration ended - resuming game');
-
-                this.isInExplorationMode = false;
-
-                // Stop cosmic exploration effect
-                if (this.cosmicExploration) {
-                    this.cosmicExploration.stop();
-                }
-
-                // Calculate where the active piece currently is
-                const pieceTargetRow = this._calculatePieceCameraPosition();
-
-                // Smoothly return camera to gameplay position
-                if (this.boardScene) {
-                    this.boardScene.disableManualCameraControl();
-
-                    // Increase lerp speed temporarily for smooth but visible return
-                    const originalLerpSpeed = this.boardScene.cameraSettings?.lerpSpeed || 0.08;
-                    if (this.boardScene.cameraSettings) {
-                        this.boardScene.cameraSettings.lerpSpeed = 0.15; // Faster for smooth return
-                    }
-
-                    // Update camera to target gameplay position
-                    this.boardScene.updateCameraPosition(pieceTargetRow);
-
-                    // Restore normal lerp speed after a short delay
-                    setTimeout(() => {
-                        if (this.boardScene?.cameraSettings) {
-                            this.boardScene.cameraSettings.lerpSpeed = originalLerpSpeed;
-                        }
-                    }, 400);
-                }
-
-                // Resume game — reset lastTime so gravity doesn't accumulate
-                // the entire exploration duration as one massive delta
-                this.gameState.isPaused = false;
-                this.gameState.lastTime = performance.now();
-
-                if (this.usingHybridLoop) {
-                    this.deps.frameRateController?.resumeHybridLoop();
-                }
-
-                // Trigger minimap unpause visual feedback
-                if (this.minimap) {
-                    this.minimap.onUnpause();
-                }
-            }
+            this._endMinimapExploration();
         });
 
         // Setup minimap jump handler (used during exploration)
@@ -367,33 +402,10 @@ export class InfinityMode extends BaseGameMode {
         // Initialize BoardJuice for reactive board motion
         this._initBoardJuice();
 
-        // Wrap move/rotate to add board juice on piece movement
-        if (this.boardJuice) {
-            this._originalMove = window.move;
-            this._originalRotate = window.rotate;
-
-            const juice = this.boardJuice;
-            const origMove = this._originalMove;
-            const origRotate = this._originalRotate;
-
-            window.move = (dir) => {
-                if (this.gameState?.hitStopRemaining > 0) return false;
-                const result = origMove?.(dir);
-                if (juice && !juice.disabled) {
-                    juice.nudge(dir * 1.5, 0);
-                    juice.tilt(dir * 0.4);
-                }
-                return result;
-            };
-
-            window.rotate = (dir) => {
-                if (this.gameState?.hitStopRemaining > 0) return;
-                const result = origRotate?.(dir);
-                if (juice && !juice.disabled) {
-                    juice.tilt(dir === 'left' ? -0.3 : 0.3);
-                }
-                return result;
-            };
+        // Fixed input is applied directly at tick boundaries. Preserve the
+        // established global decoration only for the flag-off legacy path.
+        if (this.boardJuice && !this._fixedTickEnabled) {
+            this._installLegacyBoardJuiceInputWrappers();
         }
 
         // Enable gamepad exploration control
@@ -414,7 +426,15 @@ export class InfinityMode extends BaseGameMode {
     }
 
     onPause(options = {}) {
+        const explorationOwnsThisPause = options.owner === 'infinity-exploration'
+            && options.session === this._explorationSession;
+        if (this.isInExplorationMode && !explorationOwnsThisPause) {
+            // A settings/modal pause layered over exploration must outlive the
+            // R3/scroll release that ends exploration.
+            this._explorationOwnsPause = false;
+        }
         super.onPause();
+        this._fixedTickInputBinding?.clear();
         console.log('[Infinity] Game paused');
 
         // Trigger minimap pause highlight effect (only if not in exploration mode)
@@ -426,12 +446,34 @@ export class InfinityMode extends BaseGameMode {
     /**
      * Called when game is resumed
      */
-    onResume() {
+    onResume(options = {}) {
+        const explorationOwnsThisResume = options.owner === 'infinity-exploration'
+            && options.session === this._explorationSession;
+        if (this.isInExplorationMode && !explorationOwnsThisResume) {
+            // External resume wins the pause stack. Retire manual camera/effect
+            // ownership before the simulation becomes live again.
+            this._endMinimapExploration({ resumeMode: false });
+        }
         super.onResume();
+
+        if (
+            this._fixedTickEnabled
+            && this.gameState
+            && ownsSinglePlayerFixedTickRuntime(
+                this._fixedTickRuntime,
+                this._fixedTickOwnership,
+            )
+        ) {
+            // The canonical clock remains in simulation-time space; paused
+            // wall time is discarded by FrameRateController's reanchor.
+            this.gameState.lastTime = this.gameState.simTimeMs;
+        }
         console.log('[Infinity] Game resumed');
 
         // Reset exploration mode flag if somehow still set
         this.isInExplorationMode = false;
+        this._explorationSession = null;
+        this._explorationOwnsPause = false;
         this._cleanupScrollState();
 
         // Trigger minimap unpause effect
@@ -441,71 +483,266 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
+     * Enter minimap exploration through the mode pause template so the hybrid
+     * timer, simulation state, and future fixed input binding share one owner.
+     * The lazy effect import is fenced against end/stop/restart.
+     * @returns {Promise<boolean>}
+     * @private
+     */
+    async _beginMinimapExploration() {
+        const session = this._activeSession;
+        const gameState = session?.gameState;
+        if (
+            !session
+            || !gameState
+            || !this.isRunning
+            || gameState.isPaused
+            || gameState.isGameOver
+            || gameState.isStopped
+            || this.isInExplorationMode
+        ) {
+            return false;
+        }
+
+        console.log('[Infinity] Minimap exploration started - pausing game');
+        const transitionGeneration = ++this._explorationTransitionGeneration;
+        this._explorationSession = session;
+        this._explorationOwnsPause = true;
+        this.explorationStartCameraRow = this.boardScene?.cameraSettings?.currentTopRow ?? 0;
+        this.isInExplorationMode = true;
+        this._lastExplorationTime = performance.now();
+
+        this.onPause({ owner: 'infinity-exploration', session });
+        this.boardScene?.enableManualCameraControl?.();
+        this.minimap?.onPause?.();
+
+        const stillOwnsExploration = () => (
+            this._activeSession === session
+            && this.gameState === gameState
+            && this._explorationSession === session
+            && this._explorationTransitionGeneration === transitionGeneration
+            && this.isInExplorationMode
+        );
+
+        if (!this.cosmicExploration) {
+            try {
+                const { CosmicExplorationEffect } = await import('../../ui/effects/CosmicExplorationEffect.js');
+                if (!stillOwnsExploration()) return false;
+                this.cosmicExploration = new CosmicExplorationEffect({
+                    quality: this.deps.settingsManager.get('graphicsQuality') || 'High',
+                    gameState,
+                });
+            } catch (err) {
+                console.error('[Infinity] Failed to load cosmic exploration effect:', err);
+            }
+        }
+        if (stillOwnsExploration()) {
+            this.cosmicExploration?.start?.();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Leave exploration through the matching resume template. Camera easing is
+     * presentation-only and its delayed restore cannot target a replacement
+     * scene or a later exploration transition.
+     * @param {{resumeMode?: boolean}} [options]
+     * @returns {boolean}
+     * @private
+     */
+    _endMinimapExploration(options = {}) {
+        const session = this._explorationSession;
+        if (
+            !session
+            || !this.isInExplorationMode
+            || this._activeSession !== session
+            || this.gameState !== session.gameState
+        ) {
+            return false;
+        }
+
+        console.log('[Infinity] Minimap exploration ended - resuming game');
+        const shouldResumeMode = options.resumeMode !== false && this._explorationOwnsPause;
+        this.isInExplorationMode = false;
+        this._explorationOwnsPause = false;
+        const transitionGeneration = ++this._explorationTransitionGeneration;
+        this.cosmicExploration?.stop?.();
+
+        const pieceTargetRow = this._calculatePieceCameraPosition();
+        const returnScene = this.boardScene;
+        if (returnScene) {
+            returnScene.disableManualCameraControl();
+            const originalLerpSpeed = returnScene.cameraSettings?.lerpSpeed || 0.08;
+            if (returnScene.cameraSettings) {
+                returnScene.cameraSettings.lerpSpeed = 0.15;
+            }
+            returnScene.updateCameraPosition(pieceTargetRow);
+            setTimeout(() => {
+                if (
+                    this._activeSession === session
+                    && this.boardScene === returnScene
+                    && this._explorationTransitionGeneration === transitionGeneration
+                    && !this.isInExplorationMode
+                    && returnScene.cameraSettings
+                ) {
+                    returnScene.cameraSettings.lerpSpeed = originalLerpSpeed;
+                }
+            }, 400);
+        }
+
+        if (shouldResumeMode) {
+            this.onResume({ owner: 'infinity-exploration', session });
+        } else {
+            this._explorationSession = null;
+            this._cleanupScrollState();
+        }
+        return true;
+    }
+
+    /**
      * Called when game ends
      */
-    async onStop() {
-        await super.onStop();
+    onStop() {
+        if (this._stopPromise) {
+            return this._stopPromise;
+        }
+        if (!this._activeSession) {
+            if (!this.isRunning) {
+                return Promise.resolve(this._stoppedSession);
+            }
+
+            // onStart awaits BaseGameMode before publishing its active bundle.
+            // Deactivation in that narrow window still has to retire the base
+            // running flag instead of leaving a zombie mode.
+            const baseStop = super.onStop();
+            const trackedStop = baseStop
+                .then(() => this._stoppedSession)
+                .finally(() => {
+                    if (this._stopPromise === trackedStop) {
+                        this._stopPromise = null;
+                    }
+                });
+            this._stopPromise = trackedStop;
+            return trackedStop;
+        }
+
+        const session = this._activeSession;
+        // BaseGameMode has no await today, so this retires the public running
+        // flag synchronously. The captured transaction still joins its promise.
+        const baseStopPromise = super.onStop();
+        const completion = this._stopCapturedSession(session, baseStopPromise);
+        const trackedStop = completion
+            .then((stoppedSession) => {
+                if (this._activeSession === session) {
+                    this._activeSession = null;
+                    this._stoppedSession = stoppedSession;
+                }
+                return stoppedSession;
+            })
+            .finally(() => {
+                if (this._stopPromise === trackedStop) {
+                    this._stopPromise = null;
+                }
+            });
+        this._stopPromise = trackedStop;
+        return trackedStop;
+    }
+
+    /**
+     * Stop one exact Infinity session without consulting replacement state.
+     * @param {Readonly<{
+     *   generation: number,
+     *   gameState: GameState,
+     *   simulationClock: unknown
+     * }>} session
+     * @param {Promise<void>} baseStopPromise
+     * @returns {Promise<Readonly<{
+     *   generation: number,
+     *   gameState: GameState,
+     *   simulationClock: unknown
+     * }>>}
+     * @private
+     */
+    async _stopCapturedSession(session, baseStopPromise) {
+        const { gameState, generation, simulationClock } = session;
 
         console.log('[Infinity] Stopping game...');
 
-        if (this.gameState) {
-            this.gameState.isGameOver = true;
-            this.gameState.isStopped = true;
-        }
+        // Invalidate simulation ownership before the first await. Never read
+        // this.gameState inside the remainder of this transaction.
+        gameState.isGameOver = true;
+        gameState.isStopped = true;
+        this._stopGameLoop(gameState);
+        this._fixedTickEnabled = false;
 
-        // Reset exploration mode
+        // Reset exploration state while the captured UI still owns the mode.
         this.isInExplorationMode = false;
+        this._explorationSession = null;
+        this._explorationOwnsPause = false;
+        this._explorationTransitionGeneration += 1;
         this._cleanupScrollState();
+        this._cleanupEventListeners(this.cleanupHandlers);
         this._disableGamepadExploration();
+        this.cosmicExploration?.stop?.();
+        this._cameraSnapGeneration += 1;
+        this._restoreLegacyBoardJuiceInputWrappers();
 
-        // Cancel standard RAF loop
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
+        await baseStopPromise;
 
-        // Stop hybrid loop if active
-        if (this.deps.frameRateController?.isRunning) {
-            this.deps.frameRateController.stopHybridLoop();
-        }
-        this.usingHybridLoop = false;
-
-        if (this.gameState?.latestPhysicsPromise) {
+        const physicsPromise = gameState.latestPhysicsPromise;
+        if (physicsPromise) {
             try {
-                await this.gameState.latestPhysicsPromise;
+                await physicsPromise;
             } catch (error) {
                 console.warn('[Infinity] In-flight physics rejected during stop:', error);
             } finally {
-                this.gameState.latestPhysicsPromise = null;
-                this.gameState.isProcessingPhysics = false;
+                gameState.latestPhysicsPromise = null;
+                gameState.isProcessingPhysics = false;
             }
         }
 
-        // Hide minimap
         if (this.minimap) {
-            this.minimap.hide();
+            this.minimap.destroy();
+            this.minimap = null;
         }
-
-        // Hide height HUD
         if (this.heightHUD) {
-            this.heightHUD.hide();
+            this.heightHUD.destroy();
+            this.heightHUD = null;
         }
-
-        // TODO: Show results modal with stats
-        // this._showResultsModal();
+        if (this.cosmicExploration) {
+            this.cosmicExploration.dispose?.();
+            this.cosmicExploration = null;
+        }
 
         console.log('[Infinity] Game stopped');
-
         this.boardScene = null;
+
+        return Object.freeze({
+            generation,
+            gameState,
+            simulationClock,
+        });
     }
 
     /**
      * Called when mode is deselected
      */
     async onDeactivate() {
+        // Retire activation first so a start queued behind teardown cannot
+        // publish a replacement while cleanup is in progress.
+        this.isActive = false;
+        const pendingStop = this._stopPromise
+            || ((this._activeSession || this.isRunning) ? this.onStop() : null);
+        if (pendingStop) {
+            await pendingStop;
+        }
         await super.onDeactivate();
 
         console.log('[Infinity] Deactivating mode...');
+
+        this._stopFixedTickSession();
+        this._fixedTickEnabled = false;
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
@@ -531,9 +768,9 @@ export class InfinityMode extends BaseGameMode {
             this.cosmicExploration = null;
         }
 
-        // Restore wrapped inputs
-        if (this._originalMove) { window.move = this._originalMove; this._originalMove = null; }
-        if (this._originalRotate) { window.rotate = this._originalRotate; this._originalRotate = null; }
+        // Stop normally retires these synchronously; this is idempotent for a
+        // partial start/deactivation path.
+        this._restoreLegacyBoardJuiceInputWrappers();
 
         // Clean up BoardJuice
         if (this.boardJuice) {
@@ -549,8 +786,11 @@ export class InfinityMode extends BaseGameMode {
         // Remove Infinity layout styling
         this._applyInfinityLayout(false);
 
-        // Clear game state
-        this.gameState = null;
+        // Stop has drained every captured-state await before this reference is
+        // cleared, so no teardown finally block can target a replacement/null.
+        if (!this._activeSession) {
+            this.gameState = null;
+        }
         this.boardScene = null;
 
         console.log('[Infinity] Mode deactivated');
@@ -630,10 +870,9 @@ export class InfinityMode extends BaseGameMode {
 
     _preparePhaserScene() {
         const { phaserGame } = this.deps;
-        if (!phaserGame?.scene) return;
-
         // Clear cached physics callbacks so they get recreated with fresh BoardScene references
         this.physicsCallbacks = null;
+        if (!phaserGame?.scene) return;
 
         this.boardScene = phaserGame.scene.getScene('BoardScene');
 
@@ -665,10 +904,14 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _startGameLoop() {
-        if (!this.gameState) {
+        const session = this._activeSession;
+        if (!session || this.gameState !== session.gameState) {
             console.warn('[Infinity] Cannot start game loop without game state');
             return;
         }
+        const { gameState, generation } = session;
+        const usesFixedLoop = this._fixedTickEnabled
+            && session.simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
 
         console.log('[Infinity] Starting game loop...');
 
@@ -677,10 +920,11 @@ export class InfinityMode extends BaseGameMode {
         this.statsUpdateInterval = 250; // Update stats every 250ms instead of every frame
 
         // Ensure no legacy RAF loop is still running
-        if (this.gameState.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
+        if (gameState.animationId) {
+            cancelAnimationFrame(gameState.animationId);
+            gameState.animationId = null;
         }
+        this._stopFixedTickSession();
 
         // Stop any existing hybrid loop from prior runs
         const { frameRateController } = this.deps;
@@ -689,14 +933,16 @@ export class InfinityMode extends BaseGameMode {
         }
 
         const drawCallback = () => {
-            if (!this.isRunning) {
+            if (!this.isRunning || this._activeSession !== session || this.gameState !== gameState) {
                 return;
             }
 
             this._syncBoardSceneFromState();
 
-            this.gameState.currentTopRow = calculateTopRow(this.gameState);
-            this._maybeExpandGrid();
+            if (!usesFixedLoop) {
+                gameState.currentTopRow = calculateTopRow(gameState);
+                this._maybeExpandGrid();
+            }
 
             if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
                 this._updateCameraPosition();
@@ -704,10 +950,10 @@ export class InfinityMode extends BaseGameMode {
 
             this._updateMinimapView();
 
-            if (!this.gameState.isGameOver && checkInfinityGameOver(this.gameState)) {
+            if (!usesFixedLoop && !gameState.isGameOver && checkInfinityGameOver(gameState)) {
                 console.log('[Infinity] Game over condition met');
-                this.gameState.isGameOver = true;
-                this._handleGameOver();
+                gameState.isGameOver = true;
+                this._handleGameOver(generation);
             }
         };
 
@@ -722,14 +968,93 @@ export class InfinityMode extends BaseGameMode {
         const playDropCallback = () => this.deps.soundManager.sfxPlayer.playDrop();
         const physicsCallbacks = this.getPhysicsCallbacks();
 
+        if (usesFixedLoop) {
+            this.usingHybridLoop = true;
+            console.log('[Infinity] Using canonical 60 Hz simulation clock');
+            const ownership = this._startFixedTickSession(gameState);
+            const inputBinding = this._fixedTickInputBinding;
+            const ownsFixedSession = () => (
+                this._fixedTickEnabled
+                && this.isRunning
+                && this._activeSession === session
+                && this.gameState === gameState
+                && ownsSinglePlayerFixedTickRuntime(this._fixedTickRuntime, ownership)
+            );
+            const sessionContinues = () => (
+                ownsFixedSession()
+                && !this.isPaused
+                && gameState.isPaused !== true
+                && gameState.isGameOver !== true
+                && gameState.isStopped !== true
+            );
+            const commandContext = {
+                session,
+                gameState,
+                playDropCallback,
+                physicsCallbacks,
+            };
+            const logicUpdate = (_time, delta) => {
+                runSinglePlayerFixedTicks(this._fixedTickRuntime, delta, {
+                    ownership,
+                    advanceInput: inputBinding?.advanceInput,
+                    applyInput: (command) => this._applyFixedCommand(command, commandContext),
+                    playDropCallback,
+                    physicsCallbacks,
+                    shouldContinue: sessionContinues,
+                    onClockWarp: (clockWarp) => {
+                        this._lastFixedTickClockWarp = clockWarp;
+                        console.warn('[Infinity] Fixed simulation clock rebased:', clockWarp);
+                    },
+                    afterTick: () => {
+                        // Async cascade replay owns pre-expansion row indices.
+                        // The first stable canonical boundary performs the
+                        // deferred Infinity maintenance exactly once.
+                        if (gameState.isProcessingPhysics) return;
+                        const maintenance = maintainInfinitySimulation(gameState);
+                        if (maintenance.rowsAdded > 0) {
+                            this._compensateCameraForGridExpansion(
+                                maintenance.rowsAdded,
+                                session,
+                            );
+                        }
+                        if (maintenance.gameOverTransitioned) {
+                            this._handleGameOver(generation);
+                        }
+                    },
+                });
+            };
+            const renderUpdate = () => {
+                if (!ownsFixedSession()) return;
+                drawCallback();
+                statsCallback();
+            };
+
+            try {
+                frameRateController.startHybridLoop(logicUpdate, renderUpdate);
+            } catch (error) {
+                frameRateController.stopHybridLoop?.();
+                this._stopFixedTickSession();
+                this.usingHybridLoop = false;
+                throw error;
+            }
+            console.log('[Infinity] Game loop started');
+            return;
+        }
+
         if (frameRateController?.needsHybridMode()) {
             this.usingHybridLoop = true;
             console.log('[Infinity] Using hybrid loop for high FPS target');
 
-            const logicUpdate = (time, _delta) => {
-                if (this.gameState.isGameOver || this.gameState.isPaused) return;
+            // Keep the two-argument FrameRateController callback contract.
+            // eslint-disable-next-line no-unused-vars
+            const logicUpdate = (time, delta) => {
+                if (
+                    this._activeSession !== session
+                    || gameState.isGameOver
+                    || gameState.isPaused
+                ) return;
 
-                updateGame(time, this.gameState, {
+                updateGame(time, gameState, {
                     drawCallback: null,
                     updateStatsCallback: null,
                     playDropCallback,
@@ -749,7 +1074,7 @@ export class InfinityMode extends BaseGameMode {
 
             gameLoop(
                 performance.now(),
-                this.gameState,
+                gameState,
                 drawCallback,
                 statsCallback,
                 playDropCallback,
@@ -758,6 +1083,209 @@ export class InfinityMode extends BaseGameMode {
         }
 
         console.log('[Infinity] Game loop started');
+    }
+
+    /**
+     * Retire the timer owners for one captured GameState synchronously.
+     * @param {GameState|null} gameState
+     * @private
+     */
+    _stopGameLoop(gameState) {
+        this._stopFixedTickSession();
+
+        if (gameState?.animationId) {
+            cancelAnimationFrame(gameState.animationId);
+            gameState.animationId = null;
+        }
+
+        if (this.deps.frameRateController?.isRunning) {
+            this.deps.frameRateController.stopHybridLoop();
+        }
+        this.usingHybridLoop = false;
+    }
+
+    _startFixedTickSession(gameState) {
+        const ownership = startSinglePlayerFixedTickRuntime(
+            this._fixedTickRuntime,
+            gameState,
+        );
+        this._fixedTickOwnership = ownership;
+        this._fixedTickInputBinding = createSinglePlayerFixedInputBinding({
+            gameState,
+            inputController: this.deps.inputController,
+            gamepadController: this.deps.gamepadController,
+            isEnabled: () => (
+                this._fixedTickEnabled
+                && this.isRunning
+                && !this.isPaused
+                && this.gameState === gameState
+                && ownsSinglePlayerFixedTickRuntime(this._fixedTickRuntime, ownership)
+            ),
+        });
+        this._fixedTickInputBinding.install();
+        return ownership;
+    }
+
+    _stopFixedTickSession() {
+        this._fixedTickInputBinding?.dispose();
+        this._fixedTickInputBinding = null;
+        stopSinglePlayerFixedTickRuntime(this._fixedTickRuntime);
+        this._fixedTickOwnership = null;
+    }
+
+    _prefersReducedMotion(settings = this.deps.settingsManager?.get?.() || {}) {
+        return Boolean(
+            settings.reducedMotion
+            || (typeof window !== 'undefined'
+                && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches),
+        );
+    }
+
+    /**
+     * Apply one canonical Infinity command to one captured session. Movement
+     * and rotation may use the existing post-cascade buffer; drop commands
+     * never cross an active physics boundary.
+     *
+     * @param {InputCommand} command
+     * @param {{
+     *   session: Readonly<Object>,
+     *   gameState: GameState,
+     *   playDropCallback: Function,
+     *   physicsCallbacks: Object,
+     * }} context
+     * @returns {InputDisposition}
+     * @private
+     */
+    _applyFixedCommand(command, context) {
+        const {
+            session, gameState, playDropCallback, physicsCallbacks,
+        } = context;
+        if (
+            !this._fixedTickEnabled
+            || !this.isRunning
+            || this.isPaused
+            || this._activeSession !== session
+            || this.gameState !== gameState
+            || gameState.isPaused
+            || gameState.isGameOver
+            || gameState.isStopped
+        ) {
+            return INPUT_DISPOSITIONS.REJECTED_PHYSICS;
+        }
+        if (gameState.hitStopRemaining > 0 || gameState.hitStopTicks > 0) {
+            return INPUT_DISPOSITIONS.REJECTED_HIT_STOP;
+        }
+
+        const { action, value } = command;
+        if (gameState.isProcessingPhysics) {
+            if (action !== 'move' && action !== 'rotate') {
+                return INPUT_DISPOSITIONS.REJECTED_PHYSICS;
+            }
+            const queued = { type: action, dir: value };
+            if (Array.isArray(gameState.inputQueue)) {
+                if (gameState.inputQueue.length >= 4) {
+                    return INPUT_DISPOSITIONS.REJECTED_PHYSICS;
+                }
+                gameState.inputQueue.push(queued);
+            } else if (gameState.inputQueue) {
+                gameState.inputQueue = [gameState.inputQueue, queued].slice(0, 4);
+            } else {
+                gameState.inputQueue = queued;
+            }
+            return INPUT_DISPOSITIONS.DEFERRED_PHYSICS;
+        }
+
+        const sfxPlayer = this.deps.soundManager?.sfxPlayer;
+        const moveSound = () => sfxPlayer?.playMove?.();
+        const rotateSound = () => sfxPlayer?.playRotate?.();
+        const addTrailCallback = () => {};
+        let accepted = false;
+
+        if (action === 'move') {
+            accepted = coreMove(gameState, value, moveSound, addTrailCallback);
+            if (this.boardJuice) {
+                if (accepted) {
+                    this.boardJuice.nudge(value * 1.5, 0);
+                    this.boardJuice.tilt(value * 0.4);
+                } else {
+                    this.boardJuice.nudge(value * 0.8, 0);
+                }
+            }
+        } else if (action === 'rotate') {
+            accepted = coreRotate(gameState, value, rotateSound, addTrailCallback);
+            if (accepted && this.boardJuice) {
+                this.boardJuice.tilt(value === 'left' ? -0.3 : 0.3);
+            }
+        } else if (action === 'hardDrop') {
+            accepted = coreHardDrop(
+                gameState,
+                playDropCallback,
+                physicsCallbacks,
+                { fixedTick: true, inputPhase: true },
+            );
+        } else if (action === 'softDrop') {
+            const beforeProcessing = gameState.isProcessingPhysics;
+            const beforePiece = gameState.currentPiece;
+            const moved = coreSoftDrop(
+                gameState,
+                playDropCallback,
+                physicsCallbacks,
+                { fixedTick: true, inputPhase: true },
+            );
+            accepted = Boolean(moved)
+                || (!beforeProcessing && gameState.isProcessingPhysics)
+                || (beforePiece && beforePiece !== gameState.currentPiece);
+        }
+
+        return accepted
+            ? INPUT_DISPOSITIONS.APPLIED
+            : INPUT_DISPOSITIONS.REJECTED_PHYSICS;
+    }
+
+    /**
+     * Shift presentation camera rows after simulation adds rows above the
+     * existing Infinity board. This never writes simulation camera truth.
+     * @param {number} rowsAdded
+     * @param {Readonly<Object>} [session]
+     * @returns {boolean}
+     * @private
+     */
+    _compensateCameraForGridExpansion(rowsAdded, session = this._activeSession) {
+        const { boardScene } = this;
+        if (
+            !Number.isInteger(rowsAdded)
+            || rowsAdded <= 0
+            || !session
+            || this._activeSession !== session
+            || this.gameState !== session.gameState
+            || !boardScene?.cameraSettings
+        ) {
+            return false;
+        }
+
+        const { cameraSettings } = boardScene;
+        const oldCameraRow = cameraSettings.currentTopRow || 0;
+        const oldTargetRow = cameraSettings.targetTopRow || 0;
+        const newCameraRow = oldCameraRow + rowsAdded;
+        const newTargetRow = oldTargetRow + rowsAdded;
+
+        boardScene.updateCameraBounds();
+        cameraSettings.currentTopRow = newCameraRow;
+        cameraSettings.activeTopRow = newCameraRow;
+        cameraSettings.targetTopRow = newTargetRow;
+
+        const blockSize = boardScene.boardConfig?.blockSize || 30;
+        const { visibleRows } = cameraSettings;
+        const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
+        const { width } = boardScene.getBoardDimensions();
+        boardScene.cameras.main.centerOn(width / 2, centerY);
+        console.log(
+            '[Infinity] Camera smoothly adjusted for grid expansion:',
+            oldCameraRow,
+            '→',
+            newCameraRow,
+        );
+        return true;
     }
 
     _maybeExpandGrid() {
@@ -782,41 +1310,12 @@ export class InfinityMode extends BaseGameMode {
         const currentSize = this.gameState.board.length;
         const requiredRows = Math.min(this.gameState.maxRows, currentSize + 10);
 
-        // Store current camera position before expansion
-        const oldCameraRow = this.boardScene.cameraSettings.currentTopRow || 0;
-        const oldTargetRow = this.boardScene.cameraSettings.targetTopRow || 0;
-
         if (expandGridIfNeeded(this.gameState, requiredRows)) {
             const rowsAdded = this.gameState.board.length - currentSize;
             console.log('[Infinity] Grid expanded:', currentSize, '→', this.gameState.board.length, 'rows');
             console.log('[Infinity] Rows added at top:', rowsAdded);
 
-            // SMOOTH CAMERA TRANSITION FIX: Update both current and target camera positions
-            // When rows are added at the top, all existing content shifts down by rowsAdded
-            // We update both positions so the lerp system can smoothly transition
-            const newCameraRow = oldCameraRow + rowsAdded;
-            const newTargetRow = oldTargetRow + rowsAdded;
-
-            if (this.boardScene) {
-                this.boardScene.updateCameraBounds();
-
-                // Update the current position directly to maintain visual continuity
-                // This prevents the jump by keeping the viewport stable
-                this.boardScene.cameraSettings.currentTopRow = newCameraRow;
-                this.boardScene.cameraSettings.activeTopRow = newCameraRow;
-
-                // Update target position for smooth lerping to the correct position
-                this.boardScene.cameraSettings.targetTopRow = newTargetRow;
-
-                // Immediately update camera to the new position (no jump because we're compensating)
-                const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-                const { visibleRows } = this.boardScene.cameraSettings;
-                const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
-                const { width } = this.boardScene.getBoardDimensions();
-                this.boardScene.cameras.main.centerOn(width / 2, centerY);
-
-                console.log('[Infinity] Camera smoothly adjusted for grid expansion:', oldCameraRow, '→', newCameraRow);
-            }
+            this._compensateCameraForGridExpansion(rowsAdded);
 
             if (this.gameState.infinityStats) {
                 this.gameState.infinityStats.rowsReached = Math.max(
@@ -866,10 +1365,29 @@ export class InfinityMode extends BaseGameMode {
             return this.physicsCallbacks;
         }
 
+        const callbackSession = this._activeSession;
+        const callbackState = callbackSession?.gameState || null;
+        const callbackGeneration = callbackSession?.generation;
+        const usesFixedTiming = callbackSession?.simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
+        const ownsCallbackSession = () => Boolean(
+            callbackSession
+            && this._activeSession === callbackSession
+            && this.gameState === callbackState,
+        );
+
         this.physicsCallbacks = {
-            onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
-            onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
+            onMove: () => {
+                if (ownsCallbackSession()) {
+                    this.deps.soundManager.sfxPlayer.playMove();
+                }
+            },
+            onRotate: () => {
+                if (ownsCallbackSession()) {
+                    this.deps.soundManager.sfxPlayer.playRotate();
+                }
+            },
             onLineClear: (lineCount, ...rest) => {
+                if (!ownsCallbackSession()) return;
                 const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 const cascadeCount = rest[3] ?? 1;
                 // Play sound effects
@@ -880,24 +1398,25 @@ export class InfinityMode extends BaseGameMode {
                 emitLineClear({ lineCount, clearedRows, cascadeCount });
 
                 // Track combo stats for infinity mode
-                if (this.gameState.infinityStats && this.gameState.comboState) {
-                    const comboDepth = this.gameState.comboState.depth || 0;
-                    const comboComplexity = this.gameState.comboState.complexity || 0;
+                if (callbackState.infinityStats && callbackState.comboState) {
+                    const comboDepth = callbackState.comboState.depth || 0;
+                    const comboComplexity = callbackState.comboState.complexity || 0;
 
                     // Update max combo depth
-                    if (comboDepth > this.gameState.infinityStats.maxComboDepth) {
-                        this.gameState.infinityStats.maxComboDepth = comboDepth;
+                    if (comboDepth > callbackState.infinityStats.maxComboDepth) {
+                        callbackState.infinityStats.maxComboDepth = comboDepth;
                     }
 
                     // Update max combo complexity
-                    if (comboComplexity > this.gameState.infinityStats.maxComboComplexity) {
-                        this.gameState.infinityStats.maxComboComplexity = comboComplexity;
+                    if (comboComplexity > callbackState.infinityStats.maxComboComplexity) {
+                        callbackState.infinityStats.maxComboComplexity = comboComplexity;
                     }
 
-                    console.log(`[Infinity] Line clear: depth=${comboDepth}, complexity=${comboComplexity}, maxDepth=${this.gameState.infinityStats.maxComboDepth}, maxComplexity=${this.gameState.infinityStats.maxComboComplexity}`);
+                    console.log(`[Infinity] Line clear: depth=${comboDepth}, complexity=${comboComplexity}, maxDepth=${callbackState.infinityStats.maxComboDepth}, maxComplexity=${callbackState.infinityStats.maxComboComplexity}`);
                 }
             },
             onTSpin: (lineCount) => {
+                if (!ownsCallbackSession()) return;
                 emitTSpin({ lineCount, source: 'infinity' });
                 this.deps.soundManager.sfxPlayer.playTSpin?.();
                 const boardScene = this._getBoardScene();
@@ -906,6 +1425,7 @@ export class InfinityMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
+                if (!ownsCallbackSession()) return;
                 emitB2B({ source: 'infinity' });
                 this.deps.soundManager.sfxPlayer.playB2B?.();
                 const boardScene = this._getBoardScene();
@@ -917,10 +1437,15 @@ export class InfinityMode extends BaseGameMode {
                 // Level up disabled in infinity mode, but keep callback for compatibility
             },
             onHardDrop: (dropData) => {
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+                if (!ownsCallbackSession()) return;
+                if (usesFixedTiming) {
+                    applyFixedHardDropHitStop(callbackState);
+                } else {
+                    const settings = this.deps.settingsManager?.get() || {};
+                    const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                    if (!prefersReducedMotion) {
+                        callbackState.hitStopRemaining = Math.max(callbackState.hitStopRemaining || 0, 30);
+                    }
                 }
 
                 this.lastDropWasHard = true;
@@ -946,13 +1471,14 @@ export class InfinityMode extends BaseGameMode {
             },
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
+                if (!ownsCallbackSession()) return;
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting COMBO event, comboCount:', comboCount);
                 emitCombo({ comboCount });
 
                 // Track max combo
-                if (this.gameState.infinityStats && comboCount > this.gameState.infinityStats.maxCombo) {
-                    this.gameState.infinityStats.maxCombo = comboCount;
+                if (callbackState.infinityStats && comboCount > callbackState.infinityStats.maxCombo) {
+                    callbackState.infinityStats.maxCombo = comboCount;
                     console.log(`[Infinity] New max combo: ${comboCount}`);
                 }
 
@@ -965,6 +1491,7 @@ export class InfinityMode extends BaseGameMode {
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {
+                if (!ownsCallbackSession()) return;
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.sharedEffects) {
                     boardScene.sharedEffects.showCascadeWave(cascadeCount);
@@ -978,6 +1505,7 @@ export class InfinityMode extends BaseGameMode {
             },
             // Line clear flash effect
             triggerFlash: (fullLines) => {
+                if (!ownsCallbackSession()) return;
                 console.log('[Infinity] triggerFlash called with fullLines:', fullLines);
 
                 // Store cleared line positions for camera following
@@ -1004,20 +1532,25 @@ export class InfinityMode extends BaseGameMode {
                 }
             },
             // Line clear impact (camera shake and particles)
-            onLineClearImpact: (lineCount, _cascadeCount) => {
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    const boardScene = this._getBoardScene();
-                    let hitStop = 0;
-                    if (boardScene?.sharedEffects) {
-                        const tier = boardScene.sharedEffects.getClearTier(lineCount);
-                        hitStop = tier?.hitStop || 0;
-                    } else if (lineCount >= 4) {
-                        hitStop = 70;
-                    }
-                    if (hitStop > 0) {
-                        this.gameState.hitStopRemaining = hitStop;
+            onLineClearImpact: (lineCount) => {
+                if (!ownsCallbackSession()) return;
+                if (usesFixedTiming) {
+                    applyFixedLineImpactHitStop(callbackState, lineCount);
+                } else {
+                    const settings = this.deps.settingsManager?.get() || {};
+                    const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                    if (!prefersReducedMotion) {
+                        const timingScene = this._getBoardScene();
+                        let hitStop = 0;
+                        if (timingScene?.sharedEffects) {
+                            const tier = timingScene.sharedEffects.getClearTier(lineCount);
+                            hitStop = tier?.hitStop || 0;
+                        } else if (lineCount >= 4) {
+                            hitStop = 70;
+                        }
+                        if (hitStop > 0) {
+                            callbackState.hitStopRemaining = hitStop;
+                        }
                     }
                 }
 
@@ -1034,6 +1567,7 @@ export class InfinityMode extends BaseGameMode {
             },
             // Background pulse effect
             triggerBackgroundPulse: (lineCount) => {
+                if (!ownsCallbackSession()) return;
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.triggerBackgroundPulse) {
                     boardScene.triggerBackgroundPulse(lineCount);
@@ -1043,17 +1577,19 @@ export class InfinityMode extends BaseGameMode {
             },
             // Score addition animation
             onScoreAdd: (points) => {
+                if (!ownsCallbackSession()) return;
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.showScorePopup) {
                     boardScene.showScorePopup(points);
                 }
             },
             // Background update (keep level-based themes disabled for infinity mode)
-            updateBackground: (_level) => {
+            updateBackground: () => {
                 // Infinity mode doesn't change backgrounds by level
             },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
+                if (!ownsCallbackSession()) return;
                 // Emit event for theme reactions
                 emitPieceLock({ piece });
 
@@ -1071,10 +1607,10 @@ export class InfinityMode extends BaseGameMode {
                 }
 
                 // Update infinity stats
-                if (this.gameState.infinityStats) {
-                    this.gameState.infinityStats.blocksPlaced += 4; // Approximate blocks per piece
+                if (callbackState.infinityStats) {
+                    callbackState.infinityStats.blocksPlaced += 4; // Approximate blocks per piece
                     // Track score at the start of cascade to calculate cascade score
-                    this.gameState.infinityStats._cascadeStartScore = this.gameState.score;
+                    callbackState.infinityStats._cascadeStartScore = callbackState.score;
                 }
 
                 const lockedBelowViewport = this._didPieceLockBelowViewport(piece);
@@ -1092,10 +1628,15 @@ export class InfinityMode extends BaseGameMode {
                 this.suppressFollowUntilLock = false;
             },
             onPerfectClear: (depth, perfectClearBonus) => {
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = 110;
+                if (!ownsCallbackSession()) return;
+                if (usesFixedTiming) {
+                    applyFixedPerfectClearHitStop(callbackState);
+                } else {
+                    const settings = this.deps.settingsManager?.get() || {};
+                    const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                    if (!prefersReducedMotion) {
+                        callbackState.hitStopRemaining = 110;
+                    }
                 }
 
                 emitPerfectClear({ depth, perfectClearBonus, source: 'infinity' });
@@ -1111,6 +1652,7 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
+                if (!ownsCallbackSession()) return;
                 // PERFORMANCE: Throttle camera updates to reduce overhead during rapid cascades
                 // Only update camera every N steps or after minimum time interval
                 this.gravityStepCount++;
@@ -1133,24 +1675,25 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera after cascade completes
             onCascadeComplete: (cascadeCount) => {
+                if (!ownsCallbackSession()) return;
                 if (cascadeCount > 0) {
                     // Track cascade statistics for infinity mode
-                    if (this.gameState.infinityStats) {
+                    if (callbackState.infinityStats) {
                         // Calculate cascade score (points earned during this cascade sequence)
-                        const startScore = this.gameState.infinityStats._cascadeStartScore || 0;
-                        const cascadeScore = this.gameState.score - startScore;
+                        const startScore = callbackState.infinityStats._cascadeStartScore || 0;
+                        const cascadeScore = callbackState.score - startScore;
 
                         // Update max cascade score if this is a new record
-                        if (cascadeScore > this.gameState.infinityStats.maxCascadeScore) {
-                            this.gameState.infinityStats.maxCascadeScore = cascadeScore;
+                        if (cascadeScore > callbackState.infinityStats.maxCascadeScore) {
+                            callbackState.infinityStats.maxCascadeScore = cascadeScore;
                             console.log(`[Infinity] New max cascade score: ${cascadeScore} points`);
                         }
 
                         // Only count actual cascades (2+), not the initial clear
                         if (cascadeCount >= 2) {
-                            this.gameState.infinityStats.totalCascades++;
+                            callbackState.infinityStats.totalCascades++;
                         }
-                        console.log(`[Infinity] Cascade completed: count=${cascadeCount}, score=${cascadeScore}, max=${this.gameState.infinityStats.maxCascadeScore}`);
+                        console.log(`[Infinity] Cascade completed: count=${cascadeCount}, score=${cascadeScore}, max=${callbackState.infinityStats.maxCascadeScore}`);
                     }
 
                     // PERFORMANCE: Reset camera update throttle counters
@@ -1171,28 +1714,34 @@ export class InfinityMode extends BaseGameMode {
             },
             // Spawn next piece after physics completes
             spawnPiece: () => {
+                if (!ownsCallbackSession()) return;
                 spawnPiece(
-                    this.gameState,
-                    () => this._refreshNextQueue(),
-                    () => this._handleGameOver(),
+                    callbackState,
+                    () => {
+                        if (ownsCallbackSession()) {
+                            this._refreshNextQueue(callbackState);
+                        }
+                    },
+                    () => this._handleGameOver(callbackGeneration),
                 );
             },
             // Handle combo finalization (no garbage in infinity mode, but track combo stats)
             onGarbageReady: (summary) => {
+                if (!ownsCallbackSession()) return;
                 // Even though garbage is disabled in infinity mode, this callback is used
                 // to finalize combo tracking and update stats
-                if (this.gameState.infinityStats && summary) {
+                if (callbackState.infinityStats && summary) {
                     const { depth, complexity } = summary;
 
                     // Update max combo depth
-                    if (depth > this.gameState.infinityStats.maxComboDepth) {
-                        this.gameState.infinityStats.maxComboDepth = depth;
+                    if (depth > callbackState.infinityStats.maxComboDepth) {
+                        callbackState.infinityStats.maxComboDepth = depth;
                         console.log(`[Infinity] New max combo depth: ${depth} lines`);
                     }
 
                     // Update max combo complexity (cascade count)
-                    if (complexity > this.gameState.infinityStats.maxComboComplexity) {
-                        this.gameState.infinityStats.maxComboComplexity = complexity;
+                    if (complexity > callbackState.infinityStats.maxComboComplexity) {
+                        callbackState.infinityStats.maxComboComplexity = complexity;
                         console.log(`[Infinity] New max combo complexity: ${complexity} stages`);
                     }
 
@@ -1209,8 +1758,9 @@ export class InfinityMode extends BaseGameMode {
      * Refresh next piece queue display
      * @private
      */
-    _refreshNextQueue() {
-        updateNextQueue(this.gameState.nextPieces);
+    _refreshNextQueue(gameState = this.gameState) {
+        if (!gameState) return;
+        updateNextQueue(gameState.nextPieces);
     }
 
     /**
@@ -1250,84 +1800,150 @@ export class InfinityMode extends BaseGameMode {
      * Handle game over
      * @private
      */
-    async _handleGameOver() {
+    async _handleGameOver(expectedGeneration = this._activeSession?.generation) {
+        const activeSession = this._activeSession;
+        if (!activeSession || activeSession.generation !== expectedGeneration) {
+            return;
+        }
+
+        // Multiple Infinity paths can observe the terminal board during the
+        // same frame. Only the first callback owns this generation's result.
+        if (this.isProcessingGameOver) return;
+        this.isProcessingGameOver = true;
+
+        const resultState = activeSession.gameState;
         console.log('[Infinity] Game over!');
 
-        // Log final stats
-        const stats = getGridStats(this.gameState);
+        // Log final stats from the captured generation, never replacement state.
+        const stats = getGridStats(resultState);
         console.log('[Infinity] Final stats:', stats);
-        console.log('[Infinity] Build height reached:', this.gameState.currentTopRow, 'rows from top');
+        console.log('[Infinity] Build height reached:', resultState.currentTopRow, 'rows from top');
 
-        await this.onStop();
+        const stoppedSession = await this.onStop();
+        if (!stoppedSession) {
+            return;
+        }
+        const { gameState, simulationClock } = stoppedSession;
+        const writesLegacyResults = canWriteLegacySimulationResults(simulationClock);
 
-        // Save high score (using standard system for now)
-        await this.deps.highScoreManager.addScore({
-            score: this.gameState.score,
-            lines: this.gameState.lines,
-            level: this.gameState.level,
-            mode: 'infinity', // Tag as infinity mode
-        });
+        if (writesLegacyResults) {
+            // Save high score (using standard system for now).
+            await this.deps.highScoreManager.addScore({
+                score: gameState.score,
+                lines: gameState.lines,
+                level: gameState.level,
+                mode: 'infinity', // Tag as infinity mode
+            });
 
-        // Sync Steam stats/leaderboards in the background (best-effort)
-        this._syncSteamStats().catch((err) => {
-            console.warn('[Infinity] Steam stats sync failed:', err.message);
-        });
+            // Sync Steam stats/leaderboards in the background (best-effort).
+            this._syncSteamStats(stoppedSession).catch((err) => {
+                console.warn('[Infinity] Steam stats sync failed:', err.message);
+            });
+        } else {
+            console.info(
+                '[Infinity] Experimental simulation clock; legacy score/stat writes skipped:',
+                simulationClock,
+            );
+        }
 
-        // Show game over modal with stats/leaderboards
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
+
+        // Show game over modal with stats/leaderboards. The modal rechecks the
+        // predicate around its own awaits so a restart cannot publish stale UI.
         const { showGameOverModal } = await import('../../ui/modals.js');
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
         await showGameOverModal(
             this.deps.modalManager,
-            this.gameState,
+            gameState,
             this.deps.highScoreManager,
             {
                 onMainMenu: () => {
+                    if (!this._ownsStoppedSessionUi(stoppedSession)) {
+                        return;
+                    }
                     console.log('[Infinity] Main Menu - exiting to main menu');
                     eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
                 },
             },
+            {
+                includeLegacyResults: writesLegacyResults,
+                shouldPresent: () => this._ownsStoppedSessionUi(stoppedSession),
+            },
         );
 
-        // Trigger game over event
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
+
+        // Trigger game over event for the exact stopped generation.
         window.dispatchEvent(new CustomEvent('gameOver', {
             detail: {
-                gameState: this.gameState,
+                gameState,
                 mode: 'infinity',
-                infinityStats: this.gameState.infinityStats,
+                infinityStats: gameState.infinityStats,
             },
         }));
     }
 
     /**
-     * Sync Steam stats and leaderboards (best-effort, non-blocking)
+     * Whether one stopped generation still owns the mode's result UI.
+     * @param {Object|null} stoppedSession
+     * @returns {boolean}
      * @private
      */
-    async _syncSteamStats() {
-        if (!this.gameState) {
+    _ownsStoppedSessionUi(stoppedSession) {
+        return Boolean(
+            stoppedSession
+            && this.isActive
+            && !this.isRunning
+            && !this._activeSession
+            && this._stoppedSession === stoppedSession
+            && this._sessionGeneration === stoppedSession.generation,
+        );
+    }
+
+    /**
+     * Sync Steam stats and leaderboards (best-effort, non-blocking)
+     * @private
+     * @param {Readonly<{
+     *   generation: number,
+     *   gameState: GameState,
+     *   simulationClock: unknown
+     * }>|null} stoppedSession
+     */
+    async _syncSteamStats(stoppedSession) {
+        const gameState = stoppedSession?.gameState;
+        const simulationClock = stoppedSession?.simulationClock;
+        if (!gameState || !canWriteLegacySimulationResults(simulationClock)) {
             return;
         }
 
-        const startTime = this.gameState.infinityStats?.sessionStartTime || this.gameState.startTime || Date.now();
+        const startTime = gameState.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
         const durationMs = Date.now() - startTime;
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
         const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 
-        const bestCascade = this.gameState.infinityStats?.maxComboDepth || 0;
+        const bestCascade = gameState.infinityStats?.maxComboDepth || 0;
 
         const scoreDetails = {
-            score: this.gameState.score,
+            score: gameState.score,
             duration: durationSeconds,
-            linesCleared: this.gameState.lines,
-            highestLevel: this.gameState.level,
+            linesCleared: gameState.lines,
+            highestLevel: gameState.level,
             bestCascade,
             version: '1.0.0',
         };
 
         await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_HIGH_SCORE, this.gameState.score, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_HIGH_SCORE, gameState.score, scoreDetails),
             steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_SURVIVAL_TIME, durationSeconds, scoreDetails),
             steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE, bestCascade, scoreDetails),
             steamService.incrementStat('total_games_played', 1),
-            steamService.incrementStat('total_lines_cleared', this.gameState.lines),
+            steamService.incrementStat('total_lines_cleared', gameState.lines),
             steamService.incrementStat('playtime_minutes', durationMinutes),
             steamService.setStatMax('best_cascade', bestCascade),
             steamService.setStatMax('infinity_best_time', durationSeconds),
@@ -1369,29 +1985,39 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _snapCameraToTopArea() {
-        if (!this.boardScene?.cameraSettings) return;
+        const session = this._activeSession;
+        const gameState = session?.gameState;
+        const { boardScene } = this;
+        if (!session || !gameState || !boardScene?.cameraSettings) return;
 
-        const { cameraSettings } = this.boardScene;
+        const { cameraSettings } = boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
         const highestBlockRow = this._findHighestBlockRow();
 
         let targetTopRow;
 
-        if (highestBlockRow >= this.gameState.board.length) {
-            targetTopRow = Math.max(0, this.gameState.board.length - visibleRows);
+        if (highestBlockRow >= gameState.board.length) {
+            targetTopRow = Math.max(0, gameState.board.length - visibleRows);
         } else {
             const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.2);
-            const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+            const maxCameraRow = Math.max(0, gameState.board.length - visibleRows);
             targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
         }
 
         // Use fast lerp instead of instant jump for smoother feel
         const originalLerpSpeed = cameraSettings.lerpSpeed || 0.08;
+        const snapGeneration = ++this._cameraSnapGeneration;
         cameraSettings.lerpSpeed = 0.25;
-        this.boardScene.updateCameraPosition(targetTopRow);
+        boardScene.updateCameraPosition(targetTopRow);
         setTimeout(() => {
-            if (this.boardScene?.cameraSettings) {
-                this.boardScene.cameraSettings.lerpSpeed = originalLerpSpeed;
+            if (
+                this._activeSession === session
+                && this.gameState === gameState
+                && this.boardScene === boardScene
+                && this._cameraSnapGeneration === snapGeneration
+                && boardScene.cameraSettings === cameraSettings
+            ) {
+                cameraSettings.lerpSpeed = originalLerpSpeed;
             }
         }, 300);
     }
@@ -1503,7 +2129,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Smooth lerp to target
         this.boardScene.updateCameraPosition(targetCameraRow);
-        this.gameState.cameraRow = targetCameraRow;
+        projectInfinityPresentationCamera(this.gameState, targetCameraRow);
 
         // Track piece following for snap-on-lock logic
         if (currentPiece && !this.suppressFollowUntilLock) {
@@ -1583,7 +2209,7 @@ export class InfinityMode extends BaseGameMode {
         // Clamp and update camera position
         const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
         this.boardScene.updateCameraPosition(clampedCameraRow);
-        this.gameState.cameraRow = clampedCameraRow;
+        projectInfinityPresentationCamera(this.gameState, clampedCameraRow);
     }
 
     /**
@@ -1645,7 +2271,7 @@ export class InfinityMode extends BaseGameMode {
         // Clamp and update camera position
         const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
         this.boardScene.updateCameraPosition(clampedCameraRow);
-        this.gameState.cameraRow = clampedCameraRow;
+        projectInfinityPresentationCamera(this.gameState, clampedCameraRow);
 
         const target = clearedLineCenter !== null ? 'cleared lines' : 'highest block';
         console.log(`[Infinity] Camera updated after cascade: ${target} at row ${Math.floor(targetRow)}, camera → row ${clampedCameraRow}`);
@@ -1665,6 +2291,35 @@ export class InfinityMode extends BaseGameMode {
             hasGameState: !!this.gameState,
             hasMinimap: !!this.minimap,
         };
+    }
+
+    /**
+     * Decorate the legacy global movement entry points for BoardJuice without
+     * letting a stopped generation wrap a replacement owner.
+     * @private
+     */
+    _installLegacyBoardJuiceInputWrappers() {
+        if (!this.boardJuice) return;
+        this._restoreLegacyBoardJuiceInputWrappers();
+
+        const session = this._activeSession;
+        const gameState = session?.gameState;
+        if (!session || !gameState) return;
+        this._legacyBoardJuiceInputOwner = installLegacyBoardJuiceInputWrapper({
+            gameState,
+            juice: this.boardJuice,
+            isActive: () => (
+                this._activeSession === session
+                && this.gameState === gameState
+                && this.isRunning
+            ),
+        });
+    }
+
+    /** @private */
+    _restoreLegacyBoardJuiceInputWrappers() {
+        this._legacyBoardJuiceInputOwner?.dispose();
+        this._legacyBoardJuiceInputOwner = null;
     }
 
     /**
@@ -1731,12 +2386,18 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _enableScrollExploration() {
-        this._wheelHandler = this._onWheelScroll.bind(this);
-        document.addEventListener('wheel', this._wheelHandler, { passive: false });
+        if (this._wheelHandler) {
+            document.removeEventListener('wheel', this._wheelHandler);
+        }
+        const wheelHandler = this._onWheelScroll.bind(this);
+        this._wheelHandler = wheelHandler;
+        document.addEventListener('wheel', wheelHandler, { passive: false });
 
         this.cleanupHandlers.push(() => {
-            document.removeEventListener('wheel', this._wheelHandler);
-            this._wheelHandler = null;
+            document.removeEventListener('wheel', wheelHandler);
+            if (this._wheelHandler === wheelHandler) {
+                this._wheelHandler = null;
+            }
             this._cleanupScrollState();
         });
 

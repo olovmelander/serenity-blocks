@@ -9,6 +9,8 @@
 //   ?paused=1           start paused (hold current time)
 //   ?orbit=0            disable the default orbit camera (static framing)
 //   ?forceWebGL=1       force the WebGL2 backend instead of WebGPU
+//   ?trackTimestamp=1   opt into GPU timestamp queries for measured capture sessions
+//   ?profile=1          collect bounded CPU/frame/GPU samples via __PLAYGROUND__.profile
 //   ?ref=<url>          reference image to overlay (e.g. /playground-refs/target.png)
 //   ?refMode=overlay|split|side
 //   ?refOpacity=<0..1>
@@ -40,8 +42,56 @@ let paused = params.get('paused') === '1';
 let fixedTime = params.has('t') ? Number.parseFloat(params.get('t')) : null;
 let simTime = Number.isFinite(fixedTime) ? fixedTime : 0;
 let lastWall = performance.now() / 1000;
+let simDt = 0; // last frame's sim delta — 0 while fixed/paused, so capture mode freezes stateful sims
 const orbitEnabled = params.get('orbit') !== '0';
+const profileEnabled = params.get('profile') === '1';
+const timestampRequested = params.get('trackTimestamp') === '1';
+// Timestamp tracking allocates query slots in r181. Only enable it when this harness
+// will also drain those queries through the bounded profiler.
+const trackTimestamp = profileEnabled && timestampRequested;
 let lastObjectUrl = null; // revoked when a new dropped/picked image replaces it
+
+// ---- deterministic RNG (documented seed → reproducible ?t= captures) ----
+// mulberry32: tiny, well-distributed 32-bit PRNG. The default is a fixed documented
+// constant so a capture with no ?seed= is still reproducible; pass ?seed=<int> or
+// __PLAYGROUND__.reset(seed) to vary it. Effects receive `rng` in create()/reset() and
+// MUST draw all catalog randomness from it (never Math.random) to stay phase-locked.
+const DEFAULT_SEED = 0x57a21197; // documented "starlight" capture seed — do not change casually
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function rng() {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t ^= (t + Math.imul(t ^ (t >>> 7), 61 | t));
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+let rngSeed = params.has('seed') ? (Number.parseInt(params.get('seed'), 10) >>> 0) : DEFAULT_SEED;
+let rng = mulberry32(rngSeed);
+
+const PROFILE_CAPACITY = 1200;
+// A frame counts as "dropped" when its wall interval exceeds a 60 Hz budget — the same
+// 16.7 ms reference the Definition of Success uses for the p95 target.
+const FRAME_BUDGET_MS = 1000 / 60;
+const profileState = {
+    cpuMs: new Float64Array(PROFILE_CAPACITY),
+    frameMs: new Float64Array(PROFILE_CAPACITY),
+    gpuMs: new Float64Array(PROFILE_CAPACITY),
+    computeMs: new Float64Array(PROFILE_CAPACITY),
+    cpuCount: 0,
+    frameCount: 0,
+    gpuCount: 0,
+    computeCount: 0,
+    droppedFrames: 0,
+    lastFrameStart: null,
+    timestampPending: false,
+    computeTimestampPending: false,
+    timestampError: null,
+    computeTimestampError: null,
+    heapStart: null,
+    heapPeak: 0,
+    epoch: 0,
+};
 
 // fps tracking
 let fps = 0;
@@ -64,16 +114,171 @@ function backendName() {
     return '—';
 }
 
+function recordProfileSample(buffer, countKey, value) {
+    if (!Number.isFinite(value)) return;
+    const count = profileState[countKey];
+    buffer[count % PROFILE_CAPACITY] = value;
+    profileState[countKey] = count + 1;
+}
+
+function orderedProfileValues(buffer, count) {
+    const length = Math.min(count, PROFILE_CAPACITY);
+    const start = count > PROFILE_CAPACITY ? count % PROFILE_CAPACITY : 0;
+    return Array.from({ length }, (_, index) => buffer[(start + index) % PROFILE_CAPACITY]);
+}
+
+function percentile(sorted, fraction) {
+    if (!sorted.length) return null;
+    const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
+    return sorted[index];
+}
+
+function summarizeProfileBuffer(buffer, count) {
+    const values = orderedProfileValues(buffer, count).sort((a, b) => a - b);
+    return {
+        samples: values.length,
+        p50: percentile(values, 0.50),
+        p95: percentile(values, 0.95),
+        p99: percentile(values, 0.99),
+        max: values.length ? values[values.length - 1] : null,
+    };
+}
+
+function readHeapBytes() {
+    // Chrome-only; undefined elsewhere. Used to surface an allocation/growth trend.
+    const used = performance?.memory?.usedJSHeapSize;
+    return Number.isFinite(used) ? used : null;
+}
+
+function resetProfile() {
+    profileState.epoch += 1;
+    profileState.cpuCount = 0;
+    profileState.frameCount = 0;
+    profileState.gpuCount = 0;
+    profileState.computeCount = 0;
+    profileState.droppedFrames = 0;
+    profileState.lastFrameStart = null;
+    profileState.timestampError = null;
+    profileState.computeTimestampError = null;
+    profileState.heapStart = readHeapBytes();
+    profileState.heapPeak = profileState.heapStart ?? 0;
+}
+
+function profileSnapshot() {
+    return {
+        enabled: profileEnabled,
+        backend: backendName(),
+        effect: currentId,
+        // Pinned environment so a metrics artifact is self-describing (§6.1): the seed
+        // plus whatever tier/effect-scale/DPR the effect chose to report.
+        seed: rngSeed,
+        fixedTime: Number.isFinite(fixedTime) ? fixedTime : null,
+        captureMeta: current?.getCaptureMeta?.() || null,
+        internalResolution: renderer ? {
+            width: renderer.domElement.width,
+            height: renderer.domElement.height,
+            cssWidth: window.innerWidth,
+            cssHeight: window.innerHeight,
+            pixelRatio: renderer.getPixelRatio?.() ?? null,
+        } : null,
+        cpuMs: summarizeProfileBuffer(profileState.cpuMs, profileState.cpuCount),
+        frameMs: summarizeProfileBuffer(profileState.frameMs, profileState.frameCount),
+        gpuMs: summarizeProfileBuffer(profileState.gpuMs, profileState.gpuCount),
+        computeMs: summarizeProfileBuffer(profileState.computeMs, profileState.computeCount),
+        // Dropped frames: intervals over the 60 Hz budget, with the ratio so a capture
+        // can assert "0 dropped" without recomputing from the raw buffer.
+        droppedFrames: {
+            budgetMs: FRAME_BUDGET_MS,
+            dropped: profileState.droppedFrames,
+            total: profileState.frameCount,
+            ratio: profileState.frameCount > 0
+                ? profileState.droppedFrames / profileState.frameCount
+                : 0,
+        },
+        // Allocation/growth trend across the capture window (Chrome only).
+        memory: (() => {
+            const currentHeap = readHeapBytes();
+            if (currentHeap == null || profileState.heapStart == null) return { supported: false };
+            return {
+                supported: true,
+                startBytes: profileState.heapStart,
+                currentBytes: currentHeap,
+                peakBytes: profileState.heapPeak,
+                growthBytes: currentHeap - profileState.heapStart,
+                growthMB: (currentHeap - profileState.heapStart) / (1024 * 1024),
+            };
+        })(),
+        // Live particle population, when the effect can report it (§0.9). Null for static
+        // scenes that have no dynamic particle simulation.
+        activeParticles: current?.getActiveParticleCount?.() ?? null,
+        gpuTimestamp: {
+            requested: timestampRequested,
+            renderStatus: profileState.gpuCount > 0 ? 'available' : 'unavailable',
+            computeStatus: profileState.computeCount > 0 ? 'available' : 'unavailable',
+            error: profileState.timestampError,
+            computeError: profileState.computeTimestampError,
+        },
+        renderer: current?.getRendererCounters?.() || null,
+    };
+}
+
+function resolveGpuTimestamp() {
+    if (!profileEnabled || !trackTimestamp || profileState.timestampPending) return;
+    if (typeof renderer?.resolveTimestampsAsync !== 'function') {
+        profileState.timestampError = 'renderer.resolveTimestampsAsync unavailable';
+        return;
+    }
+    profileState.timestampPending = true;
+    const { epoch } = profileState;
+    renderer.resolveTimestampsAsync('render')
+        .then(() => {
+            const timestamp = renderer.info?.render?.timestamp;
+            if (epoch === profileState.epoch && Number.isFinite(timestamp) && timestamp > 0) {
+                recordProfileSample(profileState.gpuMs, 'gpuCount', timestamp);
+            }
+        })
+        .catch((error) => {
+            profileState.timestampError = String(error?.message || error);
+        })
+        .finally(() => {
+            profileState.timestampPending = false;
+        });
+}
+
+function resolveComputeTimestamp() {
+    if (!profileEnabled || !trackTimestamp || profileState.computeTimestampPending) return;
+    if (typeof renderer?.resolveTimestampsAsync !== 'function') return;
+    profileState.computeTimestampPending = true;
+    const { epoch } = profileState;
+    renderer.resolveTimestampsAsync('compute')
+        .then(() => {
+            const timestamp = renderer.info?.compute?.timestamp;
+            if (epoch === profileState.epoch && Number.isFinite(timestamp) && timestamp > 0) {
+                recordProfileSample(profileState.computeMs, 'computeCount', timestamp);
+            }
+        })
+        .catch((error) => {
+            profileState.computeTimestampError = String(error?.message || error);
+        })
+        .finally(() => {
+            profileState.computeTimestampPending = false;
+        });
+}
+
 // ---- time ----
 function tick() {
     const now = performance.now() / 1000;
-    const dt = now - lastWall;
+    const wallDt = now - lastWall;
     lastWall = now;
+    const prev = simTime;
     if (Number.isFinite(fixedTime)) {
         simTime = fixedTime;
     } else if (!paused) {
-        simTime += dt;
+        simTime += wallDt;
     }
+    // Sim delta: 0 while fixed/paused (deterministic capture), else real wall delta
+    // clamped to 50ms (mirrors the theme animate loop) so a stutter can't jump a sim.
+    simDt = Math.min(0.05, Math.max(0, simTime - prev));
     return simTime;
 }
 
@@ -83,10 +288,36 @@ function defaultCamera(time, cam, radius) {
     cam.lookAt(0, 0, 0);
 }
 
-function applyFrame(time) {
+function applyFrame(time, dt) {
     if (current?.camera) current.camera(time, camera);
     else defaultCamera(time, camera, current?.cameraRadius ?? 6);
-    current?.update?.(time);
+    // Capture mode (?t=): prefer a deterministic absolute-time seek when the effect
+    // supports it (true phase-lock, independent of frame cadence); otherwise hold at
+    // dt=0 so time-driven work still lands at `time` while stateful sims freeze.
+    if (Number.isFinite(fixedTime) && typeof current?.seek === 'function') {
+        current.seek(time);
+    } else {
+        current?.update?.(time, dt);
+    }
+}
+
+// ---- deterministic capture controls (agent API) ----
+// reset(seed): reseed the shared RNG and re-init the effect's deterministic state.
+// seek(time): pin absolute time and render one deterministic frame (phase-locked).
+function resetEffect(seed) {
+    if (seed !== undefined && Number.isFinite(Number(seed))) rngSeed = Number(seed) >>> 0;
+    rng = mulberry32(rngSeed);
+    if (profileEnabled) resetProfile();
+    current?.reset?.(rng, rngSeed);
+}
+
+function seekTo(time) {
+    fixedTime = time;
+    simTime = time;
+    simDt = 0;
+    applyFrame(time, 0);
+    if (current?.render) current.render();
+    else if (renderer) renderer.render(scene, camera);
 }
 
 // ---- effect mounting ----
@@ -100,6 +331,7 @@ function mountEffect(id) {
         try { current.dispose?.(); } catch (e) { showError(`dispose failed: ${e?.stack || e}`); }
         current = null;
     }
+    if (profileEnabled) resetProfile();
     // Defensive isolation: clear anything a previous effect left on the scene root so each
     // effect starts from a clean slate (contract: effects must otherwise be all-or-nothing).
     scene.background = null;
@@ -108,6 +340,8 @@ function mountEffect(id) {
     currentId = id;
     if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
     window.__PLAYGROUND_ERROR__ = null;
+    // Reseed for this mount so the effect's deterministic setup is reproducible.
+    rng = mulberry32(rngSeed);
     try {
         current = mod.create({
             THREE,
@@ -116,6 +350,8 @@ function mountEffect(id) {
             renderer,
             sizes: { width: window.innerWidth, height: window.innerHeight },
             params,
+            rng,
+            seed: rngSeed,
         });
     } catch (e) {
         showError(`Effect "${id}" create() failed:\n${e?.stack || e}`);
@@ -274,6 +510,11 @@ function exposeApi() {
         listEffects,
         setTime: (t) => { fixedTime = t; simTime = t; },
         clearFixedTime: () => { fixedTime = null; lastWall = performance.now() / 1000; },
+        // Deterministic capture: reset(seed) reseeds + re-inits; seek(time) phase-locks
+        // and renders one frame. Effects opt in via reset(rng, seed) / seek(time).
+        reset: (seed) => resetEffect(seed),
+        seek: (t) => seekTo(t),
+        seed: () => rngSeed,
         pause: (p = true) => {
             paused = p;
             // resetting lastWall on resume avoids a multi-second dt jump (determinism)
@@ -282,13 +523,18 @@ function exposeApi() {
         },
         backend: backendName,
         setReference: (url, opts) => setReference(url, opts),
+        diagnostics: () => current?.getDiagnostics?.() || null,
+        profile: {
+            reset: resetProfile,
+            snapshot: profileSnapshot,
+        },
         get ready() { return !!window.__PLAYGROUND_READY__; },
     };
 }
 
 async function init() {
     const forceWebGL = params.get('forceWebGL') === '1';
-    renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL });
+    renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL, trackTimestamp });
     await renderer.init();
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(pixelRatio());
@@ -347,7 +593,7 @@ async function init() {
 
     // First frame: compile + render once, then raise the screenshot-ready signal.
     // WebGPURenderer.init() has already settled; r181 deprecates renderAsync().
-    applyFrame(tick());
+    applyFrame(tick(), simDt);
     // Effects may own their render (e.g. a post-processing pass); fall back to direct.
     if (current?.renderAsync) await current.renderAsync();
     else renderer.render(scene, camera);
@@ -362,8 +608,19 @@ async function init() {
     window.THREE = THREE;
 
     renderer.setAnimationLoop(() => {
+        const frameStart = performance.now();
+        if (profileEnabled) {
+            if (profileState.lastFrameStart != null) {
+                const interval = frameStart - profileState.lastFrameStart;
+                recordProfileSample(profileState.frameMs, 'frameCount', interval);
+                if (interval > FRAME_BUDGET_MS) profileState.droppedFrames += 1;
+            }
+            profileState.lastFrameStart = frameStart;
+            const heap = readHeapBytes();
+            if (heap != null && heap > profileState.heapPeak) profileState.heapPeak = heap;
+        }
         const time = tick();
-        applyFrame(time);
+        applyFrame(time, simDt);
         try {
             if (current?.render) current.render();
             else renderer.render(scene, camera);
@@ -371,6 +628,13 @@ async function init() {
             showError(`render failed:\n${e?.stack || e}`);
             renderer.setAnimationLoop(null);
             return;
+        }
+        if (profileEnabled) {
+            recordProfileSample(profileState.cpuMs, 'cpuCount', performance.now() - frameStart);
+            if (profileState.cpuCount % 30 === 0) {
+                resolveGpuTimestamp();
+                resolveComputeTimestamp();
+            }
         }
         updateHud(time);
     });

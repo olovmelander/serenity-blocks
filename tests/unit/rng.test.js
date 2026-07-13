@@ -4,8 +4,15 @@
  * reproduction from (seed, label), stream independence, unbiased bag shuffles,
  * and an exact save/restore cursor for snapshots.
  */
-import { describe, it, expect } from 'vitest';
-import { RandomStream, MatchRandom, xmur3 } from '../../src/core/rng.js';
+import {
+    describe, it, expect, vi,
+} from 'vitest';
+import { fillBag } from '../../src/core/game.js';
+import {
+    createSfc32Random, MatchRandom, RandomStream, restoreSfc32Random,
+    SFC32_ALGORITHM, xmur3,
+} from '../../src/core/rng.js';
+import { seededRandom } from '../../src/utils/helpers.js';
 
 describe('RandomStream determinism', () => {
     it('same (seed, label) → bit-identical sequence', () => {
@@ -20,10 +27,10 @@ describe('RandomStream determinism', () => {
         const seq1 = Array.from({ length: 16 }, () => pieces.next());
         // Draw a DIFFERENT amount from garbage — pieces must be unaffected.
         for (let i = 0; i < 7; i += 1) garbage.next();
+        const continuation = Array.from({ length: 16 }, () => pieces.next());
         const fresh = new RandomStream('match-42', 'pieces:P1');
-        for (let i = 0; i < 16; i += 1) fresh.next();
-        const seq2 = Array.from({ length: 16 }, () => new RandomStream('match-42', 'pieces:P1').next());
-        expect(seq1[0]).toBe(seq2[0]);
+        expect(Array.from({ length: 16 }, () => fresh.next())).toEqual(seq1);
+        expect(Array.from({ length: 16 }, () => fresh.next())).toEqual(continuation);
     });
 
     it('save/restore reproduces the exact continuation (the §5.9 seam)', () => {
@@ -70,12 +77,138 @@ describe('RandomStream determinism', () => {
         }
     });
 
+    it('rejects unsafe nextInt bounds and accepts the full uint32 range', () => {
+        const stream = new RandomStream('bounds', 'pieces');
+        for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 32 + 1]) {
+            expect(() => stream.nextInt(invalid)).toThrow(RangeError);
+        }
+        expect(stream.nextInt(1)).toBe(0);
+        expect(stream.nextInt(2 ** 32)).toBeGreaterThanOrEqual(0);
+    });
+
+    it('serializes canonical uint32 words', () => {
+        const stream = new RandomStream('match-42', 'pieces:shared-v1');
+        for (let i = 0; i < 12; i += 1) stream.next();
+        const state = stream.getState();
+        for (const field of ['a', 'b', 'c', 'd']) {
+            expect(Number.isInteger(state[field])).toBe(true);
+            expect(state[field]).toBeGreaterThanOrEqual(0);
+            expect(state[field]).toBeLessThanOrEqual(0xffffffff);
+        }
+    });
+
+    it('validates restored state atomically', () => {
+        const random = createSfc32Random('source', 'pieces:source');
+        random();
+        const original = structuredClone(random.getState());
+        const malformedStates = [
+            { ...original, a: -0x80000001 },
+            { ...original, b: 2 ** 32 },
+            { ...original, c: 1.5 },
+            { ...original, d: Number.NaN },
+            { ...original, drawCount: -1 },
+            { ...original, drawCount: Number.MAX_SAFE_INTEGER + 1 },
+            { ...original, seed: 7 },
+            { ...original, label: null },
+        ];
+        for (const malformed of malformedStates) {
+            expect(() => random.setState(malformed)).toThrow();
+            expect(random.getState()).toEqual(original);
+        }
+
+        const replacement = createSfc32Random('replacement', 'pieces:replacement');
+        for (let i = 0; i < 9; i += 1) replacement();
+        expect(random.setState(replacement.getState())).toBe(random);
+        expect(random.seed).toBe('replacement');
+        expect(random.label).toBe('pieces:replacement');
+        expect(random()).toBe(replacement());
+    });
+
+    it('normalizes legacy signed-int32 cursor words bit-exactly', () => {
+        const source = createSfc32Random('match-42', 'pieces:shared-v1');
+        source();
+        const canonical = source.getState();
+        const legacy = {
+            ...canonical,
+            a: canonical.a | 0,
+            b: canonical.b | 0,
+            c: canonical.c | 0,
+            d: canonical.d | 0,
+        };
+        expect(legacy.a).toBeLessThan(0);
+
+        const restored = restoreSfc32Random(legacy);
+
+        expect(restored.getState()).toEqual(canonical);
+        expect(Array.from({ length: 32 }, () => restored()))
+            .toEqual(Array.from({ length: 32 }, () => source()));
+    });
+
+    it('rejects an unadvanceable drawCount and fails atomically at the terminal cursor', () => {
+        const state = createSfc32Random('draw-limit', 'pieces').getState();
+        expect(() => restoreSfc32Random({
+            ...state,
+            drawCount: Number.MAX_SAFE_INTEGER,
+        })).toThrow(/drawCount/);
+
+        const terminal = restoreSfc32Random({
+            ...state,
+            drawCount: Number.MAX_SAFE_INTEGER - 1,
+        });
+        const before = terminal.getState();
+        expect(() => terminal()).toThrow(RangeError);
+        expect(terminal.getState()).toEqual(before);
+    });
+
     it('numeric and string seeds are both accepted and stable', () => {
         expect(new RandomStream(12345, 'x').next()).toBe(new RandomStream('12345', 'x').next());
     });
 
     it('xmur3 produces distinct word streams per input', () => {
         expect(xmur3('a')()).not.toBe(xmur3('b')());
+    });
+});
+
+describe('canonical callable sfc32-v1 adapter', () => {
+    it('pins the fixed output vector and adapter metadata', () => {
+        const random = createSfc32Random('match-42', 'pieces:shared-v1');
+        const words = Array.from(
+            { length: 10 },
+            () => Math.floor(random() * 0x100000000),
+        );
+        expect(words).toEqual([
+            1133842877, 1714644183, 3826949519, 4165770247, 639744577,
+            3150542182, 1988637429, 3241203614, 1784947510, 1379367984,
+        ]);
+        expect(random.algorithm).toBe(SFC32_ALGORITHM);
+        expect(random.seed).toBe('match-42');
+        expect(random.label).toBe('pieces:shared-v1');
+        expect(random.nextInt).toEqual(expect.any(Function));
+        expect(random.getState).toEqual(expect.any(Function));
+        expect(random.setState).toEqual(expect.any(Function));
+    });
+
+    it('lets fillBag select the integer capability without consuming the float callable', () => {
+        const random = vi.fn(() => {
+            throw new Error('float fallback must not be called');
+        });
+        random.nextInt = vi.fn(() => 0);
+        const queue = [];
+
+        fillBag(queue, random);
+
+        expect(queue).toHaveLength(14);
+        expect(random).not.toHaveBeenCalled();
+        expect(random.nextInt).toHaveBeenCalledTimes(12);
+    });
+
+    it('retains the exact legacy float-path bag sequence', () => {
+        const queue = [];
+        fillBag(queue, seededRandom(987654));
+        expect(queue).toEqual([
+            'I', 'T', 'L', 'J', 'S', 'O', 'Z',
+            'O', 'J', 'T', 'Z', 'L', 'I', 'S',
+        ]);
     });
 });
 

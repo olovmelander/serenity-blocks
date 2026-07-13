@@ -8,9 +8,16 @@ import {
 } from './demo-state.js';
 
 export const DEMO_VERSION = '2.0';
+export const DEMO_FIXED_CLOCK_VERSION = '2.1';
 export const DEMO_TICK_MS = 1000 / 60;
 export const DEMO_CHECKPOINT_INTERVAL_FRAMES = 300;
 export const DEMO_COMMAND_INPUT_FORMAT = 'accepted-commands-v1';
+export const DEMO_LEGACY_SIMULATION_CLOCK = 'legacy-variable-v1';
+export const DEMO_FIXED_SIMULATION_CLOCK = 'fixed60-v1';
+const DEMO_SIMULATION_CLOCKS = new Set([
+    DEMO_LEGACY_SIMULATION_CLOCK,
+    DEMO_FIXED_SIMULATION_CLOCK,
+]);
 // V1 and early V2 artifacts predate the hit-stop policy field. They were
 // authored against the normal-motion rules by default, so replay them with
 // hit-stop enabled instead of consulting the playback machine's preferences.
@@ -51,17 +58,31 @@ export class DemoRecorder {
      * @param {Object} settings - Game settings
      * @param {number} seed - RNG seed
      * @param {string} gameMode - Game mode identifier
+     * @param {string} simulationClock - Simulation clock contract
      */
-    startRecording(gameState, settings, seed, gameMode = 'single-player') {
+    startRecording(
+        gameState,
+        settings,
+        seed,
+        gameMode = 'single-player',
+        simulationClock = DEMO_LEGACY_SIMULATION_CLOCK,
+    ) {
+        if (!DEMO_SIMULATION_CLOCKS.has(simulationClock)) {
+            throw new TypeError(`Unsupported demo simulation clock: ${simulationClock}`);
+        }
         this.tickMs = Number(gameState?.simTickMs) || DEMO_TICK_MS;
         const simFrame = resolveFrame(gameState, this.tickMs);
+        const demoVersion = simulationClock === DEMO_FIXED_SIMULATION_CLOCK
+            ? DEMO_FIXED_CLOCK_VERSION
+            : DEMO_VERSION;
 
         this.demo = {
-            version: DEMO_VERSION,
+            version: demoVersion,
             gameMode,
             timestamp: Date.now(),
             sim: {
                 tickMs: this.tickMs,
+                simulationClock,
                 startFrame: simFrame,
                 durationFrames: 0,
                 inputFormat: DEMO_COMMAND_INPUT_FORMAT,
@@ -71,7 +92,7 @@ export class DemoRecorder {
                 level: gameState.level,
                 dropInterval: gameState.dropInterval,
                 settings: this._captureSettings(settings, gameState),
-                rulesVersion: DEMO_VERSION,
+                rulesVersion: demoVersion,
             },
             inputs: [],
             checkpoints: [],
@@ -82,7 +103,7 @@ export class DemoRecorder {
         this.startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
         this.lastCheckpointFrame = simFrame;
         this.recordCheckpoint(gameState, true);
-        console.log('[DemoRecorder] Started recording v2');
+        console.log(`[DemoRecorder] Started recording v${demoVersion}`);
     }
 
     /**

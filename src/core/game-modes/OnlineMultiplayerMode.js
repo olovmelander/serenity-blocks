@@ -23,6 +23,7 @@ import { OnlineChat } from '../../ui/online-chat.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
+import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
@@ -81,6 +82,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
         this.playerListRichPresenceUnsub = null;
+        this._kickedUnsub = null; this._joinRejectedUnsub = null; this._handledSessionExit = null;
         this._uiSetupComplete = false;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
@@ -351,6 +353,22 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Join the lobby via Steam
             await this.steamNetworking.joinLobby(lobbyId);
+            this.currentLobbyId = lobbyId;
+            this._handledSessionExit = null;
+            if (!this._kickedUnsub) {
+                this._kickedUnsub = onMultiplayerEvent(
+                    MULTIPLAYER_EVENTS.KICKED,
+                    (detail) => this._handleKicked(detail),
+                );
+                this.cleanupHandlers.push(this._kickedUnsub);
+            }
+            if (!this._joinRejectedUnsub) {
+                this._joinRejectedUnsub = onMultiplayerEvent(
+                    MULTIPLAYER_EVENTS.JOIN_REJECTED,
+                    (detail) => this._handleJoinRejected(detail),
+                );
+                this.cleanupHandlers.push(this._joinRejectedUnsub);
+            }
 
             // Create FFA game state as peer (or spectator — no local board/input).
             this.ffaGameState = new FFAGameStateP2P(
@@ -364,19 +382,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Announce join to host (carries asSpectator so the host won't roster a spectator)
             this.ffaGameState.announceJoin();
-
-            // Joiners (and spectators) can be kicked by the host at any point (lobby or
-            // match), so subscribe once for the lifetime of this mode. The host never gets
-            // this (it doesn't kick itself).
-            if (!this._kickedUnsub) {
-                this._kickedUnsub = onMultiplayerEvent(
-                    MULTIPLAYER_EVENTS.KICKED,
-                    (detail) => this._handleKicked(detail),
-                );
-                this.cleanupHandlers.push(this._kickedUnsub);
-            }
-
-            this.currentLobbyId = lobbyId;
 
             // Fetch lobby name
             let lobbyName = 'FFA Match';
@@ -915,19 +920,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
-    /**
-     * We were kicked by the host — tear down and return to the start menu with a notice.
-     * Reuses the exit-to-menu teardown; the alert tells the player why.
-     */
-    async _handleKicked() {
-        console.warn('[OnlineMultiplayer] Kicked by host — leaving match');
-        try { await this._handleExitToMenu(); } catch (e) { /* best-effort teardown */ }
-        // Non-blocking notice (a blocking alert() would freeze the page mid-teardown).
-        try {
-            window.dispatchEvent(new CustomEvent('serenity:toast', {
-                detail: { message: 'You were removed from the match by the host.', type: 'warning' },
-            }));
-        } catch (e) { /* no-op */ }
+    _handleKicked(detail = {}) {
+        return handleOnlineSessionExit(this, { ...detail, reason: 'kicked' });
+    }
+
+    _handleJoinRejected(detail = {}) {
+        return handleOnlineSessionExit(this, detail);
     }
 
     /**
@@ -1266,14 +1264,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_DIED, deathHandler);
         this.steamNetworking.on(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-        this.steamNetworking.on('game:chat', chatHandler);
+        this.steamNetworking.on(MessageTypes.GAME_CHAT, chatHandler);
         this.steamNetworking.on(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-            this.steamNetworking.off('game:chat', chatHandler);
+            this.steamNetworking.off(MessageTypes.GAME_CHAT, chatHandler);
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
@@ -2931,9 +2929,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // via the host or their message is silently dropped on real Steam.)
         const network = this.ffaGameState.network;
         if (network.isHost) {
-            network.broadcastToAll('game:chat', payload);
+            network.broadcastToAll(MessageTypes.GAME_CHAT, payload);
         } else if (network.hostSteamId) {
-            network.sendP2PMessage(network.hostSteamId, 'game:chat', payload);
+            network.sendP2PMessage(network.hostSteamId, MessageTypes.GAME_CHAT, payload);
         }
     }
 
@@ -3218,6 +3216,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
         this.playerListRichPresenceUnsub = null;
+        this._kickedUnsub = null;
+        this._joinRejectedUnsub = null;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
 

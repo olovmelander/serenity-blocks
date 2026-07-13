@@ -1,4 +1,6 @@
 import { MessageTypes } from '../network/message-types.js';
+import { cancelResyncInputBarriers } from './ffa/resync-input-barrier.js';
+import { routeFfaResync } from './ffa/resync-request-handler.js';
 import {
     PLAYER_INPUT_EDGE_CAPACITY,
     PLAYER_INPUT_REPEAT_CAPACITY_PER_TICK,
@@ -21,7 +23,23 @@ const FFA_FIXED_INPUT_REBASE_LEAD_TICKS = 4;
 
 const hostGroupsByGame = new WeakMap();
 const hostProgressByGame = new WeakMap();
+const hostLegacyProgressByGame = new WeakMap();
 const hostPendingGroupsByGame = new WeakMap();
+
+/** Advance only the contiguous prefix of commands the host has consumed. */
+export function acknowledgeFfaInput(player, sequenceValue) {
+    const sequence = Number(sequenceValue);
+    if (!player || !Number.isSafeInteger(sequence) || sequence < 1) return false;
+    const current = Number.isSafeInteger(player.lastInputSeq) ? player.lastInputSeq : 0;
+    if (sequence <= current) return false;
+    if (sequence - current > FFA_FIXED_INPUT_PENDING_COMMAND_LIMIT) return false;
+    if (!(player._consumedInputSeqs instanceof Set)) player._consumedInputSeqs = new Set();
+    player._consumedInputSeqs.add(sequence);
+    let next = current + 1;
+    while (player._consumedInputSeqs.delete(next)) next += 1;
+    player.lastInputSeq = next - 1;
+    return player.lastInputSeq > current;
+}
 
 function fixedTickBaseOrdinal(inputs) {
     const ordinals = inputs.map((input) => Number(input.fixedTickOrdinal))
@@ -38,7 +56,14 @@ function getPeerFlushGroup(game) {
         && active.remaining <= game.pendingInputs.length
     ) return active;
 
-    const size = Math.min(game.pendingInputs.length, FFA_INPUT_GROUP_LIMIT);
+    let size = Math.min(game.pendingInputs.length, FFA_INPUT_GROUP_LIMIT);
+    const firstOrdinal = Number(game.pendingInputs[0]?.fixedTickOrdinal);
+    if (game._ffaInputRecoveryStaged === true
+        && Number.isInteger(firstOrdinal) && firstOrdinal >= 0) {
+        while (size > 1
+            && Number(game.pendingInputs[size - 1]?.fixedTickOrdinal) - firstOrdinal
+                >= FFA_INPUT_ORDINAL_SPAN_LIMIT) size -= 1;
+    }
     const id = (Number(game._ffaInputGroupSequence) || 0) + 1;
     const group = {
         id,
@@ -187,35 +212,46 @@ function validateFfaFixedInputProgress(game, steamId, fixedGroup) {
 
     if (!previous) {
         const lastAppliedSequence = Number(game.players?.get?.(steamId)?.lastInputSeq ?? 0);
-        if (
-            !Number.isSafeInteger(lastAppliedSequence)
-            || lastAppliedSequence < 0
-            || metrics.firstSequence !== lastAppliedSequence + 1
-        ) {
+        if (!Number.isSafeInteger(lastAppliedSequence) || lastAppliedSequence < 0) {
             return {
                 valid: false,
                 reason: 'fixed_input_progression',
-                fatal: !Number.isSafeInteger(lastAppliedSequence)
-                    || metrics.firstSequence > lastAppliedSequence + 1,
+                fatal: true,
+            };
+        }
+        if (metrics.firstSequence !== lastAppliedSequence + 1) {
+            return {
+                valid: false,
+                reason: 'fixed_input_progression',
+                gap: metrics.firstSequence > lastAppliedSequence + 1,
+                fatal: false,
             };
         }
     }
 
     if (previous) {
         const sameRound = metrics.roundGeneration === previous.roundGeneration;
+        // Recovery groups may skip transport IDs, but both IDs and commands
+        // must move forward from the last complete canonical group.
         if (
             metrics.groupId <= previous.groupId
             || metrics.firstSequence <= previous.lastSequence
         ) return { valid: false, reason: 'fixed_input_progression', fatal: false };
         if (
             metrics.firstSimTick <= previous.lastSimTick
-            || (sameRound && metrics.groupId !== previous.groupId + 1)
-            || (sameRound && metrics.firstSequence !== previous.lastSequence + 1)
             || (sameRound && metrics.firstOrdinal <= previous.lastOrdinal)
             || (sameRound
                 && metrics.firstSimTick - previous.lastSimTick
                     !== metrics.firstOrdinal - previous.lastOrdinal)
         ) return { valid: false, reason: 'fixed_input_progression', fatal: true };
+        if (sameRound && metrics.firstSequence > previous.lastSequence + 1) {
+            return {
+                valid: false,
+                reason: 'fixed_input_progression',
+                gap: true,
+                fatal: false,
+            };
+        }
     }
 
     const bufferTick = Number(game.inputJitterBuffer?.currentTick);
@@ -276,23 +312,96 @@ function commitFfaFixedInputProgress(game, steamId, fixedGroup) {
     }
 }
 
+function validateFfaLegacyInputProgress(game, steamId, inputs) {
+    if (!Array.isArray(inputs) || inputs.length === 0) {
+        return { valid: false, reason: 'legacy_input_order' };
+    }
+    let previousSequence = null;
+    for (const input of inputs) {
+        const sequence = Number(input?.seq);
+        const validMove = input?.type === 'move'
+            && (input.data?.direction === -1 || input.data?.direction === 1);
+        const validRotate = input?.type === 'rotate'
+            && ['left', 'right', 'flip'].includes(input.data?.direction);
+        const validDrop = input?.type === 'drop'
+            && ['soft', 'hard'].includes(input.data?.type);
+        if (!Number.isSafeInteger(sequence) || sequence < 1
+            || (previousSequence !== null && sequence !== previousSequence + 1)
+            || (!validMove && !validRotate && !validDrop)) {
+            return { valid: false, reason: 'legacy_input_order' };
+        }
+        previousSequence = sequence;
+    }
+
+    let progress = hostLegacyProgressByGame.get(game);
+    if (!progress) {
+        progress = new Map();
+        hostLegacyProgressByGame.set(game, progress);
+    }
+    const roundGeneration = Math.max(0, Math.floor(Number(game.roundGeneration) || 0));
+    const previous = progress.get(steamId);
+    const baseline = previous?.roundGeneration === roundGeneration
+        ? previous.lastSequence : Number(game.players?.get?.(steamId)?.lastInputSeq ?? 0);
+    const firstSequence = Number(inputs[0].seq);
+    if (!Number.isSafeInteger(baseline) || baseline < 0) {
+        return { valid: false, reason: 'legacy_input_progression' };
+    }
+    if (firstSequence <= baseline) {
+        return { valid: false, reason: 'legacy_input_progression' };
+    }
+    if (firstSequence !== baseline + 1) {
+        return { valid: false, reason: 'legacy_input_gap', gap: true };
+    }
+    return {
+        valid: true,
+        metrics: { roundGeneration, lastSequence: previousSequence },
+    };
+}
+
+function commitFfaLegacyInputProgress(game, steamId, progress) {
+    if (!progress.valid || !progress.metrics) return;
+    let byPeer = hostLegacyProgressByGame.get(game);
+    if (!byPeer) {
+        byPeer = new Map();
+        hostLegacyProgressByGame.set(game, byPeer);
+    }
+    byPeer.set(steamId, progress.metrics);
+}
+
+function trimReceivedInputPrefix(game, steamId, inputs, fixedTickEnabled) {
+    const roundGeneration = Math.max(0, Math.floor(Number(game.roundGeneration) || 0));
+    const progress = (fixedTickEnabled ? hostProgressByGame : hostLegacyProgressByGame)
+        .get(game)?.get(steamId);
+    const baseline = progress?.roundGeneration === roundGeneration
+        ? progress.lastSequence : Number(game.players?.get?.(steamId)?.lastInputSeq ?? 0);
+    if (!Number.isSafeInteger(baseline) || baseline < 0) return inputs;
+    const firstUnseen = inputs.findIndex((input) => Number(input?.seq) > baseline);
+    return firstUnseen < 0 ? [] : inputs.slice(firstUnseen);
+}
+
 /** Clear transport continuity when a peer identity leaves this game object. */
 export function resetFfaInputTransport(game, steamId = null) {
     const groups = hostGroupsByGame.get(game);
     const progress = hostProgressByGame.get(game);
     const pending = hostPendingGroupsByGame.get(game);
+    const legacy = hostLegacyProgressByGame.get(game);
     if (steamId == null) {
+        game?.players?.forEach((player) => player._consumedInputSeqs?.clear?.());
         groups?.clear();
         progress?.clear();
         pending?.clear();
+        legacy?.clear();
         hostGroupsByGame.delete(game);
         hostProgressByGame.delete(game);
         hostPendingGroupsByGame.delete(game);
+        hostLegacyProgressByGame.delete(game);
         return;
     }
     groups?.delete(steamId);
     progress?.delete(steamId);
     pending?.delete(steamId);
+    legacy?.delete(steamId);
+    game?.players?.get?.(steamId)?._consumedInputSeqs?.clear?.();
 }
 
 /** Discard unsent/reconciliation input from a board generation that just ended. */
@@ -303,14 +412,42 @@ export function resetFfaInputProducer(game) {
         game.inputSequence = 0;
         game._ffaInputGroupSequence = 0;
         game._pendingFfaInputGroup = null;
+        game._ffaInputRecoveryStaged = false;
     }
+}
+
+/** Restage every locally retained, unacknowledged command for barrier recovery. */
+export function stageFfaInputRecovery(game) {
+    const inputSequence = Number(game?.inputSequence);
+    if (!Number.isSafeInteger(inputSequence) || inputSequence < 0) return 0;
+    const bySequence = new Map();
+    const candidates = [
+        ...(Array.isArray(game.inputHistory) ? game.inputHistory : []),
+        ...(Array.isArray(game.pendingInputs) ? game.pendingInputs : []),
+    ];
+    candidates.forEach((input) => {
+        const sequence = Number(input?.seq);
+        if (Number.isSafeInteger(sequence) && sequence > 0 && sequence <= inputSequence) {
+            bySequence.set(sequence, input);
+        }
+    });
+    game.pendingInputs = Array.from(bySequence.entries())
+        .sort(([left], [right]) => left - right)
+        .map(([, input]) => input);
+    game._pendingFfaInputGroup = null;
+    game._ffaInputRecoveryStaged = game.pendingInputs.length > 0;
+    return game.pendingInputs.length;
 }
 
 /** Start a fresh per-round input sequence and discard all prior transport state. */
 export function resetFfaInputEpoch(game) {
+    cancelResyncInputBarriers(game, 'input_epoch');
     resetFfaInputProducer(game);
     resetFfaInputTransport(game);
-    game?.players?.forEach((player) => { player.lastInputSeq = 0; });
+    game?.players?.forEach((player) => {
+        player.lastInputSeq = 0;
+        player._consumedInputSeqs?.clear?.();
+    });
 }
 
 /** Flush ordered peer inputs without exceeding the host's validation cap. */
@@ -341,6 +478,7 @@ export function flushFfaInputBatches(game) {
         if (groupFinal) game._pendingFfaInputGroup = null;
         sent += 1;
     }
+    game._ffaInputRecoveryStaged = false;
     return sent;
 }
 
@@ -375,6 +513,13 @@ export function assembleFfaInputBatch(game, steamId, batchData, packetInputs) {
         hostGroupsByGame.set(game, groups);
     }
     let group = groups.get(steamId);
+    if (group && group.id !== groupId && groupId < group.id) {
+        game._recordNetEvent?.('input_rejected', {
+            steamId,
+            reason: 'input_group_stale',
+        });
+        return null;
+    }
     if (!group || group.id !== groupId) {
         if (group && group.chunks.size !== group.chunkCount) {
             game._recordNetEvent?.('input_rejected', {
@@ -514,6 +659,11 @@ export function drainFfaInputBatches(game, onlySteamId = null) {
             queue.shift();
             if (!fixedGroup.valid) {
                 recordFixedInputRejection(game, steamId, fixedGroup.reason);
+                if (fixedGroup.gap) {
+                    queue.length = 0;
+                    routeFfaResync(game, steamId, 'fixed_input_gap');
+                    break;
+                }
                 if (fixedGroup.fatal) {
                     queue.length = 0;
                     game.kickPlayer?.(steamId, 'fixed_input_continuity_gap');
@@ -539,6 +689,11 @@ export function drainFfaInputBatches(game, onlySteamId = null) {
 /** Validate, reassemble, schedule, and rate-brand one peer input packet. */
 export function processFfaInputBatch(game, steamId, batchData, timestamp) {
     if (!game?.isHost) return;
+    const player = game.players?.get?.(steamId);
+    if (!player || steamId === game.localPlayerId) {
+        recordFixedInputRejection(game, steamId, 'unknown_peer');
+        return;
+    }
     const packetInputs = batchData?.inputs;
     if (!Array.isArray(packetInputs)) return;
     if (packetInputs.length > FFA_INPUT_BATCH_LIMIT) {
@@ -555,8 +710,21 @@ export function processFfaInputBatch(game, steamId, batchData, timestamp) {
         }
     }
 
-    const inputs = assembleFfaInputBatch(game, steamId, batchData, packetInputs);
+    let inputs = assembleFfaInputBatch(game, steamId, batchData, packetInputs);
     if (!inputs) return;
+    const untrimmedInputs = inputs;
+    inputs = trimReceivedInputPrefix(game, steamId, inputs, game._fixedTickEnabled === true);
+    if (inputs.length === 0) {
+        recordFixedInputRejection(
+            game,
+            steamId,
+            game._fixedTickEnabled ? 'fixed_input_progression' : 'legacy_input_progression',
+        );
+        return;
+    }
+    if (inputs !== untrimmedInputs && game._fixedTickEnabled === true) {
+        batchData.fixedTickBaseOrdinal = inputs[0].fixedTickOrdinal;
+    }
     const fixedGroup = validateFfaFixedInputGroup(inputs, batchData, game._fixedTickEnabled);
     if (game._fixedTickEnabled === true && batchData.fixedTickGroupId != null) {
         if (!fixedGroup.valid) {
@@ -592,6 +760,14 @@ export function processFfaInputBatch(game, steamId, batchData, timestamp) {
         drainFfaInputBatches(game, steamId);
         return;
     }
+
+    const legacyProgress = validateFfaLegacyInputProgress(game, steamId, inputs);
+    if (!legacyProgress.valid) {
+        recordFixedInputRejection(game, steamId, legacyProgress.reason);
+        if (legacyProgress.gap) routeFfaResync(game, steamId, 'legacy_input_gap');
+        return;
+    }
+    commitFfaLegacyInputProgress(game, steamId, legacyProgress);
 
     dispatchFfaInputGroup(game, steamId, inputs, batchData, timestamp, fixedGroup);
 }

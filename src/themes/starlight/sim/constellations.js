@@ -346,6 +346,11 @@ export class ConstellationController {
         this._syncState();
     }
 
+    /** True while any node/edge is on screen (drives idle upload/draw gating). */
+    hasActive() {
+        return this.activeNodes > 0 || this.activeEdges > 0;
+    }
+
     _updateSign(sign, dt) {
         sign.t += dt;
         this.t = Math.max(this.t, sign.t);

@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file */
 /**
  * Black Hole Theme - GPU Compute Shaders
  * WebGPU compute shader for particle simulation
@@ -13,7 +14,6 @@ import {
     float,
     vec2,
     vec3,
-    vec4,
     sin,
     cos,
     fract,
@@ -27,6 +27,50 @@ import {
     smoothstep,
     If,
 } from 'three/tsl';
+import { DISK_COS_TILT, DISK_SIN_TILT } from './black-hole-disk-basis.js';
+
+// High quality dispatches the ambient simulation at 30 Hz. Velocities are kept in
+// "units per reference tick" so existing authored speeds stay intact while motion,
+// damping and orbital assistance remain stable at other compute cadences.
+const PARTICLE_REFERENCE_HZ = 30.0;
+const MAX_PARTICLE_DELTA = 0.075;
+
+// RingGeometry is authored in local XY and rotated by -PI * 0.42 around X.
+// Disk-local basis (tilt, cos, sin) is shared with the TSL materials so the physics
+// and the rendered placement agree on exactly one plane. See black-hole-disk-basis.js.
+
+function markFullBufferDirty(buffer) {
+    buffer.clearUpdateRanges?.();
+    buffer.needsUpdate = true;
+}
+
+function addBufferUpdateRange(buffer, start, count) {
+    const lastRange = buffer.updateRanges[buffer.updateRanges.length - 1];
+    const end = start + count;
+    const lastEnd = lastRange ? lastRange.start + lastRange.count : -1;
+
+    if (lastRange && start <= lastEnd && end >= lastRange.start) {
+        const mergedStart = Math.min(lastRange.start, start);
+        lastRange.start = mergedStart;
+        lastRange.count = Math.max(lastEnd, end) - mergedStart;
+        return;
+    }
+
+    buffer.addUpdateRange(start, count);
+}
+
+function markBufferRangeDirty(buffer, start, count) {
+    addBufferUpdateRange(buffer, start, count);
+    buffer.needsUpdate = true;
+}
+
+function releaseStorageBuffer(buffer) {
+    if (!buffer) return;
+    buffer.clearUpdateRanges?.();
+    // StorageBufferAttribute has no dispose() in three r181. Keep this optional so
+    // a future three upgrade can release it directly without changing call sites.
+    buffer.dispose?.();
+}
 
 export class BlackHoleParticleCompute {
     constructor(particleCount) {
@@ -48,6 +92,10 @@ export class BlackHoleParticleCompute {
         this.miscBuffer = new THREE.StorageBufferAttribute(this.miscData, 4);
 
         this.uDelta = uniform(0);
+        this.uReferenceStep = uniform(0);
+        this.uBurstDamping = uniform(1);
+        this.uFlowDamping = uniform(1);
+        this.uPlaneDamping = uniform(0);
         this.uTime = uniform(0);
         this.uBlackHolePos = uniform(new THREE.Vector3(0, 0, 0));
         this.uGravitySurge = uniform(0);
@@ -60,7 +108,7 @@ export class BlackHoleParticleCompute {
     }
 
     setInitialState(positions, velocities, colors, sizes, lifetimes, randoms = null) {
-        const count = this.count;
+        const { count } = this;
         for (let i = 0; i < count; i += 1) {
             const i3 = i * 3;
             const i4 = i * 4;
@@ -86,19 +134,24 @@ export class BlackHoleParticleCompute {
             this.miscData[i4 + 3] = 0;
         }
 
-        this.positionBuffer.needsUpdate = true;
-        this.velocityBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
-        this.miscBuffer.needsUpdate = true;
+        markFullBufferDirty(this.positionBuffer);
+        markFullBufferDirty(this.velocityBuffer);
+        markFullBufferDirty(this.lifeBuffer);
+        markFullBufferDirty(this.miscBuffer);
     }
 
     createComputeNode() {
+        this.computeNode?.dispose?.();
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
         const miscData = storage(this.miscBuffer, 'vec4', this.count);
 
         const delta = this.uDelta;
+        const referenceStep = this.uReferenceStep;
+        const burstDamping = this.uBurstDamping;
+        const flowDamping = this.uFlowDamping;
+        const planeDamp = this.uPlaneDamping;
         const time = this.uTime;
         const blackHolePos = this.uBlackHolePos;
         const gravitySurge = this.uGravitySurge;
@@ -119,7 +172,6 @@ export class BlackHoleParticleCompute {
                 const toCenter = blackHolePos.sub(pos.xyz);
                 const dist = length(toCenter);
                 const dir = normalize(toCenter);
-
                 // Only combo-spawned (lock-active) particles should receive burst/scatter force.
                 const lockExpiredStep = step(misc.w, time);
                 const lockActive = float(1.0).sub(lockExpiredStep);
@@ -140,9 +192,9 @@ export class BlackHoleParticleCompute {
                         vel.y.addAssign(dir.y.negate().mul(burstStrength));
                         vel.z.addAssign(dir.z.negate().mul(burstStrength));
 
-                        vel.x.assign(vel.x.mul(0.998));
-                        vel.y.assign(vel.y.mul(0.998));
-                        vel.z.assign(vel.z.mul(0.998));
+                        vel.x.mulAssign(burstDamping);
+                        vel.y.mulAssign(burstDamping);
+                        vel.z.mulAssign(burstDamping);
 
                         const speed = length(vel.xyz);
                         const maxSpeed = float(15.0).add(effectiveBurstFactor.mul(3.0));
@@ -153,23 +205,25 @@ export class BlackHoleParticleCompute {
                             vel.z.assign(vel.z.mul(scale));
                         });
                     }).Else(() => {
-                        let pullStrength = float(800.0).div(dist.mul(dist).add(100.0)).mul(delta);
+                        const basePullStrength = float(800.0).div(dist.mul(dist).add(100.0)).mul(delta);
                         const surgeBoost = float(5.0).add(gravitySurge.mul(2.0));
-                        pullStrength = pullStrength.mul(mix(float(1.0), surgeBoost, step(float(0.001), gravitySurge)));
+                        const surgedPullStrength = basePullStrength.mul(
+                            mix(float(1.0), surgeBoost, step(float(0.001), gravitySurge)),
+                        );
                         // Keep combo-emitted particles from snapping straight back to center.
-                        pullStrength = pullStrength.mul(mix(float(1.0), float(0.08), lockActive));
+                        const pullStrength = surgedPullStrength.mul(
+                            mix(float(1.0), float(0.08), lockActive),
+                        );
 
                         vel.x.addAssign(dir.x.mul(pullStrength));
                         vel.y.addAssign(dir.y.mul(pullStrength));
                         vel.z.addAssign(dir.z.mul(pullStrength));
 
-                        vel.x.assign(vel.x.mul(0.995));
-                        vel.y.assign(vel.y.mul(0.995));
-                        vel.z.assign(vel.z.mul(0.995));
-
-                        vel.x.assign(vel.x.mul(0.99));
-                        vel.y.assign(vel.y.mul(0.99));
-                        vel.z.assign(vel.z.mul(0.99));
+                        // Preserve the old High-tier 0.995 * 0.99 damping at the
+                        // 30 Hz reference cadence, with exponential time scaling.
+                        vel.x.mulAssign(flowDamping);
+                        vel.y.mulAssign(flowDamping);
+                        vel.z.mulAssign(flowDamping);
 
                         const speed = length(vel.xyz);
                         const maxSpeed = float(8.0).add(gravitySurge.mul(5.0));
@@ -182,10 +236,9 @@ export class BlackHoleParticleCompute {
                     });
                 });
 
-                const tilt = float(-1.319468914);
-                const cosT = cos(tilt);
-                const sinT = sin(tilt);
-                const normal = vec3(float(0.0), cosT, sinT);
+                const cosT = float(DISK_COS_TILT);
+                const sinT = float(DISK_SIN_TILT);
+                const normal = vec3(float(0.0), sinT, cosT);
 
                 const rel = pos.xyz.sub(blackHolePos);
                 const planeOffset = rel.x.mul(normal.x).add(rel.y.mul(normal.y)).add(rel.z.mul(normal.z));
@@ -200,25 +253,27 @@ export class BlackHoleParticleCompute {
                 const tangent = normalize(tangentRaw.add(vec3(0.0001, 0.0001, 0.0001)));
 
                 const innerBias = float(1.0).sub(smoothstep(float(220.0), float(750.0), radialDist));
-                const orbitalAssist = float(0.0009).add(innerBias.mul(0.0015));
+                const orbitalAssist = float(0.0009).add(innerBias.mul(0.0015)).mul(referenceStep);
                 vel.x.addAssign(tangent.x.mul(orbitalAssist));
                 vel.y.addAssign(tangent.y.mul(orbitalAssist));
                 vel.z.addAssign(tangent.z.mul(orbitalAssist));
 
-                const planePull = clamp(planeOffset.mul(0.0035), float(-0.32), float(0.32)).mul(delta.mul(60.0));
+                // The former delta * 60 term equals 2 at High's 30 Hz cadence.
+                const planePull = clamp(planeOffset.mul(0.0035), float(-0.32), float(0.32))
+                    .mul(float(2.0).mul(referenceStep));
                 vel.x.subAssign(normal.x.mul(planePull));
                 vel.y.subAssign(normal.y.mul(planePull));
                 vel.z.subAssign(normal.z.mul(planePull));
 
                 const normalVelocity = vel.x.mul(normal.x).add(vel.y.mul(normal.y)).add(vel.z.mul(normal.z));
-                const planeDamp = min(float(0.35), delta.mul(5.0));
+                // 1/6 was the normal-velocity damping at the 30 Hz reference step.
                 vel.x.subAssign(normal.x.mul(normalVelocity).mul(planeDamp));
                 vel.y.subAssign(normal.y.mul(normalVelocity).mul(planeDamp));
                 vel.z.subAssign(normal.z.mul(normalVelocity).mul(planeDamp));
 
-                pos.x.addAssign(vel.x);
-                pos.y.addAssign(vel.y);
-                pos.z.addAssign(vel.z);
+                pos.x.addAssign(vel.x.mul(referenceStep));
+                pos.y.addAssign(vel.y.mul(referenceStep));
+                pos.z.addAssign(vel.z.mul(referenceStep));
 
                 const distAfter = length(blackHolePos.sub(pos.xyz));
                 const outOfBounds = distAfter.lessThan(minResetDist).or(distAfter.greaterThan(maxDist));
@@ -233,28 +288,21 @@ export class BlackHoleParticleCompute {
                     const radius = float(260.0).add(r2.mul(360.0));
                     const height = r3.sub(0.5).mul(70.0);
 
-                    const tilt = float(-1.319468914);
-                    const cosT = cos(tilt);
-                    const sinT = sin(tilt);
+                    const diskX = cos(angle).mul(radius);
+                    const diskY = sin(angle).mul(radius);
+                    const pY = diskY.mul(cosT).add(height.mul(sinT));
+                    const pZ = diskY.mul(sinT).negate().add(height.mul(cosT));
 
-                    const px = cos(angle).mul(radius);
-                    const pz = sin(angle).mul(radius);
-                    const py = height;
-
-                    const pY = py.mul(cosT).sub(pz.mul(sinT));
-                    const pZ = py.mul(sinT).add(pz.mul(cosT));
-
-                    pos.x.assign(blackHolePos.x.add(px));
+                    pos.x.assign(blackHolePos.x.add(diskX));
                     pos.y.assign(blackHolePos.y.add(pY));
                     pos.z.assign(blackHolePos.z.add(pZ));
 
                     const orbitalSpeed = float(0.28).add(r2.mul(0.22));
                     const vx = sin(angle).negate().mul(orbitalSpeed);
-                    const vz = cos(angle).mul(orbitalSpeed);
-                    const vy = r3.sub(0.5).mul(0.03);
-
-                    const vY = vy.mul(cosT).sub(vz.mul(sinT));
-                    const vZ = vy.mul(sinT).add(vz.mul(cosT));
+                    const diskVy = cos(angle).mul(orbitalSpeed);
+                    const normalJitter = r3.sub(0.5).mul(0.03);
+                    const vY = diskVy.mul(cosT).add(normalJitter.mul(sinT));
+                    const vZ = diskVy.mul(sinT).negate().add(normalJitter.mul(cosT));
 
                     vel.x.assign(vx);
                     vel.y.assign(vY);
@@ -281,7 +329,17 @@ export class BlackHoleParticleCompute {
     }
 
     update(delta, params = {}) {
-        this.uDelta.value = delta;
+        const safeDelta = Number.isFinite(delta)
+            ? Math.max(0, Math.min(MAX_PARTICLE_DELTA, delta))
+            : 0;
+        const referenceStep = safeDelta * PARTICLE_REFERENCE_HZ;
+        this.uDelta.value = safeDelta;
+        this.uReferenceStep.value = referenceStep;
+        // Compute cadence is shared by every particle, so evaluate exponential
+        // damping once on the CPU instead of three pow() operations per invocation.
+        this.uBurstDamping.value = 0.998 ** referenceStep;
+        this.uFlowDamping.value = 0.98505 ** referenceStep;
+        this.uPlaneDamping.value = 1.0 - (5.0 / 6.0) ** referenceStep;
         this.uTime.value = params.time ?? this.uTime.value;
         if (params.blackHolePos) {
             this.uBlackHolePos.value.copy(params.blackHolePos);
@@ -325,10 +383,12 @@ export class BlackHoleParticleCompute {
         this.miscData[i4 + 1] = 1.0;
         this.miscData[i4 + 3] = lockUntil;
 
-        this.positionBuffer.needsUpdate = true;
-        this.velocityBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
-        this.miscBuffer.needsUpdate = true;
+        // Storage buffers have already diverged from their CPU mirrors after the
+        // first compute dispatch. Upload only this explicitly replaced slot.
+        markBufferRangeDirty(this.positionBuffer, i4, 4);
+        markBufferRangeDirty(this.velocityBuffer, i4, 4);
+        markBufferRangeDirty(this.lifeBuffer, i4, 4);
+        markBufferRangeDirty(this.miscBuffer, i4, 4);
     }
 
     getPositionBuffer() {
@@ -348,6 +408,11 @@ export class BlackHoleParticleCompute {
     }
 
     dispose() {
+        this.computeNode?.dispose?.();
+        releaseStorageBuffer(this.positionBuffer);
+        releaseStorageBuffer(this.velocityBuffer);
+        releaseStorageBuffer(this.lifeBuffer);
+        releaseStorageBuffer(this.miscBuffer);
         this.computeNode = null;
         this.positionBuffer = null;
         this.velocityBuffer = null;
@@ -378,11 +443,7 @@ export class BlackHoleBurstCompute {
         this.lifeBuffer = new THREE.StorageBufferAttribute(this.lifeData, 4);
         this.miscBuffer = new THREE.StorageBufferAttribute(this.miscData, 4);
 
-        this.uDelta = uniform(0);
         this.uTime = uniform(0);
-        this.uBlackHolePos = uniform(new THREE.Vector3(0, 0, 0));
-        this.uBurstFactor = uniform(0);
-        this.uBurstSeed = uniform(0);
         this.nextTriggerIndex = 0;
         this.reuseUntil = new Float32Array(particleCount);
         this.currentTime = 0;
@@ -394,7 +455,7 @@ export class BlackHoleBurstCompute {
     }
 
     setInitialState(angles, colors, sizes, randoms = null) {
-        const count = this.count;
+        const { count } = this;
         for (let i = 0; i < count; i += 1) {
             const i4 = i * 4;
             const theta = angles ? angles[i * 2] : Math.random() * Math.PI * 2;
@@ -425,13 +486,14 @@ export class BlackHoleBurstCompute {
         }
         this.maxReuseUntil = 0;
 
-        this.positionBuffer.needsUpdate = true;
-        this.angleBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
-        this.miscBuffer.needsUpdate = true;
+        markFullBufferDirty(this.positionBuffer);
+        markFullBufferDirty(this.angleBuffer);
+        markFullBufferDirty(this.lifeBuffer);
+        markFullBufferDirty(this.miscBuffer);
     }
 
     createComputeNode() {
+        this.computeNode?.dispose?.();
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const angles = storage(this.angleBuffer, 'vec4', this.count);
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
@@ -443,9 +505,9 @@ export class BlackHoleBurstCompute {
         const computeBursts = Fn(() => {
             const index = instanceIndex;
             const pos = positions.element(index).toVar();
-            const angle = angles.element(index).toVar();
+            const angle = angles.element(index);
             const life = lifeData.element(index).toVar();
-            const misc = miscData.element(index).toVar();
+            const misc = miscData.element(index);
 
             const spawnTime = misc.w;
             const age = time.sub(spawnTime);
@@ -470,22 +532,24 @@ export class BlackHoleBurstCompute {
                 // Drift angle - slight spiral during float phase
                 const driftAngle = angle.x.add(lifeClamped.mul(1.5).mul(angle.z.sub(0.5)));
 
-                // Gentle oscillating drift after explosion settles (in disk-local XZ plane)
+                // Gentle oscillating drift after explosion settles in local XY.
                 const driftAmt = maxRadius.mul(0.12);
-                const driftDiskX = sin(angle.z.mul(float(6.2832)).add(lifeClamped.mul(float(2.5)))).mul(driftAmt).mul(floatProgress);
-                const driftDiskZ = cos(angle.z.mul(float(9.4248)).add(lifeClamped.mul(float(1.8)))).mul(driftAmt).mul(floatProgress);
+                const driftDiskX = sin(angle.z.mul(float(6.2832)).add(lifeClamped.mul(float(2.5))))
+                    .mul(driftAmt).mul(floatProgress);
+                const driftDiskY = cos(angle.z.mul(float(9.4248)).add(lifeClamped.mul(float(1.8))))
+                    .mul(driftAmt).mul(floatProgress);
 
-                // Burst expands in the disk plane (disk lies in XZ before rotation)
+                // Burst expands in RingGeometry's local XY plane.
                 const diskX = explosionRadius.mul(cos(driftAngle)).add(driftDiskX);
-                const diskZ = explosionRadius.mul(sin(driftAngle)).add(driftDiskZ);
-                const diskH = explosionRadius.mul(angle.y.sub(float(1.5708)).mul(float(0.04)));
+                const diskY = explosionRadius.mul(sin(driftAngle)).add(driftDiskY);
+                const diskHeight = explosionRadius.mul(angle.y.sub(float(1.5708)).mul(float(0.04)));
 
-                // Rotate by disk tilt (-PI * 0.42 around X) to match accretion disk
-                const cosTilt = float(0.2486898871648548);
-                const sinTilt = float(-0.9685831611286311);
+                // Apply U/V/N basis for RingGeometry rotated -PI * 0.42 around X.
+                const cosTilt = float(DISK_COS_TILT);
+                const sinTilt = float(DISK_SIN_TILT);
                 const px = diskX;
-                const py = diskH.mul(cosTilt).sub(diskZ.mul(sinTilt));
-                const pz = diskH.mul(sinTilt).add(diskZ.mul(cosTilt));
+                const py = diskY.mul(cosTilt).add(diskHeight.mul(sinTilt));
+                const pz = diskY.mul(sinTilt).negate().add(diskHeight.mul(cosTilt));
 
                 // Keep burst positions local; render path applies current black-hole offset.
                 pos.x.assign(px);
@@ -499,9 +563,7 @@ export class BlackHoleBurstCompute {
             });
 
             positions.element(index).assign(pos);
-            angles.element(index).assign(angle);
             lifeData.element(index).assign(life);
-            miscData.element(index).assign(misc);
         });
 
         this.computeNode = computeBursts().compute(this.count);
@@ -509,18 +571,13 @@ export class BlackHoleBurstCompute {
     }
 
     update(delta, params = {}) {
-        this.uDelta.value = delta;
         if (params.time !== undefined) {
             this.uTime.value = params.time;
             this.currentTime = params.time;
         } else {
-            this.currentTime += delta;
-        }
-        if (params.blackHolePos) {
-            this.uBlackHolePos.value.copy(params.blackHolePos);
-        }
-        if (params.burstFactor !== undefined) {
-            this.uBurstFactor.value = params.burstFactor;
+            const safeDelta = Number.isFinite(delta) ? Math.max(0, delta) : 0;
+            this.currentTime += safeDelta;
+            this.uTime.value = this.currentTime;
         }
     }
 
@@ -529,11 +586,17 @@ export class BlackHoleBurstCompute {
         if (targetBatch <= 0) {
             return { activated: 0, remaining: 0 };
         }
+        if (this.count <= 0) {
+            return { activated: 0, remaining: targetBatch };
+        }
         this.currentTime = now;
 
         let activated = 0;
         let scanned = 0;
-        const startIndex = this.nextTriggerIndex;
+        const seedOffset = this.count > 0 && Number.isFinite(seed)
+            ? Math.abs(Math.trunc(seed * 9973)) % this.count
+            : 0;
+        const startIndex = (this.nextTriggerIndex + seedOffset) % this.count;
 
         // Prefer inactive particles so ongoing bursts are not reset.
         while (activated < targetBatch && scanned < this.count) {
@@ -541,11 +604,10 @@ export class BlackHoleBurstCompute {
             const i4 = index * 4;
 
             if (now >= this.reuseUntil[index]) {
-                this.positionData[i4 + 3] = 0.0;
-                this.positionData[i4 + 2] = -9999.0;
-                this.miscData[i4 + 1] = 0.0;
-                this.miscData[i4 + 2] = 0.0;
                 this.miscData[i4 + 3] = now;
+                // Burst misc data is CPU-owned/read-only in the kernel, so full
+                // adjacent vec4 slots can be merged into fewer queue writes.
+                addBufferUpdateRange(this.miscBuffer, i4, 4);
                 this.reuseUntil[index] = now + this.burstLifetimeSeconds;
                 this.maxReuseUntil = Math.max(this.maxReuseUntil, this.reuseUntil[index]);
                 activated += 1;
@@ -558,9 +620,12 @@ export class BlackHoleBurstCompute {
         // If saturated, we simply spawn fewer this trigger and preserve existing waves.
 
         this.nextTriggerIndex = (startIndex + scanned) % this.count;
-        this.uBurstSeed.value = seed;
-        this.positionBuffer.needsUpdate = true;
-        this.miscBuffer.needsUpdate = true;
+        if (activated > 0) {
+            // Spawn time is the only CPU-authored value the analytic burst kernel
+            // consumes. Preserve every GPU-owned position and upload only touched
+            // scalar ranges; a saturated request now causes no buffer upload.
+            this.miscBuffer.needsUpdate = true;
+        }
 
         return {
             activated,
@@ -589,6 +654,11 @@ export class BlackHoleBurstCompute {
     }
 
     dispose() {
+        this.computeNode?.dispose?.();
+        releaseStorageBuffer(this.positionBuffer);
+        releaseStorageBuffer(this.angleBuffer);
+        releaseStorageBuffer(this.lifeBuffer);
+        releaseStorageBuffer(this.miscBuffer);
         this.computeNode = null;
         this.positionBuffer = null;
         this.angleBuffer = null;
@@ -612,7 +682,6 @@ export class BlackHoleLensingCompute {
         this.baseBuffer = new THREE.StorageBufferAttribute(this.baseData, 4);
         this.outputBuffer = new THREE.StorageBufferAttribute(this.outputData, 4);
 
-        this.uTime = uniform(0);
         this.uBlackHolePos = uniform(new THREE.Vector3(0, 0, 0));
         this.uStrength = uniform(0.6);
         this.uActiveCount = uniform(starCount);
@@ -621,7 +690,7 @@ export class BlackHoleLensingCompute {
     }
 
     setInitialState(positions) {
-        const count = this.count;
+        const { count } = this;
         for (let i = 0; i < count; i += 1) {
             const i3 = i * 3;
             const i4 = i * 4;
@@ -640,11 +709,12 @@ export class BlackHoleLensingCompute {
             this.outputData[i4 + 3] = 1.0;
         }
 
-        this.baseBuffer.needsUpdate = true;
-        this.outputBuffer.needsUpdate = true;
+        markFullBufferDirty(this.baseBuffer);
+        markFullBufferDirty(this.outputBuffer);
     }
 
     createComputeNode() {
+        this.computeNode?.dispose?.();
         const basePositions = storage(this.baseBuffer, 'vec4', this.count);
         const outputPositions = storage(this.outputBuffer, 'vec4', this.count);
 
@@ -656,7 +726,7 @@ export class BlackHoleLensingCompute {
             const index = instanceIndex;
             const active = float(index).lessThan(activeCount);
             If(active, () => {
-                const base = basePositions.element(index).toVar();
+                const base = basePositions.element(index);
                 const pos = outputPositions.element(index).toVar();
 
                 const toCenter = base.xyz.sub(blackHolePos);
@@ -691,9 +761,6 @@ export class BlackHoleLensingCompute {
     }
 
     update(params = {}) {
-        if (params.time !== undefined) {
-            this.uTime.value = params.time;
-        }
         if (params.blackHolePos) {
             this.uBlackHolePos.value.copy(params.blackHolePos);
         }
@@ -710,6 +777,9 @@ export class BlackHoleLensingCompute {
     }
 
     dispose() {
+        this.computeNode?.dispose?.();
+        releaseStorageBuffer(this.baseBuffer);
+        releaseStorageBuffer(this.outputBuffer);
         this.computeNode = null;
         this.baseBuffer = null;
         this.outputBuffer = null;

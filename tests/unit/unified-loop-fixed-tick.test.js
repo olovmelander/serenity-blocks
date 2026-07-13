@@ -135,6 +135,31 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         expect(tickResult.input).toHaveLength(1);
     });
 
+    it('stops fixed board traversal before reporting results when ownership changes', () => {
+        const first = createFallingState();
+        const second = createFallingState();
+        const loop = new UnifiedMultiplayerLoop();
+        loop.players = [
+            {
+                id: 'first', state: first, physics: {}, sound: null,
+            },
+            {
+                id: 'second', state: second, physics: {}, sound: null,
+            },
+        ];
+        let ownsTick = true;
+        const onTickResult = vi.fn();
+
+        loop.updatePlayersFixedTick({
+            advanceInput: () => { ownsTick = false; },
+            onTickResult,
+        }, () => ownsTick);
+
+        expect(first.simFrame).toBe(1);
+        expect(second.simFrame).toBe(0);
+        expect(onTickResult).not.toHaveBeenCalled();
+    });
+
     it('does not advance dead or game-over boards', () => {
         const dead = createFallingState();
         dead.isAlive = false;

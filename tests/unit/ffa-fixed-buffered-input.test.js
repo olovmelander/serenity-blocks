@@ -8,6 +8,9 @@ import {
     takeFfaFixedBufferedInputs,
 } from '../../src/core/multiplayer/ffa-fixed-input-adapter.js';
 import { runFfaFixedTicks } from '../../src/core/multiplayer/ffa-fixed-tick-runner.js';
+import { resetFfaFixedClockProjection } from '../../src/core/multiplayer/ffa-fixed-tick-policy.js';
+import { computeFfaJoinSyncpoint } from '../../src/core/multiplayer/ffa/join-syncpoint.js';
+import { processFfaInputBatch } from '../../src/core/multiplayer/ffa-input-batching.js';
 import { UnifiedMultiplayerLoop } from '../../src/core/multiplayer/unified-game-loop.js';
 import { advanceTick, INPUT_DISPOSITIONS } from '../../src/core/simulation-tick.js';
 
@@ -82,6 +85,7 @@ describe('FFA fixed buffered input adapter', () => {
         } = createHarness({ local: true });
         gameState.blindTimers.pending = 1;
         gameState.blindTimers.pendingMax = 1;
+        player.lastInputSeq = 8;
         game._applyInputToPlayer.mockImplementation((_id, inputType, data) => {
             order.push(`apply:${gameState.simFrame}:${gameState.blindTimers.pendingTicks}:${gameState.currentPiece.y}`);
             gameState.currentPiece.x += data.direction;
@@ -170,6 +174,7 @@ describe('FFA fixed buffered input adapter', () => {
             game, gameState, player, playerId,
         } = createHarness();
         gameState.hitStopRemaining = 30;
+        player.lastInputSeq = 6;
         const adapter = createFfaFixedInputAdapter(game, {
             bufferedInputs: new Map([[playerId, [{
                 type: 'move', data: { direction: -1, seq: 7 }, _tick: 11,
@@ -195,6 +200,7 @@ describe('FFA fixed buffered input adapter', () => {
         const {
             game, gameState, player, playerId,
         } = createHarness();
+        player.lastInputSeq = 3;
         game._applyInputToPlayer.mockImplementation((_id, inputType, data) => {
             if (inputType === 'drop' && data.type === 'hard') {
                 gameState.hitStopRemaining = 30;
@@ -248,6 +254,7 @@ describe('FFA fixed buffered input adapter', () => {
         const {
             game, gameState, player, playerId,
         } = createHarness();
+        player.lastInputSeq = 2;
         const validInput = {
             type: 'move', data: { direction: 1, seq: 3 }, _tick: 2,
         };
@@ -337,6 +344,98 @@ describe('FFA fixed buffered input adapter', () => {
         expect(game.inputJitterBuffer.advanceTick).toHaveBeenCalledOnce();
     });
 
+    it('keeps reentrant resync capture busy through the entire canonical tick', () => {
+        const { game } = createHarness();
+        const observed = [];
+        game.gamePhase = 'playing';
+        game.roundGeneration = 0;
+        game._networkDispatch = { depth: 0 };
+        game.unifiedLoop = {
+            runGeneration: 1,
+            updatePlayersFixedTick: vi.fn(() => {
+                observed.push(computeFfaJoinSyncpoint(game));
+            }),
+        };
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            getInputsForTick: vi.fn(() => new Map()),
+            advanceTick: vi.fn(),
+        };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 1;
+        game._simTickAccumulatorMs = 0;
+        game._fixedTickApplicationDepth = 0;
+        game.simTick = 0;
+        game.updateAllPlayers = vi.fn(() => {
+            observed.push(computeFfaJoinSyncpoint(game));
+        });
+        game._processPendingResyncs = vi.fn(() => {
+            observed.push(computeFfaJoinSyncpoint(game));
+        });
+
+        expect(runFfaFixedTicks(game, 10, 10)).toBe(1);
+
+        expect(observed.slice(0, 2).map((marker) => marker)).toEqual([
+            expect.objectContaining({
+                status: 'busy',
+                safe: false,
+                blockers: [{ kind: 'fixed_tick_application', depth: 1 }],
+            }),
+            expect.objectContaining({
+                status: 'busy',
+                safe: false,
+                blockers: [{ kind: 'fixed_tick_application', depth: 1 }],
+            }),
+        ]);
+        expect(observed[2]).toEqual(expect.objectContaining({
+            status: 'idle', safe: true, blockers: [],
+        }));
+        expect(game._fixedTickApplicationDepth).toBe(0);
+        expect(game._processPendingResyncs).toHaveBeenCalledOnce();
+    });
+
+    it('rebases the peer input projection after a same-clock authoritative rewind', () => {
+        const { game, playerId } = createHarness({ local: true });
+        const observedStamps = [];
+        game.isHost = false;
+        game.gamePhase = 'playing';
+        game.roundGeneration = 2;
+        game.simTick = 450;
+        game.useJitterBuffer = true;
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 1;
+        game._simTickAccumulatorMs = 87;
+        game._peerFixedInputSimTick = 500;
+        game._fixedInputTimeMs = 9000;
+        game._activeFixedInputStamp = { simTick: 500, ordinal: 9 };
+        game.localInputHooks.reset = vi.fn();
+        game.localInputHooks.advanceFixed = vi.fn(() => {
+            observedStamps.push({ ...game._activeFixedInputStamp });
+        });
+        game.localInputHooks.advance = null;
+        game.unifiedLoop = {
+            runGeneration: 1,
+            updatePlayersFixedTick: vi.fn((adapter) => {
+                adapter.advanceInput(playerId, {
+                    tick: 451,
+                    tickMs: 10,
+                    emit: vi.fn(),
+                });
+            }),
+        };
+
+        resetFfaFixedClockProjection(game);
+
+        expect(game._simTickAccumulatorMs).toBe(0);
+        expect(game._peerFixedInputSimTick).toBeNull();
+        expect(game._fixedInputTimeMs).toBeNull();
+        expect(game._activeFixedInputStamp).toBeNull();
+        expect(runFfaFixedTicks(game, 10, 10)).toBe(1);
+        expect(observedStamps).toEqual([{ simTick: 451, ordinal: 451 }]);
+        expect(game._peerFixedInputSimTick).toBe(451);
+        expect(game.localInputHooks.reset).toHaveBeenCalledOnce();
+    });
+
     it('rolls back before simulation when fixed tick has no jitter buffer', () => {
         const { game } = createHarness();
         game.unifiedLoop = { updatePlayersFixedTick: vi.fn() };
@@ -376,6 +475,9 @@ describe('FFA fixed buffered input adapter', () => {
         game.SIM_TICK_MS = 10;
         game.MAX_SIM_STEPS_PER_FRAME = 5;
         game._simTickAccumulatorMs = 0;
+        game._fixedTickApplicationDepth = 0;
+        game._processPendingInboundResyncApply = vi.fn();
+        game._processPendingResyncs = vi.fn();
         game.simTick = 0;
         game.updateAllPlayers = vi.fn(() => order.push('bookkeeping'));
         game.attackRouter = { updateHotPotato: vi.fn(() => order.push('hot-potato')) };
@@ -390,6 +492,9 @@ describe('FFA fixed buffered input adapter', () => {
         expect(game.inputJitterBuffer.advanceTick).toHaveBeenCalledOnce();
         expect(game.updateAllPlayers).not.toHaveBeenCalled();
         expect(game.attackRouter.updateHotPotato).not.toHaveBeenCalled();
+        expect(game._fixedTickApplicationDepth).toBe(0);
+        expect(game._processPendingInboundResyncApply).not.toHaveBeenCalled();
+        expect(game._processPendingResyncs).not.toHaveBeenCalled();
     });
 
     it('records discarded wall-time debt before a canonical tick can throw', () => {
@@ -418,6 +523,209 @@ describe('FFA fixed buffered input adapter', () => {
         });
         expect(game.simTick).toBe(1);
         expect(game._simTickAccumulatorMs).toBe(290);
+    });
+
+    it('does not start or consume a tick when jitter-frame ingress throws', () => {
+        const { game } = createHarness();
+        const error = new Error('take failed');
+        game.unifiedLoop = { updatePlayersFixedTick: vi.fn() };
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = { getInputsForTick: vi.fn(() => { throw error; }) };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+
+        expect(() => runFfaFixedTicks(game, 10, 10)).toThrow(error);
+
+        expect(game.simTick).toBe(0);
+        expect(game._simTickAccumulatorMs).toBe(10);
+        expect(game.unifiedLoop.updatePlayersFixedTick).not.toHaveBeenCalled();
+    });
+
+    it('consumes an applied tick even when jitter-frame finalization throws', () => {
+        const { game } = createHarness();
+        const error = new Error('finish failed');
+        game.unifiedLoop = { updatePlayersFixedTick: vi.fn() };
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            getInputsForTick: vi.fn(() => new Map()),
+            advanceTick: vi.fn(() => { throw error; }),
+        };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+
+        expect(() => runFfaFixedTicks(game, 10, 10)).toThrow(error);
+
+        expect(game.simTick).toBe(1);
+        expect(game._simTickAccumulatorMs).toBe(0);
+        expect(game.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledOnce();
+    });
+
+    it('stops a catch-up plan when the first tick ends the match', () => {
+        const { game } = createHarness();
+        game.gamePhase = 'playing';
+        game.unifiedLoop = { updatePlayersFixedTick: vi.fn() };
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            getInputsForTick: vi.fn(() => new Map()),
+            advanceTick: vi.fn(),
+        };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+        game.updateAllPlayers = vi.fn(() => { game.gamePhase = 'finished'; });
+
+        expect(runFfaFixedTicks(game, 50, 50)).toBe(1);
+
+        expect(game.simTick).toBe(1);
+        expect(game._simTickAccumulatorMs).toBe(40);
+        expect(game.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledOnce();
+        expect(game.inputJitterBuffer.advanceTick).toHaveBeenCalledOnce();
+    });
+
+    it('does not carry old-round debt or input finalization across a synchronous restart', () => {
+        const { game } = createHarness();
+        game.gamePhase = 'playing';
+        game.roundGeneration = 4;
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            getInputsForTick: vi.fn(() => new Map()),
+            advanceTick: vi.fn(),
+        };
+        game.unifiedLoop = {
+            runGeneration: 7,
+            updatePlayersFixedTick: vi.fn((_adapter, shouldContinue) => {
+                game.roundGeneration = 5;
+                game.unifiedLoop.runGeneration = 9;
+                game._simTickAccumulatorMs = 0;
+                game.simTick = 0;
+                expect(shouldContinue()).toBe(false);
+            }),
+        };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+        game.updateAllPlayers = vi.fn();
+
+        expect(runFfaFixedTicks(game, 50, 50)).toBe(1);
+
+        expect(game.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledOnce();
+        expect(game.inputJitterBuffer.advanceTick).not.toHaveBeenCalled();
+        expect(game.updateAllPlayers).not.toHaveBeenCalled();
+        expect(game.simTick).toBe(0);
+        expect(game._simTickAccumulatorMs).toBe(0);
+    });
+
+    it('stops the real adapter batch and held-input hooks at a synchronous restart', () => {
+        const {
+            game, gameState, player, playerId,
+        } = createHarness({ local: true });
+        const loop = new UnifiedMultiplayerLoop();
+        loop.runGeneration = 7;
+        loop.players = [{
+            id: playerId,
+            state: gameState,
+            physics: {},
+            sound: null,
+        }];
+        game.gamePhase = 'playing';
+        game.roundGeneration = 4;
+        game.unifiedLoop = loop;
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            getInputsForTick: vi.fn(() => new Map([[playerId, [
+                { type: 'drop', data: { type: 'hard', seq: 1 }, _tick: 1 },
+                { type: 'move', data: { direction: 1, seq: 2 }, _tick: 1 },
+            ]]])),
+            advanceTick: vi.fn(),
+        };
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+        game.updateAllPlayers = vi.fn();
+        game.attackRouter = { updateHotPotato: vi.fn() };
+        game.localInputHooks.advanceFixed = vi.fn();
+        game.localInputHooks.advance = vi.fn();
+        game._applyInputToPlayer.mockImplementation(() => {
+            game.roundGeneration = 5;
+            loop.runGeneration = 8;
+            game._fixedInputTimeMs = null;
+            game._activeFixedInputStamp = null;
+            game._simTickAccumulatorMs = 0;
+            game.simTick = 0;
+            gameState.simFrame = 0;
+            gameState.simTimeMs = 0;
+            gameState.lastTime = 0;
+            gameState.currentPiece = null;
+            gameState.hitStopTicks = 0;
+            gameState.hitStopRemaining = 30;
+            return true;
+        });
+
+        expect(runFfaFixedTicks(game, 50, 50)).toBe(1);
+
+        expect(game._applyInputToPlayer).toHaveBeenCalledOnce();
+        expect(game.inputValidator.trackInput).toHaveBeenCalledOnce();
+        expect(game.localInputHooks.advanceFixed).not.toHaveBeenCalled();
+        expect(game.localInputHooks.advance).not.toHaveBeenCalled();
+        expect(game._fixedInputTimeMs).toBeNull();
+        expect(game._activeFixedInputStamp).toBeNull();
+        expect(gameState.hitStopRemaining).toBe(30);
+        expect(gameState.hitStopTicks).toBe(0);
+        expect(player.lastInputSeq).toBe(0);
+        expect(game.inputJitterBuffer.advanceTick).not.toHaveBeenCalled();
+        expect(game.updateAllPlayers).not.toHaveBeenCalled();
+    });
+
+    it('does not advance a tick when pending-group drain throws', () => {
+        const { game, playerId } = createHarness();
+        game.gamePhase = 'playing';
+        game.roundGeneration = 0;
+        game.unifiedLoop = { updatePlayersFixedTick: vi.fn() };
+        game.useJitterBuffer = true;
+        game.inputJitterBuffer = {
+            currentTick: 0,
+            processCursor: -2,
+            clockEpoch: 0,
+            getInputsForTick: vi.fn(() => new Map()),
+            advanceTick: vi.fn(),
+        };
+        game.processPlayerInput = vi.fn();
+        game.SIM_TICK_MS = 10;
+        game.MAX_SIM_STEPS_PER_FRAME = 5;
+        game._simTickAccumulatorMs = 0;
+        game.simTick = 0;
+        const packet = (id) => ({
+            inputs: [{
+                type: 'drop', data: { type: 'soft' }, seq: id, fixedTickOrdinal: id, simTick: id,
+            }],
+            fixedTickBaseOrdinal: id,
+            fixedTickGroupId: id,
+            fixedTickRoundGeneration: 0,
+            fixedTickGroupChunkIndex: 0,
+            fixedTickGroupChunkCount: 1,
+            fixedTickGroupFinal: true,
+        });
+        for (let id = 1; id <= 34; id += 1) {
+            processFfaInputBatch(game, playerId, packet(id), 1000);
+        }
+        const error = new Error('drain failed');
+        game.processPlayerInput.mockImplementation(() => { throw error; });
+        game.inputJitterBuffer.currentTick = 1;
+        game.inputJitterBuffer.processCursor = -1;
+
+        expect(() => runFfaFixedTicks(game, 10, 10)).toThrow(error);
+
+        expect(game.simTick).toBe(0);
+        expect(game._simTickAccumulatorMs).toBe(10);
+        expect(game.inputJitterBuffer.getInputsForTick).not.toHaveBeenCalled();
+        expect(game.unifiedLoop.updatePlayersFixedTick).not.toHaveBeenCalled();
     });
 
     it('pins host-held input to the current jitter slot before cursor advance', () => {

@@ -127,7 +127,7 @@ export function createConstellationRenderer(controller, options = {}) {
     const edgeColor = Fn(() => {
         const alpha = attribute('aEdgeAlpha', 'float');
         const across = abs(uv().x.sub(0.5)).mul(2.0);
-        const widthFall = smoothstep(1.0, 0.0, across);
+        const widthFall = smoothstep(0.0, 1.0, across).oneMinus();
         const col = vec3(0.62, 0.91, 1.0); // silver-cyan
         return vec4(col.mul(widthFall).mul(alpha).mul(uIntensity), widthFall.mul(alpha));
     })();
@@ -139,10 +139,16 @@ export function createConstellationRenderer(controller, options = {}) {
     edgeMesh.renderOrder = 7;
     group.add(edgeMesh);
 
+    group.visible = false; // idle: hidden until a sign is on screen
+
     return {
         group,
         uniforms: { uIntensity, uNodeSize, uWidth },
+        // Idle-gated: an empty sign pool pays no attribute re-upload and no draw calls.
         update() {
+            const active = controller.hasActive();
+            group.visible = active;
+            if (!active) return;
             aNodePos.needsUpdate = true;
             aNodeScale.needsUpdate = true;
             aNodeAlpha.needsUpdate = true;

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SteamNetworking } from '../../src/core/steam/steam-networking.js';
 import { getBinaryEncoder } from '../../src/core/network/binary-encoding.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
 
 const HOST_ID = 'HOST';
 const PEER_ID = 'PEER';
@@ -61,6 +62,22 @@ function makeNetwork() {
     network.matchId = 'match-1';
     network.matchNonce = 'nonce-1';
     network.sendP2PMessage = vi.fn();
+    network.lockProtocolSession();
+    return network;
+}
+
+function makeHostNetwork() {
+    const network = new SteamNetworking();
+    network.mockMode = true;
+    network.steamId = HOST_ID;
+    network.isHost = true;
+    network.hostSteamId = HOST_ID;
+    network.matchId = 'match-1';
+    network.matchNonce = 'nonce-1';
+    network.broadcastChannel = { postMessage: vi.fn() };
+    network.connectedPeers.set(PEER_ID, { steamId: PEER_ID });
+    network.lockProtocolSession();
+    network.seedNegotiatedProtocolPeers([PEER_ID]);
     return network;
 }
 
@@ -111,6 +128,36 @@ function deliver(network, envelope, mode) {
 }
 
 describe('SteamNetworking binary snapshot handling', () => {
+    it('omits the whole-world debug stringify and measures complete keyframe/delta envelopes', () => {
+        const network = makeHostNetwork();
+        const snapshot = makeSnapshot({ tick: 9, score: 300 });
+        const deltaSnapshot = makeSnapshot({ tick: 10, score: 350 });
+        const stringify = vi.spyOn(JSON, 'stringify');
+
+        network.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, snapshot);
+        network.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, deltaSnapshot);
+
+        const serializedOriginalState = stringify.mock.calls
+            .some(([value]) => value === snapshot || value === deltaSnapshot);
+        expect(serializedOriginalState).toBe(false);
+        expect(network.broadcastChannel.postMessage).toHaveBeenCalledTimes(2);
+        const sentMessages = network.broadcastChannel.postMessage.mock.calls.map(([message]) => message);
+        const expectedWireBytes = sentMessages.map((sentMessage) => {
+            expect(sentMessage.payload).not.toHaveProperty('_originalSize');
+            const wireEnvelope = { ...sentMessage };
+            delete wireEnvelope.type;
+            delete wireEnvelope.from;
+            delete wireEnvelope.to;
+            return new TextEncoder().encode(JSON.stringify(wireEnvelope)).byteLength;
+        });
+        expect(network.getPacketStats()).toMatchObject({
+            snapshotBytesSent: { count: 2, max: Math.max(...expectedWireBytes) },
+            snapshotKeyframeWireBytesSent: { count: 1, p95: expectedWireBytes[0] },
+            snapshotDeltaWireBytesSent: { count: 1, p95: expectedWireBytes[1] },
+        });
+        expect(expectedWireBytes[1]).toBeGreaterThan(sentMessages[1].payload._encodedSize);
+    });
+
     it.each(['real', 'mock'])('decodes full then delta snapshots on the %s path and reattaches wrapper metadata', (mode) => {
         const network = makeNetwork();
         const received = [];

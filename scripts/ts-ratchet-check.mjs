@@ -12,7 +12,7 @@
  *   node scripts/ts-ratchet-check.mjs            # gate (CI)
  *   node scripts/ts-ratchet-check.mjs --update   # adopt newly-pragma'd files
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -31,7 +31,8 @@ const tracked = execFileSync(
     ['ls-files', '--cached', '--others', '--exclude-standard', '--', 'src/**/*.js'],
     { cwd: repoRoot, encoding: 'utf8' },
 )
-    .split('\n').filter(Boolean);
+    .split('\n')
+    .filter((file) => file && existsSync(path.join(repoRoot, file)));
 const pragmad = tracked.filter((file) => {
     const head = readFileSync(path.join(repoRoot, file), 'utf8').slice(0, 200);
     return /^\s*\/\/ @ts-check/m.test(head);

@@ -28,7 +28,11 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
 } from '../../events/gameplay-events.js';
-import { DemoRecorder } from '../demo/DemoRecorder.js';
+import {
+    DEMO_FIXED_SIMULATION_CLOCK,
+    DEMO_LEGACY_SIMULATION_CLOCK,
+    DemoRecorder,
+} from '../demo/DemoRecorder.js';
 import { DemoPlayer } from '../demo/DemoPlayer.js';
 import { DemoManager } from '../demo/DemoManager.js';
 import { PlaybackControls } from '../../ui/playback-controls.js';
@@ -37,6 +41,21 @@ import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { buildReplayProof } from '../anti-cheat/replay-proof.js';
 import { SCORE_DETAIL_FLAGS } from '../steam/leaderboard-score-details.js';
+import { readFlag } from '../flags.js';
+import {
+    applyFixedHardDropHitStop,
+    applyFixedLineImpactHitStop,
+    applyFixedPerfectClearHitStop,
+} from '../fixed-hit-stop-policy.js';
+import {
+    createSinglePlayerFixedInputBinding,
+    createSinglePlayerFixedTickRuntime,
+    ownsSinglePlayerFixedTickRuntime,
+    runSinglePlayerFixedTicks,
+    startSinglePlayerFixedTickRuntime,
+    stopSinglePlayerFixedTickRuntime,
+} from './single-player-fixed-tick.js';
+import { canWriteLegacySinglePlayerResults } from './single-player-result-compatibility.js';
 
 /**
  * SinglePlayerMode - Classic single-player Tetris experience
@@ -79,6 +98,25 @@ export class SinglePlayerMode extends BaseGameMode {
 
         // Hybrid loop state (for high FPS targets)
         this.usingHybridLoop = false;
+
+        // Default-off canonical clock (§5.3). FrameRateController still owns
+        // wall time; this state only fences one normal single-player session.
+        this._fixedTickEnabled = false;
+        this._fixedTickRuntime = createSinglePlayerFixedTickRuntime();
+        this._fixedTickOwnership = null;
+        this._fixedTickInputBinding = null;
+        this._lastFixedTickClockWarp = null;
+        // Latched separately from _fixedTickEnabled because onStop retires the
+        // runtime before game-over persistence is evaluated.
+        this._sessionSimulationClock = DEMO_LEGACY_SIMULATION_CLOCK;
+
+        // Lifecycle ownership. A stop owns the exact state/clock/recording it
+        // captured at entry, and a replacement start waits for that teardown
+        // to publish one immutable result bundle.
+        this._sessionGeneration = 0;
+        this._activeSession = null;
+        this._stoppedSession = null;
+        this._stopPromise = null;
     }
 
     getModeId() {
@@ -166,10 +204,29 @@ export class SinglePlayerMode extends BaseGameMode {
      * Called when user clicks "Start Game"
      */
     async onStart(options = {}) {
+        // BaseGameMode marks a session non-running before SinglePlayer teardown
+        // has drained physics and saved its demo. Do not let that public flag
+        // make a replacement GameState eligible until the full stop resolves.
+        const pendingStop = this._stopPromise;
+        if (pendingStop) {
+            await pendingStop;
+        }
+
+        if (this.isRunning) {
+            await super.onStart();
+            return;
+        }
+
         if (options.demo && !this.demoPlayer.loadDemo(options.demo)) {
-            throw new Error('Unsupported or invalid demo data');
+            throw new Error(this.demoPlayer.lastLoadError || 'Unsupported or invalid demo data');
         }
         await super.onStart();
+
+        // A concurrent deactivation can retire the mode while BaseGameMode's
+        // async hook yields. In that case there is no session to initialize.
+        if (!this.isActive || !this.isRunning) {
+            return;
+        }
 
         console.log('[SinglePlayer] ========== ONSTART CALLED ==========');
         console.log('[SinglePlayer] Starting game...', options);
@@ -187,6 +244,21 @@ export class SinglePlayerMode extends BaseGameMode {
             inputHandling: inputHandlingSettings,
             hitStopEnabled,
         });
+        this._fixedTickEnabled = !options.demo && readFlag('fixedTick', false);
+        if (this._fixedTickEnabled && !this.deps.frameRateController?.startHybridLoop) {
+            console.warn('[SinglePlayer] fixedTick requires FrameRateController; using legacy loop');
+            this._fixedTickEnabled = false;
+        }
+        this._sessionSimulationClock = this._fixedTickEnabled
+            ? DEMO_FIXED_SIMULATION_CLOCK
+            : DEMO_LEGACY_SIMULATION_CLOCK;
+        const sessionGeneration = ++this._sessionGeneration;
+        this._activeSession = Object.freeze({
+            generation: sessionGeneration,
+            gameState: this.gameState,
+            simulationClock: this._sessionSimulationClock,
+        });
+        this._stoppedSession = null;
 
         // Reset game over processing flag so game over can trigger again
         this.isProcessingGameOver = false;
@@ -207,7 +279,7 @@ export class SinglePlayerMode extends BaseGameMode {
             // Wire demo end callback - triggers when demo naturally completes
             this.demoPlayer.onPlaybackEnd = () => {
                 console.log('[SinglePlayer] Demo playback ended naturally');
-                this._handleGameOver();
+                this._handleGameOver(sessionGeneration);
             };
 
             this.playbackControls.show();
@@ -260,8 +332,8 @@ export class SinglePlayerMode extends BaseGameMode {
                         );
                         this._refreshNextQueue();
                     },
-                    applyCommand: (command, options = {}) => this._applyCommand(command, {
-                        ...options,
+                    applyCommand: (command, commandOptions = {}) => this._applyCommand(command, {
+                        ...commandOptions,
                         record: false,
                     }),
                     updateStats: statsCallback, // For DemoPlayer direct calls
@@ -329,11 +401,17 @@ export class SinglePlayerMode extends BaseGameMode {
         spawnPiece(
             this.gameState,
             () => this._refreshNextQueue(),
-            () => this._handleGameOver(),
+            () => this._handleGameOver(sessionGeneration),
         );
 
         if (shouldRecord) {
-            this.demoRecorder.startRecording(this.gameState, settings, recordingSeed);
+            this.demoRecorder.startRecording(
+                this.gameState,
+                settings,
+                recordingSeed,
+                'single-player',
+                this._sessionSimulationClock,
+            );
             this.isRecording = true;
             console.log('[SinglePlayer] Recording started with seed:', recordingSeed, 'isRecording:', this.isRecording);
         }
@@ -359,6 +437,8 @@ export class SinglePlayerMode extends BaseGameMode {
     onPause() {
         super.onPause();
 
+        this._fixedTickInputBinding?.clear();
+
         if (this.isPlayingDemo) {
             this.demoPlayer.pausePlayback();
         }
@@ -370,6 +450,19 @@ export class SinglePlayerMode extends BaseGameMode {
     onResume() {
         super.onResume();
 
+        if (
+            this._fixedTickEnabled
+            && this.gameState
+            && ownsSinglePlayerFixedTickRuntime(
+                this._fixedTickRuntime,
+                this._fixedTickOwnership,
+            )
+        ) {
+            // BaseGameMode reanchors variable-delta loops to wall time. The
+            // canonical clock keeps lastTime on its simulation-time domain.
+            this.gameState.lastTime = this.gameState.simTimeMs;
+        }
+
         if (this.isPlayingDemo) {
             this.demoPlayer.resumePlayback();
         }
@@ -378,34 +471,106 @@ export class SinglePlayerMode extends BaseGameMode {
     /**
      * Called when game ends
      */
-    async onStop() {
-        await super.onStop();
+    onStop() {
+        if (this._stopPromise) {
+            return this._stopPromise;
+        }
+        if (!this._activeSession) {
+            if (!this.isRunning) {
+                return Promise.resolve(this._stoppedSession);
+            }
+
+            // onStart awaits BaseGameMode before publishing _activeSession.
+            // A deactivation in that narrow window must still retire the base
+            // running flag instead of leaving a zombie mode behind.
+            const baseStop = super.onStop();
+            const trackedStop = baseStop
+                .then(() => this._stoppedSession)
+                .finally(() => {
+                    if (this._stopPromise === trackedStop) {
+                        this._stopPromise = null;
+                    }
+                });
+            this._stopPromise = trackedStop;
+            return trackedStop;
+        }
+
+        const session = this._activeSession;
+        const teardown = Object.freeze({
+            session,
+            wasPlayingDemo: this.isPlayingDemo,
+            wasRecording: this.isRecording,
+        });
+
+        // BaseGameMode's async method has no await: invoking it marks the mode
+        // non-running synchronously. The returned promise is still joined by
+        // the captured teardown so a future base implementation stays ordered.
+        const baseStopPromise = super.onStop();
+        const completion = this._stopCapturedSession(teardown, baseStopPromise);
+        const trackedStop = completion
+            .then((stoppedSession) => {
+                if (this._activeSession === session) {
+                    this._activeSession = null;
+                    this._stoppedSession = stoppedSession;
+                    this.lastRecordedDemo = stoppedSession.demo;
+                    this.lastSavedDemoId = stoppedSession.demoId;
+                }
+                return stoppedSession;
+            })
+            .finally(() => {
+                if (this._stopPromise === trackedStop) {
+                    this._stopPromise = null;
+                }
+            });
+        this._stopPromise = trackedStop;
+        return trackedStop;
+    }
+
+    /**
+     * Finish one captured session without consulting replacement mode state.
+     * @param {{
+     *   session: { generation: number, gameState: GameState, simulationClock: string },
+     *   wasPlayingDemo: boolean,
+     *   wasRecording: boolean
+     * }} teardown
+     * @param {Promise<void>} baseStopPromise
+     * @returns {Promise<Readonly<{
+     *   generation: number,
+     *   gameState: GameState,
+     *   simulationClock: string,
+     *   demo: Object|null,
+     *   demoId: number|null
+     * }>>}
+     * @private
+     */
+    async _stopCapturedSession(teardown, baseStopPromise) {
+        const { session, wasPlayingDemo, wasRecording } = teardown;
+        const { gameState, generation, simulationClock } = session;
 
         console.log('[SinglePlayer] Stopping game...');
 
-        // Mark game over FIRST so any in-flight physics short-circuits at
-        // updateGame's gameOver guard (game.js:763). This prevents the burst
-        // of locked pieces from a queued updateGame call with large delta.
-        if (this.gameState) {
-            this.gameState.isGameOver = true;
-            this.gameState.isStopped = true;
-        }
-
-        // Stop game loop (handles both hybrid and standard loops)
+        // Mark the captured state over before draining its queued physics.
+        // Never read this.gameState after an await in this transaction.
+        gameState.isGameOver = true;
+        gameState.isStopped = true;
         this._stopGameLoop();
+        this._fixedTickEnabled = false;
 
-        if (this.gameState?.latestPhysicsPromise) {
+        await baseStopPromise;
+
+        const physicsPromise = gameState.latestPhysicsPromise;
+        if (physicsPromise) {
             try {
-                await this.gameState.latestPhysicsPromise;
+                await physicsPromise;
             } catch (error) {
                 console.warn('[SinglePlayer] In-flight physics rejected during stop:', error);
             } finally {
-                this.gameState.latestPhysicsPromise = null;
-                this.gameState.isProcessingPhysics = false;
+                gameState.latestPhysicsPromise = null;
+                gameState.isProcessingPhysics = false;
             }
         }
 
-        if (this.isPlayingDemo) {
+        if (wasPlayingDemo) {
             this.isPlayingDemo = false;
             // Suppress the natural-end callback during teardown to avoid
             // a recursive _handleGameOver via onPlaybackEnd → _handleGameOver.
@@ -414,40 +579,56 @@ export class SinglePlayerMode extends BaseGameMode {
             this.playbackControls.hide();
         }
 
-        // Stop recording if active and auto-save the demo (like Quadra)
-        this.lastSavedDemoId = null;
-        if (this.isRecording) {
-            const demo = this.demoRecorder.stopRecording({
-                score: this.gameState?.score,
-                lines: this.gameState?.lines,
-                level: this.gameState?.level,
-                durationMs: this.gameState?.simTimeMs,
-                durationFrames: this.gameState?.simFrame,
-                piecesPlaced: this.gameState?.piecesPlaced,
-            }, this.gameState); // terminal checkpoint + final board digest (§5.0)
-            this.lastRecordedDemo = demo;
+        let demo = null;
+        let demoId = null;
+        if (wasRecording) {
+            demo = this.demoRecorder.stopRecording({
+                score: gameState.score,
+                lines: gameState.lines,
+                level: gameState.level,
+                durationMs: gameState.simTimeMs,
+                durationFrames: gameState.simFrame,
+                piecesPlaced: gameState.piecesPlaced,
+            }, gameState); // terminal checkpoint + final board digest (§5.0)
             this.isRecording = false;
             console.log('[SinglePlayer] Recording stopped. Demo captured:', !!demo, 'Inputs:', demo?.inputs?.length);
 
-            // Auto-save the demo to IndexedDB (like Quadra's automatic last.qrec)
-            // Await to ensure we have the demoId before saving high score
+            // Auto-save the demo to IndexedDB (like Quadra's automatic last.qrec).
             if (demo && demo.inputs?.length > 0) {
-                this.lastSavedDemoId = await this._autoSaveDemo(demo);
+                demoId = await this._autoSaveDemo(demo);
             }
         } else {
             console.log('[SinglePlayer] Not recording, so no demo saved.');
         }
 
         this._stopPhaserBoardScene();
+
+        return Object.freeze({
+            generation,
+            gameState,
+            simulationClock,
+            demo,
+            demoId,
+        });
     }
 
     /**
      * Called when mode is deselected
      */
     async onDeactivate() {
+        // Retire activation immediately so a start queued behind the stop
+        // cannot initialize a replacement state while cleanup is in progress.
+        this.isActive = false;
+        const pendingStop = this._stopPromise || (this._activeSession ? this.onStop() : null);
+        if (pendingStop) {
+            await pendingStop;
+        }
         await super.onDeactivate();
 
         console.log('[SinglePlayer] Deactivating...');
+
+        this._stopFixedTickSession();
+        this._fixedTickEnabled = false;
 
         this._stopPhaserBoardScene();
 
@@ -460,8 +641,11 @@ export class SinglePlayerMode extends BaseGameMode {
         // Restore inputs
         this._restoreInputs();
 
-        // Clean up state
-        this.gameState = null;
+        // The stop above has drained every captured-state await, so clearing
+        // this reference cannot null out a teardown finally block.
+        if (!this._activeSession) {
+            this.gameState = null;
+        }
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
@@ -606,8 +790,10 @@ export class SinglePlayerMode extends BaseGameMode {
         const playDropCallback = suppliedCallbacks.playDropCallback
             || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playDrop()));
         const playSoundCallback = suppliedCallbacks.playSoundCallback || null;
-        const moveSound = playSoundCallback || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playMove()));
-        const rotateSound = playSoundCallback || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playRotate()));
+        const moveSound = playSoundCallback
+            || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playMove()));
+        const rotateSound = playSoundCallback
+            || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playRotate()));
         const addTrailCallback = suppliedCallbacks.addTrailCallback || (() => { });
 
         let accepted = false;
@@ -628,7 +814,14 @@ export class SinglePlayerMode extends BaseGameMode {
                 this.boardJuice.tilt(value === 'left' ? -0.3 : 0.3);
             }
         } else if (type === 'hardDrop') {
-            accepted = coreHardDrop(this.gameState, playDropCallback, physicsCallbacks);
+            accepted = options.fixedTick === true
+                ? coreHardDrop(
+                    this.gameState,
+                    playDropCallback,
+                    physicsCallbacks,
+                    { fixedTick: true, inputPhase: options.inputPhase === true },
+                )
+                : coreHardDrop(this.gameState, playDropCallback, physicsCallbacks);
             if (accepted && this.boardJuice && !muted) {
                 this.boardJuice.dip(3);
                 this.boardJuice.bounce();
@@ -636,7 +829,14 @@ export class SinglePlayerMode extends BaseGameMode {
         } else if (type === 'softDrop') {
             const beforeProcessing = this.gameState.isProcessingPhysics;
             const beforePiece = this.gameState.currentPiece;
-            const moved = coreSoftDrop(this.gameState, playDropCallback, physicsCallbacks);
+            const moved = options.fixedTick === true
+                ? coreSoftDrop(
+                    this.gameState,
+                    playDropCallback,
+                    physicsCallbacks,
+                    { fixedTick: true, inputPhase: options.inputPhase === true },
+                )
+                : coreSoftDrop(this.gameState, playDropCallback, physicsCallbacks);
             accepted = Boolean(moved)
                 || (!beforeProcessing && this.gameState.isProcessingPhysics)
                 || (beforePiece && beforePiece !== this.gameState.currentPiece);
@@ -682,6 +882,7 @@ export class SinglePlayerMode extends BaseGameMode {
         if (frameRateController?.isRunning) {
             frameRateController.stopHybridLoop();
         }
+        this._stopFixedTickSession();
 
         // Ensure stats throttling starts fresh for this session
         this.lastStatsUpdateTime = performance.now();
@@ -718,12 +919,82 @@ export class SinglePlayerMode extends BaseGameMode {
         const physicsCallbacks = this._getPhysicsCallbacks();
         const playDropCallback = () => this.deps.soundManager.sfxPlayer.playDrop();
 
+        if (this._fixedTickEnabled) {
+            if (!frameRateController?.startHybridLoop) {
+                console.warn('[SinglePlayer] fixedTick requires FrameRateController; using legacy loop');
+                this._fixedTickEnabled = false;
+            } else {
+                console.log('[SinglePlayer] Using canonical 60 Hz simulation clock');
+                this.usingHybridLoop = true;
+                const ownership = this._startFixedTickSession();
+                const fixedState = this.gameState;
+                const inputBinding = this._fixedTickInputBinding;
+                const sessionContinues = () => (
+                    this._fixedTickEnabled
+                    && this.isRunning
+                    && !this.isPaused
+                    && !this.isPlayingDemo
+                    && this.gameState === fixedState
+                    && fixedState.isPaused !== true
+                    && fixedState.isGameOver !== true
+                    && fixedState.isStopped !== true
+                    && ownsSinglePlayerFixedTickRuntime(this._fixedTickRuntime, ownership)
+                );
+                const inputCallbacks = {
+                    playDropCallback,
+                    physicsCallbacks,
+                };
+                const logicUpdate = (_time, delta) => {
+                    runSinglePlayerFixedTicks(this._fixedTickRuntime, delta, {
+                        ownership,
+                        advanceInput: inputBinding?.advanceInput,
+                        applyInput: (command) => this._applyCommand({
+                            type: command.action,
+                            value: command.value,
+                        }, {
+                            fixedTick: true,
+                            inputPhase: true,
+                            callbacks: inputCallbacks,
+                        }),
+                        playDropCallback,
+                        physicsCallbacks,
+                        shouldContinue: sessionContinues,
+                        onClockWarp: (clockWarp) => {
+                            this._lastFixedTickClockWarp = clockWarp;
+                            console.warn('[SinglePlayer] Fixed simulation clock rebased:', clockWarp);
+                        },
+                    });
+                };
+                const renderUpdate = () => {
+                    if (
+                        !this._fixedTickEnabled
+                        || !this.isRunning
+                        || this.gameState !== fixedState
+                        || !ownsSinglePlayerFixedTickRuntime(this._fixedTickRuntime, ownership)
+                    ) return;
+                    drawCallback();
+                    statsCallback();
+                };
+
+                try {
+                    frameRateController.startHybridLoop(logicUpdate, renderUpdate);
+                } catch (error) {
+                    frameRateController.stopHybridLoop?.();
+                    this._stopFixedTickSession();
+                    this.usingHybridLoop = false;
+                    throw error;
+                }
+                return;
+            }
+        }
+
         // Check if we need hybrid mode (target FPS > monitor refresh rate)
         if (frameRateController?.needsHybridMode()) {
             console.log('[SinglePlayer] Using hybrid loop for high FPS target');
             this.usingHybridLoop = true;
 
             // Logic update function (runs at target FPS)
+            // eslint-disable-next-line no-unused-vars
             const logicUpdate = (time, delta) => {
                 if (this.gameState.isGameOver || this.gameState.isPaused) return;
 
@@ -736,6 +1007,7 @@ export class SinglePlayerMode extends BaseGameMode {
             };
 
             // Render function (runs at monitor refresh rate)
+            // eslint-disable-next-line no-unused-vars
             const renderUpdate = (time, alpha) => {
                 // Always render, even when paused (for pause screen)
                 drawCallback();
@@ -764,6 +1036,8 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _stopGameLoop() {
+        this._stopFixedTickSession();
+
         // Stop hybrid loop if active
         const { frameRateController } = this.deps;
         if (frameRateController?.isRunning) {
@@ -779,20 +1053,56 @@ export class SinglePlayerMode extends BaseGameMode {
         this.usingHybridLoop = false;
     }
 
+    _startFixedTickSession() {
+        const ownership = startSinglePlayerFixedTickRuntime(
+            this._fixedTickRuntime,
+            this.gameState,
+        );
+        this._fixedTickOwnership = ownership;
+        this._fixedTickInputBinding = createSinglePlayerFixedInputBinding({
+            gameState: this.gameState,
+            inputController: this.deps.inputController,
+            gamepadController: this.deps.gamepadController,
+            isEnabled: () => (
+                this._fixedTickEnabled
+                && this.isRunning
+                && !this.isPaused
+                && !this.isPlayingDemo
+                && this.gameState === ownership.gameState
+                && ownsSinglePlayerFixedTickRuntime(this._fixedTickRuntime, ownership)
+            ),
+        });
+        this._fixedTickInputBinding.install();
+        return ownership;
+    }
+
+    _stopFixedTickSession() {
+        this._fixedTickInputBinding?.dispose();
+        this._fixedTickInputBinding = null;
+        stopSinglePlayerFixedTickRuntime(this._fixedTickRuntime);
+        this._fixedTickOwnership = null;
+    }
+
     _prefersReducedMotion() {
         const settings = this.deps.settingsManager.get();
         return settings.reducedMotion
             || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
     }
 
-    _applyHardDropTiming() {
-        if (this.gameState?.hitStopEnabled) {
-            this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+    _applyHardDropTiming(gameState = this.gameState, fixedPolicy = false) {
+        if (fixedPolicy) {
+            applyFixedHardDropHitStop(gameState);
+        } else if (gameState?.hitStopEnabled) {
+            gameState.hitStopRemaining = Math.max(gameState.hitStopRemaining || 0, 30);
         }
     }
 
-    _applyLineClearImpactTiming(lineCount) {
-        if (!this.gameState?.hitStopEnabled) return;
+    _applyLineClearImpactTiming(lineCount, gameState = this.gameState, fixedPolicy = false) {
+        if (fixedPolicy) {
+            applyFixedLineImpactHitStop(gameState, lineCount);
+            return;
+        }
+        if (!gameState?.hitStopEnabled) return;
 
         const boardScene = this._getBoardScene();
         let hitStop = 0;
@@ -803,13 +1113,15 @@ export class SinglePlayerMode extends BaseGameMode {
             hitStop = 70;
         }
         if (hitStop > 0) {
-            this.gameState.hitStopRemaining = hitStop;
+            gameState.hitStopRemaining = hitStop;
         }
     }
 
-    _applyPerfectClearTiming() {
-        if (this.gameState?.hitStopEnabled) {
-            this.gameState.hitStopRemaining = 110;
+    _applyPerfectClearTiming(gameState = this.gameState, fixedPolicy = false) {
+        if (fixedPolicy) {
+            applyFixedPerfectClearHitStop(gameState);
+        } else if (gameState?.hitStopEnabled) {
+            gameState.hitStopRemaining = 110;
         }
     }
 
@@ -818,6 +1130,10 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _getPhysicsCallbacks() {
+        const callbackSession = this._activeSession;
+        const sessionGeneration = callbackSession?.generation;
+        const timingState = callbackSession?.gameState || this.gameState;
+        const usesFixedTiming = callbackSession?.simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
@@ -848,7 +1164,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: (dropData) => {
-                this._applyHardDropTiming();
+                this._applyHardDropTiming(timingState, usesFixedTiming);
 
                 this.deps.soundManager.sfxPlayer.playDrop();
                 const boardScene = this._getBoardScene();
@@ -888,7 +1204,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Camera shake + particle impact
             onLineClearImpact: (lineCount, cascadeCount) => {
-                this._applyLineClearImpactTiming(lineCount);
+                this._applyLineClearImpactTiming(lineCount, timingState, usesFixedTiming);
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.playLineClearImpact) {
@@ -912,7 +1228,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Perfect clear / all-clear celebration (flagship moment)
             onPerfectClear: (depth, perfectClearBonus) => {
-                this._applyPerfectClearTiming();
+                this._applyPerfectClearTiming(timingState, usesFixedTiming);
 
                 emitPerfectClear({ depth, perfectClearBonus });
                 this.deps.soundManager.sfxPlayer.playPerfectClear?.();
@@ -949,7 +1265,9 @@ export class SinglePlayerMode extends BaseGameMode {
                 spawnPiece(
                     this.gameState,
                     () => this._refreshNextQueue(),
-                    this.isPlayingDemo ? undefined : () => this._handleGameOver(),
+                    this.isPlayingDemo
+                        ? undefined
+                        : () => this._handleGameOver(sessionGeneration),
                 );
             },
         };
@@ -977,10 +1295,15 @@ export class SinglePlayerMode extends BaseGameMode {
      * Handle game over
      * @private
      */
-    async _handleGameOver() {
+    async _handleGameOver(expectedGeneration = this._activeSession?.generation) {
         console.log('[SinglePlayer] _handleGameOver() called!');
         console.log('[SinglePlayer] Game over!');
         console.log('[SinglePlayer] isPlayingDemo:', this.isPlayingDemo);
+
+        const activeSession = this._activeSession;
+        if (!activeSession || activeSession.generation !== expectedGeneration) {
+            return;
+        }
 
         if (this.isPlayingDemo && (this.demoPlayer?.isSeeking || this.gameState?.isSeeking)) {
             return;
@@ -994,20 +1317,27 @@ export class SinglePlayerMode extends BaseGameMode {
         if (this.isPlayingDemo) {
             console.log('[SinglePlayer] Demo finished, showing Demo Complete modal');
 
-            await this.onStop();
+            const { currentDemo } = this;
+            const stoppedSession = await this.onStop();
+            if (!this._ownsStoppedSessionUi(stoppedSession)) {
+                return;
+            }
 
             // Show Demo Complete modal with navigation options
             const { showDemoCompleteModal } = await import('../../ui/modals.js');
+            if (!this._ownsStoppedSessionUi(stoppedSession)) {
+                return;
+            }
 
-            showDemoCompleteModal(
+            await showDemoCompleteModal(
                 this.deps.modalManager,
-                this.gameState,
+                stoppedSession.gameState,
                 this.deps.highScoreManager,
                 {
                     onWatchAgain: () => {
                         console.log('[SinglePlayer] Watch Again - replaying demo');
                         this.deps.modalManager.hideAll();
-                        eventBus.emit(EVENTS.PLAY_DEMO, { demo: this.currentDemo });
+                        eventBus.emit(EVENTS.PLAY_DEMO, { demo: currentDemo });
                     },
                     onBrowseReplays: () => {
                         console.log('[SinglePlayer] Browse Replays - showing demo browser');
@@ -1022,36 +1352,61 @@ export class SinglePlayerMode extends BaseGameMode {
                         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
                     },
                 },
+                {
+                    shouldPresent: () => this._ownsStoppedSessionUi(stoppedSession),
+                },
             );
 
-            this.isProcessingGameOver = false;
+            if (this._ownsStoppedSessionUi(stoppedSession)) {
+                this.isProcessingGameOver = false;
+            }
             return;
         }
 
-        // Normal game over handling (not demo playback)
-        await this.onStop();
+        // Normal game over handling (not demo playback). Teardown publishes
+        // the complete immutable result source; no later session field is read.
+        const stoppedSession = await this.onStop();
+        if (!stoppedSession) {
+            return;
+        }
+        const { gameState, simulationClock, demoId } = stoppedSession;
+        const writesLegacyResults = canWriteLegacySinglePlayerResults(simulationClock);
 
-        // Save high score (with linked demo ID if available)
-        await this.deps.highScoreManager.addScore({
-            score: this.gameState.score,
-            lines: this.gameState.lines,
-            level: this.gameState.level,
-            demoId: this.lastSavedDemoId,
-        });
+        if (writesLegacyResults) {
+            // Save high score (with linked demo ID if available)
+            await this.deps.highScoreManager.addScore({
+                score: gameState.score,
+                lines: gameState.lines,
+                level: gameState.level,
+                demoId,
+            });
 
-        // Sync Steam stats/leaderboards in the background (best-effort)
-        this._syncSteamStats().catch((err) => {
-            console.warn('[SinglePlayer] Steam stats sync failed:', err.message);
-        });
+            // Sync Steam stats/leaderboards in the background (best-effort)
+            this._syncSteamStats(stoppedSession).catch((err) => {
+                console.warn('[SinglePlayer] Steam stats sync failed:', err.message);
+            });
+        } else {
+            console.info(
+                '[SinglePlayer] Experimental simulation clock; legacy score/stat writes skipped:',
+                simulationClock,
+            );
+        }
+
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
 
         // Show game over modal with stats
         const { showGameOverModal } = await import('../../ui/modals.js');
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
 
         // Show game over modal (demos are auto-saved, no need to pass them here)
         console.log('[SinglePlayer] Showing Game Over modal.');
         await showGameOverModal(
             this.deps.modalManager,
-            this.gameState,
+            gameState,
             this.deps.highScoreManager,
             {
                 onMainMenu: () => {
@@ -1059,39 +1414,79 @@ export class SinglePlayerMode extends BaseGameMode {
                     eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
                 },
             },
+            {
+                includeLegacyResults: writesLegacyResults,
+                shouldPresent: () => this._ownsStoppedSessionUi(stoppedSession),
+            },
         );
+
+        if (!this._ownsStoppedSessionUi(stoppedSession)) {
+            return;
+        }
 
         // Trigger game over event
         window.dispatchEvent(new CustomEvent('gameOver', {
-            detail: { gameState: this.gameState },
+            detail: { gameState },
         }));
+    }
+
+    /**
+     * Whether one stopped generation still owns the mode's result UI.
+     * @param {Object|null} stoppedSession
+     * @returns {boolean}
+     * @private
+     */
+    _ownsStoppedSessionUi(stoppedSession) {
+        return Boolean(
+            stoppedSession
+            && this.isActive
+            && !this.isRunning
+            && !this._activeSession
+            && this._stoppedSession === stoppedSession
+            && this._sessionGeneration === stoppedSession.generation,
+        );
     }
 
     /**
      * Sync Steam stats and leaderboards (best-effort, non-blocking)
      * @private
+     * @param {Readonly<{
+     *   gameState: GameState,
+     *   simulationClock: string,
+     *   demo: Object|null,
+     *   demoId: number|null
+     * }>|null} stoppedSession
      */
-    async _syncSteamStats() {
-        if (!this.gameState) {
+    async _syncSteamStats(stoppedSession) {
+        const gameState = stoppedSession?.gameState;
+        const simulationClock = stoppedSession?.simulationClock;
+        if (
+            !gameState
+            || !canWriteLegacySinglePlayerResults(simulationClock)
+        ) {
             return;
         }
 
-        const durationMs = Number.isFinite(this.gameState.simTimeMs)
-            ? this.gameState.simTimeMs
-            : Date.now() - (this.gameState.startTime || Date.now());
+        const {
+            demo: recordedDemo,
+            demoId: replayId,
+        } = stoppedSession;
+        const durationMs = Number.isFinite(gameState.simTimeMs)
+            ? gameState.simTimeMs
+            : Date.now() - (gameState.startTime || Date.now());
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
         const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 
         const replayProof = await buildReplayProof({
-            demo: this.lastRecordedDemo,
-            expectedScore: this.gameState.score,
-            expectedLines: this.gameState.lines,
-            expectedLevel: this.gameState.level,
+            demo: recordedDemo,
+            expectedScore: gameState.score,
+            expectedLines: gameState.lines,
+            expectedLevel: gameState.level,
             expectedDurationMs: durationMs,
         });
 
         let flags = SCORE_DETAIL_FLAGS.NONE;
-        if (this.lastRecordedDemo?.inputs?.length) {
+        if (recordedDemo?.inputs?.length) {
             flags |= SCORE_DETAIL_FLAGS.REPLAY_PRESENT;
         }
         if (replayProof.verified) {
@@ -1101,26 +1496,26 @@ export class SinglePlayerMode extends BaseGameMode {
         }
 
         const scoreDetails = {
-            score: this.gameState.score,
+            score: gameState.score,
             duration: durationSeconds,
-            linesCleared: this.gameState.lines,
-            highestLevel: this.gameState.level,
+            linesCleared: gameState.lines,
+            highestLevel: gameState.level,
             checksum32: replayProof.checksum32,
             replayHash: replayProof.hash,
             replayVerified: replayProof.verified,
             replayIssues: replayProof.issues,
             replayInputCount: replayProof.inputCount,
             replayDurationMs: replayProof.durationMs,
-            replayId: this.lastSavedDemoId,
+            replayId,
             flags,
             version: '1.0.0',
         };
 
         await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_HIGH_SCORE, this.gameState.score, scoreDetails),
-            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_LINES, this.gameState.lines, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_HIGH_SCORE, gameState.score, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_LINES, gameState.lines, scoreDetails),
             steamService.incrementStat('total_games_played', 1),
-            steamService.incrementStat('total_lines_cleared', this.gameState.lines),
+            steamService.incrementStat('total_lines_cleared', gameState.lines),
             steamService.incrementStat('playtime_minutes', durationMinutes),
         ]);
     }

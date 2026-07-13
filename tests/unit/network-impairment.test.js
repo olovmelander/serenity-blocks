@@ -3,12 +3,14 @@ import {
     NetworkImpairmentHarness,
     normalizeNetworkImpairmentConfig,
 } from '../../src/core/network/network-impairment.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
 import { SteamNetworking } from '../../src/core/steam/steam-networking.js';
 
-function makeMockNetwork() {
+function makeMockNetwork({ isHost = true } = {}) {
     const network = new SteamNetworking();
     network.mockMode = true;
-    network.steamId = 'HOST';
+    network.steamId = isHost ? 'HOST' : 'PEER';
+    network.isHost = isHost;
     network.hostSteamId = 'HOST';
     network.matchId = 'match-1';
     network.matchNonce = 'nonce-1';
@@ -16,6 +18,9 @@ function makeMockNetwork() {
         postMessage: vi.fn(),
         close: vi.fn(),
     };
+    network.lockProtocolSession();
+    network.connectedPeers.set('PEER', { steamId: 'PEER' });
+    network.seedNegotiatedProtocolPeers(['PEER']);
     return network;
 }
 
@@ -59,13 +64,13 @@ describe('SteamNetworking network impairment integration', () => {
         const network = makeMockNetwork();
         network.setNetworkImpairment({ enabled: true, lossPct: 100, seed: 1 });
 
-        network.sendUnreliableNoDelay('PEER', 'game:state:full', { tick: 1 });
+        network.sendUnreliableNoDelay('PEER', MessageTypes.GAME_STATE_FULL, { tick: 1 });
         expect(network.broadcastChannel.postMessage).not.toHaveBeenCalled();
 
-        network.sendP2PMessage('PEER', 'net:ping', { at: 1 });
+        network.sendP2PMessage('PEER', MessageTypes.NET_PONG, { at: 1 });
         expect(network.broadcastChannel.postMessage).toHaveBeenCalledTimes(1);
         expect(network.broadcastChannel.postMessage.mock.calls[0][0]).toMatchObject({
-            msgType: 'net:ping',
+            msgType: MessageTypes.NET_PONG,
             from: 'HOST',
             to: 'PEER',
         });
@@ -86,7 +91,7 @@ describe('SteamNetworking network impairment integration', () => {
             seed: 2,
         });
 
-        network.sendP2PMessage('PEER', 'net:ping', { at: 1 });
+        network.sendP2PMessage('PEER', MessageTypes.NET_PONG, { at: 1 });
         expect(network.broadcastChannel.postMessage).not.toHaveBeenCalled();
 
         vi.advanceTimersByTime(29);
@@ -102,7 +107,7 @@ describe('SteamNetworking network impairment integration', () => {
 
     it('can reorder and duplicate packets while preserving the original envelope sequence', () => {
         vi.useFakeTimers();
-        const network = makeMockNetwork();
+        const network = makeMockNetwork({ isHost: false });
         network.setNetworkImpairment({
             enabled: true,
             duplicatePct: 100,
@@ -112,7 +117,7 @@ describe('SteamNetworking network impairment integration', () => {
             seed: 3,
         });
 
-        network.sendUnreliableNoDelay('PEER', 'game:input:batch', { inputs: [] });
+        network.sendUnreliableNoDelay('HOST', MessageTypes.GAME_INPUT_BATCH, { inputs: [] });
         vi.advanceTimersByTime(49);
         expect(network.broadcastChannel.postMessage).not.toHaveBeenCalled();
 
@@ -136,7 +141,7 @@ describe('SteamNetworking network impairment integration', () => {
         const network = makeMockNetwork();
         network.setNetworkImpairment({ enabled: true, reliableLossPct: 100, seed: 4 });
 
-        network.broadcastToAll('game:round:restart', { roundGeneration: 2 });
+        network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, { roundGeneration: 2 });
 
         expect(network.broadcastChannel.postMessage).not.toHaveBeenCalled();
         expect(network.getPacketStats().netImpairment.dropped).toBe(1);
