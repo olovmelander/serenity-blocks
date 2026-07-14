@@ -27,7 +27,7 @@ function createHarness(options = {}) {
     camera.updateMatrixWorld(true);
 
     const fx = createSummerGameplayFX({
-        scene, camera, isWebGPU: false, ...options,
+        scene, camera, ...options,
     });
     instances.push(fx);
     // Retire the one-frame compile warmup before asserting.
@@ -151,8 +151,8 @@ describe('Summer gameplay FX — motion, gating, lifecycle', () => {
     it('drops the motion uniform to zero under reduced motion', () => {
         const { fx } = createHarness();
         fx.setReducedMotion(true);
-        expect(fx.dew.material.uniforms.uMotion.value).toBe(0);
-        expect(fx.atlas.material.uniforms.uMotion.value).toBe(0);
+        expect(fx.dew.motionNode.value).toBe(0);
+        expect(fx.atlas.motionNode.value).toBe(0);
     });
 
     it('suppresses spawns when intensity is zero', () => {
