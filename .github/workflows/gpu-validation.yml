@@ -3,17 +3,20 @@ name: Odyssey GPU Validation
 # Remediation plan Phase 3c — the GLSL→TSL/WebGPU regression gate, run OFF the
 # dev machine so a WGSL/TSL graph error fails CI without touching the dev iGPU.
 #
-# Two legs, per the plan's abort criterion:
-#   • WebGL2 (ODYSSEY_FORCE_WEBGL=1) — HARD gate. The WebGPURenderer's WebGL2
-#     backend compiles the SAME TSL graphs and catches WGSL/pipeline graph
-#     errors. This is what actually gates.
-#   • WebGPU — BEST-EFFORT (continue-on-error). Real WebGPU on SwiftShader is
-#     version-sensitive and flaky on driverless CI (verified: swapchain
-#     failures), so it is exercised for signal but never blocks. A runner with a
-#     real WebGPU adapter promotes it to a meaningful leg without further edits.
+# ONE leg in CI: WebGL2 (ODYSSEY_FORCE_WEBGL=1). The WebGPURenderer's WebGL2
+# backend compiles the SAME TSL graphs and catches WGSL/pipeline graph errors.
+# The real-WebGPU leg is deliberately NOT run here (plan §3c abort criterion):
+# on driverless CI, WebGPU-on-SwiftShader never initializes cleanly — it loops
+# on shared-memory failures and produces no usable signal (verified over two
+# runs) — so it stays a documented local pre-release step
+# (`npm run validate:odyssey:webgpu`). A runner with a real WebGPU adapter can
+# re-add the leg unchanged.
 #
-# Not part of pages.yml (the deploy pipeline) — a flaky GPU leg must never block
-# a docs/site deploy. Runs on odyssey/pilot/script changes, on demand, and nightly.
+# Software rasterization is slow (10–100×), so per-PR runs a representative
+# 3-scene subset; the full 11-scene sweep runs nightly + on demand.
+#
+# Not part of pages.yml (the deploy pipeline) — a slow GPU leg must never block a
+# docs/site deploy. Path-filtered to odyssey/pilot/script changes.
 
 on:
   pull_request:
@@ -39,7 +42,9 @@ jobs:
     # Pinned to 22.04: stable, well-known Electron runtime deps (24.04 renamed
     # several to the -t64 ABI, which churns the apt list).
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    # Nightly full 11-scene sweep is ~21 min under SwiftShader; give headroom.
+    # Per-PR subset finishes well under. Per-scene 90s readiness bound caps hangs.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -72,16 +77,16 @@ jobs:
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           sleep 3
 
-      # HARD GATE — a WGSL/TSL graph error in any chapter fails here.
+      # HARD GATE — a WGSL/TSL graph error in any validated chapter fails here.
+      # Per-PR: a fast representative subset (a heavy chapter + the once-exempt
+      # chapter 3 + a non-chapter renderer). Nightly / dispatch: the full
+      # 11-scene sweep (empty filter = all). Each scene is bounded by the
+      # harness's 90s readiness timeout, so a hung scene fails, not stalls.
       - name: Validate — WebGL2 backend (gate)
         run: node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
         env:
           ODYSSEY_FORCE_WEBGL: '1'
-
-      # BEST-EFFORT — real WebGPU leg; never blocks (see header).
-      - name: Validate — WebGPU backend (best-effort)
-        continue-on-error: true
-        run: node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+          ODYSSEY_VALIDATION_SCENES: ${{ github.event_name == 'pull_request' && 'deep-ocean,surface-world,path' || '' }}
 
       - name: Upload validation artifacts (screenshots + reports)
         if: always()

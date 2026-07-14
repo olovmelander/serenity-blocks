@@ -367,20 +367,25 @@ two complete `ThemeManager` lifecycle transitions. The former source-substring s
 - **Validation:** a WGSL/TSL graph error in any chapter fails CI without touching the dev iGPU; screenshots archived as artifacts; the tripwire fails if a theme enters the mixed set.
 
 **Implementation note (2026-07-14):** the GPU gate is wired. `.github/workflows/gpu-validation.yml`
-runs the harness under `xvfb-run` on odyssey/pilot/script path-filtered PRs, on demand, and nightly.
-The plan's abort criterion is taken deliberately: the **`ODYSSEY_FORCE_WEBGL=1` leg is the hard gate**
-(the WebGPURenderer WebGL2 backend compiles the same TSL graphs and catches WGSL/pipeline graph errors),
-and the **WebGPU leg is `continue-on-error`** — real WebGPU on SwiftShader is flaky on driverless CI
-(verified locally: it partially initializes then throws swapchain/shared-image errors, which the harness
-correctly captures as a failure). Harness hardening landed against gaps 1–3: the scene list now includes
+runs the harness on odyssey/pilot/script path-filtered PRs, on demand, and nightly — kept off `pages.yml`
+so it can't block the deploy pipeline. Harness hardening landed against gaps 1–3: the scene list includes
 `surface-world` and is pinned ⊇ the chapter registry (`tests/unit/odyssey-gpu-gate-coverage.test.js`);
 the pilot exposes a `window.__ODYSSEY_PILOT_{READY,BACKEND,ERRORS}__` contract so the harness polls a real
 readiness signal instead of `delay(2500)` and **asserts the backend actually initialized** (a silent
-WebGL2 fallback in the WebGPU leg now fails loudly). The pilot contract was verified against real WebGL2
-rendering via Chromium/CDP (deep-ocean + surface-world clean, 0 shader errors); the Electron wrapper runs
-on the CI runner (its binary is egress-blocked in the authoring sandbox). Gap 5's tripwire already exists.
-Still open: `adapter.info.architecture` assertion (best-effort, environment-specific) and the first
-real-WebGPU-adapter runner that would promote the WebGPU leg to a hard gate.
+WebGL2 fallback fails loudly). The pilot contract was verified against real WebGL2 rendering via
+Chromium/CDP (deep-ocean + surface-world clean, 0 shader errors).
+
+The **CI reality forced the plan's abort criterion, exactly as anticipated.** Two lessons from the first
+runs, both now fixed: (1) `xvfb-run` does **not** propagate the wrapped exit code — run #1 reported a hard
+gate of *0/11 scenes* yet the job passed (a false green). Fixed by an explicit backgrounded `Xvfb` +
+`DISPLAY` so `node` runs under `bash -e` and its real exit code gates. (2) **WebGPU-on-SwiftShader never
+initializes cleanly** on the driverless runner — it loops on `/dev/shm` (then `/tmp`) shared-memory
+failures, spews ~17 MB of errors, and hangs until the job timeout. So the **WebGPU leg is dropped from CI**
+and stays a documented local pre-release step (`npm run validate:odyssey:webgpu`); a runner with a real
+WebGPU adapter can re-add it unchanged. Because software raster is slow (~2 min/scene), **per-PR validates
+a 3-scene representative subset and the full 11-scene sweep runs nightly** (each scene bounded by a 90 s
+readiness timeout). Gap 5's tripwire already exists. Still open: `adapter.info.architecture` assertion and
+a real-WebGPU-adapter runner to promote the WebGPU leg back into CI.
 
 ### Track 3d — Architecture fitness functions & budgets
 
