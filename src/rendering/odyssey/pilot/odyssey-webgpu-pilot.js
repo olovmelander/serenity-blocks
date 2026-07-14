@@ -63,6 +63,13 @@ const hud = document.getElementById('hud');
 const errEl = document.getElementById('err');
 const errors = [];
 
+// Validation-harness contract (plan §3c): the headless GPU gate polls these
+// globals instead of a fixed delay, and asserts the backend actually
+// initialized — a silent WebGL2 fallback in the WebGPU leg must fail loudly.
+window.__ODYSSEY_PILOT_READY__ = false;
+window.__ODYSSEY_PILOT_BACKEND__ = null;
+window.__ODYSSEY_PILOT_ERRORS__ = errors; // live reference the harness reads
+
 function logError(message) {
     errors.push(message);
     if (errEl) errEl.textContent = errors.slice(-14).join('\n');
@@ -105,6 +112,7 @@ async function main() {
     let backendName = 'unknown';
     if (isWebGPU) backendName = 'WebGPU';
     else if (isWebGL) backendName = 'WebGL2 (fallback)';
+    window.__ODYSSEY_PILOT_BACKEND__ = { isWebGPU, isWebGL, backendName };
 
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -194,6 +202,9 @@ async function main() {
         } else {
             renderer.render(scene, camera);
         }
+
+        // First rendered frame → tell the §3c harness the scene has settled.
+        if (window.__ODYSSEY_PILOT_READY__ !== true) window.__ODYSSEY_PILOT_READY__ = true;
 
         frames += 1;
         fpsAccum += dt;

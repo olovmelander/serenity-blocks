@@ -1,0 +1,96 @@
+name: Odyssey GPU Validation
+
+# Remediation plan Phase 3c / §9.3 — the GLSL→TSL render-validation lane, run OFF
+# the dev machine. This is the SEPARATE heavy-GPU lane, NOT a per-PR gate:
+#
+#  • It does NOT run on pull_request. GitHub's hosted runners cannot give
+#    Chromium/Electron working shared memory (fails in /dev/shm AND /tmp with
+#    "No such process"), so Electron+SwiftShader renders flakily or not at all.
+#    Forcing this onto every PR produced false greens and 20-min hangs. The
+#    per-PR guard is instead the fast unit tests (odyssey-gpu-gate-coverage +
+#    dual-state-theme-tripwire) in pages.yml, which catch scene-list drift and
+#    the "chapter silently exempt" bug class that motivated §3c.
+#  • It runs nightly + on demand (workflow_dispatch) and reports an HONEST
+#    verdict read from report.json (Electron's own exit code is unreliable on
+#    this runner), uploading screenshots + reports as artifacts for review.
+#  • --in-process-gpu is the render attempt: it removes the separate GPU process
+#    (the one crash-looping on shared-memory). If a hosted runner still can't
+#    render, this lane reports red honestly (never false-green) and real
+#    render-validation waits for a self-hosted GPU runner (plan §9.3 nightly RTX
+#    lane). It never blocks a PR either way.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *' # nightly ~06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  odyssey-gpu:
+    # Pinned to 22.04: stable, well-known Electron runtime deps (24.04 renamed
+    # several to the -t64 ABI, which churns the apt list).
+    runs-on: ubuntu-22.04
+    # Full 11-scene sweep; each scene is bounded by the harness's 90s readiness
+    # timeout, so worst case (all time out) is ~11*90s + boot, well under this.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      # Supply-chain posture (Phase 0.5): no arbitrary package install scripts.
+      - run: npm ci --ignore-scripts
+      # ...but this job needs Electron's OWN binary — fetch only that via
+      # Electron's downloader (not other packages' postinstalls).
+      - name: Fetch Electron binary
+        run: node node_modules/electron/install.js
+
+      # Electron runtime deps + a virtual display.
+      - name: Install xvfb + Electron runtime libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2
+
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          sleep 3
+
+      # Render the scenes, then read the verdict from report.json — NOT from
+      # Electron's exit code, which does not propagate reliably when Chromium
+      # crash-loops on this runner (the false-green root cause). A missing report
+      # (harness crashed before writing) is a failure.
+      - name: Validate — WebGL2 render + honest verdict
+        run: |
+          set +e
+          node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+          echo "electron exit: $? (informational — verdict is read from report.json)"
+          node -e '
+            const fs = require("fs");
+            const p = "artifacts/odyssey/webgpu-validation/webgl2/report.json";
+            if (!fs.existsSync(p)) { console.error("GATE FAIL: no report.json — the harness did not complete"); process.exit(1); }
+            const r = JSON.parse(fs.readFileSync(p, "utf8"));
+            const bad = r.filter((x) => !x.ok);
+            console.log(`GPU render verdict: ${r.length - bad.length}/${r.length} scenes clean`);
+            if (bad.length) { console.error("GATE FAIL:\n" + bad.map((b) => `  ${b.scene}: ${(b.reasons || []).join("; ")}`).join("\n")); process.exit(1); }
+          '
+        env:
+          ODYSSEY_FORCE_WEBGL: '1'
+
+      - name: Upload validation artifacts (screenshots + reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odyssey-gpu-validation
+          path: artifacts/odyssey/webgpu-validation/
+          if-no-files-found: warn

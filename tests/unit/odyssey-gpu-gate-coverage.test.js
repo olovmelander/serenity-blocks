@@ -25,8 +25,8 @@ function chapterBasenames() {
 
 function validationScenes() {
     const src = read('scripts/odyssey-webgpu-validation.mjs');
-    const block = src.match(/const SCENES = \[([\s\S]*?)\];/)?.[1];
-    expect(block, 'SCENES not found').toBeTruthy();
+    const block = src.match(/const ALL_SCENES = \[([\s\S]*?)\];/)?.[1];
+    expect(block, 'ALL_SCENES not found').toBeTruthy();
     return [...block.matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]);
 }
 
