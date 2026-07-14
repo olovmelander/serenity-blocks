@@ -15,6 +15,8 @@
     "src/core/infinity-simulation-maintenance.js",
     "src/core/infinity-spawn-policy.js",
     "src/core/multiplayer/ffa-p2p-game-state.js",
+    "src/core/multiplayer/ffa/board-helpers.js",
+    "src/core/multiplayer/ffa/garbage-helpers.js",
     "src/core/multiplayer/ffa/join-handshake.js",
     "src/core/multiplayer/ffa/join-lifecycle.js",
     "src/core/multiplayer/ffa/join-syncpoint.js",
