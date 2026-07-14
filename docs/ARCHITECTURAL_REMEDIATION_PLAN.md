@@ -94,7 +94,7 @@ Five hard dependencies drive everything:
 ### Solo-dev operating rules (new — how this plan survives contact with one part-time developer)
 
 - **Trunk + flags, not long branches.** Long-lived refactor branches die of rebase pain. Every Movement C transform ships dark on `main` behind a registry flag (Phase 0.6) using branch-by-abstraction: facade first (zero behavior change), migrate callers one commit at a time, rewrite behind the facade, delete legacy *with* the flag ([Fowler, Branch By Abstraction](https://martinfowler.com/bliki/BranchByAbstraction.html)).
-- **Cap active refactor flags at 2.** Code paths double per flag; every flag declares purpose + expiry, and a 10-line Vitest "time bomb" fails when a release flag outlives its expiry — nobody else will nag you.
+- **Cap refactor flags with a *dated expiry* at 2.** Code paths double per flag. Every `refactor` flag declares purpose + **either** a dated `expiry` (short-lived migration/rollback levers) **or** a `graduationBar` naming the plan section whose gate retires it (Movement C ground rule (a) requires each transform to declare its flag *before* the phase starts, so long-lived graduation flags legitimately coexist). A 10-line Vitest "time bomb" fails when a dated-expiry flag outlives its expiry, and caps *dated* refactor flags at 2 — nobody else will nag you. (Implemented this way in `flag-registry.test.js`; the numeric cap intentionally bounds only the dated levers, not the graduation-tracked population.)
 - **One theme/one session for GPU work** (TDR constraint, CLAUDE.md) — Phase 7 batching respects this.
 - **Characterization tests are scaffolding.** Write golden-master pins before each cut, prune them after the refactor lands; never bulk-update snapshots without reading the diff.
 - **Time-box spikes; record the abort.** Each phase's abort criterion is a decision you are allowed to take without guilt — write the ADR and move on.
@@ -103,11 +103,27 @@ Five hard dependencies drive everything:
 
 ## 3. Current-tree delta (2026-07-04, fully re-measured)
 
-The dependency ordering above is stable; this table is the latest verified status snapshot. Rows marked ⚠ are problems this re-measurement found: two are **silent regressions of safety systems the previous delta believed were landed** (desync detection, gamepad DAS), and one is a newly failing gate (the red CI test).
+> **⚠ SUPERSEDED SNAPSHOT — banner added 2026-07-14.** The table below is a dated 2026-07-04
+> re-measurement and is **no longer the live status**; the tree has moved ~10 days and ~80 commits
+> since (Movement A is essentially complete and much of Movement C landed dark). The authoritative
+> current status now lives in: (a) each phase's dated *Implementation / Groundwork / Completion
+> notes* further down, (b) the committed fitness baselines (`architecture-fitness.json`,
+> `lint-ratchet.json`, `ts-ratchet.json`, `perf-budgets.json`), and (c) CI itself
+> (`.github/workflows/pages.yml`, green on `main`). **Corrections to the worst-drifted rows below
+> (re-verified 2026-07-14):** CI is **green** (233 test files / 2,396 tests, up from 96/593); lint is
+> a **hard** ratchet gate (`lint:ci`, 1,548 errors ≤ 1,605 ceiling), not `continue-on-error`;
+> `@ts-check` covers **43** files (not 3); the release gate is wired into **CI + packaging**
+> (`afterPack` hard-fails on AppID 480); desync detection (§1.2) and gamepad DAS (§1.5) are
+> **re-armed**; the event bus is **unified** (`event-bus-files: 1`); `ffa-p2p-game-state.js` is
+> **~4,727** lines (not 5,116). Re-measure before acting on any individual row here.
+
+The dependency ordering above is stable; this table *was* the latest verified status snapshot **as of
+2026-07-04**. Rows marked ⚠ were problems that re-measurement found at that time; several — desync
+detection, gamepad DAS, and the red CI test — have since been **fixed** (see Phases 1.2, 1.5, 0.1).
 
 | Area | Verified current state | Plan adjustment |
 |---|---|---|
-| CI baseline | ⚠ **CI is red on this branch**: 96 test files / 593 tests, 592 pass, 1 fails (counts include the uncommitted boot-WIP test file) (`chapter-environment-manager.test.js` expects apron Z `[-600,-860,-710]`; `mountain-peaks.js:664-691` places `[-600,-710,-860]`). `npm test` is a hard gate (`pages.yml:38`), typecheck hard, lint soft (`continue-on-error`). | Phase 0.1: fix first; nothing else can "hard-gate" on a red suite. |
+| CI baseline | ✅ **CI is green** (re-verified 2026-07-14): 233 test files / 2,396 tests pass; `main` CI green. `npm test`, typecheck, `lint:ci`, `check:boundaries`, `architecture-fitness-check`, `check:release-gates`, and prod `npm audit` are **all hard gates** in `pages.yml` (only the full-tree audit is a `continue-on-error` warning lane). *(Historical 2026-07-04 state: red — 96 files / 593 tests, 1 fail; the Chapter-4 apron-Z test is fixed order-independently per §0.1.)* | Phase 0.1 landed; the suite hard-gates. |
 | Line endings | The git index is already 100 % LF (`git ls-files --eol`: 1510 i/lf, 0 i/crlf). What is dirty is the **local working tree** (1071 w/crlf, 58 w/mixed) — checked out before `.gitattributes` landed. `git add --renormalize` would be an empty commit; CI checkouts are already clean. | Phase 0.2 becomes a *local working-tree refresh*, not a renormalize commit. The old instruction was a misdiagnosis. |
 | Lint | Local: 286k errors, of which **280k are local-only CRLF noise**; the CI-visible baseline is **≈5.9k errors + 1.1k warnings** (indent 1,749, max-len 1,093, no-unused-vars 347, no-bitwise 265, import/no-unresolved 154, import/no-extraneous-dependencies 149). The last two rule classes are *blocked on decisions*, not cleanup (§ Phase 0.3). | Burn down with one `--fix` commit + triage; flip `continue-on-error` off. |
 | Release blocker | Root and `electron/steam_appid.txt` still `480`; the **built artifact demonstrably ships it** (`release/win-unpacked/steam_appid.txt` = 480; installer 625,923,068 B, built 07-01). `release-gate-check.mjs` works (dev warns / `SERENITY_RELEASE=1` fails) but is **wired to nothing** — not CI, not `build-win.mjs`; `afterPack.cjs` is an explicit no-op. | Phase 1.1 wires the gate into CI + packaging and strips the file in release afterPack. |
@@ -211,7 +227,7 @@ Primary sources are cited inline throughout; the load-bearing ones:
 - **What:**
   - `docs/ARCHITECTURE_INDEX.md` listing every plan doc as *active / superseded / reference* (this doc is the umbrella; `ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md` is the tactical MP pre-phase).
   - `docs/adr/` with MADR-lite records for the decisions that already constrain work but live in comments or memory: incremental-TS-via-`@ts-check` (currently a tsconfig comment), hybrid renderer split, host-authoritative P2P, **no-WASM physics** (decision + reasons from the review), **no worker offload for the sim for now** (revisit trigger: resync-burst hitches in the §9 budgets), WebGPU/TSL definition of done, theme code-gen pipeline removed—don't rebuild, permanent-WebGL holdouts. Cross-link each enforcement rule (3d) to its ADR id. Reference `docs/adr/` from CLAUDE.md so agent-assisted sessions load the constraints.
-  - **Flag registry:** consolidate the `readNetFlag`/URL-param idiom into `src/core/flags.js` where every flag declares `{name, default, purpose, kind: 'permanent-ops' | 'refactor', expiry?}`; a small Vitest fails when a `refactor` flag outlives its expiry. Permanent ops toggles (quality tiers, `forceWebGL`, a11y) are exempt. **Cap active refactor flags at 2.**
+  - **Flag registry:** consolidate the `readNetFlag`/URL-param idiom into `src/core/flags.js` where every flag declares `{name, default, purpose, kind: 'permanent-ops' | 'refactor', expiry? | graduationBar?}`; a small Vitest fails when a dated-`expiry` `refactor` flag outlives its expiry. Permanent ops toggles (quality tiers, `forceWebGL`, a11y) are exempt. **Cap dated-expiry refactor flags at 2** (graduation-tracked flags are bounded by their plan-section gate, not the numeric cap — see the Movement C note in §2). *(Landed 2026-07: registry + `flag-registry.test.js` enforce kinds/readers, the dated-expiry time bomb, and the ≤2 dated-flag cap.)*
 - **Why:** the MP doc sprawl has already produced conflicting instructions; flags without expiry become permanent forks (the current default-off pile is the evidence); ADRs are the highest-value documentation genre for agent-assisted development — an agent will happily re-add a forbidden pattern unless the constraint is loadable and enforced.
 - **Validation:** index committed; ≥6 ADRs backfilled; flag registry exists with the expiry test green; every Movement C phase names its flag in this registry before starting.
 
