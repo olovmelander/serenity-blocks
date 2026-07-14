@@ -1345,6 +1345,20 @@ export class IntroAnimation {
     }
 
     /**
+     * The cinematic intro title has become the live menu logo again. Clear the
+     * terminal `startup-intro-skipped` flag so the CSS keeps hiding the static
+     * DOM `.main-menu-logo`. Without this, the skipped-intro CSS override keeps
+     * the static logo visible while `showBackgroundOnly()` re-creates the
+     * animated title, so the menu renders the "Serenity Blocks" header twice
+     * (repro: skip the intro, enter Local Multiplayer, return to the menu).
+     */
+    _claimMenuLogoIdentity() {
+        if (typeof document !== 'undefined') {
+            document.body.classList.remove('startup-intro-skipped');
+        }
+    }
+
+    /**
      * Show only the background animation with shrunken logo at top
      * (for returning to start modal from gameplay)
      */
@@ -1367,6 +1381,7 @@ export class IntroAnimation {
                     titleContainer.classList.add('shrink-to-logo');
                     this.scheduleMenuLogoLayoutUpdate();
                 }
+                this._claimMenuLogoIdentity();
 
                 // Hide prompt/chromatic if they exist (cleanup from full intro)
                 const prompt = this.container.querySelector('.intro-prompt');
@@ -1449,6 +1464,7 @@ export class IntroAnimation {
 
         // Add to DOM
         document.body.appendChild(this.container);
+        this._claimMenuLogoIdentity();
         this.setupMenuLogoLayoutTracking();
         this.scheduleMenuLogoLayoutUpdate();
         this.syncTitleBounds(performance.now());
