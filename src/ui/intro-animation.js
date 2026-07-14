@@ -88,6 +88,9 @@ export class IntroAnimation {
         this._titleStableCount = 0;
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
+        // Reduced-motion override, set by the app from settings.reducedMotion.
+        // Combined with the OS preference in _prefersReducedMotion().
+        this._reducedMotion = false;
         this.menuLayoutRaf = null;
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
@@ -1345,6 +1348,25 @@ export class IntroAnimation {
     }
 
     /**
+     * Record the app's reduced-motion preference (from settings.reducedMotion).
+     * The OS `prefers-reduced-motion` is always honored on top of this.
+     */
+    setReducedMotion(value) {
+        this._reducedMotion = !!value;
+    }
+
+    /**
+     * True when the cinematic should be suppressed for motion comfort — either
+     * the app's reduced-motion setting or the OS preference. Mirrors the boot
+     * warp's own gate (boot-warp-transition.js) so the whole boot is consistent.
+     */
+    _prefersReducedMotion() {
+        if (this._reducedMotion) return true;
+        return typeof window !== 'undefined'
+            && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    }
+
+    /**
      * The cinematic intro title has become the live menu logo again. Clear the
      * terminal `startup-intro-skipped` flag so the CSS keeps hiding the static
      * DOM `.main-menu-logo`. Without this, the skipped-intro CSS override keeps
@@ -1363,6 +1385,18 @@ export class IntroAnimation {
      * (for returning to start modal from gameplay)
      */
     async showBackgroundOnly(soundManager = null) {
+        // Reduced motion: never run the animated cinematic background. Keep the
+        // static DOM menu logo as the identity (leave `startup-intro-skipped` set
+        // so CSS shows it) and report the menu background as ready immediately so
+        // callers awaiting waitForMenuBgReady() don't stall on the timeout.
+        if (this._prefersReducedMotion()) {
+            this.menuBgReady = true;
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('intro:menuBgReady', { detail: { reducedMotion: true } }));
+            }
+            return;
+        }
+
         // If already showing, check if it's hidden and revive it
         if (this.container && document.body.contains(this.container)) {
             if (this.container.style.display === 'none') {

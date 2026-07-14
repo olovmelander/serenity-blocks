@@ -2939,6 +2939,9 @@ class SerenityBlocks {
         // Settings change events
         const settingsHandler = (e) => {
             this.handleSettingsChange(e.detail);
+            // Keep the intro's reduced-motion gate in sync with a mid-session toggle,
+            // so a later return-to-menu honors the preference without the cinematic.
+            introAnimation?.setReducedMotion?.(Boolean(this.settingsManager?.get?.()?.reducedMotion));
         };
         window.addEventListener('settingsChanged', settingsHandler);
 
@@ -5194,6 +5197,22 @@ async function bootstrap() {
             modalDomReady: Boolean(startupMenuModal),
         });
         app?.setBootCoordinator?.(desktopBootCoordinator);
+
+        // Honor reduced motion: skip the WebGPU cinematic entirely and fall back to
+        // the static DOM menu (the same terminal state the watchdog/skip path uses).
+        // Mirrors the boot warp, which already bails on reduced-motion, and the
+        // settings.reducedMotion toggle the gameplay surfaces respect. Both the app
+        // setting and the OS preference are checked.
+        const prefersReducedMotion = Boolean(app?.settingsManager?.get?.()?.reducedMotion)
+            || (typeof window !== 'undefined'
+                && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches));
+        if (prefersReducedMotion) {
+            introAnimation.setReducedMotion?.(true);
+            if (startupPipeline.snapshot().introStatus !== 'skipped') {
+                console.log('⏭️ Skipping intro animation — reduced motion preferred');
+                startupPipeline.skipIntro('reduced-motion');
+            }
+        }
 
         if (startupPipeline.snapshot().introStatus !== 'skipped') {
             startupPipeline.markIntroRunning({ mode: 'interactive' });
