@@ -1,0 +1,81 @@
+name: Odyssey GPU Validation
+
+# Remediation plan Phase 3c — the GLSL→TSL/WebGPU regression gate, run OFF the
+# dev machine so a WGSL/TSL graph error fails CI without touching the dev iGPU.
+#
+# Two legs, per the plan's abort criterion:
+#   • WebGL2 (ODYSSEY_FORCE_WEBGL=1) — HARD gate. The WebGPURenderer's WebGL2
+#     backend compiles the SAME TSL graphs and catches WGSL/pipeline graph
+#     errors. This is what actually gates.
+#   • WebGPU — BEST-EFFORT (continue-on-error). Real WebGPU on SwiftShader is
+#     version-sensitive and flaky on driverless CI (verified: swapchain
+#     failures), so it is exercised for signal but never blocks. A runner with a
+#     real WebGPU adapter promotes it to a meaningful leg without further edits.
+#
+# Not part of pages.yml (the deploy pipeline) — a flaky GPU leg must never block
+# a docs/site deploy. Runs on odyssey/pilot/script changes, on demand, and nightly.
+
+on:
+  pull_request:
+    paths:
+      - 'src/rendering/odyssey/**'
+      - 'odyssey-webgpu-pilot.html'
+      - 'scripts/odyssey-webgpu-validation.mjs'
+      - 'scripts/run-electron.mjs'
+      - '.github/workflows/gpu-validation.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *' # nightly ~06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  odyssey-gpu:
+    # Pinned to 22.04: stable, well-known Electron runtime deps (24.04 renamed
+    # several to the -t64 ABI, which churns the apt list).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      # Supply-chain posture (Phase 0.5): no arbitrary package install scripts.
+      - run: npm ci --ignore-scripts
+      # ...but this job needs Electron's OWN binary — fetch only that via
+      # Electron's downloader (not other packages' postinstalls).
+      - name: Fetch Electron binary
+        run: node node_modules/electron/install.js
+
+      # Electron runtime deps + a virtual display for the headless GPU boot.
+      - name: Install xvfb + Electron runtime libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2
+
+      # HARD GATE — a WGSL/TSL graph error in any chapter fails here.
+      - name: Validate — WebGL2 backend (gate)
+        run: xvfb-run -a node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+        env:
+          ODYSSEY_FORCE_WEBGL: '1'
+
+      # BEST-EFFORT — real WebGPU leg; never blocks (see header).
+      - name: Validate — WebGPU backend (best-effort)
+        continue-on-error: true
+        run: xvfb-run -a node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+
+      - name: Upload validation artifacts (screenshots + reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odyssey-gpu-validation
+          path: artifacts/odyssey/webgpu-validation/
+          if-no-files-found: warn

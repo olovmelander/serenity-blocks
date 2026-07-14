@@ -366,6 +366,22 @@ two complete `ThemeManager` lifecycle transitions. The former source-substring s
 - **Risks / abort:** SwiftShader-WebGPU support is Chromium-version-sensitive; pin versions. **Abort criterion:** time-box Dawn/SwiftShader-in-Electron to two sessions; if it won't initialize, ship the `ODYSSEY_FORCE_WEBGL=1` leg in CI (the WebGL2 backend still compiles the same TSL graphs and catches most graph errors) and keep the WebGPU leg as a documented local pre-release step.
 - **Validation:** a WGSL/TSL graph error in any chapter fails CI without touching the dev iGPU; screenshots archived as artifacts; the tripwire fails if a theme enters the mixed set.
 
+**Implementation note (2026-07-14):** the GPU gate is wired. `.github/workflows/gpu-validation.yml`
+runs the harness under `xvfb-run` on odyssey/pilot/script path-filtered PRs, on demand, and nightly.
+The plan's abort criterion is taken deliberately: the **`ODYSSEY_FORCE_WEBGL=1` leg is the hard gate**
+(the WebGPURenderer WebGL2 backend compiles the same TSL graphs and catches WGSL/pipeline graph errors),
+and the **WebGPU leg is `continue-on-error`** — real WebGPU on SwiftShader is flaky on driverless CI
+(verified locally: it partially initializes then throws swapchain/shared-image errors, which the harness
+correctly captures as a failure). Harness hardening landed against gaps 1–3: the scene list now includes
+`surface-world` and is pinned ⊇ the chapter registry (`tests/unit/odyssey-gpu-gate-coverage.test.js`);
+the pilot exposes a `window.__ODYSSEY_PILOT_{READY,BACKEND,ERRORS}__` contract so the harness polls a real
+readiness signal instead of `delay(2500)` and **asserts the backend actually initialized** (a silent
+WebGL2 fallback in the WebGPU leg now fails loudly). The pilot contract was verified against real WebGL2
+rendering via Chromium/CDP (deep-ocean + surface-world clean, 0 shader errors); the Electron wrapper runs
+on the CI runner (its binary is egress-blocked in the authoring sandbox). Gap 5's tripwire already exists.
+Still open: `adapter.info.architecture` assertion (best-effort, environment-specific) and the first
+real-WebGPU-adapter runner that would promote the WebGPU leg to a hard gate.
+
 ### Track 3d — Architecture fitness functions & budgets
 
 - **What:** `scripts/architecture-fitness-check.mjs` (does not exist yet) + committed baselines, run in CI; plus the machine-readable perf-budget file (§9 defines the schema and capture protocol).
