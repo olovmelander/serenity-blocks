@@ -54,6 +54,7 @@ import { createBoardScene } from './rendering/phaser/board-scene.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
+import { emitLineClear, emitCombo, emitPieceLock } from './events/gameplay-events.js';
 import { initViewportBroadcaster } from './utils/viewport.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
@@ -3398,7 +3399,7 @@ class SerenityBlocks {
 
                 // Emit event for theme reactions
                 console.log('[Main] Emitting LINE_CLEAR event, count:', count);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, clearedRows });
+                emitLineClear({ lineCount: count, clearedRows });
             },
             updateBoard: (boardData) => {
                 // Board updates handled in draw
@@ -3438,7 +3439,7 @@ class SerenityBlocks {
 
                 // Emit event for theme reactions
                 console.log('[Main] Emitting COMBO event, comboCount:', comboCount);
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount });
             },
             onPieceLock: (piece) => {
                 const gameState = getState();
@@ -3453,7 +3454,7 @@ class SerenityBlocks {
                 }
 
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
             },
             updateBackground: (level) => {
                 const settings = this.settingsManager.get();
@@ -4637,7 +4638,7 @@ class SerenityBlocks {
                 );
 
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum, clearedRows });
+                emitLineClear({ lineCount: count, player: playerNum, clearedRows });
             },
             onGarbageReady: (summary) => {
                 // Convert playerNum to appropriate format based on multiplayerState structure
@@ -4735,7 +4736,7 @@ class SerenityBlocks {
                 }
 
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.COMBO, { comboCount, player: playerNum });
+                emitCombo({ comboCount, player: playerNum });
             },
             onPieceLock: (piece) => {
                 const settings = this.settingsManager.get();
@@ -4758,7 +4759,7 @@ class SerenityBlocks {
                 multiplayerState?.accumulateHandicap?.(playerNum - 1);
 
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece, player: playerNum });
+                emitPieceLock({ piece, player: playerNum });
             },
             updateBackground: (level) => {
                 // Background updates can be shared between players
