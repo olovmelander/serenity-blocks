@@ -17,6 +17,7 @@
 import { describe, it, expect } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import { GarbageQueue } from '../../src/core/garbage.js';
+import { drainAllLineBursts } from '../../src/core/multiplayer/ffa/garbage-helpers.js';
 
 function gbEntry(attackId, lineIndex, extra = {}) {
     return {
@@ -34,7 +35,6 @@ function makePeerStub(consumed = []) {
         _holdStatsEnabled: false,
         _garbageIdempotentEnabled: true,
         _peerConsumedBursts: new Set(consumed),
-        _garbageBurstKey: FFAGameStateP2P.prototype._garbageBurstKey,
         _reconcileLocalPiece: FFAGameStateP2P.prototype._reconcileLocalPiece,
         gamePhase: 'playing',
         winner: null,
@@ -102,7 +102,7 @@ describe('idempotent garbage adoption (peer) — fixes "strange garbage"', () =>
 
     it('drain-all consumes EVERY pending burst in one call (match local "dump"), single-dequeue takes one', () => {
         const lineEntry = (attackId, lineIndex, isLastInBurst) => ({ type: 'line', attackId, lineIndex, holeMask: 1, variant: 'normal', isLastInBurst });
-        const drainAll = FFAGameStateP2P.prototype._drainAllLineBursts; // does not use `this`
+        const drainAll = drainAllLineBursts; // pure helper, extracted to ffa/garbage-helpers.js
         const seed = [
             lineEntry('a1', 0, false), lineEntry('a1', 1, true),
             lineEntry('a2', 0, false), lineEntry('a2', 1, false), lineEntry('a2', 2, true),
@@ -117,10 +117,10 @@ describe('idempotent garbage adoption (peer) — fixes "strange garbage"', () =>
         // drain-all empties the queue and returns all 5 lines in order
         const all = new GarbageQueue();
         all.enqueue(seed.map((e) => ({ ...e })));
-        const drained = drainAll.call({}, all);
+        const drained = drainAll(all);
         expect(drained.map((e) => `${e.attackId}:${e.lineIndex}`)).toEqual(['a1:0', 'a1:1', 'a2:0', 'a2:1', 'a2:2']);
         expect(all.getTotalLines()).toBe(0);
-        expect(drainAll.call({}, new GarbageQueue())).toEqual([]); // empty queue → []
+        expect(drainAll(new GarbageQueue())).toEqual([]); // empty queue → []
     });
 
     it('with ?garbageIdempotent=0 it adopts wholesale (no filtering) — clean revert path', () => {
