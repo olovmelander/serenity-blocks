@@ -580,6 +580,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             ) {
                 // Only start game on Space or Enter
                 if (e.key === ' ' || e.key === 'Enter') {
+                    // Game-mode cards own Enter/Space to launch THEIR focused mode;
+                    // don't let the generic handler start the default mode instead.
+                    const active = document.activeElement;
+                    if (active?.classList?.contains('game-mode-card')) {
+                        return;
+                    }
                     if (startGame) startGame();
                 }
                 return;

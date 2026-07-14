@@ -91,44 +91,55 @@ export class GameModeUI {
      * Setup mode selection buttons/cards
      */
     setupModeButtons() {
-        if (this.singlePlayerBtn) {
-            this.singlePlayerBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.SINGLE_PLAYER);
-            });
-        }
+        // Wire pointer, keyboard, and gamepad through ONE activation path so all
+        // three input methods launch the SAME focused mode. The cards are <div>s,
+        // which never emit `click` on Enter/Space — so a keyboard-only user used to
+        // fall through to the global start-modal handler, which launched the
+        // DEFAULT mode regardless of the focused card (a WCAG 2.1.1 / 4.1.2 failure,
+        // made worse by the card still playing a "confirmed" chime). Gamepad already
+        // synthesises a click (gamepad-controller.js), so it keeps working unchanged.
+        const bind = (el, mode, { guard } = {}) => {
+            if (!el) return;
 
-        if (this.localMultiplayerBtn) {
-            this.localMultiplayerBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.LOCAL_MULTIPLAYER);
-            });
-        }
+            // Expose the card as a real button to assistive tech, mirroring the
+            // role/aria-label/tabindex pattern the other icon buttons already use.
+            el.setAttribute('role', 'button');
+            if (!el.getAttribute('aria-label')) {
+                const title = el.querySelector?.('.mode-card-title')?.textContent?.trim();
+                if (title) el.setAttribute('aria-label', title);
+            }
+            const desc = el.querySelector?.('.mode-card-desc');
+            if (desc) {
+                if (!desc.id) desc.id = `mode-desc-${mode}`;
+                el.setAttribute('aria-describedby', desc.id);
+            }
+            const icon = el.querySelector?.('.mode-card-icon');
+            if (icon) icon.setAttribute('aria-hidden', 'true');
 
-        if (this.onlineMultiplayerBtn) {
-            this.onlineMultiplayerBtn.addEventListener('click', async () => {
-                if (this.isOnlineMultiplayerDisabled()) {
-                    return;
-                }
-                await this.selectModeAndStart(GAME_MODES.ONLINE_MULTIPLAYER);
-            });
-        }
+            const activate = (event) => {
+                if (typeof guard === 'function' && guard()) return;
+                event?.preventDefault?.();
+                this.selectModeAndStart(mode);
+            };
 
-        if (this.serenityBtn) {
-            this.serenityBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.SERENITY);
+            el.addEventListener('click', activate);
+            el.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                // This card owns Enter/Space — stop the document-level start-modal
+                // handler from also firing and launching the default mode.
+                event.stopPropagation();
+                activate(event);
             });
-        }
+        };
 
-        if (this.infinityBtn) {
-            this.infinityBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.INFINITY);
-            });
-        }
-
-        if (this.odysseyBtn) {
-            this.odysseyBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.ODYSSEY);
-            });
-        }
+        bind(this.singlePlayerBtn, GAME_MODES.SINGLE_PLAYER);
+        bind(this.localMultiplayerBtn, GAME_MODES.LOCAL_MULTIPLAYER);
+        bind(this.onlineMultiplayerBtn, GAME_MODES.ONLINE_MULTIPLAYER, {
+            guard: () => this.isOnlineMultiplayerDisabled(),
+        });
+        bind(this.serenityBtn, GAME_MODES.SERENITY);
+        bind(this.infinityBtn, GAME_MODES.INFINITY);
+        bind(this.odysseyBtn, GAME_MODES.ODYSSEY);
     }
 
     /**

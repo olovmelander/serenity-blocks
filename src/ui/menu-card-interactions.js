@@ -183,7 +183,9 @@ function bindCard(card) {
 
     // Keyboard / gamepad focus also gets the hover blip (focus = navigation cue).
     card.addEventListener('focus', () => playHover(card));
-    // Confirm chime on activation (click, Enter, Space, gamepad A all fire click).
+    // Confirm chime on activation. Pointer and gamepad-A fire `click`; keyboard
+    // Enter/Space are handled separately below because a <div> never emits click
+    // for them (the actual mode launch is wired in game-mode-ui.js).
     card.addEventListener('click', () => playConfirm(card));
     card.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') playConfirm(card);

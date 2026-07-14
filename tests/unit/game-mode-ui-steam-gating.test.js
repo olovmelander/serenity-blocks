@@ -130,7 +130,10 @@ describe('GameModeUI Steam gating', () => {
         new GameModeUI();
 
         const odysseyEvents = odysseyButton.addEventListener.mock.calls.map(([eventName]) => eventName);
-        expect(odysseyEvents).toEqual(['click']);
+        // Activation handlers only (pointer click + keyboard Enter/Space); no
+        // preload-intent handlers (pointerenter/focus/touchstart) are attached
+        // before the mode starts.
+        expect(odysseyEvents).toEqual(['click', 'keydown']);
         expect(odysseyEvents).not.toContain('pointerenter');
         expect(odysseyEvents).not.toContain('focus');
         expect(odysseyEvents).not.toContain('touchstart');
