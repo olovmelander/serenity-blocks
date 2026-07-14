@@ -61,7 +61,7 @@ const MAX_COMMANDS = 48;
 const CELLS_PER_SEAL = 4;
 // The seal renders on an FX plane ~36–38u from the camera; a cell must be this large in
 // world units to read at ~10–12% of screen height instead of the old sub-pixel speck.
-const DEFAULT_SEAL_CELL_SIZE = 2.4;
+const DEFAULT_SEAL_CELL_SIZE = 3.4;
 const COMMAND_PHASE_SEAL = 1;
 const COMMAND_RING = 2;
 const COMMAND_GATE = 3;
@@ -1226,9 +1226,15 @@ export class SerenityWarpGameplayFX {
         if (this.reducedMotion || options.reducedMotion === true) {
             command.life = Math.min(command.life, 0.26);
         }
-        command.radiusX = clamp(finiteOr(options.radiusX ?? options.radius, 4.1), 0.4, 40);
-        command.radiusY = clamp(finiteOr(options.radiusY, command.radiusX * 0.62), 0.3, 40);
-        command.width = clamp(finiteOr(options.width, 0.045), 0.008, 0.30);
+        // Hero scale: bigger with tier (sevenfold is the rare crescendo), and rounder than
+        // the old flat 0.62 ellipse that read as a "roulette wheel" seen at an angle.
+        command.radiusX = clamp(
+            finiteOr(options.radiusX ?? options.radius, 4.6 + command.tier * 0.9),
+            0.4,
+            40,
+        );
+        command.radiusY = clamp(finiteOr(options.radiusY, command.radiusX * 0.78), 0.3, 40);
+        command.width = clamp(finiteOr(options.width, 0.07), 0.008, 0.30);
         command.alpha = clamp(finiteOr(options.alpha, 0.86), 0, 2);
         command.intensity = clamp(finiteOr(options.intensity, 1), 0, 2);
         command.phase = finiteOr(options.phase, (this.commandSerial * 0.754877666) % TAU);
@@ -1777,7 +1783,7 @@ export class SerenityWarpGameplayFX {
         }
 
         let requestedEllipses = 0;
-        if (emitAperture) requestedEllipses = stage === STAGE_SEVENFOLD ? 4 : 3;
+        if (emitAperture) requestedEllipses = stage === STAGE_SEVENFOLD ? 3 : 2;
         if (isMobius) requestedEllipses = 2;
         const ellipseCount = Math.min(requestedEllipses, this.limits.ellipses);
         for (let index = 0; index < ellipseCount; index += 1) {
@@ -1785,9 +1791,9 @@ export class SerenityWarpGameplayFX {
         }
 
         if (emitAperture && !this.reducedMotion && this.limits.streaks > 0) {
-            let requested = stage === STAGE_SEVENFOLD ? 34 : 18;
-            if (isMobius) requested = 12;
-            if (isPerfectClear) requested = 40;
+            let requested = stage === STAGE_SEVENFOLD ? 16 : 8;
+            if (isMobius) requested = 8;
+            if (isPerfectClear) requested = 20;
             this._stampStreakBatch(
                 command,
                 Math.min(requested, this.limits.streaks),
@@ -1853,7 +1859,7 @@ export class SerenityWarpGameplayFX {
         system.origin[offset + 2] = z;
         system.birth[slot] = time;
         system.invLife[slot] = 1 / life;
-        system.size[slot] = 0.34 + command.tier * 0.045;
+        system.size[slot] = 0.55 + command.tier * 0.09;
         system.alpha[slot] = command.alpha * command.intensity;
         system.color[offset] = color[0];
         system.color[offset + 1] = color[1];

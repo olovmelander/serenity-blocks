@@ -47,10 +47,10 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 2000,
-        particleCount: 2800,
+        starCount: 3200,
+        particleCount: 6500,
         comboParticleBudget: 7200,
-        nebulaCount: 6,
+        nebulaCount: 14,
         diskSegments: 96,
         burstSparkCount: 600,
         // 1.15x supersampling: still above native so the image stays crisp, while bounding
@@ -79,10 +79,10 @@ const QUALITY_PRESETS = {
         sortObjects: true,
     },
     Ultra: {
-        starCount: 1500,
-        particleCount: 1800,
+        starCount: 2400,
+        particleCount: 4200,
         comboParticleBudget: 5200,
-        nebulaCount: 3,
+        nebulaCount: 8,
         diskSegments: 80,
         burstSparkCount: 400,
         maxPixelRatio: 1.1,
@@ -108,8 +108,8 @@ const QUALITY_PRESETS = {
         sortObjects: true,
     },
     High: {
-        starCount: 1000,
-        particleCount: 900,
+        starCount: 1500,
+        particleCount: 2000,
         comboParticleBudget: 3600,
         // High is the production baseline: the analytic disk and lensed arc own
         // the silhouette, avoiding translucent nebula fill and duplicate disk
@@ -140,8 +140,8 @@ const QUALITY_PRESETS = {
         sortObjects: false,
     },
     Medium: {
-        starCount: 720,
-        particleCount: 650,
+        starCount: 1000,
+        particleCount: 1300,
         comboParticleBudget: 2400,
         nebulaCount: 0,
         diskSegments: 48,
@@ -169,8 +169,8 @@ const QUALITY_PRESETS = {
         sortObjects: false,
     },
     Low: {
-        starCount: 420,
-        particleCount: 420,
+        starCount: 560,
+        particleCount: 700,
         comboParticleBudget: 1500,
         nebulaCount: 0,
         diskSegments: 24,
@@ -198,8 +198,8 @@ const QUALITY_PRESETS = {
         sortObjects: false,
     },
     Minimal: {
-        starCount: 220,
-        particleCount: 250,
+        starCount: 300,
+        particleCount: 380,
         comboParticleBudget: 1400,
         nebulaCount: 0,
         diskSegments: 18,
@@ -468,6 +468,13 @@ export default class BlackHoleTheme extends BaseTheme {
         this.cameraPhaseB = this.random() * Math.PI * 2;
         this.cameraPhaseC = this.random() * Math.PI * 2;
         this.cameraPhaseD = this.random() * Math.PI * 2;
+        // Pre-allocated view-basis scratch so the off-centre framing can be applied in
+        // CAMERA space (keeps the shadow off-centre on screen even when the orbit carries
+        // the camera behind the hole). Reused every frame — never allocate in the loop.
+        this._camFwd = new THREE.Vector3();
+        this._camRight = new THREE.Vector3();
+        this._camUp = new THREE.Vector3();
+        this._worldUp = new THREE.Vector3(0, 1, 0);
 
         // Pointer tracking for parallax camera
         this.pointerX = 0;
@@ -1138,20 +1145,37 @@ export default class BlackHoleTheme extends BaseTheme {
         const tempPosition = new THREE.Vector3();
         const tempScale = new THREE.Vector3();
         const tempQuaternion = new THREE.Quaternion();
-        const tempEuler = new THREE.Euler();
         const tempColor = new THREE.Color();
+        // Face each cloud back toward the origin so that, distributed over the full sphere,
+        // whichever clouds fall behind the black hole (the visible backdrop for the current
+        // camera angle) read face-on rather than edge-on.
+        const planeNormal = new THREE.Vector3(0, 0, 1);
+        const towardOrigin = new THREE.Vector3();
+        const rollQuat = new THREE.Quaternion();
 
         for (let i = 0; i < cloudCount; i++) {
             const size = 1200 + this.random() * 1400;
 
+            // Distribute uniformly over a full sphere shell (all directions) instead of the
+            // old -Z-only box, so the clouds surround the black hole and stay in frame as the
+            // camera orbits all the way around.
+            const theta = 2 * Math.PI * this.random();
+            const phi = Math.acos(2 * this.random() - 1);
+            const nebulaRadius = 2000 + this.random() * 1500;
+            const sinPhi = Math.sin(phi);
             tempPosition.set(
-                (this.random() - 0.5) * 4800,
-                (this.random() - 0.5) * 2200,
-                -1500 - this.random() * 1700,
+                sinPhi * Math.cos(theta) * nebulaRadius,
+                sinPhi * Math.sin(theta) * nebulaRadius,
+                Math.cos(phi) * nebulaRadius,
             );
 
-            tempEuler.set(0, 0, this.random() * Math.PI);
-            tempQuaternion.setFromEuler(tempEuler);
+            // Orient the quad's +Z normal toward the origin, then add a random roll around
+            // that axis for organic variety.
+            towardOrigin.copy(tempPosition).normalize().negate();
+            tempQuaternion.setFromUnitVectors(planeNormal, towardOrigin);
+            rollQuat.setFromAxisAngle(towardOrigin, this.random() * Math.PI * 2);
+            tempQuaternion.premultiply(rollQuat);
+
             tempScale.set(size, size * (0.34 + this.random() * 0.24), 1);
 
             tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
@@ -3125,19 +3149,25 @@ export default class BlackHoleTheme extends BaseTheme {
         const parallaxY = -this.smoothedPointerY * 54.0;
 
         // ── Cinematic orbital float ──────────────────────────────────────────────
-        // The camera drifts AROUND the black hole on a gentle, ever-changing Lissajous orbit
-        // instead of hovering at a fixed point: azimuth sweeps, elevation bobs, and the radius
-        // breathes. Because the look target below keeps the shadow framed, the orbit reads as
-        // "floating around it" — the disc tilt and far-side lensing shift continuously while
-        // the black hole itself stays composed. All slow + smoothly interpolated.
+        // The camera circles ALL THE WAY AROUND the black hole (continuous azimuth) while the
+        // elevation floats and the radius dollies in and out. Because the look target below
+        // keeps the shadow framed in camera space, the full revolution reads as "floating
+        // around it" — the disc tilt and far-side lensing sweep through every angle, including
+        // the back, while the hole stays composed. All slow + smoothly interpolated.
+        // + t * 0.075 = one full revolution every ~84 s; the sines add organic wobble.
         const azimuth = this.cameraAzimuthBase
-            + Math.sin(t * 0.043 + this.cameraPhaseA) * 0.5
-            + Math.sin(t * 0.017 + this.cameraPhaseB) * 0.18;
-        const elevation = this.cameraElevationBase + 0.03
-            + Math.sin(t * 0.031 + this.cameraPhaseC) * 0.085;
-        const orbitRadius = this.cameraOrbitRadius
-            * (1 + Math.sin(t * 0.027 + this.cameraPhaseD) * 0.035)
-            - surgePushIn;
+            + t * 0.075
+            + Math.sin(t * 0.021 + this.cameraPhaseA) * 0.30
+            + Math.sin(t * 0.043 + this.cameraPhaseB) * 0.12;
+        // Big vertical float, kept above the disc plane.
+        const elevation = this.cameraElevationBase + 0.10
+            + Math.sin(t * 0.029 + this.cameraPhaseC) * 0.15
+            + Math.sin(t * 0.017 + this.cameraPhaseD) * 0.06;
+        // Dolly in/out: radius swings ~±26% so the hole clearly zooms toward and away.
+        const zoom = 1
+            + Math.sin(t * 0.038 + this.cameraPhaseD) * 0.2
+            + Math.sin(t * 0.013 + this.cameraPhaseA) * 0.08;
+        const orbitRadius = this.cameraOrbitRadius * zoom - surgePushIn;
         const cosEl = Math.cos(elevation);
         const baseX = Math.sin(azimuth) * cosEl * orbitRadius;
         const baseY = Math.sin(elevation) * orbitRadius;
@@ -3152,26 +3182,35 @@ export default class BlackHoleTheme extends BaseTheme {
         const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
         this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
 
-        // ── Off-centre framing ───────────────────────────────────────────────────
-        // The game board occupies the CENTRE of the screen, so bias the look target laterally
-        // (and a touch up) to keep the black hole out of the dead centre and in the visible
-        // side gaps, drifting slowly between them. Offsetting the look target moves the shadow
-        // the opposite way on screen without disturbing the orbital motion above.
-        const frameBiasX = (
-            Math.sin(t * 0.037 + this.cameraPhaseB) * 0.7
-            + Math.sin(t * 0.013 + this.cameraPhaseD) * 0.42
-        ) * 300;
-        const frameBiasY = -60 + Math.sin(t * 0.023 + this.cameraPhaseC) * 45;
+        // ── Off-centre framing (camera-relative) ─────────────────────────────────
+        // The game board occupies the CENTRE of the screen, so bias the look target within
+        // the camera's own right/up axes to keep the black hole out of the dead centre and in
+        // the visible side gaps, drifting slowly between them. Doing this in camera space (not
+        // world space) means the shadow stays off-centre on SCREEN no matter where the full
+        // orbit has carried the camera. Mouse parallax rides the same axes for a true peer.
+        const bhX = this.driftX || 0;
+        const bhY = this.driftY || 0;
+        const bhZ = this.driftZ || 0;
+        this._camFwd.set(bhX - this.camera.position.x, bhY - this.camera.position.y, bhZ - this.camera.position.z)
+            .normalize();
+        this._camRight.crossVectors(this._camFwd, this._worldUp).normalize();
+        this._camUp.crossVectors(this._camRight, this._camFwd).normalize();
 
-        const lookX = this.driftX * 0.3 + frameBiasX
+        const frameBiasX = (
+            Math.sin(t * 0.019 + this.cameraPhaseB) * 0.72
+            + Math.sin(t * 0.041 + this.cameraPhaseD) * 0.34
+        ) * 330;
+        const frameBiasY = -50 + Math.sin(t * 0.023 + this.cameraPhaseC) * 60;
+        const screenRight = frameBiasX
             + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8)
             + parallaxX * 0.32;
-        const lookY = this.driftY * 0.3 + frameBiasY
+        const screenUp = frameBiasY
             + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5)
             + parallaxY * 0.32;
-        const lookZ = this.driftZ * 0.3; // Look target slightly tracks depth
 
-        this.cameraLookTarget.set(lookX, lookY, lookZ);
+        this.cameraLookTarget.set(bhX, bhY, bhZ)
+            .addScaledVector(this._camRight, screenRight)
+            .addScaledVector(this._camUp, screenUp);
         const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
         this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
         this.camera.lookAt(this.cameraLookTargetSmoothed);

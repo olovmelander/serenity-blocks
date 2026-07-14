@@ -256,9 +256,9 @@ export class GameModeManager {
         }
 
         console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`, options);
+        const mode = this.currentMode;
 
         try {
-            const mode = this.currentMode;
             await mode.onStart(options);
 
             if (!mode.isRunning) {
@@ -297,6 +297,16 @@ export class GameModeManager {
             console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to start mode ${this.currentModeId}:`, error);
+            if (mode.isRunning) {
+                try {
+                    await mode.onStop();
+                } catch (cleanupError) {
+                    console.error(
+                        `[GameModeManager] Failed to roll back mode ${this.currentModeId}:`,
+                        cleanupError,
+                    );
+                }
+            }
             throw error;
         }
     }

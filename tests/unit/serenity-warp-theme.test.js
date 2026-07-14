@@ -281,10 +281,11 @@ describe('Serenity Warp theme adapter', () => {
         expect(gameplayFx.enqueue).not.toHaveBeenCalled();
         rafCallbacks.shift()(1000);
 
+        // The discrete combo gate (spectrum-gate) is retired — combos now read through the
+        // scene reaction (tetromino glow + particle burst + surge), so it is NOT forwarded.
         expect(gameplayFx.enqueue.mock.calls.map(([command]) => command.type)).toEqual([
             'phase-seal',
             'line-clear',
-            'spectrum-gate',
             'mobius-twist',
             'perfect-clear',
             'b2b-echo',
@@ -302,10 +303,10 @@ describe('Serenity Warp theme adapter', () => {
             cascadeCount: 1,
         });
         rafCallbacks.shift()(1016.67);
-        const secondFrameTypes = gameplayFx.enqueue.mock.calls.slice(6)
+        const secondFrameTypes = gameplayFx.enqueue.mock.calls.slice(5)
             .map(([command]) => command.type);
         expect(secondFrameTypes).toEqual(['line-clear']);
-        expect(gameplayFx.enqueue.mock.calls[6][0].origin.sideLane.side).toBe('left');
+        expect(gameplayFx.enqueue.mock.calls[5][0].origin.sideLane.side).toBe('left');
 
         window.settings.backgroundComboEffects = false;
         eventBus.emit(EVENTS.PIECE_LOCK, {
@@ -314,7 +315,7 @@ describe('Serenity Warp theme adapter', () => {
         });
         eventBus.emit(EVENTS.TSPIN, { player: 'local', lineCount: 1 });
         rafCallbacks.shift()(1033.34);
-        expect(gameplayFx.enqueue).toHaveBeenCalledTimes(7);
+        expect(gameplayFx.enqueue).toHaveBeenCalledTimes(6);
 
         theme.cleanup();
     });

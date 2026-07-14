@@ -31,8 +31,10 @@ import { MeteorSystem, getMeteorBudget } from './sim/meteor-system.js';
 import { createMeteorRenderer } from './rendering/meteor-renderer.js';
 import { ShockwaveSystem } from './sim/shockwave-system.js';
 import { createShockwaveRenderer } from './rendering/shockwave-renderer.js';
-import { StarlightEmitters } from './sim/starlight-emitters.js';
+import { StarlightReactionDirector } from './sim/starlight-reaction-director.js';
+import { createReactionAdapters } from './sim/starlight-reaction-adapters.js';
 import { StarlightPostPipeline, getStarlightPostProfile } from './post/render-pipeline.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 // Deep-starfield star counts per quality tier (validated in playground on target iGPU).
 const STAR_COUNTS = Object.freeze({
@@ -75,7 +77,7 @@ export default class StarlightTheme extends BaseTheme {
         this.meteorRenderer = null;
         this.shockwaves = null;
         this.shockwaveRenderer = null;
-        this.emitters = null;
+        this.director = null;
         this.postPipeline = null;
         this.postProfile = null;
 
@@ -193,10 +195,10 @@ export default class StarlightTheme extends BaseTheme {
         this.shockwaveRenderer = createShockwaveRenderer(this.shockwaves);
         this.scene.add(this.shockwaveRenderer.mesh);
 
-        // Constellations — earned figures only (ambient accumulation off by default per
-        // plan §4.5: long-lived visual memory is one earned sign, not a clutter of ambient ones).
+        // Constellations — ambient signs ON (art direction: a busy, sign-filled sky, not
+        // the restrained "one earned sign"). Combos scatter more on top (see the director).
         if (this._constellationsEnabledForTier()) {
-            this.constellations = new ConstellationController({ ambient: false });
+            this.constellations = new ConstellationController({ ambient: true });
             this.constellationRenderer = createConstellationRenderer(this.constellations);
             this.scene.add(this.constellationRenderer.group);
         }
@@ -204,9 +206,13 @@ export default class StarlightTheme extends BaseTheme {
         // Post pipeline (MRT selective bloom) — WebGPU only; gated + defensive.
         this._setupPost();
 
-        // Event reactivity (line clears, combos, hard drops, level-ups…).
-        this.emitters = new StarlightEmitters(this);
-        this.eventUnsubscribers.push(this.emitters.attach());
+        // Event reactivity — the StarlightReactionDirector coalesces each lock
+        // resolution into ONE dominant cue (per-player, on a theme-time timeline).
+        // Adapters bind its abstract cues to these subsystems; seal is deferred
+        // until board-rect projection (see starlight-reaction-adapters.js).
+        const { adapters, resolvers } = createReactionAdapters(this);
+        this.director = new StarlightReactionDirector({ adapters, resolvers });
+        this.eventUnsubscribers.push(this.director.attach(eventBus, EVENTS));
 
         this._setupPointer();
         this._setupResize();
@@ -326,6 +332,10 @@ export default class StarlightTheme extends BaseTheme {
                 const raw = this.clock.getDelta();
                 const delta = Number.isFinite(raw) ? Math.min(raw, 0.05) : 0.016;
                 this.time += delta;
+
+                // Reaction director first: flush this frame's coalesced resolution and
+                // fire due beats so their spawns/camera punches land this same frame.
+                this.director?.update(delta);
 
                 this.cameraDirector?.update(delta);
 
@@ -535,7 +545,10 @@ export default class StarlightTheme extends BaseTheme {
             this.postPipeline.dispose();
             this.postPipeline = null;
         }
-        this.emitters = null;
+        if (this.director) {
+            this.director.dispose();
+            this.director = null;
+        }
         if (this.starfield) {
             this.scene?.remove(this.starfield.mesh);
             this.starfield.dispose();

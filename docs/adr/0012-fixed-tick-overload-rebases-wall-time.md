@@ -61,6 +61,41 @@ cannot write any local or Steam legacy sink until §5.8 versions those stores.
 The remaining legacy BoardJuice global-input decoration is owned by a UI-layer identity adapter, not the
 core mode, and disposal restores globals only while that exact adapter is still installed.
 
+Odyssey is the fourth default-off consumer. It latches one clock for the whole mode activation and copies
+that identity into each generation-fenced level-attempt bundle, so retry cannot mix clock rules or retarget
+an old cascade continuation. Fixed attempts use FrameRateController as their sole timer, drain player-0
+input inside the canonical tick, move time/victory/roof decisions to the stable `afterTick` boundary, and
+keep render observer-only. Infinity-based authored levels use the board-derived spawn policy with a virtual
+simulation window that includes their starting garbage rows and an explicit first-spawn bottom anchor;
+later spawns return to occupied-board derivation. This preserves legacy feel without allowing Phaser
+camera interpolation to write simulation state. Experimental/unknown clocks may
+show run metrics and preview stars, but cannot mutate campaign progress/attempt/session saves, query or
+write Steam boards, or emit the save-driven cloud sync until Phase 5.8 versions those sinks.
+
+Local Multiplayer is the fifth default-off consumer for standard all-human matches. One match-wide
+runtime owns the accumulator and advances eligible boards in stable player-index order, so every render
+callback completes zero or more whole player barriers. The match clock persists across round resets;
+per-board clocks and a round-duration baseline restart. Fixed result-rate metrics use the captured match
+and round simulation clock rather than countdown, pause, victory-animation, or teardown wall time.
+Per-player keyboard/gamepad adapters claim exact GameState identities and drain the shared input engine
+inside each board tick. Top-outs are collected through the exact round owner and resolved once after the
+current barrier, with one batch win-condition check, so simultaneous deaths cannot award a lower-index
+player by traversal order.
+
+The Local adapter never displaces a foreign FrameRateController or input adapter. If either controller
+cannot accept exact ownership, every board is atomically relatched to `legacy-variable-v1` and the
+extracted legacy RAF path starts instead. Bots, Hot Potato, time limits, and Infinity LMS also fail closed
+to that whole-match fallback because they still use unseeded randomness, wall-time policy, or a
+renderer-derived simulation camera. This is migration infrastructure only; asynchronous cascade
+continuations, always-seeded match artifacts, remaining rule variants, and §5.8 result versions are open.
+
+Supported fixed-clock starts now capture an immutable legacy RNG descriptor before the first piece bag.
+Single Player does so independently of demo recording; fixed Infinity and Odyssey attempts own the same
+descriptor in their lifecycle bundles; and Local Multiplayer shares one descriptor across every player
+and fences in-place round resets by descriptor identity. This preserves the shipped LCG while making the
+dark fixed paths reproducible. It does not activate `rngV2` or make the RNG algorithm negotiable; §5.8
+still owns that rule change.
+
 The timer-free single-board runner exposes an `afterTick` maintenance seam. It runs only while the
 captured generation and exact `GameState` still own the session, after `advanceTick` completes and
 before another catch-up tick begins. A stopped or replaced owner cannot receive the callback, and a
@@ -80,8 +115,8 @@ recovery.
 - Short stalls below 300 ms are time-conserving and drain over bounded callbacks instead of being
   silently dropped.
 - Overload cannot create a catch-up death spiral or impossible gaps in replay/input tick IDs.
-- Normal single-player and Infinity can exercise the canonical clock behind `fixedTick` without changing
-  Odyssey, Local MP, DemoPlayer, or any flag-off legacy loop.
+- Normal single-player, Infinity, Odyssey, and standard all-human Local Multiplayer can exercise the
+  canonical clock behind `fixedTick` without changing DemoPlayer or any flag-off legacy loop.
 - Fixed-clock demo recordings use rules version 2.1 and are stamped `fixed60-v1`; legacy recordings
   remain version 2.0. The legacy DemoPlayer accepts explicit or
   missing `legacy-variable-v1` only and rejects fixed artifacts until a fixed replay adapter exists,
@@ -118,6 +153,22 @@ parity, and hit-stop independence from live settings/theme tiers.
 `infinity-fixed-tick-determinism.test.js` composes the real runner, seeded board-anchor spawn policy,
 zero-wave fixed lock/spawn, and Infinity maintenance to an equal canonical projection at 30/60/144 Hz.
 `legacy-board-juice-input-wrapper.test.js` pins active-session decoration and replacement-safe disposal.
+`odyssey-fixed-tick-mode.test.js` pins activation-clock latching, FRC/input ownership, fixed command timing,
+observer-only render, stable victory/roof maintenance, authored starting-row spawn parity, legacy loop
+shape, and fail-closed campaign/Steam/deactivation behavior. `odyssey-level-session-lifecycle.test.js`
+pins exact attempt retirement and cascade draining; the focused Odyssey results/failure modal compatibility
+suites pin explicit unranked presentation and zero Steam leaderboard reads.
+`local-multiplayer-fixed-tick.test.js` pins the shared player barrier, 30/60/144 cadence, overload and
+pause-debt policy, match-versus-round clocks, exact per-player input routing, and stale-owner disposal.
+`local-multiplayer-fixed-tick-determinism.test.js` composes four real seeded boards, canonical commands,
+fixed spawn callbacks, board digests, and PRNG projections at 30/60/144 Hz; the production-controller
+input-routing suite pins keyboard P1 plus gamepad P2-P4 ownership and same-player device rejection.
+`session-rng.test.js` pins strict seed-zero handling, descriptor immutability, legacy sequence/bag/cursor
+parity, controlled generation, and descriptor/generator reset as one lifecycle boundary.
+`local-multiplayer-fixed-mode.test.js` pins sole FRC/render ownership, fixed command/callback policy,
+unsupported whole-match fallback, foreign/refused-owner preservation, legacy RAF parity, batched top-out
+resolution, and fixed simulation-time result metrics. `local-multiplayer-loop-ownership.test.js` pins
+configuration, loop, round-reset, and delayed continuation generations across stop/replacement.
 `single-player-fixed-tick.test.js` additionally pins `afterTick`
 ordering, stale/stop/replacement fencing, and throw/debt semantics;
 `infinity-simulation-maintenance.test.js` pins the renderer-free Infinity truth seam.

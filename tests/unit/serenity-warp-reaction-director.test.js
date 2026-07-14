@@ -157,6 +157,110 @@ describe('SerenityWarpReactionDirector', () => {
         expect(rR.bloom).toBeCloseTo(nR.bloom, 6);
     });
 
+    it('kicks the camera only on big beats — never on locks or under reduced motion', () => {
+        const lock = new SerenityWarpReactionDirector();
+        lock.pulse('pieceLock');
+        expect(lock.update(FRAME).cameraKick).toBe(0);
+
+        const tetris = new SerenityWarpReactionDirector();
+        tetris.pulse('lineClear', { lineCount: 4 });
+        expect(tetris.update(FRAME).cameraKick).toBeGreaterThan(0);
+
+        const reduced = new SerenityWarpReactionDirector({ reducedMotion: true });
+        reduced.pulse('lineClear', { lineCount: 4 });
+        expect(reduced.update(FRAME).cameraKick).toBe(0);
+    });
+
+    it('crosses combo milestone tiers [4,7,10] once per chain, vertigo at 7+, apex at 10', () => {
+        const d = new SerenityWarpReactionDirector();
+
+        d.pulse('combo', { comboCount: 4 });
+        d.update(FRAME);
+        expect(d.drainBeats().map((b) => b.tier)).toEqual([4]);
+        expect(d.getReactionState().vertigo).toBe(0); // tier 4 < 7
+
+        d.pulse('combo', { comboCount: 7 });
+        d.update(FRAME);
+        expect(d.drainBeats().map((b) => b.tier)).toEqual([7]);
+        expect(d.getReactionState().vertigo).toBeGreaterThan(0); // dolly-zoom armed
+
+        d.pulse('combo', { comboCount: 10 });
+        d.update(FRAME);
+        const apexBeats = d.drainBeats();
+        expect(apexBeats[0].tier).toBe(10);
+        expect(apexBeats[0].apex).toBe(true);
+
+        // Same chain climbing further → no re-fire.
+        d.pulse('combo', { comboCount: 12 });
+        d.update(FRAME);
+        expect(d.drainBeats()).toEqual([]);
+    });
+
+    it('re-arms combo tiers after a chain break', () => {
+        const d = new SerenityWarpReactionDirector();
+        d.pulse('combo', { comboCount: 5 });
+        d.update(FRAME);
+        expect(d.drainBeats().map((b) => b.tier)).toEqual([4]);
+        d.pulse('combo', { comboCount: 1 }); // chain break
+        d.update(FRAME);
+        d.pulse('combo', { comboCount: 4 });
+        d.update(FRAME);
+        expect(d.drainBeats().map((b) => b.tier)).toEqual([4]);
+    });
+
+    it('gates the combo-10 apex behind a cooldown across chains', () => {
+        const d = new SerenityWarpReactionDirector();
+        d.pulse('combo', { comboCount: 10 });
+        d.update(FRAME);
+        expect(d.drainBeats().some((b) => b.apex)).toBe(true);
+
+        // New 10-chain immediately (within cooldown) → tiers re-cross but NO apex.
+        d.pulse('combo', { comboCount: 1 });
+        d.update(FRAME);
+        d.pulse('combo', { comboCount: 10 });
+        d.update(FRAME);
+        expect(d.drainBeats().some((b) => b.apex)).toBe(false);
+
+        advance(d, 6); // wait out the ~5s cooldown
+        d.pulse('combo', { comboCount: 1 });
+        d.update(FRAME);
+        d.pulse('combo', { comboCount: 10 });
+        d.update(FRAME);
+        expect(d.drainBeats().some((b) => b.apex)).toBe(true);
+    });
+
+    it('flings the field (warp scatter) on the apex + perfect clear, returns to rest, off under reduced motion', () => {
+        const d = new SerenityWarpReactionDirector();
+        d.pulse('combo', { comboCount: 4 });
+        d.update(FRAME);
+        expect(d.getReactionState().scatter).toBe(0); // small combo does not fling
+
+        d.pulse('combo', { comboCount: 10 });
+        d.update(FRAME);
+        expect(d.getReactionState().scatter).toBeGreaterThan(0); // apex flings the field
+        advance(d, 1.4); // bell completes
+        expect(d.getReactionState().scatter).toBeLessThan(0.05); // reforms
+
+        const pc = new SerenityWarpReactionDirector();
+        pc.pulse('perfectClear');
+        pc.update(FRAME);
+        expect(pc.getReactionState().scatter).toBeGreaterThan(0);
+
+        const reduced = new SerenityWarpReactionDirector({ reducedMotion: true });
+        reduced.pulse('perfectClear');
+        reduced.update(FRAME);
+        expect(reduced.getReactionState().scatter).toBe(0);
+    });
+
+    it('spins the field on big beats, disabled under reduced motion', () => {
+        const normal = new SerenityWarpReactionDirector();
+        normal.pulse('lineClear', { lineCount: 4 });
+        expect(normal.update(FRAME).spin).toBeGreaterThan(0);
+        const reduced = new SerenityWarpReactionDirector({ reducedMotion: true });
+        reduced.pulse('lineClear', { lineCount: 4 });
+        expect(reduced.update(FRAME).spin).toBe(0);
+    });
+
     it('intensity 0 mutes the whole reaction', () => {
         const d = new SerenityWarpReactionDirector({ intensity: 0 });
         d.pulse('perfectClear');

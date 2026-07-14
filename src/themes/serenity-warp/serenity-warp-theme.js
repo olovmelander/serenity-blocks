@@ -61,6 +61,7 @@ export default class SerenityWarpTheme extends BaseTheme {
         this.gameplayFxController = null;
         this.gameplayFx = null;
         this.reactionDirector = null;
+        this._lastReactionOrigin = { x: 0.5, y: 0.42 };
         this.reducedMotionQuery = null;
         this.animationLoopStarted = false;
         this.elapsedTime = 0;
@@ -355,12 +356,30 @@ export default class SerenityWarpTheme extends BaseTheme {
 
     forwardGameplayCommands() {
         const commands = this.gameplayFxController?.drainCommands?.() || [];
-        if (!this.gameplayFx || !this.areGameplayEffectsEnabled()) return;
+        if (commands.length === 0 || !this.areGameplayEffectsEnabled()) return;
 
         const showPhaseSeal = typeof window === 'undefined'
             || window.settings?.pieceLockRipple !== false;
         for (let index = 0; index < commands.length; index += 1) {
             const command = commands[index];
+
+            // Native scene reaction: burst the tunnel's OWN compute particles at the event
+            // origin so the effect reads as the scene reacting, not a floating decal.
+            const normalized = command.origin?.normalized;
+            if (normalized && Number.isFinite(normalized.x) && Number.isFinite(normalized.y)) {
+                this._lastReactionOrigin = { x: normalized.x, y: normalized.y };
+                const heavy = command.type === SERENITY_WARP_FX_COMMAND.SPECTRUM_GATE
+                    || command.type === SERENITY_WARP_FX_COMMAND.PERFECT_CLEAR
+                    || command.type === SERENITY_WARP_FX_COMMAND.MOBIUS_TWIST;
+                this.visual?.pulseReactionAt?.(normalized.x, normalized.y, heavy ? 1.5 : 0.7);
+            }
+
+            // The discrete combo "gate" ring read as a disconnected decal; combos now live
+            // in the SCENE reaction (tetromino glow + particle burst + tunnel surge), so the
+            // ring geometry is retired. Locks keep their solid stamp (plus the burst above).
+            if (command.type === SERENITY_WARP_FX_COMMAND.SPECTRUM_GATE) continue;
+
+            if (!this.gameplayFx) continue;
             if (!showPhaseSeal && command.type === SERENITY_WARP_FX_COMMAND.PHASE_SEAL) continue;
             try {
                 this.gameplayFx.enqueue?.(command);
@@ -416,6 +435,23 @@ export default class SerenityWarpTheme extends BaseTheme {
             if (this.reactionDirector) {
                 const reaction = this.reactionDirector.update(delta);
                 this.visual?.setReactionState?.(reaction);
+                // Milestone beats fan a burst of the tunnel's own particles across the
+                // scene — tiered count, with the combo-10 apex filling the whole tunnel.
+                const beats = this.reactionDirector.drainBeats?.();
+                if (beats && beats.length && this._lastReactionOrigin) {
+                    for (let index = 0; index < beats.length; index += 1) {
+                        const beat = beats[index];
+                        let count = 2;
+                        if (beat.apex) count = 5;
+                        else if (beat.tier >= 7) count = 3;
+                        this.visual?.pulseReactionSpread?.(
+                            this._lastReactionOrigin.x,
+                            this._lastReactionOrigin.y,
+                            count,
+                            beat.apex ? 1.6 : 1.2,
+                        );
+                    }
+                }
             }
             this.forwardGameplayCommands();
             try {

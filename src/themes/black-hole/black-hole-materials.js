@@ -470,7 +470,7 @@ export function createStarfieldNodeMaterial(params = {}) {
         return aPosition;
     })();
 
-    const starLuma = clamp(aTwinkle, float(0.4), float(0.9));
+    const starLuma = clamp(aTwinkle, float(0.55), float(1.0));
 
     material.positionNode = basePosition;
     const viewPos = modelViewMatrix.mul(vec4(basePosition, float(1.0)));
@@ -481,13 +481,14 @@ export function createStarfieldNodeMaterial(params = {}) {
     const distToCenter = length(vec2(toCenter.x, toCenter.y));
     const stretchZone = float(1.0).sub(smoothstep(float(260.0), float(760.0), distToCenter));
     const stretchFactor = float(1.0).add(stretchZone.mul(0.55));
-    material.sizeNode = min(
-        float(15.0),
-        max(
-            float(2.6),
-            aSize.mul(float(1200.0)).div(depth).mul(float(1.0).add(stretchZone.mul(0.12))),
-        ),
-    );
+    // Apparent size tracks each star's magnitude (aSize) so distant stars VARY — most stay
+    // crisp ~1.7px pinpoints and only the bright few bloom to several px — instead of every
+    // far star clamping to one uniform ~3px blob (which read as generic "twinkle" sprites).
+    // sizeAttenuation is off (screen-space px); the depth term only adds mild near/far spread.
+    const depthScale = clamp(float(4200.0).div(depth), float(0.55), float(1.35));
+    const starPixels = aSize.mul(float(0.82)).mul(depthScale)
+        .mul(float(1.0).add(stretchZone.mul(0.12)));
+    material.sizeNode = clamp(starPixels, float(1.7), float(15.0));
 
     const center = uv().sub(0.5);
     const dir2d = normalize(toCenter.xy.add(vec2(0.0001, 0.0001)));
@@ -497,14 +498,22 @@ export function createStarfieldNodeMaterial(params = {}) {
     const stretched = vec2(along, across.div(stretchFactor));
     const dist = length(stretched);
     const radial = max(float(0.0), float(1.0).sub(dist.mul(2.0)));
-    const halo = pow(radial, float(1.9));
-    const core = float(1.0).sub(smoothstep(float(0.0), float(0.2), dist));
-    const alpha = halo.mul(0.26).add(core.mul(0.42)).mul(starLuma);
-    const color = mix(aColor, vec3(1.0, 1.0, 1.0), core.mul(0.08));
+    // Sharper profile: a solid bright core with only a tight glint of halo, so stars read as
+    // crisp distant pinpoints rather than soft fuzzy sparkles. The ~2x brightness that lets
+    // stars survive the Extreme post pipeline (exposure 0.96 + ACES + a 0.5 vignette) now
+    // lives mostly in the core term instead of a broad glow.
+    const halo = pow(radial, float(2.6));
+    const core = float(1.0).sub(smoothstep(float(0.0), float(0.26), dist));
+    const alpha = clamp(
+        halo.mul(0.24).add(core.mul(0.92)).mul(starLuma),
+        float(0.0),
+        float(1.0),
+    );
+    const color = mix(aColor, vec3(1.0, 1.0, 1.0), core.mul(0.12));
 
-    material.colorNode = color.mul(float(0.68).add(starLuma.mul(0.22)));
+    material.colorNode = color.mul(float(0.95).add(starLuma.mul(0.4)));
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha.mul(0.28));
+    material.emissiveNode = color.mul(alpha.mul(0.5));
 
     material.userData = { uBlackHolePos };
 
@@ -713,9 +722,11 @@ export function createNebulaCloudNodeMaterial(map, params = {}) {
     const colorValue = sample.rgb;
 
     material.colorNode = colorValue;
-    const cloudOpacity = sample.a.mul(useInstanceColor ? 0.24 : 0.55);
+    // Nudged up for more presence: opacity 0.24->0.40, emissive 0.38->0.60 on the instanced
+    // (theme) path. Additive, so both stack — a soft, visible backdrop haze, not a wash.
+    const cloudOpacity = sample.a.mul(useInstanceColor ? 0.4 : 0.55);
     material.opacityNode = cloudOpacity;
-    material.emissiveNode = colorValue.mul(cloudOpacity).mul(0.38);
+    material.emissiveNode = colorValue.mul(cloudOpacity).mul(0.6);
 
     return material;
 }

@@ -16,6 +16,7 @@ import { columnsToMask, maskArrayToBits } from '../garbage.js';
 import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
+import { bindLegacySessionRng } from '../session-rng.js';
 
 const ODYSSEY_SEED_HOLE_PATTERNS = Object.freeze([
     [4],
@@ -79,9 +80,10 @@ export class GameplayHybridEngine {
 
     /**
      * Create a GameState configured for the current level
+     * @param {Object} [gameStateOverrides] - Fixed-clock-only supplemental options
      * @returns {GameState}
      */
-    createGameState() {
+    createGameState(gameStateOverrides = {}) {
         if (!this.levelConfig) {
             throw new Error('[HybridEngine] Must call configure() before createGameState()');
         }
@@ -92,7 +94,27 @@ export class GameplayHybridEngine {
         // Determine if using infinity mode features
         const isInfinityBased = mechanics.baseMode === 'infinity' || mechanics.baseMode === 'hybrid';
 
+        // Keep authored Odyssey mechanics authoritative. This optional seam exists only
+        // for deterministic clock/input policy; it is not a general override bag.
+        const supplementalOptions = {
+            ...(gameStateOverrides.inputHandling !== undefined
+                ? { inputHandling: gameStateOverrides.inputHandling }
+                : {}),
+            ...(gameStateOverrides.hitStopEnabled !== undefined
+                ? { hitStopEnabled: gameStateOverrides.hitStopEnabled }
+                : {}),
+            ...(gameStateOverrides.infinitySpawnPolicy !== undefined
+                ? { infinitySpawnPolicy: gameStateOverrides.infinitySpawnPolicy }
+                : {}),
+            ...(gameStateOverrides.infinityVisibleRows !== undefined
+                ? { infinityVisibleRows: gameStateOverrides.infinityVisibleRows }
+                : {}),
+            ...(gameStateOverrides.rngSeed !== undefined
+                ? { rngSeed: gameStateOverrides.rngSeed }
+                : {}),
+        };
         const options = {
+            ...supplementalOptions,
             isInfinityMode: isInfinityBased,
             maxRows: mechanics.board.rows || ROWS,
             disableLevelProgression: !mixer.hasLevelProgression(),
@@ -101,6 +123,9 @@ export class GameplayHybridEngine {
         };
 
         this.gameState = new GameState(options);
+        if (supplementalOptions.rngSeed !== undefined) {
+            bindLegacySessionRng(this.gameState, supplementalOptions.rngSeed);
+        }
 
         // Set starting level
         this.gameState.level = mechanics.speed.startLevel || 1;

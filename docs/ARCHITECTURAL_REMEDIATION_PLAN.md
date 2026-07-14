@@ -455,6 +455,12 @@ The Riot/Factorio retrofit playbook, adapted:
 - **The trap the old plan missed:** `demo-state.js:restoreGameStateSnapshot` and FFA `_applySnapshotState` bulk-assign fields — the boundary must include a **sanctioned bulk-restore** (`restore()`) or those two become permanent bypasses.
 - **Validation:** fitness rule: no direct writes to the core field set outside `game.js` (baseline-then-shrink); the per-lock rebuild count drops (free perf win — one grid, no rebuilds).
 
+**Completion note (2026-07-13):** closed. External garbage and snapshot writes now pass through
+`applyGarbage()` and `restoreBoardState()`; render synchronization is version-gated instead of
+rebuilding the board every frame; and the shrink-only `board-write-sites` fitness ratchet holds at
+17 sanctioned legacy sites. `markBoardDirty` is exported only by the canonical `board.js` module,
+so `game.js` no longer provides a second mutation-surface alias.
+
 ### 5.2 Pure synchronous `resolveCascade` *(L)*
 - **What:** extract `resolveCascade(boardGrid, lockContext) → {boardAfter, waves, holeMasks, scoreDelta, levelProgression, perfectClear}` from the 350-line async `processPhysics` while-loop; `physics.js` computes the full result first, then drives flash/gravity animation as a *replay of precomputed waves*. Adopt the stack-pop flood fill (the live `findConnectedComponents` uses `queue.shift()` — O(n²) confirmed at `physics.js:118`; matters on 1000-row Infinity boards) + scratch-buffer reuse.
 - **What will fight back (measured, previously unstated):**
@@ -587,7 +593,7 @@ Normal single-player is the second default-off `fixedTick` consumer. Its existin
 the exact `GameState` plus session generation, while render remains decoupled. Player-0 keyboard and
 gamepad use identity-guarded adapters over the shared GameState-owned input engine, with first-device
 arbitration and pause/stop clearing. The flag-off standard and hybrid callback shapes remain pinned,
-DemoPlayer never installs the adapter, and Odyssey, Local MP, `updateGame`, and the global legacy
+DemoPlayer never installs the adapter, and Local MP, `updateGame`, and the global legacy
 loops are unchanged. Fixed recordings use rules version 2.1 and declare
 `sim.simulationClock = fixed60-v1`; the current
 legacy replay engine rejects them clearly rather than interpreting their tick-stamped commands under
@@ -619,10 +625,51 @@ clocks are explicitly unranked and fail closed before every local or Steam legac
 those stores. A real seeded zero-wave fixture composes board-anchor spawning, the runner, synchronous
 fixed lock/spawn, and a 10-row maintenance expansion to the same canonical projection at 30/60/144 Hz.
 
+Odyssey is the fourth default-off `fixedTick` consumer. The mode latches one simulation clock per
+activation and copies it into every generation-fenced attempt, so retry cannot mix fixed and legacy rules.
+Its existing `FrameRateController` is the sole fixed timer; player-0 keyboard/gamepad edges drain inside
+`advanceTick`, fixed drops carry the canonical input-phase token, and fixed hit-stop no longer depends on
+live settings or theme tiers. Render only synchronizes presentation. Canonical tick completion owns level
+time, score/victory evaluation, and stable Infinity roof maintenance; attempt retirement synchronously
+disposes the exact input/runtime owner before draining captured cascade physics.
+
+Infinity/hybrid Odyssey levels use board-anchor spawning and reject Phaser-derived `cameraRow` writes.
+Their deterministic virtual window includes authored starting garbage and bottom-anchors only its first
+spawn; later spawns return to occupied-board derivation. This preserves the legacy first-spawn row for
+0/6/16-row fixtures while removing renderer interpolation from simulation truth. Fixed and unknown
+attempts show explicit experimental/unranked completion or failure messaging, but cannot write campaign
+completion, unlocks, attempts, session playtime, local storage/cloud events, or Steam stats/leaderboards.
+The flag-off HybridEngine call, RAF/hybrid callback shapes, campaign persistence, and Steam behavior remain
+pinned. This adapter is infrastructure only: async cascade animation and victory-lap document input still
+sit outside canonical tick ownership, so it is not Odyssey determinism certification or Phase 5.3 graduation.
+
+Local Multiplayer is the fifth default-off consumer for the deliberately narrow standard, all-human
+rules envelope. One shared match accumulator advances every eligible board in stable player-index order
+under the existing `FrameRateController`; four independent catch-up planners are forbidden. Keyboard and
+gamepad adapters claim exact per-player `GameState` identities, arbitrate the active device per player,
+and drain the GameState-owned DAS/edge queues only inside that player's canonical tick. Fixed drops carry
+the canonical input-phase token, hit-stop uses the match-latched policy, and render only synchronizes
+boards and presentation stats. The match clock survives in-place round resets while each board clock and
+the round-duration baseline restart. Fixed rate metrics use captured simulation time, excluding countdown,
+pause, victory animation, and delayed teardown wall time.
+
+Round replacement synchronously retires the exact timer/input owner, marks the captured boards stopped,
+and drains their cascade promises before reset. Fixed top-outs queue until the full player barrier has
+completed, then one stable batch applies deaths and evaluates the round/match outcome; simultaneous 2P
+top-outs are a draw rather than an index-order victory. Occupied/refusing frame or input owners are never
+stolen: startup atomically relatches every board to `legacy-variable-v1` and uses the extracted legacy RAF
+loop. Bots, Hot Potato, time limits, and Infinity LMS likewise fall back as a whole because their current
+truth still depends on unseeded randomness, wall time, or renderer-derived camera state. Flag-off DAS,
+bot, blind, Infinity, Hot Potato, render, and callback behavior remains pinned.
+
+This Local adapter is infrastructure, not determinism certification: seeds are not yet match artifacts,
+animated cascade continuations are still asynchronous, unsupported rule variants remain on the legacy
+loop, and §5.8 has not established a canonical Local result/artifact version.
+
 This is not 5.3 graduation or the full input-unblock KPI. `fixedTick` remains default-off while
 animated cascade completion and its deferred move/rotate replay run through animation promises and
 timers outside the canonical tick. The FFA fixed clock fails closed to legacy when the jitter buffer is
-disabled. Cascade animation/input decoupling, Odyssey/Local-MP adapters, automatic
+disabled. Cascade animation/input decoupling, Local-MP variant migration, automatic
 host-stall realignment under physical/browser background-resume behavior,
 wall-time hot-potato/deadlines, complete migration continuation state, and legacy-loop collapse
 remain open.
@@ -657,8 +704,10 @@ input semantics and capture handling, while seek suppresses checkpoint DAS resto
 replaying repeats twice; unsupported rules/input/tick headers fail closed before mode startup. Still
 Legacy keyboard and gamepad millisecond paths now also delegate to `core/das.js` without changing
 their lifecycle or return contracts; a zero-baseline `das-algorithm-clones` fitness rule prevents
-repeat arithmetic from returning to either UI controller. Still open: local-MP per-player cutover,
-online handshake/snapshot handling fields, and physical keyboard/gamepad feel validation.
+repeat arithmetic from returning to either UI controller. Local MP's default-off fixed path now
+binds keyboard/gamepad adapters to each exact player state, arbitrates the active device per player,
+and advances every player's repeats under one shared match clock. Still open: online
+handshake/snapshot handling fields and physical keyboard/gamepad feel validation.
 
 ### 5.5 Collapse the loops *(M)*
 - **What:** the real inventory is **five live sim-loop implementations plus two reachable legacy fallbacks** (recursive `gameLoop`; `FrameRateController` hybrid; `LocalMultiplayerMode`'s rAF **which bypasses `updateGame` and re-implements hit-stop/blind inline**; `UnifiedMultiplayerLoop`; `DemoPlayer`'s loop; plus `main.js:4804/4852` legacy loops — one of which double-advances DAS — reachable via the catch at `main.js:4329-4341`). Collapse onto one runner owning delta clamp, pause policy (carrying `neverPause` — the competitive-MP must-not-pause latch, `unified-game-loop.js:22-25`), hit-stop, blind timers, and catch-up. **Delete** the legacy `main.js` loops outright; retire `MAX_CONCURRENT_LOOPS`.
@@ -669,9 +718,19 @@ online handshake/snapshot handling fields, and physical keyboard/gamepad feel va
 each start and on stop. The previously paused loop therefore cannot resume beside the new owner after
 every round restart. Its asynchronous start sequence is separately generation-fenced across theme,
 intro, loader, and countdown waits, so deactivation cannot later spawn pieces, reveal boards, play
-countdown sounds, or start a stale loop. This is lifecycle hardening only; Local MP still needs the
-canonical fixed-loop cutover before its per-player keyboard/gamepad adapters can safely claim and drain
-tick-stamped input.
+countdown sounds, or start a stale loop. The extracted legacy loop remains the whole-match rollback
+path, while the standard all-human rules envelope can run through one shared canonical accumulator
+with exact timer/input ownership and stable same-tick top-out arbitration. The flag remains default-off;
+unsupported Local variants, DemoPlayer, the mode-owned flag-off loops, and final one-runner deletion are
+still open, so this is not §5.5 graduation.
+
+The two reachable `main.js` error-fallback schedulers are now deleted rather than migrated. `startGame()`
+activates and starts only through `GameModeManager`; a failed start never launches the old single-player
+or two-player loop, and the manager best-effort stops the exact mode if it had already claimed running
+ownership. The retired countdown, loop, and stats methods plus their imports removed 315 lines from
+`main.js`; a source tripwire prevents that parallel family from returning. The shared core `gameLoop`,
+DemoPlayer, Unified Multiplayer, and Local's extracted whole-match rollback remain live consumers and
+must be converged separately.
 
 ### 5.6 PRNG + always-seeded starts *(M)*
 - **What:** replace the 233,280-state LCG with **sfc32 (quality) or splitmix32 (simplicity)**, seeded via xmur3 from a ≥64-bit match seed, with **per-subsystem streams derived by label** (`xmur3(seed + ":pieces:" + playerId)`, `":garbage:" + playerId`, …) so one subsystem's draw count can never shift another's sequence — and a late joiner can reconstruct *their own* stream from (seed, playerId, drawCount) independent of everyone else.
@@ -687,6 +746,17 @@ round seed rather than the stale prior-round seed; the sidecar remains the owner
 cursor. This intentionally leaves the LCG and all generated sequences unchanged; `rngV2`
 cannot select a live algorithm until the choice is session-global and represented by the demo/sim-
 version gates.
+
+`session-rng.js` now owns strict uint32 seed normalization, crypto-first seed generation, the frozen
+`{ algorithm: 'lcg-v1', seed, stream: 'pieces:shared-v1' }` session descriptor, and the one binder for
+the existing LCG. Every new non-demo Single Player session binds before its first bag independently of
+recording. Fixed-clock Infinity and Odyssey attempts do the same while their flag-off legacy paths stay
+unchanged. Local Multiplayer's initial and round-reset paths now share one captured descriptor across
+all player boards; reset clears both the descriptor and stale shared seed, and round ownership fences
+descriptor replacement even though player objects are reused. Production-path 30/60/144 fixtures now
+exercise this LCG seam rather than manually injecting the future sfc32 implementation. `rngV2` remains
+dark: selecting sfc32 still waits for the §5.8 session-global algorithm/rules gate, and unseeded legacy
+constructors/fallbacks are not yet §5.6 graduation.
 
 ### 5.7 Canonical match artifact *(M)*
 - **What:** one frame-indexed artifact serving replay, netcode debugging, telemetry, and support (Quadra #2/#3/#9 as the model):

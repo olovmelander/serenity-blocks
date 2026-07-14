@@ -15,7 +15,7 @@ import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
 } from '../../src/core/infinity-spawn-policy.js';
 import { maintainInfinitySimulation } from '../../src/core/infinity-simulation-maintenance.js';
-import { createSfc32Random } from '../../src/core/rng.js';
+import { bindLegacySessionRng } from '../../src/core/session-rng.js';
 
 const PRESENTATION_RATES = [30, 60, 144];
 
@@ -49,8 +49,8 @@ function runSeededInfinitySession(presentationRate) {
         infinityVisibleRows: 20,
         maxRows: 52,
     });
-    const random = createSfc32Random('infinity-fixed-tick-seed', 'pieces:P1');
-    gameState.randomGenerator = random;
+    const descriptor = bindLegacySessionRng(gameState, 0x1f1f1f1f);
+    const { randomGenerator: random } = gameState;
     fillBag(gameState.nextPieces, random);
     spawnPiece(gameState);
 
@@ -132,7 +132,10 @@ function runSeededInfinitySession(presentationRate) {
         physicsStable: gameState.isProcessingPhysics === false,
         pieceCounts: { ...gameState.pieceCounts },
         piecesPlaced: gameState.piecesPlaced,
-        rngState: random.getState(),
+        rngState: {
+            descriptor,
+            state: random.getState(),
+        },
         runtimeAccumulatorMs: Math.abs(runtime.accumulatorMs) < 1e-9
             ? 0
             : runtime.accumulatorMs,
@@ -177,6 +180,13 @@ describe('Infinity fixed-tick composition determinism', () => {
             .toBe(true);
         expect(at60.runtimeAccumulatorMs).toBeCloseTo(0, 8);
         expect(at60.simTimeMs).toBeCloseTo(1000, 8);
-        expect(at60.rngState.drawCount).toBeGreaterThan(0);
+        expect(at60.rngState).toMatchObject({
+            descriptor: {
+                algorithm: 'lcg-v1',
+                seed: 0x1f1f1f1f,
+                stream: 'pieces:shared-v1',
+            },
+            state: expect.any(Number),
+        });
     });
 });

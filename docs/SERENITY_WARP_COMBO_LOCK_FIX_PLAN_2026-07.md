@@ -1,6 +1,6 @@
 # Serenity Warp — Combo + Lock Effects Fix Plan (Hybrid Direction)
 
-- **Status:** Diagnosis complete and evidence-backed; implementation not started
+- **Status:** Waves 1–3 IMPLEMENTED + playground-verified (2026-07-13); Waves 4/6 (board-rect placement + in-game capture) remain — need the real game with a board. See §12 Progress.
 - **Scope:** `src/themes/serenity-warp/` lock and combo reactions, plus a small **opt-in, default-identity** reactive surface on the shared intro renderer. The intro's own visuals must stay byte-identical when the theme is not driving them.
 - **Governance:** `CLAUDE.md` (intro is the single source of visual truth; validate WebGPU/TSL with screenshots before "done"), `docs/ARCHITECTURE_INDEX.md`, `docs/adr/`, `docs/WEBGPU_THREEJS_WORKFLOW.md`.
 - **Visual thesis:** **Chromatic Warp Response — Phase Seal (bold piece stamp) → Tunnel Surge (whole scene reacts) → Sevenfold Spectrum Gate (hero portal).**
@@ -249,3 +249,28 @@ Real `prefers-reduced-motion` shortening, quality-tiered instanced budgets, the 
 
 ### Sharpened priority
 The four studies unanimously point at the same #1 lever: **Wave 2's scene-wide director surge.** It is where the "wow" gap lives; the discrete gate redesign (Wave 3) is secondary. Build the director scalar + renderer surge levers first, screenshot the tunnel actually surging, then layer the hero gate and camera on top.
+
+---
+
+## 12. Progress (2026-07-13)
+
+**Waves 1–3 implemented and playground-verified. 49 Serenity Warp unit tests pass, lint clean.**
+
+### Wave 1 — Phase Seal v2 (lock) ✅
+- `src/playground/effects/serenity-warp-phase-seal.effect.js` — solid rounded-rect stamp (fill + piece-tinted rim + core glow + halo), converging motes, shock-ring, reduced-motion form, `pieces=all` silhouette gallery.
+- Verified WebGPU (T + all 7 silhouettes + birth/settle/fade envelope), reduced-motion, `forceWebGL=1` (backend WebGL2, clean). Artifacts `serenity-warp-phase-seal-v2-*.png`.
+
+### Wave 2 — Tunnel Surge (whole-scene reaction) ✅
+- `threejs-intro-renderer-webgpu.js`: opt-in `setReactionState({surge,bloom,chroma,cameraKick})` — `warpEff = min(1, uWarp+reactionSurge)` threads through camera dolly / bloom / DoF / fringe / particle warp; `reactionCameraKick` adds a clamped big-beat impact wobble. **Default 0 → intro byte-identical** (verified).
+- `serenity-warp-reaction-director.js` (NEW, pure): `sBaseline+sCombo+sFlare→sEased` (critically-damped, accumulate-and-hold, one-dominant-cue-per-frame), reduced-motion + intensity scaling. **16 renderer-free tests.**
+- `serenity-warp-theme.js`: director created, `pulse` on events, `update(delta)`+`setReactionState` each frame, configure + dispose.
+- Verified on the REAL renderer via `serenity-warp-tunnel-surge.effect.js` (mounts `IntroWebGPUVisual` on an overlay canvas): surge=0 identity vs surge=0.6 = camera dollies in + pieces rush forward + central bloom swell. 122 fps. Artifacts `serenity-warp-tunnel-surge-{0,6}.png`.
+
+### Wave 3 — Production port + hero gate + camera ✅
+- Ported the Phase Seal v2 solid-stamp shader (WebGPU + WebGL) into `serenity-warp-gameplay-fx.js` `createPhaseSealSystem`, replacing the hollow wireframe; `DEFAULT_SEAL_CELL_SIZE = 2.4` (was 0.86) so it reads at the ~36–38u FX-plane distance. Verified in the reactions harness: bold solid T-stamp + shock-ring. Artifact `serenity-warp-reactions-lock-v2b-t022.png`.
+- Redesigned the Spectrum Gate: tier-scaled radius (`4.6 + tier*0.9`), rounder ratio (0.62→0.78), thicker rings (width 0.045→0.07), fewer/cleaner ellipses (sevenfold 4→3, aperture 3→2), fewer streaks (34→16 / 18→8), bigger brighter nodes (`0.55 + tier*0.09`). Verified combo-6 (clean double-ring portal) and combo-10 (big rounded 3-ring + 7-node heptagon), plus reduced-motion (streaks suppressed, dimmed/shortened) and `forceWebGL=1`. Artifacts `serenity-warp-reactions-combo{6,10}-v2*.png`.
+- Camera kick: implemented + director-tested; a shake is motion so live confirmation is deferred to gameplay.
+
+### Remaining (need the real game with a board — desktop session)
+- **Wave 4** — resolve the on-screen board rect and place the combo gate in the upper corridor / seals in the nearer gutter so nothing is board-occluded (current placement is side-lane/center, fine in the boardless playground).
+- **Wave 6** — short in-game captures WITH a board: lock, combo 2/6/10, T-spin, perfect clear, rapid cascade; confirm seal + surge + gate together and no board occlusion.

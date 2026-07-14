@@ -58,6 +58,7 @@ import {
 import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
 import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
+import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -282,10 +283,17 @@ export class InfinityMode extends BaseGameMode {
                 hitStopEnabled: !this._prefersReducedMotion(settings),
             } : {}),
         });
+        const rngDescriptor = usesFixedRules
+            ? bindLegacySessionRng(
+                this.gameState,
+                options.seed === undefined ? generateSessionSeed() : options.seed,
+            )
+            : null;
         const sessionGeneration = ++this._sessionGeneration;
         this._activeSession = Object.freeze({
             generation: sessionGeneration,
             gameState: this.gameState,
+            rngDescriptor,
             simulationClock: this._sessionSimulationClock,
         });
         this._stoppedSession = null;
@@ -654,18 +662,22 @@ export class InfinityMode extends BaseGameMode {
      * @param {Readonly<{
      *   generation: number,
      *   gameState: GameState,
-     *   simulationClock: unknown
+     *   simulationClock: unknown,
+     *   rngDescriptor: Object|null
      * }>} session
      * @param {Promise<void>} baseStopPromise
      * @returns {Promise<Readonly<{
      *   generation: number,
      *   gameState: GameState,
-     *   simulationClock: unknown
+     *   simulationClock: unknown,
+     *   rngDescriptor: Object|null
      * }>>}
      * @private
      */
     async _stopCapturedSession(session, baseStopPromise) {
-        const { gameState, generation, simulationClock } = session;
+        const {
+            gameState, generation, rngDescriptor, simulationClock,
+        } = session;
 
         console.log('[Infinity] Stopping game...');
 
@@ -721,6 +733,7 @@ export class InfinityMode extends BaseGameMode {
         return Object.freeze({
             generation,
             gameState,
+            rngDescriptor,
             simulationClock,
         });
     }

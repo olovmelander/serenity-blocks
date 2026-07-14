@@ -518,8 +518,10 @@ export class SerenityWarpFXController {
         const origin = resolveSerenityWarpLockOrigin(payload);
         const envelope = this.reducedMotion ? REDUCED_PHASE_SEAL_ENVELOPE : PHASE_SEAL_ENVELOPE;
         const command = this.enqueue(
+            // Lock stamp must read at the theme's real ~36u FX plane (0.36 was sub-threshold
+            // in-game); the particle burst carries the rest of the "lock felt" feedback.
             SERENITY_WARP_FX_COMMAND.PHASE_SEAL,
-            0.36,
+            0.72,
             {
                 player: state.player,
                 origin: cloneOrigin(origin),

@@ -142,6 +142,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.reactionSurge = 0;
         this.reactionBloom = 0;
         this.reactionChroma = 0;
+        this.reactionCameraKick = 0;
+        this.reactionVertigo = 0;
+        this._baseFov = 60;
+        this._vertigoActive = false;
         this.warpStartTime = -1;
         this.warpDuration = 1.2;
         this.phase = INTRO_PHASES.BOOT;
@@ -161,6 +165,17 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
         this.uTetrominoTitleAvoidance = uniform(1);
+        // Opt-in whole-scene reaction glow (Serenity Warp only, default 0 → intro
+        // unchanged): brightens/pulses the flying tetrominos so combos read as the
+        // SCENE reacting, not a decal. Wired into the tetromino emissive + glow + scale.
+        this.uReactionGlow = uniform(0);
+        // Synchronized field spin: a brief transient twist on every flying piece on a big
+        // beat (default 0 → intro unchanged), so the whole field reacts as one.
+        this.uReactionSpin = uniform(0);
+        // Big-combo "warp scatter": a 0→1→0 bell that streaks every piece radially outward
+        // + toward the camera (like the intro warp-dismiss) then lets them reform. Render-only
+        // (no velocity write), so it's repeatable and never empties the field. Default 0.
+        this.uReactionScatter = uniform(0);
 
         // Phase B — cinematic grade uniforms (luma-preserving saturation, gentle
         // contrast, real chromatic aberration, multiply vignette).
@@ -919,15 +934,18 @@ export default class ThreeJSIntroRendererWebGPU {
             const flash = stateRot.w.mul(typeMask);
             const scale = float(baseScale)
                 .add(flash.mul(float(baseScale * 0.2)))
+                .add(this.uReactionGlow.mul(float(baseScale * 0.06))) // gentle whole-field swell
                 .mul(titleVisibility);
 
             const local = positionLocal.mul(scale);
+            // Synchronized reaction spin adds a shared twist about Z on a beat (0 by default).
+            const spunZ = stateRot.z.add(this.uReactionSpin);
             const sx = sin(stateRot.x);
             const cx = cos(stateRot.x);
             const sy = sin(stateRot.y);
             const cy = cos(stateRot.y);
-            const sz = sin(stateRot.z);
-            const cz = cos(stateRot.z);
+            const sz = sin(spunZ);
+            const cz = cos(spunZ);
 
             const y1 = local.y.mul(cx).sub(local.z.mul(sx));
             const z1 = local.y.mul(sx).add(local.z.mul(cx));
@@ -941,7 +959,13 @@ export default class ThreeJSIntroRendererWebGPU {
             const y3 = x2.mul(sz).add(y2.mul(cz));
             const z3 = z2;
 
-            const worldPos = vec3(x3, y3, z3).add(statePos.xyz);
+            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).toVar();
+            // Big-combo warp scatter: streak each piece radially outward + toward the camera,
+            // eased out-and-back by the uReactionScatter bell, so the field flings apart like
+            // the intro dismiss then reforms (render-only → repeatable, no field emptying).
+            worldPos.x.addAssign(statePos.x.mul(this.uReactionScatter).mul(1.15));
+            worldPos.y.addAssign(statePos.y.mul(this.uReactionScatter).mul(1.15));
+            worldPos.z.addAssign(this.uReactionScatter.mul(5.5));
             const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
 
             return mix(hiddenPos, worldPos, drawMask);
@@ -970,11 +994,16 @@ export default class ThreeJSIntroRendererWebGPU {
             const flashTypeMask = float(1.0).sub(clamp(flashTypeDiff, float(0.0), float(1.0)));
             const flashIntensity = flashRot.w.mul(flashTypeMask);
 
-            // Emissive boost: base 0.5 → up to 3.0 on collision flash
-            resources.material.emissiveIntensityNode = float(0.5).add(flashIntensity.mul(float(2.5)));
+            // Emissive boost: base 0.5 → up to 3.0 on collision flash, plus the whole-scene
+            // reaction glow (all pieces brighten together on a combo — "connected" feedback).
+            resources.material.emissiveIntensityNode = float(0.5)
+                .add(flashIntensity.mul(float(2.5)))
+                .add(this.uReactionGlow.mul(float(2.2)));
 
-            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash
-            resources.glowMaterial.opacityNode = float(0.33).add(flashIntensity.mul(float(0.52)));
+            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash + reaction glow.
+            resources.glowMaterial.opacityNode = float(0.33)
+                .add(flashIntensity.mul(float(0.52)))
+                .add(this.uReactionGlow.mul(float(0.42)));
 
             this.scene.add(mesh);
             this.scene.add(glowMesh);
@@ -1125,6 +1154,67 @@ export default class ThreeJSIntroRendererWebGPU {
         if (Number.isFinite(state.surge)) this.reactionSurge = Math.max(0, Math.min(1, state.surge));
         if (Number.isFinite(state.bloom)) this.reactionBloom = Math.max(0, Math.min(1.5, state.bloom));
         if (Number.isFinite(state.chroma)) this.reactionChroma = Math.max(0, Math.min(1.5, state.chroma));
+        if (Number.isFinite(state.cameraKick)) {
+            this.reactionCameraKick = Math.max(0, Math.min(1, state.cameraKick));
+        }
+        if (Number.isFinite(state.glow)) {
+            this.uReactionGlow.value = Math.max(0, Math.min(1, state.glow));
+        }
+        if (Number.isFinite(state.spin)) {
+            this.uReactionSpin.value = Math.max(-1, Math.min(1, state.spin));
+        }
+        if (Number.isFinite(state.vertigo)) {
+            this.reactionVertigo = Math.max(0, Math.min(1, state.vertigo));
+        }
+        if (Number.isFinite(state.scatter)) {
+            this.uReactionScatter.value = Math.max(0, Math.min(1, state.scatter));
+        }
+    }
+
+    /**
+     * Fan particle bursts across the tunnel (board origin + offset lanes) so a big combo /
+     * apex fills the whole scene instead of popping in one spot (Starlight _spread).
+     */
+    pulseReactionSpread(normalizedX, normalizedY, count = 3, strength = 1.2) {
+        const lanes = Math.max(1, Math.min(5, Math.round(count)));
+        for (let i = 0; i < lanes; i += 1) {
+            const spread = lanes === 1 ? 0 : (i / (lanes - 1) - 0.5);
+            this.pulseReactionAt(
+                normalizedX + spread * 0.42,
+                normalizedY + (i % 2 === 0 ? -0.06 : 0.06),
+                strength,
+            );
+        }
+    }
+
+    /**
+     * Burst compute particles at a normalized screen position (0..1) so a lock/combo
+     * makes the theme's OWN particle field react AT the event, not a floating decal.
+     * Serenity Warp calls this on discrete beats; the intro never does.
+     */
+    pulseReactionAt(normalizedX, normalizedY, strength = 1) {
+        if (!this.particleCompute || !this.camera) return;
+        if (!this._reactionRay) {
+            this._reactionRay = new THREE.Raycaster();
+            this._reactionNdc = new THREE.Vector2();
+            this._reactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // z=0, mid-tunnel
+            this._reactionHit = new THREE.Vector3();
+        }
+        this._reactionNdc.set(
+            Math.max(0, Math.min(1, normalizedX)) * 2 - 1,
+            1 - Math.max(0, Math.min(1, normalizedY)) * 2,
+        );
+        this.camera.updateMatrixWorld?.();
+        this._reactionRay.setFromCamera(this._reactionNdc, this.camera);
+        if (!this._reactionRay.ray.intersectPlane(this._reactionPlane, this._reactionHit)) return;
+        const bursts = Math.max(1, Math.min(4, Math.round(strength * 2)));
+        for (let i = 0; i < bursts; i += 1) {
+            this.particleCompute.spawnCollisionBurst(
+                this._reactionHit.x,
+                this._reactionHit.y,
+                this._reactionHit.z,
+            );
+        }
     }
 
     setBackgroundMode(enabled) {
@@ -1285,6 +1375,25 @@ export default class ThreeJSIntroRendererWebGPU {
         this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
         this.camera.position.z = 40 - warpEff * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
         this.cameraParallax.apply(this.camera, delta);
+        // Big-beat camera KICK (Tetris / T-spin / perfect clear): a brief, clamped impact
+        // wobble + forward lunge on top of the final camera pose. reactionCameraKick is 0
+        // unless Serenity Warp drives it (and 0 under reduced motion) → intro unchanged.
+        if (this.reactionCameraKick > 0.0001) {
+            const kick = this.reactionCameraKick;
+            const shakeTime = this.simulationTime * 46;
+            this.camera.position.x += Math.sin(shakeTime) * kick * 0.16;
+            this.camera.position.y += Math.cos(shakeTime * 1.27) * kick * 0.12;
+            this.camera.position.z -= kick * 1.2;
+        }
+        // Vertigo dolly-zoom (combo 7+): FOV pushes IN while the camera dollies BACK, so the
+        // subject holds size but the world expands — the EDv3 "everything got bigger" beat.
+        if (this.reactionVertigo > 0.001 || this._vertigoActive) {
+            const vertigo = this.reactionVertigo;
+            this.camera.fov = this._baseFov - vertigo * 7;
+            this.camera.position.z += vertigo * 3.2;
+            this.camera.updateProjectionMatrix();
+            this._vertigoActive = vertigo > 0.001;
+        }
 
         this.uBloomStrength.value = this.quality.bloom
             ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (warpEff * 0.1)
@@ -1304,10 +1413,16 @@ export default class ThreeJSIntroRendererWebGPU {
             : 0;
 
         if (this.particleCompute) {
-            this.particleCompute.setAttractionStrength(this.quality.attraction * phase.attractionMul);
+            // Reaction glow energizes the particle field too — stronger inward pull and
+            // brighter event particles on a combo, so the particles read as reacting.
+            this.particleCompute.setAttractionStrength(
+                this.quality.attraction * phase.attractionMul + this.uReactionGlow.value * 0.35,
+            );
             this.particleCompute.setAudioPulse(this.audioPulse);
             this.particleCompute.setWarpFactor(warpEff);
-            this.particleCompute.setEventIntensity(Math.max(0.4, phase.particleMul));
+            this.particleCompute.setEventIntensity(
+                Math.max(0.4, phase.particleMul) + this.uReactionGlow.value * 0.6,
+            );
             this.particleCompute.update(delta, this.simulationTime);
         }
 
@@ -1334,8 +1449,10 @@ export default class ThreeJSIntroRendererWebGPU {
 
         if (this.nebulaSky) {
             this.nebulaSky.uniforms.uTime.value = this.simulationTime;
-            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5).
-            this.nebulaSky.uniforms.uPulse.value = this._breathSwell ?? this.audioPulse;
+            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5), and
+            // bloom with combo reaction glow so the whole backdrop reacts, not just pieces.
+            this.nebulaSky.uniforms.uPulse.value = (this._breathSwell ?? this.audioPulse)
+                + this.uReactionGlow.value * 0.5;
         }
 
         if (this.volumetricNebula) {
@@ -1344,7 +1461,8 @@ export default class ThreeJSIntroRendererWebGPU {
 
         if (this.constellationMesh) {
             this.constellationMesh.rotation.z = Math.sin(this.simulationTime * 0.05) * 0.03;
-            const pulse = 0.12 + this.audioPulse * 0.14 + Math.sin(this.simulationTime * 0.6) * 0.03;
+            const pulse = 0.12 + this.audioPulse * 0.14 + Math.sin(this.simulationTime * 0.6) * 0.03
+                + this.uReactionGlow.value * 0.22;
             this.constellationMesh.material.opacity = Math.max(0.05, pulse);
         }
 

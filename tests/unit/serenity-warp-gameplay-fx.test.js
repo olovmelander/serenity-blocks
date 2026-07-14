@@ -162,10 +162,10 @@ describe('Serenity Warp gameplay FX WebGL renderer', () => {
             rings: 0, nodes: 5, links: 5, ellipses: 0, streaks: 0,
         }],
         ['aperture', {
-            rings: 0, nodes: 0, links: 0, ellipses: 3, streaks: 18,
+            rings: 0, nodes: 0, links: 0, ellipses: 2, streaks: 8,
         }],
         ['sevenfold', {
-            rings: 0, nodes: 7, links: 7, ellipses: 4, streaks: 34,
+            rings: 0, nodes: 7, links: 7, ellipses: 3, streaks: 16,
         }],
     ])('maps the %s combo stage to the intended bounded pools', (stage, expected) => {
         const { fx, startTime } = createHarness();

@@ -33,10 +33,6 @@ import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './c
 import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
 import { createPlayerInputState, resetPlayerInputState } from './player-input-state.js';
 
-// Re-export: markBoardDirty moved to board.js (cycle break); external callers
-// still import it from here until the §5.1 leftover un-exports it entirely.
-export { markBoardDirty };
-
 function resolveActiveTetrominoColor(shapeKey) {
     const defaultColor = COLORS[shapeKey] || '#808080';
 
@@ -579,6 +575,7 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        this.rngDescriptor = null;
         // Per-instance piece-id counter (was a module global shared across every
         // GameState, which interleaved IDs across multiplayer boards and never
         // reset — a determinism/isolation hazard for the physics connectivity key).
@@ -710,6 +707,7 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        this.rngDescriptor = null;
         this._pieceIdCounter = 0;
         this.score = 0;
         this.lines = 0;

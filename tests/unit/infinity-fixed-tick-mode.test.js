@@ -308,18 +308,26 @@ describe('InfinityMode fixed-tick loop adapter', () => {
         mode._refreshNextQueue = vi.fn();
         mode._updateStats = vi.fn();
 
-        await mode.onStart();
+        await mode.onStart({ seed: 0 });
 
         expect(mode._fixedTickEnabled).toBe(true);
         expect(mode._activeSession).toMatchObject({
             gameState: mode.gameState,
+            rngDescriptor: {
+                algorithm: 'lcg-v1',
+                seed: 0,
+                stream: 'pieces:shared-v1',
+            },
             simulationClock: DEMO_FIXED_SIMULATION_CLOCK,
         });
         expect(mode.gameState).toMatchObject({
             hitStopEnabled: false,
             infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
             infinityVisibleRows: mode.visibleRows,
+            randomGenerator: expect.any(Function),
+            rngDescriptor: mode._activeSession.rngDescriptor,
         });
+        expect(mode.gameState.randomGenerator.seed).toBe(0);
         expect(mode.gameState.playerInput.config).toMatchObject({
             dasDelay: settings.dasDelay,
             dasInterval: settings.dasInterval,
@@ -330,7 +338,10 @@ describe('InfinityMode fixed-tick loop adapter', () => {
         expect(gamepadController.fixedTickInputAdapter).not.toBeNull();
         expect(mode._legacyBoardJuiceInputOwner).toBeNull();
 
-        await mode.onStop();
+        const descriptor = mode._activeSession.rngDescriptor;
+        const stoppedSession = await mode.onStop();
+        expect(stoppedSession.rngDescriptor).toBe(descriptor);
+        expect(mode._stoppedSession.rngDescriptor).toBe(descriptor);
     });
 
     it('keeps fixed rendering observer-only and runs no Infinity maintenance writes', () => {
