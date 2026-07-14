@@ -44,9 +44,15 @@ const QUALITY_PRESETS = {
 type QualityName = keyof typeof QUALITY_PRESETS;
 
 export default class TornadoTheme extends BaseTheme {
-    private scene: THREE.Scene | null;
-    private camera: THREE.PerspectiveCamera | null;
-    private renderer: THREE.WebGPURenderer | null;
+    // scene/camera/renderer are NOT `private`: BaseTheme (untyped JS)
+    // reads/writes them (setupRendererResilience, dispose paths), so narrowing
+    // visibility breaks the inherited contract (TS2415) — caught when 2.10
+    // folded this file into the typecheck island.
+    scene: THREE.Scene | null;
+
+    camera: THREE.PerspectiveCamera | null;
+
+    renderer: THREE.WebGPURenderer | null;
     private ribbons: TornadoRibbons | null;
     private ground: TornadoGround | null;
     private windStreaks: TornadoWindStreaks | null;
@@ -354,7 +360,9 @@ export default class TornadoTheme extends BaseTheme {
         const settings = typeof window !== 'undefined' ? window.settings : null;
         return {
             ...TORNADO_PARAM_DEFAULTS,
-            ...(settings?.tornadoThemeParams || {}),
+            // window.settings values are `unknown` (GameSettings index signature) —
+            // assert the object shape for the spread.
+            ...((settings?.tornadoThemeParams || {}) as Record<string, unknown>),
         };
     }
 

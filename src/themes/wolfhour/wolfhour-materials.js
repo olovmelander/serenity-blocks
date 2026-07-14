@@ -14,11 +14,14 @@ import {
 
 import {
     Fn,
+    If,
     uniform,
+    uniformArray,
     attribute,
     storage,
     vertexIndex,
     instanceIndex,
+    positionGeometry,
     positionLocal,
     positionWorld,
     normalWorld,
@@ -46,6 +49,7 @@ import {
     fract,
     floor,
     exp,
+    atan,
     texture,
 } from 'three/tsl';
 
@@ -102,13 +106,16 @@ const tslFbm = Fn(([p_immutable]) => {
  * Custom billboarding for MeshBasicNodeMaterial.
  * Assumes a quad geometry with positionLocal as (-0.5, -0.5, 0) to (0.5, 0.5, 0).
  */
-const createBillboardPosition = Fn(({ sizeNode, centerNode }) => {
-    // Orthographic camera: PlaneGeometry quads already face the camera.
-    // Just scale the quad vertices in local space.
-    // NOTE: For InstancedMesh, the modelMatrix already includes the instance translation.
-    // If we use 'centerNode' to translate here, it will double-translate.
-    // We only need the local offset for billboarding.
-    return positionLocal.mul(sizeNode);
+const createBillboardPosition = Fn(({ sizeNode, centerNode = null }) => {
+    // In r181 InstanceNode has already applied the instance matrix to positionLocal
+    // before positionNode runs. Scale only the original quad, never the translated
+    // center, or distant particles explode away from their intended origin.
+    const localOffset = positionGeometry.mul(sizeNode);
+    if (centerNode) {
+        return vec3(centerNode).add(localOffset);
+    }
+    const instanceCenter = positionLocal.sub(positionGeometry);
+    return instanceCenter.add(localOffset);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,13 +166,16 @@ export function createStarfieldNodeMaterial(params = {}) {
     const dist = length(localUv).mul(2.0);
     const softCircle = float(1.0).sub(smoothstep(0.0, 1.0, dist));
 
-    const spikeX = pow(max(float(1.0).sub(smoothstep(0.0, 0.28, abs(localUv.x))), 0.0), 3.0);
-    const spikeY = pow(max(float(1.0).sub(smoothstep(0.0, 0.28, abs(localUv.y))), 0.0), 3.0);
-    const diffractionMask = spikeX.add(spikeY).mul(0.5);
-    const diffraction = diffractionMask
-        .mul(boostedBrightness)
-        .mul(uDiffractionStrength)
-        .mul(float(1.0).add(uEventBoost.mul(0.25)));
+    let diffraction = float(0.0);
+    if (enableDiffraction) {
+        const spikeX = pow(max(float(1.0).sub(smoothstep(0.0, 0.28, abs(localUv.x))), 0.0), 3.0);
+        const spikeY = pow(max(float(1.0).sub(smoothstep(0.0, 0.28, abs(localUv.y))), 0.0), 3.0);
+        const diffractionMask = spikeX.add(spikeY).mul(0.5);
+        diffraction = diffractionMask
+            .mul(boostedBrightness)
+            .mul(uDiffractionStrength)
+            .mul(float(1.0).add(uEventBoost.mul(0.25)));
+    }
 
     const coreColor = aColor.mul(boostedBrightness).mul(depthGlow).mul(1.5);
     const alpha = softCircle
@@ -227,11 +237,15 @@ export function createMountainNodeMaterial(params = {}) {
     // Vertex: shockwave displacement
     const positionNode = Fn(() => {
         const pos = positionLocal.toVar();
-        const worldPos = positionWorld;
-        const distXZ = length(worldPos.xz);
-        const wave = sin(distXZ.mul(0.05).sub(uTime.mul(10.0))).mul(uShockwave).mul(20.0);
-        const yMask = smoothstep(0.0, 100.0, worldPos.y);
-        pos.y.addAssign(wave.mul(yMask));
+        If(uShockwave.greaterThan(0.001), () => {
+            const worldPos = positionWorld;
+            const distXZ = length(worldPos.xz);
+            const wave = sin(distXZ.mul(0.05).sub(uTime.mul(10.0)))
+                .mul(uShockwave)
+                .mul(20.0);
+            const yMask = smoothstep(0.0, 100.0, worldPos.y);
+            pos.y.addAssign(wave.mul(yMask));
+        });
         return pos;
     })();
 
@@ -403,7 +417,7 @@ export function createSpiritNodeMaterial(params = {}) {
 
     // Vertex: floating sine wave
     const fallbackPositionNode = Fn(() => {
-        const pos = positionLocal.toVar();
+        const pos = positionLocal.sub(positionGeometry).toVar();
         const t = uTime.mul(aSpeed).add(aPhase);
         pos.y.addAssign(sin(t).mul(20.0));
         pos.x.addAssign(cos(t.mul(0.7)).mul(15.0));
@@ -432,7 +446,10 @@ export function createSpiritNodeMaterial(params = {}) {
         depthTest: true,
     });
 
-    material.positionNode = createBillboardPosition({ sizeNode: sizeNode }); // Using billboarding
+    material.positionNode = createBillboardPosition({
+        sizeNode,
+        centerNode: useCompute ? particlePosition : fallbackPositionNode,
+    });
     material.colorNode = vec4(spiritColor.x, spiritColor.y, spiritColor.z, alpha); // Updated colorNode
     material.emissiveNode = spiritColor.mul(alpha.mul(0.15));
 
@@ -459,8 +476,10 @@ export function createNebulaNodeMaterial(params = {}) {
     const vUv = uv();
 
     // Edge fade
-    const fadeX = smoothstep(0.0, 0.5, vUv.x).mul(smoothstep(1.0, 0.5, vUv.x));
-    const fadeY = smoothstep(0.0, 0.5, vUv.y).mul(smoothstep(1.0, 0.5, vUv.y));
+    const fadeX = smoothstep(0.0, 0.5, vUv.x)
+        .mul(float(1.0).sub(smoothstep(0.5, 1.0, vUv.x)));
+    const fadeY = smoothstep(0.0, 0.5, vUv.y)
+        .mul(float(1.0).sub(smoothstep(0.5, 1.0, vUv.y)));
     const fade = pow(max(fadeX.mul(fadeY), 0.0), 2.0);
 
     const alpha = texNode.a.mul(uOpacity.add(uPulse.mul(0.05))).mul(fade);
@@ -500,6 +519,151 @@ export function createNebulaNodeMaterial(params = {}) {
 // 5. Ground Fog Node Material
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Persistent Wolfhour hero and the single-draw lock/combo reaction proved in the playground.
+export function createMoonNodeMaterial(params = {}) {
+    const moonTexture = params.texture;
+    const uPulse = uniform(0);
+
+    const moonSample = texture(moonTexture).rgb;
+    const moonLight = normalize(vec3(-0.38, 0.24, 0.9));
+    const lunarDiffuse = smoothstep(-0.2, 0.64, dot(normalWorld, moonLight));
+    const lunarRim = pow(max(float(1.0).sub(abs(normalWorld.z)), 0.0), 2.4);
+    const moonColor = moonSample
+        .mul(mix(vec3(0.13, 0.16, 0.25), vec3(0.86, 0.91, 1.0), lunarDiffuse))
+        .mul(float(0.72).add(uPulse.mul(0.36)))
+        .add(
+            vec3(0.19, 0.27, 0.5)
+                .mul(lunarRim)
+                .mul(float(0.22).add(uPulse.mul(0.25))),
+        );
+
+    const material = new MeshBasicNodeMaterial({ transparent: false });
+    material.colorNode = moonColor;
+    material.emissiveNode = moonColor.mul(float(0.035).add(uPulse.mul(0.025)));
+
+    return {
+        material,
+        uniforms: { uPulse },
+        meta: { emitsBloom: true },
+    };
+}
+
+export function createLunarHaloNodeMaterial(params = {}) {
+    const maxPulses = THREE.MathUtils.clamp(
+        Math.floor(params.maxPulses ?? 4),
+        1,
+        6,
+    );
+    const uTime = uniform(0);
+    // startTime, inverseDuration, strength, combo tint. Each slot advances from
+    // uTime independently, so a new combo cannot rewind an older lunar ring.
+    const pulseValues = Array.from(
+        { length: maxPulses },
+        () => new THREE.Vector4(0, 0, 0, 0),
+    );
+    const uPulseData = uniformArray(pulseValues, 'vec4');
+
+    const p = uv().sub(vec2(0.5));
+    const radius = length(p).mul(2.0);
+    const angle = atan(p.y, p.x);
+    // Keep the persistent corona cheap: two periodic angular waves avoid the radial
+    // seam of atan-fed non-periodic noise and cost far less than MaterialX noise over
+    // the large halo plane.
+    const broadArc = sin(
+        angle.mul(5.0)
+            .add(radius.mul(3.4))
+            .add(uTime.mul(0.035)),
+    ).mul(0.5).add(0.5);
+    const fineArc = sin(
+        angle.mul(11.0)
+            .sub(radius.mul(8.0))
+            .sub(uTime.mul(0.05)),
+    ).mul(0.5).add(0.5);
+    const atmosphericNoise = mix(broadArc, fineArc, 0.32);
+    const arcScatter = smoothstep(0.18, 0.82, atmosphericNoise);
+    const baseCorona = float(1.0).sub(smoothstep(0.42, 1.0, radius))
+        .mul(smoothstep(0.28, 0.48, radius))
+        .mul(float(0.58).add(atmosphericNoise.mul(0.52)));
+    const spokeShape = pow(max(cos(angle.mul(8.0).add(uTime.mul(0.12))), 0.0), 12.0)
+        .mul(float(1.0).sub(smoothstep(0.38, 0.98, radius)))
+        .mul(smoothstep(0.3, 0.58, radius));
+    const glyphShape = float(1.0).sub(smoothstep(0.006, 0.025, abs(radius.sub(0.72))))
+        .mul(pow(abs(sin(angle.mul(6.0))), 20.0));
+
+    let pulseRingSum = float(0);
+    let echoRingSum = float(0);
+    let spokeSum = float(0);
+    let glyphSum = float(0);
+    let tintSum = float(0);
+
+    // Compile-time unroll keeps uniform indexing simple in three r181. Quality tiers
+    // choose the slot count, so low presets do not pay for High's overlap budget.
+    for (let i = 0; i < maxPulses; i += 1) {
+        const pulse = uPulseData.element(i);
+        const progress = clamp(uTime.sub(pulse.x).mul(pulse.y), 0.0, 1.0);
+        const strength = max(pulse.z, 0.0);
+        const combo = clamp(pulse.w, 0.0, 1.0);
+        const envelope = sin(progress.mul(Math.PI)).mul(strength);
+        const comboEnvelope = combo.mul(envelope);
+        const pulseRadius = float(0.48).add(progress.mul(0.46));
+        const pulseRing = float(1.0)
+            .sub(smoothstep(0.008, 0.034, abs(radius.sub(pulseRadius))))
+            .mul(envelope)
+            .mul(float(0.46).add(arcScatter.mul(0.54)));
+        const echoRadius = float(0.36).add(progress.mul(0.62));
+        const echoRing = float(1.0)
+            .sub(smoothstep(0.01, 0.055, abs(radius.sub(echoRadius))))
+            .mul(pow(max(envelope, 0.0), 1.4))
+            .mul(combo);
+        const spoke = spokeShape
+            .mul(envelope)
+            .mul(float(0.22).add(combo.mul(0.78)));
+        const glyph = glyphShape.mul(comboEnvelope).mul(envelope);
+
+        pulseRingSum = pulseRingSum.add(pulseRing);
+        echoRingSum = echoRingSum.add(echoRing);
+        spokeSum = spokeSum.add(spoke);
+        glyphSum = glyphSum.add(glyph);
+        tintSum = tintSum.add(comboEnvelope.mul(0.72).add(pulseRing.mul(0.2)));
+    }
+
+    const alpha = clamp(
+        baseCorona.mul(float(0.075).add(sin(uTime.mul(0.7)).mul(0.014)))
+            .add(spokeShape.mul(0.015))
+            .add(pulseRingSum.mul(0.74))
+            .add(echoRingSum.mul(0.3))
+            .add(spokeSum.mul(0.16))
+            .add(glyphSum.mul(0.46)),
+        0.0,
+        0.92,
+    );
+    const haloColor = mix(
+        vec3(0.56, 0.68, 1.0),
+        vec3(0.85, 0.77, 1.0),
+        clamp(tintSum, 0.0, 1.0),
+    );
+
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+    });
+    material.colorNode = haloColor;
+    material.opacityNode = alpha;
+    material.emissiveNode = haloColor.mul(alpha.mul(0.18));
+
+    return {
+        material,
+        uniforms: { uTime },
+        pulseValues,
+        pulseData: uPulseData,
+        maxPulses,
+        meta: { emitsBloom: true },
+    };
+}
+
 export function createGroundFogNodeMaterial(params = {}) {
     const {
         opacity = 0.24,
@@ -521,12 +685,13 @@ export function createGroundFogNodeMaterial(params = {}) {
         vUv.y.mul(3.7).add(uTime.mul(0.021)),
     );
 
-    const densityA = tslFbm(driftUv);
-    const densityB = tslFbm(swirlUv);
-    const density = mix(densityA, densityB, clamp(uSwirl, 0.0, 1.0));
+    // One coherent density field: blend the domain before FBM so the idle path
+    // does not pay for two full four-octave evaluations over a screen-sized plane.
+    const density = tslFbm(mix(driftUv, swirlUv, clamp(uSwirl, 0.0, 1.0)));
 
-    const verticalFade = smoothstep(1.0, 0.15, vUv.y);
-    const edgeFade = smoothstep(0.02, 0.22, vUv.x).mul(smoothstep(0.98, 0.78, vUv.x));
+    const verticalFade = float(1.0).sub(smoothstep(0.15, 1.0, vUv.y));
+    const edgeFade = smoothstep(0.02, 0.22, vUv.x)
+        .mul(float(1.0).sub(smoothstep(0.78, 0.98, vUv.x)));
     const fogAlpha = density
         .mul(verticalFade)
         .mul(edgeFade)
@@ -568,22 +733,22 @@ export function createStarBurstNodeMaterial(params = {}) {
     const aVelocity = attribute('aVelocity');
     const aSize = attribute('aSize');
 
-    // Vertex: velocity + gravity displacement
-    const positionNode = Fn(() => {
-        const pos = positionLocal.toVar();
+    // Vertex: velocity + gravity displacement around the instance center.
+    const centerNode = Fn(() => {
+        const pos = positionLocal.sub(positionGeometry).toVar();
         pos.addAssign(aVelocity.mul(uTime));
         pos.y.addAssign(float(-50.0).mul(uTime).mul(uTime));
         return pos;
     })();
 
     const vAlpha = clamp(float(1.0).sub(uTime.mul(1.5)), 0.0, 1.0);
-    const sizeNode = aSize.mul(uPixelRatio).mul(vAlpha);
+    const sizeNode = aSize.mul(vAlpha);
 
     // Fragment: soft glow
     const dist = length(uv().sub(0.5)).mul(2.0);
     const glow = float(1.0).sub(smoothstep(0.0, 1.0, dist));
     const burstColor = vec3(0.9, 0.9, 1.0);
-    const alpha = glow.mul(vAlpha).mul(0.35); // Reduced from 1.0
+    const alpha = glow.mul(vAlpha).mul(0.72);
 
     const material = new MeshBasicNodeMaterial({
         colorNode: vec4(0.0),
@@ -593,9 +758,9 @@ export function createStarBurstNodeMaterial(params = {}) {
         depthTest: true,
     });
 
-    material.positionNode = createBillboardPosition({ sizeNode: sizeNode });
+    material.positionNode = createBillboardPosition({ sizeNode, centerNode });
     material.colorNode = vec4(burstColor.x, burstColor.y, burstColor.z, alpha);
-    material.emissiveNode = burstColor.mul(alpha.mul(0.15)); // Reduced from 0.5
+    material.emissiveNode = burstColor.mul(alpha.mul(0.32));
 
     return {
         material,
@@ -624,7 +789,8 @@ export function createCelestialBeamNodeMaterial(params = {}) {
     // Gaussian beam shape
     const beamShape = exp(distFromCenterX.mul(distFromCenterX).mul(-20.0));
     const vertFade = float(1.0).sub(smoothstep(0.1, 0.5, distFromCenterY));
-    const edgeFade = smoothstep(0.0, 0.15, vUv.y).mul(smoothstep(1.0, 0.85, vUv.y));
+    const edgeFade = smoothstep(0.0, 0.15, vUv.y)
+        .mul(float(1.0).sub(smoothstep(0.85, 1.0, vUv.y)));
     const shimmer = sin(vUv.y.mul(50.0).add(uTime.mul(10.0))).mul(0.08).add(0.92);
     const volumeCoord = vec2(vUv.y.mul(4.0).add(uTime.mul(0.22)), vUv.x.mul(3.0).add(uTime.mul(0.17)));
     const volumetricNoise = tslFbm(volumeCoord).mul(1.1);
@@ -677,7 +843,8 @@ export function createCosmicRiftNodeMaterial() {
 
     const vUv = uv();
 
-    const edgeFade = smoothstep(0.0, 0.35, vUv.x).mul(smoothstep(1.0, 0.65, vUv.x));
+    const edgeFade = smoothstep(0.0, 0.35, vUv.x)
+        .mul(float(1.0).sub(smoothstep(0.65, 1.0, vUv.x)));
     const centerFade = pow(max(float(1.0).sub(abs(vUv.y.sub(0.5)).mul(2.0)), 0.0), 2.0);
     const crackle = sin(vUv.x.mul(30.0).add(uTime.mul(15.0))).mul(0.2).add(0.8);
     const alpha = pow(max(edgeFade.mul(centerFade).mul(uOpacity).mul(crackle), 0.0), 1.4).mul(0.15); // Reduced from 0.5
@@ -712,13 +879,19 @@ export function createCosmicWaveNodeMaterial() {
 
     const vUv = uv();
 
-    const edgeFadeX = smoothstep(0.0, 0.15, vUv.x).mul(smoothstep(1.0, 0.85, vUv.x));
-    const edgeFadeY = smoothstep(0.0, 0.15, vUv.y).mul(smoothstep(1.0, 0.85, vUv.y));
+    const edgeFadeX = smoothstep(0.0, 0.15, vUv.x)
+        .mul(float(1.0).sub(smoothstep(0.85, 1.0, vUv.x)));
+    const edgeFadeY = smoothstep(0.0, 0.15, vUv.y)
+        .mul(float(1.0).sub(smoothstep(0.85, 1.0, vUv.y)));
     const edgeFade = edgeFadeX.mul(edgeFadeY);
 
     const dist = abs(vUv.x.sub(0.5).sub(uTime.mul(0.5)));
     const ripple = sin(dist.mul(20.0).sub(uTime.mul(10.0))).mul(0.5).add(0.5);
-    const alpha = uOpacity.mul(smoothstep(0.5, 0.0, dist)).mul(ripple).mul(edgeFade).mul(0.4);
+    const alpha = uOpacity
+        .mul(float(1.0).sub(smoothstep(0.0, 0.5, dist)))
+        .mul(ripple)
+        .mul(edgeFade)
+        .mul(0.4);
 
     const waveColor = vec3(0.8, 0.85, 1.0);
 
@@ -770,7 +943,7 @@ export function createMeteorTrailNodeMaterial(params = {}) {
 
     // Fade in/out over meteor lifetime
     const fadeIn = smoothstep(0.0, 0.15, uProgress);
-    const fadeOut = smoothstep(1.0, 0.7, uProgress);
+    const fadeOut = float(1.0).sub(smoothstep(0.7, 1.0, uProgress));
     const lifeAlpha = fadeIn.mul(fadeOut);
 
     // Trail: head bright, tail dim
@@ -818,10 +991,10 @@ export function createMeteorHeadNodeMaterial(params = {}) {
     const uAtmosphereGlow = uniform(atmosphereGlow);
 
     const fadeIn = smoothstep(0.0, 0.1, uProgress);
-    const fadeOut = smoothstep(1.0, 0.6, uProgress);
+    const fadeOut = float(1.0).sub(smoothstep(0.6, 1.0, uProgress));
     const lifeAlpha = fadeIn.mul(fadeOut);
 
-    const sizeNode = float(12.0).mul(uPixelRatio).mul(float(1.0).add(uAtmosphereGlow.mul(0.45)));
+    const sizeNode = float(12.0).mul(float(1.0).add(uAtmosphereGlow.mul(0.45)));
 
     const dist = length(uv().sub(0.5)).mul(2.0);
     const glow = pow(max(float(1.0).sub(dist), 0.0), 1.5);
@@ -883,7 +1056,7 @@ export function createCrashMeteorTrailNodeMaterial(params = {}) {
         : null;
 
     const fadeIn = smoothstep(0.0, 0.1, uProgress);
-    const fadeOut = smoothstep(1.0, 0.85, uProgress);
+    const fadeOut = float(1.0).sub(smoothstep(0.85, 1.0, uProgress));
     const lifeAlpha = fadeIn.mul(fadeOut);
     const intensity = float(1.0).add(uProgress.mul(0.3));
 
@@ -932,12 +1105,11 @@ export function createCrashMeteorHeadNodeMaterial(params = {}) {
     const uAtmosphereGlow = uniform(atmosphereGlow);
 
     const fadeIn = smoothstep(0.0, 0.1, uProgress);
-    const fadeOut = smoothstep(1.0, 0.9, uProgress);
+    const fadeOut = float(1.0).sub(smoothstep(0.9, 1.0, uProgress));
     const lifeAlpha = fadeIn.mul(fadeOut);
     const intensity = float(1.0).add(uProgress.mul(0.5));
 
     const sizeNode = float(75.0)
-        .mul(uPixelRatio)
         .mul(intensity)
         .mul(float(1.0).add(uAtmosphereGlow.mul(0.52)));
 
@@ -1019,14 +1191,14 @@ export function createDebrisNodeMaterial(params = {}) {
 
     // Vertex: velocity + gravity
     const fallbackPositionNode = Fn(() => {
-        const pos = positionLocal.toVar();
+        const pos = positionLocal.sub(positionGeometry).toVar();
         pos.addAssign(aVelocity.mul(uTime));
         pos.y.addAssign(float(-200.0).mul(uTime).mul(uTime));
         return pos;
     })();
 
     const twinkle = float(0.7).add(sin(uTime.mul(8.0).add(computeSeed.mul(10.0))).mul(0.3));
-    const sizeNode = computeSize.mul(uPixelRatio).mul(computeLife).mul(twinkle);
+    const sizeNode = computeSize.mul(computeLife).mul(twinkle);
 
     // Fragment
     const dist = length(uv().sub(0.5)).mul(2.0);
@@ -1046,9 +1218,9 @@ export function createDebrisNodeMaterial(params = {}) {
     if (useCompute) {
         const hidden = vec3(0.0, 0.0, -9999.0);
         const actualPos = mix(hidden, computePosition, computeActive);
-        material.positionNode = createBillboardPosition({ sizeNode: sizeNode, centerNode: actualPos });
+        material.positionNode = createBillboardPosition({ sizeNode, centerNode: actualPos });
     } else {
-        material.positionNode = createBillboardPosition({ sizeNode: sizeNode, centerNode: fallbackPositionNode });
+        material.positionNode = createBillboardPosition({ sizeNode, centerNode: fallbackPositionNode });
     }
     material.colorNode = vec4(col.x, col.y, col.z, alpha);
     material.emissiveNode = col.mul(alpha.mul(0.1)); // Reduced from 0.4
@@ -1156,7 +1328,9 @@ export function createShockwaveNodeMaterial() {
     const ringWidth = float(0.15).mul(float(1.0).sub(uProgress.mul(0.5)));
 
     const ring = smoothstep(ringRadius.sub(ringWidth), ringRadius.sub(ringWidth.mul(0.5)), dist)
-        .mul(smoothstep(ringRadius.add(ringWidth.mul(0.5)), ringRadius, dist));
+        .mul(float(1.0).sub(
+            smoothstep(ringRadius, ringRadius.add(ringWidth.mul(0.5)), dist),
+        ));
 
     const fade = float(1.0).sub(uProgress).mul(uOpacity);
     const shockColor = vec3(0.9, 0.92, 1.0);
@@ -1195,8 +1369,8 @@ export function createDustCloudNodeMaterial(params = {}) {
     const aVelocity = attribute('aVelocity');
 
     // Vertex: billowing motion
-    const positionNode = Fn(() => {
-        const pos = positionLocal.toVar();
+    const centerNode = Fn(() => {
+        const pos = positionLocal.sub(positionGeometry).toVar();
         pos.addAssign(aVelocity.mul(uTime));
         pos.y.addAssign(sin(uTime.mul(2.0).add(aPhase)).mul(20.0));
         pos.x.addAssign(cos(uTime.mul(1.5).add(aPhase)).mul(15.0));
@@ -1209,7 +1383,7 @@ export function createDustCloudNodeMaterial(params = {}) {
     const vAlpha = fadeIn.mul(life).mul(0.4);
 
     const grow = float(1.0).add(uTime.mul(0.5));
-    const sizeNode = aSize.mul(uPixelRatio).mul(grow);
+    const sizeNode = aSize.mul(grow);
 
     // Fragment
     const dist = length(uv().sub(0.5)).mul(2.0);
@@ -1224,7 +1398,7 @@ export function createDustCloudNodeMaterial(params = {}) {
         depthWrite: false,
     });
 
-    material.positionNode = createBillboardPosition({ sizeNode: sizeNode, centerNode: positionNode });
+    material.positionNode = createBillboardPosition({ sizeNode, centerNode });
     material.colorNode = vec4(dustColor.x, dustColor.y, dustColor.z, alpha);
     material.emissiveNode = vec3(0);
 

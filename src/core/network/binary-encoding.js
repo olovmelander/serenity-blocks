@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Binary Snapshot Encoding - Phase 4
  *
@@ -37,6 +38,7 @@ const PIECE_TYPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 const PIECE_TYPE_MAP = new Map(PIECE_TYPES.map((type, i) => [type, i + 1])); // 0 = no piece
 
 // Game phase mapping
+/** @type {GamePhase[]} */
 const GAME_PHASES = ['waiting', 'countdown', 'playing', 'finished'];
 const GAME_PHASE_MAP = new Map(GAME_PHASES.map((phase, i) => [phase, i]));
 
@@ -46,9 +48,168 @@ const GRID_ROWS = 24; // Including hidden rows
 const GRID_BYTES = GRID_COLS * GRID_ROWS / 2;
 const MAX_BINARY_PLAYERS = 8;
 const MAX_NEXT_PIECES = 32;
+const MAX_GARBAGE_ENTRIES = 255;
+const MAX_LOCKED_PIECES = GRID_ROWS * GRID_COLS;
+const MAX_ACTIVE_SHAPE_ROWS = 4;
+const MAX_ACTIVE_SHAPE_COLS = 4;
 const GARBAGE_ENTRY_BYTES_V3 = 7;
 const GARBAGE_ENTRY_FIXED_BYTES_V4 = 24;
 const GARBAGE_ENTRY_FIXED_BYTES_V5 = 27; // v4 fixed bytes + 3-byte RGB attacker color
+
+/** @param {unknown} value @returns {value is Record<string, any>} */
+function isRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** @param {Record<string, any>} value @param {string} field */
+function hasOptionalString(value, field) {
+    return value[field] === undefined || typeof value[field] === 'string';
+}
+
+/** @param {Record<string, any>} value @param {string} field */
+function hasOptionalFiniteNumber(value, field) {
+    return value[field] === undefined || Number.isFinite(value[field]);
+}
+
+/** @param {unknown} value @param {number} maxRows @param {number} maxCols */
+function isNumberShape(value, maxRows, maxCols) {
+    return Array.isArray(value)
+        && value.length > 0
+        && value.length <= maxRows
+        && value.every((row) => Array.isArray(row)
+            && row.length > 0
+            && row.length <= maxCols
+            && row.every(Number.isFinite));
+}
+
+/** @param {unknown} value */
+function isBoardCell(value) {
+    if (value === null) return true;
+    if (!isRecord(value) || typeof value.type !== 'string') return false;
+    const idValid = value.id === undefined
+        || typeof value.id === 'string'
+        || Number.isFinite(value.id);
+    return hasOptionalString(value, 'shapeKey')
+        && hasOptionalString(value, 'color')
+        && idValid;
+}
+
+/** @param {unknown} value */
+function isBoardGrid(value) {
+    return Array.isArray(value)
+        && value.length === GRID_ROWS
+        && value.every((row) => Array.isArray(row)
+            && row.length === GRID_COLS
+            && row.every(isBoardCell));
+}
+
+/** @param {unknown} value */
+function isActivePiece(value) {
+    if (value === null) return true;
+    return isRecord(value)
+        && typeof value.type === 'string'
+        && Number.isFinite(value.x)
+        && Number.isFinite(value.y)
+        && Number.isFinite(value.rotation)
+        && hasOptionalString(value, 'shapeKey')
+        && hasOptionalString(value, 'color')
+        && (value.shape === undefined
+            || isNumberShape(value.shape, MAX_ACTIVE_SHAPE_ROWS, MAX_ACTIVE_SHAPE_COLS));
+}
+
+/** @param {unknown} value */
+function isGarbageEntry(value) {
+    if (!isRecord(value) || typeof value.type !== 'string') return false;
+    const nullableStringFields = ['attackerId', 'attackerName'];
+    const numericFields = [
+        'attackSeq', 'lineIndex', 'duration', 'createdSimTick', 'sourceSimTick',
+        'sourceLockSeq', 'applyAfterLockSeq', 'applySimTick',
+    ];
+    const attackIdValid = value.attackId === undefined
+        || typeof value.attackId === 'string'
+        || Number.isFinite(value.attackId);
+    const holeMaskValid = value.holeMask === undefined
+        || value.holeMask === null
+        || (Number.isInteger(value.holeMask) && value.holeMask >= 0 && value.holeMask < (1 << GRID_COLS));
+    const burstValid = value.isLastInBurst === undefined || typeof value.isLastInBurst === 'boolean';
+    return nullableStringFields.every((field) => value[field] === undefined
+            || value[field] === null
+            || typeof value[field] === 'string')
+        && ['color', 'variant', 'targetId', 'rulesHash'].every((field) => hasOptionalString(value, field))
+        && numericFields.every((field) => hasOptionalFiniteNumber(value, field))
+        && attackIdValid
+        && holeMaskValid
+        && burstValid;
+}
+
+/** @param {unknown} value */
+function isLockedPiece(value) {
+    if (!isRecord(value)) return false;
+    const pieceIdValid = value.pieceId === undefined
+        || typeof value.pieceId === 'string'
+        || Number.isFinite(value.pieceId);
+    return hasOptionalString(value, 'type')
+        && hasOptionalString(value, 'shapeKey')
+        && hasOptionalString(value, 'color')
+        && isNumberShape(value.shape, GRID_ROWS, GRID_COLS)
+        && Number.isFinite(value.x)
+        && Number.isFinite(value.y)
+        && pieceIdValid;
+}
+
+/** @param {unknown} value @returns {value is PackedPlayerSnapshotV7} */
+function isPackedPlayerSnapshot(value) {
+    if (!isRecord(value)) return false;
+    const numericFields = [
+        'score', 'lines', 'level', 'frags', 'garbagePending', 'dropCounter', 'dropInterval',
+    ];
+    const blindTimersValid = value.blindTimers === null
+        || (isRecord(value.blindTimers)
+            && ['field', 'fieldMax', 'pending', 'pendingMax']
+                .every((field) => Number.isFinite(value.blindTimers[field])));
+    return typeof value.steamId === 'string'
+        && typeof value.name === 'string'
+        && typeof value.color === 'string'
+        && numericFields.every((field) => Number.isFinite(value[field]))
+        && typeof value.isAlive === 'boolean'
+        && typeof value.awaitingSpawn === 'boolean'
+        && isBoardGrid(value.grid)
+        && isActivePiece(value.currentPiece)
+        && Array.isArray(value.nextPieces)
+        && value.nextPieces.length <= MAX_NEXT_PIECES
+        && value.nextPieces.every((piece) => typeof piece === 'string' && PIECE_TYPE_MAP.has(piece))
+        && Array.isArray(value.garbageEntries)
+        && value.garbageEntries.length <= MAX_GARBAGE_ENTRIES
+        && value.garbageEntries.every(isGarbageEntry)
+        && Array.isArray(value.lockedPieces)
+        && value.lockedPieces.length <= MAX_LOCKED_PIECES
+        && value.lockedPieces.every(isLockedPiece)
+        && blindTimersValid;
+}
+
+/** @param {PackedPlayerSnapshotV7} player @returns {PackedPlayerSnapshotV7} */
+function copyPackedPlayerSnapshot(player) {
+    return {
+        steamId: player.steamId,
+        name: player.name,
+        color: player.color,
+        score: player.score,
+        lines: player.lines,
+        level: player.level,
+        frags: player.frags,
+        isAlive: player.isAlive,
+        awaitingSpawn: player.awaitingSpawn,
+        garbagePending: player.garbagePending,
+        grid: player.grid,
+        currentPiece: player.currentPiece,
+        nextPieces: player.nextPieces,
+        dropCounter: player.dropCounter,
+        dropInterval: player.dropInterval,
+        garbageEntries: player.garbageEntries,
+        lockedPieces: player.lockedPieces,
+        blindTimers: player.blindTimers,
+    };
+}
 
 /**
  * Binary Encoder for game state snapshots
@@ -65,7 +226,7 @@ export class BinaryEncoder {
 
     /**
      * Encode a full game state snapshot to binary
-     * @param {Object} snapshot - The snapshot from buildStateSnapshot()
+     * @param {BinaryStateSnapshotV7} snapshot - The snapshot from buildStateSnapshot()
      * @returns {ArrayBuffer} Binary encoded snapshot
      */
     encodeSnapshot(snapshot) {
@@ -116,6 +277,9 @@ export class BinaryEncoder {
     /**
      * Encode a delta snapshot relative to a baseline
      * Returns NULL if delta is not possible (e.g. player list changed)
+     * @param {BinaryStateSnapshotV7} current
+     * @param {BinaryStateSnapshotV7} baseline
+     * @returns {ArrayBuffer|null}
      */
     encodeDeltaSnapshot(current, baseline) {
         if (!baseline || !current) return null;
@@ -168,7 +332,13 @@ export class BinaryEncoder {
     }
 
     /**
-     * Encode a single player's delta
+     * Encode a single player's delta.
+     * @param {ArrayBuffer} buffer
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {PackedPlayerSnapshotV7} current
+     * @param {PackedPlayerSnapshotV7} baseline
+     * @returns {number}
      */
     _encodePlayerDelta(buffer, view, offset, current, baseline) {
         // Calculate Change Mask
@@ -271,7 +441,7 @@ export class BinaryEncoder {
             const nextPieces = current.nextPieces || [];
             view.setUint8(offset++, nextPieces.length);
             for (const piece of nextPieces) {
-                const typeIndex = PIECE_TYPE_MAP.get(piece?.type || piece) || 0;
+                const typeIndex = PIECE_TYPE_MAP.get(piece) || 0;
                 view.setUint8(offset++, typeIndex);
             }
         }
@@ -328,7 +498,12 @@ export class BinaryEncoder {
     }
 
     /**
-     * Encode a single player's state
+     * Encode a single player's state.
+     * @param {ArrayBuffer} buffer
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {PackedPlayerSnapshotV7} player
+     * @returns {number}
      */
     _encodePlayer(buffer, view, offset, player) {
         // Ensure buffer is large enough
@@ -369,7 +544,7 @@ export class BinaryEncoder {
         const nextPieces = player.nextPieces || [];
         view.setUint8(offset++, nextPieces.length);
         for (const piece of nextPieces) {
-            const typeIndex = PIECE_TYPE_MAP.get(piece?.type || piece) || 0;
+            const typeIndex = PIECE_TYPE_MAP.get(piece) || 0;
             view.setUint8(offset++, typeIndex);
         }
 
@@ -521,7 +696,12 @@ export class BinaryEncoder {
     }
 
     /**
-     * Encode a garbage entry (v4: 24 bytes, v3 legacy: 7 bytes)
+     * Encode a garbage entry (v4: 24 bytes, v3 legacy: 7 bytes).
+     * @param {ArrayBuffer} buffer
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {GarbageEntrySnapshot|null|undefined} entry
+     * @returns {number}
      */
     _encodeGarbageEntry(buffer, view, offset, entry) {
         if (!entry) {
@@ -665,7 +845,7 @@ export class BinaryDecoder {
     /**
      * Decode a binary snapshot back to object form
      * @param {ArrayBuffer} buffer - Binary encoded snapshot
-     * @returns {Object} Decoded snapshot
+     * @returns {BinaryStateSnapshotV7|null} Decoded packed body
      */
     decodeSnapshot(buffer) {
         if (this.debugMode) {
@@ -679,6 +859,9 @@ export class BinaryDecoder {
 
         // === HEADER ===
         const magic = view.getUint32(offset, false); offset += 4;
+        if (magic === DELTA_MAGIC) {
+            throw new Error('Use decodeDeltaSnapshot for delta packets');
+        }
         if (magic !== BINARY_MAGIC) {
             // Not binary format, try JSON fallback
             return this._decodeFromJson(buffer);
@@ -686,7 +869,7 @@ export class BinaryDecoder {
 
         const version = view.getUint8(offset++);
         if (version !== FORMAT_VERSION) {
-            console.warn(`Binary format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
+            throw new Error(`Binary format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
         }
 
         const playerCount = view.getUint8(offset++);
@@ -706,14 +889,6 @@ export class BinaryDecoder {
 
         const gamePhase = GAME_PHASES[gamePhaseIndex] || 'waiting';
 
-        // === DELTA CHECK ===
-        // If magic matches DELTA_MAGIC, we need a baseline to decode against.
-        // But this decodeSnapshot method signature only takes buffer.
-        // We need a separate decodeDeltaSnapshot method for clarity.
-        if (magic === DELTA_MAGIC) {
-            throw new Error('Use decodeDeltaSnapshot for delta packets');
-        }
-
         // === PLAYER DATA ===
         const players = [];
         for (let i = 0; i < playerCount; i++) {
@@ -731,6 +906,12 @@ export class BinaryDecoder {
             const winnerName = this._readString(buffer, view, offset);
             offset = winnerName.offset;
             winner = { steamId: winnerSteamId.value, name: winnerName.value };
+        }
+
+        if (offset !== view.byteLength) {
+            throw new Error(
+                `Malformed binary snapshot: ${view.byteLength - offset} trailing bytes`,
+            );
         }
 
         return {
@@ -765,6 +946,9 @@ export class BinaryDecoder {
 
     /**
      * Decode a delta snapshot using a baseline state
+     * @param {ArrayBuffer} buffer
+     * @param {BinaryStateSnapshotV7} baseline
+     * @returns {BinaryStateSnapshotV7|null}
      */
     decodeDeltaSnapshot(buffer, baseline) {
         if (!baseline) throw new Error('Baseline required for delta decode');
@@ -782,6 +966,9 @@ export class BinaryDecoder {
         }
 
         const version = view.getUint8(offset++);
+        if (version !== FORMAT_VERSION) {
+            throw new Error(`Binary delta format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
+        }
         const playerCount = view.getUint8(offset++);
         if (playerCount > MAX_BINARY_PLAYERS) {
             throw new Error(`Malformed binary delta: player count ${playerCount} exceeds ${MAX_BINARY_PLAYERS}`);
@@ -840,6 +1027,12 @@ export class BinaryDecoder {
             winner = null;
         }
 
+        if (offset !== view.byteLength) {
+            throw new Error(
+                `Malformed binary delta: ${view.byteLength - offset} trailing bytes`,
+            );
+        }
+
         return {
             players,
             gamePhase,
@@ -851,9 +1044,17 @@ export class BinaryDecoder {
         };
     }
 
+    /**
+     * @param {ArrayBuffer} buffer
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {PackedPlayerSnapshotV7} basePlayer
+     * @param {number} [version]
+     * @returns {{player: PackedPlayerSnapshotV7, offset: number}}
+     */
     _decodePlayerDelta(buffer, view, offset, basePlayer, version = FORMAT_VERSION) {
         const mask = this._readUint8(view, offset++, 'player delta mask');
-        const p = { ...basePlayer }; // Start with clone of baseline
+        const p = copyPackedPlayerSnapshot(basePlayer);
 
         // Stats
         if (mask & DELTA_FLAGS.STATS) {
@@ -906,7 +1107,7 @@ export class BinaryDecoder {
             for (let i = 0; i < nextPieceCount; i++) {
                 const typeIndex = view.getUint8(offset++);
                 if (typeIndex > 0 && typeIndex <= PIECE_TYPES.length) {
-                    nextPieces.push({ type: PIECE_TYPES[typeIndex - 1] });
+                    nextPieces.push(PIECE_TYPES[typeIndex - 1]);
                 }
             }
             p.nextPieces = nextPieces;
@@ -935,7 +1136,12 @@ export class BinaryDecoder {
     }
 
     /**
-     * Decode a single player's state
+     * Decode a single player's state.
+     * @param {ArrayBuffer} buffer
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {number} [version]
+     * @returns {{player: PackedPlayerSnapshotV7, offset: number}}
      */
     _decodePlayer(buffer, view, offset, version = FORMAT_VERSION) {
         // === IDENTITY ===
@@ -1286,11 +1492,41 @@ export class BinaryDecoder {
 
     /**
      * Fallback: decode JSON
+     * @param {ArrayBuffer} buffer
+     * @returns {BinaryStateSnapshotV7|null}
      */
     _decodeFromJson(buffer) {
         try {
             const text = new TextDecoder().decode(buffer);
-            return JSON.parse(text);
+            const parsed = JSON.parse(text);
+            if (
+                !isRecord(parsed)
+                || !Array.isArray(parsed.players)
+                || parsed.players.length > MAX_BINARY_PLAYERS
+                || !parsed.players.every(isPackedPlayerSnapshot)
+                || !GAME_PHASES.includes(parsed.gamePhase)
+                || !Number.isFinite(parsed.timestamp)
+                || !Number.isFinite(parsed.tick)
+                || !Number.isFinite(parsed.simTick)
+                || !Number.isFinite(parsed.snapshotSeq)
+                || !(
+                    parsed.winner === null
+                    || (isRecord(parsed.winner)
+                        && (typeof parsed.winner.steamId === 'string' || parsed.winner.steamId === null)
+                        && typeof parsed.winner.name === 'string')
+                )
+            ) {
+                throw new TypeError('JSON snapshot does not match the state contract');
+            }
+            return {
+                players: parsed.players.map(copyPackedPlayerSnapshot),
+                gamePhase: parsed.gamePhase,
+                winner: parsed.winner,
+                timestamp: parsed.timestamp,
+                tick: parsed.tick,
+                simTick: parsed.simTick,
+                snapshotSeq: parsed.snapshotSeq,
+            };
         } catch (e) {
             console.error('Failed to decode snapshot:', e);
             return null;

@@ -115,9 +115,8 @@ material.sheenNode = float(1.0);
 material.sheenRoughnessNode = float(0.5);
 material.sheenColorNode = color(0xffffff);
 
-// Anisotropy (brushed metal)
+// Anisotropy (brushed metal) — direction/rotation is encoded in the node's xy
 material.anisotropyNode = float(1.0);
-material.anisotropyRotationNode = float(0);
 
 // Specular
 material.specularIntensityNode = float(1.0);
@@ -133,13 +132,14 @@ material.dispersionNode = float(0.0);
 ### Environment and Lighting
 
 ```javascript
-import { cubeTexture, envMap } from 'three/tsl';
+import { cubeTexture, pmremTexture, lights } from 'three/tsl';
 
-// Environment map reflection
-material.envMapNode = cubeTexture(envCubeMap);
+// Environment map reflection — the property is envNode (envMapNode does not exist)
+material.envNode = cubeTexture(envCubeMap);
+material.envNode = pmremTexture(equirectTexture);  // repo pattern for IBL
 
-// Custom lights
-material.lightsNode = lights();
+// Custom light selection
+material.lightsNode = lights([keyLight, rimLight]);
 ```
 
 ## Vertex Manipulation
@@ -339,15 +339,22 @@ const threshold = uniform(0.5);
 
 const material = new THREE.MeshStandardNodeMaterial();
 
-const noise = hash(positionLocal.mul(50));
+// Discard must run INSIDE a node graph that the material evaluates —
+// a bare If()/Discard() at module scope is attached to nothing and does nothing.
+material.colorNode = Fn(() => {
+  const noise = hash(positionLocal.mul(50));
 
-// Discard fragments below threshold
-If(noise.lessThan(threshold), () => {
-  Discard();
-});
+  If(noise.lessThan(threshold), () => {
+    Discard();
+  });
+
+  return color(0x333333);
+})();
 
 // Edge glow
-const edge = smoothstep(threshold, threshold.add(0.1), noise);
-material.colorNode = color(0x333333);
-material.emissiveNode = color(0xff5500).mul(float(1.0).sub(edge));
+material.emissiveNode = Fn(() => {
+  const noise = hash(positionLocal.mul(50));
+  const edge = smoothstep(threshold, threshold.add(0.1), noise);
+  return color(0xff5500).mul(float(1.0).sub(edge));
+})();
 ```

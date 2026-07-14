@@ -476,14 +476,14 @@ varying float vAlpha;
 
 void main() {
     float rawAge = time - aBirth;
-    float active = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
+    float activeMask = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
     float safeLife = max(aLife, 0.001);
     float age = clamp(rawAge, 0.0, safeLife);
     float lifeNorm = clamp(age / safeLife, 0.0, 1.0);
     float decel = max(0.35, 1.0 - pow(lifeNorm, 1.2));
-    vec3 animatedPos = mix(vec3(0.0, 0.0, -9999.0), position + aVelocity.xyz * age * decel, active);
-    float alpha = pow(1.0 - lifeNorm, 0.45) * active;
-    float size = aSize * (1.2 - lifeNorm * 0.8) * active;
+    vec3 animatedPos = mix(vec3(0.0, 0.0, -9999.0), position + aVelocity.xyz * age * decel, activeMask);
+    float alpha = pow(1.0 - lifeNorm, 0.45) * activeMask;
+    float size = aSize * (1.2 - lifeNorm * 0.8) * activeMask;
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -545,11 +545,11 @@ varying vec3 vColor;
 
 void main() {
     float rawAge = uTime - aBirth;
-    float active = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
+    float activeMask = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
     float safeLife = max(aLife, 0.001);
     float age = clamp(rawAge, 0.0, safeLife);
     float lifeNorm = clamp(age / safeLife, 0.0, 1.0);
-    float fade = pow(1.0 - lifeNorm, 0.3) * active;
+    float fade = pow(1.0 - lifeNorm, 0.3) * activeMask;
 
     vec3 pos = position + aVelocity.xyz * age;
     float dist = max(length(pos.xz), 1.0);
@@ -577,7 +577,7 @@ void main() {
     gl_Position = projectionMatrix * mvPosition;
 
     // Size attenuation — larger when close, smaller far away
-    gl_PointSize = aSize * (1.0 - lifeNorm * 0.45) * active * (320.0 / -mvPosition.z);
+    gl_PointSize = aSize * (1.0 - lifeNorm * 0.45) * activeMask * (320.0 / -mvPosition.z);
     gl_PointSize = clamp(gl_PointSize, 1.5, 300.0);
 }
 `;

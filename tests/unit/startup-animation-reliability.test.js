@@ -125,6 +125,7 @@ vi.mock('three/webgpu', () => {
         Scene,
         PerspectiveCamera,
         Matrix4,
+        ACESFilmicToneMapping: 'ACESFilmicToneMapping',
         NoToneMapping: 'NoToneMapping',
         SRGBColorSpace: 'SRGBColorSpace',
     };
@@ -450,6 +451,158 @@ describe('intro startup reliability', () => {
     });
 });
 
+describe('startup pipeline state machine', () => {
+    it('separates menu readiness from intro duration and exposes the menu only after both', async () => {
+        const {
+            STARTUP_IDENT_MIN_VISIBLE_MS,
+            STARTUP_PIPELINE_EVENTS,
+            STARTUP_WATCHDOG_MS,
+            createStartupPipelineStateMachine,
+        } = await import('../../src/ui/startup-pipeline-state-machine.js');
+        let now = 100;
+        const transitions = [];
+        const clearTimeoutFn = vi.fn();
+        const pipeline = createStartupPipelineStateMachine({
+            nowFn: () => now,
+            setTimeoutFn: vi.fn(() => 77),
+            clearTimeoutFn,
+            onTransition: ({ event }) => transitions.push(event),
+        });
+
+        expect(STARTUP_IDENT_MIN_VISIBLE_MS).toBe(4000);
+        expect(STARTUP_WATCHDOG_MS).toBe(45000);
+        pipeline.start();
+        now = 350;
+        pipeline.markAppReady();
+        now = 500;
+        pipeline.markMenuReady();
+        now = 600;
+        pipeline.markIntroRunning();
+
+        expect(pipeline.snapshot()).toMatchObject({
+            menuReady: true,
+            menuVisible: false,
+            introStatus: 'running',
+            metrics: { timeToMenuReadyMs: 400 },
+        });
+
+        now = 5600;
+        pipeline.markIntroDone();
+        const finalState = await pipeline.waitForMenuVisible();
+
+        expect(finalState).toMatchObject({
+            menuVisible: true,
+            introStatus: 'done',
+            metrics: {
+                timeToMenuReadyMs: 400,
+                introDurationMs: 5000,
+                timeToMenuVisibleMs: 5500,
+            },
+        });
+        expect(transitions).toEqual([
+            STARTUP_PIPELINE_EVENTS.BOOT_STARTED,
+            STARTUP_PIPELINE_EVENTS.APP_READY,
+            STARTUP_PIPELINE_EVENTS.MENU_READY,
+            STARTUP_PIPELINE_EVENTS.INTRO_RUNNING,
+            STARTUP_PIPELINE_EVENTS.INTRO_DONE,
+            STARTUP_PIPELINE_EVENTS.MENU_VISIBLE,
+        ]);
+        expect(clearTimeoutFn).toHaveBeenCalledWith(77);
+    });
+
+    it('rejects menu readiness before app readiness', async () => {
+        const { createStartupPipelineStateMachine } = await import(
+            '../../src/ui/startup-pipeline-state-machine.js'
+        );
+        const pipeline = createStartupPipelineStateMachine();
+        pipeline.start();
+
+        expect(() => pipeline.markMenuReady()).toThrow('MENU_READY requires APP_READY');
+        pipeline.dispose();
+    });
+
+    it('watchdog-aborts a hung startup task and reaches the menu through skip', async () => {
+        vi.useFakeTimers();
+        const {
+            createStartupPipelineStateMachine,
+            waitForStartupStep,
+        } = await import('../../src/ui/startup-pipeline-state-machine.js');
+        const callbackOrder = [];
+        const pipeline = createStartupPipelineStateMachine({
+            watchdogMs: 45000,
+            onIntroSkipped: () => callbackOrder.push('dispose-visuals'),
+            onMenuVisible: () => callbackOrder.push('menu-visible'),
+        });
+        pipeline.start();
+        pipeline.markAppReady();
+        pipeline.markMenuReady();
+        pipeline.markIntroRunning();
+
+        const hungStep = waitForStartupStep(new Promise(() => {}), pipeline.signal);
+        const rejection = expect(hungStep).rejects.toMatchObject({
+            name: 'StartupPipelineAbortError',
+            reason: 'watchdog',
+        });
+        await vi.advanceTimersByTimeAsync(45000);
+        await rejection;
+
+        expect(pipeline.snapshot()).toMatchObject({
+            menuVisible: true,
+            introStatus: 'skipped',
+            introSkipReason: 'watchdog',
+            watchdogFired: true,
+        });
+        expect(callbackOrder).toEqual(['dispose-visuals', 'menu-visible']);
+    });
+
+    it('keeps the shell-gated menu pending when watchdog fires before app readiness', async () => {
+        vi.useFakeTimers();
+        const { createStartupPipelineStateMachine } = await import(
+            '../../src/ui/startup-pipeline-state-machine.js'
+        );
+        const pipeline = createStartupPipelineStateMachine({ watchdogMs: 100 });
+        pipeline.start();
+        pipeline.markIntroRunning();
+
+        await vi.advanceTimersByTimeAsync(100);
+        expect(pipeline.snapshot()).toMatchObject({
+            menuReady: false,
+            menuVisible: false,
+            introStatus: 'skipped',
+        });
+
+        pipeline.markAppReady();
+        pipeline.markMenuReady();
+        await expect(pipeline.waitForMenuVisible()).resolves.toMatchObject({
+            menuVisible: true,
+            introSkipReason: 'watchdog',
+        });
+    });
+
+    it('treats an explicit pre-title input as an idempotent intro skip', async () => {
+        const { createStartupPipelineStateMachine } = await import(
+            '../../src/ui/startup-pipeline-state-machine.js'
+        );
+        const pipeline = createStartupPipelineStateMachine();
+        pipeline.start();
+        pipeline.markAppReady();
+        pipeline.markMenuReady();
+        pipeline.markIntroRunning();
+
+        pipeline.skipIntro('user-input', { inputType: 'keydown' });
+        pipeline.skipIntro('user-input', { inputType: 'keydown' });
+
+        await expect(pipeline.waitForMenuVisible()).resolves.toMatchObject({
+            menuVisible: true,
+            introStatus: 'skipped',
+            introSkipReason: 'user-input',
+        });
+        expect(pipeline.snapshot().history.filter(
+            ({ event }) => event === 'INTRO_SKIPPED',
+        )).toHaveLength(1);
+    });
+});
+
 describe('boot warp startup decision', () => {
     it('defaults boot warp timing to 6500ms and clamps short URL overrides', async () => {
         const {
@@ -457,6 +610,7 @@ describe('boot warp startup decision', () => {
             BOOT_WARP_FADE_PROGRESS,
             BOOT_WARP_MIN_VISIBLE_MS,
             BOOT_WARP_REVEAL_PROGRESS,
+            BOOT_WARP_TITLE_PROGRESS,
             resolveBootWarpTiming,
         } = await import('../../src/ui/boot-warp-startup.js');
 
@@ -469,9 +623,10 @@ describe('boot warp startup decision', () => {
         const shortTiming = resolveBootWarpTiming(new URLSearchParams('warpDur=100'));
         const visibleWindowMs = shortTiming.durationMs * (BOOT_WARP_FADE_PROGRESS - BOOT_WARP_REVEAL_PROGRESS);
         expect(shortTiming.requestedDurationMs).toBe(100);
-        expect(shortTiming.durationMs).toBe(6250);
+        expect(shortTiming.durationMs).toBe(5953);
         expect(shortTiming.durationMs).toBeGreaterThanOrEqual(shortTiming.minDurationMs);
         expect(visibleWindowMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
+        expect(BOOT_WARP_TITLE_PROGRESS).toBeLessThan(BOOT_WARP_FADE_PROGRESS);
     });
 
     it('declines the warp when intro renderer readiness exceeds the boot budget', async () => {
@@ -591,6 +746,31 @@ describe('boot warp startup decision', () => {
         expect(progressEvents).toContain('idle-timeout');
     });
 
+    it('stops a theme-idle poll when the startup pipeline aborts', async () => {
+        vi.useFakeTimers();
+        const { waitForStartupThemeIdle } = await import('../../src/ui/boot-warp-startup.js');
+        const controller = new AbortController();
+        const progressEvents = [];
+        const waitPromise = waitForStartupThemeIdle(() => ({
+            name: 'hung-theme',
+            buildingLoadInProgress: true,
+        }), {
+            pollMs: 10,
+            signal: controller.signal,
+            onProgress: (event) => progressEvents.push(event),
+        });
+
+        controller.abort();
+        await vi.advanceTimersByTimeAsync(20);
+
+        await expect(waitPromise).resolves.toMatchObject({
+            aborted: true,
+            busy: true,
+            theme: 'hung-theme',
+        });
+        expect(progressEvents).toContain('aborted');
+    });
+
     it('exports a finite prewarm retry cap so deterministic failures cannot retry forever', async () => {
         const { BOOT_WARP_MAX_PREWARM_ATTEMPTS } = await import('../../src/ui/boot-warp-startup.js');
         expect(Number.isInteger(BOOT_WARP_MAX_PREWARM_ATTEMPTS)).toBe(true);
@@ -682,6 +862,77 @@ describe('boot warp startup decision', () => {
         expect(introAnimation.revealTitle).not.toHaveBeenCalled();
         expect(dismissStartupShell).not.toHaveBeenCalled();
     });
+
+    it('does not reveal the title after an active handoff is aborted', async () => {
+        const { playBootWarpHandoff } = await import('../../src/ui/boot-warp-startup.js');
+        const controller = new AbortController();
+        const introAnimation = { revealTitle: vi.fn() };
+        const warpTransition = {
+            play: vi.fn(async ({ onProgress }) => {
+                onProgress(0.1, { firstFrameRendered: true });
+                return {
+                    status: 'disposed',
+                    firstFrameRendered: true,
+                    durationMs: 6500,
+                    progress: 0.1,
+                };
+            }),
+            fadeOut: vi.fn(),
+        };
+        const dismissStartupShell = vi.fn(() => controller.abort());
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            introAnimation,
+            dismissStartupShell,
+            signal: controller.signal,
+        });
+
+        expect(result).toMatchObject({
+            status: 'startup-pipeline-aborted',
+            shellDismissed: true,
+            titleRevealed: false,
+        });
+        expect(warpTransition.fadeOut).not.toHaveBeenCalled();
+        expect(introAnimation.revealTitle).not.toHaveBeenCalled();
+    });
+
+    it('routes a disabled warp through the orchestrator CSS fallback', async () => {
+        const { playBootWarpStartupSequence } = await import(
+            '../../src/ui/boot-warp-orchestrator.js'
+        );
+        const shellDismissal = deferred();
+        const dismissStartupShell = vi.fn(() => shellDismissal.promise);
+        const startupPipeline = {
+            signal: new AbortController().signal,
+            waitForStep: (value) => Promise.resolve(value),
+            trackVisual: vi.fn(),
+            releaseVisual: vi.fn(),
+            disposeVisuals: vi.fn(),
+        };
+
+        const result = await playBootWarpStartupSequence({
+            urlParams: new URLSearchParams('noBootWarp=1'),
+            dismissStartupShell,
+            startupPipeline,
+        });
+
+        expect(result).toMatchObject({
+            status: 'css-fallback',
+            shellDismissed: false,
+        });
+        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin');
+        expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
+
+        let surfaceReady = false;
+        result.surfaceReadyPromise.then(() => { surfaceReady = true; });
+        await Promise.resolve();
+        expect(surfaceReady).toBe(false);
+
+        shellDismissal.resolve();
+        await result.surfaceReadyPromise;
+        expect(surfaceReady).toBe(true);
+    });
 });
 
 describe('boot warp prewarm budget', () => {
@@ -761,6 +1012,24 @@ describe('boot warp prewarm budget', () => {
             status: 'render-failed-before-visible',
             firstFrameRendered: false,
         });
+    });
+
+    it('settles active playback when the startup pipeline disposes the warp', async () => {
+        installDom();
+        installRafQueue();
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+        await transition.prewarm({ timeoutMs: 100 });
+
+        const playPromise = transition.play({ durationMs: 6500 });
+        transition.dispose();
+
+        await expect(playPromise).resolves.toMatchObject({
+            status: 'disposed',
+            firstFrameRendered: false,
+            durationMs: 6500,
+        });
+        expect(cancelAnimationFrame).toHaveBeenCalled();
     });
 
     it('skips boot warp for explicit disable and forced WebGL flags', async () => {

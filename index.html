@@ -173,16 +173,9 @@
         <span class="demo-text">Watching Replay</span>
     </div>
 
-    <!-- ═══════════════════ STUDIO LOGO IDENT (full-screen, placeholder brand) ═══════════════════
-         AAA-style studio ident shown BEFORE the "Serenity Blocks" intro, while the first
-         theme's shaders compile behind it (no loading UI — the compile is invisible).
-         To brand it:
-           • Image logo: set the #startup-logo-image `src` to a file in public/
-             (e.g. src="/branding/studio-logo.png") and remove `hidden`. The text
-             placeholder + its glow/sheen auto-hide (see initStartupLogo() in main.js).
-           • Text logo: edit the .startup-logo__name-text below.
-    ═════════════════════════════════════════════════════════════════════════════════════════════ -->
-    <div id="startup-shell" class="startup-shell" role="status" aria-live="polite">
+    <!-- Serenity Blocks game ident. It masks renderer warm-up, then match-dissolves
+         into the same faceted diamond rendered by the WebGPU boot warp. -->
+    <div id="startup-shell" class="startup-shell" role="status" aria-label="Serenity Blocks">
         <div class="startup-shell__grain" aria-hidden="true"></div>
         <div class="startup-shell__vignette" aria-hidden="true"></div>
         <div class="startup-shell__spotlight" aria-hidden="true"></div>
@@ -193,16 +186,15 @@
         <div class="startup-shell__ember" aria-hidden="true"></div>
 
         <div class="startup-logo" id="startup-logo-group">
-            <img id="startup-logo-image" class="startup-logo__image" src="" alt="Studio logo" hidden>
+            <img id="startup-logo-image" class="startup-logo__image" src="" alt="Serenity Blocks logo" hidden>
             <div class="startup-logo__markwrap" aria-hidden="true">
                 <div class="startup-logo__glow"></div>
-                <div class="startup-logo__mark"><span>◆</span></div>
+                <div class="startup-logo__mark"><span></span></div>
             </div>
             <div class="startup-logo__name">
-                <span class="startup-logo__name-text">YOUR&nbsp;STUDIO</span>
+                <span class="startup-logo__name-text">SERENITY&nbsp;BLOCKS</span>
                 <span class="startup-logo__sheen" aria-hidden="true"></span>
             </div>
-            <div class="startup-shell__eyebrow">Serenity Blocks</div>
         </div>
     </div>
 

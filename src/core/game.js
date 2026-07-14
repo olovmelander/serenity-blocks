@@ -14,12 +14,24 @@ import {
     LOCK_DELAY_MS,
     LOCK_RESET_LIMIT,
 } from './constants.js';
-import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
-import { processPhysics } from './physics.js';
+import {
+    generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
+} from './board.js';
+import { insertGarbageEntries } from './garbage.js';
+import { processPhysics, tryProcessNoClearSync } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
+import {
+    INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    normalizeInfinitySpawnPolicy,
+    resolveInfinitySpawnRow,
+    synchronizeInfinitySimulationCamera,
+} from './infinity-spawn-policy.js';
 import { createBlindTimers } from './blind.js';
+import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
+import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
+import { createPlayerInputState, resetPlayerInputState } from './player-input-state.js';
 
 function resolveActiveTetrominoColor(shapeKey) {
     const defaultColor = COLORS[shapeKey] || '#808080';
@@ -86,14 +98,7 @@ function ensureBoardCache(gameState) {
     return gameState.boardCache;
 }
 
-function invalidateGhostCache(gameState) {
-    if (!gameState) return;
-    if (!gameState.ghostCache) {
-        gameState.ghostCache = { piece: null, y: 0 };
-    }
-    gameState.ghostCacheDirty = true;
-    gameState.ghostCache.piece = null;
-}
+// invalidateGhostCache + markBoardDirty live in board.js (imported above).
 
 function hasLockedCells(grid) {
     if (!grid) return false;
@@ -159,6 +164,69 @@ function getLockDelay(gameState) {
     return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_DELAY_MS;
 }
 
+function getLockDelayTicks(gameState) {
+    const derived = durationMsToTicks(getLockDelay(gameState), gameState?.simTickMs);
+    // lockDelay is still the public configuration boundary during migration.
+    // Refresh its integer mirror here so a later simTickMs change cannot leave
+    // fixed timing on a stale constructor-time value.
+    if (gameState) gameState.lockDelayTicks = derived;
+    return derived;
+}
+
+/**
+ * Consume exactly one canonical hit-stop tick without consulting wall time.
+ * Direct millisecond producers remain valid during the migration: a changed
+ * public value is re-quantized before the integer counter is consumed. The
+ * final frozen tick still returns true; gameplay resumes on the next tick.
+ *
+ * Ships dark until the shared advanceTick policy owns input ordering.
+ *
+ * @param {GameState} gameState
+ * @returns {boolean} true when this simulation tick must remain frozen
+ */
+export function consumeFixedHitStopTick(gameState) {
+    if (!gameState) return false;
+
+    const configuredTickMs = Number(gameState.simTickMs);
+    const tickMs = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+        ? configuredTickMs
+        : (1000 / 60);
+    const numericRemainingMs = Number(gameState.hitStopRemaining);
+    const remainingMs = Number.isFinite(numericRemainingMs) && numericRemainingMs > 0
+        ? numericRemainingMs
+        : 0;
+
+    // A restored explicit counter wins on the fixed path while the legacy path
+    // may continue reading the original millisecond value. Any direct producer
+    // write or tick-duration change invalidates that synchronization and is
+    // re-quantized at the public millisecond boundary.
+    const counterIsSynchronized = Number.isInteger(gameState.hitStopTicks)
+        && gameState.hitStopTicks >= 0
+        && remainingMs === gameState._hitStopTickSourceMs
+        && tickMs === gameState._hitStopTickDurationMs;
+    if (!counterIsSynchronized) {
+        if (remainingMs <= 0) {
+            gameState.hitStopRemaining = 0;
+            gameState.hitStopTicks = 0;
+            gameState._hitStopTickSourceMs = 0;
+            gameState._hitStopTickDurationMs = tickMs;
+            return false;
+        }
+        gameState.hitStopTicks = durationMsToTicks(remainingMs, tickMs);
+    }
+    if (gameState.hitStopTicks <= 0) {
+        gameState.hitStopRemaining = 0;
+        gameState._hitStopTickSourceMs = 0;
+        gameState._hitStopTickDurationMs = tickMs;
+        return false;
+    }
+    gameState.hitStopTicks = Math.max(0, gameState.hitStopTicks - 1);
+    gameState.hitStopRemaining = gameState.hitStopTicks * tickMs;
+    gameState._hitStopTickSourceMs = gameState.hitStopRemaining;
+    gameState._hitStopTickDurationMs = tickMs;
+    return true;
+}
+
 function getLockResetLimit(gameState) {
     const configured = Number(gameState?.lockResetLimit);
     return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_RESET_LIMIT;
@@ -167,6 +235,7 @@ function getLockResetLimit(gameState) {
 function resetLockState(gameState) {
     if (!gameState) return;
     gameState.lockTimer = 0;
+    gameState.lockTimerTicks = 0;
     gameState.lockResetCount = 0;
     gameState.isGrounded = false;
     gameState.lockGroundedSince = null;
@@ -184,7 +253,7 @@ function isCurrentPieceGrounded(gameState) {
     );
 }
 
-function updateGroundedState(gameState, delta = 0) {
+function updateGroundedState(gameState, delta = 0, elapsedTicks = null) {
     if (!gameState?.currentPiece) {
         resetLockState(gameState);
         return false;
@@ -193,6 +262,7 @@ function updateGroundedState(gameState, delta = 0) {
     const grounded = isCurrentPieceGrounded(gameState);
     if (!grounded) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.isGrounded = false;
         gameState.lockGroundedSince = null;
         return false;
@@ -201,11 +271,22 @@ function updateGroundedState(gameState, delta = 0) {
     if (!gameState.isGrounded) {
         gameState.isGrounded = true;
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.lockGroundedSince = gameState.lastTime || 0;
     }
 
-    if (Number.isFinite(delta) && delta > 0) {
+    if (Number.isInteger(elapsedTicks) && elapsedTicks >= 0) {
+        gameState.lockTimerTicks += elapsedTicks;
+        const configuredTickMs = Number(gameState.simTickMs);
+        const tickMs = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+            ? configuredTickMs
+            : (1000 / 60);
+        // Compatibility mirror for render/debug/legacy snapshot consumers.
+        // The integer counter is authoritative only when elapsedTicks is explicit.
+        gameState.lockTimer = gameState.lockTimerTicks * tickMs;
+    } else if (Number.isFinite(delta) && delta > 0) {
         gameState.lockTimer += delta;
+        gameState.lockTimerTicks = elapsedMsToTicks(gameState.lockTimer, gameState.simTickMs);
     }
 
     return true;
@@ -216,6 +297,7 @@ function maybeResetLockDelay(gameState, wasGrounded) {
 
     if (!isCurrentPieceGrounded(gameState)) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.isGrounded = false;
         gameState.lockGroundedSince = null;
         return;
@@ -223,15 +305,18 @@ function maybeResetLockDelay(gameState, wasGrounded) {
 
     if (gameState.lockResetCount < getLockResetLimit(gameState)) {
         gameState.lockTimer = 0;
+        gameState.lockTimerTicks = 0;
         gameState.lockResetCount += 1;
         gameState.isGrounded = true;
         gameState.lockGroundedSince = gameState.lastTime || 0;
     }
 }
 
-function shouldLockGroundedPiece(gameState) {
+function shouldLockGroundedPiece(gameState, useTickTimer = false) {
     return getLockDelay(gameState) <= 0
-        || gameState.lockTimer >= getLockDelay(gameState)
+        || (useTickTimer
+            ? gameState.lockTimerTicks >= getLockDelayTicks(gameState)
+            : gameState.lockTimer >= getLockDelay(gameState))
         || gameState.lockResetCount >= getLockResetLimit(gameState);
 }
 
@@ -280,9 +365,13 @@ function createActivePiece(gameState, shapeKey) {
     piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
 
     if (gameState.isInfinityMode) {
-        const cameraTopRow = gameState.cameraRow || 0;
-        const spawnOffset = 2;
-        piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
+        if (gameState.infinitySpawnPolicy === INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1) {
+            piece.y = resolveInfinitySpawnRow(gameState);
+        } else {
+            const cameraTopRow = gameState.cameraRow || 0;
+            const spawnOffset = 2;
+            piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
+        }
     } else {
         piece.y = HIDDEN_ROWS - 2;
     }
@@ -316,18 +405,118 @@ function isValidPositionCached(gameState, piece, checkX, checkY) {
     return true;
 }
 
-export function markBoardDirty(gameState) {
-    if (gameState) {
+export function canPlacePiece(gameState, piece, checkX, checkY) {
+    return isValidPositionCached(gameState, piece, checkX, checkY);
+}
+
+/**
+ * Sanctioned bulk board/stat restore (remediation plan §5.1 slice 2).
+ *
+ * The MP snapshot-adoption paths bulk-assigned board/stat fields inline —
+ * the exact "permanent bypass" the plan warns any mutation boundary against.
+ * This function owns those WRITES; callers keep computing the policy (the
+ * hold/peerOwns/reconcile rules stay in ffa-p2p-game-state.js, expressed as
+ * the flags below instead of scattered field pokes).
+ *
+ * demo-state.js restoreGameStateSnapshot remains the OTHER sanctioned bulk
+ * restore (full ~40-field demo seek); it collapses into this boundary when
+ * §5.9's compact savestate redefines the snapshot schema.
+ *
+ * @param {Object} gameState
+ * @param {Object} snapshot
+ *   {grid?, lockedPieces?, currentPiece?, nextPieces?, dropInterval?,
+ *    dropCounter?, score?, lines?, level?}
+ * @param {Object} policy
+ * @param {'adopt'|'monotonic'|'hold'} [policy.statsMode='hold']
+ *   adopt = authoritative overwrite; monotonic = never let a lagged frame
+ *   pull score/lines/level below the local prediction (max()); hold = leave.
+ * @param {boolean} [policy.adoptBoard=false] write grid/pieces + invalidate cache
+ * @param {boolean} [policy.mirrorGrid=false] also set gameState.grid (the MP
+ *   wire mirror — ffa-only 4th representation)
+ * @param {boolean} [policy.keepCurrentPiece=false] caller reconciles the piece
+ *   itself (peer-owns-local-piece path)
+ * @param {boolean} [policy.adoptSpeed=false] dropInterval + nextPieces
+ * @param {boolean} [policy.adoptDropCounter=false] gravity phase (remote boards
+ *   only — the local player's fall stays prediction-driven)
+ */
+export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
+    if (!gameState) return;
+    // Board changed outside the lock path — invalidates in-flight §5.10 shadow samples.
+    gameState.boardMutationEpoch = (gameState.boardMutationEpoch || 0) + 1;
+
+    if (policy.statsMode === 'adopt') {
+        gameState.score = snapshot.score;
+        gameState.lines = snapshot.lines;
+        gameState.level = snapshot.level;
+    } else if (policy.statsMode === 'monotonic') {
+        gameState.score = Math.max(gameState.score || 0, snapshot.score || 0);
+        gameState.lines = Math.max(gameState.lines || 0, snapshot.lines || 0);
+        gameState.level = Math.max(gameState.level || 0, snapshot.level || 0);
+    }
+
+    if (policy.adoptBoard) {
+        if (snapshot.grid) {
+            gameState.boardGrid = snapshot.grid;
+            if (gameState.isInfinityMode) {
+                gameState.board = snapshot.grid;
+                synchronizeInfinitySimulationCamera(gameState);
+            }
+            if (policy.mirrorGrid) gameState.grid = snapshot.grid;
+        }
+        if ('lockedPieces' in snapshot) {
+            gameState.lockedPieces = snapshot.lockedPieces || [];
+        }
+        if (!policy.keepCurrentPiece && 'currentPiece' in snapshot) {
+            gameState.currentPiece = snapshot.currentPiece ? { ...snapshot.currentPiece } : null;
+        }
+        gameState.boardCache = null;
         gameState.boardCacheDirty = true;
-        // Increment board version for rendering change detection
-        // This allows the renderer to know when the board content has changed
-        gameState.boardVersion = (gameState.boardVersion || 0) + 1;
-        invalidateGhostCache(gameState);
+    }
+
+    if (policy.adoptSpeed) {
+        gameState.dropInterval = snapshot.dropInterval || 1000;
+        gameState.nextPieces = snapshot.nextPieces ? [...snapshot.nextPieces] : [];
+        if (policy.adoptDropCounter) {
+            gameState.dropCounter = snapshot.dropCounter || 0;
+        }
     }
 }
 
-export function canPlacePiece(gameState, piece, checkX, checkY) {
-    return isValidPositionCached(gameState, piece, checkX, checkY);
+/**
+ * THE garbage-application boundary (remediation plan §5.1 slice 1).
+ *
+ * insertGarbageEntries mutates lockedPieces by ALIAS (shifts every piece up,
+ * pushes garbage rows, settles floaters) and never repairs the derived
+ * representations — before this boundary, its five callers hand-rolled the
+ * grid/cache repair three different ways (one deferred the rebuild to the
+ * renderer's per-frame self-heal, a latent collision-vs-render hazard).
+ *
+ * Placement is computed from lockedPieces — the source of truth — never from
+ * a possibly-stale boardGrid; afterwards boardGrid is rebuilt and the cache
+ * invalidated in ONE place. Callers must not touch the arrays.
+ *
+ * @param {Object} gameState
+ * @param {Array<Object>} entries - Garbage entries (see garbage.js)
+ * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
+ * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
+ *   settledSteps: number, linesAfterInsertion: number[]} | null}
+ */
+export function applyGarbage(gameState, entries, options = {}) {
+    if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
+    // Board changed outside the lock path — invalidates in-flight §5.10 shadow samples.
+    gameState.boardMutationEpoch = (gameState.boardMutationEpoch || 0) + 1;
+
+    const result = insertGarbageEntries(gameState.lockedPieces, entries, {
+        debug: options.debug,
+        settleFloatingBlocks: options.settleFloatingBlocks,
+    });
+
+    if (gameState.boardGrid) {
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    }
+    markBoardDirty(gameState);
+
+    return result;
 }
 
 export function getGhostLandingY(gameState) {
@@ -367,6 +556,15 @@ export class GameState {
         this.disableLevelProgression = options.disableLevelProgression || false;
         this.disableGarbage = options.disableGarbage || false;
         this.initialInfinityRows = options.initialInfinityRows || ROWS + HIDDEN_ROWS;
+        this.infinityVisibleRows = Number.isSafeInteger(options.infinityVisibleRows)
+            && options.infinityVisibleRows > 0
+            ? options.infinityVisibleRows
+            : ROWS;
+        this.infinitySpawnOffsetRows = Number.isSafeInteger(options.infinitySpawnOffsetRows)
+            && options.infinitySpawnOffsetRows >= 0
+            ? options.infinitySpawnOffsetRows
+            : 2;
+        this.infinitySpawnPolicy = normalizeInfinitySpawnPolicy(options.infinitySpawnPolicy);
 
         // Infinity mode tracking
         this.currentTopRow = 0; // Highest row with blocks
@@ -377,6 +575,7 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        this.rngDescriptor = null;
         // Per-instance piece-id counter (was a module global shared across every
         // GameState, which interleaved IDs across multiplayer boards and never
         // reset — a determinism/isolation hazard for the physics connectivity key).
@@ -403,11 +602,15 @@ export class GameState {
         this.simTickMs = 1000 / 60;
         this.simTimeMs = 0;
         this.simFrame = 0;
+        this._fixedInputSpawnFrame = null;
         this.startTime = Date.now();
         this.piecesPlaced = 0;
+        this.lockBonusPolicy = options.lockBonusPolicy === 'legacy-max' ? 'legacy-max' : 'elapsed';
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
+        this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
         this.lockTimer = 0;
+        this.lockTimerTicks = 0;
         this.lockResetCount = 0;
         this.isGrounded = false;
         this.lockGroundedSince = null;
@@ -415,7 +618,11 @@ export class GameState {
         // Flags
         this.isGameOver = false;
         this.isPaused = false;
+        this.hitStopEnabled = options.hitStopEnabled !== false;
         this.hitStopRemaining = 0; // Tracks remaining hit-stop (impact freeze) milliseconds
+        this.hitStopTicks = 0;
+        this._hitStopTickSourceMs = 0;
+        this._hitStopTickDurationMs = this.simTickMs;
         this.isProcessingPhysics = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
@@ -432,6 +639,7 @@ export class GameState {
 
         // Input
         this.inputQueue = null;
+        this.playerInput = createPlayerInputState(options.inputHandling);
 
         // Animation
         this.animationId = null;
@@ -448,6 +656,7 @@ export class GameState {
             const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
             this.boardGrid = infinityGrid;
             this.board = infinityGrid;
+            synchronizeInfinitySimulationCamera(this);
             console.log('[GameState] Initialized infinity grid:', this.boardGrid.length, 'rows');
         } else {
             this.boardGrid = createBoardGrid();
@@ -489,6 +698,8 @@ export class GameState {
      * Resets the game state to initial values
      */
     reset() {
+        // A restart mid-physics invalidates in-flight §5.10 shadow samples.
+        this.boardMutationEpoch = (this.boardMutationEpoch || 0) + 1;
         this.lockedPieces = [];
         if (this.currentPiece) {
             piecePool.release(this.currentPiece);
@@ -496,6 +707,7 @@ export class GameState {
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
+        this.rngDescriptor = null;
         this._pieceIdCounter = 0;
         this.score = 0;
         this.lines = 0;
@@ -506,6 +718,7 @@ export class GameState {
         this.lastTime = 0;
         this.simTimeMs = 0;
         this.simFrame = 0;
+        this._fixedInputSpawnFrame = null;
         this.piecesPlaced = 0;
         this.pieceCounts = {
             I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
@@ -513,10 +726,15 @@ export class GameState {
         this.lineClearCounts = {
             1: 0, 2: 0, 3: 0, 4: 0,
         };
+        this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         resetLockState(this);
         this.isGameOver = false;
         this.isStopped = false;
         this.hitStopRemaining = 0;
+        this.hitStopTicks = 0;
+        this._hitStopTickSourceMs = 0;
+        this._hitStopTickDurationMs = this.simTickMs;
+        resetPlayerInputState(this.playerInput);
         this.isProcessingPhysics = false;
         this.isAlive = true;
         this.isReplay = false;
@@ -534,6 +752,7 @@ export class GameState {
             const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
             this.boardGrid = infinityGrid;
             this.board = infinityGrid;
+            synchronizeInfinitySimulationCamera(this);
         } else {
             this.board = null;
             this.boardGrid = createBoardGrid();
@@ -563,8 +782,9 @@ export class GameState {
 function shuffleBag(rng) {
     const bag = [...PIECE_KEYS];
     for (let i = bag.length - 1; i > 0; i--) {
-        const randomValue = typeof rng === 'function' ? rng() : Math.random();
-        const j = Math.floor(randomValue * (i + 1));
+        const j = typeof rng?.nextInt === 'function'
+            ? rng.nextInt(i + 1)
+            : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * (i + 1));
         const swapIndex = Math.max(0, Math.min(i, j));
         const temp = bag[i];
         bag[i] = bag[swapIndex];
@@ -783,7 +1003,9 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  * @param {Object} options - Drop behavior options
- * @param {boolean} options.preserveDropCounter - Keep accumulator remainder for fixed-step auto-drop
+ * @param {boolean} [options.preserveDropCounter=false] Keep accumulator remainder for auto-drop
+ * @param {boolean} [options.fixedTick=false] Lock through the canonical-tick continuation path
+ * @param {boolean} [options.inputPhase=false] Lock was initiated by canonical input
  * @returns {boolean} True if piece moved down, false if it locked
  */
 export function softDrop(gameState, playDropCallback, physicsCallbacks, options = {}) {
@@ -793,7 +1015,9 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
         || gameState.isPaused
         || gameState.isGameOver
     ) return false;
-    const { preserveDropCounter = false } = options;
+    const {
+        preserveDropCounter = false, fixedTick = false, inputPhase = false,
+    } = options;
 
     if (canPlacePiece(
         gameState,
@@ -813,8 +1037,8 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
     }
 
     updateGroundedState(gameState, 0);
-    if (shouldLockGroundedPiece(gameState)) {
-        lockPiece(gameState, playDropCallback, physicsCallbacks);
+    if (shouldLockGroundedPiece(gameState, fixedTick)) {
+        lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick, inputPhase });
     }
     return false;
 }
@@ -827,25 +1051,39 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
  * @param {number} delta - Elapsed milliseconds since last update
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean}} [timing] Set true only from a canonical
+ *   one-tick runner. Omit/false to preserve the legacy millisecond behavior.
  */
-export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks) {
+export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks, timing = {}) {
     if (!gameState || !gameState.currentPiece || gameState.isProcessingPhysics) return;
     if (!Number.isFinite(delta) || delta <= 0) return;
+
+    const fixedTick = timing?.fixedTick === true;
+    if (fixedTick && gameState._fixedInputSpawnFrame === gameState.simFrame) return;
+    const configuredTickMs = Number(gameState.simTickMs);
+    let simulationDelta = delta;
+    if (fixedTick) {
+        simulationDelta = Number.isFinite(configuredTickMs) && configuredTickMs > 0
+            ? configuredTickMs
+            : (1000 / 60);
+    }
+    const elapsedTicks = fixedTick ? 1 : null;
+    if (fixedTick) getLockDelayTicks(gameState);
 
     const dropInterval = Math.max(1, Number(gameState.dropInterval) || LEVEL_SPEEDS[0]);
     const MAX_DROP_STEPS_PER_UPDATE = 32;
 
-    if (updateGroundedState(gameState, delta)) {
-        if (shouldLockGroundedPiece(gameState)) {
-            lockPiece(gameState, playDropCallback, physicsCallbacks);
+    if (updateGroundedState(gameState, simulationDelta, elapsedTicks)) {
+        if (shouldLockGroundedPiece(gameState, fixedTick)) {
+            lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
             gameState.dropCounter = 0;
         } else {
-            gameState.dropCounter = Math.min(gameState.dropCounter + delta, dropInterval);
+            gameState.dropCounter = Math.min(gameState.dropCounter + simulationDelta, dropInterval);
         }
         return;
     }
 
-    gameState.dropCounter += delta;
+    gameState.dropCounter += simulationDelta;
 
     let steps = 0;
     while (
@@ -856,6 +1094,7 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
     ) {
         const moved = softDrop(gameState, playDropCallback, physicsCallbacks, {
             preserveDropCounter: true,
+            fixedTick,
         });
 
         if (!moved) {
@@ -879,8 +1118,9 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
  * @param {GameState} gameState - Current game state
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean, inputPhase?: boolean}} [timing] Canonical timing token
  */
-export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
+export function hardDrop(gameState, playDropCallback, physicsCallbacks, timing = {}) {
     if (
         !gameState?.currentPiece
         || gameState.isProcessingPhysics
@@ -918,8 +1158,28 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
 
     // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
     resetLockState(gameState);
-    lockPiece(gameState, playDropCallback, physicsCallbacks);
+    lockPiece(gameState, playDropCallback, physicsCallbacks, timing);
     return true;
+}
+
+function completePhysicsAndSpawn(
+    gameState,
+    physicsCallbacks,
+    shadowSample = null,
+    spawnErrorLabel = '[Game] spawnPiece failed after physics:',
+) {
+    gameState.isProcessingPhysics = false;
+    if (shadowSample) settleCascadeShadow(shadowSample, gameState);
+    if (
+        gameState.isGameOver
+        || gameState.isStopped
+        || !physicsCallbacks.spawnPiece
+    ) return;
+    try {
+        physicsCallbacks.spawnPiece();
+    } catch (error) {
+        console.error(spawnErrorLabel, error);
+    }
 }
 
 /**
@@ -927,8 +1187,9 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
  * @param {GameState} gameState - Current game state
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {{fixedTick?: boolean, inputPhase?: boolean}} [timing] Canonical timing token
  */
-export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
+export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing = {}) {
     if (!gameState?.currentPiece || gameState.isGameOver) return;
 
     // Store piece reference before nulling for ripple effect
@@ -941,7 +1202,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         const timeHeldMs = getGameplayTimeMs(gameState) - gameState.pieceSpawnTime;
         const frameMs = Number(gameState.simTickMs) || (1000 / 60);
         const framesElapsed = Math.max(0, timeHeldMs) / frameMs;
-        const lockBonus = Math.max(0, Math.floor((100 - framesElapsed) / 2));
+        const lockBonus = gameState.lockBonusPolicy === 'legacy-max'
+            ? 50
+            : Math.max(0, Math.floor((100 - framesElapsed) / 2));
         gameState.score += lockBonus;
     }
 
@@ -1031,37 +1294,31 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
 
     // Start physics processing
     if (physicsCallbacks) {
+        // §5.10 shadow differential: clone the resolver inputs before legacy
+        // physics mutates, diff after it completes (pre/post tap points).
+        const shadowSample = cascadeShadowEnabled() ? armCascadeShadow(gameState) : null;
         gameState.isProcessingPhysics = true;
+        if (timing?.fixedTick === true && tryProcessNoClearSync(gameState, physicsCallbacks)) {
+            gameState.latestPhysicsPromise = null;
+            completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
+            if (timing.inputPhase === true && gameState.currentPiece) {
+                gameState._fixedInputSpawnFrame = gameState.simFrame;
+            }
+            return;
+        }
         gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
             .then(() => {
-                gameState.isProcessingPhysics = false;
-                if (
-                    !gameState.isGameOver
-                    && !gameState.isStopped
-                    && physicsCallbacks.spawnPiece
-                ) {
-                    try {
-                        physicsCallbacks.spawnPiece();
-                    } catch (error) {
-                        console.error('[Game] spawnPiece failed after physics:', error);
-                    }
-                }
+                completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
             })
             .catch((error) => {
                 console.error('[Game] Physics processing failed:', error);
-                gameState.isProcessingPhysics = false;
                 markBoardDirty(gameState);
-                if (
-                    !gameState.isGameOver
-                    && !gameState.isStopped
-                    && physicsCallbacks.spawnPiece
-                ) {
-                    try {
-                        physicsCallbacks.spawnPiece();
-                    } catch (spawnError) {
-                        console.error('[Game] Recovery spawn failed after physics error:', spawnError);
-                    }
-                }
+                completePhysicsAndSpawn(
+                    gameState,
+                    physicsCallbacks,
+                    null,
+                    '[Game] Recovery spawn failed after physics error:',
+                );
             });
     }
 }

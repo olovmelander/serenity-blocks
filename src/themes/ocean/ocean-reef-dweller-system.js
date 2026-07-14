@@ -17,11 +17,12 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { DoubleSide, MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-    attribute, cameraPosition, clamp as tslClamp, dot, exp, float,
-    length, max as tslMax, mix, normalize, positionLocal, positionWorld,
-    pow, sin, smoothstep, uniform, vec3, vec2, normalMap, texture, normalWorld,
+    attribute, cameraPosition, clamp as tslClamp, dot, float,
+    length, max as tslMax, mix, normalize, positionGeometry, positionLocal, positionWorld,
+    materialColor, pow, sin, smoothstep, uniform, vec3, normalWorld,
 } from 'three/tsl';
 import { loadGltfCached } from './ocean-asset-loader.js';
+import { tslWarmCoolAttenuation } from './ocean-tsl-helpers.js';
 import {
     OCEAN_REEF_SEAHORSE_ASSET,
     OCEAN_REEF_SEAHORSE_RIGGED_ASSET,
@@ -34,7 +35,18 @@ import {
 // seahorse to glow unnaturally; we let PBR shading carry most of the color
 // and only top up with a light emissive.
 const TRIPOSR_VERTEX_COLOR_BOOST = 1.35;
-const TRIPOSR_EMISSIVE_BOOST = 0.22;
+const TRIPOSR_EMISSIVE_BOOST = 0.07;
+
+function disposeObjectResources(root) {
+    root?.traverse((child) => {
+        child.geometry?.dispose?.();
+        if (Array.isArray(child.material)) {
+            child.material.forEach((material) => material?.dispose?.());
+        } else {
+            child.material?.dispose?.();
+        }
+    });
+}
 
 // Walk down a skeleton from `root` and return the longest chain of bones —
 // then drop the leading "trunk" joints that are shared parents of multiple
@@ -73,12 +85,16 @@ function findLongestBoneChain(root) {
 }
 
 const textureLoader = new THREE.TextureLoader();
+const DWELLER_SCALE_NORMAL_URL = new URL(
+    './assets/textures/fish-scales-normal.png',
+    import.meta.url,
+).href;
 let dwellerScaleNormalMap = null;
 function getDwellerScaleNormalMap() {
     if (!dwellerScaleNormalMap) {
         dwellerScaleNormalMap = typeof document === 'undefined'
             ? new THREE.Texture()
-            : textureLoader.load('/src/themes/ocean/assets/textures/fish-scales-normal.png');
+            : textureLoader.load(DWELLER_SCALE_NORMAL_URL);
         dwellerScaleNormalMap.wrapS = THREE.RepeatWrapping;
         dwellerScaleNormalMap.wrapT = THREE.RepeatWrapping;
     }
@@ -297,7 +313,7 @@ function createDwellerNodeMaterial(species) {
 
     const aMisc = attribute('aMisc', 'vec4');
     const aBodyCoord = tslClamp(
-        positionLocal.x
+        positionGeometry.x
             .add(float(species.bodyLength * 0.77))
             .mul(float(1 / (species.bodyLength * 1.32))),
         float(0.0),
@@ -312,15 +328,9 @@ function createDwellerNodeMaterial(species) {
     const swimLift = sin(uTime.mul(2.5).add(phase)).mul(0.012).mul(tailW);
     material.positionNode = positionLocal.add(vec3(float(0.0), swimLift, bend));
 
-    const scaleTilingX = float(14.0);
-    const scaleTilingY = float(18.0);
-    const scaleUV = vec2(aBodyCoord.mul(scaleTilingX), positionLocal.y.mul(scaleTilingY));
-    const texNormal = texture(getDwellerScaleNormalMap(), scaleUV).xyz.mul(2.0).sub(1.0);
-
-    const baseNormal = normalize(normalWorld);
-    const normal = normalize(baseNormal.add(texNormal.mul(1.5)));
+    const normal = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const lightDir = normalize(vec3(0.22, 0.94, -0.2));
+    const lightDir = normalize(vec3(-0.1, 0.9, -0.42));
 
     const diff = tslMax(dot(normal, lightDir), float(0.0)).mul(0.65).add(0.55);
     const rim = pow(float(1.0).sub(tslMax(dot(normal, viewDir), float(0.0))), float(2.0));
@@ -343,14 +353,15 @@ function createDwellerNodeMaterial(species) {
     // Eye-spot glow for visibility
     const eyePos = positionLocal.add(vec3(float(species.bodyLength * 0.4), float(0.0), float(0.0)));
     const eyeDist = length(eyePos);
-    const eyeGlow = smoothstep(float(0.08), float(0.02), eyeDist).mul(2.0);
+    const eyeGlow = float(1.0)
+        .sub(smoothstep(float(0.02), float(0.08), eyeDist))
+        .mul(2.0);
     color = color.add(vec3(1.0, 1.0, 0.8).mul(eyeGlow));
 
     color = color.add(vec3(0.1, 0.52, 0.62).mul(float(0.06).add(rim.mul(0.12))));
 
     const viewDist = length(cameraPosition.sub(positionWorld));
-    const fog = float(1.0).sub(exp(viewDist.negate().mul(0.01)));
-    color = mix(color, vec3(0.02, 0.22, 0.26), tslClamp(fog.mul(0.5), float(0.0), float(0.7)));
+    color = tslWarmCoolAttenuation(color, viewDist, float(0.7));
 
     material.colorNode = color.add(uBaseColor.mul(0.15)); // Constant light lift for visibility
     material.emissiveNode = vec3(0.0);
@@ -423,7 +434,7 @@ function createDwellerMaterial(species, isWebGPU = false) {
                 vec3 scaleNormal = texture2D(uNormalMap, vScaleUV).xyz * 2.0 - 1.0;
                 vec3 n = normalize(baseNormal + scaleNormal * 1.2);
                 vec3 viewDir = normalize(cameraPosition - vWorldPos);
-                vec3 lightDir = normalize(vec3(0.22, 0.94, -0.2));
+                vec3 lightDir = normalize(vec3(-0.1, 0.9, -0.42));
 
                 float diff = max(dot(n, lightDir), 0.0) * 0.72 + 0.36;
                 float rim = pow(1.0 - max(dot(n, viewDir), 0.0), 2.0);
@@ -463,6 +474,8 @@ export class OceanReefDwellerSystem {
         this.getSeabedHeight = getSeabedHeight;
         this.isPointOccupied = isPointOccupied;
         this.getFishSystem = getFishSystem;
+        this.disposed = false;
+        this.loadGeneration = 0;
 
         this.anchors = []; // { x, y, z } world positions of corals/rocks
         this.fish = []; // per-fish state
@@ -509,7 +522,6 @@ export class OceanReefDwellerSystem {
     }
 
     distributeFish() {
-        const totalWeight = this.speciesUsed.reduce((sum, si) => sum + REEF_SPECIES[si].weight, 0);
         // Assign fish to anchors, round-robin through species
         let placed = 0;
         const speciesCounts = new Map();
@@ -769,15 +781,24 @@ export class OceanReefDwellerSystem {
         const unrigged = OCEAN_REEF_SEAHORSE_ASSET;
         const primary = rigged && rigged.url ? rigged : unrigged;
         if (!primary || !primary.url) return null;
+        const generation = this.loadGeneration;
 
         const tryLoad = (asset) => loadGltfCached(asset.url)
             .then((gltf) => {
+                if (this.disposed || generation !== this.loadGeneration || !this.scene) {
+                    disposeObjectResources(gltf.scene);
+                    return null;
+                }
                 this.seahorseAsset = asset;
                 this.seahorseGLTF = gltf;
                 this.prepareSeahorseAsset(gltf.scene);
                 this.spawnSeahorses();
+                return gltf;
             });
 
+        // The fallback branch returns its retry promise; the terminal branch
+        // intentionally resolves undefined after logging.
+        // eslint-disable-next-line consistent-return
         this.seahorseLoadPromise = tryLoad(primary).catch((err) => {
             if (primary !== unrigged && unrigged && unrigged.url) {
                 console.warn('🌊 [Ocean] Rigged seahorse GLB unavailable, falling back to unrigged:', err?.message || err);
@@ -823,8 +844,8 @@ export class OceanReefDwellerSystem {
                     color: mat.color || new THREE.Color(0xffffff),
                     map: mat.map ?? null,
                     normalMap: mat.normalMap ?? null,
-                    roughness: mat.roughness !== undefined ? mat.roughness : 0.5,
-                    metalness: mat.metalness !== undefined ? mat.metalness : 0.05,
+                    roughness: Math.min(0.68, Math.max(0.34, mat.roughness ?? 0.48)),
+                    metalness: 0.0,
                     vertexColors: hasVertexColors,
                     transparent: false,
                     depthWrite: true,
@@ -835,7 +856,10 @@ export class OceanReefDwellerSystem {
                 });
                 if (hasVertexColors) {
                     const vColor = attribute('color', 'vec3');
-                    nodeMat.colorNode = vColor.mul(TRIPOSR_VERTEX_COLOR_BOOST);
+                    // NodeMaterial applies COLOR_0 automatically when
+                    // vertexColors is true. Supply only the boost here so the
+                    // painted hue is not multiplied by itself a second time.
+                    nodeMat.colorNode = materialColor.rgb.mul(TRIPOSR_VERTEX_COLOR_BOOST);
                     nodeMat.emissiveNode = vColor.mul(TRIPOSR_EMISSIVE_BOOST);
                 }
                 nodeMat.name = `${mat.name || 'seahorse'} reef-dweller PBR`;
@@ -954,6 +978,8 @@ export class OceanReefDwellerSystem {
     }
 
     dispose() {
+        this.disposed = true;
+        this.loadGeneration += 1;
         this.meshes.forEach(({ mesh }) => {
             this.scene?.remove(mesh);
             mesh.geometry?.dispose();
@@ -981,6 +1007,7 @@ export class OceanReefDwellerSystem {
         this.seahorseClones = [];
         this.seahorseGLTF = null;
         this.seahorseLoadPromise = null;
+        this.scene = null;
     }
 }
 

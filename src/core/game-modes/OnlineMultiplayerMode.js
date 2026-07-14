@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
-    GAME_MODES, COLS, ROWS, BLOCK_SIZE,
+    GAME_MODES, COLS, ROWS,
 } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
@@ -13,7 +13,9 @@ import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
 import { MatchConfigModal } from '../../ui/match-config-modal.js';
 import { MatchResultsModal } from '../../ui/match-results-modal.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
-import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear,
+} from '../../events/gameplay-events.js';
 import { OpponentWatchManager } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
@@ -21,22 +23,20 @@ import { OnlineChat } from '../../ui/online-chat.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
+import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
-import { performanceMonitor } from '../../utils/performance-monitor.js';
-
-function readOnlineNetFlag(name, defaultOn) {
-    if (typeof window === 'undefined') return defaultOn;
-    const search = (window.location && window.location.search) || '';
-    if (new RegExp(`[?&]${name}=1\\b`).test(search)) return true;
-    if (new RegExp(`[?&]${name}=0\\b`).test(search)) return false;
-    try {
-        const ls = window.localStorage && window.localStorage.getItem(`serenity.${name}`);
-        if (ls === '1') return true;
-        if (ls === '0') return false;
-    } catch (e) { /* localStorage unavailable; keep default */ }
-    return defaultOn;
-}
+// Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
+// local readOnlineNetFlag clone; identical URL → localStorage → default semantics.
+import { readFlag as readOnlineNetFlag } from '../flags.js';
+import {
+    configureOnlineFixedInput,
+    installOnlineFixedGamepadAdapter,
+    installOnlineFixedKeyboardAdapter,
+    latchOnlineFixedInputHandling,
+    removeOnlineFixedGamepadAdapter,
+    removeOnlineFixedKeyboardAdapter,
+} from '../multiplayer/online-fixed-input.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
@@ -82,10 +82,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
         this.playerListRichPresenceUnsub = null;
+        this._kickedUnsub = null; this._joinRejectedUnsub = null; this._handledSessionExit = null;
         this._uiSetupComplete = false;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
         this.originalInputs = {};
+        this._fixedTickKeyboardAdapter = null;
+        this._fixedTickGamepadAdapter = null;
         this.playerColors = new Map();
         this.garbageFlashTimers = {};
         this.scoreboardToggleHandler = null;
@@ -350,6 +353,22 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Join the lobby via Steam
             await this.steamNetworking.joinLobby(lobbyId);
+            this.currentLobbyId = lobbyId;
+            this._handledSessionExit = null;
+            if (!this._kickedUnsub) {
+                this._kickedUnsub = onMultiplayerEvent(
+                    MULTIPLAYER_EVENTS.KICKED,
+                    (detail) => this._handleKicked(detail),
+                );
+                this.cleanupHandlers.push(this._kickedUnsub);
+            }
+            if (!this._joinRejectedUnsub) {
+                this._joinRejectedUnsub = onMultiplayerEvent(
+                    MULTIPLAYER_EVENTS.JOIN_REJECTED,
+                    (detail) => this._handleJoinRejected(detail),
+                );
+                this.cleanupHandlers.push(this._joinRejectedUnsub);
+            }
 
             // Create FFA game state as peer (or spectator — no local board/input).
             this.ffaGameState = new FFAGameStateP2P(
@@ -363,19 +382,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Announce join to host (carries asSpectator so the host won't roster a spectator)
             this.ffaGameState.announceJoin();
-
-            // Joiners (and spectators) can be kicked by the host at any point (lobby or
-            // match), so subscribe once for the lifetime of this mode. The host never gets
-            // this (it doesn't kick itself).
-            if (!this._kickedUnsub) {
-                this._kickedUnsub = onMultiplayerEvent(
-                    MULTIPLAYER_EVENTS.KICKED,
-                    (detail) => this._handleKicked(detail),
-                );
-                this.cleanupHandlers.push(this._kickedUnsub);
-            }
-
-            this.currentLobbyId = lobbyId;
 
             // Fetch lobby name
             let lobbyName = 'FFA Match';
@@ -914,19 +920,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
-    /**
-     * We were kicked by the host — tear down and return to the start menu with a notice.
-     * Reuses the exit-to-menu teardown; the alert tells the player why.
-     */
-    async _handleKicked() {
-        console.warn('[OnlineMultiplayer] Kicked by host — leaving match');
-        try { await this._handleExitToMenu(); } catch (e) { /* best-effort teardown */ }
-        // Non-blocking notice (a blocking alert() would freeze the page mid-teardown).
-        try {
-            window.dispatchEvent(new CustomEvent('serenity:toast', {
-                detail: { message: 'You were removed from the match by the host.', type: 'warning' },
-            }));
-        } catch (e) { /* no-op */ }
+    _handleKicked(detail = {}) {
+        return handleOnlineSessionExit(this, { ...detail, reason: 'kicked' });
+    }
+
+    _handleJoinRejected(detail = {}) {
+        return handleOnlineSessionExit(this, detail);
     }
 
     /**
@@ -1265,14 +1264,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_DIED, deathHandler);
         this.steamNetworking.on(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-        this.steamNetworking.on('game:chat', chatHandler);
+        this.steamNetworking.on(MessageTypes.GAME_CHAT, chatHandler);
         this.steamNetworking.on(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-            this.steamNetworking.off('game:chat', chatHandler);
+            this.steamNetworking.off(MessageTypes.GAME_CHAT, chatHandler);
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
@@ -1387,7 +1386,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (!this.mainBoardScene) return;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.LINE_CLEAR, {
+                emitLineClear({
                     lineCount: detail.rows?.length || 0,
                     clearedRows: detail.rows || [],
                 });
@@ -1436,7 +1435,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const comboCount = detail.comboCount || 0;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount });
 
                 // Show combo popup
                 if (settings.comboPopupEffect && this.mainBoardScene.showComboPopup) {
@@ -1488,7 +1487,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const { piece } = detail;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece });
 
                 // Create piece lock ripple effect
                 if (piece && this.mainBoardScene.createPieceLockRipple) {
@@ -1561,7 +1560,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     return;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, {
+                emitPerfectClear({
                     depth: detail.depth,
                     perfectClearBonus: detail.perfectClearBonus,
                     source: 'online',
@@ -2778,28 +2777,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _configureLocalInputHooks(gameState) {
-        if (!gameState?.setLocalInputHooks) {
-            return;
-        }
-
-        gameState.setLocalInputHooks({
-            advance: (currentTime, delta) => this._advanceHeldGameplayInput(currentTime, delta),
-            reset: () => this._resetHeldGameplayInput(),
-        });
-    }
-
-    _advanceHeldGameplayInput(currentTime, delta) {
-        if (typeof window !== 'undefined') {
-            window.inputController?.updateDAS?.(delta);
-        }
-        this.deps.gamepadController?.advanceGameplayInput?.(currentTime);
-    }
-
-    _resetHeldGameplayInput() {
-        if (typeof window !== 'undefined') {
-            window.inputController?.clearTimers?.();
-        }
-        this.deps.gamepadController?.clearAllDasTimers?.();
+        configureOnlineFixedInput(this, gameState);
     }
 
     _setupScoreboardOverlayHotkey() {
@@ -2831,6 +2809,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Hook into global input functions so keyboard controls work
      */
     _hookInputs() {
+        latchOnlineFixedInputHandling(this);
+        installOnlineFixedKeyboardAdapter(this);
+        installOnlineFixedGamepadAdapter(this);
         if (this.originalInputs.move) {
             return;
         }
@@ -2906,6 +2887,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Restore original global input hooks
      */
     _restoreInputs() {
+        removeOnlineFixedKeyboardAdapter(this);
+        removeOnlineFixedGamepadAdapter(this);
         Object.keys(this.originalInputs).forEach((fnName) => {
             window[fnName] = this.originalInputs[fnName];
         });
@@ -2946,9 +2929,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // via the host or their message is silently dropped on real Steam.)
         const network = this.ffaGameState.network;
         if (network.isHost) {
-            network.broadcastToAll('game:chat', payload);
+            network.broadcastToAll(MessageTypes.GAME_CHAT, payload);
         } else if (network.hostSteamId) {
-            network.sendP2PMessage(network.hostSteamId, 'game:chat', payload);
+            network.sendP2PMessage(network.hostSteamId, MessageTypes.GAME_CHAT, payload);
         }
     }
 
@@ -2965,17 +2948,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             if (document.hidden) {
                 // Pause local input to prevent ghost key repeats
-                this._resetHeldGameplayInput();
-                if (typeof window !== 'undefined' && window.inputController) {
-                    window.inputController.keyMap = {};
-                }
+                this.ffaGameState?.localInputHooks?.reset?.();
+                this.deps.inputController.keyMap = {};
                 console.log('[OnlineMultiplayer] Tab hidden - local input paused, network loop continues');
             } else {
                 // Reset input timing on return to prevent burst moves
-                this._resetHeldGameplayInput();
-                if (typeof window !== 'undefined' && window.inputController) {
-                    window.inputController.keyMap = {};
-                }
+                this.ffaGameState?.localInputHooks?.reset?.();
+                this.deps.inputController.keyMap = {};
                 console.log('[OnlineMultiplayer] Tab visible - local input resumed');
             }
         };
@@ -3237,6 +3216,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
         this.playerListRichPresenceUnsub = null;
+        this._kickedUnsub = null;
+        this._joinRejectedUnsub = null;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
 

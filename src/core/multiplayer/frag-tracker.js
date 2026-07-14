@@ -58,7 +58,7 @@ export class FragTracker {
                 });
 
                 // Broadcast frag event
-                this.gameState.network.broadcastToAll('game:player:frag', {
+                this.gameState.network.broadcastToAll(MessageTypes.GAME_PLAYER_FRAG, {
                     killer: killerSteamId,
                     killerName: killer.name,
                     victim: deadPlayerSteamId,
@@ -92,7 +92,7 @@ export class FragTracker {
         }
 
         // Broadcast death event
-        this.gameState.network.broadcastToAll('game:player:died', {
+        this.gameState.network.broadcastToAll(MessageTypes.GAME_PLAYER_DIED, {
             player: deadPlayerSteamId,
             playerName: deadPlayer.name,
             killer: killerSteamId,

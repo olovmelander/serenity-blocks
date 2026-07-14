@@ -32,6 +32,7 @@ import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import steamService from '../core/steam/steam-service.js';
+import { MessageTypes } from '../core/network/message-types.js';
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class MultiPlayerCanvasLayout {
@@ -269,14 +270,22 @@ export class MultiPlayerCanvasLayout {
         // Show message locally (echo) with color
         this.addChatMessage('You', message, false, playerColor);
 
-        // Broadcast to all players
-        this.gameState.network.broadcastToAll('game:chat', {
+        const payload = {
             playerName,
             message,
             steamId: this.gameState.localPlayerId,
             timestamp: Date.now(),
             color: playerColor,
-        });
+        };
+        if (this.gameState.network.isHost) {
+            this.gameState.network.broadcastToAll(MessageTypes.GAME_CHAT, payload);
+        } else if (this.gameState.network.hostSteamId) {
+            this.gameState.network.sendP2PMessage(
+                this.gameState.network.hostSteamId,
+                MessageTypes.GAME_CHAT,
+                payload,
+            );
+        }
     }
 
     /**

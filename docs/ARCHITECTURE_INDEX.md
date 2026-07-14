@@ -80,8 +80,10 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [repository-cleanup-plan.md](repository-cleanup-plan.md) | Superseded | Cleanup decisions have been absorbed or archived. |
 | [repository-review-plan.md](repository-review-plan.md) | Superseded | Review output is superseded by the umbrella plan. |
 | [SERENITY_PERFORMANCE_AUDIT_2026-06.md](SERENITY_PERFORMANCE_AUDIT_2026-06.md) | Reference | Performance evidence. |
-| [STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md](STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md) | Reference | Theme/gameplay effect plan. |
-| [STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md](STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md) | Reference | Theme plan; use WebGPU workflow before acting. |
+| [STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md](STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md) | Superseded | Historical theme/gameplay direction; consolidated by the 2026-07 review. |
+| [STARLIGHT_MASTERPIECE_REVIEW_AND_PLAN_2026-07.md](STARLIGHT_MASTERPIECE_REVIEW_AND_PLAN_2026-07.md) | Reference | Consolidated evidence, art direction, FX, and performance plan; umbrella Phase 7 governs execution. |
+| [STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md](STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md) | Superseded | Historical theme direction; consolidated by the 2026-07 review. |
+| [SUMMER_MIDSUMMER_COMBO_LOCK_EFFECTS_PLAN_2026-07.md](SUMMER_MIDSUMMER_COMBO_LOCK_EFFECTS_PLAN_2026-07.md) | Reference | Research-backed combo/lock FX direction and playground-first execution plan; umbrella Phase 7 governs execution. |
 | [SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md](SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md) | Reference | Theme plan. |
 | [SUMMER_THEME_VEGETATION_PLAN.md](SUMMER_THEME_VEGETATION_PLAN.md) | Reference | Theme plan. |
 | [tetromino-visual-upgrade-plan.md](tetromino-visual-upgrade-plan.md) | Reference | Visual feature plan. |

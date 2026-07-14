@@ -5,7 +5,7 @@
  * This replaces MultiplayerGameState for scalable local multiplayer
  */
 
-import { GameState, markBoardDirty } from './game.js';
+import { GameState } from './game.js';
 import {
     GarbageQueue, GarbageAttack, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
     applyHandicap, accumulateHandicapStamps, createGarbageAttackFromColumns,
@@ -109,6 +109,7 @@ export class MultiPlayerState {
 
         // Shared RNG seed for fairness (set by mode)
         this.sharedPieceSeed = 0;
+        this.rngDescriptor = null;
 
         // Per-round extended stats; LocalMultiplayerMode folds these into
         // cumulative match stats between rounds.
@@ -435,6 +436,8 @@ export class MultiPlayerState {
         this.isPaused = false;
         this.winner = null;
         this.lastTime = 0;
+        this.sharedPieceSeed = 0;
+        this.rngDescriptor = null;
         this.matchStartTime = Date.now();
         this._resetHotPotatoState(this.matchStartTime);
     }
@@ -799,13 +802,52 @@ export class MultiPlayerState {
     }
 
     /**
-     * Mark a player as dead and award frag
+     * Mark one player as dead and evaluate the match immediately.
+     * Legacy callers retain their one-callback-at-a-time behavior.
      */
     handlePlayerDeath(playerIndex) {
+        return this.handlePlayerDeaths([playerIndex]).length > 0;
+    }
+
+    /**
+     * Mark a same-tick set of players as dead before evaluating the match.
+     * Indices are canonicalized ascending while invalid, duplicate, and
+     * already-dead entries are ignored. A shared multiplayer tick can resolve a
+     * full player barrier without giving the first callback an outcome edge.
+     *
+     * @param {number[]} playerIndices - Zero-based player indices
+     * @returns {number[]} The canonical unique indices eliminated by this call
+     */
+    handlePlayerDeaths(playerIndices) {
+        const uniqueIndices = [];
+        const seen = new Set();
+        for (const playerIndex of playerIndices || []) {
+            if (
+                !Number.isInteger(playerIndex)
+                || playerIndex < 0
+                || playerIndex >= this.players.length
+                || seen.has(playerIndex)
+            ) continue;
+            seen.add(playerIndex);
+            uniqueIndices.push(playerIndex);
+        }
+        uniqueIndices.sort((left, right) => left - right);
+
+        const eliminatedIndices = uniqueIndices.filter(
+            (playerIndex) => this._handlePlayerDeathWithoutWinCheck(playerIndex) === true,
+        );
+        if (eliminatedIndices.length > 0) {
+            this.checkWinCondition();
+        }
+        return eliminatedIndices;
+    }
+
+    /** Mark one player dead without evaluating the match mid-batch. */
+    _handlePlayerDeathWithoutWinCheck(playerIndex) {
         const player = this.players[playerIndex];
 
         if (!player.isAlive) {
-            return; // Already dead
+            return false; // Already dead
         }
 
         player.isAlive = false;
@@ -816,7 +858,12 @@ export class MultiPlayerState {
         // Award frag to last attacker
         const killerId = this.lastAttackerIds[playerIndex];
 
-        if (killerId !== null && killerId !== playerIndex) {
+        if (
+            Number.isInteger(killerId)
+            && killerId >= 0
+            && killerId < this.players.length
+            && killerId !== playerIndex
+        ) {
             this.frags[killerId]++;
             console.log(
                 `[MultiPlayerState] 💀 Player ${killerId + 1} fragged Player ${playerIndex + 1}! Frags: ${this.frags[killerId]}`,
@@ -825,8 +872,7 @@ export class MultiPlayerState {
             console.log(`[MultiPlayerState] 💀 Player ${playerIndex + 1} self-destructed (no frag awarded)`);
         }
 
-        // Check win condition
-        this.checkWinCondition();
+        return true;
     }
 
     /**
@@ -852,18 +898,19 @@ export class MultiPlayerState {
                 teamStats[teamId].lines += this.players[i].totalLinesCleared;
             }
 
-            for (const teamId in teamStats) {
-                const stats = teamStats[teamId];
-                if (config.endCondition === 'frags' && stats.frags >= config.endConditionValue) {
-                    this.endMatchByTeam(parseInt(teamId));
-                    return true;
-                }
-                if (config.endCondition === 'points' && stats.score >= config.endConditionValue * 1000) {
-                    this.endMatchByTeam(parseInt(teamId));
-                    return true;
-                }
-                if (config.endCondition === 'lines' && stats.lines >= config.endConditionValue) {
-                    this.endMatchByTeam(parseInt(teamId));
+            const metric = config.endCondition === 'points' ? 'score' : config.endCondition;
+            const target = config.endCondition === 'points'
+                ? config.endConditionValue * 1000
+                : config.endConditionValue;
+            if (['frags', 'score', 'lines'].includes(metric)) {
+                const entries = Object.entries(teamStats);
+                const maxValue = Math.max(...entries.map(([, stats]) => stats[metric]));
+                if (maxValue >= target) {
+                    const leaders = entries
+                        .filter(([, stats]) => stats[metric] === maxValue)
+                        .map(([teamId]) => Number(teamId));
+                    if (leaders.length === 1) this.endMatchByTeam(leaders[0]);
+                    else this.endMatch(null);
                     return true;
                 }
             }
@@ -875,9 +922,11 @@ export class MultiPlayerState {
         switch (config.endCondition) {
         case 'frags': {
             const maxFrags = Math.max(...this.frags);
-            const topPlayerIndex = this.frags.indexOf(maxFrags);
             if (maxFrags >= config.endConditionValue) {
-                this.endMatch(topPlayerIndex);
+                const leaders = this.frags
+                    .map((frags, playerIndex) => (frags === maxFrags ? playerIndex : -1))
+                    .filter((playerIndex) => playerIndex >= 0);
+                this.endMatch(leaders.length === 1 ? leaders[0] : null);
                 return true;
             }
             break;
@@ -908,21 +957,27 @@ export class MultiPlayerState {
 
         case 'points': {
             const targetScore = config.endConditionValue * 1000;
-            for (let i = 0; i < this.numPlayers; i++) {
-                if (this.players[i].score >= targetScore) {
-                    this.endMatch(i);
-                    return true;
-                }
+            const maxScore = Math.max(...this.players.map((player) => player.score));
+            if (maxScore >= targetScore) {
+                const leaders = this.players
+                    .map((player, playerIndex) => (player.score === maxScore ? playerIndex : -1))
+                    .filter((playerIndex) => playerIndex >= 0);
+                this.endMatch(leaders.length === 1 ? leaders[0] : null);
+                return true;
             }
             break;
         }
 
         case 'lines': {
-            for (let i = 0; i < this.numPlayers; i++) {
-                if (this.players[i].totalLinesCleared >= config.endConditionValue) {
-                    this.endMatch(i);
-                    return true;
-                }
+            const maxLines = Math.max(...this.players.map((player) => player.totalLinesCleared));
+            if (maxLines >= config.endConditionValue) {
+                const leaders = this.players
+                    .map((player, playerIndex) => (
+                        player.totalLinesCleared === maxLines ? playerIndex : -1
+                    ))
+                    .filter((playerIndex) => playerIndex >= 0);
+                this.endMatch(leaders.length === 1 ? leaders[0] : null);
+                return true;
             }
             break;
         }

@@ -6,6 +6,12 @@
 
 import { processAutoDrop } from '../game.js';
 import { decrementBlindTimers } from '../blind.js';
+import { advanceTick } from '../simulation-tick.js';
+import { FIXED_TICK_MS } from '../fixed-tick-clock.js';
+
+function readLoopTime() {
+    return performance.now();
+}
 
 /**
  * Unified game loop manager for multiplayer
@@ -16,6 +22,12 @@ export class UnifiedMultiplayerLoop {
         this.players = [];
         this.lastTime = 0;
         this.animationId = null;
+        this.externalUpdateTimerId = null;
+        this.externalUpdateIntervalMs = FIXED_TICK_MS;
+        this.externalUpdateLastTime = 0;
+        this.externalUpdateGeneration = 0;
+        this.runGeneration = 0;
+        this.isRunning = false;
         this.isPaused = false;
         this.isGameOver = false;
         this.externalPlayerUpdate = false;
@@ -37,10 +49,10 @@ export class UnifiedMultiplayerLoop {
 
     /**
      * Register a player for unified updates
-     * @param {number} playerId - Player identifier
+     * @param {string|number} playerId - Player identifier
      * @param {Object} playerState - Player game state
-     * @param {Function} physicsCallbacks - Physics callbacks for this player
-     * @param {Function} soundCallback - Sound callback for drops
+     * @param {Object} physicsCallbacks - Physics callbacks for this player
+     * @param {Function|null} soundCallback - Sound callback for drops
      */
     registerPlayer(playerId, playerState, physicsCallbacks, soundCallback) {
         this.players.push({
@@ -74,21 +86,28 @@ export class UnifiedMultiplayerLoop {
      * Start the unified game loop
      */
     start() {
-        this.lastTime = performance.now();
+        if (this.isRunning) return;
+        this.lastTime = readLoopTime();
         this.lastFpsTime = this.lastTime;
         this.isPaused = false;
         this.isGameOver = false;
         this.frameCount = 0;
+        this.isRunning = true;
+        this.runGeneration += 1;
+        this._startExternalUpdateDriver();
 
         console.log('[UnifiedLoop] Starting loop');
-        this.loop(this.lastTime);
+        this.loop(this.lastTime, this.runGeneration);
     }
 
     /**
      * Stop the game loop
      */
     stop() {
-        if (this.animationId) {
+        this.isRunning = false;
+        this.runGeneration += 1;
+        this._stopExternalUpdateDriver();
+        if (this.animationId !== null) {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
@@ -104,6 +123,7 @@ export class UnifiedMultiplayerLoop {
             return;
         }
         this.isPaused = true;
+        this._stopExternalUpdateDriver();
         console.log('[UnifiedLoop] Paused');
     }
 
@@ -112,9 +132,11 @@ export class UnifiedMultiplayerLoop {
      * @param {boolean} value
      */
     setNeverPause(value) {
+        const wasPaused = this.isPaused;
         this.neverPause = !!value;
         if (this.neverPause) {
             this.isPaused = false; // ensure we're not already paused when the latch goes on
+            if (wasPaused) this._startExternalUpdateDriver();
         }
     }
 
@@ -123,7 +145,8 @@ export class UnifiedMultiplayerLoop {
      */
     resume() {
         this.isPaused = false;
-        this.lastTime = performance.now();
+        this.lastTime = readLoopTime();
+        this._startExternalUpdateDriver();
         console.log('[UnifiedLoop] Resumed');
     }
 
@@ -131,9 +154,10 @@ export class UnifiedMultiplayerLoop {
      * Main game loop - called every frame
      * @param {number} currentTime - Current timestamp from RAF
      */
-    loop(currentTime) {
+    loop(currentTime, generation = this.runGeneration) {
+        if (!this.isRunning || generation !== this.runGeneration) return;
         // Schedule next frame
-        this.animationId = requestAnimationFrame((t) => this.loop(t));
+        this.animationId = requestAnimationFrame((t) => this.loop(t, generation));
 
         // Check exit conditions
         if (this.isGameOver) return;
@@ -151,9 +175,10 @@ export class UnifiedMultiplayerLoop {
             this.lastFpsTime = currentTime;
         }
 
-        // Update all players in a single pass. Host-authoritative fixed-step
-        // netcode can opt out and call updatePlayers() itself at the sim tick rate.
-        if (!this.externalPlayerUpdate) {
+        // External fixed simulation has a timeout owner; rAF only observes it.
+        // Legacy paths retain their historical players→render→stats→custom order.
+        const externalUpdate = this.externalPlayerUpdate;
+        if (!externalUpdate) {
             this.updatePlayers(delta);
         }
 
@@ -168,8 +193,60 @@ export class UnifiedMultiplayerLoop {
         }
 
         // Callback for custom update logic
-        if (this.onUpdate) {
+        if (!externalUpdate && this.onUpdate) {
             this.onUpdate(currentTime, delta);
+        }
+    }
+
+    _stopExternalUpdateDriver() {
+        this.externalUpdateGeneration += 1;
+        if (this.externalUpdateTimerId !== null) {
+            clearTimeout(this.externalUpdateTimerId);
+            this.externalUpdateTimerId = null;
+        }
+    }
+
+    _scheduleExternalUpdateDriver(generation) {
+        if (
+            !this.isRunning
+            || !this.externalPlayerUpdate
+            || this.isPaused
+            || this.isGameOver
+            || generation !== this.externalUpdateGeneration
+        ) return;
+        this.externalUpdateTimerId = setTimeout(
+            () => this._runExternalUpdateDriver(generation),
+            this.externalUpdateIntervalMs,
+        );
+    }
+
+    _startExternalUpdateDriver() {
+        this._stopExternalUpdateDriver();
+        if (!this.isRunning || !this.externalPlayerUpdate || this.isPaused || this.isGameOver) return;
+        this.externalUpdateLastTime = readLoopTime();
+        this._scheduleExternalUpdateDriver(this.externalUpdateGeneration);
+    }
+
+    _runExternalUpdateDriver(generation) {
+        if (
+            !this.isRunning
+            || !this.externalPlayerUpdate
+            || this.isPaused
+            || this.isGameOver
+            || generation !== this.externalUpdateGeneration
+        ) return;
+        this.externalUpdateTimerId = null;
+        const currentTime = readLoopTime();
+        const delta = Math.max(0, currentTime - this.externalUpdateLastTime);
+        this.externalUpdateLastTime = currentTime;
+        this._scheduleExternalUpdateDriver(generation);
+        try {
+            this.onUpdate?.(currentTime, delta);
+        } catch (error) {
+            // A partially applied multi-board tick is not safe to continue.
+            // Invalidate the pre-scheduled successor before surfacing the fault.
+            this._stopExternalUpdateDriver();
+            throw error;
         }
     }
 
@@ -212,8 +289,65 @@ export class UnifiedMultiplayerLoop {
         }
     }
 
-    setExternalPlayerUpdate(enabled) {
-        this.externalPlayerUpdate = enabled === true;
+    /**
+     * Advance each live board by one canonical tick.
+     * A function keeps the original advance-only API; an adapter may also own
+     * command application and observe the resulting dispositions.
+     * @param {Function|Object|null} [inputAdapter]
+     * @param {Function|null} [shouldContinue] Abort if the enclosing sim ownership changes.
+     */
+    updatePlayersFixedTick(inputAdapter = null, shouldContinue = null) {
+        const advanceInput = typeof inputAdapter === 'function'
+            ? inputAdapter
+            : inputAdapter?.advanceInput;
+        const applyInput = typeof inputAdapter === 'object'
+            ? inputAdapter?.applyInput
+            : null;
+        const onTickResult = typeof inputAdapter === 'object'
+            ? inputAdapter?.onTickResult
+            : null;
+
+        for (let i = 0; i < this.players.length; i++) {
+            if (shouldContinue && !shouldContinue()) break;
+            const player = this.players[i];
+            const { state } = player;
+            if (state.isGameOver === true || state.isAlive === false) continue;
+
+            const result = advanceTick(state, {
+                advanceInput: advanceInput
+                    ? (context) => advanceInput(player.id, context)
+                    : undefined,
+                applyInput: applyInput
+                    ? (command) => applyInput(player.id, command)
+                    : undefined,
+                advancePhysics: (tickMs) => processAutoDrop(
+                    state,
+                    tickMs,
+                    player.sound,
+                    player.physics,
+                    { fixedTick: true },
+                ),
+                shouldContinue,
+            });
+            if (shouldContinue && !shouldContinue()) break;
+            onTickResult?.(player.id, result);
+        }
+    }
+
+    setExternalPlayerUpdate(enabled, intervalMs = FIXED_TICK_MS) {
+        const nextEnabled = enabled === true;
+        const numericInterval = Number(intervalMs);
+        const nextInterval = Number.isFinite(numericInterval) && numericInterval > 0
+            ? numericInterval
+            : FIXED_TICK_MS;
+        const changed = nextEnabled !== this.externalPlayerUpdate
+            || nextInterval !== this.externalUpdateIntervalMs;
+        this.externalPlayerUpdate = nextEnabled;
+        this.externalUpdateIntervalMs = nextInterval;
+        if (!this.isRunning || !changed) return;
+        this.lastTime = readLoopTime();
+        if (nextEnabled) this._startExternalUpdateDriver();
+        else this._stopExternalUpdateDriver();
     }
 
     /**
@@ -235,6 +369,7 @@ export class UnifiedMultiplayerLoop {
      */
     setGameOver() {
         this.isGameOver = true;
+        this._stopExternalUpdateDriver();
         this.players.forEach((p) => {
             if (p.state) {
                 p.state.isGameOver = true;

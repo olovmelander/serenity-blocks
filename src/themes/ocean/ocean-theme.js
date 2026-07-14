@@ -30,16 +30,24 @@ import {
 import { OceanGameplayEffects, QUALITY_EFFECT_LIMITS } from './ocean-gameplay-effects.js';
 import { OceanPost, OceanPostProcessingLegacy } from './ocean-post.js';
 import { OceanCamera } from './ocean-camera.js';
+import { OCEAN_LIGHTING_RIG } from './ocean-lighting-rig.js';
+import { createOceanFogNode } from './ocean-fog-profile.js';
 import {
     createWaterSurfaceNodeMaterial,
     createSeabedNodeMaterial,
     createSeaweedNodeMaterial,
     createSeagrassMeadowNodeMaterial,
+    createModularCoralNodeMaterial,
     createCoralOvergrowthNodeMaterial,
     createJellyfishNodeMaterial,
     createPlanktonNodeMaterial,
     createBubbleNodeMaterial,
 } from './ocean-materials.js';
+import {
+    createCoralBatch,
+    createCoralModuleLibrary,
+    createCoralPlacementPlan,
+} from './ocean-coral-modules.js';
 
 function randRangeLocal(min, max) {
     return min + Math.random() * (max - min);
@@ -83,7 +91,7 @@ const OCEAN_DEBUG_FLAGS = [
     ['noAtmosphereBillboards', 'oceanNoAtmosphereBillboards'],
     // Granular atmosphere components (Phase 1 diagnostic flags). Each toggles
     // one piece of OceanAtmosphereSystem so we can A/B which one drives the
-    // ~16 ms `ocean.post` cost increase that disappears with ?oceanNoAtmosphere.
+    // ~16 ms `ocean.renderTotal` increase that disappears with ?oceanNoAtmosphere.
     ['noHaze', 'oceanNoHaze'],
     ['noBeamDust', 'oceanNoBeamDust'],
     ['noGlowAnchors', 'oceanNoGlowAnchors'],
@@ -141,22 +149,22 @@ const OCEAN_READABILITY_ZONE = {
 
 const OCEAN_REEF_GARDENS = [
     {
-        x: -58, z: 48, radius: 24, warmth: 0.95,
+        x: -42, z: 22, radius: 12, warmth: 0.95,
     },
     {
-        x: 62, z: 42, radius: 26, warmth: 1.0,
+        x: 44, z: 20, radius: 13, warmth: 1.0,
     },
     {
-        x: -82, z: -42, radius: 34, warmth: 0.72,
+        x: -54, z: -24, radius: 20, warmth: 0.72,
     },
     {
-        x: 88, z: -56, radius: 36, warmth: 0.78,
+        x: 57, z: -30, radius: 21, warmth: 0.78,
     },
     {
-        x: -118, z: -112, radius: 44, warmth: 0.48,
+        x: -68, z: -82, radius: 26, warmth: 0.48,
     },
     {
-        x: 120, z: -118, radius: 44, warmth: 0.5,
+        x: 72, z: -88, radius: 27, warmth: 0.5,
     },
 ];
 
@@ -203,7 +211,14 @@ export default class OceanTheme extends BaseTheme {
         super('ocean');
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
+        this.animationLoopStarted = false;
         this.clock = new THREE.Clock();
+        this.isCreatingScene = false;
+        this.isPrewarming = false;
+        this.prewarmPromise = null;
+        this.deferredMaterialLoadPromise = null;
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
 
         // Backend flag
         this.isWebGPU = false;
@@ -232,6 +247,7 @@ export default class OceanTheme extends BaseTheme {
         this.seaweedInstances = null;
         this.seagrassMeadowInstances = null;
         this.coralGroup = null;
+        this.coralPlacements = [];
         this.atmosphereSystem = null;
         this.fishSystem = null;
         this.rareFaunaSystem = null;
@@ -261,6 +277,21 @@ export default class OceanTheme extends BaseTheme {
         // groups offset cost between frames so neither frame doubles up.
         this.frameCount = 0;
         this._strideDtAccum = { evenHeavy: 0, oddHeavy: 0 };
+        this._cadence = {
+            tickAccumulator: 0,
+            heavyPhase: 0,
+            billboardPhase: 0,
+        };
+        // Reused per-frame option records keep the 144+ Hz hot path allocation
+        // free; each subsystem reads these synchronously during update().
+        this._frameArgs = {
+            fish: {},
+            dwellers: {},
+            atmosphere: {},
+            rareFauna: {},
+            camera: {},
+            focalDepth: { focalDepth: 0 },
+        };
 
         // Uniform update cache
         this.uniformsToUpdate = [];
@@ -276,7 +307,7 @@ export default class OceanTheme extends BaseTheme {
                 seaweedCount: 800,
                 seagrassCount: 0,
                 rippleNormalStrength: 0.0,
-                causticStrength: 0.40,
+                causticStrength: 0.30,
                 coralCount: 10,
                 reefDwellerCount: 0,
                 fishCount: 60,
@@ -292,8 +323,8 @@ export default class OceanTheme extends BaseTheme {
                 chromaticEdge: 0,
                 useGPUCompute: false,
                 atmosphere: {
-                    rayCount: 3,
-                    rayStrength: 0.62,
+                    rayCount: 0,
+                    rayStrength: 0,
                     hazeLayers: 1,
                     hazeStrength: 0.35,
                     reefCount: 4,
@@ -327,7 +358,7 @@ export default class OceanTheme extends BaseTheme {
                 seaweedCount: 1500,
                 seagrassCount: 420,
                 rippleNormalStrength: 1.0,
-                causticStrength: 0.55,
+                causticStrength: 0.45,
                 coralCount: 18,
                 reefDwellerCount: 12,
                 fishCount: 120,
@@ -343,8 +374,8 @@ export default class OceanTheme extends BaseTheme {
                 chromaticEdge: 0.0004,
                 useGPUCompute: true,
                 atmosphere: {
-                    rayCount: 5,
-                    rayStrength: 0.78,
+                    rayCount: 2,
+                    rayStrength: 0.52,
                     hazeLayers: 2,
                     hazeStrength: 0.32,
                     reefCount: 7,
@@ -360,7 +391,7 @@ export default class OceanTheme extends BaseTheme {
                     importedSeabedDetailCount: 6,
                     tubeCoralClusterCount: 1,
                     plateCoralShelfCount: 1,
-                    heroCoralCount: 2,
+                    heroCoralCount: 0,
                     heroKelpCount: 2,
                 },
                 rareFauna: {
@@ -373,13 +404,20 @@ export default class OceanTheme extends BaseTheme {
                     mantaRayCooldown: [9999, 9999],
                     dolphinCooldown: [9999, 9999],
                 },
-                postProcessing: { grade: false, bloom: false, postProcessingEnabled: true },
+                postProcessing: {
+                    grade: true,
+                    bloom: false,
+                    gradeStrength: 0.38,
+                    vignette: 0.12,
+                    blackLift: 0.03,
+                    postProcessingEnabled: true,
+                },
             },
             Medium: {
                 seaweedCount: 2500,
                 seagrassCount: 1000,
                 rippleNormalStrength: 1.6,
-                causticStrength: 0.75,
+                causticStrength: 0.65,
                 coralCount: 28,
                 reefDwellerCount: 28,
                 fishCount: 220,
@@ -395,8 +433,8 @@ export default class OceanTheme extends BaseTheme {
                 chromaticEdge: 0.0006,
                 useGPUCompute: true,
                 atmosphere: {
-                    rayCount: 10,
-                    rayStrength: 1.0,
+                    rayCount: 3,
+                    rayStrength: 0.55,
                     hazeLayers: 4,
                     hazeStrength: 0.32,
                     reefCount: 12,
@@ -412,7 +450,7 @@ export default class OceanTheme extends BaseTheme {
                     importedSeabedDetailCount: 10,
                     tubeCoralClusterCount: 2,
                     plateCoralShelfCount: 2,
-                    heroCoralCount: 4,
+                    heroCoralCount: 2,
                     heroKelpCount: 4,
                 },
                 rareFauna: {
@@ -431,8 +469,10 @@ export default class OceanTheme extends BaseTheme {
                     bloomStrength: 0.075,
                     bloomThreshold: 0.88,
                     bloomRadius: 0.36,
+                    bloomScale: 0.58,
+                    sceneScale: 0.94,
                     gradeStrength: 0.58,
-                    vignette: 0.24,
+                    vignette: 0.20,
                     blackLift: 0.035,
                     postProcessingEnabled: true,
                 },
@@ -441,7 +481,7 @@ export default class OceanTheme extends BaseTheme {
                 seaweedCount: 4000,
                 seagrassCount: 1700,
                 rippleNormalStrength: 2.2,
-                causticStrength: 0.95,
+                causticStrength: 0.78,
                 coralCount: 42,
                 reefDwellerCount: 72,
                 fishCount: 320,
@@ -454,11 +494,11 @@ export default class OceanTheme extends BaseTheme {
                 shaftStrength: 0.85,
                 refractionEnabled: true,
                 dofEnabled: false,
-                chromaticEdge: 0.0008,
+                chromaticEdge: 0,
                 useGPUCompute: true,
                 atmosphere: {
-                    rayCount: 8,
-                    rayStrength: 0.65,
+                    rayCount: 4,
+                    rayStrength: 0.82,
                     hazeLayers: 3,
                     hazeStrength: 0.22,
                     reefCount: 8,
@@ -467,15 +507,15 @@ export default class OceanTheme extends BaseTheme {
                     beamDustCount: 240,
                     occluderCount: 0,
                     biomeSilhouetteCount: 4,
-                    foregroundRockCount: 8,
+                    foregroundRockCount: 6,
                     coralOvergrowthPerRock: 2,
                     reefWallCount: 4,
-                    coralCarpetPatchCount: 6,
-                    importedSeabedDetailCount: 16,
+                    coralCarpetPatchCount: 2,
+                    importedSeabedDetailCount: 10,
                     tubeCoralClusterCount: 2,
                     plateCoralShelfCount: 2,
-                    heroCoralCount: 6,
-                    heroKelpCount: 5,
+                    heroCoralCount: 2,
+                    heroKelpCount: 4,
                 },
                 rareFauna: {
                     enabled: true,
@@ -493,8 +533,10 @@ export default class OceanTheme extends BaseTheme {
                     bloomStrength: 0.085,
                     bloomThreshold: 0.88,
                     bloomRadius: 0.36,
+                    bloomScale: 0.55,
+                    sceneScale: 0.90,
                     gradeStrength: 0.66,
-                    vignette: 0.26,
+                    vignette: 0.20,
                     blackLift: 0.04,
                     postProcessingEnabled: true,
                 },
@@ -503,7 +545,7 @@ export default class OceanTheme extends BaseTheme {
                 seaweedCount: 6500,
                 seagrassCount: 2700,
                 rippleNormalStrength: 2.6,
-                causticStrength: 1.10,
+                causticStrength: 0.90,
                 coralCount: 65,
                 reefDwellerCount: 108,
                 fishCount: 480,
@@ -512,15 +554,15 @@ export default class OceanTheme extends BaseTheme {
                 planktonCount: 820,
                 bubbleCount: 400,
                 terrainSegments: 180,
-                godRaySamples: 0,
+                godRaySamples: 2,
                 shaftStrength: 0.95,
                 refractionEnabled: true,
                 dofEnabled: false,
                 chromaticEdge: 0.001,
                 useGPUCompute: true,
                 atmosphere: {
-                    rayCount: 12,
-                    rayStrength: 0.72,
+                    rayCount: 6,
+                    rayStrength: 0.95,
                     hazeLayers: 4,
                     hazeStrength: 0.25,
                     causticStrength: 0.75,
@@ -532,15 +574,15 @@ export default class OceanTheme extends BaseTheme {
                     beamDustCount: 340,
                     occluderCount: 0,
                     biomeSilhouetteCount: 4,
-                    foregroundRockCount: 12,
-                    coralOvergrowthPerRock: 6,
+                    foregroundRockCount: 10,
+                    coralOvergrowthPerRock: 4,
                     reefWallCount: 6,
-                    coralCarpetPatchCount: 24,
-                    importedSeabedDetailCount: 12,
+                    coralCarpetPatchCount: 4,
+                    importedSeabedDetailCount: 10,
                     tubeCoralClusterCount: 3,
                     plateCoralShelfCount: 3,
-                    heroCoralCount: 18,
-                    heroKelpCount: 10,
+                    heroCoralCount: 4,
+                    heroKelpCount: 7,
                 },
                 rareFauna: {
                     enabled: true,
@@ -561,7 +603,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.45,
                     sceneScale: 0.82,
                     gradeStrength: 0.72,
-                    vignette: 0.27,
+                    vignette: 0.21,
                     blackLift: 0.045,
                     postProcessingEnabled: true,
                 },
@@ -573,7 +615,7 @@ export default class OceanTheme extends BaseTheme {
                 seaweedCount: 7500,
                 seagrassCount: 3000,
                 rippleNormalStrength: 3.0,
-                causticStrength: 1.25,
+                causticStrength: 1.0,
                 coralCount: 110,
                 reefDwellerCount: 150,
                 fishCount: 540,
@@ -582,15 +624,15 @@ export default class OceanTheme extends BaseTheme {
                 planktonCount: 800,
                 bubbleCount: 360,
                 terrainSegments: 220,
-                godRaySamples: 8,
+                godRaySamples: 4,
                 shaftStrength: 0.95,
                 refractionEnabled: true,
                 dofEnabled: true,
                 chromaticEdge: 0.0014,
                 useGPUCompute: true,
                 atmosphere: {
-                    rayCount: 16,
-                    rayStrength: 0.88,
+                    rayCount: 8,
+                    rayStrength: 1.05,
                     hazeLayers: 5,
                     hazeStrength: 0.32,
                     reefCount: 8,
@@ -602,14 +644,14 @@ export default class OceanTheme extends BaseTheme {
                     occluderCount: 0,
                     biomeSilhouetteCount: 4,
                     foregroundRockCount: 12,
-                    coralOvergrowthPerRock: 8,
+                    coralOvergrowthPerRock: 5,
                     reefWallCount: 8,
-                    coralCarpetPatchCount: 30,
+                    coralCarpetPatchCount: 6,
                     importedSeabedDetailCount: 12,
                     tubeCoralClusterCount: 4,
                     plateCoralShelfCount: 4,
-                    heroCoralCount: 24,
-                    heroKelpCount: 14,
+                    heroCoralCount: 6,
+                    heroKelpCount: 9,
                 },
                 rareFauna: {
                     enabled: true,
@@ -630,7 +672,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: 0.4,
                     sceneScale: 0.78,
                     gradeStrength: 0.76,
-                    vignette: 0.28,
+                    vignette: 0.22,
                     blackLift: 0.05,
                     postProcessingEnabled: true,
                 },
@@ -961,6 +1003,9 @@ export default class OceanTheme extends BaseTheme {
         const resolvedQuality = this.qualityPresets[quality] ? quality : 'High';
         this.currentQuality = resolvedQuality;
         this.activePreset = this.qualityPresets[resolvedQuality];
+        if (this.isWebGPU && this.scene) {
+            this.scene.fogNode = createOceanFogNode(resolvedQuality);
+        }
         if (this.isActive && this.scene) this.rebuildScene();
         console.log(`🌊 [OceanTheme] Applied ${resolvedQuality} quality preset`);
     }
@@ -1007,7 +1052,11 @@ export default class OceanTheme extends BaseTheme {
         });
         toRemove.forEach((obj) => {
             this.scene.remove(obj);
-            if (obj.geometry) obj.geometry.dispose();
+            // BatchedMesh owns matrix/indirect/color textures in addition to
+            // its merged geometry. Its dispose() releases the complete GPU
+            // allocation; disposing geometry alone leaks those textures.
+            if (obj.isBatchedMesh) obj.dispose();
+            else if (obj.geometry) obj.geometry.dispose();
             if (obj.material) {
                 if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
                 else obj.material.dispose();
@@ -1015,6 +1064,9 @@ export default class OceanTheme extends BaseTheme {
         });
         this.uniformsToUpdate = [];
         this._tslUniforms = null;
+        this.coralPlacements = [];
+        this.deferredMaterialLoadInProgress = false;
+        this.deferredMaterialLoadComplete = true;
         this.jellyfishData = null;
         this.planktonData = null;
         this.bubbleBillboardData = null;
@@ -1055,6 +1107,7 @@ export default class OceanTheme extends BaseTheme {
                 webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
+                    powerPreference: 'high-performance',
                 });
                 await webgpuRenderer.init();
             } catch (error) {
@@ -1090,7 +1143,7 @@ export default class OceanTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         // Tropical-cyan clear, slightly deeper than the fog so the horizon
         // dome reads as bright water rather than featureless overcast.
-        this.renderer.setClearColor(0x2f8eb0);
+        this.renderer.setClearColor(0x075a74);
 
         if (!this.isWebGPU) {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1117,43 +1170,60 @@ export default class OceanTheme extends BaseTheme {
     async createScene() {
         const themeContainer = document.getElementById('ocean-theme');
         if (!themeContainer) return;
+        this.isCreatingScene = true;
+        try {
+            themeContainer.innerHTML = '';
+            themeContainer.style.background = '#07546e';
 
-        themeContainer.innerHTML = '';
-        themeContainer.style.background = '#2f8eb0';
+            this.applyQualityPreset(this.getGraphicsQuality());
+            this.setupQualityListener();
+            this.clock = new THREE.Clock();
 
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
-        this.clock = new THREE.Clock();
+            await this.initRenderer(themeContainer);
 
-        await this.initRenderer(themeContainer);
+            this.scene = new THREE.Scene();
+            // Tropical-cyan fog tuned between dark mood and washed-out — slightly
+            // deeper hue + a touch more density so the distance has visible
+            // atmospheric falloff instead of reading as a uniform pale dome.
+            if (this.isWebGPU) {
+            // Ordered clear/silhouette/far ranges plus authored canyon and reef
+            // density zones. Lower tiers compile fewer ellipsoid masks.
+                this.scene.fogNode = createOceanFogNode(this.currentQuality);
+            } else {
+                this.scene.fog = new THREE.FogExp2(0x0b526b, 0.0046);
+            }
 
-        this.scene = new THREE.Scene();
-        // Tropical-cyan fog tuned between dark mood and washed-out — slightly
-        // deeper hue + a touch more density so the distance has visible
-        // atmospheric falloff instead of reading as a uniform pale dome.
-        this.scene.fog = new THREE.FogExp2(0x2f8eb0, 0.0036);
+            // Camera
+            this.camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.5,
+                350,
+            );
+            this.camera.position.set(0, 20, 80);
+            this.camera.lookAt(0, 5, 0);
 
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.5,
-            350,
-        );
-        this.camera.position.set(0, 20, 80);
-        this.camera.lookAt(0, 5, 0);
+            // Wire GPU resilience (mirrors black-hole)
+            this.setupRendererResilience(this.renderer, {
+                onContextLost: () => console.warn('🌊 [Ocean] GPU context lost'),
+                onContextRestored: () => console.log('🌊 [Ocean] GPU context restored'),
+            });
 
-        // Wire GPU resilience (mirrors black-hole)
-        this.setupRendererResilience(this.renderer, {
-            onContextLost: () => console.warn('🌊 [Ocean] GPU context lost'),
-            onContextRestored: () => console.log('🌊 [Ocean] GPU context restored'),
-        });
-
-        this.buildScene();
-        this.setupEventListeners();
-        this.installSignoffHelper();
-        this.handleResize();
-        this.startAnimation();
+            this.buildScene();
+            this.setupEventListeners();
+            this.installSignoffHelper();
+            this.handleResize();
+            if (this.prewarmPromise) {
+                try {
+                    await this.prewarmPromise;
+                } catch (error) {
+                    console.warn('[Ocean] Critical pipeline prewarm failed:', error);
+                }
+            }
+            this.startAnimation();
+        } finally {
+            this.isCreatingScene = false;
+        }
     }
 
     buildScene() {
@@ -1168,27 +1238,56 @@ export default class OceanTheme extends BaseTheme {
         if (!this.flags.noSeabed) { this.createSeabed(); this.freezeStaticTransforms(this.seabed); }
         if (!this.flags.noAtmosphere) this.createCinematicAtmosphere();
         this.createLighting();
+        // Gameplay reactions are small and correctness-critical. Build their
+        // pools before the listeners can receive the first lock/clear/combo.
+        if (!this.flags.noGameplayFx) this.createGameplayEffects();
+        if (!this.flags.noPost) {
+            if (this.activePreset?.postProcessing?.useMRT === true) {
+                this.ensureMrtMaterials();
+            }
+            this.setupPostProcessing();
+        }
 
         // Kick off WebGPU pipeline compilation in parallel with the staged
         // build below — moves shader compile cost off the first render frame.
+        this.isPrewarming = true;
+        let criticalCompile = Promise.resolve();
         if (this.isWebGPU && this.renderer?.compileAsync) {
+            const restoreEffects = this.gameplayEffects?.prepareForCompile?.();
             try {
-                this.renderer.compileAsync(this.scene, this.camera).catch(() => {});
+                criticalCompile = this.renderer.compileAsync(this.scene, this.camera)
+                    .catch((error) => {
+                        console.warn('[Ocean] Critical scene compile failed:', error);
+                    })
+                    .finally(() => restoreEffects?.());
             } catch (err) {
-                // compileAsync isn't critical; ignore failures.
+                restoreEffects?.();
+                console.warn('[Ocean] Critical scene compile threw:', err);
             }
         }
+        this.prewarmPromise = criticalCompile
+            .then(() => {
+                if (token !== this._sceneBuildToken || !this.scene || !this.renderer) return;
+                if (this.oceanPost?.enabled) this.oceanPost.render();
+                else this.renderer.render(this.scene, this.camera);
+            })
+            .finally(() => {
+                if (token === this._sceneBuildToken) this.isPrewarming = false;
+            });
 
         // Stage the rest in idle slices after the first paint. Animation loop
         // already null-safes every subsystem, so partial scenes render fine
         // while we fill in. Each step is no-op'd if its debug flag is set so
         // the user can isolate the cost of each subsystem with ?oceanNoX=1.
+        const atmosphereBuildSteps = this.flags.noAtmosphere
+            ? []
+            : (this.atmosphereSystem?.prepareDeferredBuildSteps?.() || []);
         const steps = [
             () => { if (!this.flags.noFish) this.createFishSchools(); },
             () => { if (!this.flags.noJellyfish) this.createJellyfish(); },
             () => { if (!this.flags.noBubbles) this.createBubbles(); },
             () => { if (!this.flags.noPlankton) this.createPlankton(); },
-            () => { if (!this.flags.noAtmosphere) this.finalizeCinematicAtmosphere(); },
+            ...atmosphereBuildSteps.map(({ run }) => run),
             () => { if (!this.flags.noCoral) this.createCoralReef(); },
             () => {
                 if (this.flags.noSeaweed) return;
@@ -1202,12 +1301,6 @@ export default class OceanTheme extends BaseTheme {
             },
             () => { if (!this.flags.noDwellers) this.createReefDwellers(); },
             () => { if (!this.flags.noRareFauna) this.createRareFauna(); },
-            () => { if (!this.flags.noGameplayFx) this.createGameplayEffects(); },
-            () => {
-                if (this.flags.noPost) return;
-                this.ensureMrtMaterials();
-                this.setupPostProcessing();
-            },
         ];
 
         const scheduleDeferredBuildStep = (callback, timeout = 180) => {
@@ -1224,17 +1317,54 @@ export default class OceanTheme extends BaseTheme {
         // Names parallel to `steps` for ?oceanLogStartup= timing logs.
         const stepNames = [
             'createFishSchools', 'createJellyfish', 'createBubbles', 'createPlankton',
-            'finalizeCinematicAtmosphere', 'createCoralReef', 'createSeaweed',
+            ...atmosphereBuildSteps.map(({ name }) => name),
+            'createCoralReef', 'createSeaweed',
             'createSeagrassMeadow', 'createReefDwellers', 'createRareFauna',
-            'createGameplayEffects', 'setupPostProcessing',
         ];
         const { logStartup } = this.flags;
+        this.deferredMaterialLoadInProgress = true;
+        this.deferredMaterialLoadComplete = false;
+        let resolveDeferred;
+        let deferredFinished = false;
+        this.deferredMaterialLoadPromise = new Promise((resolve) => {
+            resolveDeferred = resolve;
+        });
+        const completeDeferredBuild = async () => {
+            if (deferredFinished) return;
+            deferredFinished = true;
+            try {
+                if (
+                    token === this._sceneBuildToken
+                    && this.scene
+                    && this.renderer
+                    && this.isWebGPU
+                    && this.renderer.compileAsync
+                ) {
+                    await this.renderer.compileAsync(this.scene, this.camera);
+                    if (this.oceanPost?.enabled) this.oceanPost.render();
+                }
+            } catch (error) {
+                console.warn('[Ocean] Deferred pipeline warm-up failed:', error);
+            } finally {
+                if (token === this._sceneBuildToken) {
+                    this.deferredMaterialLoadInProgress = false;
+                    this.deferredMaterialLoadComplete = true;
+                }
+                resolveDeferred?.();
+            }
+        };
         const runStep = (index) => {
             // Bail if disposeSceneContents() or stop() bumped the token,
             // or if the scene was torn down between frames.
-            if (token !== this._sceneBuildToken || !this.scene) return;
+            if (token !== this._sceneBuildToken || !this.scene) {
+                completeDeferredBuild();
+                return;
+            }
             const step = steps[index];
-            if (!step) return;
+            if (!step) {
+                completeDeferredBuild();
+                return;
+            }
             const stepStart = logStartup ? performance.now() : 0;
             try {
                 step();
@@ -1247,6 +1377,8 @@ export default class OceanTheme extends BaseTheme {
             }
             if (index + 1 < steps.length) {
                 scheduleDeferredBuildStep(() => runStep(index + 1));
+            } else {
+                completeDeferredBuild();
             }
         };
         requestAnimationFrame(() => {
@@ -1264,8 +1396,9 @@ export default class OceanTheme extends BaseTheme {
             getSeabedHeight: this.getSeabedHeight.bind(this),
             isWebGPU: this.isWebGPU,
             // Diagnostic skip flags — let us A/B which atmosphere component
-            // drives the 16 ms `ocean.post` cost spike.
+            // drives the 16 ms `ocean.renderTotal` cost spike.
             skipFlags: {
+                shafts: this.flags.noGodRays,
                 haze: this.flags.noHaze,
                 beamDust: this.flags.noBeamDust,
                 glowAnchors: this.flags.noGlowAnchors,
@@ -1306,12 +1439,19 @@ export default class OceanTheme extends BaseTheme {
 
         if (this.isWebGPU) {
             const refractionEnabled = this.activePreset?.refractionEnabled === true;
+            const shaftStrength = this.activePreset?.atmosphere?.rayStrength ?? 0;
             const material = createWaterSurfaceNodeMaterial({
                 waveIntensity: 1.0,
                 surfaceShimmerStrength: refractionEnabled ? 0.35 : 0.12,
+                sunCenter: new THREE.Vector2(
+                    OCEAN_LIGHTING_RIG.sunCenter.x,
+                    OCEAN_LIGHTING_RIG.sunCenter.z,
+                ),
+                sunRadius: OCEAN_LIGHTING_RIG.apertureRadius,
+                sunApertureStrength: 0.68 + Math.min(0.6, shaftStrength * 0.55),
             });
             this.waterSurface = new THREE.Mesh(geometry, material);
-            this.waterSurface.position.y = 72;
+            this.waterSurface.position.y = OCEAN_LIGHTING_RIG.surfaceY;
             this.waterSurfaceMaterial = material;
             // Store TSL uniforms for per-frame updates
             this._tslUniforms = this._tslUniforms || [];
@@ -1333,6 +1473,19 @@ export default class OceanTheme extends BaseTheme {
                 uWaveIntensity: { value: 1.0 },
                 uCausticsIntensity: { value: 0.24 },
                 uGlowIntensity: { value: 0.0 },
+                uSunCenter: {
+                    value: new THREE.Vector2(
+                        OCEAN_LIGHTING_RIG.sunCenter.x,
+                        OCEAN_LIGHTING_RIG.sunCenter.z,
+                    ),
+                },
+                uSunRadius: { value: OCEAN_LIGHTING_RIG.apertureRadius },
+                uSunApertureStrength: {
+                    value: 0.68 + Math.min(
+                        0.6,
+                        (this.activePreset?.atmosphere?.rayStrength ?? 0) * 0.55,
+                    ),
+                },
             },
             vertexShader: `
                 uniform float uTime;
@@ -1431,6 +1584,9 @@ export default class OceanTheme extends BaseTheme {
                 uniform vec3 uFoamColor;
                 uniform float uCausticsIntensity;
                 uniform float uGlowIntensity;
+                uniform vec2 uSunCenter;
+                uniform float uSunRadius;
+                uniform float uSunApertureStrength;
                 varying vec3 vPosition;
                 varying vec3 vNormal;
                 varying vec3 vWorldNormal;
@@ -1476,7 +1632,7 @@ export default class OceanTheme extends BaseTheme {
                     float specular = pow(max(dot(-vWorldNormal, halfDir), 0.0), 48.0);
                     
                     // Fresnel (glassy edge)
-                    float fresnel = pow(1.0 - max(dot(-vWorldNormal, viewDir), 0.0), 2.5);
+                    float fresnel = pow(1.0 - abs(dot(vWorldNormal, viewDir)), 2.5);
                     
                     // Caustics on water surface
                     vec2 causticsUV = vPosition.xz * 0.15;
@@ -1507,6 +1663,18 @@ export default class OceanTheme extends BaseTheme {
                     color = mix(color, uFoamColor, foam * 0.2);
                     color += uCrestColor * uGlowIntensity * 0.08;
                     color = mix(color, uDeepColor, 0.11);
+
+                    float sunDistance = length(vPosition.xz - uSunCenter) / uSunRadius;
+                    float sunBody = 1.0 - smoothstep(0.05, 1.0, sunDistance);
+                    float sunCore = 1.0 - smoothstep(0.0, 0.28, sunDistance);
+                    float sunEnergy = (sunBody * 0.58 + sunCore * 1.42 + caustics * sunBody * 0.18)
+                        * uSunApertureStrength;
+                    vec3 sunColor = mix(
+                        vec3(0.22, 0.88, 1.0),
+                        vec3(1.0, 0.92, 0.68),
+                        sunCore * 0.82
+                    );
+                    color += sunColor * sunEnergy;
                     
                     // Edge fade - smooth transition at water surface edges
                     float distFromCenter = length(vUv - 0.5) * 2.0;
@@ -1515,7 +1683,9 @@ export default class OceanTheme extends BaseTheme {
                     // View angle fade - gentler fade for better visibility
                     float viewFade = smoothstep(0.0, 0.25, abs(dot(-vWorldNormal, viewDir)));
                     
-                    float alpha = edgeFade * (0.24 + viewFade * 0.24);
+                    float alpha = edgeFade * (
+                        0.24 + viewFade * 0.24 + sunBody * uSunApertureStrength * 0.28
+                    );
                     
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -1526,7 +1696,7 @@ export default class OceanTheme extends BaseTheme {
         });
 
         this.waterSurface = new THREE.Mesh(geometry, material);
-        this.waterSurface.position.y = 72;
+        this.waterSurface.position.y = OCEAN_LIGHTING_RIG.surfaceY;
         this.waterSurfaceMaterial = material;
         this.uniformsToUpdate.push(material.uniforms);
         this.scene.add(this.waterSurface);
@@ -1638,6 +1808,7 @@ export default class OceanTheme extends BaseTheme {
             const material = createSeabedNodeMaterial({
                 rippleStrength: this.activePreset.rippleNormalStrength ?? 1.6,
                 causticStrength: this.activePreset.causticStrength ?? 0.55,
+                detailLevel: this.currentQuality,
             });
             this.seabed = new THREE.Mesh(geometry, material);
             this._tslUniforms = this._tslUniforms || [];
@@ -1759,7 +1930,7 @@ export default class OceanTheme extends BaseTheme {
                     vec3 finalNormal = normalize(litNormal + grainNormal);
 
                     // Ripple-crest warmth: only ridges facing the sun lift toward shell sand.
-                    vec3 lightDir = normalize(vec3(0.16, 0.92, -0.18));
+                    vec3 lightDir = normalize(vec3(-0.1, 0.9, -0.42));
                     float ridgeWarmth = pow(max(dot(rippleNormal, lightDir), 0.0), 2.4);
 
                     // 1. Procedural silt & sediment channels (organic brown/grey patches)
@@ -1892,6 +2063,12 @@ export default class OceanTheme extends BaseTheme {
      * Used to prevent seaweed, seagrass, and fish from clipping through geometry.
      */
     isPointOccupied(x, z, radius = 2.0, occupancy = null) {
+        for (const coral of this.coralPlacements || []) {
+            const dx = x - coral.position[0];
+            const dz = z - coral.position[2];
+            const minDist = coral.footprintRadius + radius;
+            if (dx * dx + dz * dz < minDist * minDist) return true;
+        }
         if (!this.atmosphereSystem) return false;
 
         // Callers in tight placement loops pass a snapshot fetched once before
@@ -2490,7 +2667,7 @@ export default class OceanTheme extends BaseTheme {
                     color *= 0.85 + vColorVar * 0.3;
 
                     // Diffuse lighting based on normal
-                    vec3 lightDir = normalize(vec3(0.16, 0.92, -0.18));
+                    vec3 lightDir = normalize(vec3(-0.1, 0.9, -0.42));
                     float diffuse = max(0.24, dot(normalize(vNormal), lightDir));
                     color *= diffuse;
 
@@ -2571,6 +2748,59 @@ export default class OceanTheme extends BaseTheme {
     }
 
     createCoralReef() {
+        let detail = 'high';
+        if (['Minimal', 'Low'].includes(this.currentQuality)) detail = 'low';
+        else if (this.currentQuality === 'Medium') detail = 'medium';
+        const library = createCoralModuleLibrary({ detail });
+        const placements = createCoralPlacementPlan({
+            tier: this.currentQuality,
+            seed: 0x0cea5eed,
+            gardens: OCEAN_REEF_GARDENS,
+            readabilityZone: OCEAN_READABILITY_ZONE,
+            getSeabedHeight: this.getSeabedHeight.bind(this),
+        });
+        if (placements.length === 0) {
+            library.dispose();
+            this.coralGroup = new THREE.Group();
+            this.coralPlacements = [];
+            this.scene.add(this.coralGroup);
+            return;
+        }
+        const material = this.isWebGPU
+            ? createModularCoralNodeMaterial()
+            : new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.8,
+                metalness: 0.0,
+                side: THREE.FrontSide,
+            });
+        const batch = createCoralBatch({
+            library,
+            placements,
+            material,
+            disposeSourceGeometries: true,
+        });
+
+        this.coralGroup = new THREE.Group();
+        this.coralGroup.name = 'OceanChunkyModularCoralFamily';
+        this.coralGroup.add(batch);
+        this.coralPlacements = placements;
+        this.habitatMetrics.coral.colonies += placements.length;
+        this.habitatMetrics.coral.modularFamily = {
+            moduleCount: 6,
+            ...batch.userData.metrics,
+        };
+        if (this.isWebGPU) {
+            this._tslUniforms = this._tslUniforms || [];
+            this._tslUniforms.push(material.userData);
+        }
+        this.freezeStaticTransforms(this.coralGroup);
+        this.scene.add(this.coralGroup);
+    }
+
+    // Retained temporarily as a WebGL/reference fallback while the modular
+    // family proves out. Runtime paths use createCoralReef() above.
+    createLegacyCoralReef() {
         const count = this.activePreset.coralCount;
         const spread = 140;
         this.coralGroup = new THREE.Group();
@@ -2846,29 +3076,46 @@ export default class OceanTheme extends BaseTheme {
         // Collect anchors
         const anchors = [];
 
-        // 1. Coral Group children
+        // 1. Authored modular-colony centers. BatchedMesh itself lives at the
+        // origin, so semantic anchors come from the deterministic plan.
         const dummyMatrix = new THREE.Matrix4();
         const dummyPos = new THREE.Vector3();
-        this.coralGroup?.children.forEach((c) => {
-            if (c.isInstancedMesh) {
-                for (let i = 0; i < c.count; i++) {
-                    c.getMatrixAt(i, dummyMatrix);
-                    dummyPos.setFromMatrixPosition(dummyMatrix);
-                    anchors.push(dummyPos.clone());
-                }
-            } else if (c.position) {
-                anchors.push(c.position.clone());
-            }
+        this.coralPlacements?.forEach((placement) => {
+            anchors.push(new THREE.Vector3().fromArray(placement.position));
         });
+        if (!this.coralPlacements?.length) {
+            this.coralGroup?.children.forEach((c) => {
+                if (c.isInstancedMesh) {
+                    for (let i = 0; i < c.count; i++) {
+                        c.getMatrixAt(i, dummyMatrix);
+                        dummyPos.setFromMatrixPosition(dummyMatrix);
+                        anchors.push(dummyPos.clone());
+                    }
+                } else if (c.position) {
+                    anchors.push(c.position.clone());
+                }
+            });
+        }
 
         // 2. Atmosphere foreground rocks
         this.atmosphereSystem?.foregroundRocks?.forEach((r) => {
             if (r.position) anchors.push(r.position.clone());
         });
 
-        // 3. Hero corals
-        this.atmosphereSystem?.heroCorals?.forEach((c) => {
-            if (c && c.position) anchors.push(c.position.clone());
+        // 3. Hero-corals use per-variant InstancedMeshes after their GLB
+        // upgrade, so their mesh roots live at (0,0,0). Keep dwellers tied to
+        // authored semantic placement centers instead of those batch roots.
+        const heroCoralCount = this.activePreset?.atmosphere?.heroCoralCount ?? 0;
+        const heroCoralPlacements = this.atmosphereSystem
+            ?.getOccupancyData?.()
+            ?.corals
+            ?.slice(0, heroCoralCount) || [];
+        heroCoralPlacements.forEach((placement) => {
+            anchors.push(new THREE.Vector3(
+                placement.x,
+                this.getSeabedHeight(placement.x, placement.z),
+                placement.z,
+            ));
         });
 
         // 4. Coral carpet patches
@@ -2992,7 +3239,9 @@ export default class OceanTheme extends BaseTheme {
             );
             this.jellyfishMesh.frustumCulled = true;
             this.jellyfishMesh.userData.primitive = 'billboard-quad';
-            this.jellyfishData = { positions, phases, count };
+            this.jellyfishData = {
+                positions, phases, sizes, count,
+            };
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
             this.scene.add(this.jellyfishMesh);
@@ -3101,7 +3350,9 @@ export default class OceanTheme extends BaseTheme {
             );
             this.planktonMesh.frustumCulled = true;
             this.planktonMesh.userData.primitive = 'billboard-quad';
-            this.planktonData = { positions, phases, count };
+            this.planktonData = {
+                positions, phases, sizes, count,
+            };
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
             this.scene.add(this.planktonMesh);
@@ -3205,13 +3456,13 @@ export default class OceanTheme extends BaseTheme {
             const column = columns[i % columnCount];
             const angle = Math.random() * Math.PI * 2;
             const radius = Math.random() * column.spread;
-            const isMicro = Math.random() < 0.72;
+            const isMicro = Math.random() < 0.84;
             positions[i * 3] = column.x + Math.cos(angle) * radius;
             positions[i * 3 + 1] = column.y;
             positions[i * 3 + 2] = column.z + Math.sin(angle) * radius;
             speeds[i] = isMicro ? randRangeLocal(0.72, 1.65) : randRangeLocal(0.38, 0.9);
             phases[i] = Math.random() * 6.28;
-            sizes[i] = isMicro ? randRangeLocal(0.55, 1.65) : randRangeLocal(1.8, 4.2);
+            sizes[i] = isMicro ? randRangeLocal(0.4, 1.15) : randRangeLocal(1.2, 2.6);
             lifeOffsets[i] = Math.random();
             columnSpread[i] = column.spread;
             micro[i] = isMicro ? 1 : 0;
@@ -3260,6 +3511,7 @@ export default class OceanTheme extends BaseTheme {
                 positions,
                 speeds,
                 phases,
+                sizes,
                 lifeOffsets,
                 columnSpread,
                 count,
@@ -3361,27 +3613,40 @@ export default class OceanTheme extends BaseTheme {
         // Ambient softer (so sand floor doesn't blow out), directional sun
         // moderate (so corals cast definition), hemisphere modest. The
         // overall scene still reads bright/tropical but with depth.
-        const ambient = new THREE.AmbientLight(0x5a96b0, 0.42);
+        const ambient = new THREE.AmbientLight(0x4b849b, 0.36);
         this.scene.add(ambient);
 
-        const directional = new THREE.DirectionalLight(0xfff0d0, 1.0);
-        directional.position.set(18, 100, -18);
-        this.scene.add(directional);
+        const directional = new THREE.DirectionalLight(0xffe5c2, 1.82);
+        directional.position.set(
+            OCEAN_LIGHTING_RIG.sunCenter.x,
+            OCEAN_LIGHTING_RIG.surfaceY + 52,
+            OCEAN_LIGHTING_RIG.sunCenter.z,
+        );
+        directional.target.position.set(0, -8, -24);
+        this.scene.add(directional, directional.target);
 
-        const hemisphere = new THREE.HemisphereLight(0x9ed4e0, 0x2c5a78, 0.4);
+        // Cool water-column fill above, warm sand bounce below. This gives PBR
+        // fish and corals dimensional faces without adding per-object lights.
+        const hemisphere = new THREE.HemisphereLight(0xc1f1f4, 0x91605a, 0.76);
         this.scene.add(hemisphere);
 
-        const foregroundFill = new THREE.PointLight(0x6fc8d4, 0.3, 160, 2.0);
-        foregroundFill.position.set(-34, 20, 48);
-        this.scene.add(foregroundFill);
-
-        const reefWarmth = new THREE.PointLight(0xffc890, 0.28, 115, 2.2);
-        reefWarmth.position.set(54, 8, -34);
-        this.scene.add(reefWarmth);
+        const staticLights = [ambient, directional, directional.target, hemisphere];
+        if (!['Minimal', 'Low'].includes(this.currentQuality)) {
+            const reefWarmth = new THREE.PointLight(0xffbf9b, 0.38, 115, 2.2);
+            reefWarmth.position.set(54, 8, -34);
+            this.scene.add(reefWarmth);
+            staticLights.push(reefWarmth);
+        }
+        if (['Ultra', 'Extreme'].includes(this.currentQuality)) {
+            const foregroundFill = new THREE.PointLight(0x83d8df, 0.26, 160, 2.0);
+            foregroundFill.position.set(-34, 20, 48);
+            this.scene.add(foregroundFill);
+            staticLights.push(foregroundFill);
+        }
 
         // Lights never move; bake their transforms so the renderer stops
         // recomposing a matrix for each one every frame.
-        [ambient, directional, hemisphere, foregroundFill, reefWarmth].forEach((light) => {
+        staticLights.forEach((light) => {
             light.matrixAutoUpdate = false;
             light.updateMatrix();
         });
@@ -3467,17 +3732,22 @@ export default class OceanTheme extends BaseTheme {
                 const preset = this.activePreset ?? {};
                 const dofOn = preset.dofEnabled === true;
                 this.oceanPost = new OceanPost(this.renderer, this.scene, this.camera, {
-                    useMRT: true,
+                    // The transparent water/atmosphere stack must survive the
+                    // scene pass. Ocean's previous selective-MRT path dropped
+                    // much of that depth layering on WebGPU; color-source bloom
+                    // is both cheaper and visually faithful here.
+                    useMRT: post.useMRT === true,
                     bloomStrength: post.bloom ? (post.bloomStrength ?? 0.1) : 0.0,
                     bloomRadius: post.bloomRadius ?? 0.5,
                     bloomThreshold: post.bloomThreshold ?? 0.85,
                     bloomScale: post.bloomScale ?? 0.6,
                     sceneScale: post.sceneScale ?? 1.0,
                     gradeStrength: post.grade ? (post.gradeStrength ?? 0.92) : 0.0,
+                    blackLift: post.blackLift ?? 0.04,
                     // Tighter vignette + moodier exposure + denser atmospheric fog
                     // push the scene toward the reference photo's deeper-saturated,
                     // stronger-god-ray-contrast underwater look.
-                    vignetteDarkness: post.vignette ?? 0.42,
+                    vignetteDarkness: post.vignette ?? 0.16,
                     // Prefer top-level preset values from plan; fall back to atmosphere subobject for back-compat.
                     shaftStrength: preset.shaftStrength ?? preset.atmosphere?.rayStrength ?? 0.0,
                     shaftSamples: preset.godRaySamples ?? preset.atmosphere?.rayCount ?? 8,
@@ -3486,12 +3756,29 @@ export default class OceanTheme extends BaseTheme {
                         QUALITY_EFFECT_LIMITS[this.currentQuality]?.chromaticAberration === true,
                     refractionEnabled: preset.refractionEnabled === true,
                     refractionStrength: preset.refractionEnabled === true ? 0.34 : 0.0,
+                    dofEnabled: dofOn,
                     dofStrength: dofOn ? 0.82 : 0.0,
                     dofMaxRadius: dofOn ? 0.0016 : 0.0,
                     dofDeadZone: dofOn ? 0.035 : 1.0,
                     focalDepth: 0.08,
-                    fogDensity: 0.52,
-                    exposure: 0.78,
+                    // Global analytic fog now owns the canyon transition. Keep
+                    // screen-space absorption as a light water-column finish.
+                    fogDensity: {
+                        Minimal: 0.0,
+                        Low: 0.18,
+                        Medium: 0.22,
+                        High: 0.24,
+                        Ultra: 0.28,
+                        Extreme: 0.32,
+                    }[this.currentQuality] ?? 0.24,
+                    exposure: {
+                        Minimal: 0.92,
+                        Low: 0.88,
+                        Medium: 0.86,
+                        High: 0.84,
+                        Ultra: 0.82,
+                        Extreme: 0.80,
+                    }[this.currentQuality] ?? 0.84,
                 });
                 this.oceanPost.enabled = true;
                 this._applyPostDebugFlags();
@@ -3566,11 +3853,17 @@ export default class OceanTheme extends BaseTheme {
             if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.targetCurrentStrength = Math.min(
                     2.5,
-                    this.currentStrength + data.lineCount * 0.35,
+                    Math.max(
+                        this.targetCurrentStrength,
+                        this.currentStrength + data.lineCount * 0.35,
+                    ),
                 );
                 this.targetGlowIntensity = Math.min(
                     1.5,
-                    this.glowIntensity + data.lineCount * 0.18,
+                    Math.max(
+                        this.targetGlowIntensity,
+                        this.glowIntensity + data.lineCount * 0.18,
+                    ),
                 );
                 this.gameplayEffects?.triggerLineClear?.(data);
             }
@@ -3585,11 +3878,17 @@ export default class OceanTheme extends BaseTheme {
             ) {
                 this.targetCurrentStrength = Math.min(
                     3.5,
-                    this.currentStrength + data.comboCount * 0.45,
+                    Math.max(
+                        this.targetCurrentStrength,
+                        this.currentStrength + data.comboCount * 0.45,
+                    ),
                 );
                 this.targetGlowIntensity = Math.min(
                     2.0,
-                    this.glowIntensity + data.comboCount * 0.22,
+                    Math.max(
+                        this.targetGlowIntensity,
+                        this.glowIntensity + data.comboCount * 0.22,
+                    ),
                 );
                 this.gameplayEffects?.triggerCombo?.(data);
             }
@@ -3642,11 +3941,11 @@ export default class OceanTheme extends BaseTheme {
     // byte-identical to setMatrixAt(compose(pos, camera.quaternion, scale 1))
     // because Matrix4.makeRotationFromQuaternion IS compose(0, q, 1); we only
     // overwrite the translation columns (12/13/14) per instance.
-    writeBillboardInstance(array, index, rotEl, x, y, z) {
+    writeBillboardInstance(array, index, rotEl, x, y, z, scale = 1) {
         const o = index * 16;
-        array[o] = rotEl[0]; array[o + 1] = rotEl[1]; array[o + 2] = rotEl[2]; array[o + 3] = 0;
-        array[o + 4] = rotEl[4]; array[o + 5] = rotEl[5]; array[o + 6] = rotEl[6]; array[o + 7] = 0;
-        array[o + 8] = rotEl[8]; array[o + 9] = rotEl[9]; array[o + 10] = rotEl[10]; array[o + 11] = 0;
+        array[o] = rotEl[0] * scale; array[o + 1] = rotEl[1] * scale; array[o + 2] = rotEl[2] * scale; array[o + 3] = 0;
+        array[o + 4] = rotEl[4] * scale; array[o + 5] = rotEl[5] * scale; array[o + 6] = rotEl[6] * scale; array[o + 7] = 0;
+        array[o + 8] = rotEl[8] * scale; array[o + 9] = rotEl[9] * scale; array[o + 10] = rotEl[10] * scale; array[o + 11] = 0;
         array[o + 12] = x; array[o + 13] = y; array[o + 14] = z; array[o + 15] = 1;
     }
 
@@ -3669,7 +3968,9 @@ export default class OceanTheme extends BaseTheme {
         const doBubbles = (phase === -1 || phase === 2) && !this.flags?.noBubbles;
 
         if (doJellyfish && this.jellyfishMesh && this.jellyfishData) {
-            const { positions, phases, count } = this.jellyfishData;
+            const {
+                positions, phases, sizes, count,
+            } = this.jellyfishData;
             const arr = this.jellyfishMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
@@ -3681,13 +3982,20 @@ export default class OceanTheme extends BaseTheme {
                     positions[i3] + Math.sin(time * 0.18 + ph * 1.3) * 1.35,
                     positions[i3 + 1] + Math.sin(time * 0.38 + ph) * 2.2,
                     positions[i3 + 2] + Math.sin(time * 0.22 + ph * 0.8) * 1.1,
+                    sizes[i] * (
+                        Math.sin(time * 1.8 + ph) * 0.25
+                        + 0.72
+                        + this.glowIntensity * 0.04
+                    ),
                 );
             }
             this.jellyfishMesh.instanceMatrix.needsUpdate = true;
         }
 
         if (doPlankton && this.planktonMesh && this.planktonData) {
-            const { positions, phases, count } = this.planktonData;
+            const {
+                positions, phases, sizes, count,
+            } = this.planktonData;
             const arr = this.planktonMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
@@ -3701,6 +4009,9 @@ export default class OceanTheme extends BaseTheme {
                     positions[i3 + 1] + Math.sin(time * 0.14 + ph) * 0.45,
                     positions[i3 + 2]
                     + Math.sin(time * 0.11 + ph * 0.9) * (0.42 + this.currentStrength * 0.18),
+                    sizes[i] + (
+                        Math.sin(time * 0.72 + ph * 3.5) * 0.5 + 0.5
+                    ) * this.glowIntensity * 0.32 * 1.2,
                 );
             }
             this.planktonMesh.instanceMatrix.needsUpdate = true;
@@ -3708,7 +4019,7 @@ export default class OceanTheme extends BaseTheme {
 
         if (doBubbles && this.bubbleMesh && this.bubbleBillboardData) {
             const {
-                positions, speeds, phases, lifeOffsets, columnSpread, count,
+                positions, speeds, phases, sizes, lifeOffsets, columnSpread, count,
             } = this.bubbleBillboardData;
             const arr = this.bubbleMesh.instanceMatrix.array;
             for (let i = 0; i < count; i += 1) {
@@ -3726,6 +4037,7 @@ export default class OceanTheme extends BaseTheme {
                     positions[i3 + 1] + travel * 98.0,
                     positions[i3 + 2]
                     + Math.sin(time * 1.2 + ph * 1.3 + travel * 5.0) * drift * 0.8,
+                    sizes[i] * (1 + columnSpread[i] * 0.01),
                 );
             }
             this.bubbleMesh.instanceMatrix.needsUpdate = true;
@@ -3736,10 +4048,16 @@ export default class OceanTheme extends BaseTheme {
     // ANIMATION LOOP
     // ═══════════════════════════════════════════════════════════════════════════
     startAnimation() {
+        if (this.animationLoopStarted) return;
+        this.animationLoopStarted = true;
+
         // Create camera state machine on first run
         if (!this.oceanCamera && this.camera) {
             this.oceanCamera = new OceanCamera(this.camera);
         }
+        // Discard any lifecycle gap before the first resumed frame so pause /
+        // background time never contaminates simulation or signoff metrics.
+        this.clock?.getDelta();
 
         // Phase D.5: install the diagnostic surface. window.oceanDebug.report()
         // dumps a snapshot to console; .bisect() runs the auto-bisection. We
@@ -3791,11 +4109,26 @@ export default class OceanTheme extends BaseTheme {
         }
 
         const loop = () => {
-            if (!this.isActive) return;
+            if (!this.isActive) {
+                this.animationLoopStarted = false;
+                return;
+            }
 
-            const delta = Math.min(this.clock.getDelta(), 0.033);
+            // Schedule first so a paused/reduced frame skips work without
+            // killing the loop. Registration lets BaseTheme reliably cancel it.
+            this.animationFrameId = requestAnimationFrame(loop);
+            this.registerAnimation(this.animationFrameId);
+            if (!this.shouldRenderFrame()) {
+                if (typeof window !== 'undefined' && window.isRenderingPaused) {
+                    this.clock?.getDelta();
+                }
+                return;
+            }
+
+            const rawDelta = this.clock.getDelta();
+            const delta = Math.min(rawDelta, 0.1);
             const time = this.clock.elapsedTime;
-            this.trackSignoffFrame(delta);
+            this.trackSignoffFrame(rawDelta);
             const perf = typeof window !== 'undefined' ? window.perfMonitor : null;
 
             // Stride flags: even-frame group runs reef dwellers + hero asset
@@ -3805,11 +4138,22 @@ export default class OceanTheme extends BaseTheme {
             // ?oceanNoStriding=1 forces every subsystem to run every frame so
             // we can A/B-compare WS 1.3 striding's actual savings.
             this.frameCount += 1;
-            let evenHeavy = (this.frameCount % 2) === 0;
-            let oddHeavy = !evenHeavy;
+            this._cadence.tickAccumulator += delta;
+            const cadenceStep = 1 / 60;
+            let cadenceTick = this._cadence.tickAccumulator >= cadenceStep;
+            if (cadenceTick) {
+                this._cadence.tickAccumulator = Math.min(
+                    this._cadence.tickAccumulator - cadenceStep,
+                    cadenceStep * 2,
+                );
+                this._cadence.heavyPhase = 1 - this._cadence.heavyPhase;
+            }
+            let evenHeavy = cadenceTick && this._cadence.heavyPhase === 0;
+            let oddHeavy = cadenceTick && this._cadence.heavyPhase === 1;
             if (this.flags.noStriding) {
                 evenHeavy = true;
                 oddHeavy = true;
+                cadenceTick = true;
             }
             this._strideDtAccum.evenHeavy += delta;
             this._strideDtAccum.oddHeavy += delta;
@@ -3818,10 +4162,17 @@ export default class OceanTheme extends BaseTheme {
             if (oddHeavy) this._strideDtAccum.oddHeavy = 0;
 
             // Smooth transitions
-            this.currentStrength += (this.targetCurrentStrength - this.currentStrength) * 0.018;
-            this.targetCurrentStrength += (0.5 - this.targetCurrentStrength) * 0.006;
-            this.glowIntensity += (this.targetGlowIntensity - this.glowIntensity) * 0.022;
-            this.targetGlowIntensity += (0.8 - this.targetGlowIntensity) * 0.008;
+            // Preserve the authored 60 Hz response while making the envelope
+            // duration invariant across 30/60/144 Hz displays.
+            const frameScale = delta * 60;
+            const currentAttack = 1 - (1 - 0.018) ** frameScale;
+            const currentRelease = 1 - (1 - 0.006) ** frameScale;
+            const glowAttack = 1 - (1 - 0.022) ** frameScale;
+            const glowRelease = 1 - (1 - 0.008) ** frameScale;
+            this.currentStrength += (this.targetCurrentStrength - this.currentStrength) * currentAttack;
+            this.targetCurrentStrength += (0.5 - this.targetCurrentStrength) * currentRelease;
+            this.glowIntensity += (this.targetGlowIntensity - this.glowIntensity) * glowAttack;
+            this.targetGlowIntensity += (0.8 - this.targetGlowIntensity) * glowRelease;
 
             // WS 1.4: skip broadcasting non-time uniforms when their smoothed
             // source values haven't shifted meaningfully. `currentStrength` and
@@ -3861,32 +4212,32 @@ export default class OceanTheme extends BaseTheme {
 
             if (!this.flags.noFish) {
                 perf?.startSection('ocean.fish');
-                this.fishSystem?.update(delta, time, {
-                    currentStrength: this.currentStrength,
-                    glowIntensity: this.glowIntensity,
-                    heroHeavyTick: evenHeavy,
-                    heroHeavyDt: evenHeavyDt,
-                    skipHeroAssets: this.flags.noHeroAssets,
-                });
+                const fishArgs = this._frameArgs.fish;
+                fishArgs.currentStrength = this.currentStrength;
+                fishArgs.glowIntensity = this.glowIntensity;
+                fishArgs.heroHeavyTick = evenHeavy;
+                fishArgs.heroHeavyDt = evenHeavyDt;
+                fishArgs.skipHeroAssets = this.flags.noHeroAssets;
+                this.fishSystem?.update(delta, time, fishArgs);
                 perf?.endSection('ocean.fish');
             }
             if (!this.flags.noDwellers) {
                 perf?.startSection('ocean.dwellers');
-                this.reefDwellerSystem?.update(delta, time, {
-                    currentStrength: this.currentStrength,
-                    heavyTick: evenHeavy,
-                    heavyDt: evenHeavyDt,
-                });
+                const dwellerArgs = this._frameArgs.dwellers;
+                dwellerArgs.currentStrength = this.currentStrength;
+                dwellerArgs.heavyTick = evenHeavy;
+                dwellerArgs.heavyDt = evenHeavyDt;
+                this.reefDwellerSystem?.update(delta, time, dwellerArgs);
                 perf?.endSection('ocean.dwellers');
             }
             if (!this.flags.noAtmosphere) {
                 perf?.startSection('ocean.atmosphere');
-                this.atmosphereSystem?.update(time, {
-                    currentStrength: this.currentStrength,
-                    glowIntensity: this.glowIntensity,
-                    billboardHeavyTick: oddHeavy,
-                    skipBillboards: this.flags.noAtmosphereBillboards,
-                });
+                const atmosphereArgs = this._frameArgs.atmosphere;
+                atmosphereArgs.currentStrength = this.currentStrength;
+                atmosphereArgs.glowIntensity = this.glowIntensity;
+                atmosphereArgs.billboardHeavyTick = oddHeavy;
+                atmosphereArgs.skipBillboards = this.flags.noAtmosphereBillboards;
+                this.atmosphereSystem?.update(time, atmosphereArgs);
                 perf?.endSection('ocean.atmosphere');
             }
 
@@ -3912,23 +4263,26 @@ export default class OceanTheme extends BaseTheme {
             );
             if (!this.flags.noRareFauna) {
                 perf?.startSection('ocean.rareFauna');
-                this.rareFaunaSystem?.update(delta, time, {
-                    currentStrength: this.currentStrength,
-                    glowIntensity: this.glowIntensity,
-                    gameplayIntensity: rareFaunaGameplayIntensity,
-                });
+                const rareFaunaArgs = this._frameArgs.rareFauna;
+                rareFaunaArgs.currentStrength = this.currentStrength;
+                rareFaunaArgs.glowIntensity = this.glowIntensity;
+                rareFaunaArgs.gameplayIntensity = rareFaunaGameplayIntensity;
+                this.rareFaunaSystem?.update(delta, time, rareFaunaArgs);
                 perf?.endSection('ocean.rareFauna');
             }
 
             // Camera: use state machine if available, else legacy drift
             if (this.oceanCamera) {
                 const heroFishVisible = this.fishSystem?.hasHeroFishInView?.() === true;
-                const cameraState = this.oceanCamera.update(delta, time, {
-                    heroFishVisible,
-                    godRaysVisibleUpper: this.activePreset?.shaftStrength > 0,
-                });
+                const cameraArgs = this._frameArgs.camera;
+                cameraArgs.heroFishVisible = heroFishVisible;
+                cameraArgs.godRaysVisibleUpper = (this.activePreset?.shaftStrength ?? 0) > 0
+                    && (this.activePreset?.atmosphere?.rayCount ?? 0) > 0;
+                const cameraState = this.oceanCamera.update(delta, time, cameraArgs);
                 if (cameraState?.focalDepth !== undefined && this.oceanPost?.updateParams) {
-                    this.oceanPost.updateParams({ focalDepth: cameraState.focalDepth });
+                    const focalDepthArgs = this._frameArgs.focalDepth;
+                    focalDepthArgs.focalDepth = cameraState.focalDepth;
+                    this.oceanPost.updateParams(focalDepthArgs);
                 }
             } else {
                 // Legacy camera drift fallback
@@ -3949,29 +4303,34 @@ export default class OceanTheme extends BaseTheme {
             // jellyfish on N%3==0, plankton on N%3==1, bubbles on N%3==2. Spreads
             // ~1,258 matrix uploads/frame at Ultra into ~420 per frame.
             // ?oceanNoStriding=1 collapses to phase=-1 (all three every frame).
-            if (!this.flags.noBillboards) {
+            if (!this.flags.noBillboards && cadenceTick) {
                 perf?.startSection('ocean.billboards');
-                const billboardPhase = this.flags.noStriding ? -1 : (this.frameCount % 3);
+                const billboardPhase = this.flags.noStriding
+                    ? -1
+                    : this._cadence.billboardPhase;
                 this.updateOceanBillboards(time, billboardPhase);
+                if (!this.flags.noStriding) {
+                    this._cadence.billboardPhase = (this._cadence.billboardPhase + 1) % 3;
+                }
                 perf?.endSection('ocean.billboards');
             }
 
-            perf?.startSection('ocean.post');
+            perf?.startSection('ocean.renderTotal');
             if (this.oceanPost?.enabled) {
                 if (this.oceanPost.updateTime) this.oceanPost.updateTime(time);
                 this.oceanPost.render(time, this.glowIntensity);
             } else {
                 this.renderer.render(this.scene, this.camera);
             }
-            perf?.endSection('ocean.post');
+            perf?.endSection('ocean.renderTotal');
 
             // Phase D.1: surface renderer.info to the overlay so we can see
             // ground-truth draw calls / triangles / geometries / textures /
             // programs live. Reset counters for the next frame.
             const info = this.renderer?.info;
-            if (info && perf?.recordCounters) {
-                perf.recordCounters({
-                    calls: info.render?.calls ?? 0,
+            if (info) {
+                perf?.recordCounters?.({
+                    calls: info.render?.drawCalls ?? info.render?.calls ?? 0,
                     triangles: info.render?.triangles ?? 0,
                     geometries: info.memory?.geometries ?? 0,
                     textures: info.memory?.textures ?? 0,
@@ -3979,11 +4338,10 @@ export default class OceanTheme extends BaseTheme {
                 });
                 if (typeof info.reset === 'function') info.reset();
             }
-
-            this.animationFrameId = requestAnimationFrame(loop);
         };
 
         this.animationFrameId = requestAnimationFrame(loop);
+        this.registerAnimation(this.animationFrameId);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -4058,9 +4416,9 @@ export default class OceanTheme extends BaseTheme {
      *   'fauna'      — drill into fauna sub-systems (fish, dwellers, rare,
      *                  jellyfish, plankton, bubbles, hero fish); useful when
      *                  'broad' showed noFauna as a meaningful gainer
-     *   'post'       — drill into the post chain: bloom, god rays, DOF, etc.
-     *                  via TSL uniform writes (the same path `_applyPostDebugFlags`
-     *                  uses), so each component is isolated without rebuilding.
+     *   'post'       — visually compare bloom, god rays, DOF, etc. via TSL
+     *                  uniform writes. The graph stays compiled, so this is
+     *                  not a GPU cost isolation mode.
      *   'render'     — render-side fillrate diagnostic (half-res pixel ratio)
      *   'all'        — broad + atmosphere + fauna + post + render (~5 min, thorough)
      */
@@ -4075,9 +4433,8 @@ export default class OceanTheme extends BaseTheme {
                 restore: () => real.forEach((o, i) => { o.visible = prev[i]; }),
             };
         };
-        // Toggle a TSL uniform (.value-style) off and back. Used for post-chain
-        // breakdown — bloom/godrays/DOF/etc. all read uniforms each frame so
-        // zeroing them removes the cost without rebuilding the post graph.
+        // Toggle a TSL uniform (.value-style) off and back for visual post-chain
+        // comparisons. Zeroing a uniform does not remove its compiled GPU graph.
         const uniformToggle = (uni, valueWhenOff = 0) => {
             if (!uni) return { apply: noop, restore: noop };
             let prev;
@@ -4294,44 +4651,49 @@ export default class OceanTheme extends BaseTheme {
             });
         }
 
-        // Post-chain breakdown — isolates each effect via TSL uniform writes.
-        // Same mechanism as _applyPostDebugFlags() so behaviour matches the
-        // URL flags exactly. Runs in scope:'post' or 'all'.
+        // Post-chain visual breakdown via TSL uniform writes. These scenarios
+        // leave the compiled graph in place, so they identify each effect's
+        // visual contribution but do not isolate its GPU cost.
         if (includePost && this.oceanPost) {
             const post = this.oceanPost;
-            scenarios.push({ name: 'post: baseline (post fully on)', apply: noop, restore: noop });
+            scenarios.push({ name: 'post visual-only: baseline', apply: noop, restore: noop });
+            if (post.bloomNode) {
+                scenarios.push({
+                    name: 'post visual-only: noBloom (graph remains compiled)',
+                    ...(post.updateParams ? (() => {
+                        let prev;
+                        return {
+                            apply: () => {
+                                prev = post.bloomNode.strength.value;
+                                post.updateParams({ bloomStrength: 0 });
+                            },
+                            restore: () => { if (prev !== undefined) post.updateParams({ bloomStrength: prev }); },
+                        };
+                    })() : { apply: noop, restore: noop }),
+                });
+            }
             scenarios.push({
-                name: 'post: noBloom (zero bloom strength)',
-                ...(post.updateParams ? (() => {
-                    let prev;
-                    return {
-                        apply: () => { prev = post.bloomNode?.strength?.value; post.updateParams({ bloomStrength: 0 }); },
-                        restore: () => { if (prev !== undefined) post.updateParams({ bloomStrength: prev }); },
-                    };
-                })() : { apply: noop, restore: noop }),
-            });
-            scenarios.push({
-                name: 'post: noGodRays (zero shaft strength)',
+                name: 'post visual-only: noGodRays (graph remains compiled)',
                 ...uniformToggle(post.uShaftStrength),
             });
             scenarios.push({
-                name: 'post: noDof (zero DOF strength)',
+                name: 'post visual-only: noDof (graph remains compiled)',
                 ...uniformToggle(post.uDofStrength),
             });
             scenarios.push({
-                name: 'post: noChroma (zero chromatic aberration)',
+                name: 'post visual-only: noChroma (graph remains compiled)',
                 ...uniformToggle(post.uChromaStrength),
             });
             scenarios.push({
-                name: 'post: noGrade (zero grade strength)',
+                name: 'post visual-only: noGrade (graph remains compiled)',
                 ...uniformToggle(post.uGradeStrength),
             });
             scenarios.push({
-                name: 'post: noVignette (zero vignette darkness)',
+                name: 'post visual-only: noVignette (graph remains compiled)',
                 ...uniformToggle(post.uVignetteDarkness),
             });
             scenarios.push({
-                name: 'post: noRefraction (zero refraction strength)',
+                name: 'post visual-only: noRefraction (graph remains compiled)',
                 ...uniformToggle(post.uRefractionStrength),
             });
         }
@@ -4421,7 +4783,9 @@ export default class OceanTheme extends BaseTheme {
             if (typeof window !== 'undefined') window.__oceanBisectStatus = null;
             // Sort by FPS gain vs baseline (descending) so the heaviest
             // subsystem floats to the top of the table.
-            const baseline = results.find((r) => r.name.startsWith('baseline'));
+            const baseline = results.find((r) => (
+                r.name.startsWith('baseline') || r.name.includes(': baseline')
+            ));
             const baseFps = baseline?.fps ?? 0;
             const enriched = results.map((r) => ({
                 ...r,
@@ -4539,6 +4903,7 @@ export default class OceanTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
     stop() {
         this.uninstallSignoffHelper();
+        this.animationLoopStarted = false;
 
         this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
@@ -4563,6 +4928,8 @@ export default class OceanTheme extends BaseTheme {
 
         this.scene = null;
         this.camera = null;
+        this.isCreatingScene = false;
+        this.isPrewarming = false;
         this.uniformsToUpdate = [];
         this._tslUniforms = null;
         this.fishSystem = null;
@@ -4570,6 +4937,7 @@ export default class OceanTheme extends BaseTheme {
         this.rareFaunaSystem = null;
         this.gameplayEffects = null;
         this.atmosphereSystem = null;
+        this.coralPlacements = [];
         this.oceanPost = null;
         this.oceanCamera = null;
         this.jellyfishData = null;
@@ -4579,9 +4947,21 @@ export default class OceanTheme extends BaseTheme {
         this.resetHabitatMetrics();
         this.signoffFrameTimes = [];
 
+        if (typeof window !== 'undefined') {
+            if (window.oceanDebug?.getTheme?.() === this) delete window.oceanDebug;
+            window.perfMonitor?.setSpikeContextCollector?.(null);
+            delete window.__oceanBisectStatus;
+        }
+
         const container = document.getElementById('ocean-theme');
         if (container) container.innerHTML = '';
 
         super.stop();
+    }
+
+    cleanup() {
+        // BaseTheme routes terminal eviction through this.stop(), then clears
+        // shared listeners/containers and any resilience hooks.
+        super.cleanup();
     }
 }

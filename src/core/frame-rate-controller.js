@@ -23,6 +23,7 @@ export class FrameRateController {
         // Hybrid loop state
         this.isRunning = false;
         this.logicTimeoutId = null;
+        this.logicPaused = false;
         this.renderAnimationId = null;
         this.lastLogicTime = 0;
         this.lastRenderTime = 0;
@@ -294,6 +295,7 @@ export class FrameRateController {
         this.updateCallback = updateFn;
         this.renderCallback = renderFn;
         this.isRunning = true;
+        this.logicPaused = false;
         this.lastLogicTime = performance.now();
         this.lastRenderTime = this.lastLogicTime;
         this.accumulator = 0;
@@ -314,6 +316,7 @@ export class FrameRateController {
      */
     stopHybridLoop() {
         this.isRunning = false;
+        this.logicPaused = false;
 
         if (this.logicTimeoutId !== null) {
             clearTimeout(this.logicTimeoutId);
@@ -334,6 +337,8 @@ export class FrameRateController {
      * Pause the hybrid loop (keeps callbacks, just stops scheduling)
      */
     pauseHybridLoop() {
+        if (!this.isRunning) return;
+        this.logicPaused = true;
         if (this.logicTimeoutId !== null) {
             clearTimeout(this.logicTimeoutId);
             this.logicTimeoutId = null;
@@ -345,11 +350,14 @@ export class FrameRateController {
      * Resume the hybrid loop after pause
      */
     resumeHybridLoop() {
-        if (!this.isRunning || !this.updateCallback) return;
+        if (!this.isRunning || !this.updateCallback || !this.logicPaused) return;
 
+        this.logicPaused = false;
         this.lastLogicTime = performance.now();
         this.accumulator = 0;
-        this._scheduleLogicUpdate();
+        if (this.logicTimeoutId === null) {
+            this._scheduleLogicUpdate();
+        }
     }
 
     /**
@@ -357,7 +365,7 @@ export class FrameRateController {
      * @private
      */
     _scheduleLogicUpdate() {
-        if (!this.isRunning) return;
+        if (!this.isRunning || this.logicPaused) return;
 
         const now = performance.now();
         const targetInterval = this.targetFPS > 0 ? 1000 / this.targetFPS : 1; // 1ms for unlimited
@@ -374,7 +382,12 @@ export class FrameRateController {
      * @private
      */
     _logicTick() {
-        if (!this.isRunning) return;
+        // The timeout that entered this callback is no longer an outstanding
+        // owner. Clearing the handle lets a real resume schedule exactly one
+        // replacement, while logicPaused prevents a pause raised from inside
+        // updateCallback from being undone by the tail schedule below.
+        this.logicTimeoutId = null;
+        if (!this.isRunning || this.logicPaused) return;
 
         const now = performance.now();
         const delta = now - this.lastLogicTime;

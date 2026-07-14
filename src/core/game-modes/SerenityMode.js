@@ -4,6 +4,7 @@ import { setGlobalRenderScale } from '../../themes/base-theme.js';
 import { DEFAULT_SETTINGS, GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { emitLineClear, emitCombo } from '../../events/gameplay-events.js';
 
 /**
  * SerenityMode - A peaceful, non-interactive mode featuring only background visuals,
@@ -996,7 +997,7 @@ export class SerenityMode extends BaseGameMode {
         this._showClickRipple(clickX, clickY);
 
         // Emit LINE_CLEAR event
-        eventBus.emit(EVENTS.LINE_CLEAR, {
+        emitLineClear({
             lineCount,
             comboCount,
             source: 'serenity-interaction',
@@ -1005,7 +1006,7 @@ export class SerenityMode extends BaseGameMode {
 
         // If combo >= 2, also emit COMBO event
         if (comboCount >= 2) {
-            eventBus.emit(EVENTS.COMBO, {
+            emitCombo({
                 comboCount,
                 source: 'serenity-interaction',
                 position: { x: clickX, y: clickY },

@@ -8,6 +8,7 @@
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { createPlayerCard } from './components/player-card.js';
 import steamService from '../core/steam/steam-service.js';
+import { MessageTypes } from '../core/network/message-types.js';
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class LobbyWaitingRoom {
@@ -243,16 +244,6 @@ export class LobbyWaitingRoom {
             if (text && this.gameState) {
                 const localPlayer = this.gameState.getLocalPlayer?.() || this.gameState.players?.get(this.gameState.localPlayerId);
                 const playerColor = localPlayer?.color || '#a78bfa';
-
-                this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
-                    message: text,
-                    playerName: this.gameState.network.playerName,
-                    steamId: this.gameState.localPlayerId,
-                    color: playerColor,
-                    timestamp: Date.now(),
-                });
-
-                // Add to local history/UI
                 const msgData = {
                     message: text,
                     playerName: this.gameState.network.playerName,
@@ -260,6 +251,17 @@ export class LobbyWaitingRoom {
                     color: playerColor,
                     timestamp: Date.now(),
                 };
+                if (this.gameState.network.isHost) {
+                    this.gameState.network.broadcastToAll(MessageTypes.GAME_CHAT, msgData);
+                } else if (this.gameState.network.hostSteamId) {
+                    this.gameState.network.sendP2PMessage(
+                        this.gameState.network.hostSteamId,
+                        MessageTypes.GAME_CHAT,
+                        msgData,
+                    );
+                }
+
+                // Add to local history/UI
                 if (this.gameState.chatHistory) this.gameState.chatHistory.push(msgData);
                 this.addChatMessage({ ...msgData, playerName: 'You' });
                 chatInput.value = '';

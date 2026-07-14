@@ -3,11 +3,25 @@
  * Captures accepted gameplay commands on the authoritative simulation frame.
  */
 
-import { captureGameStateSnapshot, isStableDemoCheckpointState } from './demo-state.js';
+import {
+    captureGameStateSnapshot, isStableDemoCheckpointState, computeBoardDigest,
+} from './demo-state.js';
 
 export const DEMO_VERSION = '2.0';
+export const DEMO_FIXED_CLOCK_VERSION = '2.1';
 export const DEMO_TICK_MS = 1000 / 60;
 export const DEMO_CHECKPOINT_INTERVAL_FRAMES = 300;
+export const DEMO_COMMAND_INPUT_FORMAT = 'accepted-commands-v1';
+export const DEMO_LEGACY_SIMULATION_CLOCK = 'legacy-variable-v1';
+export const DEMO_FIXED_SIMULATION_CLOCK = 'fixed60-v1';
+const DEMO_SIMULATION_CLOCKS = new Set([
+    DEMO_LEGACY_SIMULATION_CLOCK,
+    DEMO_FIXED_SIMULATION_CLOCK,
+]);
+// V1 and early V2 artifacts predate the hit-stop policy field. They were
+// authored against the normal-motion rules by default, so replay them with
+// hit-stop enabled instead of consulting the playback machine's preferences.
+export const LEGACY_DEMO_HIT_STOP_ENABLED = true;
 
 function resolveFrame(gameState, tickMs = DEMO_TICK_MS) {
     if (Number.isFinite(gameState?.simFrame)) return Math.max(0, gameState.simFrame);
@@ -44,26 +58,41 @@ export class DemoRecorder {
      * @param {Object} settings - Game settings
      * @param {number} seed - RNG seed
      * @param {string} gameMode - Game mode identifier
+     * @param {string} simulationClock - Simulation clock contract
      */
-    startRecording(gameState, settings, seed, gameMode = 'single-player') {
+    startRecording(
+        gameState,
+        settings,
+        seed,
+        gameMode = 'single-player',
+        simulationClock = DEMO_LEGACY_SIMULATION_CLOCK,
+    ) {
+        if (!DEMO_SIMULATION_CLOCKS.has(simulationClock)) {
+            throw new TypeError(`Unsupported demo simulation clock: ${simulationClock}`);
+        }
         this.tickMs = Number(gameState?.simTickMs) || DEMO_TICK_MS;
         const simFrame = resolveFrame(gameState, this.tickMs);
+        const demoVersion = simulationClock === DEMO_FIXED_SIMULATION_CLOCK
+            ? DEMO_FIXED_CLOCK_VERSION
+            : DEMO_VERSION;
 
         this.demo = {
-            version: DEMO_VERSION,
+            version: demoVersion,
             gameMode,
             timestamp: Date.now(),
             sim: {
                 tickMs: this.tickMs,
+                simulationClock,
                 startFrame: simFrame,
                 durationFrames: 0,
+                inputFormat: DEMO_COMMAND_INPUT_FORMAT,
             },
             initialState: {
                 seed,
                 level: gameState.level,
                 dropInterval: gameState.dropInterval,
-                settings: this._captureSettings(settings),
-                rulesVersion: DEMO_VERSION,
+                settings: this._captureSettings(settings, gameState),
+                rulesVersion: demoVersion,
             },
             inputs: [],
             checkpoints: [],
@@ -74,7 +103,7 @@ export class DemoRecorder {
         this.startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
         this.lastCheckpointFrame = simFrame;
         this.recordCheckpoint(gameState, true);
-        console.log('[DemoRecorder] Started recording v2');
+        console.log(`[DemoRecorder] Started recording v${demoVersion}`);
     }
 
     /**
@@ -155,10 +184,18 @@ export class DemoRecorder {
     /**
      * Stop recording and finalize demo.
      * @param {Object} finalStats - Final game statistics
+     * @param {Object} [gameState] - Final game state; when provided, a terminal
+     *   checkpoint is forced and the final board digest is recorded so the demo
+     *   carries a verifiable outcome (plan §5.0 step 4: cutover comparisons
+     *   diff FINAL BOARD digests — metadata previously had only score/lines).
      * @returns {Object} The recorded demo object
      */
-    stopRecording(finalStats = {}) {
+    stopRecording(finalStats = {}, gameState = null) {
         if (!this.isRecording || !this.demo) return null;
+
+        if (gameState) {
+            this.recordCheckpoint(gameState, true);
+        }
 
         this.isRecording = false;
 
@@ -183,6 +220,8 @@ export class DemoRecorder {
             level: finalStats.level || 1,
             inputCount: this.demo.inputs.length,
             seed: this.demo.initialState.seed,
+            finalBoardDigest: gameState ? computeBoardDigest(gameState.boardGrid) : null,
+            gameOver: Boolean(gameState?.isGameOver),
             ...finalStats,
         };
 
@@ -202,11 +241,17 @@ export class DemoRecorder {
      * Capture relevant settings for replay.
      * @private
      */
-    _captureSettings(settings = {}) {
+    _captureSettings(settings = {}, gameState = null) {
+        const inputHandling = gameState?.playerInput?.config || {};
+        // Input-timing settings live under dasDelay/dasInterval/softDropInterval
+        // (ui/settings.js DEFAULT_CONFIG) — the old das/arr keys never existed and
+        // always captured undefined. Schema is redefined properly in plan §5.7.
         return {
             themeBasedTetrominos: settings.themeBasedTetrominos,
-            das: settings.das,
-            arr: settings.arr,
+            dasDelay: inputHandling.dasDelay,
+            dasInterval: inputHandling.dasInterval,
+            softDropInterval: inputHandling.softDropInterval,
+            hitStopEnabled: gameState?.hitStopEnabled !== false,
         };
     }
 }

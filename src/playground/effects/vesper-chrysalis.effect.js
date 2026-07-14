@@ -10,17 +10,26 @@
  * Preview raw (playground = NoToneMapping); the theme adds ACES + bloom + grade.
  *   ?effect=vesper-chrysalis&orbit=0&t=6            dormant
  *   ?effect=vesper-chrysalis&orbit=0&t=6&S=0.6       spill (waking)
+ *   ?effect=vesper-chrysalis&orbit=0&t=6&quality=Low low-tier composition check
  * Live sweep:  window.__VESPER__.setS(0.6)
  */
 import * as THREE from 'three/webgpu';
 import {
     float, vec2, vec3, vec4, uniform, positionLocal, normalLocal, normalWorld, positionWorld,
     cameraPosition, normalize, dot, clamp, smoothstep, abs, mix, sin, pow, fract, length,
-    screenUV, uv, atan2, floor, pass, viewportUV, attribute, cos, texture, texture3D,
+    screenUV, uv, atan, floor, pass, viewportUV, attribute, cos, texture, texture3D,
     reflector, mx_noise_float, mx_fractal_noise_float, positionGeometry,
+    Fn, cameraProjectionMatrix, cameraViewMatrix,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
+import {
+    waveSlotsForTier,
+    resolveComboProgress,
+    accumulateComboBoost,
+    comboMilestonesCrossed,
+    pickExpiringSlotIndex,
+} from './vesper-chrysalis-director.js';
 
 export const meta = {
     id: 'vesper-chrysalis',
@@ -34,11 +43,113 @@ const num = (p, k, d) => {
 };
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// Five separated rock islands replace the former 95×62 left-side mound. Their
+// footprints preserve a clear centre wedge while giving both crystal banks a
+// readable base and deliberate water gaps between depth planes.
+const SHORE_ISLANDS = [
+    {
+        x: -55, z: -58, rx: 18.5, rz: 11.5, crown: 5.0, rotation: -0.10, seed: 1207,
+    },
+    {
+        x: -78, z: -88, rx: 12.5, rz: 7.5, crown: 3.4, rotation: 0.18, seed: 2333,
+    },
+    {
+        x: -49, z: -113, rx: 9, rz: 5.5, crown: 2.7, rotation: -0.22, seed: 3469,
+    },
+    {
+        x: 47, z: -64, rx: 16.5, rz: 9.5, crown: 4.0, rotation: 0.14, seed: 4591,
+    },
+    {
+        x: 85, z: -101, rx: 11.5, rz: 7.2, crown: 3.2, rotation: -0.20, seed: 5717,
+    },
+];
+const ISLAND_SEQUENCE = [0, 3, 1, 4, 0, 3, 2, 0, 4, 1, 3];
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+const makeRng = (seed) => {
+    let state = seed % 2147483647;
+    if (state <= 0) state += 2147483646;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+};
+
+const sampleIslandSurface = (island, localX, localZ) => {
+    const r = Math.min(1, Math.hypot(localX / island.rx, localZ / island.rz));
+    if (r <= 0.38) return THREE.MathUtils.lerp(island.crown, island.crown * 0.82, r / 0.38);
+    if (r <= 0.72) return THREE.MathUtils.lerp(island.crown * 0.82, island.crown * 0.42, (r - 0.38) / 0.34);
+    return THREE.MathUtils.lerp(island.crown * 0.42, 1.15, (r - 0.72) / 0.28);
+};
+
+const islandLocalToWorld = (island, localX, localZ) => {
+    const c = Math.cos(island.rotation);
+    const s = Math.sin(island.rotation);
+    return {
+        x: island.x + localX * c + localZ * s,
+        z: island.z - localX * s + localZ * c,
+    };
+};
+
+const buildIslandGeometry = (island) => {
+    const segments = 14;
+    const rng = makeRng(island.seed);
+    const edgeScale = Array.from({ length: segments }, () => 0.90 + rng() * 0.20);
+    const angleJitter = Array.from({ length: segments }, () => (rng() - 0.5) * 0.08);
+    const heightJitter = Array.from({ length: segments }, () => (rng() - 0.5) * 0.34);
+    const rings = [
+        { radius: 0.38, height: island.crown * 0.82, irregularity: 0.35 },
+        { radius: 0.72, height: island.crown * 0.42, irregularity: 0.65 },
+        { radius: 1.00, height: 1.15, irregularity: 1.00 },
+        { radius: 1.08, height: -1.10, irregularity: 1.00 },
+        { radius: 0.74, height: -3.2 - island.crown * 0.12, irregularity: 0.80 },
+    ];
+    const positions = [0, island.crown, 0];
+    rings.forEach((ring, ringIndex) => {
+        for (let i = 0; i < segments; i += 1) {
+            const angle = (i / segments) * Math.PI * 2 + angleJitter[i];
+            const radial = ring.radius * THREE.MathUtils.lerp(1, edgeScale[i], ring.irregularity);
+            const jitter = heightJitter[i] * (ringIndex < 2 ? 0.45 : 1.0);
+            positions.push(
+                Math.cos(angle) * island.rx * radial,
+                ring.height + jitter,
+                Math.sin(angle) * island.rz * radial,
+            );
+        }
+    });
+    const bottomIndex = positions.length / 3;
+    positions.push(0, -3.5 - island.crown * 0.12, 0);
+    const index = [];
+    const at = (ring, segment) => 1 + ring * segments + (segment % segments);
+    for (let i = 0; i < segments; i += 1) index.push(0, at(0, i + 1), at(0, i));
+    for (let ring = 0; ring < rings.length - 1; ring += 1) {
+        for (let i = 0; i < segments; i += 1) {
+            const a0 = at(ring, i); const a1 = at(ring, i + 1);
+            const b0 = at(ring + 1, i); const b1 = at(ring + 1, i + 1);
+            index.push(a0, a1, b0, a1, b1, b0);
+        }
+    }
+    for (let i = 0; i < segments; i += 1) {
+        index.push(at(rings.length - 1, i), at(rings.length - 1, i + 1), bottomIndex);
+    }
+    const indexed = new THREE.BufferGeometry();
+    indexed.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    indexed.setIndex(index);
+    const geometry = indexed.toNonIndexed();
+    indexed.dispose();
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
+};
+
 export function create({
     scene, camera, renderer, sizes, params,
 }) {
     const uTime = uniform(0);
     const uS = uniform(clamp01(num(params, 'S', 0)));
+    // Crystal combo-resonance surge — mirrors uComboGlow (declared much later); hoisted here so
+    // the crystal materials can read it without a temporal-dead-zone ReferenceError.
+    const uCombo = uniform(0);
     // Desynced multi-rate throb (V4 1.4): the hero breathes instead of blinking as one LED.
     const pulseBody = sin(uTime.mul(0.70)).mul(0.5).add(0.5); // slow body swell
     const pulseVein = sin(uTime.mul(1.55).add(1.3)).mul(0.5).add(0.5); // faster vein flicker (phase-offset)
@@ -50,7 +161,9 @@ export function create({
 
     // 6-tier quality presets (Minimal<Low<Medium<High<Ultra<Extreme). Audit-verified:
     // High/Ultra/Extreme stay VISUALLY IDENTICAL; the heavier cuts are scoped to Medium and below.
-    const qName = (typeof window !== 'undefined' && window.settings?.graphicsQuality) || 'High';
+    const qName = params?.get?.('quality')
+        || (typeof window !== 'undefined' && window.settings?.graphicsQuality)
+        || 'High';
     const tier = ({
         Minimal: 0, Low: 1, Medium: 2, High: 3, Ultra: 4, Extreme: 5,
     })[qName] ?? 3;
@@ -64,7 +177,6 @@ export function create({
     const bloomStrength = tier >= 3 ? 0.72 : (tier >= 1 ? 0.58 : 0.5);
     const bloomDS = tier >= 3 ? 0.6 : 0.5; // cheaper bloom downsample below High
     const emberCountT = tier <= 1 ? 130 : (tier <= 2 ? 260 : (tier === 3 ? 360 : 420));
-    const shardCountT = tier <= 1 ? 12 : (tier <= 2 ? 18 : 22);
     const reflTaps = tier <= 1 ? 1 : (tier <= 3 ? 3 : 5); // wet-mirror soft-reflection kernel taps (V4 1.3)
     const wantNebula = tier >= 2; // sky nebula lobe (V4 2.7)
     const nebOct = tier <= 2 ? 2 : (tier === 3 ? 3 : 4); // nebula fbm octaves by tier
@@ -74,7 +186,7 @@ export function create({
     const skyMat = new THREE.MeshBasicNodeMaterial();
     {
         const dir = normalize(positionLocal);
-        const y = dir.y;
+        const { y } = dir;
         // 2.7 three-stop vertical gradient: deep-plum near-horizon → violet mid → indigo zenith
         const up = smoothstep(0.0, 0.62, y);
         const upHi = smoothstep(0.28, 0.92, y);
@@ -98,7 +210,7 @@ export function create({
             s = s.add(mix(vec3(0.34, 0.10, 0.42), vec3(0.12, 0.20, 0.5), neb).mul(neb).mul(sideMask).mul(0.11));
         }
         // 2.7 two-layer stars with twinkle + slight colour temperature (coarse bloom-eligible + fine dim)
-        const P = floor(vec2(atan2(dir.x, dir.z).mul(30.0), y.mul(48.0)));
+        const P = floor(vec2(atan(dir.x, dir.z).mul(30.0), y.mul(48.0)));
         const seed = mx_noise_float(vec3(P.x, P.y, 1.0)).mul(0.5).add(0.5);
         const twk = sin(uTime.mul(2.3).add(seed.mul(40.0))).mul(0.5).add(0.5).mul(0.6)
             .add(0.4);
@@ -108,7 +220,7 @@ export function create({
             .mul(smoothstep(0.08, 0.32, y))
             .mul(twk)
             .mul(float(0.9).add(uS.mul(1.1))));
-        const P2 = floor(vec2(atan2(dir.x, dir.z).mul(72.0), y.mul(110.0)));
+        const P2 = floor(vec2(atan(dir.x, dir.z).mul(72.0), y.mul(110.0)));
         const seed2 = mx_noise_float(vec3(P2.x, P2.y, 5.0)).mul(0.5).add(0.5);
         const twk2 = sin(uTime.mul(3.1).add(seed2.mul(55.0))).mul(0.5).add(0.5);
         s = s.add(vec3(0.70, 0.78, 1.0).mul(pow(seed2, float(70.0))).mul(smoothstep(0.06, 0.30, y)).mul(twk2)
@@ -122,61 +234,75 @@ export function create({
     scene.add(track(new THREE.Mesh(new THREE.SphereGeometry(4000, 48, 24), skyMat)));
 
     // ════ PLANETS — HUGE backlit worlds (hatom phase-5): crescent rims + atmospheric halos ════
-    // Anchor-moon always present for depth; the giant ensemble + saturn ring + light-wisp streaks
-    // bloom in at the Cosmos beat (uCosmos), framing the upper corners; mirrored in the lake free.
+    // The worlds are ALWAYS in the sky (calm crescents while dormant, mirrored in the lake free);
+    // their crescents + halos INTENSIFY at the Cosmos beat (uCosmos), when the light-wisp streaks
+    // + monolith join as the climax flourish.
     const planets = new THREE.Group();
-    const cosmosGroup = new THREE.Group(); // ensemble — visibility-gated in update() (zero cost while dormant)
+    const cosmosGroup = new THREE.Group(); // the giant worlds (always visible)
     planets.add(cosmosGroup);
+    const streakGroup = new THREE.Group(); // light-wisp streaks — Cosmos-only, visibility-gated in update()
+    streakGroup.visible = false;
+    planets.add(streakGroup);
     const haloSprites = []; // additive atmosphere billboards, camera-billboarded each frame
     {
         const TEXBASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/'}textures/`;
         const loader = new THREE.TextureLoader();
-        const beamAim = new THREE.Vector3(0, 150, -110); // every planet is lit from the central sky axis
+        const beamAim = new THREE.Vector3(0, 220, -1500); // BACKLIT: the light axis sits far behind the worlds
         const makePlanet = (file, rad, x, y, z, tint, opts) => {
             const map = loader.load(TEXBASE + file);
             map.colorSpace = THREE.SRGBColorSpace;
             disposeTextures.push(map);
             const parent = opts.always ? planets : cosmosGroup;
-            const sunJs = beamAim.clone().sub(new THREE.Vector3(x, y, z)).normalize();
+            // Cosmos worlds are BACKLIT (thin crescents); the always-visible anchor moon keeps a
+            // front horizon-glow light so it reads as a softly-lit terminator moon while dormant.
+            const sunJs = opts.always
+                ? new THREE.Vector3(0.4, -0.05, 1.0).normalize()
+                : beamAim.clone().sub(new THREE.Vector3(x, y, z)).normalize();
             const sunV = vec3(sunJs.x, sunJs.y, sunJs.z);
             const mat = new THREE.MeshBasicNodeMaterial();
             const N = normalize(normalWorld);
             const Vv = normalize(cameraPosition.sub(positionWorld));
             const ndv = clamp(dot(N, Vv), 0.0, 1.0);
-            const lit = clamp(dot(N, sunV).mul(0.9).add(0.06), 0.03, 1.0); // hard crescent terminator
-            const limb = pow(float(1.0).sub(ndv), float(4.5)); // grazing-limb mask
-            const litSide = smoothstep(0.0, 0.55, dot(N, sunV));
-            // dim tinted body (near-silhouette night side) + the hatom signature: an INTENSE warm
-            // crescent arc on the sunward limb (bloom-eligible) + a faint cool ring on the dark limb.
-            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit).mul(0.7)
-                .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent))
-                .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.16));
+            const lit = clamp(dot(N, sunV).mul(0.9).add(0.06), 0.05, 1.0); // hard crescent terminator
+            const limb = pow(float(1.0).sub(ndv), float(7.0)); // THIN grazing-limb mask
+            const litSide = pow(smoothstep(0.12, 0.75, dot(N, sunV)), float(1.5));
+            // faintly-textured body (cloud bands stay readable in shadow) + the hatom signature:
+            // a thin INTENSE warm crescent arc on the sunward limb + a whisper of cool dark-limb air.
+            // The crescent sits at 55% while dormant and surges to full at the Cosmos crest.
+            const cGain = uCosmos.mul(0.45).add(0.55);
+            mat.colorNode = texture(map).rgb.mul(vec3(tint[0], tint[1], tint[2])).mul(lit.mul(0.6).add(0.12)).mul(0.85)
+                .add(vec3(1.9, 1.42, 1.05).mul(limb).mul(litSide).mul(opts.crescent)
+                    .mul(cGain))
+                .add(vec3(0.55, 0.62, 0.95).mul(limb).mul(0.10));
             mat.toneMapped = false;
             mat.fog = false;
             mat.transparent = true;
-            mat.opacityNode = opts.always ? float(0.92) : uCosmos.mul(0.92);
+            mat.opacityNode = float(0.92);
             const mesh = new THREE.Mesh(new THREE.SphereGeometry(rad, 48, 32), mat);
             mesh.position.set(x, y, z);
             parent.add(mesh);
             if (opts.halo > 0) {
-                // atmospheric halo — an additive ring annulus hugging the disc, biased to the lit side
+                // atmospheric halo — a thin additive arc hugging the disc, STRONGLY biased to the
+                // lit side (a partial crescent glow, not a donut); drawn BEFORE the body so the
+                // disc silhouette occludes its inner edge.
                 const hm = new THREE.MeshBasicNodeMaterial();
                 const hd = uv().sub(0.5).mul(2.0);
-                const hl = length(hd); // 0 centre → 1 quad edge; the disc edge sits at ~0.69
-                const ring = smoothstep(0.60, 0.69, hl).mul(smoothstep(0.82, 0.70, hl));
-                const glow = smoothstep(0.55, 0.70, hl).mul(smoothstep(1.0, 0.72, hl)).mul(0.5);
-                const bias = clamp(dot(hd, vec2(sunJs.x, sunJs.y)), 0.0, 1.0).mul(0.75).add(0.35);
-                hm.colorNode = vec3(1.55, 1.15, 0.9).mul(ring.mul(1.5).add(glow)).mul(bias).mul(opts.halo);
+                const hl = length(hd); // 0 centre → 1 quad edge; the disc edge sits at ~0.72
+                const ring = smoothstep(0.64, 0.72, hl).mul(smoothstep(0.84, 0.73, hl));
+                const glow = smoothstep(0.60, 0.74, hl).mul(smoothstep(1.0, 0.75, hl)).mul(0.30);
+                const bias = pow(clamp(dot(hd, vec2(sunJs.x, sunJs.y)), 0.0, 1.0), float(2.0)).mul(0.95).add(0.10);
+                hm.colorNode = vec3(1.55, 1.15, 0.9).mul(ring.mul(0.6).add(glow)).mul(bias).mul(opts.halo);
                 hm.transparent = true;
                 hm.blending = THREE.AdditiveBlending;
                 hm.depthWrite = false;
                 hm.depthTest = false; // halo reads beyond/over the silhouette
                 hm.toneMapped = false;
                 hm.fog = false;
-                hm.opacityNode = opts.always ? float(0.5) : uCosmos;
-                const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.9, rad * 2.9), hm);
+                hm.opacityNode = opts.always ? float(0.5) : uCosmos.mul(0.5).add(0.5);
+                const halo = new THREE.Mesh(new THREE.PlaneGeometry(rad * 2.7, rad * 2.7), hm);
                 halo.position.set(x, y, z);
-                halo.renderOrder = 3;
+                halo.renderOrder = 1; // before the body (body renderOrder 2 occludes the halo centre)
+                mesh.renderOrder = 2;
                 parent.add(halo);
                 haloSprites.push(halo);
             }
@@ -202,8 +328,9 @@ export function create({
                 const rr = length(uv().sub(0.5)); // 0 centre → 0.5 edge (RingGeometry uv is a disc)
                 const rn = smoothstep(0.30, 0.5, rr);
                 const bands = sin(rn.mul(46.0)).mul(0.5).add(0.5);
-                ringMat.colorNode = vec3(0.85, 0.7, 0.55).mul(float(0.55).add(bands.mul(0.45)));
-                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr)).mul(uCosmos).mul(0.75);
+                ringMat.colorNode = vec3(0.85, 0.7, 0.55).mul(float(0.55).add(bands.mul(0.45))).mul(0.55);
+                ringMat.opacityNode = smoothstep(0.30, 0.34, rr).mul(smoothstep(0.5, 0.46, rr))
+                    .mul(uCosmos.mul(0.5).add(0.5)).mul(0.42);
                 ringMat.transparent = true; ringMat.side = THREE.DoubleSide;
                 ringMat.toneMapped = false; ringMat.fog = false; ringMat.depthWrite = false;
                 const ring = new THREE.Mesh(new THREE.RingGeometry(64, 104, 64), ringMat);
@@ -215,11 +342,10 @@ export function create({
                     const sm2 = new THREE.MeshBasicNodeMaterial();
                     const su = uv();
                     const sband = pow(smoothstep(0.5, 0.0, abs(su.y.sub(0.5))), float(2.0));
-                    const sn = mx_fractal_noise_float(
-                        vec3(su.x.mul(7.0).sub(uTime.mul(0.015 + si * 0.008)), su.y.mul(3.0), 2.0 + si * 5.0), 2,
-                    ).mul(0.5).add(0.5);
+                    const sn = mx_fractal_noise_float(vec3(su.x.mul(7.0).sub(uTime.mul(0.015 + si * 0.008)), su.y.mul(3.0), 2.0 + si * 5.0), 2).mul(0.5).add(0.5);
                     sm2.colorNode = mix(vec3(0.75, 0.62, 1.0), vec3(1.0, 0.78, 0.62), su.x)
-                        .mul(sband).mul(pow(sn, float(2.2))).mul(uCosmos).mul(0.30);
+                        .mul(sband).mul(pow(sn, float(2.2))).mul(uCosmos)
+                        .mul(0.24);
                     sm2.transparent = true;
                     sm2.blending = THREE.AdditiveBlending;
                     sm2.depthWrite = false;
@@ -228,7 +354,7 @@ export function create({
                     const streak = new THREE.Mesh(new THREE.PlaneGeometry(1900, 110), sm2);
                     streak.position.set(-60 + si * 160, 268 + si * 42, -640 - si * 60);
                     streak.renderOrder = 2;
-                    cosmosGroup.add(streak);
+                    streakGroup.add(streak);
                 }
             }
         }
@@ -246,7 +372,7 @@ export function create({
         const mV = normalize(cameraPosition.sub(positionWorld));
         const mFres = pow(clamp(float(1.0).sub(dot(mN, mV)), 0.0, 1.0), float(3.0));
         monoMat.colorNode = vec3(0.008, 0.007, 0.016)
-            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.30))
+            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.22))
             .add(vec3(0.5, 0.6, 0.95).mul(mFres).mul(0.10));
         monoMat.toneMapped = false;
         monolith = new THREE.Mesh(new THREE.BoxGeometry(13, 44, 4.5), monoMat);
@@ -260,8 +386,11 @@ export function create({
         const bx2 = abs(bu.x.sub(0.5)).mul(2.0);
         const shaft = pow(smoothstep(1.0, 0.0, bx2), float(2.4));
         const bFade = smoothstep(1.0, 0.12, bu.y).mul(smoothstep(0.0, 0.22, bu.y));
-        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35).add(0.65);
-        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak).mul(uCosmos).mul(0.34);
+        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35)
+            .add(0.65);
+        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak)
+            .mul(uCosmos)
+            .mul(0.34);
         beamMat.transparent = true;
         beamMat.blending = THREE.AdditiveBlending;
         beamMat.depthWrite = false;
@@ -579,6 +708,26 @@ export function create({
             const bio = pow(flow, float(3.0)).mul(smoothstep(-320.0, -10.0, positionWorld.z).oneMinus());
             water = water.add(vec3(0.55, 0.14, 0.62).mul(bio).mul(0.4));
         }
+        // Granular shoreline glints trace the separate island footprints. The old single 56u
+        // ring advertised the oversized mound; these narrow elliptical bands reinforce the
+        // new archipelago and leave the protected centre wedge dark.
+        if (tier >= 2) {
+            let pathBand = float(0.0);
+            SHORE_ISLANDS.forEach((island) => {
+                const dx = positionWorld.x.sub(island.x);
+                const dz = positionWorld.z.sub(island.z);
+                const c = Math.cos(island.rotation);
+                const s = Math.sin(island.rotation);
+                const lx = dx.mul(c).sub(dz.mul(s));
+                const lz = dx.mul(s).add(dz.mul(c));
+                const ellipse = lx.div(island.rx).pow(2.0).add(lz.div(island.rz).pow(2.0)).sqrt();
+                const band = smoothstep(0.035, 0.14, abs(ellipse.sub(1.04))).oneMinus();
+                pathBand = pathBand.add(band);
+            });
+            const spark = pow(mx_noise_float(positionWorld.mul(0.7).add(uTime.mul(0.12))).abs(), float(5.0));
+            const pathGlow = clamp(pathBand, 0.0, 1.0).mul(spark.mul(0.9).add(0.22));
+            water = water.add(vec3(0.85, 0.25, 0.60).mul(pathGlow).mul(uS.mul(0.5).add(0.5)).mul(0.30));
+        }
         // Expanding combo rings — bioluminescent bands that grow from the emit point (mirrored free).
         let ringGlow = float(0.0);
         ringNodes.forEach((rn) => {
@@ -689,89 +838,292 @@ export function create({
     god.position.set(0, 66, -104); // behind the (repositioned) relic
     scene.add(track(god));
 
-    // ════ CRYSTAL CLUSTERS — rooted, varied clumps growing from the shore (hatom) ════
-    // Faceted spires grouped into clusters in the LEFT/RIGHT shore zones (protected centre wedge
-    // keeps the board readable), rooted below the waterline. One InstancedMesh = 1 draw (vs 22).
-    const shardMat = new THREE.MeshStandardNodeMaterial();
-    {
-        const N = normalize(normalWorld);
-        const V = normalize(cameraPosition.sub(positionWorld));
-        const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.2));
-        // 1.4 desynced per-instance breath (aPhase/aRate set as InstancedBufferAttributes below)
-        const aPhase = attribute('aPhase', 'float');
-        const aRate = attribute('aRate', 'float');
-        const breath = sin(uTime.mul(aRate).add(aPhase.mul(6.283))).mul(0.5).add(0.5);
-        shardMat.color = new THREE.Color(0.05, 0.10, 0.20);
-        shardMat.metalness = 0.12;
-        shardMat.roughness = 0.08; // glassier → sharper reflection of the enriched env map
-        shardMat.emissiveNode = vec3(0.40, 0.85, 1.0).mul(f).mul(0.9)
-            .add(vec3(0.30, 0.70, 1.0).mul(uS).mul(0.3))
-            .mul(breath.mul(0.35).add(0.82)); // 0.82..1.17 breathing glow (desynced per spire)
-        // 1.4 micro top-sway: use positionGeometry (raw attr, NOT reassigned by InstanceNode) → true
-        // cone-local [-0.5,0.5] so the bend stays base-0/tip-1 instead of saturating post-instance.
-        const swayMask = positionGeometry.y.add(0.5).clamp(0.0, 1.0);
-        const sway = sin(uTime.mul(aRate.mul(0.6)).add(aPhase.mul(6.283))).mul(swayMask).mul(0.05);
-        shardMat.positionNode = positionLocal.add(vec3(sway, 0.0, sway.mul(0.5)));
-        shardMat.transparent = true;
-        shardMat.opacityNode = clamp(float(0.55).add(f.mul(0.45)), 0.0, 1.0);
-        shardMat.depthWrite = false;
-    }
-    const clusterCenters = [
-        [-30, -55], [-52, -78], [-24, -40], [-66, -62], [-42, -100],
-        [30, -55], [52, -78], [24, -40], [66, -62], [42, -100],
-    ];
-    const clusterN = tier <= 1 ? 5 : (tier <= 2 ? 7 : 10);
-    const spiresPer = tier <= 1 ? 3 : (tier <= 2 ? 4 : 5);
-    const crnd = (i) => { const s = Math.sin(i * 91.7 + 4.1) * 43758.5453; return s - Math.floor(s); };
-    const crystalGeo = new THREE.ConeGeometry(1.1, 1, 6); // unit-height 6-facet spire, scaled per instance
-    const crystals = new THREE.InstancedMesh(crystalGeo, shardMat, clusterN * spiresPer);
-    {
-        const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
-        const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
-        let idx = 0;
-        for (let c = 0; c < clusterN; c += 1) {
-            const [cx, cz] = clusterCenters[c];
-            for (let sp = 0; sp < spiresPer; sp += 1) {
-                const j = idx * 7 + 1;
-                const dx = (crnd(j) - 0.5) * 9;
-                const dz = (crnd(j + 1) - 0.5) * 9;
-                const h = 6 + crnd(j + 2) * 16; // height 6..22
-                const rad = 0.8 + crnd(j + 6) * 0.7;
-                _e.set((crnd(j + 3) - 0.5) * 0.5, crnd(j + 4) * 6.28, (crnd(j + 5) - 0.5) * 0.5);
-                _q.setFromEuler(_e);
-                _s.set(rad, h, rad);
-                _p.set(cx + dx, h * 0.5 - 2.0, cz + dz); // base sunk ~2u below the waterline (rooted)
-                _m.compose(_p, _q, _s);
-                crystals.setMatrixAt(idx, _m);
-                idx += 1;
+    // ════ CRYSTAL CLUSTERS — Lunara-quality faceted glass spires along the shore ════
+    // Cut-crystal facets (flat normals) + PBR glass (hero transmission on tier≥2, like the egg) +
+    // a living emissive interior (fresnel rim + tip-ramp + internal fracture + spine + band),
+    // per-instance "twilight relic-shard" colour, meticulously composed L/R receding clusters with a
+    // protected centre wedge + warm heroes flanking the relic. Field = 1 draw, heroes = 1 draw.
+    const crystalRich = tier >= 3; // High/Ultra/Extreme: internal fracture + DoubleSide + sharp env
+    const heroCountByTier = [0, 0, 3, 4, 5, 6];
+    const fieldCountByTier = [12, 17, 23, 30, 34, 38];
+    const heroCount = useTransmission ? (heroCountByTier[tier] ?? 4) : 0; // glass heroes only on tier≥2
+    const fieldCount = fieldCountByTier[tier] ?? 50;
+
+    // Faceted tapered ELLIPTICAL spire, UNIT height so positionGeometry.y stays ≈[-0.53,0.52]
+    // regardless of per-instance scale (keeps the tip/spine ramps scale-invariant). Flat per-face
+    // normals (toNonIndexed + computeVertexNormals) = cut-crystal glint. Winding is verified outward.
+    const buildFacetedCrystalGeometry = (sides, radii, skew, seed) => {
+        let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+        const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        const ringY = [-0.48, -0.08, 0.28];
+        const ringTwist = [0.0, 0.17, -0.08];
+        const pos = [];
+        for (let r = 0; r < 3; r += 1) {
+            for (let i = 0; i < sides; i += 1) {
+                const a = (i / sides) * Math.PI * 2 + ringTwist[r];
+                const rad = radii[r] * (0.86 + rnd() * 0.25); // per-vertex chip jitter
+                const zSquash = 0.72 + rnd() * 0.06; // elliptical cross-section (Lunara signature)
+                pos.push(
+                    Math.cos(a) * rad + Math.sin(i * 1.7 + r) * skew,
+                    ringY[r],
+                    Math.sin(a) * rad * zSquash + Math.cos(i * 1.4 + r) * skew,
+                );
             }
         }
-        crystals.instanceMatrix.needsUpdate = true;
-        // 1.4 per-instance breath phase/rate (InstancedBufferAttribute → read via attribute() in the material)
-        const aPhaseArr = new Float32Array(clusterN * spiresPer);
-        const aRateArr = new Float32Array(clusterN * spiresPer);
-        for (let i = 0; i < clusterN * spiresPer; i += 1) {
-            aPhaseArr[i] = crnd(i * 13 + 2);
-            aRateArr[i] = 0.5 + crnd(i * 13 + 7) * 0.7; // 0.5..1.2 desynced rates
+        const apexIdx = pos.length / 3;
+        pos.push(skew * 0.5, 0.52, skew * -0.25); // apex
+        const baseIdx = apexIdx + 1;
+        pos.push(0, -0.53, 0); // base centre
+        const idx = [];
+        const ring = (r, i) => r * sides + (i % sides);
+        for (let r = 0; r < 2; r += 1) { // stitch ring bands (outward winding)
+            for (let i = 0; i < sides; i += 1) {
+                const a0 = ring(r, i); const a1 = ring(r, i + 1);
+                const b0 = ring(r + 1, i); const b1 = ring(r + 1, i + 1);
+                idx.push(a0, b0, a1, a1, b0, b1);
+            }
         }
-        crystalGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(aPhaseArr, 1));
-        crystalGeo.setAttribute('aRate', new THREE.InstancedBufferAttribute(aRateArr, 1));
+        for (let i = 0; i < sides; i += 1) idx.push(ring(2, i), apexIdx, ring(2, i + 1)); // apex fan
+        for (let i = 0; i < sides; i += 1) idx.push(ring(0, i + 1), baseIdx, ring(0, i)); // base fan
+        const indexed = new THREE.BufferGeometry();
+        indexed.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        indexed.setIndex(idx);
+        const faceted = indexed.toNonIndexed();
+        indexed.dispose();
+        faceted.computeVertexNormals();
+        faceted.computeBoundingSphere();
+        return faceted;
+    };
+
+    // Shared emissive/position/opacity node graph so field + hero read identical. All crystal-LOCAL
+    // masks use positionGeometry (NOT positionLocal — InstanceNode instance-transforms positionLocal
+    // first, which would make tip/spine ramps read world-space Y and saturate).
+    const makeCrystalNodes = (emissiveColorVec, withFracture) => {
+        const N = normalize(normalWorld);
+        const V = normalize(cameraPosition.sub(positionWorld));
+        const fres = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.4)); // grazing-edge rim
+        const gY = positionGeometry.y;
+        const tipRamp = pow(clamp(gY.mul(0.95).add(0.5), 0.0, 1.0), float(2.0)); // tips glow brightest
+        const spineD = clamp(abs(positionGeometry.x.add(positionGeometry.z)).mul(1.4), 0.0, 1.0);
+        const spine = pow(spineD.oneMinus(), float(3.0)); // internal core light-pipe
+        const band = sin(gY.mul(4.0).add(uTime.mul(0.4))).mul(0.5).add(0.5); // animated vertical band
+        let fracture = float(0.0);
+        if (withFracture) {
+            // Internal fracture planes — REUSE the egg's crack-isoline idiom (not Lunara's voronoi3),
+            // slowly drifting in Y so the interior facets shimmer. Heaviest term → tier≥3 only.
+            const fField = mx_fractal_noise_float(positionGeometry.mul(1.6).add(vec3(0.0, uTime.mul(0.04), 0.0)), 3).mul(0.5).add(0.5);
+            fracture = smoothstep(float(0.12), float(0.0), abs(fField.sub(0.5)));
+        }
+        const aPhase = attribute('aPhase', 'float');
+        const aRate = attribute('aRate', 'float');
+        const aTint = attribute('aTint', 'vec3'); // per-instance full-bright glow hue
+        const breath = sin(uTime.mul(aRate).add(aPhase.mul(6.283))).mul(0.5).add(0.5)
+            .mul(0.35)
+            .add(0.82); // 0.82..1.17 desynced breathing glow
+        const interior = mix(emissiveColorVec, aTint, float(0.6)).mul(band.mul(0.35).add(0.65));
+        const wake = float(0.30).add(uS.mul(1.10)).add(uCombo.mul(0.50)); // dormant→awake + combo surge
+        const emissiveFactor = fres.mul(0.42)
+            .add(tipRamp.mul(0.42)).add(fracture.mul(0.32)).add(spine.mul(0.38))
+            .add(0.12);
+        const emissiveNode = interior.mul(emissiveFactor).mul(wake).mul(breath);
+        // top-sway (same idiom as the old shard: positionGeometry mask, positionLocal base)
+        const swayMask = positionGeometry.y.add(0.5).clamp(0.0, 1.0);
+        const sway = sin(uTime.mul(aRate.mul(0.6)).add(aPhase.mul(6.283))).mul(swayMask).mul(0.05);
+        const positionNode = positionLocal.add(vec3(sway, 0.0, sway.mul(0.5)));
+        const opacityNode = clamp(float(0.62).add(fres.mul(0.36)), 0.0, 1.0); // glassy edge fade
+        return { emissiveNode, positionNode, opacityNode };
+    };
+
+    // Field material — rich MeshStandardNode; instanceColor is the (dark) albedo, aTint the glow.
+    const fieldMat = new THREE.MeshStandardNodeMaterial();
+    fieldMat.color = new THREE.Color(1, 1, 1);
+    fieldMat.vertexColors = true; // InstancedMesh instanceColor → albedo (repo-proven, lunara)
+    fieldMat.metalness = 0.0;
+    fieldMat.roughness = crystalRich ? 0.08 : 0.16;
+    fieldMat.envMapIntensity = crystalRich ? 1.3 : 0.9; // reflects the procedural PMREM env
+    fieldMat.side = crystalRich ? THREE.DoubleSide : THREE.FrontSide;
+    fieldMat.transparent = true;
+    fieldMat.depthWrite = true; // crisp self-occluding facets (was false for the faux-glass cones)
+    {
+        const nodes = makeCrystalNodes(vec3(0.75, 0.63, 1.0), crystalRich);
+        fieldMat.emissiveNode = nodes.emissiveNode;
+        fieldMat.positionNode = nodes.positionNode;
+        fieldMat.opacityNode = nodes.opacityNode;
     }
-    crystals.frustumCulled = false;
-    scene.add(track(crystals));
+
+    // Hero material — true-glass transmission (built only on tier≥2, piggybacks the egg's RT).
+    let heroMat = null;
+    if (heroCount > 0) {
+        heroMat = new THREE.MeshPhysicalNodeMaterial();
+        heroMat.color = new THREE.Color(1, 1, 1);
+        heroMat.vertexColors = true;
+        heroMat.metalness = 0.0;
+        heroMat.roughness = 0.06;
+        heroMat.envMapIntensity = 1.3;
+        heroMat.side = THREE.FrontSide; // matches the proven egg glass; thickness fakes the volume
+        heroMat.transparent = true;
+        heroMat.depthWrite = true;
+        heroMat.clearcoat = 0.55;
+        heroMat.clearcoatRoughness = 0.18;
+        heroMat.transmission = 0.92;
+        heroMat.ior = 1.8;
+        heroMat.thickness = 2.6;
+        heroMat.attenuationColor = new THREE.Color(1.0, 0.55, 0.30); // warm molten-relic interior
+        heroMat.attenuationDistance = 7.0;
+        const hn = makeCrystalNodes(vec3(1.0, 0.72, 0.42), crystalRich); // warm-biased emissive base
+        heroMat.emissiveNode = hn.emissiveNode;
+        heroMat.positionNode = hn.positionNode;
+    }
+
+    // Curated hero anchors live in normalized island-local coordinates. Field crystals use a
+    // balanced golden-angle sequence across the same five islands, creating discrete clumps with
+    // visible rock and water between them instead of one continuous left-side silhouette.
+    const HERO_ANCHORS = [
+        {
+            island: 0, ux: 0.46, uz: -0.05, warm: true,
+        },
+        {
+            island: 3, ux: -0.40, uz: 0.02, warm: true,
+        },
+        {
+            island: 1, ux: 0.24, uz: -0.02, warm: false,
+        },
+        {
+            island: 4, ux: -0.20, uz: -0.04, warm: false,
+        },
+        {
+            island: 2, ux: 0.10, uz: 0.02, warm: true,
+        },
+        {
+            island: 0, ux: -0.34, uz: 0.16, warm: false,
+        },
+    ];
+    const RELIC = { x: 0, z: -95 };
+    const twilightSink = new THREE.Color(0x1a0e30); // deep near-black violet for far depth-sink
+    const pickHue = (rng, x, z, forceWarm) => {
+        const c = new THREE.Color();
+        if (forceWarm || (Math.hypot(x - RELIC.x, z - RELIC.z) < 42 && rng() < 0.35)) {
+            c.set(rng() < 0.5 ? 0xffb060 : 0xff7d9e); // amber / rose — relic-heart echo
+        } else {
+            const r = rng();
+            if (r < 0.16) c.set(0x76dfff); // icy cyan
+            else if (r < 0.32) c.set(0xff72d1); // magenta
+            else if (r < 0.46) c.set(0xd486ff); // purple
+            else c.set(0x8b61e8); // violet base
+        }
+        const far = Math.min(1, Math.max(0, (-z - 18) / 178));
+        return c.lerp(twilightSink, far * 0.45);
+    };
+
+    const buildCrystalMesh = (geo, mat, count, opts) => {
+        const mesh = new THREE.InstancedMesh(geo, mat, count);
+        let s = opts.seed % 2147483647; if (s <= 0) s += 2147483646;
+        const rng = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
+        const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
+        const aPhaseArr = new Float32Array(count);
+        const aRateArr = new Float32Array(count);
+        const aTintArr = new Float32Array(count * 3);
+        const islandOrdinals = new Array(SHORE_ISLANDS.length).fill(0);
+        for (let i = 0; i < count; i += 1) {
+            // low tiers have no hero mesh → the first few field crystals stand in as pseudo-heroes.
+            const asHero = opts.hero || (opts.foldHeroes && i < opts.foldHeroes);
+            let islandIndex; let localX; let localZ; let forceWarm = false;
+            if (asHero) {
+                const anchor = HERO_ANCHORS[i % HERO_ANCHORS.length];
+                islandIndex = anchor.island;
+                const island = SHORE_ISLANDS[islandIndex];
+                localX = anchor.ux * island.rx;
+                localZ = anchor.uz * island.rz;
+                forceWarm = anchor.warm;
+            } else {
+                const fieldIndex = Math.max(0, i - (opts.foldHeroes || 0));
+                islandIndex = ISLAND_SEQUENCE[fieldIndex % ISLAND_SEQUENCE.length];
+                const island = SHORE_ISLANDS[islandIndex];
+                const ordinal = islandOrdinals[islandIndex];
+                islandOrdinals[islandIndex] += 1;
+                const angle = ordinal * GOLDEN_ANGLE + island.seed * 0.013 + (rng() - 0.5) * 0.34;
+                const radius = 0.22 + Math.sqrt(rng()) * 0.46;
+                localX = Math.cos(angle) * island.rx * radius;
+                localZ = Math.sin(angle) * island.rz * radius;
+            }
+            const island = SHORE_ISLANDS[islandIndex];
+            const world = islandLocalToWorld(island, localX, localZ);
+            const { x, z } = world;
+            const depthScale = Math.max(0.65, Math.min(1, (z + 125) / 72));
+            const isStub = !asHero && rng() < 0.34;
+            let sy;
+            if (asHero) sy = (8.8 + rng() * 3.6) * depthScale;
+            else if (isStub) sy = (2.6 + rng() * 2.2) * depthScale;
+            else sy = (4.6 + rng() * 4.3) * depthScale;
+            // Chunky gem proportions (aspect ≈3-6:1, not needle-thin); heroes stay broad landmarks.
+            let widthBase;
+            if (asHero) widthBase = 2.45;
+            else if (isStub) widthBase = 1.9;
+            else widthBase = 1.5;
+            const sxW = widthBase * (0.86 + rng() * 0.28);
+            const szW = sxW * (0.82 + rng() * 0.36);
+            let lean = 0.20;
+            if (asHero) lean = 0.12;
+            else if (isStub) lean = 0.26;
+            const surfaceY = sampleIslandSurface(island, localX, localZ);
+            const sink = sy * (asHero ? 0.12 : 0.16) + 0.18;
+            _e.set((rng() - 0.5) * lean, rng() * Math.PI * 2, (rng() - 0.5) * lean);
+            _q.setFromEuler(_e);
+            _s.set(sxW, sy, szW);
+            _p.set(x, surfaceY + 0.53 * sy - sink, z);
+            _m.compose(_p, _q, _s);
+            mesh.setMatrixAt(i, _m);
+            const hue = pickHue(rng, x, z, forceWarm);
+            mesh.setColorAt(i, hue.clone().multiplyScalar(0.42)); // dark body with enough lift for faceted read
+            aTintArr[i * 3] = hue.r; aTintArr[i * 3 + 1] = hue.g; aTintArr[i * 3 + 2] = hue.b;
+            aPhaseArr[i] = rng();
+            aRateArr[i] = 0.5 + rng() * 0.7; // desynced breath rate
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(aPhaseArr, 1));
+        geo.setAttribute('aRate', new THREE.InstancedBufferAttribute(aRateArr, 1));
+        geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(aTintArr, 3));
+        mesh.frustumCulled = false;
+        mesh.renderOrder = 0; // explicit — sorts between background veils (−1) and additive FX (1-3)
+        return mesh;
+    };
+
+    const fieldGeo = buildFacetedCrystalGeometry(crystalRich ? 6 : 5, [0.72, 0.56, 0.30], 0.16, 91713);
+    const fieldMesh = buildCrystalMesh(fieldGeo, fieldMat, fieldCount, {
+        seed: 91713, foldHeroes: tier <= 1 ? 4 : 0,
+    });
+    scene.add(track(fieldMesh));
+    let heroMesh = null;
+    if (heroCount > 0) {
+        const heroGeo = buildFacetedCrystalGeometry(6, [0.84, 0.70, 0.48], 0.10, 20477); // fatter neck, less twist → solid majestic heroes
+        heroMesh = buildCrystalMesh(heroGeo, heroMat, heroCount, { seed: 20477, hero: true });
+        scene.add(track(heroMesh));
+    }
 
     // ════ FOREGROUND BOULDERS — near-black silhouettes at the frame edges (depth stack) ════
-    const boulderCountT = tier <= 1 ? 4 : (tier <= 2 ? 7 : (tier === 3 ? 10 : 14));
+    let boulderCountT = 8;
+    if (tier <= 1) boulderCountT = 4;
+    else if (tier <= 2) boulderCountT = 5;
+    else if (tier === 3) boulderCountT = 6;
     const bnoise = (x, y) => { const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return s - Math.floor(s); };
     const boulderMat = new THREE.MeshBasicNodeMaterial();
     {
         const N = normalize(normalWorld);
         const V = normalize(cameraPosition.sub(positionWorld));
         const f = pow(clamp(float(1.0).sub(dot(N, V)), 0.0, 1.0), float(2.6));
+        // Wave 3: rock micro-grain — world-space fbm modulates the lit terms so surfaces read as
+        // textured stone in the rim/fill light (base silhouette stays untouched). High+ only.
+        let gMod = float(1.0);
+        if (tier >= 3) {
+            gMod = mx_fractal_noise_float(positionWorld.mul(0.33), 3).mul(0.5).add(0.5).mul(0.6)
+                .add(0.7);
+        }
         boulderMat.colorNode = vec3(0.008, 0.006, 0.016)
-            .add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09)) // faint magenta rim (existing)
-            .add(hemiFillNode(N).mul(0.5)) // 1.1 colored ambient (plum/indigo, capped)
-            .add(eggBounceNode(N).mul(0.7)); // 1.1 warm egg bounce
+            .add(vec3(0.7, 0.28, 0.42).mul(f).mul(0.09).mul(gMod)) // faint magenta rim, grained
+            .add(hemiFillNode(N).mul(0.5).mul(gMod)) // 1.1 colored ambient (plum/indigo, capped)
+            .add(eggBounceNode(N).mul(0.7).mul(gMod)); // 1.1 warm egg bounce
         boulderMat.toneMapped = false;
     }
     const boulderGeo = new THREE.IcosahedronGeometry(1, 2);
@@ -791,11 +1143,38 @@ export function create({
     {
         const _m = new THREE.Matrix4(); const _q = new THREE.Quaternion();
         const _e = new THREE.Euler(); const _s = new THREE.Vector3(); const _p = new THREE.Vector3();
+        // Wave 3: parallax corner anchors — the first two instances become near-foreground rocks
+        // pinned to the lower frame corners (x from the per-aspect horizontal frustum half-width;
+        // z capped ≤ +16 so they stay ≥~18u from the lens even at the full Cosmos dolly-in).
+        const aspect = (sizes?.width || 1280) / (sizes?.height || 720);
+        const cornerX = 36 * Math.tan((58 / 2) * (Math.PI / 180)) * aspect * 0.85;
+        const overlapsIsland = (worldX, worldZ, scale) => SHORE_ISLANDS.some((island) => {
+            const dx = worldX - island.x;
+            const dz = worldZ - island.z;
+            const c = Math.cos(island.rotation);
+            const s = Math.sin(island.rotation);
+            const localX = dx * c - dz * s;
+            const localZ = dx * s + dz * c;
+            return Math.hypot(
+                localX / (island.rx + scale * 0.45),
+                localZ / (island.rz + scale * 0.35),
+            ) < 1;
+        });
         for (let i = 0; i < boulderCountT; i += 1) {
             const side = i % 2 === 0 ? -1 : 1;
-            const sc = 5 + bnoise(i, 3) * 13; // 5..18
-            const x = side * (44 + bnoise(i, 1) * 62); // |x| 44..106 (frame edges, clear centre)
-            const z = -8 - bnoise(i, 2) * 62; // z -8..-70 (foreground)
+            let sc = 5 + bnoise(i, 3) * 13; // 5..18
+            let x = side * (44 + bnoise(i, 1) * 62); // |x| 44..106 (frame edges, clear centre)
+            let z = -8 - bnoise(i, 2) * 62; // z -8..-70 (foreground)
+            if (i < 2 && boulderCountT > 4) { // corner anchors (skip on the sparse low tiers)
+                sc = 11 + i * 3;
+                x = side * cornerX;
+                z = 6 + i * 5; // +6 / +11 (≤ +16 cap)
+            }
+            if (i >= 2 && overlapsIsland(x, z, sc)) {
+                x = side * (96 + bnoise(i, 8) * 28);
+                z = -18 - bnoise(i, 9) * 60;
+                sc *= 0.75;
+            }
             _e.set(bnoise(i, 4) * 3, bnoise(i, 5) * 6, bnoise(i, 6) * 3);
             _q.setFromEuler(_e);
             _s.set(sc, sc * (0.55 + bnoise(i, 7) * 0.5), sc);
@@ -808,46 +1187,48 @@ export function create({
     boulders.frustumCulled = false;
     scene.add(track(boulders));
 
-    // ════ BIOLUMINESCENT RIVERBED MOUND — dark rock + glowing magenta veins (off-centre) ════
-    // The signature hatom "living terrain" element. Kept dim (sub-bloom) + off-centre so it never
-    // backlights the board. Displaced plane → a low mound rising from the shore behind the crystals.
-    if (tier >= 2) {
-        const moundMat = new THREE.MeshBasicNodeMaterial();
-        {
-            const pl = positionLocal;
-            // 2.5 domain-warp (High+) so the vein network churns organically rather than scrolling rigidly
-            let vp = vec2(pl.x.mul(0.06), pl.y.mul(0.06).add(uTime.mul(0.03)));
-            if (tier >= 3) {
-                const w = mx_noise_float(vec3(pl.x.mul(0.03), pl.y.mul(0.03), uTime.mul(0.02))).mul(0.4);
-                vp = vp.add(w);
-            }
-            const vf = mx_fractal_noise_float(vec3(vp.x, vp.y, 0.0), 3).mul(0.5).add(0.5);
-            const vein = smoothstep(0.055, 0.0, abs(vf.sub(0.5))); // glowing vein isolines
-            const speck = pow(mx_noise_float(pl.mul(0.55)).abs(), float(4.0)); // fine moss speckle
-            const veinCol = vec3(0.9, 0.2, 0.6).mul(vein.mul(0.5).add(speck.mul(0.2)));
-            const Nm = normalize(normalWorld); // valid after computeVertexNormals() below
-            moundMat.colorNode = vec3(0.02, 0.012, 0.03)
-                .add(veinCol.mul(float(0.45).add(uS.mul(0.55))))
-                .add(hemiFillNode(Nm).mul(0.4)) // 1.1 colored ambient
-                .add(eggBounceNode(Nm).mul(0.6)); // 1.1 warm egg bounce
-            moundMat.toneMapped = false;
+    // ════ CRYSTAL ISLANDS — five separated low-poly rock crowns with visible wet skirts ════
+    // The old displaced plane formed one 95×62 near-black canopy and buried lake-rooted crystals.
+    // These compact, asymmetric islands expose water gaps, carry the crystals at sampled surface Y,
+    // and use a narrow shoreline lift so their silhouettes survive the LUT/vignette black crush.
+    const islandMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const N = normalize(normalWorld);
+        const P = positionWorld;
+        const top = smoothstep(0.58, 0.90, N.y);
+        const key = clamp(dot(N, normalize(vec3(-0.35, 0.78, 0.52))), 0.0, 1.0);
+        const waterline = smoothstep(0.22, 1.35, abs(P.y.sub(0.10))).oneMinus()
+            .mul(smoothstep(0.30, 0.72, N.y).oneMinus());
+        const crown = smoothstep(0.5, 4.5, P.y).mul(top);
+        const fillMask = top.mul(0.55).add(0.35);
+        let livingDetail = vec3(0.0);
+        if (tier >= 2) {
+            const field = mx_fractal_noise_float(P.mul(0.18).add(vec3(0.0, uTime.mul(0.012), 0.0)), tier >= 3 ? 3 : 2)
+                .mul(0.5).add(0.5);
+            const fineVein = smoothstep(0.025, 0.075, abs(field.sub(0.5))).oneMinus().mul(top);
+            const speck = pow(mx_noise_float(P.mul(0.62)).abs(), float(5.0)).mul(top);
+            const twinkle = sin(uTime.mul(1.4).add(mx_noise_float(P.mul(0.9)).mul(18.0))).mul(0.18).add(0.82);
+            livingDetail = vec3(0.62, 0.13, 0.42).mul(fineVein).mul(0.075)
+                .add(vec3(0.36, 0.18, 0.52).mul(speck).mul(twinkle).mul(0.055));
         }
-        const moundGeo = new THREE.PlaneGeometry(95, 62, 48, 30);
-        const mp = moundGeo.attributes.position;
-        const mn = (x, y) => { const s = Math.sin(x * 12.9 + y * 78.2) * 43758.5; return s - Math.floor(s); };
-        for (let i = 0; i < mp.count; i += 1) {
-            const x = mp.getX(i); const y = mp.getY(i);
-            const r = Math.sqrt(x * x + y * y) / 46;
-            const dome = Math.max(0, 1 - r * r) * 11; // radial mound
-            mp.setZ(i, dome + (mn(x * 0.3, y * 0.3) - 0.5) * 4.5); // + rocky roughness
-        }
-        mp.needsUpdate = true;
-        moundGeo.computeVertexNormals(); // 1.1 REQUIRED: displaced plane normals are uniform otherwise → flat hemi fill
-        const mound = new THREE.Mesh(moundGeo, moundMat);
-        mound.rotation.x = -Math.PI / 2; // lay flat (displacement → +y)
-        mound.position.set(-58, -1, -74); // off-centre-left, behind the crystals
-        scene.add(track(mound));
+        islandMat.colorNode = mix(vec3(0.014, 0.008, 0.032), vec3(0.090, 0.028, 0.125), top)
+            .add(vec3(0.20, 0.08, 0.27).mul(key).mul(0.40).mul(fillMask))
+            .add(hemiFillNode(N).mul(0.62).mul(fillMask))
+            .add(eggBounceNode(N).mul(0.62))
+            .add(vec3(0.50, 0.12, 0.38).mul(waterline).mul(0.25))
+            .add(vec3(0.13, 0.06, 0.23).mul(crown).mul(0.20))
+            .add(livingDetail.mul(float(0.45).add(uS.mul(0.55))));
+        islandMat.toneMapped = false;
     }
+    const islands = new THREE.Group();
+    SHORE_ISLANDS.forEach((island) => {
+        const mesh = new THREE.Mesh(buildIslandGeometry(island), islandMat);
+        mesh.position.set(island.x, 0, island.z);
+        mesh.rotation.y = island.rotation;
+        mesh.renderOrder = 0;
+        islands.add(mesh);
+    });
+    scene.add(track(islands));
 
     // 2.5 cheap curl-ish swirl velocity from a 2D noise field (ONE call per point → 2 noise/vert, reused for x/z)
     const curlDrift = (px, pz, t, amp) => vec2(
@@ -961,7 +1342,9 @@ export function create({
         // 2.5 curl-noise drift (High+) — slow organic swirl across the whole view; y stays a gentle bob
         let drift;
         if (tier >= 3) {
-            const cv = curlDrift(positionLocal.x.add(sd.y.mul(60.0)), positionLocal.z.add(sd.x.mul(60.0)), uTime.mul(0.035), 7.0);
+            const cx = positionLocal.x.add(sd.y.mul(60.0));
+            const cz = positionLocal.z.add(sd.x.mul(60.0));
+            const cv = curlDrift(cx, cz, uTime.mul(0.035), 7.0);
             drift = vec3(cv.x, sin(uTime.mul(0.05).add(sd.y.mul(6.283))).mul(5.0), cv.y);
         } else {
             drift = vec3(
@@ -984,6 +1367,180 @@ export function create({
     const dust = new THREE.Points(dustGeo, dustMat);
     dust.frustumCulled = false;
     scene.add(track(dust));
+
+    // ════ RELIC BURSTS (FX) — the heart exhales: pooled one-shot spore bursts, pure GPU vertex math ════
+    // One Points pool partitioned across BURST_SLOTS slots; applyPulse writes a slot's uniforms
+    // (emitter / colour+density / shape) and the burst plays out entirely in the vertex shader —
+    // radial shoot with exponential decel, then a slow ambient float across the scene, then fade.
+    // Zero per-frame uploads; the ringNodes uniform-pool pattern extended to particles (WebGL-safe).
+    const BURST_SLOTS = 5;
+    let BURST_POOL;
+    if (tier <= 1) BURST_POOL = 240; else if (tier <= 2) BURST_POOL = 400; else BURST_POOL = 600;
+    // Per-slot params as PLAIN SCALAR uniforms (the uS/uTime pattern — the only uniform form this
+    // stack reliably reads in the Points VERTEX stage; vec4-uniform arithmetic there mis-builds).
+    const mkSlots = (v) => Array.from({ length: BURST_SLOTS }, () => uniform(v));
+    const bPX = mkSlots(0); const bPY = mkSlots(0); const bPZ = mkSlots(0); const bT0 = mkSlots(-1e3);
+    const bCR = mkSlots(1); const bCG = mkSlots(1); const bCB = mkSlots(1); const bDen = mkSlots(0);
+    const bRad = mkSlots(20); const bLif = mkSlots(3); const bSwl = mkSlots(0); const bUp = mkSlots(0.3);
+    // Spawns are QUEUED and stamped inside update(time) — t0 must come from the exact same clock
+    // update() writes into uTime. (Stamping from uTime.value at pulse time skews across playground
+    // HMR remount epochs: bursts are born "in the past", age past life instantly, and never show.)
+    // The slot is chosen at STAMP time (in update, on the authoritative clock) so a fresh burst
+    // takes the slot NEAREST death — in-flight spore bursts keep playing instead of being
+    // round-robined out. This is the "pooled effects stay alive / accumulate" behavior.
+    const burstState = Array.from({ length: BURST_SLOTS }, () => ({ t0: -1e3, life: 0 }));
+    const burstQueue = [];
+    const spawnBurst = (px, py, pz, col, density, maxR, life, swirl, upBias) => {
+        burstQueue.push({
+            px, py, pz, col, density, maxR, life, swirl, upBias,
+        });
+        if (burstQueue.length > BURST_SLOTS) burstQueue.shift(); // never backlog beyond the pool
+    };
+    // ONE camera-facing BILLBOARD-QUAD InstancedMesh PER SLOT — the snow-renderer pattern.
+    // ROOT CAUSE of the invisible bursts: WebGPU Points rasterize at 1px and sizeNode is
+    // IGNORED, so sparse spore bursts vanish. Quads can be sized/soft-masked. 5 draws.
+    const PER_SLOT = Math.floor(BURST_POOL / BURST_SLOTS);
+    const burstQuad = new THREE.PlaneGeometry(1, 1);
+    for (let slot = 0; slot < BURST_SLOTS; slot += 1) {
+        const mat = new THREE.MeshBasicNodeMaterial();
+        const sdB = attribute('aSeed', 'vec3'); // per-INSTANCE seed (InstancedBufferAttribute)
+        // per-particle scatter dir + tangent derived from the seed (normalized-cube random)
+        const dirA = normalize(vec3(sdB.x.sub(0.5), sdB.y.sub(0.5), sdB.z.mul(0.9).sub(0.45)));
+        const tanA = normalize(vec3(dirA.z.negate(), float(0.0), dirA.x));
+        const n = clamp(uTime.sub(bT0[slot]).div(bLif[slot]), 0.0, 1.0); // idle: t0=-1e3 → n=1 → dead
+        const age = n.mul(bLif[slot]);
+        const dl = bDen[slot];
+        const aliveB = float(1.0).sub(smoothstep(dl.sub(0.002), dl, sdB.x)); // density gates fired count
+        const shoot = age.div(age.add(0.55)); // rational decel toward the max radius
+        const rr = bRad[slot].mul(shoot).mul(sdB.y.mul(0.55).add(0.55));
+        const fl = smoothstep(0.4, 1.6, age); // ambient float ramps in as the shoot settles
+        const driftB = vec3(
+            sin(uTime.mul(0.45).add(sdB.z.mul(21.0))),
+            sin(uTime.mul(0.34).add(sdB.x.mul(17.0))).mul(0.6).add(0.25),
+            cos(uTime.mul(0.40).add(sdB.y.mul(23.0))),
+        ).mul(fl).mul(n.mul(7.0).add(2.0));
+        const spiral = tanA.mul(bSwl[slot]).mul(rr).mul(sin(age.mul(2.2).add(sdB.z.mul(6.28))).mul(0.55));
+        const emit = vec3(1.0, 0.0, 0.0).mul(bPX[slot])
+            .add(vec3(0.0, 1.0, 0.0).mul(bPY[slot]))
+            .add(vec3(0.0, 0.0, 1.0).mul(bPZ[slot]));
+        const upLift = vec3(0.0, 1.0, 0.0).mul(bUp[slot]).mul(rr).mul(0.8);
+        const fadeB = smoothstep(0.0, 0.05, n)
+            .mul(float(1.0).sub(smoothstep(0.55, 1.0, n)))
+            .mul(aliveB);
+        // world-unit mote size (~0.5..1.9u → chunky glowing grains at the egg's distance)
+        const msize = sdB.z.mul(0.9).add(0.55).mul(n.mul(0.4).add(0.85)).mul(fadeB.mul(0.5).add(0.5));
+        mat.vertexNode = Fn(() => {
+            const center = emit.add(dirA.mul(rr)).add(upLift).add(spiral).add(driftB);
+            const viewPos = cameraViewMatrix.mul(vec4(center, 1.0))
+                .add(vec4(positionLocal.x.mul(msize), positionLocal.y.mul(msize), 0.0, 0.0));
+            return cameraProjectionMatrix.mul(viewPos);
+        })();
+        const colr = vec3(1.0, 0.0, 0.0).mul(bCR[slot])
+            .add(vec3(0.0, 1.0, 0.0).mul(bCG[slot]))
+            .add(vec3(0.0, 0.0, 1.0).mul(bCB[slot]));
+        mat.colorNode = colr.mul(float(1.0).sub(n.mul(0.35)));
+        // soft round sprite mask (gaussian-ish falloff from the quad centre)
+        const dq = length(uv().sub(0.5)).mul(2.0);
+        mat.opacityNode = fadeB.mul(pow(clamp(float(1.0).sub(dq), 0.0, 1.0), float(1.6)));
+        mat.transparent = true;
+        mat.blending = THREE.AdditiveBlending;
+        mat.depthWrite = false;
+        mat.depthTest = true;
+        mat.side = THREE.DoubleSide;
+        mat.toneMapped = false;
+        mat.fog = false;
+        const im = new THREE.InstancedMesh(burstQuad, mat, PER_SLOT);
+        const seeds = new Float32Array(PER_SLOT * 3);
+        for (let i = 0; i < PER_SLOT * 3; i += 1) seeds[i] = Math.random();
+        im.geometry = burstQuad.clone(); // own geometry per slot (distinct instanced attributes)
+        im.geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 3));
+        im.frustumCulled = false;
+        scene.add(track(im));
+    }
+
+    // ════ RESONANCE ORBIT — combo heartbeat: wisps circling the relic while a chain is alive ════
+    const uComboGlow = uniform(0);
+    let ORBIT_COUNT;
+    if (tier <= 1) ORBIT_COUNT = 40; else if (tier <= 2) ORBIT_COUNT = 64; else ORBIT_COUNT = 96;
+    const orbitMat = new THREE.PointsNodeMaterial();
+    {
+        const oSd = attribute('aSeed', 'vec3');
+        const oAng = uTime.mul(oSd.x.mul(0.5).add(0.35)).add(oSd.y.mul(6.283));
+        const oRad = oSd.z.mul(7.0).add(13.0); // just outside the glass shell
+        const oy = sin(uTime.mul(0.8).add(oSd.x.mul(9.0))).mul(3.5).add(oSd.y.sub(0.5).mul(7.0));
+        orbitMat.positionNode = vec3(cos(oAng).mul(oRad), oy, sin(oAng).mul(oRad)).add(uRelicPos);
+        const oBlink = sin(uTime.mul(2.4).add(oSd.z.mul(30.0))).mul(0.5).add(0.5).mul(0.5)
+            .add(0.5);
+        orbitMat.colorNode = mix(vec3(0.95, 0.33, 0.60), vec3(0.40, 0.85, 1.0), oSd.x);
+        orbitMat.opacityNode = uComboGlow.mul(oBlink).mul(0.85);
+        orbitMat.sizeNode = oSd.y.mul(1.6).add(1.2).mul(uComboGlow.mul(0.6).add(0.4));
+        orbitMat.transparent = true;
+        orbitMat.blending = THREE.AdditiveBlending;
+        orbitMat.depthWrite = false;
+        orbitMat.toneMapped = false;
+        orbitMat.fog = false;
+    }
+    const orbitGeo = new THREE.BufferGeometry();
+    {
+        const oPos = new Float32Array(ORBIT_COUNT * 3);
+        const oSeed = new Float32Array(ORBIT_COUNT * 3);
+        for (let i = 0; i < ORBIT_COUNT * 3; i += 1) oSeed[i] = Math.random();
+        orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(oPos, 3));
+        orbitGeo.setAttribute('aSeed', new THREE.Float32BufferAttribute(oSeed, 3));
+    }
+    const orbit = new THREE.Points(orbitGeo, orbitMat);
+    orbit.frustumCulled = false;
+    orbit.visible = false; // gated by combo glow in update()
+    scene.add(track(orbit));
+
+    // ════ HEART SHOCKWAVE POOL — the big beats STACK as independent expanding rings (never reset) ════
+    // Galaxy-style: 2–6 concurrent slots by quality tier. Each slot advances from its OWN t0, so a
+    // fresh perfect-clear can't rewind a tetris ring already in flight. Summed in ONE fragment → the
+    // whole pool stays a single billboarded draw call (the ringNodes uniform-pool pattern reused).
+    const WAVE_SLOTS = waveSlotsForTier(tier);
+    const WAVE_AMP_CAP = 1.2; // safe cap so stacked rings never blow past the additive budget
+    const waveNodes = Array.from(
+        { length: WAVE_SLOTS },
+        () => uniform(new THREE.Vector4(-1e3, 1.4, 0, 0)),
+    ); // per slot: (t0, duration, amp, _)
+    const waveColNodes = Array.from(
+        { length: WAVE_SLOTS },
+        () => uniform(new THREE.Color(1.0, 0.75, 0.45)),
+    );
+    const waveState = Array.from({ length: WAVE_SLOTS }, () => ({ t0: -1e3, life: 1.4, amp: 0 }));
+    const waveMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const wq = uv().sub(0.5).mul(2.0);
+        const wr = length(wq);
+        let waveSum = vec3(0.0);
+        waveNodes.forEach((wn, i) => {
+            const wProg = clamp(uTime.sub(wn.x).div(wn.y.max(0.001)), 0.0, 1.0);
+            const wRing = smoothstep(0.045, 0.0, abs(wr.sub(wProg.mul(0.92))))
+                .mul(float(1.0).sub(wProg)).mul(wn.z);
+            waveSum = waveSum.add(waveColNodes[i].mul(wRing));
+        });
+        // kept WELL below bloom — each ring reads as a passing pressure-front, not a flash-bang
+        // (additive + billboarded, and the reflector doubles it free)
+        waveMat.colorNode = waveSum.mul(0.28);
+        waveMat.transparent = true;
+        waveMat.blending = THREE.AdditiveBlending;
+        waveMat.depthWrite = false;
+        waveMat.toneMapped = false;
+        waveMat.fog = false;
+    }
+    const wave = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), waveMat);
+    wave.position.set(0, 19, -95);
+    wave.renderOrder = 3;
+    wave.visible = false;
+    haloSprites.push(wave); // camera-billboarded with the planet halos
+    scene.add(track(wave));
+    // Queued like the bursts — the slot is picked + stamped with update()'s clock (see the burst-queue
+    // clock note); big beats queued in one frame each take their own slot instead of overwriting.
+    const waveQueue = [];
+    const triggerWave = (col, amp, dur) => {
+        waveQueue.push({ col, amp, dur });
+        if (waveQueue.length > WAVE_SLOTS) waveQueue.shift(); // never backlog beyond the pool
+    };
 
     // ════ AURORA SPIRIT — the Ascension wing of light ════
     // Pure additive light (never geometry, never occludes the board): a broad
@@ -1174,34 +1731,91 @@ export function create({
     let intensity = 1; // reactivity multiplier (0 = off; reduced-motion → ~0.45)
     let lastTime = null;
     let prevCamTime = null; // Wave 3: dt source for frame-rate-independent camera/cursor easing
+    const COMBO_BOOST_CAP = 0.55; // sCombo ceiling — combo energy holds/accumulates, never rewinds
+    // Per-player combo progress so one player's chain break can't reset another's milestone gating
+    // (single-player collapses to the 'local' key). The emit origin stays the shared hero relic.
+    const comboProgressByPlayer = new Map();
 
     const applyPulse = (kind, payload = {}) => {
         if (intensity <= 0) return;
         const k = intensity;
         const RX = 0; const RZ = -95; // rings emit under the relic on the water
         switch (kind) {
-        case 'lineClear':
-            sFlare = Math.min(1, sFlare + (0.14 + 0.06 * (payload.lines || 1)) * k);
-            spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * (payload.lines || 1)) * k);
+        case 'lineClear': {
+            const lines = payload.lines || 1;
+            const tetris = lines >= 4;
+            sFlare = Math.min(1, sFlare + (0.14 + 0.06 * lines) * k);
+            spawnRing(RX, RZ, Math.min(1.2, 0.55 + 0.16 * lines) * k);
+            // "Lumen Spores" — the heart exhales golden seeds that scatter and float over the lake
+            const ep = uRelicPos.value;
+            if (tetris) {
+                spawnBurst(ep.x, ep.y, ep.z, [1.3, 1.05, 0.7], 0.9 * k, 140, 6.0, 0, 0.28);
+                triggerWave([1.0, 0.75, 0.45], 0.6 * k, 1.6);
+            } else {
+                spawnBurst(ep.x, ep.y, ep.z, [1.15, 0.72, 0.30], (0.30 + 0.12 * lines) * k, 52 + 18 * lines, 4.2, 0, 0.30);
+            }
             break;
-        case 'combo':
-            sCombo = Math.min(0.55, (payload.count || 0) * 0.06) * k;
-            if ((payload.count || 0) > 1) spawnRing(RX, RZ, 0.5 * k);
+        }
+        case 'combo': {
+            const pkey = String(payload.player ?? 'local');
+            const { prev, count } = resolveComboProgress(comboProgressByPlayer.get(pkey) || 0, payload.count);
+            if (count <= prev) { // no new links crossed (dedup / stale repeat) — never re-spawn
+                comboProgressByPlayer.set(pkey, count);
+                break;
+            }
+            comboProgressByPlayer.set(pkey, count);
+            // Combo energy ACCUMULATES to a safe cap and never rewinds mid-decay (Math.max hold).
+            sCombo = accumulateComboBoost(sCombo, count, 0.06 * k, COMBO_BOOST_CAP * k);
+            if (count > 1) spawnRing(RX, RZ, 0.5 * k);
+            // "Resonance" — wisps orbit the heart (passive, via uComboGlow); every 3rd NEWLY-crossed
+            // link sheds one magenta pulse. Milestone-gated (capped per event) so a repeated or jumped
+            // combo event can't spam bursts / spike FPS.
+            const ep = uRelicPos.value;
+            comboMilestonesCrossed(prev, count).forEach((m) => {
+                spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.35, 0.65], (0.25 + 0.03 * m) * k, 40 + 5 * m, 3.5, 0.5, 0.35);
+            });
             break;
-        case 'tspin':
+        }
+        case 'tspin': {
             sFlare = Math.min(1, sFlare + 0.32 * k);
             spawnRing(RX, RZ, 0.95 * k);
+            // "Chrysalis Twist" — a cyan helix corkscrews out of the heart
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [0.50, 0.92, 1.15], 0.55 * k, 85, 4.5, 1.0, 0.25);
+            triggerWave([0.5, 0.9, 1.1], 0.45 * k, 1.3);
             break;
+        }
         case 'b2b': if (payload.active) sFlare = Math.min(1, sFlare + 0.16 * k); break;
-        case 'perfectClear':
+        case 'perfectClear': {
             sFlare = Math.min(1, sFlare + 0.5 * k);
             spawnRing(RX, RZ, 1.2 * k); spawnRing(RX, RZ, 0.85 * k);
+            // "Ascension Bloom" — the heart releases everything: a violet-white sky-filling bloom
+            // (far shell) inside a warm inner burst, with the biggest shockwave
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [0.95, 0.80, 1.25], 1.0 * k, 210, 7.0, 0.25, 0.20);
+            spawnBurst(ep.x, ep.y, ep.z, [1.25, 0.90, 0.50], 0.8 * k, 110, 5.0, 0, 0.45);
+            triggerWave([0.9, 0.8, 1.2], 0.95 * k, 2.2);
             break;
-        case 'levelUp': sBaseline = Math.min(0.85, sBaseline + 0.07 * k); break;
-        case 'pieceLock': case 'hardDrop':
+        }
+        case 'levelUp': {
+            sBaseline = Math.min(0.85, sBaseline + 0.07 * k);
+            // "The Waking Deepens" — a slow golden updraft as the world stirs another degree
+            const ep = uRelicPos.value;
+            spawnBurst(ep.x, ep.y, ep.z, [1.1, 0.85, 0.40], 0.5 * k, 95, 6.0, 0.2, 0.55);
+            break;
+        }
+        case 'pieceLock': case 'hardDrop': {
             sFlare = Math.min(1, sFlare + 0.03 * k);
             spawnRing(RX, RZ, 0.16 * k);
+            // "Heartbeat" — a faint, dim exhale of embers off the shell (fires every few seconds —
+            // deliberately sparse + sub-bloom so a 30-minute session never tires the eye)
+            const ep = uRelicPos.value;
+            const hard = kind === 'hardDrop';
+            const dens = hard ? 0.20 : 0.13;
+            const reach = hard ? 21 : 15;
+            spawnBurst(ep.x, ep.y, ep.z, [0.62, 0.38, 0.16], dens * k, reach, 1.9, 0, 0.5);
             break;
+        }
         default: break;
         }
     };
@@ -1269,6 +1883,50 @@ export function create({
             uAscend.value = clamp01((sEased - 0.5) / 0.35); // wing unfurls from S≈0.5→0.85
             wing.visible = uAscend.value > 0.001; // skip the additive wing plane entirely while dormant
             uCosmos.value = clamp01((sEased - 0.85) / 0.15); // planet ensemble blooms in at the Cosmos crest
+            // Cosmos climax: the worlds are always in the sky — only the light-wisp streaks are
+            // gated; raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
+            const ce = uCosmos.value;
+            streakGroup.visible = ce > 0.001;
+            // FX: stamp queued bursts/waves with THIS clock (the one uTime carries — see spawn note);
+            // combo orbit follows the live combo boost; shockwave + orbit are visibility-gated.
+            while (burstQueue.length) {
+                const b = burstQueue.shift();
+                const bi = pickExpiringSlotIndex(burstState, time); // stack: never clobber a livelier burst
+                burstState[bi].t0 = time; burstState[bi].life = b.life;
+                bPX[bi].value = b.px; bPY[bi].value = b.py; bPZ[bi].value = b.pz; bT0[bi].value = time;
+                bCR[bi].value = b.col[0]; bCG[bi].value = b.col[1]; bCB[bi].value = b.col[2];
+                bDen[bi].value = Math.min(1, b.density);
+                bRad[bi].value = b.maxR; bLif[bi].value = b.life; bSwl[bi].value = b.swirl; bUp[bi].value = b.upBias;
+            }
+            while (waveQueue.length) {
+                const w = waveQueue.shift();
+                // pick the slot nearest death (bias toward weak) so a fresh beat stacks alongside
+                // live rings instead of clobbering the strongest one.
+                const wi = pickExpiringSlotIndex(waveState, time, 0.35);
+                const st = waveState[wi];
+                st.t0 = time; st.life = w.dur; st.amp = Math.min(WAVE_AMP_CAP, w.amp);
+                waveNodes[wi].value.set(time, st.life, st.amp, 0);
+                waveColNodes[wi].value.setRGB(w.col[0], w.col[1], w.col[2]);
+            }
+            uComboGlow.value = Math.min(1, sCombo * 2.4);
+            uCombo.value = uComboGlow.value; // shore crystals resonate with the combo chain
+            orbit.visible = uComboGlow.value > 0.02;
+            let anyWaveAlive = false;
+            for (let i = 0; i < WAVE_SLOTS; i += 1) {
+                if ((time - waveState[i].t0) < waveState[i].life) { anyWaveAlive = true; break; }
+            }
+            wave.visible = anyWaveAlive;
+            if (monolith) {
+                const es = ce * ce * (3 - 2 * ce); // smoothstep ease
+                monolith.position.y = -46 + 60 * es;
+                monolith.visible = ce > 0.001;
+                monoBeam.visible = ce > 0.001;
+            }
+            if (camera) {
+                for (let i = 0; i < haloSprites.length; i += 1) {
+                    haloSprites[i].quaternion.copy(camera.quaternion);
+                }
+            }
             uTime.value = time;
             relic.rotation.y = time * 0.08;
             relic.position.y = 19 + Math.sin(time * 0.5) * 1.2; // slow idle bob (floats on the horizon)
@@ -1296,6 +1954,7 @@ export function create({
         dispose() {
             if (typeof window !== 'undefined') window.removeEventListener('mousemove', onMouse);
             if (window.__VESPER__) delete window.__VESPER__;
+            comboProgressByPlayer.clear();
             post?.dispose();
             if (reflection) { scene.remove(reflection.target); reflection.dispose?.(); }
             if (heroHemi) { scene.remove(heroHemi); heroHemi.dispose?.(); }
@@ -1306,7 +1965,7 @@ export function create({
                 o.geometry?.dispose?.();
                 o.material?.dispose?.();
             });
-            skyMat.dispose(); peakMat.dispose(); shardMat.dispose();
+            skyMat.dispose(); peakMat.dispose(); fieldMat.dispose(); if (heroMat) heroMat.dispose();
             disposeTextures.forEach((t) => t.dispose?.());
             if (envTexture) { if (scene.environment === envTexture) scene.environment = null; envTexture.dispose?.(); }
             lutTex?.dispose?.(); // 2.2

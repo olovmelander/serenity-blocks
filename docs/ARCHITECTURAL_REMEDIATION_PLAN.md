@@ -307,6 +307,20 @@ Host double-apply (buffers-only, ffa:1582-1591 with the Phase 5 cross-link comme
 - **Risks:** three.js node-material type-lag — keep themes/TSL out of scope permanently; screenshots are the safety net there.
 - **Validation:** ratchet file committed and enforced; `tsc --noEmit` green in CI; a PR deleting a pragma fails.
 
+**Implementation note (2026-07-11):** the live FFA snapshot contract is now bound end to end.
+`types.d.ts` distinguishes the authoritative builder, packed binary-v7 body, hydrated/apply shape,
+wrapper, resync state, and download progress; the FFA builder/consumer, binary codec, and Steam
+wrapper all carry `@ts-check` and are locked into the 18-file pragma ratchet. Packed baselines and
+hydrated/apply snapshots are structurally distinct; hydration deep-isolates every nested live-state
+reference from the retained delta baseline. The JSON fallback now enforces the v7 player/queue/grid
+bounds and validates nested cells, active pieces, board-sized locked components, garbage metadata,
+and blind timers before apply. Download-join progress + the lobby spectator roster are typed,
+full/delta decode share the canonical string next-piece shape, and nullable/invalid results are
+rejected.
+The binding also makes the remaining v7 transport omissions explicit rather than pretending they
+are serialized: `hotPotatoState`, `lastAttackerId`, and `lockSeq` (plus five extended garbage fields),
+and resync's missing input acknowledgements/digest remain protocol work for Phase 6A.
+
 ### Track 3b — Behavioral tests for the untested high-blast-radius surfaces
 
 | Test | What it pins | Effort |
@@ -318,6 +332,11 @@ Host double-apply (buffers-only, ffa:1582-1591 with the Phase 5 cross-link comme
 | Phaser-board smoke | Boot a board scene, drop a piece, clear a line, assert score — the only test that would catch a Phaser-integration break | M |
 | Behavioral release gate | Replace the substring checks in `release-gate-check.mjs` with ≥1 behavioral assertion per gated subsystem (call `getReleaseGateSnapshot()` and assert shape/thresholds; activate 2 themes under jsdom and assert lifecycle events), wired as `release-gate.test.js` riding the normal hard gate | M |
 | fast-check property tests *(new)* | One dependency, two properties to start: (a) metamorphic determinism — same seed+input stream twice → identical board digest; (b) adversarial decoder — arbitrary bytes into `decodeSnapshot`/`decodeDeltaSnapshot` → throws or returns well-formed, never hangs/allocates unbounded (this is the Phase 6A.9 fuzz target, started early) | M |
+
+**Implementation note (2026-07-11):** the behavioral release gate is landed. The packaging-invoked
+CLI now executes `tests/unit/release-gate.test.js`; the suite exercises the real AppID policy,
+performance snapshot aggregation, preload-error recovery, runtime theme-soak/benchmark hooks, and
+two complete `ThemeManager` lifecycle transitions. The former source-substring scans are deleted.
 
 ### Track 3c — GPU gate (TDR-safe, off the dev machine)
 
@@ -436,6 +455,12 @@ The Riot/Factorio retrofit playbook, adapted:
 - **The trap the old plan missed:** `demo-state.js:restoreGameStateSnapshot` and FFA `_applySnapshotState` bulk-assign fields — the boundary must include a **sanctioned bulk-restore** (`restore()`) or those two become permanent bypasses.
 - **Validation:** fitness rule: no direct writes to the core field set outside `game.js` (baseline-then-shrink); the per-lock rebuild count drops (free perf win — one grid, no rebuilds).
 
+**Completion note (2026-07-13):** closed. External garbage and snapshot writes now pass through
+`applyGarbage()` and `restoreBoardState()`; render synchronization is version-gated instead of
+rebuilding the board every frame; and the shrink-only `board-write-sites` fitness ratchet holds at
+17 sanctioned legacy sites. `markBoardDirty` is exported only by the canonical `board.js` module,
+so `game.js` no longer provides a second mutation-surface alias.
+
 ### 5.2 Pure synchronous `resolveCascade` *(L)*
 - **What:** extract `resolveCascade(boardGrid, lockContext) → {boardAfter, waves, holeMasks, scoreDelta, levelProgression, perfectClear}` from the 350-line async `processPhysics` while-loop; `physics.js` computes the full result first, then drives flash/gravity animation as a *replay of precomputed waves*. Adopt the stack-pop flood fill (the live `findConnectedComponents` uses `queue.shift()` — O(n²) confirmed at `physics.js:118`; matters on 1000-row Infinity boards) + scratch-buffer reuse.
 - **What will fight back (measured, previously unstated):**
@@ -443,30 +468,295 @@ The Riot/Factorio retrofit playbook, adapted:
   - **The animation-replay contract is a real deliverable, not an implementation detail:** `processPhysics` fires **18 distinct callbacks** (`triggerCombo`, `onLineClear`, `onScoreAdd`, `onLevelUp`, `onTSpin`/`onB2B`, flash stages, `onGravityStep`, `onCascadeComplete`, `onPerfectClear`, `onGarbageReady`, …). Write the schedule — which callback fires at which wave/sim-time with which payload — *before* extraction, and pin it with a characterization test; otherwise 60+ theme/juice consumers break unreviewably.
   - **Decision to make now, not defer:** score/level currently mutate *per wave inside the loop* and 30 Hz snapshots can capture mid-cascade values. Choose **commit-per-wave** (replaying waves mutates incrementally — recommended: preserves wire-visible timing) or commit-at-end (accept the snapshot-timing change and pin it with a test). Record as an ADR either way.
   - **The replay clock:** `waitForPhysicsDelay → advanceReplaySimulationClock` keeps `simTimeMs` honest across animation delays; the pure core must consume deterministic sim-time per wave or every existing demo's input timestamps misalign. Existing golden demos (`demo-replay-clock.test.js`, `ffa-demo-replay-determinism.test.js`) must stay green throughout — they are the abort tripwire.
-- **Why (the player-facing KPI):** input primitives hard-return while `isProcessingPhysics`; a 4-wave cascade blocks input **330–400 ms** (70 ms × speed per wave + 16 ms per gravity step), >1 s on deep Infinity cascades; only 4 moves are buffered, drops are discarded. Post-5.2 resolution is sub-ms and input applies next tick: **KPI = p95 input-to-sim-application during cascades, >300 ms → ≤ 16.7 ms.**
+- **Why (the player-facing KPI):** input primitives hard-return while `isProcessingPhysics`; a 4-wave cascade blocks input **330–400 ms** (70 ms × speed per wave + 16 ms per gravity step), >1 s on deep Infinity cascades; only 4 moves are buffered, drops are discarded. Pure resolution makes next-tick input possible, but the later replay/input-decoupling flip must stop async animation from holding `isProcessingPhysics` before it is achieved: **KPI = p95 input-to-sim-application during cascades, >300 ms → ≤ 16.7 ms.**
 - **Validation:** golden-demo suite byte-identical before/after; hole-mask outputs equal the legacy path over the banked-log corpus; the 5.10 shadow diff clean over ≥50 sessions. **Abort:** if hole-mask parity can't be reproduced, stop and fix parity before any cutover — do not ship divergent garbage fairness.
 
+**Groundwork note (2026-07-13):** `prepareResolvedPhysics(gameState)` now exposes the V2 resolver's
+callback-free, non-mutating result synchronously, and `processPhysicsResolved` can replay that exact
+prepared result without resolving twice. Process-local provenance rejects cloned, mutated, or stale
+preparations before touching live state. The prepared/fused paths have equal full callback logs and
+end state, while ADR-0011 per-wave commits and completion-before-spawn remain unchanged. This is the
+branch point for later input/animation decoupling; it does not yet lower input-to-sim latency or
+resolve the spawn-during-animation policy.
+
 ### 5.3 Fixed-tick simulation *(L)*
-- **What:** a 60 Hz canonical tick (`simTickMs` = 16.667 — guideline DAS/ARR/lock-delay are natively 60 Hz-frame quantities; TETR.IO's engine is the same shape). `processAutoDrop` is already a real fixed-step accumulator; the un-quantized remainder is **five scattered accumulators**: DAS floats on the `InputController` singleton (`controls.js:123-155`, with live `window.settings` reads per call), lock-delay (`game.js:207-209`), hit-stop (decremented in *three* places), blind timers (two places), and `simFrame` itself (derived by rounding, not stepped). Convert all to integer tick counters in snapshotted state; ban float ms accumulators in sim state (fitness rule, 3d). Unify the delta-clamp policy (today: 100 ms in two places, unclamped in `updateGame`) into the runner with Quadra's explicit catch-up rule: owed >300 ms → warp forward with a log; sleep/background-tab resume → clamp, never simulate the pause.
+- **What:** a 60 Hz canonical tick (`simTickMs` = 16.667 — guideline DAS/ARR/lock-delay are natively 60 Hz-frame quantities; TETR.IO's engine is the same shape). `processAutoDrop` is already a real fixed-step accumulator; the un-quantized remainder is **five scattered accumulators**: DAS floats on the `InputController` singleton (`controls.js:123-155`, with live `window.settings` reads per call), lock-delay (`game.js:207-209`), hit-stop (decremented in *three* places), blind timers (two places), and `simFrame` itself (derived by rounding, not stepped). Convert all to integer tick counters in snapshotted state; ban float ms accumulators in sim state (fitness rule, 3d). Unify the delta-clamp policy (today: 100 ms in two places, unclamped in `updateGame`) into the runner. ADR-0012 applies the Quadra overload lesson without manufacturing un-simulated state: retain/catch up at most 300 ms, rebase and log excess wall-time debt, preserve contiguous tick IDs; sleep/background-tab resume clamps and never simulates the pause.
 - **Subsumes:** the default-off `simTickNetcode` host accumulator (`ffa:374-377,455-476`) — fold it in rather than maintaining a parallel tick.
 - **Electron nuance:** rAF throttles in occluded windows; online matches must keep simulating — drive the sim from the setTimeout path (`frame-rate-controller.js` already can), rAF is only the render trigger (this is also `UnifiedMultiplayerLoop.neverPause`'s job — see 5.5).
 - **Validation:** the 5.9 multi-rate soak (same input stream at 30/60/144 fps + pause/resume → identical digests) becomes runnable and green.
+
+**Groundwork note (2026-07-12):** `src/core/fixed-tick-clock.js` owns the pure canonical 60 Hz
+scheduling math. It is time-conserving across floating-point boundary tolerance and proven at
+30/60/144 Hz. `src/core/simulation-tick.js` owns the one-tick order: advance
+`simFrame`/simulation time, decay blind timers, ingest input, reject commands during hit-stop,
+consume exactly one hit-stop tick, then advance physics only when unfrozen. Structured
+applied/deferred/rejected dispositions make the policy observable.
+
+The first integer timer family is also dark and dual-clocked: lock delay owns `lockDelayTicks` /
+`lockTimerTicks`, snapshots restore those fields with legacy-ms derivation, and the explicit
+one-canonical-tick `processAutoDrop` path reaches the same tick-30 lock at 30/60/144 Hz. The legacy
+millisecond path remains unchanged as rollback (including its characterized 30 Hz float-boundary
+delay); the default-off FFA `fixedTick` adapter is now its first live consumer.
+
+Hit-stop is now the second dark dual-clock family: `hitStopTicks` round-trips through demo
+checkpoints with legacy-ms backfill, and `consumeFixedHitStopTick` quantizes direct 30/70/110 ms
+producer writes to 2/5/7 complete frozen ticks. The shared tick pins FFA's policy: physical
+hold/release state and DAS phase continue advancing, but gameplay commands are rejected through the
+final frozen tick and accepted on the next tick. The live FFA authority boundary now enforces the
+same rejection for delayed jitter-buffer packets and acknowledges deterministically consumed
+sequences. The hit-stop preference is latched into `GameState` and replay headers so a local
+reduced-motion setting cannot change replay or fixed online outcomes. Existing legacy loops still
+consume `hitStopRemaining` until their flagged cutover.
+
+Blind is the third dual-clock timer family: field and pending durations now retain their legacy-ms
+wire fields while exact integer counters are snapshotted and restored. The fixed path reaches the
+same expiry tick at 30/60/144 Hz, detects direct legacy writes before consuming a tick, and clears an
+explicit `null` FFA blind snapshot instead of retaining stale state.
+
+FFA is the first default-off consumer under the canonical `fixedTick` flag (with `simTickNetcode`
+accepted only as a compatibility fallback). When enabled, `UnifiedMultiplayerLoop` gives host and
+peers one recursive-timeout simulation owner; each callback passes monotonic elapsed time to
+`runFfaFixedTicks`, the sole step/catch-up planner, while rAF performs render/stats only. Held input
+advances once per canonical tick, and the host stamps `fixed60-v1`/`legacy-variable-v1` into match
+configuration so peer-local flags cannot split the clock. Generation fences invalidate stale timer
+and rAF callbacks across stop/restart, pause/resume, and live fixed/legacy ownership changes. The
+same round/run ownership fence now applies within a catch-up callback and between boards, so a
+synchronous top-out restart cannot carry an old-round tick, input finalization, accumulator debt,
+peer flush, or host snapshot into the reset round. The cutover preserves the established online
+lock-score rule. Host promotion deliberately rolls back to 30 Hz legacy timing and announces that
+clock because migration snapshots do not yet contain complete continuation state. Match start,
+migration, resync, and promotion all use one atomic clock transition that retargets live loop
+ownership and clears accumulator/held-input timing.
+
+Peer held-input actions generated on separate catch-up ticks now carry a canonical sim-tick/ordinal
+stamp. The host maps the structurally validated stream onto a persistent per-peer host schedule, so
+separate catch-up ticks and separate groups cannot collapse when several packets arrive in one host
+turn. Old peers omit the fields and keep legacy scheduling.
+
+One peer flush is now a bounded canonical group: the 264-command ceiling is derived from the
+64-edge queue plus five catch-up ticks of worst-case left/right ARR and SDF. Wire packets remain at
+the existing 20-command anti-spam cap, with stable group/chunk indices and a shared ordinal anchor;
+the host exposes nothing to scheduling until every indexed chunk is present. Sequence continuity,
+round generation, one sim tick per ordinal, the five-ordinal span, the shared 64-edge allowance,
+and the 40-repeat-per-tick producer shape are validated atomically. The first observed sequence must
+continue the host's last applied ACK; within a round, transport group IDs are strictly increasing (recovery
+may skip retired IDs), command sequences remain contiguous, and sim-tick/ordinal gaps must agree. Each
+accepted host-stamped round resets the input sequence, group
+sequence, pending/history queues, ACK/progression maps, and jitter clock epoch as one round boundary
+before new-round input ingress. Stale grouped traffic is rejected by generation before chunk
+assembly, so a late partial cannot poison a reused group ID or dispatch legacy commands into the
+fresh board.
+
+Validated commands receive persistent host targets with a 32-tick future window. Complete groups
+beyond that window stay in a FIFO (bounded at 256 groups and 4,096 commands) and drain on each host
+fixed tick instead of being rejected and wedging exact continuity; bound overflow explicitly removes
+the peer with `fixed_input_backpressure_overflow`. Incomplete, duplicated, oversized, or malformed
+groups fail closed; exact replays are ignored, while a forward same-round sequence gap preserves the last
+contiguous progress, clears queued later groups, and enters the exact input barrier for replay. Impossible
+sim-tick/ordinal chronology and bounded-queue overflow still remove the peer. Phase 6A still owns direct
+per-group delivery ACK/retry when a reliable group or restart control packet itself is lost. Only the
+structural and progression brand bypasses the jitter-sensitive wall-arrival counter;
+ungrouped/legacy traffic retains the 140-input limit. The
+30/60/144 Hz instant-SDF harness and an exact five-tick/64-edge producer-maximum fixture pin the
+packet and group bounds.
+
+Host jitter-buffer frames are now taken once per canonical tick and their valid commands are
+applied inside each board's input phase, after clock/blind advancement and before hit-stop/physics.
+Every consumed disposition advances only the contiguous ACK prefix; malformed entries fail closed; and frame ownership
+is finished exactly once even when a board tick throws. The cursor advances after local held ingress,
+preserving the configured jitter depth and the legacy held-before-buffer order.
+
+Fixed-tick zero-wave locks now finalize and spawn synchronously on the lock tick. The 30/60/144 Hz
+harness proves identical lock/spawn ticks, board digest, piece queue/RNG cursor, drop phase, and
+next-tick gravity. Variable-delta play remains on the Promise continuation, and any initial full row
+still takes the certified async cascade replay, preserving ADR-0011's per-wave callback/commit order.
+The spawning command is also an input-phase boundary: later same-tick commands reject before local
+prediction or wire enqueue, so zero-interval soft-drop repeats cannot drive a newly spawned piece or
+overflow the peer batch limit.
+
+Composition tests run the real FFA planner and produce equal simulation-tick counts with 30/60/144 Hz
+render callbacks. The overload policy now carries all debt through 300 ms across bounded callbacks;
+only excess wall time emits `sim_clock_warp`, and tick IDs stay contiguous per ADR-0012. Packaged
+Electron keeps timers active while occluded via
+`backgroundThrottling: false`; ordinary browsers remain unproven.
+
+A live peer that actually discards wall-time debt now requests exact host state after its retained ticks
+finish, but only while the same round/run ownership remains current. The shared semantic request boundary
+fails closed for spectators, dead/waiting/disconnected players, unresolved hosts, and every active
+download/apply/input-barrier phase; transport and host cooldowns plus PREPARE reuse coalesce duplicates.
+The authoritative host never imports peer truth or proactively emits an unpaced all-peer recovery burst
+when its own wall clock rebases. Replicas that demonstrably diverge from a host rebase use the default-on
+confirmed-digest path to request their own exact recovery.
+
+Normal single-player is the second default-off `fixedTick` consumer. Its existing
+`FrameRateController` is the only wall-clock owner; a mode-local helper plans canonical ticks and fences
+the exact `GameState` plus session generation, while render remains decoupled. Player-0 keyboard and
+gamepad use identity-guarded adapters over the shared GameState-owned input engine, with first-device
+arbitration and pause/stop clearing. The flag-off standard and hybrid callback shapes remain pinned,
+DemoPlayer never installs the adapter, and Local MP, `updateGame`, and the global legacy
+loops are unchanged. Fixed recordings use rules version 2.1 and declare
+`sim.simulationClock = fixed60-v1`; the current
+legacy replay engine rejects them clearly rather than interpreting their tick-stamped commands under
+variable-delta semantics. The local high-score table and Steam score/stat sinks are still unversioned,
+so experimental fixed-clock sessions keep demo auto-save and an explicitly unranked session modal but
+fail closed before writing or presenting those legacy result stores. Single-player stop/restart now owns
+one immutable generation-stamped result bundle: replacement starts wait for physics/demo teardown, and
+late score/proof/UI continuations cannot retarget a newer `GameState`. Legacy-clock sessions retain their
+existing persistence and ranked-modal behavior; §5.8 must version the sinks before fixed results can
+graduate into them.
+
+Infinity is the third default-off `fixedTick` consumer. `FrameRateController` remains its sole wall-clock
+owner, and the same generation-fenced single-board runner drains player-0 keyboard/gamepad input through
+the GameState-owned engine. Fixed input calls the core movement functions directly; hard and soft drops
+carry `{ fixedTick: true, inputPhase: true }`. The session latches deterministic board-anchor spawning,
+per-player handling, reduced-motion hit-stop policy, and `fixed60-v1`; later settings, OS accessibility,
+theme tier, flag teardown, or renderer interpolation cannot change those rules mid-session.
+
+Fixed rendering is observer-only: it syncs the scene, presentation camera, minimap, and stats but never
+computes top-row truth, expands the grid, or detects roof game-over. After each completed canonical tick,
+`infinity-simulation-maintenance.js` performs those writes only when async physics is stable, then hands
+`rowsAdded` to a presentation-only camera compensator before the one-shot roof transition. Stop retires
+the timer/input owner synchronously before awaiting physics; restart/deactivation and every spawn,
+game-over, exploration, delayed-camera, modal, and result continuation are fenced to the exact session.
+The legacy BoardJuice `window.move`/`window.rotate` decoration now lives in an identity-owned UI adapter,
+so restart cleanup cannot clobber a replacement owner and the core DOM-global ratchet shrinks.
+The flag-off RAF/hybrid callbacks and ranked `legacy-variable-v1` behavior remain pinned. Fixed and unknown
+clocks are explicitly unranked and fail closed before every local or Steam legacy sink until §5.8 versions
+those stores. A real seeded zero-wave fixture composes board-anchor spawning, the runner, synchronous
+fixed lock/spawn, and a 10-row maintenance expansion to the same canonical projection at 30/60/144 Hz.
+
+Odyssey is the fourth default-off `fixedTick` consumer. The mode latches one simulation clock per
+activation and copies it into every generation-fenced attempt, so retry cannot mix fixed and legacy rules.
+Its existing `FrameRateController` is the sole fixed timer; player-0 keyboard/gamepad edges drain inside
+`advanceTick`, fixed drops carry the canonical input-phase token, and fixed hit-stop no longer depends on
+live settings or theme tiers. Render only synchronizes presentation. Canonical tick completion owns level
+time, score/victory evaluation, and stable Infinity roof maintenance; attempt retirement synchronously
+disposes the exact input/runtime owner before draining captured cascade physics.
+
+Infinity/hybrid Odyssey levels use board-anchor spawning and reject Phaser-derived `cameraRow` writes.
+Their deterministic virtual window includes authored starting garbage and bottom-anchors only its first
+spawn; later spawns return to occupied-board derivation. This preserves the legacy first-spawn row for
+0/6/16-row fixtures while removing renderer interpolation from simulation truth. Fixed and unknown
+attempts show explicit experimental/unranked completion or failure messaging, but cannot write campaign
+completion, unlocks, attempts, session playtime, local storage/cloud events, or Steam stats/leaderboards.
+The flag-off HybridEngine call, RAF/hybrid callback shapes, campaign persistence, and Steam behavior remain
+pinned. This adapter is infrastructure only: async cascade animation and victory-lap document input still
+sit outside canonical tick ownership, so it is not Odyssey determinism certification or Phase 5.3 graduation.
+
+Local Multiplayer is the fifth default-off consumer for the deliberately narrow standard, all-human
+rules envelope. One shared match accumulator advances every eligible board in stable player-index order
+under the existing `FrameRateController`; four independent catch-up planners are forbidden. Keyboard and
+gamepad adapters claim exact per-player `GameState` identities, arbitrate the active device per player,
+and drain the GameState-owned DAS/edge queues only inside that player's canonical tick. Fixed drops carry
+the canonical input-phase token, hit-stop uses the match-latched policy, and render only synchronizes
+boards and presentation stats. The match clock survives in-place round resets while each board clock and
+the round-duration baseline restart. Fixed rate metrics use captured simulation time, excluding countdown,
+pause, victory animation, and delayed teardown wall time.
+
+Round replacement synchronously retires the exact timer/input owner, marks the captured boards stopped,
+and drains their cascade promises before reset. Fixed top-outs queue until the full player barrier has
+completed, then one stable batch applies deaths and evaluates the round/match outcome; simultaneous 2P
+top-outs are a draw rather than an index-order victory. Occupied/refusing frame or input owners are never
+stolen: startup atomically relatches every board to `legacy-variable-v1` and uses the extracted legacy RAF
+loop. Bots, Hot Potato, time limits, and Infinity LMS likewise fall back as a whole because their current
+truth still depends on unseeded randomness, wall time, or renderer-derived camera state. Flag-off DAS,
+bot, blind, Infinity, Hot Potato, render, and callback behavior remains pinned.
+
+This Local adapter is infrastructure, not determinism certification: seeds are not yet match artifacts,
+animated cascade continuations are still asynchronous, unsupported rule variants remain on the legacy
+loop, and §5.8 has not established a canonical Local result/artifact version.
+
+This is not 5.3 graduation or the full input-unblock KPI. `fixedTick` remains default-off while
+animated cascade completion and its deferred move/rotate replay run through animation promises and
+timers outside the canonical tick. The FFA fixed clock fails closed to legacy when the jitter buffer is
+disabled. Cascade animation/input decoupling, Local-MP variant migration, automatic
+host-stall realignment under physical/browser background-resume behavior,
+wall-time hot-potato/deadlines, complete migration continuation state, and legacy-loop collapse
+remain open.
 
 ### 5.4 One DAS engine, per-player state *(M)*
 - **What:** unify keyboard (`controls.js:111-173`) and gamepad (`gamepad-controller.js:1682-1755`) DAS into one `advanceDas(state, ticks, config)`. **Design constraints discovered:** DAS state must be **per-player, keyed into each `GameState`** (the singleton's `p2_*` slots belong to a different player's board in local MP); the singleton reduces to key→edge detection. Pick one config-propagation model (keyboard reads `window.settings` live; gamepad caches with explicit updates — cache + explicit update wins; live global reads violate the 3d boundary). Preserve the timer-clearing semantics on pause/resume/visibility — the four call sites: `pauseGame`/`resumeGame` clears (`game.js:1275-1277`, `game.js:1288-1291`), the `visibilitychange` clear (`controls.js:546-553`), and the resume clear at `main.js:4795-4796`. Per-player handling (DAS/ARR/SDF) becomes a **sim input** — into the match handshake and the replay header, TTRM-style.
 - **Optional now, cheap forever:** capture input events with subframe timestamps (`{tick, subframe 0-9, key, down|up}`) — costs nothing, future-proofs handling feel and the artifact format.
 - **Validation:** keyboard and pad produce identical repeat sequences for identical hold durations in a table test; local-MP mixed kbd/pad players advance on one clock.
 
+**Groundwork note (2026-07-12):** `player-input-state.js` now owns handling config, branded
+integer fixed-point DAS/SDF phase, and a bounded tick/subframe/sequence edge queue per `GameState`.
+The 60 kHz integer phase clock preserves legacy 40 ms ARR's 2/2/3-tick cadence without float-ms
+simulation accumulators. Overflow and malformed restore fail closed so a lost release cannot leave a
+stuck hold; round reset preserves the GameState-owned object identity; demo checkpoints deep
+capture/restore it while legacy checkpoints clear safely. Keyboard and gamepad implementations are
+differentially pinned to the pure unit-generic engine, and the tick-native command/disposition log is
+identical at 30/60/144 Hz render rates. `InputController` now exposes a fixed-tick keyboard edge
+adapter with next-tick stamps, per-player routing, physical-key latching, overflow fail-closed
+behavior, and cleanup/visibility/mode-swap clearing; it suppresses the singleton DAS whenever the
+adapter claims a key. Online FFA now binds both P1 keyboard and gamepad edges while the host-stamped
+fixed runner owns the match. The pad's render-rate poll only detects physical edges; held repeats
+come from the same GameState-owned engine, while direct callbacks and the legacy pad DAS are
+suppressed for the claimed slot. Edges drain in `advanceTick`, call `sendInput` exactly once,
+preserve peer prediction and BoardJuice, and fail closed for spectators/dead/awaiting-spawn roster
+entries. Releases retain their original owner across state/mode swaps; visibility, disconnect,
+disable, teardown, and overflow clear without rearming a physically held control. Because the
+canonical hold state is action-level rather than source-refcounted, the first keyboard/gamepad
+action claims the match input device until a visibility/pause/lifecycle reset; the other device is
+suppressed instead of being allowed to cancel the owner's hold. Handling config is match-latched
+rather than reread from live UI settings. Demo v2 headers now declare accepted-command
+input semantics and capture handling, while seek suppresses checkpoint DAS restoration to avoid
+replaying repeats twice; unsupported rules/input/tick headers fail closed before mode startup. Still
+Legacy keyboard and gamepad millisecond paths now also delegate to `core/das.js` without changing
+their lifecycle or return contracts; a zero-baseline `das-algorithm-clones` fitness rule prevents
+repeat arithmetic from returning to either UI controller. Local MP's default-off fixed path now
+binds keyboard/gamepad adapters to each exact player state, arbitrates the active device per player,
+and advances every player's repeats under one shared match clock. Still open: online
+handshake/snapshot handling fields and physical keyboard/gamepad feel validation.
+
 ### 5.5 Collapse the loops *(M)*
 - **What:** the real inventory is **five live sim-loop implementations plus two reachable legacy fallbacks** (recursive `gameLoop`; `FrameRateController` hybrid; `LocalMultiplayerMode`'s rAF **which bypasses `updateGame` and re-implements hit-stop/blind inline**; `UnifiedMultiplayerLoop`; `DemoPlayer`'s loop; plus `main.js:4804/4852` legacy loops — one of which double-advances DAS — reachable via the catch at `main.js:4329-4341`). Collapse onto one runner owning delta clamp, pause policy (carrying `neverPause` — the competitive-MP must-not-pause latch, `unified-game-loop.js:22-25`), hit-stop, blind timers, and catch-up. **Delete** the legacy `main.js` loops outright; retire `MAX_CONCURRENT_LOOPS`.
 - **Exit criterion (sharper than "one runner"):** every mode advances through one `advanceTick` — the `updateGame`-bypass class (LMM :857, unified :206 call `processAutoDrop` directly, silently skipping anything added to `updateGame`, e.g. the DAS advance) is eliminated. Fitness rule: exactly one rAF sim driver under `src/core/**`.
 - **Perf honesty:** negligible frame-time win — the payoff is the deleted bug classes (double-advance, divergent clamps, duplicate-rAF). Don't promise FPS here.
+
+**Groundwork note (2026-07-13):** Local MP now cancels and generation-fences its rAF owner before
+each start and on stop. The previously paused loop therefore cannot resume beside the new owner after
+every round restart. Its asynchronous start sequence is separately generation-fenced across theme,
+intro, loader, and countdown waits, so deactivation cannot later spawn pieces, reveal boards, play
+countdown sounds, or start a stale loop. The extracted legacy loop remains the whole-match rollback
+path, while the standard all-human rules envelope can run through one shared canonical accumulator
+with exact timer/input ownership and stable same-tick top-out arbitration. The flag remains default-off;
+unsupported Local variants, DemoPlayer, the mode-owned flag-off loops, and final one-runner deletion are
+still open, so this is not §5.5 graduation.
+
+The two reachable `main.js` error-fallback schedulers are now deleted rather than migrated. `startGame()`
+activates and starts only through `GameModeManager`; a failed start never launches the old single-player
+or two-player loop, and the manager best-effort stops the exact mode if it had already claimed running
+ownership. The retired countdown, loop, and stats methods plus their imports removed 315 lines from
+`main.js`; a source tripwire prevents that parallel family from returning. The shared core `gameLoop`,
+DemoPlayer, Unified Multiplayer, and Local's extracted whole-match rollback remain live consumers and
+must be converged separately.
 
 ### 5.6 PRNG + always-seeded starts *(M)*
 - **What:** replace the 233,280-state LCG with **sfc32 (quality) or splitmix32 (simplicity)**, seeded via xmur3 from a ≥64-bit match seed, with **per-subsystem streams derived by label** (`xmur3(seed + ":pieces:" + playerId)`, `":garbage:" + playerId`, …) so one subsystem's draw count can never shift another's sequence — and a late joiner can reconstruct *their own* stream from (seed, playerId, drawCount) independent of everyone else.
 - **Traps the old plan missed:** (a) **there are two LCG copies** — `seededRandom` (`utils/helpers.js:21-37`, has the `getState/setState` seam) and an inline clone in `ffa-p2p-game-state.js:2178-2185` *without* the seam; unify first or the swap misses the online path. (b) **Unseeded play exists**: `randomGenerator` defaults to `Math.random` (`game.js:379,498`) and seeds come from `Date.now()`/`Math.random()` in two modes — the 5.7 artifact is unverifiable for any unseeded match; make the constructor require a seed. (c) 7-bag draws must use high bits / rejection sampling, not modulo of low bits.
 - **Checkpoints:** don't delete them — **demote to derived seek keyframes** (never authoritative). Pure-input replay makes "seek to minute 10" an O(full-resim) operation; checkpoints keep scrubbing O(300 frames) with the same trust win.
 - **Validation:** bag-distribution χ² sanity; old v2 demos replay under a `rulesVersion` gate or are explicitly marked legacy (the RNG/bag algorithm is versioned separately — 5.8).
+
+**Groundwork note (2026-07-13):** FFA seed ownership is now round-current and zero-safe. Explicit
+host seeds (including `0`) survive start, peers reject missing seeds before adopting a generation,
+and both host and peer publish the accepted restart seed before reset, ready-barrier deferral, or a
+resync-visible download window. The reliable resync header therefore reports the accepted current
+round seed rather than the stale prior-round seed; the sidecar remains the owner of the exact RNG
+cursor. This intentionally leaves the LCG and all generated sequences unchanged; `rngV2`
+cannot select a live algorithm until the choice is session-global and represented by the demo/sim-
+version gates.
+
+`session-rng.js` now owns strict uint32 seed normalization, crypto-first seed generation, the frozen
+`{ algorithm: 'lcg-v1', seed, stream: 'pieces:shared-v1' }` session descriptor, and the one binder for
+the existing LCG. Every new non-demo Single Player session binds before its first bag independently of
+recording. Fixed-clock Infinity and Odyssey attempts do the same while their flag-off legacy paths stay
+unchanged. Local Multiplayer's initial and round-reset paths now share one captured descriptor across
+all player boards; reset clears both the descriptor and stale shared seed, and round ownership fences
+descriptor replacement even though player objects are reused. Production-path 30/60/144 fixtures now
+exercise this LCG seam rather than manually injecting the future sfc32 implementation. `rngV2` remains
+dark: selecting sfc32 still waits for the §5.8 session-global algorithm/rules gate, and unseeded legacy
+constructors/fallbacks are not yet §5.6 graduation.
 
 ### 5.7 Canonical match artifact *(M)*
 - **What:** one frame-indexed artifact serving replay, netcode debugging, telemetry, and support (Quadra #2/#3/#9 as the model):
@@ -479,6 +769,13 @@ The Riot/Factorio retrofit playbook, adapted:
 ### 5.8 Sim-version gates *(M)*
 - **What:** version rule-changing behavior separately from app version — attack scaling, garbage/crowding, level progression, scoring, RNG/bag algorithm — in a **central rules registry** (not `if (version>=23)` sprinkled through the sim, Quadra's admitted mistake). Old artifacts replay bit-exact forever; balance patches can't invalidate ranked evidence; "minimum version required by the configured rules" keeps mixed-version lobbies joinable when they don't use new semantics.
 - **Validation:** golden rule fixtures (3b) keyed by simVersion; a v-old artifact verifies after a deliberate balance change on main.
+
+**Groundwork note (2026-07-13):** demo v2 now carries a simulation-clock discriminator. New legacy
+recordings stay on rules version 2.0 and stamp `legacy-variable-v1`; fixed single-player recordings use
+rules version 2.1 and stamp `fixed60-v1`, and artifacts
+without the additive field normalize to legacy for compatibility. DemoPlayer fails closed on fixed or
+unknown clocks until the corresponding replay adapter exists. This prevents cross-clock misplay but is
+only one header gate; the central rules registry and complete sim-version negotiation remain open.
 
 ### 5.9 Determinism test harness *(M)*
 - **What:** (a) multi-rate soak — same input stream at 30/60/144 fps with pause/resume, cascade-heavy boards, assert identical (board digest, score, garbage sequence); (b) **save/restore identity** (the property rollback later depends on): `digest(restore(save(S))) === digest(S)` sampled across a fuzzed match — GGRS-synctest/Factorio-heavy-mode style; (c) the fast-check metamorphic property (3b) promoted to run against the fixed-tick sim; (d) `?heavyDeterminism=1` dev mode: per-tick full-state ring buffer, flushed on mismatch, plus a Node replay runner that re-simulates banked logs and binary-diffs the **first divergent tick** (Factorio's workflow).
@@ -514,9 +811,9 @@ Mark `ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md` as the tactical pre-phase 
 
 | Module | Pulls from (today's lines) | ~Size |
 |---|---|---|
-| `ui/multiplayer-countdown.js` — **do first, zero risk**: `showCountdown` already emits `MULTIPLAYER_EVENTS.COUNTDOWN` (zero subscribers today); build the `CountdownOverlay` subscriber, verify parity, delete the DOM block | 4941–5087 | ~150 |
+| `ui/multiplayer-countdown.js` — first UI extraction after its ownership contract is complete: `COUNTDOWN` reports numbers/GO only; remove or repair `main.js`'s dormant fallback writer, then inject one overlay lifecycle with prefix/open/fade/hide/completion semantics instead of importing UI from core | 4814–4955 | ~150 |
 | `ffa/resync-coordinator.js` — chunked transfer, download-join fences, CRC32/base64 helpers | 63–124, 3193–3592 | ~500 |
-| `ffa/network-handler-registry.js` — declarative `{type, role, handler}` table replacing `setupNetworkHandlers` (**34** registrations today, not the review's 28) | 774–1250 | ~450 |
+| `ffa/network-handler-registry.js` — declarative `{type, role, handler}` table replacing `setupNetworkHandlers` (**31** supported registrations after dormant aliases and direct input IDs were removed) | 774–1250 | ~450 |
 | `ffa/snapshot-codec.js` — build/apply/digest/change-detection (**only after 3a types cover the MP fields** — these are the drift sites) | 2291–2494, 2883–3192 | ~550 |
 | `ffa/input-pipeline.js` — send/batch/jitter/apply/prediction | 1412–1802, 3869–3925 | ~450 |
 | `ffa/garbage-system.js` — insert/counter/prediction/idempotent adopt | 1803–2046, 4140–4213 | ~350 |
@@ -527,10 +824,51 @@ Mark `ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md` as the tactical pre-phase 
 - **House pattern to name:** *netcode emits facts on the bus; UI components own DOM; mode classes wire lifecycles* (the four `_registerEffectHandlers` bridges already follow it).
 - **Validation:** MP suite + golden event stream green after every extraction commit; god-file ratchet strictly decreasing; exit = no networking file > ~800 lines.
 
+**Groundwork note (2026-07-13):** the prerequisite golden now drives two real mock
+`SteamNetworking` endpoints through a serialized FIFO wire and pins the 12-message, sole-HELLO,
+WELCOME-first join → resync →
+ready → start → input → binary-keyframe trace plus host net events. Countdown ownership is now
+generation-fenced across superseding shows, hide, and cleanup, with exact timer/rAF timelines pinned;
+the deferred-rAF off-by-one was fixed to emit `5,4,3,2,1,0,GO`. DOM extraction remains intentionally
+open: the event lacks overlay lifecycle facts, `main.js` retains a dormant writer behind a nonexistent
+mode constant, and the FFA animation names have no matching CSS keyframes. Treating this as a pure
+move would freeze those contract gaps into the new component. Resync extraction has therefore advanced
+independently: `ffa/resync-coordinator.js` now owns transfer defaults, byte/CRC/base64 framing, bounded
+window fill, retry/final-ACK timeouts, ACK completion, receive assembly, and cleanup. Transport and
+snapshot decode/hydration/application are injected; the old FFA methods remain thin compatibility
+wrappers, while payload construction and live-state application stay in the class for the later snapshot
+codec/lifecycle slices. Ten transfer characterizations pin retry counts, final-timeout timing, same-peer
+coalescing, duplicate/out-of-order delivery, corruption rejection, peer binding, and the valid final-ACK
+case where individual chunk ACKs were lost. The serialized golden remains exact, and the god class is
+down to 4,728 physical lines after the adjacent request-authorization, download-fence, join-handshake,
+and diagnostics slices. `ffa/net-diagnostics.js` now owns recursive event sanitization, occupied-cell
+counting, stable rule hashing, and counter deltas behind the class's compatibility wrappers; the helper
+is type-ratcheted and the god-file ceiling remains shrink-only. `ffa/join-handshake.js` now owns the
+NET_HELLO/NET_WELCOME/JOIN_REJECTED handlers, with
+protocol admission completed before any roster, spectator, or resync mutation.
+`ffa/network-handler-registry.js` now owns the exact function identities of all 31 supported FFA wire
+subscriptions; setup replacement and repeated cleanup are idempotent, two instances may safely share a
+transport, and teardown returns the shared handler table to its prior baseline. The handler bodies still
+live in the class, so the planned declarative move remains open even though its lifecycle seam is closed.
+
 #### 6A.3 Default-deny protocol policy *(M)*
-- **What:** replace the 11-type allowlist with a **role table in `message-types.js`** (already `@ts-check`ed): `{[msgType]: {sender: 'host'|'peer'|'any', receiver, inMatch?}}` enumerating **all** 34+ types; `_isSenderAllowedForMessage` drops any unlisted type and any role-check failure against `hostSteamId`; keep `_verifyHostReassignment` as the stateful exception for the two migration messages. Adopt Quadra #8's direction-typing (`c2h_*`/`h2p_*` naming) as types are touched. Count rejections per-type in `netDiag`. Note: envelope `matchId/matchNonce/hostSteamId` are **not** authentication (every lobby member learns them via NET_WELCOME); authenticity rests on the transport's Steam identity, and the mock transport's self-reported `from` is precisely what makes spoof *tests* possible.
+- **What:** replace the 11-type allowlist with a **complete protocol catalog in `message-types.js`** (already `@ts-check`ed): every wire value is supported with one or more exact `{sender, receiver}` routes or explicitly unsupported with a reason. Directional relay/request types enumerate tuples instead of using `any`, which would accidentally authorize peer→peer traffic. `_isSenderAllowedForMessage` drops undeclared, unsupported, and role-invalid messages against `hostSteamId`; keep `_verifyHostReassignment` as the stateful election exception for migration. Adopt Quadra #8's direction-typing (`c2h_*`/`h2p_*` naming) as types are touched. Count rejections per-type in `netDiag`. Note: envelope `matchId/matchNonce/hostSteamId` are **not** authentication (every lobby member learns them via NET_WELCOME); authenticity rests on the transport's Steam identity, and the mock transport's self-reported `from` is precisely what makes spoof *tests* possible.
 - **Covers** the five 1.3 quick-fix holes structurally, plus host-side gaps (resync-request rate caps per peer).
 - **Risks / validation:** over-tightening breaks migration/rejoin — land with the existing host-authority tests + per-hole spoof tests + a two-machine migration drill before default-on.
+
+**Implementation note (2026-07-13):** all 48 measured wire values are now constants and catalog keys.
+Thirty-seven are supported with exact route tuples; the three sequence-less direct input IDs, six
+dormant declared IDs, and two legacy reassignment aliases are quarantined with reasons, and their unsafe
+handlers were removed. `GAME_INPUT_BATCH` is the sole peer-command wire lane, so direct packets cannot
+bypass its round, sequence, chronology, recovery-barrier, or bounded-group policy.
+Inbound traffic, outbound sends/broadcasts, and handler registration all fail closed for unknown or
+unsupported values; outbound sender roles are checked too. Directional relay tests pin peer→host and
+host→peer while rejecting peer→peer/host→host. Host chat now derives Steam ID, name, and color from the
+transport-bound roster entry before history/rebroadcast. Migration has the narrow peer CLAIM broadcast,
+roster-seeded real-Steam fan-out, self-identifying successor SYNC envelope exception, election/epoch
+verification, and old-authority resync retirement. Normal resync ACKs remain transfer/peer-bound, while
+requests require a roster player or spectator and a per-peer cadence cap. Code implementation is closed;
+the physical two-machine migration/rejoin drill remains the required release validation for this row.
 
 #### 6A.4 Wire-envelope compaction *(M)* — **measured, and bigger than the old plan claimed**
 - **Current cost:** the dominant 30 Hz delta packet is **44 B of binary payload riding 490 B on the wire — 11.1× overhead** (envelope 242 B of per-session constants + wrapper 188 B + base64 16 B); keyframes 2.4×. Plus a free CPU win: `_originalSize: JSON.stringify(data).length` (`steam-networking.js:494`) stringifies the **entire multi-player snapshot on every 30 Hz broadcast** for a debug stat — delete it.
@@ -538,12 +876,90 @@ Mark `ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md` as the tactical pre-phase 
 - **Sequencing constraint (from the risk review):** if any public build ships before this lands, compaction is a **breaking protocol change against live players** — 6A.5's version negotiation must land *first* in that world. Order inside 6A: 6A.5 → 6A.4.
 - **Validation:** `getPacketStats()` snapshot-bytes p95 before/after against the §9 budget; **abort:** any increase in `deltaDecodeFailures` or `resyncRequestsSent` during a 2-peer soak.
 
+**Groundwork note (2026-07-13):** the non-breaking observability/CPU cut is complete. The redundant
+`_originalSize: JSON.stringify(data)` pass is gone. The Electron send boundary now serializes once and
+returns the actual Buffer length; receive returns the physical packet length already known by Steam.
+`getPacketStats()` therefore reports application-wire bytes rather than the inner binary body's size,
+with separate delta, keyframe, and payload summaries so the 30 Hz delta KPI cannot be hidden by the
+4 Hz reliable keyframes. The §9 budget is correspondingly named `snapshotDeltaWireBytesP95`. Protocol
+1.0.0's JSON/base64 wire shape is unchanged.
+
+The dark protocol-v2 frame codec is now implemented and recorded by ADR-0013. It wraps the exact
+binary-v7 body with a bounded 28-byte header and one 4-byte acknowledgement per packed player; the
+measured 44-byte/two-player delta is therefore exactly the 80-byte target. The codec rejects crossed
+full/delta channels, non-v7 body magic/version, player/ACK disagreement, trailing bytes, and frames over
+the Electron transport's 64 KiB cap.
+
+**Dark cutover note (2026-07-13):** protocol 2.0.0 is now an advertised capability and an end-to-end
+snapshot-only raw lane, selected once per lobby. Protocol 1.0.0 remains the byte-identical default and
+rollback path; a host opts into v2 with `?wireV2=1` (or
+`localStorage.setItem('serenity.wireV2', '1')`). JSON
+snapshots in a v2 session and raw snapshots in a v1 session both fail closed. Electron and
+BroadcastChannel preserve exact byte views; inbound frames rejoin the existing admission, nonce,
+sender-role, replay, baseline, hydration, and dispatch pipeline. Focused real-style/mock parity tests
+cover keyframe→delta, prior sessions, duplicates, malformed frames, wrong authority, migration, and the
+≤80-byte two-player delta. Code implementation is complete behind the flag; the physical two-peer soak
+and mixed-build migration/rejoin drill remain the graduation gate, with any increase in delta decode
+failures or resync requests an abort.
+
 #### 6A.5 Protocol version negotiation *(S–M)*
 `protocolVersion` is a hard-equality string today — any change bricks cross-version lobbies with a bare `net:error`. NET_HELLO carries `[minVersion, maxVersion]`; host picks; `JOIN_REJECTED` gets a user-visible "update required" reason. The 6A.3 role table is keyed by protocol version.
+
+**Implementation note (2026-07-13):** code implementation is closed. NET_HELLO carries a strict
+numeric min/max offer while retaining the legacy exact field; the host selects the highest common
+version allowed by its configured floor and pins that version for the whole lobby. The catalog is keyed
+by selected protocol version, and both transport ingress and egress remain bootstrap-only until the peer
+is admitted. This is deliberately one session codec and snapshot contract, not a per-peer hybrid, so host
+migration preserves the selected version and seeds only the accepted roster. The gameplay envelope is
+still exact version 1: min/max envelope fields declare compatibility but cross-envelope negotiation stays
+closed until there is an explicit session-envelope codec switch.
+
+WELCOME is sent reliably before roster/resync side effects and echoes a per-attempt nonce. Peers validate
+the selection, envelope, host/session identity, and attempt nonce before adopting session state; malformed
+offers, incompatible joins, and disconnected incompatible rejoins cannot mutate the roster or resync
+queues. Terminal WELCOME/JOIN_REJECTED pairs deduplicate into one locally-authored, user-visible update
+message. Focused range, replay, identity, ordering, rejoin, migration, and teardown tests pin the contract.
+The physical mixed-build two-machine rejoin/migration drill remains the required release validation.
 
 #### 6A.6 Join/resync lifecycle state machine *(M)*
 - **What:** the peer join path is a tangle of implicit flags (`handshakeComplete`, `downloadJoinInProgress`, `_pendingRoundStart`, `awaitingSpawn`, host-side `downloadJoinPeers`/`pendingResyncs`). Replace with one explicit `joinState: hello → welcomed → downloading → applying → live` enum with per-transition net-events. Make the syncpoint real: today `_computeSyncpoint` returns only `'download'|'busy'|'idle'`; redefine as (simTick, roundGeneration, no-active-cascade, no-partially-applied packet stack) — Quadra #4/#12: snapshots are sent only from the idle window, reseeds only inside barriers, and the barrier's idle state is the only join window. Use Quadra's join-snapshot field checklist (grids, **RNG cursor**, piece pipeline, pending garbage with hole masks, attack-credit table, stats) as the schema audit.
 - **Validation:** state-machine transition tests; a join during an active cascade is deferred to the next idle window (test with the impairment harness).
+
+**Implementation note (2026-07-13):** the peer lifecycle and exact live-recovery slices are live.
+`handshakeComplete` is now a
+compatibility getter derived from the explicit lifecycle; WELCOME, download, apply, recovery, timeout,
+migration, rejection, promotion, and cleanup advance one transition table and emit `join_state_transition`.
+Join/resync capture now recomputes a structured `(status, simTick, roundGeneration, blockers)` marker at
+send time, fences active physics and nested packet application, and drains a queued join immediately after
+the packet stack reaches zero. The old string syncpoint remains on the wire for v1 peers while the tuple is
+carried alongside it. Reliable resyncs now add a strictly validated `serenity.ffa-resync` v1 sidecar without
+changing the 30 Hz binary-v7 body: it preserves exact clustered pieces, active-piece rotation, the full game
+clock/lock/input state, RNG algorithm + cursor (including seed zero), garbage provenance, attack credit,
+wrapper sequence fences, and attack/frag histories. Capture is double-fenced across `(simTick,
+roundGeneration, snapshotSeq, hostTick, migrationEpoch)` and every capture advances `snapshotSeq`, so
+same-tick captures remain uniquely ordered. An unknown or torn sidecar is rejected before the
+incoming baseline or live state can mutate. Sidecar-free `binary-v1` remains an observable recovery-only
+fallback for mixed old/new builds until the sim-version gate can require the schema.
+
+Live-player recovery now runs a request-bound `PREPARE → READY → capture/apply` input barrier. The peer
+freezes before restaging and flushing retained commands; the host waits for a **contiguous** authoritative
+input ACK and an idle syncpoint; the payload echoes the fence/ACK tuple; and the peer preflights the exact
+sidecar before pruning history and unfreezing. The host owns a request-fenced retry timer until READY,
+retransmitting the identical PREPARE every 500 ms and retiring it exactly at the five-second deadline;
+duplicate PREPARE/READY traffic is idempotent and a lost READY is retried without changing the fence.
+Handshake and completion have separate 5 s/20 s deadlines, cleared timer callbacks cannot own a replacement,
+and timeout/restart/disconnect/request replacement retire stale queues and transfers. Recovery replay safely
+trims already-received prefixes in both legacy and fixed-tick paths, with fixed recovery history split into
+canonical five-tick groups. Inbound assembly is bounded, exact apply waits for receiver idle, monotonic
+capture fences reject duplicate/older state, and final ACK forces the next gameplay keyframe. Terminal
+assembly/decode/sidecar/apply failures now return an idempotent closed-reason rejection rather than leaving
+the peer frozen behind retransmitted bad bytes. The host accepts only an exclusive request/chunk/final/NACK
+variant bound to the active transfer and sender, retires its exact timer/barrier, and permits at most two
+fresh captures with new live-player tokens before failing the peer closed. Success, restart, and disconnect
+reset the per-peer budget; stale callbacks and stale/ambiguous ACK variants cannot retire a newer transfer.
+Forward canonical input gaps preserve the last contiguous host ACK and enter this same exact-replay barrier;
+impossible clock/ordinal chronology remains fatal. Open in this item: host-side per-peer lifecycle ownership
+and distributing a canonical idle sidecar so a newly elected host can serve exact resyncs.
 
 #### 6A.7 Host liveness & operational guardrails *(M)*
 Refresh host-liveness from **any authoritative host packet** (or prove heartbeat-only under two-machine loss); bind liveness/election-cancel to `msg.from === hostSteamId` (closes the 1.3 hole structurally); add gone-slot reaping, per-peer resync-request caps, a send-queue byte cap with a disconnect policy (Quadra's 256 KiB precedent), and — new — a **statistical outlier gate** (APM/PPM ceiling warning-then-flag) as a complement to per-event validation. Re-enable the InputValidator per-input interval check; implement kick-after-N-violations (TODO at ffa:1575).
@@ -654,7 +1070,7 @@ The user-facing goal of this plan is a *faster, smoother* game, not only a clean
     "frameP95Ms": { "perSurface": { "odyssey": null, "heavy-theme-worst": null },
                     "maxPerTier": { "60hz": 16.6, "120hz": 8.3, "144hz": 6.9 },
                     "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" } },
-    "snapshotBytesP95":         { "baseline": 490,  "max": 80 },
+    "snapshotDeltaWireBytesP95": { "baseline": 490,  "max": 80 },
     "reliableMsgsPerSec":       { "baseline": null, "max": null },
     "busEventsPerSec":          { "baseline": null, "max": null },
     "desyncsPerMatch":          { "baseline": null, "max": 0 },
@@ -681,7 +1097,7 @@ Nulls mean "budget declared, baseline pending" — visible and lintable, never s
 | 5.2 | Input never dies during cascades | cascadeInputLatencyP95Ms >300→≤17 |
 | 5.5/5.3 | One clamp/pause policy; background tabs stop burning CPU | soak digests identical across rates |
 | 5.11/1.2 | "Garbage feels off" bugs become detected+auto-recovered events | desyncsPerMatch |
-| 6A.4 | 8× less snapshot bandwidth; no per-broadcast JSON stringify of the world | snapshotBytesP95 490→≤80 |
+| 6A.4 | 8× less snapshot bandwidth; no per-broadcast JSON stringify of the world | snapshotDeltaWireBytesP95 490→≤80 |
 | 6A.8 | Resyncs can't starve control messages | reliable-in-flight gauge |
 | 6B.3/6B.4 | Smooth opponent boards at any latency; 6–8-player bandwidth bounded | interp error; bytes/peer |
 | 7 | Single-codebase visuals; conversions can't re-open closed perf bugs | tripwire + per-theme p95 |
@@ -711,7 +1127,3 @@ The per-theme perf campaigns keep finding the same classes: per-frame `THREE.Col
 **Working-tree measurements** in this document were taken 2026-07-02→04 on branch `cleanup/repository-files` by direct measurement (`git ls-files --eol`, full ESLint JSON run, full Vitest run, `npm audit`, `du`, envelope byte-measurement via the real `BinaryEncoder`, and file reads of every config cited). Line references will drift as the tree moves — re-verify before executing an item whose stamp is stale.
 
 **Primary sources** are linked inline in §5 (research foundations) and in each phase. The evidence dossiers behind this revision are committed to **[docs/architecture-evidence/2026-07/](architecture-evidence/2026-07/)**: five subsystem analyses (`core-sim.md`, `netcode.md`, `rendering.md`, `platform.md`, `delivery.md`), the Quadra deep-dive (`quadra.md`), five research reports (`research-*.md`), and the envelope byte-measurement script (`measure-envelope.mjs`). When this plan cites "the evidence report" for an area, that directory is the reference; treat the dossiers as dated snapshots, this document as the roadmap.
-
-
-
-

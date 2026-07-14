@@ -51,6 +51,7 @@ export class InputJitterBuffer {
         // Current processing tick
         this.currentTick = 0;
         this.processCursor = this.currentTick - this.bufferDepth;
+        this.clockEpoch = 0;
 
         // Last input tick seen per player (for gap detection)
         this.lastInputTick = new Map();
@@ -130,7 +131,13 @@ export class InputJitterBuffer {
 
         // Validate tick is reasonable
         const minTick = this.processCursor;
-        const maxTick = this.currentTick + this.bufferDepth + 2;
+        const defaultFutureTicks = this.bufferDepth + 2;
+        const requestedFutureTicks = Number(options.maxFutureTicks);
+        const maxFutureTicks = Number.isSafeInteger(requestedFutureTicks)
+            && requestedFutureTicks >= defaultFutureTicks
+            ? Math.min(requestedFutureTicks, 64)
+            : defaultFutureTicks;
+        const maxTick = this.currentTick + maxFutureTicks;
 
         if (scheduledTick < minTick) {
             // Input is too old - reject
@@ -159,7 +166,9 @@ export class InputJitterBuffer {
             ...input,
             _receivedAt: Number.isFinite(Number(options.receivedAt)) ? Number(options.receivedAt) : Date.now(),
             _tick: scheduledTick,
-            _rawTick: Number.isFinite(Number(options.jitterTick)) ? Math.round(Number(options.jitterTick)) : scheduledTick,
+            _rawTick: Number.isFinite(Number(options.jitterTick))
+                ? Math.round(Number(options.jitterTick))
+                : scheduledTick,
             _scheduleSource: options.scheduleSource || 'buffer',
             _lateClamped: options.lateClamped === true,
             _playerId: playerId,
@@ -436,6 +445,7 @@ export class InputJitterBuffer {
     clear() {
         this.playerBuffers.clear();
         this.lastInputTick.clear();
+        this.clockEpoch += 1;
         this.currentTick = 0;
         this.processCursor = this.currentTick - this.bufferDepth;
         this.lastDepthAdjustTick = -1;

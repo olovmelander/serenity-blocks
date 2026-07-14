@@ -12,9 +12,16 @@
  * This pins the invariant: a round restart must NOT swap the gameState object.
  */
 
-import { describe, it, expect } from 'vitest';
+import {
+    describe, it, expect, vi,
+} from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import { GameState } from '../../src/core/game.js';
+import {
+    drainFfaPendingResyncs,
+    queueFfaResync,
+} from '../../src/core/multiplayer/ffa/join-syncpoint.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
 
 function restartStub(gameState) {
     const player = {
@@ -34,6 +41,11 @@ function restartStub(gameState) {
         isHost: true,
         localPlayerId: 'HOST',
         roundGeneration: 0,
+        pendingInputs: [{ seq: 8 }],
+        inputHistory: [{ seq: 8 }],
+        inputSequence: 8,
+        _ffaInputGroupSequence: 2,
+        _pendingFfaInputGroup: { id: 2 },
         _readyBarrierEnabled: false, // instant-restart path
         players: new Map([['HOST', player]]),
         matchConfig: { startLevel: 1 },
@@ -92,6 +104,11 @@ describe('FFA round restart — in-place gameState reset (no object swap)', () =
         FFAGameStateP2P.prototype.restartMatch.call(stub);
         expect(stats.jitterCleared).toBe(1); // stale round inputs flushed
         expect(stats.loopStarted).toBe(1);
+        expect(stub.pendingInputs).toEqual([]);
+        expect(stub.inputHistory).toEqual([]);
+        expect(stub.inputSequence).toBe(0);
+        expect(stub._ffaInputGroupSequence).toBe(0);
+        expect(stub._pendingFfaInputGroup).toBeNull();
     });
 
     it('A4b: re-arms the heartbeat during the restart (after stopping state sync)', () => {
@@ -102,5 +119,124 @@ describe('FFA round restart — in-place gameState reset (no object swap)', () =
         // window, and it must happen AFTER stopStateSyncLoop() (which kills it).
         expect(stats.heartbeatStarts).toBeGreaterThanOrEqual(1);
         expect(stats.heartbeatRearmedAfterStop).toBe(true);
+    });
+
+    it('publishes the current seed, including zero, before resetting the round', () => {
+        const gs = new GameState();
+        const { stub } = restartStub(gs);
+        stub.sharedSeed = 99;
+        let seedObservedByReset = null;
+        let restartPayload = null;
+        const originalReset = gs.reset.bind(gs);
+        gs.reset = () => {
+            seedObservedByReset = stub.sharedSeed;
+            originalReset();
+        };
+        stub.network.broadcastToAll = (_type, payload) => { restartPayload = payload; };
+        const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+        try {
+            FFAGameStateP2P.prototype.restartMatch.call(stub);
+        } finally {
+            random.mockRestore();
+        }
+
+        expect(seedObservedByReset).toBe(0);
+        expect(stub.sharedSeed).toBe(0);
+        expect(restartPayload.newSeed).toBe(0);
+    });
+
+    it('rejects invalid direct lifecycle seeds before mutating a round or board', () => {
+        [false, true, '', 'not-a-seed', Number.NaN, Number.POSITIVE_INFINITY, [], {}]
+            .forEach((newSeed) => {
+                const gameState = new GameState();
+                const reset = vi.spyOn(gameState, 'reset');
+                const stub = {
+                    isHost: false,
+                    roundGeneration: 2,
+                    sharedSeed: 91,
+                    players: new Map([['LOCAL', { gameState }]]),
+                };
+
+                FFAGameStateP2P.prototype.performRoundRestart.call(stub, {
+                    newSeed,
+                    roundGeneration: 3,
+                });
+
+                expect(stub.roundGeneration).toBe(2);
+                expect(stub.sharedSeed).toBe(91);
+                expect(reset).not.toHaveBeenCalled();
+            });
+    });
+
+    it('queues a reconnect through the pending barrier, then resyncs a peer that missed restart', () => {
+        const peer = Object.assign(Object.create(FFAGameStateP2P.prototype), {
+            isHost: false,
+            gamePhase: 'waiting',
+            roundGeneration: 2,
+            _pendingRoundStart: null,
+            _readyBarrierTimer: null,
+            network: { hostSteamId: 'HOST' },
+        });
+        let phaseAtGo = null;
+        let phaseAtSnapshot = null;
+        let host;
+        const startThunk = vi.fn(() => { host.gamePhase = 'playing'; });
+        const sendSnapshot = vi.fn((_steamId, marker) => {
+            phaseAtSnapshot = host.gamePhase;
+            expect(marker).toMatchObject({ status: 'idle', safe: true });
+            peer.gamePhase = host.gamePhase;
+            peer.roundGeneration = host.roundGeneration;
+            return true;
+        });
+        host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            gamePhase: 'waiting',
+            simTick: 90,
+            roundGeneration: 3,
+            players: new Map([
+                ['HOST', { steamId: 'HOST', gameState: { isProcessingPhysics: false } }],
+                ['PEER', { steamId: 'PEER', gameState: { isProcessingPhysics: false } }],
+            ]),
+            pendingResyncs: [],
+            _pendingRoundStart: startThunk,
+            _roundReadyExpected: new Set(['HOST', 'PEER']),
+            _roundReady: new Set(['HOST', 'PEER']),
+            _readyBarrierTimer: null,
+            _recordNetEvent: vi.fn(),
+            _expectedReadyPeers: FFAGameStateP2P.prototype._expectedReadyPeers,
+            _readyBarrierStatus: FFAGameStateP2P.prototype._readyBarrierStatus,
+            network: {
+                broadcastToAll: vi.fn((type, data) => {
+                    if (type !== MessageTypes.GAME_ROUND_START) return;
+                    phaseAtGo = host.gamePhase;
+                    FFAGameStateP2P.prototype._handleRoundStartSignal.call(peer, {
+                        from: 'HOST',
+                        data,
+                    });
+                }),
+            },
+            _updateSyncpoint: vi.fn(),
+            _processPendingResyncs: vi.fn(() => {
+                drainFfaPendingResyncs(host, sendSnapshot);
+            }),
+        };
+
+        queueFfaResync(host, 'PEER', sendSnapshot);
+        expect(sendSnapshot).not.toHaveBeenCalled();
+        expect(host.pendingResyncs).toEqual(['PEER']);
+        expect(host.joinSyncpoint.blockers).toContainEqual({ kind: 'pending_round_start' });
+
+        FFAGameStateP2P.prototype._finalizeRoundStart.call(host);
+
+        expect(phaseAtGo).toBe('waiting');
+        expect(peer._pendingRoundStart).toBeNull();
+        expect(phaseAtSnapshot).toBe('playing');
+        expect(startThunk).toHaveBeenCalledOnce();
+        expect(sendSnapshot).toHaveBeenCalledOnce();
+        expect(host.pendingResyncs).toEqual([]);
+        expect(peer.gamePhase).toBe('playing');
+        expect(peer.roundGeneration).toBe(3);
     });
 });

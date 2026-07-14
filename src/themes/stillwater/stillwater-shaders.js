@@ -75,15 +75,11 @@ float fbm(vec3 p) {
 // Enchanted Water - Deep forest pool with spirit reflection
 // ─────────────────────────────────────────────────────────────────────────────
 export const waterVertexShader = `
-uniform float uTime;
 varying vec2 vUv;
-varying vec3 vWorldPos;
 
 void main() {
     vUv = uv;
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    vWorldPos = worldPos.xyz;
-    gl_Position = projectionMatrix * viewMatrix * worldPos;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 
@@ -97,7 +93,6 @@ uniform vec3 uSpiritPos;
 uniform float uSpiritTransition;
 
 varying vec2 vUv;
-varying vec3 vWorldPos;
 
 ${noiseCommon}
 
@@ -107,6 +102,7 @@ void main() {
     // Dreamy slow ripples
     float ripple = snoise(vec3(uv * 2.0, uTime * 0.08)) * 0.02;
     ripple += snoise(vec3(uv * 4.0, uTime * 0.05 + 100.0)) * 0.01;
+    uv += vec2(ripple * 0.6, ripple);
 
     // Depth gradient - deep forest pool
     float depth = smoothstep(0.0, 0.6, uv.y);
@@ -135,7 +131,8 @@ void main() {
     spiritRefl *= uSpiritTransition;
 
     // Add spirit's warm glow to water
-    color = mix(color, uSpiritReflection, spiritRefl * 0.6 * uSpiritGlow);
+    float reflectionMix = clamp(spiritRefl * 0.6 * uSpiritGlow, 0.0, 1.0);
+    color = mix(color, uSpiritReflection, reflectionMix);
 
     // Magical sparkles on surface
     float sparkle = snoise(vec3(uv * 40.0, uTime * 0.4));
@@ -319,8 +316,11 @@ void main() {
     for (float i = 0.0; i < 5.0; i++) {
         float offset = (i - 2.0) * 0.08;
         vec2 hairStart = vec2(0.5 + offset, 0.65);
-        float strand = smoothstep(0.02, 0.0, abs(uv.x - (hairStart.x + sin(uv.y * 8.0 + uTime * 0.5 + i) * 0.03)));
-        strand *= smoothstep(0.65, 0.4, uv.y) * smoothstep(0.2, 0.35, uv.y);
+        float hairDistance = abs(
+            uv.x - (hairStart.x + sin(uv.y * 8.0 + uTime * 0.5 + i) * 0.03)
+        );
+        float strand = 1.0 - smoothstep(0.0, 0.02, hairDistance);
+        strand *= (1.0 - smoothstep(0.4, 0.65, uv.y)) * smoothstep(0.2, 0.35, uv.y);
         hair = max(hair, strand * 0.7);
     }
 
@@ -454,7 +454,7 @@ void main() {
     density = smoothstep(0.2, 0.7, density);
     
     // Fade at edges
-    float edgeFade = smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.8, vUv.y);
+    float edgeFade = smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.8, 1.0, vUv.y));
     density *= edgeFade;
     
     gl_FragColor = vec4(uFogColor, density * 0.35);
@@ -484,11 +484,11 @@ void main() {
     vec2 center = vec2(0.5);
     float dist = length(vUv - center) * 2.0;
     
-    float ring = smoothstep(uRadius - 0.06, uRadius, dist) * 
-                 smoothstep(uRadius + 0.06, uRadius, dist);
-    ring *= smoothstep(1.0, 0.6, dist);
+    float ring = smoothstep(uRadius - 0.06, uRadius, dist)
+        * (1.0 - smoothstep(uRadius, uRadius + 0.06, dist));
+    ring *= 1.0 - smoothstep(0.6, 1.0, dist);
     
-    float inner = smoothstep(uRadius, 0.0, dist) * 0.1;
+    float inner = (1.0 - smoothstep(0.0, uRadius, dist)) * 0.1;
     
     gl_FragColor = vec4(uColor, (ring + inner) * uOpacity);
 }
@@ -519,7 +519,7 @@ void main() {
     float beam = 1.0 - abs(vUv.x - 0.5) * 2.0;
     beam = pow(beam, 2.5);
     
-    float vertFade = smoothstep(1.0, 0.0, vUv.y);
+    float vertFade = 1.0 - smoothstep(0.0, 1.0, vUv.y);
     
     float noise = snoise(vec3(vUv * 2.0, uTime * 0.1));
     noise = noise * 0.2 + 0.8;
@@ -612,8 +612,8 @@ void main() {
     
     float y = uv.y + wave1 + wave2;
     
-    float band1 = smoothstep(0.3, 0.5, y) * smoothstep(0.7, 0.5, y);
-    float band2 = smoothstep(0.5, 0.65, y) * smoothstep(0.85, 0.65, y);
+    float band1 = smoothstep(0.3, 0.5, y) * (1.0 - smoothstep(0.5, 0.7, y));
+    float band2 = smoothstep(0.5, 0.65, y) * (1.0 - smoothstep(0.65, 0.85, y));
     
     float noise = snoise(vec3(uv.x * 4.0, uv.y * 2.0, uTime * 0.1));
     noise = noise * 0.5 + 0.5;
@@ -695,8 +695,8 @@ void main() {
     vNormal = normalize(normalMatrix * normal);
     
     vec3 pos = position;
-    pos.y += sin(uTime * 0.8 + position.x * 0.5) * 0.03;
-    pos.y += cos(uTime * 0.5 + position.z * 0.3) * 0.02;
+    pos.z += sin(uTime * 0.8 + position.x * 0.5) * 0.03;
+    pos.z += cos(uTime * 0.5 + position.y * 0.3) * 0.02;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -721,7 +721,8 @@ void main() {
     float pad = 1.0 - smoothstep(0.4, 0.45, dist);
     
     float notchAngle = atan(uv.y - 0.5, uv.x - 0.5);
-    float notch = smoothstep(-0.3, 0.0, notchAngle) * smoothstep(0.3, 0.0, notchAngle);
+    float notch = smoothstep(-0.3, 0.0, notchAngle)
+        * (1.0 - smoothstep(0.0, 0.3, notchAngle));
     notch *= smoothstep(0.0, 0.3, dist);
     pad *= (1.0 - notch * 0.8);
     

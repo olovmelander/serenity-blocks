@@ -36,6 +36,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 let camera, scene, renderer, controls;
 let postProcessing;
+let bloomPassRef;
 
 // Effect uniforms
 const bloomStrength = uniform(1.0);
@@ -136,8 +137,8 @@ function createScene() {
 }
 
 function setupPostProcessing() {
-  // Create post-processing instance
-  postProcessing = new THREE.RenderPipeline(renderer);
+  // Create post-processing instance (r181 class — RenderPipeline is the r183 rename)
+  postProcessing = new THREE.PostProcessing(renderer);
 
   // Create scene pass
   const scenePass = pass(scene, camera);
@@ -145,11 +146,12 @@ function setupPostProcessing() {
 
   // --- Effect Chain ---
 
-  // 1. Bloom
+  // 1. Bloom — threshold/strength/radius are uniform nodes; set .value
   const bloomPass = bloom(sceneColor);
-  bloomPass.threshold = bloomThreshold;
-  bloomPass.strength = bloomStrength;
-  bloomPass.radius = uniform(0.5);
+  bloomPass.threshold.value = bloomThreshold.value;
+  bloomPass.strength.value = bloomStrength.value;
+  bloomPass.radius.value = 0.5;
+  bloomPassRef = bloomPass;
 
   // Add bloom to scene
   let output = sceneColor.add(bloomPass);
@@ -188,6 +190,10 @@ function onWindowResize() {
 
 function animate() {
   controls.update();
+
+  // Sync externally-controlled uniforms into the bloom pass
+  bloomPassRef.threshold.value = bloomThreshold.value;
+  bloomPassRef.strength.value = bloomStrength.value;
 
   // Render with post-processing
   postProcessing.render();

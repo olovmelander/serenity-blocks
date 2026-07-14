@@ -12,6 +12,91 @@
  * logic loop (NOT per-frame), so local and online behave identically.
  */
 
+import { durationMsToTicks, FIXED_TICK_MS } from './fixed-tick-clock.js';
+
+const FIELD_TICKS = 'fieldTicks';
+const FIELD_MAX_TICKS = 'fieldMaxTicks';
+const PENDING_TICKS = 'pendingTicks';
+const PENDING_MAX_TICKS = 'pendingMaxTicks';
+
+function resolveTickMs(gameState, requestedTickMs) {
+    const explicitTickMs = Number(requestedTickMs);
+    if (Number.isFinite(explicitTickMs) && explicitTickMs > 0) return explicitTickMs;
+
+    const stateTickMs = Number(gameState?.simTickMs);
+    return Number.isFinite(stateTickMs) && stateTickMs > 0
+        ? stateTickMs
+        : FIXED_TICK_MS;
+}
+
+function secondsToTicks(seconds, tickMs) {
+    return durationMsToTicks(Number(seconds) * 1000, tickMs);
+}
+
+function ticksToSeconds(ticks, tickMs) {
+    return (ticks * tickMs) / 1000;
+}
+
+function setTickSources(bt, tickMs) {
+    bt._blindTickSourceField = bt.field;
+    bt._blindTickSourceFieldMax = bt.fieldMax;
+    bt._blindTickSourcePending = bt.pending;
+    bt._blindTickSourcePendingMax = bt.pendingMax;
+    bt._blindTickDurationMs = tickMs;
+}
+
+function synchronizeTickMirrors(bt, tickMs) {
+    bt[FIELD_TICKS] = secondsToTicks(bt.field, tickMs);
+    bt[FIELD_MAX_TICKS] = Math.max(
+        bt[FIELD_TICKS],
+        secondsToTicks(bt.fieldMax, tickMs),
+    );
+    bt[PENDING_TICKS] = secondsToTicks(bt.pending, tickMs);
+    bt[PENDING_MAX_TICKS] = Math.max(
+        bt[PENDING_TICKS],
+        secondsToTicks(bt.pendingMax, tickMs),
+    );
+    setTickSources(bt, tickMs);
+}
+
+function hasSynchronizedTickMirrors(bt, tickMs) {
+    return Number.isInteger(bt[FIELD_TICKS])
+        && bt[FIELD_TICKS] >= 0
+        && Number.isInteger(bt[FIELD_MAX_TICKS])
+        && bt[FIELD_MAX_TICKS] >= bt[FIELD_TICKS]
+        && Number.isInteger(bt[PENDING_TICKS])
+        && bt[PENDING_TICKS] >= 0
+        && Number.isInteger(bt[PENDING_MAX_TICKS])
+        && bt[PENDING_MAX_TICKS] >= bt[PENDING_TICKS]
+        && bt.field === bt._blindTickSourceField
+        && bt.fieldMax === bt._blindTickSourceFieldMax
+        && bt.pending === bt._blindTickSourcePending
+        && bt.pendingMax === bt._blindTickSourcePendingMax
+        && tickMs === bt._blindTickDurationMs;
+}
+
+function normalizeSnapshotSeconds(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function hasExactTickSnapshot(snapshot, tickMs) {
+    return snapshot
+        && Number(snapshot._blindTickDurationMs) === tickMs
+        && snapshot.field === snapshot._blindTickSourceField
+        && snapshot.fieldMax === snapshot._blindTickSourceFieldMax
+        && snapshot.pending === snapshot._blindTickSourcePending
+        && snapshot.pendingMax === snapshot._blindTickSourcePendingMax
+        && Number.isInteger(snapshot[FIELD_TICKS])
+        && snapshot[FIELD_TICKS] >= 0
+        && Number.isInteger(snapshot[FIELD_MAX_TICKS])
+        && snapshot[FIELD_MAX_TICKS] >= snapshot[FIELD_TICKS]
+        && Number.isInteger(snapshot[PENDING_TICKS])
+        && snapshot[PENDING_TICKS] >= 0
+        && Number.isInteger(snapshot[PENDING_MAX_TICKS])
+        && snapshot[PENDING_MAX_TICKS] >= snapshot[PENDING_TICKS];
+}
+
 /**
  * @returns {{field:number, fieldMax:number, pending:number, pendingMax:number}}
  *   field/pending are seconds remaining; *Max are the original durations used
@@ -45,6 +130,7 @@ export function applyBlindEffect(gameState, duration) {
     if (!bt || !(duration > 0)) return;
     bt.pending = Math.max(bt.pending || 0, duration);
     bt.pendingMax = Math.max(bt.pendingMax || 0, bt.pending);
+    synchronizeTickMirrors(bt, resolveTickMs(gameState));
 }
 
 /**
@@ -56,6 +142,7 @@ export function applyFullBlindEffect(gameState, duration) {
     if (!bt || !(duration > 0)) return;
     bt.field = Math.max(bt.field || 0, duration);
     bt.fieldMax = Math.max(bt.fieldMax || 0, bt.field);
+    synchronizeTickMirrors(bt, resolveTickMs(gameState));
 }
 
 /**
@@ -74,6 +161,87 @@ export function decrementBlindTimers(gameState, dtSeconds) {
         bt.pending = Math.max(0, bt.pending - dtSeconds);
         if (bt.pending === 0) bt.pendingMax = 0;
     }
+    // Keep the integer clock dark on legacy paths: the public seconds above
+    // retain their historical arithmetic and remain the source of truth.
+    synchronizeTickMirrors(bt, resolveTickMs(gameState));
+}
+
+/**
+ * Consume exactly one canonical blind-timer tick. Direct writes to any public
+ * seconds field, or a changed tick duration, invalidate the integer mirror and
+ * are re-quantized before consumption. The public fields remain compatibility
+ * mirrors for renderers and the current network protocol.
+ *
+ * @param {object} gameState
+ * @param {number} [requestedTickMs]
+ * @returns {boolean} true when at least one blind timer was active for this tick
+ */
+export function advanceBlindTimersTick(gameState, requestedTickMs) {
+    const bt = ensureTimers(gameState);
+    if (!bt) return false;
+
+    const tickMs = resolveTickMs(gameState, requestedTickMs);
+    if (!hasSynchronizedTickMirrors(bt, tickMs)) synchronizeTickMirrors(bt, tickMs);
+
+    const wasActive = bt[FIELD_TICKS] > 0 || bt[PENDING_TICKS] > 0;
+    if (bt[FIELD_TICKS] > 0) bt[FIELD_TICKS] -= 1;
+    if (bt[PENDING_TICKS] > 0) bt[PENDING_TICKS] -= 1;
+
+    if (bt[FIELD_TICKS] === 0) bt[FIELD_MAX_TICKS] = 0;
+    if (bt[PENDING_TICKS] === 0) bt[PENDING_MAX_TICKS] = 0;
+
+    bt.field = ticksToSeconds(bt[FIELD_TICKS], tickMs);
+    bt.fieldMax = bt[FIELD_TICKS] > 0
+        ? ticksToSeconds(bt[FIELD_MAX_TICKS], tickMs)
+        : 0;
+    bt.pending = ticksToSeconds(bt[PENDING_TICKS], tickMs);
+    bt.pendingMax = bt[PENDING_TICKS] > 0
+        ? ticksToSeconds(bt[PENDING_MAX_TICKS], tickMs)
+        : 0;
+    setTickSources(bt, tickMs);
+    return wasActive;
+}
+
+/**
+ * Restore blind timers in place. Snapshots carrying a complete integer clock
+ * at the target tick duration retain their counters exactly. Historical two-
+ * or four-field snapshots are upgraded from their public seconds instead.
+ *
+ * @param {object} gameState
+ * @param {object|null|undefined} snapshot
+ * @param {number} [requestedTickMs]
+ * @returns {object|null} the restored timer object, or null without a target
+ */
+export function restoreBlindTimers(gameState, snapshot, requestedTickMs) {
+    if (!gameState) return null;
+
+    const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+    const bt = gameState.blindTimers && typeof gameState.blindTimers === 'object'
+        ? gameState.blindTimers
+        : createBlindTimers();
+    gameState.blindTimers = bt;
+
+    bt.field = normalizeSnapshotSeconds(source.field);
+    bt.fieldMax = source.fieldMax === undefined
+        ? bt.field
+        : normalizeSnapshotSeconds(source.fieldMax);
+    bt.pending = normalizeSnapshotSeconds(source.pending);
+    bt.pendingMax = source.pendingMax === undefined
+        ? bt.pending
+        : normalizeSnapshotSeconds(source.pendingMax);
+
+    const tickMs = resolveTickMs(gameState, requestedTickMs);
+    if (hasExactTickSnapshot(source, tickMs)) {
+        bt[FIELD_TICKS] = source[FIELD_TICKS];
+        bt[FIELD_MAX_TICKS] = source[FIELD_MAX_TICKS];
+        bt[PENDING_TICKS] = source[PENDING_TICKS];
+        bt[PENDING_MAX_TICKS] = source[PENDING_MAX_TICKS];
+        setTickSources(bt, tickMs);
+    } else {
+        synchronizeTickMirrors(bt, tickMs);
+    }
+
+    return bt;
 }
 
 /**

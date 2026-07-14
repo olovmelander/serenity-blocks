@@ -7,9 +7,9 @@ export const BOOT_WARP_PREWARM_TIMEOUT_MS = 6500;
 export const BOOT_WARP_MIN_VISIBLE_MS = 5000;
 export const BOOT_WARP_DEFAULT_DURATION_MS = 6500;
 export const BOOT_WARP_REVEAL_PROGRESS = 0.06;
-export const BOOT_WARP_FADE_PROGRESS = 0.86;
-export const BOOT_WARP_TITLE_PROGRESS = 0.92;
-export const BOOT_WARP_FADE_OUT_MS = 720;
+export const BOOT_WARP_FADE_PROGRESS = 0.9;
+export const BOOT_WARP_TITLE_PROGRESS = 0.84;
+export const BOOT_WARP_FADE_OUT_MS = 880;
 export const BOOT_WARP_THEME_IDLE_STABLE_MS = 500;
 export const BOOT_WARP_THEME_IDLE_POLL_MS = 100;
 export const BOOT_WARP_THEME_IDLE_WARN_MS = 3000;
@@ -86,6 +86,8 @@ export async function playBootWarpHandoff(options = {}) {
         soundManager = null,
         dismissStartupShell = null,
         setTimeoutFn = setTimeout,
+        clearTimeoutFn = clearTimeout,
+        signal = null,
     } = options;
     const timing = resolveBootWarpTiming(urlParams);
     const startedAt = nowMs();
@@ -106,8 +108,19 @@ export async function playBootWarpHandoff(options = {}) {
     let visibleStartedAt = null;
     let minVisibleMarked = false;
     let latestProgress = 0;
+    let warpAudioStarted = false;
 
     const visibleMs = () => (visibleStartedAt === null ? 0 : Math.max(0, nowMs() - visibleStartedAt));
+    const interruptedStatus = (playResult = {}) => ({
+        ...playResult,
+        status: 'startup-pipeline-aborted',
+        shellDismissed,
+        titleRevealed: false,
+        firstFrameRendered: playResult.firstFrameRendered === true,
+        visibleMs: roundMs(visibleMs()),
+        durationMs: timing.durationMs,
+        timing,
+    });
 
     const markMinVisibleIfReady = () => {
         if (minVisibleMarked || visibleStartedAt === null || visibleMs() < timing.minVisibleMs) {
@@ -164,11 +177,14 @@ export async function playBootWarpHandoff(options = {}) {
         requestedDurationMs: timing.requestedDurationMs,
     });
 
-    soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+    if (signal?.aborted) {
+        return interruptedStatus();
+    }
 
     const playResult = await warpTransition.play({
         durationMs: timing.durationMs,
         onProgress: (progress, state = {}) => {
+            if (signal?.aborted) return;
             latestProgress = progress;
             if (!shellDismissed
                 && state.firstFrameRendered !== false
@@ -180,6 +196,10 @@ export async function playBootWarpHandoff(options = {}) {
                     durationMs: timing.durationMs,
                     firstFrameRendered: state.firstFrameRendered === true,
                 });
+                if (!warpAudioStarted) {
+                    warpAudioStarted = true;
+                    soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                }
                 markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
                 dismissStartupShell?.('warp-handoff', { quick: true });
             }
@@ -192,6 +212,10 @@ export async function playBootWarpHandoff(options = {}) {
         firstFrameRendered: false,
         durationMs: timing.durationMs,
     };
+
+    if (signal?.aborted) {
+        return interruptedStatus(normalizedResult);
+    }
 
     if (!shellDismissed) {
         const fallbackStatus = {
@@ -207,7 +231,15 @@ export async function playBootWarpHandoff(options = {}) {
 
     const remainingVisibleMs = timing.minVisibleMs - visibleMs();
     if (remainingVisibleMs > 0) {
-        await waitMs(remainingVisibleMs, setTimeoutFn);
+        const completed = await waitMsOrAbort(
+            remainingVisibleMs,
+            setTimeoutFn,
+            clearTimeoutFn,
+            signal,
+        );
+        if (!completed) {
+            return interruptedStatus(normalizedResult);
+        }
     }
 
     markMinVisibleIfReady();
@@ -305,6 +337,27 @@ function waitMs(ms, setTimeoutFn = setTimeout) {
     });
 }
 
+function waitMsOrAbort(ms, setTimeoutFn, clearTimeoutFn, signal) {
+    if (!signal) return waitMs(ms, setTimeoutFn).then(() => true);
+    if (signal.aborted) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+        let timerId = null;
+        let onAbort = null;
+        let settled = false;
+        const finish = (completed) => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener('abort', onAbort);
+            if (!completed && timerId !== null) clearTimeoutFn(timerId);
+            resolve(completed);
+        };
+        onAbort = () => finish(false);
+        signal.addEventListener('abort', onAbort, { once: true });
+        timerId = setTimeoutFn(() => finish(true), ms);
+    });
+}
+
 /**
  * Wait until the currently warmed startup theme has stopped doing deferred work.
  * This is intentionally dynamic: heavy themes can keep the studio ident visible
@@ -317,6 +370,7 @@ function waitMs(ms, setTimeoutFn = setTimeout) {
  * @param {number} [options.warnEveryMs]
  * @param {(event: string, state: object) => void} [options.onProgress]
  * @param {typeof setTimeout} [options.setTimeoutFn]
+ * @param {AbortSignal} [options.signal]
  * @returns {Promise<object>}
  */
 export async function waitForStartupThemeIdle(getTheme, options = {}) {
@@ -338,6 +392,12 @@ export async function waitForStartupThemeIdle(getTheme, options = {}) {
             waitMs: Math.round(nowMs() - startedAt),
             stableForMs: idleSince === null ? 0 : Math.round(nowMs() - idleSince),
         };
+
+        if (options.signal?.aborted) {
+            const finalState = { ...state, aborted: true };
+            onProgress?.('aborted', finalState);
+            return finalState;
+        }
 
         // Hard ceiling: never let a stuck busy flag hold the boot hostage. Proceeding
         // (slightly contended) is strictly better than an ident that never dismisses.

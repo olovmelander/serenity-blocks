@@ -9,7 +9,9 @@
  *     roundGeneration) was deleted.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import {
+    describe, it, expect, vi,
+} from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 
 function hostStub(overrides = {}) {
@@ -102,6 +104,35 @@ describe('A4a — rematch routes through the canonical restart path', () => {
         };
         FFAGameStateP2P.prototype.checkRematchThreshold.call(stub);
         expect(restartFullGame).not.toHaveBeenCalled();
+    });
+
+    it('advances the round fence before a full game resets its board clocks', () => {
+        const gameState = { reset: vi.fn(), level: 4 };
+        const stub = hostStub({
+            roundGeneration: 7,
+            players: new Map([['HOST', {
+                isAlive: false,
+                awaitingSpawn: true,
+                frags: 3,
+                garbageQueue: { clear: vi.fn() },
+                lastAttackerId: 'P2',
+                gameState,
+            }]]),
+            stopGameLoop: vi.fn(),
+            stopStateSyncLoop: vi.fn(),
+            startHeartbeatLoop: vi.fn(),
+            fragTracker: { reset: vi.fn() },
+            attackRouter: { clearHistory: vi.fn() },
+            inputJitterBuffer: { clear: vi.fn(), addPlayer: vi.fn() },
+            startMatch: vi.fn(),
+        });
+
+        FFAGameStateP2P.prototype.restartFullGame.call(stub);
+
+        expect(stub.roundGeneration).toBe(8);
+        expect(stub.inputJitterBuffer.clear).toHaveBeenCalledOnce();
+        expect(gameState.reset).toHaveBeenCalledOnce();
+        expect(stub.startMatch).toHaveBeenCalledOnce();
     });
 });
 

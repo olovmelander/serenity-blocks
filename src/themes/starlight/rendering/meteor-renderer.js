@@ -110,9 +110,9 @@ export function createMeteorRenderer(system, options = {}) {
         const along = v.y; // 0 head → 1 tail
         const across = abs(v.x.sub(0.5)).mul(2.0); // 0 center → 1 edge
 
-        const widthFall = smoothstep(1.0, 0.0, across);
+        const widthFall = smoothstep(0.0, 1.0, across).oneMinus();
         const tailFall = pow(float(1.0).sub(along), float(1.4));
-        const headGlow = smoothstep(0.16, 0.0, along).mul(widthFall);
+        const headGlow = smoothstep(0.0, 0.16, along).oneMinus().mul(widthFall);
 
         // Heat ramp head → tail.
         const cHead = vec3(0.92, 0.96, 1.1);
@@ -128,7 +128,7 @@ export function createMeteorRenderer(system, options = {}) {
         // in) + fade-out, so a meteor never appears as a sudden bright slash that
         // flashes the whole screen through the additive + bloom path.
         const fadeIn = smoothstep(0.0, 0.18, age);
-        const fadeOut = smoothstep(1.0, 0.55, age);
+        const fadeOut = smoothstep(0.55, 1.0, age).oneMinus();
         const ageFade = fadeIn.mul(fadeOut);
         const heatBoost = float(0.5).add(heat.mul(0.7));
 
@@ -147,13 +147,17 @@ export function createMeteorRenderer(system, options = {}) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.renderOrder = 6; // in front of stardust
+    mesh.visible = false; // idle: hidden until the first meteor spawns
 
     return {
         mesh,
         material,
         uniforms: { uIntensity, uWidth },
-        // Flag the shared attributes for re-upload after the system mutated them.
+        // Idle-gated: an empty pool pays no attribute re-upload and no draw call.
         update() {
+            const active = system.hasActive();
+            mesh.visible = active;
+            if (!active) return;
             aHead.needsUpdate = true;
             aDir.needsUpdate = true;
             aLen.needsUpdate = true;

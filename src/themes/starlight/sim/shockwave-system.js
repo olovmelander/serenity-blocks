@@ -89,6 +89,14 @@ export class ShockwaveSystem {
         }
     }
 
+    /** True while any ring/shell is still alive (drives idle upload/draw gating). */
+    hasActive() {
+        for (let i = 0; i < this.max; i += 1) {
+            if ((this.time - this.birth[i]) * this.invLife[i] < 1) return true;
+        }
+        return false;
+    }
+
     dispose() {
         this.origin = null;
         this.birth = null;
