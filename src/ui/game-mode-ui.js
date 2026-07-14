@@ -105,15 +105,15 @@ export class GameModeUI {
             // role/aria-label/tabindex pattern the other icon buttons already use.
             el.setAttribute('role', 'button');
             if (!el.getAttribute('aria-label')) {
-                const title = el.querySelector('.mode-card-title')?.textContent?.trim();
+                const title = el.querySelector?.('.mode-card-title')?.textContent?.trim();
                 if (title) el.setAttribute('aria-label', title);
             }
-            const desc = el.querySelector('.mode-card-desc');
+            const desc = el.querySelector?.('.mode-card-desc');
             if (desc) {
                 if (!desc.id) desc.id = `mode-desc-${mode}`;
                 el.setAttribute('aria-describedby', desc.id);
             }
-            const icon = el.querySelector('.mode-card-icon');
+            const icon = el.querySelector?.('.mode-card-icon');
             if (icon) icon.setAttribute('aria-hidden', 'true');
 
             const activate = (event) => {
