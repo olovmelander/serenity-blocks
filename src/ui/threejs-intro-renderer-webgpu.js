@@ -36,6 +36,7 @@ import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
 import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
 import { createIntroNebulaSky } from './intro-nebula-sky.js';
+import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import {
     INTRO_TETROMINO_BLOCK_RADIUS,
     INTRO_TETROMINO_CLICK_IMPULSE,
@@ -91,6 +92,10 @@ export default class ThreeJSIntroRendererWebGPU {
     constructor(canvas) {
         this.canvas = canvas;
         this.renderer = null;
+        // Set true if the GPU device is lost (a TDR on a fragile iGPU). update()
+        // stops rendering on the dead device so it can't spew validation errors.
+        this._deviceLost = false;
+        this._resilienceUnsub = null;
         this.scene = null;
         this.camera = null;
         this.postProcessing = null;
@@ -226,6 +231,16 @@ export default class ThreeJSIntroRendererWebGPU {
                 this.renderer.dispose();
                 return false;
             }
+
+            // Monitor the device for loss / uncaptured errors. The intro OWNS this
+            // device (the boot warp reuses it), so registering here also broadcasts
+            // CONTEXT_LOST for the warp. A TDR surfaces async via GPUDevice.lost, not
+            // a sync throw — without this the loop would keep rendering on a dead
+            // device. monitorWebGPU() safely no-ops if the device can't be read.
+            this._resilienceUnsub = gpuResilience.monitorWebGPU(this.renderer.backend.device, {
+                label: 'intro',
+                onDeviceLost: () => { this._deviceLost = true; },
+            });
 
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(this._renderPixelRatio());
@@ -1342,6 +1357,8 @@ export default class ThreeJSIntroRendererWebGPU {
 
     update() {
         if (!this.scene || !this.camera || !this.renderer) return;
+        // GPU device lost — stop simulating/rendering on the dead device.
+        if (this._deviceLost) return;
 
         // Clamp simulation delta to avoid giant jumps after frame hitches/tab throttling.
         // This keeps GPU simulation visually continuous instead of "resetting" motion.
@@ -1689,6 +1706,8 @@ export default class ThreeJSIntroRendererWebGPU {
             this.scene.clear();
             this.scene = null;
         }
+
+        try { this._resilienceUnsub?.(); } catch { /* noop */ } finally { this._resilienceUnsub = null; }
 
         if (this.renderer) {
             this.renderer.dispose();

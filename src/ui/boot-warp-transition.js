@@ -26,6 +26,8 @@
 import * as THREE from 'three/webgpu';
 import { createWarpParticles } from './boot-warp-transition-scene.js';
 import { markStartup } from './startup-debug.js';
+import { gpuResilience } from '../utils/gpu-context-resilience.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
 import {
     BOOT_WARP_DEFAULT_DURATION_MS,
     BOOT_WARP_FADE_PROGRESS,
@@ -92,6 +94,12 @@ export class BootWarpTransition {
         this._playing = false;
         this._playResolve = null;
         this._playState = null;
+        // Set true if the GPU device is lost mid-transition (a TDR on a fragile
+        // iGPU). The play loop bails on it so the caller falls back to the CSS reveal.
+        this._deviceLost = false;
+        this._resilienceUnsub = null;
+        this._eventBusUnsub = null;
+        this._monitoredDevice = null;
         this.lastPrewarmStatus = null;
         markStartup('boot-warp:constructed', {
             id: this.debugId,
@@ -229,6 +237,34 @@ export class BootWarpTransition {
             if (this.renderer === renderer) this.renderer = null;
             return false;
         }
+
+        // Detect a mid-boot GPU device loss / uncaptured error. A TDR on the fragile
+        // iGPU surfaces asynchronously via GPUDevice.lost — never as a sync throw the
+        // render loop's try/catch could catch — so without this a lost device would
+        // silently blank the screen. On loss we flag the loop to bail to the CSS
+        // reveal. monitorWebGPU() safely no-ops if the device can't be read, and it
+        // dedupes so sharing the intro's device with the intro monitor is harmless.
+        const device = this.sharedDevice
+            || (renderer.backend?.isWebGPUBackend ? renderer.backend.device : null);
+        this._monitoredDevice = device;
+        const onLost = () => {
+            if (this._deviceLost) return;
+            this._deviceLost = true;
+            markStartup('boot-warp:device-lost', { id: this.debugId }, { level: 'error' });
+        };
+        // Ensure the device is monitored (broadcasts CONTEXT_LOST). If the intro
+        // already registered the shared device, monitorWebGPU() dedupes to a no-op
+        // and this onDeviceLost won't fire — so we ALSO subscribe to the broadcast
+        // below, which reaches us regardless of who registered the device.
+        this._resilienceUnsub = gpuResilience.monitorWebGPU(device, {
+            label: 'boot-warp',
+            onDeviceLost: onLost,
+        });
+        this._eventBusUnsub = eventBus.on(EVENTS.CONTEXT_LOST, (payload) => {
+            if (payload?.type === 'webgpu' && payload.device === this._monitoredDevice) {
+                onLost();
+            }
+        });
 
         // Everything past init is exception-guarded: once the opaque canvas is appended,
         // an uncaught throw (TSL codegen, renderAsync rejection on device loss) would
@@ -391,6 +427,20 @@ export class BootWarpTransition {
                     });
                     return;
                 }
+                if (this._deviceLost) {
+                    // GPU device lost mid-transition — stop rendering on the dead device
+                    // and bail. The caller treats any non-complete status as a fall back
+                    // to the CSS reveal / static menu, so the screen never stays blank.
+                    markStartup('boot-warp:play-device-lost', { id: this.debugId }, { level: 'error' });
+                    finish({
+                        status: 'device-lost',
+                        firstFrameRendered,
+                        durationMs,
+                        elapsedMs: elapsed,
+                        progress: p,
+                    });
+                    return;
+                }
                 try {
                     this.warp.setProgress(p);
                     this.warp.setTime(elapsed / 1000);
@@ -522,6 +572,9 @@ export class BootWarpTransition {
             });
         }
         if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }
+        try { this._resilienceUnsub?.(); } catch { /* noop */ } finally { this._resilienceUnsub = null; }
+        try { this._eventBusUnsub?.(); } catch { /* noop */ } finally { this._eventBusUnsub = null; }
+        this._monitoredDevice = null;
         try { if (this.warp) { this.scene?.remove(this.warp.mesh); this.warp.dispose(); } } catch { /* noop */ }
         try { this.renderer?.dispose(); } catch { /* noop */ }
         try { this.canvas?.remove(); } catch { /* noop */ }
