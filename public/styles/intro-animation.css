@@ -767,6 +767,24 @@ body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {
     animation: none !important;
 }
 
+/* Reduced motion: the boot gate already skips the whole cinematic, but if the
+   menu logo is ever shown with motion (reduced-motion toggled mid-session, or a
+   menu re-entry), hold it perfectly still — no shrink-to-logo flight, no halo
+   pulse, no idle glow. Placed AFTER the resting-logo rules above so it wins on
+   source order at equal specificity (the earlier @media block can't override the
+   more specific body.start-modal-open halo rule). */
+@media (prefers-reduced-motion: reduce) {
+    .intro-title-container.shrink-to-logo {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    body.start-modal-open .intro-title-container.shrink-to-logo::before,
+    body.start-modal-open .intro-title-container.shrink-to-logo::after {
+        animation: none !important;
+    }
+}
+
 @keyframes menuLogoFloat {
 
     0%,

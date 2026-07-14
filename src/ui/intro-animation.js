@@ -1345,6 +1345,16 @@ export class IntroAnimation {
     }
 
     /**
+     * True when the cinematic should be suppressed for motion comfort. Honors the
+     * OS `prefers-reduced-motion`, mirroring the boot warp's own gate
+     * (boot-warp-transition.js) so the whole boot behaves consistently.
+     */
+    _prefersReducedMotion() {
+        return typeof window !== 'undefined'
+            && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    }
+
+    /**
      * The cinematic intro title has become the live menu logo again. Clear the
      * terminal `startup-intro-skipped` flag so the CSS keeps hiding the static
      * DOM `.main-menu-logo`. Without this, the skipped-intro CSS override keeps
@@ -1363,6 +1373,18 @@ export class IntroAnimation {
      * (for returning to start modal from gameplay)
      */
     async showBackgroundOnly(soundManager = null) {
+        // Reduced motion: never run the animated cinematic background. Keep the
+        // static DOM menu logo as the identity (leave `startup-intro-skipped` set
+        // so CSS shows it) and report the menu background as ready immediately so
+        // callers awaiting waitForMenuBgReady() don't stall on the timeout.
+        if (this._prefersReducedMotion()) {
+            this.menuBgReady = true;
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('intro:menuBgReady', { detail: { reducedMotion: true } }));
+            }
+            return;
+        }
+
         // If already showing, check if it's hidden and revive it
         if (this.container && document.body.contains(this.container)) {
             if (this.container.style.display === 'none') {

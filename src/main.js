@@ -5166,14 +5166,14 @@ async function bootstrap() {
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
         const localMpFlag = urlParams.get('localMp');
         const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1'
-            || localMpFlag === 'host' || localMpFlag === 'join' || localMpFlag === 'watch' || localMpFlag === 'browse'; // local 2-player test auto-skips the intro
+            || localMpFlag === 'host' || localMpFlag === 'join' || localMpFlag === 'watch' || localMpFlag === 'browse' || (typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches); // local-MP test + OS reduced-motion auto-skip the cinematic (matches the boot warp)
         const useMinimalPackagedStartup = shouldUseBaselinePackagedStartup();
 
         if (skipIntro || useMinimalPackagedStartup) {
             if (useMinimalPackagedStartup) {
                 console.log('[Startup] Using minimal packaged Windows startup profile');
             } else {
-                console.log('⏭️ Skipping intro animation due to URL flag...');
+                console.log('⏭️ Skipping intro animation (URL flag or reduced motion)...');
             }
             startupPipeline.skipIntro(
                 useMinimalPackagedStartup ? 'minimal-startup-profile' : 'url-flag',
