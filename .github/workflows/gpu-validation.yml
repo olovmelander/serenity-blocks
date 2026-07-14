@@ -61,16 +61,27 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2
 
+      # Explicit Xvfb + DISPLAY rather than `xvfb-run`: xvfb-run does NOT reliably
+      # propagate the wrapped command's exit code, which turns a failed gate into a
+      # false green (observed on run #1: the WebGL2 gate reported 0/11 yet the job
+      # passed). A backgrounded Xvfb + a direct `node` run under `bash -e` surfaces
+      # the real exit code.
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          sleep 3
+
       # HARD GATE — a WGSL/TSL graph error in any chapter fails here.
       - name: Validate — WebGL2 backend (gate)
-        run: xvfb-run -a node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+        run: node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
         env:
           ODYSSEY_FORCE_WEBGL: '1'
 
       # BEST-EFFORT — real WebGPU leg; never blocks (see header).
       - name: Validate — WebGPU backend (best-effort)
         continue-on-error: true
-        run: xvfb-run -a node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+        run: node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
 
       - name: Upload validation artifacts (screenshots + reports)
         if: always()

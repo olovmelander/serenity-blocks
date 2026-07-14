@@ -56,7 +56,14 @@ let devServer = null;
 // real GPU. Must be applied before the app 'ready' event.
 function applyGpuSwitches() {
     app.commandLine.appendSwitch('no-sandbox');
-    app.commandLine.appendSwitch('enable-unsafe-swiftshader'); // GL fallback for the forceWebGL leg
+    // CI containers give Chromium a tiny/locked /dev/shm; without this the GPU
+    // and utility processes FATAL on shared-memory creation and nothing renders.
+    app.commandLine.appendSwitch('disable-dev-shm-usage');
+    // Route GL through ANGLE→SwiftShader so the WebGL2 backend has a software
+    // rasterizer on driverless runners (verified locally via Chromium/CDP).
+    app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+    app.commandLine.appendSwitch('use-gl', 'angle');
+    app.commandLine.appendSwitch('use-angle', 'swiftshader');
     if (!FORCE_WEBGL) {
         app.commandLine.appendSwitch('enable-unsafe-webgpu');
         app.commandLine.appendSwitch('enable-features', 'Vulkan');
