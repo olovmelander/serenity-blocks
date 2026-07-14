@@ -93,6 +93,7 @@ import {
     sanitizeFfaNetEventData,
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
+import { garbageBurstKey, drainAllLineBursts } from './ffa/garbage-helpers.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -1737,7 +1738,7 @@ export class FFAGameStateP2P {
 
         // Take lines from queue — DRAIN-ALL to match local (one dump), else one burst.
         const burst = this._garbageDrainAll
-            ? this._drainAllLineBursts(garbageQueue)
+            ? drainAllLineBursts(garbageQueue)
             : garbageQueue.dequeueLineBurst();
 
         if (!burst || burst.length === 0) return;
@@ -2961,13 +2962,13 @@ export class FFAGameStateP2P {
                     let gbEntries = playerData.garbageEntries;
                     if (isLocalPlayer && this._garbageIdempotentEnabled && this._peerConsumedBursts && this._peerConsumedBursts.size) {
                         const hostKeys = new Set();
-                        for (const e of gbEntries) hostKeys.add(this._garbageBurstKey(e));
+                        for (const e of gbEntries) hostKeys.add(garbageBurstKey(e));
                         // Forget consumed keys the host no longer lists — both sides agree they're gone.
                         for (const k of this._peerConsumedBursts) {
                             if (!hostKeys.has(k)) this._peerConsumedBursts.delete(k);
                         }
                         // Don't re-add bursts we already predict-consumed (host is still catching up).
-                        gbEntries = gbEntries.filter((e) => !this._peerConsumedBursts.has(this._garbageBurstKey(e)));
+                        gbEntries = gbEntries.filter((e) => !this._peerConsumedBursts.has(garbageBurstKey(e)));
                     }
                     player.garbageQueue.entries = gbEntries.map((e) => ({
                         type: e.type,
@@ -3725,26 +3726,6 @@ export class FFAGameStateP2P {
     // Stable identity for a garbage line across the peer's predicted consume and the
     // host's serialized queue. attackId is `r{round}-a{seq}` (always non-empty for routed
     // attacks); lineIndex disambiguates lines within one attack. Falls back to attackSeq.
-    _garbageBurstKey(e) {
-        const id = e && (e.attackId || (e.attackSeq != null ? `seq${e.attackSeq}` : 'a'));
-        return `${id}:${e && e.lineIndex != null ? e.lineIndex : 0}`;
-    }
-
-    // DRAIN-ALL (match local): consume EVERY pending line-burst from the queue in one go
-    // (local drainGarbageEntries(queue, true)) and return them as a single combined array.
-    // dequeueLineBurst() bails on a non-'line' head, so this naturally stops at a blind
-    // entry (same boundary as a single dequeue) and can never loop forever.
-    _drainAllLineBursts(garbageQueue) {
-        const all = [];
-        let guard = 0;
-        let burst = garbageQueue.dequeueLineBurst();
-        while (burst && burst.length > 0 && guard++ < 64) {
-            for (const e of burst) all.push(e);
-            burst = garbageQueue.dequeueLineBurst();
-        }
-        return all;
-    }
-
     _insertLocalGarbagePrediction(steamId) {
         if (this.isHost) return; // Host uses _spawnNextPieceForPlayer
 
@@ -3758,14 +3739,14 @@ export class FFAGameStateP2P {
             // Take lines from queue and insert locally — DRAIN-ALL to match local (one
             // dump), else one burst. Both host and peer flip together via the flag.
             const burst = this._garbageDrainAll
-                ? this._drainAllLineBursts(garbageQueue)
+                ? drainAllLineBursts(garbageQueue)
                 : garbageQueue.dequeueLineBurst();
             if (burst && burst.length > 0) {
                 // Idempotent-adopt: remember these bursts so the next host snapshot (which
                 // still lists them until the host consumes them ~½RTT later) does NOT re-add
                 // them in _applySnapshotState → no double-insert / meter rebound.
                 if (this._garbageIdempotentEnabled && this._peerConsumedBursts) {
-                    for (const entry of burst) this._peerConsumedBursts.add(this._garbageBurstKey(entry));
+                    for (const entry of burst) this._peerConsumedBursts.add(garbageBurstKey(entry));
                 }
                 const normalizedBurst = burst.map((entry) => ({
                     ...entry,
