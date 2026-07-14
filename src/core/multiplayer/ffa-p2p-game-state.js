@@ -94,6 +94,7 @@ import {
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
 import { garbageBurstKey, drainAllLineBursts } from './ffa/garbage-helpers.js';
+import { checkTopOut, serializeBoardGrid } from './ffa/board-helpers.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -1831,7 +1832,7 @@ export class FFAGameStateP2P {
         });
 
         // Check if player topped out
-        if (this.checkTopOut(player.gameState)) {
+        if (checkTopOut(player.gameState)) {
             this._logGarbage(`💀 ${player.name} topped out!`);
             player.isAlive = false;
             player.gameState.isGameOver = true;
@@ -1929,16 +1930,6 @@ export class FFAGameStateP2P {
         }
 
         return 0;
-    }
-
-    /**
-    * Check if game board has topped out
-    */
-    checkTopOut(gameState) {
-        const HIDDEN_ROWS = 4;
-        // Check if any locked pieces are at or above the spawn line (top of visible area)
-        // Since pieces now spawn at y=HIDDEN_ROWS, having locked pieces there means no room to spawn
-        return gameState.lockedPieces.some((piece) => piece.y <= HIDDEN_ROWS);
     }
 
     /**
@@ -3836,16 +3827,6 @@ export class FFAGameStateP2P {
     }
 
     /**
-     * Strip a board grid to wire form (drop the render-only `id`).
-     */
-    _serializeBoardGrid(grid) {
-        if (!Array.isArray(grid)) return null;
-        return grid.map((row) => (Array.isArray(row)
-            ? row.map((c) => (c ? { color: c.color, type: c.type } : null))
-            : null));
-    }
-
-    /**
      * HOST: broadcast a reliable, self-contained authoritative board for one player
      * the instant its piece settles. Idempotent on the receiver via a per-player
      * monotonic lockSeq; fenced by roundGeneration; carries hostTick so a stale 30Hz
@@ -3866,7 +3847,7 @@ export class FFAGameStateP2P {
             lockSeq: player._lockSeq,
             roundGeneration: this.roundGeneration,
             hostTick: this.hostTick,
-            grid: this._serializeBoardGrid(player.gameState.boardGrid),
+            grid: serializeBoardGrid(player.gameState.boardGrid),
             currentPiece: player.gameState.currentPiece ? { ...player.gameState.currentPiece } : null,
             topOut: !!player.gameState.isGameOver,
         });
