@@ -1,31 +1,25 @@
 name: Odyssey GPU Validation
 
-# Remediation plan Phase 3c — the GLSL→TSL/WebGPU regression gate, run OFF the
-# dev machine so a WGSL/TSL graph error fails CI without touching the dev iGPU.
+# Remediation plan Phase 3c / §9.3 — the GLSL→TSL render-validation lane, run OFF
+# the dev machine. This is the SEPARATE heavy-GPU lane, NOT a per-PR gate:
 #
-# ONE leg in CI: WebGL2 (ODYSSEY_FORCE_WEBGL=1). The WebGPURenderer's WebGL2
-# backend compiles the SAME TSL graphs and catches WGSL/pipeline graph errors.
-# The real-WebGPU leg is deliberately NOT run here (plan §3c abort criterion):
-# on driverless CI, WebGPU-on-SwiftShader never initializes cleanly — it loops
-# on shared-memory failures and produces no usable signal (verified over two
-# runs) — so it stays a documented local pre-release step
-# (`npm run validate:odyssey:webgpu`). A runner with a real WebGPU adapter can
-# re-add the leg unchanged.
-#
-# Software rasterization is slow (10–100×), so per-PR runs a representative
-# 3-scene subset; the full 11-scene sweep runs nightly + on demand.
-#
-# Not part of pages.yml (the deploy pipeline) — a slow GPU leg must never block a
-# docs/site deploy. Path-filtered to odyssey/pilot/script changes.
+#  • It does NOT run on pull_request. GitHub's hosted runners cannot give
+#    Chromium/Electron working shared memory (fails in /dev/shm AND /tmp with
+#    "No such process"), so Electron+SwiftShader renders flakily or not at all.
+#    Forcing this onto every PR produced false greens and 20-min hangs. The
+#    per-PR guard is instead the fast unit tests (odyssey-gpu-gate-coverage +
+#    dual-state-theme-tripwire) in pages.yml, which catch scene-list drift and
+#    the "chapter silently exempt" bug class that motivated §3c.
+#  • It runs nightly + on demand (workflow_dispatch) and reports an HONEST
+#    verdict read from report.json (Electron's own exit code is unreliable on
+#    this runner), uploading screenshots + reports as artifacts for review.
+#  • --in-process-gpu is the render attempt: it removes the separate GPU process
+#    (the one crash-looping on shared-memory). If a hosted runner still can't
+#    render, this lane reports red honestly (never false-green) and real
+#    render-validation waits for a self-hosted GPU runner (plan §9.3 nightly RTX
+#    lane). It never blocks a PR either way.
 
 on:
-  pull_request:
-    paths:
-      - 'src/rendering/odyssey/**'
-      - 'odyssey-webgpu-pilot.html'
-      - 'scripts/odyssey-webgpu-validation.mjs'
-      - 'scripts/run-electron.mjs'
-      - '.github/workflows/gpu-validation.yml'
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *' # nightly ~06:00 UTC
@@ -42,8 +36,8 @@ jobs:
     # Pinned to 22.04: stable, well-known Electron runtime deps (24.04 renamed
     # several to the -t64 ABI, which churns the apt list).
     runs-on: ubuntu-22.04
-    # Nightly full 11-scene sweep is ~21 min under SwiftShader; give headroom.
-    # Per-PR subset finishes well under. Per-scene 90s readiness bound caps hangs.
+    # Full 11-scene sweep; each scene is bounded by the harness's 90s readiness
+    # timeout, so worst case (all time out) is ~11*90s + boot, well under this.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -59,34 +53,39 @@ jobs:
       - name: Fetch Electron binary
         run: node node_modules/electron/install.js
 
-      # Electron runtime deps + a virtual display for the headless GPU boot.
+      # Electron runtime deps + a virtual display.
       - name: Install xvfb + Electron runtime libs
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2
 
-      # Explicit Xvfb + DISPLAY rather than `xvfb-run`: xvfb-run does NOT reliably
-      # propagate the wrapped command's exit code, which turns a failed gate into a
-      # false green (observed on run #1: the WebGL2 gate reported 0/11 yet the job
-      # passed). A backgrounded Xvfb + a direct `node` run under `bash -e` surfaces
-      # the real exit code.
       - name: Start Xvfb
         run: |
           Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           sleep 3
 
-      # HARD GATE — a WGSL/TSL graph error in any validated chapter fails here.
-      # Per-PR: a fast representative subset (a heavy chapter + the once-exempt
-      # chapter 3 + a non-chapter renderer). Nightly / dispatch: the full
-      # 11-scene sweep (empty filter = all). Each scene is bounded by the
-      # harness's 90s readiness timeout, so a hung scene fails, not stalls.
-      - name: Validate — WebGL2 backend (gate)
-        run: node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+      # Render the scenes, then read the verdict from report.json — NOT from
+      # Electron's exit code, which does not propagate reliably when Chromium
+      # crash-loops on this runner (the false-green root cause). A missing report
+      # (harness crashed before writing) is a failure.
+      - name: Validate — WebGL2 render + honest verdict
+        run: |
+          set +e
+          node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs
+          echo "electron exit: $? (informational — verdict is read from report.json)"
+          node -e '
+            const fs = require("fs");
+            const p = "artifacts/odyssey/webgpu-validation/webgl2/report.json";
+            if (!fs.existsSync(p)) { console.error("GATE FAIL: no report.json — the harness did not complete"); process.exit(1); }
+            const r = JSON.parse(fs.readFileSync(p, "utf8"));
+            const bad = r.filter((x) => !x.ok);
+            console.log(`GPU render verdict: ${r.length - bad.length}/${r.length} scenes clean`);
+            if (bad.length) { console.error("GATE FAIL:\n" + bad.map((b) => `  ${b.scene}: ${(b.reasons || []).join("; ")}`).join("\n")); process.exit(1); }
+          '
         env:
           ODYSSEY_FORCE_WEBGL: '1'
-          ODYSSEY_VALIDATION_SCENES: ${{ github.event_name == 'pull_request' && 'deep-ocean,surface-world,path' || '' }}
 
       - name: Upload validation artifacts (screenshots + reports)
         if: always()

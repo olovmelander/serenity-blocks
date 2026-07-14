@@ -375,17 +375,26 @@ readiness signal instead of `delay(2500)` and **asserts the backend actually ini
 WebGL2 fallback fails loudly). The pilot contract was verified against real WebGL2 rendering via
 Chromium/CDP (deep-ocean + surface-world clean, 0 shader errors).
 
-The **CI reality forced the plan's abort criterion, exactly as anticipated.** Two lessons from the first
-runs, both now fixed: (1) `xvfb-run` does **not** propagate the wrapped exit code — run #1 reported a hard
-gate of *0/11 scenes* yet the job passed (a false green). Fixed by an explicit backgrounded `Xvfb` +
-`DISPLAY` so `node` runs under `bash -e` and its real exit code gates. (2) **WebGPU-on-SwiftShader never
-initializes cleanly** on the driverless runner — it loops on `/dev/shm` (then `/tmp`) shared-memory
-failures, spews ~17 MB of errors, and hangs until the job timeout. So the **WebGPU leg is dropped from CI**
-and stays a documented local pre-release step (`npm run validate:odyssey:webgpu`); a runner with a real
-WebGPU adapter can re-add it unchanged. Because software raster is slow (~2 min/scene), **per-PR validates
-a 3-scene representative subset and the full 11-scene sweep runs nightly** (each scene bounded by a 90 s
-readiness timeout). Gap 5's tripwire already exists. Still open: `adapter.info.architecture` assertion and
-a real-WebGPU-adapter runner to promote the WebGPU leg back into CI.
+The **CI reality is harder than the abort criterion anticipated, and the honest outcome is a separate
+lane, not a per-PR gate.** Findings across four runs off the dev machine: (1) `xvfb-run` does **not**
+propagate the wrapped exit code, and (2) Electron's own exit code is *also* unreliable when Chromium
+crash-loops — together these produced **false greens** (a 0/N render reported as success). Fixed by
+reading the verdict from `report.json`, not the process exit. (3) The deeper wall: **GitHub's hosted
+runners cannot give Chromium/Electron working shared memory** — creation fails in `/dev/shm` *and* `/tmp`
+(`No such process`), so Electron+SwiftShader renders flakily or not at all (observed 0/11 and 0/3) while
+spewing 5–17 MB of errors. The harness *logic* is correct (verified locally via Chromium/CDP: scenes
+render clean, 0 shader errors), but the hosted runner cannot execute it.
+
+**Resolution (matches §9.3's lane split):** the render-validation is **not a per-PR gate**. The per-PR
+guard is the fast unit tests (`odyssey-gpu-gate-coverage` + `dual-state-theme-tripwire`) in `pages.yml`,
+which catch scene-list drift and the "chapter silently exempt" class that motivated §3c. The Electron
+render harness runs as a **non-blocking nightly + on-demand lane** (`.github/workflows/gpu-validation.yml`,
+`workflow_dispatch` + `schedule` only) with an **honest `report.json` verdict** — it can never false-green
+or block a PR. `--in-process-gpu` is the render attempt (removes the crash-looping GPU process); if a
+hosted runner still can't render, real render-validation waits for a **self-hosted GPU runner (§9.3
+nightly RTX lane)** — the proper fix — while the lane reports red honestly in the meantime. The WebGPU leg
+likewise stays out of CI (documented local step). Gap 5's tripwire already exists; still open:
+`adapter.info.architecture` assertion and a GPU runner that can actually render.
 
 ### Track 3d — Architecture fitness functions & budgets
 

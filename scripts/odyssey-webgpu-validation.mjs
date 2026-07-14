@@ -64,6 +64,10 @@ function applyGpuSwitches() {
     app.commandLine.appendSwitch('enable-unsafe-swiftshader');
     app.commandLine.appendSwitch('use-gl', 'angle');
     app.commandLine.appendSwitch('use-angle', 'swiftshader');
+    // Run GPU work in the browser process, eliminating the separate GPU process
+    // that crash-loops on shared-memory creation on hosted CI runners.
+    app.commandLine.appendSwitch('in-process-gpu');
+    app.commandLine.appendSwitch('disable-gpu-sandbox');
     if (!FORCE_WEBGL) {
         app.commandLine.appendSwitch('enable-unsafe-webgpu');
         app.commandLine.appendSwitch('enable-features', 'Vulkan');
