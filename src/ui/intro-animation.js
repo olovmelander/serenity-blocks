@@ -88,9 +88,6 @@ export class IntroAnimation {
         this._titleStableCount = 0;
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
-        // Reduced-motion override, set by the app from settings.reducedMotion.
-        // Combined with the OS preference in _prefersReducedMotion().
-        this._reducedMotion = false;
         this.menuLayoutRaf = null;
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
@@ -1348,20 +1345,11 @@ export class IntroAnimation {
     }
 
     /**
-     * Record the app's reduced-motion preference (from settings.reducedMotion).
-     * The OS `prefers-reduced-motion` is always honored on top of this.
-     */
-    setReducedMotion(value) {
-        this._reducedMotion = !!value;
-    }
-
-    /**
-     * True when the cinematic should be suppressed for motion comfort — either
-     * the app's reduced-motion setting or the OS preference. Mirrors the boot
-     * warp's own gate (boot-warp-transition.js) so the whole boot is consistent.
+     * True when the cinematic should be suppressed for motion comfort. Honors the
+     * OS `prefers-reduced-motion`, mirroring the boot warp's own gate
+     * (boot-warp-transition.js) so the whole boot behaves consistently.
      */
     _prefersReducedMotion() {
-        if (this._reducedMotion) return true;
         return typeof window !== 'undefined'
             && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     }

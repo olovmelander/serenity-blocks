@@ -4,14 +4,15 @@ import {
 
 /**
  * Regression: the 3D cinematic intro ignored prefers-reduced-motion entirely,
- * forcing vestibular-sensitive users through parallax + particle storm + a
- * whiteout (while the boot warp it wraps already honored the preference).
+ * forcing parallax + a particle storm + a whiteout on vestibular-sensitive
+ * users, even though the boot warp it wraps already honored the OS preference.
  *
  * The intro must now suppress the animated background for reduced-motion users
- * (OS preference OR the app's settings.reducedMotion toggle): showBackgroundOnly()
- * must NOT build the WebGPU cinematic, must leave the static DOM menu logo as the
- * identity (startup-intro-skipped stays set), and must report the menu background
- * ready immediately so menu re-entry doesn't stall.
+ * (the OS `prefers-reduced-motion` preference, matching the boot warp):
+ * showBackgroundOnly() must NOT build the WebGPU cinematic, must leave the static
+ * DOM menu logo as the identity (startup-intro-skipped stays set), and must
+ * report the menu background ready immediately so menu re-entry doesn't stall.
+ * (The boot-time skip itself lives in main.js's skipIntro gate.)
  */
 
 describe('intro reduced-motion gating', () => {
@@ -46,24 +47,17 @@ describe('intro reduced-motion gating', () => {
         };
 
         ({ introAnimation } = await import('../../src/ui/intro-animation.js'));
-        introAnimation.setReducedMotion(false);
         introAnimation.container = null;
     });
 
     afterEach(() => {
-        introAnimation.setReducedMotion(false);
         introAnimation.container = null;
         for (const g of ['window', 'document', 'CustomEvent']) globalThis[g] = saved[g];
     });
 
-    it('reflects the OS preference and the app toggle in _prefersReducedMotion()', () => {
+    it('reflects the OS prefers-reduced-motion preference', () => {
         expect(introAnimation._prefersReducedMotion()).toBe(false);
-
         reduceMatches = true;
-        expect(introAnimation._prefersReducedMotion()).toBe(true);
-
-        reduceMatches = false;
-        introAnimation.setReducedMotion(true);
         expect(introAnimation._prefersReducedMotion()).toBe(true);
     });
 
