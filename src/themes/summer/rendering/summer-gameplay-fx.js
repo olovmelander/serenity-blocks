@@ -135,25 +135,6 @@ function createNodeMaterial() {
     return material;
 }
 
-function createFallbackMaterial(vertexShader, fragmentShader) {
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: { value: 0 },
-            uIntensity: { value: 1 },
-            uMotion: { value: 1 },
-        },
-        vertexShader,
-        fragmentShader,
-        transparent: true,
-        blending: THREE.NormalBlending,
-        depthTest: false,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-    });
-    material.toneMapped = true;
-    return material;
-}
-
 function finishSystem(system, renderOrder) {
     system.mesh = new THREE.Mesh(system.geometry, system.material);
     system.mesh.name = system.name;
@@ -170,15 +151,9 @@ function markAttributes(system) {
 }
 
 function setSystemTime(system, time, intensity, motion) {
-    if (system.timeNode) {
-        system.timeNode.value = time;
-        system.intensityNode.value = intensity;
-        system.motionNode.value = motion;
-    } else {
-        system.material.uniforms.uTime.value = time;
-        system.material.uniforms.uIntensity.value = intensity;
-        system.material.uniforms.uMotion.value = motion;
-    }
+    system.timeNode.value = time;
+    system.intensityNode.value = intensity;
+    system.motionNode.value = motion;
 }
 
 function createPoolState(count) {
@@ -189,7 +164,7 @@ function createPoolState(count) {
 // Four pearly beads per seal reproduce the locked piece's occupied cells. Reuses
 // Serenity Warp's phase-seal billboard (view-space centre + cell offset + local
 // quad) with a dew-bead SDF and normal alpha instead of a neon box outline.
-function createDewSystem(isWebGPU) {
+function createDewSystem() {
     const count = MAX.dewBeads;
     const system = {
         name: 'SummerDewSeals',
@@ -207,91 +182,49 @@ function createDewSystem(isWebGPU) {
     addAttribute(system, 'aTiming', system.timing, 4);
     system.geometry.instanceCount = count;
 
-    if (isWebGPU) {
-        const uTime = uniform(0);
-        const uIntensity = uniform(1);
-        const uMotion = uniform(1);
-        const material = createNodeMaterial();
-        material.vertexNode = Fn(() => {
-            const origin = attribute('aOrigin', 'vec3');
-            const cell = attribute('aCell', 'vec2');
-            const timing = attribute('aTiming', 'vec4');
-            const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
-            // Beads press in (0-70ms) then relax slightly outward; still when motion off.
-            const lift = mix(float(0.92), float(1.06), smoothstep(0.0, 0.42, age));
-            const settle = mix(float(1.0), lift, uMotion);
-            const viewPosition = cameraViewMatrix.mul(vec4(origin, 1.0)).toVar();
-            const offset = cell.mul(timing.z.mul(1.15))
-                .add(positionLocal.xy.mul(timing.z.mul(0.5))).mul(settle);
-            viewPosition.x.addAssign(offset.x);
-            viewPosition.y.addAssign(offset.y);
-            return cameraProjectionMatrix.mul(viewPosition);
-        })();
-        material.colorNode = Fn(() => {
-            const timing = attribute('aTiming', 'vec4');
-            const age = uTime.sub(timing.x).mul(timing.y);
-            const p = uv().sub(0.5);
-            const d = length(p).mul(2.0);
-            // Crisp refractive droplet: darker cool body, bright meniscus rim, sharp glint.
-            const disc = smoothstep(0.94, 0.80, d);
-            const rim = max(smoothstep(0.94, 0.70, d).sub(smoothstep(0.70, 0.52, d)), float(0.0));
-            const glint = smoothstep(0.20, 0.0, length(uv().sub(vec2(0.38, 0.64))));
-            const fade = smoothstep(0.0, 0.10, age)
-                .mul(float(1.0).sub(smoothstep(0.74, 1.0, age)));
-            const alpha = disc.mul(0.55).add(rim.mul(1.0)).add(glint.mul(0.9))
-                .mul(fade)
-                .mul(timing.w)
-                .mul(uIntensity)
-                .clamp(0.0, 1.0);
-            const color = mix(vec3(...DEW_BODY), vec3(0.93, 0.98, 1.0), rim)
-                .add(vec3(...DEW_GLINT).mul(glint.mul(0.85)));
-            return vec4(color, alpha);
-        })();
-        system.material = material;
-        system.timeNode = uTime;
-        system.intensityNode = uIntensity;
-        system.motionNode = uMotion;
-    } else {
-        system.material = createFallbackMaterial(`
-            attribute vec3 aOrigin;
-            attribute vec2 aCell;
-            attribute vec4 aTiming;
-            uniform float uTime;
-            uniform float uMotion;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vAlpha;
-            void main() {
-                vUv = uv;
-                vAge = (uTime - aTiming.x) * aTiming.y;
-                vAlpha = aTiming.w;
-                float age = clamp(vAge, 0.0, 1.0);
-                float lift = mix(0.92, 1.06, smoothstep(0.0, 0.42, age));
-                float settle = mix(1.0, lift, uMotion);
-                vec4 viewPosition = viewMatrix * vec4(aOrigin, 1.0);
-                vec2 offset = (aCell * aTiming.z * 1.15 + position.xy * aTiming.z * 0.5) * settle;
-                viewPosition.xy += offset;
-                gl_Position = projectionMatrix * viewPosition;
-            }
-        `, `
-            uniform float uIntensity;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vAlpha;
-            void main() {
-                vec2 p = vUv - 0.5;
-                float d = length(p) * 2.0;
-                float disc = smoothstep(0.94, 0.80, d);
-                float rim = max(smoothstep(0.94, 0.70, d) - smoothstep(0.70, 0.52, d), 0.0);
-                float glint = smoothstep(0.20, 0.0, length(vUv - vec2(0.38, 0.64)));
-                float fade = smoothstep(0.0, 0.10, vAge) * (1.0 - smoothstep(0.74, 1.0, vAge));
-                float alpha = clamp((disc * 0.55 + rim * 1.0 + glint * 0.9) * fade * vAlpha * uIntensity, 0.0, 1.0);
-                vec3 color = mix(vec3(${DEW_BODY.join(', ')}), vec3(0.93, 0.98, 1.0), rim)
-                    + vec3(${DEW_GLINT.join(', ')}) * (glint * 0.85);
-                gl_FragColor = vec4(color, alpha);
-            }
-        `);
-    }
+    const uTime = uniform(0);
+    const uIntensity = uniform(1);
+    const uMotion = uniform(1);
+    const material = createNodeMaterial();
+    material.vertexNode = Fn(() => {
+        const origin = attribute('aOrigin', 'vec3');
+        const cell = attribute('aCell', 'vec2');
+        const timing = attribute('aTiming', 'vec4');
+        const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
+        // Beads press in (0-70ms) then relax slightly outward; still when motion off.
+        const lift = mix(float(0.92), float(1.06), smoothstep(0.0, 0.42, age));
+        const settle = mix(float(1.0), lift, uMotion);
+        const viewPosition = cameraViewMatrix.mul(vec4(origin, 1.0)).toVar();
+        const offset = cell.mul(timing.z.mul(1.15))
+            .add(positionLocal.xy.mul(timing.z.mul(0.5))).mul(settle);
+        viewPosition.x.addAssign(offset.x);
+        viewPosition.y.addAssign(offset.y);
+        return cameraProjectionMatrix.mul(viewPosition);
+    })();
+    material.colorNode = Fn(() => {
+        const timing = attribute('aTiming', 'vec4');
+        const age = uTime.sub(timing.x).mul(timing.y);
+        const p = uv().sub(0.5);
+        const d = length(p).mul(2.0);
+        // Crisp refractive droplet: darker cool body, bright meniscus rim, sharp glint.
+        const disc = smoothstep(0.94, 0.80, d);
+        const rim = max(smoothstep(0.94, 0.70, d).sub(smoothstep(0.70, 0.52, d)), float(0.0));
+        const glint = smoothstep(0.20, 0.0, length(uv().sub(vec2(0.38, 0.64))));
+        const fade = smoothstep(0.0, 0.10, age)
+            .mul(float(1.0).sub(smoothstep(0.74, 1.0, age)));
+        const alpha = disc.mul(0.55).add(rim.mul(1.0)).add(glint.mul(0.9))
+            .mul(fade)
+            .mul(timing.w)
+            .mul(uIntensity)
+            .clamp(0.0, 1.0);
+        const color = mix(vec3(...DEW_BODY), vec3(0.93, 0.98, 1.0), rim)
+            .add(vec3(...DEW_GLINT).mul(glint.mul(0.85)));
+        return vec4(color, alpha);
+    })();
+    system.material = material;
+    system.timeNode = uTime;
+    system.intensityNode = uIntensity;
+    system.motionNode = uMotion;
     return finishSystem(system, 30);
 }
 
@@ -299,7 +232,7 @@ function createDewSystem(isWebGPU) {
 // Shared billboard pool: wisps (lock), gather petals/leaves, and wreath flowers.
 // Camera-facing quad drifts from centre along a control vector, tumbling and
 // blooming in; species picks between teardrop (petal/leaf) and five-petal flower.
-function createAtlasSystem(isWebGPU) {
+function createAtlasSystem() {
     const count = MAX.atlas;
     const system = {
         name: 'SummerPetalAtlas',
@@ -320,124 +253,65 @@ function createAtlasSystem(isWebGPU) {
     addAttribute(system, 'aAlpha', system.alpha, 1);
     system.geometry.instanceCount = count;
 
-    if (isWebGPU) {
-        const uTime = uniform(0);
-        const uIntensity = uniform(1);
-        const uMotion = uniform(1);
-        const material = createNodeMaterial();
-        material.vertexNode = Fn(() => {
-            const center = attribute('aCenter', 'vec3');
-            const control = attribute('aControl', 'vec4');
-            const timing = attribute('aTiming', 'vec4');
-            const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
-            const ease = smoothstep(0.0, 1.0, age);
-            const seed = control.w;
-            const drift = control.xyz.mul(ease).mul(uMotion);
-            const worldCenter = center.add(drift);
-            const viewPosition = cameraViewMatrix.mul(vec4(worldCenter, 1.0)).toVar();
-            const bloom = smoothstep(0.0, 0.26, age);
-            const size = timing.z.mul(bloom);
-            const angle = seed.mul(TAU).add(uTime.mul(0.9).add(seed.mul(6.0)).mul(uMotion));
-            const c = cos(angle);
-            const s = sin(angle);
-            const lx = positionLocal.x.mul(c).sub(positionLocal.y.mul(s));
-            const ly = positionLocal.x.mul(s).add(positionLocal.y.mul(c));
-            viewPosition.x.addAssign(lx.mul(size));
-            viewPosition.y.addAssign(ly.mul(size));
-            return cameraProjectionMatrix.mul(viewPosition);
-        })();
-        material.colorNode = Fn(() => {
-            const timing = attribute('aTiming', 'vec4');
-            const color = attribute('aColor', 'vec3');
-            const instAlpha = attribute('aAlpha', 'float');
-            const age = uTime.sub(timing.x).mul(timing.y);
-            const species = timing.w;
-            const p = uv().sub(0.5);
-            const r = length(p).mul(2.0);
-            // Teardrop petal/leaf: a vertical squashed ellipse.
-            const leaf = smoothstep(0.98, 0.66, length(vec2(p.x.mul(2.4), p.y.mul(1.18))).mul(2.0));
-            // Five-petal flower via a polar rose threshold.
-            const angle = atan(p.y, p.x);
-            const petalEdge = float(0.60).add(cos(angle.mul(5.0)).mul(0.30));
-            const flowerBody = smoothstep(petalEdge, petalEdge.sub(0.16), r);
-            const flowerCore = smoothstep(0.26, 0.0, r);
-            const flowerAlpha = max(flowerBody, flowerCore.mul(0.9));
-            const shapeAlpha = mix(leaf, flowerAlpha, species);
-            const tint = mix(color, vec3(0.99, 0.95, 0.86), flowerCore.mul(species).mul(0.7));
-            const fade = smoothstep(0.0, 0.12, age)
-                .mul(float(1.0).sub(smoothstep(0.68, 1.0, age)));
-            const alpha = shapeAlpha.mul(fade).mul(instAlpha).mul(uIntensity).clamp(0.0, 1.0);
-            return vec4(tint, alpha);
-        })();
-        system.material = material;
-        system.timeNode = uTime;
-        system.intensityNode = uIntensity;
-        system.motionNode = uMotion;
-    } else {
-        system.material = createFallbackMaterial(`
-            attribute vec3 aCenter;
-            attribute vec4 aControl;
-            attribute vec4 aTiming;
-            attribute vec3 aColor;
-            attribute float aAlpha;
-            uniform float uTime;
-            uniform float uMotion;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vSpecies;
-            varying vec3 vColor;
-            varying float vInstAlpha;
-            void main() {
-                vUv = uv;
-                vAge = (uTime - aTiming.x) * aTiming.y;
-                vSpecies = aTiming.w;
-                vColor = aColor;
-                vInstAlpha = aAlpha;
-                float age = clamp(vAge, 0.0, 1.0);
-                float ease = smoothstep(0.0, 1.0, age);
-                float seed = aControl.w;
-                vec3 worldCenter = aCenter + aControl.xyz * ease * uMotion;
-                vec4 viewPosition = viewMatrix * vec4(worldCenter, 1.0);
-                float bloom = smoothstep(0.0, 0.26, age);
-                float size = aTiming.z * bloom;
-                float angle = seed * 6.2831853 + (uTime * 0.9 + seed * 6.0) * uMotion;
-                float c = cos(angle);
-                float s = sin(angle);
-                vec2 q = vec2(position.x * c - position.y * s, position.x * s + position.y * c);
-                viewPosition.xy += q * size;
-                gl_Position = projectionMatrix * viewPosition;
-            }
-        `, `
-            uniform float uIntensity;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vSpecies;
-            varying vec3 vColor;
-            varying float vInstAlpha;
-            void main() {
-                vec2 p = vUv - 0.5;
-                float r = length(p) * 2.0;
-                float leaf = smoothstep(0.98, 0.66, length(vec2(p.x * 2.4, p.y * 1.18)) * 2.0);
-                float angle = atan(p.y, p.x);
-                float petalEdge = 0.60 + cos(angle * 5.0) * 0.30;
-                float flowerBody = smoothstep(petalEdge, petalEdge - 0.16, r);
-                float flowerCore = smoothstep(0.26, 0.0, r);
-                float flowerAlpha = max(flowerBody, flowerCore * 0.9);
-                float shapeAlpha = mix(leaf, flowerAlpha, vSpecies);
-                vec3 tint = mix(vColor, vec3(0.99, 0.95, 0.86), flowerCore * vSpecies * 0.7);
-                float fade = smoothstep(0.0, 0.12, vAge) * (1.0 - smoothstep(0.68, 1.0, vAge));
-                float alpha = clamp(shapeAlpha * fade * vInstAlpha * uIntensity, 0.0, 1.0);
-                gl_FragColor = vec4(tint, alpha);
-            }
-        `);
-    }
+    const uTime = uniform(0);
+    const uIntensity = uniform(1);
+    const uMotion = uniform(1);
+    const material = createNodeMaterial();
+    material.vertexNode = Fn(() => {
+        const center = attribute('aCenter', 'vec3');
+        const control = attribute('aControl', 'vec4');
+        const timing = attribute('aTiming', 'vec4');
+        const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
+        const ease = smoothstep(0.0, 1.0, age);
+        const seed = control.w;
+        const drift = control.xyz.mul(ease).mul(uMotion);
+        const worldCenter = center.add(drift);
+        const viewPosition = cameraViewMatrix.mul(vec4(worldCenter, 1.0)).toVar();
+        const bloom = smoothstep(0.0, 0.26, age);
+        const size = timing.z.mul(bloom);
+        const angle = seed.mul(TAU).add(uTime.mul(0.9).add(seed.mul(6.0)).mul(uMotion));
+        const c = cos(angle);
+        const s = sin(angle);
+        const lx = positionLocal.x.mul(c).sub(positionLocal.y.mul(s));
+        const ly = positionLocal.x.mul(s).add(positionLocal.y.mul(c));
+        viewPosition.x.addAssign(lx.mul(size));
+        viewPosition.y.addAssign(ly.mul(size));
+        return cameraProjectionMatrix.mul(viewPosition);
+    })();
+    material.colorNode = Fn(() => {
+        const timing = attribute('aTiming', 'vec4');
+        const color = attribute('aColor', 'vec3');
+        const instAlpha = attribute('aAlpha', 'float');
+        const age = uTime.sub(timing.x).mul(timing.y);
+        const species = timing.w;
+        const p = uv().sub(0.5);
+        const r = length(p).mul(2.0);
+        // Teardrop petal/leaf: a vertical squashed ellipse.
+        const leaf = smoothstep(0.98, 0.66, length(vec2(p.x.mul(2.4), p.y.mul(1.18))).mul(2.0));
+        // Five-petal flower via a polar rose threshold.
+        const angle = atan(p.y, p.x);
+        const petalEdge = float(0.60).add(cos(angle.mul(5.0)).mul(0.30));
+        const flowerBody = smoothstep(petalEdge, petalEdge.sub(0.16), r);
+        const flowerCore = smoothstep(0.26, 0.0, r);
+        const flowerAlpha = max(flowerBody, flowerCore.mul(0.9));
+        const shapeAlpha = mix(leaf, flowerAlpha, species);
+        const tint = mix(color, vec3(0.99, 0.95, 0.86), flowerCore.mul(species).mul(0.7));
+        const fade = smoothstep(0.0, 0.12, age)
+            .mul(float(1.0).sub(smoothstep(0.68, 1.0, age)));
+        const alpha = shapeAlpha.mul(fade).mul(instAlpha).mul(uIntensity).clamp(0.0, 1.0);
+        return vec4(tint, alpha);
+    })();
+    system.material = material;
+    system.timeNode = uTime;
+    system.intensityNode = uIntensity;
+    system.motionNode = uMotion;
     return finishSystem(system, 31);
 }
 
 // ── Halo pool ───────────────────────────────────────────────────────────────
 // One broad translucent golden ellipse behind the wreath, transparent centre so
 // board contrast is unchanged. Peaks once, decays slowly (§5.3).
-function createHaloSystem(isWebGPU) {
+function createHaloSystem() {
     const count = MAX.halo;
     const system = {
         name: 'SummerMidnightSunHalo',
@@ -452,71 +326,36 @@ function createHaloSystem(isWebGPU) {
     addAttribute(system, 'aTiming', system.timing, 4);
     system.geometry.instanceCount = count;
 
-    if (isWebGPU) {
-        const uTime = uniform(0);
-        const uIntensity = uniform(1);
-        const uMotion = uniform(1);
-        const material = createNodeMaterial();
-        material.vertexNode = Fn(() => {
-            const origin = attribute('aOrigin', 'vec3');
-            const timing = attribute('aTiming', 'vec4');
-            const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
-            const grow = mix(float(0.82), float(1.0), smoothstep(0.0, 0.5, age));
-            const scale = mix(float(1.0), grow, uMotion).mul(timing.z);
-            const viewPosition = cameraViewMatrix.mul(vec4(origin, 1.0)).toVar();
-            viewPosition.x.addAssign(positionLocal.x.mul(scale));
-            viewPosition.y.addAssign(positionLocal.y.mul(scale.mul(0.66)));
-            return cameraProjectionMatrix.mul(viewPosition);
-        })();
-        material.colorNode = Fn(() => {
-            const timing = attribute('aTiming', 'vec4');
-            const age = uTime.sub(timing.x).mul(timing.y);
-            const d = length(uv().sub(0.5)).mul(2.0);
-            // Soft golden fill that stays transparent through the middle.
-            const halo = smoothstep(1.0, 0.28, d).mul(smoothstep(0.10, 0.42, d));
-            const fade = smoothstep(0.0, 0.16, age)
-                .mul(float(1.0).sub(smoothstep(0.55, 1.0, age)));
-            const alpha = halo.mul(fade).mul(timing.w).mul(uIntensity).clamp(0.0, 0.7);
-            return vec4(vec3(1.0, 0.86, 0.58), alpha);
-        })();
-        system.material = material;
-        system.timeNode = uTime;
-        system.intensityNode = uIntensity;
-        system.motionNode = uMotion;
-    } else {
-        system.material = createFallbackMaterial(`
-            attribute vec3 aOrigin;
-            attribute vec4 aTiming;
-            uniform float uTime;
-            uniform float uMotion;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vAlpha;
-            void main() {
-                vUv = uv;
-                vAge = (uTime - aTiming.x) * aTiming.y;
-                vAlpha = aTiming.w;
-                float age = clamp(vAge, 0.0, 1.0);
-                float grow = mix(0.82, 1.0, smoothstep(0.0, 0.5, age));
-                float scale = mix(1.0, grow, uMotion) * aTiming.z;
-                vec4 viewPosition = viewMatrix * vec4(aOrigin, 1.0);
-                viewPosition.xy += vec2(position.x * scale, position.y * scale * 0.66);
-                gl_Position = projectionMatrix * viewPosition;
-            }
-        `, `
-            uniform float uIntensity;
-            varying vec2 vUv;
-            varying float vAge;
-            varying float vAlpha;
-            void main() {
-                float d = length(vUv - 0.5) * 2.0;
-                float halo = smoothstep(1.0, 0.28, d) * smoothstep(0.10, 0.42, d);
-                float fade = smoothstep(0.0, 0.16, vAge) * (1.0 - smoothstep(0.55, 1.0, vAge));
-                float alpha = clamp(halo * fade * vAlpha * uIntensity, 0.0, 0.7);
-                gl_FragColor = vec4(vec3(1.0, 0.86, 0.58), alpha);
-            }
-        `);
-    }
+    const uTime = uniform(0);
+    const uIntensity = uniform(1);
+    const uMotion = uniform(1);
+    const material = createNodeMaterial();
+    material.vertexNode = Fn(() => {
+        const origin = attribute('aOrigin', 'vec3');
+        const timing = attribute('aTiming', 'vec4');
+        const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
+        const grow = mix(float(0.82), float(1.0), smoothstep(0.0, 0.5, age));
+        const scale = mix(float(1.0), grow, uMotion).mul(timing.z);
+        const viewPosition = cameraViewMatrix.mul(vec4(origin, 1.0)).toVar();
+        viewPosition.x.addAssign(positionLocal.x.mul(scale));
+        viewPosition.y.addAssign(positionLocal.y.mul(scale.mul(0.66)));
+        return cameraProjectionMatrix.mul(viewPosition);
+    })();
+    material.colorNode = Fn(() => {
+        const timing = attribute('aTiming', 'vec4');
+        const age = uTime.sub(timing.x).mul(timing.y);
+        const d = length(uv().sub(0.5)).mul(2.0);
+        // Soft golden fill that stays transparent through the middle.
+        const halo = smoothstep(1.0, 0.28, d).mul(smoothstep(0.10, 0.42, d));
+        const fade = smoothstep(0.0, 0.16, age)
+            .mul(float(1.0).sub(smoothstep(0.55, 1.0, age)));
+        const alpha = halo.mul(fade).mul(timing.w).mul(uIntensity).clamp(0.0, 0.7);
+        return vec4(vec3(1.0, 0.86, 0.58), alpha);
+    })();
+    system.material = material;
+    system.timeNode = uTime;
+    system.intensityNode = uIntensity;
+    system.motionNode = uMotion;
     return finishSystem(system, 29);
 }
 
@@ -553,6 +392,9 @@ export class SummerGameplayFX {
         if (!scene || !camera) throw new Error('SummerGameplayFX requires a scene and camera');
         this.scene = scene;
         this.camera = camera;
+        // Backend label only — the pools always build TSL node materials, which the
+        // unified WebGPURenderer runs on BOTH its WebGPU and WebGL backends. Do not
+        // reintroduce a raw GLSL ShaderMaterial twin here (dual-state tripwire, ADR-0008).
         this.isWebGPU = isWebGPU === true;
         this.quality = normalizeQuality(quality);
         this.limits = SUMMER_GAMEPLAY_FX_LIMITS[this.quality];
@@ -581,9 +423,9 @@ export class SummerGameplayFX {
         this.group.matrixAutoUpdate = false;
         this.group.visible = false;
 
-        this.dew = createDewSystem(this.isWebGPU);
-        this.atlas = createAtlasSystem(this.isWebGPU);
-        this.halo = createHaloSystem(this.isWebGPU);
+        this.dew = createDewSystem();
+        this.atlas = createAtlasSystem();
+        this.halo = createHaloSystem();
         this.systems = [this.dew, this.atlas, this.halo];
         this.init();
     }
@@ -654,7 +496,7 @@ export class SummerGameplayFX {
         this._flushCommands(this.time);
         this._expireSystems(this.time);
 
-        // One-frame warmup so both pipelines compile before the first event.
+        // One-frame warmup so every pool's node pipeline compiles before the first event.
         if (this.warmupPending) {
             const master = this.activeCount > 0 ? this.intensity * (this.reducedMotion ? 0.58 : 1) : 0;
             for (let index = 0; index < this.systems.length; index += 1) {
