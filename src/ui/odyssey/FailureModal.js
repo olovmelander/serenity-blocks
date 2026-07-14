@@ -13,9 +13,15 @@
  * @param {string} deps.reasonText human-readable failure reason ("Time ran out!" / "You topped out!")
  * @param {function('retry'|'map'):void} deps.onChoose single-fire; fired by button or keyboard
  * @param {?number} deps.attemptNumber current attempt (shows an "Attempt N" line when finite)
+ * @param {boolean} [deps.includeLegacyResults=true] whether this attempt is persisted
  * @returns {HTMLElement} the modal root element (caller mounts + later removes it)
  */
-export function createFailureModal({ reasonText, onChoose, attemptNumber }) {
+export function createFailureModal({
+    reasonText,
+    onChoose,
+    attemptNumber,
+    includeLegacyResults = true,
+}) {
     const modal = document.createElement('div');
     modal.id = 'odyssey-failure-modal';
     modal.dataset.odysseyWheelLock = 'true';
@@ -72,6 +78,19 @@ export function createFailureModal({ reasonText, onChoose, attemptNumber }) {
         margin-bottom: 8px;
     `;
     content.appendChild(reason);
+
+    if (!includeLegacyResults) {
+        const unrankedNotice = document.createElement('div');
+        unrankedNotice.className = 'odyssey-failure-unranked';
+        unrankedNotice.textContent = 'Experimental Session · Unranked — this attempt was not recorded.';
+        unrankedNotice.style.cssText = `
+            margin: 12px 0 20px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: rgba(220, 190, 255, 0.72);
+        `;
+        content.appendChild(unrankedNotice);
+    }
 
     // Attempt counter (builds the "one more try" momentum)
     if (Number.isFinite(attemptNumber)) {

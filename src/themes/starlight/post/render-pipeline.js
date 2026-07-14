@@ -208,7 +208,7 @@ export class StarlightPostPipeline {
         );
         const boardSDF = length(rectInner).sub(this.uBoardHaloRadius);
         const haloT = max(boardSDF, float(0.0)).div(this.uBoardHaloGlow);
-        const haloMask = smoothstep(float(1.0), float(0.0), haloT);
+        const haloMask = smoothstep(float(0.0), float(1.0), haloT).oneMinus();
         const halo = vec3(
             this.uBoardHaloColor.r,
             this.uBoardHaloColor.g,
@@ -216,7 +216,7 @@ export class StarlightPostPipeline {
         ).mul(haloMask).mul(this.uBoardHaloStrength);
         const withHalo = vec4(withBloom.rgb.add(halo), withBloom.a);
 
-        const vignetteFactor = smoothstep(0.9, 0.4, dist);
+        const vignetteFactor = smoothstep(0.4, 0.9, dist).oneMinus();
         const vignetted = mix(
             withHalo.rgb.mul(float(1.0).sub(this.uVignetteDarkness)),
             withHalo.rgb,
@@ -279,17 +279,19 @@ export class StarlightPostPipeline {
     updateDynamic(params) {
         if (!this.postProcessing) return;
         if (params.time !== undefined) this.uTime.value = params.time;
+        // ?? not || — a legitimate Low/Minimal base of 0 (bloom/chroma) must NOT be
+        // clobbered back to the default, which silently reintroduced the effect at Low.
         if (params.bloomBoost !== undefined && this.bloomNode?.strength) {
-            this.bloomNode.strength.value = (params.baseBloom || 0.56) + params.bloomBoost;
+            this.bloomNode.strength.value = (params.baseBloom ?? 0.56) + params.bloomBoost;
         }
         if (params.chromaticBoost !== undefined) {
-            this.uChromaticStrength.value = (params.baseChromatic || 0.001) + params.chromaticBoost;
+            this.uChromaticStrength.value = (params.baseChromatic ?? 0.001) + params.chromaticBoost;
         }
         if (params.vignetteBoost !== undefined) {
-            this.uVignetteDarkness.value = (params.baseVignette || 0.54) + params.vignetteBoost;
+            this.uVignetteDarkness.value = (params.baseVignette ?? 0.54) + params.vignetteBoost;
         }
         if (params.exposureDip !== undefined) {
-            this.uExposure.value = (params.baseExposure || 0.95) - params.exposureDip;
+            this.uExposure.value = (params.baseExposure ?? 0.95) - params.exposureDip;
         }
     }
 

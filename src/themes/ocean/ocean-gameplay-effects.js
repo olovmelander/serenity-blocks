@@ -75,7 +75,7 @@ export const QUALITY_EFFECT_LIMITS = {
         fishResponse: true,
         resonance: true,
         cameraShake: 'standard',
-        chromaticAberration: true,
+        chromaticAberration: false,
     },
     Ultra: {
         ripples: 10,
@@ -309,6 +309,20 @@ export class OceanGameplayEffects {
             combos: 0,
             lineClears: 0,
         };
+        this._idlePostParams = {
+            gameplayPulse: 0,
+            comboSurge: 0,
+            causticSweepStrength: 0,
+            chromaticAberrationEnabled: this.limits.chromaticAberration === true,
+        };
+        this._activePostParams = { ...this._idlePostParams };
+        this._updateResult = {
+            currentBoost: 0,
+            glowBoost: 0,
+            comboSurge: 0,
+            gameplayPulse: 0,
+            causticSweepStrength: 0,
+        };
     }
 
     init() {
@@ -329,6 +343,41 @@ export class OceanGameplayEffects {
         this.createParticlePool('silt');
         this.createParticlePool('bubble');
         this.createRibbonPool();
+    }
+
+    /**
+     * Temporarily expose zero-alpha pool members so compileAsync can discover
+     * every lock/combo material. Returns an idempotent restore callback.
+     */
+    prepareForCompile() {
+        const states = [];
+        this.group.traverse((object) => {
+            if (!object.material) return;
+            states.push({
+                object,
+                visible: object.visible,
+                count: object.isInstancedMesh ? object.count : null,
+                frustumCulled: object.frustumCulled,
+            });
+            object.visible = true;
+            object.frustumCulled = false;
+            if (object.isInstancedMesh && object.count === 0) object.count = 1;
+        });
+
+        let restored = false;
+        return () => {
+            if (restored) return;
+            restored = true;
+            states.forEach((state) => {
+                // A real event may have claimed a pool member while the async
+                // compiler was running. Never rewind that live effect back to
+                // its precompile hidden/count=0 snapshot.
+                if (state.object.userData?.effect?.active) return;
+                state.object.visible = state.visible;
+                state.object.frustumCulled = state.frustumCulled;
+                if (state.count !== null) state.object.count = state.count;
+            });
+        };
     }
 
     setMeshOpacity(mesh, opacity) {
@@ -517,28 +566,28 @@ export class OceanGameplayEffects {
         this.stats.pieceLocks += 1;
         this.lastTriggerType = 'piece-lock';
         // Boosted lock amplitudes — these read clearly through the haze.
-        this.pulseTarget = Math.max(this.pulseTarget, 0.55 * postScale);
-        this.sweepTarget = Math.max(this.sweepTarget, 0.32 * postScale);
-        this.resonanceTarget = Math.max(this.resonanceTarget, 0.22 * postScale);
+        this.pulseTarget = Math.max(this.pulseTarget, 0.68 * postScale);
+        this.sweepTarget = Math.max(this.sweepTarget, 0.40 * postScale);
+        this.resonanceTarget = Math.max(this.resonanceTarget, 0.28 * postScale);
 
         if (this.limits.ripples > 0) {
-            this.spawnRipple(anchor, randRange(7.5, 11), 0.7);
+            this.spawnRipple(anchor, randRange(7.5, 11), 0.88);
         }
         // Concentric shockwave: a thin bright edge that follows the soft ripple.
-        this.spawnShockwave(anchor, randRange(10, 13.5), 0.65);
+        this.spawnShockwave(anchor, randRange(10, 13.5), 0.82);
         // Second offset shockwave queued for ~80 ms — produces the perceptual punch.
         this.deferredShockwave = {
             delay: 0.08,
             anchor: anchor.clone(),
             radius: randRange(8, 11),
-            alpha: 0.42,
+            alpha: 0.58,
         };
 
         this.spawnParticleBurst(
             this.siltPool,
             anchor,
             Math.round(randRange(8, Math.min(20, this.limits.siltParticles))),
-            0.72,
+            0.82,
         );
         // Vertical bubble plume rising from the lock site.
         const plumeBudget = clamp(
@@ -551,7 +600,7 @@ export class OceanGameplayEffects {
                 this.bubblePool,
                 anchor,
                 plumeBudget,
-                0.85,
+                0.98,
                 false,
                 true,
             );
@@ -679,20 +728,9 @@ export class OceanGameplayEffects {
             this.spawnCausticRibbon(ribbonAnchor, intensity);
         }
 
-        let bubbleScale = 0.45;
-        if (tier === 2) bubbleScale = 0.68;
-        else if (tier >= 3) bubbleScale = 0.92;
-        const bubbleCount = Math.round(this.limits.bubbleParticles * bubbleScale);
-        this.spawnParticleBurst(this.bubblePool, anchor, bubbleCount, intensity, tier >= 2);
-
-        if (tier >= 2) {
-            const siltCount = Math.round(this.limits.siltParticles * (tier >= 3 ? 0.7 : 0.5));
-            this.spawnParticleBurst(this.siltPool, anchor, siltCount, intensity * 0.85);
-        }
-
-        if (this.limits.ripples > 0) {
-            this.spawnRipple(anchor, 7 + tier * 2.5, intensity * (tier === 1 ? 0.65 : 0.85));
-        }
+        // The synchronous line-clear that follows already owns local silt,
+        // bubbles, and a soft ripple. Combo stays readable as the world-scale
+        // ribbon/crown/fish crescendo instead of exhausting those same pools.
 
         // Shockwaves stack with tier — 1 / 2 / 3 rings out from the anchor.
         const shockwaveCount = Math.min(this.limits.shockwaves, tier);
@@ -716,6 +754,12 @@ export class OceanGameplayEffects {
     }
 
     applyCameraShake(magnitude, durationMs) {
+        const reducedMotion = typeof window !== 'undefined'
+            && (
+                window.settings?.reducedMotion === true
+                || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
+            );
+        if (reducedMotion) return;
         const scale = CAMERA_SHAKE_SCALE[this.limits.cameraShake] ?? 0;
         if (scale <= 0) return;
         const camera = this.getCamera?.();
@@ -963,6 +1007,7 @@ export class OceanGameplayEffects {
 
     update(delta, time) {
         const dt = clamp(delta || 0.016, 0.001, 0.05);
+        this._effectTime = time;
 
         // Decay targets (rate matches the previous decay so peak duration is preserved).
         this.pulseTarget = Math.max(0, this.pulseTarget - dt * 1.6);
@@ -1006,21 +1051,15 @@ export class OceanGameplayEffects {
             this.causticSweepStrength = 0;
             this.resonance = 0;
             if (!this._idleParamsPushed) {
-                this.getPost?.()?.updateParams?.({
-                    gameplayPulse: 0,
-                    comboSurge: 0,
-                    causticSweepStrength: 0,
-                    chromaticAberrationEnabled: this.limits.chromaticAberration === true,
-                });
+                this.getPost?.()?.updateParams?.(this._idlePostParams);
                 this._idleParamsPushed = true;
             }
-            return {
-                currentBoost: 0,
-                glowBoost: 0,
-                comboSurge: 0,
-                gameplayPulse: 0,
-                causticSweepStrength: 0,
-            };
+            this._updateResult.currentBoost = 0;
+            this._updateResult.glowBoost = 0;
+            this._updateResult.comboSurge = 0;
+            this._updateResult.gameplayPulse = 0;
+            this._updateResult.causticSweepStrength = 0;
+            return this._updateResult;
         }
         this._idleParamsPushed = false;
 
@@ -1048,20 +1087,19 @@ export class OceanGameplayEffects {
         this.updateParticles(this.bubblePool, dt, time);
         this.updateRibbons(dt, time);
 
-        this.getPost?.()?.updateParams?.({
-            gameplayPulse: this.gameplayPulse,
-            comboSurge: this.comboSurge,
-            causticSweepStrength: this.causticSweepStrength,
-            chromaticAberrationEnabled: this.limits.chromaticAberration === true,
-        });
+        this._activePostParams.gameplayPulse = this.gameplayPulse;
+        this._activePostParams.comboSurge = this.comboSurge;
+        this._activePostParams.causticSweepStrength = this.causticSweepStrength;
+        this.getPost?.()?.updateParams?.(this._activePostParams);
 
-        return {
-            currentBoost: this.comboSurge * 0.55 + this.gameplayPulse * 0.12,
-            glowBoost: this.comboSurge * 0.32 + this.gameplayPulse * 0.16 + this.resonance * 0.38,
-            comboSurge: this.comboSurge,
-            gameplayPulse: this.gameplayPulse,
-            causticSweepStrength: this.causticSweepStrength,
-        };
+        this._updateResult.currentBoost = this.comboSurge * 0.55 + this.gameplayPulse * 0.12;
+        this._updateResult.glowBoost = this.comboSurge * 0.32
+            + this.gameplayPulse * 0.16
+            + this.resonance * 0.38;
+        this._updateResult.comboSurge = this.comboSurge;
+        this._updateResult.gameplayPulse = this.gameplayPulse;
+        this._updateResult.causticSweepStrength = this.causticSweepStrength;
+        return this._updateResult;
     }
 
     updateShockwaves(dt, time) {
@@ -1116,21 +1154,29 @@ export class OceanGameplayEffects {
         for (let i = 0; i < effect.activeCount; i += 1) {
             const i3 = i * 3;
             const offset = i * 16;
+            const life = effect.lives[i];
+            let scale = effect.sizes[i] * (0.75 + life * 0.55);
+            if (effect.kind === 'bubble') {
+                const shimmer = Math.sin((this._effectTime || 0) * 1.6 + effect.phases[i]) * 0.08 + 1;
+                scale = effect.sizes[i] * shimmer * (0.84 + life * 0.36);
+            }
 
-            // Copy precomputed rotation/scale directly
-            instanceArray[offset] = baseMatrix[0];
-            instanceArray[offset + 1] = baseMatrix[1];
-            instanceArray[offset + 2] = baseMatrix[2];
+            // Scale the billboard basis, not positionLocal in TSL. In r181 the
+            // instance transform runs before positionNode, so shader scaling
+            // also scaled the world translation and displaced whole bursts.
+            instanceArray[offset] = baseMatrix[0] * scale;
+            instanceArray[offset + 1] = baseMatrix[1] * scale;
+            instanceArray[offset + 2] = baseMatrix[2] * scale;
             instanceArray[offset + 3] = baseMatrix[3];
 
-            instanceArray[offset + 4] = baseMatrix[4];
-            instanceArray[offset + 5] = baseMatrix[5];
-            instanceArray[offset + 6] = baseMatrix[6];
+            instanceArray[offset + 4] = baseMatrix[4] * scale;
+            instanceArray[offset + 5] = baseMatrix[5] * scale;
+            instanceArray[offset + 6] = baseMatrix[6] * scale;
             instanceArray[offset + 7] = baseMatrix[7];
 
-            instanceArray[offset + 8] = baseMatrix[8];
-            instanceArray[offset + 9] = baseMatrix[9];
-            instanceArray[offset + 10] = baseMatrix[10];
+            instanceArray[offset + 8] = baseMatrix[8] * scale;
+            instanceArray[offset + 9] = baseMatrix[9] * scale;
+            instanceArray[offset + 10] = baseMatrix[10] * scale;
             instanceArray[offset + 11] = baseMatrix[11];
 
             // Set translation (particle position)

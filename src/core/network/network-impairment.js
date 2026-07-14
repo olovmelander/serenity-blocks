@@ -207,6 +207,19 @@ export function readNetworkImpairmentConfig() {
     return normalizeNetworkImpairmentConfig(config);
 }
 
+/**
+ * Boot-time impairment gate (remediation plan §1.4). The harness is a dev/test
+ * tool: a stale localStorage 'serenity.netImpair' left over from a test session
+ * must never shape real Steam traffic. The live (localStorage/URL) config is
+ * honored only in mock mode, dev builds, or with an explicit ?netImpair opt-in
+ * in the URL; every other session gets the inert defaults.
+ */
+export function resolveImpairmentBootConfig({ mockMode = false, isDev = false, search = '' } = {}) {
+    const explicitOptIn = /[?&]netImpair\b/.test(search);
+    if (mockMode || isDev || explicitOptIn) return readNetworkImpairmentConfig();
+    return DEFAULT_NETWORK_IMPAIRMENT;
+}
+
 export class NetworkImpairmentHarness {
     constructor(config = {}) {
         this.stats = this._newStats();

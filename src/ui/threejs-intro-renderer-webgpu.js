@@ -6,8 +6,9 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Fn,
     abs,
+    cameraProjectionMatrix,
+    cameraViewMatrix,
     clamp,
     cos,
     dot,
@@ -15,6 +16,7 @@ import {
     fract,
     instanceIndex,
     length,
+    max as tslMax,
     mix,
     pass,
     positionLocal,
@@ -25,6 +27,7 @@ import {
     uv,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -105,6 +108,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.enableVolumetricNebula = false;
         this.enableConstellationLines = false;
         this.titleGlowEnabled = true;
+        this.titleEffectsEnabled = true;
 
         this.visualProfileId = 'cinematic_clean';
         this.visualProfile = getIntroVisualProfile(this.visualProfileId);
@@ -128,9 +132,20 @@ export default class ThreeJSIntroRendererWebGPU {
         this.dynamicQualityEnabled = false;
         this.computeFrameCounter = 0;
         this.spawnInterval = this.quality.spawnInterval;
+        this.tetrominoRecyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy();
 
         this.isBackgroundMode = false;
         this.audioPulse = 0;
+        // Theme-only reaction surge (default 0 → intro output identical). The selectable
+        // Serenity Warp theme drives these additively so combos surge the whole tunnel;
+        // the intro's own code NEVER sets them, so its visuals are unchanged.
+        this.reactionSurge = 0;
+        this.reactionBloom = 0;
+        this.reactionChroma = 0;
+        this.reactionCameraKick = 0;
+        this.reactionVertigo = 0;
+        this._baseFov = 60;
+        this._vertigoActive = false;
         this.warpStartTime = -1;
         this.warpDuration = 1.2;
         this.phase = INTRO_PHASES.BOOT;
@@ -149,6 +164,18 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTitleShaftStrength = uniform(1);
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
+        this.uTetrominoTitleAvoidance = uniform(1);
+        // Opt-in whole-scene reaction glow (Serenity Warp only, default 0 → intro
+        // unchanged): brightens/pulses the flying tetrominos so combos read as the
+        // SCENE reacting, not a decal. Wired into the tetromino emissive + glow + scale.
+        this.uReactionGlow = uniform(0);
+        // Synchronized field spin: a brief transient twist on every flying piece on a big
+        // beat (default 0 → intro unchanged), so the whole field reacts as one.
+        this.uReactionSpin = uniform(0);
+        // Big-combo "warp scatter": a 0→1→0 bell that streaks every piece radially outward
+        // + toward the camera (like the intro warp-dismiss) then lets them reform. Render-only
+        // (no velocity write), so it's repeatable and never empties the field. Default 0.
+        this.uReactionScatter = uniform(0);
 
         // Phase B — cinematic grade uniforms (luma-preserving saturation, gentle
         // contrast, real chromatic aberration, multiply vignette).
@@ -307,6 +334,37 @@ export default class ThreeJSIntroRendererWebGPU {
 
         this.uTitleGlowCenter.value.set(cx, 1 - cy);
         this.uTitleGlowSize.value.set(sx, sy);
+    }
+
+    /**
+     * Toggle post effects that exist only to illuminate the intro wordmark.
+     * Selectable themes reuse this renderer without a DOM title, so they keep
+     * the full-bright nebula while disabling the otherwise orphaned centre glow
+     * and light shaft. The intro's default remains unchanged.
+     */
+    setTitleEffectsEnabled(enabled) {
+        this.titleEffectsEnabled = !!enabled;
+        this.applyQualitySettings();
+    }
+
+    /**
+     * Toggle the intro wordmark's tetromino-safe region. This is independent of
+     * the title glow: reusable themes can remove both effects while the intro
+     * keeps its existing title clearance by default.
+     */
+    setTetrominoTitleAvoidanceEnabled(enabled) {
+        this.uTetrominoTitleAvoidance.value = enabled ? 1 : 0;
+    }
+
+    /**
+     * Opt into conservative full-pool recycling without GPU-to-CPU readback.
+     * See IntroTetrominoCompute.setRecyclingPolicy() for supported policies.
+     */
+    setTetrominoRecyclingPolicy(policy = {}) {
+        const normalized = IntroTetrominoCompute.normalizeRecyclingPolicy(policy);
+        this.tetrominoRecyclingPolicy = normalized;
+        this.tetrominoCompute?.setRecyclingPolicy(normalized);
+        return { ...normalized };
     }
 
     getPhasePreset(phase) {
@@ -489,6 +547,7 @@ export default class ThreeJSIntroRendererWebGPU {
 
     initTetrominoCompute() {
         this.tetrominoCompute = new IntroTetrominoCompute();
+        this.tetrominoCompute.setRecyclingPolicy(this.tetrominoRecyclingPolicy);
         this.tetrominoCompute.createComputeNode();
     }
 
@@ -648,24 +707,24 @@ export default class ThreeJSIntroRendererWebGPU {
             titleDelta.x.div(this.uTitleGlowSize.x),
             titleDelta.y.div(this.uTitleGlowSize.y),
         );
-        const halo = smoothstep(float(1.6), float(0.0), length(haloScale));
+        const halo = smoothstep(float(0.0), float(1.6), length(haloScale)).oneMinus();
 
         // (b) Anamorphic horizontal streak — a thin, very wide, bright lens line
         //     through the title centre (the signature "expensive lens" look).
         //     Breathes slightly wider/brighter with the pulse.
-        const streakV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.018)));
-        const streakH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.46)));
+        const streakV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.018))).oneMinus();
+        const streakH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.46))).oneMinus();
         const streak = streakV.mul(streakH).mul(titlePulse.mul(float(0.25)).add(float(0.85)));
 
         // (c) Faint vertical bloom crossing the streak → soft anamorphic star.
-        const vBloomH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.06)));
-        const vBloomV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.17)));
-        const vBloom = vBloomH.mul(vBloomV).mul(float(0.55));
+        const vBloomH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.06))).oneMinus();
+        const vBloomV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.17))).oneMinus();
+        const vBloom = vBloomH.mul(vBloomV).mul(float(0.3));
 
         // Compose: coloured halo + colored vertical bloom + bright near-white streak.
         const streakColor = vec3(float(0.85), float(0.93), float(1.0));
         const titleGlow = titleHue.mul(halo.add(vBloom))
-            .add(streakColor.mul(streak.mul(float(1.5))))
+            .add(streakColor.mul(streak.mul(float(0.08))))
             .mul(this.uTitleGlowStrength);
 
         // ── HDR composite (pre-tonemap): scene + bloom + emissive glows − DoF ──
@@ -677,7 +736,7 @@ export default class ThreeJSIntroRendererWebGPU {
             .sub(softFocus);
 
         // Vignette in linear/HDR space (darkens edges before the tonemap shoulder).
-        const vignetteFactor = smoothstep(float(0.95), float(0.35), dist); // 1 centre → 0 edge
+        const vignetteFactor = smoothstep(float(0.35), float(0.95), dist).oneMinus();
         const vignetted = hdr.mul(
             mix(float(1.0).sub(this.uVignetteDarkness), float(1.0), vignetteFactor),
         );
@@ -843,17 +902,50 @@ export default class ThreeJSIntroRendererWebGPU {
             const typeMask = float(1.0).sub(clamp(typeDiff, float(0.0), float(1.0)));
             const drawMask = active.mul(typeMask);
 
+            // Hide a whole piece while its projected centre crosses the title-safe
+            // region. Physics keeps running, so it reappears naturally after passing.
+            const clipCenter = cameraProjectionMatrix
+                .mul(cameraViewMatrix.mul(vec4(statePos.xyz, 1.0)))
+                .toVar();
+            const screenCenter = clipCenter.xy
+                .div(tslMax(clipCenter.w, float(0.001)))
+                .mul(0.5)
+                .add(0.5)
+                .toVar();
+            const titleDelta = abs(screenCenter.sub(this.uTitleGlowCenter)).toVar();
+            const safeX = smoothstep(
+                float(0.78),
+                float(1.0),
+                titleDelta.x.div(this.uTitleGlowSize.x.mul(1.45)),
+            ).oneMinus();
+            const safeY = smoothstep(
+                float(0.72),
+                float(1.0),
+                titleDelta.y.div(this.uTitleGlowSize.y.mul(2.4)),
+            ).oneMinus();
+            const titleSafeVisibility = safeX.mul(safeY).oneMinus().toVar();
+            const titleVisibility = mix(
+                float(1.0),
+                titleSafeVisibility,
+                this.uTetrominoTitleAvoidance,
+            ).toVar();
+
             // Collision scale pulse: flash (rot.w) drives a brief 20% scale-up
             const flash = stateRot.w.mul(typeMask);
-            const scale = float(baseScale).add(flash.mul(float(baseScale * 0.2)));
+            const scale = float(baseScale)
+                .add(flash.mul(float(baseScale * 0.2)))
+                .add(this.uReactionGlow.mul(float(baseScale * 0.06))) // gentle whole-field swell
+                .mul(titleVisibility);
 
             const local = positionLocal.mul(scale);
+            // Synchronized reaction spin adds a shared twist about Z on a beat (0 by default).
+            const spunZ = stateRot.z.add(this.uReactionSpin);
             const sx = sin(stateRot.x);
             const cx = cos(stateRot.x);
             const sy = sin(stateRot.y);
             const cy = cos(stateRot.y);
-            const sz = sin(stateRot.z);
-            const cz = cos(stateRot.z);
+            const sz = sin(spunZ);
+            const cz = cos(spunZ);
 
             const y1 = local.y.mul(cx).sub(local.z.mul(sx));
             const z1 = local.y.mul(sx).add(local.z.mul(cx));
@@ -867,7 +959,13 @@ export default class ThreeJSIntroRendererWebGPU {
             const y3 = x2.mul(sz).add(y2.mul(cz));
             const z3 = z2;
 
-            const worldPos = vec3(x3, y3, z3).add(statePos.xyz);
+            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).toVar();
+            // Big-combo warp scatter: streak each piece radially outward + toward the camera,
+            // eased out-and-back by the uReactionScatter bell, so the field flings apart like
+            // the intro dismiss then reforms (render-only → repeatable, no field emptying).
+            worldPos.x.addAssign(statePos.x.mul(this.uReactionScatter).mul(1.15));
+            worldPos.y.addAssign(statePos.y.mul(this.uReactionScatter).mul(1.15));
+            worldPos.z.addAssign(this.uReactionScatter.mul(5.5));
             const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
 
             return mix(hiddenPos, worldPos, drawMask);
@@ -896,11 +994,16 @@ export default class ThreeJSIntroRendererWebGPU {
             const flashTypeMask = float(1.0).sub(clamp(flashTypeDiff, float(0.0), float(1.0)));
             const flashIntensity = flashRot.w.mul(flashTypeMask);
 
-            // Emissive boost: base 0.5 → up to 3.0 on collision flash
-            resources.material.emissiveIntensityNode = float(0.5).add(flashIntensity.mul(float(2.5)));
+            // Emissive boost: base 0.5 → up to 3.0 on collision flash, plus the whole-scene
+            // reaction glow (all pieces brighten together on a combo — "connected" feedback).
+            resources.material.emissiveIntensityNode = float(0.5)
+                .add(flashIntensity.mul(float(2.5)))
+                .add(this.uReactionGlow.mul(float(2.2)));
 
-            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash
-            resources.glowMaterial.opacityNode = float(0.33).add(flashIntensity.mul(float(0.52)));
+            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash + reaction glow.
+            resources.glowMaterial.opacityNode = float(0.33)
+                .add(flashIntensity.mul(float(0.52)))
+                .add(this.uReactionGlow.mul(float(0.42)));
 
             this.scene.add(mesh);
             this.scene.add(glowMesh);
@@ -965,15 +1068,24 @@ export default class ThreeJSIntroRendererWebGPU {
      * first piece to drift in from off-screen (regular spawnTetromino() spawns
      * beyond the edge so pieces "drift in" rather than pop).
      */
-    prepopulateTetrominos(count = 12) {
+    prepopulateTetrominos(count = 7) {
         if (!this.tetrominoCompute) return;
         for (let i = 0; i < count; i++) {
             const typeIdx = Math.floor(Math.random() * SHAPE_KEYS.length);
             const z = (Math.random() - 0.5) * 24 - 8; // -20..4
             const bounds = this.getVisibleBoundsAtDepth(z);
             // Inset a little so they read as on-screen, not clipping the edges.
-            const x = (Math.random() - 0.5) * bounds.width * 0.82;
-            const y = (Math.random() - 0.5) * bounds.height * 0.7;
+            let x = (Math.random() - 0.5) * bounds.width * 0.82;
+            let y = (Math.random() - 0.5) * bounds.height * 0.7;
+            // Keep the first composition readable. Later edge spawns may drift through
+            // naturally, but no preseeded piece should begin over the hero wordmark.
+            const titleHalfW = bounds.width * 0.32;
+            const titleHalfH = bounds.height * 0.13;
+            if (Math.abs(x) < titleHalfW && Math.abs(y) < titleHalfH) {
+                const side = y < 0 ? -1 : 1;
+                y = side * (titleHalfH + bounds.height * (0.07 + Math.random() * 0.08));
+                x += (Math.random() - 0.5) * bounds.width * 0.08;
+            }
             // Gentle drift in any direction (no forced inward push — they're already in view).
             const vx = (Math.random() - 0.5) * 0.06;
             const vy = (Math.random() - 0.5) * 0.06;
@@ -1031,6 +1143,78 @@ export default class ThreeJSIntroRendererWebGPU {
 
     setAudioPulse(pulse) {
         this.audioPulse = Math.max(0, Math.min(1, pulse));
+    }
+
+    /**
+     * Opt-in whole-scene reaction surge, driven ONLY by the Serenity Warp theme.
+     * `surge` rides the existing warp machinery (camera dolly + particle streak + bloom);
+     * `bloom`/`chroma` are additive post punches. All default to 0 → intro unchanged.
+     */
+    setReactionState(state = {}) {
+        if (Number.isFinite(state.surge)) this.reactionSurge = Math.max(0, Math.min(1, state.surge));
+        if (Number.isFinite(state.bloom)) this.reactionBloom = Math.max(0, Math.min(1.5, state.bloom));
+        if (Number.isFinite(state.chroma)) this.reactionChroma = Math.max(0, Math.min(1.5, state.chroma));
+        if (Number.isFinite(state.cameraKick)) {
+            this.reactionCameraKick = Math.max(0, Math.min(1, state.cameraKick));
+        }
+        if (Number.isFinite(state.glow)) {
+            this.uReactionGlow.value = Math.max(0, Math.min(1, state.glow));
+        }
+        if (Number.isFinite(state.spin)) {
+            this.uReactionSpin.value = Math.max(-1, Math.min(1, state.spin));
+        }
+        if (Number.isFinite(state.vertigo)) {
+            this.reactionVertigo = Math.max(0, Math.min(1, state.vertigo));
+        }
+        if (Number.isFinite(state.scatter)) {
+            this.uReactionScatter.value = Math.max(0, Math.min(1, state.scatter));
+        }
+    }
+
+    /**
+     * Fan particle bursts across the tunnel (board origin + offset lanes) so a big combo /
+     * apex fills the whole scene instead of popping in one spot (Starlight _spread).
+     */
+    pulseReactionSpread(normalizedX, normalizedY, count = 3, strength = 1.2) {
+        const lanes = Math.max(1, Math.min(5, Math.round(count)));
+        for (let i = 0; i < lanes; i += 1) {
+            const spread = lanes === 1 ? 0 : (i / (lanes - 1) - 0.5);
+            this.pulseReactionAt(
+                normalizedX + spread * 0.42,
+                normalizedY + (i % 2 === 0 ? -0.06 : 0.06),
+                strength,
+            );
+        }
+    }
+
+    /**
+     * Burst compute particles at a normalized screen position (0..1) so a lock/combo
+     * makes the theme's OWN particle field react AT the event, not a floating decal.
+     * Serenity Warp calls this on discrete beats; the intro never does.
+     */
+    pulseReactionAt(normalizedX, normalizedY, strength = 1) {
+        if (!this.particleCompute || !this.camera) return;
+        if (!this._reactionRay) {
+            this._reactionRay = new THREE.Raycaster();
+            this._reactionNdc = new THREE.Vector2();
+            this._reactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // z=0, mid-tunnel
+            this._reactionHit = new THREE.Vector3();
+        }
+        this._reactionNdc.set(
+            Math.max(0, Math.min(1, normalizedX)) * 2 - 1,
+            1 - Math.max(0, Math.min(1, normalizedY)) * 2,
+        );
+        this.camera.updateMatrixWorld?.();
+        this._reactionRay.setFromCamera(this._reactionNdc, this.camera);
+        if (!this._reactionRay.ray.intersectPlane(this._reactionPlane, this._reactionHit)) return;
+        const bursts = Math.max(1, Math.min(4, Math.round(strength * 2)));
+        for (let i = 0; i < bursts; i += 1) {
+            this.particleCompute.spawnCollisionBurst(
+                this._reactionHit.x,
+                this._reactionHit.y,
+                this._reactionHit.z,
+            );
+        }
     }
 
     setBackgroundMode(enabled) {
@@ -1170,6 +1354,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTime.value = this.simulationTime;
         this.uAudioPulse.value = this.audioPulse;
         this.updateWarp(this.simulationTime);
+        // Combo surge rides the SAME warp machinery as the boot reveal / dismiss
+        // (camera dolly + particle streak + bloom). reactionSurge is 0 unless the
+        // Serenity Warp theme drives it, so warpEff === uWarp for the intro itself.
+        const warpEff = Math.min(1, this.uWarp.value + this.reactionSurge);
 
         // D2 — slow "breath" macro-cycle (~24s): the whole scene gently inhales and
         // exhales TOGETHER (bloom + nebula + title swell + a micro camera dolly), so
@@ -1181,30 +1369,60 @@ export default class ThreeJSIntroRendererWebGPU {
         // Idle Lissajous drift + warp dolly + breath dolly, then pointer parallax.
         // apply() adds the cursor-driven offset and performs the final lookAt,
         // so it must come after the base position is set.
-        const cameraDriftScale = (1 + this.uWarp.value * 1.5) / Math.max(0.1, phase.cameraDriftMul);
+        const cameraDriftScale = (1 + warpEff * 1.5) / Math.max(0.1, phase.cameraDriftMul);
         const t = this.simulationTime * 0.2;
         this.camera.position.x = (Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X) / cameraDriftScale;
         this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
-        this.camera.position.z = 40 - this.uWarp.value * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
+        this.camera.position.z = 40 - warpEff * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
         this.cameraParallax.apply(this.camera, delta);
+        // Big-beat camera KICK (Tetris / T-spin / perfect clear): a brief, clamped impact
+        // wobble + forward lunge on top of the final camera pose. reactionCameraKick is 0
+        // unless Serenity Warp drives it (and 0 under reduced motion) → intro unchanged.
+        if (this.reactionCameraKick > 0.0001) {
+            const kick = this.reactionCameraKick;
+            const shakeTime = this.simulationTime * 46;
+            this.camera.position.x += Math.sin(shakeTime) * kick * 0.16;
+            this.camera.position.y += Math.cos(shakeTime * 1.27) * kick * 0.12;
+            this.camera.position.z -= kick * 1.2;
+        }
+        // Vertigo dolly-zoom (combo 7+): FOV pushes IN while the camera dollies BACK, so the
+        // subject holds size but the world expands — the EDv3 "everything got bigger" beat.
+        if (this.reactionVertigo > 0.001 || this._vertigoActive) {
+            const vertigo = this.reactionVertigo;
+            this.camera.fov = this._baseFov - vertigo * 7;
+            this.camera.position.z += vertigo * 3.2;
+            this.camera.updateProjectionMatrix();
+            this._vertigoActive = vertigo > 0.001;
+        }
 
         this.uBloomStrength.value = this.quality.bloom
-            ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
-                + (breath * 0.03)
+            ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (warpEff * 0.1)
+                + (breath * 0.03) + (this.reactionBloom * 0.28)
             : 0;
         const isMenuBackground = this.isBackgroundMode || this.phase === INTRO_PHASES.MENU_BG;
         this.uGodRayStrength.value = this.quality.godRays;
-        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (this.uWarp.value * 0.05);
-        this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
-        this.uTitleShaftStrength.value = isMenuBackground ? 0 : 1;
-        const titleGlowBase = 0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02;
-        this.uTitleGlowStrength.value = this.titleGlowEnabled && !isMenuBackground ? titleGlowBase : 0;
+        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (warpEff * 0.05);
+        this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03)
+            + (this.reactionChroma * 0.14);
+        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !isMenuBackground ? 1 : 0;
+        const titleGlowBase = 0.06 * phase.titleGlowMul + this.audioPulse * 0.012 + breath * 0.008;
+        this.uTitleGlowStrength.value = this.titleEffectsEnabled
+            && this.titleGlowEnabled
+            && !isMenuBackground
+            ? titleGlowBase
+            : 0;
 
         if (this.particleCompute) {
-            this.particleCompute.setAttractionStrength(this.quality.attraction * phase.attractionMul);
+            // Reaction glow energizes the particle field too — stronger inward pull and
+            // brighter event particles on a combo, so the particles read as reacting.
+            this.particleCompute.setAttractionStrength(
+                this.quality.attraction * phase.attractionMul + this.uReactionGlow.value * 0.35,
+            );
             this.particleCompute.setAudioPulse(this.audioPulse);
-            this.particleCompute.setWarpFactor(this.uWarp.value);
-            this.particleCompute.setEventIntensity(Math.max(0.4, phase.particleMul));
+            this.particleCompute.setWarpFactor(warpEff);
+            this.particleCompute.setEventIntensity(
+                Math.max(0.4, phase.particleMul) + this.uReactionGlow.value * 0.6,
+            );
             this.particleCompute.update(delta, this.simulationTime);
         }
 
@@ -1231,8 +1449,10 @@ export default class ThreeJSIntroRendererWebGPU {
 
         if (this.nebulaSky) {
             this.nebulaSky.uniforms.uTime.value = this.simulationTime;
-            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5).
-            this.nebulaSky.uniforms.uPulse.value = this._breathSwell ?? this.audioPulse;
+            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5), and
+            // bloom with combo reaction glow so the whole backdrop reacts, not just pieces.
+            this.nebulaSky.uniforms.uPulse.value = (this._breathSwell ?? this.audioPulse)
+                + this.uReactionGlow.value * 0.5;
         }
 
         if (this.volumetricNebula) {
@@ -1241,7 +1461,8 @@ export default class ThreeJSIntroRendererWebGPU {
 
         if (this.constellationMesh) {
             this.constellationMesh.rotation.z = Math.sin(this.simulationTime * 0.05) * 0.03;
-            const pulse = 0.12 + this.audioPulse * 0.14 + Math.sin(this.simulationTime * 0.6) * 0.03;
+            const pulse = 0.12 + this.audioPulse * 0.14 + Math.sin(this.simulationTime * 0.6) * 0.03
+                + this.uReactionGlow.value * 0.22;
             this.constellationMesh.material.opacity = Math.max(0.05, pulse);
         }
 
@@ -1319,8 +1540,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.spawnInterval = this.quality.spawnInterval;
         this.uDoFStrength.value = this.isBackgroundMode ? 0 : this.quality.dof;
         this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
-        this.uTitleGlowStrength.value = this.isBackgroundMode ? 0 : this.uTitleGlowStrength.value;
-        this.uTitleShaftStrength.value = this.isBackgroundMode ? 0 : 1;
+        if (this.isBackgroundMode || !this.titleEffectsEnabled) {
+            this.uTitleGlowStrength.value = 0;
+        }
+        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !this.isBackgroundMode ? 1 : 0;
 
         if (this.renderer) {
             this.renderer.setPixelRatio(this._renderPixelRatio());

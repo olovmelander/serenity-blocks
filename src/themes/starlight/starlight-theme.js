@@ -31,8 +31,10 @@ import { MeteorSystem, getMeteorBudget } from './sim/meteor-system.js';
 import { createMeteorRenderer } from './rendering/meteor-renderer.js';
 import { ShockwaveSystem } from './sim/shockwave-system.js';
 import { createShockwaveRenderer } from './rendering/shockwave-renderer.js';
-import { StarlightEmitters } from './sim/starlight-emitters.js';
+import { StarlightReactionDirector } from './sim/starlight-reaction-director.js';
+import { createReactionAdapters } from './sim/starlight-reaction-adapters.js';
 import { StarlightPostPipeline, getStarlightPostProfile } from './post/render-pipeline.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 // Deep-starfield star counts per quality tier (validated in playground on target iGPU).
 const STAR_COUNTS = Object.freeze({
@@ -75,7 +77,7 @@ export default class StarlightTheme extends BaseTheme {
         this.meteorRenderer = null;
         this.shockwaves = null;
         this.shockwaveRenderer = null;
-        this.emitters = null;
+        this.director = null;
         this.postPipeline = null;
         this.postProfile = null;
 
@@ -193,7 +195,8 @@ export default class StarlightTheme extends BaseTheme {
         this.shockwaveRenderer = createShockwaveRenderer(this.shockwaves);
         this.scene.add(this.shockwaveRenderer.mesh);
 
-        // Constellations — self-drawing figures (ambient + big-moment triggers).
+        // Constellations — ambient signs ON (art direction: a busy, sign-filled sky, not
+        // the restrained "one earned sign"). Combos scatter more on top (see the director).
         if (this._constellationsEnabledForTier()) {
             this.constellations = new ConstellationController({ ambient: true });
             this.constellationRenderer = createConstellationRenderer(this.constellations);
@@ -203,9 +206,13 @@ export default class StarlightTheme extends BaseTheme {
         // Post pipeline (MRT selective bloom) — WebGPU only; gated + defensive.
         this._setupPost();
 
-        // Event reactivity (line clears, combos, hard drops, level-ups…).
-        this.emitters = new StarlightEmitters(this);
-        this.eventUnsubscribers.push(this.emitters.attach());
+        // Event reactivity — the StarlightReactionDirector coalesces each lock
+        // resolution into ONE dominant cue (per-player, on a theme-time timeline).
+        // Adapters bind its abstract cues to these subsystems; seal is deferred
+        // until board-rect projection (see starlight-reaction-adapters.js).
+        const { adapters, resolvers } = createReactionAdapters(this);
+        this.director = new StarlightReactionDirector({ adapters, resolvers });
+        this.eventUnsubscribers.push(this.director.attach(eventBus, EVENTS));
 
         this._setupPointer();
         this._setupResize();
@@ -326,6 +333,10 @@ export default class StarlightTheme extends BaseTheme {
                 const delta = Number.isFinite(raw) ? Math.min(raw, 0.05) : 0.016;
                 this.time += delta;
 
+                // Reaction director first: flush this frame's coalesced resolution and
+                // fire due beats so their spawns/camera punches land this same frame.
+                this.director?.update(delta);
+
                 this.cameraDirector?.update(delta);
 
                 if (this.starfield) {
@@ -372,11 +383,13 @@ export default class StarlightTheme extends BaseTheme {
                 }
 
                 // Decay event FX punches (fast taps, not sustained boosts).
+                // Delta-normalized (exp of the 60 Hz-referenced per-frame factors) so the
+                // punch tail matches at 60/120/144 Hz instead of decaying faster on high-refresh.
                 const fx = this.fxState;
-                fx.bloomPunch *= 0.86;
-                fx.vignettePunch *= 0.82;
-                fx.chromaPunch *= 0.8;
-                fx.flashPunch *= 0.78;
+                fx.bloomPunch *= Math.exp(-9.05 * delta); // ≈0.86 / frame @60Hz
+                fx.vignettePunch *= Math.exp(-11.9 * delta); // ≈0.82
+                fx.chromaPunch *= Math.exp(-13.4 * delta); // ≈0.80
+                fx.flashPunch *= Math.exp(-14.9 * delta); // ≈0.78
 
                 // Render — through the post pipeline when enabled, else direct.
                 if (this.postPipeline?.isEnabled()) {
@@ -532,7 +545,10 @@ export default class StarlightTheme extends BaseTheme {
             this.postPipeline.dispose();
             this.postPipeline = null;
         }
-        this.emitters = null;
+        if (this.director) {
+            this.director.dispose();
+            this.director = null;
+        }
         if (this.starfield) {
             this.scene?.remove(this.starfield.mesh);
             this.starfield.dispose();

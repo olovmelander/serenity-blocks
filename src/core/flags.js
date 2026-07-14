@@ -113,6 +113,14 @@ export const FLAG_REGISTRY = [
     {
         name: 'desyncCheck', default: true, purpose: 'peer-local-sim divergence backstop (digest compare → forceLocal resync); plan §1.2', kind: 'permanent-ops', reader: 'flags',
     },
+    {
+        name: 'wireV2',
+        default: false,
+        purpose: 'opt-in protocol-v2 raw snapshot frames for the plan §6A.4 two-peer bandwidth soak',
+        kind: 'refactor',
+        expiry: '2026-09-30',
+        reader: 'flags',
+    },
 
     // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js) ──
     {
@@ -161,6 +169,21 @@ export const FLAG_REGISTRY = [
     },
     {
         name: 'owmDirtyCheck', default: true, purpose: 'opponent mini-board dirty-check repaint skip (rollback when 0)', kind: 'refactor', graduationBar: 'delete after a stable release with dirty-check on', reader: 'local',
+    },
+
+    // ── Movement C / Phase 5 (declared BEFORE the phase starts — plan §Movement C
+    // ground rule (a): every transform ships dark on main behind a registry flag) ──
+    {
+        name: 'rngV2', default: false, purpose: 'sfc32 per-subsystem PRNG (src/core/rng.js) replaces the LCG as the sim randomness source — plan §5.6', kind: 'refactor', graduationBar: 'plan §5.10 differential gate clean over the 50-session soak, then the §5.0 cutover ladder; delete legacy LCG + flag together', reader: 'local',
+    },
+    {
+        name: 'fixedTick', default: false, purpose: '60Hz fixed-tick simulation (integer accumulators, unified clamp) — plan §5.3', kind: 'refactor', graduationBar: 'plan §5.0 cutover ladder: differential gate → online-MP default-on → solo → one release with legacy rollback → delete legacy + flag together', reader: 'flags',
+    },
+    {
+        name: 'cascadeShadow', default: false, purpose: 'production differential: run the pure §5.2 resolveCascade in shadow against legacy processPhysics on every lock, diff end-state + hole masks, log divergence — plan §5.10', kind: 'refactor', graduationBar: 'plan §5.10 legacy-deletion gate (≥50 clean sessions, ≥5 human) → resolver cutover replaces legacy processPhysics; flag dies with the legacy path', reader: 'flags',
+    },
+    {
+        name: 'cascadeV2', default: false, purpose: '§5.2 cutover: processPhysics dispatches to the resolver-driven wave replay (resolveCascade first, animation replays precomputed waves; commit-per-wave per ADR-0011) instead of the legacy discover-as-you-animate loop', kind: 'refactor', graduationBar: 'plan §5.0 cutover ladder: §5.10 soak clean (shadow + cascadeV2 together = runtime self-check) → online-MP default-on → solo → one release with legacy rollback → delete processPhysicsLegacy + flag together', reader: 'flags',
     },
 ];
 

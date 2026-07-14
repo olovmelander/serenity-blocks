@@ -6,7 +6,7 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
 } from '../core/constants.js';
-import { generateBoard, rebuildBoardGridFromPieces } from '../core/board.js';
+import { generateBoard, syncBoardGridForRender } from '../core/board.js';
 import { canPlacePiece } from '../core/game.js';
 import { calculateGhostY as calculateGhostLanding } from '../core/pieces.js';
 import {
@@ -185,10 +185,9 @@ export function draw(canvas, ctx, gameState) {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Ensure board grid reflects current locked pieces
-    if (gameState.boardGrid) {
-        rebuildBoardGridFromPieces(lockedPieces, gameState.boardGrid);
-    }
+    // Ensure board grid reflects current locked pieces — rebuilds only when
+    // the board changed (version bump or grid replacement), not every frame.
+    syncBoardGridForRender(gameState);
 
     // Use cached grid instead of redrawing it every frame
     const gridCache = getGridCache();

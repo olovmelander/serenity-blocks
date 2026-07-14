@@ -87,9 +87,9 @@ export function createShockwaveRenderer(system, options = {}) {
 
         const d = length(positionLocal.xy); // 0 center → ~1.41 corner
         const age = uTime.sub(birth).mul(invLife); // 0..1 (radius expands with age)
-        const ring = smoothstep(width, float(0.0), abs(d.sub(age)));
+        const ring = smoothstep(float(0.0), width, abs(d.sub(age))).oneMinus();
         const fadeIn = smoothstep(0.0, 0.1, age);
-        const fadeOut = smoothstep(1.0, 0.7, age);
+        const fadeOut = smoothstep(0.7, 1.0, age).oneMinus();
         const bright = ring.mul(fadeIn).mul(fadeOut).mul(alpha).mul(uIntensity)
             .clamp(0.0, 2.2); // HDR cap so additive+bloom can't blow out
         return vec4(col.mul(bright), bright.clamp(0.0, 1.0));
@@ -102,6 +102,7 @@ export function createShockwaveRenderer(system, options = {}) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.renderOrder = 7; // over meteors/stardust
+    mesh.visible = false; // idle: hidden until the first ring spawns
 
     return {
         mesh,
@@ -109,6 +110,10 @@ export function createShockwaveRenderer(system, options = {}) {
         uniforms: { uTime, uIntensity },
         update(time) {
             uTime.value = time;
+            // Idle-gated: an empty pool pays no attribute re-upload and no draw call.
+            const active = system.hasActive();
+            mesh.visible = active;
+            if (!active) return;
             attrs.forEach((a) => { a.needsUpdate = true; });
         },
         dispose() {

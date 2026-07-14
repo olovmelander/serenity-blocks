@@ -155,6 +155,10 @@ export class IntroAnimation {
             this._titleRevealSafety = setTimeout(() => this.revealTitle('safety'), 4500);
         }
         await this.createIntroHTML();
+        if (options.signal?.aborted || this.hasCompleted) {
+            this.skip();
+            return Promise.resolve();
+        }
         this.setupEventListeners();
 
         this.setRendererPhase(INTRO_PHASES.BOOT, true);
@@ -174,9 +178,9 @@ export class IntroAnimation {
 
     /**
      * Play the deferred "SERENITY BLOCKS" title reveal now. Idempotent — safe to call
-     * from any handoff branch (and a safety timer). Called once the boot warp / startup
-     * transition has finished so the reveal animation plays fresh on the settled intro
-     * instead of being wasted behind the covering transition.
+     * from any handoff branch (and a safety timer). The WebGPU path calls this once its
+     * five-second visible contract is met, letting the title resolve during the nebula
+     * arrival and continue through the canvas crossfade.
      */
     revealTitle(source = 'manual') {
         if (this.titleRevealed) {
@@ -1275,8 +1279,17 @@ export class IntroAnimation {
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
+        this.isActive = false;
         if (this.container) {
             this.container.classList.add('hidden');
+            this.container.removeEventListener('click', this.boundHandlers.click);
+            this.container.removeEventListener('touchstart', this.boundHandlers.touchstart);
+        }
+        window.removeEventListener('keydown', this.boundHandlers.keydown);
+        window.removeEventListener('intro-loading-state', this.boundHandlers.loadingState);
+        if (this.gamepadCheckInterval) {
+            clearInterval(this.gamepadCheckInterval);
+            this.gamepadCheckInterval = null;
         }
         this.teardownMenuLogoLayoutTracking();
 

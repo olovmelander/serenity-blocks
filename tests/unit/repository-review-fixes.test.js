@@ -79,7 +79,7 @@ describe('repository review security and correctness fixes', () => {
         const malformed = new ArrayBuffer(12);
         const view = new DataView(malformed);
         view.setUint32(0, 0x5342_4E45, false);
-        view.setUint8(4, 1);
+        view.setUint8(4, 7);
         view.setUint8(5, 255);
         expect(() => decoder.decodeSnapshot(malformed)).toThrow(/player count/);
     });

@@ -128,11 +128,29 @@ export function showStartModal(modalManager) {
  * @param {Object} gameState - Current game state
  * @param {Object} highScoreManager - High score manager instance
  * @param {Object} callbacks - Optional callbacks for buttons { onMainMenu, onRestart }
+ * @param {Object} options - Optional presentation policy
+ * @param {boolean} [options.includeLegacyResults=true] - Query/show unversioned result stores
+ * @param {Function} [options.shouldPresent] - Ownership predicate checked around async work
+ * @returns {Promise<boolean>} Whether the modal was presented
  */
-export async function showGameOverModal(modalManager, gameState, highScoreManager, callbacks = {}) {
+export async function showGameOverModal(
+    modalManager,
+    gameState,
+    highScoreManager,
+    callbacks = {},
+    options = {},
+) {
     const {
         score, lines, level, dropInterval, startTime, piecesPlaced,
     } = gameState;
+    const includeLegacyResults = options.includeLegacyResults !== false;
+    const shouldPresent = typeof options.shouldPresent === 'function'
+        ? options.shouldPresent
+        : () => true;
+
+    if (!shouldPresent()) {
+        return false;
+    }
 
     // Calculate speed multiplier
     const LEVEL_SPEEDS = [
@@ -156,10 +174,79 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
     const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
     const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
 
+    if (!includeLegacyResults) {
+        document.getElementById('final-stats').innerHTML = `
+            <div class="stats-header">
+                <div class="score-display">${score.toLocaleString()}</div>
+                <div class="ranking-display">Experimental Session · Unranked</div>
+                <div class="stat-badge stat-badge-purple">Separate Ruleset</div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card stat-card-purple">
+                    <div class="stat-card-header">Performance</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Level</span>
+                        <span class="stat-value">${level}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Speed</span>
+                        <span class="stat-value">${speedMultiplier}x</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Lines</span>
+                        <span class="stat-value">${lines}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Pieces</span>
+                        <span class="stat-value">${piecesPlaced}</span>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-card-cyan">
+                    <div class="stat-card-header">Rates (Per Min)</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Points/Min</span>
+                        <span class="stat-value">${pointsPPM.toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Pieces/Min</span>
+                        <span class="stat-value">${piecesPPM}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Lines/Piece</span>
+                        <span class="stat-value">${linesPerPiece}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Efficiency</span>
+                        <span class="stat-value">${efficiency}%</span>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-card-green">
+                    <div class="stat-card-header">Session (${durationStr})</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Score</span>
+                        <span class="stat-value">${score.toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Status</span>
+                        <span class="stat-value">Not added to legacy rankings</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        return presentGameOverModal(modalManager, callbacks, shouldPresent);
+    }
+
     try {
         // Get rank and statistics
         const rank = await highScoreManager.getRank(score);
         const stats = await highScoreManager.getStatistics();
+
+        if (!shouldPresent()) {
+            return false;
+        }
 
         // Build ranking HTML
         let rankingHTML = '';
@@ -283,7 +370,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         // available. In a non-Steam/browser build it would render an "unavailable"
         // shell (~260px) that adds nothing but forces the modal to scroll.
         const leaderboardHost = document.getElementById('steam-leaderboard-host');
-        if (leaderboardHost && steamService.capabilities?.leaderboards) {
+        if (leaderboardHost && steamService.capabilities?.leaderboards && shouldPresent()) {
             const isInfinity = !!gameState?.isInfinityMode;
             const startTime = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
             const durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
@@ -339,6 +426,9 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
             leaderboardPanel.mount(leaderboardHost);
         }
     } catch (error) {
+        if (!shouldPresent()) {
+            return false;
+        }
         console.error('Error displaying game over stats:', error);
         // Fallback display
         document.getElementById('final-stats').innerHTML = `
@@ -362,8 +452,21 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
-        `;
+            `;
     }
+
+    return presentGameOverModal(modalManager, callbacks, shouldPresent);
+}
+
+/**
+ * Render the shared game-over controls and reveal the modal if ownership holds.
+ * @param {ModalManager} modalManager
+ * @param {Object} callbacks
+ * @param {Function} shouldPresent
+ * @returns {boolean}
+ */
+function presentGameOverModal(modalManager, callbacks, shouldPresent) {
+    if (!shouldPresent()) return false;
 
     // Render Buttons
     const buttonsContainer = document.getElementById('game-over-buttons');
@@ -388,7 +491,12 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         }
     }
 
+    if (!shouldPresent()) {
+        return false;
+    }
+
     modalManager.show('gameOver');
+    return true;
 }
 
 /**
@@ -396,8 +504,24 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} gameState - Game state at end of demo
  * @param {Object} callbacks - Navigation callbacks { onWatchAgain, onBrowseReplays, onMainMenu }
+ * @param {Object} options - Optional presentation policy
+ * @param {Function} [options.shouldPresent] - Ownership predicate checked around async work
+ * @returns {Promise<boolean>} Whether the modal was presented
  */
-export async function showDemoCompleteModal(modalManager, gameState, highScoreManager, callbacks = {}) {
+export async function showDemoCompleteModal(
+    modalManager,
+    gameState,
+    highScoreManager,
+    callbacks = {},
+    options = {},
+) {
+    const shouldPresent = typeof options.shouldPresent === 'function'
+        ? options.shouldPresent
+        : () => true;
+    if (!shouldPresent()) {
+        return false;
+    }
+
     const {
         score = 0, lines = 0, level = 1, dropInterval = 1000, startTime, piecesPlaced = 0,
     } = gameState || {};
@@ -439,6 +563,10 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
         } catch (e) {
             console.warn('[Modal] Failed to load stats', e);
         }
+    }
+
+    if (!shouldPresent()) {
+        return false;
     }
 
     // Ranking Logic
@@ -594,7 +722,12 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
         });
     }
 
+    if (!shouldPresent()) {
+        return false;
+    }
+
     modalManager.show('demoComplete');
+    return true;
 }
 
 /**

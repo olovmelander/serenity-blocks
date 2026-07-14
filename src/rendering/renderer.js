@@ -704,6 +704,7 @@ export class WebGLRenderer {
         this.qualityConfig = getQualityConfig(this.effectQuality);
         this._frameSkipCounter = 0;
         this._particleUpdateCounter = 0;
+        this.lastFrameDrawCalls = 0;
 
         this._initializeResourceManagers();
 
@@ -931,6 +932,10 @@ export class WebGLRenderer {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+        this.lastFrameDrawCalls = 0;
+        if (typeof window !== 'undefined') {
+            window.activeDrawCalls = 0;
+        }
         // Clear the canvas when stopping
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
@@ -1000,6 +1005,8 @@ export class WebGLRenderer {
 
         // Skip rendering if WebGL context is lost
         if (this._contextLost) {
+            this.lastFrameDrawCalls = 0;
+            if (typeof window !== 'undefined') window.activeDrawCalls = 0;
             if (!this.useExternalRenderLoop) {
                 this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
             }
@@ -1009,6 +1016,8 @@ export class WebGLRenderer {
         if (this.qualityConfig?.renderFrameSkip > 0) {
             this._frameSkipCounter = (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
             if (this._frameSkipCounter !== 0) {
+                this.lastFrameDrawCalls = 0;
+                if (typeof window !== 'undefined') window.activeDrawCalls = 0;
                 if (!this.useExternalRenderLoop) {
                     this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
                 }
@@ -1086,7 +1095,10 @@ export class WebGLRenderer {
             }
         }
 
-        window.activeDrawCalls = currentFrameDrawCalls;
+        this.lastFrameDrawCalls = currentFrameDrawCalls;
+        if (typeof window !== 'undefined') {
+            window.activeDrawCalls = currentFrameDrawCalls;
+        }
 
         if (!this.useExternalRenderLoop) {
             this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
@@ -1516,102 +1528,6 @@ export class WebGLRenderer {
                 color: [1.0, 0.9, 1.0], // Bright white-pink
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, sparkleConfig));
-
-            this.start();
-        } else if (themeName === 'stillwater') {
-            // Back layer - Deep mist particles (slowest, farthest)
-            const deepMistConfig = {
-                behavior: 'horizontal-drift',
-                speed: 0.2,
-                minSize: 15.0,
-                maxSize: 30.0,
-                minAlpha: 0.03,
-                maxAlpha: 0.1,
-                lifetime: Infinity,
-                zIndex: -0.6,
-                color: [0.65, 0.7, 0.65], // Deep greenish-grey
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 40, deepMistConfig));
-
-            // Mid layer - Drifting mist particles
-            const mistConfig = {
-                behavior: 'horizontal-drift',
-                speed: 0.35,
-                minSize: 10.0,
-                maxSize: 22.0,
-                minAlpha: 0.05,
-                maxAlpha: 0.15,
-                lifetime: Infinity,
-                zIndex: -0.4,
-                color: [0.7, 0.75, 0.7], // Muted greenish-grey
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 50, mistConfig));
-
-            // Floating spores/dust motes (back layer)
-            const sporeBackConfig = {
-                behavior: 'ambient',
-                speed: 0.06,
-                minSize: 0.8,
-                maxSize: 1.8,
-                minAlpha: 0.15,
-                maxAlpha: 0.35,
-                lifetime: Infinity,
-                zIndex: -0.5,
-                color: [0.55, 0.6, 0.5], // Darker earthy tones
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 60, sporeBackConfig));
-
-            // Floating spores/dust motes (front layer)
-            const sporeFrontConfig = {
-                behavior: 'ambient',
-                speed: 0.12,
-                minSize: 1.2,
-                maxSize: 3.0,
-                minAlpha: 0.25,
-                maxAlpha: 0.5,
-                lifetime: Infinity,
-                zIndex: -0.2,
-                color: [0.65, 0.7, 0.6], // Lighter earthy tones
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 70, sporeFrontConfig));
-
-            // Mystical fireflies (back layer - dimmer)
-            const fireflyBackConfig = {
-                behavior: 'firefly',
-                minSize: 2.5,
-                maxSize: 5.0,
-                maxAlpha: 0.6,
-                lifetime: Infinity,
-                zIndex: -0.45,
-                color: [0.75, 0.8, 0.65], // Muted green-yellow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 12, fireflyBackConfig));
-
-            // Mystical fireflies (front layer - brighter)
-            const fireflyFrontConfig = {
-                behavior: 'firefly',
-                minSize: 3.0,
-                maxSize: 6.0,
-                maxAlpha: 0.8,
-                lifetime: Infinity,
-                zIndex: -0.15,
-                color: [0.85, 0.88, 0.75], // Brighter pale green-yellow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 18, fireflyFrontConfig));
-
-            // Ethereal wisps (slow floating orbs)
-            const wispConfig = {
-                behavior: 'ambient',
-                speed: 0.04,
-                minSize: 4.0,
-                maxSize: 8.0,
-                minAlpha: 0.1,
-                maxAlpha: 0.3,
-                lifetime: Infinity,
-                zIndex: -0.35,
-                color: [0.7, 0.75, 0.68], // Soft mystical glow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 25, wispConfig));
 
             this.start();
         } else {

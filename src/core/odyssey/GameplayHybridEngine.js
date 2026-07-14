@@ -8,15 +8,15 @@
  * - Connects victory/failure evaluation
  */
 
-import { rebuildBoardGridFromPieces } from '../board.js';
-import { GameState, markBoardDirty } from '../game.js';
+import { GameState, applyGarbage } from '../game.js';
 import {
     ROWS, HIDDEN_ROWS, LEVEL_SPEEDS,
 } from '../constants.js';
-import { columnsToMask, insertGarbageEntries, maskArrayToBits } from '../garbage.js';
+import { columnsToMask, maskArrayToBits } from '../garbage.js';
 import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
+import { bindLegacySessionRng } from '../session-rng.js';
 
 const ODYSSEY_SEED_HOLE_PATTERNS = Object.freeze([
     [4],
@@ -80,9 +80,10 @@ export class GameplayHybridEngine {
 
     /**
      * Create a GameState configured for the current level
+     * @param {Object} [gameStateOverrides] - Fixed-clock-only supplemental options
      * @returns {GameState}
      */
-    createGameState() {
+    createGameState(gameStateOverrides = {}) {
         if (!this.levelConfig) {
             throw new Error('[HybridEngine] Must call configure() before createGameState()');
         }
@@ -93,7 +94,27 @@ export class GameplayHybridEngine {
         // Determine if using infinity mode features
         const isInfinityBased = mechanics.baseMode === 'infinity' || mechanics.baseMode === 'hybrid';
 
+        // Keep authored Odyssey mechanics authoritative. This optional seam exists only
+        // for deterministic clock/input policy; it is not a general override bag.
+        const supplementalOptions = {
+            ...(gameStateOverrides.inputHandling !== undefined
+                ? { inputHandling: gameStateOverrides.inputHandling }
+                : {}),
+            ...(gameStateOverrides.hitStopEnabled !== undefined
+                ? { hitStopEnabled: gameStateOverrides.hitStopEnabled }
+                : {}),
+            ...(gameStateOverrides.infinitySpawnPolicy !== undefined
+                ? { infinitySpawnPolicy: gameStateOverrides.infinitySpawnPolicy }
+                : {}),
+            ...(gameStateOverrides.infinityVisibleRows !== undefined
+                ? { infinityVisibleRows: gameStateOverrides.infinityVisibleRows }
+                : {}),
+            ...(gameStateOverrides.rngSeed !== undefined
+                ? { rngSeed: gameStateOverrides.rngSeed }
+                : {}),
+        };
         const options = {
+            ...supplementalOptions,
             isInfinityMode: isInfinityBased,
             maxRows: mechanics.board.rows || ROWS,
             disableLevelProgression: !mixer.hasLevelProgression(),
@@ -102,6 +123,9 @@ export class GameplayHybridEngine {
         };
 
         this.gameState = new GameState(options);
+        if (supplementalOptions.rngSeed !== undefined) {
+            bindLegacySessionRng(this.gameState, supplementalOptions.rngSeed);
+        }
 
         // Set starting level
         this.gameState.level = mechanics.speed.startLevel || 1;
@@ -138,18 +162,12 @@ export class GameplayHybridEngine {
         }
 
         const entries = buildStartingRowEntries(rowCount, this.levelConfig?.id || 0);
-        const result = insertGarbageEntries(this.gameState.lockedPieces, entries, {
-            boardGrid: this.gameState.boardGrid,
-            settleFloatingBlocks: false,
-        });
+        // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
+        const result = applyGarbage(this.gameState, entries, { settleFloatingBlocks: false });
 
-        if (result.topOut) {
+        if (result?.topOut) {
             this.gameState.isGameOver = true;
-            return;
         }
-
-        rebuildBoardGridFromPieces(this.gameState.lockedPieces, this.gameState.boardGrid);
-        markBoardDirty(this.gameState);
     }
 
     /**

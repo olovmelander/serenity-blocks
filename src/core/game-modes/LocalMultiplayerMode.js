@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
-import { MultiplayerGameState } from '../multiplayer.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
@@ -10,22 +9,23 @@ import {
 import {
     spawnPiece,
     fillBag,
-    processAutoDrop,
     move as coreMove,
     rotate as coreRotate,
     softDrop as coreSoftDrop,
     hardDrop as coreHardDrop,
 } from '../game.js';
 import { createEmptyMatchMetrics, accumulateMatchMetrics } from '../match-metrics.js';
-import { decrementBlindTimers } from '../blind.js';
 import { LocalBotManager } from '../ai/local-bot-manager.js';
 
-import { expandGridIfNeeded, checkInfinityGameOver, calculateBuildHeight } from '../infinity-grid.js';
-import { seededRandom } from '../../utils/helpers.js';
+import { expandGridIfNeeded, calculateBuildHeight } from '../infinity-grid.js';
+import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+} from '../../events/gameplay-events.js';
 import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
@@ -33,6 +33,18 @@ import {
 } from '../../ui/cinematic-loading-overlay.js';
 import { createBoardScene } from '../../rendering/phaser/board-scene.js';
 import { createMultiplayerBoardScene } from '../../rendering/phaser/multiplayer/board-panel.js';
+import {
+    captureLocalMultiplayerClock,
+    captureLocalMultiplayerRound,
+    clearLocalMultiplayerFixedInput,
+    configureLocalMultiplayerSimulationClock,
+    drainLocalMultiplayerRound,
+    ownsLocalMultiplayerRound,
+    retireLocalMultiplayerRound,
+    resolveLocalMultiplayerMatchResult,
+    startLocalMultiplayerModeLoop,
+    stopLocalMultiplayerModeLoop,
+} from './local-multiplayer-loop.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 
@@ -53,6 +65,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Multiplayer specific state
         this.multiplayerState = null;
         this.animationFrameId = null;
+        this._startGeneration = 0;
+        this._gameLoopGeneration = 0;
         this.boardScenes = [];
         this.cleanupHandlers = [];
         this.playerMinimaps = [];
@@ -86,6 +100,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         };
         // Keyed by team id (0..3); missing keys read as 0, so this supports any team count.
         this.teamRoundWins = {};
+        this.lastMatchResultClock = null;
 
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
@@ -140,6 +155,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async handleConfigurationComplete(config) {
         console.log('[LocalMultiplayer] Configuration received:', config);
 
+        const configurationGeneration = ++this._startGeneration;
+        const ownsConfiguration = () => (
+            configurationGeneration === this._startGeneration
+            && this.isActive
+            && this.matchConfig === config
+        );
+        let startInvoked = false;
+
         this.matchConfig = config;
         this.configuredForStart = true;
 
@@ -147,17 +170,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         try {
             // Let the overlay fully cover the screen before heavy UI/theme work.
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            await new Promise((resolve) => { setTimeout(resolve, 500); });
+            if (!ownsConfiguration()) return;
 
             // Now setup the UI for the configured number of players.
             await this._setupMultiplayerUI();
+            if (!ownsConfiguration()) return;
 
             console.log('[LocalMultiplayer] UI setup complete, starting match...');
 
             // Automatically start the match after configuration.
+            startInvoked = true;
             await this.onStart();
         } catch (error) {
+            if (!startInvoked && !ownsConfiguration()) return;
             console.error('[LocalMultiplayer] Failed to start configured match:', error);
+            if (startInvoked) {
+                try {
+                    await this.onStop();
+                } catch (stopError) {
+                    console.error('[LocalMultiplayer] Failed to roll back partial start:', stopError);
+                }
+                this._removeInputWrappers();
+                this.configuredForStart = false;
+            }
             await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 300, minVisibleMs: 0 });
             alert(`Failed to start local multiplayer match: ${error.message}`);
         }
@@ -370,49 +406,44 @@ export class LocalMultiplayerMode extends BaseGameMode {
     /**
      * Called when user clicks "Start Game"
      */
-    async onStart() {
-        console.log('[LocalMultiplayer] Starting game...');
-
-        // Check if configuration has been set
+    async onStart(options = {}) {
         if (!this.configuredForStart || !this.matchConfig) {
             console.log('[LocalMultiplayer] Configuration not set, waiting for user to configure');
-            // Don't call super.onStart() yet - we're not ready to run
-            // The config modal is already shown from onActivate()
-            // When user completes config, handleConfigurationComplete() will call onStart() again
             return;
         }
 
-        // Now we're ready to actually start the game
+        this._startGeneration += 1;
+        const startGeneration = this._startGeneration;
+        const ownsStart = () => startGeneration === this._startGeneration && this.isActive && this.isRunning;
         await super.onStart();
+        if (!ownsStart()) return;
 
-        // We deferred this mode start until config was confirmed, so resume
-        // gameplay themes/music and dismiss the intro only at this point.
         if (this.deps.soundManager?.resumeThemeLinkedMusic) {
             this.deps.soundManager.resumeThemeLinkedMusic(true);
         }
         if (this.deps.themeManager?.resumeThemes) {
             await this.deps.themeManager.resumeThemes();
+            if (!ownsStart()) return;
         }
         if (this.deps.themeManager?.waitForThemeReady) {
-            const themeReady = await this.deps.themeManager.waitForThemeReady(3000);
-            console.log('[LocalMultiplayer] Theme ready:', themeReady);
+            await this.deps.themeManager.waitForThemeReady(3000);
+            if (!ownsStart()) return;
         }
         if (this.deps.soundManager?.ensureTrackPlaybackSynced) {
             await this.deps.soundManager.ensureTrackPlaybackSynced({
                 reason: 'local-multiplayer-start',
                 force: true,
             });
+            if (!ownsStart()) return;
         }
 
         const { introAnimation } = await import('../../ui/intro-animation.js');
+        if (!ownsStart()) return;
         const introDismissPromise = Promise.resolve(
             introAnimation?.dismiss?.(),
         );
 
-        // Hide start modal immediately
         this.deps.modalManager.hideAll();
-
-        // Clear any existing death animations (from previous match)
         this._clearDeathAnimations();
 
         // Reset match stats for new game
@@ -429,37 +460,28 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player4: 0,
         };
         this.teamRoundWins = {};
+        this.lastMatchResultClock = null;
 
-        // Store match start time for time-based win conditions
         this.matchStartTime = Date.now();
 
-        // Initialize multiplayer state with new MultiPlayerState
         const numPlayers = this.matchConfig?.numPlayers || 2;
-        console.log(`[LocalMultiplayer] Creating MultiPlayerState for ${numPlayers} players`);
-
         this.multiplayerState = new MultiPlayerState(numPlayers);
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
+        configureLocalMultiplayerSimulationClock(this);
         // Apply per-player Quadra handicap levels AFTER reset() (which restores the
         // default level). No-op unless the host picked differing levels.
         this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
 
-        // Activate Phaser multiplayer UI
         this._activatePhaserMultiplayerUI();
         this._hideMultiplayerBoardsForCountdown();
 
-        // Get references to the board scenes (created in _createSeparatePhaserGames)
         if (!this.boardScenes || this.boardScenes.length === 0) {
             throw new Error('Board scenes not initialized. Call onActivate first.');
         }
 
-        console.log(`[LocalMultiplayer] Using ${this.boardScenes.length} board scenes`);
-
-        // Sync scenes early so infinity cameras are configured before the first spawn
         this._syncBoardScenes();
-
-        // Ensure stale minimaps are removed (e.g., rematch without deactivation)
         this._destroyMinimaps();
 
         // Initialize minimaps for Infinity Mode
@@ -493,19 +515,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         }
 
-        // Create shared RNG seed for fairness
-        const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
-        this.multiplayerState.sharedPieceSeed = sharedSeed;
-
-        // Initialize RNG and piece bags for all players
-        for (let i = 0; i < numPlayers; i++) {
-            const player = this.multiplayerState.players[i];
-            player.randomGenerator = seededRandom(sharedSeed);
-            fillBag(player.nextPieces, player.randomGenerator);
-        }
-        console.log(`[LocalMultiplayer] Shared seed: ${sharedSeed}`);
-
-        // Draw initial next pieces for all players
+        this._initializeSharedPieceRng(options.seed);
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
             const canvases = this.playerNextCanvases.get(playerNum);
@@ -514,23 +524,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         }
 
-        // Update stats display
         this._updateMultiplayerStats(0);
 
-        // Keep the cinematic loader up until it morphs directly into the countdown.
         await this._waitForMatchStartLoadingOverlayMinVisible();
+        if (!ownsStart()) return;
         await introDismissPromise;
+        if (!ownsStart()) return;
         await transitionCinematicLoadingOverlayToCountdown({
             startCount: 5,
-            onCount: () => this.deps.soundManager.sfxPlayer.playMove?.(),
-            onGo: () => this.deps.soundManager.sfxPlayer.playDrop?.(),
-            onFirstCountVisible: () => {
-                this._revealMultiplayerBoardsForCountdown();
-            },
+            onCount: () => ownsStart() && this.deps.soundManager.sfxPlayer.playMove?.(),
+            onGo: () => ownsStart() && this.deps.soundManager.sfxPlayer.playDrop?.(),
+            onFirstCountVisible: () => ownsStart() && this._revealMultiplayerBoardsForCountdown(),
         });
+        if (!ownsStart()) return;
         this.matchStartLoadingOverlay = null;
 
-        // Spawn first pieces for all players
         this.multiplayerState.lastTime = performance.now();
 
         // Spawn pieces for all configured players
@@ -539,77 +547,69 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const nextCanvases = this.playerNextCanvases.get(playerNum);
             const playerState = this.multiplayerState.players[i];
 
-            // Spawn initial piece (no garbage on first spawn)
             spawnPiece(playerState, () => {
                 if (nextCanvases) {
                     drawNextPieces(nextCanvases, playerState.nextPieces);
                 }
                 this._syncBoardScenes();
             }, () => this._handleGameOver(i));
-
-            console.log(`[LocalMultiplayer] Spawned initial piece for Player ${playerNum}`);
         }
 
         this._syncBoardScenes();
 
-        // Setup reactive board juice inputs
         this._setupInputWrappers();
         this._setupLocalBots();
 
-        // Start game loop
         this.multiplayerState.isPaused = false;
         this.multiplayerState.lastTime = performance.now();
         this._startGameLoop();
+    }
 
-        console.log('[LocalMultiplayer] Game started!');
+    _initializeSharedPieceRng(seed) {
+        const { players } = this.multiplayerState;
+        const sharedSeed = seed === undefined ? generateSessionSeed() : seed;
+        const descriptors = players.map((player) => (
+            bindLegacySessionRng(player, sharedSeed)
+        ));
+        const rngDescriptor = descriptors[0];
+        this.multiplayerState.rngDescriptor = rngDescriptor;
+        this.multiplayerState.sharedPieceSeed = rngDescriptor.seed;
+        players.forEach((player) => {
+            player.rngDescriptor = rngDescriptor;
+            fillBag(player.nextPieces, player.randomGenerator);
+        });
+        return rngDescriptor;
     }
 
     /**
-     * Called when game is paused
+     * Pause/resume wiring lives in BaseGameMode (§4.6 slice 2) — this mode's
+     * pausable sim is the shared multiplayerState (its own rAF loop early-outs
+     * on multiplayerState.isPaused).
      */
+    _getPausableGameState() {
+        return this.multiplayerState || null;
+    }
+
     onPause() {
         super.onPause();
-
-        if (this.multiplayerState) {
-            this.multiplayerState.isPaused = true;
-        }
-    }
-
-    /**
-     * Called when game is resumed
-     */
-    onResume() {
-        super.onResume();
-
-        if (this.multiplayerState) {
-            this.multiplayerState.isPaused = false;
-            this.multiplayerState.lastTime = performance.now();
-        }
+        clearLocalMultiplayerFixedInput(this);
     }
 
     /**
      * Called when game ends
      */
     async onStop() {
+        this._startGeneration += 1;
+        const retiredRound = retireLocalMultiplayerRound(this);
         await super.onStop();
 
         console.log('[LocalMultiplayer] Stopping game...');
 
-        // Stop game loop
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
-        if (this.multiplayerState?.animationId) {
-            cancelAnimationFrame(this.multiplayerState.animationId);
-            this.multiplayerState.animationId = null;
-        }
-
         // Mark game as over
-        if (this.multiplayerState) {
-            this.multiplayerState.isGameOver = true;
+        if (retiredRound.multiplayerState) {
+            retiredRound.multiplayerState.isGameOver = true;
         }
+        await drainLocalMultiplayerRound(this, retiredRound);
 
         if (this.botManager) {
             this.botManager.destroy();
@@ -621,6 +621,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        this._startGeneration += 1;
         await super.onDeactivate();
 
         console.log('[LocalMultiplayer] Deactivating...');
@@ -747,146 +748,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
     // ===== Private Methods =====
 
-    /**
-     * Start the multiplayer game loop
-     * @private
-     */
+    /** Retire every callback owned by the current local simulation loop. */
+    _stopGameLoop() {
+        stopLocalMultiplayerModeLoop(this);
+    }
+
+    /** Start the multiplayer game loop. @private */
     _startGameLoop() {
-        let frameCount = 0;
-
-        const loop = (currentTime) => {
-            if (!this.isRunning || this.multiplayerState.isGameOver) {
-                console.log('[LocalMultiplayer] Game loop stopped:', { isRunning: this.isRunning, isGameOver: this.multiplayerState.isGameOver });
-                return;
-            }
-
-            if (this.multiplayerState.isPaused) {
-                this.animationFrameId = requestAnimationFrame(loop);
-                return;
-            }
-
-            const delta = currentTime - this.multiplayerState.lastTime;
-            this.multiplayerState.lastTime = currentTime;
-
-            // Update Hot Potato state if enabled
-            if (this.multiplayerState.hotPotato?.enabled) {
-                const prevHolder = this.multiplayerState.hotPotato.holderIndex;
-                const event = this.multiplayerState.updateHotPotato(Date.now());
-                const currentHolder = this.multiplayerState.hotPotato.holderIndex;
-
-                if (prevHolder !== currentHolder && currentHolder !== null) {
-                    if (event && event.type === 'detonate') {
-                        this.deps.soundManager?.playGarbageReceived();
-                        console.log(`[LocalMultiplayer] Hot potato detonated! P${prevHolder + 1} -> P${currentHolder + 1}`);
-                    } else {
-                        this.deps.soundManager?.playGarbageSend();
-                        console.log(`[LocalMultiplayer] Hot potato passed: P${prevHolder + 1} -> P${currentHolder + 1}`);
-                    }
-                }
-            }
-
-            // Update DAS (Delayed Auto Shift) for continuous movement
-            if (window.inputController) {
-                window.inputController.updateDAS(delta);
-            }
-
-            if (this.botManager) {
-                this.botManager.update(delta, currentTime);
-            }
-
-            // Debug log every 60 frames (once per second at 60fps)
-            frameCount++;
-            if (frameCount % 60 === 0) {
-                console.log('[LocalMultiplayer] Game loop running. Players:', this.multiplayerState.numPlayers, 'Delta:', Math.floor(delta));
-                // Log player state periodically to debug gravity
-                for (let i = 0; i < this.multiplayerState.numPlayers; i++) {
-                    const ps = this.multiplayerState.players[i];
-                    console.log(`  P${i + 1}: piece=${!!ps.currentPiece}, counter=${Math.floor(ps.dropCounter)}, interval=${ps.dropInterval}, processing=${ps.isProcessingPhysics}`);
-                }
-            }
-
-            // Update all players using the core game physics
-            for (let playerIndex = 0; playerIndex < this.multiplayerState.numPlayers; playerIndex++) {
-                const playerNum = playerIndex + 1; // 1-based for compatibility
-                const playerState = this.multiplayerState.players[playerIndex];
-
-                // Skip dead players
-                if (!playerState.isAlive) {
-                    continue;
-                }
-
-                // Skip players paused for minimap exploration
-                if (this.multiplayerState.playerPaused?.[playerIndex]) {
-                    continue;
-                }
-
-                // Tick down any active Quadra blind blackout (real-time seconds)
-                decrementBlindTimers(playerState, delta / 1000);
-
-                // Decrement hit-stop if active and skip loop update
-                if (playerState.hitStopRemaining > 0) {
-                    playerState.hitStopRemaining = Math.max(0, playerState.hitStopRemaining - delta);
-                    continue;
-                }
-
-                // Debug log for first few frames
-                if (frameCount <= 5) {
-                    console.log(`[LocalMultiplayer] P${playerNum} state:`, {
-                        hasCurrentPiece: !!playerState.currentPiece,
-                        isProcessing: playerState.isProcessingPhysics,
-                        dropCounter: playerState.dropCounter,
-                        dropInterval: playerState.dropInterval,
-                        delta,
-                    });
-                }
-
-                if (!playerState.isProcessingPhysics && playerState.currentPiece) {
-                    // Check if grid expansion is needed
-                    if (this.matchConfig?.isInfinityLMS && frameCount % 30 === 0) {
-                        this._maybeExpandPlayerGrid(playerState, this.boardScenes[playerIndex]);
-                    }
-                    // Log before and after adding delta (first few frames)
-                    if (frameCount <= 3) {
-                        console.log(`[LocalMultiplayer] P${playerNum} BEFORE: dropCounter=${playerState.dropCounter}, delta=${delta}`);
-                    }
-
-                    // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
-                    const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
-                        || this._getPhysicsCallbacks(playerNum);
-
-                    processAutoDrop(
-                        playerState,
-                        delta,
-                        () => this.deps.soundManager.sfxPlayer.playDrop(),
-                        callbacks,
-                    );
-
-                    if (frameCount <= 3) {
-                        console.log(`[LocalMultiplayer] P${playerNum} AFTER: dropCounter=${playerState.dropCounter}`);
-                    }
-                }
-
-                if (this.matchConfig?.isInfinityLMS && !playerState.isGameOver) {
-                    if (checkInfinityGameOver(playerState)) {
-                        playerState.isGameOver = true;
-                        void this._handleGameOver(playerIndex);
-                        continue;
-                    }
-                }
-            }
-
-            // Update stats display
-            this._updateMultiplayerStats(frameCount);
-
-            // Sync board scenes
-            this._syncBoardScenes();
-
-            // Continue loop
-            this.animationFrameId = requestAnimationFrame(loop);
-        };
-
-        console.log('[LocalMultiplayer] Starting game loop...');
-        this.animationFrameId = requestAnimationFrame(loop);
+        startLocalMultiplayerModeLoop(this);
     }
 
     /**
@@ -907,10 +776,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const cascadeCount = rest[3] ?? 1;
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
+                emitLineClear({ lineCount, clearedRows, cascadeCount, player: playerNum });
             },
             onTSpin: (lineCount) => {
-                eventBus.emit(EVENTS.TSPIN, { lineCount, player: playerNum });
+                emitTSpin({ lineCount, player: playerNum });
                 this.deps.soundManager.sfxPlayer.playTSpin?.();
                 const scene = this.boardScenes?.[playerNum - 1];
                 if (scene?.sharedEffects?.playTSpinEffect) {
@@ -918,7 +787,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onB2B: () => {
-                eventBus.emit(EVENTS.B2B, { active: true, player: playerNum });
+                emitB2B({ player: playerNum });
                 this.deps.soundManager.sfxPlayer.playB2B?.();
                 const scene = this.boardScenes?.[playerNum - 1];
                 if (scene?.sharedEffects?.playB2BChange) {
@@ -926,7 +795,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onPieceLock: (piece) => {
-                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+                emitPieceLock({ piece, player: playerNum });
             },
             onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.deps.settingsManager?.get() || {};
@@ -973,7 +842,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     playerState.hitStopRemaining = 110;
                 }
 
-                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+                emitPerfectClear({ depth, perfectClearBonus, player: playerNum });
                 this.deps.soundManager.sfxPlayer.playPerfectClear?.();
 
                 const scene = this.boardScenes?.[playerNum - 1];
@@ -985,7 +854,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
-                eventBus.emit(EVENTS.COMBO, { comboCount });
+                emitCombo({ comboCount, player: playerNum });
                 const settings = this.deps.settingsManager.get();
                 // Show combo effects on all active board scenes
                 this.boardScenes.forEach((scene) => {
@@ -1680,11 +1549,78 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return maxCameraRow;
     }
 
+    /** Resolve all top-outs reported by one completed fixed-tick player barrier. */
+    async _handleFixedTickTopOutBatch(playerIndices, roundOwner) {
+        if (
+            !ownsLocalMultiplayerRound(this, roundOwner)
+            || !this._localSimulationLoop?.fixedTickEnabled
+            || this.matchConfig?.isInfinityLMS
+        ) return false;
+
+        const lastAttackers = this.multiplayerState.lastAttackerIds.slice();
+        const eliminated = this.multiplayerState.handlePlayerDeaths(playerIndices);
+        if (eliminated.length === 0) return false;
+        eliminated.forEach((playerIndex) => {
+            const player = this.multiplayerState.players[playerIndex];
+            if (player?.currentPiece) player.currentPiece = null;
+            this._showPlayerDeathAnimation(playerIndex);
+        });
+
+        const waitForOutcome = async () => {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            return ownsLocalMultiplayerRound(this, roundOwner);
+        };
+        const matchResult = resolveLocalMultiplayerMatchResult(this.multiplayerState);
+        if (matchResult !== null) {
+            this.multiplayerState.isPaused = true;
+            if (await waitForOutcome()) await this._showMatchEnd(matchResult);
+            return true;
+        }
+        if (this.matchConfig?.isTeamMode) {
+            const outcome = this._getTeamRoundOutcome();
+            if (!outcome) return true;
+            this.multiplayerState.isPaused = true;
+            if (outcome.isDraw || outcome.winnerTeamId === null) {
+                if (await waitForOutcome()) await this._startNewRound();
+                return true;
+            }
+            const winners = outcome.teamStats.get(outcome.winnerTeamId)?.alivePlayers || [];
+            winners.forEach((playerIndex) => this._showVictoryAnimation(playerIndex));
+            if (await waitForOutcome()) {
+                await this.handleRoundEnd({ type: 'team', teamId: outcome.winnerTeamId });
+            }
+            return true;
+        }
+
+        const aliveIndices = this.multiplayerState.players
+            .map((player, playerIndex) => (player.isAlive ? playerIndex : -1))
+            .filter((playerIndex) => playerIndex >= 0);
+        if (aliveIndices.length > 1) return true;
+        this.multiplayerState.isPaused = true;
+        if (aliveIndices.length === 0) {
+            if (await waitForOutcome()) await this._startNewRound();
+            return true;
+        }
+
+        const winnerIndex = aliveIndices[0];
+        const winnerKey = `player${winnerIndex + 1}`;
+        const winnerEarnedFrag = eliminated.some(
+            (playerIndex) => lastAttackers[playerIndex] === winnerIndex,
+        );
+        this._showVictoryAnimation(winnerIndex);
+        if (await waitForOutcome()) {
+            await this.handleRoundEnd(winnerKey, !winnerEarnedFrag);
+        }
+        return true;
+    }
+
     /**
      * Handle game over for a player
      * @private
      */
     async _handleGameOver(playerIndex) {
+        const roundOwner = captureLocalMultiplayerRound(this);
+        if (!roundOwner) return;
         console.log(`[LocalMultiplayer] Player ${playerIndex + 1} lost!`);
 
         // Check if this was a suicide (no attacker) BEFORE handling death (which might clear state)
@@ -1730,6 +1666,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
                     // Direct to match end
                     await new Promise((resolve) => setTimeout(resolve, 1000)); // Short pause for effect
+                    if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                     await this._showMatchEnd({ type: 'team', teamId: teamOutcome.winnerTeamId });
                     return;
                 }
@@ -1738,6 +1675,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (teamOutcome && teamOutcome.isDraw) {
                     console.log('[LocalMultiplayer] Infinity Draw (all teams eliminated)');
                     await new Promise((resolve) => setTimeout(resolve, 1000));
+                    if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                     // Use specific draw message or just end match with no winner?
                     // For now, let's just end it as a draw
                     await this._showMatchEnd('draw');
@@ -1767,6 +1705,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
 
                 await new Promise((resolve) => setTimeout(resolve, 1000));
+                if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                 await this._showMatchEnd(winnerKey);
                 return;
             }
@@ -1792,10 +1731,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 });
 
                 await new Promise((resolve) => setTimeout(resolve, 500));
+                if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                 await this.handleRoundEnd({ type: 'team', teamId: teamOutcome.winnerTeamId });
             } else {
                 console.log('[LocalMultiplayer] Round ended in a draw (no teams remaining)');
                 await new Promise((resolve) => setTimeout(resolve, 500));
+                if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                 await this._startNewRound();
             }
             return;
@@ -1813,6 +1754,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
             // Wait for victory animation before showing round end
             await new Promise((resolve) => setTimeout(resolve, 500));
+            if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
 
             // Pass isSelfKill flag to handleRoundEnd
             await this.handleRoundEnd(winnerKey, isSelfKill);
@@ -1834,6 +1776,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
                     // Wait a bit for victory animation before showing round end
                     await new Promise((resolve) => setTimeout(resolve, 500));
+                    if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
 
                     await this.handleRoundEnd(winnerKey, isSelfKill);
                 }
@@ -2991,7 +2934,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         switch (config.endCondition) {
         case 'frags': {
-            // Check if any player has reached the cumulative individual kill target
             const numFragPlayers = config.numPlayers || 2;
             for (let fi = 0; fi < numFragPlayers; fi++) {
                 const matchKey = `player${fi + 1}`;
@@ -3002,24 +2944,24 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         case 'time': {
-            // Check if time limit has been reached
             const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
             return elapsedMinutes >= config.endConditionValue;
         }
 
         case 'points': {
-            // Check if either player reached the score target
             const targetScore = config.endConditionValue * 1000;
-            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+            return this.multiplayerState.players.some((player, playerIndex) => {
+                const matchKey = `player${playerIndex + 1}`;
+                return (this.matchStats[matchKey]?.score || 0) + (player?.score || 0) >= targetScore;
+            });
         }
 
         case 'lines': {
-            // Check if either player cleared enough lines
-            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+            return this.multiplayerState.players.some((player, playerIndex) => {
+                const matchKey = `player${playerIndex + 1}`;
+                return (this.matchStats[matchKey]?.lines || 0)
+                    + (player?.totalLinesCleared || 0) >= config.endConditionValue;
+            });
         }
 
         case 'never':
@@ -3088,16 +3030,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Start a new round
      * @private
      */
-    async _startNewRound() {
+    async _startNewRound(seed) {
         console.log('[LocalMultiplayer] Starting new round...');
+
+        const retiredRound = retireLocalMultiplayerRound(this);
+        if (!await drainLocalMultiplayerRound(this, retiredRound) || !this.isRunning) return;
 
         // Clear death animations from previous round
         this._clearDeathAnimations();
 
         // Aggregate current round stats into match totals BEFORE resetting logic
         const { numPlayers } = this.multiplayerState;
-        const now = Date.now();
-        const roundDuration = now - (this.roundStartTime || this.matchStartTime);
+        const roundDuration = retiredRound.clock.usesFixedTiming
+            ? retiredRound.clock.roundMs
+            : Date.now() - (this.roundStartTime || this.matchStartTime);
 
         const accumulatedLog = {};
         for (let i = 0; i < numPlayers; i++) {
@@ -3165,15 +3111,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
 
-        // Create new shared seed and reinitialize RNG for all players
-        const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
-        this.multiplayerState.sharedPieceSeed = sharedSeed;
-
-        for (let i = 0; i < numPlayers; i++) {
-            const player = this.multiplayerState.players[i];
-            player.randomGenerator = seededRandom(sharedSeed);
-            fillBag(player.nextPieces, player.randomGenerator);
-        }
+        this._initializeSharedPieceRng(seed);
 
         // Draw next pieces for all players
         for (let i = 0; i < numPlayers; i++) {
@@ -3225,10 +3163,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Show match end (someone won the required number of rounds)
-     * @private
-     */
-    /**
      * Empty aggregate-metrics record used for end-of-match stats.
      * @private
      */
@@ -3266,14 +3200,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log(`[LocalMultiplayer] Match ended! Winner: ${winnerName}`);
 
-        // Stop the game
+        const clockBeforeStop = captureLocalMultiplayerClock(this);
         await this.onStop();
+        const resultGeneration = this._startGeneration;
+        const resultClock = clockBeforeStop.usesFixedTiming
+            ? clockBeforeStop
+            : captureLocalMultiplayerClock(this);
+        this.lastMatchResultClock = resultClock;
 
-        // Show match result
-
-        // Prepare detailed stats data
-        const now = Date.now();
-        const currentDuration = now - (this.roundStartTime || this.matchStartTime);
+        const currentDuration = resultClock.roundMs;
         const players = [];
         for (let i = 0; i < numPlayers; i++) {
             const key = `player${i + 1}`;
@@ -3906,8 +3841,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
             overlay.style.transition = 'opacity 0.3s';
             overlay.style.opacity = '0';
             setTimeout(() => {
+                if (!this.isActive || this._startGeneration !== resultGeneration) {
+                    overlay.remove();
+                    return;
+                }
                 overlay.remove();
-                this.onStart();
+                this.onStart().catch((error) => {
+                    console.error('[LocalMultiplayer] Match restart failed:', error);
+                });
             }, 300);
         });
 
@@ -3919,6 +3860,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             overlay.style.opacity = '0';
             setTimeout(() => {
                 overlay.remove();
+                if (!this.isActive || this._startGeneration !== resultGeneration) return;
                 // Reset round wins
                 this.roundWins.player1 = 0;
                 this.roundWins.player2 = 0;

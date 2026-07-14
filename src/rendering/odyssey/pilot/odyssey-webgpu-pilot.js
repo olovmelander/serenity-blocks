@@ -29,6 +29,11 @@ const CHAPTERS = [
         key: 'earth-core', label: 'Earth Core', fn: 'createEarthCorePilotTSL', dist: 150, lookY: 0, sky: 0x1a0a00, fog: 0x2d1500, fogD: 0.004, load: () => import('../chapter-environments/earth-core.tsl.js'),
     },
     {
+        // Chapter 3 — was silently exempt from the GPU gate: the assembler existed
+        // in surface-world.tsl.js but was never wired here (plan §3c.1).
+        key: 'surface-world', label: 'Surface World', fn: 'createSurfaceWorldPilotTSL', dist: 260, lookY: 25, sky: 0x2a2010, fog: 0xb08a50, fogD: 0.0015, load: () => import('../chapter-environments/surface-world.tsl.js'),
+    },
+    {
         key: 'mountain-peaks', label: 'Mountains', fn: 'createMountainPeaksPilotTSL', dist: 700, lookY: 120, sky: 0x2c3e50, fog: 0x95a5a6, fogD: 0.0006, load: () => import('../chapter-environments/mountain-peaks.tsl.js'),
     },
     {

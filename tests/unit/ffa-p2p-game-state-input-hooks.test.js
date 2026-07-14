@@ -8,6 +8,7 @@ import {
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 
 function createLoopMock(callOrder) {
+    let fixedTick = 0;
     return {
         onRender: null,
         onUpdate: null,
@@ -15,6 +16,14 @@ function createLoopMock(callOrder) {
         clearPlayers: vi.fn(() => callOrder.push('clearPlayers')),
         registerPlayer: vi.fn(() => callOrder.push('registerPlayer')),
         updatePlayers: vi.fn(() => callOrder.push('loopUpdatePlayers')),
+        updatePlayersFixedTick: vi.fn((inputAdapter) => {
+            callOrder.push('loopUpdatePlayersFixed');
+            fixedTick += 1;
+            const advanceInput = typeof inputAdapter === 'function'
+                ? inputAdapter
+                : inputAdapter?.advanceInput;
+            advanceInput?.('local-player', { tick: fixedTick, tickMs: 10 });
+        }),
         setExternalPlayerUpdate: vi.fn(function setExternalPlayerUpdate(enabled) {
             this.externalPlayerUpdate = enabled === true;
         }),
@@ -32,11 +41,12 @@ function createBareGameState({ isHost = false, gamePhase = 'playing' } = {}) {
     state.loopCallbacksConfigured = false;
     state.loopRunning = false;
     state.simTick = 0;
-    state._simTickNetcodeEnabled = false;
+    state._fixedTickEnabled = false;
     state._simTickAccumulatorMs = 0;
     state.SIM_TICK_MS = 1000 / 60;
     state.MAX_SIM_STEPS_PER_FRAME = 5;
     state.localPlayerId = 'local-player';
+    state.matchConfig = { simulationClock: 'legacy-variable-v1' };
     state.players = new Map([
         ['local-player', { gameState: { currentPiece: {} } }],
     ]);
@@ -92,15 +102,15 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(callOrder).toEqual(['advance', 'buffer', 'update', 'attackRouter.updateHotPotato', 'broadcast']);
         expect(state.localInputHooks.advance).toHaveBeenCalledWith(1000, 16);
         expect(state.processBufferedInputs).toHaveBeenCalledOnce();
-        expect(state.updateAllPlayers).toHaveBeenCalledWith(16);
+        expect(state.updateAllPlayers).toHaveBeenCalledWith();
         expect(state.flushInputBatch).not.toHaveBeenCalled();
         expect(state.simTick).toBe(1);
         expect(state.unifiedLoop.externalPlayerUpdate).toBe(false);
     });
 
-    it('runs host simulation at fixed sim ticks when simTickNetcode is enabled', () => {
+    it('runs host simulation at fixed sim ticks when fixedTick is enabled', () => {
         const { state, callOrder } = createBareGameState({ isHost: true });
-        state._simTickNetcodeEnabled = true;
+        state._fixedTickEnabled = true;
         state.SIM_TICK_MS = 10;
         state.MAX_SIM_STEPS_PER_FRAME = 10;
 
@@ -111,22 +121,238 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.simTick).toBe(3);
         expect(state._simTickAccumulatorMs).toBe(5);
         expect(callOrder).toEqual([
-            'advance',
-            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
-            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
-            'buffer', 'loopUpdatePlayers', 'update', 'attackRouter.updateHotPotato',
+            'loopUpdatePlayersFixed', 'advance', 'update', 'attackRouter.updateHotPotato',
+            'loopUpdatePlayersFixed', 'advance', 'update', 'attackRouter.updateHotPotato',
+            'loopUpdatePlayersFixed', 'advance', 'update', 'attackRouter.updateHotPotato',
             'broadcast',
         ]);
-        expect(state.unifiedLoop.updatePlayers).toHaveBeenCalledTimes(3);
+        expect(state.processBufferedInputs).not.toHaveBeenCalled();
+        expect(state.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledTimes(3);
+        expect(state.unifiedLoop.updatePlayers).not.toHaveBeenCalled();
         expect(state.updateAllPlayers).toHaveBeenCalledTimes(3);
-        expect(state.updateAllPlayers).toHaveBeenNthCalledWith(1, 10);
+        expect(state.updateAllPlayers).toHaveBeenNthCalledWith(1);
         expect(state.maybeBroadcastPostPhysics).toHaveBeenCalledOnce();
         expect(state.maybeBroadcastPostPhysics).toHaveBeenCalledWith(35);
     });
 
-    it('clamps fixed sim catch-up after a long host frame', () => {
+    it('runs peer prediction on the same fixed-step clock', () => {
+        const { state, callOrder } = createBareGameState({ isHost: false });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 10;
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 25);
+
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(true);
+        expect(state.simTick).toBe(0);
+        expect(state._simTickAccumulatorMs).toBe(5);
+        expect(callOrder).toEqual([
+            'loopUpdatePlayersFixed', 'advance', 'loopUpdatePlayersFixed', 'advance', 'flush',
+        ]);
+        expect(state.processBufferedInputs).not.toHaveBeenCalled();
+        expect(state.updateAllPlayers).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['host', true],
+        ['peer', false],
+    ])('fences %s post-tick work when a synchronous restart replaces loop ownership', (_role, isHost) => {
+        const { state, callOrder } = createBareGameState({ isHost });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.roundGeneration = 3;
+        state.unifiedLoop.runGeneration = 7;
+        state.unifiedLoop.updatePlayersFixedTick.mockImplementationOnce(() => {
+            callOrder.push('loopUpdatePlayersFixed');
+            state.roundGeneration = 4;
+            state.unifiedLoop.runGeneration = 9;
+            state.gamePhase = 'playing';
+            state._fixedTickEnabled = true;
+        });
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 10);
+
+        expect(callOrder).toEqual(['loopUpdatePlayersFixed']);
+        expect(state.flushInputBatch).not.toHaveBeenCalled();
+        expect(state.maybeBroadcastPostPhysics).not.toHaveBeenCalled();
+    });
+
+    it('stamps peer inputs from separate catch-up ticks distinctly', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 10;
+        state.isSpectator = false;
+        state.hostTick = 7;
+        state.inputSequence = 0;
+        state.pendingInputs = [];
+        state.inputHistory = [];
+        state._applyLocalPrediction = vi.fn();
+        state.localInputHooks.advance = vi.fn(() => {
+            state.sendInput('move', { direction: -1 });
+        });
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 25);
+
+        expect(state.pendingInputs).toEqual([
+            expect.objectContaining({ simTick: 1, fixedTickOrdinal: 1, seq: 1 }),
+            expect.objectContaining({ simTick: 2, fixedTickOrdinal: 2, seq: 2 }),
+        ]);
+        expect(state._applyLocalPrediction).toHaveBeenCalledTimes(2);
+        expect(state._applyLocalPrediction).toHaveBeenNthCalledWith(
+            1,
+            'move',
+            { direction: -1 },
+        );
+        expect(state._activeFixedInputStamp).toBeNull();
+        expect(state._peerFixedInputSimTick).toBe(2);
+    });
+
+    it('does not allocate, queue, or predict peer commands while exact resync is frozen', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state.isSpectator = false;
+        state.resyncInputFrozen = true;
+        state.inputSequence = 11;
+        state.pendingInputs = [];
+        state.inputHistory = [];
+        state._applyLocalPrediction = vi.fn();
+
+        state.sendInput('move', { direction: -1 });
+
+        expect(state.inputSequence).toBe(11);
+        expect(state.pendingInputs).toEqual([]);
+        expect(state.inputHistory).toEqual([]);
+        expect(state._applyLocalPrediction).not.toHaveBeenCalled();
+    });
+
+    it('does not create a command stream for an eliminated or awaiting local player', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state.isSpectator = false;
+        state.players.get(state.localPlayerId).isAlive = false;
+        state.inputSequence = 3;
+        state.pendingInputs = [];
+        state.inputHistory = [];
+        state._applyLocalPrediction = vi.fn();
+
+        state.sendInput('drop', { type: 'hard' });
+
+        expect(state.inputSequence).toBe(3);
+        expect(state.pendingInputs).toEqual([]);
+        expect(state.inputHistory).toEqual([]);
+        expect(state._applyLocalPrediction).not.toHaveBeenCalled();
+    });
+
+    it('marks peer prediction fixed only while the canonical input stamp is active', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state._applyInputToPlayer = vi.fn(() => false);
+
+        state._applyLocalPrediction('drop', { type: 'hard' });
+        state._activeFixedInputStamp = { simTick: 4, ordinal: 1 };
+        state._applyLocalPrediction('drop', { type: 'hard' });
+
+        expect(state._applyInputToPlayer).toHaveBeenNthCalledWith(
+            1,
+            state.localPlayerId,
+            'drop',
+            { type: 'hard' },
+            { prediction: true },
+            undefined,
+        );
+        expect(state._applyInputToPlayer).toHaveBeenNthCalledWith(
+            2,
+            state.localPlayerId,
+            'drop',
+            { type: 'hard' },
+            { prediction: true },
+            { fixedTick: true, inputPhase: true },
+        );
+    });
+
+    it('transitions the live loop clock atomically and is idempotent', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state.loopCallbacksConfigured = true;
+        state._simTickAccumulatorMs = 12;
+        state._fixedInputTimeMs = 240;
+        state._peerFixedInputSimTick = 42;
+        state._activeFixedInputStamp = { simTick: 42, ordinal: 9 };
+
+        expect(state._transitionSimulationClock('fixed60-v1')).toBe(true);
+        expect(state._fixedTickEnabled).toBe(true);
+        expect(state.matchConfig.simulationClock).toBe('fixed60-v1');
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(true);
+        expect(state._simTickAccumulatorMs).toBe(0);
+        expect(state._fixedInputTimeMs).toBeNull();
+        expect(state._peerFixedInputSimTick).toBeNull();
+        expect(state._activeFixedInputStamp).toBeNull();
+        expect(state.localInputHooks.reset).toHaveBeenCalledOnce();
+
+        state.localInputHooks.reset.mockClear();
+        state._simTickAccumulatorMs = 7;
+        state._fixedInputTimeMs = 300;
+
+        expect(state._transitionSimulationClock('fixed60-v1')).toBe(false);
+        expect(state._simTickAccumulatorMs).toBe(7);
+        expect(state._fixedInputTimeMs).toBe(300);
+        expect(state.localInputHooks.reset).not.toHaveBeenCalled();
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(true);
+    });
+
+    it('adopts the host-stamped simulation clock over the peer-local flag', () => {
+        const { state } = createBareGameState({ isHost: false, gamePhase: 'waiting' });
+        state._fixedTickEnabled = false;
+        state._simTickAccumulatorMs = 9;
+        state._fixedInputTimeMs = 120;
+        state.isSpectator = true;
+        state.matchConfig = {
+            endCondition: 'frags',
+            endConditionValue: 10,
+            simulationClock: 'legacy-variable-v1',
+        };
+        state._advertiseLobbyState = vi.fn();
+
+        state.startMatch(123, { simulationClock: 'fixed60-v1' }, { inProgress: true });
+
+        expect(state._fixedTickEnabled).toBe(true);
+        expect(state.matchConfig.simulationClock).toBe('fixed60-v1');
+        expect(state._simTickAccumulatorMs).toBe(0);
+        expect(state._fixedInputTimeMs).toBeNull();
+        expect(state.localInputHooks.reset).toHaveBeenCalledOnce();
+        expect(state.gamePhase).toBe('playing');
+    });
+
+    it('retargets a running fixed loop when an authoritative resync rolls back the clock', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state._fixedTickEnabled = true;
+        state.matchConfig.simulationClock = 'fixed60-v1';
+        state.loopCallbacksConfigured = true;
+        state.loopRunning = true;
+        state.unifiedLoop.externalPlayerUpdate = true;
+        state._simTickAccumulatorMs = 8;
+        state._fixedInputTimeMs = 180;
+        state.roundGeneration = 0;
+        state._downloadJoinEnabled = false;
+        state._applySnapshotState = vi.fn();
+
+        state._applyResyncState({
+            matchConfig: { simulationClock: 'legacy-variable-v1' },
+            roundGeneration: 0,
+            players: [{ steamId: 'local-player' }],
+        });
+
+        expect(state._fixedTickEnabled).toBe(false);
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(false);
+        expect(state._simTickAccumulatorMs).toBe(0);
+        expect(state._fixedInputTimeMs).toBeNull();
+        expect(state.localInputHooks.reset).toHaveBeenCalledOnce();
+        expect(state._applySnapshotState).toHaveBeenCalledOnce();
+    });
+
+    it('retains sub-300 ms debt for bounded catch-up without a clock warp', () => {
         const { state } = createBareGameState({ isHost: true });
-        state._simTickNetcodeEnabled = true;
+        state._fixedTickEnabled = true;
         state.SIM_TICK_MS = 10;
         state.MAX_SIM_STEPS_PER_FRAME = 2;
 
@@ -134,12 +360,66 @@ describe('FFAGameStateP2P local input hooks', () => {
         state.unifiedLoop.onUpdate(1000, 55);
 
         expect(state.simTick).toBe(2);
-        expect(state.unifiedLoop.updatePlayers).toHaveBeenCalledTimes(2);
-        expect(state._simTickAccumulatorMs).toBe(10);
-        expect(state._recordNetEvent).toHaveBeenCalledWith('sim_tick_clamped', expect.objectContaining({
+        expect(state.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledTimes(2);
+        expect(state._simTickAccumulatorMs).toBe(35);
+        expect(state._recordNetEvent).not.toHaveBeenCalledWith('sim_clock_warp', expect.anything());
+    });
+
+    it('rebases only debt beyond 300 ms without jumping canonical tick IDs', () => {
+        const { state } = createBareGameState({ isHost: true });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.MAX_SIM_STEPS_PER_FRAME = 2;
+
+        state.configureUnifiedLoopCallbacks();
+        state.unifiedLoop.onUpdate(1000, 1000);
+
+        expect(state.simTick).toBe(2);
+        expect(state.unifiedLoop.updatePlayersFixedTick).toHaveBeenCalledTimes(2);
+        expect(state._simTickAccumulatorMs).toBe(280);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('sim_clock_warp', {
+            requestedDebtMs: 1000,
+            retainedDebtMs: 300,
+            warpedMs: 700,
+            maxDebtMs: 300,
             maxSteps: 2,
             tickMs: 10,
-        }));
+        });
+    });
+
+    it('falls back to 30 Hz legacy timing when a fixed host is promoted', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state._fixedTickEnabled = true;
+        state._simTickAccumulatorMs = 6;
+        state._fixedInputTimeMs = 90;
+        state.loopRunning = true;
+        state.loopCallbacksConfigured = true;
+        state.network = {};
+        state._adaptiveInputJitterEnabled = false;
+        state.inputJitterBuffer = {
+            adaptiveEnabled: true,
+            tickRate: 60,
+            tickInterval: 1000 / 60,
+            clear: vi.fn(),
+            addPlayer: vi.fn(),
+        };
+        state.startHeartbeatLoop = vi.fn();
+        state.startStateSyncLoop = vi.fn();
+
+        state.promoteToHost();
+
+        expect(state._fixedTickEnabled).toBe(false);
+        expect(state.matchConfig.simulationClock).toBe('legacy-variable-v1');
+        expect(state.inputJitterBuffer.tickRate).toBe(30);
+        expect(state.inputJitterBuffer.tickInterval).toBe(1000 / 30);
+        expect(state.unifiedLoop.externalPlayerUpdate).toBe(false);
+        expect(state._simTickAccumulatorMs).toBe(0);
+        expect(state._fixedInputTimeMs).toBeNull();
+        expect(state.localInputHooks.reset).toHaveBeenCalledOnce();
+        expect(state.inputJitterBuffer.clear).toHaveBeenCalledOnce();
+        expect(state._recordNetEvent).toHaveBeenCalledWith('fixed_tick_rollback', {
+            reason: 'migration_missing_continuation',
+        });
     });
 
     it('does not advance held input outside the playing phase', () => {
@@ -165,9 +445,32 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.loopRunning).toBe(true);
     });
 
+    it('preserves the peer input projection across a fixed-loop restart', () => {
+        const { state } = createBareGameState({ isHost: false });
+        state._fixedTickEnabled = true;
+        state.SIM_TICK_MS = 10;
+        state.simTick = 98;
+        state._peerFixedInputSimTick = 100;
+
+        state.startGameLoop();
+        expect(state._peerFixedInputSimTick).toBe(100);
+
+        state.unifiedLoop.onUpdate(1000, 10);
+        expect(state._peerFixedInputSimTick).toBe(101);
+    });
+
     it('resets held input during cleanup and clears hook references', () => {
         const { state, callOrder } = createBareGameState({ isHost: true });
         state.loopRunning = true;
+        const transferTimer = setInterval(() => {}, 1000);
+        const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+        state.resyncTransfers = new Map([['R1', { timer: transferTimer }]]);
+        state.resyncBuffers = new Map([['R2', {}]]);
+        state.pendingResyncs = ['peer'];
+        state.resyncRequestAtByPeer = new Map([['peer', 100]]);
+        state.downloadJoinPeers = new Map([['peer', {}]]);
+        state.downloadJoinInProgress = { resyncId: 'R2' };
+        state.hostMigration = { stopMonitoring: vi.fn() };
 
         state.cleanup();
 
@@ -175,9 +478,23 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(callOrder).toContain('reset');
         expect(callOrder).toContain('clearPlayers');
         expect(callOrder).toContain('stopStateSyncLoop');
-        expect(state.localInputHooks).toEqual({ advance: null, reset: null });
+        expect(state.localInputHooks).toEqual({
+            advance: null,
+            advanceFixed: null,
+            applyFixed: null,
+            reset: null,
+        });
         expect(state.players.size).toBe(0);
         expect(state.gamePhase).toBe('waiting');
         expect(state.winner).toBeNull();
+        expect(clearIntervalSpy).toHaveBeenCalledWith(transferTimer);
+        expect(state.resyncTransfers.size).toBe(0);
+        expect(state.resyncBuffers.size).toBe(0);
+        expect(state.pendingResyncs).toEqual([]);
+        expect(state.resyncRequestAtByPeer.size).toBe(0);
+        expect(state.downloadJoinPeers.size).toBe(0);
+        expect(state.downloadJoinInProgress).toBeNull();
+        expect(state.hostMigration.stopMonitoring).toHaveBeenCalledOnce();
+        expect(state._disposed).toBe(true);
     });
 });

@@ -28,21 +28,19 @@ export class InputValidator {
    * Validate player input (called by host only)
    * Returns: { valid: boolean, reason?: string }
    */
-    validateInput(steamId, inputType, data, timestamp = Date.now()) {
+    validateInput(steamId, inputType, data, timestamp = Date.now(), policy = {}) {
         if (!data || typeof data !== 'object') {
             return { valid: false, reason: 'Invalid input payload' };
         }
 
         // Check rate limiting first (prevent spam/bots)
-        const rateCheck = this.checkInputRate(steamId, inputType, timestamp);
-        if (!rateCheck.valid) {
-            return rateCheck;
-        }
+        if (policy.fixedTick !== true) {
+            const rateCheck = this.checkInputRate(steamId, inputType, timestamp);
+            if (!rateCheck.valid) return rateCheck;
 
-        // Validate timestamp (prevent old/future inputs)
-        const timestampCheck = this.validateTimestamp(timestamp);
-        if (!timestampCheck.valid) {
-            return timestampCheck;
+            // Canonical groups use sequence/round/sim-tick progression instead.
+            const timestampCheck = this.validateTimestamp(timestamp);
+            if (!timestampCheck.valid) return timestampCheck;
         }
 
         // Validate input data based on type

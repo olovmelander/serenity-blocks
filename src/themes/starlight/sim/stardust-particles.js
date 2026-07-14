@@ -36,6 +36,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { curlNoise3 } from '../materials/tsl-noise-lib.js';
+import { IMPULSE_TYPE } from './impulse-types.js';
 
 export const STARDUST_BUDGETS = Object.freeze({
     Minimal: Object.freeze({ count: 0, flowStrength: 0 }),
@@ -51,7 +52,7 @@ export function getStardustBudget(qualityName) {
 }
 
 export const MAX_IMPULSES = 8;
-export const IMPULSE_TYPE = Object.freeze({ RADIAL: 0, VORTEX: 1, ATTRACTOR: 2 });
+export { IMPULSE_TYPE }; // re-exported from ./impulse-types.js for existing importers
 
 // Cool + warm fairy-dust seed colors (the starlightRamp endpoints).
 const COOL = [0.75, 0.85, 1.0];
@@ -191,8 +192,9 @@ export class StardustSim {
                 });
             }
 
-            // 5. Damping + speed cap.
-            vXYZ.mulAssign(damping);
+            // 5. Damping + speed cap. Delta-normalized (pow to the 60 Hz-referenced
+            //    exponent) so drift speed matches at 60/120/144 Hz.
+            vXYZ.mulAssign(damping.pow(dt.mul(60.0)));
             const sp = length(vXYZ).toVar();
             If(sp.greaterThan(maxSpeed), () => {
                 vXYZ.mulAssign(maxSpeed.div(sp));
@@ -219,7 +221,9 @@ export class StardustSim {
 
             // 8. Energy ← speed (fast motes glow brighter; smoothed).
             const energyTarget = sp.div(maxSpeed).mul(0.6).add(0.4);
-            col.w.assign(col.w.add(energyTarget.sub(col.w).mul(0.1)));
+            // Delta-normalized smoothing (≈0.1 per frame at 60 Hz).
+            const energyLerp = dt.mul(-6.3).exp().oneMinus();
+            col.w.assign(col.w.add(energyTarget.sub(col.w).mul(energyLerp)));
 
             pos.x.assign(pXYZ.x);
             pos.y.assign(pXYZ.y);

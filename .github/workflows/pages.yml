@@ -32,10 +32,22 @@ jobs:
       # `// @ts-check` plus the shared *.d.ts contracts are checked), so it is green
       # today and stays green as modules are annotated. See tsconfig.json.
       - run: npm run typecheck
+      # TS coverage ratchet (Phase 3a): a file that carries // @ts-check may
+      # never silently lose it — the opt-in typecheck only ratchets forward.
+      - run: node scripts/ts-ratchet-check.mjs
       # Lint is a HARD gate via the error-count ratchet (Phase 0.3, ADR-0002):
       # fails when errors exceed the committed lint-ratchet.json baseline, so the
       # count can only shrink. Replace with a plain `npm run lint` once it hits 0.
       - run: npm run lint:ci
+      # Architecture fitness ratchets (Phase 3d): god-file line ceilings,
+      # ShaderMaterial count, core nondeterminism/DOM-global/rAF counts,
+      # resize-listener sprawl — shrink-only, baselines in
+      # architecture-fitness.json.
+      - run: node scripts/architecture-fitness-check.mjs
+      # Import-boundary rules (Phase 3d layer 1): core-stays-headless,
+      # themes-are-islands, no-electron-in-renderer, with a shrink-only
+      # known-violations baseline in .dependency-cruiser.cjs.
+      - run: npm run check:boundaries
       - run: npm test
       # Release-gate scaffolding (Phase 0.4): dev mode — asserts the observability
       # scaffolding exists and warns (not fails) on the placeholder Steam AppID.

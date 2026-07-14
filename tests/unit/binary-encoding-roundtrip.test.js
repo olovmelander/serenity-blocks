@@ -8,7 +8,9 @@
  * binary form is materially smaller than JSON (remediation Phase 3).
  */
 
-import { describe, it, expect } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import {
     getBinaryEncoder,
     getBinaryDecoder,
@@ -32,6 +34,7 @@ function makePlayer(overrides = {}) {
         level: 5,
         frags: 3,
         isAlive: true,
+        awaitingSpawn: false,
         garbagePending: 2,
         dropCounter: 100,
         dropInterval: 800,
@@ -56,6 +59,14 @@ function makeSnapshot(players) {
         simTick: 1234,
         snapshotSeq: 56,
     };
+}
+
+function appendTrailingByte(buffer, value = 0xa5) {
+    const bytes = new Uint8Array(buffer);
+    const tailed = new Uint8Array(bytes.byteLength + 1);
+    tailed.set(bytes);
+    tailed[bytes.byteLength] = value;
+    return tailed.buffer;
 }
 
 describe('binary snapshot encoding', () => {
@@ -118,12 +129,137 @@ describe('binary snapshot encoding', () => {
         const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
         expect(deltaBuffer).not.toBeNull();
 
-        const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        const decoded = decoder.decodeDeltaSnapshot(
+            deltaBuffer,
+            decoder.decodeSnapshot(encoder.encodeSnapshot(baseline)),
+        );
         expect(decoded.simTick).toBe(1235);
         expect(decoded.snapshotSeq).toBe(57);
         expect(decoded.players[0].steamId).toBe('1000');
         expect(decoded.players[0].name).toBe('Alpha'); // identity carried from baseline
         expect(decoded.players[0].score).toBe(250); // changed stat applied
+    });
+
+    it('normalizes full and delta next-piece queues to the same string shape', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const baseline = makeSnapshot([makePlayer({ nextPieces: ['I', 'O', 'T'] })]);
+        const current = makeSnapshot([makePlayer({ nextPieces: ['Z', 'S', 'J'] })]);
+        current.tick = 100;
+
+        const full = decoder.decodeSnapshot(encoder.encodeSnapshot(current));
+        const delta = decoder.decodeDeltaSnapshot(
+            encoder.encodeDeltaSnapshot(current, baseline),
+            decoder.decodeSnapshot(encoder.encodeSnapshot(baseline)),
+        );
+
+        expect(full.players[0].nextPieces).toEqual(['Z', 'S', 'J']);
+        expect(delta.players[0].nextPieces).toEqual(full.players[0].nextPieces);
+        expect(delta.players[0].nextPieces.every((piece) => typeof piece === 'string')).toBe(true);
+    });
+
+    it('rejects JSON fallback payloads that do not satisfy the snapshot envelope', () => {
+        const decoder = getBinaryDecoder();
+        const malformed = new TextEncoder().encode(JSON.stringify({ arbitrary: true })).buffer;
+        const plausible = new TextEncoder().encode(JSON.stringify({
+            players: [],
+            gamePhase: 'bogus',
+            winner: null,
+            timestamp: 0,
+            tick: 1,
+            simTick: 1,
+            snapshotSeq: 1,
+        })).buffer;
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(decoder.decodeSnapshot(malformed)).toBeNull();
+        expect(decoder.decodeSnapshot(plausible)).toBeNull();
+        expect(error).toHaveBeenCalledTimes(2);
+        error.mockRestore();
+    });
+
+    it('rejects malformed nested JSON fallback data and protocol-bound violations', () => {
+        const decoder = getBinaryDecoder();
+        const valid = makeSnapshot([makePlayer()]);
+        const malformed = [];
+
+        const badGridDimensions = structuredClone(valid);
+        badGridDimensions.players[0].grid = [[null]];
+        malformed.push(badGridDimensions);
+
+        const badGridCell = structuredClone(valid);
+        badGridCell.players[0].grid[0][0] = 42;
+        malformed.push(badGridCell);
+
+        const badGarbage = structuredClone(valid);
+        badGarbage.players[0].garbageEntries = [{ type: 'line', holeMask: 'left' }];
+        malformed.push(badGarbage);
+
+        const badLockedShape = structuredClone(valid);
+        badLockedShape.players[0].lockedPieces = [{ shape: ['bad'], x: 0, y: 0 }];
+        malformed.push(badLockedShape);
+
+        const tooManyNextPieces = structuredClone(valid);
+        tooManyNextPieces.players[0].nextPieces = Array.from({ length: 33 }, () => 'I');
+        malformed.push(tooManyNextPieces);
+
+        const tooManyPlayers = makeSnapshot(Array.from({ length: 9 }, (_, index) => makePlayer({
+            steamId: String(index),
+        })));
+        malformed.push(tooManyPlayers);
+
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        for (const payload of malformed) {
+            const buffer = new TextEncoder().encode(JSON.stringify(payload)).buffer;
+            expect(decoder.decodeSnapshot(buffer)).toBeNull();
+        }
+        expect(error).toHaveBeenCalledTimes(malformed.length);
+        error.mockRestore();
+    });
+
+    it('accepts a valid bounded JSON fallback snapshot', () => {
+        const decoder = getBinaryDecoder();
+        const snapshot = makeSnapshot([makePlayer({
+            // Connected board components are not restricted to tetromino
+            // dimensions; a placed garbage row can legitimately be 10 wide.
+            lockedPieces: [{
+                type: 'GARBAGE',
+                shape: [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]],
+                x: 0,
+                y: 23,
+            }],
+        })]);
+        const buffer = new TextEncoder().encode(JSON.stringify(snapshot)).buffer;
+        const expected = structuredClone(snapshot);
+        delete expected.players[0].lastInputSeq;
+
+        expect(decoder.decodeSnapshot(buffer)).toEqual(expected);
+    });
+
+    it('keeps authoritative metadata out of the packed v7 body', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const snapshot = {
+            ...makeSnapshot([makePlayer({
+                lastInputSeq: 9,
+                lastAttackerId: '2000',
+                lockSeq: 4,
+            })]),
+            roundGeneration: 3,
+            migrationEpoch: 2,
+            digest: 'digest-99',
+            hotPotatoState: { enabled: true, holderId: '1000' },
+        };
+
+        const rawV7 = decoder.decodeSnapshot(encoder.encodeSnapshot(snapshot));
+
+        expect(rawV7).not.toHaveProperty('roundGeneration');
+        expect(rawV7).not.toHaveProperty('migrationEpoch');
+        expect(rawV7).not.toHaveProperty('digest');
+        expect(rawV7).not.toHaveProperty('hotPotatoState');
+        expect(rawV7.players[0]).not.toHaveProperty('lastInputSeq');
+        expect(rawV7.players[0]).not.toHaveProperty('lastAttackerId');
+        expect(rawV7.players[0]).not.toHaveProperty('lockSeq');
     });
 
     it('round-trips awaitingSpawn so a late joiner is not mistaken for ELIMINATED (v6)', () => {
@@ -161,7 +297,10 @@ describe('binary snapshot encoding', () => {
         const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
         expect(deltaBuffer).not.toBeNull();
 
-        const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        const decoded = decoder.decodeDeltaSnapshot(
+            deltaBuffer,
+            decoder.decodeSnapshot(encoder.encodeSnapshot(baseline)),
+        );
         expect(decoded.players[0].isAlive).toBe(true);
         expect(decoded.players[0].awaitingSpawn).toBe(false);
     });
@@ -204,7 +343,10 @@ describe('binary snapshot encoding', () => {
 
         const deltaBuffer = encoder.encodeDeltaSnapshot(current, baseline);
         expect(deltaBuffer).not.toBeNull();
-        const decoded = decoder.decodeDeltaSnapshot(deltaBuffer, baseline);
+        const decoded = decoder.decodeDeltaSnapshot(
+            deltaBuffer,
+            decoder.decodeSnapshot(encoder.encodeSnapshot(baseline)),
+        );
         expect(decoded.players[0].grid[23][0].color).toBe('#2979ff');
     });
 
@@ -225,6 +367,52 @@ describe('binary snapshot encoding', () => {
         // A FULL snapshot is not a delta → null (caller must not treat it as one).
         const fullBuffer = encoder.encodeSnapshot(current);
         expect(decoder.peekDeltaBaselineTick(fullBuffer)).toBeNull();
+    });
+
+    it('rejects a different packed-body format instead of interpreting it under v7', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', score: 100 })]);
+        const current = makeSnapshot([makePlayer({ steamId: '1000', score: 250 })]);
+        const full = new Uint8Array(encoder.encodeSnapshot(baseline));
+        const delta = new Uint8Array(encoder.encodeDeltaSnapshot(current, baseline));
+        full[4] = 6;
+        delta[4] = 6;
+
+        expect(() => decoder.decodeSnapshot(full.buffer)).toThrow(/version mismatch/);
+        expect(() => decoder.decodeDeltaSnapshot(delta.buffer, baseline)).toThrow(/version mismatch/);
+    });
+
+    it('rejects trailing bytes after otherwise valid full and delta v7 bodies', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', score: 100 })]);
+        const current = makeSnapshot([makePlayer({ steamId: '1000', score: 250 })]);
+        current.tick = 100;
+        current.simTick = 1235;
+        current.snapshotSeq = 57;
+
+        const baselineBody = encoder.encodeSnapshot(baseline);
+        const decodedBaseline = decoder.decodeSnapshot(baselineBody);
+        const fullBody = encoder.encodeSnapshot(current);
+        const deltaBody = encoder.encodeDeltaSnapshot(current, baseline);
+
+        expect(decoder.decodeSnapshot(fullBody)).toMatchObject({
+            tick: 100,
+            simTick: 1235,
+            snapshotSeq: 57,
+        });
+        expect(decoder.decodeDeltaSnapshot(deltaBody, decodedBaseline)).toMatchObject({
+            tick: 100,
+            simTick: 1235,
+            snapshotSeq: 57,
+        });
+        expect(() => decoder.decodeSnapshot(appendTrailingByte(fullBody)))
+            .toThrow(/trailing bytes/);
+        expect(() => decoder.decodeDeltaSnapshot(
+            appendTrailingByte(deltaBody),
+            decodedBaseline,
+        )).toThrow(/trailing bytes/);
     });
 
     it('returns null for a delta when the player roster changes (forcing a full snapshot)', () => {

@@ -9,7 +9,9 @@
  * and the sendInput hard-stop (a spectator owns no board and must never send input).
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import {
+    describe, it, expect, vi,
+} from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
 
@@ -134,7 +136,8 @@ describe('D3 — host kick + spectator count', () => {
     it('host kickPlayer removes a PLAYER immediately (no grace) + signals the kicked client', () => {
         const finalize = vi.fn();
         const stub = {
-            isHost: true, localPlayerId: 'HOST',
+            isHost: true,
+            localPlayerId: 'HOST',
             players: new Map([['HOST', {}], ['P2', {}]]),
             spectators: new Set(),
             network: { sendP2PMessage: vi.fn() },
@@ -149,7 +152,8 @@ describe('D3 — host kick + spectator count', () => {
 
     it('host kickPlayer removes a SPECTATOR + refreshes the roster broadcast', () => {
         const stub = {
-            isHost: true, localPlayerId: 'HOST',
+            isHost: true,
+            localPlayerId: 'HOST',
             players: new Map([['HOST', {}]]),
             spectators: new Set(['S1']),
             network: { sendP2PMessage: vi.fn() },
@@ -164,9 +168,21 @@ describe('D3 — host kick + spectator count', () => {
     });
 
     it('a non-host cannot kick, and the host cannot kick itself', () => {
-        const peer = { isHost: false, localPlayerId: 'P', players: new Map(), spectators: new Set(), network: { sendP2PMessage: vi.fn() } };
+        const peer = {
+            isHost: false,
+            localPlayerId: 'P',
+            players: new Map(),
+            spectators: new Set(),
+            network: { sendP2PMessage: vi.fn() },
+        };
         expect(FFAGameStateP2P.prototype.kickPlayer.call(peer, 'X')).toBe(false);
-        const host = { isHost: true, localPlayerId: 'HOST', players: new Map(), spectators: new Set(), network: { sendP2PMessage: vi.fn() } };
+        const host = {
+            isHost: true,
+            localPlayerId: 'HOST',
+            players: new Map(),
+            spectators: new Set(),
+            network: { sendP2PMessage: vi.fn() },
+        };
         expect(FFAGameStateP2P.prototype.kickPlayer.call(host, 'HOST')).toBe(false);
         expect(host.network.sendP2PMessage).not.toHaveBeenCalled();
     });
@@ -176,6 +192,24 @@ describe('D3 — host kick + spectator count', () => {
         expect(FFAGameStateP2P.prototype.getSpectatorCount.call(host)).toBe(2);
         const peer = { isHost: false, spectators: new Set(), spectatorCount: 3 };
         expect(FFAGameStateP2P.prototype.getSpectatorCount.call(peer)).toBe(3);
+    });
+
+    it('permanent removal clears buffered input before a same-id rejoin', () => {
+        const removePlayer = vi.fn();
+        const stub = {
+            isHost: true,
+            players: new Map([['P2', { name: 'Bravo', disconnectTimeout: null }]]),
+            inputJitterBuffer: { removePlayer },
+            inputValidator: { resetPlayer: vi.fn() },
+            broadcastPlayerList: vi.fn(),
+            loopRunning: false,
+            unifiedLoop: { unregisterPlayer: vi.fn() },
+        };
+
+        FFAGameStateP2P.prototype._finalizeRemovePlayer.call(stub, 'P2');
+
+        expect(removePlayer).toHaveBeenCalledWith('P2');
+        expect(stub.players.has('P2')).toBe(false);
     });
 });
 

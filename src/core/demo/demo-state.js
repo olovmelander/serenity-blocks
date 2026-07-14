@@ -1,5 +1,11 @@
 import { createBoardGrid } from '../board.js';
-import { createBlindTimers } from '../blind.js';
+import { restoreBlindTimers } from '../blind.js';
+import { durationMsToTicks, elapsedMsToTicks } from '../fixed-tick-clock.js';
+import { clearPlayerInput, restorePlayerInputState } from '../player-input-state.js';
+import {
+    normalizeInfinitySpawnPolicy,
+    synchronizeInfinitySimulationCamera,
+} from '../infinity-spawn-policy.js';
 import { piecePool } from '../../utils/object-pool.js';
 import { seededRandom } from '../../utils/helpers.js';
 
@@ -34,6 +40,34 @@ export function isStableDemoCheckpointState(gameState) {
     return Boolean(gameState.currentPiece);
 }
 
+/**
+ * Deterministic digest of a board grid (plan §5.0 step 4 / §5.10): the
+ * verifiable half of a demo's final outcome — cutover comparisons diff final
+ * BOARD digests, not just score/lines. DJB2 over row:col:type of occupied
+ * cells in fixed scan order; returns an unsigned hex string. Cosmetic fields
+ * (color, id) are deliberately excluded — theme-dependent state must never
+ * enter a digest (plan §5.11 digest hygiene).
+ * @param {Array<Array<{type?: string}|null>>} boardGrid
+ * @returns {string|null}
+ */
+export function computeBoardDigest(boardGrid) {
+    if (!Array.isArray(boardGrid)) return null;
+    let hash = 5381;
+    for (let y = 0; y < boardGrid.length; y += 1) {
+        const row = boardGrid[y];
+        if (!Array.isArray(row)) continue;
+        for (let x = 0; x < row.length; x += 1) {
+            const cell = row[x];
+            if (!cell) continue;
+            const token = `${y}:${x}:${cell.type || ''}`;
+            for (let i = 0; i < token.length; i += 1) {
+                hash = ((hash * 33) ^ token.charCodeAt(i)) >>> 0;
+            }
+        }
+    }
+    return hash.toString(16);
+}
+
 export function isStableDemoCheckpointSnapshot(snapshot) {
     if (!snapshot) return false;
     if (snapshot.isGameOver) return true;
@@ -43,6 +77,11 @@ export function isStableDemoCheckpointSnapshot(snapshot) {
 
 export function captureGameStateSnapshot(gameState) {
     if (!gameState) return null;
+
+    const hitStopCounterIsSynchronized = Number.isInteger(gameState.hitStopTicks)
+        && gameState.hitStopTicks >= 0
+        && gameState.hitStopRemaining === gameState._hitStopTickSourceMs
+        && gameState.simTickMs === gameState._hitStopTickDurationMs;
 
     return {
         simTickMs: gameState.simTickMs,
@@ -54,8 +93,10 @@ export function captureGameStateSnapshot(gameState) {
         pieceSpawnTime: gameState.pieceSpawnTime,
         piecesPlaced: gameState.piecesPlaced,
         lockDelay: gameState.lockDelay,
+        lockDelayTicks: durationMsToTicks(gameState.lockDelay, gameState.simTickMs),
         lockResetLimit: gameState.lockResetLimit,
         lockTimer: gameState.lockTimer,
+        lockTimerTicks: gameState.lockTimerTicks,
         lockResetCount: gameState.lockResetCount,
         isGrounded: gameState.isGrounded,
         lockGroundedSince: gameState.lockGroundedSince,
@@ -84,12 +125,23 @@ export function captureGameStateSnapshot(gameState) {
         isProcessingPhysics: Boolean(gameState.isProcessingPhysics),
         isStopped: gameState.isStopped,
         isAlive: gameState.isAlive,
+        hitStopEnabled: gameState.hitStopEnabled !== false,
         hitStopRemaining: gameState.hitStopRemaining,
+        hitStopTicks: hitStopCounterIsSynchronized
+            ? gameState.hitStopTicks
+            : durationMsToTicks(gameState.hitStopRemaining, gameState.simTickMs),
         lastMoveWasRotation: gameState.lastMoveWasRotation,
         b2bActive: gameState.b2bActive,
         inputQueue: clonePlain(gameState.inputQueue),
+        playerInput: clonePlain(gameState.playerInput),
 
         isInfinityMode: gameState.isInfinityMode,
+        ...(gameState.isInfinityMode ? {
+            infinitySpawnPolicy: gameState.infinitySpawnPolicy,
+            infinityVisibleRows: gameState.infinityVisibleRows,
+            infinitySpawnOffsetRows: gameState.infinitySpawnOffsetRows,
+            cameraCenterRow: gameState.cameraCenterRow,
+        } : {}),
         currentTopRow: gameState.currentTopRow,
         cameraRow: gameState.cameraRow,
         lastPlacedPieceX: clonePlain(gameState.lastPlacedPieceX),
@@ -117,6 +169,49 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     const wasSeeking = Boolean(gameState.isSeeking);
     const wasSuppressingExternalInput = Boolean(gameState.suppressExternalInput);
 
+    // Infinity's deterministic spawn rule is match state. Bind it before the
+    // restored board/camera is published. Checkpoints are subordinate to the
+    // session/header rule chosen by the target constructor, so the default is
+    // validate-only; silently switching policy mid-session would turn a mixed
+    // or corrupt checkpoint into a rules change. Legacy checkpoints omit the
+    // descriptor and retain the target's configuration.
+    const hasOwn = (key) => Object.prototype.hasOwnProperty.call(snapshot, key);
+    const spawnDescriptorPresence = [
+        'infinitySpawnPolicy',
+        'infinityVisibleRows',
+        'infinitySpawnOffsetRows',
+    ].map(hasOwn);
+    const hasInfinitySpawnDescriptor = spawnDescriptorPresence.some(Boolean);
+    if (snapshot.isInfinityMode && hasInfinitySpawnDescriptor) {
+        if (!spawnDescriptorPresence.every(Boolean)) {
+            throw new TypeError('Incomplete Infinity spawn rule descriptor in checkpoint');
+        }
+        if (!gameState.isInfinityMode) {
+            throw new TypeError('Infinity checkpoint requires an Infinity session');
+        }
+        const snapshotPolicy = normalizeInfinitySpawnPolicy(snapshot.infinitySpawnPolicy);
+        const snapshotVisibleRows = snapshot.infinityVisibleRows;
+        const snapshotSpawnOffsetRows = snapshot.infinitySpawnOffsetRows;
+        if (!Number.isSafeInteger(snapshotVisibleRows) || snapshotVisibleRows <= 0) {
+            throw new TypeError('Invalid Infinity visible-row rule in checkpoint');
+        }
+        if (!Number.isSafeInteger(snapshotSpawnOffsetRows) || snapshotSpawnOffsetRows < 0) {
+            throw new TypeError('Invalid Infinity spawn-offset rule in checkpoint');
+        }
+
+        if (options.adoptInfinitySpawnRules === true) {
+            gameState.infinitySpawnPolicy = snapshotPolicy;
+            gameState.infinityVisibleRows = snapshotVisibleRows;
+            gameState.infinitySpawnOffsetRows = snapshotSpawnOffsetRows;
+        } else if (
+            gameState.infinitySpawnPolicy !== snapshotPolicy
+            || gameState.infinityVisibleRows !== snapshotVisibleRows
+            || gameState.infinitySpawnOffsetRows !== snapshotSpawnOffsetRows
+        ) {
+            throw new TypeError('Infinity checkpoint rules do not match the active session');
+        }
+    }
+
     gameState.reset();
 
     gameState.simTickMs = snapshot.simTickMs || (1000 / 60);
@@ -127,9 +222,15 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.dropCounter = snapshot.dropCounter || 0;
     gameState.pieceSpawnTime = snapshot.pieceSpawnTime;
     gameState.piecesPlaced = snapshot.piecesPlaced || 0;
-    gameState.lockDelay = snapshot.lockDelay;
-    gameState.lockResetLimit = snapshot.lockResetLimit;
+    gameState.lockDelay = snapshot.lockDelay ?? gameState.lockDelay;
+    gameState.lockDelayTicks = Number.isFinite(snapshot.lockDelayTicks)
+        ? Math.max(0, Math.floor(snapshot.lockDelayTicks))
+        : durationMsToTicks(gameState.lockDelay, gameState.simTickMs);
+    gameState.lockResetLimit = snapshot.lockResetLimit ?? gameState.lockResetLimit;
     gameState.lockTimer = snapshot.lockTimer || 0;
+    gameState.lockTimerTicks = Number.isFinite(snapshot.lockTimerTicks)
+        ? Math.max(0, Math.floor(snapshot.lockTimerTicks))
+        : elapsedMsToTicks(gameState.lockTimer, gameState.simTickMs);
     gameState.lockResetCount = snapshot.lockResetCount || 0;
     gameState.isGrounded = Boolean(snapshot.isGrounded);
     gameState.lockGroundedSince = snapshot.lockGroundedSince ?? null;
@@ -164,13 +265,15 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.currentPiece = restorePooledPiece(snapshot.currentPiece);
     gameState.nextPieces = clonePlain(snapshot.nextPieces) || [];
     gameState.boardGrid = clonePlain(snapshot.boardGrid) || createBoardGrid();
-    if (snapshot.board !== undefined) {
+    if (gameState.isInfinityMode) {
+        // Infinity's board is a compatibility alias, never a second source of
+        // truth. captureGameStateSnapshot necessarily clones the two fields
+        // separately, so restoring both objects would break the invariant.
+        gameState.board = gameState.boardGrid;
+    } else if (snapshot.board !== undefined) {
         gameState.board = clonePlain(snapshot.board);
     } else {
-        gameState.board = gameState.isInfinityMode ? gameState.boardGrid : null;
-    }
-    if (gameState.isInfinityMode && !gameState.board) {
-        gameState.board = gameState.boardGrid;
+        gameState.board = null;
     }
     gameState.boardVersion = snapshot.boardVersion || 0;
     gameState.boardCache = null;
@@ -182,18 +285,36 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.isPaused = Boolean(snapshot.isPaused);
     gameState.isStopped = Boolean(snapshot.isStopped);
     gameState.isAlive = snapshot.isAlive !== false;
+    if (typeof snapshot.hitStopEnabled === 'boolean') {
+        gameState.hitStopEnabled = snapshot.hitStopEnabled;
+    }
     gameState.hitStopRemaining = snapshot.hitStopRemaining || 0;
+    gameState.hitStopTicks = Number.isFinite(snapshot.hitStopTicks)
+        ? Math.max(0, Math.floor(snapshot.hitStopTicks))
+        : durationMsToTicks(gameState.hitStopRemaining, gameState.simTickMs);
+    // Keep the legacy millisecond rollback value untouched. These markers let
+    // the dark fixed path honor an explicit restored tick counter on its first
+    // consume even if a migrated snapshot's two representations disagree.
+    gameState._hitStopTickSourceMs = gameState.hitStopRemaining;
+    gameState._hitStopTickDurationMs = gameState.simTickMs;
     gameState.isProcessingPhysics = false;
     gameState.latestPhysicsPromise = null;
     gameState.lastMoveWasRotation = Boolean(snapshot.lastMoveWasRotation);
     gameState.b2bActive = Boolean(snapshot.b2bActive);
     gameState.inputQueue = clonePlain(snapshot.inputQueue) || null;
+    if (options.restorePlayerInput === false) {
+        clearPlayerInput(gameState.playerInput);
+    } else {
+        restorePlayerInputState(gameState.playerInput, snapshot.playerInput);
+    }
 
     gameState.currentTopRow = snapshot.currentTopRow || 0;
     gameState.cameraRow = snapshot.cameraRow || 0;
+    gameState.cameraCenterRow = snapshot.cameraCenterRow ?? gameState.cameraCenterRow;
+    synchronizeInfinitySimulationCamera(gameState);
     gameState.lastPlacedPieceX = clonePlain(snapshot.lastPlacedPieceX) || [];
     gameState.comboState = clonePlain(snapshot.comboState) || {};
-    gameState.blindTimers = clonePlain(snapshot.blindTimers) || createBlindTimers();
+    restoreBlindTimers(gameState, snapshot.blindTimers);
     gameState.garbageAttackSequence = snapshot.garbageAttackSequence || 0;
     gameState.handicap = snapshot.handicap ?? 2;
     gameState.handicaps = clonePlain(snapshot.handicaps) || {};

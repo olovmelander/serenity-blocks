@@ -34,6 +34,8 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { loadOdysseyGltfCached } from '../../rendering/odyssey/chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter3FlyingBirdAssetById } from '../../rendering/odyssey/chapter-environments/shared/chapter-03-bird-assets.js';
 import { createSummerTrees } from '../../themes/summer/rendering/summer-trees.js';
+import { createSummerGameplayFX } from '../../themes/summer/rendering/summer-gameplay-fx.js';
+import { SummerGameplayRouting } from '../../themes/summer/composition/summer-gameplay-routing.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -120,9 +122,13 @@ export function create({
     const uTime = uniform(0);
     const uWarmth = uniform(0.15);
     const uBreeze = uniform(0);
-    const uBloom = uniform(0);
     const uSparkle = uniform(0);
     const uRaise = uniform(0);
+    // Combo reactions that make the SCENE ITSELF answer (plan §4 scene symbiosis):
+    // uFlare pulses the sun halo/disc + god-ray shafts; uFlowerBloom shimmers the
+    // real wildflowers. Both 0 at rest so the graph compiles once.
+    const uFlare = uniform(0);
+    const uFlowerBloom = uniform(0);
     // Vector3 (not a vec3 node) so the wrapper can drive it via uAccent.value.set(r,g,b).
     const uAccent = uniform(new T.Vector3(1.0, 0.82, 0.48));
 
@@ -278,15 +284,18 @@ export function create({
         const rayB = pow(sin(rayAngle.mul(12.0).sub(uTime.mul(0.02)).add(1.7)).mul(0.5).add(0.5), float(2.0));
         const rays = rayA.mul(0.6).add(rayB.mul(0.4));
         const shaftMask = pow(sunAlign, float(2.0)).mul(smoothstep(-0.05, 0.16, y));
-        const shafts = rays.mul(shaftMask).mul(float(0.42).add(uSparkle.mul(0.4)));
+        // Combo flare surges the crepuscular shafts (uSparkle continuous + uFlare startle).
+        const shafts = rays.mul(shaftMask).mul(float(0.42).add(uSparkle.mul(0.4)).add(uFlare.mul(0.6)));
 
-        // Sun halo + disc (these + shafts feed bloom via emissive).
+        // Sun halo + disc (these + shafts feed bloom via emissive). The sun visibly
+        // pulses on a combo milestone — a warm answer high above the board line.
+        const flareBoost = float(1.0).add(uFlare.mul(0.9));
         const halo = pow(sunAlign, float(5.0)).mul(0.6).add(pow(sunAlign, float(60.0)).mul(0.8));
         const disc = smoothstep(0.9975, 0.9994, sunAlign);
-        sky = sky.add(uSunWarm.mul(halo).mul(0.5)).add(uSunWarm.mul(shafts));
+        sky = sky.add(uSunWarm.mul(halo).mul(flareBoost).mul(0.5)).add(uSunWarm.mul(shafts));
         skyMat.colorNode = clamp(sky, 0.0, 4.0);
-        skyMat.emissiveNode = uSunWarm.mul(halo.mul(0.7).add(shafts.mul(0.5)).add(cloudGlow.mul(0.6)))
-            .add(cv(PAL.sunCore).mul(disc.mul(1.6)));
+        skyMat.emissiveNode = uSunWarm.mul(halo.mul(0.7).add(shafts.mul(0.5)).add(cloudGlow.mul(0.6))).mul(flareBoost)
+            .add(cv(PAL.sunCore).mul(disc.mul(float(1.6).add(uFlare.mul(1.4)))));
     }
     skyMat.side = T.BackSide;
     skyMat.depthWrite = false;
@@ -496,8 +505,21 @@ export function create({
         const gust = gustN.mul(0.5).mul(uBreeze.mul(1.6).add(0.5));
         const bend = sway.add(gust).mul(float(amp)).mul(mask);
         const flut = sin(uTime.mul(5.5 * freq).add(ph.mul(3.0))).mul(float(flutter)).mul(yN);
-        mat.positionNode = positionLocal.add(vec3(windDir.x.mul(bend).add(flut), bend.abs().mul(-0.05), windDir.y.mul(bend).add(flut.mul(0.5))));
-        mat.colorNode = distFog(shade(attribute('color', 'vec3'), faceN));
+        // Combo bloom: each flower stands up + opens a little, staggered by its own
+        // world-XZ phase so a combo reads as a shimmer/bloom rippling through the
+        // real meadow (not a flat exposure flash). uFlowerBloom is the combo scalar.
+        const bloomPhase = sin(uTime.mul(1.9).add(ph.mul(2.3))).mul(0.5).add(0.5);
+        const bloomAmt = uFlowerBloom.mul(bloomPhase.mul(0.55).add(0.45)).clamp(0.0, 1.0);
+        const lift = bloomAmt.mul(yN).mul(0.06);
+        mat.positionNode = positionLocal.add(vec3(
+            windDir.x.mul(bend).add(flut),
+            bend.abs().mul(-0.05).add(lift),
+            windDir.y.mul(bend).add(flut.mul(0.5)),
+        ));
+        const flowerBase = distFog(shade(attribute('color', 'vec3'), faceN));
+        // Brighten + warm the petals toward the golden accent as the bloom passes.
+        const flowerGlow = flowerBase.mul(1.35).add(uAccent.mul(0.22));
+        mat.colorNode = mix(flowerBase, flowerGlow, bloomAmt);
         mat.side = T.DoubleSide;
         return mat;
     };
@@ -997,9 +1019,54 @@ export function create({
     const _ba = [0, 0, 0];
     const _bb = [0, 0, 0];
 
+    // ── Midsummer Promise gameplay FX ───────────────────────────────────────────
+    // Discrete dew-lock seals + seven-flower ring dance. Renderer-neutral routing
+    // turns canonical events (fed by the theme via pulse()) into pooled commands
+    // the FX drains each frame. Idle-cheap: zero draws when nothing is active.
+    const initialReducedMotion = P.has('reducedMotion') || P.has('reduced');
+    const gameplayRouting = new SummerGameplayRouting({ reducedMotion: initialReducedMotion });
+    const gameplayFx = createSummerGameplayFX({
+        scene,
+        camera,
+        isWebGPU: renderer?.backend?.isWebGPUBackend === true,
+        quality: P.get('quality') || 'High',
+        reducedMotion: initialReducedMotion,
+        effectPlaneZ: 3,
+    });
+
+    // Playground-only: `?comboSim=N` freezes the scene into a combo-N reacted
+    // state (the theme drives setReactive in-game; the playground idles). Lets a
+    // capture show the living-meadow response without a running game.
+    const comboSim = parseInt(P.get('comboSim'), 10);
+    if (Number.isFinite(comboSim) && comboSim > 0) {
+        const c = Math.min(1, comboSim / 10);
+        uWarmth.value = 0.25 + c * 0.5;
+        uSparkle.value = 0.35 + c * 0.65;
+        uBreeze.value = 0.3 + c * 0.5;
+        uFlare.value = Math.min(1, c * 1.2);
+        uFlowerBloom.value = Math.min(1, 0.35 + c * 0.65);
+        uAccent.value.set(1.0, 0.86, 0.55);
+    }
+
     // ── controller ────────────────────────────────────────────────────────────
     return {
         cameraRadius: 24,
+        // Theme bridge: canonical gameplay events arrive here with full payloads.
+        pulse(kind, payload) {
+            gameplayRouting.dispatch(kind, payload || {});
+        },
+        // Theme bridge: live quality / reduced-motion / enable state.
+        configureGameplay({ quality, reducedMotion, intensity } = {}) {
+            if (quality !== undefined) gameplayFx.setQuality(quality);
+            if (reducedMotion !== undefined) {
+                gameplayRouting.setReducedMotion(reducedMotion);
+                gameplayFx.setReducedMotion(reducedMotion);
+            }
+            if (intensity !== undefined) {
+                gameplayRouting.setIntensityMultiplier(intensity);
+                gameplayFx.setIntensity(intensity);
+            }
+        },
         camera(time, cam) {
             mouse.x += (mouse.tx - mouse.x) * 0.05;
             mouse.y += (mouse.ty - mouse.y) * 0.05;
@@ -1017,6 +1084,11 @@ export function create({
             const dt = Math.min(0.05, Math.max(0, time - lastT));
             lastT = time;
             uTime.value = time;
+            // Drain routed gameplay commands into the FX pools, then advance them on
+            // the authoritative clock (idle-cheap when no events are active).
+            const gameplayCommands = gameplayRouting.drainCommands();
+            for (let i = 0; i < gameplayCommands.length; i++) gameplayFx.enqueue(gameplayCommands[i]);
+            gameplayFx.update(time);
             // Director-driven uniforms are written by the wrapper via setReactive();
             // in the playground they idle. Maypole raise beat:
             maypole.position.y = maypoleBaseY + uRaise.value * 0.9;
@@ -1077,13 +1149,16 @@ export function create({
         setReactive(s) {
             uWarmth.value = s.warmth;
             uBreeze.value = s.breeze;
-            uBloom.value = s.bloom;
             uSparkle.value = s.sparkle;
             uRaise.value = s.raise;
+            uFlare.value = s.flare ?? 0;
+            uFlowerBloom.value = s.flowerBloom ?? 0;
             uAccent.value.set(s.accent.r, s.accent.g, s.accent.b);
         },
         dispose() {
             if (typeof window !== 'undefined') window.removeEventListener('pointermove', onPointer);
+            gameplayRouting.dispose();
+            gameplayFx.dispose();
             birds.forEach((b) => b.mixer?.stopAllAction?.());
             birdMats.forEach((m) => m.dispose?.());
             summerTrees?.dispose?.();

@@ -111,6 +111,23 @@ describe('peer-owns-board (?peerLocalSim)', () => {
         expect(player.garbageQueue.entries[0].attackId).toBe('g1');
     });
 
+    it('treats an explicit null blind snapshot as an authoritative clear', () => {
+        const player = localPlayer();
+        player.gameState.blindTimers = {
+            field: 2, fieldMax: 2, pending: 1, pendingMax: 1,
+        };
+        const timers = player.gameState.blindTimers;
+        const snapshot = staleSnapshot();
+        snapshot.players[0].blindTimers = null;
+        const stub = makeStub(true, { players: new Map([['P1', player]]) });
+
+        apply(stub, snapshot, { forceLocal: false, reconcileLocal: true });
+
+        expect(player.gameState.blindTimers).toBe(timers);
+        expect(player.gameState.blindTimers.field).toBe(0);
+        expect(player.gameState.blindTimers.pending).toBe(0);
+    });
+
     it('a forceLocal digest-resync DOES hard re-base everything (the single correction path)', () => {
         const player = localPlayer();
         const stub = makeStub(true, { players: new Map([['P1', player]]) });

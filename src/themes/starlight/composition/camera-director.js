@@ -108,17 +108,21 @@ export class CameraDirector {
         this._targetPos.y += -this._pointerY * POINTER_ORBIT_Y;
         this._targetPos.z += Math.abs(this._pointerY) * POINTER_ORBIT_Z;
 
-        // 3. Event offset — decays back to 0, clamped.
-        this._eventOffsetTarget.multiplyScalar(0.92);
-        this._eventOffset.lerp(this._eventOffsetTarget, 0.14);
+        // 3. Event offset — decays back to 0, clamped. Delta-normalized so the settle
+        //    feel matches at 60/120/144 Hz (the fixed 0.92/0.14 per-frame constants,
+        //    referenced to 60 Hz, become exp/1-exp of delta).
+        const eventDecay = Math.exp(-5.0 * delta); // ≈0.92 per frame at 60 Hz
+        const eventLerp = 1 - Math.exp(-9.0 * delta); // ≈0.14 per frame at 60 Hz
+        this._eventOffsetTarget.multiplyScalar(eventDecay);
+        this._eventOffset.lerp(this._eventOffsetTarget, eventLerp);
         if (this._eventOffset.lengthSq() > MAX_OFFSET_LEN * MAX_OFFSET_LEN) {
             this._eventOffset.setLength(MAX_OFFSET_LEN);
         }
         this._targetPos.add(this._eventOffset);
 
-        // 4. FOV target — base + event delta, clamped.
-        this._eventFovDeltaTarget *= 0.92;
-        this._eventFovDelta += (this._eventFovDeltaTarget - this._eventFovDelta) * 0.14;
+        // 4. FOV target — base + event delta, clamped (same delta-normalized settle).
+        this._eventFovDeltaTarget *= eventDecay;
+        this._eventFovDelta += (this._eventFovDeltaTarget - this._eventFovDelta) * eventLerp;
         const clampedFovDelta = Math.max(-MAX_FOV_DELTA, Math.min(MAX_FOV_DELTA, this._eventFovDelta));
         this._targetFov = this.restFov + clampedFovDelta;
 

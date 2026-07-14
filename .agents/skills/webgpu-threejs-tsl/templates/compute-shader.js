@@ -27,10 +27,12 @@ import {
   uniform,
   instancedArray,
   instanceIndex,
+  positionLocal,
   hash,
   time,
   deltaTime,
   select,  // Use for conditional value selection
+  mix,
   max,
   clamp
 } from 'three/tsl';
@@ -192,16 +194,13 @@ function createVisualization(scene) {
 }
 
 function createPointsVisualization(scene) {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(new Float32Array(PARTICLE_COUNT * 3), 3)
-  );
-
   const material = new THREE.PointsNodeMaterial();
 
-  // Position from compute buffer
-  material.positionNode = positions.element(instanceIndex);
+  // Position from compute buffer. For Points/Sprite materials, positionNode is
+  // the particle CENTER; bind the storage buffer per-instance via toAttribute().
+  // The r181 pattern for GPU particles is an instanced THREE.Sprite — no dummy
+  // BufferGeometry needed.
+  material.positionNode = positions.toAttribute();
 
   // ========================================
   // CUSTOMIZE POINT APPEARANCE HERE
@@ -216,9 +215,11 @@ function createPointsVisualization(scene) {
     return mix(color(0x0066ff), color(0xff6600), speed.div(5).saturate());
   })();
 
-  const points = new THREE.Points(geometry, material);
-  scene.add(points);
-  return points;
+  const particles = new THREE.Sprite(material);
+  particles.count = PARTICLE_COUNT;
+  particles.frustumCulled = false; // centers live in the GPU buffer
+  scene.add(particles);
+  return particles;
 }
 
 function createInstancedVisualization(scene) {
@@ -229,8 +230,10 @@ function createInstancedVisualization(scene) {
 
   const material = new THREE.MeshStandardNodeMaterial();
 
-  // Position from compute buffer
-  material.positionNode = positions.element(instanceIndex);
+  // Position from compute buffer, ADDED to each instance's local vertices.
+  // (Assigning positions.element(instanceIndex) directly collapses every vertex
+  // of the instance to one point — nothing renders.)
+  material.positionNode = positionLocal.add(positions.element(instanceIndex));
 
   // ========================================
   // CUSTOMIZE MESH APPEARANCE HERE

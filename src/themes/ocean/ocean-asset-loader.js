@@ -9,6 +9,35 @@ if (!window.g_OceanGltfCache) {
 
 const gltfLoader = new GLTFLoader();
 
+function cloneOwnedScene(source) {
+    let hasSkinnedMesh = false;
+    source.traverse((child) => {
+        if (child.isSkinnedMesh) hasSkinnedMesh = true;
+    });
+
+    const clone = hasSkinnedMesh ? SkeletonUtils.clone(source) : source.clone(true);
+    const geometryClones = new Map();
+    const materialClones = new Map();
+    const cloneMaterial = (material) => {
+        if (!material) return material;
+        if (!materialClones.has(material)) materialClones.set(material, material.clone());
+        return materialClones.get(material);
+    };
+    clone.traverse((child) => {
+        if (!child.isMesh) return;
+        if (child.geometry) {
+            if (!geometryClones.has(child.geometry)) {
+                geometryClones.set(child.geometry, child.geometry.clone());
+            }
+            child.geometry = geometryClones.get(child.geometry);
+        }
+        child.material = Array.isArray(child.material)
+            ? child.material.map(cloneMaterial)
+            : cloneMaterial(child.material);
+    });
+    return clone;
+}
+
 /**
  * Loads a GLTF asset from a URL, caching the raw parsed result.
  * Returns a cloned version of the GLTF scene and animations so callers can safely mutate them.
@@ -30,7 +59,10 @@ export async function loadGltfCached(url) {
 
     // Deep clone the scene hierarchy. SkeletonUtils.clone is safe for both
     // rigged (SkinnedMesh) and static meshes.
-    const sceneClone = SkeletonUtils.clone(gltf.scene);
+    // Callers aggressively merge geometry, delete attributes, and dispose
+    // converted materials. Give them owned resources so the cached template
+    // remains immutable and warm theme switches never inherit disposed data.
+    const sceneClone = cloneOwnedScene(gltf.scene);
 
     return {
         scene: sceneClone,

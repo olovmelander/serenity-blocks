@@ -87,8 +87,8 @@ export function createStardustRenderer(sim, options = {}) {
         // Soft radial disc.
         const uvc = uv().sub(vec2(0.5, 0.5));
         const r = length(uvc).mul(2.0);
-        const disc = smoothstep(1.0, 0.0, r);
-        const core = smoothstep(0.45, 0.0, r);
+        const disc = smoothstep(0.0, 1.0, r).oneMinus();
+        const core = smoothstep(0.0, 0.45, r).oneMinus();
 
         // Per-particle twinkle (hashed phase/freq) under a slow sky-breath.
         const idx = float(instanceIndex);

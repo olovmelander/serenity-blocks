@@ -80,6 +80,25 @@ describe('InputJitterBuffer clock', () => {
         });
     });
 
+    it('accepts only a bounded internal future-window override', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, bufferDepth: 2 });
+        buf.addPlayer('peer');
+        buf.setCurrentTick(10);
+
+        expect(buf.addInput('peer', 42, { type: 'move' }, { maxFutureTicks: 32 }))
+            .toBe(true);
+        expect(buf.addInput('peer', 43, { type: 'move' }, { maxFutureTicks: 32 }))
+            .toBe(false);
+        expect(buf.addInput('peer', 74, { type: 'move' }, { maxFutureTicks: 999 }))
+            .toBe(true);
+        expect(buf.addInput('peer', 75, { type: 'move' }, { maxFutureTicks: 999 }))
+            .toBe(false);
+
+        const epoch = buf.clockEpoch;
+        buf.clear();
+        expect(buf.clockEpoch).toBe(epoch + 1);
+    });
+
     it('uses raw jitter tick offsets to raise adaptive depth', () => {
         const buf = new InputJitterBuffer({
             adaptive: true,

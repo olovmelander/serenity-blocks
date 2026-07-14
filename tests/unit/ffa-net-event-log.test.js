@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
+import { runFfaFixedTicks } from '../../src/core/multiplayer/ffa-fixed-tick-runner.js';
 
 function makeEventLogStub(overrides = {}) {
     return Object.assign(Object.create(FFAGameStateP2P.prototype), {
@@ -15,7 +18,7 @@ function makeEventLogStub(overrides = {}) {
     });
 }
 
-describe('FFA host net event log', () => {
+describe('FFA net event log', () => {
     it('records a bounded host-only event ring with compact metadata', () => {
         const state = makeEventLogStub({ _netEventLogLimit: 2 });
 
@@ -42,8 +45,35 @@ describe('FFA host net event log', () => {
         expect(state.getNetEventLogSnapshot()).toEqual([]);
     });
 
+    it('records peer-local clock warps without opening other authoritative events', () => {
+        const state = makeEventLogStub({
+            isHost: false,
+            _fixedTickEnabled: true,
+            _simTickAccumulatorMs: 0,
+            _fixedInputTimeMs: 0,
+            SIM_TICK_MS: 10,
+            MAX_SIM_STEPS_PER_FRAME: 2,
+            useJitterBuffer: true,
+            players: new Map(),
+            localInputHooks: {},
+            unifiedLoop: { updatePlayersFixedTick: vi.fn() },
+        });
+
+        runFfaFixedTicks(state, 1000, 1000);
+        state._recordNetEvent('input_applied', { seq: 1 });
+
+        expect(state.getNetEventLogSnapshot()).toMatchObject([{
+            type: 'sim_clock_warp',
+            data: {
+                requestedDebtMs: 1000,
+                retainedDebtMs: 300,
+                warpedMs: 700,
+            },
+        }]);
+    });
+
     it('records accepted input batches and applied inputs', () => {
-        const player = { name: 'Peer', isAlive: true, lastInputSeq: 0 };
+        const player = { name: 'Peer', isAlive: true, lastInputSeq: 6 };
         const state = makeEventLogStub({
             localPlayerId: 'HOST',
             players: new Map([['PEER', player]]),

@@ -6,6 +6,7 @@
 
 import steamService from '../core/steam/steam-service.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
+import { MessageTypes } from '../core/network/message-types.js';
 
 export class MatchResultsModal {
     constructor(options = {}) {
@@ -157,10 +158,14 @@ export class MatchResultsModal {
             };
 
             if (this.gameState?.network) {
-                if (this.gameState.network.broadcastToAll) {
-                    this.gameState.network.broadcastToAll('game:chat', payload);
+                if (this.gameState.network.isHost) {
+                    this.gameState.network.broadcastToAll(MessageTypes.GAME_CHAT, payload);
                 } else if (this.gameState.network.sendP2PMessage && this.gameState.network.hostSteamId) {
-                    this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', payload);
+                    this.gameState.network.sendP2PMessage(
+                        this.gameState.network.hostSteamId,
+                        MessageTypes.GAME_CHAT,
+                        payload,
+                    );
                 }
             }
 

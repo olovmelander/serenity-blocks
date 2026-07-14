@@ -101,7 +101,7 @@ export default class VesperChrysalisTheme extends BaseTheme {
 
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.PIECE_LOCK, (d) => { if (allow()) this.runtime.pulse('pieceLock', { piece: d?.piece }); }),
-            eventBus.on(EVENTS.COMBO, (d) => { if (allow()) this.runtime.pulse('combo', { count: d?.comboCount ?? d?.combo ?? 0 }); }),
+            eventBus.on(EVENTS.COMBO, (d) => { if (allow()) this.runtime.pulse('combo', { count: d?.comboCount ?? d?.combo ?? 0, player: d?.player ?? d?.playerId ?? d?.pid }); }),
             eventBus.on(EVENTS.LINE_CLEAR, (d) => { if (allow()) this.runtime.pulse('lineClear', { lines: d?.lineCount ?? 0, cascade: d?.cascadeCount ?? 1 }); }),
             eventBus.on(EVENTS.TSPIN, (d) => { if (allow()) this.runtime.pulse('tspin', { lines: d?.lineCount ?? 0 }); }),
             eventBus.on(EVENTS.B2B, (d) => { if (allow()) this.runtime.pulse('b2b', { active: !!d?.active }); }),

@@ -7,6 +7,7 @@
     "lib": ["es2022", "dom", "dom.iterable"],
     "allowJs": true,
     "checkJs": false,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": false,
     "skipLibCheck": true,
@@ -17,7 +18,8 @@
   "include": [
     "src/core/types.d.ts",
     "src/core/**/*.js",
-    "src/events/**/*.js"
+    "src/events/**/*.js",
+    "src/themes/tornado/**/*.ts"
   ],
   "exclude": [
     "node_modules",

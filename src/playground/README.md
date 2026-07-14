@@ -22,6 +22,8 @@ npm run dev:playground        # opens /playground.html
 | `paused=1` | start paused |
 | `orbit=0` | disable the default orbit camera (static framing) |
 | `forceWebGL=1` | force the WebGL2 backend instead of WebGPU |
+| `trackTimestamp=1` | opt into GPU timestamp queries for measured capture sessions (active with `profile=1`) |
+| `profile=1` | collect a bounded 1,200-frame CPU/frame/GPU window through `window.__PLAYGROUND__.profile` |
 | `ref=<url>` | reference image to overlay, e.g. `/playground-refs/target.png` |
 | `refMode=overlay\|split\|side` | how the reference is shown |
 | `refOpacity=<0..1>` | reference opacity in `overlay` mode |
@@ -29,6 +31,13 @@ npm run dev:playground        # opens /playground.html
 | `webgpuInspector=1` | load `webgpu_inspector` (GPU frame/buffer/shader capture) — inspect via `window.webgpuInspector` or the extension/plugin panel |
 
 Example: `/playground.html?effect=nebula-dome&t=8&ref=/playground-refs/sky.png&refMode=split`
+
+For a production-preview measurement, use `profile=1&trackTimestamp=1`, warm the effect,
+then call `window.__PLAYGROUND__.profile.reset()`. After the measurement window, read
+`window.__PLAYGROUND__.profile.snapshot()` for CPU, frame-interval, and available GPU
+p50/p95/p99 values plus internal resolution and effect renderer counters. Unsupported or
+zero GPU timestamps remain explicitly unavailable; they are never reported as a passing
+zero-cost sample.
 
 ## Authoring an effect
 

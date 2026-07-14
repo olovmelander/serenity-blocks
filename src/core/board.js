@@ -1,9 +1,16 @@
+// @ts-check
 // =================================================================================
 // BOARD - Board management and collision detection for Serenity Blocks
 // =================================================================================
+//
+// Grid contract: `BoardGrid` cells are the ambient `BoardCell` interface from
+// core/types.d.ts — the same shape the MP snapshot mirrors over the wire.
 
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
 
+/** @typedef {Array<Array<BoardCell | null>>} BoardGrid */
+
+/** @returns {BoardGrid} */
 export function createBoardGrid() {
     return Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
 }
@@ -18,6 +25,63 @@ export function clearBoardGrid(grid) {
 export function cloneBoardGrid(grid) {
     if (!grid) return null;
     return grid.map((row) => row.map((cell) => (cell ? { ...cell } : null)));
+}
+
+/**
+ * Invalidate the ghost-piece landing cache after any board/piece change.
+ * @param {Object} gameState
+ */
+export function invalidateGhostCache(gameState) {
+    if (!gameState) return;
+    if (!gameState.ghostCache) {
+        gameState.ghostCache = { piece: null, y: 0 };
+    }
+    gameState.ghostCacheDirty = true;
+    gameState.ghostCache.piece = null;
+}
+
+/**
+ * Mark the board render/collision caches stale after board content changed.
+ * Lives here (not game.js) so sim modules can flag dirtiness without
+ * importing the game module — keeps core dependency edges acyclic.
+ * @param {Object} gameState
+ */
+export function markBoardDirty(gameState) {
+    if (gameState) {
+        gameState.boardCacheDirty = true;
+        // Increment board version for rendering change detection
+        // This allows the renderer to know when the board content has changed
+        gameState.boardVersion = (gameState.boardVersion || 0) + 1;
+        invalidateGhostCache(gameState);
+    }
+}
+
+/**
+ * Rebuild boardGrid from lockedPieces ONLY when the board actually changed
+ * (§5.1: retires the renderer's unconditional per-frame rebuild).
+ *
+ * Change detection is two-channel, and both are required:
+ * - in-place mutations bump gameState.boardVersion via markBoardDirty();
+ * - restores/expansion REPLACE the boardGrid object — and may adopt a
+ *   snapshot's boardVersion that numerically collides with the current one
+ *   (demo seeks), so object identity is checked too.
+ *
+ * Bookkeeping is per-gameState (local multiplayer renders several boards).
+ * A writer that neither marks dirty nor replaces the grid was already broken
+ * for collision (ensureBoardCache trusts the same signals) — this makes the
+ * renderer trust them equally instead of masking the bug every frame.
+ * @param {Object} gameState
+ */
+export function syncBoardGridForRender(gameState) {
+    if (!gameState || !gameState.boardGrid) return;
+    const version = gameState.boardVersion || 0;
+    if (gameState._renderGridRef === gameState.boardGrid
+        && gameState._renderGridVersion === version) {
+        return;
+    }
+    rebuildBoardGridFromPieces(gameState.lockedPieces || [], gameState.boardGrid);
+    gameState._renderGridRef = gameState.boardGrid;
+    gameState._renderGridVersion = version;
 }
 
 export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid()) {

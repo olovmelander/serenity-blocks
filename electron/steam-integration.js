@@ -19,6 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
+import { decodeP2PPacketBody, encodeP2PPacketBody } from './p2p-packet-codec.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -1036,9 +1037,12 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:sendP2PPacket', (_event, steamId, data, sendType /* channel unused */) => {
         if (!steamworksClient) return false;
         try {
-            const buffer = Buffer.from(JSON.stringify(data));
+            // Serialize once at the physical send boundary. Byte views remain
+            // byte-exact for the future raw/compact transport lane.
+            const buffer = encodeP2PPacketBody(data);
             const type = Number.isInteger(sendType) ? sendType : 2; // default: Reliable
-            return steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
+            const sent = steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
+            return { sent, wireBytes: buffer.byteLength };
         } catch (err) {
             steamLog(`WARN: sendP2PPacket failed: ${err.message}`);
             return false;
@@ -1057,7 +1061,11 @@ export function registerSteamIPC() {
             }
             const packet = steamworksClient.networking.readP2PPacket(size);
             if (!packet || !packet.data) return null;
-            return { steamId: packet.steamId.steamId64.toString(), data: packet.data.toString('utf8') };
+            return {
+                steamId: packet.steamId.steamId64.toString(),
+                data: decodeP2PPacketBody(packet.data),
+                wireBytes: packet.data.byteLength,
+            };
         } catch { return null; }
     });
 
