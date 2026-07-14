@@ -28,6 +28,7 @@ const {
     DEMO_FIXED_CLOCK_VERSION,
     DEMO_FIXED_SIMULATION_CLOCK,
 } = await import('../../src/core/demo/DemoRecorder.js');
+const { bindLegacySessionRng } = await import('../../src/core/session-rng.js');
 const { SinglePlayerMode } = await import('../../src/core/game-modes/SinglePlayerMode.js');
 const { InputController } = await import('../../src/ui/controls.js');
 const { GamepadController } = await import('../../src/ui/gamepad-controller.js');
@@ -285,6 +286,45 @@ describe('SinglePlayerMode fixed-tick loop adapter', () => {
             sim: { simulationClock: DEMO_FIXED_SIMULATION_CLOCK },
             initialState: { rulesVersion: DEMO_FIXED_CLOCK_VERSION },
         });
+    });
+
+    it('binds explicit seed zero before the initial bag and retains its descriptor through stop', async () => {
+        vi.stubGlobal('window', {
+            location: { search: '' },
+            localStorage: { getItem: vi.fn(() => null) },
+            matchMedia: vi.fn(() => ({ matches: false })),
+        });
+        const { mode, settings } = createMode();
+        mode.isRunning = false;
+        mode._startPhaserBoardScene = vi.fn();
+        mode._clearPhaserBoard = vi.fn();
+        mode._applyEffectQuality = vi.fn();
+        mode._refreshNextQueue = vi.fn();
+        mode._updateStats = vi.fn();
+
+        const expectedState = new GameState({ inputHandling: settings });
+        bindLegacySessionRng(expectedState, 0);
+        fillBag(expectedState.nextPieces, expectedState.randomGenerator);
+        spawnPiece(expectedState);
+
+        await mode.onStart({ seed: 0 });
+
+        const descriptor = mode.gameState.rngDescriptor;
+        expect(descriptor).toEqual({
+            algorithm: 'lcg-v1',
+            seed: 0,
+            stream: 'pieces:shared-v1',
+        });
+        expect(Object.isFrozen(descriptor)).toBe(true);
+        expect(mode.gameState.randomGenerator).not.toBe(Math.random);
+        expect(mode.gameState.currentPiece.shapeKey).toBe(expectedState.currentPiece.shapeKey);
+        expect(mode.gameState.nextPieces).toEqual(expectedState.nextPieces);
+        expect(mode._activeSession.rngDescriptor).toBe(descriptor);
+        expect(mode.demoRecorder.getDemo().initialState.seed).toBe(descriptor.seed);
+
+        const stoppedSession = await mode.onStop();
+        expect(stoppedSession.rngDescriptor).toBe(descriptor);
+        expect(mode._stoppedSession.rngDescriptor).toBe(descriptor);
     });
 
     it('keeps the standard flag-off RAF path free of fixed adapters', () => {

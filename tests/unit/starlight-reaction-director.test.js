@@ -56,7 +56,7 @@ function advance(director, seconds, step = 1 / 120) {
 
 describe('StarlightReactionDirector', () => {
     describe('ordinary lock (no clear)', () => {
-        it('plays a cell-centered seal + one shallow release wave, and NOTHING else', () => {
+        it('plays a seal + a subtle tap (one small ring + micro-shake) + one release wave; no meteor/sign', () => {
             const { director, calls } = makeDirector();
             director.onPieceLock({ piece: { cells: [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }] } });
             advance(director, 0.6);
@@ -64,9 +64,10 @@ describe('StarlightReactionDirector', () => {
             expect(calls.count('seal')).toBe(1);
             expect(calls.of('seal')[0].args[0]).toHaveLength(2); // both cells passed through
             expect(calls.count('wave')).toBe(1); // one shallow release wave
+            expect(calls.count('ring')).toBe(1); // one small "tap" ring at the lock point
+            expect(calls.of('camera').some((c) => c.args[0] === 'shake')).toBe(true); // subtle percussive tap
             expect(calls.count('meteor')).toBe(0); // ordinary lock earns no meteor
             expect(calls.count('sign')).toBe(0);
-            expect(calls.count('ring')).toBe(0);
             // Dust inhale impulse is an ATTRACTOR (gather), not radial.
             expect(calls.of('impulse')[0].args[2]).toBe(IMPULSE.ATTRACTOR);
         });
@@ -96,19 +97,20 @@ describe('StarlightReactionDirector', () => {
     });
 
     describe('COMBO coalescing (no double-fire)', () => {
-        it('a COMBO with the following LINE_CLEAR produces ONE sweep, not two', () => {
+        it('a below-threshold COMBO folds into the clear cue — no second independent spectacle', () => {
             const single = makeDirector();
             single.director.onLineClear({ lineCount: 1, clearedRows: [18] });
             advance(single.director, 0.4);
             const wavesWithoutCombo = single.calls.count('wave');
 
             const combo = makeDirector();
-            combo.director.onCombo({ comboCount: 2 }); // resonance only — no geometry of its own
+            combo.director.onCombo({ comboCount: 2 }); // resonance only, below the tier-4 escalation
             combo.director.onLineClear({ lineCount: 1, clearedRows: [18] });
             advance(combo.director, 0.4);
 
-            expect(wavesWithoutCombo).toBe(1); // single row → one sweep
-            expect(combo.calls.count('wave')).toBe(1); // COMBO added no extra wave
+            expect(wavesWithoutCombo).toBeGreaterThan(0); // the clear fans a sweep across the sky
+            // COMBO 2 does not add an independent second wave show — same fan as the clear alone.
+            expect(combo.calls.count('wave')).toBe(wavesWithoutCombo);
         });
 
         it('COMBO alone (no clear this frame) launches no geometry', () => {
@@ -118,29 +120,23 @@ describe('StarlightReactionDirector', () => {
             expect(calls.length).toBe(0);
         });
 
-        it('seeds a small sign only when a resonance milestone is newly crossed, once per tier', () => {
-            const { director, calls } = makeDirector();
-            // Climb a combo streak 4→5→6 (tier 1) then 7 (tier 2); each clear is one row.
-            const clearAt = (combo) => {
-                director.onCombo({ comboCount: combo });
-                director.onLineClear({ lineCount: 1, clearedRows: [18] });
-                advance(director, 0.35);
+        it('scatters constellation signs across the sky, count scaling with the combo tier', () => {
+            const clearAtCombo = (combo) => {
+                const d = makeDirector();
+                d.director.onCombo({ comboCount: combo });
+                d.director.onLineClear({ lineCount: 1, clearedRows: [18] });
+                advance(d.director, 0.5);
+                return d.calls;
             };
-            clearAt(4); // tier 1 crossed → one small seed (zodiac)
-            clearAt(5); // still tier 1 → no new sign
-            clearAt(6); // still tier 1 → no new sign
-            expect(calls.count('sign')).toBe(1);
-            expect(calls.of('sign')[0].args[0]).toBe('zodiac');
-            expect(calls.of('sign')[0].args[1].persistent).toBe(false);
-
-            clearAt(7); // tier 2 crossed → one readable trace (earned, still not persistent)
-            expect(calls.count('sign')).toBe(2);
-            expect(calls.of('sign')[1].args[0]).toBe('earned');
+            expect(clearAtCombo(3).count('sign')).toBe(1); // 3+ → 1 zodiac sign
+            expect(clearAtCombo(8).count('sign')).toBe(2); // 7+ → 2 signs
+            // Below the sign threshold (combo < 3) scatters no sign.
+            expect(clearAtCombo(2).count('sign')).toBe(0);
         });
     });
 
     describe('dominance order', () => {
-        it('perfect clear beats a co-resolving Tetris/combo — no fireball, one full reveal', () => {
+        it('perfect clear dominates a co-resolving Tetris/combo (one reveal, not two shows)', () => {
             const { director, calls } = makeDirector();
             director.onPieceLock({ piece: { cells: [{ x: 0, y: 0, z: 0 }] } });
             director.onLineClear({ lineCount: 4, clearedRows: [16, 17, 18, 19] });
@@ -149,10 +145,10 @@ describe('StarlightReactionDirector', () => {
             advance(director, 0.6);
 
             expect(calls.count('seal')).toBe(0); // lock absorbed
-            expect(calls.of('meteor').some((c) => c.args[0] === 'fireball')).toBe(false);
-            const signs = calls.of('sign');
-            expect(signs).toHaveLength(1);
-            expect(signs[0].args[1].full).toBe(true);
+            // EXACTLY one fireball proves the Tetris cue did not ALSO fire (perfect clear dominates).
+            expect(calls.of('meteor').filter((c) => c.args[0] === 'fireball')).toHaveLength(1);
+            // A full-field constellation reveal — multiple earned signs across the sky.
+            expect(calls.of('sign').length).toBeGreaterThanOrEqual(3);
         });
 
         it('Tetris resolves to a hero fireball + FOV breath', () => {
@@ -179,21 +175,19 @@ describe('StarlightReactionDirector', () => {
     });
 
     describe('combo apex (≥10 with a clear)', () => {
-        it('fires an earned persistent constellation birth, then respects the cooldown', () => {
+        it('births earned signs + one aurora surge, then the cooldown gates the apex-only surge', () => {
             const { director, calls } = makeDirector({ apexCooldown: 6 });
             const comboClear = (combo) => {
                 director.onCombo({ comboCount: combo });
                 director.onLineClear({ lineCount: 1, clearedRows: [18] });
                 advance(director, 0.4);
             };
-            comboClear(10); // apex
-            const apexSigns = calls.of('sign').filter((c) => c.args[1].persistent === true);
-            expect(apexSigns).toHaveLength(1);
-            expect(apexSigns[0].args[0]).toBe('earned');
+            comboClear(10); // apex → earned constellation birth + aurora surge
+            expect(calls.of('sign').filter((c) => c.args[1].persistent === true).length).toBeGreaterThanOrEqual(1);
+            expect(calls.of('aurora')).toHaveLength(1);
 
-            comboClear(11); // within cooldown → NOT another apex (falls back to line clear)
-            const apexSignsAfter = calls.of('sign').filter((c) => c.args[1].persistent === true);
-            expect(apexSignsAfter).toHaveLength(1);
+            comboClear(11); // within cooldown → NOT another apex (no second aurora surge)
+            expect(calls.of('aurora')).toHaveLength(1);
         });
     });
 
@@ -216,8 +210,10 @@ describe('StarlightReactionDirector', () => {
             const { director, calls } = makeDirector();
             director.onPieceLock({ piece: { cells: [{ x: 0, y: 0, z: 0 }] } });
             director.onB2B({ active: true });
-            advance(director, 0.5);
-            expect(calls.count('ring')).toBe(0); // lock cue has no ring, and B2B armed nothing
+            director.update(0); // the lock's own "tap" ring fires now
+            const ringsAfterLock = calls.count('ring');
+            advance(director, 0.5); // past the 0.19s echo window
+            expect(calls.count('ring')).toBe(ringsAfterLock); // B2B armed nothing → no extra echo ring
         });
 
         it('captures the echo origin by value — a later cue cannot move it', () => {

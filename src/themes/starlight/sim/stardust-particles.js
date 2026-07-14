@@ -36,6 +36,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { curlNoise3 } from '../materials/tsl-noise-lib.js';
+import { IMPULSE_TYPE } from './impulse-types.js';
 
 export const STARDUST_BUDGETS = Object.freeze({
     Minimal: Object.freeze({ count: 0, flowStrength: 0 }),
@@ -51,7 +52,7 @@ export function getStardustBudget(qualityName) {
 }
 
 export const MAX_IMPULSES = 8;
-export const IMPULSE_TYPE = Object.freeze({ RADIAL: 0, VORTEX: 1, ATTRACTOR: 2 });
+export { IMPULSE_TYPE }; // re-exported from ./impulse-types.js for existing importers
 
 // Cool + warm fairy-dust seed colors (the starlightRamp endpoints).
 const COOL = [0.75, 0.85, 1.0];

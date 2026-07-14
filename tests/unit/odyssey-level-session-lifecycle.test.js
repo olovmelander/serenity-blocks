@@ -72,6 +72,21 @@ function createSpawnableState() {
     return state;
 }
 
+function createLevelConfig(id = 7) {
+    return {
+        id,
+        name: `Session Test ${id}`,
+        mechanics: {
+            baseMode: 'standard',
+            board: { rows: 20, startingRows: 0 },
+            speed: { startLevel: 1 },
+        },
+        modifiers: { active: [] },
+        stars: {},
+        victory: { bonuses: [], primary: { target: 40, type: 'lines' } },
+    };
+}
+
 function bindSession(mode, gameState, hybridEngine, generation) {
     const session = {
         gameState,
@@ -143,6 +158,24 @@ describe('OdysseyMode level-session ownership', () => {
         expect(mode._handleGameOver).not.toHaveBeenCalled();
     });
 
+    it('creates a fresh hybrid evaluator for every attempt', () => {
+        const { mode } = createMode();
+        const levelConfig = createLevelConfig();
+        mode.currentLevelConfig = levelConfig;
+        mode._createGameStateForLevel(levelConfig, 1);
+        const oldSession = mode._activeLevelSession;
+        const oldCallbacks = mode._getPhysicsCallbacks(oldSession);
+
+        mode._retireLevelSession(oldSession);
+        mode._createGameStateForLevel(levelConfig, 2);
+        const replacementSession = mode._activeLevelSession;
+        oldCallbacks.onLineClear(1);
+
+        expect(replacementSession.hybridEngine).not.toBe(oldSession.hybridEngine);
+        expect(replacementSession.hybridEngine.getMetrics().lines).toBe(0);
+        expect(oldSession.hybridEngine.getMetrics().lines).toBe(1);
+    });
+
     it.each([
         ['completion', 'completeLevel'],
         ['failure', 'failLevel'],
@@ -173,6 +206,23 @@ describe('OdysseyMode level-session ownership', () => {
             ? true
             : { choice: 'map', modal: { remove: vi.fn() } });
         await operation;
+    });
+
+    it('retires a prepared attempt when its runtime fails to start', () => {
+        const { frameRateController, mode } = createMode();
+        const session = bindSession(mode, createSpawnableState(), createHybridEngine(), 1);
+        mode.levelPrepared = true;
+        mode._hookInputs = vi.fn();
+        mode._startLevelTimer = vi.fn();
+        mode._startGameLoop = vi.fn(() => {
+            throw new Error('loop start failed');
+        });
+
+        expect(() => mode.beginLevelRun()).toThrow('loop start failed');
+
+        expect(session.retired).toBe(true);
+        expect(session.gameState.isStopped).toBe(true);
+        expect(frameRateController.stopHybridLoop).toHaveBeenCalledTimes(1);
     });
 
     it('drains the captured attempt on stop without clearing a replacement state', async () => {

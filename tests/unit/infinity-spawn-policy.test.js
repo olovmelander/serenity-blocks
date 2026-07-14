@@ -99,6 +99,20 @@ describe('Infinity deterministic spawn policy', () => {
         expect(resolveInfinitySpawnRow(state)).toBe(spawnBefore + 10);
     });
 
+    it('bottom-anchors only the first spawn of a widened virtual viewport', () => {
+        const state = new GameState({
+            isInfinityMode: true,
+            initialInfinityRows: 44,
+            infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+            infinityVisibleRows: 26,
+        });
+        state.boardGrid[18][4] = { color: '#fff' };
+
+        expect(resolveInfinitySpawnRow(state)).toBe(16);
+        state.piecesPlaced = 1;
+        expect(resolveInfinitySpawnRow(state)).toBe(11);
+    });
+
     it('reads canonical boardGrid before a stale Infinity render alias is repaired', () => {
         const state = createInfinityState();
         const replacement = state.boardGrid.map((row) => row.slice());

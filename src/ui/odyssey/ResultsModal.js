@@ -23,10 +23,17 @@ import {
  * @param {string|number} deps.levelId current level id (Steam level-time board)
  * @param {number} deps.totalStars total stars earned (Steam total-stars board)
  * @param {function(number):string} deps.formatTime ms → mm:ss
+ * @param {boolean} [deps.includeLegacyResults=true] show the unversioned Steam result view
  * @returns {HTMLElement} the modal root element (caller mounts it)
  */
 export function createResultsModal({
-    results, onClose, levelConfig, levelId, totalStars, formatTime,
+    results,
+    onClose,
+    levelConfig,
+    levelId,
+    totalStars,
+    formatTime,
+    includeLegacyResults = true,
 }) {
     const modal = document.createElement('div');
     modal.id = 'odyssey-results-modal';
@@ -87,6 +94,27 @@ export function createResultsModal({
         content.appendChild(levelName);
     }
 
+    if (!includeLegacyResults) {
+        const unrankedNotice = document.createElement('div');
+        unrankedNotice.className = 'odyssey-results-unranked';
+        unrankedNotice.innerHTML = `
+            <div style="font-size: 14px; font-weight: 700; color: rgba(205, 175, 255, 0.95);">
+                Experimental Session · Unranked
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; line-height: 1.5; color: rgba(210, 220, 240, 0.68);">
+                Run stars are a preview. Campaign progress and leaderboard results were not saved.
+            </div>
+        `;
+        unrankedNotice.style.cssText = `
+            margin: 0 0 24px;
+            padding: 12px 16px;
+            border: 1px solid rgba(180, 130, 255, 0.35);
+            border-radius: 10px;
+            background: rgba(120, 80, 180, 0.12);
+        `;
+        content.appendChild(unrankedNotice);
+    }
+
     // Stars
     const starsContainer = document.createElement('div');
     starsContainer.style.cssText = `
@@ -137,38 +165,42 @@ export function createResultsModal({
     });
     content.appendChild(statsContainer);
 
-    // Steam leaderboard panel (level time + total stars)
-    const leaderboardHost = document.createElement('div');
-    leaderboardHost.className = 'steam-leaderboard-panel';
-    leaderboardHost.style.marginBottom = '24px';
-    content.appendChild(leaderboardHost);
+    if (includeLegacyResults) {
+        // Steam leaderboard panel (level time + total stars). Experimental clocks
+        // never construct this view because mount() immediately reads cached/live
+        // entries from the unversioned legacy boards.
+        const leaderboardHost = document.createElement('div');
+        leaderboardHost.className = 'steam-leaderboard-panel';
+        leaderboardHost.style.marginBottom = '24px';
+        content.appendChild(leaderboardHost);
 
-    const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
-    const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
+        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
+        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
 
-    const leaderboardPanel = new SteamLeaderboardPanel({
-        title: 'Odyssey Leaderboards',
-        boards: [
-            {
-                id: 'level-time',
-                label: 'Level Time',
-                name: levelBoard,
-                currentScore: levelTimeMs,
-                formatScore: formatMilliseconds,
-            },
-            {
-                id: 'total-stars',
-                label: 'Total Stars',
-                name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
-                currentScore: totalStars,
-                formatScore: formatNumber,
-            },
-        ],
-        defaultBoardId: 'level-time',
-        pageSize: 8,
-    });
+        const leaderboardPanel = new SteamLeaderboardPanel({
+            title: 'Odyssey Leaderboards',
+            boards: [
+                {
+                    id: 'level-time',
+                    label: 'Level Time',
+                    name: levelBoard,
+                    currentScore: levelTimeMs,
+                    formatScore: formatMilliseconds,
+                },
+                {
+                    id: 'total-stars',
+                    label: 'Total Stars',
+                    name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
+                    currentScore: totalStars,
+                    formatScore: formatNumber,
+                },
+            ],
+            defaultBoardId: 'level-time',
+            pageSize: 8,
+        });
 
-    leaderboardPanel.mount(leaderboardHost);
+        leaderboardPanel.mount(leaderboardHost);
+    }
 
     // Continue button
     const button = document.createElement('button');

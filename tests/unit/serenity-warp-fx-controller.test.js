@@ -107,7 +107,7 @@ describe('Serenity Warp Phase Seal', () => {
             type: SERENITY_WARP_FX_COMMAND.PHASE_SEAL,
             issuedAtMs: 125,
             durationMs: 550,
-            intensity: 0.36,
+            intensity: 0.72,
             motionScale: 1,
             envelope: PHASE_SEAL_ENVELOPE,
             moteCount: 4,
@@ -270,7 +270,7 @@ describe('Serenity Warp command routing', () => {
             moteCount: 0,
             ringCount: 0,
         });
-        expect(lock.intensity).toBeCloseTo(0.36 * 0.5 * 0.45);
+        expect(lock.intensity).toBeCloseTo(0.72 * 0.5 * 0.45);
         expect(gate).toMatchObject({
             reducedMotion: true,
             motionScale: 0,

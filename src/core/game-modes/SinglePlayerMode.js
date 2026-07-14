@@ -36,7 +36,7 @@ import {
 import { DemoPlayer } from '../demo/DemoPlayer.js';
 import { DemoManager } from '../demo/DemoManager.js';
 import { PlaybackControls } from '../../ui/playback-controls.js';
-import { seededRandom } from '../../utils/helpers.js';
+import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { buildReplayProof } from '../anti-cheat/replay-proof.js';
@@ -244,6 +244,12 @@ export class SinglePlayerMode extends BaseGameMode {
             inputHandling: inputHandlingSettings,
             hitStopEnabled,
         });
+        const rngDescriptor = options.demo
+            ? null
+            : bindLegacySessionRng(
+                this.gameState,
+                options.seed !== undefined ? options.seed : generateSessionSeed(),
+            );
         this._fixedTickEnabled = !options.demo && readFlag('fixedTick', false);
         if (this._fixedTickEnabled && !this.deps.frameRateController?.startHybridLoop) {
             console.warn('[SinglePlayer] fixedTick requires FrameRateController; using legacy loop');
@@ -256,6 +262,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this._activeSession = Object.freeze({
             generation: sessionGeneration,
             gameState: this.gameState,
+            rngDescriptor,
             simulationClock: this._sessionSimulationClock,
         });
         this._stoppedSession = null;
@@ -370,11 +377,8 @@ export class SinglePlayerMode extends BaseGameMode {
         // FORCE TRUE to ensure buttons appear while debugging settings
         const shouldRecord = true; // settings.autoRecordDemos !== false;
 
-        let recordingSeed = null;
         if (shouldRecord) {
             console.log('[SinglePlayer] Auto-recording enabled');
-            recordingSeed = Date.now(); // Generate seed
-            this.gameState.randomGenerator = seededRandom(recordingSeed);
         } else {
             this.isRecording = false;
         }
@@ -391,9 +395,7 @@ export class SinglePlayerMode extends BaseGameMode {
         // Fill piece bag
         fillBag(
             this.gameState.nextPieces,
-            typeof this.gameState.randomGenerator === 'function'
-                ? this.gameState.randomGenerator
-                : Math.random,
+            this.gameState.randomGenerator,
         );
 
         // Spawn first piece
@@ -408,12 +410,17 @@ export class SinglePlayerMode extends BaseGameMode {
             this.demoRecorder.startRecording(
                 this.gameState,
                 settings,
-                recordingSeed,
+                rngDescriptor.seed,
                 'single-player',
                 this._sessionSimulationClock,
             );
             this.isRecording = true;
-            console.log('[SinglePlayer] Recording started with seed:', recordingSeed, 'isRecording:', this.isRecording);
+            console.log(
+                '[SinglePlayer] Recording started with seed:',
+                rngDescriptor.seed,
+                'isRecording:',
+                this.isRecording,
+            );
         }
 
         // Draw initial UI
@@ -529,7 +536,12 @@ export class SinglePlayerMode extends BaseGameMode {
     /**
      * Finish one captured session without consulting replacement mode state.
      * @param {{
-     *   session: { generation: number, gameState: GameState, simulationClock: string },
+     *   session: {
+     *     generation: number,
+     *     gameState: GameState,
+     *     rngDescriptor: Readonly<Object>|null,
+     *     simulationClock: string
+     *   },
      *   wasPlayingDemo: boolean,
      *   wasRecording: boolean
      * }} teardown
@@ -537,6 +549,7 @@ export class SinglePlayerMode extends BaseGameMode {
      * @returns {Promise<Readonly<{
      *   generation: number,
      *   gameState: GameState,
+     *   rngDescriptor: Readonly<Object>|null,
      *   simulationClock: string,
      *   demo: Object|null,
      *   demoId: number|null
@@ -545,7 +558,9 @@ export class SinglePlayerMode extends BaseGameMode {
      */
     async _stopCapturedSession(teardown, baseStopPromise) {
         const { session, wasPlayingDemo, wasRecording } = teardown;
-        const { gameState, generation, simulationClock } = session;
+        const {
+            gameState, generation, rngDescriptor, simulationClock,
+        } = session;
 
         console.log('[SinglePlayer] Stopping game...');
 
@@ -606,6 +621,7 @@ export class SinglePlayerMode extends BaseGameMode {
         return Object.freeze({
             generation,
             gameState,
+            rngDescriptor,
             simulationClock,
             demo,
             demoId,

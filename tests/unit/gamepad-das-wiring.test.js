@@ -6,7 +6,9 @@
  * SinglePlayer/Infinity/Odyssey (initial presses fired from the poll loop;
  * startDas timers never advanced).
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import { readFileSync } from 'node:fs';
 import { updateGame } from '../../src/core/game.js';
 
@@ -61,11 +63,11 @@ describe('gamepad DAS live-loop wiring (plan §1.5)', () => {
         expect(src).toMatch(/window\.gamepadController = this\.gamepadController;/);
     });
 
-    it('LocalMultiplayerMode loop (which bypasses updateGame) advances pad DAS itself', () => {
+    it('extracted Local Multiplayer loop (which bypasses updateGame) advances pad DAS itself', () => {
         const src = readFileSync(
-            new URL('../../src/core/game-modes/LocalMultiplayerMode.js', import.meta.url),
+            new URL('../../src/core/game-modes/local-multiplayer-loop.js', import.meta.url),
             'utf8',
         );
-        expect(src).toMatch(/window\.gamepadController\.advanceGameplayInput\(currentTime\)/);
+        expect(src).toMatch(/globalWindow\.gamepadController\?\.advanceGameplayInput\(currentTime\)/);
     });
 });

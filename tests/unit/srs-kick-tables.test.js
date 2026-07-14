@@ -12,9 +12,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-    GameState, rotate, markBoardDirty, lockPiece, rotateShapeMatrix,
+    GameState, rotate, lockPiece, rotateShapeMatrix,
     JLSTZ_KICKS, I_KICKS, ROTATION_NAMES,
 } from '../../src/core/game.js';
+import { markBoardDirty } from '../../src/core/board.js';
 import { SHAPES } from '../../src/core/constants.js';
 
 // ── Golden guideline-SRS values (https://tetris.wiki/Super_Rotation_System) ──

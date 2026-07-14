@@ -39,6 +39,7 @@ export function create({ params }) {
     document.body.appendChild(canvas);
 
     let surge = Math.max(0, Math.min(1, num(params.get('surge'), 0)));
+    let scatter = 0;
     const state = { visual: null, ready: false, error: null };
 
     // Live hook so the surge can be A/B'd without re-navigating (avoids re-wedging the MCP).
@@ -46,6 +47,18 @@ export function create({ params }) {
         set: (value) => { surge = Math.max(0, Math.min(1, num(value, 0))); return surge; },
         get: () => surge,
         ready: () => state.ready,
+        // Fire a particle burst at a normalized screen position (default centre-ish).
+        burst: (nx = 0.62, ny = 0.5, strength = 1.4) => {
+            state.visual?.pulseReactionAt?.(nx, ny, strength);
+            return true;
+        },
+        // Fan the apex burst across the tunnel (combo-10 spread).
+        apex: (nx = 0.5, ny = 0.45) => {
+            state.visual?.pulseReactionSpread?.(nx, ny, 5, 1.6);
+            return true;
+        },
+        // Set the warp-scatter "fly away" amount (0..1) directly for A/B capture.
+        scatter: (value) => { scatter = Math.max(0, Math.min(1, num(value, 0))); return scatter; },
     };
 
     (async () => {
@@ -73,8 +86,17 @@ export function create({ params }) {
         update() {
             const { visual } = state;
             if (!visual) return;
-            // surge rides the warp machinery; bloom/chroma mirror the director's mapping.
-            visual.setReactionState({ surge, bloom: surge * 0.9, chroma: surge * 0.55 });
+            // surge rides the warp machinery; glow brightens the tetrominos + particles;
+            // bloom/chroma mirror the director's mapping.
+            visual.setReactionState({
+                surge,
+                bloom: surge * 0.9,
+                chroma: surge * 0.55,
+                glow: surge,
+                spin: surge * 0.4, // synchronized field twist
+                vertigo: surge, // dolly-zoom "everything got bigger"
+                scatter, // warp "fly away"
+            });
             visual.update();
         },
         // Own the frame: IntroWebGPUVisual.update() already rendered to its canvas, so the

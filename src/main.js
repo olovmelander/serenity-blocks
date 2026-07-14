@@ -20,22 +20,16 @@ import {
 } from './core/constants.js';
 import {
     GameState,
-    gameLoop as coreGameLoop,
-    startGame as coreStartGame,
     spawnPiece,
-    fillBag,
     move as coreMove,
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
-    processAutoDrop as coreProcessAutoDrop,
-    markBoardDirty,
 } from './core/game.js';
 import { insertGarbageEntries } from './core/garbage.js';
 import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
-import { rebuildBoardGridFromPieces } from './core/board.js';
+import { markBoardDirty, rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
-import { MultiplayerGameState } from './core/multiplayer.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
 import steamService from './core/steam/steam-service.js';
 import { richPresenceManager } from './core/steam/rich-presence-manager.js';
@@ -107,7 +101,7 @@ import { ThemeManager } from './themes/theme-manager.js';
 
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
-import { seededRandom, hexToRgb } from './utils/helpers.js';
+import { hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
 import { createRuntimeValidation, installPreloadErrorRecovery } from './utils/release-observability.js';
 import {
@@ -2652,7 +2646,7 @@ class SerenityBlocks {
             frameRateController: this.frameRateController,
             BoardSceneClass: this.BoardSceneClass || null,
             MultiplayerBoardSceneClass: this.MultiplayerBoardSceneClass || null,
-            getMultiplayerPhysicsCallbacks: (playerNum) => this.getMultiplayerPhysicsCallbacks(playerNum),
+            getMultiplayerPhysicsCallbacks: (...args) => this.getMultiplayerPhysicsCallbacks(...args),
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
@@ -4315,203 +4309,7 @@ class SerenityBlocks {
             console.log(`[Main] Started game mode: ${currentMode}`);
         } catch (error) {
             console.error('[Main] Failed to start game:', error);
-
-            // Fallback to legacy mode for multiplayer (not yet migrated)
-            if (currentMode === GAME_MODES.MULTIPLAYER || currentMode === GAME_MODES.LOCAL_MULTIPLAYER) {
-                console.warn('[Main] Falling back to legacy multiplayer mode');
-                if (currentMode === GAME_MODES.MULTIPLAYER) {
-                    this.startMultiplayerGame();
-                } else {
-                    this.startSinglePlayerGame();
-                }
-            }
         }
-    }
-
-    /**
-     * Start single player game
-     */
-    startSinglePlayerGame() {
-        this.deactivatePhaserMultiplayerUI();
-        this.teardownMultiplayerBoardScenes();
-
-        // Ensure Phaser canvas is in single-player container
-        this.movePhaserGameToContainer('phaser-game-container');
-
-        // Ensure single-player dimensions
-        const singleBoardWidth = COLS * BLOCK_SIZE;
-        const singleBoardHeight = ROWS * BLOCK_SIZE;
-        this.resizePhaserGame(singleBoardWidth, singleBoardHeight);
-
-        this.resumeSinglePlayerScene();
-        this.applyEffectQuality(this.currentEffectQuality);
-
-        // Reset game state
-        this.gameState.reset();
-
-        // Fill the piece bag
-        fillBag(
-            this.gameState.nextPieces,
-            typeof this.gameState.randomGenerator === 'function'
-                ? this.gameState.randomGenerator
-                : Math.random,
-        );
-
-        // Spawn first piece
-        this.gameState.lastTime = performance.now();
-        spawnPiece(
-            this.gameState,
-            () => {
-                // Draw next pieces callback
-                this.refreshNextQueue();
-            },
-            () => {
-                // Game over callback
-                this.endGame();
-            },
-        );
-
-        // Draw initial next pieces display
-        this.refreshNextQueue();
-        this.updatePhaserStats();
-
-        // Start game loop
-        this.gameLoop(this.gameState.lastTime);
-
-        console.log('🎮 Single player game started!');
-    }
-
-    /**
-     * Start multiplayer game
-     */
-    async startMultiplayerGame() {
-        console.log('[Multiplayer] Starting multiplayer game...');
-        const singleBoardWidth = COLS * BLOCK_SIZE;
-        const boardGap = Math.round(singleBoardWidth * 0.3);
-        this.multiplayerBoardGap = boardGap;
-        const multiBoardWidth = singleBoardWidth * 2 + boardGap;
-        const multiBoardHeight = ROWS * BLOCK_SIZE;
-
-        // Move Phaser canvas to multiplayer container
-        this.movePhaserGameToContainer('phaser-multiplayer-container');
-
-        this.resizePhaserGame(multiBoardWidth, multiBoardHeight, true); // Disable auto-center for multiplayer
-        console.log('[Multiplayer] Resizing Phaser game to:', multiBoardWidth, multiBoardHeight);
-
-        // Initialize multiplayer state if needed
-        if (!this.multiplayerState) {
-            this.multiplayerState = new MultiplayerGameState();
-        }
-
-        this.pauseSinglePlayerScene();
-        this.activatePhaserMultiplayerUI();
-        console.log('[Multiplayer] Activating multiplayer UI...');
-
-        // Reset multiplayer state
-        this.multiplayerState.reset();
-        this.multiplayerState.isPaused = true;
-
-        // Wait for multiplayer board scenes to be fully created
-        console.log('[Multiplayer] Ensuring multiplayer board scenes...');
-        try {
-            await this.ensureMultiplayerBoardScenes();
-            console.log('[Multiplayer] Board scenes ready:', this.multiplayerBoardScenes);
-        } catch (error) {
-            console.error('[Multiplayer] Failed to create board scenes:', error);
-            return;
-        }
-
-        // Ensure both players share the exact same random sequence for fairness
-        const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
-        this.multiplayerState.sharedPieceSeed = sharedSeed;
-        this.multiplayerState.player1.randomGenerator = seededRandom(sharedSeed);
-        this.multiplayerState.player2.randomGenerator = seededRandom(sharedSeed);
-        console.log(`[Multiplayer] Shared tetromino seed: ${sharedSeed}`);
-
-        // Fill piece bags for both players
-        fillBag(
-            this.multiplayerState.player1.nextPieces,
-            this.multiplayerState.player1.randomGenerator,
-        );
-        fillBag(
-            this.multiplayerState.player2.nextPieces,
-            this.multiplayerState.player2.randomGenerator,
-        );
-
-        // Draw initial next pieces preview (before countdown)
-        drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-        drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
-
-        // Update stats display to reflect reset state
-        this.updateMultiplayerStats();
-
-        // Show countdown before the match begins
-        await this.showMultiplayerCountdown();
-
-        // Spawn first pieces for both players after countdown completes
-        this.multiplayerState.lastTime = performance.now();
-
-        spawnPiece(
-            this.multiplayerState.player1,
-            () => {
-                drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-                this.syncMultiplayerBoardScenes();
-            },
-            () => {
-                this.endMultiplayerGame(1); // Player 1 lost
-            },
-        );
-
-        spawnPiece(
-            this.multiplayerState.player2,
-            () => {
-                drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
-                this.syncMultiplayerBoardScenes();
-            },
-            () => {
-                this.endMultiplayerGame(2); // Player 2 lost
-            },
-        );
-
-        this.syncMultiplayerBoardScenes();
-
-        // Start multiplayer game loop
-        this.multiplayerState.isPaused = false;
-        this.multiplayerState.lastTime = performance.now();
-        this.multiplayerGameLoop(this.multiplayerState.lastTime);
-
-        console.log('🎮 Multiplayer game started!');
-    }
-
-    /**
-     * Display a quick countdown overlay before multiplayer rounds begin
-     * @returns {Promise<void>} Resolves when countdown completes
-     */
-    async showMultiplayerCountdown() {
-        const element = document.getElementById('multiplayer-countdown');
-        if (!element) return;
-
-        const sequence = ['3', '2', '1', 'START'];
-        const tickDuration = 750;
-        const finalDuration = 900;
-
-        element.setAttribute('aria-hidden', 'false');
-        element.classList.add('active');
-
-        for (let i = 0; i < sequence.length; i++) {
-            element.textContent = sequence[i];
-
-            element.classList.remove('countdown-pulse');
-            // Force reflow to restart animation
-            void element.offsetWidth;
-            element.classList.add('countdown-pulse');
-
-            await new Promise((resolve) => setTimeout(resolve, i === sequence.length - 1 ? finalDuration : tickDuration));
-        }
-
-        element.classList.remove('countdown-pulse', 'active');
-        element.textContent = '';
-        element.setAttribute('aria-hidden', 'true');
     }
 
     /**
@@ -4786,123 +4584,9 @@ class SerenityBlocks {
     }
 
     /**
-     * Main game loop
-     */
-    gameLoop(currentTime) {
-        // Update FPS counter
-        this.updateFPSCounter(currentTime);
-
-        if (!this.gameState.isPaused && !this.gameState.isGameOver) {
-            this.inputController?.update(currentTime);
-            this.gamepadController?.advanceGameplayInput(currentTime);
-            this.flushGameplayInputQueue?.();
-        }
-
-        // Sync game state to Phaser scene
-        if (this.boardScene) {
-            this.boardScene.syncFromGameState(this.gameState);
-        }
-
-        // Use the core game loop
-        coreGameLoop(
-            currentTime,
-            this.gameState,
-            () => {
-                // Draw callback - now handled by Phaser scene
-                // Keep fallback to canvas for compatibility
-                if (!this.boardScene && this.canvas && this.ctx) {
-                    draw(this.canvas, this.ctx, this.gameState);
-                }
-            },
-            () => {
-                // Update stats callback
-                updateStats(this.gameState);
-                this.updatePhaserStats();
-
-                // Check for level-based theme changes
-                const settings = this.settingsManager.get();
-                if (settings.backgroundMode === 'Level') {
-                    const levelTheme = this.themeManager.getThemeForLevel(this.gameState.level);
-                    if (levelTheme !== this.themeManager.activeThemeName) {
-                        this.themeManager.switchTheme(levelTheme);
-                    }
-                }
-            },
-            () => this.soundManager.sfxPlayer.playDrop(),
-            this.getPhysicsCallbacks(),
-        );
-    }
-
-    /**
-     * Multiplayer game loop
-     */
-    multiplayerGameLoop(currentTime) {
-        // Update FPS counter
-        this.updateFPSCounter(currentTime);
-
-        if (this.multiplayerState.isGameOver) return;
-
-        if (!this.multiplayerState.isPaused) {
-            this.inputController?.update(currentTime);
-            this.gamepadController?.advanceGameplayInput(currentTime);
-            this.flushGameplayInputQueue?.();
-        }
-
-        if (this.multiplayerState.isPaused) {
-            this.multiplayerState.animationId = requestAnimationFrame((t) => this.multiplayerGameLoop(t));
-            return;
-        }
-
-        const delta = currentTime - this.multiplayerState.lastTime;
-        this.multiplayerState.lastTime = currentTime;
-
-        // Update both players
-        [1, 2].forEach((playerNum) => {
-            const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
-
-            if (playerState.hitStopRemaining > 0) {
-                playerState.hitStopRemaining = Math.max(0, playerState.hitStopRemaining - delta);
-                return;
-            }
-
-            coreProcessAutoDrop(
-                playerState,
-                delta,
-                () => this.soundManager.sfxPlayer.playDrop(),
-                this.getMultiplayerPhysicsCallbacks(playerNum),
-            );
-        });
-
-        this.syncMultiplayerBoardScenes();
-
-        this.multiplayerState.animationId = requestAnimationFrame((t) => this.multiplayerGameLoop(t));
-    }
-
-    /**
-     * Update multiplayer stats display
-     */
-    updateMultiplayerStats() {
-        // Player 1 stats
-        document.getElementById('p1-score').textContent = this.multiplayerState.player1.score;
-        document.getElementById('p1-lines').textContent = this.multiplayerState.player1.lines;
-        document.getElementById('p1-level').textContent = this.multiplayerState.player1.level;
-        document.getElementById('p1-garbage').textContent = this.multiplayerState
-            .getGarbageQueue(1)
-            .getTotalLines();
-
-        // Player 2 stats
-        document.getElementById('p2-score').textContent = this.multiplayerState.player2.score;
-        document.getElementById('p2-lines').textContent = this.multiplayerState.player2.lines;
-        document.getElementById('p2-level').textContent = this.multiplayerState.player2.level;
-        document.getElementById('p2-garbage').textContent = this.multiplayerState
-            .getGarbageQueue(2)
-            .getTotalLines();
-    }
-
-    /**
      * Get physics callbacks for multiplayer (with garbage system)
      */
-    getMultiplayerPhysicsCallbacks(playerNum) {
+    getMultiplayerPhysicsCallbacks(playerNum, options = {}) {
         // Get multiplayerState from the active mode
         const currentMode = this.gameModeManager?.getCurrentMode();
         const multiplayerState = currentMode?.multiplayerState || this.multiplayerState;
@@ -4921,6 +4605,9 @@ class SerenityBlocks {
             const boardScenes = currentMode?.boardScenes || this.multiplayerBoardScenes;
             return boardScenes[playerNum - 1];
         };
+        const handlePlayerTopOut = typeof options.onPlayerTopOut === 'function'
+            ? () => options.onPlayerTopOut(playerNum - 1, playerState)
+            : () => this.endMultiplayerGame(playerNum);
 
         const callbacks = {
             draw: () => {
@@ -5131,7 +4818,7 @@ class SerenityBlocks {
 
                     if (result?.topOut) {
                         console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
-                        this.endMultiplayerGame(playerNum);
+                        handlePlayerTopOut();
                         return; // Don't spawn next piece
                     }
 
@@ -5146,18 +4833,15 @@ class SerenityBlocks {
                         }
                     }
 
-                    // Check if garbage caused top-out
-                    // (Note: insertGarbageEntries doesn't return topOut, we check board height)
                     const topRowOccupied = playerState.lockedPieces.some((piece) => piece.y < HIDDEN_ROWS);
                     if (topRowOccupied) {
                         console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
-                        this.endMultiplayerGame(playerNum);
+                        handlePlayerTopOut();
                         return; // Don't spawn next piece
                     }
                 }
             }
 
-            // Spawn next piece
             const nextCanvases = playerNum === 1
                 ? (currentMode?.p1NextCanvases || this.p1NextCanvases)
                 : (currentMode?.p2NextCanvases || this.p2NextCanvases);
@@ -5170,7 +4854,7 @@ class SerenityBlocks {
                         currentMode._syncBoardScenes();
                     }
                 },
-                () => this.endMultiplayerGame(playerNum),
+                handlePlayerTopOut,
             );
         };
 
@@ -5221,7 +4905,7 @@ class SerenityBlocks {
         if (multiplayerState.isGameOver) return;
 
         // New MultiPlayerState uses handlePlayerDeath with 0-based index
-        // Old MultiplayerGameState uses setGameOver with 1-based playerNum
+        // The legacy two-player state uses setGameOver with 1-based playerNum
         if (multiplayerState.players && typeof multiplayerState.handlePlayerDeath === 'function') {
             // New structure: Convert 1-based losingPlayer to 0-based index
             const losingPlayerIndex = losingPlayer - 1;

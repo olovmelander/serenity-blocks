@@ -197,11 +197,13 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         expect(Object.keys(stoppedSession).sort()).toEqual([
             'gameState',
             'generation',
+            'rngDescriptor',
             'simulationClock',
         ]);
         expect(stoppedSession).toEqual({
             gameState: session.gameState,
             generation: session.generation,
+            rngDescriptor: session.rngDescriptor,
             simulationClock: DEMO_LEGACY_SIMULATION_CLOCK,
         });
         expect(Object.isFrozen(stoppedSession)).toBe(true);

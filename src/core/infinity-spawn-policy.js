@@ -84,6 +84,19 @@ export function resolveInfinitySpawnRow(gameState, knownHighestOccupiedRow = nul
     const spawnOffsetRows = Number.isSafeInteger(configuredOffset) && configuredOffset >= 0
         ? configuredOffset
         : 2;
+    const board = gameState?.boardGrid || gameState?.board;
+    const configuredVisibleRows = Number(gameState?.infinityVisibleRows);
+    if (
+        gameState?.piecesPlaced === 0
+        && Array.isArray(board)
+        && Number.isSafeInteger(configuredVisibleRows)
+        && configuredVisibleRows > ROWS
+    ) {
+        // Odyssey's virtual window includes authored starting garbage below
+        // its 20-row presentation viewport. The first piece retains the legacy
+        // bottom anchor; later spawns follow the canonical occupied-board row.
+        return Math.max(0, board.length - configuredVisibleRows - spawnOffsetRows);
+    }
     return Math.max(
         0,
         resolveInfinitySimulationCameraRow(gameState, knownHighestOccupiedRow) - spawnOffsetRows,

@@ -9,6 +9,8 @@ export function createOdysseyLevelSession({
     hybridEngine,
     levelConfig,
     levelId,
+    rngDescriptor,
+    simulationClock,
 }) {
     return {
         gameState,
@@ -16,9 +18,11 @@ export function createOdysseyLevelSession({
         hybridEngine,
         levelConfig,
         levelId,
+        rngDescriptor,
         physicsCallbacks: null,
         retired: false,
         retirementGeneration: null,
+        simulationClock,
     };
 }
 

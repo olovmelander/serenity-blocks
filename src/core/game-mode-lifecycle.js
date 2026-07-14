@@ -209,7 +209,7 @@ export class GameModeLifecycle {
         }
 
         // DO NOT start Phaser board scene or render loop here
-        // These should only start when the user actually starts a game via startSinglePlayerGame()
+        // These should only start when GameModeManager starts the selected mode.
         // Just prepare the UI and make it visible
 
         console.log('  ✅ Single-player mode ready (waiting for user to start game)');
