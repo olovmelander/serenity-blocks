@@ -3,13 +3,13 @@
 //
 // Drives the REAL production reaction path — createReactionAdapters + the
 // StarlightReactionDirector + the real shockwave / meteor / constellation systems —
-// through a scripted sequence of locks, line clears, a Tetris, a combo-7 escalation,
+// through a scripted sequence of locks, line clears, a quad (four-line clear), a combo-7 escalation,
 // a combo-10 apex, and a perfect clear. It exists to verify that a combo fans effects
 // across the WHOLE canopy (rings + shooting stars + star signs in the 8 sky lanes),
 // not just one spot. stardustSim is null here (no compute → impulses no-op, which are
 // invisible dust nudges anyway); the visible abundance is rings/meteors/signs/seal.
 //
-//   /playground.html?effect=starlight-reactions&orbit=0&t=3.2   (Tetris burst)
+//   /playground.html?effect=starlight-reactions&orbit=0&t=3.2   (quad burst)
 //   /playground.html?effect=starlight-reactions&orbit=0&t=5.3   (combo-10 apex)
 import { createNebulaSky } from '../../themes/starlight/rendering/nebula-sky.js';
 import { createDeepStarfield } from '../../themes/starlight/rendering/deep-starfield.js';
@@ -26,7 +26,7 @@ import { createReactionAdapters } from '../../themes/starlight/sim/starlight-rea
 export const meta = {
     id: 'starlight-reactions',
     title: 'Starlight — Reaction showcase',
-    description: 'Scripted locks/clears/Tetris/combo/apex driving the real director — full-canopy abundance.',
+    description: 'Scripted locks/clears/quad/combo/apex driving the real director — full-canopy abundance.',
 };
 
 const SEAL_SIZE = 0.42 * 1.15;
