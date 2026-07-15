@@ -105,6 +105,9 @@ export class StartupPipelineStateMachine {
         this.introStatus = 'idle';
         this.introSkipReason = null;
         this.watchdogFired = false;
+        // True when the menu was forced visible in a degraded state (the watchdog
+        // fired before app readiness, so the static DOM menu is shown as a fallback).
+        this.degraded = false;
         this.history = [];
         this.disposed = false;
         this.watchdogId = null;
@@ -234,6 +237,8 @@ export class StartupPipelineStateMachine {
             appReady: this.appReadyAt !== null,
             menuReady: this.menuReadyAt !== null,
             menuVisible: this.menuVisibleAt !== null,
+            degraded: this.degraded,
+            disposed: this.disposed,
             introStatus: this.introStatus,
             introSkipReason: this.introSkipReason,
             watchdogFired: this.watchdogFired,
@@ -250,6 +255,12 @@ export class StartupPipelineStateMachine {
         if (this.disposed) return;
         this.disposed = true;
         this.clearWatchdog();
+        // Settle any pending menu-visible awaiter so a caller (e.g. bootstrap's error
+        // path, which disposes the pipeline) can never hang on waitForMenuVisible().
+        if (this.resolveMenuVisible) {
+            this.resolveMenuVisible(this.snapshot());
+            this.resolveMenuVisible = null;
+        }
     }
 
     assertStarted(event) {
@@ -276,6 +287,13 @@ export class StartupPipelineStateMachine {
         this.skipIntro('watchdog', {
             watchdogMs: this.watchdogMs,
         });
+        // The watchdog is TERMINAL: it must always leave the pipeline in a usable
+        // menu state. skipIntro's reconcile is a no-op when app readiness never
+        // arrived (menuReadyAt is null) — the exact hung-init case — so force a
+        // DEGRADED menu-visible here. Without this the ident hangs forever.
+        if (this.menuVisibleAt === null) {
+            this.markMenuVisible(true);
+        }
     }
 
     reconcileMenuVisibility() {
@@ -283,17 +301,31 @@ export class StartupPipelineStateMachine {
         if (this.menuVisibleAt !== null || this.menuReadyAt === null || !introTerminal) {
             return;
         }
+        this.markMenuVisible(false);
+    }
 
+    /**
+     * Sole writer of MENU_VISIBLE. `degraded` is true only for the watchdog fallback
+     * (app readiness never arrived); the normal reconcile path passes false.
+     */
+    markMenuVisible(degraded) {
+        if (this.menuVisibleAt !== null) {
+            return;
+        }
         this.menuVisibleAt = this.nowFn();
+        this.degraded = degraded;
         this.clearWatchdog();
         this.emit(STARTUP_PIPELINE_EVENTS.MENU_VISIBLE, {
             introStatus: this.introStatus,
             introSkipReason: this.introSkipReason,
+            degraded,
         });
         const snapshot = this.snapshot();
         this.invokeCallback(this.onMenuVisible, snapshot);
-        this.resolveMenuVisible(snapshot);
-        this.resolveMenuVisible = null;
+        if (this.resolveMenuVisible) {
+            this.resolveMenuVisible(snapshot);
+            this.resolveMenuVisible = null;
+        }
     }
 
     clearWatchdog() {

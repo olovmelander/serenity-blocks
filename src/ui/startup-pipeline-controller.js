@@ -85,6 +85,7 @@ export function createStartupPipelineController(options = {}) {
                     timeToMenuVisibleMs: Math.round(snapshot.metrics.timeToMenuVisibleMs),
                     introStatus: snapshot.introStatus,
                     reason: snapshot.introSkipReason,
+                    degraded: snapshot.degraded === true,
                 });
             }
         },
