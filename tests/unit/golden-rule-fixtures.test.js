@@ -10,7 +10,7 @@
  * be treated as one.
  */
 import { describe, it, expect } from 'vitest';
-import { calculateQuadraLineScore, getDropInterval } from '../../src/core/scoring.js';
+import { calculateLineClearScore, getDropInterval } from '../../src/core/scoring.js';
 import { COLS, ROWS, HIDDEN_ROWS, LEVEL_SPEEDS } from '../../src/core/constants.js';
 import { processPhysics } from '../../src/core/physics.js';
 import { createBoardGrid } from '../../src/core/board.js';
@@ -51,7 +51,7 @@ describe(`scoring goldens (simVersion ${SIM_VERSION})`, () => {
     it.each(SCORING_FIXTURES_V1)(
         '%i lines @ level %i, complexity %i, perfect=%s → %i',
         (lines, level, complexity, perfect, expected) => {
-            expect(calculateQuadraLineScore(lines, level, complexity, perfect)).toBe(expected);
+            expect(calculateLineClearScore(lines, level, complexity, perfect)).toBe(expected);
         },
     );
 
@@ -148,13 +148,13 @@ describe(`garbage attack goldens (simVersion ${SIM_VERSION})`, () => {
     it.each([
         [1, 1], [2, 1], [3, 2], [4, 2], [5, 3],
     ])('clean bonus for depth %i is floor((1+depth)/2) = %i', (depth, bonus) => {
-        const attack = calculateGarbage({ depth, holeMask: [], sendForClean: true });
-        expect(attack.cleanBonus).toBe(bonus);
-        expect(calculateGarbage({ depth, holeMask: [] }).cleanBonus).toBe(0);
+        const attack = calculateGarbage({ depth, holeMask: [], sendForPerfectClear: true });
+        expect(attack.cleanRowBonus).toBe(bonus);
+        expect(calculateGarbage({ depth, holeMask: [] }).cleanRowBonus).toBe(0);
     });
 
     it('clean masks alternate the Quadra 72/585 patterns', () => {
-        const attack = calculateGarbage({ depth: 5, holeMask: [], sendForClean: true });
+        const attack = calculateGarbage({ depth: 5, holeMask: [], sendForPerfectClear: true });
         expect(attack.cleanMasks).toEqual([72, 585, 72]); // cols [3,6] / [0,3,6,9] / [3,6]
     });
 
@@ -186,12 +186,12 @@ describe(`garbage attack goldens (simVersion ${SIM_VERSION})`, () => {
             depth: 4,
             complexity: 2,
             holeMask: [columnsToMask([1]), columnsToMask([2]), columnsToMask([3])],
-            sendForClean: true,
+            sendForPerfectClear: true,
         });
         const restored = deserializeAttack(serializeAttack(attack));
         expect(restored.rows).toBe(attack.rows);
         expect(restored.holeMasks).toEqual(attack.holeMasks);
-        expect(restored.cleanBonus).toBe(attack.cleanBonus);
+        expect(restored.cleanRowBonus).toBe(attack.cleanRowBonus);
         expect(restored.cleanMasks).toEqual(attack.cleanMasks);
     });
 });

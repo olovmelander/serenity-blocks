@@ -139,7 +139,7 @@ export function settleCascadeShadow(sample, gameState) {
         if (gameState.comboState) {
             check('comboState.depth', result.comboStateAfter.depth, gameState.comboState.depth);
             check('comboState.complexity', result.comboStateAfter.complexity, gameState.comboState.complexity);
-            check('comboState.sendForClean', Boolean(result.comboStateAfter.sendForClean), Boolean(gameState.comboState.sendForClean));
+            check('comboState.sendForPerfectClear', Boolean(result.comboStateAfter.sendForPerfectClear), Boolean(gameState.comboState.sendForPerfectClear));
             // Hole-mask parity is the §5.2 abort criterion — competitive-visible
             // garbage fairness. Compared as the full matrix.
             check(
