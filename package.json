@@ -54,6 +54,10 @@
     ],
     "extraResources": [
       {
+        "from": "CREDITS.md",
+        "to": "CREDITS.md"
+      },
+      {
         "from": "node_modules/steamworks.js",
         "to": "native_modules/steamworks.js",
         "filter": [
