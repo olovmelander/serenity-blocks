@@ -9,7 +9,7 @@
   <!-- Background circle -->
   <circle cx="50" cy="50" r="45" fill="url(#grad)" opacity="0.9"/>
   
-  <!-- Tetris-like blocks -->
+  <!-- Decorative blocks -->
   <rect x="30" y="30" width="12" height="12" fill="white" opacity="0.9" rx="2"/>
   <rect x="42" y="30" width="12" height="12" fill="white" opacity="0.9" rx="2"/>
   <rect x="54" y="30" width="12" height="12" fill="white" opacity="0.9" rx="2"/>
