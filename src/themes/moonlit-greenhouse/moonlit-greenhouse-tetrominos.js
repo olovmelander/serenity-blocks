@@ -8,13 +8,13 @@ export const MOONLIT_GREENHOUSE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#a8ffd8', // Dewdrop mint
-        O: '#ffda9e', // Lantern glow
-        T: '#d7b3ff', // Lavender bloom
-        S: '#82f5b8', // Lush leaf
-        Z: '#ff9ecf', // Petal pink
-        J: '#5b7ba7', // Night indigo
-        L: '#ffd76a', // Warm candlelight
+        I: '#ffda9e', // Lantern glow
+        O: '#d7b3ff', // Lavender bloom
+        T: '#82f5b8', // Lush leaf
+        S: '#ff9ecf', // Petal pink
+        Z: '#5b7ba7', // Night indigo
+        J: '#ffd76a', // Warm candlelight
+        L: '#a8ffd8', // Dewdrop mint
         GARBAGE: '#112021', // Greenhouse silhouette
     },
 

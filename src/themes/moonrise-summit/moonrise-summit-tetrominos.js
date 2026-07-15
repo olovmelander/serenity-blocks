@@ -9,13 +9,13 @@ export const MOONRISE_SUMMIT_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#bfe9ff', // Glacier blue
-        O: '#ffe7b3', // Warm lantern glow
-        T: '#c9b2ff', // Lavender dusk
-        S: '#d3fff1', // Misty teal
-        Z: '#ffb0c9', // Alpine rose pink
-        J: '#8aa4d5', // Twilight indigo
-        L: '#ffd089', // Summit sunrise
+        I: '#ffe7b3', // Warm lantern glow
+        O: '#c9b2ff', // Lavender dusk
+        T: '#d3fff1', // Misty teal
+        S: '#ffb0c9', // Alpine rose pink
+        Z: '#8aa4d5', // Twilight indigo
+        J: '#ffd089', // Summit sunrise
+        L: '#bfe9ff', // Glacier blue
         GARBAGE: '#1b1f33', // Mountain shadow
     },
 

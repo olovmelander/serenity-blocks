@@ -8,13 +8,13 @@ export const TORNADO_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#87CEEB', // Cool contrast
-        O: '#FFD700', // Bright gold
-        T: '#E6A8D7', // Soft accent
-        S: '#98FB98', // Fresh green
-        Z: '#FFB7C5', // Warm pink
-        J: '#9DC8E8', // Light blue
-        L: '#FFCC5C', // Warm amber
+        I: '#FFD700', // Bright gold
+        O: '#E6A8D7', // Soft accent
+        T: '#98FB98', // Fresh green
+        S: '#FFB7C5', // Warm pink
+        Z: '#9DC8E8', // Light blue
+        J: '#FFCC5C', // Warm amber
+        L: '#87CEEB', // Cool contrast
         GARBAGE: '#4a6741', // Deep neutral
     },
 

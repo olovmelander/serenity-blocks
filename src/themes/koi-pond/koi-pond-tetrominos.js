@@ -14,13 +14,13 @@ export const KOI_POND_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#7eeeff', // Crystal pond cyan - clearer, more vibrant
-        O: '#ffc852', // Lantern gold - warm amber glow
-        T: '#ffadd2', // Blossom pink - soft sakura
-        S: '#7dffb8', // Lily pad green - fresh and bright
-        Z: '#ff7b52', // Koi orange - vivid scales
-        J: '#7b94ff', // Twilight indigo - evening reflection
-        L: '#ffe48a', // Candle glow - soft warm light
+        I: '#ffc852', // Lantern gold - warm amber glow
+        O: '#ffadd2', // Blossom pink - soft sakura
+        T: '#7dffb8', // Lily pad green - fresh and bright
+        S: '#ff7b52', // Koi orange - vivid scales
+        Z: '#7b94ff', // Twilight indigo - evening reflection
+        J: '#ffe48a', // Candle glow - soft warm light
+        L: '#7eeeff', // Crystal pond cyan - clearer, more vibrant
         GARBAGE: '#0f1f1a', // Deep pond shadow
     },
 

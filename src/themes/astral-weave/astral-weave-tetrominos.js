@@ -9,13 +9,13 @@ export const ASTRAL_WEAVE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#7deeff',
-        O: '#ffd86e',
-        T: '#ee79ff',
-        S: '#6cf9d5',
-        Z: '#ff7ccf',
-        J: '#6ca8ff',
-        L: '#ffab63',
+        I: '#ffd86e',
+        O: '#ee79ff',
+        T: '#6cf9d5',
+        S: '#ff7ccf',
+        Z: '#6ca8ff',
+        J: '#ffab63',
+        L: '#7deeff',
         GARBAGE: '#3f3f72',
     },
 

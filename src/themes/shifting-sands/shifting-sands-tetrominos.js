@@ -12,13 +12,13 @@ export const SHIFTING_SANDS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#7ec8ff', // Moonlit oasis - soft blue water
-        O: '#ffd06a', // Lantern gold - warm amber glow
-        T: '#c9a0ff', // Twilight purple - desert dusk
-        S: '#7fffb8', // Desert mint - cool oasis green
-        Z: '#ff9070', // Sunset coral - warm horizon
-        J: '#8090ff', // Night sky indigo - deep blue
-        L: '#ffb855', // Firefly amber - glowing orange
+        I: '#ffd06a', // Lantern gold - warm amber glow
+        O: '#c9a0ff', // Twilight purple - desert dusk
+        T: '#7fffb8', // Desert mint - cool oasis green
+        S: '#ff9070', // Sunset coral - warm horizon
+        Z: '#8090ff', // Night sky indigo - deep blue
+        J: '#ffb855', // Firefly amber - glowing orange
+        L: '#7ec8ff', // Moonlit oasis - soft blue water
         GARBAGE: '#1a1528', // Desert shadow - deep night
     },
 

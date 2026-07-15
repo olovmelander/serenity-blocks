@@ -10,13 +10,13 @@ export const GEODE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#60ffff', // Cosmic Teal
-        O: '#ffd060', // Solar Gold
-        T: '#e060ff', // Nebula Magenta
-        S: '#60ff90', // Aurora Green
-        Z: '#ff6040', // Ember Orange
-        J: '#ff70ff', // Starlight Pink
-        L: '#ffa050', // Supernova Amber
+        I: '#ffd060', // Solar Gold
+        O: '#e060ff', // Nebula Magenta
+        T: '#60ff90', // Aurora Green
+        S: '#ff6040', // Ember Orange
+        Z: '#ff70ff', // Starlight Pink
+        J: '#ffa050', // Supernova Amber
+        L: '#60ffff', // Cosmic Teal
         GARBAGE: '#0a0608', // Void Shadow
     },
 

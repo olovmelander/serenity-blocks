@@ -12,13 +12,13 @@ export const COSMIC_CHIMES_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8fffff', // Crystal cyan - bright chime reflection
-        O: '#ffd666', // Bell gold - warm resonant glow
-        T: '#c9a8ff', // Lavender chime - soft ethereal purple
-        S: '#6fffc4', // Mint aurora - fresh cosmic green
-        Z: '#ff8fc8', // Rose nebula - gentle pink
-        J: '#6b7fff', // Deep indigo - twilight depth
-        L: '#ffcc6b', // Warm glow - amber light
+        I: '#ffd666', // Bell gold - warm resonant glow
+        O: '#c9a8ff', // Lavender chime - soft ethereal purple
+        T: '#6fffc4', // Mint aurora - fresh cosmic green
+        S: '#ff8fc8', // Rose nebula - gentle pink
+        Z: '#6b7fff', // Deep indigo - twilight depth
+        J: '#ffcc6b', // Warm glow - amber light
+        L: '#8fffff', // Crystal cyan - bright chime reflection
         GARBAGE: '#0d1520', // Void shadow - deep space
     },
 

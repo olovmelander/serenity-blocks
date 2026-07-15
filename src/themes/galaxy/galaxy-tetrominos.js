@@ -15,13 +15,13 @@ export const GALAXY_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00e5ff', // Ion trail cyan - brighter, more electric
-        O: '#ffd54f', // Supernova gold - warm stellar core
-        T: '#d050ff', // Nebula violet - rich and cosmic
-        S: '#00ffc8', // Aurora teal - ethereal glow
-        Z: '#ff4da6', // Solar flare magenta - hot pink energy
-        J: '#6366f1', // Deep space indigo - mysterious depth
-        L: '#ff8a50', // Comet ember - trailing warmth
+        I: '#ffd54f', // Supernova gold - warm stellar core
+        O: '#d050ff', // Nebula violet - rich and cosmic
+        T: '#00ffc8', // Aurora teal - ethereal glow
+        S: '#ff4da6', // Solar flare magenta - hot pink energy
+        Z: '#6366f1', // Deep space indigo - mysterious depth
+        J: '#ff8a50', // Comet ember - trailing warmth
+        L: '#00e5ff', // Ion trail cyan - brighter, more electric
         GARBAGE: '#0a0015', // Interstellar void - near black with hint of purple
     },
 
