@@ -114,7 +114,7 @@ export class MatchConfigModal {
                 <option value="full" selected>Full (Modern)</option>
                 <option value="disabled">Disabled (Classic)</option>
               </select>
-              <small class="form-help">Full: Outgoing lines cancel incoming garbage 1:1 (Quadra/TETR.IO style). Disabled: Classic mode, no cancellation.</small>
+              <small class="form-help">Full: Outgoing lines cancel incoming garbage 1:1. Disabled: Classic mode, no cancellation.</small>
             </div>
 
             <div class="form-group">
@@ -122,7 +122,7 @@ export class MatchConfigModal {
                 <input type="checkbox" id="boring-rules" name="boringRules" />
                 <span>Boring Rules (Disable attack scaling)</span>
               </label>
-              <small class="form-help">Classic Quadra mode - no attack reduction with 3+ players</small>
+              <small class="form-help">Classic mode - no attack reduction with 3+ players</small>
             </div>
           </details>
           
@@ -271,8 +271,8 @@ export class MatchConfigModal {
 
         const helpText = {
             standard: 'Classic garbage lines sent on multi-line clears',
-            blind: 'Quadra Blind: garbage lines plus a short blackout of the target board',
-            full_blind: 'Quadra Full Blind: a stronger, longer blackout attack',
+            blind: 'Blind: garbage lines plus a short blackout of the target board',
+            full_blind: 'Full Blind: a stronger, longer blackout attack',
             hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
             peaceful: 'No attacks are sent in this match',
         };

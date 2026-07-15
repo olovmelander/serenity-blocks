@@ -844,7 +844,7 @@ export class MultiPlayerCanvasLayout {
         if (linesCleared === 3) {
             color = '#fbbf24'; // Yellow for 3 lines
         } else if (linesCleared >= 4) {
-            color = '#f59e0b'; // Orange for Tetris (4+ lines)
+            color = '#f59e0b'; // Orange for quads (4+ lines)
         }
 
         const overlay = document.createElement('div');

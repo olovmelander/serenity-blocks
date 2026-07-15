@@ -823,3 +823,31 @@ Serenity Blocks has already moved away from the riskiest literal presentation: t
 The static codebase nevertheless implements the complete seven-piece family on an exact 10×20 field with an overlapping visual/UI feature cluster, and it draws startup/menu branding from conventional tetromino forms. Ten selectable themes also screen as preserving all seven familiar hue roles under a deliberately broad heuristic. The current static record therefore supports a **provisional Medium aggregate rating**, not a conclusion of infringement. It could rise to Medium–High if representative gameplay or store captures reproduce the overall visual impression of a plausibly asserted Tetris audiovisual work or current source-identifying presentation.
 
 The fastest responsible path is: remove the residual word mark, remove tetromino branding, derange the flagged palettes, verify all audio, capture the complete current product, fix the unrelated asset-notice blockers, and obtain a playable-build/storefront review from qualified game-IP counsel. After those steps, the remaining mechanics-heavy similarity should be substantially easier to defend as use of unprotectable rules within a distinct expressive work.
+
+---
+
+## 17. Remediation-status appendix (post-v3.0)
+
+*Added 2026-07-15. §§1–16 above are the original v3.0 report — a point-in-time review of `main@4127ae2`. This appendix records remediation merged since then (through PR #290 plus the follow-up in this change) so the report is not misread as complete. It does not re-open or restate the v3.0 analysis, and the overall **conditional no-go stands.***
+
+**Note on labels.** Earlier chat/PR notes referenced fixes "A–D"; those are pre-v3 labels carried forward, not v3.0 identifiers. They map to the v3.0 findings as the published/UI TETRIS text (TM-1/TM-2/TM-3 surfaces), the palette work (PAL-1), and the disclaimer (TM-5).
+
+### Merged since v3.0 (verified at the source level only)
+- **Consumer-facing TETRIS text** removed from `package.json` (description + keyword), `README.md`, `game_description.md`, the multiplayer scoreboard, the two Odyssey tips (`levels.js`), the production-bundled playground metadata (`starlight-reactions.effect.js`), and a public reference doc ("No Tetris blocks" → "No falling-block pieces"); the favicon **comment** was reworded. *(TM-2, TM-3; partial TM-4.)*
+- **Player-visible "Quadra"/"TETR.IO" strings** removed from the bot-tier list ("Quadra Ace" → "Ace") and the match-config help / attack-description text in both modals.
+- **Palettes:** all identified source palette maps deranged so no theme's `*-tetrominos.js` reproduces the Guideline hue-role mapping. *(PAL-1 — source remaps only.)*
+- **Attribution / packaging:** SynthCity MIT notice added and the unreferenced Quaz/Deckard textures removed; Fox CC-BY added; Solar System Scope expanded with a modifications note; `landscape-glb.glb` re-credited (author *Leonardo Awen* per embedded metadata) and the inaccurate "quarantine" note corrected; build **configured** to ship `CREDITS.md` (web + Electron). *(GEN-1; GEN-2 partial; GEN-3; GEN-4; GEN-5 disclosure only.)*
+- **Quadra derivative-work review:** an independent comparison against Quadra's actual source (`canvas.cc`, `player.cc`, `net_list.cc`, `random.cc`) found formula/rule reuse only — no copied lines, comments, or transliterated structure — so no LGPL obligation is identified **on that factual premise**. Six distinctive Quadra-derived identifiers were renamed; a **draft** authorship attestation was added (`quadra-provenance-attestation.md`, awaiting the signer's affirmation and the exact upstream commit).
+
+### Still open — the conditional no-go stands
+- **P0.1** — no automated production-artifact / release-string **scan gate** yet (one allowing only a single counsel-approved legal notice).
+- **P0.2** — the startup ident, the Single Player **T-piece menu icon**, the favicon **mosaic artwork**, the legacy-canvas **grid** renderer, and external/store branding are **unchanged**. *(Per the owner's decision, the seven-piece intro animation and the main menu are being retained for now.)*
+- **P0.3** — the runtime-aware **palette CI gate** and a **rendered human review** of every theme are not done; derangement is verified at source level only.
+- **P0.4** — the **playable total-look**, storefront art/screenshots/trailers, and **counsel review** have not been performed; static code review cannot clear this.
+- **P0.5** — the **audio listening / fingerprinting** review is not done; the no-*Korobeiniki* conclusion is name/metadata-level only.
+- **Asset chain-of-title / notices:** `landscape-glb.glb` license (GEN-2), Gemini-TTS + intro-sound records (GEN-6), generated-3D input provenance (GEN-7), a root `LICENSE` (GEN-8), and a complete vendor-notice audit incl. `basis` / `webgpu-inspector` (GEN-9) remain **genuine release blockers**; packaged-artifact inspection confirming `CREDITS.md` actually ships is still pending; and the music chain-of-title / melody review remains open (GEN-5).
+
+### Retained by product decision (not a legal clearance)
+The exact **seven-piece family** and **10×20 field** are being kept as a product decision. They remain relevant to the combined total-look analysis in *Xio* (AV-1); retaining them is a choice, not a determination that they are cleared.
+
+**Bottom line (calibrated).** As of `main@3f28312` plus this change, the enumerated consumer-facing TETRIS text edits, the identified source-level palette remaps, and several attribution/packaging changes are merged, and the Quadra reuse has been reviewed and its naming cleaned up. **The conditional no-go nevertheless remains.** Open P0 work includes P0.1's artifact scan/gate; P0.2's branding replacements; P0.3's runtime palette gate + rendered human review; P0.4's playable total-look, storefront, and counsel review; and P0.5's audio review — plus asset chain-of-title and vendor-notice work. This is a risk assessment, not a substitute for counsel's legal opinion.

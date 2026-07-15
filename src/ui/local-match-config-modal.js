@@ -578,8 +578,8 @@ export class LocalMatchConfigModal {
         if (!help) return;
         const helpText = {
             standard: 'Classic garbage lines sent on multi-line clears',
-            blind: 'Quadra Blind: garbage lines plus a short blackout of the target board',
-            full_blind: 'Quadra Full Blind: a stronger, longer blackout attack',
+            blind: 'Blind: garbage lines plus a short blackout of the target board',
+            full_blind: 'Full Blind: a stronger, longer blackout attack',
             hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
             peaceful: 'No attacks are sent — a calm, non-competitive match',
         };
