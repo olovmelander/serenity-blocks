@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
-import { realpathSync } from 'node:fs';
+import { realpathSync, copyFileSync, existsSync } from 'node:fs';
 import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 
 // Resolve the project root to its real on-disk casing (canonical uppercase drive
@@ -29,6 +29,21 @@ export default defineConfig({
     createThemeThumbnailAssetPlugin({
       projectRoot,
     }),
+    // Copy top-level legal/credit notices into the build output so they ship with
+    // both the web build (dist → GitHub Pages) and the Electron build (which packs
+    // dist/**/*). Required so third-party attributions (CC-BY, the SynthCity MIT
+    // notice, etc.) actually reach end users.
+    {
+      name: 'copy-legal-notices',
+      apply: 'build',
+      closeBundle() {
+        for (const file of ['CREDITS.md', 'README.md']) {
+          const src = path.resolve(projectRoot, file);
+          const dest = path.resolve(projectRoot, 'dist', file);
+          if (existsSync(src)) copyFileSync(src, dest);
+        }
+      },
+    },
   ],
 
   // Server configuration
