@@ -10,7 +10,7 @@ import {
 import {
     cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid, markBoardDirty,
 } from './board.js';
-import { calculateQuadraLineScore } from './scoring.js';
+import { calculateLineClearScore } from './scoring.js';
 import {
     isPartOfPiece, findConnectedComponents, detectFullLines, removeClearedLines,
 } from './cascade-helpers.js';
@@ -92,13 +92,13 @@ async function waitForPhysicsDelay(gameState, durationMs) {
  * PERFORMANCE OPTIMIZED: Uses incremental grid updates instead of full rebuilds
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified in place)
  * @param {Function} drawCallback - Function to call for visual updates
- * @param {Array<Array<boolean>>} movedArray - 2D array to track which cells moved (optional)
+ * @param {Array<Array<boolean>>} placementGrid - 2D array to track which cells moved (optional)
  * @returns {Promise<void>} Resolves when all blocks have settled
  */
 export async function applyGravity(
     gameState,
     drawCallback,
-    movedArray = null,
+    placementGrid = null,
     callbacks = {},
 ) {
     const { lockedPieces, boardGrid } = gameState;
@@ -182,14 +182,14 @@ export async function applyGravity(
 
             if (canFall) {
                 // Mark cells as moved if tracking
-                if (movedArray) {
+                if (placementGrid) {
                     piece.shape.forEach((row, localY) => {
                         row.forEach((cell, localX) => {
                             if (cell > 0) {
                                 const boardX = piece.x + localX;
                                 const boardY = piece.y + localY + 1; // New position after fall
-                                if (boardY < movedArray.length && boardX < movedArray[0].length) {
-                                    movedArray[boardY][boardX] = true;
+                                if (boardY < placementGrid.length && boardX < placementGrid[0].length) {
+                                    placementGrid[boardY][boardX] = true;
                                 }
                             }
                         });
@@ -248,12 +248,12 @@ export async function applyGravity(
  * In Serenity Blocks we prefer the pre/post board delta for cascades; this
  * helper is a deterministic fallback.
  *
- * @param {Array<Array<boolean>>} movedArray - 2D array tracking which cells moved
+ * @param {Array<Array<boolean>>} placementGrid - 2D array tracking which cells moved
  * @param {Array<number>} fullLines - Y coordinates of lines being cleared
  * @returns {Array<number>} Array of column indices for garbage holes
  */
-export function calculateCascadeHoleColumns(movedArray, fullLines) {
-    if (!movedArray || fullLines.length === 0) {
+export function calculateCascadeHoleColumns(placementGrid, fullLines) {
+    if (!placementGrid || fullLines.length === 0) {
         return [Math.floor(COLS / 2)];
     }
 
@@ -270,9 +270,9 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     const movedColumns = new Set();
 
     fullLines.forEach((y) => {
-        if (movedArray[y]) {
+        if (placementGrid[y]) {
             for (let x = 0; x < COLS; x++) {
-                if (movedArray[y][x]) {
+                if (placementGrid[y][x]) {
                     movedColumns.add(x);
                 }
             }
@@ -285,8 +285,8 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     );
     physicsLog(`  Columns:     ${Array.from({ length: COLS }, (_, i) => i).join('')}`);
     fullLines.slice(0, 4).forEach((y) => {
-        if (movedArray[y]) {
-            const viz = Array.from({ length: COLS }, (_, x) => (movedArray[y][x] ? 'X' : '.')).join(
+        if (placementGrid[y]) {
+            const viz = Array.from({ length: COLS }, (_, x) => (placementGrid[y][x] ? 'X' : '.')).join(
                 '',
             );
             physicsLog(`  Row Y=${String(y).padStart(2)}: ${viz}`);
@@ -350,7 +350,7 @@ function calculateHoleColumnsFromBoardDelta(preGravityBoard, currentBoard, fullL
  * @param {Array<number>} fullLines - Y coordinates of lines being cleared
  * @param {Object} options
  * @param {number} options.cascadeCount - Current cascade index (1 = manual clear)
- * @param {Array<Array<boolean>>} options.movedArray - Movement tracking array
+ * @param {Array<Array<boolean>>} options.placementGrid - Movement tracking array
  * @param {Array<Array<boolean>>} options.preGravityBoard - Snapshot before gravity (boolean)
  * @param {Array<Array<Object|null>>} options.currentBoard - Board prior to clearing (object/null)
  * @param {Array<number>} options.manualHoleColumns - Fallback manual hole columns
@@ -359,7 +359,7 @@ function calculateHoleColumnsFromBoardDelta(preGravityBoard, currentBoard, fullL
 function buildHoleMaskRows(
     fullLines,
     {
-        cascadeCount, movedArray, preGravityBoard, currentBoard, manualHoleColumns,
+        cascadeCount, placementGrid, preGravityBoard, currentBoard, manualHoleColumns,
     },
 ) {
     const fallback = manualHoleColumns && manualHoleColumns.length > 0
@@ -372,9 +372,9 @@ function buildHoleMaskRows(
         let columns = [];
 
         if (cascadeCount === 1) {
-            if (movedArray && movedArray[y]) {
+            if (placementGrid && placementGrid[y]) {
                 for (let x = 0; x < COLS; x++) {
-                    if (movedArray[y][x]) {
+                    if (placementGrid[y][x]) {
                         columns.push(x);
                     }
                 }
@@ -390,9 +390,9 @@ function buildHoleMaskRows(
                 }
             }
 
-            if (columns.length === 0 && movedArray && movedArray[y]) {
+            if (columns.length === 0 && placementGrid && placementGrid[y]) {
                 for (let x = 0; x < COLS; x++) {
-                    if (movedArray[y][x]) {
+                    if (placementGrid[y][x]) {
                         columns.push(x);
                     }
                 }
@@ -424,12 +424,12 @@ function buildHoleMaskRows(
 
 /**
  * Reset moved array tracking for the next gravity phase
- * @param {Array<Array<boolean>>} movedArray - Movement tracking array to clear
+ * @param {Array<Array<boolean>>} placementGrid - Movement tracking array to clear
  */
-function resetMovedArray(movedArray) {
-    if (!movedArray) return;
-    for (let y = 0; y < movedArray.length; y++) {
-        movedArray[y].fill(false);
+function resetMovedArray(placementGrid) {
+    if (!placementGrid) return;
+    for (let y = 0; y < placementGrid.length; y++) {
+        placementGrid[y].fill(false);
     }
 }
 
@@ -513,13 +513,13 @@ export async function processPhysicsLegacy(gameState, callbacks) {
     let depth = comboState.depth || 0;
     let complexity = comboState.complexity || 0;
     const holeMaskMatrix = [];
-    let sendForClean = false;
+    let sendForPerfectClear = false;
 
     // moved[row][col] tracks piece placement positions
     // Initial state: mark where the piece was just placed
     // FIX: Use actual board length for tall boards (100+ rows)
     const boardHeight = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
-    const movedArray = Array.from({ length: boardHeight }, () => Array(COLS).fill(false));
+    const placementGrid = Array.from({ length: boardHeight }, () => Array(COLS).fill(false));
 
     // Step 1: Mark initial piece placement (from lockFootprint)
     if (comboState.lockFootprint && comboState.lockFootprint.length > 0) {
@@ -527,8 +527,8 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             // Floor coordinates to ensure integer indexing
             const floorY = Math.floor(y);
             const floorX = Math.floor(x);
-            if (floorY >= 0 && floorY < movedArray.length && floorX >= 0 && floorX < COLS) {
-                movedArray[floorY][floorX] = true;
+            if (floorY >= 0 && floorY < placementGrid.length && floorX >= 0 && floorX < COLS) {
+                placementGrid[floorY][floorX] = true;
             }
         });
         physicsLog(
@@ -577,7 +577,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         fullLines.slice(0, Math.min(4, fullLines.length)).forEach((y) => {
             const movedCols = [];
             for (let x = 0; x < COLS; x++) {
-                if (movedArray[y] && movedArray[y][x]) {
+                if (placementGrid[y] && placementGrid[y][x]) {
                     movedCols.push(x);
                 }
             }
@@ -590,9 +590,9 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             // Read moved[][] for this row to determine hole pattern
             const mask = Array(COLS).fill(false);
 
-            if (movedArray[y]) {
+            if (placementGrid[y]) {
                 for (let x = 0; x < COLS; x++) {
-                    if (movedArray[y][x]) {
+                    if (placementGrid[y][x]) {
                         mask[x] = true; // TRUE = hole in garbage
                     }
                 }
@@ -614,7 +614,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
                 }
 
                 if (fallbackColumns.length === 0) {
-                    fallbackColumns = calculateCascadeHoleColumns(movedArray, [y]);
+                    fallbackColumns = calculateCascadeHoleColumns(placementGrid, [y]);
                 }
 
                 fallbackColumns.forEach((col) => {
@@ -686,7 +686,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         // Scoring: uses depth (lines), level, complexity (cascades), and perfect clear
         // Perfect clear is detected later after all cascades complete, so we pass false here
         // and add the perfect clear bonus at the end if the board is empty
-        let points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
+        let points = calculateLineClearScore(fullLines.length, gameState.level, cascadeCount, false);
         // Odyssey combo-multiplier modifier: scale the line-clear score by the combo built up on
         // prior consecutive-clearing locks. Gated on comboMultiplierEnabled — a flag ONLY the
         // Odyssey ModifierStack sets — so shared single-player/multiplayer physics is byte-identical.
@@ -733,7 +733,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         // Clear moved[][] AFTER reading hole positions
         // This prepares it to track which cells fall during gravity
         physicsLog('[Physics] Clearing moved[][] array for gravity tracking');
-        resetMovedArray(movedArray);
+        resetMovedArray(placementGrid);
 
         // --- Enhanced Visual Feedback with Smooth Fade Animation ---
         // Multi-stage flash effect for smoother, faster transition
@@ -797,14 +797,14 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
         // Phase 2: Apply gravity to individual blocks and track movement
-        await applyGravity(gameState, callbacks.draw, movedArray, callbacks);
+        await applyGravity(gameState, callbacks.draw, placementGrid, callbacks);
 
         // Phase 3: Recursive cascade - continue the loop to check for new lines
         // The while(true) loop will automatically check for new complete lines
 
         // Track whether the playfield is empty after gravity settles
         if (gameState.lockedPieces.length === 0) {
-            sendForClean = true;
+            sendForPerfectClear = true;
         }
     }
 
@@ -815,9 +815,9 @@ export async function processPhysicsLegacy(gameState, callbacks) {
 
     // Perfect Clear Bonus
     // Award bonus points when the entire board is cleared
-    if (sendForClean && depth > 0) {
-        let perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
-            - calculateQuadraLineScore(depth, gameState.level, complexity, false);
+    if (sendForPerfectClear && depth > 0) {
+        let perfectClearBonus = calculateLineClearScore(depth, gameState.level, complexity, true)
+            - calculateLineClearScore(depth, gameState.level, complexity, false);
         // Scale the perfect-clear bonus by the same Odyssey combo multiplier for a coherent chain.
         if (gameState.comboMultiplierEnabled && gameState.comboMultiplier > 1) {
             perfectClearBonus = Math.round(perfectClearBonus * gameState.comboMultiplier);
@@ -840,7 +840,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             complexity,
             holeMask: holeMaskMatrix.map((mask) => mask.slice()),
             manualColumns: [...manualHoleColumns],
-            sendForClean,
+            sendForPerfectClear,
             lockFootprint: comboState.lockFootprint
                 ? comboState.lockFootprint.map((cell) => ({ ...cell }))
                 : [],
@@ -855,7 +855,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         gameState.comboState.depth = depth;
         gameState.comboState.complexity = complexity;
         gameState.comboState.holeMask = holeMaskMatrix.map((mask) => mask.slice());
-        gameState.comboState.sendForClean = sendForClean;
+        gameState.comboState.sendForPerfectClear = sendForPerfectClear;
         gameState.comboState.manualColumns = [...manualHoleColumns];
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;
@@ -886,7 +886,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
  * commit-per-wave), delay sequence, and sim-clock advancement are identical to
  * processPhysicsLegacy — pinned by physics-callback-schedule.test.js running
  * both implementations against the same goldens, and by the dual-path
- * differential suite. The hole-mask capture machinery (movedArray /
+ * differential suite. The hole-mask capture machinery (placementGrid /
  * preGravityBoard) does not run here: masks come precomputed from the
  * resolver. Board mutation between waves re-executes the same deterministic
  * helpers the resolver used (cascade-helpers.js), so piece/grid evolution is
@@ -978,7 +978,7 @@ function finalizeResolvedPhysics(gameState, callbacks, result) {
         gameState.comboState.depth = after.depth;
         gameState.comboState.complexity = after.complexity;
         gameState.comboState.holeMask = after.holeMask.map((mask) => mask.slice());
-        gameState.comboState.sendForClean = after.sendForClean;
+        gameState.comboState.sendForPerfectClear = after.sendForPerfectClear;
         gameState.comboState.manualColumns = [...after.manualColumns];
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;

@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { COLS, ROWS, HIDDEN_ROWS } from '../../src/core/constants.js';
 import { processPhysics } from '../../src/core/physics.js';
-import { calculateQuadraLineScore } from '../../src/core/scoring.js';
+import { calculateLineClearScore } from '../../src/core/scoring.js';
 import { createBoardGrid } from '../../src/core/board.js';
 import { MODIFIER_DEFINITIONS, ModifierStack } from '../../src/core/odyssey/ModifierStack.js';
 
@@ -107,7 +107,7 @@ describe('combo-multiplier through real physics (C2 flagship)', () => {
     it('is byte-identical for single-player when the flag is unset (the gate)', async () => {
         const noFlag = makeState({ lockedPieces: [fullBottomRowPiece(), loneBlockPiece()] });
         await processPhysics(noFlag, {});
-        const expected = calculateQuadraLineScore(1, 1, 1, false);
+        const expected = calculateLineClearScore(1, 1, 1, false);
         expect(noFlag.score).toBe(expected); // untouched Quadra scoring
     });
 

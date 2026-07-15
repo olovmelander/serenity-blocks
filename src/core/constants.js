@@ -117,7 +117,7 @@ export const SCORE_VALUES = {
  * Scoring constants
  * Used for cascade bonuses, perfect clears, and level multipliers
  */
-export const QUADRA_SCORING = {
+export const CASCADE_SCORING = {
     CASCADE_BASE: 200, // 200 * (complexity-1)² for cascades
     PERFECT_CLEAR_BASE: 1250, // depth * 1250 for perfect clears (≤4 lines)
     PERFECT_CLEAR_LARGE: 500, // depth² * 500 for perfect clears (>4 lines)
@@ -139,7 +139,7 @@ export const QUADRA_SCORING = {
  * @param {number} level - Current game level (1-indexed)
  * @returns {number} Drop interval in milliseconds per row
  */
-export function getQuadraDropInterval(level) {
+export function getDropIntervalForLevel(level) {
     let speed;
     if (level <= 10) {
         speed = 4 + (level - 1) * 5;
@@ -158,7 +158,7 @@ export function getQuadraDropInterval(level) {
 export const LEVEL_SPEEDS = (() => {
     const speeds = [];
     for (let level = 1; level <= 100; level++) {
-        speeds.push(getQuadraDropInterval(level));
+        speeds.push(getDropIntervalForLevel(level));
     }
     return speeds;
 })();

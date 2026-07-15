@@ -106,14 +106,14 @@ describe('Garbage Logic (Quadra Compliance)', () => {
                 depth: 4, // Tetris
                 complexity: 1,
                 holeMask: Array(4).fill(Array(COLS).fill(false)), // Doesn't matter for clean
-                sendForClean: true,
+                sendForPerfectClear: true,
             };
 
             const attack = calculateGarbage(summary);
 
             // Quadra Clean Bonus: (1 + depth) / 2
             // (1 + 4) / 2 = 2 (floored)
-            expect(attack.cleanBonus).toBe(2);
+            expect(attack.cleanRowBonus).toBe(2);
             expect(attack.cleanMasks.length).toBe(2);
 
             // Pattern 0 (Even): 72 (0001001000) -> Cols 3, 6

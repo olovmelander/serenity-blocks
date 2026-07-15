@@ -1,5 +1,5 @@
 import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
-import { calculateQuadraLineScore } from '../scoring.js';
+import { calculateLineClearScore } from '../scoring.js';
 import { applyHeuristicNoise } from './bot-difficulty.js';
 import { analyzeSideCascade, classifySideCascadePlacement } from './side-cascade-analyzer.js';
 import { estimateLatentDischarge } from './latent-chain.js';
@@ -643,7 +643,7 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     const projectedAttack = candidate.projectedAttack
         ?? computeProjectedAttack(totalLines, perfectClear);
     const projectedScore = totalLines > 0
-        ? calculateQuadraLineScore(totalLines, 1, Math.max(1, cascadeCount), perfectClear)
+        ? calculateLineClearScore(totalLines, 1, Math.max(1, cascadeCount), perfectClear)
         : 0;
 
     // LATENT (unrealized) discharge of an in-progress, unfired machine — the

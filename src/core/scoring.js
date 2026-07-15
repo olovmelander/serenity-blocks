@@ -4,7 +4,7 @@
 // Implements the cascade / perfect-clear scoring system
 // =================================================================================
 
-import { SCORE_VALUES, LEVEL_SPEEDS, QUADRA_SCORING } from './constants.js';
+import { SCORE_VALUES, LEVEL_SPEEDS, CASCADE_SCORING } from './constants.js';
 
 /**
  * Calculate the score for line clears
@@ -20,7 +20,7 @@ import { SCORE_VALUES, LEVEL_SPEEDS, QUADRA_SCORING } from './constants.js';
  * @param {boolean} isPerfectClear - True if board is now empty
  * @returns {number} Total points earned
  */
-export function calculateQuadraLineScore(linesCleared, level, complexity = 1, isPerfectClear = false) {
+export function calculateLineClearScore(linesCleared, level, complexity = 1, isPerfectClear = false) {
     if (linesCleared <= 0) return 0;
 
     // Base score from SCORE_VALUES or quadratic for >4 lines
@@ -35,15 +35,15 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
     // Cascade/complexity bonus: 200 * (complexity-1)²
     // complexity=1 means first clear (no cascade bonus)
     // complexity=2+ means cascades occurred
-    const cascadeBonus = QUADRA_SCORING.CASCADE_BASE * Math.max(0, complexity - 1) ** 2;
+    const cascadeBonus = CASCADE_SCORING.CASCADE_BASE * Math.max(0, complexity - 1) ** 2;
 
     // Perfect clear bonus (board is now empty)
     let perfectBonus = 0;
     if (isPerfectClear) {
         if (linesCleared <= 4) {
-            perfectBonus = linesCleared * QUADRA_SCORING.PERFECT_CLEAR_BASE;
+            perfectBonus = linesCleared * CASCADE_SCORING.PERFECT_CLEAR_BASE;
         } else {
-            perfectBonus = linesCleared * linesCleared * QUADRA_SCORING.PERFECT_CLEAR_LARGE;
+            perfectBonus = linesCleared * linesCleared * CASCADE_SCORING.PERFECT_CLEAR_LARGE;
         }
     }
 
@@ -52,7 +52,7 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
 
     // Level multiplier: +10% per level (additive)
     // Formula: subtotal + (subtotal * 0.1 * level)
-    const levelBonus = Math.floor(subtotal * QUADRA_SCORING.LEVEL_MULTIPLIER * level);
+    const levelBonus = Math.floor(subtotal * CASCADE_SCORING.LEVEL_MULTIPLIER * level);
 
     return subtotal + levelBonus;
 }
@@ -63,7 +63,7 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
 // here because they had ZERO call sites and contradicted the live rule:
 //   - calculateLevel / getLinesUntilNextLevel  (encoded a wrong 10-line cadence)
 //   - calculateLineScore / calculateSoftDropScore / calculateHardDropScore
-//     (additive pre-Quadra scoring, superseded by calculateQuadraLineScore)
+//     (additive pre-Quadra scoring, superseded by calculateLineClearScore)
 // Do NOT re-introduce a progression helper here without making physics.js
 // consume it, so the rule keeps a single source of truth.
 

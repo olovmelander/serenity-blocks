@@ -61,7 +61,7 @@ function createComboState() {
     return {
         depth: 0,
         complexity: 0,
-        sendForClean: false,
+        sendForPerfectClear: false,
         holeMask: [],
         lockFootprint: [],
         manualColumns: [],

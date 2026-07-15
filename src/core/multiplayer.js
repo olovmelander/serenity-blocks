@@ -75,10 +75,10 @@ export class MultiplayerGameState {
         const totalLines = attack.getTotalLines();
         console.log(
             `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, `
-            + `combo=${attack.complexity}, clean=${attack.sendForClean}`,
+            + `combo=${attack.complexity}, clean=${attack.sendForPerfectClear}`,
         );
         console.log(
-            `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`,
+            `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanRowBonus})`,
         );
 
         if (
