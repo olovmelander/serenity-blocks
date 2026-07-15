@@ -103,18 +103,18 @@ export const SHAPES = {
 export const PIECE_KEYS = 'IOTZSLJ';
 
 /**
- * Score values for line clears (Quadra-style)
+ * Score values for line clears
  * Base scores before level multiplier
  */
 export const SCORE_VALUES = {
     1: 250, // Single
     2: 500, // Double
     3: 1000, // Triple
-    4: 2000, // Tetris (Quadra)
+    4: 2000, // Quad (4-line clear)
 };
 
 /**
- * Quadra-style scoring constants
+ * Scoring constants
  * Used for cascade bonuses, perfect clears, and level multipliers
  */
 export const QUADRA_SCORING = {
@@ -125,14 +125,13 @@ export const QUADRA_SCORING = {
 };
 
 /**
- * Calculate Quadra-style drop interval in milliseconds
- * Based on Quadra's canvas.cc:calc_speed() and player.cc:calc_by()
+ * Calculate drop interval in milliseconds for a level
  *
- * Speed formula (canvas.cc):
+ * Speed formula:
  *   level ≤ 10: speed = 4 + (level - 1) * 5
  *   level > 10: speed = 50 + (level - 10) * 3
  *
- * Conversion (from calc_by using >>4):
+ * Conversion (fixed-point, >>4):
  *   Y coordinates are in 1/16th pixel units
  *   Cell height = 18 pixels × 16 = 288 sub-units
  *   At 100fps (10ms/frame): time_per_row = 288 / speed * 10ms
@@ -152,8 +151,8 @@ export function getQuadraDropInterval(level) {
 }
 
 /**
- * Drop speeds per level (in milliseconds) - Quadra-authentic values
- * Generated from Quadra's canvas.cc:calc_speed() formula
+ * Drop speeds per level (in milliseconds)
+ * Generated from the drop-interval speed formula above
  * Level 1 = 720ms, Level 10 = 58ms, Level 20+ = very fast
  */
 export const LEVEL_SPEEDS = (() => {
@@ -209,7 +208,7 @@ export const GARBAGE_RULES = {
     1: 1, // Single - 1 line of garbage
     2: 2, // Double - 2 lines
     3: 3, // Triple - 3 lines
-    4: 4, // Tetris - 4 lines
+    4: 4, // Quad - 4 lines
 };
 
 /**

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Deterministic Quadra-style garbage system for multiplayer mode.
+ * @fileoverview Deterministic garbage system for multiplayer mode.
  * Handles garbage generation, queueing, serialization, and insertion.
  */
 
@@ -14,7 +14,7 @@ export const ATTACK_TYPES = {
     POTATO: 'potato',
 };
 
-// Quadra handicap levels (net_version 24)
+// Handicap levels
 export const HANDICAP_LEVELS = {
     BEGINNER: 0, // "-" - Easiest
     APPRENTICE: 1, // "A"
@@ -23,36 +23,36 @@ export const HANDICAP_LEVELS = {
     GRANDMASTER: 4, // "+" - Hardest
 };
 
-// Quadra constants
+// Handicap / clean-garbage tuning constants
 export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
 export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
 export const DEFAULT_POTATO_DURATION_MS = 12000;
 export const DEFAULT_POTATO_PENALTY_LINES = 6;
 
-// Quadra-authentic clean patterns (Quadra columns 5,8 and 4,7,10,13 mapped to 0-indexed)
-// Quadra even: 72  = 0b0001001000 = columns 3, 6 → [3, 6] in 0-indexed
-// Quadra odd:  585 = 0b1001001001 = columns 4, 7, 10, 13 → [0, 3, 6, 9] in 0-indexed
+// Clean-garbage column patterns (deterministic, alternating even/odd rows)
+// Even rows: holes at columns [3, 6]
+// Odd rows:  holes at columns [0, 3, 6, 9]
 const CLEAN_PATTERN_EVEN = [3, 6];
 const CLEAN_PATTERN_ODD = [0, 3, 6, 9];
 
 /**
- * CRITICAL: Quadra hole position encoding (MSB-first, inverse mapping)
+ * Hole-position encoding (MSB-first, inverse mapping)
  *
- * In Quadra, the hole encoding works as follows:
+ * The encoding works as follows:
  * 1. When a piece is placed, moved[row][col] = true for cells occupied by the piece
- * 2. During line clearing, moved[row][col] is stored to hole_pos[line][col]
+ * 2. During line clearing, moved[row][col] is stored per cleared line
  * 3. Encoding: moved[j][i] → bit in bitfield (column 0 = bit 9, column 9 = bit 0)
  * 4. A '1' bit means HOLE in garbage, '0' bit means SOLID block
  *
- * This creates the inverse mapping: where your piece touched → holes in opponent's garbage
- * This is the core strategic mechanic of Quadra!
+ * This creates the inverse mapping: where your piece touched → holes in the opponent's
+ * garbage, which is the core strategic mechanic of the versus mode.
  *
  * @param {Array<boolean>} mask - Boolean array where true = hole, false = solid
  * @returns {number} 10-bit value (0-1023) encoding hole positions
  */
 export function maskArrayToBits(mask) {
     let bits = 0;
-    // Quadra encodes MSB-first: column 0 → bit 9, column 9 → bit 0
+    // MSB-first: column 0 → bit 9, column 9 → bit 0
     for (let x = 0; x < COLS; x++) {
         bits <<= 1; // Shift left (MSB-first encoding)
         if (mask[x]) {
@@ -63,7 +63,7 @@ export function maskArrayToBits(mask) {
 }
 
 /**
- * Decode Quadra bitfield to column array
+ * Decode hole-position bitfield to column array
  * @param {number} bits - 10-bit hole position bitfield
  * @returns {Array<number>} Array of column indices with holes
  */
@@ -324,7 +324,7 @@ export function createGarbageAttackFromColumns({
 }
 
 /**
- * Apply Quadra net_version 24 handicap system
+ * Apply the handicap system
  * Higher handicap players accumulate stamps that reduce their outgoing attacks
  * @param {number} rows - Base number of garbage rows
  * @param {Object} senderState - Sender's game state with handicap info
@@ -419,9 +419,9 @@ export function accumulateHandicapStamps(playerState, opponents, aliveCount) {
 }
 
 /**
- * Calculate garbage attack from cascade summary (QUADRA-ACCURATE)
+ * Calculate garbage attack from cascade summary
  *
- * CRITICAL FORMULAS (from Quadra canvas.cc:477-648):
+ * Attack formula:
  * 1. Base attack lines:  depth - 1
  * 2. Clean bonus:        (1 + depth) / 2  (integer division)
  * 3. Total attack:       base + clean_bonus (if clean)
@@ -449,15 +449,15 @@ export function calculateGarbage(summary, rules = {}) {
     const manualColumns = summary.manualColumns || [];
     const maskMatrix = rawMask.map((row) => normalizeMaskRow(row, manualColumns));
 
-    // QUADRA FORMULA: base attack = depth - 1
+    // Base attack = depth - 1
     const rowsToSend = Math.max(0, depth - 1);
     const holeMasks = maskMatrix.slice(0, rowsToSend).map(maskArrayToBits);
 
     const sendForClean = !!summary.sendForClean;
-    // QUADRA FORMULA: clean bonus = (1 + depth) / 2 (integer division)
+    // Clean bonus = (1 + depth) / 2 (integer division)
     const cleanBonus = sendForClean ? Math.floor((1 + depth) / 2) : 0;
 
-    // Generate clean garbage patterns (alternating 72/585 from Quadra)
+    // Generate clean garbage patterns (alternating even/odd column masks)
     const cleanMasks = [];
     for (let i = 0; i < cleanBonus; i++) {
         const pattern = i % 2 === 0 ? CLEAN_PATTERN_EVEN : CLEAN_PATTERN_ODD;
@@ -584,7 +584,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
 }
 
 /**
- * Insert garbage entries into the playfield with animation support (Quadra-accurate)
+ * Insert garbage entries into the playfield with animation support
  *
  * CRITICAL: Hole decoding must match Quadra's encoding:
  * - holeMask bitfield is decoded MSB-first

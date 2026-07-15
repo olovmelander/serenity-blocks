@@ -2,7 +2,7 @@
 
 ## Serenity Blocks
 
-Serenity Blocks is a modern, Tetris-inspired block puzzle game that blends fast, satisfying play with a rich audiovisual atmosphere. It pairs classic falling-block strategy with expressive themes, immersive music, and multiple distinct ways to play, giving players a space to compete, explore, or simply relax.
+Serenity Blocks is a modern, falling-block puzzle game that blends fast, satisfying play with a rich audiovisual atmosphere. It pairs classic falling-block strategy with expressive themes, immersive music, and multiple distinct ways to play, giving players a space to compete, explore, or simply relax.
 
 At its core, Serenity Blocks is about placing pieces with precision, building smart setups, clearing lines efficiently, and chasing that perfect flow state where every move clicks. The familiar puzzle foundation is enhanced by polished visual effects, dynamic backgrounds, and a presentation style designed to make every match feel alive.
 

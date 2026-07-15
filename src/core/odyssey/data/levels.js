@@ -443,7 +443,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 3, description: 'Clear 3 Tetrises' },
+                { type: 'tetris-count', target: 3, description: 'Clear 3 Quads' },
             ],
         },
 
@@ -651,7 +651,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Tetrises' },
+                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
 
@@ -721,7 +721,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Tetrises' },
+                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
             ],
         },
 
@@ -860,7 +860,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 240,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -999,7 +999,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Tetrises' },
+                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
                 { type: 'combo', target: 4, description: 'Reach 4x combo' },
             ],
         },
@@ -1208,7 +1208,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Tetrises' },
+                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
             ],
         },
 
@@ -1223,7 +1223,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Gather the autumn harvest. Combine cascades and Tetrises for maximum yield.',
+            description: 'Gather the autumn harvest. Combine cascades and Quads for maximum yield.',
             difficulty: 6,
             tip: 'The starting blocks are your harvest - collect points from them!',
         },
@@ -1278,7 +1278,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
 
@@ -1418,7 +1418,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -1560,7 +1560,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Tetrises' },
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
 
@@ -1577,7 +1577,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Watch the sun rise over the Himalayas. Build score in the thin mountain air.',
             difficulty: 6,
-            tip: 'Start by clearing the existing blocks, then build for Tetrises.',
+            tip: 'Start by clearing the existing blocks, then build for Quads.',
         },
     },
 
@@ -1768,7 +1768,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 8, description: 'Trigger 8 cascades' },
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Tetrises' },
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
 
@@ -1838,7 +1838,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'time', target: 90, description: 'Complete in under 90 seconds' },
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Tetrises' },
+                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
 
@@ -1858,7 +1858,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 30 lines starting from a half-filled board! Dig out fast.',
             difficulty: 8,
-            tip: 'Half the board is garbage - clear it quickly and build for Tetrises. Keep playing after goal for more stars!',
+            tip: 'Half the board is garbage - clear it quickly and build for Quads. Keep playing after goal for more stars!',
         },
     },
 
@@ -1981,7 +1981,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 12, description: 'Trigger 12 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -2120,7 +2120,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 7, description: 'Clear 7 Tetrises' },
+                { type: 'tetris-count', target: 7, description: 'Clear 7 Quads' },
                 { type: 'combo', target: 5, description: 'Reach 5x combo' },
             ],
         },
@@ -2329,7 +2329,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
 
@@ -2472,7 +2472,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 15, description: 'Trigger 15 cascades' },
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -2542,7 +2542,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'combo', target: 6, description: 'Reach 6x combo' },
             ],
         },
@@ -2754,7 +2754,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
             ],
         },
 
@@ -2823,7 +2823,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -2893,7 +2893,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
                 { type: 'time', target: 140, description: 'Finish with 40+ seconds left' },
             ],
         },
@@ -2914,7 +2914,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Race the expanding shockwave! Clear 60 lines before time runs out.',
             difficulty: 9,
-            tip: 'Speed is critical - use Tetrises (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
+            tip: 'Speed is critical - use Quads (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
         },
     },
 
@@ -2967,7 +2967,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 18, description: 'Trigger 18 cascades' },
-                { type: 'tetris-count', target: 15, description: 'Clear 15 Tetrises' },
+                { type: 'tetris-count', target: 15, description: 'Clear 15 Quads' },
                 { type: 'time', target: 180, description: 'Complete in under 3 minutes' },
             ],
         },
@@ -3178,7 +3178,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -3249,7 +3249,7 @@ const BASE_LEVEL_CONFIGS = [
             },
             bonuses: [
                 { type: 'cascade', target: 12, description: 'Trigger 12 cascades' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
             ],
         },
 
@@ -3463,7 +3463,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 15, description: 'Clear 15 Tetrises' },
+                { type: 'tetris-count', target: 15, description: 'Clear 15 Quads' },
                 { type: 'time', target: 120, description: 'Complete in under 2 minutes' },
             ],
         },
@@ -3607,7 +3607,7 @@ const BASE_LEVEL_CONFIGS = [
             bonuses: [
                 { type: 'max-cascade-depth', target: 10, description: 'Trigger a 10-chain cascade' },
                 { type: 'cascade', target: 30, description: 'Trigger 30 cascades' },
-                { type: 'tetris-count', target: 20, description: 'Clear 20 Tetrises' },
+                { type: 'tetris-count', target: 20, description: 'Clear 20 Quads' },
                 { type: 'combo', target: 18, description: 'Reach 18x combo' },
             ],
         },
@@ -3679,7 +3679,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: null,
             },
             bonuses: [
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
                 { type: 'combo', target: 8, description: 'Reach 8x combo' },
             ],
         },
@@ -3823,7 +3823,7 @@ const BASE_LEVEL_CONFIGS = [
                 value: 300,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
                 { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-chain cascade' },
             ],
         },
@@ -4059,7 +4059,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         victory: {
             bonuses: [
-                { type: 'tetris-count', target: 2, description: 'Clear 2 Tetrises' },
+                { type: 'tetris-count', target: 2, description: 'Clear 2 Quads' },
             ],
         },
         stars: {
@@ -4242,7 +4242,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { score: 42000, cascades: 6, tetrises: 6 },
         },
         metadata: {
-            description: 'Warm twilight settles over the grove. Blend cascades and Tetrises into one graceful summer performance.',
+            description: 'Warm twilight settles over the grove. Blend cascades and Quads into one graceful summer performance.',
             tip: 'The starting rows are material, not clutter. Convert them into score before they ever become danger.',
         },
     },
@@ -4253,7 +4253,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 6, description: 'Clear 6 Tetrises' },
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
             ],
         },
         stars: {
@@ -4293,7 +4293,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
-                { type: 'tetris-count', target: 4, description: 'Clear 4 Tetrises' },
+                { type: 'tetris-count', target: 4, description: 'Clear 4 Quads' },
             ],
         },
         modifiers: {
@@ -4397,7 +4397,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             bonuses: [
                 { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
-                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
             ],
         },
         modifiers: {
@@ -4551,7 +4551,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             description: 'Race the expanding shockwave. Efficiency matters more than perfection once the speed spikes.',
-            tip: 'Use Tetrises to compress the workload. The fastest path through this level is almost always the cleanest one.',
+            tip: 'Use Quads to compress the workload. The fastest path through this level is almost always the cleanest one.',
         },
     },
     43: {
@@ -4666,7 +4666,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 9,
-            tip: 'This is still a speed wall, but it is no longer a marathon. Compress the target with Tetrises and keep the stack low.',
+            tip: 'This is still a speed wall, but it is no longer a marathon. Compress the target with Quads and keep the stack low.',
         },
     },
     50: {
@@ -4733,7 +4733,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             bonuses: [
                 { type: 'max-cascade-depth', target: 10, description: 'Trigger a 10-chain cascade' },
                 { type: 'cascade', target: 30, description: 'Trigger 30 cascades' },
-                { type: 'tetris-count', target: 20, description: 'Clear 20 Tetrises' },
+                { type: 'tetris-count', target: 20, description: 'Clear 20 Quads' },
                 { type: 'combo', target: 18, description: 'Reach 18x combo' },
             ],
         },

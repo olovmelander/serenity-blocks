@@ -8,13 +8,13 @@ export const VOLTAGE_STORM_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00ffff', // Cyan - Plasma
-        O: '#ffff00', // Yellow - High Voltage
-        T: '#b000ff', // Electric Purple - Arc
-        S: '#00ff00', // Neon Green - Radioactive
-        Z: '#ff0000', // Red - Overload
-        J: '#0088ff', // Blue - Spark
-        L: '#ff8800', // Orange - Energy
+        I: '#f5e000', // Charged amber
+        O: '#b64bff', // Arc violet
+        T: '#2bff6a', // Plasma green
+        S: '#ff2a3d', // Overload crimson
+        Z: '#1e9bff', // Spark azure
+        J: '#ff7a1a', // Energy ember
+        L: '#1ef0ff', // Plasma cyan
         GARBAGE: '#202028', // Dark matter
     },
 

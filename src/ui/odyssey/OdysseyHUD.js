@@ -286,7 +286,7 @@ export class OdysseyHUD {
                 }
                 break;
             case 'tetrises':
-                parts.push(`${value}+ tetrises`);
+                parts.push(`${value}+ quads`);
                 break;
             case 'maxCascadeDepth':
                 parts.push(`${value}+ chain`);

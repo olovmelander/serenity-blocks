@@ -11,13 +11,13 @@ export const NEON_DUSK_TETROMINOS = {
 
     // Vibrant neon palette (cyan, magenta, mint, electric gold)
     colors: {
-        I: '#00f6ff', // Electric cyan beam
-        O: '#fff700', // Neon gold sun core
-        T: '#ff00ff', // Vivid magenta haze
-        S: '#00ff9f', // Mint laser streak
-        Z: '#ff2f92', // Hot pink flare
-        J: '#00b4ff', // Azure neon skyline
-        L: '#ff7b24', // Ember orange glow
+        I: '#ff5cc8', // Rose haze
+        O: '#a24bff', // Twilight violet
+        T: '#2bffb0', // Mint laser streak
+        S: '#ff7b24', // Ember sunset glow
+        Z: '#00b4ff', // Azure neon skyline
+        J: '#ffcf1a', // Gold sun flare
+        L: '#00f6ff', // Electric cyan beam
         GARBAGE: '#0c0418', // Deep dusk purple
     },
 

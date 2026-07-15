@@ -688,7 +688,7 @@ export class GameState {
         // Deterministic sequence counter for outbound garbage attacks
         this.garbageAttackSequence = 0;
 
-        // Quadra-style handicap system (net_version 24)
+        // Handicap system
         this.handicap = 2; // 0=Beginner, 1=Apprentice, 2=Intermediate, 3=Master, 4=Grandmaster
         this.handicaps = {}; // Stamps per opponent: { opponentId: stampCount }
         this.handicapCrowd = 0; // Crowd handicap stamps (for 5+ players)

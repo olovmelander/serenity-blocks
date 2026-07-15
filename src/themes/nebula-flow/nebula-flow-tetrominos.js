@@ -9,13 +9,13 @@ export const NEBULA_FLOW_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00ffff', // Electric Cyan - flowing water
-        O: '#ff00ff', // Bright Magenta - cosmic energy
-        T: '#8000ff', // Deep Purple - nebula core
-        S: '#00ff88', // Spring Green - aurora flow
-        Z: '#ff0044', // Hot Pink - stellar burst
-        J: '#0088ff', // Sky Blue - cosmic vapor
-        L: '#ffaa00', // Bright Orange - solar flare
+        I: '#ff5ea8', // Rose nebula
+        O: '#6ad0ff', // Cyan vapor
+        T: '#ffb03a', // Solar amber
+        S: '#c04bff', // Violet core
+        Z: '#2be0a0', // Aurora mint
+        J: '#ff7a3c', // Ember flare
+        L: '#3a86ff', // Cosmic blue
         GARBAGE: '#181820', // Dark void
     },
 

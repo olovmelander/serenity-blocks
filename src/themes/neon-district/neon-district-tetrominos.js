@@ -6,13 +6,13 @@
 export const NEON_DISTRICT_TETROMINOS = {
     version: 1,
     colors: {
-        I: '#00ffff', // Electric cyan
-        O: '#ffff00', // Acid yellow
-        T: '#ff00ff', // Hot magenta
-        S: '#00ff66', // Toxic green
-        Z: '#ff3366', // Neon red-pink
-        J: '#3366ff', // Electric blue
-        L: '#ff9900', // Neon orange
+        I: '#ff2ea6', // Hot pink
+        O: '#7a5cff', // Ultraviolet
+        T: '#20e0d0', // Teal signal
+        S: '#ff6a1a', // Neon orange
+        Z: '#3a86ff', // Electric blue
+        J: '#ffd21a', // Acid gold
+        L: '#c04bff', // Neon purple
         GARBAGE: '#444466', // Dark steel
     },
     renderMode: 'glow',

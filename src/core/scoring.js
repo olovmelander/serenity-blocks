@@ -1,14 +1,14 @@
 // @ts-check
 // =================================================================================
 // SCORING - Score calculation and level progression for Serenity Blocks
-// Implements Quadra-style scoring system
+// Implements the cascade / perfect-clear scoring system
 // =================================================================================
 
 import { SCORE_VALUES, LEVEL_SPEEDS, QUADRA_SCORING } from './constants.js';
 
 /**
- * Calculate Quadra-style score for line clears
- * Implements the complete Quadra scoring formula:
+ * Calculate the score for line clears
+ * Scoring formula:
  * - Base score: 250/500/1000/2000 (or 200*depth² for >4 lines)
  * - Cascade bonus: 200 * (complexity-1)²
  * - Perfect clear bonus: depth*1250 (or depth²*500 for >4)
@@ -28,7 +28,7 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
     if (linesCleared <= 4) {
         baseScore = SCORE_VALUES[linesCleared] || 0;
     } else {
-        // Quadra uses 200 * depth² for mega-clears (>4 lines)
+        // 200 * depth² for mega-clears (>4 lines)
         baseScore = 200 * linesCleared * linesCleared;
     }
 
@@ -50,9 +50,8 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
     // Subtotal before level multiplier
     const subtotal = baseScore + cascadeBonus + perfectBonus;
 
-    // Level multiplier: +10% per level (additive, Quadra-style)
+    // Level multiplier: +10% per level (additive)
     // Formula: subtotal + (subtotal * 0.1 * level)
-    // This is different from modern Tetris which uses subtotal * level
     const levelBonus = Math.floor(subtotal * QUADRA_SCORING.LEVEL_MULTIPLIER * level);
 
     return subtotal + levelBonus;
@@ -125,7 +124,7 @@ export function formatScore(score) {
 export function calculateEfficiency(score, lines, piecesPlaced) {
     if (piecesPlaced === 0) return 0;
 
-    // Ideal scenario: 4 lines per piece (Tetris every time) = 100% efficiency
+    // Ideal scenario: 4 lines per piece (a quad every piece) = 100% efficiency
     const idealLines = piecesPlaced * 4;
     const efficiency = (lines / idealLines) * 100;
 

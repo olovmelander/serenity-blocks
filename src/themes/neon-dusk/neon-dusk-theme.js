@@ -2786,13 +2786,13 @@ export default class NeonDuskTheme extends BaseTheme {
 
     getPieceColor(pieceType) {
         const colorMap = {
-            I: new THREE.Color(0x00ffff),
-            O: new THREE.Color(0xffff00),
-            T: new THREE.Color(0xff00ff),
-            S: new THREE.Color(0x00ff88),
-            Z: new THREE.Color(0xff0088),
-            J: new THREE.Color(0x00aaff),
-            L: new THREE.Color(0xff8800),
+            I: new THREE.Color(0xff5cc8),
+            O: new THREE.Color(0xa24bff),
+            T: new THREE.Color(0x2bffb0),
+            S: new THREE.Color(0xff7b24),
+            Z: new THREE.Color(0x00b4ff),
+            J: new THREE.Color(0xffcf1a),
+            L: new THREE.Color(0x00f6ff),
         };
         return colorMap[pieceType] || this.neonColors[0];
     }
