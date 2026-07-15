@@ -8,13 +8,13 @@ export const STARLIGHT_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#cfefff', // Blue-white giant
-        O: '#fff4c7', // Warm starlight
-        T: '#c9b8ff', // Violet deep-field glint
-        S: '#93ffe8', // OIII teal
-        Z: '#ffa7d8', // H-alpha rose
-        J: '#8fa2ff', // Indigo parallax shell
-        L: '#ffd69a', // Golden dwarf
+        I: '#fff4c7', // Warm starlight
+        O: '#c9b8ff', // Violet deep-field glint
+        T: '#93ffe8', // OIII teal
+        S: '#ffa7d8', // H-alpha rose
+        Z: '#8fa2ff', // Indigo parallax shell
+        J: '#ffd69a', // Golden dwarf
+        L: '#cfefff', // Blue-white giant
         GARBAGE: '#070a18', // Deep cosmos
     },
 
