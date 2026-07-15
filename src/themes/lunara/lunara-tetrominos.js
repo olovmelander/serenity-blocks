@@ -8,13 +8,13 @@ export const LUNARA_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#a8e0ff', // Brilliant Moonlit Glacier
-        O: '#ffd4a8', // Warm Lantern Amber
-        T: '#d8a8ff', // Vivid Amethyst Glow
-        S: '#a8ffe8', // Bright Aurora Teal
-        Z: '#ffa8d0', // Vibrant Alpine Rose
-        J: '#8090e0', // Deep Twilight Indigo
-        L: '#ffc050', // Radiant Sunrise Gold
+        I: '#ffd4a8', // Warm Lantern Amber
+        O: '#d8a8ff', // Vivid Amethyst Glow
+        T: '#a8ffe8', // Bright Aurora Teal
+        S: '#ffa8d0', // Vibrant Alpine Rose
+        Z: '#8090e0', // Deep Twilight Indigo
+        J: '#ffc050', // Radiant Sunrise Gold
+        L: '#a8e0ff', // Brilliant Moonlit Glacier
         GARBAGE: '#252840', // Deep Mountain Shadow
     },
 

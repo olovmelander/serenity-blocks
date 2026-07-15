@@ -11,13 +11,13 @@ export const SINGING_BOWL_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#b5fff2', // Soft aqua - like clear water in the bowl
-        O: '#fdda9b', // Brass glow - reflecting the bowl itself
-        T: '#e5b6ff', // Lavender incense - rising smoke
-        S: '#a9ffd0', // Lotus leaf - fresh green tranquility
-        Z: '#ff9fbf', // Rose petal - gentle warmth
-        J: '#8d99ff', // Indigo chant - deep meditation
-        L: '#ffe8aa', // Candlelight - warm golden flicker
+        I: '#fdda9b', // Brass glow - reflecting the bowl itself
+        O: '#e5b6ff', // Lavender incense - rising smoke
+        T: '#a9ffd0', // Lotus leaf - fresh green tranquility
+        S: '#ff9fbf', // Rose petal - gentle warmth
+        Z: '#8d99ff', // Indigo chant - deep meditation
+        J: '#ffe8aa', // Candlelight - warm golden flicker
+        L: '#b5fff2', // Soft aqua - like clear water in the bowl
         GARBAGE: '#1a1a21', // Meditation shadow - deep void
     },
 

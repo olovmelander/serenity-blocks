@@ -9,13 +9,13 @@ export const HIMALAYAN_PEAK_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00a8ff', // Prayer flag blue - sky and space
-        O: '#f0f5ff', // Snow cap white - pristine peak snow
-        T: '#9c88ff', // Prayer flag purple - spiritual wisdom
-        S: '#4cd137', // Prayer flag green - nature and harmony
-        Z: '#e84118', // Prayer flag red - life force and bravery
-        J: '#5a7090', // Deep mountain gray - shadowed peaks
-        L: '#fbc531', // Prayer flag yellow - earth and enlightenment
+        I: '#f0f5ff', // Snow cap white - pristine peak snow
+        O: '#9c88ff', // Prayer flag purple - spiritual wisdom
+        T: '#4cd137', // Prayer flag green - nature and harmony
+        S: '#e84118', // Prayer flag red - life force and bravery
+        Z: '#5a7090', // Deep mountain gray - shadowed peaks
+        J: '#fbc531', // Prayer flag yellow - earth and enlightenment
+        L: '#00a8ff', // Prayer flag blue - sky and space
         GARBAGE: '#3c465a', // Mountain shadow - deep rocky depths
     },
 
