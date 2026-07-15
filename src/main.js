@@ -5180,7 +5180,7 @@ async function bootstrap() {
             );
         }
 
-        app = await appInitPromise;
+        app = await Promise.race([appInitPromise, startupPipeline.waitForMenuVisible().then(() => null)]); // stalled init can't hang the ident: the watchdog's degraded MENU_VISIBLE wins the race and yields null (normal/skip boots let init win)
         startupPipeline.markAppReady({
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,
@@ -5275,7 +5275,7 @@ async function bootstrap() {
         }
 
         if (!app) {
-            app = await appInitPromise;
+            app = await Promise.race([appInitPromise, startupPipeline.waitForMenuVisible().then(() => null)]); // degraded path: menu already visible → resolves null now instead of re-blocking on the stalled init
         }
         app?.setBootCoordinator?.(desktopBootCoordinator);
         app?.markBootStage?.('core-ready', {
