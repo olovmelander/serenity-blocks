@@ -20,6 +20,8 @@ Assets are grouped by license obligation:
 |-------|--------|---------|--------|---------|
 | Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sakura Twilight, Sunset, Wolfhour + playground |
 
+> **Modifications (CC-BY requires stating changes):** these maps are used as planet/moon surface textures and are, in several themes, recolored, tinted, scaled, or sampled luminance-only for stylized rendering. This top-level list is authoritative; where a folder-level `ATTRIBUTION.md` differs, reconcile to this entry.
+
 ### 3D models
 
 | Asset | Author | License | Source | Used in |
@@ -32,8 +34,9 @@ Assets are grouped by license obligation:
 | `kelp-google-ccby.glb` (Kelp) | **Poly by Google** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/4cFllH6Iazk | Ocean theme |
 | `kelp-christopher-ccby.glb` (Kelp) | **Christopher F** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/3VhttTFyADO | Ocean theme |
 | `Fox.glb` (animated fox) | **PixelMannen** (model) · **@tomkranis** (rig) · **@AsoboStudio** / **@scurest** (glTF conversion) | CC-BY 4.0 | https://github.com/KhronosGroup/glTF-Sample-Models — original: https://opengameart.org/content/fox-and-shiba | Sakura Twilight theme |
+| `landscape-glb.glb` (cherry-tree / landscape model) | **Leonardo Awen** (per embedded model metadata) | CC-BY *(assumed from the embedded attribution namespace — **confirm**)* | embedded author metadata; exact source URL to confirm | Sakura Twilight theme (tree meshes; ground sub-mesh disabled) |
 
-> **Needs provenance verification (do not ship until resolved):** `src/themes/sakura-twilight/assets/landscape-glb.glb` has no source/license record in the repo. Quarantine it until ownership/license is established.
+> **Action — confirm before release:** `landscape-glb.glb` **is used and ships** — it provides the Sakura theme's cherry-tree meshes (only its ground sub-mesh is disabled in code). Its embedded metadata credits **Leonardo Awen** and carries an attribution namespace, but the repo has no source URL or explicit license text. Confirm the exact source and license and finalize the row above. *(This supersedes the earlier "quarantine / do not ship" note, which was inaccurate — the model is not quarantined; it is shipping.)*
 
 ---
 
@@ -49,7 +52,7 @@ Assets are grouped by license obligation:
 >
 > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Note: several `0QuazDeckard…` car textures in that folder appear unreferenced by code — verify their separate license or remove them before distribution.
+Note: the previously-bundled `0QuazDeckard…` car textures (unreferenced by any code, unclear provenance) were **removed** from `public/textures/synthcity/`, so the distribution now carries only the MIT-licensed SynthCity set.
 
 ---
 
@@ -101,8 +104,13 @@ output. The subscription and terms records, the per-track prompts, and the Suno 
 references (e.g. `aether-tides.mp3` and `black-hole.mp3` retain `suno.com` output IDs in
 their metadata) are retained by the project as the ownership/licensing record.
 
-The tracks are the game's own soundtrack — **not** taken from any third-party library or
-existing song; in particular, none uses the *Korobeiniki* / "Tetris® Type-A" melody.
+The tracks are intended as the game's own soundtrack — generated from the owner's original
+prompts, **not** taken from any third-party library or existing song, and **not intended to
+reproduce** the *Korobeiniki* / "Tetris® Type-A" melody. *This has been checked at the
+track-name/metadata level only; a human listen-through (and, if desired, melody
+fingerprinting) of every track and cue to positively rule out any melodic match is still
+recommended before release. A paid Suno subscription grants usage/ownership rights but does
+not itself warrant that generated output is non-infringing, so this remains a verify item.*
 
 > Note: the commercial-use/ownership rights come from the paid Suno subscription terms;
 > keep those records with the project. Two loose ends remain good practice — give the
