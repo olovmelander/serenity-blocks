@@ -130,7 +130,7 @@ function compare(pieces, context, label) {
         if (gs.comboState) {
             expect(result.comboStateAfter.depth, `${label}: depth`).toBe(gs.comboState.depth);
             expect(result.comboStateAfter.complexity, `${label}: complexity`).toBe(gs.comboState.complexity);
-            expect(result.comboStateAfter.sendForClean, `${label}: sendForClean`).toBe(gs.comboState.sendForClean);
+            expect(result.comboStateAfter.sendForPerfectClear, `${label}: sendForPerfectClear`).toBe(gs.comboState.sendForPerfectClear);
             expect(result.comboStateAfter.holeMask, `${label}: holeMask matrix`).toEqual(gs.comboState.holeMask);
         }
         expect(result.lineClearCountsDelta, `${label}: lineClearCounts`).toEqual(gs.lineClearCounts);

@@ -259,8 +259,8 @@ function resolveCascadeAfterstate(boardGrid, sourceCells, state) {
 export function computeProjectedAttack(totalLines, perfectClear) {
     if (totalLines <= 0) return 0;
     const base = Math.max(0, totalLines - 1);
-    const cleanBonus = perfectClear ? Math.floor((1 + totalLines) / 2) : 0;
-    return base + cleanBonus;
+    const cleanRowBonus = perfectClear ? Math.floor((1 + totalLines) / 2) : 0;
+    return base + cleanRowBonus;
 }
 
 export function computeLandingHeight(piece, boardHeight = ROWS + HIDDEN_ROWS) {

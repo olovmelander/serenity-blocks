@@ -14,13 +14,13 @@
  * FIDELITY RULES (this must reproduce processPhysics' results exactly):
  *  - Steps with exported legacy implementations are REUSED, not re-written
  *    (detectFullLines, removeClearedLines, findConnectedComponents,
- *    isPartOfPiece, calculateQuadraLineScore) — reused directly so results match.
- *  - The wave loop, hole-mask fallback ladder, movedArray lifecycle, level
+ *    isPartOfPiece, calculateLineClearScore) — reused directly so results match.
+ *  - The wave loop, hole-mask fallback ladder, placementGrid lifecycle, level
  *    progression, B2B arming, and the gravity settle order replicate
  *    physics.js (comments cite the corresponding physics.js lines).
  *  - The gravity pass iterates a bottom-edge-DESC sort taken ONCE before the
  *    settle loop and never re-sorted (physics.js:197-198) — piece y mutations
- *    do not re-order iteration mid-settle; changing this changes movedArray
+ *    do not re-order iteration mid-settle; changing this changes placementGrid
  *    and therefore competitive hole masks.
  *
  * NOT wired into gameplay. Consumers today: the differential equivalence
@@ -34,7 +34,7 @@ import { rebuildBoardGridFromPieces, cloneBoardGrid, updatePiecePositionInGrid }
 import {
     detectFullLines, removeClearedLines, findConnectedComponents, isPartOfPiece,
 } from './cascade-helpers.js';
-import { calculateQuadraLineScore } from './scoring.js';
+import { calculateLineClearScore } from './scoring.js';
 
 /** Deep-clone locked pieces (removeClearedLines mutates p.shape rows). */
 function clonePieces(pieces) {
@@ -69,13 +69,13 @@ function holeColumnsFromBoardDelta(preGravityBoard, currentBoard, fullLines) {
 /**
  * Mirror of calculateCascadeHoleColumns (physics.js:360-415), logging removed.
  */
-function cascadeHoleColumns(movedArray, fullLines) {
-    if (!movedArray || fullLines.length === 0) return [Math.floor(COLS / 2)];
+function cascadeHoleColumns(placementGrid, fullLines) {
+    if (!placementGrid || fullLines.length === 0) return [Math.floor(COLS / 2)];
     const movedColumns = new Set();
     fullLines.forEach((y) => {
-        if (movedArray[y]) {
+        if (placementGrid[y]) {
             for (let x = 0; x < COLS; x += 1) {
-                if (movedArray[y][x]) movedColumns.add(x);
+                if (placementGrid[y][x]) movedColumns.add(x);
             }
         }
     });
@@ -87,12 +87,12 @@ function cascadeHoleColumns(movedArray, fullLines) {
 /**
  * Synchronous mirror of applyGravity's settle loop (physics.js:185-323):
  * same once-sorted bottom-edge-DESC iteration, same canFall check with
- * isPartOfPiece self-exclusion, same movedArray marking at the NEW position,
+ * isPartOfPiece self-exclusion, same placementGrid marking at the NEW position,
  * same incremental grid updates. Returns the number of animation steps
  * (passes in which ≥1 block fell) — the onGravityStep/draw replay count.
  * @returns {number} gravity steps
  */
-function settleGravity(lockedPieces, boardGrid, movedArray) {
+function settleGravity(lockedPieces, boardGrid, placementGrid) {
     const visiblePieces = [...lockedPieces]
         .sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
     const currentBoard = boardGrid;
@@ -122,14 +122,14 @@ function settleGravity(lockedPieces, boardGrid, movedArray) {
             });
 
             if (canFall) {
-                if (movedArray) {
+                if (placementGrid) {
                     piece.shape.forEach((row, localY) => {
                         row.forEach((cell, localX) => {
                             if (cell > 0) {
                                 const boardX = piece.x + localX;
                                 const boardY = piece.y + localY + 1;
-                                if (boardY < movedArray.length && boardX < movedArray[0].length) {
-                                    movedArray[boardY][boardX] = true;
+                                if (boardY < placementGrid.length && boardX < placementGrid[0].length) {
+                                    placementGrid[boardY][boardX] = true;
                                 }
                             }
                         });
@@ -195,16 +195,16 @@ export function resolveCascade(lockedPieces, context = {}) {
     let depth = comboState.depth || 0;
     let complexity = comboState.complexity || 0;
     const holeMaskMatrix = [];
-    let sendForClean = false;
+    let sendForPerfectClear = false;
 
-    // ── movedArray seeded from the lock footprint (physics.js:648-667) ──
-    const movedArray = Array.from({ length: boardHeight }, () => Array(COLS).fill(false));
+    // ── placementGrid seeded from the lock footprint (physics.js:648-667) ──
+    const placementGrid = Array.from({ length: boardHeight }, () => Array(COLS).fill(false));
     if (comboState.lockFootprint && comboState.lockFootprint.length > 0) {
         comboState.lockFootprint.forEach(({ x, y }) => {
             const floorY = Math.floor(y);
             const floorX = Math.floor(x);
-            if (floorY >= 0 && floorY < movedArray.length && floorX >= 0 && floorX < COLS) {
-                movedArray[floorY][floorX] = true;
+            if (floorY >= 0 && floorY < placementGrid.length && floorX >= 0 && floorX < COLS) {
+                placementGrid[floorY][floorX] = true;
             }
         });
     }
@@ -237,9 +237,9 @@ export function resolveCascade(lockedPieces, context = {}) {
         const waveHoleColumns = new Set();
         for (const y of fullLines) {
             const mask = Array(COLS).fill(false);
-            if (movedArray[y]) {
+            if (placementGrid[y]) {
                 for (let x = 0; x < COLS; x += 1) {
-                    if (movedArray[y][x]) mask[x] = true;
+                    if (placementGrid[y][x]) mask[x] = true;
                 }
             }
             if (!mask.some((value) => value)) {
@@ -250,7 +250,7 @@ export function resolveCascade(lockedPieces, context = {}) {
                     fallbackColumns = holeColumnsFromBoardDelta(preGravityBoard, boardData, [y]);
                 }
                 if (fallbackColumns.length === 0) {
-                    fallbackColumns = cascadeHoleColumns(movedArray, [y]);
+                    fallbackColumns = cascadeHoleColumns(placementGrid, [y]);
                 }
                 fallbackColumns.forEach((col) => {
                     if (col >= 0 && col < COLS) mask[col] = true;
@@ -284,7 +284,7 @@ export function resolveCascade(lockedPieces, context = {}) {
         }
         const levelChanged = oldLevel !== level;
 
-        let points = calculateQuadraLineScore(fullLines.length, level, cascadeCount, false);
+        let points = calculateLineClearScore(fullLines.length, level, cascadeCount, false);
         if (context.comboMultiplierEnabled && context.comboMultiplier > 1) {
             points = Math.round(points * context.comboMultiplier);
         }
@@ -304,7 +304,7 @@ export function resolveCascade(lockedPieces, context = {}) {
         }
 
         // moved[][] cleared AFTER hole capture, tracks gravity next (physics.js:866).
-        for (let y = 0; y < movedArray.length; y += 1) movedArray[y].fill(false);
+        for (let y = 0; y < placementGrid.length; y += 1) placementGrid[y].fill(false);
 
         let speedMultiplierClass = 0.5;
         if (cascadeCount === 1) speedMultiplierClass = 1.0;
@@ -316,9 +316,9 @@ export function resolveCascade(lockedPieces, context = {}) {
         rebuildBoardGridFromPieces(pieces.current, boardGrid);
         pieces.current = findConnectedComponents(boardGrid);
         preGravityBoard = cloneBoardGrid(boardGrid).map((row) => row.map((cell) => cell !== null));
-        const gravitySteps = settleGravity(pieces.current, boardGrid, movedArray);
+        const gravitySteps = settleGravity(pieces.current, boardGrid, placementGrid);
 
-        if (pieces.current.length === 0) sendForClean = true;
+        if (pieces.current.length === 0) sendForPerfectClear = true;
 
         waves.push({
             cascadeCount,
@@ -336,9 +336,9 @@ export function resolveCascade(lockedPieces, context = {}) {
 
     // ── Post-loop (physics.js:941-1003) ──
     let perfectClear = null;
-    if (sendForClean && depth > 0) {
-        let bonus = calculateQuadraLineScore(depth, level, complexity, true)
-            - calculateQuadraLineScore(depth, level, complexity, false);
+    if (sendForPerfectClear && depth > 0) {
+        let bonus = calculateLineClearScore(depth, level, complexity, true)
+            - calculateLineClearScore(depth, level, complexity, false);
         if (context.comboMultiplierEnabled && context.comboMultiplier > 1) {
             bonus = Math.round(bonus * context.comboMultiplier);
         }
@@ -355,7 +355,7 @@ export function resolveCascade(lockedPieces, context = {}) {
             complexity,
             holeMask: holeMaskMatrix.map((mask) => mask.slice()),
             manualColumns: [...manualHoleColumns],
-            sendForClean,
+            sendForPerfectClear,
             lockFootprint: comboState.lockFootprint
                 ? comboState.lockFootprint.map((cell) => ({ ...cell }))
                 : [],
@@ -369,7 +369,7 @@ export function resolveCascade(lockedPieces, context = {}) {
         depth,
         complexity,
         holeMask: holeMaskMatrix.map((mask) => mask.slice()),
-        sendForClean,
+        sendForPerfectClear,
         manualColumns: [...manualHoleColumns],
         lockFootprint: [],
         sourceColor: null,

@@ -125,7 +125,7 @@ function normalizeMaskRow(row, manualColumns) {
     return safeFallback;
 }
 
-function determineAttackType(depth, complexity, cleanBonus, rules = {}) {
+function determineAttackType(depth, complexity, cleanRowBonus, rules = {}) {
     if (rules && rules.forceAttackType) {
         return rules.forceAttackType;
     }
@@ -160,9 +160,9 @@ export class GarbageAttack {
         complexity = 0,
         rows = 0,
         holeMasks = [],
-        cleanBonus = 0,
+        cleanRowBonus = 0,
         cleanMasks = [],
-        sendForClean = false,
+        sendForPerfectClear = false,
         attackType = ATTACK_TYPES.LINES,
         param = 0,
         metadata = {},
@@ -172,9 +172,9 @@ export class GarbageAttack {
         this.complexity = complexity;
         this.rows = rows;
         this.holeMasks = holeMasks;
-        this.cleanBonus = cleanBonus;
+        this.cleanRowBonus = cleanRowBonus;
         this.cleanMasks = cleanMasks;
-        this.sendForClean = sendForClean;
+        this.sendForPerfectClear = sendForPerfectClear;
         this.attackType = attackType;
         this.param = param;
         this.metadata = metadata;
@@ -255,9 +255,9 @@ export class GarbageAttack {
             complexity: this.complexity,
             rows: this.rows,
             holeMasks: [...this.holeMasks],
-            cleanBonus: this.cleanBonus,
+            cleanRowBonus: this.cleanRowBonus,
             cleanMasks: [...this.cleanMasks],
-            sendForClean: this.sendForClean,
+            sendForPerfectClear: this.sendForPerfectClear,
             attackType: this.attackType,
             param: this.param,
             metadata: { ...this.metadata },
@@ -271,9 +271,9 @@ export class GarbageAttack {
             complexity: payload.complexity || 0,
             rows: payload.rows || 0,
             holeMasks: Array.isArray(payload.holeMasks) ? payload.holeMasks.slice() : [],
-            cleanBonus: payload.cleanBonus || 0,
+            cleanRowBonus: payload.cleanRowBonus || 0,
             cleanMasks: Array.isArray(payload.cleanMasks) ? payload.cleanMasks.slice() : [],
-            sendForClean: !!payload.sendForClean,
+            sendForPerfectClear: !!payload.sendForPerfectClear,
             attackType: payload.attackType || ATTACK_TYPES.LINES,
             param: payload.param || 0,
             metadata: payload.metadata ? { ...payload.metadata } : {},
@@ -453,18 +453,18 @@ export function calculateGarbage(summary, rules = {}) {
     const rowsToSend = Math.max(0, depth - 1);
     const holeMasks = maskMatrix.slice(0, rowsToSend).map(maskArrayToBits);
 
-    const sendForClean = !!summary.sendForClean;
+    const sendForPerfectClear = !!summary.sendForPerfectClear;
     // Clean bonus = (1 + depth) / 2 (integer division)
-    const cleanBonus = sendForClean ? Math.floor((1 + depth) / 2) : 0;
+    const cleanRowBonus = sendForPerfectClear ? Math.floor((1 + depth) / 2) : 0;
 
     // Generate clean garbage patterns (alternating even/odd column masks)
     const cleanMasks = [];
-    for (let i = 0; i < cleanBonus; i++) {
+    for (let i = 0; i < cleanRowBonus; i++) {
         const pattern = i % 2 === 0 ? CLEAN_PATTERN_EVEN : CLEAN_PATTERN_ODD;
         cleanMasks.push(maskArrayToBits(columnsToMask(pattern)));
     }
 
-    const attackType = determineAttackType(depth, complexity, cleanBonus, rules);
+    const attackType = determineAttackType(depth, complexity, cleanRowBonus, rules);
     const param = determineAttackParam(attackType, depth, complexity, rules);
 
     return new GarbageAttack({
@@ -472,9 +472,9 @@ export function calculateGarbage(summary, rules = {}) {
         complexity,
         rows: rowsToSend,
         holeMasks,
-        cleanBonus,
+        cleanRowBonus,
         cleanMasks,
-        sendForClean,
+        sendForPerfectClear,
         attackType,
         param,
         metadata: {
@@ -586,7 +586,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
 /**
  * Insert garbage entries into the playfield with animation support
  *
- * CRITICAL: Hole decoding must match Quadra's encoding:
+ * CRITICAL: Hole decoding must match the wire hole-encoding used by maskArrayToBits:
  * - holeMask bitfield is decoded MSB-first
  * - Bit 9 → column 0, Bit 8 → column 1, ..., Bit 0 → column 9
  * - 1 bit = HOLE (empty cell), 0 bit = SOLID (garbage block)
