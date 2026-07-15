@@ -1,7 +1,7 @@
 {
   "name": "serenity-blocks",
   "version": "1.0.0",
-  "description": "A modern Tetris-inspired puzzle game built with Phaser 4",
+  "description": "A modern falling-block puzzle game built with Phaser 4",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -111,8 +111,9 @@
     }
   },
   "keywords": [
-    "tetris",
     "puzzle",
+    "falling-blocks",
+    "block-puzzle",
     "game",
     "phaser",
     "phaser4"

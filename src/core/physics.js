@@ -238,15 +238,15 @@ export async function applyGravity(
 /* moved to cascade-helpers.js: detectFullLines */
 
 /**
- * Calculate garbage hole columns for cascade clears (Quadra-authentic fallback)
+ * Calculate garbage hole columns for cascade clears (deterministic fallback)
  *
- * QUADRA METHOD - Use the moved array:
- * Quadra tracks which cells moved (fell down) after line clears. The hole pattern
+ * MOVED-ARRAY METHOD:
+ * We track which cells moved (fell down) after line clears. The hole pattern
  * for garbage is determined by scanning the moved array for each cleared row.
  * A column gets a hole if moved[row][col] is true for that cleared row.
  *
- * In Serenity Blocks we prefer the pre/post board delta for cascades, but this
- * helper mirrors Quadra's legacy logic and acts as a deterministic fallback.
+ * In Serenity Blocks we prefer the pre/post board delta for cascades; this
+ * helper is a deterministic fallback.
  *
  * @param {Array<Array<boolean>>} movedArray - 2D array tracking which cells moved
  * @param {Array<number>} fullLines - Y coordinates of lines being cleared
@@ -262,7 +262,7 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
 
     physicsLog('[calculateCascadeHoleColumns] ========================================');
     physicsLog(
-        `[calculateCascadeHoleColumns] QUADRA METHOD: Analyzing cleared lines [${fullLines.join(', ')}]`,
+        `[calculateCascadeHoleColumns] moved-array method: Analyzing cleared lines [${fullLines.join(', ')}]`,
     );
 
     // Scan the moved array to find which columns had blocks that moved
@@ -344,7 +344,7 @@ function calculateHoleColumnsFromBoardDelta(preGravityBoard, currentBoard, fullL
 
 /**
  * Build per-row hole masks for a cascade wave.
- * Returns both the per-row masks (mirroring Quadra's hole_pos buffer) and the merged
+ * Returns both the per-row masks and the merged
  * column set that older callbacks expect.
  *
  * @param {Array<number>} fullLines - Y coordinates of lines being cleared
@@ -478,9 +478,9 @@ function getContiguousSpan(columns) {
 /* moved to cascade-helpers.js: removeClearedLines */
 
 /**
- * Main physics processing loop - QUADRA-ACCURATE IMPLEMENTATION
+ * Main physics processing loop
  *
- * CRITICAL: This implements Quadra's exact hole position tracking:
+ * Hole-position tracking:
  * 1. moved[row][col] is set TRUE when a piece is placed at that position
  * 2. During line clearing, moved[row][col] for cleared lines determines holes
  * 3. TRUE in moved[][] → HOLE in garbage (inverse mapping!)
@@ -515,7 +515,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
     const holeMaskMatrix = [];
     let sendForClean = false;
 
-    // QUADRA CRITICAL: moved[row][col] tracks piece placement positions
+    // moved[row][col] tracks piece placement positions
     // Initial state: mark where the piece was just placed
     // FIX: Use actual board length for tall boards (100+ rows)
     const boardHeight = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
@@ -564,7 +564,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             callbacks.triggerCascadeWave(cascadeCount);
         }
 
-        // QUADRA CRITICAL: Store moved[][] state for each cleared line
+        // Store moved[][] state for each cleared line
         // This captures which cells had blocks from the current piece (cascade 1)
         // or which cells fell from above (cascades 2+)
         const waveHoleMasks = [];
@@ -663,7 +663,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         // Skip level progression if disabled (e.g., Infinity mode uses fixed speed)
         if (gameState.linesUntilNextLevel <= 0 && !gameState.disableLevelProgression) {
             gameState.level++;
-            gameState.linesUntilNextLevel += 15; // Quadra: 15 lines per level
+            gameState.linesUntilNextLevel += 15; // 15 lines per level
             gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
             // Odyssey speed-up modifier: keep the drop interval 1.5x shorter at every level-up so the
             // effect survives the recompute. Gated on speedMultiplier (only the Odyssey modifier sets
@@ -683,7 +683,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
             callbacks.updateBackground(gameState.level);
         }
 
-        // Quadra-style scoring: uses depth (lines), level, complexity (cascades), and perfect clear
+        // Scoring: uses depth (lines), level, complexity (cascades), and perfect clear
         // Perfect clear is detected later after all cascades complete, so we pass false here
         // and add the perfect clear bonus at the end if the board is empty
         let points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
@@ -730,7 +730,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
 
-        // QUADRA CRITICAL: Clear moved[][] AFTER reading hole positions
+        // Clear moved[][] AFTER reading hole positions
         // This prepares it to track which cells fall during gravity
         physicsLog('[Physics] Clearing moved[][] array for gravity tracking');
         resetMovedArray(movedArray);
@@ -813,7 +813,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         callbacks.onCascadeComplete(cascadeCount);
     }
 
-    // Quadra-style Perfect Clear Bonus
+    // Perfect Clear Bonus
     // Award bonus points when the entire board is cleared
     if (sendForClean && depth > 0) {
         let perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)

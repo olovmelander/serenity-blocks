@@ -1,6 +1,6 @@
 # Serenity Blocks
 
-Serenity Blocks is a Tetris-inspired game with a Phaser-first gameplay renderer and Three.js/WebGL theme backgrounds.
+Serenity Blocks is a falling-block puzzle game with a Phaser-first gameplay renderer and Three.js/WebGL theme backgrounds.
 
 ## Quick Start
 
@@ -54,3 +54,10 @@ npm run preview
 
 - The game uses Phaser for board rendering and keeps theme backgrounds in Three.js for visual flexibility.
 - Legacy canvas paths remain only as guarded fallback paths.
+
+## Legal
+
+Serenity Blocks is an independent game and is **not affiliated with, endorsed by, or
+sponsored by The Tetris Company, LLC or Tetris Holding, LLC.** TETRIS® is a registered
+trademark of Tetris Holding, LLC. Third-party asset attributions are listed in
+[`CREDITS.md`](CREDITS.md).
