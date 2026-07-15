@@ -9,13 +9,13 @@ export const CRYSTAL_CAVE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#70f0ff', // Luminous Aquamarine
-        O: '#ffc860', // Radiant Amber Crystal
-        T: '#c080ff', // Deep Amethyst Glow
-        S: '#50ffc0', // Vibrant Emerald
-        Z: '#ff60c0', // Brilliant Rose Quartz
-        J: '#6080ff', // Deep Sapphire
-        L: '#ffa060', // Glowing Citrine
+        I: '#ffc860', // Radiant Amber Crystal
+        O: '#c080ff', // Deep Amethyst Glow
+        T: '#50ffc0', // Vibrant Emerald
+        S: '#ff60c0', // Brilliant Rose Quartz
+        Z: '#6080ff', // Deep Sapphire
+        J: '#ffa060', // Glowing Citrine
+        L: '#70f0ff', // Luminous Aquamarine
         GARBAGE: '#0a0818', // Abyssal Shadow
     },
 
