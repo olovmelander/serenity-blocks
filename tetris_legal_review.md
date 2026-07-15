@@ -22,7 +22,7 @@ The **real, surviving exposure is narrow and concentrated:**
 
 - **Trademark use of "Tetris"** in *published, user-facing* surfaces (store copy, package metadata/keyword, in-game scoreboard, Odyssey objective text). This is the highest-confidence, cheapest-to-fix risk.
 - **A small number of themes that reproduce the Guideline color-to-shape palette**, which is the one visual element the *Xio* court actually held protectable as trade dress/expression.
-- **Two asset-provenance hygiene gaps** (undocumented music, fragmented CC-BY attribution) — copyright compliance issues unrelated to Tetris.
+- **Asset-provenance hygiene** (music provenance; CC-BY attribution consolidation) — **both now addressed** this session (see Findings G, H); copyright-compliance items unrelated to Tetris.
 - **A residual factual/documentation question on Quadra**: the substantive copyleft exposure is **LOW** (only formulas/mechanics appear to be reused, which LGPL cannot restrict), but the code's self-labeling as an "exact port" citing Quadra source-line ranges is evidentiarily awkward and should be cleaned up and provenance-audited.
 
 **Mitigations already in place (genuine legal assets):** a distinctive product name ("Serenity Blocks"); a *deliberately scrambled* default piece palette; no Korobeiniki / "Type A" / Russian-folk music **by name** (the audio binaries were not decoded — a one-time listen-through is the single open verification item, per §3 and Finding G); fully procedural sound effects; OFL/system fonts only; no ripped Tetris sprites, block skins, or textures. Serenity Blocks is in a **materially stronger position than the infringing "Mino" game** that lost *Xio*.
@@ -37,13 +37,15 @@ The **real, surviving exposure is narrow and concentrated:**
 | D | Odyssey/level user-facing text renders "**Tetrises**" as an objective | Tetris | Trademark | **MEDIUM** | Low |
 | E | Themes reproducing the Guideline color-to-shape palette (`voltage-storm`, `neon-dusk`, `neon-district`, + `aether-tides`, `nebula-flow`, `starlight`) | Tetris | Trade dress | **MEDIUM** | Low |
 | F | **Quadra (LGPL-2.1) lineage** — scoring/speed/garbage/physics self-described as an "exact port"; provenance & documentation | Quadra | Copyleft / license | **LOW** (residual provenance question) | Medium |
-| G | Music tracks ship with **no provenance/license/composer record** | Third-party | Copyright hygiene | **MEDIUM** | Low |
-| H | CC-BY texture/model attribution fragmented, missing from `CREDITS.md` | Third-party | Copyright compliance | **MEDIUM** | Low |
+| G | Music provenance — confirmed **original**, now recorded in `CREDITS.md` | Third-party | Copyright hygiene | **RESOLVED** | Done |
+| H | CC-BY attribution — consolidated into `CREDITS.md` | Third-party | Copyright compliance | **RESOLVED** | Done |
 | I | On-screen Guideline terms ("T-SPIN," "BACK-TO-BACK") | Tetris | Trade dress (weak) | **LOW** | Low |
 | J | No `LICENSE` file (MIT declared); no non-affiliation disclaimer | Hygiene | — | **LOW** | Trivial |
 | — | SRS tables, 7-bag, lock delay, T-spin, board dims, "tetromino," Quadra **formulas** | Both | Copyright (ideas/formulas) | **DISMISSED** — see §7 | N/A |
 
 **Top actions before any public/commercial release:** (1) strip "Tetris" from all published metadata, store copy, and in-game UI (A–D); (2) re-hue the ~6 themes that adopt the Guideline palette and vary board presentation (E); (3) document music provenance and consolidate CC-BY attribution into `CREDITS.md` (G, H); (4) add a non-affiliation disclaimer and a real `LICENSE` file (J); (5) run a one-time Quadra provenance audit and scrub the "exact port / from canvas.cc:NNN" comments (F).
+
+> **Remediation status (applied on this branch, 2026-07-15).** **Already done:** "Tetris" removed from `package.json`, `README.md`, and `game_description.md` (A, C); the in-game scoreboard label and Odyssey objective/tip text changed from "Tetris"/"Tetrises" to "Quad"/"Quads" (B, D); the Quadra provenance-admission **comments** (named `canvas.cc`/`player.cc` source lines, "exact port", "QUADRA-ACCURATE", `net_version`) scrubbed to neutral behavioral descriptions across `garbage.js` / `physics.js` / `constants.js` / `scoring.js` / `cascade-resolver.js` / `game.js` (F, the documentation-hygiene half); non-affiliation disclaimer added to `README.md` and `CREDITS.md` (J, partial); CC-BY attribution consolidated into `CREDITS.md` (H); music provenance recorded as **original, project-owned** (G). **Still open:** re-hue the ~6 Guideline-palette themes (E); the *substantive* Quadra provenance sign-off + a real `LICENSE` file (F, J); optional on-screen term renames (I) and internal-identifier renames. None of the applied edits change gameplay, logic, or visuals — they touch metadata, docs, comments, and display strings only.
 
 ---
 
@@ -328,11 +330,11 @@ The design docs repeatedly name **Tetris Effect: Connected — Journey Mode** as
 
 **Two genuine gaps (both CONFIRMED, MEDIUM):**
 
-### Finding G — Music tracks have no provenance/license/composer record — **MEDIUM (copyright hygiene)**
-`CREDITS.md` documents only two 3D-model entries and **does not mention the ~36 shipped music tracks at all** — no composer, source, license, or "original/AI-generated" statement. `public/assets/music/README.md` is purely operational. There is no way, from the repo, to establish that the tracks are original, licensed, or AI-generated; if any were library-sourced or resemble a copyrighted composition, there is no license record to defend it. Music is prominent and user-facing. **Fix:** record provenance/license for every track in `CREDITS.md`; do a one-time listen-through.
+### Finding G — Music provenance — **RESOLVED** (was MEDIUM, copyright hygiene)
+As originally flagged, `CREDITS.md` documented only two 3D-model entries and did not mention the ~36 shipped music tracks — no composer, source, or license record — so nothing in the repo established that the tracks were original, licensed, or AI-generated. **Status (2026-07-15): RESOLVED.** The project owner confirms **all ~36 tracks are original compositions owned by the project** (no stock/library music, and no *Korobeiniki* / Type-A arrangement), and this is now recorded in `CREDITS.md` §4 with a proprietary/project-owned license statement. A one-time human listen-through before release remains prudent QA, but the provenance-record gap is closed.
 
-### Finding H — CC-BY attribution fragmented, missing from `CREDITS.md` — **MEDIUM (copyright compliance)**
-Genuinely CC-BY assets ship and **require** attribution reaching end users: Solar System Scope planet textures (`public/textures/stellar-drift/ATTRIBUTION.md`, also copied to `public/textures/` root) and Poly Pizza CC-BY 3D models (`src/themes/ocean/assets/ATTRIBUTION.md`). These live in ~14 scattered per-folder `ATTRIBUTION.md` files, but the top-level `CREDITS.md` — which reads as *the* credits file — lists only 2 entries. If only `CREDITS.md` (or an in-app credits screen derived from it) ships, CC-BY attribution is incomplete — a curable license breach. **Fix:** consolidate all CC-BY sources into `CREDITS.md` / an in-app credits screen.
+### Finding H — CC-BY attribution fragmented — **RESOLVED** (was MEDIUM, copyright compliance)
+As originally flagged, genuinely CC-BY assets ship and **require** attribution reaching end users — Solar System Scope planet textures and six Poly Pizza CC-BY 3D models (plus the Sea Turtle model) — but were recorded only in ~14 scattered per-folder `ATTRIBUTION.md` files while the top-level `CREDITS.md` listed just two entries. **Status (2026-07-15): RESOLVED.** All CC-BY sources are now consolidated into `CREDITS.md` §1 (Solar System Scope; the Sea Turtle; and the six MiniPoly/Laney XR Labs/Poly-by-Google/Christopher F ocean models), with CC0 and project-original assets separated out. **Remaining action:** ensure the shipped build actually surfaces `CREDITS.md` (or an in-app credits screen derived from it) to end users.
 
 ---
 
@@ -345,8 +347,8 @@ Genuinely CC-BY assets ship and **require** attribution reaching end users: Sola
 | C — "Tetris-inspired" (desc/README) | Tetris | Trademark | Medium | C&D | **MEDIUM** | P0 |
 | D — "Tetrises" in objective text | Tetris | Trademark | Medium | C&D | **MEDIUM** | P1 |
 | E — Guideline-palette themes (×6) | Tetris | Trade dress | Medium | Injunction / reskin | **MEDIUM** | P1 |
-| G — Music provenance gap | Third-party | Copyright hygiene | Medium | Takedown / rework | **MEDIUM** | P1 |
-| H — CC-BY attribution gap | Third-party | Copyright compliance | Medium | License breach | **MEDIUM** | P1 |
+| G — Music provenance (now original + recorded) | Third-party | Copyright hygiene | — | — | **RESOLVED** | Done |
+| H — CC-BY attribution (now consolidated) | Third-party | Copyright compliance | — | — | **RESOLVED** | Done |
 | F — Quadra LGPL provenance | Quadra | Copyleft / license | Low | Rewrite / comply | **LOW** (residual) | P1 |
 | I — On-screen Guideline terms | Tetris | Trade dress (weak) | Low-Med | Minor redesign | **LOW** | P2 |
 | J — No LICENSE / no disclaimer | — | Hygiene | Low | Good-faith / confusion | **LOW** | P2 |
@@ -366,7 +368,7 @@ Genuinely CC-BY assets ship and **require** attribution reaching end users: Sola
 ### P1 — Before commercial release (days)
 4. **Scrub user-facing "Tetris/Tetrises" from gameplay copy (D)** — `OdysseyHUD.js:289`, `levels.js` objective descriptions/tips → "quads"/"four-line clears."
 5. **Re-hue the ~6 Guideline-palette themes (E)** — `voltage-storm`, `neon-dusk`, `neon-district`, `aether-tides`, `nebula-flow`, `starlight` — so no shipped skin reproduces the I-cyan/O-yellow/T-purple/S-green/Z-red/J-blue/L-orange mapping. Keep the scrambled default as canonical identity. Optionally vary board framing/borders/cell styling so no theme reads as "stock Guideline Tetris."
-6. **Close the audio & CC-BY gaps (G, H)** — record provenance/license for every music track in `CREDITS.md`; consolidate all CC-BY (Solar System Scope, Poly Pizza) attribution into `CREDITS.md`/an in-app screen; do a one-time human listen-through of the ~36 tracks + intro `.ogg`s.
+6. ✅ **DONE — Close the audio & CC-BY gaps (G, H).** Music provenance recorded as **original / project-owned** in `CREDITS.md` §4 (owner-confirmed); all CC-BY sources (Solar System Scope, Sea Turtle, six Poly Pizza ocean models) consolidated into `CREDITS.md` §1. **Residual:** a one-time human listen-through of the ~36 tracks + intro `.ogg`s (QA), and ensure the build surfaces `CREDITS.md` to players.
 7. **Run the Quadra provenance audit + scrub (F)** — confirm (ideally clean-room-documented) that only formulas/rules were re-derived, not literal source; replace "exact port / from canvas.cc:NNN / QUADRA-ACCURATE / identical by construction" comments with neutral behavioral descriptions; then add the `LICENSE` (MIT) file once provenance is confirmed. If the audit finds literal translation, either clean-room re-derive from a behavioral spec or bring the affected modules into LGPL-2.1 compliance (see §5 for what that concretely requires — corresponding source, preserved Ludus notices, relinkable form; incompatible with a closed MIT binary).
 
 ### P2 — Defensive depth / polish
@@ -385,7 +387,7 @@ Genuinely CC-BY assets ship and **require** attribution reaching end users: Sola
 
 - **Distinctive product name** "Serenity Blocks" — no similarity to "Tetris."
 - **Scrambled default piece palette** + **30 DIVERGENT themes** — only Z(red) coincides in the default; a deliberate, valuable divergence.
-- **No Tetris music by name** — grep finds no Korobeiniki / "Type A" / Russian-folk track; ~36 original, theme-named tracks. *(Name-level only: the binaries were not decoded — see Finding G and the §3 limitation. On the current evidence the *Korobeiniki* sound mark (Reg. No. 3,517,007) is not implicated, pending the one-time listen-through.)*
+- **No Tetris music** — the ~36 tracks are confirmed **original, project-owned compositions** (owner-confirmed; recorded in `CREDITS.md` §4); none uses *Korobeiniki* / "Type A", so the sound mark (Reg. No. 3,517,007) is not implicated. *(A one-time human listen-through remains prudent QA, since this review did not decode the audio binaries.)*
 - **Fully procedural SFX**; **OFL/system fonts only**; **no ripped Tetris sprites/skins/textures** — piece rendering is generated in code.
 - **Generic "tetromino" terminology** (never the trademarked "Tetrimino").
 - **Mechanics, formulas, and numeric constants** (SRS, 7-bag, ghost, lock delay, T-spin, B2B, and the Quadra scoring/speed/garbage math) — legal to implement; **not copyrightable**, and not LGPL-triggering when re-derived rather than copied.

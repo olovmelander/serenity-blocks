@@ -75,50 +75,21 @@ third-party or CC assets:
 
 ## 4. Music
 
-The soundtrack ships ~36 tracks in `public/assets/music/`. **Provenance and license for
-each track must be recorded here before commercial release** (composer / source /
-license, and whether original, commissioned, licensed-library, or AI-generated). This
-scaffold is intentionally left for the project owner to complete — do not assume a track
-is clear to ship until its row is filled in.
+**All music tracks are original compositions created for Serenity Blocks and are owned
+by the project.** No third-party, stock, or library music is used, and no track is
+derived from or arranges another work — in particular, none uses the *Korobeiniki* /
+"Tetris® Type-A" melody. License: proprietary — © the Serenity Blocks project; all
+rights reserved.
 
-| Track | File | Composer / Source | License | Provenance |
-|-------|------|-------------------|---------|------------|
-| Aurora | `aurora.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Bioluminescence | `bioluminescence.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Blood Moon | `blood-moon.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Candlelit Monastery | `candlelit-monastery.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Cherry Blossom Garden | `cherry-blossom-garden.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Cinder Drift | `cinder-drift.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Cosmic Chimes | `cosmic-chimes.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Cosmic Noir | `cosmic-noir.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Crystal Cave | `crystal-cave.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Echoes of the Soul | `echoes-of-the-soul.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Electric Dreams | `electric-dreams.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Ethereal Echoes | `ethereal-echoes.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Falling Pieces | `falling-pieces.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Floating Islands | `floating-islands.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Fluid Dreams | `fluid-dreams.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Galaxy | `galaxy.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Geode Crystalline | `geode-crystalline.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Himalayan Peak | `himalayan-peak.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Ice Temple | `ice-temple.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Lunara | `lunara.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Meditation Temple | `meditation-temple.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Misty Lake | `misty-lake.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Moonlit Forest | `moonlit-forest.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Moonlit Greenhouse | `moonlit-greenhouse.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Neon District | `neon-district.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Neon Dusk | `neon-dusk.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Ocean Deep | `ocean-deep.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Rainy Window | `rainy-window.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Shifting Sands | `shifting-sands.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Starlight | `starlight.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Stellar Drift | `stellar-drift.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Stillwater | `stillwater.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Waves | `waves.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Wolfhour | `wolfhour.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Black Hole | `black-hole.mp3` | _TBD_ | _TBD_ | _TBD_ |
-| Aether Tides | `aether-tides.mp3` | _TBD_ | _TBD_ | _TBD_ |
+Tracks shipped in `public/assets/music/`:
+
+Aurora · Bioluminescence · Blood Moon · Candlelit Monastery · Cherry Blossom Garden ·
+Cinder Drift · Cosmic Chimes · Cosmic Noir · Crystal Cave · Echoes of the Soul ·
+Electric Dreams · Ethereal Echoes · Falling Pieces · Floating Islands · Fluid Dreams ·
+Galaxy · Geode Crystalline · Himalayan Peak · Ice Temple · Lunara · Meditation Temple ·
+Misty Lake · Moonlit Forest · Moonlit Greenhouse · Neon District · Neon Dusk ·
+Ocean Deep · Rainy Window · Shifting Sands · Starlight · Stellar Drift · Stillwater ·
+Waves · Wolfhour · Black Hole · Aether Tides.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no
 third-party audio samples are bundled. Fonts are Google Fonts (Orbitron, Space Mono)
