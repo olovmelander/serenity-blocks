@@ -3843,7 +3843,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Deep in the neon district, holographic billboards pulse with light. Speed and precision are everything.',
             difficulty: 8,
-            tip: 'The time limit is strict. Focus on efficient Tetris clears to meet your target.',
+            tip: 'The time limit is strict. Focus on efficient four-line clears to meet your target.',
         },
     },
 
@@ -4370,7 +4370,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             difficulty: 7,
             description: 'Thin air and a crowded field make every placement expensive. Dig quickly, then stabilize before you sprint.',
-            tip: 'Half the board is already spoken for. Clear escape routes first, then decide where your Tetris lane will live.',
+            tip: 'Half the board is already spoken for. Clear escape routes first, then decide where your quad lane will live.',
         },
     },
     27: {

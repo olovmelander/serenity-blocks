@@ -18,7 +18,7 @@ Assets are grouped by license obligation:
 
 | Asset | Author | License | Source | Used in |
 |-------|--------|---------|--------|---------|
-| `2k_saturn.jpg`, `2k_moon.jpg`, `2k_mars.jpg` | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift theme (secondary planets) |
+| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sakura Twilight, Sunset, Wolfhour + playground |
 
 ### 3D models
 
@@ -31,6 +31,25 @@ Assets are grouped by license obligation:
 | `seaweed-laney-03-ccby.glb` (Seaweed 3) | **Laney XR Labs** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/f_gXhnf06Oc | Ocean theme |
 | `kelp-google-ccby.glb` (Kelp) | **Poly by Google** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/4cFllH6Iazk | Ocean theme |
 | `kelp-christopher-ccby.glb` (Kelp) | **Christopher F** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/3VhttTFyADO | Ocean theme |
+| `Fox.glb` (animated fox) | **PixelMannen** (model) · **@tomkranis** (rig) · **@AsoboStudio** / **@scurest** (glTF conversion) | CC-BY 4.0 | https://github.com/KhronosGroup/glTF-Sample-Models — original: https://opengameart.org/content/fox-and-shiba | Sakura Twilight theme |
+
+> **Needs provenance verification (do not ship until resolved):** `src/themes/sakura-twilight/assets/landscape-glb.glb` has no source/license record in the repo. Quarantine it until ownership/license is established.
+
+---
+
+## 1b. MIT-licensed bundled assets
+
+**SynthCity** city / vehicle textures under `public/textures/synthcity/` (~109 files) are from the SynthCity project by **Jeff Beene**, used under the MIT License. Used by the Neon District theme. Source: https://github.com/jeffbeene/synthcity
+
+> MIT License — Copyright (c) 2024 Jeff Beene
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Note: several `0QuazDeckard…` car textures in that folder appear unreferenced by code — verify their separate license or remove them before distribution.
 
 ---
 
@@ -75,11 +94,21 @@ third-party or CC assets:
 
 ## 4. Music
 
-**All music tracks are original compositions created for Serenity Blocks and are owned
-by the project.** No third-party, stock, or library music is used, and no track is
-derived from or arranges another work — in particular, none uses the *Korobeiniki* /
-"Tetris® Type-A" melody. License: proprietary — © the Serenity Blocks project; all
-rights reserved.
+All ~36 soundtrack tracks were **generated with Suno** (AI music generation) by the
+project owner — self-generated from the owner's own prompts under a **paid Suno
+subscription** whose terms grant commercial-use and ownership rights in the generated
+output. The subscription and terms records, the per-track prompts, and the Suno output
+references (e.g. `aether-tides.mp3` and `black-hole.mp3` retain `suno.com` output IDs in
+their metadata) are retained by the project as the ownership/licensing record.
+
+The tracks are the game's own soundtrack — **not** taken from any third-party library or
+existing song; in particular, none uses the *Korobeiniki* / "Tetris® Type-A" melody.
+
+> Note: the commercial-use/ownership rights come from the paid Suno subscription terms;
+> keep those records with the project. Two loose ends remain good practice — give the
+> MP3-embedded cover-art images a documented source, and (separately from the usage right)
+> let counsel confirm the copyright-registrability position for AI-generated audio at
+> release.
 
 Tracks shipped in `public/assets/music/`:
 
