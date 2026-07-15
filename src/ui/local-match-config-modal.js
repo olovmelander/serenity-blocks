@@ -17,7 +17,7 @@ import { TEAM_COLORS } from '../core/multi-player-state.js';
 
 const BOT_SKILL_TIERS = [
     'Rookie', 'Novice', 'Learner', 'Steady', 'Skilled',
-    'Sharp', 'Expert', 'Master', 'Quadra Ace', 'Machine',
+    'Sharp', 'Expert', 'Master', 'Ace', 'Machine',
 ];
 const DEFAULT_BOT_SKILL = 5;
 
