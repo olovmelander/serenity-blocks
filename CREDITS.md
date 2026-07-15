@@ -94,21 +94,21 @@ third-party or CC assets:
 
 ## 4. Music
 
-The soundtrack tracks were **generated with Suno** (AI music generation) for Serenity
-Blocks via the project's Suno account — for example, `aether-tides.mp3` and
-`black-hole.mp3` retain `suno.com` output references in their metadata, and archived
-prompt files document the workflow. They are used as the game's original soundtrack and
-are **not** taken from any third-party library or existing song; in particular, no track
-uses the *Korobeiniki* / "Tetris® Type-A" melody.
+All ~36 soundtrack tracks were **generated with Suno** (AI music generation) by the
+project owner — self-generated from the owner's own prompts under a **paid Suno
+subscription** whose terms grant commercial-use and ownership rights in the generated
+output. The subscription and terms records, the per-track prompts, and the Suno output
+references (e.g. `aether-tides.mp3` and `black-hole.mp3` retain `suno.com` output IDs in
+their metadata) are retained by the project as the ownership/licensing record.
 
-> **Provenance / chain-of-title — complete before commercial release.** AI generation does
-> not by itself settle ownership. Retain the Suno account and the terms-of-service snapshot
-> in effect at generation, plus each track's output ID, prompt, generation date, and any
-> human editing/stems; have counsel confirm the commercial-use and ownership position for
-> AI-generated audio (Suno's terms govern usage rights, and AI-generated output raises
-> separate copyrightability questions). The cover-art images embedded in the MP3s also need
-> a documented source. Do not assert unqualified "all rights reserved / non-derivative"
-> ownership until this is confirmed.
+The tracks are the game's own soundtrack — **not** taken from any third-party library or
+existing song; in particular, none uses the *Korobeiniki* / "Tetris® Type-A" melody.
+
+> Note: the commercial-use/ownership rights come from the paid Suno subscription terms;
+> keep those records with the project. Two loose ends remain good practice — give the
+> MP3-embedded cover-art images a documented source, and (separately from the usage right)
+> let counsel confirm the copyright-registrability position for AI-generated audio at
+> release.
 
 Tracks shipped in `public/assets/music/`:
 
