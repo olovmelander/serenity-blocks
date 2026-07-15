@@ -3773,7 +3773,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         ${genRow(rowIcon.single, 'Single', (p) => p.clears[1] || 0)}
                         ${genRow(rowIcon.double, 'Double', (p) => p.clears[2] || 0)}
                         ${genRow(rowIcon.triple, 'Triple', (p) => p.clears[3] || 0)}
-                        ${genRow(rowIcon.tetris, 'Tetris', (p) => p.clears[4] || 0)}
+                        ${genRow(rowIcon.tetris, 'Quad', (p) => p.clears[4] || 0)}
 
                         <div class="separator"></div>
 

@@ -11,13 +11,13 @@
  * animation as a replay of the precomputed waves, which is what turns the
  * measured 330–400ms cascade input dead-time into ≤1 tick.
  *
- * FIDELITY RULES (this must remain a bit-exact port of processPhysics):
+ * FIDELITY RULES (this must reproduce processPhysics' results exactly):
  *  - Steps with exported legacy implementations are REUSED, not re-written
  *    (detectFullLines, removeClearedLines, findConnectedComponents,
- *    isPartOfPiece, calculateQuadraLineScore) — identical by construction.
+ *    isPartOfPiece, calculateQuadraLineScore) — reused directly so results match.
  *  - The wave loop, hole-mask fallback ladder, movedArray lifecycle, level
  *    progression, B2B arming, and the gravity settle order replicate
- *    physics.js line-for-line (comments cite the source lines).
+ *    physics.js (comments cite the corresponding physics.js lines).
  *  - The gravity pass iterates a bottom-edge-DESC sort taken ONCE before the
  *    settle loop and never re-sorted (physics.js:197-198) — piece y mutations
  *    do not re-order iteration mid-settle; changing this changes movedArray

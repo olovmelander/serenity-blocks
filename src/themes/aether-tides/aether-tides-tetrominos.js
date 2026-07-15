@@ -1,10 +1,10 @@
 export const AETHER_TIDES_TETROMINOS = {
-    I: { color: '#00FFFF' }, // Cyan
-    J: { color: '#0000FF' }, // Blue
-    L: { color: '#FF00FF' }, // Magenta
-    O: { color: '#FFFF00' }, // Yellow (Star)
-    S: { color: '#00FF00' }, // Green (Nebula)
-    T: { color: '#800080' }, // Purple
-    Z: { color: '#FF0000' }, // Red (Red Giant)
+    I: { color: '#F5C542' }, // Amber star
+    J: { color: '#FF7A3C' }, // Coral tide
+    L: { color: '#2CE0FF' }, // Aqua current
+    O: { color: '#8A5CFF' }, // Nebula violet
+    S: { color: '#FF4D6D' }, // Crimson drift
+    T: { color: '#3CE68C' }, // Sea green
+    Z: { color: '#3A7BFF' }, // Deep blue
     ghost: { color: '#FFFFFF', opacity: 0.3 },
 };

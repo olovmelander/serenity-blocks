@@ -59,13 +59,9 @@ describe('Garbage Logic (Quadra Compliance)', () => {
 
             const attack = calculateGarbage(summary);
 
-            // Quadra: Base attack = depth - 1. So for 1 line, attack is 0.
-            // Wait, Quadra logic: 1 line -> 0 attack lines?
-            // Yes: case 1: score_add=250.
-            // attacks are sent via Net_list::sendlines.
-            // "base attack lines: depth - 1" is consistent with game.cc/canvas.cc comments?
-            // Actually, for sending lines:
-            // Canvas::give_line: i = max(0, depth-1-alive_count)
+            // Base attack = depth - 1. So for 1 line, attack is 0.
+            // 1 line -> 0 attack lines; 2 -> 1; 3 -> 2; 4 -> 3.
+            // (Single line clears send no garbage.)
 
             // Let's verify the mask generation even if 0 lines are effectively sent "as attack",
             // the object should still capture the masks generally.
@@ -97,7 +93,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
             expect(attack.rows).toBe(1);
 
             // The hole mask for that 1 line should correspond to the first cleared line's mask
-            // In Quadra `Net_list::send`, it loops j < nb.
+            // The sender loops over the outgoing garbage rows.
             // `holeMasks` in `calculateGarbage` slices `rowsToSend`.
             // So it takes the first mask.
 
@@ -187,7 +183,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
         });
     });
 
-    describe('Handicap pipeline (Quadra net_version 24)', () => {
+    describe('Handicap pipeline', () => {
         const mkState = (handicap) => ({
             handicap, handicaps: {}, handicapCrowd: 0, isAlive: true,
         });
