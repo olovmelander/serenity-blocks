@@ -555,28 +555,53 @@ describe('startup pipeline state machine', () => {
         expect(callbackOrder).toEqual(['dispose-visuals', 'menu-visible']);
     });
 
-    it('keeps the shell-gated menu pending when watchdog fires before app readiness', async () => {
+    it('forces a degraded menu-visible when the watchdog fires before app readiness (no hang)', async () => {
         vi.useFakeTimers();
         const { createStartupPipelineStateMachine } = await import(
             '../../src/ui/startup-pipeline-state-machine.js'
         );
-        const pipeline = createStartupPipelineStateMachine({ watchdogMs: 100 });
+        const menuVisibleDegraded = [];
+        const pipeline = createStartupPipelineStateMachine({
+            watchdogMs: 100,
+            onMenuVisible: (snap) => menuVisibleDegraded.push(snap.degraded),
+        });
         pipeline.start();
         pipeline.markIntroRunning();
 
         await vi.advanceTimersByTimeAsync(100);
+        // The watchdog is terminal: even without app readiness it forces a degraded
+        // menu-visible so the studio ident can never hang forever with no fallback.
         expect(pipeline.snapshot()).toMatchObject({
             menuReady: false,
-            menuVisible: false,
+            menuVisible: true,
+            degraded: true,
             introStatus: 'skipped',
+            introSkipReason: 'watchdog',
+            watchdogFired: true,
         });
-
-        pipeline.markAppReady();
-        pipeline.markMenuReady();
         await expect(pipeline.waitForMenuVisible()).resolves.toMatchObject({
             menuVisible: true,
+            degraded: true,
             introSkipReason: 'watchdog',
         });
+        expect(menuVisibleDegraded).toEqual([true]);
+
+        // Late app/menu readiness is a harmless no-op — the menu is already visible.
+        pipeline.markAppReady();
+        pipeline.markMenuReady();
+        expect(pipeline.snapshot().menuVisible).toBe(true);
+        expect(menuVisibleDegraded).toEqual([true]);
+    });
+
+    it('settles a pending menu-visible awaiter on dispose so callers cannot hang', async () => {
+        const { createStartupPipelineStateMachine } = await import(
+            '../../src/ui/startup-pipeline-state-machine.js'
+        );
+        const pipeline = createStartupPipelineStateMachine();
+        pipeline.start();
+        const pending = pipeline.waitForMenuVisible();
+        pipeline.dispose();
+        await expect(pending).resolves.toMatchObject({ disposed: true, menuVisible: false });
     });
 
     it('treats an explicit pre-title input as an idempotent intro skip', async () => {
