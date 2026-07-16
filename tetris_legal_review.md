@@ -1,855 +1,755 @@
-# Serenity Blocks — Tetris Intellectual-Property Legal-Risk Review
+# Serenity Blocks — Preliminary Tetris IP Risk Review
 
-**Version:** 3.0 — current-state repository and web-research review
-
-**Prepared:** 2026-07-15
-
+**Version:** 4.0 — full re-audit at current HEAD, with first rendered-product evidence
+**Prepared:** 2026-07-16
 **Repository:** `olovmelander/serenity-blocks`
+**Commit reviewed:** `853d40e17e8ce25e6fab9786a151e5f41e30acd5` (branch tip at audit time)
+**Supersedes:** v3.0 (2026-07-15, reviewed `main@4127ae2`) and its remediation appendix. The full v3.0 text is preserved in git history (this file's prior revision). Finding IDs are kept stable with v3.0 where the underlying issue is the same.
 
-**Branch / commit reviewed:** `main` at `4127ae2fc2babe329928d20a4873b5a4a644f286`
-
-**Primary focus:** U.S. trademark, copyright, trade dress, sound-mark, and platform-enforcement risk relating to Tetris
-
-**Decision posture:** pre-release risk triage; not a freedom-to-operate opinion
-
-> **Important: not legal advice.** This is an engineering-led issue-spotting report, not a legal opinion, a prediction of litigation, or a substitute for advice from qualified IP counsel. It does not create an attorney-client relationship. The conclusions are deliberately expressed as risk assessments, not findings of infringement. A lawyer should review the exact playable build, final store materials, launch territories, contracts, and asset provenance before release.
-
----
-
-## 1. Executive conclusion
-
-### Overall current Tetris-related posture: **MEDIUM (provisional)**
-
-Static source and asset evidence indicates that Serenity Blocks is materially less similar than the near-identical game adjudicated in *Tetris Holding, LLC v. Xio Interactive, Inc.*, 863 F. Supp. 2d 394 (D.N.J. 2012). Because this review did not run the build or perform a frame-by-frame comparison, that conclusion is provisional. The source shows a distinctive name; a scrambled first-run color map; fused, borderless pieces and a transparent playfield in the primary renderer; elaborate themed environments; three next previews; no hold system; custom cascade physics; different scoring; no deliberate lock-down recolor; and no Tetris-style bottom-to-top game-over fill. Those are material differences if consistently realized in the shipping build. A gridded legacy canvas renderer previously flagged here has since been verified unreachable and removed (see AV-2).
-
-The residual problem is the **combined impression**, not any isolated mechanic. The current product still combines:
-
-- the exact seven conventional I/O/T/S/Z/J/L four-square pieces;
-- an exact 10-wide × 20-visible-high field;
-- the overlapping visual/UI features discussed in *Xio*—falling and rotating pieces, line-clear presentation, ghost, next-piece display, and garbage—plus primarily functional modern rules such as seven-bag, SRS, T-spins, back-to-back scoring, hard drop, and lock delay; the latter group was not adjudicated as protected expression in *Xio*;
-- numerous selectable themes whose shape-to-hue assignment follows all or nearly all of the familiar modern Tetris color roles;
-- prominent decorative startup pieces drawn from the complete conventional seven-type repertoire around the `SERENITY BLOCKS` wordmark;
-- an exact four-square T-piece as the main-menu Single Player icon; and
-- two remaining ordinary player-visible uses of the word `Tetris`.
-
-The best on-point U.S. decision treated an overlapping **cluster** of audiovisual choices as protectable when the accused game reproduced their total concept and feel. The court also emphasized that individual elements might not infringe standing alone and relied on Mino's near identity and unusually damaging copying admissions. That makes the present case materially better than Xio's, but not clean enough to call low risk.
-
-### Release recommendation: **conditional no-go**
-
-Do not submit the current build or gameplay imagery for a commercial storefront until the P0 work in §11 is complete and counsel has reviewed a representative playable build and store-asset set against the specific Tetris works and current source-identifying materials plausibly relevant to a claim. This is a risk-management recommendation, not a conclusion that the present code infringes.
-
-### Highest-priority conclusions
-
-| Area | Current rating | Why | Cheapest meaningful reduction |
-|---|---:|---|---|
-| Audiovisual copyright | **Medium, provisional** | Exact seven-piece/10×20/ghost/next cluster remains; fused rendering, themes, cascades, and other differences materially mitigate; the current rendered result was not compared | Remove canonical pieces from branding; derange palettes as a conservative separation measure; conduct playable total-look review; redesign the cluster as a whole where practical |
-| Trade dress / storefront appearance | **Medium, provisional** | Startup code and the T-piece menu icon use tetromino imagery as branding; final rendered startup/store imagery was unavailable | Replace branding glyphs; curate clean store screenshots; retain transparent, fused, distinctive presentation |
-| TETRIS word mark | **Low–Medium** | Product title and package metadata are clean; two Odyssey tips use `Tetris` descriptively, and public source/docs contain extensive named references | Replace the two tips and public playground metadata as hygiene; reserve one counsel-approved plain-text legal notice if desired |
-| Sound mark | **Low, unverified** | No textual evidence of Korobeiniki/Type-A use, but no listening or acoustic comparison was performed | Musicologist/human listen plus chroma/fingerprint check; preserve provenance |
-| Mechanics/source code in isolation | **Low** | Rules, methods, and systems are generally excluded from copyright by 17 U.S.C. §102(b) | Preserve independent implementation evidence; avoid treating mechanics as branding |
-| Platform takedown / business continuity | **Unquantified likelihood / High impact** | Public takedown notices show enforcement capability and examples, not the probability that this project will be targeted; platform removal may precede merits review | Finish cheap cleanup, keep response dossier and counsel contact, and avoid launch-day dependency on disputed imagery |
-
-### Consolidated Tetris risk register
-
-| ID | Issue | Merits likelihood | Potential impact | Overall treatment |
-|---|---|---:|---:|---:|
-| TM-1 | `Serenity Blocks` name and generic package metadata | Low | High if challenged | **Low** |
-| TM-2 | Two player-visible Odyssey uses of `Tetris` | Low | Medium | **Low merits risk; remove as hygiene** |
-| TM-3 | Production-bundled playground metadata and comments/examples | Low | Medium | **Low; remove as hygiene** |
-| TM-4 | Hundreds of internal/public-repository competitor references | No standalone claim identified | Context-dependent | **No standalone infringement rating; clean prospectively** |
-| TM-5 | Non-affiliation disclaimer | N/A | N/A | **Mitigating, not curative** |
-| AV-1 | Exact seven pieces plus exact 10×20 field | Medium in aggregate | High | **Medium contextual factor; rendered total look controls** |
-| AV-2 | Fused, borderless, transparent primary rendering | N/A | N/A | **Strong mitigation; dormant legacy grid renderer verified unreachable and removed** |
-| AV-3 | Ghost, next, garbage, and conventional movement cluster | Medium in aggregate | High | **Medium factor** |
-| AV-4 | No lock recolor or square-fill end animation | N/A | N/A | **Strong mitigation** |
-| AV-5 | Cascade physics, custom scoring/modes/progression | N/A | N/A | **Material mitigation** |
-| AV-6 | Complete seven-piece repertoire in startup branding code | Medium, provisional | High | **Provisional Medium; capture and redesign** |
-| AV-7 | Exact T-piece main-menu icon | Low | Medium–High | **Low–Medium; redesign** |
-| AV-8 | Favicon mosaic and `Tetris-like` source comment | Low | Medium | **Low; replace/clean** |
-| AV-9 | Distinctive scenic theme art | Low | Medium | **Low / mitigating** |
-| PAL-1 | Ten active 7/7 familiar hue-role palette screens plus near matches | Unverified without rendered context | High if part of a close overall look | **Potentially Medium in an otherwise similar screenshot** |
-| CODE-1 | SRS, seven-bag, lock timing, T-spin, B2B and other rules | Low in isolation | Medium | **Low mechanics / audiovisual caveat** |
-| SND-1 | Possible registered tune or similar cue | Low on static evidence; unverified | High | **Verify before release** |
-| ENF-1 | Repository/storefront/platform takedown | Unquantified | High interruption cost | **Material business-continuity exposure** |
-
-“Merits likelihood” estimates the chance that the current fact could materially support a claim, not the probability that a claimant will sue or ultimately win. “Impact” assumes a commercial launch and includes injunction/takedown cost, rework, delay, and defense expense.
-
-### Separate copyright-release blockers
-
-The repository-wide asset review also found **non-Tetris-specific** licensing and provenance problems: apparent byte-identical SynthCity assets without the required MIT notice; a live CC-BY Fox model absent from credits; incomplete Solar System Scope attribution; credits excluded by the current Electron packaging configuration; and unsupported or incomplete provenance claims for Suno music, Gemini TTS, several generated 3D assets, and intro sounds. These issues are detailed in §13 and should be treated as release blockers independently of the Tetris analysis.
+> **Important — not legal advice.** This is an engineering-led, evidence-based issue-spotting
+> report prepared for review by qualified intellectual-property counsel. It is not legal
+> advice, a legal opinion, or a trademark-clearance opinion, and it does not create an
+> attorney-client relationship. Nothing here declares Serenity Blocks "legal," "safe,"
+> "infringing," or "non-infringing." Risk ratings are triage estimates, not conclusions.
 
 ---
 
-## 2. Scope, methodology, and limitations
+## Executive Summary
 
-### 2.1 Repository work performed
+Serenity Blocks is a falling-block puzzle game (Phaser 4 board renderer, Three.js/WebGPU
+theme backgrounds, Electron/Steam packaging scaffolding). This audit re-verified every
+prior factual claim at the current commit, ran the actual product in a browser for the
+first time (ten captures in `docs/legal/audit-evidence-2026-07-16/`), re-pulled the
+governing case law from official sources, and re-verified the TETRIS trademark portfolio
+record-by-record in USPTO TSDR on 2026-07-16.
 
-The audit covered all **2,313 tracked files** at the commit identified above, with focused review of:
+**Overall Tetris-related posture: MEDIUM — improved since v3.0, still a conditional
+no-go for commercial storefront submission pending counsel review.**
 
-- gameplay rules and state in `src/core/`;
-- board, piece, ghost, queue, effects, and multiplayer rendering;
-- startup, main-menu, favicon, and product-name presentation;
-- all **59** `*-tetrominos.js` theme configurations;
-- the theme registry and runtime theme-color resolution path;
-- **60** theme icons, five repository screenshots, and all 36 embedded music cover images;
-- music filenames, manifests, MP3 metadata, durations, and textual generation records;
-- GLB metadata and asset attribution files;
-- distribution settings for Vite, GitHub Pages, Electron, NSIS, and Steam integration;
-- README, package metadata, store-style copy, current design plans, archived plans, comments, tests, and playground content; and
-- third-party license and notice coverage.
+What improved (verified at HEAD, most confirmed in rendered captures):
 
-The text scan found **637 case-insensitive standalone `Tetris`/`Tetrises` tokens in 172 files**, excluding this report and installed dependencies. Thirty occurrences of `Tetris Effect` appear across 13 files. Counts are inventory facts, not a legal test; most occurrences are comments, tests, or design documents rather than consumer-facing uses.
+- **No player-visible use of "Tetris" remains anywhere in the product.** The two Odyssey
+  tips, the bundled playground metadata, and scoreboard labels now use "four-line clears,"
+  "quad lane," and "Quad" (Findings TM-2/TM-3).
+- **Product branding no longer uses tetromino imagery** on the surfaces this audit could
+  render: the Single Player menu icon is a person-in-a-ring "solo focus" mark, the favicon
+  is a single S-wave, and the startup ident shows a diamond glyph plus the wordmark
+  (captures 01–03; Findings AV-7/AV-8).
+- **Theme palettes were deranged at the source level** (16 theme files in PR #286); none of
+  the sampled selectable themes still tracks the familiar Guideline shape→color mapping
+  (Finding PAL-1). One wiring gap and one default-palette caveat remain (below).
+- **The legacy gridded canvas renderer is deleted**; the fused, borderless, transparent-field
+  Phaser scene is the sole board renderer, and the rendered gameplay captures confirm the
+  fused presentation, the absence of a hold feature, the three-slot top preview row, no
+  lock-down recolor, and a custom statistics game-over screen with no board-fill animation
+  (captures 04–08; Findings AV-2/AV-3/AV-4).
 
-### 2.2 Web research performed
+What remains (the reasons the aggregate rating is still Medium):
 
-Research prioritized primary and official sources:
+- **The exact seven-tetromino family on an exact 10×20 visible field, with ghost, next-piece
+  preview, and garbage** — the combined cluster that *Tetris Holding, LLC v. Xio
+  Interactive, Inc.*, 863 F. Supp. 2d 394 (D.N.J. 2012), treated as protectable expression
+  when reproduced wholesale (Findings AV-1/AV-3). The rendered gameplay, while materially
+  differentiated in treatment, still presents a tall bordered dark field with bright,
+  saturated multi-colored four-square pieces (captures 04–07).
+- **The startup intro still draws decorative pieces from the complete conventional
+  seven-tetromino repertoire in source** (both WebGPU and WebGL paths). They did not appear
+  in this audit's software-rendered captures, so their rendered prominence on real hardware
+  remains unverified (Finding AV-6 — retained by explicit product decision per v3.0
+  appendix).
+- **Total-look review is still incomplete:** one theme, one mode, no line-clear/cascade
+  capture, no WebGPU rendering, no store assets. A composite TETRIS trade-dress
+  registration covering a game-screen presentation (Reg. 6,704,948) and a second TETRIS "T"
+  design registration in classes 9/41 (Reg. 6,707,167, found new in this audit) make the
+  final rendered comparison a counsel-level task.
+- **Enforcement exposure is real and current:** every core TETRIS registration checked is
+  live; Tetris Holding filed a TTAB opposition against a third party's "DEPTHRIS" game mark
+  in June 2025 pleading both confusion and dilution; and its DMCA program (Apotris 2023,
+  tetris-os 2021, Setris/itch.io 2023) shows platform takedowns can precede any merits
+  review (Finding ENF-1).
 
-- the full *Xio* opinion and federal docket sources;
-- 17 U.S.C. §§102, 107, 412, 504, and 512;
-- 15 U.S.C. §§1116–1118 and 1125;
-- U.S. Supreme Court and Third Circuit trademark/trade-dress authorities;
-- U.S. Copyright Office game and uncopyrightable-material guidance;
-- USPTO/TTAB records showing current TETRIS registrations and a public registration record for the sound mark;
-- The Tetris Company's current owner statements and contact page; and
-- published GitHub and itch.io takedown notices.
-
-The key sources are linked where used and collected in §15.
-
-### 2.3 What was not done
-
-- The application was not successfully built or run in this environment, so this report does not claim a live frame-by-frame visual comparison. Dependency installation stopped on audit-environment cache/tarball errors; that failure was not treated as evidence that the project itself is unbuildable. Source, generated assets, existing screenshots, and static media were reviewed.
-- No musicologist review, melody recognition, audio fingerprinting, or acoustic comparison was performed.
-- No Copyright Office deposit copies were obtained and compared to the build.
-- No consumer survey, actual-confusion study, market survey, or expert trade-dress study was performed.
-- No privileged communications, contracts, source licenses, Steam store drafts, trailers, capsules, unpublished art, or final `build/icon.ico` were available.
-- No exhaustive trademark clearance was performed in every territory. The analysis is U.S.-focused, with international launch cautions.
-- No conclusion is offered on patent, contract, publicity, privacy, export, consumer-protection, or platform-policy compliance except where incidentally relevant.
+Also material, new in this audit: a live third-party registration **WORD SERENITY**
+(Reg. 6,138,055, class 9 downloadable video game software, owner Aero Isle Inc) is the
+closest mark found to "Serenity Blocks" — a non-Tetris clearance question counsel should
+resolve before launch (Finding TM-6).
 
 ---
 
-## 3. Risk-rating method
+## Purpose, Jurisdictions, and Limitations
 
-Ratings combine practical likelihood and impact; they are not numerical probabilities.
+**Purpose.** Preliminary, evidence-based issue-spotting for qualified IP counsel ahead of
+any commercial release. Review-only: no source code, assets, listings, or configuration
+were modified. The only files added are this report and the evidence folder
+`docs/legal/audit-evidence-2026-07-16/`.
 
-| Rating | Meaning in this report |
+**Jurisdictions and commercial context.** The engagement template's fields (launch
+jurisdictions, product status, channels, monetization, marketing URLs) were not filled in,
+and no answer was available at audit time. Per the engagement's stated fallback, this is a
+**preliminary U.S. federal-law review only**. Non-U.S. regimes (EU, UK, Canada, Japan,
+etc.), state-law claims, and passing-off/unfair-competition theories are out of scope and
+flagged as open questions. Observable repository context suggests: **pre-release**
+(placeholder `steam_appid.txt` = 480, the Valve test app ID; no store listing found in
+scope), intended channels **Steam (Windows/Linux Electron builds) and web (GitHub Pages)**,
+monetization unknown, and no public marketing materials in scope beyond
+`game_description.md` and repository text.
+
+**Material limitations (each affects specific findings below):**
+
+1. **Rendering was software-only.** Captures used headless Chromium on SwiftShader;
+   **WebGPU was unavailable**, so the WebGPU intro and Odyssey chapter visuals were not
+   rendered; Three.js ran WebGL2 fallbacks. Intro tetromino decor never appeared on screen
+   in this environment despite being live in source — unresolved (AV-6).
+2. **Coverage of rendered states is partial:** default theme only; no line-clear, cascade,
+   garbage, multiplayer, Odyssey, or Serenity-mode captures; no packaged Electron/Steam
+   artifact was built or inspected.
+3. **No store or marketing assets exist in scope** (no Steam capsule, screenshots, trailer,
+   or listing copy). Trade-dress analysis of *packaging and advertising* — the strongest
+   part of *Xio* — therefore cannot be completed yet.
+4. **Trademark searching was preliminary.** USPTO's name/similarity search (tmsearch)
+   is a JavaScript-only application and could not be queried from this environment; TSDR
+   per-record status pages (official) were used instead. State registries, WIPO, EUIPO,
+   UKIPO, and common-law marketplace searches were not performed. This is documented per
+   record in the Source and Search Log; it is **not a clearance search**.
+5. **No musicologist review or audio fingerprinting** was performed; the audio finding
+   rests on file/metadata review plus the owner's documented listen-through (SND-1).
+6. **No Copyright Office deposit copies** of asserted Tetris works were obtained; the
+   comparison baseline is the *Xio* record and current marketplace presentation.
+7. Some legal-history points rest on labeled secondary sources (e.g., "no appeal in *Xio*"
+   — Wikipedia; *DaVinci v. ZiKo* — vLex/law-firm commentary).
+
+---
+
+## Product and Evidence Inventory
+
+**Repository facts (verified 2026-07-16 at `853d40e`):**
+
+| Area | Evidence |
 |---|---|
-| **Low** | A defensible position with limited current enforcement indicators, though not zero risk |
-| **Medium** | A material issue that warrants remediation or counsel review before launch |
-| **Medium–High** | Several meaningful risk factors accumulate, or a cheap fix is available for a potentially costly dispute |
-| **High** | Close alignment with asserted/protected matter, direct brand use, or a clear release-compliance defect |
-| **Unverified** | Static evidence is insufficient; the absence of a detected issue is not clearance |
+| Identity | `package.json:2-4` name `serenity-blocks`, description "A modern falling-block puzzle game built with Phaser 4"; `build.appId` `com.serenityblocks.game`, `productName` "Serenity Blocks" (`package.json:42-43`); `index.html:7` title; generic keywords (`package.json:113+`) |
+| Board | `src/core/constants.js:11-13` — `COLS = 10`, `ROWS = 20`, `HIDDEN_ROWS = 4` |
+| Pieces | `src/core/constants.js:62-98` — conventional I/O/T/S/Z/J/L matrices (T/J/L stored in a 180°-flipped spawn orientation); `PIECE_KEYS = 'IOTZSLJ'` at `:103` |
+| Default colors | `src/core/constants.js:31-41` — I green, O orange, T blue, S cyan, Z **red**, J yellow, L purple: 6 of 7 roles differ from the Guideline mapping; **Z=red matches** |
+| Mechanics | 7-bag (`src/core/pieces.js:31-39`); SRS 90° kick tables (`src/core/game.js:140-159`) + 180° rotation with legacy kicks (`:130-134, 948-953`); lock delay 500 ms / 15 resets (`constants.js:166-167`); ghost (`game.js:525-546`); T-spin 3-corner (`game.js:1263-1281`); back-to-back (`physics.js:720-726`); scoring 250/500/1000/2000 (`constants.js:109-114`); cascade connected-component gravity (`board.js:313-364`, `cascade-resolver.js`, `physics.js`) |
+| Rendering | Fused, seam-free, internally borderless pieces; transparent field, no grid (`src/rendering/phaser/base-board-scene.js:702-720, 800-811, 844-919`); ghost = single translucent white silhouette with faint cyan contour (`:1033-1058`); legacy 2-D canvas board renderer deleted (`src/rendering/canvas-utils.js` gone; `draw.js:1-6` header) |
+| UI | Three-slot next queue (`src/ui/next-queue-ui.js:237`); **no hold feature anywhere**; DAS/ARR sliders (capture 06); custom stats (Score/Lines/Level/Next Lv/Speed/BPM/PPM) |
+| Branding | Menu Single Player icon = person-in-ring "solo focus" mark (`index.html:1402-1412`; `public/styles/menu-aaa.css:358-372`); favicon = single S-wave (`public/favicon.svg`); startup ident = diamond glyph + wordmark (capture 01); intro renderers still define all seven tetromino contours in scrambled colors (`src/ui/threejs-intro-renderer-webgpu.js:196-203, 1123-1157`; `src/ui/threejs-intro-renderer.js:87-107`; `src/ui/intro-tetromino-compute.js:73-88`) |
+| Strings | Standalone "Tetris" tokens: `src/` 136, `docs/` 346, `tests/` 20, `index.html` 0, `public/` 2 (both CSS comments, `public/styles/main.css:12460, 12535`). **Zero player-visible UI hits.** Former tips now read "four-line clears" (`src/core/odyssey/data/levels.js:3846`) and "quad lane" (`:4373`); internal victory-condition key `'tetris-count'` renders as "Clear N Quads"; multiplayer badge key `tetris:` renders label "Quad" (`LocalMultiplayerMode.js:3301, 3776`). No "Tetrimino" spelling anywhere in code |
+| Legal text | Non-affiliation disclaimers: `README.md:58-63`, `CREDITS.md:139-144`; both files ship in web (`vite.config.js:36-46`) and Electron (`package.json` extraResources) builds; **no in-app legal/credits screen exists** |
+| Audio | 36 Suno-generated MP3s with thematic names; SFX procedurally synthesized (`src/audio/sound-effects.js`); owner listen-through recorded 2026-07-15 finding no Korobeiniki/Type-A melody (`CREDITS.md:98-137`) |
+| Provenance | Quadra rules/constants reuse documented in signed attestation (`quadra-provenance-attestation.md`, pinned to upstream commit `d6c7226`); Quadra-derived identifiers renamed (PRs #288/#290/#293) |
 
-Where helpful, each section distinguishes:
+**Rendered-product evidence (new in v4.0)** — `docs/legal/audit-evidence-2026-07-16/`,
+captured from the live dev build at HEAD (method and limits in that folder's README):
 
-- **Repository fact** — directly observed in the reviewed commit;
-- **External fact** — reflected in a cited statute, record, case, or notice; and
-- **Risk inference** — this report's application of those facts, which counsel may assess differently.
+| Capture | Observation |
+|---|---|
+| 01–02 | Startup: diamond logo, `SERENITY BLOCKS` wordmark, "press any key" — **no tetromino imagery on screen** |
+| 03, 09, 10 | Main menu: six mode cards, person-in-ring solo icon, tagline "STACK · BREATHE · ASCEND"; no tetromino decor appeared even after 40 s idle (software renderer; see AV-6) |
+| 04 | Gameplay start: tall purple-bordered dark field (10×20), horizontal 3-slot preview row **above** the board (first slot highlighted), gray fused ghost silhouette, right-side stat cards |
+| 05, 07 | Mid/late stacks: bright saturated pieces (orange O, cyan S, green I, yellow J, magenta/purple, red, blue), fused per-piece rendering with no internal cell borders, no hold UI |
+| 06 | Escape opens a Settings panel (DAS delay/interval, soft-drop interval) |
+| 08 | Game over: custom "The cycle ends." statistics modal (performance/rates/career/session), "press any key to restart" — **no bottom-to-top board-fill animation** |
 
----
-
-## 4. Governing U.S. legal framework
-
-### 4.1 Copyright: rules are not protected; audiovisual expression can be
-
-**External law.** [17 U.S.C. §102(b)](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section102) excludes ideas, procedures, processes, systems, methods of operation, concepts, principles, and discoveries from copyright protection. The U.S. Copyright Office similarly states that a game's idea, title, and methods of play are not protected, although copyright can protect original text, artwork, music, and audiovisual expression. See the [Copyright Office game-registration page](https://www.copyright.gov/register/tx-games.html) and [Circular 33](https://www.copyright.gov/circs/circ33.pdf). The foundational system/expression distinction appears in [*Baker v. Selden*, 101 U.S. 99 (1879)](https://tile.loc.gov/storage-services/service/ll/usrep/usrep101/usrep101099/usrep101099.pdf).
-
-For a falling-block game, the abstract rules—pieces falling, player movement and rotation, completed rows disappearing, scoring, increasing speed, and top-out—are therefore not owned merely because Tetris used them first. The source code implementing those rules can still be copyrighted as code, and the resulting graphics, animations, sounds, selection, arrangement, and sequence may be protected as an audiovisual work.
-
-**Fair-use caution.** A commercial or free entertainment substitute serving the same purpose is not placed in a safe harbor merely because it uses independently written code or is distributed as open source. Fair use under [17 U.S.C. §107](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section107) is fact-specific and is not a sound primary launch strategy here.
-
-### 4.2 The central case: *Tetris Holding v. Xio*
-
-The closest reported U.S. decision is [*Tetris Holding, LLC v. Xio Interactive, Inc.*, 863 F. Supp. 2d 394 (D.N.J. 2012)](https://law.justia.com/cases/federal/district-courts/new-jersey/njdce/3%3A2009cv06115/235418/61/); an [official GovInfo package](https://www.govinfo.gov/app/details/USCOURTS-njd-3_09-cv-06115/USCOURTS-njd-3_09-cv-06115-0) is also available.
-
-The court granted Tetris Holding summary judgment on federal copyright and trade-dress claims. Its analysis is highly relevant but must be kept in context:
-
-- It is a published federal **district-court** opinion, not a Third Circuit appellate holding and not formally binding on other courts.
-- Xio admitted purposeful copying, downloaded and used the official iPhone game during development, sought a license, and conceded that the products looked alike.
-- The court found the games so visually close that an ordinary user could not tell them apart without being told which was which.
-- The opinion repeatedly described **wholesale copying** and an overwhelming overall similarity.
-- The court expressly said discrete elements standing alone might not establish infringement; their combination and context mattered.
-
-#### What *Xio* treated as abstract rules
-
-The court described the unprotected idea at an abstract level: differently shaped square-block pieces fall from the top and accumulate; the user moves and rotates them; full horizontal lines erase and score; and reaching the top ends the game. That is the safe doctrinal foundation for implementing a falling-block game.
-
-#### What *Xio* treated as expressive on its record
-
-In the context of near-identical games, the court relied on:
-
-- the style, design, and movement of the pieces;
-- similar bright colors;
-- separately delineated component squares, interior borders, texture, shading, and gradation;
-- use of the same seven pieces;
-- the exact 20×10 field;
-- garbage lines;
-- ghost/shadow presentation;
-- next-piece presentation;
-- lock-down color change; and
-- squares automatically filling the board at game over.
-
-The court did **not** establish that every one of Tetris Holding's 14 pleaded features is an independent monopoly, nor that any game containing one of them infringes. Its decisive statement was that the wholesale look, not each item in isolation, was troubling.
-
-### 4.3 Trademark: TETRIS and related source identifiers
-
-Trademark law targets likely confusion over source, sponsorship, affiliation, or approval; dilution can separately protect a qualifying famous mark. See [15 U.S.C. §1125](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1125) and the [USPTO's likelihood-of-confusion guidance](https://www.uspto.gov/trademarks/search/likelihood-confusion).
-
-An official [USPTO TTABVUE record](https://ttabvue.uspto.gov/ttabvue/v?pno=91249666&pty=OPP), current when reviewed on 2026-07-15, lists numerous pleaded TETRIS registrations as registered and renewed, including Registration Nos. 2,362,238; 3,396,574; 1,657,499; 4,592,832; 4,592,985; 4,845,377; 3,518,292; and 4,313,472. The record is not a complete clearance search, but it is strong official evidence of a live portfolio in directly relevant game categories.
-
-The product name **Serenity Blocks** is facially distinct from TETRIS. The greatest word-mark risks instead come from using `Tetris` as a title, badge, keyword, tag, SEO term, comparative hook, or unnecessary in-game vocabulary.
-
-#### Nominative reference is not a blanket license
-
-In the Third Circuit, [*Century 21 Real Estate Corp. v. LendingTree, Inc.*, 425 F.3d 211 (3d Cir. 2005)](https://www2.ca3.uscourts.gov/opinarch/034700p.pdf), places the initial likely-confusion burden on the mark owner and then asks the user to show that use of the mark is necessary to describe both parties' products, uses no more of the mark than needed, and accurately reflects the relationship.
-
-**Risk inference.** `Falling-block puzzle game` describes Serenity Blocks without using TETRIS. Repeated public uses are therefore harder to justify as necessary. A single plain-text legal notice or genuine comparison may be defensible after counsel review; a disclaimer helps but is not dispositive and cannot cure copyright or trade-dress similarity.
-
-Use the generic mathematical spelling `tetromino`. No proprietary-looking `Tetrimino` spelling was found in the repository.
-
-### 4.4 Trade dress: narrower than “owning the look”
-
-Unregistered trade dress requires a claimant to define the asserted dress and prove nonfunctionality, distinctiveness, and likely confusion. Product-design dress cannot be inherently distinctive and needs secondary meaning. See [*Wal-Mart Stores, Inc. v. Samara Brothers, Inc.*, 529 U.S. 205 (2000)](https://supreme.justia.com/cases/federal/us/529/205/) and [*TrafFix Devices, Inc. v. Marketing Displays, Inc.*, 532 U.S. 23 (2001)](https://supreme.justia.com/cases/federal/us/532/23/).
-
-In *Xio*, the asserted dress was brightly colored four-block, individually delineated pieces plus a tall rectangular field as used in advertising and packaging. The opinion states that Xio apparently did not challenge secondary meaning or likelihood of confusion; the contested trade-dress analysis focused on functionality. The judgment therefore is not a fully litigated holding on all trade-dress elements. The court found the styling and field choices nonfunctional on that record and granted summary judgment.
-
-Under [*Dastar Corp. v. Twentieth Century Fox Film Corp.*, 539 U.S. 23 (2003)](https://tile.loc.gov/storage-services/service/ll/usrep/usrep539/usrep539023/usrep539023.pdf), §43(a) cannot be used merely to police authorship or create perpetual copyright-like control. *Xio* distinguished *Dastar* because the trade-dress claim targeted source confusion in advertising and packaging.
-
-**Risk inference.** *Xio* is strongest against near-identical storefront screenshots, icons, packaging, and promotional arrangements. It is weaker as proof that every tall board or every four-square shape, in isolation, is protected trade dress. Serenity Blocks' startup ident, menu icon, theme selection, and store images deserve more attention than internal mechanics because they are used to identify and sell the product.
-
-### 4.5 Design and sound marks
-
-Public USPTO-derived records identify registered T-shaped composite TETRIS logos, including [Registration No. 2,362,250](https://trademarks.justia.com/757/82/tetris-75782993.html) and [Registration No. 3,818,232](https://trademarks.justia.com/778/90/tetris-77890492.html). These are particular composites, not ownership of every T tetromino. A T-piece used as a competing game's menu or logo is nevertheless avoidable association risk.
-
-A [public registration record](https://www.trademarkia.com/tetris-90670731) also reports Registration No. 6,704,948 / Serial No. 90670731, registered April 19, 2022, for a particular composite depicting a tall bordered field, multicolored TETRIS lettering, and colored four-square shapes. It does not register every tall field or tetromino in isolation. Recheck the [official TSDR record](https://tsdr.uspto.gov/#caseNumber=90670731&caseSearchType=US_APPLICATION&caseType=DEFAULT&searchType=statusSearch) immediately before launch.
-
-A [public USPTO-derived record for U.S. Registration No. 3,517,007 / Serial No. 77037539](https://trademarks.justia.com/770/37/n-77037539.html), whose displayed status date is November 5, 2018, reports a registered-and-renewed sound mark for an electronic sine wave performing a specified tune based on the Russian folk song *Korobeiniki*, covering computer/video game software, handheld games, and online games. Recheck the [official TSDR record](https://tsdr.uspto.gov/#caseNumber=77037539&caseSearchType=US_APPLICATION&caseType=DEFAULT&searchType=statusSearch) before launch. The underlying folk melody's age does not eliminate same-market source-identification risk or possible rights in a particular recording/arrangement.
-
-### 4.6 Enforcement and remedies
-
-The [2023 GitHub Apotris notice](https://github.com/github/dmca/blob/master/2023/02/2023-02-10-tetris.md) alleged copying of piece movement, bright colors, field dimensions, ghost, and next display. A [2021 GitHub notice](https://github.com/github/dmca/blob/master/2021/07/2021-07-16-tetris.md) targeted a repository using the Tetris name and alleged copyright and trade-dress copying. The [2023 itch.io Setris notice](https://itch.io/takedowns/2073998) alleged word-mark, audiovisual, and Korobeiniki sound-mark infringement. These are claimant allegations, not adjudications, but they demonstrate practical takedown risk.
-
-The notices' descriptions of *Xio* are claimant advocacy, not neutral holdings. For example, the Apotris notice paraphrases the protected field dimension as merely “longer than it is wide,” whereas the opinion's copyright analysis focused on the exact 20×10 field and the wholesale combination. The notices establish enforcement examples, not the probability that Serenity Blocks will be targeted.
-
-The Setris notice contains apparent registration-number errors; this report does not rely on those numbers for status. Official USPTO records should control clearance work.
-
-Copyright remedies can include actual damages/profits or statutory damages of $750–$30,000 per work, with up to $150,000 for willful infringement and possible reduction for qualifying innocent infringement. See [17 U.S.C. §504](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section504); eligibility and timing limitations appear in [§412](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section412). Trademark remedies can include injunctions, damages/profits/costs, and destruction of infringing articles under [15 U.S.C. §§1116](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1116), [1117](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1117), and [1118](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1118).
-
-Platform removal may occur before a merits decision. A copyright counter-notice under [17 U.S.C. §512](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section512) carries identity, jurisdiction, and timing consequences; trademark/platform complaints may not offer the same statutory process.
+**Not in evidence (and material):** line-clear/cascade animation, garbage insertion,
+multiplayer views, non-default themes, WebGPU surfaces, packaged builds, store assets.
 
 ---
 
-## 5. Current repository findings — product name and word marks
+## Research Methodology and Source Hierarchy
 
-### Finding TM-1 — Core product naming is clean and distinctive
+Sources were used in this order of authority, and each proposition below is tagged to its
+tier: (1) statutes and controlling judicial opinions (Cornell LII texts; GovInfo official
+opinion PDF for *Xio*); (2) official court/docket materials (TTABVUE/ESTTA filings;
+CourtListener metadata); (3) U.S. Copyright Office and USPTO records and guidance (TSDR
+per-record status pages — official; copyright.gov circulars); (4) state/international
+registries — **not searched this pass** (documented); (5) credible secondary sources for
+background only (labeled: Wikipedia, press, law-firm commentary, vLex, Justia/Trademarkia
+aggregators); (6) rights-holder materials (tetris.com pages, DMCA notices) treated as
+**evidence of marketplace presentation and asserted rights, not statements of law**.
+All web sources were accessed 2026-07-16. Repository facts were verified directly at
+commit `853d40e`, with exact file:line citations. Three independent verification passes
+were run (repository facts; case law/statutes; trademark records), and the rendered
+product was exercised end-to-end in a browser (startup → menu → single-player → game
+over) with console monitoring.
 
-**Repository fact.** The product is consistently identified as `Serenity Blocks`:
-
-- `package.json:2-4, 41-44` — generic falling-block description, `com.serenityblocks.game`, and `Serenity Blocks` product name;
-- `package.json:113-120` — generic keywords with no `Tetris` keyword;
-- `index.html:7, 1401` — `Serenity Blocks` title/wordmark;
-- `README.md:1-3` and `game_description.md` — generic falling-block language; and
-- `README.md:58-63` — non-affiliation notice and a plain-text TETRIS registration acknowledgment.
-
-**Risk inference.** The name alone presents **Low** TETRIS word-mark confusion risk. It should be retained, subject to an ordinary full trademark clearance for `SERENITY BLOCKS` against all third parties.
-
-### Finding TM-2 — Two player-visible Odyssey tips still use TETRIS
-
-**Repository fact.** Two live level tips remain:
-
-- `src/core/odyssey/data/levels.js:3846` — `Focus on efficient Tetris clears...`
-- `src/core/odyssey/data/levels.js:4373` — `...where your Tetris lane will live.`
-
-`src/core/game-modes/OdysseyMode.js:3866-3883` injects `level.metadata.tip` into the selected-level panel, so these are not merely comments or dead identifiers.
-
-**Risk inference.** These two phrases do not appear to use TETRIS as Serenity Blocks' source identifier and, standing alone, present **Low** infringement risk. They are unnecessary in a directly competing game and trivially replaceable, so removal remains prudent hygiene.
-
-**Recommended text:**
-
-- `efficient four-line clears` or `efficient quad clears`; and
-- `four-line well`, `quad lane`, or `open scoring lane`.
-
-### Finding TM-3 — A production-bundled playground metadata field uses the mark
-
-**Repository fact.** `src/playground/effects/starlight-reactions.effect.js:26-30` publishes metadata reading `Scripted locks/clears/Tetris/combo/apex...`. The file also contains several Tetris references in comments. `vite.config.js:60-65` includes `playground.html` as a production entry, and `.github/workflows/pages.yml:63-89` builds and deploys `dist` to GitHub Pages.
-
-`src/playground/main.js:506-511` exposes the metadata programmatically through `window.__PLAYGROUND__.listEffects()`, but the current HUD renders only each effect's title, not its description (`src/playground/main.js:401-415`). It is therefore public bundle/API metadata, not visible page copy.
-
-**Risk inference.** Rating: **Low**. Replace the description with `four-line clear` or `quad` and clean the public URL examples/comments as ordinary hygiene.
-
-### Finding TM-4 — Repository/design-history references are extensive but mostly not direct mark use
-
-**Repository fact.** The scan found 637 standalone `Tetris`/`Tetrises` tokens in 172 files. Examples include:
-
-- `docs/ODYSSEY_AAA_MASTER_PLAN.md:3` — the stated “one ambition” is *Tetris Effect: Connected — Journey Mode*;
-- `:38, 223-225, 298-303` — named “synesthetic coupling,” “north star,” and technique adoption;
-- `src/rendering/draw.js:380-506` and `src/rendering/phaser/board-juice.js:1-9` — effects described as Tetris Effect-inspired/signature;
-- `src/ui/multi-player-canvas-layout.js:1-19` — layout described as inspired by Tetris 99/Jstris;
-- tests describing SRS tables as Guideline-exact and citing Tetris community sources; and
-- internal metric keys such as `tetris-count`, `tetrises`, and `isTetris` that are not rendered under current formatters.
-
-**Risk inference.** No standalone infringement rating is assigned to comments, internal identifiers, or design research. These materials may contextualize intent if protectable expressive similarities are first shown, but access to the famous Tetris game is unlikely to be disputed and intent does not substitute for substantial similarity or likely confusion. Public indexing and future accidental publication remain practical hygiene concerns.
-
-Do not rewrite Git history or destroy records. Preserve the existing history under counsel guidance, but write future design requirements in independent functional/visual terms and neutralize current public-facing prose where cheap. Renaming internal identifiers is P2 hygiene, not a prerequisite to ship.
-
-### Finding TM-5 — The disclaimer helps but is limited
-
-**Repository fact.** `README.md:58-63` and `CREDITS.md:100-105` state that Serenity Blocks is independent and not affiliated with, endorsed by, or sponsored by The Tetris Company or Tetris Holding. Neither file is included by the current Electron packaging list, and no in-app Legal/Credits screen was found.
-
-**Risk inference.** The notice is useful on the public repository and is evidence of the true relationship, but it currently provides little direct notice to packaged-app users. Even if shipped, a disclaimer would not authorize use of a mark, cure a substantially similar audiovisual work, cure confusing trade dress, or neutralize the branding cluster. Rating: **Low/mitigating in the repository; not yet an in-product mitigation**.
+Throughout, statements are labeled as **Repository fact**, **Rendered observation**,
+**External record/holding**, **Rights-holder assertion**, or **Risk inference** (this
+report's reasoning, which counsel may weigh differently).
 
 ---
 
-## 6. Current repository findings — audiovisual copyright and trade dress
+## Relevant Tetris Rights and Trademark Records
 
-### Finding AV-1 — Exact seven-piece family and 10×20 visible field remain
+All statuses verified in **official USPTO TSDR status pages on 2026-07-16** unless noted.
+Registration status is distinct from ownership, validity, enforceability, marketplace use,
+and scope; nothing below assumes a record's assertions are correct or incontestable.
 
-**Repository fact.** `src/core/constants.js:11-13` defines `COLS = 10`, `ROWS = 20`, and four hidden rows. `src/core/constants.js:62-98` defines the conventional I/O/T/S/Z/J/L matrices, and `:103` defines the seven keys. Spawn orientation/placement appears in `src/core/game.js:356-380`.
+### TETRIS word marks — Tetris Holding, LLC (all LIVE)
 
-**Legal context.** *Xio* treated the exact 20×10 field and the style/design of the same seven pieces as part of the protected audiovisual cluster on its record, while recognizing the abstract falling-block rules as unprotected.
+| Reg. No. | Serial | Classes / key goods | Registered | Latest renewal |
+|---|---|---|---|---|
+| 2,362,238 | 75/781,744 | 9 video game cartridges/software (cl. 16 pens cancelled §8); 25 | 2000-06-27 | 2020 |
+| 3,396,574 | 78/979,550 | 35 online retail, computer/video games | 2008-03-11 | 2018 |
+| 1,657,499 | 74/036,747 | 28 video games, cartridges, handheld electronics | 1991-09-17 | 2021 |
+| 4,592,832 | 86/178,470 | 11 lamps | 2014-08-26 | 2024 |
+| 4,592,985 | 86/205,967 | 9, 41 sound recordings; concerts | 2014-08-26 | 2024 |
+| 4,845,377 | 86/577,062 | 30 confectionery | 2015-11-03 | 2026 |
+| 3,518,292 | 78/811,849 | 38, 41 online computer-game entertainment services | 2008-10-14 | 2018 |
+| 4,313,472 | 85/159,237 | 28 handheld gaming; **tabletop vertical-matrix drop games; 3-D block stacking games** | 2013-04-02 | 2023 |
+| 5,617,892 | 87/069,698 | 41 gambling-game software (cl. 28 cancelled §8) | 2018-11-27 | §8/15 2025 |
+| 6,707,498 | 97/095,586 | 9 phone cases, wallpapers; 21; 32 | 2022-04-19 | — |
 
-**Risk inference.** The exact dimensions plus complete seven-piece family are a **Medium contextual factor**, not automatic infringement. Risk falls if the remainder of the presentation is strongly distinct and rises if a screenshot also uses familiar colors, preview/ghost treatment, delineated squares, and conventional framing.
+(Additional live word registrations in classes 14/16/18/25/28 pleaded in Opp. 91299921;
+one cosmetics registration, 5,893,160, is DEAD — cancelled 2026-05-08.)
 
-### Finding AV-2 — Rendering materially diverges through fused, borderless silhouettes
+### Design, composite, and sound marks (all LIVE; owner Tetris Holding, LLC)
 
-**Repository fact.** The primary Phaser renderer has unusually strong distinctions:
-
-- `src/rendering/phaser/base-board-scene.js:702-714` intentionally removes locked-piece outlines and states that pieces render as fused shapes with no internal borders;
-- `:800-811` uses a fully transparent board with no background/grid fill;
-- `:844-869` overlaps cell rectangles and applies a continuous light ramp so adjoining same-color cells have no seam;
-- `:872-919` draws only the outer perimeter of a fused same-color region;
-- `:1029-1053` renders the ghost as a single translucent white silhouette with one faint cyan contour; and
-- `:1056-1069, 1165-1169, 1458-1476` renders the active piece as one continuous gradient/gloss/outer-rim silhouette.
-
-**Legacy renderer — verified dormant, now removed.** An older 2-D canvas path (`draw()` in `src/rendering/draw.js`, backed by `canvas-utils.js`) could draw a faint 10×20 field grid, and an earlier draft of this review described it as a live "fallback [that] `SinglePlayerMode` invokes whenever no board scene is available." That description was inaccurate. The path was **never a functioning fallback**: its `this.canvas`/`this.ctx` were initialised to `null` and never reassigned, so the sole gate (`if (this.canvas && this.ctx)`) never opened — the Phaser catch block merely logged "falling back to canvas rendering" and wired nothing, so if Phaser were unavailable the game drew *no* board rather than routing here. Its blocks also used fused fills with outer-edge-only borders (not individually bordered cells), and it carried a latent double-row-offset bug — both consistent with code that never rendered on screen. A multi-agent reachability audit (four independent source traces plus three adversarial refutation passes, none of which could find a live path) confirmed it was unreachable dead code, and it has now been **removed**: `canvas-utils.js` is deleted, and the dead `draw()` renderer, its call sites, and the inert piece-trail producer were excised from `draw.js`, `main.js`, and `SinglePlayerMode.js` (Phaser's fused-silhouette scene is untouched and remains the sole board renderer). *Calibration note:* even had it rendered, a faint background grid is not the same protected element as the borders separating every individual brick that *Xio* stressed. In *Xio* the individually delineated squares were part of the protected cluster, but the court was explicit that discrete elements might not establish infringement standing alone; the troubling fact was the wholesale, overwhelmingly similar overall look.
-
-**Risk inference.** The primary path is one of Serenity Blocks' most important defenses. It directly departs from the separately delineated, internally bordered, textured, and shaded component bricks emphasized in *Xio*. With the dormant legacy grid renderer removed, the Phaser fused-silhouette scene is now the **only** board renderer, so the gridless-field distinction applies universally in gameplay. Rating: **material mitigation**. Remaining work is to keep that distinction consistent on the non-gameplay surfaces the primary renderer does not cover — piece previews, the app/menu icon, screenshots, and marketing images.
-
-### Finding AV-3 — Ghost, three-piece next queue, garbage, and conventional motion remain
-
-**Repository fact.** The product retains:
-
-- a ghost landing calculation at `src/core/game.js:522-545`;
-- a three-slot next queue at `src/ui/next-queue-ui.js:226-256` and `index.html:565-579`;
-- gravity, horizontal movement, hard/soft drop, line clearing, and top-out;
-- garbage rows and multiplayer attack systems; and
-- SRS-style 90° kick tables at `src/core/game.js:140-160, 963-989`.
-
-The expression differs:
-
-- the ghost is a fused translucent contour rather than a grid of delineated blocks;
-- the queue shows three previews, with the first highlighted;
-- garbage uses custom gray/matte and footprint/multi-hole behavior in `src/core/garbage.js:24-48, 640-699`; and
-- the project adds a 180° rotation path and legacy kick fallback.
-
-No functional gameplay hold state, binding, or hold panel was found.
-
-**Risk inference.** Presence of ghost/next/garbage adds to the *Xio* cluster, but the treatments and overall interface are meaningfully different. Rating: **Medium aggregate contribution; Low–Medium individually**.
-
-### Finding AV-4 — No lock recolor and no bottom-to-top game-over fill
-
-**Repository fact.** Active-piece color is resolved at creation (`src/core/game.js:36-57, 356-380`), but lock-down re-resolves the then-current theme color rather than copying `lockedPiece.color` (`src/core/game.js:1213-1220`). Absent an intervening theme/settings change, the role color is the same; no deliberate lock-down recolor effect was found.
-
-Top-out stops play and displays a statistics modal or other custom elimination effects (`src/core/game.js:809-851`; `src/core/game-modes/SinglePlayerMode.js:1310-1437`). The repository contains no Tetris-style routine that automatically fills the board with squares from bottom to top on game over. Multiplayer elimination uses custom flash/fade/skull/`ELIMINATED` presentation rather than the *Xio* feature (`src/core/game-modes/LocalMultiplayerMode.js:3875-3976`).
-
-**Risk inference.** These are **strong mitigating differences** because *Xio* specifically identified lock color change and bottom-to-top fill as expressive choices.
-
-### Finding AV-5 — Cascade physics, progression, and modes are substantial gameplay differences
-
-**Repository fact.** After a line clear, locked material is split into connected components and independently falls, potentially causing recursive cascades (`src/core/physics.js:789-804`; connectivity logic in `src/core/board.js:312-365`). Other differences include:
-
-- custom scoring of 250/500/1000/2000 plus cascade/perfect-clear/level modifiers (`src/core/constants.js:109-125`; `src/core/scoring.js`);
-- a custom speed curve and 15-line level progression;
-- Infinity mode with a possible 1,000-row vertical board (`src/core/game.js:551-567`);
-- Odyssey objectives/modifiers and themed world progression; and
-- Serenity mode's calm/breathwork/music focus.
-
-**Risk inference.** These changes meaningfully distinguish the play experience and event sequence. They do not alone erase a similar static screenshot or startup ident, because copyright/trade dress can focus on presentation. Rating: **material mitigation**.
-
-### Finding AV-6 — Startup branding draws from the complete conventional seven-type repertoire
-
-**Repository fact.** The default intro draws decorative pieces from a repertoire containing all seven conventional types; randomized spawning does not guarantee that all seven appear simultaneously:
-
-- `src/ui/threejs-intro-renderer-webgpu.js:49` defines all seven keys;
-- `:195-203` assigns the deliberately scrambled default colors;
-- `:849-900` creates extruded, beveled, glossy/emissive meshes;
-- `:1080-1109` seeds them around the visible frame and keeps the title readable;
-- `:1123-1156` draws the exact seven fused contours;
-- `src/ui/intro-tetromino-compute.js:41-59` supports up to 50 drifting pieces; and
-- the WebGL fallback defines all seven keys and constructs the same fused contours (`src/ui/threejs-intro-renderer.js:87-107, 686-704, 939-1052`), then chooses among them randomly at spawn (`:849-855`).
-
-**Risk inference.** This is more concerning than unavoidable in-game geometry because it is decorative, highly visible, and used beside the wordmark before gameplay. The cosmic glass/extruded treatment and scrambled colors are meaningful differences, but branding drawn from the complete seven-type repertoire has abundant alternatives. Rating: **Provisional Medium**; a rendered capture is required before assigning Medium–High.
-
-**Recommendation.** Replace the startup shapes with a distinct visual grammar—petals, waves, stones, constellations, irregular polyforms, pentominoes, shards, or a cascade motif that does not use the complete conventional seven-type repertoire as brand language.
-
-### Finding AV-7 — Main-menu T-piece icon is avoidable branding
-
-**Repository fact.** `index.html:1404-1410` uses four equal rounded squares in an exact T shape for the Single Player card. `public/styles/menu-aaa.css:347-387` calls the components tetromino blocks and animates their assembly.
-
-**Risk inference.** A single T shape is weak in isolation and is materially different from the registered composite TETRIS logos. Used prominently in a competing falling-block game's main menu, it adds avoidable association to the overall branding cluster. Rating: **Low–Medium**; logo placement and the surrounding cluster justify removal, not a conclusion of likely infringement.
-
-**Recommendation.** Use a lotus, breath ring, orbit, wave, path, or non-four-unit play glyph.
-
-### Finding AV-8 — Favicon art is lower risk; its comment is adverse hygiene
-
-**Repository fact.** `public/favicon.svg:1-21`, used by `index.html:82`, shows a cyan-purple circular gradient with seven white rounded squares in a non-tetromino mosaic. Its source comment says `Tetris-like blocks`.
-
-**Risk inference.** The art itself is not one of the seven tetrominoes and is visually distinctive, so direct risk is **Low**. The comment is unnecessary evidence of intended association. Replace the favicon with a distinctive Serenity mark and remove competitor-referential drafting going forward.
-
-### Finding AV-9 — Theme and icon art is otherwise strongly differentiated
-
-**Repository fact.** Manual review of 60 theme icons found scenic/circular imagery—planets, forests, lakes, caves, auroras, bowls, and other environments—rather than TETRIS wording, an official-looking matrix logo, or a complete conventional seven-piece array. The inspected theme screenshots show distinctive environments but do not include the current game board.
-
-**Risk inference.** Theme/world art is a strong source of original expression and receives a **Low** Tetris-specific risk rating. It cannot by itself clear the total gameplay view, which is why current board screenshots are required.
-
----
-
-## 7. *Xio* feature-to-repository matrix
-
-This matrix is deliberately granular, but the legal comparison must return to the total concept and feel. “Present” does not mean “infringing,” and “different” does not guarantee clearance.
-
-The starting-orientation, full-line disappearance/consolidation, and multiplayer-layout rows were among Tetris Holding's pleaded features; the court expressly did not need to decide every pleaded feature separately.
-
-| *Xio*-associated feature | Serenity Blocks evidence | Current comparison | Risk effect |
+| Reg. No. | Serial | Mark | Classes |
 |---|---|---|---|
-| Seven standard four-square pieces | `src/core/constants.js:62-103` | **Present:** exact I/O/T/S/Z/J/L family | Raises aggregate risk |
-| Bright distinct piece colors | Default at `constants.js:31-40`; theme files | **Mixed:** default is scrambled; numerous selectable themes track familiar hue roles | Raises selected-theme/store-image risk |
-| Individually delineated component squares | `base-board-scene.js:702-714, 844-919, 1165-1169` | **Absent in main renderer:** fused/no seams/internal borders | Strong mitigation |
-| Exact 10×20 field | `constants.js:11-13` | **Present:** plus four hidden rows | Raises aggregate risk |
-| Fall from top and lateral movement | `game.js` spawn/movement/gravity | **Present:** rules-level core | Low alone; aggregate factor |
-| Rotation appearance/behavior | `game.js:140-160, 917-989` | **Visible rotation is present; Guideline-value 90° kick-table data is functional rule data not adjudicated as protected in *Xio***; 180° and legacy fallback also exist | Mechanics low alone; motion expression matters in video |
-| Next-piece display | `next-queue-ui.js:226-256` | **Present but three previews**, fused styling | Moderate aggregate factor |
-| Conventional starting orientations | `constants.js:62-98`; spawn state `game.js:356-380` | **Mixed:** I/O/S/Z match common spawn silhouettes; T/J/L are stored in 180°-flipped silhouettes as rotation state 0 | Contextual aggregate factor |
-| Ghost/shadow piece | `game.js:522-545`; renderer `:1029-1053` | **Present but fused white translucent contour** | Moderate aggregate factor, treatment mitigates |
-| Lock-down color change | `game.js:356-380, 1213-1220` | **Absent** | Strong mitigation |
-| Full-row disappearance/consolidation | `physics.js:738-804` | **Present, then custom connected-component gravity/cascades** | Functional core plus materially distinct aftermath |
-| Bottom-to-top square fill at game over | game-over/elimination paths | **Absent** | Strong mitigation |
-| Garbage lines | `garbage.js:24-48, 640-699` | **Present, custom multi-hole/footprint behavior and matte styling** | Moderate factor, custom treatment mitigates |
-| Prominent player field plus smaller opponent fields | `multi-player-canvas-layout.js` and multiplayer UI | **Partly present; custom implementation**, docs name Tetris 99/Jstris inspiration | Contextual storefront factor; not separately held protectable in *Xio* |
-| Packaging/ads use similar field and pieces | intro/menu and future store assets | **Current startup and T icon use tetrominoes as branding; final store set unavailable** | Principal trade-dress review target |
+| 2,362,250 | 75/782,993 | TETRIS in red-orange-yellow gradient inside a blue **T-tetromino** background | 9, 28 active |
+| 3,818,232 | 77/890,492 | Blue T-shaped field outlined red, TETRIS gradient lettering (colors claimed) | 41 |
+| 6,704,948 | 90/670,731 | **TETRIS lettering within a black rectangular playfield bordered light blue, tetrimino pieces below**; colors claimed | 9, 41 |
+| 6,707,167 | 90/746,082 | **TETRIS "T" design** (word inside large T, gradient) — *new since v3.0's list* | 9 downloadable/recorded video game programs; 41 online games |
+| 3,517,007 | 77/037,539 | **Sound mark**: electronic sine-wave tune based on the Russian folk song *Korobeiniki* (notes/durations specified) | 9, 28, 41 |
 
-### Matrix conclusion
+### Enforcement and marketplace posture (external records; rights-holder assertions)
 
-Serenity Blocks retains enough of the *Xio* cluster that a simple “mechanics are free” conclusion would be unsafe. It also removes or transforms several of the most visually specific features. The current static record supports a **provisional Medium aggregate rating**. It could rise to Medium–High if representative gameplay or store captures reproduce the overall visual impression of a plausibly asserted Tetris work or current source-identifying presentation.
+- **TTAB Opposition 91299921 (filed 2025-06-25)** against "DEPTHRIS" (Ser. 98/026,195,
+  class 9 game software): pleads §2(d) confusion **and §43(c) dilution by blurring** on 16
+  registrations; states "there are no other granted registrations for the TETRIS mark
+  other than those owned by Opposer." Terminated 2025-07-10, dismissed without prejudice.
+  Earlier Opp. 91249666 ("TETRIS MOVING," 2019) was sustained. Pattern: active opposition
+  to "-TRIS"-formative names through 2025.
+- **DMCA/platform notices (verified primary):** GitHub 2021-07-16 (tetris-os — word mark,
+  copyright regs. PAu 1,214,036/035 and PA 412,169/170, dilution, trade dress); GitHub
+  2023-02-10 (Apotris — expressly cites *Xio* and recites the piece design/movement,
+  bright colors, field "longer than it is wide" [an overclaim vs. the opinion's exact
+  20×10 holding], ghost, and next-piece elements); itch.io 2023-06-05 (Setris — word mark,
+  copyright, **and the Korobeiniki sound mark**; game re-released same day as "Sandtrix").
+  These are claimant allegations, not adjudications; they evidence takedown capability.
+- **tetris.com (2026-07-16):** promotes current official titles (Tetris Block Party, the
+  mobile app, Tetris Forever, Tetris Effect: Connected, TGM4). Footer asserts: "Tetris
+  logos, Tetris theme song and **Tetriminos** are trademarks of Tetris Holding" — a
+  rights-holder assertion of piece-design and theme-song rights beyond the registrations
+  above. Notices of suit are recorded on Regs. 3,396,574 and 6,707,498 (2022–2024).
+- **No TETRIMINO/TETRIMINOS federal registration was found** (secondary/inferential —
+  see search limits).
 
----
+### Third-party record relevant to the product's own name
 
-## 8. Theme-palette audit
-
-### 8.1 Method and caveat
-
-All 59 `src/themes/*/*-tetrominos.js` configurations were parsed. For a reproducible screening heuristic, the first six-digit I/O/T/S/Z/J/L color in each config was converted to HSL and compared to broad familiar hue-role bands:
-
-| Piece | Screening band |
-|---|---|
-| I | cyan / blue-cyan, 160°–210° |
-| O | yellow / gold, 32°–75° |
-| T | purple / magenta, 245°–315° |
-| S | green / mint, 90°–170° |
-| Z | red / pink, 320°–360° or 0°–20° |
-| J | blue / indigo, 200°–250° |
-| L | orange / amber, 20°–50° |
-
-This is a **conservative engineering screen, not a legal standard**. It ignores saturation, lightness, material, animation, context, and exact color values. Some pale gold, pink, mint, or indigo colors may look materially different in play. The *Xio* opinion discussed similar bright colors and an overall presentation; it did not judicially establish these hue bands or hold that every modern color-role assignment infringes.
-
-Theme-based pieces are enabled by default (`src/ui/settings.js:44-45`). Runtime code obtains the active theme's config when available (`src/rendering/tetromino-style-manager.js:213-250`; `src/core/game.js:36-57`), and active/locked pieces use those resolved colors (`src/core/game.js:356-380, 1213-1220`). Thus selectable palettes are not dead configuration.
-
-Three legacy files—`aether-tides-tetrominos.js`, `luminous-tides-tetrominos.js`, and `stellar-velocity-tetrominos.js`—store colors as top-level `I: { color: ... }` objects rather than under `config.colors`. The main-board resolvers read only `config.colors?.[shapeKey]` (`src/core/game.js:36-57`; `src/rendering/tetromino-style-manager.js:242-250`), so those three main-board palettes currently fall back to the scrambled defaults unless separately normalized. This is a runtime-accuracy point, not a recommendation to activate their configured mappings without screening them.
-
-### 8.2 Ten active/selectable configurations screen 7-of-7
-
-| Theme | I | O | T | S | Z | J | L |
-|---|---|---|---|---|---|---|---|
-| Astral Weave | `#7deeff` | `#ffd86e` | `#ee79ff` | `#6cf9d5` | `#ff7ccf` | `#6ca8ff` | `#ffab63` |
-| Cosmic Chimes | `#8fffff` | `#ffd666` | `#c9a8ff` | `#6fffc4` | `#ff8fc8` | `#6b7fff` | `#ffcc6b` |
-| Crystal Cave | `#70f0ff` | `#ffc860` | `#c080ff` | `#50ffc0` | `#ff60c0` | `#6080ff` | `#ffa060` |
-| Electric Dreams | `#62f6ff` | `#ffb347` | `#ff66f0` | `#94ffb3` | `#ff5c7c` | `#8a8dff` | `#ffe066` |
-| Misty Lake | `#b1e5ff` | `#ffd59a` | `#cfc2ff` | `#9efad2` | `#ffa9c4` | `#7a92d5` | `#ffe388` |
-| Moonrise Summit | `#bfe9ff` | `#ffe7b3` | `#c9b2ff` | `#d3fff1` | `#ffb0c9` | `#8aa4d5` | `#ffd089` |
-| Shifting Sands | `#7ec8ff` | `#ffd06a` | `#c9a0ff` | `#7fffb8` | `#ff9070` | `#8090ff` | `#ffb855` |
-| Singing Bowl | `#b5fff2` | `#fdda9b` | `#e5b6ff` | `#a9ffd0` | `#ff9fbf` | `#8d99ff` | `#ffe8aa` |
-| Swedish Forest | `#9be8ff` | `#ffd27a` | `#c7b5ff` | `#7ff4c9` | `#ff9fc0` | `#6479d8` | `#ffe8a6` |
-| Tornado | `#87CEEB` | `#FFD700` | `#E6A8D7` | `#98FB98` | `#FFB7C5` | `#9DC8E8` | `#FFCC5C` |
-
-Evidence resides in each theme's same-named `*-tetrominos.js` file, generally within its first 10–21 lines. All ten themes are in `src/themes/theme-registry.js` and their theme classes import/use the configuration.
-
-### 8.3 Six active configurations screen 6-of-7 or near-full
-
-| Theme | Screening result | Main divergence |
-|---|---:|---|
-| Galaxy | 6/7 by strict cutoff; visually near-full | L hue is approximately 19.6°, just outside the 20° cutoff |
-| Geode | 6/7 | J is pink, not blue |
-| Himalayan Peak | 6/7 | O is snow white / pale blue rather than yellow |
-| Koi Pond | 6/7 | T is blossom pink rather than purple |
-| Lunara | 6/7 under strict bands; visually near-full | O is amber near the lower cutoff |
-| Moonlit Greenhouse | 6/7 | I is mint rather than cyan |
-
-`src/themes/rainy-window/rainy-window-tetrominos.js` also screens 7/7, but `rainy-window-theme.js` neither imports `RAINY_WINDOW_TETROMINOS` nor overrides `getTetrominoConfig()`. The inherited method returns `null` (`src/themes/base-theme.js:781-798`), causing the runtime fallback (`src/rendering/tetromino-style-manager.js:220-232`; `src/core/game.js:48-57`). Treat it as dormant risk: either wire it only after derangement or remove it.
-
-### 8.4 Palette conclusion
-
-**Repository fact.** The first-run fallback is deliberately scrambled: I green, O orange, T blue, S cyan, Z red, J yellow, L purple (`src/core/constants.js:31-40`). But the prior proposition that the palette issue was resolved across the product is not supported by the current theme set.
-
-**Risk inference.** The hue-role screen identifies contextual similarity worth human review, but the broad and partly overlapping ranges—and the omission of saturation, lightness, material, motion, layout, and adjacent colors—cannot independently support a Medium–High legal rating. Treat a 7/7 result as a **potential Medium contextual factor only when the rendered screen is otherwise close**; treat a 6/7 result as **Low–Medium**. No palette is declared infringing, and the *Xio* opinion did not establish these bands or a monopoly over a seven-role color mapping.
-
-**Recommendation.** As a conservative product-separation measure—not a conclusion that the role mapping itself is protected or infringing—derange at least two, preferably three, role assignments in every active theme that screens 7/7 or near-full. Do not merely change hex values while retaining the same semantic order. Add a CI release gate that:
-
-1. enumerates every selectable theme;
-2. obtains the actual runtime config rather than filenames alone;
-3. converts colors to HSL/Lab;
-4. fails on a full familiar role mapping and warns at 6/7;
-5. exempts only a documented counsel-approved case; and
-6. produces swatches for human review because color context cannot be reduced to hue alone.
+- **WORD SERENITY**, Reg. 6,138,055 (Ser. 88/692,337), owner **Aero Isle Inc.**, class 9
+  "downloadable video game software," "WORD" disclaimed; registered 2020-08-25; §8 filing
+  received 2026-06-04 (LIVE). Closest mark found to "SERENITY BLOCKS" in a preliminary
+  (non-knockout) search. "Serenity Forge" (game publisher) shows marketplace use with no
+  federal registration located — common-law question open.
 
 ---
 
-## 9. Mechanics and code-implementation findings
+## Applicable Legal Framework
 
-### Finding CODE-1 — Modern Tetris-like mechanics are extensive
+*(External law; all texts verified 2026-07-16. U.S. federal only.)*
 
-**Repository fact.** The code implements:
+### Copyright
 
-- a Fisher–Yates seven-bag queue (`src/core/game.js:778-800`);
-- Guideline-value JLSTZ and I 90° kick tables, followed by a legacy fallback (`src/core/game.js:140-160, 963-989`);
-- 500 ms lock delay and 15 reset limit (`src/core/constants.js:166-167`);
-- hard/soft drop and ghost (`src/core/game.js:522-545, 1000-1162`);
-- T-spin three-corner detection (`src/core/game.js:1263-1282`);
-- back-to-back difficult-clear tracking (`src/core/physics.js:712-727`);
-- conventional `T-SPIN`, `BACK-TO-BACK`, and `PERFECT CLEAR` banners (`src/rendering/phaser/shared-effects.js:931-981, 1353-1424`); and
-- DAS/ARR-style controls and familiar keyboard/gamepad actions (`src/core/constants.js:225-226, 271-310`; `src/ui/controls.js:100-132, 339-350`).
+- **17 U.S.C. §102(b)** excludes ideas, procedures, processes, systems, and methods of
+  operation from copyright. The Copyright Office confirms a game's idea, name, and
+  "methods for playing it" are unprotected, while text, artwork, music, and audiovisual
+  expression are protectable (copyright.gov games page; Circular 33 (rev. 2021)).
+- ***Tetris Holding, LLC v. Xio Interactive, Inc.*, 863 F. Supp. 2d 394 (D.N.J. 2012)**
+  (Wolfson, J.; published; cross-motions; summary judgment for Tetris Holding on copyright
+  and trade dress; **no appeal taken** [secondary source]; persuasive authority only —
+  binding on no court). Key verified points:
+  - *Unprotected idea:* pieces of square blocks in different shapes falling from the top
+    and accumulating; rotation to fill horizontal lines that erase; top-out ends the game.
+    "Tetris Holding has given the rules of its game to the public domain, but has kept the
+    rights to its expression."
+  - *Protected expression on that record:* "The style, design, shape, and movement of the
+    pieces are expression"; individually delineated bricks with interior borders/texture,
+    similar bright colors, the same seven pieces ("Xio was also free to design a puzzle
+    game using pieces of different shapes"), the exact 20×10 field ("it is not a rule to
+    have the playfield be exactly 20 units by 10 units"), plus garbage lines, ghost pieces,
+    next-piece display, lock-down color change, and game-over fill.
+  - *Two limits:* the court cautioned that "standing alone, these discrete elements might
+    not amount to a finding of infringement" — the holding rested on "wholesale copying of
+    the Tetris look"; and it **expressly declined to hold** the remaining asserted
+    features (e.g., starting orientations, multiplayer layout) "wholly expressive."
+  - *Methodology:* reconciled *Whelan* with *Altai* abstraction-filtration-comparison;
+    lay-observer comparison of "gross features"; "total concept and feel" (quoting
+    *Atari*). Mino was near-identical: "Without being told which is which, a common user
+    could not decipher between the two games."
+  - *Merger rejected* (an "almost unlimited number" of alternative designs, per Xio's own
+    expert; Dr. Mario cited as a differently-expressed rules-sharing game) and *scènes à
+    faire rejected* ("Tetris is a wholly fanciful presentation"). Fair use failed.
+  - *Copying admissions:* Xio "readily admits that its game was copied from Tetris,"
+    downloaded the iPhone app for development, and its brief conceded "There is no
+    question that Mino and Tetris look alike."
+- **Balancing authorities:** *Atari v. N. Am. Philips*, 672 F.2d 607 (7th Cir. 1982)
+  (idea/scènes à faire free; distinctive character expression protected); *Data East v.
+  Epyx*, 862 F.2d 204 (9th Cir. 1988) (karate-game commonalities unprotected); *Incredible
+  Techs. v. Virtual Techs.*, 400 F.3d 1007 (7th Cir. 2005) (realistic golf presentation =
+  scènes à faire; control layout functional); *DaVinci Editrice v. ZiKo Games*, 183 F.
+  Supp. 3d 820 (S.D. Tex. 2016) (reskinned clone of card-game roles/mechanics did not
+  infringe) [secondary-verified]. *Xio* distinguishes the scènes-à-faire line because
+  Tetris has no real-world referent — the axis that matters for Serenity Blocks is how far
+  its *presentation* departs from Tetris's specific fanciful choices.
+- **Remedies context:** §504 statutory damages $750–$30,000/work (to $150,000 willful);
+  §412 registration timing limits; §512(c)/(g) notice, counter-notice (identity/forum
+  consequences), §512(f) misrepresentation liability. The *Xio* case itself began as an
+  Apple takedown → counter-notice → forced suit sequence.
 
-Tests describe the kick-table values as Guideline-exact (`tests/unit/srs-kick-tables.test.js:21-41, 83-92`) and validate deterministic behavior of the active bag path (`tests/unit/ffa-demo-replay-determinism.test.js:74-82`). The full spawn/rotation behavior is not uniformly Guideline-exact because the stored state-0 geometry and legacy fallback differ.
+### Trademark
 
-### Legal assessment
+- **15 U.S.C. §1114 / §1125(a):** likelihood of confusion as to source, sponsorship,
+  affiliation, or approval. Third Circuit: ten *Lapp* factors (721 F.2d 460, 463 (3d Cir.
+  1983)). **Nominative fair use** (*Century 21 v. LendingTree*, 425 F.3d 211 (3d Cir.
+  2005)): plaintiff first shows confusion; defendant then must show the use of the mark is
+  *necessary* to describe both products, uses *no more* of the mark than needed, and
+  *accurately reflects* the relationship. "Falling-block puzzle game" describes this
+  product without the mark, which weakens any necessity argument for non-essential uses.
+- **Dilution — §1125(c):** requires a mark "widely recognized by the general consuming
+  public"; six blurring factors. TETRIS's fame is likely to be pleaded successfully
+  (Tetris Holding pleads dilution routinely, e.g., Opp. 91299921 and the 2021/2023
+  notices). Dilution does not require confusion or competition — relevant chiefly to any
+  TETRIS-evoking *naming* ("-tris" formatives), which Serenity Blocks does not use.
+- **Remedies:** §1116 injunctions (with the TMA 2020 irreparable-harm presumption), §1117
+  profits/damages/fees, §1118 destruction of articles.
 
-These are mainly rules, methods, timing policies, and data needed to produce a functional result. In isolation they present **Low copyright risk** under §102(b). Their expressive animation and interface treatment remains relevant to the audiovisual comparison, and literal copying of another codebase would be a separate source-code issue.
+### Trade dress
 
-**Recommended controls:**
-
-- keep provenance showing independent implementation and test development;
-- do not copy comments, code structure, art, sound, or proprietary documentation from official products;
-- describe mechanics generically in public materials;
-- retain the custom 180° rotation, cascade physics, scoring, modes, and UI differences; and
-- avoid overclaiming that every feature is categorically free merely because it has a functional role.
-
----
-
-## 10. Audio and sound-mark review
-
-### Repository facts
-
-- The music manifest and 36 MP3 filenames use original/generic theme names and contain no `Tetris`, `Korobeiniki`, or `Type A` reference.
-- Gameplay sound effects are largely procedurally synthesized in `src/audio/sound-effects.js` and `src/audio/sound-manager.js`.
-- `CREDITS.md:76-82` categorically says no track uses the *Korobeiniki* / “Tetris Type-A” melody.
-- Static tags show at least `aether-tides.mp3` and `black-hole.mp3` were made with Suno and contain output metadata, which makes the broader “project-owned original” language a chain-of-title issue discussed in §13.
-- Intro sounds `begin.ogg` and `warp.ogg` have no sufficient provenance record in the repository.
-
-### Assessment
-
-No textual or metadata evidence of the registered sound was found, but a static scan cannot hear a melody. Current Tetris-specific sound-mark rating: **Low, unverified**. A recognizable *Korobeiniki* passage would require immediate review, but recognition alone is not trademark liability. Risk depends on similarity to the registered mark as a whole, use in the game context, whether the sound functions as a source cue, and likely consumer confusion; on strongly source-identifying facts it could become High. Copyright in a particular recording or arrangement is a separate question.
-
-### Required verification
-
-1. Have a musically competent reviewer listen to every shipped track and cue.
-2. Use chroma/melody fingerprinting only as a screening tool; have a qualified reviewer assess the mark as a whole, the specific recording/arrangement, placement, and source-identifying context.
-3. Check intro, menu, line-clear, level-up, game-over, and promotional/trailer audio—not just background MP3s.
-4. Preserve DAW sessions, stems, prompts, output IDs, generation dates, service terms, licenses, and human edits.
-5. Replace the categorical no-Korobeiniki statement with a verified, documented conclusion after review.
-
----
-
-## 11. Prioritized Tetris remediation plan
-
-### P0 — before any public commercial/store submission
-
-#### P0.1 Remove residual public mark uses
-
-- Replace the two Odyssey tips at `levels.js:3846` and `:4373`.
-- Replace the playground metadata at `starlight-reactions.effect.js:29` and public URL/comment examples.
-- Add an automated production-string scan that distinguishes legal notices from UI, metadata, pages, and store-copy sources.
-- Keep the product title, package description, keywords, URLs, executable name, and store tags free of TETRIS and `Tetrimino`.
-
-**Acceptance test:** a production build and Pages artifact contain no case-insensitive standalone `Tetris` except a single, counsel-approved plain-text legal notice, if one is retained.
-
-#### P0.2 Remove standard tetrominoes from product identity
-
-- Replace the startup decoration drawn from the complete conventional seven-type repertoire.
-- Replace the exact T-piece Single Player icon.
-- Replace the favicon mosaic/comment with a distinctive Serenity glyph.
-- Inspect and replace any matching installer, executable, splash, Steam capsule, library hero, trailer card, or social avatar.
-
-**Acceptance test:** no product-identifying surface uses one conventional tetromino as a logo or draws its decorative identity from the complete conventional seven-type repertoire.
-
-#### P0.3 Derange runtime palettes
-
-This is a conservative product-separation measure, not a conclusion that the hue-role mapping itself is protected or infringing.
-
-- Reassign colors in all ten 7/7 themes and the six near-full themes.
-- Resolve or remove the dormant Rainy Window config.
-- Add the runtime-aware CI palette gate described in §8.4.
-
-**Acceptance test:** no selectable theme reproduces the complete familiar I/O/T/S/Z/J/L hue-role mapping; 6/7 cases require documented human review.
-
-#### P0.4 Review the actual total look
-
-Capture, for every shipping theme and mode:
-
-- spawn and active fall;
-- rotation/wall kick;
-- ghost at rest;
-- next queue;
-- stack at low/mid/high height;
-- single through four-line clears;
-- cascades;
-- garbage insertion;
-- pause, game over, and elimination;
-- multiplayer overview; and
-- startup/menu/store capsule contexts.
-
-For copyright, have counsel compare the build against the specific registered/deposited Tetris audiovisual works plausibly asserted; current products do not by themselves define the scope of older registrations. For trademark and trade dress, compare final store art and gameplay captures against current marketplace packaging, advertising, and source-identifying presentation. Use the *Xio* features only as a fact-specific analytical guide. Static code review cannot substitute for this.
-
-#### P0.5 Complete sound review
-
-Perform the listening/fingerprint work in §10 and correct the credits claim.
-
-### P1 — coordinated design separation
-
-These changes should be evaluated as a coordinated package; no single checkbox guarantees clearance.
-
-1. **Preserve and enforce the strongest current differences:** fused seamless silhouettes, no internal cell grid, transparent field, noncanonical colors, three-preview layout, no hold, no lock recolor, no square-fill game-over animation, custom cascade gravity, unique stats, and atmospheric environments.
-2. **Consider field differentiation:** a visibly different width/height/aspect, shaped boundary, split field, changing topology, or mode-specific dimensions. Because 10×20 was expressly discussed in *Xio*, changing it is one of the strongest available separation levers, but it should be balanced against gameplay goals.
-3. **Consider a broader piece vocabulary:** additional polyforms, non-four-unit pieces, asymmetric custom forms, mode-specific sets, or a placement/elimination rule that changes the visual grammar. A complete departure from the conventional seven provides more separation than restyling alone.
-4. **Differentiate entry and rotation expression:** distinctive spawn path, easing, deformation, trail, pivot visualization, landing behavior, and lock feedback rather than merely applying conventional motion under a new skin.
-5. **Differentiate aid/UI expression:** reconsider ghost contour, preview placement/order, garbage visualization, opponent-board arrangement, labels, and board frame as a coherent Serenity interface.
-6. **Differentiate clear/end sequences:** make cascade separation, breath/release, world reaction, and end-state presentation central and unmistakably project-specific.
-7. **Market the differences:** screenshots and trailers should foreground cascade physics, breath/serenity modes, transparent fused shapes, worlds, and custom effects—not a conventional clean 10×20 stack with familiar colors.
-
-### P2 — governance and evidentiary hygiene
-
-- Establish a trademark/style guide requiring `tetromino`, never `Tetrimino`, and generic public copy.
-- Stop using named competitors as “north star,” “direct analogue,” “signature,” or “exact” requirements in new design documents.
-- Preserve old history; do not rewrite or destroy records without counsel.
-- Create an independent-design log explaining artistic reasons for major visual decisions and alternatives considered.
-- Add a release checklist for product title, metadata, store tags, icons, screenshots, trailer audio, palette, dimensions, UI, and notices.
-- Maintain a counsel-ready evidence packet: commit hash, build hash, screenshots, videos, source provenance, music review, asset notices, and final store copy.
-- Re-run USPTO and launch-territory clearance immediately before release.
-
-### Optional licensing route
-
-If the business goal is to use TETRIS branding or retain presentation that counsel concludes is likely to reproduce protected expression or trade dress, seek a license. A license is not legally required merely to use unprotectable falling-block mechanics. The Tetris site provides a [contact page](https://tetris.com/contact-us); no assumption should be made that a license is available or economically suitable.
+- **Product-design dress requires secondary meaning** (*Wal-Mart v. Samara Bros.*, 529
+  U.S. 205, 216 (2000)); packaging/décor dress may be inherently distinctive (*Two
+  Pesos*, 505 U.S. 763 (1992)). **Functionality** is an absolute bar, and the §43(a)(3)
+  burden of proving non-functionality sits on the claimant (*TrafFix*, 532 U.S. 23
+  (2001)).
+- In *Xio*, the asserted dress was "the brightly-colored Tetriminos … formed by four
+  equally-sized, delineated blocks, and the long vertical rectangle playfield," as used in
+  **advertising and packaging**. Xio contested only functionality (secondary meaning and
+  confusion effectively conceded), and the court found those choices "arbitrary
+  flourishes," not functional. The registered composites (Regs. 6,704,948; 2,362,250;
+  3,818,232; 6,707,167) now give Tetris Holding *registered* dress/design positions in
+  game classes — but each registers a particular composite, not every tall field or
+  four-square shape in isolation.
 
 ---
 
-## 12. Verification checklist after remediation
+## Copyright Analysis
 
-### Trademark and branding
+Protectability is analyzed before similarity, layer by layer.
 
-- [ ] `Serenity Blocks` remains the only game/product title.
-- [ ] No TETRIS/Tetrimino keyword, tag, slug, badge, menu term, objective, tip, or source-identifying use exists.
-- [ ] Any retained legal notice is plain text, accurate, proportionate, and counsel-approved.
-- [ ] Startup, menu, favicon, executable, installer, Steam capsules, library art, trailer cards, and social avatars contain no conventional tetromino logo/full seven-piece ident.
-- [ ] Final word-mark clearance is documented.
+**1. Abstract rules, mechanics, and systems — unprotectable layer.**
+Falling tetrominoes, movement/rotation, line clears, scoring, acceleration, top-out,
+seven-bag randomization, SRS-style kicks, lock delay, T-spins, back-to-back, hard/soft
+drop, DAS/ARR: these are rules, methods, and functional data under §102(b) and the *Xio*
+court's own idea framing. **Finding CODE-1 (OBSERVED; Risk Low; Confidence High):** the
+implementation is independent JavaScript; the numeric scoring/speed/attack constants
+reused from the LGPL game Quadra are documented as rules/formula reuse in a signed,
+commit-pinned attestation (`quadra-provenance-attestation.md`), with identifier renames
+completed. Caveat: mechanics' *animated presentation* still feeds the audiovisual
+comparison below; and independent implementation is a defense to code copying, not to
+audiovisual similarity.
 
-### Total audiovisual presentation
+**2. Source code — no material concern identified within scope.** No copied Tetris code,
+comments, or structure was found; provenance records exist. (Not a forensic code
+comparison against any official Tetris codebase, which was unavailable.)
 
-- [ ] Every runtime theme is captured with current board, ghost, queue, stack, clear, and end states.
-- [ ] No selectable palette maps all seven pieces to familiar hue roles.
-- [ ] Fused/no-seam rendering is consistent across active, locked, ghost, preview, multiplayer, fallback, screenshots, and icons.
-- [ ] No lock-down recolor or bottom-to-top square-fill end state has been introduced.
-- [ ] Custom cascade/Serenity expression is prominent in store media.
-- [ ] Counsel has reviewed side-by-side stills and motion.
+**3. Individual visual/audio assets.** Theme worlds, icons, and music are original or
+AI-generated with provenance issues tracked separately (v3.0 §13 GEN findings — most
+resolved or in progress; the remaining chain-of-title items are non-Tetris release
+blockers and are outside this report's Tetris scope). No Tetris-derived asset was found.
+**SND-1 (OBSERVED source-level; Risk Low; Confidence Medium):** no textual/metadata trace
+of *Korobeiniki*; owner listen-through (2026-07-15) found no match; independent
+musicologist/fingerprint verification remains outstanding. The live sound-mark
+registration (3,517,007) and the tetris.com "theme song" assertion make this worth closing
+properly before launch.
 
-### Audio
+**4. The audiovisual combination — the operative risk.**
 
-- [ ] Every music and SFX asset has been listened to and fingerprinted for the registered tune.
-- [ ] Intro, trailer, menu, and promotional audio are included.
-- [ ] Results and reviewer are recorded.
-- [ ] Provenance/terms/stems/edits are retained.
+*Similarities to the Xio-protected cluster (Repository fact + Rendered observation):*
+the exact seven-piece family (`constants.js:62-98`); the exact 10×20 visible field
+(`:11-13`); bright, saturated, distinct piece colors (captures 04–07); ghost piece;
+next-piece preview; garbage lines (multiplayer); falling/rotating motion.
 
-### Release response readiness
+*Material differences (each verified at HEAD; most confirmed rendered):*
 
-- [ ] Final build/store hashes and dated captures are archived.
-- [ ] Copyright and trademark registrations/clearance were rechecked.
-- [ ] A designated contact can respond promptly to a platform complaint.
-- [ ] Counsel has a ready factual response packet and understands the commercial interruption plan.
+- **No individually delineated bricks:** pieces render as fused, seam-free silhouettes with
+  no interior borders, on a transparent field with no grid (`base-board-scene.js:702-720,
+  844-919`; captures 04–07). This directly negates the "individually delineated bricks,
+  each … given an interior border" element the *Xio* court emphasized.
+- **Scrambled shape→color mapping** by default (6/7 roles differ; Z=red retained —
+  `constants.js:31-41`) and deranged mappings in the sampled selectable themes (PAL-1).
+- **Three-slot preview row placed horizontally above the board** (capture 04) versus the
+  conventional right-side vertical queue; **no hold feature at all**.
+- **No lock-down color change** (`game.js:1214` re-resolves the same theme color) and **no
+  game-over board-fill** — game over is a statistics modal (capture 08); multiplayer
+  elimination is a gentle fade overlay (`LocalMultiplayerMode.js:4024-4090`). Both were
+  named expressive elements in *Xio*; both are absent.
+- **Cascade connected-component gravity** producing visibly different post-clear behavior;
+  custom scoring/progression/stats (BPM/PPM); Serenity/Odyssey/Infinity modes; atmospheric
+  scenic themes as the dominant visual identity.
 
----
+**Finding AV-1 (OBSERVED; Risk Medium as an aggregate contextual factor; Confidence
+High):** the seven-piece family plus exact 10×20 field remain, by explicit product
+decision. Under *Xio* these are part of a protectable *combination* even though "standing
+alone … might not amount to … infringement." **Finding AV-3 (OBSERVED; Risk Medium
+aggregate / Low–Medium individually; Confidence High for captured elements, Medium for
+uncaptured garbage/multiplayer):** ghost/preview/garbage cluster present but differently
+treated. **Findings AV-2/AV-4/AV-5 (OBSERVED; mitigating; Confidence High for rendered
+confirmations):** fused rendering, absent lock-recolor/game-over-fill, cascades.
 
-## 13. Separate repository-wide copyright and licensing findings
+*Arguments supporting concern:* a claimant would assemble the retained cluster
+(7 pieces + 10×20 + ghost + preview + garbage + bright colors) and argue total-concept-
+and-feel similarity to a Tetris audiovisual work; access is indisputable (the repo's own
+design docs name Tetris Effect and Tetris 99 as references); the 2023 Apotris notice shows
+the rights holder asserting exactly this cluster against far-less-similar targets.
 
-These findings are **not evidence of Tetris infringement** and do not increase the Tetris-specific rating. They arose from the requested thorough copyright review and are material to release readiness.
+*Counterarguments and distinctions:* *Xio* turned on near-identity and admitted copying —
+"a common user could not decipher between the two games"; no ordinary observer would
+confuse capture 05 with a current official Tetris product's screen; the most specific
+expressive choices *Xio* listed (delineated/bordered bricks, Guideline colors, lock
+recolor, game-over fill, right-side queue, hold) are each absent or replaced; merger/
+scènes à faire remain rejected defenses here too, but the filtered comparison operates on
+a much thinner set of shared expression; and the balancing cases (*Data East*, *Incredible
+Techs.*, *DaVinci*) support genre-level freedom where specific expression diverges.
 
-### GEN-1 — SynthCity assets lack the required MIT notice — **High**
+**Finding AV-6 — intro seven-piece decoration (POTENTIAL CONCERN; Risk Medium; Confidence
+Medium — rendered evidence unavailable).** Source still spawns drifting decorative pieces
+from the complete conventional seven-type repertoire around the wordmark in both intro
+paths (`threejs-intro-renderer-webgpu.js:1123-1157`; `threejs-intro-renderer.js:99-107`).
+They never appeared in this audit's software-rendered captures (01–03, 09, 10), so their
+on-hardware prominence is unverified. Because this is *branding/identity* use of the
+conventional piece repertoire (not gameplay necessity), it is the highest-leverage
+remaining visual item: abundant alternatives exist, and it sits exactly where trade-dress
+and packaging comparisons focus. Retained by product decision per the v3.0 appendix — that
+decision should be revisited with counsel once a hardware capture exists.
 
-**Repository fact.** `public/textures/synthcity/` contains 109 files (~38 MB). Exact comparison with the public [`jeffbeene/synthcity`](https://github.com/jeffbeene/synthcity) repository found 79 common files byte-for-byte identical and no differing common files. A large subset is live-loaded by `src/themes/neon-district/neon-district-assets.js:14, 255-289`; all 109 files reside under `public/` and therefore are distribution inputs. Comments at `:4-5, 65-67` expressly reference replicating SynthCity. The five Quaz30/Deckard textures appear unreferenced by source code but remain distributable public assets.
-
-The upstream MIT license is © 2024 Jeff Beene and requires preservation of its copyright and permission notice. No SynthCity notice exists in the tracked repository or configured Electron packaging inputs; no final packaged artifact was built or inspected. The Quaz textures' separate license and need should be verified.
-
-**Remediation.** Bundle the complete upstream MIT text, title/source/version attribution, and any separately required notices; document every copied file; remove unused Quaz textures unless rights are established.
-
-### GEN-2 — Live CC-BY Fox and unidentified landscape model — **High**
-
-**Repository fact.** `src/themes/sakura-twilight/assets/Fox.glb` embeds a CC-BY 4.0 attribution including PixelMannen and additional source/author information. It is imported by `src/themes/sakura-twilight/sakura-twilight-theme.js:16-17` but is absent from `CREDITS.md`. The same theme imports `landscape-glb.glb`, for which sufficient source/license evidence was not found.
-
-**Remediation.** Add the complete title, author(s), source, CC-BY 4.0 link, and modification statement to shipped notices. Quarantine the landscape model until ownership/license evidence is obtained.
-
-### GEN-3 — Solar System Scope attribution is incomplete — **High**
-
-`CREDITS.md:21` lists only `2k_saturn.jpg`, `2k_moon.jpg`, and `2k_mars.jpg` and assigns them to Stellar Drift, but current Stellar Drift instead loads unlisted `2k_jupiter.jpg` (`src/themes/stellar-drift/stellar-drift-theme.js:3091`). Chromadelic Highway loads Neptune, Venus atmosphere, Mars, Mercury, Saturn, Saturn ring alpha, and Uranus (`src/themes/chromadelic-highway/chromadelic-highway-theme.js:3021, 3130, 3191, 3244, 3296, 3313, 3369`). Lunara loads Moon, Mars, Saturn, and Saturn ring alpha (`src/themes/lunara/lunara-theme.js:922-923, 1033, 1042`). Moon is also loaded by Sakura Twilight (`src/themes/sakura-twilight/sakura-twilight-theme.js:1533`), Sunset (`src/themes/sunset/sunset-theme.js:719`), Wolfhour (`src/themes/wolfhour/wolfhour-theme.js:1911`), and the public playground effect `src/playground/effects/wolfhour-lunar-sigil.effect.js:117`. The [official Solar System Scope texture page](https://www.solarsystemscope.com/textures/) states the attribution basis.
-
-**Remediation.** Inventory every derived file and runtime use, identify modifications/recoloring, and include complete CC-BY attribution in shipped notices.
-
-### GEN-4 — Electron packaging configuration excludes the credits file — **High**
-
-**Repository fact.** `CREDITS.md:3-6` calls itself the user-facing source of truth, but `package.json:50-53` packages only `dist/**/*`, `electron/**/*`, and `package.json`. `scripts/beforeBuild.cjs` and `scripts/afterPack.cjs` contain no path that copies `CREDITS.md`, and no in-app Legal/Credits reader was found. The configured build therefore excludes it, although a final installed artifact was not inspected. README likewise is absent from the configured file list.
-
-**Remediation.** Generate `THIRD_PARTY_NOTICES` with required full license texts, copy it into application resources, expose an accessible in-app Legal/Credits screen, and verify it exists in the unpacked and installed artifacts.
-
-### GEN-5 — Music ownership language conflicts with Suno provenance — **Medium–High**
-
-`CREDITS.md:76-82` says all music is project-owned, uses no third-party/library material, and is nonderivative. At least `aether-tides.mp3` and `black-hole.mp3` contain `made with suno`, generation timestamps, and output IDs; archived prompt documents confirm a Suno workflow. All 36 MP3s also contain cover art with undocumented provenance.
-
-AI generation does not itself establish infringement. The issues are contractual rights, generation-date plan/terms, input/output provenance, human-authorship/copyrightability, and overbroad ownership assertions.
-
-**Remediation.** Correct the credits to match the facts; preserve subscription/payment evidence, terms snapshots, output IDs, prompts, stems, edits, and evidence of human contribution; document cover-art origin; obtain counsel's chain-of-title assessment.
-
-### GEN-6 — Gemini TTS and intro-sound provenance are incomplete — **Medium**
-
-`scripts/tts-script.json:1-6` and `scripts/generate-tts.js` identify Google AI Studio, `gemini-2.5-pro-preview-tts`, and the Algieba voice. There are 107 bundled WAVs, while the tracking document reports 95; CREDITS does not address them. `begin.ogg` and `warp.ogg` have no sufficient output/license record, despite a workflow document requiring retention.
-
-**Remediation.** Reconcile the asset inventory and record service, model/voice, generation date, applicable terms, output IDs/seeds, prompts, authorization, and post-processing.
-
-### GEN-7 — Generated 3D-model ownership claims need input provenance — **Medium**
-
-`CREDITS.md:57-72` categorically calls numerous TRELLIS/TripoSR outputs project-owned. Several asset notes identify only a “single photo” or generation tool, not the source/license of the input image. A tool's open-source code license does not establish rights in the input or automatically establish human-authored copyright in the output.
-
-**Remediation.** For every generated asset, document input source/license, generation service/model/terms/date, modifications, and human contribution. Avoid categorical ownership statements unsupported by records.
-
-### GEN-8 — Root-license documentation is ambiguous — **Low–Medium**
-
-`package.json:122` declares MIT, but no root `LICENSE` or `COPYING` file was found and the author field is blank. An owner's failure to include a standalone license file is not infringement of its own copyright; it creates ambiguity about who grants what rights to users and contributors.
-
-**Remediation.** Confirm the copyright owner and intended scope, then add an accurate root license and contributor policy.
-
-### GEN-9 — Required third-party notice coverage is incomplete — **Unverified; potentially High**
-
-Confirmed omissions for SynthCity, the Fox model, and Solar System Scope materials appear in GEN-1 through GEN-4. Other distributed/vendored material also requires an obligation-by-obligation audit: for example, `public/vendor/webgpu-inspector.js` contains a minified vendor bundle, and `public/basics/basis/` contains Basis Universal transcoders plus a README that points to Apache-2.0. Lockfile metadata or an upstream README alone is not a complete shipped-code notice audit.
-
-**Remediation.** Identify the exact source/version and license for every distributed third-party file, generate a complete notice bundle, preserve any required copyright/license/NOTICE text, and inspect the actual packaged source and binaries. The final rating depends on verified license obligations; an omission can be High when a license condition is clear and the file is distributed.
-
-### General-release conclusion
-
-The missing SynthCity/Fox/Solar System Scope notices and the exclusion of credits from the current packaging configuration are the clearest non-Tetris defects. They should be corrected before distribution even if every Tetris-specific recommendation is completed.
+**Unresolved facts for the copyright analysis:** rendered line-clear/cascade sequences;
+all other themes (do any read closer to Guideline colors in situ?); WebGPU surfaces;
+packaged-build parity; which specific registered/deposited Tetris works a claimant would
+assert (deposit copies not obtained).
 
 ---
 
-## 14. International and procedural caution
+## Trademark Analysis
 
-Copyright and trademark rights are territorial. A global Steam or web launch may trigger EU, UK, Canadian, Japanese, and other local regimes, including registered marks, passing off/unfair competition, and design rights that do not map perfectly onto U.S. doctrine.
+**Name, logo, icon, branding.** "SERENITY BLOCKS" shares no sound, appearance, meaning, or
+commercial impression with TETRIS; it is not a "-tris" formative (the naming pattern
+Tetris Holding actively opposes, per Opp. 91299921). The wordmark, diamond ident, S-wave
+favicon, and solo-ring icon (captures 01, 03; `index.html:1402-1412`; `favicon.svg`) bear
+no resemblance to the registered TETRIS word or design marks. **Finding TM-1 (NO MATERIAL
+CONCERN IDENTIFIED WITHIN SCOPE for Tetris conflicts; Risk Low; Confidence High).**
+Separately, **Finding TM-6 (NEEDS COUNSEL; Risk unrated; Confidence Medium):** the live
+third-party registration WORD SERENITY (Reg. 6,138,055, cl. 9 downloadable video game
+software) and the unregistered "Serenity Forge" marketplace presence are the closest marks
+to the product's own name found in a preliminary search; ordinary clearance for "SERENITY
+BLOCKS" (including a proper knockout search, which this environment could not run) should
+be completed before launch.
 
-At minimum, obtain launch-territory clearance for the United States, European Union, United Kingdom, and Canada. Do not describe this U.S.-focused report as a worldwide freedom-to-operate opinion. The exact launch date also matters because trademark registrations, platform policies, and product designs change.
+**Public uses of "Tetris."** At HEAD there are **zero player-visible uses** (verified by
+string classification; Product and Evidence Inventory above). What remains: (a) two CSS
+comments in a shipped stylesheet (`public/styles/main.css:12460, 12535`), (b) internal
+identifiers (`'tetris-count'`, badge key `tetris:`, playground event kind `'tetris'`) that
+never render, and (c) extensive references in `docs/` and git history. **Findings TM-2/
+TM-3 (remediated; residual Risk Low; Confidence High):** none of these is trademark *use*
+in commerce as a source identifier; the shipped-comment and identifier hygiene items are
+cheap to finish. **Finding TM-4 (OBSERVED; no standalone infringement rating):** internal
+design documents naming Tetris Effect/Tetris 99 as references are evidence of access and
+could color intent narratives if expressive similarity were first shown; they are not
+themselves actionable uses. Do not rewrite history; write future design docs in
+independent terms.
 
-If a complaint arrives:
+**Metadata, keywords, domains, SEO.** `package.json` keywords are generic; no store
+listing exists yet to review. No Tetris keyword/tag/SEO use found in scope. Store metadata
+must be re-audited when drafted (see Remediation). Nominative-use note: under *Century 21*,
+even a truthful comparative reference ("like Tetris") in store copy must be necessary,
+minimal, and accurate — the safer course this repo already follows is the generic
+"falling-block puzzle game."
 
-1. preserve source, design records, communications, build artifacts, and store materials;
-2. do not delete history or make admissions in public;
-3. notify counsel and applicable insurers immediately;
-4. separate copyright, trademark, and platform-policy allegations;
-5. calendar takedown/counter-notice deadlines precisely; and
-6. assess whether a rapid visual/metadata patch can reduce interruption without prejudicing defenses.
+**Confusion factors (Lapp) sketch, for counsel's structure, not a conclusion:** mark
+similarity (factor 1) is near-zero for the name and current branding; TETRIS's strength
+(2) is very high; goods identity (9) and channels (7) would overlap fully at launch —
+which is why factor 1 and the trade-dress presentation carry the analysis; intent (5)
+would be contested on the design-doc references vs. the documented divergence program.
 
----
+**Dilution.** No TETRIS-evoking name or mark is used; blurring/tarnishment exposure from
+naming is not indicated. Dilution reappears only if branding were to re-adopt
+tetromino-repertoire identity (AV-6 is the open item adjacent to this).
 
-## 15. Source register
-
-### Core Tetris authority and docket
-
-- [*Tetris Holding, LLC v. Xio Interactive, Inc.*, full opinion (D.N.J. 2012)](https://law.justia.com/cases/federal/district-courts/new-jersey/njdce/3%3A2009cv06115/235418/61/)
-- [Official GovInfo opinion package](https://www.govinfo.gov/app/details/USCOURTS-njd-3_09-cv-06115/USCOURTS-njd-3_09-cv-06115-0)
-- [CourtListener docket](https://www.courtlistener.com/docket/4309852/tetris-holding-llc-v-xio-interactive/)
-
-### Copyright statutes and official guidance
-
-- [17 U.S.C. §102 — subject matter and idea/system exclusion](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section102)
-- [17 U.S.C. §107 — fair use](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section107)
-- [17 U.S.C. §412 — limits on statutory damages and fees](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section412)
-- [17 U.S.C. §504 — damages and profits](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section504)
-- [17 U.S.C. §512 — online service-provider safe harbors and counter-notices](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title17-section512)
-- [U.S. Copyright Office — Games](https://www.copyright.gov/register/tx-games.html)
-- [U.S. Copyright Office Circular 33 — Works Not Protected by Copyright](https://www.copyright.gov/circs/circ33.pdf)
-- [*Baker v. Selden*, official U.S. Reports PDF](https://tile.loc.gov/storage-services/service/ll/usrep/usrep101/usrep101099/usrep101099.pdf)
-
-### Balanced game-clone authorities
-
-- [*Atari, Inc. v. North American Philips Consumer Electronics Corp.*, 672 F.2d 607 (7th Cir. 1982)](https://law.justia.com/cases/federal/appellate-courts/F2/672/607/331150/)
-- [*Data East USA, Inc. v. Epyx, Inc.*, 862 F.2d 204 (9th Cir. 1988)](https://law.justia.com/cases/federal/appellate-courts/F2/862/204/20289/)
-- [*Incredible Technologies, Inc. v. Virtual Technologies, Inc.*, 400 F.3d 1007 (7th Cir. 2005)](https://law.justia.com/cases/federal/appellate-courts/F3/400/1007/606294/)
-- [*DaVinci Editrice S.r.l. v. ZiKo Games, LLC*, 183 F. Supp. 3d 820 (S.D. Tex. 2016)](https://law.justia.com/cases/federal/district-courts/texas/txsdce/4%3A2013cv03415/1134359/73/)
-- [*Upper Deck Co. v. Miller*, W.D. Wash. Oct. 3, 2025](https://law.justia.com/cases/federal/district-courts/washington/wawdce/2%3A2023cv01936/329581/184/)
-
-### Trademark and trade dress
-
-- [15 U.S.C. §1125 — false designation, trade dress, and dilution](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1125)
-- [15 U.S.C. §1116 — injunctions](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1116)
-- [15 U.S.C. §1117 — profits, damages, costs, and fees](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1117)
-- [15 U.S.C. §1118 — destruction of infringing articles](https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-section1118)
-- [USPTO — Likelihood of Confusion](https://www.uspto.gov/trademarks/search/likelihood-confusion)
-- [USPTO TTABVUE — Tetris Holding pleaded registrations/current status](https://ttabvue.uspto.gov/ttabvue/v?pno=91249666&pty=OPP)
-- [*Interpace Corp. v. Lapp, Inc.*, 721 F.2d 460 (3d Cir. 1983)](https://law.justia.com/cases/federal/appellate-courts/F2/721/460/162480/)
-- [*Century 21 Real Estate Corp. v. LendingTree, Inc.*, official Third Circuit opinion](https://www2.ca3.uscourts.gov/opinarch/034700p.pdf)
-- [*Wal-Mart Stores, Inc. v. Samara Brothers, Inc.*, 529 U.S. 205 (2000)](https://supreme.justia.com/cases/federal/us/529/205/)
-- [*TrafFix Devices, Inc. v. Marketing Displays, Inc.*, 532 U.S. 23 (2001)](https://supreme.justia.com/cases/federal/us/532/23/)
-- [*Dastar Corp. v. Twentieth Century Fox Film Corp.*, official U.S. Reports PDF](https://tile.loc.gov/storage-services/service/ll/usrep/usrep539/usrep539023/usrep539023.pdf)
-- [T-shaped composite mark, Registration No. 2,362,250](https://trademarks.justia.com/757/82/tetris-75782993.html)
-- [T-shaped composite mark, Registration No. 3,818,232](https://trademarks.justia.com/778/90/tetris-77890492.html)
-- [Composite field/word-and-shapes mark, Registration No. 6,704,948 / Serial No. 90670731](https://www.trademarkia.com/tetris-90670731) and [official TSDR lookup](https://tsdr.uspto.gov/#caseNumber=90670731&caseSearchType=US_APPLICATION&caseType=DEFAULT&searchType=statusSearch)
-- [Sound mark, Registration No. 3,517,007 / Serial No. 77037539](https://trademarks.justia.com/770/37/n-77037539.html)
-- [Official TSDR lookup for Serial No. 77037539](https://tsdr.uspto.gov/#caseNumber=77037539&caseSearchType=US_APPLICATION&caseType=DEFAULT&searchType=statusSearch)
-
-### Owner statements and enforcement evidence
-
-- [Tetris Terms of Use, updated May 1, 2025](https://tetris.com/terms-conditions)
-- [Tetris corporate information](https://tetris.com/corporate-bios)
-- [Tetris contact/licensing page](https://tetris.com/contact-us)
-- [GitHub-published 2023 Apotris DMCA notice](https://github.com/github/dmca/blob/master/2023/02/2023-02-10-tetris.md)
-- [GitHub-published 2021 Tetris notice](https://github.com/github/dmca/blob/master/2021/07/2021-07-16-tetris.md)
-- [itch.io 2023 Setris takedown notice](https://itch.io/takedowns/2073998)
+**Disclaimers.** The README/CREDITS non-affiliation notices (shipped as files in both
+build targets, but with **no in-app surface**) are accurate-relationship evidence that
+supports a nominative posture and undercuts affiliation claims; they cannot cure
+confusion, copyright, or trade-dress problems. **Finding TM-5 (OBSERVED; mitigating;
+Confidence High).** An in-app legal/credits screen would make the notice actually reach
+users of packaged builds.
 
 ---
 
-## 16. Final assessment
+## Trade Dress Analysis
 
-Serenity Blocks has already moved away from the riskiest literal presentation: the name and package metadata are generic; the primary renderer fuses cells into seamless silhouettes; its board is transparent; default colors are scrambled; the visual worlds are highly original; and several Tetris-specific end-state/lock features are absent. Those are real legal-risk mitigations, and the gridded legacy canvas renderer previously flagged here has now been verified unreachable and removed.
+**Defining the asserted dress precisely** (as required — not "look and feel"): the
+plausible assertions are (i) the *Xio* dress — brightly colored four-square pieces of
+equally sized, delineated blocks plus a tall vertical rectangular playfield, as used in
+advertising/packaging; (ii) the registered composite Reg. 6,704,948 — TETRIS lettering
+within a black rectangular field bordered light blue with tetrimino pieces below (colors
+claimed); (iii) the registered T-composites (2,362,250; 3,818,232; 6,707,167); and (iv)
+the registered sound mark (3,517,007).
 
-The static codebase nevertheless implements the complete seven-piece family on an exact 10×20 field with an overlapping visual/UI feature cluster, and it draws startup/menu branding from conventional tetromino forms. Ten selectable themes also screen as preserving all seven familiar hue roles under a deliberately broad heuristic. The current static record therefore supports a **provisional Medium aggregate rating**, not a conclusion of infringement. It could rise to Medium–High if representative gameplay or store captures reproduce the overall visual impression of a plausibly asserted Tetris audiovisual work or current source-identifying presentation.
+**Functionality and distinctiveness.** Under *TrafFix*/*Xio*, the specific colors,
+delineated-brick styling, and exact 20×10 proportion were held non-functional "arbitrary
+flourishes" on that record; a tall-rectangle playfield *as such* sits closer to function
+(it is where the game happens) and *Xio* is weaker authority for it in isolation. As
+product-design/screen dress, secondary meaning would be required (*Wal-Mart*) — likely
+provable for Tetris's classic presentation given fame, but that is a claimant's burden,
+not an assumption.
 
-The fastest responsible path is: remove the residual word mark, remove tetromino branding, derange the flagged palettes, verify all audio, capture the complete current product, fix the unrelated asset-notice blockers, and obtain a playable-build/storefront review from qualified game-IP counsel. After those steps, the remaining mechanics-heavy similarity should be substantially easier to defend as use of unprotectable rules within a distinct expressive work.
+**Comparison of overall commercial impression (rendered evidence vs. records):**
+
+| Asserted dress element | Serenity Blocks at HEAD | Assessment |
+|---|---|---|
+| Brightly colored four-square pieces | Present in gameplay (captures 05, 07) — but fused/seamless, no delineated blocks, scrambled color roles | Partial overlap; the *delineation* half of the *Xio* dress is absent |
+| Individually delineated, bordered blocks | Absent (`base-board-scene.js:713`) | Material difference |
+| Tall vertical rectangular playfield | Present: 10×20, purple-glow border, transparent dark field (capture 04) | Overlap on the weakest (most function-adjacent) element |
+| Black field bordered light blue + TETRIS lettering + piece row (Reg. 6,704,948) | Dark field bordered **purple**; no lettering; no piece row; preview row is inside the frame, top | Gestalt overlap limited to "dark tall bordered field with colored pieces"; composite's dominant features absent — but this comparison is exactly what counsel should make against final store art |
+| T-tetromino composites (2,362,250; 3,818,232; 6,707,167) | No T-piece branding remains (menu icon replaced; capture 03) | No current overlap; AV-6 intro pieces are the nearest open surface |
+| Korobeiniki sound mark | No textual/metadata trace; owner listen-through negative; independent verification pending | Low, unverified |
+| Packaging/advertising presentation | **Does not exist yet** — no store assets in repo | INSUFFICIENT EVIDENCE — the decisive trade-dress surface is still unbuilt |
+
+**Alternative designs** (relevant to both functionality and remediation): different field
+proportions/shapes, non-four-unit or expanded polyform vocabularies, non-repertoire
+branding glyphs — all available, several already adopted (S-wave, solo ring, diamond).
+
+**Consumer context.** Free/impulse game marketplaces (Steam, web) mean low purchaser care;
+surrounding branding (name, wordmark, tagline, scenic themes) is strongly differentiated;
+no evidence of actual confusion exists (pre-release).
+
+**Finding TD-1 (POTENTIAL CONCERN; Risk Medium, driven by the unbuilt store surface and
+the retained field/piece cluster; Confidence Medium):** current in-game presentation shows
+material, verified differences from the asserted dress, but (a) only one theme/mode was
+rendered, (b) store/packaging assets do not exist to review, and (c) screenshots chosen
+for marketing could easily foreground the most Tetris-like view (a clean stack of bright
+pieces in a tall bordered field) rather than the differentiators. Marketing curation is
+therefore a primary control point.
 
 ---
 
-## 17. Remediation-status appendix (post-v3.0)
+## Side-by-Side Feature Comparison
 
-*Added 2026-07-15. §§1–16 above are the original v3.0 report — a point-in-time review of `main@4127ae2`. This appendix records remediation merged since then (through PR #290 plus the follow-up in this change) so the report is not misread as complete. It does not re-open or restate the v3.0 analysis, and the overall **conditional no-go stands.***
+"Present" ≠ infringing; "different" ≠ cleared. The legal comparison returns to the total
+concept and feel of specific asserted works. Rows marked ⚠ were expressly *not* resolved
+as protectable in *Xio*.
 
-**Note on labels.** Earlier chat/PR notes referenced fixes "A–D"; those are pre-v3 labels carried forward, not v3.0 identifiers. They map to the v3.0 findings as the published/UI TETRIS text (TM-1/TM-2/TM-3 surfaces), the palette work (PAL-1), and the disclaimer (TM-5).
+| Xio-discussed element | Tetris reference treatment | Serenity Blocks at HEAD (evidence) | Effect |
+|---|---|---|---|
+| Seven tetromino pieces | Same seven, Guideline colors | Same seven (`constants.js:62-98`); scrambled/deranged colors | Raises aggregate risk |
+| Bright distinct colors | Bright, shape-locked palette | Bright but role-scrambled (captures 05/07; PAL-1) | Partial overlap |
+| Individually delineated, bordered bricks | Core visual signature | **Absent** — fused seamless silhouettes (`base-board-scene.js:702-919`; captures 04–07) | Strong mitigation |
+| Exact 20×10 field | Exact | **Exact 10×20** + 4 hidden (`constants.js:11-13`; capture 04) | Raises aggregate risk |
+| Piece movement/rotation | Standard | Standard + 180° rotation (`game.js:130-134`) | Rules-level; motion expression for counsel video review |
+| Next-piece display | Right-side vertical queue | **Top horizontal 3-slot row**, first highlighted (`next-queue-ui.js:237`; capture 04) | Overlap, different treatment |
+| Hold queue | Standard in modern Tetris | **Absent entirely** | Mitigation |
+| Ghost piece | Delineated ghost | Fused translucent silhouette, faint cyan contour (`:1033-1058`; capture 04) | Overlap, different treatment |
+| Lock-down color change | Present | **Absent** (`game.js:1214`) | Strong mitigation |
+| Game-over board fill | Squares fill bottom-to-top | **Absent** — stats modal "The cycle ends." (capture 08) | Strong mitigation |
+| Garbage lines | Present | Present, custom multi-hole/matte (`garbage.js`) — not rendered this audit | Moderate factor |
+| ⚠ Starting orientations | Guideline spawn | T/J/L stored 180°-flipped (`constants.js:73-97`) | Left open in *Xio*; minor |
+| ⚠ Multiplayer layout (big player + small opponents) | Tetris 99-style | Custom implementation; docs name Tetris 99/Jstris as inspiration | Left open in *Xio*; storefront factor |
+| Post-clear behavior | Rows consolidate downward rigidly | **Connected-component cascade physics** (`board.js:313-364`) — not rendered this audit | Material mitigation (unverified rendered) |
+| Branding with pieces/field | TETRIS composites; piece-forward packaging | Wordmark, diamond, S-wave, solo ring (captures 01/03); **intro seven-piece decor live in source, unrendered** (AV-6) | Main open branding item |
+| Theme song (Korobeiniki) | Registered sound mark | No trace; owner listen-through negative; independent check pending | Low, unverified |
 
-### Merged since v3.0 (verified at the source level only)
-- **Consumer-facing TETRIS text** removed from `package.json` (description + keyword), `README.md`, `game_description.md`, the multiplayer scoreboard, the two Odyssey tips (`levels.js`), the production-bundled playground metadata (`starlight-reactions.effect.js`), and a public reference doc ("No Tetris blocks" → "No falling-block pieces"); the favicon **comment** was reworded. *(TM-2, TM-3; partial TM-4.)*
-- **Player-visible "Quadra"/"TETR.IO" strings** removed from the bot-tier list ("Quadra Ace" → "Ace") and the match-config help / attack-description text in both modals.
-- **Palettes:** all identified source palette maps deranged so no theme's `*-tetrominos.js` reproduces the Guideline hue-role mapping. *(PAL-1 — source remaps only.)*
-- **Attribution / packaging:** SynthCity MIT notice added and the unreferenced Quaz/Deckard textures removed; Fox CC-BY added; Solar System Scope expanded with a modifications note; `landscape-glb.glb` re-credited (author *Leonardo Awen* per embedded metadata) and the inaccurate "quarantine" note corrected; build **configured** to ship `CREDITS.md` (web + Electron). *(GEN-1; GEN-2 partial; GEN-3; GEN-4; GEN-5 disclosure only.)*
-- **Quadra derivative-work review:** an independent comparison against Quadra's actual source (`canvas.cc`, `player.cc`, `net_list.cc`, `random.cc`) found formula/rule reuse only — no copied lines, comments, or transliterated structure — so no LGPL obligation is identified **on that factual premise**. Six distinctive Quadra-derived identifiers were renamed; an authorship attestation was added and **affirmed by the owner** (`quadra-provenance-attestation.md`), pinned to Quadra `master @ d6c7226`.
-- **Dormant legacy grid renderer removed (AV-2).** A multi-agent reachability audit (four independent source traces + three adversarial refutation passes) confirmed the old 2-D canvas board renderer was unreachable dead code — `this.canvas`/`this.ctx` were never assigned, so its faint-grid path never ran and Phaser is the sole board renderer. `src/rendering/canvas-utils.js` was deleted and the dead `draw()` renderer, its call sites, and the inert piece-trail producer were excised from `draw.js`, `main.js`, and `SinglePlayerMode.js`. This closes the latent grid-regression risk flagged in AV-2 and removes the earlier doc's inaccurate "canvas fallback" characterization.
-- **Branding de-tetromino'd (source level).** The Single Player menu icon was changed from an exact four-square **T-piece** (`cs-icon--tetro`) to a "solo focus" person-in-a-ring mark (`cs-icon--solo`), and the icon's drop/assemble/stack animation (`cs-tetro-idle/assemble/hover-stack`) was **removed** — replaced with a gentle ring "breathe," with the reduced-motion rule updated to match (`index.html`, `public/styles/menu-aaa.css`). The favicon was changed from seven stacked rounded squares to a single continuous **S-wave Serenity mark** (`public/favicon.svg`) — no squares, pieces, grid, stack, or falling motion. **Still open on this item:** the packaged Windows/Store icon is **not** the browser favicon — `package.json` points electron-builder at `build/icon.ico`, which is still absent; regenerating it (and a PNG master) from `favicon.svg` is documented in `docs/desktop-icons.md` but requires a machine with an SVG rasterizer. Live visual inspection (favicon at 16/32px, the menu icon's idle/hover/gamepad states, a packaged shortcut/taskbar icon) has **not** been done and is required before treating this as complete. The seven-piece startup intro animation, the startup ident, and store/marketing pictures remain unchanged.
+---
 
-### Still open — the conditional no-go stands
-- **P0.1** — no automated production-artifact / release-string **scan gate** yet (one allowing only a single counsel-approved legal notice).
-- **P0.2** — **partially addressed.** The Single Player **T-piece menu icon** (now a "solo focus" mark) and its drop/assemble/stack animation, the **favicon** (now a single S-wave), and the **legacy-canvas grid renderer** (removed dead code, AV-2) are done **at the source level** — see the merged-items list above. Still open: the packaged **`build/icon.ico`** + PNG master are not generated (recipe in `docs/desktop-icons.md`); **live visual inspection** of the favicon at 16/32px, the menu icon's idle/hover/gamepad states, and a packaged shortcut/taskbar icon has not been done; and the **startup ident** and **external/store branding** are unchanged. *(Per the owner's decision, the seven-piece intro animation and the main menu are being retained for now.)*
-- **P0.3** — the runtime-aware **palette CI gate** and a **rendered human review** of every theme are not done; derangement is verified at source level only.
-- **P0.4** — the **playable total-look**, storefront art/screenshots/trailers, and **counsel review** have not been performed; static code review cannot clear this.
-- **P0.5** — **substantially done:** the owner completed a **listen-through of all music tracks (2026-07-15)** and confirms none reproduces the *Korobeiniki* / Type-A melody; SFX are procedural (no melody). Optional extra rigor (independent musicologist / automated fingerprinting) remains available but is not required.
-- **Asset chain-of-title / notices:** `landscape-glb.glb` license (GEN-2), Gemini-TTS + intro-sound records (GEN-6), generated-3D input provenance (GEN-7), a root `LICENSE` (GEN-8), and a complete vendor-notice audit incl. `basis` / `webgpu-inspector` (GEN-9) remain **genuine release blockers**; packaged-artifact inspection confirming `CREDITS.md` actually ships is still pending; and the music chain-of-title / melody review remains open (GEN-5).
+## Consolidated Risk Register
 
-### Retained by product decision (not a legal clearance)
-The exact **seven-piece family** and **10×20 field** are being kept as a product decision. They remain relevant to the combined total-look analysis in *Xio* (AV-1); retaining them is a choice, not a determination that they are cleared.
+Risk = plausibility that the fact pattern could materially support a claim (not
+probability of suit or loss). Confidence = strength of this audit's evidence.
 
-**Bottom line (calibrated).** As of `main@3f28312` plus this change, the enumerated consumer-facing TETRIS text edits, the identified source-level palette remaps, and several attribution/packaging changes are merged, and the Quadra reuse has been reviewed and its naming cleaned up. **The conditional no-go nevertheless remains.** Open P0 work includes P0.1's artifact scan/gate; P0.2's branding replacements; P0.3's runtime palette gate + rendered human review; P0.4's playable total-look, storefront, and counsel review; and P0.5's audio review — plus asset chain-of-title and vendor-notice work. This is a risk assessment, not a substitute for counsel's legal opinion.
+| ID | Status | Theory | Issue | Risk | Confidence | Counsel review? |
+|---|---|---|---|---|---|---|
+| TM-1 | NO MATERIAL CONCERN WITHIN SCOPE | Trademark | "Serenity Blocks" name & metadata vs. TETRIS | Low | High | At clearance |
+| TM-2 | Remediated (was concern in v3.0) | Trademark | Player-visible "Tetris" strings — none remain | Low | High | No |
+| TM-3 | OBSERVED | Trademark | Bundled non-rendered strings (2 CSS comments; internal keys) | Low | High | No — hygiene |
+| TM-4 | OBSERVED | Trademark (evidence) | Docs/history references to Tetris products as design targets | Low (no standalone claim) | High | Contextual |
+| TM-5 | OBSERVED | Mitigation | Disclaimers ship as files; no in-app surface | Mitigating | High | Approve final text |
+| TM-6 | NEEDS COUNSEL | Trademark (3rd party) | WORD SERENITY Reg. 6,138,055 (cl. 9); Serenity Forge common-law | Unrated | Medium | **Yes — before launch** |
+| AV-1 | OBSERVED / POTENTIAL CONCERN | Copyright | Exact 7-piece family + exact 10×20 field retained (product decision) | Medium (aggregate) | High | **Yes** |
+| AV-2 | OBSERVED (mitigating) | Copyright/dress | Fused borderless rendering, transparent field — rendered-confirmed | Mitigating | High | With captures |
+| AV-3 | OBSERVED / POTENTIAL CONCERN | Copyright | Ghost + preview + garbage cluster (different treatments) | Medium aggregate | High (captured) / Medium (garbage) | **Yes** |
+| AV-4 | OBSERVED (mitigating) | Copyright | No lock recolor; no game-over fill — rendered-confirmed | Mitigating | High | With captures |
+| AV-5 | OBSERVED (mitigating) | Copyright | Cascade physics, scoring, modes, progression | Mitigating | High (source) / Medium (rendered) | With captures |
+| AV-6 | POTENTIAL CONCERN | Copyright + dress | Intro decor drawn from complete 7-piece repertoire (source-live; not rendered in this environment; retained by owner decision) | Medium | Medium | **Yes** |
+| AV-7 | Remediated | Dress/branding | T-piece menu icon → solo-ring mark (rendered-confirmed) | Low | High | No |
+| AV-8 | Remediated | Dress/branding | Favicon → S-wave; packaged `build/icon.ico` regeneration still pending (`docs/desktop-icons.md`) | Low | High (favicon) / Medium (packaged icon) | No |
+| PAL-1 | OBSERVED, mostly remediated | Copyright/dress | Palettes deranged at source; **open:** rainy-window config not wired (falls back to default), default keeps Z=red (6/7), no runtime CI gate, no rendered per-theme review | Low–Medium | High (source) / Low (rendered) | With theme captures |
+| TD-1 | POTENTIAL CONCERN / INSUFFICIENT EVIDENCE | Trade dress | Total store/packaging impression — store assets don't exist yet; composite Reg. 6,704,948 & Reg. 6,707,167 are the records to compare against | Medium | Medium | **Yes — gate store art** |
+| CODE-1 | OBSERVED | Copyright (§102(b)) | Mechanics/rules implementation; Quadra formula reuse (attested) | Low | High | Confirm attestation |
+| SND-1 | OBSERVED / INSUFFICIENT EVIDENCE | Sound mark / © | No Korobeiniki trace; owner-only listen-through; Reg. 3,517,007 live; tetris.com asserts "theme song" | Low (unverified) | Medium | **Yes — verification protocol** |
+| ENF-1 | OBSERVED (external) | Enforcement | Active portfolio, 2025 TTAB opposition practice, DMCA program; takedown may precede merits | Unquantified likelihood / High impact | High | Response-plan review |
+
+---
+
+## Recommended Remediation Plan
+
+*(Reference-only; no changes were made. Ordered by leverage per unit cost.)*
+
+**P0 — before any storefront submission or public commercial release**
+
+1. **Counsel total-look review with real hardware captures** (AV-1/AV-3/AV-6/TD-1): capture
+   every shipping theme and mode — spawn, rotation, ghost, stack heights, 1–4-line clears,
+   cascades, garbage, pause, game over, multiplayer, startup/menu — on a WebGPU-capable
+   machine, plus the packaged build. Compare against the specific Tetris works counsel
+   expects to be asserted and against Regs. 6,704,948/6,707,167/2,362,250. This audit's
+   captures (default theme, software renderer) are a floor, not a substitute.
+2. **Resolve AV-6 with counsel:** obtain a hardware capture of the intro; if the drifting
+   pieces are prominent, replace the repertoire with a non-tetromino visual grammar
+   (petals, stones, waves, shards, pentomino-excluding polyforms). Currently retained by
+   product decision — document the rationale either way.
+3. **Store-asset gate (TD-1):** when Steam/web listing art is drafted, require screenshots
+   that foreground the differentiators (fused silhouettes, cascades, scenic worlds, top
+   preview row, breath/serenity framing) and avoid a clean bright stack in a tall bordered
+   field as the hero image; run the trademark/string scan over all listing copy, tags, and
+   keywords; no TETRIS or "-tris" tokens, no "Tetrimino."
+4. **Finish palette work (PAL-1):** wire or delete the dead `rainy-window-tetrominos.js`
+   config (`rainy-window-theme.js` currently falls back to the default palette); decide
+   whether the default's Z=red should also be deranged; add the runtime-aware CI palette
+   gate (enumerate selectable themes, resolve actual runtime configs, fail on a full
+   Guideline role mapping); render-review swatches per theme.
+5. **Independent audio verification (SND-1):** musicologist or fingerprint pass over all 36
+   tracks + all cues + any trailer audio against the Reg. 3,517,007 tune; retain the
+   evidence with the CREDITS record.
+6. **Name clearance for "SERENITY BLOCKS" (TM-6):** proper knockout + full search
+   (word/phonetic/design), with WORD SERENITY (Reg. 6,138,055) and Serenity Forge
+   addressed explicitly; extend to launch territories when defined.
+7. **Production-string release gate (carried from v3.0 P0.1):** automated scan of built
+   artifacts (web `dist/`, Electron package) rejecting case-insensitive standalone
+   `tetris`/`tetrimino` outside a single counsel-approved legal notice; also strip the two
+   shipped CSS comments (`public/styles/main.css:12460, 12535`) and the stale
+   `menu-aaa.css:351` comment as part of normal build hygiene.
+
+**P1 — coordinated separation and product hardening**
+
+8. Revisit the retained 7-piece/10×20 cluster as a *package* with counsel (field
+   proportions, piece vocabulary, entry/rotation expression, clear/end sequences) — *Xio*
+   makes the exact field dimension and same-seven-pieces choice the two strongest
+   remaining levers; changing either is a product decision with real design cost, which is
+   why it needs a counsel-informed risk/benefit call rather than a default.
+9. Add an in-app Legal/Credits screen surfacing the non-affiliation notice and
+   attributions (TM-5); generate the packaged `build/icon.ico` from the S-wave master and
+   visually inspect favicon at 16/32 px, menu icon states, and installed shortcut/taskbar
+   icons (AV-8 residue; `docs/desktop-icons.md`).
+10. Replace `steam_appid.txt` placeholder before any Steam build leaves the dev machine;
+    re-run this audit's string/branding checks on the final Steam metadata.
+
+**P2 — governance**
+
+11. Style guide: "tetromino" only; no competitor names as requirements/"north stars" in new
+    design docs; preserve history (no rewrites); maintain the independent-design log and
+    counsel evidence packet (commit hash, captures, provenance, this report).
+12. Re-verify TSDR records and re-run searches immediately before launch (registrations,
+    oppositions, and marketplace change; this audit's snapshot is 2026-07-16).
+
+---
+
+## Pre-Launch Counsel Review Items
+
+1. Total-look comparison (P0.1 captures) against the specific asserted Tetris audiovisual
+   works and registered composites — the single decision this audit cannot make.
+2. The retained 7-piece + 10×20 cluster: acceptable residual risk or redesign (AV-1)?
+3. Intro tetromino decoration: retain, restyle, or replace (AV-6)?
+4. Store art and listing copy approval against trade-dress and nominative-use standards
+   (TD-1), including any comparative or genre references.
+5. "SERENITY BLOCKS" clearance opinion (TM-6) and launch-territory extension.
+6. Audio verification protocol sufficiency (SND-1) and the CREDITS music chain-of-title
+   items carried from v3.0 §13.
+7. Quadra attestation adequacy and LGPL non-derivation conclusion (CODE-1).
+8. Platform-takedown response plan: designated contact, counter-notice calculus under
+   §512(g) (the *Xio* litigation began exactly this way), preservation duties, and a
+   rapid visual/metadata patch strategy that doesn't prejudice defenses (ENF-1).
+9. Whether a license inquiry is commercially sensible for any retained presentation
+   counsel judges too close (tetris.com/contact-us) — noting a license is not required for
+   unprotectable mechanics.
+
+---
+
+## Missing Evidence and Open Questions
+
+- Hardware/WebGPU captures: intro (AV-6), Odyssey chapters, every selectable theme,
+  line-clear/cascade/garbage/multiplayer sequences, packaged builds.
+- Final store listing, capsule/hero art, trailer, screenshots, keywords — none exist yet.
+- Launch jurisdictions, product status, channels, and monetization — unanswered engagement
+  fields; non-U.S. analysis not started.
+- Deposit copies of asserted Tetris copyright registrations (e.g., PA 412,169/170,
+  PAu 1,214,035/036 cited in the 2021 notice) for a work-specific comparison.
+- Full trademark knockout search (tmsearch unavailable headlessly); state registries;
+  WIPO/EUIPO/UKIPO; common-law sweep for both TETRIS-adjacent and SERENITY-adjacent uses.
+- Independent audio analysis; cover-art provenance for the 36 music files.
+- Whether any *Xio* post-judgment materials (permanent injunction text) matter for scope —
+  PACER not accessed.
+- Non-Tetris release blockers tracked in v3.0 §13 (GEN-2 landscape model, GEN-6 TTS
+  records, GEN-7 generated-3D inputs, GEN-8 root LICENSE, GEN-9 vendor notices) — several
+  were fixed in PRs #285–#293 but the set was not re-audited this pass and should be
+  re-verified before release.
+
+---
+
+## Source and Search Log
+
+All accessed 2026-07-16 unless noted. **Official/primary:**
+
+- *Tetris Holding v. Xio* opinion (official PDF): govinfo.gov/content/pkg/USCOURTS-njd-3_09-cv-06115/pdf/USCOURTS-njd-3_09-cv-06115-0.pdf
+- Statutes (Cornell LII texts): law.cornell.edu/uscode/text/17/102, /107, /412, /504, /512; law.cornell.edu/uscode/text/15/1114, /1116, /1117, /1118, /1125
+- Copyright Office: copyright.gov/register/tx-games.html; copyright.gov/circs/circ33.pdf (rev. 2021)
+- Supreme Court (LII): *Wal-Mart v. Samara* 99-150; *TrafFix* 99-1571; *Two Pesos* 91-971
+- Third Circuit: *Interpace v. Lapp*, 721 F.2d 460 and *Century 21 v. LendingTree*, 425 F.3d 211 (law.resource.org official-reporter mirrors)
+- USPTO TSDR status pages (tsdr.uspto.gov/statusview/…): rn2362238, rn3396574, rn1657499, rn4592832, rn4592985, rn4845377, rn3518292, rn4313472, rn2362250, rn3818232, rn6704948, rn3517007, rn5617892, rn5893160, rn7037163, sn90746082, sn97095586, sn88692337, sn86390148
+- TTABVUE: oppositions 91249666 and 91299921; ESTTA1444843 (2025 notice of opposition PDF)
+- DMCA/takedown notices: github.com/github/dmca 2021/07/2021-07-16-tetris.md and 2023/02/2023-02-10-tetris.md (raw-verified); itch.io/takedowns/2073998
+
+**Secondary (labeled where relied on):** CourtListener metadata (Xio parallel cites; case
+metadata); Wikipedia (Xio: no appeal — sole source for that point); vLex + fkks.com
+(*DaVinci v. ZiKo*); press coverage (Setris→Sandtrix; *Ackerman v. Apple/TTC* dismissal,
+S.D.N.Y. Mar. 2025); Justia/Trademarkia/LegalHoop/uspto.report aggregators (supplemental
+trademark data). **Rights-holder materials (marketplace evidence only):** tetris.com,
+/terms-conditions, /contact-us (footer asserts "Tetris logos, Tetris theme song and
+Tetriminos are trademarks of Tetris Holding").
+
+**Fetch failures / substitutions:** Justia opinion pages (HTTP 403 → GovInfo/LII);
+CourtListener full-text API (401 → metadata only); OpenJurist (403 → law.resource.org);
+TSDR XML API (404 without key → official statusview HTML); tmsearch.uspto.gov (JS-only →
+**no systematic similarity search performed**).
+
+**Not searched:** USPTO name/similarity search, state trademark registries, WIPO Global
+Brand DB, EUIPO/UKIPO or any non-U.S. register, PACER, Copyright Office deposit copies,
+common-law/app-store sweeps. This log is what makes the search *preliminary*.
+
+**Repository evidence:** commit `853d40e17e8ce25e6fab9786a151e5f41e30acd5`; rendered
+captures + method notes in `docs/legal/audit-evidence-2026-07-16/`; string-scan counts and
+file:line citations as given inline; git range examined for delta since v3.0:
+`4127ae2..853d40e` (11 remediation PRs, +1177/−1250 across 56 files, no risk-increasing
+additions found).
+
+---
+
+## Attorney Handoff
+
+**Most important evidence to review first:** (1) the ten rendered captures in
+`docs/legal/audit-evidence-2026-07-16/` against current official Tetris products and Reg.
+6,704,948 — then demand the missing hardware/theme/line-clear captures before forming a
+view; (2) `src/core/constants.js:11-13, 31-41, 62-98` (the retained cluster) next to
+`src/rendering/phaser/base-board-scene.js:702-919` (the divergent presentation); (3) the
+intro renderers (`src/ui/threejs-intro-renderer*.js`) pending a hardware capture; (4) the
+TSDR snapshot above; (5) `quadra-provenance-attestation.md` and `CREDITS.md:98-144`.
+
+**Most important questions:** Is the retained 7-piece/10×20 + ghost/preview/garbage
+combination, as *actually rendered across all themes*, far enough from the asserted works
+under *Xio*'s total-concept-and-feel comparison? Should the intro's seven-piece decor
+survive? What store-art constraints should bind marketing? Does "SERENITY BLOCKS" clear
+against Reg. 6,138,055 and common-law users?
+
+**Proposed changes awaiting a legal read before implementation:** the P0 list above —
+counsel should confirm priority and sufficiency rather than treat it as a compliance
+checklist. This report deliberately keeps risk ratings (plausibility) separate from
+evidence confidence; the Medium aggregate rating reflects a genuinely improved but
+incompletely verified position, not a clearance.
+
+*Prepared by an automated audit agent from repository, rendered-product, and public-record
+evidence; all limitations disclosed above. Not legal advice.*
