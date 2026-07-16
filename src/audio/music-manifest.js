@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Test-facing music contract — NOT loaded at runtime.
+ *
+ * The running game fetches './assets/music/songs.json' (see
+ * src/audio/music-loader.js; regenerate with `node generate-songs.js`), and
+ * Odyssey chapter/stinger track keys are literals in
+ * src/core/odyssey/data/chapters.js. This module is intentionally kept as the
+ * declared source of truth that those track keys correspond to shipped songs:
+ * src/rendering/odyssey/composition/OdysseyDirector.test.js imports it to
+ * cross-validate the chapter/threshold audio wiring. Keep it in sync with
+ * songs.json when tracks change; delete it only together with a rework of
+ * that test. (Dead-code audit 2026-07-16: production-unreachable by design.)
+ */
 function defineSong(name, file, extra = {}) {
     return {
         name,

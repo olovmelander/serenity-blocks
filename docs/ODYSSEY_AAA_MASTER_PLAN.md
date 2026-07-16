@@ -276,7 +276,7 @@ Each phase is independently shippable and **opens/closes with screenshots**. Web
 - **Beat-quantization adds up to ~1 bar latency** — schedule visual triggers off the **audio clock**, lead the spline so the camera doesn't stall waiting for the downbeat.
 - **No-cut continuous shot constrains streaming** — every seam swap must hide behind an occluder/portal/whiteout with the next chapter pre-warmed; keep the seam camera on-rails through throats.
 - **Software-adapter validation ≠ perf** — green headless run proves correctness, not frame rate; profile on the real GPU, and confirm the `forceWebGL=1` fallback stays acceptable on low-end devices.
-- **Don't destabilize level entry** — the `OrbPortalTransitionDirector` warp + `OdysseyLayoutEditor` (2266 lines) consume the path/renderer; keep `odyssey-path-layout.test.js` green; note any noise unit tests that imported the THREE-free `odyssey-noise.js` must change.
+- **Don't destabilize level entry** — the level-entry warp (`ThemeTransitionManager.playOrbPortal` via `WarpTransitionRenderer`; the unfinished `OrbPortalTransitionDirector` was removed 2026-07-16 as unreachable) + `OdysseyLayoutEditor` (2266 lines) consume the path/renderer; keep `odyssey-path-layout.test.js` green. (The THREE-free `odyssey-noise.js` was also removed 2026-07-16 — nothing imported it.)
 - **`LevelNodeManager` is the hardest convert** (instanced attrs + 7040-particle Points + async per-node textures) — pilot a chapter first, do this last.
 - **Photosensitivity:** cap luminance ramp on whiteouts/edge bands, honor `prefers-reduced-motion`, offer a reduce-camera-effects toggle.
 
