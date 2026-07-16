@@ -348,7 +348,7 @@ body.start-modal-open .headphone-text {
  * BESPOKE ANIMATED ICONS
  * Each animated sub-element transforms about its own box (transform-box: fill-box)
  * so SVG-space coordinates don't skew the origin. Idle = subtle loop; hover/focus
- * = a one-shot "signature" beat (tetromino assembles, infinity traces, ascent draws).
+ * = a one-shot "signature" beat (solo ring breathes, infinity traces, ascent draws).
  * ============================================================================ */
 body.start-modal-open .cs-icon * {
     transform-box: fill-box;

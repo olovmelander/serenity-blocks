@@ -21,6 +21,8 @@
     "format:check": "prettier --check \"src/**/*.js\"",
     "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
     "check:boundaries": "depcruise src --output-type err",
+    "check:ip-strings": "node scripts/ip-string-gate.mjs",
+    "check:palette": "node scripts/palette-guideline-check.mjs",
     "check:pages-artifact": "node scripts/pages-artifact-check.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
     "validate:cosmic-noir:phase6": "node scripts/run-electron.mjs scripts/cosmic-noir-phase6-validation.mjs",

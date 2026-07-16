@@ -24,6 +24,7 @@ Captured for `tetris_legal_review.md` (v4.0). Method and environment:
 | `07-late-stack-or-gameover.png` | Tall central stack immediately before top-out |
 | `08-gameover.png` | Game-over: custom "The cycle ends." statistics modal (no board-fill animation) |
 | `09-menu-after-20s.png` / `10-menu-after-40s.png` | Main menu after 20 s / 40 s idle — no drifting intro tetrominoes appeared in this software-rendered environment (the source spawns them; see review §Copyright) |
+| `11-smoke-new-default-palette.png` | Post-remediation smoke run (same method): default palette after the I/Z swap — red I bar, green Z, no Guideline role intact; no page errors |
 
 ## Known gaps (material limitations)
 

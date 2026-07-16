@@ -193,11 +193,11 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uExposure = uniform(this.visualProfile?.post?.baseExposure ?? 1.13);
 
         this.COLORS = {
-            I: 0x00ff00,
+            I: 0xff0000,
             O: 0xff9900,
             T: 0x0000ff,
             S: 0x00ffff,
-            Z: 0xff0000,
+            Z: 0x00ff00,
             J: 0xffff00,
             L: 0xcc00cc,
         };

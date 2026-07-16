@@ -29,11 +29,11 @@ export function setBlockSize(size) {
  * Tetromino colors
  */
 export const COLORS = {
-    I: '#00ff00', // Green
+    I: '#ff0000', // Red
     O: '#ff9900', // Orange
     T: '#0000ff', // Blue
     S: '#00ffff', // Cyan
-    Z: '#ff0000', // Red
+    Z: '#00ff00', // Green
     J: '#ffff00', // Yellow
     L: '#cc00cc', // Purple
     GARBAGE: '#808080', // Gray (garbage blocks)
