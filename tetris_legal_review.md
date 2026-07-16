@@ -753,3 +753,44 @@ incompletely verified position, not a clearance.
 
 *Prepared by an automated audit agent from repository, rendered-product, and public-record
 evidence; all limitations disclosed above. Not legal advice.*
+
+---
+
+## Remediation Status Addendum (2026-07-16, post-v4.0)
+
+*Same-day follow-up implementing the low-risk items from the Recommended Remediation Plan.
+The v4.0 analysis above describes commit `853d40e`; this addendum records what changed
+immediately after. Ratings in the risk register are unchanged except as noted.*
+
+**Landed (verified by full test suite — 238 files / 2,409 tests passing — a production
+build, both new gates, and a rendered smoke capture, evidence file
+`docs/legal/audit-evidence-2026-07-16/11-smoke-new-default-palette.png`):**
+
+- **P0.7 (partial) — shipped-artifact IP-string gate added** (`npm run check:ip-strings`,
+  `scripts/ip-string-gate.mjs`): scans `public/`, `index.html`, and `dist/` for
+  `tetris`/`tetrimino` tokens; allows the counsel-reviewed CREDITS/README legal notices and
+  structurally-detected internal identifiers in minified bundles (renaming those remains P2
+  — they touch save/replay data). Verified to pass on the current build and to catch an
+  injected consumer-facing violation. The three Tetris-referential comments that shipped in
+  verbatim-copied CSS were removed (`public/styles/main.css` ×2, `menu-aaa.css` ×1).
+  **Still open:** wiring the gate into CI, and a counsel-approved policy for any retained
+  legal-notice string.
+- **P0.4 (partial) — palette gate added and gaps fixed** (`npm run check:palette`,
+  `scripts/palette-guideline-check.mjs`): static screen of all 60 palettes (59 themes +
+  default) against the Guideline hue bands — FAIL at 7/7, WARN at 6/7, WARN on dead
+  configs. Current result: **0 full matches, 0 six-of-seven, 3 warnings** (the legacy-format
+  aether-tides / luminous-tides / stellar-velocity configs, which the runtime ignores in
+  favor of the — now fully non-Guideline — default). The **rainy-window** dead config was
+  wired into its theme (`rainy-window-theme.js` now imports and returns
+  `RAINY_WINDOW_TETROMINOS`), and the **default palette's last Guideline role was removed**
+  by swapping I and Z (I now red, Z now green — `src/core/constants.js:31-41`, mirrored in
+  both intro renderers). PAL-1 residual drops accordingly (source-level; rendered
+  per-theme human review still open). **Still open:** CI wiring, rendered swatch review,
+  and normalizing or removing the three legacy configs.
+- Stale "tetromino assembles" comment in `menu-aaa.css` corrected; lint-error ratchet
+  baseline lowered 1548 → 1546.
+
+**Explicitly not addressed here (unchanged from the plan):** counsel total-look review
+(P0.1-numbered item 1), the intro seven-piece decision (AV-6), store-asset gating (TD-1),
+independent audio verification (SND-1), name clearance (TM-6), the in-app legal screen,
+and the `steam_appid.txt` placeholder.
