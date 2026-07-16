@@ -1,0 +1,220 @@
+{
+ "scenario": "gameplay",
+ "wallMs": 25036,
+ "totalSamples": 67457,
+ "totalTimeMicros": 25317984,
+ "busyPct": 5.2,
+ "gcPct": 0.71,
+ "top": [
+  {
+   "fn": "Qt",
+   "url": "/assets/mode-SinglePlayerMode-DNYVvy8t.js",
+   "line": 0,
+   "selfPct": 0.92,
+   "hits": 619
+  },
+  {
+   "fn": "o",
+   "url": "/assets/mode-SinglePlayerMode-DNYVvy8t.js",
+   "line": 0,
+   "selfPct": 0.54,
+   "hits": 363
+  },
+  {
+   "fn": "getBoundingClientRect",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.36,
+   "hits": 246
+  },
+  {
+   "fn": "matchMedia",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.1,
+   "hits": 65
+  },
+  {
+   "fn": "bufferData",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.09,
+   "hits": 60
+  },
+  {
+   "fn": "requestAnimationFrame",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.09,
+   "hits": 59
+  },
+  {
+   "fn": "fill",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.08,
+   "hits": 54
+  },
+  {
+   "fn": "(anonymous)",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 361,
+   "selfPct": 0.08,
+   "hits": 52
+  },
+  {
+   "fn": "querySelector",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.08,
+   "hits": 51
+  },
+  {
+   "fn": "updateCursorVisuals",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 370,
+   "selfPct": 0.08,
+   "hits": 51
+  },
+  {
+   "fn": "clear",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.07,
+   "hits": 49
+  },
+  {
+   "fn": "syncPresentation",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 370,
+   "selfPct": 0.07,
+   "hits": 44
+  },
+  {
+   "fn": "batch",
+   "url": "/assets/phaser-CEFuxQjU.js",
+   "line": 4851,
+   "selfPct": 0.06,
+   "hits": 43
+  },
+  {
+   "fn": "l",
+   "url": "/assets/phaser-CEFuxQjU.js",
+   "line": 1584,
+   "selfPct": 0.06,
+   "hits": 40
+  },
+  {
+   "fn": "run",
+   "url": "/assets/phaser-CEFuxQjU.js",
+   "line": 4904,
+   "selfPct": 0.06,
+   "hits": 40
+  },
+  {
+   "fn": "updateTrail",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 370,
+   "selfPct": 0.06,
+   "hits": 38
+  },
+  {
+   "fn": "setTimeout",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.05,
+   "hits": 35
+  },
+  {
+   "fn": "_tick",
+   "url": "/assets/rendering-phaser-DIOEqTaK.js",
+   "line": 128,
+   "selfPct": 0.05,
+   "hits": 34
+  },
+  {
+   "fn": "renderFrame",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 361,
+   "selfPct": 0.05,
+   "hits": 33
+  },
+  {
+   "fn": "clearRect",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.05,
+   "hits": 32
+  },
+  {
+   "fn": "addColorStop",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.04,
+   "hits": 29
+  },
+  {
+   "fn": "clear",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.04,
+   "hits": 29
+  },
+  {
+   "fn": "update",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 361,
+   "selfPct": 0.04,
+   "hits": 27
+  },
+  {
+   "fn": "xe",
+   "url": "/assets/mode-SinglePlayerMode-DNYVvy8t.js",
+   "line": 0,
+   "selfPct": 0.04,
+   "hits": 26
+  },
+  {
+   "fn": "bufferSubData",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.04,
+   "hits": 24
+  },
+  {
+   "fn": "(anonymous)",
+   "url": "/assets/rendering-phaser-DIOEqTaK.js",
+   "line": 125,
+   "selfPct": 0.04,
+   "hits": 24
+  },
+  {
+   "fn": "bindBuffer",
+   "url": "",
+   "line": -1,
+   "selfPct": 0.04,
+   "hits": 24
+  },
+  {
+   "fn": "traceLoops",
+   "url": "/assets/rendering-phaser-DIOEqTaK.js",
+   "line": 125,
+   "selfPct": 0.03,
+   "hits": 23
+  },
+  {
+   "fn": "_logicTick",
+   "url": "/assets/main-DkscqPml.js",
+   "line": 361,
+   "selfPct": 0.03,
+   "hits": 20
+  },
+  {
+   "fn": "update",
+   "url": "/assets/rendering-phaser-DIOEqTaK.js",
+   "line": 125,
+   "selfPct": 0.03,
+   "hits": 20
+  }
+ ]
+}

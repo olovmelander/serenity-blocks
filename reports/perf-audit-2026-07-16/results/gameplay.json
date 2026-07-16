@@ -1,0 +1,610 @@
+{
+ "scenario": "gameplay",
+ "runs": [
+  {
+   "run": 0,
+   "window": {
+    "label": "gameplay",
+    "frame": {
+     "n": 440,
+     "mean": 68.1,
+     "p50": 66.7,
+     "p95": 116.6,
+     "p99": 133.4,
+     "max": 150,
+     "over16_7": 440,
+     "over33": 440,
+     "over50": 385,
+     "over100": 23,
+     "fpsAvg": 14.7
+    },
+    "longtasks": {
+     "count": 2,
+     "totalMs": 108,
+     "top": [
+      {
+       "s": 44676,
+       "d": 57
+      },
+      {
+       "s": 37272,
+       "d": 51
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.48,
+    "before": {
+     "heapMB": 36,
+     "heapTotalMB": 42.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 381,
+     "t": 21314
+    },
+    "after": {
+     "heapMB": 40.3,
+     "heapTotalMB": 46.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2352,
+     "t": 51336
+    }
+   },
+   "botMoves": 190,
+   "inApp": {
+    "count": 0,
+    "budgetMs": 33.333333333333336,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0,
+    "overBudget": 0,
+    "overBudgetPct": 0
+   },
+   "score": {
+    "score": 279,
+    "lines": 0
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 1,
+   "window": {
+    "label": "gameplay",
+    "frame": {
+     "n": 447,
+     "mean": 67.04,
+     "p50": 66.7,
+     "p95": 100,
+     "p99": 133.3,
+     "max": 133.4,
+     "over16_7": 447,
+     "over33": 447,
+     "over50": 383,
+     "over100": 22,
+     "fpsAvg": 14.9
+    },
+    "longtasks": {
+     "count": 3,
+     "totalMs": 180,
+     "top": [
+      {
+       "s": 44455,
+       "d": 64
+      },
+      {
+       "s": 44387,
+       "d": 59
+      },
+      {
+       "s": 39714,
+       "d": 57
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.48,
+    "before": {
+     "heapMB": 38.1,
+     "heapTotalMB": 43.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 382,
+     "t": 21105
+    },
+    "after": {
+     "heapMB": 36.4,
+     "heapTotalMB": 44.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2382,
+     "t": 51135
+    }
+   },
+   "botMoves": 190,
+   "inApp": {
+    "count": 0,
+    "budgetMs": 33.333333333333336,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0,
+    "overBudget": 0,
+    "overBudgetPct": 0
+   },
+   "score": {
+    "score": 280,
+    "lines": 0
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 2,
+   "window": {
+    "label": "gameplay",
+    "frame": {
+     "n": 429,
+     "mean": 69.81,
+     "p50": 66.7,
+     "p95": 116.7,
+     "p99": 133.4,
+     "max": 150,
+     "over16_7": 429,
+     "over33": 429,
+     "over50": 383,
+     "over100": 29,
+     "fpsAvg": 14.3
+    },
+    "longtasks": {
+     "count": 2,
+     "totalMs": 130,
+     "top": [
+      {
+       "s": 44232,
+       "d": 76
+      },
+      {
+       "s": 44146,
+       "d": 54
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.48,
+    "before": {
+     "heapMB": 38.1,
+     "heapTotalMB": 43.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 394,
+     "t": 21186
+    },
+    "after": {
+     "heapMB": 35.2,
+     "heapTotalMB": 39.2,
+     "domNodes": 1854,
+     "canvases": 25,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2314,
+     "t": 51196
+    }
+   },
+   "botMoves": 185,
+   "inApp": {
+    "count": 0,
+    "budgetMs": 33.333333333333336,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0,
+    "overBudget": 0,
+    "overBudgetPct": 0
+   },
+   "score": {
+    "score": 19,
+    "lines": 0
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 3,
+   "window": {
+    "label": "gameplay",
+    "frame": {
+     "n": 436,
+     "mean": 68.8,
+     "p50": 66.7,
+     "p95": 116.7,
+     "p99": 149.9,
+     "max": 166.7,
+     "over16_7": 436,
+     "over33": 436,
+     "over50": 360,
+     "over100": 34,
+     "fpsAvg": 14.5
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 4.45,
+    "before": {
+     "heapMB": 35.6,
+     "heapTotalMB": 39.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 385,
+     "t": 21210
+    },
+    "after": {
+     "heapMB": 37.9,
+     "heapTotalMB": 43.7,
+     "domNodes": 1854,
+     "canvases": 25,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2321,
+     "t": 51225
+    }
+   },
+   "botMoves": 187,
+   "inApp": {
+    "count": 0,
+    "budgetMs": 33.333333333333336,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0,
+    "overBudget": 0,
+    "overBudgetPct": 0
+   },
+   "score": {
+    "score": 36,
+    "lines": 0
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 4,
+   "window": {
+    "label": "gameplay",
+    "frame": {
+     "n": 404,
+     "mean": 74.05,
+     "p50": 66.7,
+     "p95": 133.3,
+     "p99": 150,
+     "max": 183.3,
+     "over16_7": 404,
+     "over33": 404,
+     "over50": 373,
+     "over100": 40,
+     "fpsAvg": 13.5
+    },
+    "longtasks": {
+     "count": 9,
+     "totalMs": 525,
+     "top": [
+      {
+       "s": 33968,
+       "d": 77
+      },
+      {
+       "s": 49859,
+       "d": 70
+      },
+      {
+       "s": 22221,
+       "d": 62
+      },
+      {
+       "s": 49779,
+       "d": 56
+      },
+      {
+       "s": 28833,
+       "d": 53
+      },
+      {
+       "s": 31998,
+       "d": 53
+      },
+      {
+       "s": 24475,
+       "d": 52
+      },
+      {
+       "s": 46738,
+       "d": 51
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.51,
+    "before": {
+     "heapMB": 37.7,
+     "heapTotalMB": 43.9,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 352,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 33,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 15,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 423,
+     "t": 21930
+    },
+    "after": {
+     "heapMB": 36.2,
+     "heapTotalMB": 50.9,
+     "domNodes": 1854,
+     "canvases": 25,
+     "listenersTotal": 353,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 33,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 15,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2248,
+     "t": 51997
+    }
+   },
+   "botMoves": 186,
+   "inApp": {
+    "count": 0,
+    "budgetMs": 33.333333333333336,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0,
+    "overBudget": 0,
+    "overBudgetPct": 0
+   },
+   "score": {
+    "score": 0,
+    "lines": 0
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:04:11.950Z",
+  "viewport": "1280x720"
+ }
+}

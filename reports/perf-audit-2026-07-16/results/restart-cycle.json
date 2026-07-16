@@ -1,0 +1,427 @@
+{
+ "scenario": "restart-cycle",
+ "runs": [
+  {
+   "run": 0,
+   "cycles": [
+    {
+     "i": 0,
+     "heapMB": 35,
+     "heapTotalMB": 35.8,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 319,
+     "t": 21397,
+     "rafPerFrameApprox": 2.58
+    },
+    {
+     "i": 1,
+     "heapMB": 35.1,
+     "heapTotalMB": 35.9,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 485,
+     "t": 25923,
+     "rafPerFrameApprox": 2.52
+    },
+    {
+     "i": 2,
+     "heapMB": 35.1,
+     "heapTotalMB": 35.9,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 659,
+     "t": 30401,
+     "rafPerFrameApprox": 2.79
+    },
+    {
+     "i": 3,
+     "heapMB": 34.6,
+     "heapTotalMB": 35.9,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 833,
+     "t": 34901,
+     "rafPerFrameApprox": 2.79
+    },
+    {
+     "i": 4,
+     "heapMB": 34.4,
+     "heapTotalMB": 35.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1005,
+     "t": 39448,
+     "rafPerFrameApprox": 2.75
+    },
+    {
+     "i": 5,
+     "heapMB": 34.5,
+     "heapTotalMB": 35.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1171,
+     "t": 44098,
+     "rafPerFrameApprox": 2.79
+    },
+    {
+     "i": 6,
+     "heapMB": 34.4,
+     "heapTotalMB": 35,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1337,
+     "t": 48613,
+     "rafPerFrameApprox": 2.67
+    },
+    {
+     "i": 7,
+     "heapMB": 34.7,
+     "heapTotalMB": 35.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1502,
+     "t": 53149,
+     "rafPerFrameApprox": 2.56
+    },
+    {
+     "i": 8,
+     "heapMB": 34.8,
+     "heapTotalMB": 35.5,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1677,
+     "t": 57688,
+     "rafPerFrameApprox": 2.67
+    },
+    {
+     "i": 9,
+     "heapMB": 34.8,
+     "heapTotalMB": 35.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1854,
+     "t": 62195,
+     "rafPerFrameApprox": 2.52
+    },
+    {
+     "i": 10,
+     "heapMB": 34.8,
+     "heapTotalMB": 35.5,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2026,
+     "t": 66657,
+     "rafPerFrameApprox": 2.33
+    },
+    {
+     "i": 11,
+     "heapMB": 34.8,
+     "heapTotalMB": 35.5,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2204,
+     "t": 71172,
+     "rafPerFrameApprox": 2.48
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:14:31.393Z",
+  "viewport": "1280x720"
+ }
+}
