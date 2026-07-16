@@ -2,7 +2,7 @@
  * @fileoverview Shared Effects Module for Phaser 4
  *
  * This module contains all visual effects logic that can be reused across
- * both single-player (BoardScene) and FFA multiplayer (MultiplayerEffectsManager).
+ * board scenes (single-player BoardScene today; designed for reuse).
  *
  * Benefits:
  * - Single source of truth for all effects

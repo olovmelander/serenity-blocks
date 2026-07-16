@@ -70,3 +70,7 @@ test_output*.txt
 
 # Odyssey GLB optimize backups (rollback source is git HEAD; never commit the uncompressed originals)
 src/rendering/odyssey/assets/_originals/
+
+# Python bytecode caches (never commit)
+__pycache__/
+*.pyc
