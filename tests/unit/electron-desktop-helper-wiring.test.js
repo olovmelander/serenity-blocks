@@ -24,10 +24,14 @@ describe('electron/main.js desktop helper wiring', () => {
     });
 
     it('classifies GPU health instead of stubbing it', () => {
-        expect(mainSource).toContain('classifyGpuHealth({');
+        // Anchor the classifier to the IPC handler, not just to the file:
+        // the handler must delegate to getGpuHealthSnapshot, and the snapshot
+        // must call classifyGpuHealth.
+        expect(mainSource).toMatch(/'desktop:get-gpu-health',\s*\(\)\s*=>\s*getGpuHealthSnapshot\(\)/);
+        expect(mainSource).toMatch(/function getGpuHealthSnapshot\(\)[\s\S]*?classifyGpuHealth\(\{/);
         // The old stub/override vocabulary must not return: the renderer
         // toggles body classes only for healthy/degraded/unsafe.
-        expect(mainSource).not.toMatch(/get-gpu-health'.*\{ status: 'ok' \}/s);
+        expect(mainSource).not.toMatch(/get-gpu-health'[\s\S]{0,200}status: 'ok'/);
     });
 
     it('answers DevTools open requests with the accepted/requestId contract', () => {

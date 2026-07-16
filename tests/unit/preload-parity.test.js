@@ -18,7 +18,13 @@ const mjsSource = readFileSync(join(__dirname, '../../electron/preload.mjs'), 'u
 function extractSetLiteral(source, name) {
     const match = source.match(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
     expect(match, `${name} Set literal not found`).toBeTruthy();
-    return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+    // Strip // comments first so an apostrophe in a comment can't corrupt the
+    // quoted-string scan.
+    const body = match[1].replace(/\/\/[^\n]*/g, '');
+    const channels = [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+    // Guard against the parser going vacuous: [] === [] would pass silently.
+    expect(channels.length, `${name} parsed as empty — parser or source drifted`).toBeGreaterThan(0);
+    return channels;
 }
 
 function extractExposedKeys(source, surface) {
@@ -35,8 +41,16 @@ function extractExposedKeys(source, surface) {
     const body = source.slice(open + 1, end);
     // Top-level keys only: 4-space-indented `name:` or shorthand `name,`
     // (both files share this formatting).
-    return [...body.matchAll(/^ {4}(\w+)[,:]/gm)].map((m) => m[1]).sort();
+    const keys = [...body.matchAll(/^ {4}(\w+)[,:]/gm)].map((m) => m[1]).sort();
+    // Guard against the parser going vacuous if the formatting assumption
+    // breaks in BOTH files at once ([] === [] would pass silently).
+    expect(keys.length, `${surface} parsed as empty — indent assumption broke`).toBeGreaterThan(3);
+    return keys;
 }
+
+// Sentinel keys: if the parser ever mis-parses both files symmetrically, these
+// pins still fail loudly.
+const REQUIRED_ELECTRON_API_KEYS = ['diagnosticsEnabled', 'getGPUHealth', 'openDevTools', 'onRuntimeEvent'];
 
 describe('preload.cjs / preload.mjs parity', () => {
     it('whitelists identical invoke channels', () => {
@@ -56,4 +70,13 @@ describe('preload.cjs / preload.mjs parity', () => {
                 .toEqual(extractExposedKeys(cjsSource, surface));
         },
     );
+
+    it('exposes the load-bearing electronAPI keys in both files', () => {
+        for (const source of [cjsSource, mjsSource]) {
+            const keys = extractExposedKeys(source, 'electronAPI');
+            for (const required of REQUIRED_ELECTRON_API_KEYS) {
+                expect(keys, `missing electronAPI.${required}`).toContain(required);
+            }
+        }
+    });
 });
