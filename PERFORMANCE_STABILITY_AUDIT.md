@@ -12,7 +12,7 @@ Commit: `fc0329234e38587b3f498c4b495d9bad20b4024a` (branch `claude/serenity-bloc
 
 This audit profiled the **production build** at commit `fc03292` across 14 scenario families (startup, idle, gameplay, input, restart/theme/resize/visibility cycles, WebGL fallback, Odyssey, 30-min soak, CPU profiles) in a headless Chromium 141 environment with a **software GPU (SwiftShader)** — so absolute frame times are not representative of user hardware, while trends, long tasks, allocation behavior, lifecycle leaks, and stability defects are (§3 caveats). Electron/Steam-specific behavior could not be executed here and is classified accordingly.
 
-**What is healthy (within the tested matrix):** single-player's main thread is nearly idle (busy 5.2 % gameplay / 2.1 % menu, GC < 1 %); input applies synchronously in the keydown handler (event→sim ≈ 0 ms, visual latency = 1 render frame); heap, listeners, DOM, timers are **flat** across menu idle, 30 s gameplay windows, sustained-input stress, 12× restart cycles, and 4× resize cycles; the WebGL fallback lane boots and plays cleanly; restart lifecycle discipline (mode caching + unsubscriber draining) holds up under measurement.
+**What is healthy (within the tested matrix):** single-player's main thread is nearly idle (busy 5.2 % gameplay / 2.1 % menu, GC < 1 %); input applies synchronously in the keydown handler (event→sim ≈ 0 ms, visual latency = 1 render frame); heap, DOM, and timers are **flat** across menu idle, 30 s gameplay windows, sustained-input stress, 12× restart cycles, 4× resize cycles, and a **30-minute gameplay soak** (heap 35.3–37.5 MB throughout, frame p95 improving over the session, zero crashes); the WebGL fallback lane boots and plays cleanly; restart lifecycle discipline (mode caching + unsubscriber draining) holds up under measurement.
 
 **Top reproduced problems:**
 1. **SB-01 — startup is hostage to fonts.googleapis.com**: with the CDN unreachable-but-slow (≈ any offline/firewalled desktop player), menu-ready = **13.6–14.0 s**, of which the hanging font stylesheet is ~12.6 s; with the request failing fast the same build reaches menu-ready in **0.88–0.93 s** (5+5 runs). One `<link>` in `index.html` serializes the entire boot.
@@ -194,9 +194,18 @@ Measured rAF callbacks scheduled per rendered frame: **3.35 (menu), ~4.5 (gamepl
 Interpretation: in single-player the main thread is nearly idle even at 4 vCPUs — **frame times in this environment are raster/compositor-bound (software GPU), not JS-bound**. No JS function concentrates cost; GC is <1 % (consistent with the flat heaps in §6.2–6.4). The absolute shares will differ on real hardware, but nothing in the single-player JS path profiles as a hotspot. Layout reads (`getBoundingClientRect`) being the top named entry at *menu idle* corroborates SB-06's class of concern (DOM geometry reads on per-frame paths — here the custom cursor), though at this sampling it is far from a measured bottleneck.
 Raw profiles: `results/cpuprofile-gameplay.cpuprofile`, `results/cpuprofile-menu-idle.cpuprofile` (loadable in Chrome DevTools Performance panel).
 
-### 6.9 Soak (S13, 30 min)
+### 6.9 Soak (S13, 30 min continuous bot gameplay, 60 samples, GC forced before each heap read)
 
-_TO FILL_
+| Metric | Start (0.3 min) | Mid (15.4 min) | End (30 min) |
+|---|---|---|---|
+| GC'd heap (MB) | 35.4 | 37.1 | 36.8 (session min/max: **35.3–37.5 — flat**) |
+| frame p50 / p95 (ms) | 33.4 / 66.6 | 33.3 / 50.1 | 33.3 / 50.0 |
+| DOM nodes | 1783 | 1851 | 1850 (plateaued) |
+| Listeners (counter) | 352 | 382 | 409 (see below) |
+| Intervals | 1 | 1 | 1 |
+
+- **No long-session degradation**: heap flat over 30 minutes of continuous play with many game-over/restart cycles; frame p95 actually *improved* from 66→50 ms during the session (consistent with warm caches and/or the adaptive-quality systems engaging); no crashes, no error spam (single pre-existing font-CDN error), no interval/DOM growth.
+- **Listener-counter growth investigated (follow-up 7-min run with per-type deltas):** all growth is `click` listeners at ~2 per game-over. Attribution: `showGameOverModal` rebuilds the buttons container via `innerHTML` and binds a fresh listener each time (`src/ui/modals.js:473-491`) — the previous button is discarded with the DOM, so the counter (which only sees add/remove calls) rises while real retained memory does not (heap + DOM flat). Recorded in §8 as NP-10, with the caveat that an `{ once: true }`-style or persistent binding would make the diagnostic signal cleaner.
 
 ### 6.10 Odyssey smoke (S12)
 
@@ -400,6 +409,7 @@ The shipping default is the legacy variable-timestep loop (`fixedTick: false`, `
 | NP-7 | InfinityMode minimap listeners not removed (recon flag) | Attached to the minimap's own DOM container which `minimap.destroy()` removes — GC-reclaimable, not accumulating. |
 | NP-8 | Unbounded network queues (recon question) | All bounded: snapshot interpolation buffer capped, jitter stats windowed, FFA batching limits, offline Steam queue coalesced + capped backoff (static verification; runtime untestable here). |
 | NP-9 | Odyssey chapter disposal | Windowed residency + thorough `_freeEnvironmentResources` is exemplary; the known open item is *eviction policy breadth* (masterplan Wave 4), not missing disposal. |
+| NP-10 | Listener count grows ~2/game-over during the 30-min soak | Attributed to `showGameOverModal` recreating its buttons via `innerHTML` + fresh binding (`src/ui/modals.js:473-491`); the replaced element and its listener are GC-reclaimed — heap and DOM stayed flat over 30 min. Counter artifact, not a leak. |
 
 ## 9. Ranked remediation batches
 
@@ -517,7 +527,13 @@ Frame deltas via in-page rAF collector; long tasks via `PerformanceObserver('lon
 
 ## 15. Raw artifacts and checksums
 
-_TO FILL_
+All raw measurement outputs are committed under **`reports/perf-audit-2026-07-16/`**:
+
+- `results/` — 24 files: per-scenario JSON (`startup*.json`, `menu-idle.json`, `gameplay.json`, `gameplay-webgl.json`, `rapid-input.json`, `input-latency.json`, `restart-cycle.json`, `theme-cycle*.json` incl. the three isolation toggles, `visibility.json`, `resize.json`, `odyssey-smoke.json`, `soak.json`), two raw V8 CPU profiles (`cpuprofile-*.cpuprofile`, loadable in Chrome DevTools), and two Odyssey screenshots (`odyssey-1.png`, `odyssey-2.png`).
+- `harness/` — the complete measurement harness (10 scripts, incl. the TSL and listener attribution follow-ups) so every number is re-runnable per §14.
+- `SHA256SUMS` — checksum manifest covering every file above (34 entries). SHA-256 of the manifest itself: `505bda931b2368e47f5ad243cc1d11608ead0b5305ef379de090528f8d27736b`. Verify with `cd reports/perf-audit-2026-07-16 && sha256sum -c SHA256SUMS`.
+
+Each scenario JSON embeds its own metadata (date, base URL, WebGPU lane, viewport) in `meta`, and per-run console errors are preserved verbatim.
 
 ## 16. What was NOT measured (explicit)
 
