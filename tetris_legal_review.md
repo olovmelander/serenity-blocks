@@ -844,7 +844,7 @@ The fastest responsible path is: remove the residual word mark, remove tetromino
 - **P0.2** — the startup ident, the Single Player **T-piece menu icon**, the favicon **mosaic artwork**, the legacy-canvas **grid** renderer, and external/store branding are **unchanged**. *(Per the owner's decision, the seven-piece intro animation and the main menu are being retained for now.)*
 - **P0.3** — the runtime-aware **palette CI gate** and a **rendered human review** of every theme are not done; derangement is verified at source level only.
 - **P0.4** — the **playable total-look**, storefront art/screenshots/trailers, and **counsel review** have not been performed; static code review cannot clear this.
-- **P0.5** — the **audio listening / fingerprinting** review is not done; the no-*Korobeiniki* conclusion is name/metadata-level only.
+- **P0.5** — **substantially done:** the owner completed a **listen-through of all music tracks (2026-07-15)** and confirms none reproduces the *Korobeiniki* / Type-A melody; SFX are procedural (no melody). Optional extra rigor (independent musicologist / automated fingerprinting) remains available but is not required.
 - **Asset chain-of-title / notices:** `landscape-glb.glb` license (GEN-2), Gemini-TTS + intro-sound records (GEN-6), generated-3D input provenance (GEN-7), a root `LICENSE` (GEN-8), and a complete vendor-notice audit incl. `basis` / `webgpu-inspector` (GEN-9) remain **genuine release blockers**; packaged-artifact inspection confirming `CREDITS.md` actually ships is still pending; and the music chain-of-title / melody review remains open (GEN-5).
 
 ### Retained by product decision (not a legal clearance)

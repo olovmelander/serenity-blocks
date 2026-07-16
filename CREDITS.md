@@ -104,13 +104,15 @@ output. The subscription and terms records, the per-track prompts, and the Suno 
 references (e.g. `aether-tides.mp3` and `black-hole.mp3` retain `suno.com` output IDs in
 their metadata) are retained by the project as the ownership/licensing record.
 
-The tracks are intended as the game's own soundtrack — generated from the owner's original
-prompts, **not** taken from any third-party library or existing song, and **not intended to
-reproduce** the *Korobeiniki* / "Tetris® Type-A" melody. *This has been checked at the
-track-name/metadata level only; a human listen-through (and, if desired, melody
-fingerprinting) of every track and cue to positively rule out any melodic match is still
-recommended before release. A paid Suno subscription grants usage/ownership rights but does
-not itself warrant that generated output is non-infringing, so this remains a verify item.*
+The tracks are the game's own soundtrack — generated from the owner's original prompts,
+**not** taken from any third-party library or existing song. The **project owner has
+listened through all tracks and confirms none reproduces** the *Korobeiniki* / "Tetris®
+Type-A" melody (2026-07-15). Gameplay sound effects are procedurally synthesised (no
+melody), so the melody-match concern is limited to — and cleared for — the music tracks.
+*(Rigor note: this is the owner's listen-through, which is the practical check; an
+independent musicologist review or automated melody fingerprinting remains optional extra
+assurance. A paid Suno subscription grants usage/ownership rights but does not itself
+warrant non-infringement.)*
 
 > Note: the commercial-use/ownership rights come from the paid Suno subscription terms;
 > keep those records with the project. Two loose ends remain good practice — give the
