@@ -470,39 +470,11 @@
     to { transform: translateY(0); opacity: 1; }
 }
 
-/* ---- FFA HUD and scoreboard overlay --------------------------------------- */
-#ffa-hud,
+/* ---- Scoreboard overlay ---------------------------------------------------- */
 #multiplayer-scoreboard-overlay {
     --cs-accent: var(--cs-teal);
     --cs-accent-rgb: var(--cs-teal-rgb);
     --cs-accent-2: var(--cs-cyan);
-}
-
-#ffa-hud .attack-indicator {
-    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
-    border-radius: 14px;
-    background:
-        radial-gradient(90% 90% at 0% 0%, rgba(var(--cs-accent-rgb), 0.12), transparent 58%),
-        rgba(9, 11, 22, 0.90);
-    color: var(--cs-ink);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.40), 0 0 26px rgba(var(--cs-accent-rgb), 0.12);
-    backdrop-filter: blur(12px) saturate(130%);
-    -webkit-backdrop-filter: blur(12px) saturate(130%);
-}
-
-#ffa-hud .local-attack-incoming {
-    --cs-accent: var(--cs-amber);
-    --cs-accent-rgb: var(--cs-amber-rgb);
-}
-
-#ffa-hud .local-attack-outgoing {
-    --cs-accent: var(--cs-cyan);
-    --cs-accent-rgb: var(--cs-cyan-rgb);
-}
-
-#ffa-hud .attack-arrow,
-#ffa-hud .attack-amount {
-    color: var(--cs-accent);
 }
 
 #multiplayer-scoreboard-overlay.scoreboard-overlay {
