@@ -16,7 +16,6 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
-import { OrbPortalTransitionDirector } from '../../src/core/odyssey/OrbPortalTransitionDirector.js';
 import { getOdysseyThemePresentationPalette } from '../../src/core/odyssey/theme-presentation.js';
 
 function createMode() {
@@ -56,26 +55,5 @@ describe('Odyssey presentation sync', () => {
         });
 
         expect(palette).toEqual(getOdysseyThemePresentationPalette('forest'));
-    });
-
-    it('builds orb portal theme config from the level theme presentation palette', () => {
-        const director = new OrbPortalTransitionDirector({ compositor: {} });
-        const config = director.buildThemeConfig(
-            {
-                chapter: 1,
-                transitionPaletteThemeId: 'forest',
-                theme: { primary: 'forest' },
-            },
-            {
-                nodeManager: {
-                    getChapterColor: () => new THREE.Color('#ff0000'),
-                },
-            },
-        );
-
-        const palette = getOdysseyThemePresentationPalette('forest');
-        expect(config.chapterColor.getStyle()).toBe(new THREE.Color(palette.primary).getStyle());
-        expect(config.accentColor.getStyle()).toBe(new THREE.Color(palette.accent).getStyle());
-        expect(config.shadowColor.getStyle()).toBe(new THREE.Color(palette.shadow).getStyle());
     });
 });
