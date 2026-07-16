@@ -239,6 +239,12 @@ ipcMain.handle('desktop:get-gpu-health', () => getGpuHealthSnapshot());
 let pendingDevToolsRequest = null;
 let devToolsRequestSequence = 0;
 
+// A pending request whose openDevTools() dispatch never produced a
+// 'devtools-opened' event (nor a throw) must not pin the requestId forever —
+// after this TTL a new click mints a fresh request instead of reusing one
+// that can no longer resolve.
+const DEVTOOLS_PENDING_REQUEST_TTL_MS = 10_000;
+
 function requestDevToolsOpen(source) {
     if (!mainWindow || mainWindow.isDestroyed()) {
         return { accepted: false, requestId: null, alreadyOpen: false };
@@ -251,6 +257,29 @@ function requestDevToolsOpen(source) {
         return { accepted: true, requestId, alreadyOpen: true };
     }
 
+    // External renderer-debugger flow: on a packaged Windows build with
+    // diagnostics enabled, embedded DevTools is not the supported path —
+    // debug-tools.js advertises packagedExternalDebugger to the settings UI,
+    // which expects a devtools-opened event carrying external + debuggerUrl.
+    // Answer with the CDP endpoint instead of dispatching a doomed embedded
+    // open. (setImmediate lets the invoke resolve first so the renderer has
+    // stored the requestId before the event arrives.)
+    if (isPackaged && isWindows && diagnosticsEnabled && remoteDebuggingUrl) {
+        setImmediate(() => emitRuntimeEvent('devtools-opened', {
+            requestId,
+            alreadyOpen: false,
+            external: true,
+            debuggerUrl: remoteDebuggingUrl,
+        }));
+        return { accepted: true, requestId, alreadyOpen: false };
+    }
+
+    if (pendingDevToolsRequest
+        && Number.isFinite(pendingDevToolsRequest.startedAt)
+        && (Date.now() - pendingDevToolsRequest.startedAt) > DEVTOOLS_PENDING_REQUEST_TTL_MS) {
+        pendingDevToolsRequest = null;
+    }
+
     const decision = decideDevToolsOpenRequest({
         activePendingRequest: pendingDevToolsRequest,
         newRequestId: requestId,
@@ -259,21 +288,29 @@ function requestDevToolsOpen(source) {
 
     if (decision.type === 'create') {
         pendingDevToolsRequest = decision.request;
-        const { openOptions } = getDevToolsOpenStrategy({
-            isPackagedWindowsApp: isPackaged && isWindows,
-            devToolsSmokeMode: false,
-        });
-        try {
-            mainWindow.webContents.openDevTools(openOptions);
-        } catch (err) {
-            pendingDevToolsRequest = null;
-            emitRuntimeEvent('devtools-open-failed', {
-                requestId,
-                failureKind: 'exception',
-                message: err?.message || String(err),
-            });
-            return { accepted: false, requestId, alreadyOpen: false };
-        }
+    }
+
+    // DevTools is not open at this point, so ALWAYS (re-)dispatch the open —
+    // including on a 'reuse' decision. A reuse that skipped the dispatch would
+    // make a silently-failed first open unrecoverable (every retry would
+    // return the stale requestId without attempting anything).
+    const { openOptions } = getDevToolsOpenStrategy({
+        isPackagedWindowsApp: isPackaged && isWindows,
+        devToolsSmokeMode: false,
+    });
+    try {
+        mainWindow.webContents.openDevTools(openOptions);
+    } catch (err) {
+        pendingDevToolsRequest = null;
+        const failedRequestId = decision.response.requestId;
+        // Async emit + accepted:true response: the renderer stores the
+        // requestId when the invoke resolves, then receives this event —
+        // formatFailureMessage renders payload.errorMessage (settings.js).
+        setImmediate(() => emitRuntimeEvent('devtools-open-failed', {
+            requestId: failedRequestId,
+            failureKind: 'exception',
+            errorMessage: err?.message || String(err),
+        }));
     }
 
     return decision.response;
@@ -570,6 +607,11 @@ function createWindow() {
         }
 
         event.preventDefault();
+        // OS key auto-repeat re-delivers keyDown slower than the 150ms dedup
+        // window, so a held F5 would fire repeated reloads without this guard.
+        if (input.isAutoRepeat) {
+            return;
+        }
         if (isDuplicateDevToolsShortcut(devToolsShortcutState, intent)) {
             return;
         }
@@ -628,6 +670,7 @@ function createWindow() {
     });
 
     mainWindow.on('closed', () => {
+        pendingDevToolsRequest = null;
         mainWindow = null;
     });
 }

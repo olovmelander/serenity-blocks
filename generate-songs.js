@@ -39,8 +39,11 @@ function loadExistingEntries() {
                 .map((song) => [song.file, song]),
         );
     } catch (error) {
-        console.warn(`⚠️  Could not read existing songs.json (${error.message}); regenerating all entries.`);
-        return new Map();
+        // Abort rather than regenerate: silently rebuilding would discard the
+        // curated names/metadata this script promises to preserve. Fix or
+        // delete the malformed songs.json first.
+        console.error(`❌ Existing songs.json is unreadable (${error.message}) — aborting to protect curated entries.`);
+        process.exit(1);
     }
 }
 
@@ -60,7 +63,7 @@ function generateSongsJson() {
                 // src/audio/music-loader.js).
                 path: `./assets/music/${file}`,
             }))
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => a.name.localeCompare(b.name, 'en'));
 
         writeFileSync(OUTPUT_FILE, `${JSON.stringify(songs, null, 2)}\n`, 'utf8');
 
