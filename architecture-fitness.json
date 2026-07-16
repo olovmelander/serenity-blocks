@@ -12,7 +12,7 @@
     "core-nondeterminism": 226,
     "core-dom-globals": 537,
     "core-raf-drivers": 32,
-    "resize-listeners": 54,
+    "resize-listeners": 52,
     "event-bus-files": 1,
     "board-write-sites": 17,
     "das-algorithm-clones": 0
