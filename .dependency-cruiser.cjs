@@ -46,11 +46,12 @@ module.exports = {
                 path: '^src/themes/([^/]+)/',
                 // Known cross-theme imports (measured 2026-07-10) — shrink-only
                 // baseline: winter/sim borrows a starlight TSL noise lib;
-                // sky-children-legacy + pyrestorm-v2 reuse their predecessor's
-                // code. Delete an entry when the import is removed; never add one.
+                // pyrestorm-v2 reuses its predecessor's code. Delete an entry
+                // when the import is removed; never add one. (sky-children-legacy
+                // entry removed 2026-07-16 with the deletion of the unregistered
+                // sky-children v1 theme.)
                 pathNot: [
                     '^src/themes/winter/sim/snow-sim\\.js$',
-                    '^src/themes/sky-children-legacy/sky-children-legacy-theme\\.js$',
                     '^src/themes/pyrestorm-v2/pyrestorm-v2-theme\\.js$',
                 ],
             },
