@@ -25,6 +25,16 @@ import {
     extractInlineScriptHashes,
 } from './content-security-policy.js';
 import { buildDebugToolsStatus } from './debug-tools.js';
+import { classifyGpuHealth } from './gpu-health.js';
+import {
+    decideDevToolsOpenRequest,
+    getDevToolsOpenStrategy,
+} from './devtools-policy.js';
+import {
+    createDevToolsShortcutState,
+    getDevToolsShortcutIntent,
+    isDuplicateDevToolsShortcut,
+} from './devtools-shortcuts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -188,22 +198,94 @@ ipcMain.handle('desktop:get-process-metrics', () => {
     return app.getAppMetrics();
 });
 
+// GPU health — real classification via electron/gpu-health.js (the module the
+// unit tests and the windows parity lane exercise). Status vocabulary is
+// 'healthy' | 'degraded' | 'unsafe', which is what the renderer's body classes,
+// remediation panel, and gpuFallbackActive computation expect (src/main.js).
+// Returns null when Chromium can't report GPU info — the renderer keeps its
+// healthy default instead of tripping the fallback UI on an API hiccup.
+async function getGpuHealthSnapshot() {
+    try {
+        const gpuInfo = await app.getGPUInfo('basic');
+        const devices = Array.isArray(gpuInfo?.gpuDevice) ? gpuInfo.gpuDevice : [];
+        return classifyGpuHealth({
+            adapters: devices.map((device, index) => ({
+                index,
+                active: device?.active === true,
+                vendor: device?.vendorString || device?.vendor || 'Unknown vendor',
+                name: device?.deviceString || device?.deviceName || device?.name || 'Unknown GPU',
+                vendorId: device?.vendorId ?? null,
+                deviceId: device?.deviceId ?? null,
+                driverVendor: device?.driverVendor || null,
+                driverVersion: device?.driverVersion || null,
+            })),
+            gpuFeatureStatus: app.getGPUFeatureStatus?.() || {},
+            hardwareAccelerationDisabled: app.commandLine.hasSwitch('disable-gpu'),
+            angleBackend: process.env.SERENITY_ANGLE_BACKEND || null,
+        });
+    } catch (err) {
+        console.warn('[Electron] GPU health classification failed:', err?.message || err);
+        return null;
+    }
+}
+
+ipcMain.handle('desktop:get-gpu-health', () => getGpuHealthSnapshot());
+
+// DevTools open requests — electron/devtools-policy.js. The settings UI awaits
+// { accepted, requestId } from the invoke and then matches the
+// devtools-opened / devtools-open-failed runtime event carrying that requestId
+// (src/ui/settings.js); a bare toggle used to leave that button stuck on
+// "Main process did not accept the DevTools request."
+let pendingDevToolsRequest = null;
+let devToolsRequestSequence = 0;
+
+function requestDevToolsOpen(source) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return { accepted: false, requestId: null, alreadyOpen: false };
+    }
+
+    devToolsRequestSequence += 1;
+    const requestId = `devtools-req-${devToolsRequestSequence}`;
+
+    if (mainWindow.webContents.isDevToolsOpened()) {
+        return { accepted: true, requestId, alreadyOpen: true };
+    }
+
+    const decision = decideDevToolsOpenRequest({
+        activePendingRequest: pendingDevToolsRequest,
+        newRequestId: requestId,
+        source,
+    });
+
+    if (decision.type === 'create') {
+        pendingDevToolsRequest = decision.request;
+        const { openOptions } = getDevToolsOpenStrategy({
+            isPackagedWindowsApp: isPackaged && isWindows,
+            devToolsSmokeMode: false,
+        });
+        try {
+            mainWindow.webContents.openDevTools(openOptions);
+        } catch (err) {
+            pendingDevToolsRequest = null;
+            emitRuntimeEvent('devtools-open-failed', {
+                requestId,
+                failureKind: 'exception',
+                message: err?.message || String(err),
+            });
+            return { accepted: false, requestId, alreadyOpen: false };
+        }
+    }
+
+    return decision.response;
+}
+
 // Stubs for APIs the renderer calls with optional chaining — returning
 // sensible defaults keeps the renderer happy without the full diagnostics.
-ipcMain.handle('desktop:get-gpu-health', () => ({ status: 'ok' }));
 ipcMain.handle('desktop:get-devtools-diagnostics', () => ({}));
 ipcMain.handle('desktop:get-debug-tools-status', () => ({}));
 ipcMain.handle('desktop:get-log-paths', () => ({}));
-ipcMain.handle('desktop:open-devtools', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.toggleDevTools();
-    }
-});
-ipcMain.handle('desktop:open-renderer-debugger', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-});
+ipcMain.handle('desktop:open-devtools', () => requestDevToolsOpen('settings-open-devtools'));
+ipcMain.handle('desktop:open-renderer-debugger', () => requestDevToolsOpen('settings-open-renderer-debugger'));
 ipcMain.handle('desktop:apply-runtime-profile', () => null);
 ipcMain.handle('desktop:store-performance-report', () => null);
 ipcMain.handle('desktop:startup-mark', () => null);
@@ -283,13 +365,9 @@ function diagnosticLog(entry) {
 }
 
 if (diagnosticsEnabled) {
-    // Replace the stub handlers with real diagnostics
-    ipcMain.removeHandler('desktop:get-gpu-health');
-    ipcMain.handle('desktop:get-gpu-health', () => {
-        const gpuInfo = app.getGPUFeatureStatus?.() || {};
-        return { status: 'ok', features: gpuInfo };
-    });
-
+    // Replace the stub handlers with real diagnostics. (desktop:get-gpu-health
+    // needs no override — the base handler already returns the full
+    // classifyGpuHealth result in every mode.)
     ipcMain.removeHandler('desktop:get-log-paths');
     ipcMain.handle('desktop:get-log-paths', () => ({
         main: getDiagnosticsLogPath(),
@@ -468,6 +546,40 @@ function createWindow() {
     };
     mainWindow.webContents.on('will-navigate', blockUnexpectedNavigation);
     mainWindow.webContents.on('will-redirect', blockUnexpectedNavigation);
+
+    // Resolve pending settings-UI DevTools requests (see requestDevToolsOpen).
+    // Shortcut/menu opens carry no pending request and emit nothing — the
+    // settings UI only listens for requestIds it created.
+    mainWindow.webContents.on('devtools-opened', () => {
+        const requestId = pendingDevToolsRequest?.requestId || null;
+        pendingDevToolsRequest = null;
+        if (requestId) {
+            emitRuntimeEvent('devtools-opened', { requestId, alreadyOpen: false });
+        }
+    });
+
+    // DevTools/reload shortcuts — electron/devtools-shortcuts.js (the module
+    // the unit tests pin). preventDefault() also suppresses the matching View
+    // menu accelerator, so one keypress can never fire both paths; the dedup
+    // window collapses duplicate keyDown/rawKeyDown deliveries of one press.
+    const devToolsShortcutState = createDevToolsShortcutState();
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        const intent = getDevToolsShortcutIntent(input);
+        if (!intent) {
+            return;
+        }
+
+        event.preventDefault();
+        if (isDuplicateDevToolsShortcut(devToolsShortcutState, intent)) {
+            return;
+        }
+
+        if (intent === 'toggle-devtools') {
+            mainWindow.webContents.toggleDevTools();
+        } else if (intent === 'reload-window') {
+            mainWindow.webContents.reload();
+        }
+    });
 
     if (isPackaged && isWindows) {
         mainWindow.maximize();
