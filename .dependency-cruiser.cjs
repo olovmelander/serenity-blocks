@@ -4,8 +4,9 @@
  * each rule cites the plan section / ADR it enforces.
  *
  * KNOWN-VIOLATIONS BASELINE: src/core already crosses the headless boundary in
- * exactly 10 files (measured 2026-07-10) — the six game-mode classes, the FFA
- * god-class, two odyssey transition directors, and the steam invite manager.
+ * exactly 9 files (measured 2026-07-10; OrbPortalTransitionDirector deleted
+ * 2026-07-16 as unreachable dead code) — the six game-mode classes, the FFA
+ * god-class, one odyssey transition director, and the steam invite manager.
  * They are carved out of `from` below so day one isn't red. Shrink-only: when a
  * file stops importing across the boundary, delete it from the carve-out; NEVER
  * add one. These files move to an adapters layer in Movement C (plan §4.6).
@@ -13,7 +14,7 @@
 const CORE_HEADLESS_KNOWN_VIOLATORS = '^src/core/('
     + 'game-modes/(InfinityMode|LocalMultiplayerMode|OdysseyMode|OnlineMultiplayerMode|SerenityMode|SinglePlayerMode)'
     + '|multiplayer/ffa-p2p-game-state'
-    + '|odyssey/(OrbPortalTransitionDirector|ThemeTransitionManager)'
+    + '|odyssey/ThemeTransitionManager'
     + '|steam/steam-invite-manager'
     + ')\\.js$';
 
