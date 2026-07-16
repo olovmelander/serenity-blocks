@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { RAINY_WINDOW_TETROMINOS } from './rainy-window-tetrominos.js';
 
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
@@ -70,6 +71,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Breathing state
         this.breathingPhase = Math.random() * Math.PI * 2;
+    }
+
+    getTetrominoConfig() {
+        return RAINY_WINDOW_TETROMINOS;
     }
 
     async createScene() {

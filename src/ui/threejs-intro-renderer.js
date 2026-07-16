@@ -85,11 +85,11 @@ export default class ThreeJSIntroRenderer {
 
         // Constants
         this.COLORS = {
-            I: 0x00ff00, // Green
+            I: 0xff0000, // Red
             O: 0xff9900, // Orange
             T: 0x0000ff, // Blue
             S: 0x00ffff, // Cyan
-            Z: 0xff0000, // Red
+            Z: 0x00ff00, // Green
             J: 0xffff00, // Yellow
             L: 0xcc00cc, // Purple
         };
