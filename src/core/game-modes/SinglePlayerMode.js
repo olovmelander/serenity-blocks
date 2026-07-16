@@ -18,7 +18,6 @@ import {
     BLOCK_SIZE,
 } from '../constants.js';
 import {
-    draw,
     updateStats,
     triggerLineClearFlash as triggerLineClearFlashCanvas,
     triggerBackgroundPulse as triggerBackgroundPulseCanvas,
@@ -75,9 +74,6 @@ export class SinglePlayerMode extends BaseGameMode {
         this.gameState = null;
         this.cleanupHandlers = [];
 
-        // Canvas references (set during activation)
-        this.canvas = null;
-        this.ctx = null;
         this.nextCanvases = [];
 
         // Performance optimization: Throttle stats updates
@@ -307,8 +303,6 @@ export class SinglePlayerMode extends BaseGameMode {
                 const boardScene = this._getBoardScene();
                 if (boardScene) {
                     boardScene.syncFromGameState(this.gameState);
-                } else if (this.canvas && this.ctx) {
-                    draw(this.canvas, this.ctx, this.gameState);
                 }
             };
 
@@ -907,8 +901,6 @@ export class SinglePlayerMode extends BaseGameMode {
             const boardScene = this._getBoardScene();
             if (boardScene) {
                 boardScene.syncFromGameState(this.gameState);
-            } else if (this.canvas && this.ctx) {
-                draw(this.canvas, this.ctx, this.gameState);
             }
         };
 

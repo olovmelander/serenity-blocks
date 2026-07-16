@@ -37,14 +37,11 @@ import { SteamInviteManager } from './core/steam/steam-invite-manager.js';
 import { initializeMainMenuPlayerCard } from './ui/components/main-menu-player-card.js';
 
 // Rendering imports
-import { generateGridCache, drawBlock, drawGhostPiece } from './rendering/canvas-utils.js';
 import {
-    draw,
     updateStats,
     triggerLineClearFlash,
     createPieceLockRipple,
     triggerBackgroundPulse,
-    addPieceTrail,
     showComboPopup,
     drawNextPieces,
 } from './rendering/draw.js';
@@ -763,8 +760,6 @@ class SerenityBlocks {
         // Core systems (deprecated - will be managed by GameModeManager)
         this.gameState = null;
         this.multiplayerState = null;
-        this.canvas = null;
-        this.ctx = null;
         this.nextCanvases = [];
 
         // Managers
@@ -879,11 +874,6 @@ class SerenityBlocks {
 
             // 9. Setup UI
             this.setupUI();
-
-            // 10. Initialize canvas grid (for legacy fallback rendering if needed)
-            if (this.canvas) {
-                generateGridCache(this.canvas);
-            }
 
             // 12. Expose game controls as globals for controls.js
             this.exposeGlobalControls();
@@ -3373,12 +3363,8 @@ class SerenityBlocks {
 
         return {
             draw: () => {
-                const gameState = getState();
-                if (!gameState) return;
-                // Fallback to canvas rendering if Phaser scene not available
-                if (!this.boardScene && this.canvas && this.ctx) {
-                    draw(this.canvas, this.ctx, gameState);
-                }
+                // The board is rendered by the Phaser board scene; there is no
+                // canvas fallback renderer.
             },
             onLevelUp: (level) => {
                 const gameState = getState();
@@ -3521,7 +3507,6 @@ class SerenityBlocks {
                 gameState,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
-                addPieceTrail,
             );
         };
 
@@ -3538,7 +3523,6 @@ class SerenityBlocks {
                 gameState,
                 dir,
                 () => this.soundManager.sfxPlayer.playRotate(),
-                addPieceTrail,
             );
         };
 
@@ -3666,7 +3650,6 @@ class SerenityBlocks {
                 player2State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
-                addPieceTrail,
             );
         };
 
@@ -3681,7 +3664,6 @@ class SerenityBlocks {
                 player2State,
                 dir,
                 () => this.soundManager.sfxPlayer.playRotate(),
-                addPieceTrail,
             );
         };
 
@@ -3725,7 +3707,6 @@ class SerenityBlocks {
                 player3State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
-                addPieceTrail,
             );
         };
 
@@ -3740,7 +3721,6 @@ class SerenityBlocks {
                 player3State,
                 dir,
                 () => this.soundManager.sfxPlayer.playRotate(),
-                addPieceTrail,
             );
         };
 
@@ -3784,7 +3764,6 @@ class SerenityBlocks {
                 player4State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
-                addPieceTrail,
             );
         };
 
@@ -3799,7 +3778,6 @@ class SerenityBlocks {
                 player4State,
                 dir,
                 () => this.soundManager.sfxPlayer.playRotate(),
-                addPieceTrail,
             );
         };
 
@@ -4104,13 +4082,6 @@ class SerenityBlocks {
         // Use fixed block size (40) as elsewhere
         setBlockSize(40);
 
-        // Update legacy canvas if it exists (for fallback rendering)
-        if (this.canvas) {
-            this.canvas.width = COLS * BLOCK_SIZE;
-            this.canvas.height = ROWS * BLOCK_SIZE;
-            generateGridCache(this.canvas);
-        }
-
         if (this.themeManager) {
             this.themeManager.resize(window.innerWidth, window.innerHeight);
         }
@@ -4118,11 +4089,6 @@ class SerenityBlocks {
         // Forward resize to GameModeManager so multiplayer boards scale correctly
         if (this.gameModeManager) {
             this.gameModeManager.handleResize();
-        }
-
-        // Redraw using legacy canvas fallback if available
-        if (this.gameState && this.canvas && this.ctx) {
-            draw(this.canvas, this.ctx, this.gameState);
         }
     }
 
