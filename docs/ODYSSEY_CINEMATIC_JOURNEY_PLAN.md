@@ -216,7 +216,7 @@ For each world: the one move that most makes it *belong to the traveled journey*
 
 ## 8. Risks & gotchas
 
-- **P1 is load-bearing and the highest-risk change.** Default-on deletes the legacy atmosphere branch. Stage it: land the default-on flip behind a quick internal toggle, screenshot-diff AAA-on vs new-default to prove convergence, *then* remove the legacy branch. Keep the level-entry warp (`OrbPortalTransitionDirector`) and `odyssey-path-layout.test.js` green throughout.
+- **P1 is load-bearing and the highest-risk change.** Default-on deletes the legacy atmosphere branch. Stage it: land the default-on flip behind a quick internal toggle, screenshot-diff AAA-on vs new-default to prove convergence, *then* remove the legacy branch. Keep the level-entry warp (`ThemeTransitionManager.playOrbPortal` via `WarpTransitionRenderer` — the unfinished `OrbPortalTransitionDirector` was removed 2026-07-16 as unreachable) and `odyssey-path-layout.test.js` green throughout.
 - **Spline re-author touches the layout editor (2266 lines) and tests** that assert exact point positions. Positions are frame-independent, but any UV/normal-dependent visual baseline shifts with a new banking frame — re-baseline screenshots after P2/P3.
 - **Two-tier chapter migration (Ch1–4) is shader work.** Match the shared-noise vocabulary exactly or the grain will *change* at the very seam we're trying to smooth. Migrate one chapter, screenshot-diff, then proceed.
 - **Don't desync the seam clock during the transition.** While converting levers to `seamPhase`, keep a stationary-player time fallback or a lingering scrub will freeze the breach mid-envelope.

@@ -116,6 +116,11 @@ contextBridge.exposeInMainWorld('electronDisplay', {
 
 contextBridge.exposeInMainWorld('electronAPI', {
     invoke,
+    // Read synchronously here (not via IPC) so it's available on `window` before any
+    // page script runs — the game bootstrap needs this before it touches WebGPU. Sandboxed
+    // preload doesn't reliably expose process.env, so main.js passes this via
+    // webPreferences.additionalArguments instead (documented sandbox-safe channel).
+    diagnosticsEnabled: process.argv.includes('--serenity-diagnostics-enabled'),
     getDesktopRuntimeConfig: () => invoke('desktop:get-runtime-config'),
     getProcessMetrics: () => invoke('desktop:get-process-metrics'),
     getGPUHealth: () => invoke('desktop:get-gpu-health'),
