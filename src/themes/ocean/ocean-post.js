@@ -46,7 +46,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
-import { disposeBloomNodeDeep } from '../bloom-dispose.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { tslAbzuGrade } from './ocean-tsl-helpers.js';
 
 // 5-tap Poisson disc sample offsets (unit disc)

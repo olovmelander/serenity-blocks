@@ -25,6 +25,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class FluidDreamsPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -149,7 +150,7 @@ export class FluidDreamsPost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

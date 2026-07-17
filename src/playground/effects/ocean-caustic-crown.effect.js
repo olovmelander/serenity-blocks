@@ -22,6 +22,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 
 export const meta = {
     id: 'ocean-caustic-crown',
@@ -237,7 +238,7 @@ export function create({ scene, camera, renderer }) {
             pearlMaterial.dispose();
             bubbleGeometry.dispose();
             bubbleMaterial.dispose();
-            bloomNode.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             scenePass.dispose?.();
             post.dispose?.();
             scene.fog = null;

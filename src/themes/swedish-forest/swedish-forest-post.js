@@ -33,6 +33,7 @@ import {
     sin,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 function colorToVec3(color) {
     if (color?.isColor) {
@@ -394,7 +395,7 @@ export class SwedishForestPost {
             this.scenePass = null;
         }
         if (this.bloomNode) {
-            this.bloomNode.dispose();
+            disposeBloomNodeDeep(this.bloomNode);
             this.bloomNode = null;
         }
         if (this.postProcessing) {

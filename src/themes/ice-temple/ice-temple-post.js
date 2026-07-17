@@ -6,6 +6,7 @@
 import * as WEBGPU from 'three/webgpu';
 import * as TSL from 'three/tsl';
 import * as BLOOM from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class IceTemplePost {
     static async create(renderer, scene, camera, params = {}) {
@@ -78,7 +79,7 @@ export class IceTemplePost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

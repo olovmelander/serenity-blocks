@@ -32,7 +32,7 @@ import {
     sin,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { disposeBloomNodeDeep } from '../bloom-dispose.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 const LUNARA_GRADE_SHADER = {
     uniforms: {

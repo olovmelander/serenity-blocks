@@ -30,6 +30,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../themes/shared/bloom-dispose.js';
 
 import { IntroParticleCompute } from './intro-particle-compute.js';
 import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
@@ -323,8 +324,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.scheduleNextHeroInhale();
         if (this.scene && this.camera && this.renderer) {
             this._scenePass?.dispose?.();
+            disposeBloomNodeDeep(this._bloomNode);
             this.postProcessing?.dispose?.();
             this._scenePass = null;
+            this._bloomNode = null;
             this.postProcessing = null;
             this.setupPostProcessing();
         }
@@ -783,6 +786,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.postProcessing.outputNode = finalColor;
         this.postProcessing.needsUpdate = true;
         this._scenePass = scenePass;
+        this._bloomNode = bloomNode;
     }
 
     createConstellationLines() {
@@ -1695,6 +1699,11 @@ export default class ThreeJSIntroRendererWebGPU {
         if (this._scenePass) {
             this._scenePass.dispose?.();
             this._scenePass = null;
+        }
+
+        if (this._bloomNode) {
+            disposeBloomNodeDeep(this._bloomNode);
+            this._bloomNode = null;
         }
 
         if (this.postProcessing) {

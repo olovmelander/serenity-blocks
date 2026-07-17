@@ -44,6 +44,7 @@ import {
 } from 'three/tsl';
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
 
 const GODRAY_STEPS = 16;
 
@@ -243,6 +244,7 @@ export class SkyPipeline {
     }
 
     dispose() {
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing = null;
         this.bloomNode = null;
     }

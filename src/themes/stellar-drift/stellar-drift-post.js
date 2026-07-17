@@ -25,7 +25,7 @@ import {
     Fn,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { disposeBloomNodeDeep } from '../bloom-dispose.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class StellarDriftPost {
     constructor(renderer, scene, camera, params = {}) {

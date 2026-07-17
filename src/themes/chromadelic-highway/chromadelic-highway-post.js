@@ -26,6 +26,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class ChromadelicHighwayPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -322,7 +323,7 @@ export class ChromadelicHighwayPost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

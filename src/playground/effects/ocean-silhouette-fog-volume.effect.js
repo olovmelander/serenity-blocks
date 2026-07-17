@@ -18,6 +18,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import { tslAbzuGrade } from '../../themes/ocean/ocean-tsl-helpers.js';
 
 export const meta = {
@@ -205,7 +206,7 @@ export function create({ scene, camera, renderer }) {
             pinkCoral.dispose();
             monuments.forEach((root) => root.traverse((child) => child.geometry?.dispose?.()));
             corals.forEach((root) => root.traverse((child) => child.geometry?.dispose?.()));
-            bloomNode.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             scenePass.dispose?.();
             post.dispose?.();
             scene.fogNode = null;
