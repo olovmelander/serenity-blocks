@@ -978,13 +978,15 @@ export default class ThreeJSIntroRendererWebGPU {
             const y3 = x2.mul(sz).add(y2.mul(cz));
             const z3 = z2;
 
-            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).toVar();
             // Big-combo warp scatter: streak each piece radially outward + toward the camera,
             // eased out-and-back by the uReactionScatter bell, so the field flings apart like
             // the intro dismiss then reforms (render-only → repeatable, no field emptying).
-            worldPos.x.addAssign(statePos.x.mul(this.uReactionScatter).mul(1.15));
-            worldPos.y.addAssign(statePos.y.mul(this.uReactionScatter).mul(1.15));
-            worldPos.z.addAssign(this.uReactionScatter.mul(5.5));
+            const scatterOffset = vec3(
+                statePos.x.mul(this.uReactionScatter).mul(1.15),
+                statePos.y.mul(this.uReactionScatter).mul(1.15),
+                this.uReactionScatter.mul(5.5),
+            );
+            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).add(scatterOffset);
             const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
 
             return mix(hiddenPos, worldPos, drawMask);
