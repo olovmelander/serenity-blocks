@@ -765,7 +765,13 @@ export default class SwedishForestTheme extends BaseTheme {
             this.renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.renderer.onDeviceLost = (info) => {
-                console.error('[SwedishForest] WebGPU device lost:', info);
+                // Terminal for this renderer: halt the theme loop so it stops
+                // polling error scopes on a dead device (see ocean-theme.js).
+                console.error('[SwedishForest] WebGPU device lost — halting theme rendering:', info);
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                    this.animationFrame = null;
+                }
             };
         } else {
             if (webgpuRenderer) {
