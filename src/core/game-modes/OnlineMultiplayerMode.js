@@ -172,8 +172,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     async onActivate() {
         await super.onActivate();
 
-        console.log('[OnlineMultiplayer] Activating online multiplayer mode...');
-
         // Hide both single player and local multiplayer containers
         const singlePlayerContainer = document.getElementById('single-player-container');
         if (singlePlayerContainer) {
@@ -195,6 +193,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Initialize Steam networking
             await this.initializeSteamNetworking();
 
+            // SB-02: re-arm the P2P poll on re-entry (instance is cached; deactivate stops it).
+            this.steamNetworking.startP2PPolling();
+
             // Always create fresh lobby UI components
             if (this.lobbyBrowser) {
                 this.lobbyBrowser.destroy();
@@ -209,8 +210,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Show lobby browser
             await this.showLobbyBrowser();
-
-            console.log('[OnlineMultiplayer] ✅ Mode activated successfully');
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to activate:', error);
             alert(`Failed to initialize online multiplayer: ${error.message}`);
@@ -3175,8 +3174,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     async onDeactivate() {
         await super.onDeactivate();
 
-        console.log('[OnlineMultiplayer] Deactivating...');
-
         // Clean up game rendering first
         if (this.isInMatch) {
             this._cleanupGameRendering();
@@ -3185,10 +3182,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Leave current lobby
         if (this.currentLobbyId && this.steamNetworking) {
-            console.log('[OnlineMultiplayer] Leaving lobby...');
             this.steamNetworking.leaveLobby();
             this.currentLobbyId = null;
         }
+
+        // SB-02: no 60Hz IPC poll outside Online MP (lobby already left above; re-armed in onActivate).
+        this.steamNetworking?.stopP2PPolling();
 
         this._clearLobbyRichPresence();
 
@@ -3225,8 +3224,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.matchResultsModal.destroy();
             this.matchResultsModal = null;
         }
-
-        console.log('[OnlineMultiplayer] ✅ Deactivated');
     }
 
     /**

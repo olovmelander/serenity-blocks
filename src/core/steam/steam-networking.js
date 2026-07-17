@@ -843,6 +843,21 @@ export class SteamNetworking {
     }
 
     /**
+     * Stop the 60Hz P2P packet poll. Called when Online MP deactivates so the
+     * cross-process IPC round-trips don't keep running for the rest of the
+     * session in menus and other modes (audit SB-02). startP2PPolling()
+     * re-arms it when the mode activates again; it must never be called while
+     * a lobby or match is live (OnlineMultiplayerMode deactivation leaves the
+     * lobby first).
+     */
+    stopP2PPolling() {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+    }
+
+    /**
    * Handle incoming P2P packet
    * Phase 4: Supports binary-encoded snapshots for bandwidth reduction
    */
