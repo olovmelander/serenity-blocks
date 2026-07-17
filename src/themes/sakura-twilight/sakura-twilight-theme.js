@@ -2982,7 +2982,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             // Pick a new target that moves AWAY from the partner
             if (partner) {
-                const awayDir = new THREE.Vector3().subVectors(fox.position, partner.position);
+                this._tmpFoxAwayDir = this._tmpFoxAwayDir || new THREE.Vector3();
+                const awayDir = this._tmpFoxAwayDir.subVectors(fox.position, partner.position);
                 awayDir.y = 0;
                 awayDir.normalize();
 
@@ -3012,7 +3013,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const t = Math.sin(phase * Math.PI); // Smooth in-out curve
 
         // Make foxes face each other
-        const toPartner = new THREE.Vector3().subVectors(partner.position, fox.position);
+        this._tmpFoxToPartner = this._tmpFoxToPartner || new THREE.Vector3();
+        const toPartner = this._tmpFoxToPartner.subVectors(partner.position, fox.position);
         toPartner.y = 0;
         if (toPartner.lengthSq() > 0.001) {
             const targetAngle = Math.atan2(toPartner.x, toPartner.z);
@@ -3035,7 +3037,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const circleRadius = 1.5;
             const circleSpeed = 2 * Math.PI; // Full circle
             const angle = phase * circleSpeed;
-            const midpoint = new THREE.Vector3().addVectors(fox.position, partner.position).multiplyScalar(0.5);
+            this._tmpFoxMidpoint = this._tmpFoxMidpoint || new THREE.Vector3();
+            const midpoint = this._tmpFoxMidpoint.addVectors(fox.position, partner.position).multiplyScalar(0.5);
 
             // Offset from midpoint
             const circleX = Math.cos(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;

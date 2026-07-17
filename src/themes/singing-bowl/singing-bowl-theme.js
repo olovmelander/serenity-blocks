@@ -23,6 +23,9 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
 
+// Constant local Y axis for per-instance spin (read-only: setFromAxisAngle only reads it)
+const _UP_AXIS = new THREE.Vector3(0, 1, 0);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
@@ -902,10 +905,17 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     updateInstanceMatrices(time) {
-        const matrix = new THREE.Matrix4();
-        const position = new THREE.Vector3();
-        const quaternion = new THREE.Quaternion();
-        const scale = new THREE.Vector3();
+        // Reused scratch objects (SB-05/SB-06): fully overwritten each use, never retained
+        this._tmpMatrix = this._tmpMatrix || new THREE.Matrix4();
+        this._tmpPosition = this._tmpPosition || new THREE.Vector3();
+        this._tmpQuaternion = this._tmpQuaternion || new THREE.Quaternion();
+        this._tmpScale = this._tmpScale || new THREE.Vector3();
+        this._tmpLocalSpin = this._tmpLocalSpin || new THREE.Quaternion();
+        const matrix = this._tmpMatrix;
+        const position = this._tmpPosition;
+        const quaternion = this._tmpQuaternion;
+        const scale = this._tmpScale;
+        const localSpin = this._tmpLocalSpin;
 
         for (let i = 0; i < this.instanceCount; i++) {
             const data = this.cubeData[i];
@@ -937,9 +947,8 @@ export default class SingingBowlTheme extends BaseTheme {
             quaternion.copy(data.baseRotation);
 
             // Add local spin?
-            const localSpin = new THREE.Quaternion();
             // Rotate around its own local Y axis
-            localSpin.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.sin(time + data.depth) * 0.1);
+            localSpin.setFromAxisAngle(_UP_AXIS, Math.sin(time + data.depth) * 0.1);
             quaternion.multiply(localSpin);
 
             // Pulse Scale
