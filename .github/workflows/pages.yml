@@ -44,6 +44,11 @@ jobs:
       # resize-listener sprawl — shrink-only, baselines in
       # architecture-fitness.json.
       - run: node scripts/architecture-fitness-check.mjs
+      # Theme lifecycle contract (SB-04, remediated 2026-07-17): stop()/cleanup()
+      # overrides must chain to super, listeners must not use inline bind(this),
+      # raw window resize listeners need a removal path. Heuristics are
+      # unit-tested in tests/unit/theme-lifecycle-audit.test.js.
+      - run: npm run audit:theme-lifecycle
       # Import-boundary rules (Phase 3d layer 1): core-stays-headless,
       # themes-are-islands, no-electron-in-renderer, with a shrink-only
       # known-violations baseline in .dependency-cruiser.cjs.
