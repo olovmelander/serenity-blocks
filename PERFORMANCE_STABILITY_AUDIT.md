@@ -428,6 +428,12 @@ Ranked by measured user impact × confidence ÷ (risk × effort). **No numerical
 
 Explicitly **not** recommended: disabling effects/quality tiers, lowering default graphics, caching/pooling/workers anywhere evidence doesn't demand it (ADR-0005/0006 forbid speculative offload), or touching the fixed-tick migration (governed by plan §5).
 
+### Remediation log
+
+| Batch | Status | Validation result |
+|---|---|---|
+| **R1 (SB-01)** | **Implemented 2026-07-17** on this branch: Orbitron 400/700/900 + Space Mono 400/700 vendored from @fontsource (OFL 1.1, licenses included) into `public/fonts/` (124 KB total), `public/styles/fonts.css` mirrors the upstream unicode-range subsets, CDN `<link>` removed from `index.html`. | Same S1 procedure, CDN-blocked environment: menu-ready **861–1513 ms** (5 runs; was 13,602–13,978 ms), console fully clean (the font `ERR_CONNECTION_RESET` is gone), all font requests localhost-only, `document.fonts` confirms faces load, menu screenshot verified (`results/menu-selfhosted-fonts.png`, `results/startup-r1-selfhosted.json`). Gates: 2,418 tests pass, lint/fitness/IP/release gates pass. |
+
 ## 10. Correctness and regression risks
 
 - **Gameplay invariants** (timing, physics, scoring, RNG, input): R1/R4/R5/R7/R8 do not touch simulation code. R2 touches only when polling stops (must never stop during a live lobby/match/host-migration). R6(c) moves *when* gamepad edges are sampled — must keep per-frame cadence during gameplay to preserve DAS behavior (`advanceGameplayInput` is driven by the sim loop and is unaffected).
@@ -530,8 +536,8 @@ Frame deltas via in-page rAF collector; long tasks via `PerformanceObserver('lon
 All raw measurement outputs are committed under **`reports/perf-audit-2026-07-16/`**:
 
 - `results/` — 24 files: per-scenario JSON (`startup*.json`, `menu-idle.json`, `gameplay.json`, `gameplay-webgl.json`, `rapid-input.json`, `input-latency.json`, `restart-cycle.json`, `theme-cycle*.json` incl. the three isolation toggles, `visibility.json`, `resize.json`, `odyssey-smoke.json`, `soak.json`), two raw V8 CPU profiles (`cpuprofile-*.cpuprofile`, loadable in Chrome DevTools), and two Odyssey screenshots (`odyssey-1.png`, `odyssey-2.png`).
-- `harness/` — the complete measurement harness (10 scripts, incl. the TSL and listener attribution follow-ups) so every number is re-runnable per §14.
-- `SHA256SUMS` — checksum manifest covering every file above (34 entries). SHA-256 of the manifest itself: `505bda931b2368e47f5ad243cc1d11608ead0b5305ef379de090528f8d27736b`. Verify with `cd reports/perf-audit-2026-07-16 && sha256sum -c SHA256SUMS`.
+- `harness/` — the complete measurement harness (11 scripts, incl. the TSL, listener, and font-load verification follow-ups) so every number is re-runnable per §14.
+- `SHA256SUMS` — checksum manifest covering every file above (37 entries). SHA-256 of the manifest itself: `2153782eb70ff12ecce9e6ce7ba2b97a2eb16e13c7f023d499b0c4f2ddd3acb6`. Verify with `cd reports/perf-audit-2026-07-16 && sha256sum -c SHA256SUMS`.
 
 Each scenario JSON embeds its own metadata (date, base URL, WebGPU lane, viewport) in `meta`, and per-run console errors are preserved verbatim.
 
