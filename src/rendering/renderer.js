@@ -900,6 +900,11 @@ export class WebGLRenderer {
         const quad = new TexturedQuad(this.gl, sourceCanvas, zIndex);
         this.texturedQuads.push(quad);
         this.texturedQuads.sort((a, b) => a.zIndex - b.zIndex);
+        // A theme that loaded with nothing to draw leaves the render loop parked
+        // (SB-12); wake it now that there is content.
+        if (!this.animationFrameId && !this.useExternalRenderLoop) {
+            this.start();
+        }
     }
 
     createProgram(vertexShaderSource, fragmentShaderSource) {
@@ -1552,10 +1557,14 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 60, sparkleConfig));
 
             this.start();
-        } else {
-            // Default case for themes without WebGL particles
-            // Still start the renderer to handle any future particle systems
+        } else if (this.texturedQuads.length > 0 || this.particleSystems.length > 0) {
+            // Theme registered content through another path (e.g. addLayer) — keep rendering.
             this.start();
+        } else {
+            // Nothing to draw: park the loop instead of running an empty clear+rAF
+            // chain every frame (SB-12a). addLayer() and the particle-creating
+            // branches above re-start the loop the moment content appears.
+            this.stop();
         }
         // Note: electric-dreams theme uses DOM-based CSS animations, not WebGL particles
     }
