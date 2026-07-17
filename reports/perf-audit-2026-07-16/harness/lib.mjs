@@ -11,7 +11,7 @@ export const GPU_ARGS = [
 export async function launch({ webgl = false } = {}) {
   const args = [...GPU_ARGS];
   const browser = await chromium.launch({
-    executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
     headless: true,
     ignoreDefaultArgs: ['--disable-gpu'],
     args,

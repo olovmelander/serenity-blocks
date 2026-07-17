@@ -1,18 +1,73 @@
 # Serenity Blocks — Performance & Stability Audit
 
-Date: 2026-07-16 · Auditor: automated read-only audit (Claude Code session)
-Commit: `fc0329234e38587b3f498c4b495d9bad20b4024a` (branch `claude/serenity-blocks-perf-audit-wt80kg`, clean working tree)
+| | |
+|---|---|
+| **Baseline profiled** | `fc0329234e38587b3f498c4b495d9bad20b4024a` |
+| **Baseline date** | 2026-07-16 |
+| **Current remediation state** | `48e94fcc819068f1742f05b7d1c32fffa106db26` (PR #302) + this review-response round |
+| **Status updated** | 2026-07-17 (owner review incorporated) |
 
-> **Read-only pass.** No production code was modified. Deliverables are this report plus raw
-> measurement artifacts under `reports/perf-audit-2026-07-16/`.
+**How to read this document.** Part A is the current status. Part B (from §1
+on) is the **frozen historical baseline audit of `fc03292`** — its findings are
+written in the present tense *of that commit* and many have since been
+remediated; do not read Part B as the current state. Remediation evidence
+lives in [PERF_REMEDIATION_LOG.md](PERF_REMEDIATION_LOG.md).
 
 ---
+
+# Part A — Current status (at `48e94fc` + review-response round)
+
+## A.1 Finding status
+
+| Status | Findings |
+|---|---|
+| **Strongly resolved in the tested environment** | SB-01 (startup no longer depends on a font CDN; see the corrected claim scope in the remediation log), SB-04 (tooling: checker modernized, unit-tested, in CI), SB-10 (TSL errors 42 → 0; intro effect restored), SB-11 (breathwork timeout) |
+| **Implemented; target-hardware / integration validation pending** | SB-02 (P2P poll lifecycle; desktop IPC counts pending), SB-03 (minimized-window invalidator idle; occluded case + desktop CPU sampling pending), SB-05/SB-06 (allocation hoists — performance effect unverified below this environment's noise floor), SB-07 (lazy breathing renderer; context creations 4 → 3 at menu), SB-08 (route-out asserted in this environment incl. error-stream stabilization; real-GPU TDR pending), SB-12 (empty-loop parking verified; loop consolidation remains ADR-0012 work) |
+| **Partial or open** | SB-09 (long-task instrumentation + lifecycle gate landed; `perf-budgets.json` baselines and the nightly compare lane remain unwired), SB-13 (budget breach stands; no media diet yet), SB-15 (lunara/ocean toggle heap flat; **stellar-drift WebGL-lane residual open** — ~35.2 → 49.5 MB over 5 toggles post-fix; ocean & swedish-forest `onDeviceLost` now halt their loops — see remediation log addendum) |
+| **Informational / in-flight** | SB-14 (fixed-tick migration, plan §5) |
+
+## A.2 What the evidence does and does not support
+
+**Supported by measurement in the tested environment:** startup no longer
+serialized behind a font CDN; theme-switch heap retention eliminated for
+lunara and ocean; production console clean at boot; device loss in Odyssey
+routes to a usable menu with a stabilized error stream; the lifecycle gate
+runs in CI; restart/resize/visibility cycles and a 30-minute soak show flat
+heap/DOM/listener trends (with the soak caveat in §6.9).
+
+**Not yet demonstrated:** higher FPS or better frame pacing on real hardware
+(all frame timing here is software-rasterized); real input-to-photon latency
+(§6.5 measures a proxy); CPU headroom at 60/120/144 Hz (§6.8 ran at ~14 FPS);
+absence of long-session visual-quality degradation (adaptive-quality state was
+not recorded during the soak); any user-visible effect of the R5 allocation
+hoists.
+
+## A.3 Next step — real-hardware validation round
+
+On packaged Windows Electron builds, per the owner review:
+- Minimum-supported iGPU and a typical discrete GPU.
+- 60, 120, and 144 Hz where supported.
+- Fixed and recorded quality tier, resolution scale, DPI, and power mode.
+- Steam P2P enter/exit, minimize/restore, overlay use, theme cycling,
+  stellar-drift WebGL lane, ocean device loss, Odyssey recovery.
+- Same scenarios on `fc03292` and `48e94fc`, reporting frame-time percentiles,
+  missed frames, process CPU/GPU, retained memory, and quality state.
+
+---
+
+# Part B — Historical baseline audit (repository state `fc03292`, measured 2026-07-16)
+
+> Everything below is the frozen baseline record. Findings are stated in the
+> present tense of `fc03292`; consult Part A and the remediation log for what
+> has changed since. Measurement-validity corrections from the 2026-07-17
+> owner review have been applied in place (they concern how numbers should be
+> interpreted, not repository state).
 
 ## 1. Executive summary
 
 This audit profiled the **production build** at commit `fc03292` across 14 scenario families (startup, idle, gameplay, input, restart/theme/resize/visibility cycles, WebGL fallback, Odyssey, 30-min soak, CPU profiles) in a headless Chromium 141 environment with a **software GPU (SwiftShader)** — so absolute frame times are not representative of user hardware, while trends, long tasks, allocation behavior, lifecycle leaks, and stability defects are (§3 caveats). Electron/Steam-specific behavior could not be executed here and is classified accordingly.
 
-**What is healthy (within the tested matrix):** single-player's main thread is nearly idle (busy 5.2 % gameplay / 2.1 % menu, GC < 1 %); input applies synchronously in the keydown handler (event→sim ≈ 0 ms, visual latency = 1 render frame); heap, DOM, and timers are **flat** across menu idle, 30 s gameplay windows, sustained-input stress, 12× restart cycles, 4× resize cycles, and a **30-minute gameplay soak** (heap 35.3–37.5 MB throughout, frame p95 improving over the session, zero crashes); the WebGL fallback lane boots and plays cleanly; restart lifecycle discipline (mode caching + unsubscriber draining) holds up under measurement.
+**What is healthy (within the tested matrix):** single-player's main thread is nearly idle (busy 5.2 % gameplay / 2.1 % menu, GC < 1 %); input applies synchronously in the keydown handler (event→sim ≈ 0 ms; the two-rAF visual proxy tracked one frame — see §6.5 caveat); heap, DOM, and timers are **flat** across menu idle, 30 s gameplay windows, sustained-input stress, 12× restart cycles, 4× resize cycles, and a **30-minute gameplay soak** (heap 35.3–37.5 MB throughout, frame p95 improving over the session, zero crashes); the WebGL fallback lane boots and plays cleanly; restart lifecycle discipline (mode caching + unsubscriber draining) holds up under measurement.
 
 **Top reproduced problems:**
 1. **SB-01 — startup is hostage to fonts.googleapis.com**: with the CDN unreachable-but-slow (≈ any offline/firewalled desktop player), menu-ready = **13.6–14.0 s**, of which the hanging font stylesheet is ~12.6 s; with the request failing fast the same build reaches menu-ready in **0.88–0.93 s** (5+5 runs). One `<link>` in `index.html` serializes the entire boot.
@@ -101,6 +156,15 @@ Frame budget 16.7 ms (60 Hz). "over budget" = delta > 1.5× budget (25 ms) unles
 
 ### 6.1 Startup to menu-ready
 
+> **Scope note (owner review):** every startup scenario, including S1/S2,
+> loads `/?skipIntro=1` (see `boot()` in `harness/run-scenario.mjs`) — these
+> numbers are the skip-intro path, **not** a full-intro launch. The defensible
+> S1-vs-S2 claim is that the hanging font request added ~12.6 s **in this
+> environment's slow-failing network** specifically; offline behavior varies
+> by OS/network stack, and many offline setups fail the request quickly. The
+> remediation removes the network dependence entirely rather than "saving
+> 12.6 s for any offline player".
+
 | Variant | n | menu-ready wall (min–max) | Notes |
 |---|---|---|---|
 | S1 default (font CDN blackholed by container ≈ offline user) | 5 | **13,602–13,978 ms** | `boot-started` fires at ~13.4–13.8 s; boot→menu-ready is only ~200 ms |
@@ -119,8 +183,8 @@ Resource waterfall (S1): `fonts.googleapis.com/css2?...` pends **12,629 ms** sta
 | long tasks per 30 s | 0–6 |
 | avg FPS (secondary) | 23.3–24.7 |
 | JS heap (before→after) | 34.7 → 33.3–33.5 MB (flat) |
-| rAF callbacks per rendered frame | 3.34–3.37 |
-| Live WebGL contexts / listeners / intervals | 4 / 356 / 1 (`syncFromCloud` @15 min) |
+| rAF *registrations* per rendered frame (not distinct loops — see §6.7) | 3.34–3.37 |
+| WebGL context *creations since boot* (counter never decrements on disposal) / listeners / intervals | 4 / 356 / 1 (`syncFromCloud` @15 min) |
 
 ### 6.3 Gameplay (S4, 5×30 s)
 
@@ -133,18 +197,18 @@ Resource waterfall (S1): `fonts.googleapis.com/css2?...` pends **12,629 ms** sta
 | long tasks per 30 s (total ms) | 0–9 (0–525 ms) |
 | avg FPS (secondary) | 13.5–14.9 |
 | JS heap before→after | 36→40.3, 38.1→36.4, 38.1→35.2, 35.6→37.9, 37.7→36.2 (no monotonic growth) |
-| rAF callbacks per rendered frame | 4.45–4.51 |
+| rAF registrations per rendered frame | 4.45–4.51 |
 
 Key interpretation: even at 67 ms frames the main thread produces at most a handful of >50 ms *tasks* per 30 s — the page is **compositor/raster-bound (software GPU), not JS-bound**, in this environment. JS-side cost attribution is in §6.8.
 
 ### 6.4 Rapid input (S5, 3×20 s)
 
-Frame distribution statistically identical to normal gameplay (p50 66.7, p95 116.7); heap flat; 0–1 long tasks. The DAS/input path adds no measurable main-thread cost at 60+ inputs/min.
+Frame distribution shows no clear difference from normal gameplay within observed variation (p50 66.7, p95 116.7); heap flat; 0–1 long tasks. The DAS/input path adds no measurable main-thread cost at 60+ inputs/min.
 
-### 6.5 Input latency (S6, 60 samples)
+### 6.5 Input latency — two-rAF visual-opportunity proxy (S6, 60 samples)
 
 - **60/60 keydowns mutated game state synchronously inside the keydown handler** (legacy default path) — event→simulation latency ≈ 0 ms.
-- Event→next-painted-frame: p50 **81 ms**, p95 163 ms — i.e., ~1 render frame at this environment's 67 ms frame time. On hardware meeting the 16.7 ms budget this corresponds to ≤1 frame of visual latency. No queuing/multi-frame anomalies observed.
+- Event→next-frame **proxy**: p50 **81 ms**, p95 163 ms. **Measurement caveat (owner review):** the harness dispatches a *synthetic, untrusted* `KeyboardEvent`, confirms synchronous state mutation, then waits through nested `requestAnimationFrame` callbacks — it never observes canvas pixels or compositor presentation, so this is a "two-rAF visual-opportunity proxy", **not** input-to-photon latency. Within that proxy, latency tracked the environment's 67 ms frame time with no queuing/multi-frame anomalies.
 - Note: the flag-gated fixed-tick path (`fixedTick`, default off) intentionally stamps input for the *next* tick (+≤16.7 ms) for determinism (`src/ui/controls.js:216-280`).
 
 ### 6.6 Restart / theme-switch / visibility / resize / WebGL lane (S7–S11)
@@ -178,11 +242,11 @@ Frame distribution statistically identical to normal gameplay (p50 66.7, p95 116
 
 **S10 resize (5 sizes × 4 rounds during gameplay)**: heap 35.7→34.1 MB, DOM/listeners/contexts flat, no errors. No render-target/listener accumulation on resize. (One-shot cost per resize not isolable at SwiftShader frame times.)
 
-**S11 WebGL fallback lane (2×30 s gameplay, `navigator.gpu` absent)**: boots and plays with **zero fallback-related console errors**; frame p50 66.7 / p95 116.6–133.3 — statistically identical to the WebGPU lane on this software rasterizer. The fallback path is functional.
+**S11 WebGL fallback lane (2×30 s gameplay, `navigator.gpu` absent)**: boots and plays with **zero fallback-related console errors**; frame p50 66.7 / p95 116.6–133.3 — no clear difference from the WebGPU lane within observed variation on this software rasterizer. The fallback path is functional.
 
 ### 6.7 Loop concurrency (runtime)
 
-Measured rAF callbacks scheduled per rendered frame: **3.35 (menu), ~4.5 (gameplay)** — i.e., 3–5 independent per-frame callback chains live simultaneously, corroborating the static loop inventory (7–9 potential chains; some coalesce or are idle at any given moment). Architecture-fitness pins `core-raf-drivers = 31` call sites.
+Measured `requestAnimationFrame` **registrations** per rendered frame: **3.35 (menu), ~4.5 (gameplay)**. **Counter caveat (owner review):** this counts registrations, not proven-independent animation loops or presented frames — one logical loop can register several callbacks per frame and callbacks can coalesce. Read it as "3–5 callbacks scheduled per frame, consistent with the static inventory of 7–9 potential chains", not as a loop census. Architecture-fitness pins `core-raf-drivers = 31` call sites.
 
 ### 6.8 CPU profiles (S14, 25 s each, 200 µs sampling)
 
@@ -191,7 +255,7 @@ Measured rAF callbacks scheduled per rendered frame: **3.35 (menu), ~4.5 (gamepl
 | Gameplay | **5.2 %** | 0.71 % | SinglePlayerMode internals 0.92 %+0.54 %, `getBoundingClientRect` 0.36 %, `matchMedia` 0.10 %, cursor `updateCursorVisuals`/`syncPresentation` ~0.15 %, Phaser batch ~0.12 % |
 | Menu idle | **2.1 %** | 0.77 % | `getBoundingClientRect` **0.55 %** (largest single consumer — cursor/menu layout reads), `bufferData` 0.15 %, background `renderFrame` 0.07 % |
 
-Interpretation: in single-player the main thread is nearly idle even at 4 vCPUs — **frame times in this environment are raster/compositor-bound (software GPU), not JS-bound**. No JS function concentrates cost; GC is <1 % (consistent with the flat heaps in §6.2–6.4). The absolute shares will differ on real hardware, but nothing in the single-player JS path profiles as a hotspot. Layout reads (`getBoundingClientRect`) being the top named entry at *menu idle* corroborates SB-06's class of concern (DOM geometry reads on per-frame paths — here the custom cursor), though at this sampling it is far from a measured bottleneck.
+Interpretation: in single-player the main thread is nearly idle even at 4 vCPUs — **frame times in this environment are raster/compositor-bound (software GPU), not JS-bound**. No JS function concentrates cost; GC is <1 % (consistent with the flat heaps in §6.2–6.4). **Headroom caveat (owner review): this 5.2 % was measured at ~14 FPS — per-frame JS work would run ~4× as often at 60 Hz and ~10× at 144 Hz, so this does not establish real-hardware CPU headroom;** it establishes only that no single JS function is a hotspot at the measured cadence. Layout reads (`getBoundingClientRect`) being the top named entry at *menu idle* corroborates SB-06's class of concern (DOM geometry reads on per-frame paths — here the custom cursor), though at this sampling it is far from a measured bottleneck.
 Raw profiles: `results/cpuprofile-gameplay.cpuprofile`, `results/cpuprofile-menu-idle.cpuprofile` (loadable in Chrome DevTools Performance panel).
 
 ### 6.9 Soak (S13, 30 min continuous bot gameplay, 60 samples, GC forced before each heap read)
@@ -204,7 +268,7 @@ Raw profiles: `results/cpuprofile-gameplay.cpuprofile`, `results/cpuprofile-menu
 | Listeners (counter) | 352 | 382 | 409 (see below) |
 | Intervals | 1 | 1 | 1 |
 
-- **No long-session degradation**: heap flat over 30 minutes of continuous play with many game-over/restart cycles; frame p95 actually *improved* from 66→50 ms during the session (consistent with warm caches and/or the adaptive-quality systems engaging); no crashes, no error spam (single pre-existing font-CDN error), no interval/DOM growth.
+- Heap, DOM, listeners, and intervals stayed flat over 30 minutes of continuous play with many game-over/restart cycles; no crashes or error spam (single pre-existing font-CDN error). Frame p95 *improved* from 66→50 ms during the session — consistent with warm caches and/or adaptive quality engaging. **Caveat (owner review): the soak did not record adaptive-quality state, resolution scale, or quality tier, so "no degradation" cannot be concluded for visual quality — the improving frame times may reflect quality reduction. Resource-retention flatness is the supported claim.**
 - **Listener-counter growth investigated (follow-up 7-min run with per-type deltas):** all growth is `click` listeners at ~2 per game-over. Attribution: `showGameOverModal` rebuilds the buttons container via `innerHTML` and binds a fresh listener each time (`src/ui/modals.js:473-491`) — the previous button is discarded with the DOM, so the counter (which only sees add/remove calls) rises while real retained memory does not (heap + DOM flat). Recorded in §8 as NP-10, with the caveat that an `{ once: true }`-style or persistent binding would make the diagnostic signal cleaner.
 
 ### 6.10 Odyssey smoke (S12)
@@ -373,7 +437,7 @@ Every finding lists: classification, severity/confidence, targets & scenarios, f
 ---
 
 ### SB-13 · Media/bundle weight is far over the repo's own budgets (known breach, quantified here)
-**Classification:** `MEASURED_BOTTLENECK` (against the repo's declared budgets; disk/install/startup IO, not frame time) · **Severity: Medium · Confidence: High**
+**Classification:** `MEASURED_BUDGET_BREACH` (sizes measured against the repo's declared budgets; download/install/startup impact itself was **not** measured) · **Severity: Medium · Confidence: High**
 **Measurements:** `dist/` = **621 MB**: music 257 MB (36 tracks ride inside app.asar per `perf-budgets.json` note), textures 86 MB, two breathwork voice WAVs 26 + 25 MB (uncompressed WAV in `dist/assets/audio/breathwork/voices/elixir/`), single 14 MB PNG albedo, 12 + 11 MB GLBs. `perf-budgets.json` already declares breaches: `installerBytes` 625.9 MB vs 450 MB max, `appAsarBytes` 677.6 MB vs 262 MB max (Phase 8.2 planned).
 **Remediation:** already planned (Phase 8.2 asarUnpack + media diet); this audit adds: the two WAVs → opus/ogg (~50 MB → ~5 MB), the 14 MB PNG → KTX2 (pipeline already wired per Odyssey masterplan).
 **Blockers:** none; product QA on audio/texture quality.
@@ -432,16 +496,9 @@ Explicitly **not** recommended: disabling effects/quality tiers, lowering defaul
 
 ### Remediation log
 
-| Batch | Status | Validation result |
-|---|---|---|
-| **R1 (SB-01)** | **Implemented 2026-07-17** on this branch: Orbitron 400/700/900 + Space Mono 400/700 vendored from @fontsource (OFL 1.1, licenses included) into `public/fonts/` (124 KB total), `public/styles/fonts.css` mirrors the upstream unicode-range subsets, CDN `<link>` removed from `index.html`. | Same S1 procedure, CDN-blocked environment: menu-ready **861–1513 ms** (5 runs; was 13,602–13,978 ms), console fully clean (the font `ERR_CONNECTION_RESET` is gone), all font requests localhost-only, `document.fonts` confirms faces load, menu screenshot verified (`results/menu-selfhosted-fonts.png`, `results/startup-r1-selfhosted.json`). Gates: 2,418 tests pass, lint/fitness/IP/release gates pass. |
-| **R3 first slice (SB-15)** | **Implemented 2026-07-17.** Heap-snapshot retainer analysis found the SB-15 leak is two stacked mechanisms, neither in the themes' own dispose code: **(a) an upstream three r181 defect** — `BloomNode.dispose()` (three/addons `tsl/display/BloomNode.js`) frees render targets but not its 7 internal NodeMaterials; they render through a module-level shared `QuadMesh`, so each keeps a renderer `RenderObject` dispose-listener registered on the never-disposed shared quad geometry (`Renderer.dispose()`→`RenderObjects.dispose()` merely drops chain maps, three.webgpu:29249), and each retained RenderObject's node-builder state holds the scene `PassNode` → the **entire disposed scene**; the module quad also parks the last-assigned bloom material. Fix: `src/themes/bloom-dispose.js` (`disposeBloomNodeDeep` — disposes the 7 materials + severs their node graphs), wired into lunara/ocean/stellar-drift post disposal. **(b)** `console.log('[ThemeManager] Theme loaded:', newTheme)` pinned every theme instance (scene graph included) in Chromium's console message store — retained even with DevTools closed; now logs the name only. **Follow-ups filed here:** apply `disposeBloomNodeDeep` to the other 17 bloom-using themes during the SB-04 sweep; consider reporting the BloomNode/RenderObjects gaps upstream to three.js. | S8b toggle procedure, real-user conditions (no harness neutralization): **lunara 35.0→40.6 MB over 5 toggles (was →49.7, now flat after first-visit warm)**; **ocean 35.2→38.0 (was →47.2, flat from toggle 2)**; shared-quad dispose-listener count now returns to **0** after switch-away (was +7 leaked per activation). **stellar-drift: WebGPU lane fixed by the same mechanism (listener metric), but in this SwiftShader environment the theme falls back to the WebGL lane (`isWebGPU:false`, post pipeline never built) which still retains ≈+2–3 MB/toggle via a separate three-internal parked-reference path (module `ModelNode` singleton → shared quad's parked material → TSL graph; diagnostics in `results/theme-cycle-fix3-stellar.json` + harness `heap-nodepath.mjs`) — open follow-up; not reproducible-as-fixed in this environment.** Ocean's absolute numbers carry the environment's device-loss-storm caveat (§6.10). Gameplay verified functional through all switch cycles (screenshots `results/theme-*-postfix.png`); dispose-only change, no render-path code touched — owner's playground screenshot pass on real hardware still recommended per CLAUDE.md. Gates: 2,418 tests, lint ratchet, fitness, IP/release gates pass; `audit:theme-lifecycle` count unchanged (28, pre-existing). |
-| **R3 sweep completion (SB-15 → SB-04)** | **Implemented 2026-07-17.** `disposeBloomNodeDeep` extended to sever the disposed materials' node graphs (the module-level shared QuadMesh parks the last-assigned material), relocated to the boundary-sanctioned `src/themes/shared/bloom-dispose.js`, and applied to **every** `BloomNode` user in the repo — 21 further theme post pipelines, the Odyssey TSL pipeline, the intro renderer (including its mid-session rebuild path), and 8 playground effects (31 files, one agent per file + independent coverage/safety review of every hunk). Two sites had bloom nodes that were **never disposed at all** (shifting-sands, intro renderer) — now tracked and disposed. Upstream bug report drafted at `docs/UPSTREAM_THREE_BLOOMNODE_DISPOSE_ISSUE.md` (BloomNode.dispose material leak + RenderObjects.dispose gap + shared-quad parking), ready to file against three.js r181. | Coverage: 0 BloomNode importers without the helper (grep-verified). Gates: 2,418 tests, lint ratchet, typecheck (incl. TornadoPost.ts), dependency-cruiser boundaries, production build all pass. Runtime toggles (4 cycles each, GC-forced): **winter 35.2→35.8 MB (flat)**, **synthwave-sunset flat after first-visit warm (38.3→38.8)**, **neon-district non-monotonic (48.4→37.8→48.4** — environment device-loss noise, no leak signature). Intro-enabled boot reaches the menu with no new error classes (only the known SwiftShader device-loss pattern). Per-theme visual parity on real hardware remains the owner's playground screenshot pass (dispose-only changes). |
-| **R4 stability quick-wins (SB-07/08/10/11)** | **Implemented 2026-07-17** (4 independent fixes): **SB-10** — the intro's warp-scatter `addAssign` mutations rebuilt as a pure TSL expression (mathematically identical, now actually applied); **SB-08** — `OdysseyBoardController` registered with the existing GPU-loss plumbing (`monitorWebGPU` + `registerGpuSurface('odyssey-board')`; loss pauses the render loop and routes out through the coordinator, per plan §4.2); **SB-07** — the breathing indicator's `THREE.WebGLRenderer` is now lazy-created on first `start()` and `dispose()` is wired into `destroy()`; **SB-11** — `BreathworkAudioManager.stopAll()` clears `voicePendingTimeout` and resets voice flags. | **TSL boot errors 42 → 0** (`tsl-attrib2.mjs`); **live WebGL contexts at menu 4 → 3** (menu-idle scenario); **Odyssey device loss now routes out to a working main menu** — reproduced live in this environment (`[GpuLossCoordinator] recovery for "odyssey-board"` fired, screenshot `results/odyssey-2.png` shows the recovered menu; previously a permanent black scene). Gates: 2,418 tests, lint ratchet, typecheck, boundaries, build all pass. Intro visual parity on real hardware (scatter effect firing on big combos) remains a recommended owner check — the effect was silently dropped before, so any change is strictly the *intended* look. |
-| **SB-04 closure (lifecycle gate)** | **Implemented 2026-07-17.** Analysis reclassified all 28 `audit:theme-lifecycle` findings as false positives of stale heuristics (see the SB-04 resolution note in §7): the dispose chain runs every `stop()` override, all 22 flagged themes chain to `super.stop()`, and all 4 flagged resize listeners have removal paths the old regex missed. Shipped instead: `scripts/theme-lifecycle-audit.mjs` rewritten to enforce the real contract (super-chaining for `stop()`/`cleanup()`, no inline `bind(this)` listeners, resize removal paths), analyzer exported and covered by 10 unit tests (`tests/unit/theme-lifecycle-audit.test.js`), and the audit wired into `pages.yml` as a hard CI gate. | `npm run audit:theme-lifecycle` → **exit 0** on the current tree (was exit 1 / 28 findings); mutation cases covered by the new unit tests (missing `super.stop()`, missing `super.cleanup()`, inline `bind(this)`, unremoved resize listener all flagged; the three legitimate tracked-removal patterns all pass). Full suite: **2,428 tests / 241 files** pass; lint ratchet + fitness ratchets at baseline. |
-| **R5 per-frame allocation hoists (SB-05/SB-06)** | **Implemented 2026-07-17** across all 7 verified sites: singing-bowl `updateInstanceMatrices` (the repo's worst site — previously ~4 + 2×instanceCount allocations per frame, up to ~12k at Extreme; now zero steady-state), sunset `updateFog` (5 Colors → module constants + scratch), astral-weave `updateCompute`, stellar-drift `updateCrashMeteors`, sakura-twilight fox-greeting vectors, `OdysseyCameraController.updatePortalApproach`, and `renderer.js`: spiraling-debris now reads each island's `getBoundingClientRect()` **once per frame instead of once per particle** (layout semantics preserved — refreshed every frame), and the petal wind-gust `setTimeout` is tracked and cleared via a new `ParticleSystem.dispose()` wired into both renderer teardown paths. Every hoist shipped with a per-site aliasing analysis (full-overwrite-before-read, no escape); generateTreeData's escaping allocations were deliberately left alone. | Math is byte-identical by construction (diff-reviewed per hunk). Gates: 2,428 tests, lint/fitness/lifecycle ratchets, typecheck, boundaries, build all pass; sunset + singing-bowl render correctly in-game post-fix (screenshots committed). **Honest caveat:** allocation-rate deltas were below this environment's noise floor (~2.6 fps software rendering puts these per-frame sites at single-KB/s; pre/post sampling profiles committed) — the reduction is provable statically but only measurable on real hardware at real frame rates, per the audit's validation plan (DevTools allocation sampling per theme). |
-| **R6(a) + R7(d) — empty-loop parking & stall observability (SB-12/SB-09)** | **Implemented 2026-07-17.** (a) The shared 2-D background renderer now parks its rAF loop when a theme registers no layers and no particle systems, instead of running an empty clear+rAF chain forever; `addLayer()` and every particle-creating path restart it the moment content appears (`src/rendering/renderer.js`). (b) `PerformanceMonitor` gains push-based `longtask` + `long-animation-frame` observers (zero idle cost — they only fire on stalls) with a 100-entry ring, LoAF script attribution, and a `window.perfMonitor.getLongTaskSummary()` accessor — closing the audit's "no long-task instrumentation anywhere in src/" gap. | Runtime-verified: with a no-particle theme active (electric-dreams) the background loop is parked (`animationFrameId: null`); switching to content-bearing paths restarts it structurally (`addLayer`/`loadTheme` branches call `start()`); menu return renders correctly (screenshot-checked; the backdrop-less return state predates this change — zero registered systems either way). `getLongTaskSummary()` live-captured 33 boot stalls (2,909 ms total, max 192 ms) with both entry kinds. Gates: 2,428 tests, lint ratchet, build pass. Remaining R6 items (FPS-monitor rAF gating, gamepad poll fold-in) deliberately left to the ADR-0012-governed loop-consolidation work. |
-| **R2 (recommended defaults) — SB-02 poll lifecycle, SB-03 minimized idle, SB-11 audio decision** | **Implemented 2026-07-17** with the audit's recommended options (proceeding per owner's blanket approval; per-question sign-off was offered and declined). **SB-02**: `SteamNetworking.stopP2PPolling()` added; `OnlineMultiplayerMode.onDeactivate` stops the 60 Hz P2P IPC poll after leaving the lobby, `onActivate` re-arms it (instance is cached across visits; `startP2PPolling` was already double-arm-guarded). **SB-03 (minimized case)**: the Steam-overlay frame invalidator now skips `webContents.invalidate()` while `isMinimized()` — the overlay cannot be used on a minimized window — resuming automatically on restore; the occluded-but-visible case and the renderer-side `'continue'` default are left as-is pending real product testing. **SB-11 (audio half)**: keeping music playing while hidden is closed as **by-design** for a relaxation title. Shrink-on-touch: the god-file ratchet forced net line reduction — one-shot mode-switch console noise removed, `OnlineMultiplayerMode` baseline lowered 3271→3268. | Unit-tested where this environment allows: `tests/unit/steam-p2p-poll-lifecycle.test.js` (poll arms/clears/re-arms, idempotent stop, mock-mode no-op, plus source-contract ordering: stop *after* `leaveLobby`, re-arm in activate) and `tests/unit/electron-steam-invalidator-idle.test.js` (isMinimized guard precedes the forced invalidate), following the repo's existing Electron source-contract test pattern. Full suite 2,434 tests / 243 files, lint + fitness ratchets, typecheck, boundaries, build all pass. **Desktop integration validation remains owner work** (this container cannot run Electron+Steam): enter/leave Online MP and count `steam:readP2PPacket` IPC at menu; minimize at menu and sample process CPU with overlay closed/open; play one full online match incl. host migration. |
+Moved to **[PERF_REMEDIATION_LOG.md](PERF_REMEDIATION_LOG.md)** (split out per
+owner review so the frozen baseline below stays distinct from the evolving
+remediation state).
 
 ## 10. Correctness and regression risks
 
@@ -483,6 +540,10 @@ Every batch: run `npm test`, `npm run lint:ci`, `node scripts/architecture-fitne
 
 ## 13. Owner questions
 
+> **Status 2026-07-17:** Q1–Q3 were resolved by the owner's blanket approval
+> of the recommended options (implemented in R2/SB-11 — see the remediation
+> log); Q4 (font vendoring) was answered by accepting R1. Q5–Q6 remain open.
+
 1. **(SB-03)** Is full-rate rendering while minimized/occluded intended on desktop (Steam overlay responsiveness), or should the invalidator/renderer idle when the overlay is closed and the window is minimized? Which is the product stance for battery-powered devices?
 2. **(SB-11)** Is music continuing while the window is hidden a product decision (relaxation game) or an oversight? (Determines whether `audioContext.suspend()` on hidden-without-online-match is wanted.)
 3. **(SB-02)** Is there any reason P2P polling must continue outside Online MP (e.g., Steam invites arriving mid-single-player)? If invites matter, a low-rate (1–2 Hz) idle poll would preserve them.
@@ -495,17 +556,21 @@ Every batch: run `npm test`, `npm run lint:ci`, `node scripts/architecture-fitne
 Environment prep (once):
 
 ```bash
+# Baseline reproduction: check out the profiled commit first
+git checkout fc0329234e38587b3f498c4b495d9bad20b4024a
+# (current-state validation: git checkout 48e94fcc819068f1742f05b7d1c32fffa106db26)
+
 # deps (Electron binary skipped — blocked egress; remove the env var on a normal machine)
 ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 npm run build                       # production build under test
 node_modules/.bin/vite preview --port 4173 --strictPort &   # serve dist/
 # pre-existing state checks
 npm test
-npm run audit:theme-lifecycle       # exits 1 today (28 findings)
+npm run audit:theme-lifecycle       # exits 1 at the fc03292 baseline (28 findings); exits 0 after SB-04 remediation
 node scripts/architecture-fitness-check.mjs
 ```
 
-Harness (copied into `reports/perf-audit-2026-07-16/harness/`; needs `playwright-core` ^1.54 in a scratch dir — **do not add it to the repo's package.json**; a Chromium ≥140 binary path is set inside):
+Harness (copied into `reports/perf-audit-2026-07-16/harness/`; needs `playwright-core` ^1.54 in a scratch dir — **do not add it to the repo's package.json**; a Chromium ≥140 binary path is set inside; override with `CHROMIUM_PATH=/path/to/chrome`):
 
 ```bash
 cd reports/perf-audit-2026-07-16/harness && npm init -y && npm i playwright-core@1.54
@@ -544,9 +609,9 @@ Frame deltas via in-page rAF collector; long tasks via `PerformanceObserver('lon
 
 All raw measurement outputs are committed under **`reports/perf-audit-2026-07-16/`**:
 
-- `results/` — 24 files: per-scenario JSON (`startup*.json`, `menu-idle.json`, `gameplay.json`, `gameplay-webgl.json`, `rapid-input.json`, `input-latency.json`, `restart-cycle.json`, `theme-cycle*.json` incl. the three isolation toggles, `visibility.json`, `resize.json`, `odyssey-smoke.json`, `soak.json`), two raw V8 CPU profiles (`cpuprofile-*.cpuprofile`, loadable in Chrome DevTools), and two Odyssey screenshots (`odyssey-1.png`, `odyssey-2.png`).
-- `harness/` — the complete measurement harness (17 scripts, incl. the TSL/listener/font-load verification and heap-retainer analysis follow-ups) so every number is re-runnable per §14.
-- `SHA256SUMS` — checksum manifest covering every file above (59 entries). SHA-256 of the manifest itself: `62bb48579cc2958beffd8c165ff6e5d0c811b7fdf2731733b8b356f63b09acc0`. Verify with `cd reports/perf-audit-2026-07-16 && sha256sum -c SHA256SUMS`.
+- `results/` — 42 files: per-scenario JSON (startup, menu-idle, gameplay incl. the WebGL lane, rapid-input, input-latency, restart-cycle, theme-cycle incl. isolation toggles and the pre/post-fix series, visibility, resize, odyssey smokes incl. the asserted route-out run, soak), two raw V8 CPU profiles (loadable in Chrome DevTools), and validation screenshots. **Provenance note (owner review):** artifacts tagged `fix2-`/`fix3-`/`sweep-`/`postfix`/`r1-` were produced against intermediate branch states between `fc03292` and `48e94fc`, and files predating the harness metadata fix carry no commit stamp; `run-scenario.mjs` now records `meta.commit` (SHA + dirty flag) in every new result.
+- `harness/` — the complete measurement harness (18 scripts) so every number is re-runnable per §14; all accept `CHROMIUM_PATH`.
+- `SHA256SUMS` — checksum manifest covering every file above (60 entries). SHA-256 of the manifest itself: `3f2348a7c06a2324b37b9e0dade08c8b3b43534620c69c62159357da9ed08f88`. Verify with `cd reports/perf-audit-2026-07-16 && sha256sum -c SHA256SUMS`.
 
 Each scenario JSON embeds its own metadata (date, base URL, WebGPU lane, viewport) in `meta`, and per-run console errors are preserved verbatim.
 

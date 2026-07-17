@@ -5,7 +5,7 @@ import { summarize } from './lib.mjs';
 
 const OUTDIR = new URL('./results/', import.meta.url).pathname;
 const GPU_ARGS = ['--no-sandbox', '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader', '--host-resolver-rules=MAP fonts.googleapis.com 127.0.0.1'];
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const sink = [];
 page.on('console', (m) => { if (m.type() === 'error') { const loc = m.location() || {}; sink.push({ t: Date.now(), text: m.text().slice(0, 220), src: String(loc.url || '').split('/').pop() + ':' + loc.lineNumber }); } });
@@ -18,7 +18,7 @@ await page.waitForTimeout(4000);
 const t0 = Date.now();
 await page.click('#odyssey-card-btn').catch(async () => { await page.click('text=ODYSSEY'); });
 await page.waitForTimeout(2000);
-await page.screenshot({ path: OUTDIR + 'odyssey-1.png' });
+await page.screenshot({ path: OUTDIR + 'odyssey-1.png', timeout: 15000 }).catch(() => {});
 // try to enter first level: press Enter a couple times
 await page.keyboard.press('Enter');
 await page.waitForTimeout(3000);
@@ -30,7 +30,37 @@ const started = await page.waitForFunction(() => {
   return m && /odyssey/i.test(window.serenityBlocks.gameModeManager.getCurrentModeId() || '') && m.isRunning === true;
 }, null, { timeout: 90000 }).then(() => true).catch(() => false);
 const bootMs = Date.now() - t0;
-await page.screenshot({ path: OUTDIR + 'odyssey-2.png' });
+await page.screenshot({ path: OUTDIR + 'odyssey-2.png', timeout: 15000 }).catch(() => {});
+
+// Device-loss route-out assertions (owner review 2026-07-17): if a loss
+// occurred, the app must land on a USABLE main menu, the mode must be
+// deactivated, and the error stream must stabilize once the loop stops.
+let routeOut = null;
+const lossAt = sink.find((e) => /Device Lost|device lost/i.test(e.text));
+if (lossAt) {
+  const lossT = lossAt.t;
+  let menuT = null;
+  for (let i = 0; i < 60; i++) {
+    const menuUsable = await page.evaluate(() => {
+      const btn = document.getElementById('single-player-card-btn');
+      return !!btn && btn.offsetParent !== null;
+    });
+    if (menuUsable) { menuT = Date.now(); break; }
+    await page.waitForTimeout(1000);
+  }
+  const modeId = await page.evaluate(() => window.serenityBlocks?.gameModeManager?.getCurrentModeId?.() ?? null);
+  const errsAtMenu = sink.length;
+  await page.waitForTimeout(5000);
+  const errsAfterSettle = sink.length;
+  routeOut = {
+    lossDetected: true,
+    menuUsable: menuT !== null,
+    routeOutLatencyMs: menuT !== null ? menuT - lossT : null,
+    modeAfterLoss: modeId,
+    errorsDuringSettleWindow: errsAfterSettle - errsAtMenu,
+    errorStreamStabilized: (errsAfterSettle - errsAtMenu) <= 2,
+  };
+}
 
 let frame = null; let counters = null;
 if (started) {
@@ -46,6 +76,6 @@ if (started) {
   counters = await page.evaluate(() => window.perfMonitor && window.perfMonitor.getCounters ? window.perfMonitor.getCounters() : null);
 }
 const heap = await page.evaluate(() => +(performance.memory.usedJSHeapSize / 1048576).toFixed(1));
-fs.writeFileSync(OUTDIR + 'odyssey-smoke.json', JSON.stringify({ started, bootMs, frame, counters, heapMB: heap, consoleErrors: sink.slice(0, 40) }, null, 1));
-console.log(JSON.stringify({ started, bootMs, frame, heapMB: heap, errors: sink.length }));
+fs.writeFileSync(OUTDIR + 'odyssey-smoke.json', JSON.stringify({ started, bootMs, routeOut, frame, counters, heapMB: heap, consoleErrors: sink.slice(0, 40) }, null, 1));
+console.log(JSON.stringify({ started, bootMs, routeOut, frame, heapMB: heap, errors: sink.length }));
 await browser.close();
