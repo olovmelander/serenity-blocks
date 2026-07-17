@@ -2,6 +2,7 @@
 // Usage: node run-scenario.mjs <scenario> [runs] [durationMs]
 // Env: BASE_URL (default http://localhost:4173), WEBGPU=0 to disable WebGPU flags.
 import fs from 'fs';
+import { execSync } from 'child_process';
 import { chromium } from 'playwright-core';
 import { summarize } from './lib.mjs';
 
@@ -138,10 +139,16 @@ const BOT_SNIPPET = `(() => {
   step();
 })()`;
 
-const results = { scenario, runs: [], meta: { base: BASE, webgpu: process.env.WEBGPU !== '0', date: new Date().toISOString(), viewport: '1280x720' } };
+let gitState = 'unknown';
+try {
+  const sha = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+  const dirty = execSync('git status --porcelain', { encoding: 'utf8' }).trim().length > 0;
+  gitState = sha + (dirty ? '+dirty' : '');
+} catch (e) { /* not a git checkout */ }
+const results = { scenario, runs: [], meta: { base: BASE, webgpu: process.env.WEBGPU !== '0', date: new Date().toISOString(), viewport: '1280x720', commit: gitState } };
 
 async function withBrowser(fn) {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
   try { return await fn(browser); } finally { await browser.close().catch(() => {}); }
 }
 

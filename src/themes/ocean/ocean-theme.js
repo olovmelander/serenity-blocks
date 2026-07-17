@@ -1125,7 +1125,17 @@ export default class OceanTheme extends BaseTheme {
             this.renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.renderer.onDeviceLost = (info) => {
-                console.error('🌊 [Ocean] WebGPU device lost:', info);
+                // A WebGPU device loss is terminal for this renderer. Halt the
+                // theme's render loop so it stops driving three's error-scope
+                // polling against a dead device (unhandled popErrorScope
+                // rejections every frame otherwise). Gameplay is unaffected —
+                // the backdrop simply freezes until the theme is switched.
+                console.error('🌊 [Ocean] WebGPU device lost — halting theme rendering:', info);
+                this.animationLoopStarted = false;
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                    this.animationFrameId = null;
+                }
             };
         } else {
             if (webgpuRenderer) webgpuRenderer.dispose();
