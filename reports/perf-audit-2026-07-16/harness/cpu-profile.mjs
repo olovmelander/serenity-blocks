@@ -8,7 +8,7 @@ const BASE = process.env.BASE_URL || 'http://localhost:4173';
 const OUTDIR = new URL('./results/', import.meta.url).pathname;
 
 const GPU_ARGS = ['--no-sandbox', '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader'];
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: true, ignoreDefaultArgs: ['--disable-gpu'], args: GPU_ARGS });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto(BASE + '/?skipIntro=1', { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => (window.__serenityStartupTrace || []).some((e) => /menu-ready/.test(e.phase || e.label || '')), null, { timeout: 90000 });
