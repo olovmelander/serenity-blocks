@@ -27,6 +27,7 @@ import {
     cameraWorldMatrix,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class NeonDistrictPost {
     constructor(renderer, scene, camera, params) {
@@ -373,7 +374,7 @@ export class NeonDistrictPost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

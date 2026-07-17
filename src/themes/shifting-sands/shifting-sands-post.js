@@ -24,6 +24,7 @@ import {
     mix,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class ShiftingSandsPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -67,6 +68,7 @@ export class ShiftingSandsPost {
 
         // Selective bloom (emissive only)
         const spiceBloom = bloom(emissivePass, this.uBloomStrength, this.uBloomRadius, this.uBloomThreshold);
+        this.bloomNode = spiceBloom;
 
         let outColor = distortedColor.add(spiceBloom);
 
@@ -108,6 +110,8 @@ export class ShiftingSandsPost {
 
     dispose() {
         this.scenePass.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
+        this.bloomNode = null;
         this.postProcessing.dispose();
     }
 }

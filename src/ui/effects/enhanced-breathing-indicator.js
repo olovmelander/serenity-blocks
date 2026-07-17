@@ -165,8 +165,10 @@ export class EnhancedBreathingIndicator {
         this.particleCanvas.width = 700;
         this.particleCanvas.height = 700;
 
-        // Initialize Three.js Renderer (replaces old WebGL 2D renderer)
-        this.threeRenderer = new ThreeJSBreathingRenderer(visualContainer);
+        // Three.js Renderer is created lazily on first start() (SB-07);
+        // keep the container reference it needs.
+        this.visualContainer = visualContainer;
+        this.threeRenderer = null;
 
         // Outer glow ring (slowest)
         this.outerRing = document.createElement('div');
@@ -324,10 +326,10 @@ export class EnhancedBreathingIndicator {
      */
     _preloadWebGL() {
         const preload = () => {
+            // Renderer is lazy-created on first start() (SB-07); nothing to preload before then.
+            if (!this.threeRenderer) return;
             console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
-            if (this.threeRenderer) {
-                this.threeRenderer.init();
-            }
+            this.threeRenderer.init();
         };
 
         // Run preload during idle time when available to reduce long-task warnings.
@@ -352,12 +354,13 @@ export class EnhancedBreathingIndicator {
         console.log('[EnhancedBreathingIndicator] Starting with technique:', this.currentTechnique);
         this.isActive = true;
 
-        // Initialize Three.js if needed
-        if (this.threeRenderer) {
-            this.threeRenderer.init();
-            this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
-            this.threeRenderer.start();
+        // Lazily create the Three.js renderer on first use (SB-07)
+        if (!this.threeRenderer) {
+            this.threeRenderer = new ThreeJSBreathingRenderer(this.visualContainer);
         }
+        this.threeRenderer.init();
+        this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
+        this.threeRenderer.start();
 
         // Show backdrop, indicator, and hover area
         this.backdrop.style.display = 'block';
@@ -844,6 +847,10 @@ export class EnhancedBreathingIndicator {
      */
     destroy() {
         this.stop();
+
+        // Release the Three.js renderer and its GL context (SB-07)
+        this.threeRenderer?.dispose();
+        this.threeRenderer = null;
 
         // Remove backdrop
         if (this.backdrop && this.backdrop.parentElement) {

@@ -231,6 +231,13 @@ function attachSteamOverlayFrameInvalidator(browserWindow, _source = 'unknown') 
             clearSteamOverlayFrameInvalidator(browserWindow);
             return;
         }
+        // No forced repaint while minimized (audit SB-03): the Steam overlay
+        // cannot be used on a minimized window, and the invalidate() below
+        // otherwise keeps the compositor producing frames at 60Hz for as long
+        // as the window stays minimized. Resumes automatically on restore.
+        if (browserWindow.isMinimized()) {
+            return;
+        }
         if (!browserWindow.webContents.isPainting()) {
             browserWindow.webContents.invalidate();
         }

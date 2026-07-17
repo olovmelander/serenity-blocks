@@ -27,6 +27,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export const ASTRAL_WEAVE_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -474,9 +475,7 @@ export class AstralWeavePost {
         if (this.scenePass?.dispose) {
             this.scenePass.dispose();
         }
-        if (this.bloomNode?.dispose) {
-            this.bloomNode.dispose();
-        }
+        disposeBloomNodeDeep(this.bloomNode);
         if (this.postProcessing?.dispose) {
             this.postProcessing.dispose();
         }

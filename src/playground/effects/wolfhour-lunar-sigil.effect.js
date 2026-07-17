@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { pass, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import {
     createLunarHaloNodeMaterial,
     createMoonNodeMaterial,
@@ -289,7 +290,7 @@ export function create({
                 delete window.__WOLFHOUR_LUNAR_SIGIL__;
             }
             post.dispose();
-            bloomNode.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             scenePass.dispose?.();
             scene.remove(group);
             disposeTree(group);

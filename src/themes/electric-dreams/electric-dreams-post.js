@@ -32,6 +32,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Profiles
@@ -623,7 +624,7 @@ export class ElectricDreamsPost {
 
     dispose() {
         if (this.scenePass?.dispose) this.scenePass.dispose();
-        if (this.bloomNode?.dispose) this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         if (this.postProcessing?.dispose) this.postProcessing.dispose();
         if (this.composer?.dispose) this.composer.dispose();
         this.postProcessing = null;

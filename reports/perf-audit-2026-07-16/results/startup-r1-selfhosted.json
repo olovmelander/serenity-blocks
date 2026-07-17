@@ -1,0 +1,166 @@
+{
+ "scenario": "startup",
+ "runs": [
+  {
+   "run": 0,
+   "menuReadyWallMs": 1513,
+   "trace": [
+    {
+     "t": 1206,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 1247,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 1247,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 1498,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 1498,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 1498,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": []
+  },
+  {
+   "run": 1,
+   "menuReadyWallMs": 952,
+   "trace": [
+    {
+     "t": 722,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 746,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 746,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 938,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 938,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 938,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": []
+  },
+  {
+   "run": 2,
+   "menuReadyWallMs": 959,
+   "trace": [
+    {
+     "t": 695,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 717,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 717,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 930,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 930,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 930,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": []
+  },
+  {
+   "run": 3,
+   "menuReadyWallMs": 861,
+   "trace": [
+    {
+     "t": 668,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 693,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 693,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 852,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 852,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 852,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": []
+  },
+  {
+   "run": 4,
+   "menuReadyWallMs": 969,
+   "trace": [
+    {
+     "t": 689,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 719,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 720,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 965,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 965,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 965,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": []
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-17T05:46:02.372Z",
+  "viewport": "1280x720"
+ }
+}

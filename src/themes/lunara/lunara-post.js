@@ -32,6 +32,7 @@ import {
     sin,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 const LUNARA_GRADE_SHADER = {
     uniforms: {
@@ -296,8 +297,8 @@ export class LunaraPost {
 
     dispose() {
         if (this.scenePass?.dispose) this.scenePass.dispose();
-        if (this.bloomNode?.dispose) this.bloomNode.dispose();
-        if (this.bloomNodeTight?.dispose) this.bloomNodeTight.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
+        disposeBloomNodeDeep(this.bloomNodeTight);
         if (this.postProcessing?.dispose) this.postProcessing.dispose();
         if (this.composer?.dispose) this.composer.dispose();
         this.scenePass = null;

@@ -45,6 +45,8 @@ import {
     computeScenePixelRatio,
     evaluateDynamicResolutionAdjustment,
 } from '../../utils/desktop-performance-policy.js';
+import { gpuResilience } from '../../utils/gpu-context-resilience.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import {
     beginPostTargetCompile,
     endPostTargetCompile,
@@ -356,6 +358,11 @@ export class OdysseyBoardController {
         this.targetFrameRateOption = options.targetFrameRate;
         this.targetFrameRate = readOdysseyTargetFrameRate(this.targetFrameRateOption);
         this.adaptiveTargetFrameRate = readOdysseyAdaptiveFrameRate(this.targetFrameRate);
+
+        // GPU-loss resilience (coordinator-registered in initRenderer; see
+        // gpu-loss-coordinator.js — Odyssey migration noted there).
+        this._gpuMonitorUnsub = null;
+        this._gpuSurfaceUnregister = null;
 
         // State
         this.isActive = false;
@@ -1396,6 +1403,27 @@ export class OdysseyBoardController {
         this.renderer.setClearColor(0x050510, 1);
         this.container.appendChild(this.renderer.domElement);
         console.log(`[OdysseyBoard] Renderer backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2 (fallback)'}`);
+
+        // GPU-loss resilience (plan §4.2): a WebGPU device loss is TERMINAL (no restore
+        // event) — without this, the board renders black forever with unhandled
+        // popErrorScope rejections. Monitor the device so the loss is broadcast on the
+        // bus, and register with the coordinator so the loss stops the render loop and
+        // routes out through the coordinator's existing path (EXIT_TO_MAIN_MENU). No
+        // in-place Odyssey rebuild is attempted: recover() throws so the coordinator's
+        // failure path routes out immediately — the same terminal one-attempt-then-out
+        // treatment WebGPU losses already get for themes.
+        if (this.isWebGPU) {
+            const device = this.renderer.backend?.device || null;
+            if (device) {
+                this._gpuMonitorUnsub = gpuResilience.monitorWebGPU(device, { label: 'odyssey-board' });
+            }
+            this._gpuSurfaceUnregister = registerGpuSurface('odyssey-board', {
+                recover: () => {
+                    this.pauseRendering();
+                    throw new Error('Odyssey WebGPU device loss is terminal — routing out');
+                },
+            });
+        }
     }
 
     initScene() {
@@ -2734,6 +2762,10 @@ export class OdysseyBoardController {
     dispose() {
         this.isActive = false;
         this.isRenderingPaused = false;
+        this._gpuSurfaceUnregister?.();
+        this._gpuSurfaceUnregister = null;
+        this._gpuMonitorUnsub?.();
+        this._gpuMonitorUnsub = null;
         this.teardownInteraction();
         resetOdysseyPathLayout();
         this.layoutEditor?.dispose?.();

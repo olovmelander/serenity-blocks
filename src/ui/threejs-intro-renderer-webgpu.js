@@ -30,6 +30,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../themes/shared/bloom-dispose.js';
 
 import { IntroParticleCompute } from './intro-particle-compute.js';
 import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
@@ -323,8 +324,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.scheduleNextHeroInhale();
         if (this.scene && this.camera && this.renderer) {
             this._scenePass?.dispose?.();
+            disposeBloomNodeDeep(this._bloomNode);
             this.postProcessing?.dispose?.();
             this._scenePass = null;
+            this._bloomNode = null;
             this.postProcessing = null;
             this.setupPostProcessing();
         }
@@ -783,6 +786,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.postProcessing.outputNode = finalColor;
         this.postProcessing.needsUpdate = true;
         this._scenePass = scenePass;
+        this._bloomNode = bloomNode;
     }
 
     createConstellationLines() {
@@ -974,13 +978,15 @@ export default class ThreeJSIntroRendererWebGPU {
             const y3 = x2.mul(sz).add(y2.mul(cz));
             const z3 = z2;
 
-            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).toVar();
             // Big-combo warp scatter: streak each piece radially outward + toward the camera,
             // eased out-and-back by the uReactionScatter bell, so the field flings apart like
             // the intro dismiss then reforms (render-only → repeatable, no field emptying).
-            worldPos.x.addAssign(statePos.x.mul(this.uReactionScatter).mul(1.15));
-            worldPos.y.addAssign(statePos.y.mul(this.uReactionScatter).mul(1.15));
-            worldPos.z.addAssign(this.uReactionScatter.mul(5.5));
+            const scatterOffset = vec3(
+                statePos.x.mul(this.uReactionScatter).mul(1.15),
+                statePos.y.mul(this.uReactionScatter).mul(1.15),
+                this.uReactionScatter.mul(5.5),
+            );
+            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).add(scatterOffset);
             const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
 
             return mix(hiddenPos, worldPos, drawMask);
@@ -1695,6 +1701,11 @@ export default class ThreeJSIntroRendererWebGPU {
         if (this._scenePass) {
             this._scenePass.dispose?.();
             this._scenePass = null;
+        }
+
+        if (this._bloomNode) {
+            disposeBloomNodeDeep(this._bloomNode);
+            this._bloomNode = null;
         }
 
         if (this.postProcessing) {

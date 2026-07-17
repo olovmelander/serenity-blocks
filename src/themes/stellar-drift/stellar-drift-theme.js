@@ -5526,10 +5526,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const dt = Number.isFinite(deltaSeconds) ? Math.max(0.001, deltaSeconds) : (1 / 60);
         const dt60 = THREE.MathUtils.clamp(dt * 60, 0.25, 2.6);
-        const targetPosition = new THREE.Vector3();
-        const desiredVelocity = new THREE.Vector3();
-        const velocityDirection = new THREE.Vector3();
-        const upAxis = new THREE.Vector3(0, 1, 0);
+        const targetPosition = this._crashMeteorTargetPos || (this._crashMeteorTargetPos = new THREE.Vector3());
+        const desiredVelocity = this._crashMeteorDesiredVel || (this._crashMeteorDesiredVel = new THREE.Vector3());
+        const velocityDirection = this._crashMeteorVelDir || (this._crashMeteorVelDir = new THREE.Vector3());
+        const upAxis = this._crashMeteorUpAxis || (this._crashMeteorUpAxis = new THREE.Vector3(0, 1, 0));
 
         this.crashMeteors = this.crashMeteors.filter((meteorData) => {
             meteorData.life -= dt;
