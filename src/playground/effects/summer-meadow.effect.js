@@ -41,6 +41,7 @@ import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import midsummerPoleUrl from '../../themes/summer/assets/midsummer_pole.glb?url';
 import cottageUrl from '../../themes/summer/assets/swedish_cottage.glb?url';
 import dockBoatUrl from '../../themes/summer/assets/dock_boat.glb?url';
@@ -1175,6 +1176,7 @@ export function create({
             }
             objects.forEach((o) => scene.remove(o));
             reflectionNode?.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             postProcessing?.dispose?.();
             disposables.forEach((d) => d.dispose?.());
         },

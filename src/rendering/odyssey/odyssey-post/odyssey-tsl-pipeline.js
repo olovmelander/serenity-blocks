@@ -63,6 +63,7 @@ import {
     viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../../themes/shared/bloom-dispose.js';
 
 // A6: seam-bloom accent multiplier. Was effectively 0.5 (a white flash hiding the old hard
 // portal cut). Cut to a fraction of that so the ecotone blend reads instead of blowing out.
@@ -980,7 +981,7 @@ export class OdysseyTslPipeline {
 
     dispose() {
         this.scenePass.dispose?.();
-        this.bloomNode?.dispose?.(); // null on the no-bloom (enableBloom:false) tier
+        disposeBloomNodeDeep(this.bloomNode); // null on the no-bloom (enableBloom:false) tier
         this.postProcessing.dispose?.();
     }
 }

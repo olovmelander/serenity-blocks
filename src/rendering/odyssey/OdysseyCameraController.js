@@ -1850,7 +1850,8 @@ export class OdysseyCameraController {
         const t = Math.min(elapsed / approach.duration, 1);
         const alignEnd = 220 / 650;
         const dollyEnd = 520 / 650;
-        const tmpPosition = new THREE.Vector3();
+        this._tmpApproachPosition = this._tmpApproachPosition || new THREE.Vector3();
+        const tmpPosition = this._tmpApproachPosition;
 
         let roll = 0;
 

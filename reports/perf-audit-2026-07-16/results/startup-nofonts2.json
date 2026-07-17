@@ -1,0 +1,176 @@
+{
+ "scenario": "startup",
+ "runs": [
+  {
+   "run": 0,
+   "menuReadyWallMs": 933,
+   "trace": [
+    {
+     "t": 739,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 765,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 765,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 927,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 927,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 927,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  },
+  {
+   "run": 1,
+   "menuReadyWallMs": 879,
+   "trace": [
+    {
+     "t": 672,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 705,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 705,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 874,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 875,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 875,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  },
+  {
+   "run": 2,
+   "menuReadyWallMs": 875,
+   "trace": [
+    {
+     "t": 685,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 712,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 713,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 864,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 864,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 864,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  },
+  {
+   "run": 3,
+   "menuReadyWallMs": 899,
+   "trace": [
+    {
+     "t": 702,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 730,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 731,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 892,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 892,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 892,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  },
+  {
+   "run": 4,
+   "menuReadyWallMs": 919,
+   "trace": [
+    {
+     "t": 711,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 739,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 739,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 908,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 908,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 908,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:22:44.391Z",
+  "viewport": "1280x720"
+ }
+}

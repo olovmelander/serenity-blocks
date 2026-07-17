@@ -18,6 +18,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 
 import { createIntroNebulaSky } from '../../ui/intro-nebula-sky.js';
 
@@ -282,7 +283,7 @@ export function create({
         dispose() {
             scene.remove(root);
             post.dispose();
-            bloomNode.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             scenePass.dispose?.();
             nebula.dispose();
             stars.geometry.dispose();

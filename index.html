@@ -80,9 +80,9 @@
         })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap"
-        rel="stylesheet">
+    <!-- Fonts are self-hosted (public/fonts/) so startup never blocks on a font CDN;
+         offline/firewalled machines previously stalled the whole boot here (SB-01). -->
+    <link rel="stylesheet" href="/styles/fonts.css">
     <link rel="stylesheet" href="/styles/intro-animation.css">
     <link rel="stylesheet" href="/styles/main.css">
     <link rel="stylesheet" href="/styles/next-queue.css">

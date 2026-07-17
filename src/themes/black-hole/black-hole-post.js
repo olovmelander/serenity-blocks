@@ -25,6 +25,7 @@ import {
     max,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 const BLOOM_DOWNSAMPLE_MIN = 0.25;
 const BLOOM_DOWNSAMPLE_MAX = 1.0;
@@ -347,7 +348,7 @@ export class BlackHolePost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

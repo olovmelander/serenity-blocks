@@ -226,6 +226,12 @@ export class BreathworkAudioManager {
      * Stop all audio
      */
     stopAll() {
+        if (this.voicePendingTimeout) {
+            clearTimeout(this.voicePendingTimeout);
+            this.voicePendingTimeout = null;
+        }
+        this.isVoicePending = false;
+        this.isVoicePlaying = false;
         this.voiceAudio.pause();
         this.voiceAudio.currentTime = 0;
         this.cueAudio.pause();

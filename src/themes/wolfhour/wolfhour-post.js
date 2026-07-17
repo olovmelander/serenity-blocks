@@ -26,6 +26,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export const WOLFHOUR_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -307,7 +308,7 @@ export class WolfhourPost {
 
     dispose() {
         this.scenePass?.dispose?.();
-        this.bloomNode?.dispose?.();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing?.dispose?.();
         this.scenePass = null;
         this.bloomNode = null;

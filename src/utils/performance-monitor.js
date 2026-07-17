@@ -120,6 +120,16 @@ export class PerformanceMonitor {
         this.memoryInterval = null;
         this.memoryHistory = [];
 
+        // Long-task / long-animation-frame tracking (audit SB-09: the monitor had
+        // frame-time percentiles but no main-thread stall attribution). Observers
+        // only fire ON long tasks, so idle cost is zero. Ring-buffered like spikes.
+        this.longTasks = {
+            count: 0, totalMs: 0, maxMs: 0, recent: [],
+        };
+        this._longTaskObserver = null;
+        this._loafObserver = null;
+        this._initLongTaskObservers();
+
         // UI overlay element
         this.overlayElement = null;
         this.showOverlay = false;
@@ -968,6 +978,65 @@ export class PerformanceMonitor {
         return this.spikes ? [...this.spikes] : [];
     }
 
+    /**
+     * Observe main-thread stalls: 'longtask' (>50ms tasks) plus
+     * 'long-animation-frame' (LoAF, Chromium 123+) which carries script
+     * attribution. Both are push-based — zero per-frame polling cost.
+     */
+    _initLongTaskObservers() {
+        if (typeof PerformanceObserver === 'undefined') return;
+
+        const record = (kind, entry) => {
+            const ms = entry.duration;
+            this.longTasks.count += 1;
+            this.longTasks.totalMs += ms;
+            if (ms > this.longTasks.maxMs) this.longTasks.maxMs = ms;
+            const item = { kind, t: Math.round(entry.startTime), ms: Math.round(ms) };
+            if (kind === 'loaf' && Array.isArray(entry.scripts) && entry.scripts.length > 0) {
+                const top = entry.scripts[0];
+                item.src = `${top.sourceURL || top.invoker || ''}`.slice(-80);
+            }
+            this.longTasks.recent.push(item);
+            if (this.longTasks.recent.length > 100) this.longTasks.recent.shift();
+        };
+
+        try {
+            this._longTaskObserver = new PerformanceObserver((list) => {
+                list.getEntries().forEach((entry) => record('longtask', entry));
+            });
+            this._longTaskObserver.observe({ entryTypes: ['longtask'] });
+        } catch (error) {
+            this._longTaskObserver = null;
+        }
+
+        try {
+            this._loafObserver = new PerformanceObserver((list) => {
+                // LoAF duplicates longtask coverage for rendering-driven stalls but
+                // adds script attribution; only record entries above the 50ms
+                // longtask floor to keep counts comparable across browsers.
+                list.getEntries().forEach((entry) => {
+                    if (entry.duration >= 50) record('loaf', entry);
+                });
+            });
+            this._loafObserver.observe({ type: 'long-animation-frame', buffered: false });
+        } catch (error) {
+            this._loafObserver = null;
+        }
+    }
+
+    /**
+     * Summary of observed main-thread stalls since startup.
+     * @returns {{count:number,totalMs:number,maxMs:number,recent:Array}}
+     */
+    getLongTaskSummary() {
+        return {
+            count: this.longTasks.count,
+            totalMs: Math.round(this.longTasks.totalMs),
+            maxMs: Math.round(this.longTasks.maxMs),
+            recent: [...this.longTasks.recent],
+        };
+    }
+
     clearSpikes() {
         this.spikes = [];
     }
@@ -1568,6 +1637,8 @@ if (typeof window !== 'undefined') {
         setSpikeContextCollector: (fn) => performanceMonitor.setSpikeContextCollector(fn),
         getSpikes: () => performanceMonitor.getSpikes(),
         clearSpikes: () => performanceMonitor.clearSpikes(),
+        // SB-09: main-thread stall attribution (longtask + long-animation-frame).
+        getLongTaskSummary: () => performanceMonitor.getLongTaskSummary(),
         getAllSections: () => {
             const out = {};
             performanceMonitor.sectionMetrics.forEach((m, name) => {

@@ -495,7 +495,11 @@ export class ThemeManager {
             console.log('[ThemeManager] Loading theme:', themeName);
             // Load the new theme
             const newTheme = await this.loadTheme(themeName);
-            console.log('[ThemeManager] Theme loaded:', newTheme);
+            // Log the name only — logging the instance itself pins the whole theme
+            // (scene graph included) in Chromium's console message store until the
+            // message rotates out, even with DevTools closed. Measured at multiple
+            // MB of GC-immune heap per theme switch (SB-15 remediation log).
+            console.log('[ThemeManager] Theme loaded:', newTheme?.name || themeName);
 
             this.pendingThemeInstance = newTheme;
             this.pendingThemeName = themeName;

@@ -37,6 +37,7 @@ import {
 } from 'three/tsl';
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
 
 export const STARLIGHT_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -302,6 +303,7 @@ export class StarlightPostPipeline {
     }
 
     dispose() {
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing = null;
         this.bloomNode = null;
     }

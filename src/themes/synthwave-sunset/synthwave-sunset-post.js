@@ -28,6 +28,7 @@ import {
 } from 'three/tsl';
 import { mx_noise_float } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class SynthwaveSunsetPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -205,7 +206,7 @@ export class SynthwaveSunsetPost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

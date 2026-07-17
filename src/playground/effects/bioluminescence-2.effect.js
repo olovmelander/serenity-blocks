@@ -47,6 +47,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import caveTreeUrl from '../../themes/bioluminescence-2/assets/cave_tree.glb?url';
 import caveRocksUrl from '../../themes/bioluminescence-2/assets/cave_rocks.glb?url';
 
@@ -1878,7 +1879,7 @@ export function create({
         dispose() {
             if (typeof window !== 'undefined') window.removeEventListener('pointermove', onPointer);
             objects.forEach((o) => scene.remove(o));
-            bloomNode?.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             postProcessing?.dispose?.();
             disposables.forEach((d) => { try { d.dispose?.(); } catch (e) { /* noop */ } });
         },

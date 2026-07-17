@@ -24,6 +24,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 export class ChiralGoldPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -151,7 +152,7 @@ export class ChiralGoldPost {
 
     dispose() {
         this.scenePass?.dispose?.();
-        this.bloomNode?.dispose?.();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing?.dispose?.();
     }
 }

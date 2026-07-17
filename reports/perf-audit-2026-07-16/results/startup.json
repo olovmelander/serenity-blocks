@@ -1,0 +1,176 @@
+{
+ "scenario": "startup",
+ "runs": [
+  {
+   "run": 0,
+   "menuReadyWallMs": 13978,
+   "trace": [
+    {
+     "t": 13769,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 13797,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 13798,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 13967,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 13967,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 13967,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 1,
+   "menuReadyWallMs": 13602,
+   "trace": [
+    {
+     "t": 13380,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 13412,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 13412,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 13587,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 13587,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 13587,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 2,
+   "menuReadyWallMs": 13657,
+   "trace": [
+    {
+     "t": 13420,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 13447,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 13448,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 13652,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 13653,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 13653,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 3,
+   "menuReadyWallMs": 13646,
+   "trace": [
+    {
+     "t": 13402,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 13436,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 13436,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 13635,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 13635,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 13635,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 4,
+   "menuReadyWallMs": 13754,
+   "trace": [
+    {
+     "t": 13543,
+     "p": "startup-pipeline:boot-started"
+    },
+    {
+     "t": 13571,
+     "p": "startup-pipeline:intro-skipped"
+    },
+    {
+     "t": 13571,
+     "p": "startup-pipeline:visuals-disposed"
+    },
+    {
+     "t": 13750,
+     "p": "startup-pipeline:app-ready"
+    },
+    {
+     "t": 13750,
+     "p": "startup-pipeline:menu-ready"
+    },
+    {
+     "t": 13751,
+     "p": "startup-pipeline:menu-visible"
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T21:58:53.636Z",
+  "viewport": "1280x720"
+ }
+}

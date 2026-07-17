@@ -1,0 +1,259 @@
+{
+ "scenario": "input-latency",
+ "runs": [
+  {
+   "run": 0,
+   "latency": [
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 75.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 70.4
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 155.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 70
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 114.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 78.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 110.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 108.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 170.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 166.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 95.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 79.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 83.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 89.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 78.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 109
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 74.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 130.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 81.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 90.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 72.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 78.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 76.9
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 67.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 80.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 83.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 80.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 73.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 110.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 80
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 136.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 136.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 69.9
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 82.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 72.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 84.4
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 136.9
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 78.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 107.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 131.9
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 68.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 110.2
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 107
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 77.3
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 80.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 127.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 71.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 111.7
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 71.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 105.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 105.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 70.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 72.8
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 68.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 66.1
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 140.9
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 76.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 77.5
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 162.6
+    },
+    {
+     "syncApplied": true,
+     "toNextFrameMs": 66.2
+    }
+   ],
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:08:31.757Z",
+  "viewport": "1280x720"
+ }
+}

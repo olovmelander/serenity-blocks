@@ -18,6 +18,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 
 export const meta = {
     id: 'ocean-surface-cathedral',
@@ -260,7 +261,7 @@ export function create({ scene, camera, renderer }) {
             rightMonument.traverse((child) => child.geometry?.dispose?.());
             coralGeometry.dispose();
             coralMaterial.dispose();
-            bloomNode.dispose?.();
+            disposeBloomNodeDeep(bloomNode);
             scenePass.dispose?.();
             post.dispose?.();
             scene.fog = null;

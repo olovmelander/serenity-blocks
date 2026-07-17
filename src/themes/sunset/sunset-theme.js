@@ -165,6 +165,15 @@ const PALETTE = {
     },
 };
 
+// Fog colors matching the horizon palette (constants — never mutated)
+const FOG_COLOR_NIGHT = new THREE.Color(0x0a0812);
+const FOG_COLOR_DAWN = new THREE.Color(0xffb090);
+const FOG_COLOR_NOON = new THREE.Color(0xc8dff8);
+const FOG_COLOR_DUSK = new THREE.Color(0xff8060);
+
+// Scratch color for per-frame fog blending (fully overwritten each updateFog call)
+const _fogColor = new THREE.Color();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1052,18 +1061,12 @@ export default class SunsetTheme extends BaseTheme {
         this.scene.fog.density = fogDensity;
 
         // Fog color matches horizon palette
-        const fogColorNight = new THREE.Color(0x0a0812);
-        const fogColorDawn = new THREE.Color(0xffb090);
-        const fogColorNoon = new THREE.Color(0xc8dff8);
-        const fogColorDusk = new THREE.Color(0xff8060);
+        _fogColor.copy(FOG_COLOR_NOON);
+        _fogColor.lerp(FOG_COLOR_DAWN, dawnWeight);
+        _fogColor.lerp(FOG_COLOR_DUSK, duskWeight);
+        _fogColor.lerp(FOG_COLOR_NIGHT, nightWeight * 0.8);
 
-        const fogColor = new THREE.Color();
-        fogColor.copy(fogColorNoon);
-        fogColor.lerp(fogColorDawn, dawnWeight);
-        fogColor.lerp(fogColorDusk, duskWeight);
-        fogColor.lerp(fogColorNight, nightWeight * 0.8);
-
-        this.scene.fog.color.copy(fogColor);
+        this.scene.fog.color.copy(_fogColor);
     }
 
     updateCameraDrift(elapsed, delta = 0) {

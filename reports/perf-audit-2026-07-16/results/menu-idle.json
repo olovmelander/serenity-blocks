@@ -1,0 +1,501 @@
+{
+ "scenario": "menu-idle",
+ "runs": [
+  {
+   "run": 0,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 729,
+     "mean": 41.08,
+     "p50": 33.4,
+     "p95": 66.6,
+     "p99": 83.4,
+     "max": 99.9,
+     "over16_7": 728,
+     "over33": 392,
+     "over50": 84,
+     "over100": 0,
+     "fpsAvg": 24.3
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 3.35,
+    "before": {
+     "heapMB": 34.7,
+     "heapTotalMB": 40.1,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 240,
+     "t": 18958
+    },
+    "after": {
+     "heapMB": 33.3,
+     "heapTotalMB": 35.4,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2679,
+     "t": 49045
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 1,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 711,
+     "mean": 42.15,
+     "p50": 33.4,
+     "p95": 83.3,
+     "p99": 83.4,
+     "max": 183.3,
+     "over16_7": 710,
+     "over33": 380,
+     "over50": 96,
+     "over100": 3,
+     "fpsAvg": 23.7
+    },
+    "longtasks": {
+     "count": 6,
+     "totalMs": 514,
+     "top": [
+      {
+       "s": 28420,
+       "d": 144
+      },
+      {
+       "s": 28024,
+       "d": 93
+      },
+      {
+       "s": 28170,
+       "d": 83
+      },
+      {
+       "s": 29099,
+       "d": 78
+      },
+      {
+       "s": 28993,
+       "d": 65
+      },
+      {
+       "s": 28336,
+       "d": 51
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 3.36,
+    "before": {
+     "heapMB": 34.6,
+     "heapTotalMB": 39.8,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 249,
+     "t": 18725
+    },
+    "after": {
+     "heapMB": 33.5,
+     "heapTotalMB": 35.9,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2638,
+     "t": 48742
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 2,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 697,
+     "mean": 42.99,
+     "p50": 33.4,
+     "p95": 83.3,
+     "p99": 83.4,
+     "max": 83.4,
+     "over16_7": 697,
+     "over33": 411,
+     "over50": 104,
+     "over100": 0,
+     "fpsAvg": 23.3
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 3.37,
+    "before": {
+     "heapMB": 34.7,
+     "heapTotalMB": 40.5,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 233,
+     "t": 18678
+    },
+    "after": {
+     "heapMB": 33.4,
+     "heapTotalMB": 35.9,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2584,
+     "t": 48691
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 3,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 740,
+     "mean": 40.52,
+     "p50": 33.4,
+     "p95": 66.7,
+     "p99": 83.4,
+     "max": 83.5,
+     "over16_7": 736,
+     "over33": 372,
+     "over50": 82,
+     "over100": 0,
+     "fpsAvg": 24.7
+    },
+    "longtasks": {
+     "count": 1,
+     "totalMs": 63,
+     "top": [
+      {
+       "s": 46494,
+       "d": 63
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 3.35,
+    "before": {
+     "heapMB": 34.7,
+     "heapTotalMB": 40.4,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 247,
+     "t": 18865
+    },
+    "after": {
+     "heapMB": 33.5,
+     "heapTotalMB": 35.9,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2725,
+     "t": 48890
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  },
+  {
+   "run": 4,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 740,
+     "mean": 40.49,
+     "p50": 33.4,
+     "p95": 66.7,
+     "p99": 83.3,
+     "max": 83.5,
+     "over16_7": 739,
+     "over33": 374,
+     "over50": 86,
+     "over100": 0,
+     "fpsAvg": 24.7
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 3.34,
+    "before": {
+     "heapMB": 34.7,
+     "heapTotalMB": 40.1,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 247,
+     "t": 19170
+    },
+    "after": {
+     "heapMB": 33.3,
+     "heapTotalMB": 35.9,
+     "domNodes": 1776,
+     "canvases": 22,
+     "listenersTotal": 356,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 2722,
+     "t": 49203
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:00:04.589Z",
+  "viewport": "1280x720"
+ }
+}

@@ -1,0 +1,566 @@
+{
+ "scenario": "visibility",
+ "runs": [
+  {
+   "run": 0,
+   "visible1": {
+    "label": "visible-before",
+    "frame": {
+     "n": 102,
+     "mean": 77.78,
+     "p50": 66.7,
+     "p95": 133.3,
+     "p99": 150,
+     "max": 166.7,
+     "over16_7": 102,
+     "over33": 102,
+     "over50": 100,
+     "over100": 9,
+     "fpsAvg": 12.9
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 4.55,
+    "before": {
+     "heapMB": 38,
+     "heapTotalMB": 42.6,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 397,
+     "t": 22016
+    },
+    "after": {
+     "heapMB": 36,
+     "heapTotalMB": 40.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 860,
+     "t": 30035
+    }
+   },
+   "hidden": {
+    "label": "hidden",
+    "frame": {
+     "n": 112,
+     "mean": 71.13,
+     "p50": 66.7,
+     "p95": 116.7,
+     "p99": 133.3,
+     "max": 183.4,
+     "over16_7": 112,
+     "over33": 112,
+     "over50": 105,
+     "over100": 7,
+     "fpsAvg": 14.1
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 4.56,
+    "before": {
+     "heapMB": 36,
+     "heapTotalMB": 40.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 861,
+     "t": 30044
+    },
+    "after": {
+     "heapMB": 35.7,
+     "heapTotalMB": 40.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1371,
+     "t": 38063
+    }
+   },
+   "visible2": {
+    "label": "visible-after",
+    "frame": {
+     "n": 114,
+     "mean": 69.29,
+     "p50": 66.7,
+     "p95": 100,
+     "p99": 133.3,
+     "max": 150,
+     "over16_7": 114,
+     "over33": 114,
+     "over50": 110,
+     "over100": 3,
+     "fpsAvg": 14.4
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 4.56,
+    "before": {
+     "heapMB": 35.7,
+     "heapTotalMB": 40.7,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1425,
+     "t": 39094
+    },
+    "after": {
+     "heapMB": 34.9,
+     "heapTotalMB": 41.2,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1944,
+     "t": 47100
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  },
+  {
+   "run": 1,
+   "visible1": {
+    "label": "visible-before",
+    "frame": {
+     "n": 111,
+     "mean": 71.47,
+     "p50": 66.7,
+     "p95": 83.4,
+     "p99": 133.3,
+     "max": 150,
+     "over16_7": 111,
+     "over33": 111,
+     "over50": 108,
+     "over100": 5,
+     "fpsAvg": 14
+    },
+    "longtasks": {
+     "count": 2,
+     "totalMs": 102,
+     "top": [
+      {
+       "s": 26492,
+       "d": 52
+      },
+      {
+       "s": 27782,
+       "d": 50
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.56,
+    "before": {
+     "heapMB": 37.8,
+     "heapTotalMB": 42.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 350,
+     "t": 21250
+    },
+    "after": {
+     "heapMB": 35.4,
+     "heapTotalMB": 43.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 855,
+     "t": 29287
+    }
+   },
+   "hidden": {
+    "label": "hidden",
+    "frame": {
+     "n": 111,
+     "mean": 71.62,
+     "p50": 66.7,
+     "p95": 116.6,
+     "p99": 150,
+     "max": 150,
+     "over16_7": 111,
+     "over33": 111,
+     "over50": 106,
+     "over100": 6,
+     "fpsAvg": 14
+    },
+    "longtasks": {
+     "count": 1,
+     "totalMs": 56,
+     "top": [
+      {
+       "s": 33372,
+       "d": 56
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.56,
+    "before": {
+     "heapMB": 35.4,
+     "heapTotalMB": 43.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 856,
+     "t": 29297
+    },
+    "after": {
+     "heapMB": 37.4,
+     "heapTotalMB": 43.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1361,
+     "t": 37312
+    }
+   },
+   "visible2": {
+    "label": "visible-after",
+    "frame": {
+     "n": 97,
+     "mean": 81.61,
+     "p50": 66.8,
+     "p95": 150,
+     "p99": 283.3,
+     "max": 283.3,
+     "over16_7": 97,
+     "over33": 97,
+     "over50": 94,
+     "over100": 9,
+     "fpsAvg": 12.3
+    },
+    "longtasks": {
+     "count": 3,
+     "totalMs": 364,
+     "top": [
+      {
+       "s": 40902,
+       "d": 233
+      },
+      {
+       "s": 44010,
+       "d": 70
+      },
+      {
+       "s": 41844,
+       "d": 61
+      }
+     ]
+    },
+    "rafCallbacksPerFrame": 4.58,
+    "before": {
+     "heapMB": 35.6,
+     "heapTotalMB": 43.4,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1409,
+     "t": 38333
+    },
+    "after": {
+     "heapMB": 35.1,
+     "heapTotalMB": 43.9,
+     "domNodes": 1783,
+     "canvases": 25,
+     "listenersTotal": 355,
+     "listenersTop": {
+      "click": 126,
+      "keydown": 34,
+      "change": 29,
+      "blur": 19,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "settingsChanged": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "wheel": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 4,
+     "rafCalls": 1852,
+     "t": 46342
+    }
+   },
+   "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET @css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+   ]
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-16T22:15:45.244Z",
+  "viewport": "1280x720"
+ }
+}

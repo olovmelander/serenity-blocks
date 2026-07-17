@@ -1791,8 +1791,10 @@ export default class AstralWeaveTheme extends BaseTheme {
     updateCompute(delta, signals) {
         if (!(this.isWebGPU && this.renderer?.compute)) return;
 
-        const nexusWorld = this.getNexusWorldPosition(new THREE.Vector3());
-        const dustWorld = this.getDustWorldPosition(new THREE.Vector3());
+        this._tmpNexusWorld = this._tmpNexusWorld || new THREE.Vector3();
+        this._tmpDustWorld = this._tmpDustWorld || new THREE.Vector3();
+        const nexusWorld = this.getNexusWorldPosition(this._tmpNexusWorld);
+        const dustWorld = this.getDustWorldPosition(this._tmpDustWorld);
         const energy = Math.min(
             3.2,
             signals.linePulse + signals.comboEnergy + signals.pieceLockPulse + signals.braidVelocity * 0.45,

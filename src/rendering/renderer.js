@@ -197,6 +197,7 @@ class ParticleSystem {
             this.wind = { x: 0.1, y: 0 };
             this.lastWindGust = 0;
             this.nextWindGustTime = Math.random() * 4000 + 8000; // 8-12 seconds
+            this.windGustTimeoutId = null;
         } else if (this.behavior === 'spiraling-debris') {
             this.angles = new Float32Array(numParticles);
             this.radii = new Float32Array(numParticles * 3); // x-radius, y-radius, z-radius (for perspective)
@@ -367,6 +368,17 @@ class ParticleSystem {
         const { width, height } = this.gl.canvas;
         const config = this.themeConfig;
 
+        // Hoist: read each island's bounding rect ONCE per update (per frame) instead of
+        // once per particle. Values are refreshed every frame, so layout tracking is preserved.
+        if (this.behavior === 'spiraling-debris' && this.islandTargets && this.islandTargets.length > 0) {
+            this._islandCenters = this._islandCenters || new Float32Array(this.islandTargets.length * 2);
+            for (let k = 0; k < this.islandTargets.length; k++) {
+                const rect = this.islandTargets[k].raw.getBoundingClientRect();
+                this._islandCenters[k * 2] = rect.left + rect.width / 2;
+                this._islandCenters[k * 2 + 1] = rect.top + rect.height / 2;
+            }
+        }
+
         for (let i = 0; i < this.numParticles; i++) {
             if (this.lifetimes[i] !== Infinity) {
                 this.lifetimes[i]--;
@@ -474,7 +486,7 @@ class ParticleSystem {
                 const now = Date.now();
                 if (now - this.lastWindGust > this.nextWindGustTime) {
                     this.wind.x = Math.random() * 0.5 + 0.5; // Stronger gust
-                    setTimeout(
+                    this.windGustTimeoutId = setTimeout(
                         () => {
                             this.wind.x = 0.1;
                         },
@@ -512,10 +524,9 @@ class ParticleSystem {
                 }
             } else if (this.behavior === 'spiraling-debris') {
                 if (this.islandTargets && this.islandTargets.length > 0) {
-                    const island = this.islandTargets[this.particleIslandMap[i]];
-                    const rect = island.raw.getBoundingClientRect();
-                    this.centers[i * 2] = rect.left + rect.width / 2;
-                    this.centers[i * 2 + 1] = rect.top + rect.height / 2;
+                    const islandIdx = this.particleIslandMap[i];
+                    this.centers[i * 2] = this._islandCenters[islandIdx * 2];
+                    this.centers[i * 2 + 1] = this._islandCenters[islandIdx * 2 + 1];
                 }
                 this.angles[i] += this.speeds[i];
                 const centerX = this.centers[i * 2];
@@ -647,6 +658,15 @@ class ParticleSystem {
             this.gl.disableVertexAttribArray(this.attribLocations.position);
             this.gl.disableVertexAttribArray(this.attribLocations.size);
             this.gl.disableVertexAttribArray(this.attribLocations.alpha);
+        }
+    }
+
+    dispose() {
+        // Clear any pending wind-gust timeout ('petal' behavior) so it can't fire
+        // after this system has been torn down.
+        if (this.windGustTimeoutId !== null && this.windGustTimeoutId !== undefined) {
+            clearTimeout(this.windGustTimeoutId);
+            this.windGustTimeoutId = null;
         }
     }
 }
@@ -807,6 +827,7 @@ export class WebGLRenderer {
         });
 
         this.particleSystems.forEach((ps) => {
+            ps.dispose();
             if (ps.positionBuffer) {
                 this.gl.deleteBuffer(ps.positionBuffer);
             }
@@ -879,6 +900,11 @@ export class WebGLRenderer {
         const quad = new TexturedQuad(this.gl, sourceCanvas, zIndex);
         this.texturedQuads.push(quad);
         this.texturedQuads.sort((a, b) => a.zIndex - b.zIndex);
+        // A theme that loaded with nothing to draw leaves the render loop parked
+        // (SB-12); wake it now that there is content.
+        if (!this.animationFrameId && !this.useExternalRenderLoop) {
+            this.start();
+        }
     }
 
     createProgram(vertexShaderSource, fragmentShaderSource) {
@@ -1146,6 +1172,7 @@ export class WebGLRenderer {
         if (!system) return;
         const idx = this.particleSystems.indexOf(system);
         if (idx !== -1) {
+            system.dispose();
             if (system.positionBuffer) this.gl.deleteBuffer(system.positionBuffer);
             if (system.sizeBuffer) this.gl.deleteBuffer(system.sizeBuffer);
             if (system.alphaBuffer) this.gl.deleteBuffer(system.alphaBuffer);
@@ -1530,10 +1557,14 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 60, sparkleConfig));
 
             this.start();
-        } else {
-            // Default case for themes without WebGL particles
-            // Still start the renderer to handle any future particle systems
+        } else if (this.texturedQuads.length > 0 || this.particleSystems.length > 0) {
+            // Theme registered content through another path (e.g. addLayer) — keep rendering.
             this.start();
+        } else {
+            // Nothing to draw: park the loop instead of running an empty clear+rAF
+            // chain every frame (SB-12a). addLayer() and the particle-creating
+            // branches above re-start the loop the moment content appears.
+            this.stop();
         }
         // Note: electric-dreams theme uses DOM-based CSS animations, not WebGL particles
     }

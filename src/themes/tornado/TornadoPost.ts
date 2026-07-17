@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { emissive, mrt, output, pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 type TornadoPostParams = {
     bloomStrength: number;
@@ -62,7 +63,7 @@ export class TornadoPost {
 
     dispose() {
         this.scenePass.dispose();
-        this.bloomNode.dispose();
+        disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }

@@ -23,6 +23,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
+import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import {
     waveSlotsForTier,
     resolveComboProgress,
@@ -1714,7 +1715,7 @@ export function create({
             renderAsync() { postProcessing.render(); return Promise.resolve(); },
             dispose() {
                 scenePass.dispose?.();
-                bloomNode.dispose?.();
+                disposeBloomNodeDeep(bloomNode);
                 postProcessing.dispose?.();
             },
         };

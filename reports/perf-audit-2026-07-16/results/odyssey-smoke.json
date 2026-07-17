@@ -1,0 +1,191 @@
+{
+ "started": true,
+ "bootMs": 36784,
+ "frame": {
+  "n": 1199,
+  "mean": 16.67,
+  "p50": 16.7,
+  "p95": 16.8,
+  "p99": 16.8,
+  "max": 16.8,
+  "over16_7": 0,
+  "over33": 0,
+  "over50": 0,
+  "over100": 0,
+  "fpsAvg": 60
+ },
+ "counters": {
+  "calls": 0,
+  "triangles": 0,
+  "geometries": 120,
+  "textures": 23,
+  "programs": 0,
+  "callsAvg": 0,
+  "trianglesAvg": 0
+ },
+ "heapMB": 70.9,
+ "consoleErrors": [
+  {
+   "t": 1784241099889,
+   "text": "Failed to load resource: net::ERR_CONNECTION_RESET",
+   "src": "css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap:0"
+  },
+  {
+   "t": 1784241140665,
+   "text": "THREE.THREE.WebGPURenderer: WebGPU Device Lost:\n\nMessage: A valid external Instance reference no longer exists.\nReason: unknown",
+   "src": "three-Csf_mQqD.js:4"
+  },
+  {
+   "t": 1784241140672,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140675,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140676,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  },
+  {
+   "t": 1784241140677,
+   "text": "PAGEERROR: OperationError: Instance dropped in popErrorScope"
+  }
+ ]
+}

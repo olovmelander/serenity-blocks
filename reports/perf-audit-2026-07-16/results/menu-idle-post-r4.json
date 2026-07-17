@@ -1,0 +1,101 @@
+{
+ "scenario": "menu-idle",
+ "runs": [
+  {
+   "run": 0,
+   "window": {
+    "label": "menu-idle",
+    "frame": {
+     "n": 389,
+     "mean": 30.85,
+     "p50": 33.3,
+     "p95": 49.9,
+     "p99": 50.1,
+     "max": 66.8,
+     "over16_7": 306,
+     "over33": 56,
+     "over50": 6,
+     "over100": 0,
+     "fpsAvg": 32.4
+    },
+    "longtasks": {
+     "count": 0,
+     "totalMs": 0,
+     "top": []
+    },
+    "rafCallbacksPerFrame": 3.32,
+    "before": {
+     "heapMB": 35.3,
+     "heapTotalMB": 39.5,
+     "domNodes": 1775,
+     "canvases": 21,
+     "listenersTotal": 353,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 3,
+     "rafCalls": 307,
+     "t": 5897
+    },
+    "after": {
+     "heapMB": 34,
+     "heapTotalMB": 35.9,
+     "domNodes": 1775,
+     "canvases": 21,
+     "listenersTotal": 353,
+     "listenersTop": {
+      "click": 127,
+      "keydown": 35,
+      "change": 29,
+      "blur": 18,
+      "mousedown": 16,
+      "input": 9,
+      "pointermove": 7,
+      "pointerleave": 7,
+      "pointerenter": 6,
+      "focus": 6,
+      "visibilitychange": 6,
+      "wheel": 5,
+      "modalShown": 4,
+      "resize": 4,
+      "mouseenter": 4
+     },
+     "intervalsActive": 1,
+     "intervalsById": [
+      "()=>{this.syncFromCloud()} @900000"
+     ],
+     "audioContexts": 1,
+     "webglContexts": 3,
+     "rafCalls": 1600,
+     "t": 17917
+    }
+   },
+   "consoleErrors": []
+  }
+ ],
+ "meta": {
+  "base": "http://localhost:4173",
+  "webgpu": true,
+  "date": "2026-07-17T11:39:13.102Z",
+  "viewport": "1280x720"
+ }
+}
