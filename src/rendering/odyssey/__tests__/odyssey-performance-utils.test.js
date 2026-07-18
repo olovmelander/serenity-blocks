@@ -4,9 +4,9 @@ import {
     resolveOdysseyAdaptiveFrameRate,
     resolveOdysseyTargetFrameRate,
     summarizeFrameTimes,
-} from '../odyssey-performance-flags.js';
+} from '../odyssey-performance-utils.js';
 
-describe('odyssey performance flags', () => {
+describe('odyssey performance utils', () => {
     it('normalizes warmup modes with legacy fast-start compatibility', () => {
         expect(normalizeOdysseyWarmupMode('current')).toBe('current');
         expect(normalizeOdysseyWarmupMode('focus')).toBe('current');

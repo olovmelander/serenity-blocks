@@ -658,24 +658,6 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * Initialize environments for specified chapters
-     * @param {number[]} chapterIds - Array of chapter IDs to create
-     * @param {Object} options - Quality options
-     */
-    async initialize(chapterIds = [1, 2], options = {}) {
-        this.qualitySettings = { ...this.qualitySettings, ...options };
-
-        console.log('[ChapterEnvironmentManager] Initializing chapters:', chapterIds);
-
-        await Promise.all(chapterIds.map((chapterId) => this.createChapterEnvironment(chapterId)));
-
-        // Set initial visibility
-        this.updateVisibility(this.cameraProgress, { mode: 'progress' });
-
-        console.log('[ChapterEnvironmentManager] Initialized', this.environments.size, 'environments');
-    }
-
-    /**
      * Create a single chapter's environment (loads module dynamically)
      * @param {number} chapterId
      */
@@ -1160,27 +1142,6 @@ export class ChapterEnvironmentManager {
             // setting needsUpdate=true while fading.
             material.opacity = material.userData.baseOpacity * clampedOpacity;
         }
-    }
-
-    /**
-     * Trigger animated transition to a specific chapter
-     * @param {number} chapterId - Target chapter
-     * @param {number} duration - Transition duration in ms
-     */
-    transitionToChapter(chapterId, duration = 1500) {
-        if (chapterId === this.currentChapter) return;
-        if (!this.environments.has(chapterId)) {
-            console.warn(`[ChapterEnvironmentManager] Cannot transition to unknown chapter ${chapterId}`);
-            return;
-        }
-
-        this.isTransitioning = true;
-        this.transitionProgress = 0;
-        this.transitionDuration = duration;
-        this.transitionFrom = this.currentChapter;
-        this.transitionTo = chapterId;
-
-        console.log(`[ChapterEnvironmentManager] Starting transition: Ch${this.transitionFrom} -> Ch${chapterId}`);
     }
 
     /**
