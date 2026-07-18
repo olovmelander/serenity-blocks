@@ -20,6 +20,12 @@ export const INPUT_TYPES = {
     HARD_DROP: 'hard_drop',
 };
 
+// Max catch-up ticks per advanceByWallClock call. When the cap is hit the rest
+// of the accumulator is DISCARDED (rebase — ADR-0012 doctrine: overload rebases
+// wall time), so a long hitch / background tab cannot burst-release buffered
+// inputs ("piece teleports", perf review §2.3).
+export const MAX_WALL_CLOCK_CATCHUP_TICKS = 4;
+
 /**
  * Host-Side Input Jitter Buffer
  *
@@ -43,6 +49,10 @@ export class InputJitterBuffer {
         // Target tick rate (30Hz = 33.3ms per tick)
         this.tickRate = config.tickRate ?? 30;
         this.tickInterval = 1000 / this.tickRate;
+
+        // Wall-clock accumulator for advanceByWallClock. MUST be initialized
+        // here: `undefined += delta` is NaN and would freeze the buffer forever.
+        this._wallClockAccumulatorMs = 0;
 
         // Per-player input queues, keyed by tick
         // Map<playerId, Map<tick, Input[]>>
@@ -273,6 +283,37 @@ export class InputJitterBuffer {
     }
 
     /**
+     * Advance the buffer on WALL CLOCK instead of once per display frame
+     * (perf review §2.3: "depth 2" must mean 2 buffer ticks, not 2 rAFs).
+     * Accumulates deltaMs and steps advanceTick() once per elapsed tickInterval,
+     * invoking onTick (if given) BEFORE each advance so inputs due at the
+     * process cursor drain once per tick, in order. Catch-up is capped at
+     * MAX_WALL_CLOCK_CATCHUP_TICKS per call; hitting the cap discards the
+     * remaining accumulator (rebase) so a hitch cannot burst-release inputs.
+     * advanceTick() itself is untouched — fixed/adaptive callers keep using it.
+     * @param {number} deltaMs - Elapsed wall-clock ms (the loop's frame delta).
+     * @param {() => void} [onTick] - Drain callback run before each advanceTick().
+     * @returns {number} Number of ticks advanced (0..MAX_WALL_CLOCK_CATCHUP_TICKS).
+     */
+    advanceByWallClock(deltaMs, onTick) {
+        if (Number.isFinite(deltaMs) && deltaMs > 0) {
+            this._wallClockAccumulatorMs += deltaMs;
+        }
+        let ticksAdvanced = 0;
+        while (this._wallClockAccumulatorMs >= this.tickInterval) {
+            if (ticksAdvanced >= MAX_WALL_CLOCK_CATCHUP_TICKS) {
+                this._wallClockAccumulatorMs = 0; // cap hit: rebase, never burst
+                break;
+            }
+            this._wallClockAccumulatorMs -= this.tickInterval;
+            if (onTick) onTick();
+            this.advanceTick();
+            ticksAdvanced += 1;
+        }
+        return ticksAdvanced;
+    }
+
+    /**
      * Sync current tick (for joining/resuming)
      */
     setCurrentTick(tick) {
@@ -449,6 +490,7 @@ export class InputJitterBuffer {
         this.currentTick = 0;
         this.processCursor = this.currentTick - this.bufferDepth;
         this.lastDepthAdjustTick = -1;
+        this._wallClockAccumulatorMs = 0;
         this.resetStats();
         this._log('Jitter buffer cleared');
     }
