@@ -28,7 +28,7 @@ import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
     resolveOdysseyTargetFrameRate,
-} from './odyssey-performance-flags.js';
+} from './odyssey-performance-utils.js';
 import {
     applyOdysseyLayoutToLevels,
     buildOdysseyPresentationLayout,
@@ -2302,8 +2302,11 @@ export class OdysseyBoardController {
             for (let i = 0; i < steps.length; i += 1) {
                 cc.currentPosition = steps[i];
                 cc.targetPosition = steps[i];
-                // Phase 0 instrumentation: time each warm-up render so the next capture
-                // attributes the (currently ~22s) warm-up to specific samples/chapters.
+                // Phase 0 instrumentation: time each warm-up render so a capture can
+                // attribute warm-up cost to specific samples/chapters. (The ~22s figure
+                // this was added for is historical — it predates the slimmed sample set
+                // and the fast-start single-sample default above. Re-measure via
+                // scripts/odyssey-perf-session.mjs.)
                 const sampleStart = performance.now();
                 const renderStart = performance.now();
                 this.renderFrame(1 / 60);
