@@ -9,8 +9,11 @@
  * own currentTick. These tests pin that invariant (remediation review follow-up).
  */
 
-import { describe, it, expect } from 'vitest';
-import { InputJitterBuffer } from '../../src/core/network/input-jitter-buffer.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+    InputJitterBuffer,
+    MAX_WALL_CLOCK_CATCHUP_TICKS,
+} from '../../src/core/network/input-jitter-buffer.js';
 
 function drain(buf) {
     let applied = 0;
@@ -118,5 +121,86 @@ describe('InputJitterBuffer clock', () => {
         expect(stats.bufferDepth).toBe(3);
         expect(stats.avgOffsetTicks).toBe(6);
         expect(stats.maxOffsetTicks).toBe(6);
+    });
+});
+
+describe('InputJitterBuffer.advanceByWallClock (review §2.3 wall-clock cadence)', () => {
+    it('initializes the accumulator in the constructor (no undefined+= NaN freeze)', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        expect(buf._wallClockAccumulatorMs).toBe(0);
+        expect(buf.advanceByWallClock(40)).toBe(1);
+        expect(buf.currentTick).toBe(1);
+    });
+
+    it('advances on elapsed time, not per call: 8ms x 8 calls = exactly 1 tick, remainder kept', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        let ticks = 0;
+        for (let i = 0; i < 8; i++) ticks += buf.advanceByWallClock(8);
+        // 64ms elapsed at 33.3ms/tick -> exactly 1 tick, ~30.7ms retained.
+        expect(ticks).toBe(1);
+        expect(buf.currentTick).toBe(1);
+        expect(buf._wallClockAccumulatorMs).toBeCloseTo(64 - buf.tickInterval, 6);
+    });
+
+    it('sub-interval frames advance zero ticks (144Hz frames simply wait)', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        expect(buf.advanceByWallClock(7)).toBe(0);
+        expect(buf.currentTick).toBe(0);
+        expect(buf._wallClockAccumulatorMs).toBe(7);
+    });
+
+    it('caps catch-up at 4 ticks and rebases (discards) the leftover accumulator', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        // One 500ms hitch is worth ~15 ticks; only the cap may be released.
+        expect(buf.advanceByWallClock(500)).toBe(MAX_WALL_CLOCK_CATCHUP_TICKS);
+        expect(buf.currentTick).toBe(4);
+        expect(buf._wallClockAccumulatorMs).toBe(0); // rebased, not retained
+        // The next ordinary frame starts from a clean base — no burst release.
+        expect(buf.advanceByWallClock(8)).toBe(0);
+        expect(buf.currentTick).toBe(4);
+    });
+
+    it('ignores non-finite and non-positive deltas', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        expect(buf.advanceByWallClock(undefined)).toBe(0);
+        expect(buf.advanceByWallClock(Number.NaN)).toBe(0);
+        expect(buf.advanceByWallClock(-50)).toBe(0);
+        expect(buf._wallClockAccumulatorMs).toBe(0);
+        expect(buf.currentTick).toBe(0);
+    });
+
+    it('runs the drain callback BEFORE each advance so a 2-tick frame drains both ticks in order', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30, bufferDepth: 0 });
+        buf.addPlayer('peer');
+        buf.addInput('peer', 0, { type: 'move', seq: 1 });
+        buf.addInput('peer', 1, { type: 'rotate', seq: 2 });
+
+        const drained = [];
+        const ticks = buf.advanceByWallClock(2 * buf.tickInterval + 1, () => {
+            for (const [, inputs] of buf.getInputsForTick()) {
+                for (const input of inputs) drained.push(input.seq);
+            }
+        });
+
+        expect(ticks).toBe(2);
+        expect(drained).toEqual([1, 2]); // in tick order, one drain per tick
+        expect(buf.getStats().inputsDropped).toBe(0);
+    });
+
+    it('clear() resets the wall-clock accumulator', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        buf.advanceByWallClock(20);
+        expect(buf._wallClockAccumulatorMs).toBe(20);
+        buf.clear();
+        expect(buf._wallClockAccumulatorMs).toBe(0);
+    });
+
+    it('leaves advanceTick() itself untouched for direct (fixed/adaptive) callers', () => {
+        const buf = new InputJitterBuffer({ adaptive: false, tickRate: 30 });
+        const spy = vi.spyOn(buf, 'advanceTick');
+        buf.advanceByWallClock(buf.tickInterval);
+        expect(spy).toHaveBeenCalledTimes(1);
+        buf.advanceTick();
+        expect(buf.currentTick).toBe(2);
     });
 });

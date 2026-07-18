@@ -851,6 +851,10 @@ The god-class is 5,116 lines (unchanged since 07-01 — the freeze is holding; t
 #### 6A.1 Consolidate the MP roadmap + flag graduation bar *(S)*
 Mark `ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md` as the tactical pre-phase in the 0.6 index; harvest or archive the other MP docs. Fix the graduation bar for every default-off flag (`simTickNetcode` — subsumed by 5.3, `adaptiveInputJitter`, `downloadJoin`, `migrationEpoch`, `readyBarrier`, `authoritativeAttacks` — moves to 6B, deterministic garbage): each graduates only when (a) the two-machine soak passes with it on, (b) snapshot-bytes p95 and reliable-message rate hold budget, (c) a pinning test covers it. Stating the bar per flag is what stops "decide later" becoming "default-off forever" — and to keep the bar solo-feasible, **one soak session validates a flag combination** (matrix), with the mock-transport harness as the exploratory tier beforehand (1.7).
 
+> **Harvest note (2026-07-18):** executing `ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md` P0
+> items 1–3 (host input bypass, synchronous RENDER_FRAME, wall-clock jitter cadence) on the
+> live path; see `PLAN-mp-host-input-latency.md`.
+
 #### 6A.2 Extraction, in dependency order *(L)*
 - **Prerequisite:** characterization pins first — the 161-test MP suite constructs `FFAGameStateP2P` directly, so its public surface is preserved or tests are updated mechanically; snapshot the serialized event stream of a scripted 2-peer session as the golden master.
 - **Target module layout** (measured cluster line ranges in the evidence report; every step is a pure move + constructor injection):

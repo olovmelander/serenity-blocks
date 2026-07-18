@@ -1725,9 +1725,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
-    /**
-     * Update UI for host (since we don't receive our own network packets)
-     */
+    /** Host UI refresh (no own packets); hand-built detail keeps the deferred path. */
     _updateHostUI() {
         if (!this.ffaGameState) return;
 
@@ -1752,18 +1750,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Start the spectator render driver (watch-only spectators only).
-     *
-     * A spectator runs no game loop, so it never emits RENDER_FRAME and _processRenderFrame
-     * never runs for it — the one path that feeds a live/interpolated currentPiece into the
-     * watch boards. Without it the opponents' falling pieces freeze (the grid still updates
-     * at 30Hz via _handleStateUpdate, but currentPiece is stripped there to avoid fighting
-     * the interpolated piece on host/peer). This RAF loop rebuilds a render-frame from the
-     * latest snapshot (in the gameState-nested shape _processRenderFrame expects) and calls
-     * _processRenderFrame directly, so the spectator gets the SAME interpolation, roster
-     * setPlayers, garbage meters and scoreboard updates as a player — just RAF-driven.
-     *
-     * Idempotent (guards on _spectatorRenderId, like OpponentWatchManager.startAnimationLoop).
+     * Start the spectator render driver (watch-only spectators only). A spectator
+     * runs no game loop, so it never emits RENDER_FRAME — without this the
+     * opponents' falling pieces freeze (the 30Hz _handleStateUpdate grid strips
+     * currentPiece to avoid fighting the interpolated piece on host/peer). This
+     * rAF loop rebuilds a render-frame from the latest snapshot (in the
+     * gameState-nested shape _processRenderFrame expects) and calls
+     * _processRenderFrame directly: same interpolation, roster setPlayers, garbage
+     * meters and scoreboard as a player — just rAF-driven. Idempotent (guards on
+     * _spectatorRenderId, like OpponentWatchManager.startAnimationLoop).
      */
     _startSpectatorRenderLoop() {
         if (this._spectatorRenderId) return;
@@ -1821,16 +1816,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Handle render frames from the authoritative game state
-     * PERF: Uses RAF throttling to batch multiple RENDER_FRAME events per frame
+     * Handle render frames from the authoritative game state.
+     * Loop-frame emits (detail.fromLoopFrame, review §2.2) process synchronously —
+     * the unified loop fires exactly once per rAF, so re-deferring settled into a
+     * 2-frame cycle (half-rate MP rendering). The sync path nulls the pending
+     * detail AFTER processing so an already-scheduled rAF callback (guarded on
+     * _pendingRenderDetail) no-ops; out-of-frame emits stay rAF-batched.
      */
     _handleRenderFrame(detail) {
         if (!detail || !detail.players) return;
-
-        // PERF: RAF throttling - batch multiple RENDER_FRAME events per frame
-        // Store latest data and schedule processing for next animation frame
+        if (detail.fromLoopFrame === true) {
+            this._processRenderFrame(detail);
+            this._pendingRenderDetail = null;
+            return;
+        }
         this._pendingRenderDetail = detail;
-
         if (!this._renderFrameScheduled) {
             this._renderFrameScheduled = true;
             requestAnimationFrame(() => {

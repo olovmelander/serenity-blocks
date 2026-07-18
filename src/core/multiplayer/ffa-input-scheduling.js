@@ -1,5 +1,61 @@
+import { acknowledgeFfaInput } from './ffa-input-batching.js';
+
 const MAX_ADAPTIVE_INPUT_LATE_TICKS = 30;
 const MAX_ADAPTIVE_INPUT_FUTURE_TICKS = 8;
+
+/**
+ * Drain every input due at the jitter buffer's process cursor and apply it to
+ * the owning player. Extracted from FFAGameStateP2P.processBufferedInputs so
+ * the wall-clock driver (perf review §2.3) can drain once per advanced tick —
+ * a heavy frame that advances 2 ticks drains both in order — without growing
+ * the god file. Does NOT advance the buffer; the caller owns cadence.
+ * @param {import('./ffa-p2p-game-state.js').FFAGameStateP2P} game
+ */
+export function drainFfaBufferedInputs(game) {
+    const inputsMap = game.inputJitterBuffer.getInputsForTick();
+
+    for (const [steamId, inputs] of inputsMap) {
+        if (inputs.length === 0) continue;
+
+        const player = game.players.get(steamId);
+        if (!player) continue;
+        if (!player.isAlive) {
+            inputs.forEach((input) => acknowledgeFfaInput(player, input.data?.seq));
+            continue;
+        }
+
+        // Build callbacks once per player (local vs remote as appropriate).
+        const isRemotePlayer = steamId !== game.localPlayerId;
+        const callbacks = isRemotePlayer
+            ? game.buildRemotePlayerCallbacks(steamId)
+            : game.buildPhysicsCallbacks(steamId);
+
+        for (const input of inputs) {
+            // Timestamp validation already ran when the input was buffered;
+            // track again here for pattern heuristics only.
+            if (game.inputValidator) {
+                game.inputValidator.trackInput(steamId, input.type, input.data);
+            }
+
+            const applied = game._applyInputToPlayer(
+                steamId,
+                input.type,
+                input.data, // This is the inner data object
+                callbacks,
+            );
+            if (applied) {
+                game._recordNetEvent?.('input_applied', {
+                    steamId,
+                    inputType: input.type,
+                    seq: input.data?.seq,
+                    buffered: true,
+                    tick: input._tick,
+                });
+            }
+            acknowledgeFfaInput(player, input.data?.seq);
+        }
+    }
+}
 
 /**
  * Resolve one validated FFA input onto the host jitter-buffer clock.
