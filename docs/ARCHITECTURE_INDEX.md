@@ -72,6 +72,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ONLINE_MP_LOCAL_PIECE_OWNERSHIP_FIX_2026-06-23.md](ONLINE_MP_LOCAL_PIECE_OWNERSHIP_FIX_2026-06-23.md) | Reference | Multiplayer evidence/source plan. |
 | [ONLINE_MP_NEVER_PAUSE_PLAN_2026-06-24.md](ONLINE_MP_NEVER_PAUSE_PLAN_2026-06-24.md) | Reference | Multiplayer source plan. |
 | [ONLINE_MP_QUADRA_EXPERIENCE_NEXTLEVEL_PLAN_2026-06-24.md](ONLINE_MP_QUADRA_EXPERIENCE_NEXTLEVEL_PLAN_2026-06-24.md) | Reference | Multiplayer source plan. |
+| [ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md](ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md) | Reference | Verified evidence for why online MP feels less smooth than SP at default flags; harvest its P0/P1 items into the umbrella plan before execution. |
 | [ONLINE_MP_QUADRA_PARITY_PLAN_2026-06-24.md](ONLINE_MP_QUADRA_PARITY_PLAN_2026-06-24.md) | Reference | Multiplayer source plan. |
 | [ONLINE_MULTIPLAYER_IMPROVEMENT_PLAN.md](ONLINE_MULTIPLAYER_IMPROVEMENT_PLAN.md) | Superseded | Replaced by current MP tactical plan and umbrella phases. |
 | [ONLINE_MULTIPLAYER_NETCODE_RESEARCH_AUDIT_PLAN_2026-06-23.md](ONLINE_MULTIPLAYER_NETCODE_RESEARCH_AUDIT_PLAN_2026-06-23.md) | Reference | Multiplayer research evidence. |
