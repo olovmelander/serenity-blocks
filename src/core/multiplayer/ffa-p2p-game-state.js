@@ -48,7 +48,7 @@ import {
     readFfaRoundAdvance,
 } from './ffa-round-policy.js';
 import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
-import { resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
+import { drainFfaBufferedInputs, resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
 import {
     acknowledgeFfaInput, flushFfaInputBatches, processFfaInputBatch,
     resetFfaInputEpoch, resetFfaInputTransport,
@@ -223,6 +223,7 @@ export class FFAGameStateP2P {
                 frags: 0,
             })),
             playerCount: 0,
+            fromLoopFrame: false, // stamped unconditionally in renderAllPlayers (§2.2)
         };
         this.hostTick = 0;
         this.simTick = 0;
@@ -1535,7 +1536,15 @@ export class FFAGameStateP2P {
         // NOTE: temporary correctness fix. The structural fix is tick-boundary
         // input application in the fixed-tick sim refactor (see
         // docs/ARCHITECTURAL_REMEDIATION_PLAN.md Phase 5).
-        if (this.useJitterBuffer && this.inputJitterBuffer) {
+        // P0-1 (perf review §2.1): the HOST'S OWN legacy-path input SKIPS the
+        // buffer and falls through to the immediate branch below — buffering it
+        // cost the host ~2-3 display frames of self-latency while peers predict
+        // locally. A bypassed input is never inserted into the buffer, so the
+        // double-apply hazard above cannot occur. Remote inputs still buffer;
+        // under fixedTick the host input stays buffered (the dark fixed adapter
+        // owns tick-aligned application — do not change its semantics here).
+        if (this.useJitterBuffer && this.inputJitterBuffer
+            && (steamId !== this.localPlayerId || this._fixedTickEnabled === true)) {
             // Label the input with the jitter buffer's OWN per-frame clock, not
             // hostTick / the client tick. The buffer's processCursor advances once
             // per loop frame (advanceTick in processBufferedInputs), but hostTick
@@ -1590,7 +1599,7 @@ export class FFAGameStateP2P {
             return; // Buffered — applied later by processBufferedInputs().
         }
 
-        // No jitter buffer: apply immediately.
+        // No jitter buffer, or host-local bypass (§2.1): apply immediately.
         // - Local player (host): full callbacks including garbage routing
         // - Remote player (peer): no garbage routing (peer sends their own game:attack:request)
         const isRemotePlayer = steamId !== this.localPlayerId;
@@ -3405,7 +3414,7 @@ export class FFAGameStateP2P {
         this._setUnifiedLoopExternalPlayerUpdate(this._fixedTickEnabled);
 
         this.unifiedLoop.onRender = () => {
-            this.renderAllPlayers();
+            this.renderAllPlayers(true); // loop-frame emit → consumers process synchronously (§2.2)
         };
 
         this.unifiedLoop.onUpdate = (currentTime, delta) => {
@@ -3428,7 +3437,7 @@ export class FFAGameStateP2P {
                 if (!this.isHost) this.flushInputBatch();
             } else if (this.isHost) {
                 this.simTick = (Number(this.simTick) || 0) + 1;
-                this.processBufferedInputs(); // Process inputs from jitter buffer
+                this.processBufferedInputs(delta); // Wall-clock jitter cadence (§2.3)
                 this.updateAllPlayers();
                 this.attackRouter.updateHotPotato(hostWallTime);
             }
@@ -3442,62 +3451,24 @@ export class FFAGameStateP2P {
 
     /**
      * Process inputs from the jitter buffer (HOST ONLY)
-     * Called every game tick to apply buffered inputs
+     * P0-3 (perf review §2.3): given the loop's frame delta, the buffer advances
+     * on WALL CLOCK at its configured tickInterval — not once per display frame —
+     * draining due inputs once per advanced tick (a heavy frame applies its 2
+     * ticks in order; a 144Hz frame may advance none and inputs simply wait).
+     * Catch-up is capped inside advanceByWallClock (rebase on hitch, no burst).
+     * Called without a delta it single-steps (one drain + one advanceTick),
+     * preserving the legacy per-call contract for tests/tools.
+     * @param {number} [frameDeltaMs] - Elapsed ms from the unified loop's onUpdate.
      */
-    processBufferedInputs() {
+    processBufferedInputs(frameDeltaMs) {
         if (!this.useJitterBuffer || !this.inputJitterBuffer) return;
-
-        // Get inputs ready for this tick
-        const inputsMap = this.inputJitterBuffer.getInputsForTick();
-
-        for (const [steamId, inputs] of inputsMap) {
-            if (inputs.length === 0) continue;
-
-            const player = this.players.get(steamId);
-            if (!player) continue;
-            if (!player.isAlive) {
-                inputs.forEach((input) => acknowledgeFfaInput(player, input.data?.seq));
-                continue;
-            }
-
-            // Build callbacks once per player
-            // Use local/remote callbacks as appropriate
-            const isRemotePlayer = steamId !== this.localPlayerId;
-            const callbacks = isRemotePlayer
-                ? this.buildRemotePlayerCallbacks(steamId)
-                : this.buildPhysicsCallbacks(steamId);
-
-            // Apply all inputs for this tick
-            for (const input of inputs) {
-                // Re-validate just in case (though we trust the buffer logic)
-                // Note: We skip timestamp validation here as it was already buffered
-
-                // Track input for heuristics
-                if (this.inputValidator) {
-                    this.inputValidator.trackInput(steamId, input.type, input.data);
-                }
-
-                const applied = this._applyInputToPlayer(
-                    steamId,
-                    input.type,
-                    input.data, // This is the inner data object
-                    callbacks,
-                );
-                if (applied) {
-                    this._recordNetEvent?.('input_applied', {
-                        steamId,
-                        inputType: input.type,
-                        seq: input.data?.seq,
-                        buffered: true,
-                        tick: input._tick,
-                    });
-                }
-                acknowledgeFfaInput(player, input.data?.seq);
-            }
+        const buffer = this.inputJitterBuffer;
+        if (Number.isFinite(frameDeltaMs) && typeof buffer.advanceByWallClock === 'function') {
+            buffer.advanceByWallClock(frameDeltaMs, () => drainFfaBufferedInputs(this));
+            return;
         }
-
-        // Advance buffer tick
-        this.inputJitterBuffer.advanceTick();
+        drainFfaBufferedInputs(this);
+        buffer.advanceTick();
     }
 
     /**
@@ -4031,8 +4002,10 @@ export class FFAGameStateP2P {
     * Render all player game boards (HOST & PEER)
     * This is called every frame to update visuals
     * PERF: Uses pre-allocated payload to avoid object creation every frame
+    * @param {boolean} [fromLoopFrame] - True ONLY when called from the unified
+    * loop's own rAF (onRender); consumers then process synchronously (§2.2).
     */
-    renderAllPlayers() {
+    renderAllPlayers(fromLoopFrame = false) {
         // PERF: Reuse pre-allocated slots instead of creating new objects
         let i = 0;
         this.players.forEach((player, steamId) => {
@@ -4054,6 +4027,9 @@ export class FFAGameStateP2P {
             }
         });
         this._renderPayload.playerCount = i;
+        // Stamp UNCONDITIONALLY: the payload object is reused every frame, so a
+        // stale true from a loop emit must never leak into an out-of-frame emit.
+        this._renderPayload.fromLoopFrame = fromLoopFrame === true;
 
         // Emit with pre-allocated payload (consumers should use playerCount, not players.length)
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.RENDER_FRAME, this._renderPayload);
