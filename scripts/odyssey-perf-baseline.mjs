@@ -263,7 +263,7 @@ async function runCommittedBaseline() {
 
     const outputs = [];
     for (const { cache, save } of cells) {
-        const output = path.join(reportsDir, `baseline-${tag}-${cache}-${save}.json`);
+        const output = path.join(reportsDir, `baseline-${tag}-${cache}-${save}-${scenario}.json`);
         let profileDir;
         let resetProfile;
         if (save === 'late') {
@@ -308,10 +308,14 @@ async function runCommittedBaseline() {
         console.log('[odyssey-perf] late cells skipped. To include cold-late/warm-late: play once to '
             + 'chapter 7-8 in a dedicated profile, then re-run with --late-profile-dir <that-profile>.');
     }
-    if (cachesWanted.includes('cold')) {
-        console.log(`[odyssey-perf] next: copy baseline-${tag}-cold-fresh.json `
+    if (scenario === 'idle' && cachesWanted.includes('cold')) {
+        console.log(`[odyssey-perf] next: copy baseline-${tag}-cold-fresh-idle.json `
             + "aggregate.metrics['frame.p95'].median into perf-budgets.json "
             + '→ budgets.frameP95Ms.perSurface.odyssey, then `npm run perf:odyssey:compare -- --fail-on-regression`.');
+    } else {
+        console.log(`[odyssey-perf] note: the ${scenario} scenario's frame.p95 includes startup/compile `
+            + 'hitches (good as a startup diagnostic). Seed the STEADY-STATE frame budget from a '
+            + '`--scenario idle` capture instead.');
     }
 }
 
