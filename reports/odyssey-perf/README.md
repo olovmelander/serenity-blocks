@@ -62,6 +62,16 @@ only one cache.
 > The `manifest.backend` field records whether frames were served by `webgpu` or
 > a `webgl2` fallback — check it, since a null `gpu.adapter` alone can't tell them
 > apart and the two aren't perf-comparable.
+>
+> **Which physical GPU?** On a hybrid-graphics laptop, always confirm
+> `manifest.webglRenderer` names the discrete adapter (e.g. an NVIDIA/RTX string),
+> not the iGPU (`AMD Radeon 610M`). The harness applies `force_high_performance_gpu`
+> (matching `electron/main.js`), but Windows' **per-app graphics preference can
+> still override it**. If a capture shows the iGPU: Settings → System → Display →
+> Graphics → *Add desktop app* → `node_modules/electron/dist/electron.exe` →
+> Options → **High performance**, then re-run. Do the same for the packaged game
+> exe. Tag the file for the GPU that actually rendered (`--tag rtx5080` only if
+> `webglRenderer` confirms it).
 
 **Late-save cells** (`cold-late` / `warm-late`) can't be fully automated — a late
 save only exists after playing to a late chapter once. Prime a dedicated profile

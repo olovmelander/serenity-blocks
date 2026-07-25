@@ -32,6 +32,20 @@ const electronModule = await import('electron');
 const electron = electronModule.default ?? electronModule;
 const { app, BrowserWindow } = electron;
 
+// Match the shipped app's GPU selection (electron/main.js:46-50) so the lane
+// profiles the SAME adapter players get. On hybrid-graphics Windows laptops the
+// default is the low-power iGPU — without this the harness silently measured the
+// wrong GPU (Radeon 610M instead of the discrete RTX). Chromium ignores WebGPU
+// powerPreference on Windows (crbug 369219127), so this command-line switch is the
+// reliable lever, and it must be appended before app-ready. (If the OS per-app
+// graphics preference is set to "power saving" it can still override — see the
+// reports/odyssey-perf README.)
+app.commandLine.appendSwitch('force_high_performance_gpu');
+app.commandLine.appendSwitch('enable-webgl');
+if (process.env.SERENITY_ENABLE_GPU_RASTERIZATION === '1') {
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+}
+
 // Stamped ONCE so the filename and every manifest field agree (never call
 // Date.now() twice into naming + manifest).
 const SESSION_DATE = new Date();
@@ -447,6 +461,19 @@ async function collectResult(win, runIndex) {
                         };
                     } catch { return null; }
                 })(),
+                // Definitive physical-adapter name via the WebGL ANGLE renderer string
+                // (WebGPU adapter.info is null on Windows). This is how we CONFIRM
+                // force_high_performance_gpu actually selected the dGPU — the manifest
+                // should read an NVIDIA/RTX string, not "AMD Radeon 610M".
+                webglRenderer: (() => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+                        if (!gl) return null;
+                        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                        return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
+                    } catch { return null; }
+                })(),
                 perf: {
                     metrics: window.perfMonitor?.getMetrics?.() ?? null,
                     rollingPercentiles: window.perfMonitor?.getPercentiles?.() ?? null,
@@ -603,6 +630,7 @@ function buildManifest(runs) {
     const cpus = os.cpus() || [];
     const gpu = runs.map((run) => run?.browser?.gpu).find((info) => info) ?? null;
     const backend = runs.map((run) => run?.browser?.backend).find(Boolean) ?? null;
+    const webglRenderer = runs.map((run) => run?.browser?.webglRenderer).find(Boolean) ?? null;
     return {
         schemaVersion: 2,
         date: SESSION_DATE.toISOString(),
@@ -610,6 +638,7 @@ function buildManifest(runs) {
         script: 'scripts/odyssey-perf-session.mjs',
         argv: process.argv.slice(2),
         backend,
+        webglRenderer,
         machine: {
             platform: os.platform(),
             release: os.release(),
