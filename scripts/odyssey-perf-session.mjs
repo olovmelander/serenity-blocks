@@ -431,6 +431,22 @@ async function collectResult(win, runIndex) {
                         };
                     } catch { return null; }
                 })(),
+                // Which render backend actually served the frames — a null gpu.adapter
+                // alone can't distinguish "WebGPU with no adapter.info" from "WebGL2
+                // fallback", and that changes how the numbers are read. Existence-guarded.
+                backend: (() => {
+                    try {
+                        const b = bc?.renderer?.backend;
+                        if (!b) return null;
+                        const isWebGPU = !!b.isWebGPUBackend;
+                        const isWebGL = !!b.isWebGLBackend;
+                        return {
+                            isWebGPU,
+                            isWebGL,
+                            name: isWebGPU ? 'webgpu' : (isWebGL ? 'webgl2' : 'unknown'),
+                        };
+                    } catch { return null; }
+                })(),
                 perf: {
                     metrics: window.perfMonitor?.getMetrics?.() ?? null,
                     rollingPercentiles: window.perfMonitor?.getPercentiles?.() ?? null,
@@ -586,12 +602,14 @@ function buildAggregate(runs) {
 function buildManifest(runs) {
     const cpus = os.cpus() || [];
     const gpu = runs.map((run) => run?.browser?.gpu).find((info) => info) ?? null;
+    const backend = runs.map((run) => run?.browser?.backend).find(Boolean) ?? null;
     return {
         schemaVersion: 2,
         date: SESSION_DATE.toISOString(),
         commit: getGitCommit(),
         script: 'scripts/odyssey-perf-session.mjs',
         argv: process.argv.slice(2),
+        backend,
         machine: {
             platform: os.platform(),
             release: os.release(),

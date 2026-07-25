@@ -35,17 +35,33 @@ reported `SKIPPED (no baseline)` — never a failure.
 > pass `--committed`.
 
 ```sh
-# starts + stops its own dev server; runs the pinned, --runs 5 cells into THIS dir.
+# starts + stops its own dev server; runs the pinned cells into THIS dir.
 npm run perf:odyssey:baseline -- --committed --tag <machine-tag>
-#   → reports/odyssey-perf/baseline-<tag>-cold-fresh.json   (feeds the budget)
-#   → reports/odyssey-perf/baseline-<tag>-warm-fresh.json
+#   → reports/odyssey-perf/baseline-<tag>-cold-fresh-load.json
+#   → reports/odyssey-perf/baseline-<tag>-warm-fresh-load.json
 #   → reports/odyssey-perf/baseline-<tag>-index.json
 ```
 
 `--tag` is required (e.g. `--tag rtx5080` / `--tag igpu`) so cells are named
-`baseline-<tag>-<cache>-<save>.json`. Preview the exact plan without spawning a
-dev server or Electron with `--dry-run`. Add `--caches cold` to do only the
-budget-feeding cell.
+`baseline-<tag>-<cache>-<save>-<scenario>.json`. Preview the exact plan without
+spawning a dev server or Electron with `--dry-run`. Add `--caches cold` to do
+only one cache.
+
+> **Which scenario feeds the frame budget?** `--scenario idle` (steady-state).
+> The default `load` scenario's `frame.p95` includes board-activation and
+> shader-compile hitches — a useful *startup* diagnostic (see also `boardVisibleMs`
+> / `startup.totalMs`), but far above steady-state, so it must NOT seed
+> `frameP95Ms.perSurface.odyssey`. Capture the budget seed with:
+> `... --committed --tag <tag> --caches cold --scenario idle`.
+>
+> **On finicky GPUs, use `--runs 1`.** Multiple in-process page reloads
+> (`--runs N`) can crash the GPU process on some adapters (`GPU state invalid`
+> → `ERR_FAILED` on the 2nd load). One page-load per process is safe; get
+> multi-sample stability from separate invocations instead.
+>
+> The `manifest.backend` field records whether frames were served by `webgpu` or
+> a `webgl2` fallback — check it, since a null `gpu.adapter` alone can't tell them
+> apart and the two aren't perf-comparable.
 
 **Late-save cells** (`cold-late` / `warm-late`) can't be fully automated — a late
 save only exists after playing to a late chapter once. Prime a dedicated profile
