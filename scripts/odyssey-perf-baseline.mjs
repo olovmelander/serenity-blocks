@@ -27,6 +27,12 @@ const HEIGHT = Number(args.height || process.env.ODYSSEY_PERF_HEIGHT || 720);
 const caches = parseList(args.caches || args.cache || process.env.ODYSSEY_PERF_CACHES || 'cold,warm,degraded');
 const scenarios = parseList(args.scenarios || args.scenario || process.env.ODYSSEY_PERF_SCENARIOS || 'load,idle,scroll,transition');
 const degradedCycles = Number(args.reloadCycles || process.env.ODYSSEY_PERF_RELOAD_CYCLES || 4);
+// OD-01 committed-baseline mode: produce the README's four save-state cells
+// (cold/warm x fresh/late) with --runs 5 into the COMMITTED reports/odyssey-perf/
+// instead of the gitignored exploratory sweep. --dry-run prints the plan without
+// spawning a dev server or Electron (verifiable headlessly, safe owner preview).
+const COMMITTED = !!args.committed;
+const DRY = !!args.dryRun;
 
 let devServer = null;
 
@@ -130,6 +136,7 @@ function sessionArgs({
     reloadCycles = 0,
     resetProfile = false,
     duration = DURATION_MS,
+    runs = 0,
 }) {
     const list = [
         'scripts/run-electron.mjs',
@@ -148,6 +155,7 @@ function sessionArgs({
         '--output', output,
         '--reload-cycles', String(reloadCycles),
     ];
+    if (runs && runs > 1) list.push('--runs', String(runs));
     if (resetProfile) list.push('--reset-profile');
     if (args.hide) list.push('--hide');
     if (args.verbose) list.push('--verbose');
@@ -166,8 +174,15 @@ function sessionArgs({
 }
 
 function spawnSession(options) {
+    const argvList = sessionArgs(options);
+    if (DRY) {
+        const rel = options.output ? path.relative(ROOT, options.output) : '(no output)';
+        console.log(`[dry-run] would capture → ${rel}`);
+        console.log(`          ${process.execPath} ${argvList.join(' ')}`);
+        return Promise.resolve();
+    }
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, sessionArgs(options), {
+        const child = spawn(process.execPath, argvList, {
             cwd: ROOT,
             stdio: 'inherit',
             env: {
@@ -205,6 +220,101 @@ async function runWarmPrime(profileDir) {
     });
 }
 
+function resolveTag() {
+    if (!args.tag || args.tag === true) return null;
+    return String(args.tag).replace(/[^a-zA-Z0-9._-]+/g, '-');
+}
+
+// OD-01 committed baseline: the README's save-state cells (cold/warm x fresh/late),
+// --runs 5, written to the COMMITTED reports/odyssey-perf/ with the documented
+// naming (baseline-<tag>-<cache>-<save>.json) so perf-budgets.json has a real
+// artifact to gate on. The two fresh cells are fully automated; late cells need an
+// owner-primed save profile (--late-profile-dir) because a late save only exists
+// after playing to a late chapter once.
+async function runCommittedBaseline() {
+    const tag = resolveTag();
+    if (!tag) {
+        throw new Error(
+            'committed baseline requires --tag <machine-tag> (e.g. --tag rtx5080 or --tag igpu) '
+            + 'so cells are named baseline-<tag>-<cache>-<save>.json',
+        );
+    }
+    const runs = Math.max(1, Number(args.runs || 5));
+    const scenario = String(args.scenario || 'load');
+    const cachesWanted = parseList(args.caches || args.cache || 'cold,warm');
+    const lateProfileDir = (args.lateProfileDir && args.lateProfileDir !== true)
+        ? path.resolve(String(args.lateProfileDir))
+        : null;
+
+    const reportsDir = path.join(ROOT, 'reports', 'odyssey-perf');
+    await mkdir(reportsDir, { recursive: true });
+
+    const warmProfile = path.join(ROOT, 'artifacts', 'odyssey', 'perf-profiles', 'warm');
+    if (cachesWanted.includes('warm')) {
+        await mkdir(warmProfile, { recursive: true });
+        await runWarmPrime(warmProfile);
+    }
+
+    const cells = [];
+    for (const cache of cachesWanted) {
+        cells.push({ cache, save: 'fresh' });
+        if (lateProfileDir) cells.push({ cache, save: 'late' });
+    }
+
+    const outputs = [];
+    for (const { cache, save } of cells) {
+        const output = path.join(reportsDir, `baseline-${tag}-${cache}-${save}.json`);
+        let profileDir;
+        let resetProfile;
+        if (save === 'late') {
+            profileDir = lateProfileDir; // owner-primed profile that HAS a late save
+            resetProfile = false; // never reset — that would wipe the save
+        } else if (cache === 'warm') {
+            profileDir = warmProfile; // primed above (Dawn cache warm, fresh ch1 save)
+            resetProfile = false;
+        } else {
+            profileDir = path.join(ROOT, 'artifacts', 'odyssey', 'perf-profiles', 'committed-cold-fresh');
+            resetProfile = true; // cold cache + fresh save
+        }
+        console.log(`[odyssey-perf] committed cell ${cache}-${save} → ${path.relative(ROOT, output)} (runs ${runs})`);
+        if (save === 'late' && cache === 'cold') {
+            console.log("[odyssey-perf]   NOTE: a true cold cache for a late save needs the profile's "
+                + 'GPUCache/ subdir deleted (keep Local Storage) before this run — see README.');
+        }
+        await spawnSession({
+            cache, scenario, output, profileDir, resetProfile, runs,
+        });
+        outputs.push({ cache, save, file: path.relative(ROOT, output) });
+    }
+
+    const index = {
+        createdAt: new Date().toISOString(),
+        tag,
+        mode: 'committed',
+        runs,
+        scenario,
+        quality: QUALITY,
+        targetFrameRate: TARGET_FRAME_RATE,
+        caches: cachesWanted,
+        lateProfileDir: lateProfileDir ? path.relative(ROOT, lateProfileDir) : null,
+        cells: outputs,
+    };
+    if (!DRY) {
+        await writeFile(path.join(reportsDir, `baseline-${tag}-index.json`), JSON.stringify(index, null, 2), 'utf8');
+    }
+    const reportsRel = path.relative(ROOT, reportsDir);
+    console.log(`[odyssey-perf] committed baseline ${DRY ? 'PLAN ' : ''}complete → ${reportsRel} (${outputs.length} cell(s))`);
+    if (!lateProfileDir) {
+        console.log('[odyssey-perf] late cells skipped. To include cold-late/warm-late: play once to '
+            + 'chapter 7-8 in a dedicated profile, then re-run with --late-profile-dir <that-profile>.');
+    }
+    if (cachesWanted.includes('cold')) {
+        console.log(`[odyssey-perf] next: copy baseline-${tag}-cold-fresh.json `
+            + "aggregate.metrics['frame.p95'].median into perf-budgets.json "
+            + '→ budgets.frameP95Ms.perSurface.odyssey, then `npm run perf:odyssey:compare -- --fail-on-regression`.');
+    }
+}
+
 async function main() {
     await mkdir(ARTIFACT_ROOT, { recursive: true });
     if (args.clean) {
@@ -212,8 +322,15 @@ async function main() {
         await mkdir(ARTIFACT_ROOT, { recursive: true });
     }
 
-    devServer = startDevServer();
-    await waitForServer(BASE_URL);
+    if (!DRY) {
+        devServer = startDevServer();
+        await waitForServer(BASE_URL);
+    }
+
+    if (COMMITTED) {
+        await runCommittedBaseline();
+        return;
+    }
 
     const outputs = [];
     const warmProfile = path.join(ROOT, 'artifacts', 'odyssey', 'perf-profiles', 'warm');

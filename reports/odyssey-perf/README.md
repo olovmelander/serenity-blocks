@@ -26,7 +26,40 @@ disabled + devicePixelRatio 1 — the script pins both by default since
 fails, exceeding a declared baseline by >10% fails, and null baselines are
 reported `SKIPPED (no baseline)` — never a failure.
 
-## Producing a baseline (two commands)
+## Producing a baseline — one command (committed mode)
+
+> ⚠️ **`npm run perf:odyssey:baseline` on its own is NOT a committed baseline.**
+> Without `--committed` it runs an *exploratory* sweep (cache × scenario, single
+> run) into gitignored `artifacts/` — useful for smoke/exploration, but it leaves
+> this directory empty and the budget SKIPPING. For the OD-01 committed baseline
+> pass `--committed`.
+
+```sh
+# starts + stops its own dev server; runs the pinned, --runs 5 cells into THIS dir.
+npm run perf:odyssey:baseline -- --committed --tag <machine-tag>
+#   → reports/odyssey-perf/baseline-<tag>-cold-fresh.json   (feeds the budget)
+#   → reports/odyssey-perf/baseline-<tag>-warm-fresh.json
+#   → reports/odyssey-perf/baseline-<tag>-index.json
+```
+
+`--tag` is required (e.g. `--tag rtx5080` / `--tag igpu`) so cells are named
+`baseline-<tag>-<cache>-<save>.json`. Preview the exact plan without spawning a
+dev server or Electron with `--dry-run`. Add `--caches cold` to do only the
+budget-feeding cell.
+
+**Late-save cells** (`cold-late` / `warm-late`) can't be fully automated — a late
+save only exists after playing to a late chapter once. Prime a dedicated profile
+by playing to chapter 7–8, then:
+
+```sh
+npm run perf:odyssey:baseline -- --committed --tag <tag> \
+  --late-profile-dir artifacts/odyssey/perf-profiles/late-save
+```
+
+For a *true* cold cache on the late cell, delete that profile's `GPUCache/`
+subdir (keep `Local Storage/`) before the run.
+
+### Or run a single cell by hand
 
 ```sh
 # 1. dev server (leave running)
