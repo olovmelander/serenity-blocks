@@ -22,6 +22,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
+import { disposeComposerPasses } from '../shared/composer-dispose.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { STELLAR_DRIFT_TETROMINOS } from './stellar-drift-tetrominos.js';
@@ -1587,9 +1588,14 @@ export default class StellarDriftTheme extends BaseTheme {
         }
         this.postProcessing = null;
 
-        if (this.composer?.dispose) {
+        if (this.composer) {
             try {
-                this.composer.dispose();
+                // EffectComposer.dispose() (three r181) frees only its two render
+                // targets + copyPass, never the passes we added — dispose those
+                // first or the whole WebGL-lane post stack leaks per activation
+                // (SB-15 WebGL-lane residual).
+                disposeComposerPasses(this.composer);
+                this.composer.dispose?.();
             } catch (error) {
                 console.warn('[StellarDrift] composer dispose failed:', error);
             }
