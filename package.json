@@ -38,6 +38,8 @@
     "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
     "perf:odyssey:baseline": "node scripts/odyssey-perf-baseline.mjs",
     "perf:odyssey:compare": "node scripts/odyssey-perf-compare.mjs",
+    "perf:odyssey:nightly": "node scripts/odyssey-perf-nightly.mjs",
+    "perf:budgets:gate": "node scripts/perf-budgets-gate.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
   },
   "build": {
