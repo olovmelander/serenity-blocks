@@ -971,23 +971,42 @@ export class ThemesTab {
      * @param {string} themeId - Theme ID to apply
      */
     async selectTheme(themeId) {
-        if (themeId === this.currentTheme) return;
+        // Guard against the MANAGER's truth, not this tab's shadow copy: after any
+        // failed/superseded switch the shadow used to claim a theme that never
+        // started, making a re-click of the wanted theme a silent no-op.
+        if (themeId === this.themeManager.activeThemeName
+            && this.themeManager.activeTheme
+            && !this.themeManager.isTransitioning) {
+            this.currentTheme = themeId;
+            return;
+        }
 
         console.log('[ThemesTab] Switching to theme:', themeId);
 
-        // Update theme via theme manager
+        // Update theme via theme manager. Resolves after the switch (and any
+        // coalesced follow-up it was queued behind) settles — possibly on a
+        // DIFFERENT theme than requested (drop, supersede, or forest fallback).
         await this.themeManager.switchTheme(themeId);
 
-        // Update current theme
-        this.currentTheme = themeId;
+        // Commit only what actually happened. Persisting the *requested* id after
+        // a failed switch stored a theme that never started — the hub badge lied
+        // and the broken choice came back on next boot.
+        const appliedTheme = this.themeManager.activeThemeName;
+        this.currentTheme = appliedTheme;
 
-        // Update settings and save to disk
-        this.settingsManager.update({
-            backgroundTheme: themeId,
-            backgroundMode: 'Specific',
-        });
-        this.settingsManager.save();
-        console.log('[ThemesTab] Theme saved to settings:', themeId, 'mode set to Specific');
+        if (appliedTheme) {
+            this.settingsManager.update({
+                backgroundTheme: appliedTheme,
+                backgroundMode: 'Specific',
+            });
+            this.settingsManager.save();
+            console.log('[ThemesTab] Theme saved to settings:', appliedTheme, 'mode set to Specific');
+        }
+        if (appliedTheme !== themeId) {
+            console.warn(
+                `[ThemesTab] Requested "${themeId}" but active theme is "${appliedTheme}" (failed or superseded switch)`,
+            );
+        }
 
         // Update UI
         this.updateThemeSelection();
