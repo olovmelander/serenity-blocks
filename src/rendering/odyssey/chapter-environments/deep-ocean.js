@@ -363,6 +363,12 @@ export function createDeepOceanEnvironment(options = {}) {
         bubbles,
     };
 
+    // OD-11: register the TSL-node-bound particle textures (bubbles/plankton) so chapter
+    // eviction disposes them — bound via texture() nodes, invisible to the material traverse.
+    group.userData.ownedTextures = [bubbles, plankton]
+        .map((mesh) => mesh?.userData?.ownedTexture)
+        .filter((tex) => tex && tex.isTexture);
+
     return group;
 }
 
@@ -727,6 +733,7 @@ function createBubbleParticles(uniforms, count, corridor) {
     // Expose the per-instance base attribute so updateDeepOceanEnvironment can
     // read/write the per-bubble Y (the billboard center) and flag it for re-upload.
     mesh.userData.baseAttribute = baseAttr;
+    mesh.userData.ownedTexture = bubbleTexture; // OD-11: TSL-node-bound, surfaced for eviction disposal
     return mesh;
 }
 
@@ -863,6 +870,7 @@ function createPlanktonParticles(uniforms, count, corridor) {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'plankton';
     mesh.frustumCulled = false;
+    mesh.userData.ownedTexture = planktonTexture; // OD-11: TSL-node-bound, surfaced for eviction disposal
     return mesh;
 }
 
