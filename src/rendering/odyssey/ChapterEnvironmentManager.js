@@ -780,6 +780,15 @@ export class ChapterEnvironmentManager {
                     const val = gud[key];
                     if (val && val.isRenderTarget && typeof val.dispose === 'function') val.dispose();
                 });
+                // OD-11: dispose textures the traverse above CANNOT see — those bound only
+                // inside TSL node graphs (via texture(canvasTex) in a colorNode/etc), never as
+                // material.map or a uniform .value. Chapters register such owned textures here.
+                if (Array.isArray(gud.ownedTextures)) {
+                    gud.ownedTextures.forEach((tex) => {
+                        if (tex && tex.isTexture && typeof tex.dispose === 'function') tex.dispose();
+                    });
+                    gud.ownedTextures.length = 0; // idempotent: a second teardown frees nothing
+                }
             }
             this.environmentGroup.remove(env.group);
         }
