@@ -3253,8 +3253,8 @@ export class OdysseyMode extends BaseGameMode {
      * Smoothly remove the cinematic loading overlay (crossfade to 3D board).
      * @private
      */
-    _dismissCinematicLoadingOverlay() {
-        return dismissCinematicLoadingOverlay(800);
+    _dismissCinematicLoadingOverlay({ minVisibleMs = 800 } = {}) { // OD-07: options form avoids the 2000ms floor
+        return dismissCinematicLoadingOverlay({ fadeOutMs: 800, minVisibleMs });
     }
 
     /**
@@ -3300,7 +3300,7 @@ export class OdysseyMode extends BaseGameMode {
         if (Number.isFinite(focusLevelId)) {
             await this._focusBoardLevelForLaunch(focusLevelId, {
                 updatePreview: true,
-                settle: true,
+                settle: false, // OD-08: reveal now, camera travels visibly after (was awaited under overlay)
             });
         } else if (Number.isFinite(this.selectedLevelId)) {
             this._updateLevelPreview(this.selectedLevelId);
@@ -3330,7 +3330,7 @@ export class OdysseyMode extends BaseGameMode {
             this._perfMeasure('odyssey:mode:overlay-wait', overlayWaitMark);
 
             this._perfMark(overlayDismissMark);
-            await this._dismissCinematicLoadingOverlay();
+            await this._dismissCinematicLoadingOverlay({ minVisibleMs: minOverlayDisplayMs }); // OD-07: mode floor
             this._perfMeasure('odyssey:mode:overlay-dismiss', overlayDismissMark);
             // Startup trace: the user-perceived "board visible" moment (overlay fully gone).
             if (this._overlayShownAt) {
