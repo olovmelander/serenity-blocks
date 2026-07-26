@@ -18,6 +18,26 @@ board visible 7501ms
 **`compiles` (≈2.86 s) is the single dominant bucket.** `warmup` (≈0.45 s) is
 second and is *not* a good cut target (see §1.4).
 
+### 0.1 MEASURED 2026-07-26 — this rewrites the plan
+Per-item compile instrumentation (`b8ab70dd`, `[OdysseyStartup] compile-breakdown`)
+on the RTX 5080 cold-fresh boot:
+
+```
+ch1=4388  ch2=750  corridor=309  breach=303   (ms, push→resolve)
+```
+
+**The FOCUS chapter (ch1 = earth-core) dominates at 4388 ms — 6× everything else.**
+The barrier is `Promise.all` (bounded by the **max**), so ch2/corridor/breach all
+resolve long before earth-core. **⇒ the OD-05 focus-only barrier split (§2 Tier 1)
+is a NO-OP for the cold fresh start** — you cannot defer the focus chapter, and the
+neighbor isn't the long pole. *(It may still help a mid-game boot whose focus chapter
+is cheap and whose neighbors are heavy — re-measure per focus before assuming.)*
+
+**The win is entirely earth-core compile reduction (Tier 2).** earth-core compiles
+via one `_compileGroupThroughPost(group)` (OdysseyBoardController.js:1336) — ~12
+materials through the post pass, dominated by the shared `moltenRockField` graph
+(~40 `mx_noise_float`), serialized in Dawn's pipeline queue (not parallelizable by us).
+
 ## 1. Anatomy (verified in code)
 
 ### 1.1 It's one all-or-nothing barrier
@@ -128,26 +148,36 @@ by OD-11 anyway. **The cut requires the unflagged OD-05 barrier split.**
   focus±1 compiles concurrently; the barrier just waits for the slowest. So the win
   is not "parallelize" (already done) but "stop waiting for the neighbor" (lever 1).
 
-## 4. Recommended sequence
+## 4. Recommended sequence (revised after §0.1)
 
-1. **Instrument first (perf lane, owner GPU):** split `compilePool` into per-chapter
-   tracked promises and time each separately, so the neighbor's true share of the
-   2.86 s is a number, not an estimate. *(Pure instrumentation — safe to land.)*
-2. **Land levers 1 + 2 + 3 together** (focus-only barrier + prewarmed-gate + warm
-   overlap) behind measurement: board-visible before/after + the seam sampler for a
-   first-scroll-into-ch2 regression. Keep `odysseySerialInit` as the revert. This is
-   the single highest-leverage move and closes OD-05.
-3. **Quick unconditional win:** lever 4 (earth-core 4→3 octaves) + lever 5 (tier-gating).
-4. **Protect scroll:** lever 7 (OD-04 bg-warm health gating), gated on the 60 s trace.
-5. **Bigger bet if still short:** lever 6 (earth-core noise-texture bake).
+~~Barrier split first~~ — **killed by the measurement** for the cold fresh start
+(earth-core focus dominates; the neighbor isn't the long pole). The order is now:
+
+1. ✅ **DONE — per-item compile instrumentation** (`b8ab70dd`). It's what produced §0.1.
+2. **Pinpoint the monster inside earth-core (measure-only, safe to land):** extend the
+   instrumentation to time per-material (or per-sub-group) compile inside
+   `_compileGroupThroughPost`, so we know whether the 4388 ms is ONE material
+   (`moltenRockField` → bake it, lever 6) or spread across the 12 (→ octave-cut all,
+   lever 4). Zero visual risk; decides between lever 4 and lever 6.
+3. **earth-core graph reduction** — the actual win. Lever 4 (4→3 octaves on the heavy
+   bodies) first if spread; lever 6 (bake `moltenRockField` to a noise texture) if it's
+   one monster. **Both are visual changes** → require the playground screenshot loop
+   (CLAUDE.md) on the owner machine to verify no look regression, then re-measure the
+   `compile-breakdown` ch1 number to confirm the cut.
+4. **Broaden:** lever 5 (tier-gate octaves) so Low/Med also shrink.
+5. **Protect scroll:** lever 7 (OD-04 bg-warm health gating), gated on the 60 s trace.
+6. **Barrier split — only if re-measured worthwhile for mid-game** focus chapters whose
+   neighbors dominate (levers 1+2+3, with `odysseySerialInit` as revert). Not the
+   cold-fresh win.
 
 **What needs the owner GPU:** all *validation* — per-chapter compile split,
 before/after board-visible, first-scroll regression, the 60 s LoAF trace. The
 **code** for levers 1–5 can be written and unit-tested now; only the numbers need
 the RTX/iGPU machines (the perf lane from Batch 0 is ready for exactly this).
 
-## 5. First concrete step
-A **measure-only** change: tag each `compilePool.push` with its chapterId and emit
-per-chapter compile ms into the `[OdysseyStartup]` trace (extend
-`odyssey-startup-trace.js`). Zero behavior change, and it turns "the neighbor is
-~half" from a hypothesis into the number that justifies (or kills) the barrier split.
+## 5. Status
+- ✅ Per-chapter compile instrumentation landed (`b8ab70dd`) → §0.1 measurement,
+  which **killed the barrier-split hypothesis** and pointed the work at earth-core.
+- **Next:** per-material instrumentation inside `_compileGroupThroughPost` to decide
+  bake (lever 6) vs octave-cut (lever 4), then the earth-core reduction itself
+  (owner playground-verified + re-measured). See §4.
