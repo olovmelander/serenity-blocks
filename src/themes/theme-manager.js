@@ -73,6 +73,11 @@ export class ThemeManager {
         this.themeRegistry = new Map(); // Map theme names to lazy importers
         this.randomThemeInterval = null;
         this.isTransitioning = false;
+        // Coalesced switch queue: a switch requested mid-transition is remembered
+        // (latest request wins) and runs when the in-flight switch settles, instead
+        // of being silently dropped. Waiters are the callers' promises.
+        this.queuedSwitchRequest = null;
+        this.queuedSwitchWaiters = [];
         this.themesSuspended = true;
         this.pendingThemeName = null;
         this.pendingThemeInstance = null;
@@ -301,8 +306,15 @@ export class ThemeManager {
                 console.log(`[ThemeManager] Loading theme "${themeName}" from disk`);
             }
 
-            // Dynamically import the theme module
-            const module = await this.resolveThemeImporter(themeName, importer);
+            // Dynamically import the theme module. The timeout matters: init() and
+            // start() are already timeout-guarded, but a stalled module fetch here
+            // used to hang this await forever with isTransitioning stuck true —
+            // silently killing every future theme switch for the session.
+            const module = await withTimeout(
+                Promise.resolve(this.resolveThemeImporter(themeName, importer)),
+                THEME_LIFECYCLE_TIMEOUT,
+                `Theme "${themeName}" module import`,
+            );
             const ThemeClass = module.default;
 
             // Instantiate the theme
@@ -462,19 +474,28 @@ export class ThemeManager {
         const previousTheme = this.activeThemeName;
 
         if (this.isTransitioning) {
-            console.log('[ThemeManager] Theme transition already in progress');
-            return;
+            // Do NOT drop the request (the old behavior): during a multi-second
+            // heavy-theme switch, a click on another theme card used to vanish —
+            // leaving the hub UI/settings claiming a theme that never started.
+            // Coalesce instead: only the LATEST request is kept; every caller's
+            // promise resolves (with the finally-active theme name) once the
+            // queue drains after the in-flight switch settles.
+            console.log('[ThemeManager] Transition in progress — queueing switch to:', themeName);
+            this.queuedSwitchRequest = { themeName, immediate };
+            return new Promise((resolve) => {
+                this.queuedSwitchWaiters.push(resolve);
+            });
         }
 
         if (this.activeThemeName === themeName && this.activeTheme) {
             console.log('[ThemeManager] Already on theme:', themeName);
-            return; // Already on this theme
+            return this.activeThemeName; // Already on this theme
         }
 
         // Validate theme name
         if (!getThemeMeta(themeName)) {
             console.error('[ThemeManager] Invalid theme name:', themeName);
-            return;
+            return this.activeThemeName;
         }
 
         this.isTransitioning = true;
@@ -540,7 +561,46 @@ export class ThemeManager {
                 durationMs: endedAt - switchStartedAt,
             });
             this.isTransitioning = false;
+            this.drainQueuedThemeSwitch();
         }
+        return this.activeThemeName;
+    }
+
+    /**
+     * Run the coalesced switch request (if any) that arrived while a transition
+     * was in flight, then settle every waiter with the finally-active theme name.
+     * Called from switchTheme's finally AFTER isTransitioning is cleared, so the
+     * queued request takes the normal switch path (no recursion while locked).
+     */
+    drainQueuedThemeSwitch() {
+        const queued = this.queuedSwitchRequest;
+        if (!queued) return;
+        this.queuedSwitchRequest = null;
+        const waiters = this.queuedSwitchWaiters;
+        this.queuedSwitchWaiters = [];
+        const settle = () => {
+            const name = this.activeThemeName;
+            waiters.forEach((resolve) => {
+                try {
+                    resolve(name);
+                } catch (error) {
+                    console.error('[ThemeManager] Queued switch waiter failed:', error);
+                }
+            });
+        };
+
+        // The in-flight switch may have already landed on the queued target
+        // (e.g. the user re-clicked the loading theme). Nothing to do.
+        if (queued.themeName === this.activeThemeName && this.activeTheme) {
+            settle();
+            return;
+        }
+
+        this.switchTheme(queued.themeName, queued.immediate)
+            .catch((error) => {
+                console.error('[ThemeManager] Queued theme switch failed:', error);
+            })
+            .then(settle);
     }
 
     async activateThemeInstance(themeInstance, themeName) {
@@ -721,6 +781,9 @@ export class ThemeManager {
             return false;
         } finally {
             this.isTransitioning = false;
+            // A user switch requested during the prewarm window was queued —
+            // honor it now (same contract as switchTheme's finally).
+            this.drainQueuedThemeSwitch();
         }
     }
 
