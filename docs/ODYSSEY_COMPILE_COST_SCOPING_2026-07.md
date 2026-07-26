@@ -178,6 +178,14 @@ the RTX/iGPU machines (the perf lane from Batch 0 is ready for exactly this).
 ## 5. Status
 - ✅ Per-chapter compile instrumentation landed (`b8ab70dd`) → §0.1 measurement,
   which **killed the barrier-split hypothesis** and pointed the work at earth-core.
-- **Next:** per-material instrumentation inside `_compileGroupThroughPost` to decide
-  bake (lever 6) vs octave-cut (lever 4), then the earth-core reduction itself
-  (owner playground-verified + re-measured). See §4.
+- ✅ **Lever 4 landed (`899b1bb5`): earth-core `moltenRockField` fbm 4→3 octaves →
+  ~1.47 s off cold compile** (rigorous back-to-back A/B, RTX 5080: ch1 4211→2737 ms;
+  ~35% of the startup bottleneck). Visual A/B (screenshot) showed no change.
+- **CAPABILITY NOTE:** these measures + screenshots were run *locally*, not owner-gated.
+  The perf-session load scenario runs on the real RTX in a **visible** window (`--hide`
+  software-renders/throttles — that was the whole "sandbox" red herring); `--screenshot`
+  (`fdaa3a32`) grabs the board. So the compile-cost loop (measure → cut → re-measure →
+  screenshot) is fully self-serve. *(The full chapter-capture harness still hangs headlessly.)*
+- **Next (optional, diminishing returns):** lever 6 (bake `moltenRockField` to a noise
+  texture) for a bigger cut if the remaining ~2.7 s still matters; lever 5 (tier-gate
+  octaves) so Low/Med shrink too. Re-measure `ch1` after each. See §4.
