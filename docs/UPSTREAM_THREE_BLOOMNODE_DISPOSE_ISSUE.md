@@ -95,10 +95,52 @@ export function disposeBloomNodeDeep(bloomNode) {
 With this in place of plain `bloomNode.dispose()`, the shared-quad listener count returns to 0
 after each teardown and heap returns to baseline (validation data available on request).
 
+### Related manifestation — classic `WebGLRenderer` + `EffectComposer` (same root pattern)
+
+The identical "renderer disposal leaves dispose-listeners on a module-level shared geometry"
+pattern also occurs on the **classic `WebGLRenderer` + `three/addons/postprocessing`** path,
+independent of the node system:
+
+- `Pass.js` declares a **module-level shared geometry**:
+  `const _geometry = new FullscreenTriangleGeometry()` (`three/addons/postprocessing/Pass.js`),
+  used by **every** `FullScreenQuad` of **every** pass (`RenderPass`, `UnrealBloomPass`,
+  `ShaderPass`, `EffectComposer`'s internal `copyPass`, …) across **all** renderer instances.
+- When a geometry is first rendered, `WebGLGeometries.get()` does
+  `geometry.addEventListener('dispose', onGeometryDispose)`
+  (`src/renderers/webgl/WebGLGeometries.js`); `onGeometryDispose` removes that listener **only
+  when the geometry itself is disposed**.
+- `WebGLRenderer.dispose()` (`src/renderers/WebGLRenderer.js`) calls `objects.dispose()`,
+  `bindingStates.dispose()`, `programCache.dispose()`, etc., but **nothing removes the
+  `onGeometryDispose` listeners**, and `WebGLGeometries` exposes no dispose that iterates its
+  tracked geometries. So every `WebGLRenderer` that ever rendered a full-screen pass leaves its
+  `onGeometryDispose` closure permanently attached to the shared module `_geometry`.
+
+An app that builds a post pipeline per level/theme on a **fresh `WebGLRenderer` each time**
+therefore accumulates one `onGeometryDispose` listener on `Pass.js`'s `_geometry` per renderer
+teardown; each closure retains that renderer's `attributes` / `bindingStates` / `info` — i.e. a
+slice of the disposed renderer. Measured in our app (`WebGLRenderer` fallback lane, heap-snapshot
+retainer analysis): `_geometry._listeners.dispose[]` grows one entry per theme activation and
+never shrinks (≈ +0.16 MB retained per activation for our scenes).
+
+Suggested fixes (parallel to the WebGPU ones above):
+
+- `WebGLGeometries` should expose a `dispose()` that iterates its tracked `geometries` and calls
+  `geometry.removeEventListener('dispose', onGeometryDispose)`, and `WebGLRenderer.dispose()`
+  should call it — so renderer disposal detaches listeners from shared/module geometries.
+- Or `Pass`/`FullScreenQuad` should not hard-share a single module-level `_geometry` across
+  renderer instances (ref-count it, or make it per-`FullScreenQuad`), so a disposed renderer's
+  listeners are not stranded on a permanent global.
+
+Unlike the BloomNode case there is **no clean app-side workaround**: `_geometry` is private to
+`Pass.js` (not exported), and disposing it is globally side-effecting (it is shared by every live
+pass). We therefore leave this one to upstream rather than patch it app-side.
+
 ### Environment
 
 - three r181 (`0.181.2`), WebGPURenderer — reproduced on the WebGPU backend
   (SwiftShader and native) and observed on the WebGL backend.
+- Related manifestation: three r181 classic `WebGLRenderer` + `three/addons/postprocessing`
+  `EffectComposer`/`Pass` — reproduced on real-hardware WebGL2 (Chrome 141) and SwiftShader.
 - Chromium 141 headless; also applies in Electron 38.
 
 ---

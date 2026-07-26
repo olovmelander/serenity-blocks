@@ -1565,17 +1565,17 @@ export default class StellarDriftTheme extends BaseTheme {
             return;
         }
 
+        // three's WebGPUBackend already wires device.lost.then() -> renderer.onDeviceLost
+        // (three/src/renderers/webgpu/WebGPUBackend.js), and disposeRendererResources()
+        // nulls renderer.onDeviceLost on teardown, so that path releases this theme on
+        // switch-away. Do NOT additionally register our own device.lost.then(...): a .then()
+        // reaction cannot be detached, and device.lost never settles under normal play, so
+        // its closure pinned this entire theme instance (scene included) on the
+        // never-resolving promise for EVERY activation — heap-snapshot-confirmed as the
+        // dominant SB-15 WebGPU-lane leak (~2.9 MB/toggle). Rely on onDeviceLost only.
         this.renderer.onDeviceLost = (info) => {
             this.handleDeviceLoss(info);
         };
-        const deviceLostPromise = this.renderer?.backend?.device?.lost;
-        if (deviceLostPromise && typeof deviceLostPromise.then === 'function') {
-            deviceLostPromise.then((info) => {
-                this.handleDeviceLoss(info);
-            }).catch(() => {
-                // Device-loss promise may reject during teardown; ignore.
-            });
-        }
     }
 
     disposePostProcessingStack() {
