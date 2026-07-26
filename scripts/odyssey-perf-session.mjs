@@ -80,6 +80,12 @@ const OUTPUT_FILE = path.resolve(String(args.output || path.join(
     'odyssey-perf',
     `session-${CACHE_MODE}-${SCENARIO}-${SESSION_DATE.getTime()}.json`,
 )));
+// Optional: grab a PNG of the (visible, real-GPU) board after the scenario — a fast way to
+// eyeball a visual change (e.g. an earth-core octave cut) that the full chapter-capture
+// harness is too slow/hang-prone to produce headlessly.
+const SCREENSHOT_PATH = (args.screenshot && args.screenshot !== true)
+    ? path.resolve(String(args.screenshot))
+    : null;
 
 const consoleLines = [];
 const delay = (ms) => new Promise((resolve) => {
@@ -693,7 +699,14 @@ async function runOnce(runIndex) {
         }
         await bootstrapOdyssey(win, { resetBeforeActivate: true });
         await runScenario(win);
-        return await collectResult(win, runIndex);
+        const result = await collectResult(win, runIndex);
+        if (SCREENSHOT_PATH) {
+            const image = await win.webContents.capturePage();
+            await mkdir(path.dirname(SCREENSHOT_PATH), { recursive: true });
+            await writeFile(SCREENSHOT_PATH, image.toPNG());
+            console.log(`[odyssey-perf] screenshot -> ${path.relative(ROOT, SCREENSHOT_PATH)}`);
+        }
+        return result;
     } finally {
         win.destroy();
     }
