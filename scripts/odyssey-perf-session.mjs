@@ -45,6 +45,13 @@ app.commandLine.appendSwitch('enable-webgl');
 if (process.env.SERENITY_ENABLE_GPU_RASTERIZATION === '1') {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
 }
+// Long captures (scroll/idle/transition) run in a window the launcher can't keep in the
+// foreground; without these, Chromium throttles a backgrounded/occluded window's rAF to
+// ~1Hz (1001ms flat frames = garbage). backgroundThrottling:false in webPreferences alone
+// does NOT cover the occlusion/renderer-backgrounding paths — these three switches do.
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 // Stamped ONCE so the filename and every manifest field agree (never call
 // Date.now() twice into naming + manifest).
