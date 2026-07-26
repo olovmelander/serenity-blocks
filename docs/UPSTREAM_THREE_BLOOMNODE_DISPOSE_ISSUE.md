@@ -5,6 +5,10 @@ Status: **draft, not yet filed**. Prepared 2026-07-17 from the Serenity Blocks p
 https://github.com/mrdoob/three.js — verified on **r181** (`three@0.181.2`), WebGPURenderer
 (both WebGPU and WebGL backends).
 
+> **This file is the detailed internal analysis.** For clean, anonymized, copy-paste-ready GitHub
+> issue bodies (this WebGPU/BloomNode defect **and** the related classic-`WebGLRenderer`/`Pass.js`
+> defect), see [UPSTREAM_THREE_ISSUES_READY_TO_FILE.md](UPSTREAM_THREE_ISSUES_READY_TO_FILE.md).
+
 ---
 
 ## Title
