@@ -170,6 +170,7 @@ function sessionArgs({
     if (args.gpuSync) list.push('--gpu-sync');
     if (args.pixelRatio) list.push('--pixel-ratio', String(args.pixelRatio));
     if (args.warpPreinit) list.push('--warp-preinit', String(args.warpPreinit));
+    if (args.screenshot) list.push('--screenshot', String(args.screenshot));
     return list;
 }
 
