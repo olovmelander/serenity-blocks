@@ -39,6 +39,8 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+# Throwaway Electron profile dirs from run-electron / capture / perf tooling
+.tmp-electron*/
 
 Andromeda/
 three_js_example_repo/
