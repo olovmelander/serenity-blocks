@@ -54,6 +54,13 @@ jobs:
       # known-violations baseline in .dependency-cruiser.cjs.
       - run: npm run check:boundaries
       - run: npm test
+      # Perf-budget falsifiability (audit SB-09): no measurement on hosted
+      # runners (they can't render meaningfully — see gpu-validation.yml).
+      # Instead: compare-tool self-test, perf-budgets.json structural lint,
+      # and committed steady-state baselines re-checked against the declared
+      # budgets — catching budget/baseline drift at PR time. Fresh-capture
+      # gating stays on real hardware via `npm run perf:odyssey:nightly`.
+      - run: npm run perf:budgets:gate
       # Release-gate scaffolding (Phase 0.4): dev mode — asserts the observability
       # scaffolding exists and warns (not fails) on the placeholder Steam AppID.
       # SERENITY_RELEASE=1 (packaging path only) turns the AppID check hard.

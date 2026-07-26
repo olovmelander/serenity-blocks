@@ -131,3 +131,29 @@ node scripts/odyssey-perf-compare.mjs --self-test   # proves both exit behaviors
 Once a real baseline lands here, copy its aggregate `frame.p95` median into
 `perf-budgets.json` → `budgets.frameP95Ms.perSurface.odyssey` so the budget
 check stops SKIPPING and starts gating.
+
+## The two standing lanes (audit SB-09)
+
+**Per-PR (hosted CI, no measurement)** — `npm run perf:budgets:gate`
+(`scripts/perf-budgets-gate.mjs`, wired into `pages.yml`): compare-tool
+self-test + `perf-budgets.json` structural lint + every committed
+`baseline-*-idle.json` re-checked against the declared budgets. Catches
+budget/baseline drift (tightening a budget below committed evidence, or
+committing a regressed baseline) without pretending hosted runners can render.
+
+**Nightly (real hardware)** — `npm run perf:odyssey:nightly`
+(`scripts/odyssey-perf-nightly.mjs`): captures a fresh pinned cold/idle cell
+into `artifacts/odyssey/perf-nightly/<stamp>/` (own dev server, single run —
+see the `--runs 1` GPU note above), then runs
+`odyssey-perf-compare --fail-on-regression` against the newest committed idle
+baseline (override with `--baseline <file>`). Exit code is the verdict.
+Schedule on the capture machine (adjust path/time):
+
+```bat
+schtasks /Create /TN "SerenityBlocksPerfNightly" /SC DAILY /ST 03:30 ^
+  /TR "cmd /c cd /d C:\Users\olovm\serenity-blocks && npm run perf:odyssey:nightly >> artifacts\odyssey\perf-nightly\nightly.log 2>&1"
+```
+
+Do **not** run it `--hide` (hidden windows throttle to 1 fps) and confirm
+`manifest.webglRenderer` names the intended GPU (per-app graphics preference
+gotcha above).
