@@ -702,6 +702,7 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     deck.name = 'magma-cloud-deck';
     deck.frustumCulled = false;
     deck.renderOrder = -88;
+    deck.userData.ownedTexture = cloudMap; // OD-11: TSL-node-bound, surfaced for eviction disposal
     return deck;
 }
 
@@ -745,6 +746,13 @@ export function createEarthCoreEnvironment(options = {}) {
     };
     group.userData.uniforms = uniforms;
 
+    // OD-11: TSL-node-bound textures (bound only via texture() nodes, never as material
+    // .map / uniform .value) are invisible to the traverse in _freeEnvironmentResources,
+    // so they leak on chapter eviction. Sub-factories surface each on their carrier's
+    // userData.ownedTexture; a sweep near the end of the builder collects them (deduped)
+    // into this array, which eviction disposes. clusterGlowTexture is pushed directly.
+    group.userData.ownedTextures = [];
+
     // Storage for elements
     const elements = {
         rockClusters: [],
@@ -781,6 +789,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // material is never mutated per sprite (update() only sets sprite.scale, a transform),
     // so sharing it across all clusters is pixel-identical.
     const clusterGlowTexture = createGlowTexture();
+    group.userData.ownedTextures.push(clusterGlowTexture); // OD-11: TSL-node-bound, register for eviction disposal
     const sharedClusterGlowMaterial = makeGlowSpriteMaterial(clusterGlowTexture, 0xff5a14, 0.055, uniforms.uOpacity);
 
     // The chapter group is anchored at the path centre; derive the corridor's
@@ -1157,6 +1166,18 @@ export function createEarthCoreEnvironment(options = {}) {
         group.position.y = chapterAnchorY;
     }
 
+    // OD-11: sweep the graph and collect every sub-factory's surfaced userData.ownedTexture
+    // (deduped) into the chapter root's ownedTextures. These are TSL-node-bound canvas
+    // textures the material/uniform traverse in _freeEnvironmentResources cannot see, so
+    // eviction only frees them if they are registered here. (clusterGlowTexture was pushed
+    // directly at its creation site; the shared lava-glow texture is added once.)
+    group.traverse((o) => {
+        const tex = o.userData?.ownedTexture;
+        if (tex && tex.isTexture && !group.userData.ownedTextures.includes(tex)) {
+            group.userData.ownedTextures.push(tex);
+        }
+    });
+
     return group;
 }
 
@@ -1220,6 +1241,9 @@ function createLavaFloor(uniforms, basins = []) {
 
     group.userData.glows = glows;
     group.userData.surface = lavaSurface;
+    // OD-11: ONE lava-glow texture is shared by every glow sprite here (all bound via
+    // texture() nodes in makeGlowSpriteMaterial), so surface it once for eviction disposal.
+    group.userData.ownedTexture = glowTexture;
 
     return group;
 }
@@ -1336,6 +1360,7 @@ function createParticleCraterRim(uniforms) {
     particles.frustumCulled = false;
     group.add(particles);
 
+    group.userData.ownedTexture = cloudMap; // OD-11: TSL-node-bound, surfaced for eviction disposal
     return group;
 }
 
@@ -1586,11 +1611,13 @@ function createSeleniteChamber(group, uniforms, staging) {
     chamber.add(shell);
 
     // One warm corona so the chapel reads from across the cavern.
+    const chapelCoronaTexture = createGlowTexture();
     const glow = new THREE.Sprite(
-        makeGlowSpriteMaterial(createGlowTexture(), 0xff8a3a, 0.28, uniforms.uOpacity),
+        makeGlowSpriteMaterial(chapelCoronaTexture, 0xff8a3a, 0.28, uniforms.uOpacity),
     );
     glow.scale.set(38, 38, 1);
     glow.position.set(0, 4, 0);
+    glow.userData.ownedTexture = chapelCoronaTexture; // OD-11: TSL-node-bound, surfaced for eviction disposal
     chamber.add(glow);
 
     chamber.position.copy(chapelPosition);
