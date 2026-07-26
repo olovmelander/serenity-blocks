@@ -557,6 +557,7 @@ export class OdysseyBoardController {
         });
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
+        this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
         trace.begin('creates');
         this.environmentManager.qualitySettings = {
             ...this.environmentManager.qualitySettings,
@@ -621,7 +622,7 @@ export class OdysseyBoardController {
                 if (serialInit) {
                     await this._prewarmChapterEnvironment(ch);
                 } else {
-                    compilePool.push(this._prewarmChapterEnvironment(ch));
+                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
                 }
             }
             await this._yieldToMain();
@@ -634,7 +635,7 @@ export class OdysseyBoardController {
                 if (serialInit) {
                     await this._prewarmChapterEnvironment(ch);
                 } else {
-                    compilePool.push(this._prewarmChapterEnvironment(ch));
+                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
                 }
                 await this._yieldToMain();
             }
@@ -760,6 +761,14 @@ export class OdysseyBoardController {
         await Promise.all(compilePool);
         this._compilePool = null;
         trace.end('compiles');
+        // OD-05 scoping: emit the per-item compile breakdown. The barrier duration is the MAX
+        // label; deferring the long-pole neighbor (vs the focus chapter) is the OD-05 win, so
+        // this number is what justifies (or kills) the focus-only barrier split.
+        const compileBreakdown = Object.entries(this._compileTimings)
+            .sort((a, b) => b[1] - a[1])
+            .map(([label, ms]) => `${label}=${ms}`)
+            .join(' ');
+        if (compileBreakdown) trace.event(`compile-breakdown ${compileBreakdown}`);
 
         // Replay the journey once (behind the loader) so first-visit per-chapter costs
         // (compile-through-post, GPU upload, first update(), the breach) are paid now, not on
@@ -1286,6 +1295,20 @@ export class OdysseyBoardController {
         return compileGroupThroughPost(this.renderer, this.postProcessingStack, this.scene, this.camera, group);
     }
 
+    /**
+     * OD-05 scoping instrumentation: wrap a compile-pool promise so its wall time
+     * (push → resolve) is recorded per label in this._compileTimings. Behavior-neutral —
+     * resolves exactly as the wrapped promise. The barrier is bounded by the MAX label; the
+     * breakdown reveals the neighbor chapter's true share before an OD-05 focus-only split.
+     */
+    _timedCompile(label, promise) {
+        const start = performance.now();
+        return Promise.resolve(promise).then((value) => {
+            this._compileTimings[label] = Math.round(performance.now() - start);
+            return value;
+        });
+    }
+
     async _prewarmChapterEnvironment(chapterId) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
@@ -1565,7 +1588,10 @@ export class OdysseyBoardController {
                 const corridorWarm = this._prewarmGroup(this.corridorField?.group, 'corridor field');
                 const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
                 if (this._compilePool) {
-                    this._compilePool.push(corridorWarm, breachWarm);
+                    this._compilePool.push(
+                        this._timedCompile('corridor', corridorWarm),
+                        this._timedCompile('breach', breachWarm),
+                    );
                 } else {
                     await corridorWarm;
                     await breachWarm;
