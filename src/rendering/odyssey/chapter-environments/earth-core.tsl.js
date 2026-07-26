@@ -86,9 +86,10 @@ function viewFresnel(k = 3.0, nView = normalView) {
  * p*=2.03; f += 0.0625*snoise(p).
  */
 function fbm(pInput, octaves = 4) {
-    // octaves is a JS build-time count (default 4 = unchanged for the rock/column materials).
-    // The lava lake + magma canopy pass 3: their 4th octave (amp 0.0625) is sub-pixel detail
-    // eaten by haze/ACES (lake, seen at grazing distance) or the density smoothstep (canopy).
+    // octaves is a JS build-time count. The lake, canopy, clouds AND the shared moltenRockField
+    // bodies pass 3: the 4th octave (amp 0.0625, ~8x freq) is sub-pixel detail eaten by haze/ACES
+    // or the density smoothstep. Cutting it off the rock saved ~1.47s of earth-core's cold compile
+    // (4211->2737ms, RTX 5080) with no visible change (screenshot A/B) — see compile-cost scoping.
     const p0 = vec3(pInput);
     const p1 = p0.mul(2.01);
     const p2 = p1.mul(2.02);
@@ -130,15 +131,15 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
     // 1. Domain warp: offset the river lookup by a slow low-freq fbm so the molten
     //    flows in meandering channels (no axis-aligned tiling).
     const warp = vec3(
-        fbm(pos.mul(0.5).add(vec3(ftime, 0.0, 0.0))),
-        fbm(pos.mul(0.5).add(vec3(0.0, ftime.mul(0.7), 5.0))),
-        fbm(pos.mul(0.5).add(vec3(7.0, 0.0, ftime.mul(0.5)))),
+        fbm(pos.mul(0.5).add(vec3(ftime, 0.0, 0.0)), 3),
+        fbm(pos.mul(0.5).add(vec3(0.0, ftime.mul(0.7), 5.0)), 3),
+        fbm(pos.mul(0.5).add(vec3(7.0, 0.0, ftime.mul(0.5))), 3),
     ).mul(0.9);
     const warped = pos.add(warp);
 
     // River field: two octaves flowing at different rates → living molten rivers.
-    const river1 = fbm(warped.mul(0.7).add(vec3(0.0, ftime.mul(1.3), 0.0)));
-    const river2 = fbm(warped.mul(1.4).add(vec3(ftime.mul(-0.6), 0.0, ftime.mul(0.4))));
+    const river1 = fbm(warped.mul(0.7).add(vec3(0.0, ftime.mul(1.3), 0.0)), 3);
+    const river2 = fbm(warped.mul(1.4).add(vec3(ftime.mul(-0.6), 0.0, ftime.mul(0.4))), 3);
     const riverField = river1.mul(0.6).add(river2.mul(0.4)).add(0.5);
 
     // Pool the molten into recesses / down-facing crevices + the chosen heat bias.
@@ -150,7 +151,7 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 
     // 2. Crust chunks: high-freq map that drops dark CHARRED islands into the stream
     //    (this is the variation that defeats the repetitive decal look).
-    const crustMap = fbm(warped.mul(2.6).add(vec3(ftime.mul(0.4), 0.0, 0.0))).add(0.5);
+    const crustMap = fbm(warped.mul(2.6).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3).add(0.5);
     const crustFactor = smoothstep(0.34, 0.78, crustMap);
 
     // 3. Base gradient (river core is hotter), then float crust chunks over it.
@@ -163,7 +164,7 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
     color = mix(uCrust, color, riverIntensity.mul(0.7).add(0.3));
 
     // 4. Thin bright veins (ridged crack threads) of hot molten over everything.
-    const veinRidge = oneMinus(abs(fbm(warped.mul(3.2).add(vec3(0.0, ftime.mul(0.8), 0.0)))));
+    const veinRidge = oneMinus(abs(fbm(warped.mul(3.2).add(vec3(0.0, ftime.mul(0.8), 0.0)), 3)));
     const veins = smoothstep(0.72, 0.93, veinRidge);
     const crackHeat = clamp(veins.add(riverIntensity.mul(0.5)), 0.0, 1.0);
     color = color.add(uVein.mul(veins).mul(0.46));
