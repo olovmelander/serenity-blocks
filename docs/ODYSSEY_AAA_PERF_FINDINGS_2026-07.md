@@ -173,3 +173,37 @@ moltenRockField's ~21 snoise3 with 1–2 texture() samples — big win, high vis
 **menu-idle pre-warm**. NB: cold ch1 compile is very noisy run-to-run (measured 3123 / 4053 /
 5028 ms across three runs; the 5028 run had koi-pond WebGPU contention) — any compile A/B must
 be back-to-back, and sub-0.5 s deltas are unmeasurable.
+
+## 6b. The bake (moltenRockField noise → texture) — playground exploration, NOT shipped (2026-07-27)
+
+Explored the Lever-1 bake in the playground (`src/playground/effects/earth-core-lava-bake.effect.js`
+— a reusable A/B harness: two lit boulders, procedural `mx_noise_float` vs a baked tileable
+3D-Perlin-noise `texture3D` lookup; `?variant=proc|baked|split`). Six screenshot-verified
+iterations (RTX 5080, WebGPU): frequency-match (decouple period from grid → ~2 features/unit),
+Float32 texture (kill Uint8 contour banding), Perlin's classic 12 isotropic gradients, then a
+**hybrid** (bake only the forgiving low-freq layers, keep the sharp high-freq analytic).
+
+**Finding — the bake works mechanically but is not a free lunch:**
+- A tileable finite noise texture **cannot cheaply reproduce `mx_noise_float`'s statistics**
+  (value distribution + spatial character). Every baked layer shifts the look:
+  - the **vein** (`1-abs(fbm)` @×3.2) is the most sensitive — trilinear texture creasing (C0)
+    becomes extra filaments the ridge amplifies; must stay analytic.
+  - the **crust** (@×2.6) reads as a marbled/swirly character vs the procedural's finer speckle.
+  - the **warp** (@×0.5) displaces the coordinate for *everything* downstream, so baking it
+    changes the whole molten meander; the **rivers** shift molten coverage.
+- Result at every stage: "molten rock, but a **distinguishably different** molten rock" in the
+  bright isolated A/B (a torture test). In-scene the rocks are distant, ~70% near-black, dimly
+  lit background framing, so the difference is *likely* imperceptible — but that is UNVERIFIED.
+
+**Why it's not shipped:** shipping a distinguishable change to the signature earth-core lava on
+an isolated-test basis is too risky. Two open costs also make the ROI unclear: (1) generating
+the noise texture at load is ~0.5–1 s CPU (96³ Float32) which **offsets** the compile saving
+unless baked offline to a KTX2 asset or generated on GPU; (2) moltenRockField is only 2 of ~15
+ch1 pipelines, so a faithful bake of just it cuts only *part* of ch1 — a meaningful global cut
+needs per-material bakes (lava-floor 18 noise, canopy 12, …).
+
+**Definitive next step (focused session):** port the hybrid bake behind a DEFAULT-OFF flag
+(`?earthCoreBakeNoise=1`, zero shipped risk), A/B the real earth-core scene in-browser, and
+measure the compile delta back-to-back. Ship only if in-scene is imperceptible AND the net
+(compile saving − texture-gen cost) is clearly positive. The playground harness is committed to
+resume from.
