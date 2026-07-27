@@ -408,8 +408,11 @@ export function createLavaFallTSL(uTime, uPulseIntensity = uniform(0), uDescent 
     // Downward-scrolling FBM streak: the molten falls, so the noise field scrolls UP
     // in uv (the surface appears to move down). Vertical stretch for streaky flow.
     const streakP = vec3(xs.mul(5.0), y.mul(2.2).add(uTime.mul(0.5)), uTime.mul(0.1));
-    const streak = fbm(streakP).mul(0.5).add(0.5);
-    const streak2 = fbm(streakP.mul(2.0).add(vec3(0.0, uTime.mul(0.8), 0.0))).mul(0.5).add(0.5);
+    // 3 octaves (was default 4): the lava-fall is a distant, additive, edge-feathered
+    // plane; the 4th octave (amp 0.0625, ~8x/~16x freq) is sub-pixel here — same
+    // proven-safe class as the 4->3 rock-field cut. Trims 2 snoise3 off ch1's cold compile.
+    const streak = fbm(streakP, 3).mul(0.5).add(0.5);
+    const streak2 = fbm(streakP.mul(2.0).add(vec3(0.0, uTime.mul(0.8), 0.0)), 3).mul(0.5).add(0.5);
     const flowField = streak.mul(0.65).add(streak2.mul(0.35));
 
     // The falling column is a vertical band centred horizontally; columns of molten.
