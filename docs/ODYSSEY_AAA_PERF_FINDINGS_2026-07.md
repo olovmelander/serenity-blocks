@@ -56,7 +56,26 @@ create/node/post work, and the `compiles` bucket (1946 ms) is the **un-overlappe
 | **4** | **Prioritize next-chapter breach/warm** so the first seam doesn't compile on-screen (the 205 ms transition spike is a first-transition compile) | transition hitch | removes the 205 ms seam spike | med | yes — transition scenario |
 | **5** | **Tier-gate octave counts by quality** (earth-core + shared noise) | compiles (Low/Med only) | broadens the win to weaker GPUs; no Extreme change | low | yes |
 
-## 4a. The seam-hitch ROOT CAUSE (found 2026-07-27, `--diag`)
+## 4a. The seam hitch — ROOT CAUSE + FIX (landed & verified 2026-07-27)
+
+**FIXED.** The background render-warm fails for ch3/5/8 (`setPipeline(undefined)`) — an
+intermittent WebGPU compile-vs-warm **race** (the group `compileAsync` resolves but a
+pipeline variant isn't ready when the warm renders). The old code caught the throw and
+marked the chapter `_renderWarmed=true` **anyway**, so it compiled on-screen on first
+visit = the spike. Fix (`_renderWarmChapterOffscreen` now returns success; the sweep
+**re-queues** a failed warm up to 5× instead of falsely flagging it done). **Verified,
+back-to-back committed captures:** the race reproduces (`render-warm failed for chapter 3`)
+**and the retry completes it**, giving transition **max 20–29 ms, 0 spikes** — vs
+**205 ms + 2 spikes** before. Load is unaffected (the warm is post-reveal).
+
+Residual (separate, cosmetic): ch3 (surface-world) + ch8 (urban-dreams) still log
+`THREE.TSL: normal not found` — a `normalView` material on a normal-less geometry (three
+falls back). Not the smoothness bug (ch5 races without it); worth a cleanup pass
+(`computeVertexNormals` on the culprit geometry, per the precedent at
+surface-world.tsl.js:1365). The `--diag` / `?odysseyWarmProbe=1` flag un-gates the
+`_probeWarmFailure` culprit-namer for that.
+
+### Original diagnosis (retained)
 
 The 205 ms transition spike is **not** un-warmed streaming — it's a **bug**: the
 background render-warm **fails** for chapters **3, 5, 8**:

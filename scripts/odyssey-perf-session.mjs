@@ -188,7 +188,11 @@ function makeUrl() {
     // --diag: enable the ?odysseyAAA=1 debug overlay so the render-warm failure probe
     // (_probeWarmFailure) runs and NAMES the culprit mesh/material for a chapter whose
     // background warm throws setPipeline(undefined). Diagnostic only — do not use for perf numbers.
-    if (args.diag) params.set('odysseyAAA', '1');
+    // Un-gate ONLY the warm-failure culprit probe (odysseyWarmProbe) — NOT the debug HUD.
+    // Enabling the HUD (odysseyOverlay=1) is a Heisenbug: it makes the render-warm SUCCEED, so
+    // the setPipeline failure vanishes. odysseyWarmProbe fires _probeWarmFailure while keeping
+    // odysseyOverlay=0, so the bug still reproduces and the culprit is named.
+    if (args.diag) params.set('odysseyWarmProbe', '1');
     return `${BASE_URL}/?${params.toString()}`;
 }
 
