@@ -1004,12 +1004,25 @@ export class OdysseyBoardController {
             return;
         }
 
-        const chapterId = this.prewarmQueue.shift();
-        this.queuedPrewarmChapters.delete(chapterId);
+        // AAA warm pipeline (Stage 3): compile the queued chapters CONCURRENTLY instead of
+        // one-at-a-time. compileAsync is a background-thread GPU op that pipelines, so the old
+        // serial drain let ONE slow chapter (surface-world's ~15-material compile) block every
+        // later chapter's compile for many seconds — the player then scrolls into ch4-8 before
+        // they are prewarmed = the first-visit hitch. Firing the whole pending set at once during
+        // idle (this path only runs when idle + camera-settled + frame-healthy, so the concurrent
+        // GPU burst does not contend with an active scroll) gets them all ready in ~max(compile)
+        // instead of sum(compile). Nearest-to-player first so the closest chapters resolve soonest.
+        const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
+        this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
+        // Bounded concurrency: compile up to N nearest chapters at once so a slow chapter
+        // (surface-world's ~15-material compile) never serially blocks the rest, WITHOUT an
+        // unbounded GPU burst that would starve the create loop / stutter the orient-pause.
+        const batch = this.prewarmQueue.splice(0, 3);
+        batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
         try {
-            await this._prewarmChapterEnvironment(chapterId);
+            await Promise.all(batch.map((ch) => this._prewarmChapterEnvironment(ch)));
         } finally {
             this.isPrewarming = false;
         }
@@ -1170,7 +1183,7 @@ export class OdysseyBoardController {
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
             setTimeout(step, 120);
         };
-        setTimeout(step, 900); // let the reveal settle before stealing GPU time
+        setTimeout(step, 450); // let the reveal settle briefly, then warm ahead during the orient-pause
     }
 
     /**
