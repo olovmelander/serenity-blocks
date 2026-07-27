@@ -171,6 +171,7 @@ function sessionArgs({
     if (args.pixelRatio) list.push('--pixel-ratio', String(args.pixelRatio));
     if (args.warpPreinit) list.push('--warp-preinit', String(args.warpPreinit));
     if (args.screenshot) list.push('--screenshot', String(args.screenshot));
+    if (args.diag) list.push('--diag');
     return list;
 }
 
