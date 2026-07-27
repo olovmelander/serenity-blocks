@@ -157,7 +157,7 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     const t = clamp(vRadius.sub(uInner).div(uOuter.sub(uInner)), 0.0, 1.0);
     const swirl = vAngle.add(uTime.mul(oneMinus(t).mul(2.0).add(0.7)));
     const sp = vec3(cos(swirl), sin(swirl), 0.0).mul(t.mul(3.4).add(0.7));
-    const turb = fbm3(sp.mul(1.8).add(vec3(0.0, 0.0, uTime.mul(0.16))));
+    const turb = fbm3(sp.mul(1.8).add(vec3(0.0, 0.0, uTime.mul(0.16))), 4);
     const streaks = sin(swirl.mul(4.0).add(t.mul(18.0)).sub(uTime.mul(1.4))).mul(0.5).add(0.5);
     const plasma = mix(turb, streaks, 0.45);
 

@@ -182,7 +182,7 @@ export function createAccretionDiskTSL(uTime, uEnergy) {
     // Differential rotation: inner orbits faster than outer (Keplerian feel).
     const swirl = vAngle.add(time.mul(oneMinus(t).mul(1.6).add(0.55)));
     const sp = vec3(cos(swirl), sin(swirl), 0.0).mul(t.mul(3.0).add(0.6));
-    const turb = fbm3(sp.mul(1.6).add(vec3(0.0, 0.0, time.mul(0.12))));
+    const turb = fbm3(sp.mul(1.6).add(vec3(0.0, 0.0, time.mul(0.12))), 4);
     const streaks = sin(swirl.mul(3.0).add(t.mul(16.0)).sub(time.mul(1.1))).mul(0.5).add(0.5);
     const plasma = mix(turb, streaks, 0.4);
 
@@ -371,7 +371,7 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     const bandT = clamp(pow(bands.mul(0.5).add(0.5), float(0.7)), 0.0, 1.0);
 
     // Fine swirling cloud turbulence layered on top of the belts.
-    const swirl = fbm3(n.mul(5.5).add(vec3(time.mul(0.06), time.mul(0.02), 0.0)));
+    const swirl = fbm3(n.mul(5.5).add(vec3(time.mul(0.06), time.mul(0.02), 0.0)), 4);
     const detail = clamp(bandT.add(swirl.sub(0.5).mul(0.5)), 0.0, 1.0);
 
     // Crest ↔ trough, then drop the darkest belts toward shadow for depth.

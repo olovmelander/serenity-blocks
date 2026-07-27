@@ -397,7 +397,7 @@ export function createSeabedTSL(uTime, options = {}) {
     // pockets onto the dune CRESTS (where crest>threshold), pulsing cyan<->magenta. The
     // dive-out hero beat at the bottom of the frame. Kept additive-soft (capped) so the
     // pockets glow as light sources, never clip.
-    const reefMask = fbm3(vec3(vWorld.x.mul(0.018), vWorld.z.mul(0.018), 0.0))
+    const reefMask = fbm3(vec3(vWorld.x.mul(0.018), vWorld.z.mul(0.018), 0.0), 4)
         .mul(0.5).add(0.5);
     const reefPocket = smoothstep(0.55, 0.78, reefMask).mul(smoothstep(6.0, 13.0, vRise));
     const reefPulse = sin(time.mul(1.1).add(vWorld.x.mul(0.05))).mul(0.5).add(0.5);
