@@ -207,3 +207,32 @@ needs per-material bakes (lava-floor 18 noise, canopy 12, …).
 measure the compile delta back-to-back. Ship only if in-scene is imperceptible AND the net
 (compile saving − texture-gen cost) is clearly positive. The playground harness is committed to
 resume from.
+
+## 6c. The bake — LANDED behind a DEFAULT-OFF flag + MEASURED shippable (2026-07-27)
+
+Did exactly the §6b next step. `src/rendering/odyssey/chapter-environments/shared/odyssey-baked-noise.js`
+(`buildTileableNoise3D`, ported from the playground harness) + earth-core's `moltenRockField`
+now routes its **bulk** (warp/rivers/crust, ~18 of 21 snoise3) through the baked 3D-noise
+texture under `?earthCoreBakeNoise=1`; the sharp **vein** stays analytic. Flag OFF = byte-identical
+to today (`snBulk = snoise3`) → **zero shipped risk**.
+
+**Measured (RTX 5080 WebGPU, back-to-back COLD runs, Dawn pipeline cache cleared each run):**
+
+| bucket | procedural cold | baked cold | Δ |
+|---|---|---|---|
+| **compiles** (un-overlapped tail) | **2114 ms** | **1192 ms** | **−922 ms (−44%)** |
+| board-init | 4941 ms | 3831 ms | −1110 ms |
+| creates | 937 ms | 1158 ms | +221 ms (inline noise-texture gen) |
+
+**Both §6b ship criteria met:** (1) **in-scene imperceptible** — procedural vs baked earth-core
+A/B'd in-browser (reveal + rock-wall framings): the noise-pattern difference that was obvious on
+the bright isolated boulder is **not** perceptible on the dark, distant, ~70%-near-black
+background rock. (2) **net positive** — −922 ms compile, net −1.1 s board-init even paying the
++221 ms inline gen. NB: the saving is a COLD-cache phenomenon (warm Dawn-cache repeat launches
+compile fast regardless) — so this improves the FIRST-launch earth-core freeze specifically.
+
+**Status: DEFAULT-OFF, proven.** To fully ship (flip default-on): (a) verify a couple more
+earth-core camera angles + the molten-pocket/obsidian-column material up close (the other
+`moltenRockField` consumer, seen at level entry); (b) OPTIONAL but cleaner — bake the noise to a
+KTX2 asset shipped in the repo (removes the +221 ms inline CPU gen → the full −922 ms is net),
+loaded async. Then flip `EARTH_CORE_BAKE_NOISE` default to on.

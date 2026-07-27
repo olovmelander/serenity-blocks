@@ -49,6 +49,8 @@ import {
     sin,
     smoothstep,
     step,
+    fract,
+    texture3D,
     transformNormalToView,
     uniform,
     uv,
@@ -59,6 +61,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm3, ridged3, snoise3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
+import { buildTileableNoise3D } from './shared/odyssey-baked-noise.js';
 
 // Lake surface Y (mirrors LAVA_LAKE_Y in earth-core.js). Used for the emissive
 // BLEED on prop bases near the lake line and the lake-distance grounding gradient.
@@ -85,22 +88,41 @@ function viewFresnel(k = 3.0, nView = normalView) {
  * f += 0.5*snoise(p); p*=2.01; f += 0.25*snoise(p); p*=2.02; f += 0.125*snoise(p);
  * p*=2.03; f += 0.0625*snoise(p).
  */
-function fbm(pInput, octaves = 4) {
+function fbm(pInput, octaves = 4, sn = snoise3) {
     // octaves is a JS build-time count. The lake, canopy, clouds AND the shared moltenRockField
     // bodies pass 3: the 4th octave (amp 0.0625, ~8x freq) is sub-pixel detail eaten by haze/ACES
     // or the density smoothstep. Cutting it off the rock saved ~1.47s of earth-core's cold compile
     // (4211->2737ms, RTX 5080) with no visible change (screenshot A/B) — see compile-cost scoping.
+    // `sn` selects the noise source: analytic snoise3 by default; the baked 3D-noise texture for
+    // the forgiving low/mid-freq bulk under the ?earthCoreBakeNoise flag (see moltenRockField).
     const p0 = vec3(pInput);
     const p1 = p0.mul(2.01);
     const p2 = p1.mul(2.02);
-    let f = snoise3(p0).mul(0.5)
-        .add(snoise3(p1).mul(0.25))
-        .add(snoise3(p2).mul(0.125));
+    let f = sn(p0).mul(0.5)
+        .add(sn(p1).mul(0.25))
+        .add(sn(p2).mul(0.125));
     if (octaves >= 4) {
         const p3 = p2.mul(2.03);
-        f = f.add(snoise3(p3).mul(0.0625));
+        f = f.add(sn(p3).mul(0.0625));
     }
     return f;
+}
+
+// ── Bake lever (DEFAULT-OFF, experimental) ───────────────────────────────────────
+// ?earthCoreBakeNoise=1 swaps the LOW/MID-freq bulk of moltenRockField (warp/rivers/crust,
+// ~18 of its 21 snoise3) from analytic mx_noise to a single baked 3D-noise texture fetch
+// each — trimming earth-core's cold WebGPU compile. The sharp high-freq VEIN stays analytic
+// (trilinear texture creasing would show as extra filaments there). Off = byte-identical to
+// today. See docs/ODYSSEY_AAA_PERF_FINDINGS_2026-07.md §6b + the playground A/B harness.
+const EARTH_CORE_BAKE_NOISE = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('earthCoreBakeNoise') === '1';
+const BAKED_NOISE_PERIOD = 10; // world units per texture tile (features/unit = grid/period = 2)
+let _bakedNoiseTex = null;
+function _getBakedNoiseSampler() {
+    if (!_bakedNoiseTex) _bakedNoiseTex = buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337);
+    const invP = 1 / BAKED_NOISE_PERIOD;
+    // Match snoise3's ~[-1,1]: sample R, wrap into [0,1), restore range.
+    return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(invP))).r.mul(2.0).sub(1.0);
 }
 
 // ── Shared molten-rock field (adapts pyrestorm's lava-river MOUNTAIN shader) ──────
@@ -128,18 +150,22 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 
     const ftime = uTime.mul(0.12);
 
+    // Bulk noise source: baked 3D-texture fetch under ?earthCoreBakeNoise, else analytic.
+    // The VEIN (below) always stays analytic — trilinear texture creasing shows there.
+    const snBulk = EARTH_CORE_BAKE_NOISE ? _getBakedNoiseSampler() : snoise3;
+
     // 1. Domain warp: offset the river lookup by a slow low-freq fbm so the molten
     //    flows in meandering channels (no axis-aligned tiling).
     const warp = vec3(
-        fbm(pos.mul(0.5).add(vec3(ftime, 0.0, 0.0)), 3),
-        fbm(pos.mul(0.5).add(vec3(0.0, ftime.mul(0.7), 5.0)), 3),
-        fbm(pos.mul(0.5).add(vec3(7.0, 0.0, ftime.mul(0.5))), 3),
+        fbm(pos.mul(0.5).add(vec3(ftime, 0.0, 0.0)), 3, snBulk),
+        fbm(pos.mul(0.5).add(vec3(0.0, ftime.mul(0.7), 5.0)), 3, snBulk),
+        fbm(pos.mul(0.5).add(vec3(7.0, 0.0, ftime.mul(0.5))), 3, snBulk),
     ).mul(0.9);
     const warped = pos.add(warp);
 
     // River field: two octaves flowing at different rates → living molten rivers.
-    const river1 = fbm(warped.mul(0.7).add(vec3(0.0, ftime.mul(1.3), 0.0)), 3);
-    const river2 = fbm(warped.mul(1.4).add(vec3(ftime.mul(-0.6), 0.0, ftime.mul(0.4))), 3);
+    const river1 = fbm(warped.mul(0.7).add(vec3(0.0, ftime.mul(1.3), 0.0)), 3, snBulk);
+    const river2 = fbm(warped.mul(1.4).add(vec3(ftime.mul(-0.6), 0.0, ftime.mul(0.4))), 3, snBulk);
     const riverField = river1.mul(0.6).add(river2.mul(0.4)).add(0.5);
 
     // Pool the molten into recesses / down-facing crevices + the chosen heat bias.
@@ -151,7 +177,7 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 
     // 2. Crust chunks: high-freq map that drops dark CHARRED islands into the stream
     //    (this is the variation that defeats the repetitive decal look).
-    const crustMap = fbm(warped.mul(2.6).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3).add(0.5);
+    const crustMap = fbm(warped.mul(2.6).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3, snBulk).add(0.5);
     const crustFactor = smoothstep(0.34, 0.78, crustMap);
 
     // 3. Base gradient (river core is hotter), then float crust chunks over it.
