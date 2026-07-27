@@ -632,6 +632,7 @@ export default class FallTheme extends BaseTheme {
         this.pointerY = 0;
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
+        this.animationFrameId = null;
     }
 
     getTetrominoConfig() { return FALL_TETROMINOS; }
@@ -1089,9 +1090,9 @@ export default class FallTheme extends BaseTheme {
                 this.renderer.clear();
                 this.renderer.render(this.scene, this.camera);
             }
-            requestAnimationFrame(animate);
+            this.animationFrameId = requestAnimationFrame(animate);
         };
-        requestAnimationFrame(animate);
+        this.animationFrameId = requestAnimationFrame(animate);
     }
 
     updatePhysics(delta) {

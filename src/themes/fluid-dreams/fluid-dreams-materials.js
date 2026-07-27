@@ -12,7 +12,6 @@ import {
     DoubleSide,
     MeshBasicNodeMaterial,
     NormalBlending,
-    PointsNodeMaterial,
     Vector3,
     Vector4,
 } from 'three/webgpu';
@@ -20,7 +19,9 @@ import {
 import {
     abs,
     attribute,
+    cameraProjectionMatrix,
     cameraPosition,
+    cameraViewMatrix,
     clamp,
     dot,
     float,
@@ -34,6 +35,7 @@ import {
     mix,
     mx_noise_float,
     normalize,
+    positionLocal,
     positionWorld,
     pow,
     smoothstep,
@@ -400,7 +402,7 @@ export function createVolumetricHazeNodeMaterial(options = {}) {
 
 export function createFluidParticleNodeMaterial(params = {}) {
     const { isWebGPU = false, particleCompute = null } = params;
-    const material = new PointsNodeMaterial({
+    const material = new MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
         depthTest: true,
@@ -459,9 +461,13 @@ export function createFluidParticleNodeMaterial(params = {}) {
         return float(0.5);
     })();
 
-    material.positionNode = basePos;
-    // Boosted size multiplier so particles read at typical screen resolution.
-    material.sizeNode = baseSize.mul(float(1.6).add(baseSpeed.mul(0.35)));
+    material.vertexNode = Fn(() => {
+        const size = baseSize.mul(float(0.012)).mul(float(1.6).add(baseSpeed.mul(0.35)));
+        const viewParticle = cameraViewMatrix.mul(vec4(basePos, 1.0));
+        const quadOffset = positionLocal.xy.mul(size);
+        const viewPos = viewParticle.add(vec4(quadOffset.x, quadOffset.y, 0.0, 0.0));
+        return cameraProjectionMatrix.mul(viewPos);
+    })();
 
     // Sprite UV — TSL's pointUV currently emits raw gl_PointCoord which is invalid WGSL,
     // so use uv() which TSL maps to a sprite-correct UV for PointsNodeMaterial. It logs
@@ -474,7 +480,9 @@ export function createFluidParticleNodeMaterial(params = {}) {
     const sprite = max(float(0.0), float(1.0).sub(dist.mul(2.0)));
     const soft = pow(sprite, float(1.6));
     const life = clamp(baseLife, float(0.0), float(1.0));
-    const lifeFade = smoothstep(float(0.0), float(0.2), life).mul(smoothstep(float(1.0), float(0.7), life));
+    const fadeIn = smoothstep(float(0.0), float(0.2), life);
+    const fadeOut = smoothstep(float(0.7), float(1.0), life).oneMinus();
+    const lifeFade = fadeIn.mul(fadeOut);
 
     const speedBoost = float(1.0).add(baseSpeed.mul(0.4));
     const baseColored = baseColor.mul(speedBoost);
@@ -483,8 +491,8 @@ export function createFluidParticleNodeMaterial(params = {}) {
 
     // Emissive boosted so the particles register against the bloomed hero and
     // bloom catches them — the post threshold is now 0.55, so they need to pop.
-    material.colorNode = colour;
-    material.opacityNode = soft.mul(lifeFade).mul(0.95);
+    const opacity = soft.mul(lifeFade).mul(0.95);
+    material.colorNode = vec4(colour, opacity);
     material.emissiveNode = colour.mul(soft).mul(lifeFade).mul(emissiveScale);
 
     material.userData = { uColorOverride, uColorOverrideMix, uBrightnessBoost };

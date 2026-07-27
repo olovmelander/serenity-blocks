@@ -136,4 +136,54 @@ describe('StarlightReactionDirector ↔ theme adapters', () => {
         expect(cells).toHaveLength(4); // T = 4 filled cells
         expect(cells.every((c) => Number.isFinite(c.x) && Number.isFinite(c.z))).toBe(true);
     });
+
+    it('prefers a mode-supplied viewportOrigin so an Infinity lock is not pinned to the bottom', () => {
+        const { resolvers } = createReactionAdapters(spyTheme().theme);
+        // An absolute Infinity row (piece.y=214) saturates the fixed-board mapping to the floor.
+        const highPiece = { shape: [[0, 1, 0], [1, 1, 1]], x: 4, y: 214 };
+        expect(resolvers.lockOrigin(highPiece).y).toBeLessThan(0); // fixed-board path → bottom
+
+        // The on-screen origin wins: a top-of-viewport lock maps to the top half of the backdrop.
+        const topLock = resolvers.lockOrigin(highPiece, 0, { x: 0.5, y: 0.12 });
+        expect(topLock.y).toBeGreaterThan(0);
+        const bottomLock = resolvers.lockOrigin(highPiece, 0, { x: 0.5, y: 0.88 });
+        expect(bottomLock.y).toBeLessThan(topLock.y);
+        // With a viewportOrigin the seal collapses to the single on-screen centroid cell.
+        expect(resolvers.lockCells(highPiece, 0, { x: 0.5, y: 0.5 })).toHaveLength(1);
+    });
+
+    it('threads viewportOrigin through the director → adapter lock cue', () => {
+        const { director, calls } = wire();
+        director.onPieceLock({
+            piece: { shape: [[0, 1, 0], [1, 1, 1]], x: 4, y: 214 }, // absolute Infinity row
+            viewportOrigin: { x: 0.5, y: 0.12 }, // locked near the TOP of the viewport
+        });
+        advance(director, 0.3);
+        // The inward ATTRACTOR impulse fires at the resolved lock centroid (args[0]); it must
+        // land in the top half, proving the on-screen origin reached the resolver.
+        expect(calls.of('impulse')[0].args[0].y).toBeGreaterThan(0);
+    });
+
+    it('prefers viewportOrigin for the line-clear rows origin (Infinity)', () => {
+        const { resolvers } = createReactionAdapters(spyTheme().theme);
+        const rows = [210, 211]; // absolute Infinity clear rows
+        expect(resolvers.rowsOrigin(rows).y).toBeLessThan(0); // fixed-board → bottom
+        expect(resolvers.rowsOrigin(rows, 0, { x: 0.5, y: 0.12 }).y).toBeGreaterThan(0); // on-screen top
+        expect(resolvers.rowOrigins(rows, 0, { x: 0.5, y: 0.5 })).toHaveLength(1); // collapsed to origin
+    });
+
+    it('threads viewportOrigin through the director → adapter line-clear cue', () => {
+        const { director, calls } = wire();
+        director.onLineClear({
+            lineCount: 2,
+            clearedRows: [210, 211], // absolute Infinity rows
+            viewportOrigin: { x: 0.5, y: 0.12 }, // cleared near the TOP of the viewport
+        });
+        advance(director, 0.4);
+        // The clear cue fans waves/rings at the resolved rows origin; at least one must land in
+        // the top half, proving the on-screen clear origin reached the resolvers.
+        const waves = calls.of('wave');
+        expect(waves.length).toBeGreaterThan(0);
+        expect(waves.some((w) => w.args[0].y > 0)).toBe(true);
+    });
 });

@@ -28,7 +28,10 @@ function parseArgs(argv) {
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         if (!token.startsWith('--')) continue;
-        const [key, inlineValue] = token.slice(2).split('=', 2);
+        const option = token.slice(2);
+        const separator = option.indexOf('=');
+        const key = separator >= 0 ? option.slice(0, separator) : option;
+        const inlineValue = separator >= 0 ? option.slice(separator + 1) : undefined;
         const next = argv[index + 1];
         if (inlineValue !== undefined) {
             result[key] = inlineValue;
@@ -80,6 +83,52 @@ async function waitForPlaygroundReady(win) {
     throw new Error(`Timed out waiting for window.__PLAYGROUND_READY__ at ${TARGET_URL}`);
 }
 
+async function collectPlaygroundDiagnostics(win) {
+    const serialized = await win.webContents.executeJavaScript(`(() => {
+        const runtime = window.__STILLWATER_MASTERPIECE__
+            || window.__STILLWATER_WATER__
+            || null;
+        const summarize = (value, depth = 0, seen = new WeakSet()) => {
+            if (value === null || value === undefined) return value ?? null;
+            if (['number', 'string', 'boolean'].includes(typeof value)) return value;
+            if (ArrayBuffer.isView(value)) {
+                return {
+                    type: value.constructor?.name || 'TypedArray',
+                    length: value.length,
+                    byteLength: value.byteLength,
+                };
+            }
+            if (Array.isArray(value)) {
+                if (depth >= 3 || value.length > 32) {
+                    return { type: 'Array', length: value.length };
+                }
+                return value.map((entry) => summarize(entry, depth + 1, seen));
+            }
+            if (typeof value !== 'object') return String(value);
+            if (seen.has(value)) return '[circular]';
+            if (depth >= 4) return '[' + (value.constructor?.name || 'Object') + ']';
+            seen.add(value);
+            const result = {};
+            Object.entries(value).slice(0, 80).forEach(([key, entry]) => {
+                if (typeof entry !== 'function') {
+                    result[key] = summarize(entry, depth + 1, seen);
+                }
+            });
+            return result;
+        };
+        return JSON.stringify({
+            runtime: summarize(
+                window.__PLAYGROUND__?.diagnostics?.()
+                    || runtime?.getDiagnostics?.()
+                    || null,
+            ),
+            resources: summarize(runtime?.getResourceState?.() || null),
+            renderer: runtime?.getRendererCounters?.() || null,
+        });
+    })()`);
+    return JSON.parse(serialized);
+}
+
 function delay(ms) {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
@@ -96,6 +145,7 @@ async function run() {
     await win.loadURL(TARGET_URL);
     const state = await waitForPlaygroundReady(win);
     if (SETTLE_MS > 0) await delay(SETTLE_MS);
+    const diagnostics = await collectPlaygroundDiagnostics(win);
     const image = await win.webContents.capturePage();
     await writeFile(OUT, image.toPNG());
     await writeFile(`${OUT}.json`, JSON.stringify({
@@ -103,6 +153,7 @@ async function run() {
         width: WIDTH,
         height: HEIGHT,
         state,
+        diagnostics,
         timestamp: new Date().toISOString(),
     }, null, 2), 'utf8');
     await writeFile(`${OUT}.console.log`, consoleLines.slice(-300).join('\n'), 'utf8');

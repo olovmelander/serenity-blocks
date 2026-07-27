@@ -48,6 +48,7 @@ import {
     createCoralModuleLibrary,
     createCoralPlacementPlan,
 } from './ocean-coral-modules.js';
+import { disposeOceanGltfCache } from './ocean-asset-loader.js';
 
 function randRangeLocal(min, max) {
     return min + Math.random() * (max - min);
@@ -66,7 +67,7 @@ function readOceanBooleanParam(key) {
 }
 
 // Reads a boolean URL flag under either an ocean-prefixed key or a short alias,
-// e.g. readOceanFlag('oceanNoFish', 'noFish'). Matches swedish-forest convention.
+// e.g. readOceanFlag('oceanNoFish', 'noFish'). Matches golden-forest convention.
 function readOceanFlag(longKey, shortKey) {
     return readOceanBooleanParam(longKey) || (shortKey ? readOceanBooleanParam(shortKey) : false);
 }
@@ -207,6 +208,10 @@ function sampleKelpGrovePoint() {
 }
 
 export default class OceanTheme extends BaseTheme {
+    static disposeSharedResources() {
+        disposeOceanGltfCache();
+    }
+
     constructor() {
         super('ocean');
         this.eventUnsubscribers = [];
@@ -1094,10 +1099,14 @@ export default class OceanTheme extends BaseTheme {
     /**
      * Try WebGPU first, fall back to WebGL2 (mirrors black-hole-theme.js)
      */
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let webgpuRenderer = null;
+        let renderer = null;
 
         this.webglFallbackClamped = false;
         this.webglFallbackClampedFromQuality = null;
@@ -1109,8 +1118,12 @@ export default class OceanTheme extends BaseTheme {
                     alpha: false,
                     powerPreference: 'high-performance',
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Ocean WebGPU renderer init',
+                    ownerGeneration,
+                });
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('🌊 [Ocean] WebGPU init failed, falling back to WebGL2:', error);
                 if (webgpuRenderer) {
                     webgpuRenderer.dispose();
@@ -1122,9 +1135,10 @@ export default class OceanTheme extends BaseTheme {
         }
 
         if (webgpuRenderer && webgpuRenderer.backend?.isWebGPUBackend === true) {
-            this.renderer = webgpuRenderer;
+            renderer = webgpuRenderer;
             this.isWebGPU = true;
-            this.renderer.onDeviceLost = (info) => {
+            renderer.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== renderer) return;
                 // A WebGPU device loss is terminal for this renderer. Halt the
                 // theme's render loop so it stops driving three's error-scope
                 // polling against a dead device (unhandled popErrorScope
@@ -1139,13 +1153,20 @@ export default class OceanTheme extends BaseTheme {
             };
         } else {
             if (webgpuRenderer) webgpuRenderer.dispose();
-            this.renderer = new THREE.WebGLRenderer({
+            if (!ownsLifecycle()) return false;
+            renderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 alpha: false,
                 powerPreference: 'high-performance',
             });
             this.isWebGPU = false;
         }
+
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
 
         console.log(`🌊 [Ocean] Using ${this.isWebGPU ? 'WebGPU' : 'WebGL2'} backend`);
 
@@ -1175,9 +1196,10 @@ export default class OceanTheme extends BaseTheme {
                 this.applyQualityPreset('Medium');
             }
         }
+        return true;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const themeContainer = document.getElementById('ocean-theme');
         if (!themeContainer) return;
         this.isCreatingScene = true;
@@ -1189,7 +1211,8 @@ export default class OceanTheme extends BaseTheme {
             this.setupQualityListener();
             this.clock = new THREE.Clock();
 
-            await this.initRenderer(themeContainer);
+            const rendererReady = await this.initRenderer(themeContainer, ownerGeneration);
+            if (!rendererReady) return;
 
             this.scene = new THREE.Scene();
             // Tropical-cyan fog tuned between dark mood and washed-out — slightly

@@ -127,12 +127,10 @@ describe('Serenity Warp gameplay FX WebGL renderer', () => {
         const expectedOrigin = projectToEffectPlane(camera, 0.31, 0.72);
         const expectedColor = new THREE.Color(command.glyph.color);
         expect(activeSlots(fx.phaseSeals)).toBe(1);
-        expect(Array.from(fx.phaseSeals.cell.slice(0, 8))).toEqual([
-            -1, 0.25,
-            0, 0.25,
-            1, 0.25,
-            0, -0.75,
-        ]);
+        // The four centred cell offsets pack into two vec4 attributes (cells 0/1 → AB, 2/3 → CD)
+        // that the union-SDF fragment fuses into one solid silhouette.
+        expect(Array.from(fx.phaseSeals.cellsAB.slice(0, 4))).toEqual([-1, 0.25, 0, 0.25]);
+        expect(Array.from(fx.phaseSeals.cellsCD.slice(0, 4))).toEqual([1, 0.25, 0, -0.75]);
         expect(fx.phaseSeals.origin[0]).toBeCloseTo(expectedOrigin.x, 5);
         expect(fx.phaseSeals.origin[1]).toBeCloseTo(expectedOrigin.y, 5);
         expect(fx.phaseSeals.origin[2]).toBeCloseTo(expectedOrigin.z, 5);
@@ -215,7 +213,7 @@ describe('Serenity Warp gameplay FX WebGL renderer', () => {
     ])('applies the %s fixed instance budgets', (quality, limits) => {
         const { fx } = createHarness({ quality });
 
-        expect(fx.phaseSeals.geometry.instanceCount).toBe(limits.seals * 4);
+        expect(fx.phaseSeals.geometry.instanceCount).toBe(limits.seals);
         expect(fx.rings.geometry.instanceCount).toBe(limits.rings);
         expect(fx.nodes.geometry.instanceCount).toBe(limits.nodes);
         expect(fx.links.geometry.instanceCount).toBe(limits.links);

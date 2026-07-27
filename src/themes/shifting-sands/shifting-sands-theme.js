@@ -393,7 +393,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById('shifting-sands-theme');
         if (!container) return;
         container.innerHTML = '';
@@ -402,7 +402,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.setupQualityListener();
 
         // Create WebGPU renderer with automatic WebGL2 fallback
-        this.renderer = new THREE.WebGPURenderer({
+        const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance',
             // forceWebGL: true, // QA: uncomment to force WebGL2 backend for testing fallback
@@ -410,12 +410,25 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         try {
             // WebGPURenderer handles WebGPU -> WebGL2 fallback internally
-            await this.renderer.init();
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Shifting Sands renderer init',
+                ownerGeneration,
+            });
         } catch (error) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return;
             console.error('[ShiftingSands] Renderer init failed (no fallback available):', error);
             return;
         }
 
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
         // Track which backend is active
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
@@ -1393,7 +1406,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             this.renderer.setAnimationLoop(null);
         }
 
-        this.eventUnsubscribers.forEach((u) => u());
+        this.clearEventUnsubscribers();
 
         // Cleanup effects
         this.shockwaves.forEach((s) => {
@@ -1488,6 +1501,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             this.disposeRenderer(this.renderer, { nullInstance: false });
             const c = document.getElementById('shifting-sands-theme');
             if (c && c.contains(this.renderer.domElement)) c.removeChild(this.renderer.domElement);
+            this.renderer = null;
         }
 
         // Reset backend tracking
@@ -1496,9 +1510,14 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.scene = null;
     }
 
-    stop() { if (this.isActive) this.dispose(); super.stop(); }
+    stop() {
+        // ThemeManager invalidates isActive before cleanup, so disposal cannot
+        // be conditional on that public state flag.
+        super.stop();
+        this.dispose();
+    }
 
-    cleanup() { this.stop(); super.cleanup(); }
+    cleanup() { super.cleanup(); }
 
     getTetrominoConfig() { return SHIFTING_SANDS_TETROMINOS; }
 }

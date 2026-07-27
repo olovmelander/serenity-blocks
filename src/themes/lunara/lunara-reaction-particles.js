@@ -21,6 +21,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { COLS, HIDDEN_ROWS, ROWS } from '../../core/constants.js';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import {
     createLunaraReactionParticleMaterialWebGPU,
     createLunaraReactionParticleMaterialWebGL,
@@ -899,7 +900,7 @@ export class LunaraReactionParticles {
 
     triggerPieceLock(payload = {}) {
         const detail = normalizeEventPayload(payload);
-        const anchor = this.resolvePieceAnchor(detail.piece);
+        const anchor = this.resolvePieceAnchor(detail.piece, detail.viewportOrigin);
         this.spawnCrystalExplosion(anchor, {
             palette: 'lock',
             sparkCount: 24,
@@ -1414,34 +1415,46 @@ export class LunaraReactionParticles {
         ribbon.duration = options.duration ?? 1.15;
     }
 
-    resolvePieceAnchor(piece) {
-        if (!piece || !Array.isArray(piece.shape)) {
+    resolvePieceAnchor(piece, viewportOrigin = null) {
+        // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock
+        // position; prefer it over the fixed-board centroid, whose piece.y grows into the
+        // hundreds in Infinity and pins the crystal anchor to the nearest floor.
+        const viewport = readLockViewportOrigin({ viewportOrigin });
+        if (!viewport && (!piece || !Array.isArray(piece.shape))) {
             return this.pickFallbackAnchor();
         }
 
-        let sumX = 0;
-        let sumY = 0;
-        let occupied = 0;
-        for (let row = 0; row < piece.shape.length; row += 1) {
-            const shapeRow = piece.shape[row];
-            if (!Array.isArray(shapeRow)) continue;
-            for (let col = 0; col < shapeRow.length; col += 1) {
-                if (!shapeRow[col]) continue;
-                sumX += (Number(piece.x) || 0) + col + 0.5;
-                sumY += (Number(piece.y) || HIDDEN_ROWS) + row + 0.5;
-                occupied += 1;
+        let bias;
+        let visibleRow;
+        if (viewport) {
+            bias = clamp(viewport.x * 2 - 1, -1, 1);
+            visibleRow = clamp(viewport.y * ROWS, 0, ROWS);
+        } else {
+            let sumX = 0;
+            let sumY = 0;
+            let occupied = 0;
+            for (let row = 0; row < piece.shape.length; row += 1) {
+                const shapeRow = piece.shape[row];
+                if (!Array.isArray(shapeRow)) continue;
+                for (let col = 0; col < shapeRow.length; col += 1) {
+                    if (!shapeRow[col]) continue;
+                    sumX += (Number(piece.x) || 0) + col + 0.5;
+                    sumY += (Number(piece.y) || HIDDEN_ROWS) + row + 0.5;
+                    occupied += 1;
+                }
             }
+
+            if (occupied === 0) return this.pickFallbackAnchor();
+
+            const boardX = sumX / occupied;
+            const boardY = sumY / occupied;
+            bias = clamp((boardX / Math.max(1, COLS)) * 2 - 1, -1, 1);
+            visibleRow = clamp(boardY - HIDDEN_ROWS, 0, ROWS);
         }
 
-        if (occupied === 0) return this.pickFallbackAnchor();
-
-        const boardX = sumX / occupied;
-        const boardY = sumY / occupied;
-        const bias = clamp((boardX / Math.max(1, COLS)) * 2 - 1, -1, 1);
         const side = Math.abs(bias) < 0.12 ? this.lastAnchorSide * -1 : Math.sign(bias);
         this.lastAnchorSide = side || 1;
         const targetX = (side || 1) * (30 + Math.abs(bias) * 42);
-        const visibleRow = clamp(boardY - HIDDEN_ROWS, 0, ROWS);
         const targetZ = clamp(38 - visibleRow * 6.2, -104, 34);
         return this.nearestCrystalAnchor(targetX, targetZ, side || 1);
     }

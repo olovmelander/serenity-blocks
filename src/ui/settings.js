@@ -6,6 +6,7 @@
 import { DEFAULT_SETTINGS } from '../core/constants.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
+import { resolveThemeId } from '../themes/theme-registry.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -399,10 +400,17 @@ export class SettingsManager {
                     ...loadedSerenityGamepadBindings,
                 });
                 const sanitizedCursorSettings = normalizeCursorSettings(loaded);
+                // A saved background theme can name an id the registry has since
+                // retired (e.g. `sky-children-v2`); heal it to the published id
+                // so the picker and startup switch both resolve.
+                const sanitizedBackgroundTheme = resolveThemeId(
+                    loaded.backgroundTheme ?? DEFAULT_CONFIG.backgroundTheme,
+                );
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
                     ...loaded,
+                    backgroundTheme: sanitizedBackgroundTheme,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
                     serenityKeyBindings: sanitizedSerenityKeyBindings,
@@ -425,12 +433,17 @@ export class SettingsManager {
                     || loaded.customCursorVisibilityPreset !== sanitizedCursorSettings.customCursorVisibilityPreset
                     || loaded.customCursorReducedMotion !== sanitizedCursorSettings.customCursorReducedMotion
                 );
+                const backgroundThemeChanged = (
+                    typeof loaded.backgroundTheme === 'string'
+                    && loaded.backgroundTheme !== sanitizedBackgroundTheme
+                );
                 if (
                     keyBindingsChanged
                     || player2BindingsChanged
                     || serenityKeyBindingsChanged
                     || serenityGamepadBindingsChanged
                     || cursorSettingsChanged
+                    || backgroundThemeChanged
                 ) {
                     this.save({ emitEvent: false });
                 }

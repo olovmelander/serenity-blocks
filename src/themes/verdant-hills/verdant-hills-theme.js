@@ -169,7 +169,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const themeContainer = document.getElementById('verdant-hills-theme');
         if (!themeContainer) {
             console.error('[VerdantHillsTheme] Theme container not found!');
@@ -188,20 +188,33 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.uWindStrength = uniform(0.5);
 
         // Create WebGPU renderer with auto WebGL2 fallback
-        this.renderer = new THREE.WebGPURenderer({
+        const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance',
         });
 
         // Initialize WebGPU renderer (async - handles fallback automatically)
         try {
-            await this.renderer.init();
-            console.log(`🏔️ [VerdantHillsTheme] Using ${this.renderer.backend.constructor.name} backend`);
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Verdant Hills renderer init',
+                ownerGeneration,
+            });
+            console.log(`🏔️ [VerdantHillsTheme] Using ${renderer.backend.constructor.name} backend`);
         } catch (error) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return;
             console.error('[VerdantHillsTheme] Renderer initialization failed:', error);
             return;
         }
 
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(0x87ceeb); // Sky blue fallback

@@ -90,4 +90,23 @@ describe('binary snapshot hydration contract', () => {
         expect(packed.players[0].lockedPieces[0].shape[0][0]).toBe(1);
         expect(packed.players[0].blindTimers.field).toBe(1);
     });
+
+    it('keeps a retained baseline intact for a later hydrate after the prior payload is mutated (P0-8)', () => {
+        // steam-networking retains the packed snapshot as the delta baseline; a later delta is
+        // reconstructed from it and re-hydrated. A consumer mutating an earlier hydrated payload
+        // must not corrupt that reused baseline.
+        const packed = makePackedSnapshot();
+
+        const first = hydrateBinarySnapshot(packed, { acknowledgements: { 1000: 1 } });
+        first.players[0].grid[23][0].color = '#ffffff';
+        first.players[0].grid[23][0] = null;
+        first.players[0].lockedPieces[0].y = 999;
+        first.players[0].currentPiece.x = -100;
+
+        const second = hydrateBinarySnapshot(packed, { acknowledgements: { 1000: 2 } });
+        expect(second.players[0].grid[23][0]).toEqual({ type: 'I', color: '#00ffff' });
+        expect(second.players[0].lockedPieces[0].y).toBe(20);
+        expect(second.players[0].currentPiece.x).toBe(3);
+        expect(second.players[0].lastInputSeq).toBe(2);
+    });
 });

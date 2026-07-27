@@ -4,6 +4,7 @@
  * Centralizes event-driven intensity state and deterministic envelopes so
  * visual reactions can be driven by renderer systems instead of direct DOM writes.
  */
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 
 const BOARD_COLUMNS = 10;
 const VISIBLE_ROWS = 20;
@@ -93,8 +94,11 @@ export function resolveMoonlitPieceLockOrigin(payload = {}) {
         }
     }
 
-    const normalizedX = clamp01(centroidX / BOARD_COLUMNS);
-    const normalizedY = clamp01((centroidY - HIDDEN_ROWS) / VISIBLE_ROWS);
+    // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN lock position; prefer it
+    // over the fixed-board normalization so the effect tracks where the piece actually landed.
+    const viewport = readLockViewportOrigin(payload);
+    const normalizedX = viewport ? viewport.x : clamp01(centroidX / BOARD_COLUMNS);
+    const normalizedY = viewport ? viewport.y : clamp01((centroidY - HIDDEN_ROWS) / VISIBLE_ROWS);
 
     return {
         board: { x: centroidX, y: centroidY },

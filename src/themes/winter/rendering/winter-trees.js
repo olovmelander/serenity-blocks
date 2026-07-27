@@ -69,11 +69,30 @@ const SILHOUETTE_MAT = new THREE.MeshBasicMaterial({
     color: 0x080c12,
     side: THREE.DoubleSide,
 });
+SILHOUETTE_MAT.userData.lifecycleShared = true;
 
 function makeDracoLoader() {
     const d = new DRACOLoader();
     d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
     return d;
+}
+
+function disposeHierarchy(root) {
+    root?.traverse?.((child) => {
+        child.geometry?.dispose?.();
+        const materials = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+        materials.filter(Boolean).forEach((material) => {
+            Object.values(material).forEach((value) => {
+                if (value?.isTexture) value.dispose();
+            });
+            if (material.userData?.lifecycleShared !== true) {
+                material.dispose?.();
+            }
+        });
+    });
+    root?.clear?.();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,7 +166,9 @@ export function createWinterTrees(scene) {
     scene.add(group);
 
     const loader = new GLTFLoader();
-    loader.setDRACOLoader(makeDracoLoader());
+    const dracoLoader = makeDracoLoader();
+    loader.setDRACOLoader(dracoLoader);
+    let disposed = false;
 
     /** @type {Array<{scene:THREE.Group, clip:THREE.AnimationClip|null, variant:object}>} */
     const loaded = [];
@@ -159,6 +180,10 @@ export function createWinterTrees(scene) {
     async function load() {
         const results = await Promise.allSettled(
             VARIANTS.map((v) => loader.loadAsync(v.url).then((gltf) => {
+                if (disposed) {
+                    disposeHierarchy(gltf.scene);
+                    return;
+                }
                 gltf.scene.traverse((o) => {
                     if (!o.isMesh) return;
                     o.material.flatShading = true;
@@ -171,14 +196,16 @@ export function createWinterTrees(scene) {
                 console.log(`[WinterTrees] Loaded ${v.name}`);
             }).catch((e) => console.warn(`[WinterTrees] Failed ${v.name}:`, e))),
         );
-        console.log(`[WinterTrees] ${results.filter((r) => r.status === 'fulfilled').length}/${VARIANTS.length} loaded.`);
+        if (!disposed) {
+            console.log(`[WinterTrees] ${results.filter((r) => r.status === 'fulfilled').length}/${VARIANTS.length} loaded.`);
+        }
     }
 
     // ── Spawn one LOD tree ─────────────────────────────────────────────────
     function spawnTree({
         x, z, groundY = -298, heightScale = 1.0, variantIndex = null, rotY = null,
     }) {
-        if (loaded.length === 0) return;
+        if (disposed || loaded.length === 0) return;
 
         const idx = variantIndex !== null
             ? Math.min(variantIndex, loaded.length - 1)
@@ -225,6 +252,7 @@ export function createWinterTrees(scene) {
 
     // ── Place the full forest ─────────────────────────────────────────────
     function placeForest() {
+        if (disposed) return;
         if (loaded.length === 0) {
             console.warn('[WinterTrees] placeForest() called before load()');
             return;
@@ -302,6 +330,7 @@ export function createWinterTrees(scene) {
     // ── Per-frame update ──────────────────────────────────────────────────
     let elapsed = 0;
     function update(dt, camera) {
+        if (disposed) return;
         elapsed += dt;
         if (camera) {
             for (const inst of instances) inst.lod.update(camera);
@@ -318,13 +347,18 @@ export function createWinterTrees(scene) {
 
     // ── Dispose ───────────────────────────────────────────────────────────
     function dispose() {
+        if (disposed) return;
+        disposed = true;
         for (const inst of instances) {
             if (inst.mixer) inst.mixer.stopAllAction();
             group.remove(inst.lod);
         }
         instances.length = 0;
+        loaded.forEach((entry) => disposeHierarchy(entry.scene));
         loaded.length = 0;
+        disposeHierarchy(group);
         scene.remove(group);
+        dracoLoader.dispose?.();
     }
 
     return {

@@ -27,6 +27,7 @@ import {
     createWinterSnowDetail, disposeWinterSnowDetail, snowLumaPlanar, snowPerturbNormal,
 } from '../../themes/winter/rendering/snow-detail.js';
 import { createPawTrail } from '../../themes/winter/rendering/paw-trail.js';
+import { createSnowPuffs } from '../../themes/winter/rendering/snow-puff.js';
 import { SnowSim } from '../../themes/winter/sim/snow-sim.js';
 import { createSnowRenderer } from '../../themes/winter/rendering/snow-renderer.js';
 import {
@@ -452,8 +453,16 @@ function buildFacetedSnowDrifts({
     const uSssStr = uniform(0.24);
     const uCrest = uniform(new THREE.Color(0xfff1e4)); // warm cream crest dusting (overshoot cold grade)
     const uTime = uniform(0);
-    const uTrailDarken = uniform(0.82); // how much a paw print packs/darkens the snow (bold so small prints read)
-    const uTrailRim = uniform(new THREE.Color(0xe6eeff)); // bright compression rim around a print
+    // Tuned against a playground capture (see the plan doc). The first pass at 0.9/13/0.5/0.8
+    // read as a hard black-and-white caterpillar: arctic paws are round and FUR-COVERED, so
+    // real prints are soft round dents, and the in-game WinterPipeline grade (exposure 0.82 +
+    // ACES + cold tint) crushes the dark end further. Softer here, bright side overshot.
+    const uTrailDarken = uniform(0.55); // compaction: packed snow cools + darkens toward periwinkle
+    const uTrailNormal = uniform(0.55); // how hard the height gradient tilts the LIGHTING normal
+    const uTrailHeight = uniform(10.0); // world units of relief at |h| = 1 (gradient + parallax)
+    const uTrailAO = uniform(0.34); // contact AO — a pit floor sees less sky
+    const uTrailShadow = uniform(0.5); // berm-casts-into-pit contact shadow
+    const uTrailParallax = uniform(1.0);
     // Baked depth attributes → valley AO (darken troughs) + crest mask (brighten tops).
     const aOccN = mix(float(0.86), float(1.0), attribute('aOcclusion'));
     const crestN = smoothstep(0.52, 0.95, attribute('aHeight'));
@@ -462,33 +471,93 @@ function buildFacetedSnowDrifts({
     const worldXZ = positionWorld.xz;
     // Perturb the LIGHTING normal with the snow nor_gl map (DIMMED so the photoreal grain
     // doesn't fight the soft-pillow target) → fine micro-relief on the smooth domes.
-    const nLit = detailNor
+    let nLit = detailNor
         ? snowPerturbNormal(detailNor, worldXZ, norScale, nWorld, norStrength)
         : nWorld;
-    // Fox paw-trail "pit": 0 off-trail → ~1 in a fresh print (border-faded so edge-clamped
-    // samples never smear). Drives the packed-snow shading below.
-    let pitN = float(0.0);
+    // ── Fox snow DEFORMATION ──────────────────────────────────────────────────
+    // docs/WINTER_FOX_PAW_TRAILS_AAA_PLAN_2026-07.md. The trail map is a SIGNED height field
+    // (<0 pit, >0 the berm displaced out of it). The load-bearing step — and the whole
+    // difference between a deformation and a decal — is that we reconstruct a normal from it by
+    // finite differences and fold that into `nLit` *here*, BEFORE the moon dot below, so every
+    // downstream term (wrap lambert, SSS, facet rim, sparkle gate) reacts to the print.
+    let trailPit = float(0.0); // 0..1 depth of the depression
+    let trailLip = float(0.0); // 0..1 height of the displaced snow
+    let trailHard = float(0.0); // 0..1 compaction (a lane walked many times)
+    let trailAge = float(0.0); // 0 fresh .. 1 old (re-frosted)
+    let trailAO = float(1.0);
+    let trailShade = float(1.0);
     if (trail) {
-        const tuv = clamp(positionWorld.xz.sub(trail.uOrigin).mul(trail.uInvSize), 0.0, 1.0);
-        const tbx = smoothstep(0.0, 0.03, tuv.x).mul(smoothstep(1.0, 0.97, tuv.x));
-        const tby = smoothstep(0.0, 0.03, tuv.y).mul(smoothstep(1.0, 0.97, tuv.y));
-        pitN = texture(trail.texture, tuv).r.mul(tbx).mul(tby);
+        const NEUTRAL_F = float(128.0 / 255.0);
+        const rawUv = worldXZ.sub(trail.uOrigin).mul(trail.uInvSize);
+        // Border fade — edge-clamped samples must never smear a print across the whole ground.
+        const border = smoothstep(0.0, 0.03, rawUv.x).mul(smoothstep(1.0, 0.97, rawUv.x))
+            .mul(smoothstep(0.0, 0.03, rawUv.y)).mul(smoothstep(1.0, 0.97, rawUv.y));
+        const uvC = clamp(rawUv, 0.0, 1.0);
+        const dUv = trail.uTexel.mul(trail.uInvSize); // one texel, in UV
+        const sampleH = (u) => texture(trail.texture, u).r.sub(NEUTRAL_F).mul(2.0);
+
+        // (1) PARALLAX. Batman: Arkham Origins shipped relief mapping on console precisely
+        // because it is "independent of triangle density" — our exact situation, since the
+        // ground grid is 100 units/cell and a paw is ~32. At this near-horizontal camera the
+        // offset earns its keep; one iteration is plenty (a full POM loop is not worth it).
+        const hPre = sampleH(uvC);
+        const viewXZ = normalize(positionWorld.sub(cameraPosition)).xz;
+        const pUv = clamp(
+            uvC.add(viewXZ.mul(hPre).mul(uTrailHeight).mul(uTrailParallax).mul(trail.uInvSize)),
+            0.0,
+            1.0,
+        );
+
+        // (2) HEIGHT + forward-difference GRADIENT (RoTR/Batman both reconstruct normals from
+        // the height field rather than storing them). Three taps; the world-space slope is
+        // Δheight / Δworld, so it stays correct if the map's coverage or resolution changes.
+        const t0 = texture(trail.texture, pUv);
+        const hC = t0.r.sub(NEUTRAL_F).mul(2.0).mul(border);
+        const hX = sampleH(clamp(pUv.add(vec2(dUv.x, 0.0)), 0.0, 1.0)).mul(border);
+        const hZ = sampleH(clamp(pUv.add(vec2(0.0, dUv.y)), 0.0, 1.0)).mul(border);
+        const dhx = hX.sub(hC).mul(uTrailHeight).div(trail.uTexel.x);
+        const dhz = hZ.sub(hC).mul(uTrailHeight).div(trail.uTexel.y);
+        // Add only the horizontal tilt (same idiom as snowPerturbNormal) so the drift's own
+        // slope survives — Batman's slides are explicit that you must not lerp directions.
+        nLit = normalize(nLit.add(vec3(dhx.negate(), 0.0, dhz.negate()).mul(uTrailNormal)));
+
+        trailPit = clamp(hC.negate(), 0.0, 1.0);
+        trailLip = clamp(hC, 0.0, 1.0);
+        trailHard = t0.g.mul(border);
+        trailAge = t0.b;
+
+        // (3) CONTACT AO — the pit floor sees less sky, so it darkens because of its shape
+        // rather than because we painted it darker.
+        trailAO = float(1.0).sub(trailPit.mul(uTrailAO));
+
+        // (4) CONTACT SHADOW — one tap a few texels toward the moon: if the snow that way is
+        // higher than here (a berm), we're in its shadow. The moon sits ~16° above the horizon,
+        // so these shadows are long and they SWING when the moon moves. This is the cheap
+        // stand-in for the "dynamic shadow following the deformation" that tessellation buys.
+        const moonXZ = normalize(uMoonDir.xz);
+        const hS = sampleH(clamp(pUv.add(moonXZ.mul(dUv).mul(3.0)), 0.0, 1.0)).mul(border);
+        trailShade = float(1.0).sub(smoothstep(0.05, 0.4, hS.sub(hC)).mul(uTrailShadow));
     }
     // WRAP / half-Lambert: soften the terminator so every dome reads as a scattering powder
     // VOLUME, not a hard-shaded sheet (a hard terminator is the #1 "flat plane" tell).
     const ndl = dot(nLit, uMoonDir);
     const moonWrap = clamp(ndl.add(uWrap).div(float(1.0).add(uWrap)), 0.0, 1.0);
-    const moonWrapC = moonWrap.mul(moonWrap); // square back some contrast
+    // `trailShade` is the berm's contact shadow — folded into the moon term (not painted on
+    // top) so a print goes dark because something is blocking the moon, and brightens again
+    // when the moon swings round.
+    const moonWrapC = moonWrap.mul(moonWrap).mul(trailShade); // square back some contrast
     const upFace = clamp(nLit.y, 0.0, 1.0);
     const litAmount = clamp(moonWrapC.mul(0.7).add(upFace.mul(0.45)), 0.0, 1.0);
     // Shadow FLOOR = a cool sky-bounce so snow shadows stay luminous BLUE (never near-black).
     // Valley AO darkens the troughs (not the lit crests) so the displacement reads as DEPTH.
+    // The fox trail's own contact AO rides the same lane.
+    const aOccT = aOccN.mul(trailAO);
     const skyAmb = mix(uGround, uSky, clamp(nWorld.y.mul(0.5).add(0.5), 0.0, 1.0));
-    const lowMix = mix(skyAmb, uShadow, smoothstep(0.0, 0.45, litAmount)).mul(aOccN);
+    const lowMix = mix(skyAmb, uShadow, smoothstep(0.0, 0.45, litAmount)).mul(aOccT);
     let snowCol = mix(lowMix, uLit, smoothstep(0.4, 0.95, litAmount));
     // Backlit SUBSURFACE glow: light bleeding through the powder where it faces away from the
     // moon → ridges glow, selling soft depth.
-    const sss = pow(clamp(dot(nLit.negate(), uMoonDir).add(moonWrapC), 0.0, 1.0), float(2.5)).mul(uSssStr).mul(aOccN);
+    const sss = pow(clamp(dot(nLit.negate(), uMoonDir).add(moonWrapC), 0.0, 1.0), float(2.5)).mul(uSssStr).mul(aOccT);
     snowCol = snowCol.add(uSssTint.mul(sss));
     const facetRim = pow(float(1.0).sub(clamp(nView.z, 0.0, 1.0)), float(2.2)).mul(0.10);
     snowCol = snowCol.add(vec3(0.32, 0.46, 0.7).mul(facetRim));
@@ -498,19 +567,25 @@ function buildFacetedSnowDrifts({
     const Hw = normalize(uMoonDir.add(Vw));
     const align = pow(clamp(dot(nLit, Hw), 0.0, 1.0), float(180.0));
     const glint = mx_noise_float(vec3(positionWorld.xz.mul(0.06).add(uTime.mul(0.12)), float(0.0))).mul(0.5).add(0.5);
-    // Packed snow in a print stops sparkling and loses its crest dusting (kill both by pitN).
-    const noTrail = float(1.0).sub(pitN);
+    // Packed snow in a print stops sparkling and loses its crest dusting — but a print that has
+    // sat a while RE-FROSTS and wins its twinkle back (the map's age channel), while the loose
+    // powder thrown up into the berm sparkles harder than the flat snow around it. That split
+    // is what gives a trail a readable timeline instead of one uniform fade.
+    const trailFresh = float(1.0).sub(trailAge);
+    const noTrail = float(1.0).sub(trailPit.mul(trailFresh));
     const sparkle = smoothstep(0.9, 1.0, glint).mul(align).mul(litAmount).mul(0.7);
-    snowCol = snowCol.add(vec3(0.78, 0.86, 1.0).mul(sparkle).mul(noTrail));
+    const loosePowder = float(1.0).add(trailLip.mul(trailFresh).mul(0.9));
+    snowCol = snowCol.add(vec3(0.78, 0.86, 1.0).mul(sparkle).mul(noTrail).mul(loosePowder));
     // Crest highlight: a warm cream dusting on the wind-packed mound tops (gated by light) so
     // the drifts bulge toward the moon and read as 3D mass.
     snowCol = mix(snowCol, uCrest, crestN.mul(litAmount).mul(0.4).mul(noTrail));
-    // Paw print: pack + cool the snow (toward periwinkle, grade-safe) and add a bright
-    // compression RIM at the print's soft edge — sells "a fox pressed the snow here".
+    // COMPACTION colour. Crushing the air pockets out of snow makes the pack scatter like dense
+    // ice: red is absorbed over the longer path and blue is what emerges — which is exactly why
+    // real footprints read periwinkle against white powder. No painted rim any more; the print's
+    // edge now comes from real shading (gradient normal + contact shadow) above.
     if (trail) {
-        snowCol = mix(snowCol, snowCol.mul(vec3(0.72, 0.8, 0.97)), pitN.mul(uTrailDarken));
-        const rim = smoothstep(0.1, 0.38, pitN).mul(float(1.0).sub(smoothstep(0.38, 0.7, pitN)));
-        snowCol = snowCol.add(uTrailRim.mul(rim).mul(litAmount).mul(0.5));
+        const packed = clamp(trailPit.add(trailHard.mul(0.5)), 0.0, 1.0);
+        snowCol = mix(snowCol, snowCol.mul(vec3(0.70, 0.79, 0.98)), packed.mul(uTrailDarken));
     }
     // Greyscale LUMINANCE tooth from the snow diffuse — surface grain so each area is no
     // longer one flat tone (multiplied into the palette, never used as photoreal albedo).
@@ -527,7 +602,14 @@ function buildFacetedSnowDrifts({
     mesh.renderOrder = -30;
     mesh.frustumCulled = false;
     return {
-        mesh, geometry: snowGeo, material, uTime,
+        mesh,
+        geometry: snowGeo,
+        material,
+        uTime,
+        // Exposed so the trail look can be tuned live from the console during a capture.
+        trailUniforms: {
+            uTrailDarken, uTrailNormal, uTrailHeight, uTrailAO, uTrailShadow, uTrailParallax,
+        },
     };
 }
 
@@ -861,17 +943,29 @@ export function create({ scene, renderer, camera }) {
     ];
     peakSpecs.forEach((s) => { const p = buildWinterPeak(s); scene.add(p.mesh); disposables.push(p); });
 
-    // --- Fox PAW TRAILS: a decaying trail map stamped by the foxes' footfalls, sampled by
-    // the snow ground to pack/darken the trail (RDR2-style, see docs/WINTER_FOX_PAW_TRAILS_PLAN.md).
+    // --- Fox SNOW DEFORMATION: a persistent signed height field stamped by the foxes' footfalls
+    // and behaviours, sampled by the snow ground for real shading (gradient normal, contact AO,
+    // contact shadow, parallax). See docs/WINTER_FOX_PAW_TRAILS_AAA_PLAN_2026-07.md.
     const pawTrail = createPawTrail({
         origin: [-1200, -1880],
         size: [2400, 2320],
-        res: 512,
-        tau: 7.0,
+        // 1024² → 2.34 world units/texel. The foxes are `scale: 80`, so a paw is ~8 units: at
+        // 512² that is 1.7 texels and the displaced berm ring lands BELOW one texel — i.e.
+        // unrepresentable. 1024² puts the paw at ~3.4 texels and the berm at ~1.9, which is the
+        // minimum that resolves. Tile culling below keeps the decay cost near the 512² sweep.
+        res: 1024,
+        // Seconds to completely refill a full-depth mark. The StormDirector idles at 0.12, so a
+        // calm night buries a fresh print in ~40 s and a well-trodden lane in ~112 s; a combo
+        // blizzard erases everything in a few seconds.
+        tauCalm: 45.0,
+        tauStorm: 3.5,
         lake: {
             cx: 0, cz: LAKE_Z, halfX: 2050, halfZ: 600,
         },
     });
+
+    // Debug framing override, honoured by camera() below. Null in normal play.
+    let camOverride = null;
 
     // --- Snow drift field — smooth + PolyHaven snow detail (no more "built from squares") ---
     // snow_01 (or snow_02): diffuse → painterly luminance tooth, nor_gl → lighting micro-relief.
@@ -893,10 +987,21 @@ export function create({ scene, renderer, camera }) {
         smooth: true,
         detailDiff: snowDetail.diff,
         detailNor: snowDetail.nor,
-        trail: { texture: pawTrail.texture, uOrigin: pawTrail.uOrigin, uInvSize: pawTrail.uInvSize },
+        trail: {
+            texture: pawTrail.texture,
+            uOrigin: pawTrail.uOrigin,
+            uInvSize: pawTrail.uInvSize,
+            uTexel: pawTrail.uTexel,
+        },
     });
     scene.add(drifts.mesh);
     disposables.push(drifts);
+
+    // Footfall powder — the moment of contact. Without it the deformation appears out of thin
+    // air, which reads as a decal switching on rather than a paw pressing into snow.
+    const snowPuffs = createSnowPuffs({ pool: 96 });
+    scene.add(snowPuffs.mesh);
+    disposables.push(snowPuffs);
 
     // --- Frozen lake (reflective ice + moon column + aurora reflection) ---
     const { material: lakeMat, uniforms: lakeU } = createWinterLakeNodeMaterial({
@@ -976,9 +1081,26 @@ export function create({ scene, renderer, camera }) {
         fallbackY: FEET_Y,
         count: 3,
         scale: 80,
-        onFootstep: (x, z, ux, uz, ms) => pawTrail.stamp(x, z, ux, uz, ms),
+        trail: pawTrail, // footfalls, pounce craters, dig fans and sleeping hollows
+        puffs: snowPuffs, // …and the powder each of those kicks up
     });
     arcticFox.load();
+
+    // Debug handle (harmless, same spirit as `group.userData.foxes`): lets a capture session
+    // inspect the deformation field, tune its shading, stage a behaviour, and fly in close
+    // enough to actually judge ground detail — the shipping camera is ~1 km from the treeline.
+    if (typeof window !== 'undefined') {
+        window.__winterDebug = {
+            trail: pawTrail,
+            puffs: snowPuffs,
+            trailUniforms: drifts.trailUniforms,
+            foxes: () => arcticFox.group.userData.foxes ?? [],
+            setFoxState: (i, s) => arcticFox.group.userData.setFoxState?.(arcticFox.group.userData.foxes[i], s),
+            setCamera(pos, look, fov = 40) {
+                camOverride = pos ? { pos, look, fov } : null;
+            },
+        };
+    }
 
     // --- Faceted snow-capped foreground rocks ---
     const rockMat = track(makeFacetedRockMaterial({ moonDir: MOON_POS.clone() }));
@@ -1082,6 +1204,18 @@ export function create({ scene, renderer, camera }) {
     return {
         cameraRadius: 0.001,
         camera(time, camera) {
+            // Debug framing hook (see window.__winterDebug.setCamera) — the shipping camera is
+            // ~1 km from the far treeline, so ground detail like the fox trails can only be
+            // judged up close. Inert unless a capture session sets it.
+            if (camOverride) {
+                if (camera.fov !== undefined) {
+                    camera.fov = camOverride.fov;
+                    camera.updateProjectionMatrix();
+                }
+                camera.position.set(...camOverride.pos);
+                camera.lookAt(...camOverride.look);
+                return;
+            }
             // Wide eye-level framing: big snow-pines frame both corners, the cracked
             // ice fills the lower third, treeline + peaks recede.
             if (camera.fov !== undefined && Math.abs(camera.fov - 55) > 0.01) {
@@ -1162,6 +1296,16 @@ export function create({ scene, renderer, camera }) {
             // speed ramp on combos (the lake reads as part of the Living Blizzard).
             if (lakeU?.uStorm) lakeU.uStorm.value = THREE.MathUtils.clamp(stormS + (stormReact?.whiteout ?? 0) * 0.3, 0, 1.3);
             if (drifts?.uTime) drifts.uTime.value = time;
+            // The snow the foxes disturb is part of the Living Blizzard: a calm night keeps
+            // their tracks legible for ~20 s, a full whiteout fills them back in within ~2 s
+            // (Batman's "subtract a little each frame, since it's snowing", storm-coupled).
+            // The prevailing wind also drifts the field downwind as it fades, so tracks fill
+            // in from the windward side instead of dissolving uniformly.
+            pawTrail.setStorm(stormS);
+            pawTrail.setWind(
+                (snowBase[0]?.bx ?? 14) * gustDir * blast,
+                snowBase[0]?.bz ?? 6,
+            );
             // Whiteout flash: the decaying `whiteout` transient (Tetris / Perfect Clear)
             // floods the screen white. Reduced-motion suppresses the strobe entirely.
             whiteoutWash.uOpacity.value = reduceMotion ? 0 : THREE.MathUtils.clamp(stormReact?.whiteout ?? 0, 0, 1.2) * 0.85;
@@ -1210,6 +1354,7 @@ export function create({ scene, renderer, camera }) {
             spruces.update(dt);
             arcticFox.update(dt);
             pawTrail.update(dt);
+            snowPuffs.update(dt);
         },
         // Theme pushes the StormDirector state here each frame (intensity + transients).
         setReactive(state) { stormReact = state; },

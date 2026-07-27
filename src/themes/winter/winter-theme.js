@@ -1077,6 +1077,7 @@ export default class WinterTheme extends BaseTheme {
     constructor() {
         super('winter');
         this.renderer = null; this.scene = null; this.camera = null; this.composer = null; this.post = null;
+        this.animationFrameId = null;
 
         this.snowParticles = null;
         this.closeSnowflakes = null;
@@ -1336,7 +1337,7 @@ export default class WinterTheme extends BaseTheme {
         console.groupEnd();
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         if (typeof document === 'undefined') return;
         this.currentQuality = this.getCurrentQualityLevel();
         if (typeof window !== 'undefined') {
@@ -1364,8 +1365,8 @@ export default class WinterTheme extends BaseTheme {
         const oldCanvas = container.querySelector('#winter-canvas');
         if (oldCanvas) oldCanvas.style.display = 'none';
 
-        await this.initRenderer(container);
-        if (!this.renderer) return;
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady || !this.renderer) return;
         if (this.snowflakeTexture && this.renderer.capabilities?.getMaxAnisotropy) {
             const maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy();
             this.snowflakeTexture.anisotropy = Math.min(maxAnisotropy, 8);
@@ -1410,7 +1411,12 @@ export default class WinterTheme extends BaseTheme {
                 this.createLowPolyForest();
                 // GLB winter trees (Spruce, Pine, Fir, Birch) — Firewatch low-poly style
                 this.glbTrees = createWinterTrees(this.scene);
-                this.glbTrees.load().then(() => this.glbTrees.placeForest());
+                const winterTrees = this.glbTrees;
+                winterTrees.load().then(() => {
+                    if (this.glbTrees === winterTrees && this.isActive) {
+                        winterTrees.placeForest();
+                    }
+                });
             }
             // WebGL fallback keeps the separate flat-plane curtain ribbons.
             if (this.qualityPreset.enableAurora && !this.isWebGPU) this.createAuroraSystem();
@@ -1434,23 +1440,36 @@ export default class WinterTheme extends BaseTheme {
         this.startAnimation();
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        this.renderer = new THREE.WebGPURenderer({
+        const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: false,
             forceWebGL: this.forceWebGL === true,
             preserveDrawingBuffer: this.baselineEnabled === true,
         });
         try {
-            await this.renderer.init();
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Winter renderer init',
+                ownerGeneration,
+            });
         } catch (error) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return false;
             console.error('[WinterTheme] Renderer init failed:', error);
-            this.renderer = null;
-            return;
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
         }
 
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
         console.log(`[WinterTheme] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, post: ${this.disablePost ? 'BYPASSED' : 'on'}`);
@@ -1480,6 +1499,7 @@ export default class WinterTheme extends BaseTheme {
         this.moonLight = new THREE.DirectionalLight(0x9bb8e6, 0.6);
         this.moonLight.position.set(500, 1000, -800); // Aligned with Moon
         this.scene.add(this.moonLight);
+        return true;
     }
 
     createSkyBackground() {
@@ -3994,7 +4014,7 @@ export default class WinterTheme extends BaseTheme {
                     this.renderer.clear();
                     this.renderer.render(this.scene, this.camera);
                 }
-                requestAnimationFrame(animate);
+                this.animationFrameId = requestAnimationFrame(animate);
                 return;
             }
 
@@ -4237,9 +4257,9 @@ export default class WinterTheme extends BaseTheme {
                 this.renderer.clear();
                 this.renderer.render(this.scene, this.camera);
             }
-            requestAnimationFrame(animate);
+            this.animationFrameId = requestAnimationFrame(animate);
         };
-        requestAnimationFrame(animate);
+        this.animationFrameId = requestAnimationFrame(animate);
     }
 
     updateEffectState(delta) {

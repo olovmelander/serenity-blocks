@@ -7,6 +7,7 @@ import {
     createGameplayShockwaveNodeMaterial,
     createGameplaySiltNodeMaterial,
 } from './ocean-materials.js';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 
 export const QUALITY_EFFECT_LIMITS = {
     Minimal: {
@@ -814,6 +815,19 @@ export class OceanGameplayEffects {
                 const z = clamp(hit.z, -120, 72);
                 return this.anchorScratch.set(x, this.getAnchorY(x, z), z).clone();
             }
+        }
+
+        // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock
+        // position; re-express it as a visible board cell (column 0..10; absolute row = the
+        // 4 hidden rows + fraction of the 20 visible rows) and reuse the piece world-mapping
+        // so side/depth track where the piece landed on screen instead of pinning to the floor.
+        const viewport = readLockViewportOrigin(payload);
+        if (viewport) {
+            const viewportAnchor = this.resolvePieceAnchor({
+                x: viewport.x * 10,
+                y: 4 + viewport.y * 20,
+            });
+            if (viewportAnchor) return viewportAnchor;
         }
 
         const piece = payload?.piece || payload || {};

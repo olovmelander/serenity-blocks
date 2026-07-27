@@ -95,6 +95,12 @@ import {
 } from './ffa/net-diagnostics.js';
 import { garbageBurstKey, drainAllLineBursts } from './ffa/garbage-helpers.js';
 import { checkTopOut, serializeBoardGrid } from './ffa/board-helpers.js';
+import {
+    buildStateSnapshot as buildFfaStateSnapshot,
+    calculateStateDigest as calculateFfaStateDigest,
+    hasSignificantStateChanges as ffaHasSignificantStateChanges,
+} from './ffa/snapshot-codec.js';
+import { queueInputDuringPhysics, applyDeferredHardDrop } from './ffa/input-defer.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -1434,23 +1440,12 @@ export class FFAGameStateP2P {
             timing.inputPhase === true
             && gameState._fixedInputSpawnFrame === gameState.simFrame
         ) return false;
-        // Buffer move/rotate while physics owns the piece; spawnPiece consumes the queue.
+        // Physics owns the piece: defer inputs instead of dropping them (§2.6 / P0-4).
+        // move/rotate queue for spawnPiece to consume; a hard drop is flagged for the next
+        // piece. Shared by host (remote apply) and peer (local prediction) so both defer
+        // symmetrically — see ffa/input-defer.js.
         if (gameState.isProcessingPhysics || !gameState.currentPiece) {
-            if (inputType === 'move' || inputType === 'rotate') {
-                const queued = {
-                    type: inputType,
-                    dir: data.direction,
-                };
-                if (Array.isArray(gameState.inputQueue)) {
-                    if (gameState.inputQueue.length < 4) {
-                        gameState.inputQueue.push(queued);
-                    }
-                } else if (gameState.inputQueue) {
-                    gameState.inputQueue = [gameState.inputQueue, queued].slice(0, 4);
-                } else {
-                    gameState.inputQueue = queued;
-                }
-            }
+            queueInputDuringPhysics(gameState, inputType, data);
             return false;
         }
         const callbacks = physicsCallbacks || this.buildPhysicsCallbacks(steamId);
@@ -2184,99 +2179,15 @@ export class FFAGameStateP2P {
 
     /** @returns {AuthoritativeStateSnapshot} */
     buildStateSnapshot() {
-        const players = Array.from(this.players.entries()).map(([steamId, player]) => ({
-            steamId,
-            name: player.name,
-            color: player.color,
-            score: player.gameState.score,
-            lines: player.gameState.lines,
-            level: player.gameState.level,
-            frags: player.frags,
-            isAlive: player.isAlive,
-            awaitingSpawn: player.awaitingSpawn === true, // late joiner waiting to spawn (≠ eliminated)
-            garbagePending: player.garbageQueue.getTotalLines(),
-            lastAttackerId: player.lastAttackerId || null,
-            lockSeq: player._lockSeq || 0,
-            grid: player.gameState.boardGrid,
-            currentPiece: player.gameState.currentPiece,
-            nextPieces: player.gameState.nextPieces,
-            dropCounter: player.gameState.dropCounter,
-            dropInterval: player.gameState.dropInterval,
-            garbageEntries: player.garbageQueue.entries.map((entry) => ({
-                type: entry.type,
-                attackerId: entry.attackerId,
-                attackerName: entry.attackerName,
-                color: entry.color,
-                holeMask: entry.holeMask,
-                variant: entry.variant,
-                duration: entry.duration,
-                isLastInBurst: entry.isLastInBurst === true,
-                attackId: entry.attackId,
-                attackSeq: entry.attackSeq,
-                lineIndex: entry.lineIndex,
-                targetId: entry.targetId,
-                createdSimTick: entry.createdSimTick,
-                sourceSimTick: entry.sourceSimTick,
-                sourceLockSeq: entry.sourceLockSeq,
-                applyAfterLockSeq: entry.applyAfterLockSeq,
-                applySimTick: entry.applySimTick,
-                rulesHash: entry.rulesHash,
-                clearSummary: entry.clearSummary,
-            })),
-            lockedPieces: player.gameState.lockedPieces.map((piece) => ({
-                x: piece.x,
-                y: piece.y,
-                shape: piece.shape,
-                color: piece.color,
-                shapeKey: piece.shapeKey,
-            })),
-            blindTimers: player.gameState.blindTimers ? {
-                field: player.gameState.blindTimers.field,
-                fieldMax: player.gameState.blindTimers.fieldMax,
-                pending: player.gameState.blindTimers.pending,
-                pendingMax: player.gameState.blindTimers.pendingMax,
-            } : null,
-            lastInputSeq: player.lastInputSeq,
-        }));
-        // Phase 4: Calculate state digest for desync detection
-        const stateDigest = this._calculateStateDigest(players);
-        return {
-            players,
-            gamePhase: this.gamePhase,
-            roundGeneration: this.roundGeneration, // fence: peers drop snapshots from an older round
-            hotPotatoState: this.hotPotatoState ? { ...this.hotPotatoState } : null,
-            winner: this.winner ? {
-                steamId: this.winner.steamId,
-                name: this.winner.name,
-            } : null,
-            timestamp: Date.now(),
-            tick: this.hostTick,
-            simTick: this.simTick,
-            snapshotSeq: this.snapshotSeq,
-            migrationEpoch: this.migrationEpoch || 0,
-            // Phase 4: State digest for desync detection
-            digest: stateDigest,
-        };
+        return buildFfaStateSnapshot(this);
     }
 
     /**
-     * Phase 4: Calculate a digest of the critical game state for desync detection
-     * Uses a simple hash of scores, frags, and alive status - fast to compute
+     * Phase 4: Calculate a digest of the critical game state for desync detection.
+     * Delegates to the extracted snapshot codec (Phase 6A.2).
      */
     _calculateStateDigest(players) {
-        // Build a string of critical state values
-        const stateString = players
-            .sort((a, b) => a.steamId.localeCompare(b.steamId)) // Deterministic order
-            .map((p) => `${p.steamId}:${p.score}:${p.lines}:${p.frags}:${p.isAlive ? 1 : 0}:${p.garbagePending}`)
-            .join('|');
-
-        // Simple hash (DJB2 algorithm)
-        let hash = 5381;
-        for (let i = 0; i < stateString.length; i++) {
-            hash = ((hash << 5) + hash) + stateString.charCodeAt(i);
-            hash &= hash; // Convert to 32-bit integer
-        }
-        return (hash >>> 0).toString(16); // Unsigned hex string
+        return calculateFfaStateDigest(players);
     }
 
     /** @returns {AuthoritativeStateSnapshot} */
@@ -2289,37 +2200,7 @@ export class FFAGameStateP2P {
     * Used to avoid broadcasting when nothing has changed
     */
     hasSignificantStateChanges() {
-        if (!this.isHost) return false;
-
-        for (const [steamId, player] of this.players) {
-            const lastState = this.lastBroadcastState.get(steamId);
-
-            if (!lastState) {
-                return true; // No previous state, so broadcast
-            }
-
-            const currentState = player.gameState;
-
-            // Check for significant changes
-            const hasChanges = (
-                lastState.score !== currentState.score
-                || lastState.lines !== currentState.lines
-                || lastState.level !== currentState.level
-                || lastState.currentPieceY !== currentState.currentPiece?.y
-                || lastState.currentPieceX !== currentState.currentPiece?.x
-                || lastState.dropCounter !== currentState.dropCounter
-                || lastState.garbagePending !== player.garbageQueue.getTotalLines()
-                || player.frags !== lastState.frags
-                || player.isAlive !== lastState.isAlive
-                || lastState.hotPotatoGeneration !== (this.hotPotatoState?.generation || 0)
-            );
-
-            if (hasChanges) {
-                return true;
-            }
-        }
-
-        return false; // No changes detected
+        return ffaHasSignificantStateChanges(this);
     }
 
     maybeBroadcastPostPhysics(delta) {
@@ -3663,6 +3544,9 @@ export class FFAGameStateP2P {
 
             // Spawn next piece locally (peers manage their own piece spawning)
             spawnPiece(gameState, null, null);
+            // P0-4: apply a hard drop deferred during the cascade to this new piece, matching
+            // the host's symmetric apply in _spawnNextPieceForPlayer.
+            applyDeferredHardDrop(this, steamId);
         };
         return callbacks;
     }
@@ -3795,6 +3679,12 @@ export class FFAGameStateP2P {
         if (this.isHost && this._lockEventsEnabled) {
             this._emitAuthoritativeLock(steamId);
         }
+
+        // P0-4: a hard drop the player pressed during the cascade was deferred (not discarded)
+        // — apply it now to the freshly-spawned piece so the host converges with the peer's
+        // local prediction instead of drifting into a resync snap. The lock-event above
+        // already reflected the settled spawn; this drop emits its own when it settles.
+        applyDeferredHardDrop(this, steamId);
     }
 
     /**

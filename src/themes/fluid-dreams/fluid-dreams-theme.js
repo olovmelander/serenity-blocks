@@ -21,6 +21,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { IntroCameraParallax } from '../../ui/intro-camera-parallax.js';
 import { FLUID_DREAMS_TETROMINOS } from './fluid-dreams-tetrominos.js';
 import {
     backgroundVertexShader,
@@ -46,7 +47,7 @@ import { FluidDreamsPost } from './fluid-dreams-post.js';
 // computeStride: dispatch particle compute every Nth frame (1 = every frame).
 const QUALITY_PRESETS = {
     Minimal: {
-        particleCount: 4000,
+        particleCount: 1200,
         marchSteps: 24,
         bgHazeSteps: 0,
         hazeSegments: [0, 0],
@@ -59,7 +60,7 @@ const QUALITY_PRESETS = {
         computeStride: 2,
     },
     Low: {
-        particleCount: 10000,
+        particleCount: 2500,
         marchSteps: 32,
         bgHazeSteps: 6,
         hazeSegments: [16, 12],
@@ -72,7 +73,7 @@ const QUALITY_PRESETS = {
         computeStride: 1,
     },
     Medium: {
-        particleCount: 24000,
+        particleCount: 5000,
         marchSteps: 40,
         bgHazeSteps: 10,
         hazeSegments: [16, 12],
@@ -85,7 +86,7 @@ const QUALITY_PRESETS = {
         computeStride: 1,
     },
     High: {
-        particleCount: 50000,
+        particleCount: 9000,
         marchSteps: 52,
         bgHazeSteps: 14,
         hazeSegments: [20, 14],
@@ -98,7 +99,7 @@ const QUALITY_PRESETS = {
         computeStride: 1,
     },
     Ultra: {
-        particleCount: 75000,
+        particleCount: 14000,
         marchSteps: 64,
         bgHazeSteps: 16,
         hazeSegments: [24, 16],
@@ -111,7 +112,7 @@ const QUALITY_PRESETS = {
         computeStride: 1,
     },
     Extreme: {
-        particleCount: 120000,
+        particleCount: 22000,
         marchSteps: 76,
         bgHazeSteps: 20,
         hazeSegments: [24, 16],
@@ -220,11 +221,15 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.baseCameraPos = new THREE.Vector3(0, 1.5, 22);
         this.cameraLook = new THREE.Vector3(3.5, 0.5, 0);
 
-        // Pointer tracking for parallax camera (matches aurora pattern).
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
+        // Reuse the camera controller proven by Serenity Warp. It owns pointer
+        // tracking, frame-rate-independent smoothing, and focus-loss recentering.
+        this.cameraParallax = new IntroCameraParallax({
+            orbitX: 5.5,
+            orbitY: 3.6,
+            orbitZ: 1.8,
+            lookAtGain: 0.22,
+            dampRate: 3.8,
+        });
 
         // Quality
         this.currentQuality = DEFAULT_QUALITY;
@@ -328,7 +333,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     // Scene init
     // ─────────────────────────────────────────────────────────────────────────
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('💧 Fluid Dreams: Initializing WebGPU/TSL scene...');
 
         const container = document.getElementById('fluid-dreams-theme');
@@ -341,8 +346,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.applyQualityPreset(this.getGraphicsQuality());
         this.setupQualityListener();
 
-        await this.initRenderer(container);
-        if (!this.renderer || !this.isActive) return;
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady || !this.renderer || !this.isActive) return;
 
         // Scene + camera (shared between WebGPU and WebGL paths)
         this.scene = new THREE.Scene();
@@ -362,6 +367,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
         // Events
         this.setupEventListeners();
+        this.cameraParallax.attach();
         window.addEventListener('resize', this.onWindowResize);
 
         this.clock.start();
@@ -370,13 +376,17 @@ export default class FluidDreamsTheme extends BaseTheme {
         console.log(`💧 Fluid Dreams: scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL'}) — ${this.activePreset.metaballCount} metaballs, ${this.activePreset.particleCount} particles`);
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const antialias = this.getAntialiasEnabled();
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
         // Try WebGPU first.
         let webgpuRenderer = null;
+        let renderer = null;
         try {
             webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
                 antialias,
@@ -384,21 +394,26 @@ export default class FluidDreamsTheme extends BaseTheme {
                 alpha: false,
                 forceWebGL: false,
             });
-            await webgpuRenderer.init();
+            await this.initializeRendererCandidate(webgpuRenderer, {
+                label: 'Fluid Dreams WebGPU renderer init',
+                ownerGeneration,
+            });
         } catch (error) {
+            if (!ownsLifecycle()) return false;
             console.warn('💧 Fluid Dreams: WebGPU init failed, falling back to WebGL2:', error);
             webgpuRenderer = null;
         }
 
         if (webgpuRenderer?.backend?.isWebGPUBackend === true) {
-            this.renderer = webgpuRenderer;
+            renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.isWebGL = false;
         } else {
             if (webgpuRenderer) {
                 try { webgpuRenderer.dispose(); } catch (e) { /* noop */ }
             }
-            this.renderer = new THREE.WebGLRenderer({
+            if (!ownsLifecycle()) return false;
+            renderer = new THREE.WebGLRenderer({
                 alpha: false,
                 antialias,
                 powerPreference: 'high-performance',
@@ -407,6 +422,11 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.isWebGL = true;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -415,6 +435,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.renderer.toneMappingExposure = 1.1;
         }
         container.appendChild(this.renderer.domElement);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -638,18 +659,10 @@ export default class FluidDreamsTheme extends BaseTheme {
                 particleCompute: this.particleCompute,
             });
 
-            const geometry = new THREE.BufferGeometry();
-            const dummyPositions = new Float32Array(count * 3);
-            geometry.setAttribute('position', new THREE.BufferAttribute(dummyPositions, 3));
-            // Stub `uv` attribute so TSL's AttributeNode finds it on the Points geometry.
-            // Values are unused at runtime — PointsNodeMaterial substitutes the sprite UV.
-            // Without this stub TSL logs a benign "attribute uv not found" warning per build.
-            const dummyUvs = new Float32Array(count * 2);
-            geometry.setAttribute('uv', new THREE.BufferAttribute(dummyUvs, 2));
-            geometry.setDrawRange(0, count);
+            const geometry = new THREE.PlaneGeometry(1, 1);
             geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 60);
 
-            this.particleSystem = new THREE.Points(geometry, this.particleMaterial);
+            this.particleSystem = new THREE.InstancedMesh(geometry, this.particleMaterial, count);
             this.particleSystem.frustumCulled = false;
             this.particleSystem.renderOrder = 2;
             this.scene.add(this.particleSystem);
@@ -779,16 +792,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.onPieceLock(data);
         });
 
-        // Pointer tracking for parallax camera.
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1062,30 +1066,25 @@ export default class FluidDreamsTheme extends BaseTheme {
             }
         }
 
-        // Smooth pointer toward target (frame-rate independent damping).
-        // delta * 5 → reaches ~95% of target in ~0.6s. Snappy but not jittery.
-        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 5.0);
-        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 5.0);
-        // Parallax magnitudes trimmed so mouse movement never swings the hero
-        // behind the game board or off-screen given the new off-centre framing.
-        const parallaxX = this.smoothedPointerX * 3.5;
-        const parallaxY = -this.smoothedPointerY * 2.2;
-
-        // Slow cinematic camera — Z dolly + ±6° yaw orbit + mouse parallax.
+        // Establish the autonomous base pose first. IntroCameraParallax then adds
+        // Serenity Warp's cursor orbit as the final camera operation.
         const dollyZ = Math.sin(elapsed * (2 * Math.PI / 8)) * 2.5;
         const yawAngle = Math.sin(elapsed * (2 * Math.PI / 14)) * (Math.PI / 30);
         const baseX = this.baseCameraPos.x;
         const baseZ = this.baseCameraPos.z + dollyZ;
-        this.camera.position.x = baseX * Math.cos(yawAngle) + baseZ * Math.sin(yawAngle) + parallaxX;
-        this.camera.position.y = this.baseCameraPos.y + Math.sin(elapsed * 0.3) * 0.6 + parallaxY;
-        this.camera.position.z = -baseX * Math.sin(yawAngle) + baseZ * Math.cos(yawAngle);
-        // LookAt nudged by mouse at 0.1x — focal point stays near (3.5, 0.5, 0)
-        // so the hero anchors in the left third regardless of mouse position.
-        this.camera.lookAt(
-            this.cameraLook.x + parallaxX * 0.1,
-            this.cameraLook.y + parallaxY * 0.1,
-            this.cameraLook.z,
-        );
+        const idleCameraX = baseX * Math.cos(yawAngle) + baseZ * Math.sin(yawAngle);
+        const idleCameraY = this.baseCameraPos.y + Math.sin(elapsed * 0.3) * 0.6;
+        const idleCameraZ = -baseX * Math.sin(yawAngle) + baseZ * Math.cos(yawAngle);
+        this.camera.position.set(idleCameraX, idleCameraY, idleCameraZ);
+        this.cameraParallax.apply(this.camera, delta, this.cameraLook);
+
+        // Counter-shift the particle volume against the camera to make nearby motes
+        // separate from the distant fluid field. The small offset preserves the
+        // gameplay composition while giving cursor movement a tangible depth cue.
+        if (this.particleSystem) {
+            this.particleSystem.position.x = -(this.camera.position.x - idleCameraX) * 0.16;
+            this.particleSystem.position.y = -(this.camera.position.y - idleCameraY) * 0.12;
+        }
 
         // Render
         this.renderFrame(elapsed);
@@ -1216,6 +1215,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             try { unsub?.(); } catch (e) { /* noop */ }
         });
         this.eventUnsubscribers = [];
+        this.cameraParallax.detach();
 
         this.teardownQualityListener();
         window.removeEventListener('resize', this.onWindowResize);

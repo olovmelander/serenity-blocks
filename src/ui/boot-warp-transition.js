@@ -31,11 +31,29 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import {
     BOOT_WARP_DEFAULT_DURATION_MS,
     BOOT_WARP_FADE_PROGRESS,
+    BOOT_WARP_HEALTHY_FRAME_DELTA_MS,
+    BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL,
+    BOOT_WARP_MAX_FRAME_DELTA_MS,
     BOOT_WARP_REVEAL_PROGRESS,
     BOOT_WARP_TITLE_PROGRESS,
 } from './boot-warp-startup.js';
 
 const CANVAS_ID = 'boot-warp-canvas';
+// Progress values primed during prewarm. The compute pass is ANALYTIC (position is a pure
+// function of uProgress/uTime — it never integrates stored state), so priming mid-flight
+// values is free of side effects and leaves nothing to undo. Covering the ignition, the
+// streak-stretched tunnel and the nebula arrival exercises every branch of the shader plus
+// the heavy additive-fill path, so nothing compiles for the first time during play().
+const PRIME_PROGRESS_STEPS = [0, 0.45, 0.95];
+// Wall-clock ceiling on the play loop, expressed relative to the animation duration. The
+// clock is frame-driven, so a machine that never produces frames would otherwise never
+// finish; on expiry the loop resolves and the caller falls back to the CSS reveal.
+const PLAY_WALL_CLOCK_SLACK = 3;
+const PLAY_WALL_CLOCK_FLOOR_MS = 5000;
+// Bound on the "has the GPU finished the primed work" wait, so a wedged device degrades to
+// the old behaviour (proceed, maybe hitch) instead of holding the ident until the outer
+// prewarm timeout fires.
+const PRIME_GPU_IDLE_TIMEOUT_MS = 9000;
 let nextTransitionId = 1;
 
 function nowMs() {
@@ -322,19 +340,46 @@ export class BootWarpTransition {
                 hasComputeNode: Boolean(warp.computeNode),
             });
 
-            // Prime: dispatch compute + render one frame at progress 0 so the pipeline
-            // compiles NOW (masked by the ident), not at the first play() frame.
-            warp.setProgress(0);
-            warp.setTime(0);
-            markStartup('boot-warp:prime-compute-start', { id: this.debugId });
-            renderer.compute(warp.computeNode);
-            markStartup('boot-warp:prime-render-start', { id: this.debugId });
-            renderer.render(scene, camera);
-            markStartup('boot-warp:prime-render-complete', { id: this.debugId });
+            // Prime the pipelines while the ident still covers the screen — and, crucially,
+            // WAIT for the GPU to execute that work. `compute()`/`render()` only build the
+            // pipeline objects and queue a submit; on a cold Dawn/driver pipeline cache the
+            // real shader compile happens when the GPU runs the commands. Queueing it and
+            // moving on meant the compile landed inside play(), starving rAF for ~3s: the
+            // ident cross-dissolved onto a warp already at progress ~0.48, and the flight
+            // then ran out before its visible contract (a frozen tail before the fade).
+            // Awaiting submitted-work-done keeps that cost behind the ident, where the
+            // module header always claimed it was.
+            const primeStartedAt = nowMs();
+            markStartup('boot-warp:prime-compute-start', { id: this.debugId, steps: PRIME_PROGRESS_STEPS.length });
+            for (const primeProgress of PRIME_PROGRESS_STEPS) {
+                warp.setProgress(primeProgress);
+                warp.setTime(primeProgress * 4);
+                // Sync compute()/render() on purpose: r181's computeAsync/renderAsync are
+                // deprecated wrappers that only await init() — they do NOT wait for the GPU.
+                // The queue drain below is what actually forces the compile.
+                renderer.compute(warp.computeNode);
+                renderer.render(scene, camera);
+            }
+            markStartup('boot-warp:prime-render-complete', {
+                id: this.debugId,
+                durationMs: elapsedSince(primeStartedAt),
+            });
+            const gpuIdle = await this._waitForPrimedGpuWork(device);
+            markStartup('boot-warp:prime-gpu-idle', {
+                id: this.debugId,
+                ...gpuIdle,
+                totalPrimeMs: elapsedSince(primeStartedAt),
+            }, gpuIdle.status === 'timeout' ? { level: 'warn' } : undefined);
             if (this._disposed) {
                 markStartup('boot-warp:prime-late-after-dispose', { id: this.debugId }, { level: 'warn' });
                 return false;
             }
+            // Leave the buffers holding the resting state so play()'s first frame is the
+            // closed diamond, not the last primed step.
+            warp.setProgress(0);
+            warp.setTime(0);
+            renderer.compute(warp.computeNode);
+            renderer.render(scene, camera);
         } catch (err) {
             this.lastPrewarmStatus = 'setup-failed';
             markStartup('boot-warp:setup-failed', {
@@ -350,6 +395,44 @@ export class BootWarpTransition {
         this._ready = true;
         markStartup('boot-warp:ready', { id: this.debugId });
         return true;
+    }
+
+    /**
+     * Block until the GPU has finished executing the primed submissions, so the driver's
+     * first-use shader compile is spent here (behind the ident) rather than inside play().
+     * Always resolves — a device without the API, or one that never settles, degrades to
+     * "proceed anyway" rather than holding the boot.
+     *
+     * @param {GPUDevice|null} device
+     * @returns {Promise<{status: string, durationMs: number}>}
+     */
+    async _waitForPrimedGpuWork(device) {
+        const startedAt = nowMs();
+        const queue = device?.queue;
+        if (typeof queue?.onSubmittedWorkDone !== 'function') {
+            return { status: 'unsupported', durationMs: 0 };
+        }
+
+        let timeoutId = null;
+        try {
+            const status = await Promise.race([
+                Promise.resolve(queue.onSubmittedWorkDone()).then(() => 'idle'),
+                new Promise((resolve) => {
+                    timeoutId = setTimeout(() => resolve('timeout'), PRIME_GPU_IDLE_TIMEOUT_MS);
+                }),
+            ]);
+            return { status, durationMs: elapsedSince(startedAt) };
+        } catch (error) {
+            // A rejected onSubmittedWorkDone means the device died; the loss handlers
+            // already flagged it, so just report and let the normal bail-out run.
+            return {
+                status: 'failed',
+                durationMs: elapsedSince(startedAt),
+                message: error?.message || String(error),
+            };
+        } finally {
+            if (timeoutId !== null) clearTimeout(timeoutId);
+        }
     }
 
     /**
@@ -382,13 +465,22 @@ export class BootWarpTransition {
             fadeOverlap: false,
             titleReveal: false,
         };
+        const wallCeilingMs = (durationMs * PLAY_WALL_CLOCK_SLACK) + PLAY_WALL_CLOCK_FLOOR_MS;
         let start = null;
+        let lastFrameAt = null;
+        // ANIMATION time, accumulated from rendered frames with a clamped per-frame delta —
+        // NOT wall clock. See BOOT_WARP_MAX_FRAME_DELTA_MS: the flight must play its whole
+        // arc even if the compositor stalls, because the handoff is choreographed against
+        // progress (reveal 0.06 / title 0.84 / fade 0.9) and a skipped span is a cut.
+        let elapsed = 0;
         let firstFrameRendered = false;
+        let healthyFrames = 0;
 
         return new Promise((resolve) => {
             this._playResolve = resolve;
             this._playState = {
                 firstFrameRendered: false,
+                cadenceHealthy: false,
                 durationMs,
                 elapsedMs: 0,
                 progress: 0,
@@ -407,12 +499,27 @@ export class BootWarpTransition {
                 if (start === null) {
                     start = now;
                 }
-                const elapsed = now - start;
+                // Each rAF callback proves the PREVIOUS frame reached the compositor, so the
+                // gap since the last one is the honest cadence signal: clamp its
+                // contribution to the flight, and count it toward the handoff only while
+                // frames keep flowing.
+                const frameDeltaMs = lastFrameAt === null ? 0 : now - lastFrameAt;
+                if (lastFrameAt !== null) {
+                    elapsed += Math.min(frameDeltaMs, BOOT_WARP_MAX_FRAME_DELTA_MS);
+                    healthyFrames = frameDeltaMs <= BOOT_WARP_HEALTHY_FRAME_DELTA_MS
+                        ? healthyFrames + 1
+                        : 0;
+                }
+                lastFrameAt = now;
+                const wallElapsedMs = now - start;
                 const p = Math.min(elapsed / durationMs, 1);
+                const cadenceHealthy = healthyFrames >= BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL;
                 this._playState = {
                     firstFrameRendered,
+                    cadenceHealthy,
                     durationMs,
                     elapsedMs: elapsed,
+                    wallElapsedMs,
                     progress: p,
                 };
 
@@ -437,6 +544,26 @@ export class BootWarpTransition {
                         firstFrameRendered,
                         durationMs,
                         elapsedMs: elapsed,
+                        progress: p,
+                    });
+                    return;
+                }
+                if (wallElapsedMs > wallCeilingMs) {
+                    // Frame-driven progress can't finish on a machine that has stopped
+                    // producing frames at all. Resolve so the boot moves on (a non-complete
+                    // status routes the caller to the CSS reveal) instead of hanging here.
+                    markStartup('boot-warp:play-stalled', {
+                        id: this.debugId,
+                        progress: p,
+                        wallElapsedMs: Math.round(wallElapsedMs),
+                        wallCeilingMs,
+                    }, { level: 'warn' });
+                    finish({
+                        status: 'stalled',
+                        firstFrameRendered,
+                        durationMs,
+                        elapsedMs: elapsed,
+                        wallElapsedMs,
                         progress: p,
                     });
                     return;
@@ -493,7 +620,10 @@ export class BootWarpTransition {
                     try {
                         onProgress(p, {
                             firstFrameRendered,
+                            cadenceHealthy,
+                            frameDeltaMs,
                             elapsedMs: elapsed,
+                            wallElapsedMs,
                             durationMs,
                         });
                     } catch (progressError) {
@@ -509,12 +639,16 @@ export class BootWarpTransition {
                 if (p < 1) {
                     this._raf = requestAnimationFrame(loop);
                 } else {
-                    markStartup('boot-warp:play-complete', { id: this.debugId });
+                    markStartup('boot-warp:play-complete', {
+                        id: this.debugId,
+                        wallElapsedMs: Math.round(wallElapsedMs),
+                    });
                     finish({
                         status: 'complete',
                         firstFrameRendered,
                         durationMs,
                         elapsedMs: elapsed,
+                        wallElapsedMs,
                         progress: p,
                     });
                 }

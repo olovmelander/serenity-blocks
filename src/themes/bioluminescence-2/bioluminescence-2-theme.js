@@ -51,7 +51,7 @@ export default class Bioluminescence2Theme extends BaseTheme {
         this.eventUnsubscribers = [];
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) {
             console.error('[Bioluminescence2] Theme container not found');
@@ -61,7 +61,7 @@ export default class Bioluminescence2Theme extends BaseTheme {
         this.disposeRuntime();
         container.innerHTML = '';
 
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) return;
 
         const width = window.innerWidth;
@@ -114,7 +114,7 @@ export default class Bioluminescence2Theme extends BaseTheme {
         this.eventUnsubscribers = [];
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const antialias = this.getAntialiasEnabled();
@@ -128,12 +128,11 @@ export default class Bioluminescence2Theme extends BaseTheme {
                 forceWebGL: useWebGLBackend,
                 powerPreference: 'high-performance',
             });
-            await Promise.race([
-                renderer.init(),
-                new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('WebGPU init timeout')), 5000);
-                }),
-            ]);
+            await this.initializeRendererCandidate(renderer, {
+                timeoutMs: 5000,
+                label: `Bioluminescence II ${useWebGLBackend ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            });
             return renderer;
         };
 
@@ -142,18 +141,27 @@ export default class Bioluminescence2Theme extends BaseTheme {
             try {
                 renderer = await makeRenderer(false);
                 if (renderer.backend?.isWebGPUBackend !== true) {
-                    renderer.dispose();
+                    this.disposeRenderer(renderer, { nullInstance: false });
                     renderer = null;
                 }
             } catch (error) {
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
                 console.warn('[Bioluminescence2] WebGPU init failed, trying WebGL2 backend:', error);
             }
         }
 
         if (!renderer) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return false;
             try {
                 renderer = await makeRenderer(true);
             } catch (error) {
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
                 console.error('[Bioluminescence2] Renderer init failed:', error);
                 container.innerHTML = '<div style="color:#9fe8ff;text-align:center;padding:2em;'
                     + 'font-family:sans-serif;">Bioluminescence II needs WebGPU or WebGL2.</div>';
@@ -161,6 +169,12 @@ export default class Bioluminescence2Theme extends BaseTheme {
             }
         }
 
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
 

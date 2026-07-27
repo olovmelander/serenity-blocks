@@ -3,7 +3,7 @@
  * SUNSET OCEAN WATER - Reflective Ocean with Day-Night Cycle
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * Based on Three.js Water.js and SwedishForestWater with adaptations for:
+ * Based on Three.js Water.js and GoldenForestWater with adaptations for:
  * - Dynamic day-night color transitions
  * - Dual sun AND moon reflection paths
  * - Ocean-scale wave patterns (larger, slower swells)

@@ -14,6 +14,7 @@ import { mrt, vec3 } from 'three/tsl';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { CHIRAL_GOLD_TETROMINOS } from './chiral-gold-tetrominos.js';
 import { ChiralGoldPost } from './chiral-gold-post.js';
@@ -399,7 +400,17 @@ export default class ChiralGoldTheme extends BaseTheme {
         return this.camera.position.clone().add(direction.multiplyScalar(t));
     }
 
-    getOriginFromPiece(piece) {
+    getOriginFromPiece(piece, viewportOrigin = null) {
+        // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock
+        // position; map it straight onto the theme's NDC composition window (identical
+        // projection to the piece path) instead of the fixed-board piece.y, which pins the
+        // burst to the bottom in Infinity.
+        const viewport = readLockViewportOrigin({ viewportOrigin });
+        if (viewport) {
+            const ndcX = -0.20 + viewport.x * 0.40;
+            const ndcY = 0.36 - viewport.y * 0.72;
+            return this.projectNdcToPlane(ndcX, ndcY, 0.0);
+        }
         if (!piece?.shape || !Array.isArray(piece.shape)) {
             return this.projectNdcToPlane(0.0, 0.0, 0.0);
         }
@@ -866,10 +877,10 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     async start(webglRenderer, managers = {}) {
         this.ensureThemeContainer();
-        await super.start(webglRenderer, managers);
+        return super.start(webglRenderer, managers);
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         this.cancelAnimationLoop();
         this.clearDeferredTimeouts();
         this.clearEventSubscriptions();
@@ -887,7 +898,8 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         container.innerHTML = '';
 
-        await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady) return;
         if (!this.renderer || !this.scene || !this.camera) {
             console.error('[ChiralGold] Renderer initialization failed');
             return;
@@ -1017,10 +1029,14 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.scene.add(this.dustPoints);
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let webgpuRenderer = null;
+        let renderer = null;
 
         if (!this.flags.forceWebGL) {
             try {
@@ -1028,8 +1044,12 @@ export default class ChiralGoldTheme extends BaseTheme {
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Chiral Gold WebGPU renderer init',
+                    ownerGeneration,
+                });
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[ChiralGold] WebGPU init failed, falling back to WebGL2:', error.message);
                 if (webgpuRenderer) {
                     webgpuRenderer.dispose();
@@ -1039,10 +1059,11 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
 
         if (webgpuRenderer?.backend?.isWebGPUBackend === true) {
-            this.renderer = webgpuRenderer;
+            renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.isWebGL = false;
-            this.renderer.onDeviceLost = (info) => {
+            renderer.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== renderer) return;
                 this.handleDeviceLoss(info);
             };
         } else {
@@ -1051,7 +1072,8 @@ export default class ChiralGoldTheme extends BaseTheme {
                 webgpuRenderer = null;
             }
 
-            this.renderer = new THREE.WebGLRenderer({
+            if (!ownsLifecycle()) return false;
+            renderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 powerPreference: 'high-performance',
                 alpha: false,
@@ -1060,6 +1082,11 @@ export default class ChiralGoldTheme extends BaseTheme {
             this.isWebGL = true;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
@@ -1090,6 +1117,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         const ambient = new THREE.AmbientLight(0x1b1205, 0.55);
         this.scene.add(ambient);
+        return true;
     }
 
     createDustSystem() {
@@ -2913,7 +2941,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         this.cameraLookNudgeY = -18.0 * eventScale;
 
-        const lockOrigin3D = this.getOriginFromPiece(piece);
+        const lockOrigin3D = this.getOriginFromPiece(piece, detail.viewportOrigin);
         if (lockOrigin3D) {
             // Localized subtle golden burst at the exact locking location
             const lockIntensity = (0.32 + eventScale * 0.16) * (caps.allowAdvancedScreenFx ? 1.0 : 0.84);
@@ -3154,10 +3182,16 @@ export default class ChiralGoldTheme extends BaseTheme {
         const clearedRows = detail.clearedRows || [];
         if (Array.isArray(clearedRows) && clearedRows.length > 0) {
             const totalRows = Math.max(20, Math.max(...clearedRows) + 1);
+            // Infinity supplies the ON-SCREEN clear origin; prefer it (the cleared rows are an
+            // adjacent band, so collapsing them to that Y is on-screen-accurate) — the absolute
+            // clearedRows would otherwise map against the whole tall grid and mis-place.
+            const viewport = readLockViewportOrigin(detail);
             clearedRows.forEach((y) => {
                 for (let colIdx = 0; colIdx < 5; colIdx++) {
                     const ndcX = -0.20 + colIdx * 0.10;
-                    const ndcY = 0.36 - (y / (totalRows - 1)) * 0.72;
+                    const ndcY = viewport
+                        ? 0.36 - viewport.y * 0.72
+                        : 0.36 - (y / (totalRows - 1)) * 0.72;
                     const origin3D = this.projectNdcToPlane(ndcX, ndcY, 0.0);
                     if (origin3D) {
                         const burstIntensity = Math.min(

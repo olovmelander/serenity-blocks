@@ -288,7 +288,39 @@ function defaultCamera(time, cam, radius) {
     cam.lookAt(0, 0, 0);
 }
 
+// `?silhouette=1` renders every surface as flat black on white. Composition is
+// judged on contour: during play the fovea is on the falling piece and the
+// periphery resolves silhouette and motion only, so if a scene does not read in
+// pure black it does not read at all. Also the fastest way to count how many
+// separable masses a frame actually has.
+let silhouetteMaterial = null;
+function applySilhouetteOverride() {
+    if (params.get('silhouette') !== '1') return;
+    if (!silhouetteMaterial) {
+        silhouetteMaterial = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
+        silhouetteMaterial.fog = false;
+    }
+    // White-on-black rather than black-on-white: themes render through their own
+    // PostProcessing pipeline, which does not honour scene.background, so the
+    // only reliable backdrop is the default clear.
+    scene.overrideMaterial = silhouetteMaterial;
+    scene.background = null;
+    scene.fogNode = null;
+    scene.fog = null;
+    // Hide the backdrop so the white shows through. The general rule is depth:
+    // sky domes, moons, haloes, mist planes and additive motes all render
+    // without writing depth, while the solid masses that define the composition
+    // all do. That is precisely the split a silhouette test wants, and it needs
+    // no per-object naming.
+    scene.traverse((object) => {
+        if (!object.isMesh && !object.isInstancedMesh) return;
+        const material = Array.isArray(object.material) ? object.material[0] : object.material;
+        if (material && material.depthWrite === false) object.visible = false;
+    });
+}
+
 function applyFrame(time, dt) {
+    applySilhouetteOverride();
     if (current?.camera) current.camera(time, camera);
     else defaultCamera(time, camera, current?.cameraRadius ?? 6);
     // Capture mode (?t=): prefer a deterministic absolute-time seek when the effect
@@ -342,6 +374,7 @@ function mountEffect(id) {
     window.__PLAYGROUND_ERROR__ = null;
     // Reseed for this mount so the effect's deterministic setup is reproducible.
     rng = mulberry32(rngSeed);
+    scene.overrideMaterial = null;
     try {
         current = mod.create({
             THREE,
@@ -402,6 +435,8 @@ function markReady() {
 let hudEls = {};
 function buildHud() {
     const hud = document.getElementById('hud');
+    // `?hud=0` yields a clean, overlay-free canvas for reference-comparison captures.
+    if (params.get('hud') === '0') hud.style.display = 'none';
     const effects = listEffects();
     const options = effects.map((m) => `<option value="${m.id}">${m.title}</option>`).join('');
     hud.innerHTML = `
@@ -524,6 +559,11 @@ function exposeApi() {
         backend: backendName,
         setReference: (url, opts) => setReference(url, opts),
         diagnostics: () => current?.getDiagnostics?.() || null,
+        // Live graph access for agent probes: "is this object actually in the
+        // scene, visible, and drawing?" is otherwise unanswerable from outside.
+        scene: () => scene,
+        camera: () => camera,
+        renderer: () => renderer,
         profile: {
             reset: resetProfile,
             snapshot: profileSnapshot,

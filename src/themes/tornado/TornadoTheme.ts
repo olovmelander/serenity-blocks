@@ -128,7 +128,8 @@ export default class TornadoTheme extends BaseTheme {
         this.targetColorObject = new THREE.Color();
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const generation = ownerGeneration;
         const themeContainer = document.getElementById('tornado-theme');
         if (!themeContainer) {
             console.error('[TornadoTheme] Theme container not found');
@@ -146,31 +147,46 @@ export default class TornadoTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.Fog(0x080402, 6, 40);
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x080402, 6, 40);
 
-        this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
-        this.camera.position.set(0, 6, 18);
-        this.camera.lookAt(0, 3, 0);
+        const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
+        camera.position.set(0, 6, 18);
+        camera.lookAt(0, 3, 0);
 
-        this.renderer = new THREE.WebGPURenderer({
+        const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance',
         });
 
         try {
-            await this.renderer.init();
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Tornado WebGPU renderer init',
+                ownerGeneration,
+            });
         } catch (error) {
+            if (generation !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) {
+                return;
+            }
             console.error('[TornadoTheme] Renderer initialization failed:', error);
+            throw error;
+        }
+
+        if (generation !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
 
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(width, height);
-        this.renderer.setClearColor(BACKGROUND_COLOR, 1);
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.scene = scene;
+        this.camera = camera;
+        this.renderer = renderer;
 
-        const canvas = this.renderer.domElement as unknown as HTMLElement;
+        renderer.setPixelRatio(this.getEffectivePixelRatio());
+        renderer.setSize(width, height);
+        renderer.setClearColor(BACKGROUND_COLOR, 1);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        const canvas = renderer.domElement as unknown as HTMLElement;
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
@@ -198,7 +214,11 @@ export default class TornadoTheme extends BaseTheme {
         window.addEventListener('resize', this.resizeHandler);
 
         this.renderLoop = () => {
-            if (!this.isActive || !this.renderer || !this.scene || !this.camera) return;
+            if (generation !== this.lifecycleGeneration
+                || !this.isActive
+                || this.renderer !== renderer
+                || this.scene !== scene
+                || this.camera !== camera) return;
             if (!this.shouldRenderFrame()) return;
 
             // Update combo effects
@@ -651,7 +671,9 @@ export default class TornadoTheme extends BaseTheme {
     }
 
     resume() {
-        super.resume();
+        if (!super.resume()) {
+            return false;
+        }
 
         if (!this.renderer || !this.scene || !this.camera || !this.renderLoop) {
             return false;
@@ -670,6 +692,7 @@ export default class TornadoTheme extends BaseTheme {
     }
 
     stop() {
+        super.stop();
         if (this.renderer) {
             this.renderer.setAnimationLoop(null);
         }
@@ -679,12 +702,14 @@ export default class TornadoTheme extends BaseTheme {
         }
         this.teardownSettingsListener();
         this.teardownComboListener();
-        super.stop();
     }
 
     cleanup() {
-        this.disposeScene();
-        super.cleanup();
+        try {
+            this.disposeScene();
+        } finally {
+            super.cleanup();
+        }
     }
 
     getTetrominoConfig() {

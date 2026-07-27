@@ -7,6 +7,12 @@
  * tetromino with a bright rim, inner glow, converging motes and one shock-ring —
  * replacing the tiny hollow-wireframe seal shipped today.
  *
+ * The stamp is now ONE connected silhouette, not four separate cell tiles. A single
+ * quad per piece runs a fragment shader that takes the union (min) of the four cell
+ * box-SDFs; because it is one draw with slightly overlapping boxes there is no gap,
+ * no rounded-corner notch, and no additive double-bright seam where cells meet — the
+ * whole tetromino reads as one solid block with a single continuous rim.
+ *
  * The age of the effect is driven directly by the harness clock, so `?t=<seconds>`
  * samples the true envelope (fxAge = t). A lightweight nebula proxy stands in for the
  * warp tunnel so contrast/readability can be judged without the heavy compute backdrop.
@@ -67,8 +73,18 @@ const SHAPE_CELLS = Object.freeze({
     L: [1, -1, -1, 0, 0, 0, 1, 0],
 });
 
-const CELL_SPACING = 1.0; // world units between cell centres (cells touch)
-const CELL_HALF = 0.47; // half-size of each cell quad (small groove between cells)
+const CELL_SPACING = 1.0; // world units between cell centres (mirrors the board grid)
+// One solid stamp per piece: the quad spans QUAD_HALF cells each way (wide enough for the
+// 4-long I piece plus a halo margin), and the fragment unions four box-SDFs of half-extent
+// BOX_HALF. BOX_HALF > 0.5 overlaps adjacent cells so the union is seamless (no notch at the
+// joins), yet the outer silhouette only grows a hair. RIM_WIDTH/EDGE_AA are in cell units.
+const QUAD_HALF = 3.0; // cell units of quad half-extent (covers I ±2.0 + glow margin)
+// Cell half-extent > 0.5 overlaps neighbours so the union is a seamless solid. The overlap
+// (BOX_HALF - 0.5 = 0.04) is kept LARGER than EDGE_AA so the interior of every join sits
+// past the antialias band — the outer glow-rim then vanishes completely at internal seams.
+const BOX_HALF = 0.54;
+const RIM_WIDTH = 0.22; // cell units — width of the outer silhouette glow-rim
+const EDGE_AA = 0.03; // cell units — antialias band on the silhouette edge (< join overlap)
 
 function centredCells(pieceType) {
     const raw = SHAPE_CELLS[pieceType] || SHAPE_CELLS.T;
@@ -164,41 +180,61 @@ export function create({ scene, params }) {
     const geos = [];
     const mats = [];
 
-    // Shared builder: one solid 4-cell stamp at a given origin, in the piece colour.
+    // Union SDF of the piece silhouette: min over the four cell box-SDFs. `pc` is the
+    // fragment position in cell-space; boxes overlap slightly so the joins are seamless.
+    function pieceSilhouette(pc, cells) {
+        let d = null;
+        for (let i = 0; i < 4; i += 1) {
+            const centre = vec2(cells[i * 2], cells[i * 2 + 1]);
+            const q = abs(pc.sub(centre)).sub(vec2(BOX_HALF, BOX_HALF));
+            const box = length(max(q, 0.0)).add(min(max(q.x, q.y), 0.0));
+            d = d === null ? box : min(d, box);
+        }
+        return d;
+    }
+
+    // Shared builder: one solid stamp of the whole tetromino at a given origin, in the
+    // piece colour. A single quad + union-SDF fragment, NOT four cell tiles.
     function makeSeal(type, originVec) {
         const baseColor = new THREE.Color(PIECE_COLORS[type] || PIECE_COLORS.T);
         const uOrigin = uniform(originVec);
         const uColor = uniform(baseColor);
         const uRimColor = uniform(baseColor.clone().lerp(new THREE.Color(0xffffff), 0.35));
         const cells = centredCells(type);
-        const geo = makeQuad(4);
-        geo.setAttribute('aCell', new THREE.InstancedBufferAttribute(cells, 2));
+        const geo = makeQuad(1);
 
         const sealVertex = Fn(() => {
-            const cell = attribute('aCell', 'vec2');
             // 1.12 → 1.0 compression over 60–160 ms (frozen at 1.0 under reduced motion).
             const settle = reducedMotion
                 ? float(1.0)
                 : mix(float(1.12), float(1.0), smoothstep(0.06, 0.16, uAge));
-            const localXY = positionLocal.xy.mul(CELL_HALF);
-            const world = uOrigin.xy.add(cell.mul(CELL_SPACING).add(localXY).mul(settle));
+            // Quad spans ±QUAD_HALF cells; CELL_SPACING converts cell units → world units.
+            const world = uOrigin.xy.add(
+                positionLocal.xy.mul(QUAD_HALF * CELL_SPACING).mul(settle),
+            );
             return cameraProjectionMatrix.mul(
                 cameraViewMatrix.mul(vec4(world.x, world.y, uOrigin.z, 1.0)),
             );
         });
 
         const sealColor = Fn(() => {
-            // Rounded-rect signed distance in the quad's local [-1,1] space.
-            const p = uv().sub(0.5).mul(2.0);
-            const q = abs(p).sub(vec2(0.80, 0.80));
-            const d = length(max(q, 0.0)).add(min(max(q.x, q.y), 0.0)).sub(0.16);
+            // Map the quad's [-1,1] UV onto ±QUAD_HALF cell-space, then union the 4 cells
+            // into one connected silhouette distance field.
+            const pc = uv().sub(0.5).mul(2.0).mul(QUAD_HALF);
+            const d = pieceSilhouette(pc, cells);
 
-            const body = float(1.0).sub(smoothstep(float(-0.02), float(0.06), d));
-            const inner = float(1.0).sub(smoothstep(float(-0.02), float(0.06), d.add(0.06)));
-            const rim = clamp(body.sub(inner), 0.0, 1.0);
-            const halo = exp(max(d, 0.0).mul(-7.0)).mul(0.6);
-            // Centre core glow so the cell reads brightest at its middle (energy, not a flat tile).
-            const core = float(1.0).sub(smoothstep(float(-0.55), float(0.0), d)).mul(0.5);
+            const body = float(1.0).sub(smoothstep(EDGE_AA * -1, EDGE_AA, d));
+            // Rim is keyed ONLY to the exterior distance (max(d,0)): a bright band hugging
+            // the OUTER silhouette. A hard-min union reports near-zero depth along internal
+            // joins, so any interior-depth rim would re-draw those seams — this exterior-only
+            // form traces the outline alone and leaves the fill one seamless solid block.
+            const outside = smoothstep(EDGE_AA * -1, EDGE_AA, d); // 0 inside → 1 outside
+            const rim = float(1.0).sub(smoothstep(float(0.0), RIM_WIDTH, max(d, 0.0))).mul(outside);
+            const halo = exp(max(d, 0.0).mul(-4.2)).mul(0.6);
+            // Interior glow keyed to distance from the piece CENTROID (a single smooth
+            // gradient across the whole stamp), NOT per-cell depth — so the fill stays one
+            // solid body with no faint cell-division lines at the internal joins.
+            const core = float(1.0).sub(smoothstep(float(0.0), float(1.9), length(pc))).mul(0.4);
 
             // Envelope: crisp rim-snap in, hold, fade out. Reduced motion shortens both ends.
             const fadeIn = smoothstep(0.0, fadeInEnd, uAge);
@@ -208,7 +244,7 @@ export function create({ scene, params }) {
 
             // Vivid piece-coloured body; rim is a bright TINT of the piece hue (not pure white),
             // so the stamp reads as energy rather than a UI icon.
-            const bodyBright = body.mul(0.95).add(core);
+            const bodyBright = body.mul(float(0.95).add(core));
             const rimBright = rim.mul(float(1.4).add(snap.mul(1.4)));
             const glowBright = halo.mul(0.6);
 

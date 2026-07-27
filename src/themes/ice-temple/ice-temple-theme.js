@@ -1162,18 +1162,26 @@ export default class IceTempleTheme extends BaseTheme {
 
         this.removeRendererResilienceListeners();
         this.renderer.onDeviceLost = null;
+        const rendererAtRegistration = this.renderer;
+        const ownerGeneration = this.lifecycleGeneration;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete
+            && this.renderer === rendererAtRegistration;
 
         if (this.isWebGL) {
             this.webglContextLostHandler = (event) => {
+                if (!ownsLifecycle()) return;
                 event.preventDefault();
                 console.warn('[IceTemple] WebGL context lost');
             };
             this.webglContextRestoredHandler = () => {
+                if (!ownsLifecycle()) return;
                 console.warn('[IceTemple] WebGL context restored');
                 this.onWindowResize();
             };
-            this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
-            this.renderer.domElement.addEventListener(
+            rendererAtRegistration.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
+            rendererAtRegistration.domElement.addEventListener(
                 'webglcontextrestored',
                 this.webglContextRestoredHandler,
                 false,
@@ -1181,22 +1189,12 @@ export default class IceTempleTheme extends BaseTheme {
             return;
         }
 
-        this.renderer.onDeviceLost = (info) => {
+        rendererAtRegistration.onDeviceLost = (info) => {
+            if (!ownsLifecycle()) return;
             this.handleDeviceLoss(info).catch((error) => {
                 console.error('[IceTemple] Device-loss handler failed:', error);
             });
         };
-
-        const deviceLostPromise = this.renderer?.backend?.device?.lost;
-        if (deviceLostPromise && typeof deviceLostPromise.then === 'function') {
-            deviceLostPromise.then((info) => {
-                this.handleDeviceLoss(info).catch((error) => {
-                    console.error('[IceTemple] Device-loss promise handler failed:', error);
-                });
-            }).catch(() => {
-                // Device loss can reject during teardown; ignore.
-            });
-        }
     }
 
     disposeSceneResources() {
@@ -2786,7 +2784,7 @@ export default class IceTempleTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById('ice-temple-theme');
         if (!container) {
             console.error('[IceTemple] Container not found');
@@ -2839,7 +2837,7 @@ export default class IceTempleTheme extends BaseTheme {
         // RENDERER
         // ─────────────────────────────────────────────────────────────────────
 
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) {
             console.error('[IceTemple] Failed to initialize renderer');
             return;
@@ -2920,11 +2918,14 @@ export default class IceTempleTheme extends BaseTheme {
         }
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         if (!container) return false;
 
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let renderer = null;
         let webgpuRenderer = null;
 
@@ -2935,7 +2936,10 @@ export default class IceTempleTheme extends BaseTheme {
                     alpha: true,
                     forceWebGL: false,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Ice Temple WebGPU renderer init',
+                    ownerGeneration,
+                });
                 if (webgpuRenderer.backend?.isWebGPUBackend === true) {
                     renderer = webgpuRenderer;
                 } else {
@@ -2943,6 +2947,7 @@ export default class IceTempleTheme extends BaseTheme {
                     webgpuRenderer = null;
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[IceTemple] WebGPU init failed, falling back to WebGL2:', error);
                 webgpuRenderer?.dispose();
                 webgpuRenderer = null;
@@ -2950,6 +2955,7 @@ export default class IceTempleTheme extends BaseTheme {
         }
 
         if (!renderer) {
+            if (!ownsLifecycle()) return false;
             renderer = new THREE.WebGLRenderer({
                 alpha: true,
                 antialias: this.getAntialiasEnabled(),
@@ -2957,6 +2963,10 @@ export default class IceTempleTheme extends BaseTheme {
             });
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = renderer.isWebGLRenderer === true

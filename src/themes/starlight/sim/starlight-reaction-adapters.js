@@ -129,22 +129,46 @@ export function createReactionAdapters(theme) {
         // Shunt the GRID centroid once (matches the legacy emitters). Mapping each cell
         // then averaging would split a center-straddling piece across both side lanes and
         // collapse the centroid back to the middle — the wrong origin.
-        lockOrigin: (piece) => {
+        lockOrigin: (piece, player, viewportOrigin) => {
+            // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock
+            // position; inverse-normalize it back through cellToWorld so it reuses the exact
+            // side-lane shunt + z-plane, instead of the fixed-board piece.y (which pins to the
+            // bottom in Infinity).
+            if (viewportOrigin) {
+                return cellToWorld(viewportOrigin.x * COLS - 0.5, viewportOrigin.y * ROWS - 0.5, nextSeed());
+            }
             const cells = pieceCells(piece);
             if (!cells.length) return cellToWorld(COLS / 2 - 0.5, ROWS / 2 - 0.5, nextSeed());
             const mc = cells.reduce((a, c) => a + c.col, 0) / cells.length;
             const mr = cells.reduce((a, c) => a + c.row, 0) / cells.length;
             return cellToWorld(mc, mr, nextSeed());
         },
-        lockCells: (piece) => pieceCells(piece).map((c) => cellToWorld(c.col, c.row, nextSeed())),
-        rowsOrigin: (rows) => {
+        lockCells: (piece, player, viewportOrigin) => {
+            if (viewportOrigin) {
+                return [cellToWorld(viewportOrigin.x * COLS - 0.5, viewportOrigin.y * ROWS - 0.5, nextSeed())];
+            }
+            return pieceCells(piece).map((c) => cellToWorld(c.col, c.row, nextSeed()));
+        },
+        rowsOrigin: (rows, player, viewportOrigin) => {
+            // Infinity supplies the ON-SCREEN clear origin; inverse-normalize it through the same
+            // cellToWorld transform (clearedRows are absolute rows in Infinity → they'd saturate
+            // to the bottom of the backdrop otherwise).
+            if (viewportOrigin) {
+                return cellToWorld(viewportOrigin.x * COLS - 0.5, viewportOrigin.y * ROWS - 0.5, nextSeed());
+            }
             if (!Array.isArray(rows) || !rows.length) {
                 return cellToWorld(COLS / 2 - 0.5, ROWS - 1 - HIDDEN_ROWS, nextSeed());
             }
             const mean = rows.reduce((a, b) => a + b, 0) / rows.length;
             return cellToWorld(COLS / 2 - 0.5, mean - HIDDEN_ROWS, nextSeed());
         },
-        rowOrigins: (rows) => (rows || []).map((r) => cellToWorld(COLS / 2 - 0.5, r - HIDDEN_ROWS, nextSeed())),
+        rowOrigins: (rows, player, viewportOrigin) => {
+            // The cleared rows are an adjacent band → collapse to the single on-screen origin.
+            if (viewportOrigin) {
+                return [cellToWorld(viewportOrigin.x * COLS - 0.5, viewportOrigin.y * ROWS - 0.5, nextSeed())];
+            }
+            return (rows || []).map((r) => cellToWorld(COLS / 2 - 0.5, r - HIDDEN_ROWS, nextSeed()));
+        },
         // A screen-spread sky lane, cycled by index — the classic full-canopy fan-out.
         skyLane: (index) => {
             const lane = SKY_LANES[((index % SKY_LANES.length) + SKY_LANES.length) % SKY_LANES.length];

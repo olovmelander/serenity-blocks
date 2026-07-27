@@ -1051,8 +1051,83 @@ Resync chunks (16 KB × window 4) go reliable-immediate, bypassing `_queueSnapsh
 ### 7.3 The 21 WebGL-only themes: an explicit decision, not an implied port *(decision S; work opt-in)*
 These (~176 ShaderMaterials: misty-lake 22, stillwater 17, pyrestorm 16, …) never construct a WebGPURenderer — they already satisfy the definition of done and are **not** blocking anything. Porting them is the single largest work item in the old plan with no stated outcome. **Default: leave them as documented WebGL islands** (they render correctly through three's WebGL path). Opt a theme in only with a stated per-theme justification (wants compute/TSL features, MRT bloom, or visual-parity work already planned). Record the default as an ADR.
 
+**Stillwater opt-in implementation and acceptance note (updated 2026-07-26):**
+Stillwater exercised this explicit exception because planar reflection, fixed integrated
+wakes, MRT selective bloom, and one unified grade/reaction graph were stated product
+outcomes. It constructs `WebGPURenderer` for native WebGPU and its forced-WebGL2
+compatibility backend from the same NodeMaterial graph; the raw-GLSL
+`stillwater-shaders.js` twin is deleted. This does not broaden the port mandate for the
+remaining WebGL islands. The “21 themes / ~176 ShaderMaterials” sentence above is the
+dated planning inventory and must be remeasured before being used as a current ratchet.
+Renderer architecture is recorded in
+[`STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md`](STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md).
+
+Current acceptance authority is immutable dist
+`artifacts/themes/stillwater/wave8/immutable-build-final-20260726-1800-v6`, identified by
+local-build fingerprint
+`267e6556dc09a9f1df8ad92612de20ad945c6798704348da84f83edbe42c1e70`.
+Its [comprehensive WebGPU High run](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-wave8-summary.json)
+is overall `PASS`: the real production board readiness gate, 20 pause/resume cycles,
+layout and resize matrices, lock and mixed-event stress, and all 11 isolated production
+events pass with zero console, shader/pipeline, or renderer-process failures. The event
+set is lock, hard drop, line clear, Tetris, combo 4/7/10, T-spin, back-to-back, perfect
+clear, and level up. The 1,200-sample High idle/reaction workloads report
+2.031/1.997 ms p95 and 2.262/2.297 ms p99; incremental CPU/GPU p95 is
+-0.100/+0.066 ms. High idles at 45 draws and 85,739 triangles. Event captures remain
+within 45–48 draws and 85,739–87,211 triangles, with renderer memory stable at
+31 geometries / 24 textures throughout each capture and zero event-time resource
+creation. The initial idle diagnostic is 28 geometries / 18 textures; the later counts
+include the one-time pool/post/resize warmup and are not evidence of per-event growth.
+
+Atmosphere allocation is fixed per constructed tier rather than one universal
+maximum-capacity buffer: Minimal/Low/Medium/High/Ultra/Extreme own exactly
+40/90/180/280/540/700 motes. The comprehensive lane validates the packaged
+`backgroundThrottling:false` policy through explicit application pause with zero hidden
+update/render delta. A separate
+[direct Electron Page Visibility run](../artifacts/themes/stillwater/wave8/v6-page-visibility-direct-smoke2/stillwater-wave8-summary.json)
+also passes on the same fingerprint: native visibility is visible→hidden→visible,
+`document.hidden` and application rendering-pause state are false→true→false, no explicit
+pause/resume hook is invoked, update/render deltas are zero, and one theme canvas remains
+after resume.
+
+Forced WebGL2 remains the named compatibility backend for the Three/TSL theme graph; it
+is not a Phaser Canvas renderer. The production Phaser 4 board is WebGL-only, and a
+genuine Canvas board fallback is unsupported unless a new board renderer is built. No
+unlisted v6 hardware/backend lane is inferred from the two v6 artifacts above. The
+broader AMD/RTX, forced-WebGL2, switch, device-loss, and live 2P/4P all-pass matrix under
+v5 fingerprint
+`6c91dad8fe2144b02b9dc6aab5b7135a23394f814bd0690792760e7baafb200c`
+remains useful frozen historical evidence, not current-source acceptance.
+
+Current-source gates recorded with this closeout are 183/183 Stillwater-focused tests,
+236/236 affected tests, and 45/45 lifecycle/terminal-ownership tests.
+`npm run typecheck`, `npm run lint:ci`, `npm run check:boundaries`, and
+`npm run audit:theme-lifecycle` pass; this does not imply a clean raw-lint inventory or a
+current full-repository test result. The full evidence record is in
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md).
+
 ### 7.4 The renderer/theme contract *(M)*
-Make explicit in docs + fitness checks: device-loss registration via the base class (4.2); disposal ownership **including compute/storage pipelines** (the ice-temple/stellar-drift pattern allocates GPU buffers `disposeThreeJSGroup` can't see — LRU eviction leaks them unless `stop()` disposes; add "compute buffers disposed on stop" to the theme-lifecycle audit); pixel-ratio routed through `computeScenePixelRatio`; `shouldRenderFrame` background gate honored (conversions that reconstruct a renderer without it re-open the 2026-07 perf fixes); screenshot artifact convention `artifacts/themes/<id>/{webgpu,webgl2}.png`; reduced-motion behavior.
+Make explicit in docs + fitness checks: device-loss registration via the base class
+(4.2); disposal ownership **including compute/storage pipelines**; pixel ratio routed
+through `computeScenePixelRatio`; the `shouldRenderFrame` background gate honored;
+screenshot artifact convention `artifacts/themes/<id>/{webgpu,webgl2}.png`; and
+reduced-motion behavior. Per-instance GPU resources that `disposeThreeJSGroup` cannot see
+must be disposed by `stop()`/eviction. A deliberately shared resource may outlive one
+theme instance only when it has bounded ownership and a terminal disposer registered
+with `ThemeManager`.
+
+Stillwater is the concrete shared-owner example. Normal theme eviction releases its
+runtime scene but drains, detaches, and parks one pooled renderer/device for later reuse;
+it therefore must not be described as freeing every GPU allocation on each LRU eviction.
+`ThemeManager.cleanup()` is the terminal owner: it invokes the registered
+`StillwaterTheme.disposeSharedResources()` once, which destroys that shared pool. Three
+r181's private renderer `_animation` scheduler is also an explicit lifecycle resource:
+Stillwater stops it while pooled, application-paused/hidden, or under the isolated manual
+validation driver, and starts it exactly once on pool claim, lifecycle resume, or manual
+driver exit. The theme rAF and renderer scheduler have separate diagnostics so “one
+loop” cannot hide an idle internal rAF. The v6 comprehensive run observed 20 matching
+pause stops/resume starts, and the 45-test lifecycle slice pins normal reuse versus
+terminal ownership.
 
 **Exit criteria:** tripwire allowlist shrinks monotonically to the documented permanent set; every converted theme has both-backend screenshot artifacts; `?forceWebGL=1` renders every converted theme correctly; zero dual-maintained GLSL/TSL twins remain.
 
@@ -1104,8 +1179,8 @@ One-click export: build id, settings, GPU/driver info, recent `netDiag`, **GPU-l
 The user-facing goal of this plan is a *faster, smoother* game, not only a cleaner one. This section is the single source of truth the phases hang their numbers on.
 
 ### 9.1 Principles
-- **Budget in milliseconds of frame time, not FPS** — percentiles over frames: gate on **p95**, dashboard p99 (p99 needs thousands of frames to be stable). Never mix "P99 FPS" and "p99 frame-time" domains.
-- **Split CPU vs GPU:** CPU from rAF deltas; GPU from three's timestamp queries (`trackTimestamp: true` + `renderer.resolveTimestampsAsync(RENDER|COMPUTE)`).
+- **Budget in milliseconds of frame time, not FPS** — percentiles over frames: gate on **p95**. Gate p99 at 60 Hz; above 60 Hz, p99 remains diagnostic until the sample window is long enough to support a stable tail. Never mix "P99 FPS" and "p99 frame-time" domains.
+- **Split CPU vs GPU:** production manual lanes measure CPU submission around the isolated surface render and GPU work from Three's timestamp queries (`trackTimestamp: true` + `renderer.resolveTimestampsAsync(RENDER|COMPUTE)`). This is isolated render workload, not display FPS or whole-application scheduler pacing. Scheduler/rAF pacing and queue-drain latency are recorded separately; neither is substituted for the gated CPU + GPU workload.
 - **Pin the adaptive systems while measuring** (already learned the hard way: DRS and `effectScale` throttling mask regressions — force tier + `effectScale=1` + fixed pixelRatio in every capture).
 - **One budget table feeds both the CI gates and the runtime DRS** so the gate and the shock absorber can't disagree.
 - **Relative benchmarking only on hosted runners** (variance swamps <50 % deltas); real thresholds live on the self-hosted RTX lane.
@@ -1117,7 +1192,7 @@ The user-facing goal of this plan is a *faster, smoother* game, not only a clean
     "timeToMenuReadyMs":        { "baseline": null, "max": 4000 },
     "introDurationMs":          { "baseline": null, "max": null, "note": "product choice, tracked not gated" },
     "cascadeInputLatencyP95Ms": { "baseline": 300,  "max": 17,   "note": "Phase 5.2 KPI" },
-    "frameP95Ms": { "perSurface": { "odyssey": null, "heavy-theme-worst": null },
+    "frameP95Ms": { "perSurface": { "odyssey": null, "stillwater": 6.0, "heavy-theme-worst": null },
                     "maxPerTier": { "60hz": 16.6, "120hz": 8.3, "144hz": 6.9 },
                     "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" } },
     "snapshotDeltaWireBytesP95": { "baseline": 490,  "max": 80 },
@@ -1129,7 +1204,89 @@ The user-facing goal of this plan is a *faster, smoother* game, not only a clean
     "installerBytes":           { "baseline": 625923068, "max": 450000000 },
     "appAsarBytes":             { "baseline": 677591834, "max": 262144000 } } }
 ```
-Nulls mean "budget declared, baseline pending" — visible and lintable, never silently unfalsifiable. Capture protocol per row: boot metrics from the `startup-debug` trace under `SERENITY_ENABLE_LOGGING=1`; wire metrics from `getPacketStats()`/`netDiag` in a scripted 2-peer soak; frame metrics from a `?perf=1` scripted 20-second loop (spawn pieces, combo storm, theme transition) emitting `{p50,p95,p99,gpuRender,gpuCompute,drawCalls}`; sizes from the release build.
+Nulls mean "budget declared, baseline pending" — visible and lintable, never silently
+unfalsifiable. The generic cross-surface protocol uses boot metrics from the
+`startup-debug` trace under `SERENITY_ENABLE_LOGGING=1`; wire metrics from
+`getPacketStats()`/`netDiag` in a scripted 2-peer soak; frame metrics from a `?perf=1`
+scripted 20-second loop (spawn pieces, combo storm, theme transition) emitting
+`{p50,p95,p99,gpuRender,gpuCompute,drawCalls}`; and sizes from the release build.
+Stillwater's acceptance lane is a separate Electron harness with an isolated manual
+production-surface driver; it must not be represented as that generic loop or as display
+FPS.
+
+**Stillwater baseline and acceptance records (updated 2026-07-26):** the committed
+AMD low-power WebGPU Medium idle baseline remains **6.0 ms**, with an independently
+enforced `baseline × 1.10` ceiling of **6.6 ms**. It came from repeated
+5.83–5.95 ms captures after correcting r181 NodeFrame manual-driver accounting. This is
+a budget calibration, not proof that the changed v6 source was rerun on that adapter.
+Only that Medium idle lane applies the calibrated baseline; reaction lanes use the
+absolute CPU/GPU, refresh-rate, p99-at-60-Hz, and incremental budgets.
+
+The current immutable acceptance identity is v6 fingerprint
+`267e6556dc09a9f1df8ad92612de20ad945c6798704348da84f83edbe42c1e70`.
+Its
+[RTX 5080 WebGPU High, 1080p60 comprehensive run](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-wave8-summary.json)
+is overall `PASS`:
+
+| Current v6 lane | Idle total p95 / p99 | Reaction total p95 / p99 | Incremental CPU / GPU p95 | Result |
+|---|---:|---:|---:|---|
+| RTX WebGPU High, 1920×1080, 60 Hz | 2.031 / 2.262 ms | 1.997 / 2.297 ms | -0.100 / +0.066 ms | Pass |
+
+Both idle and reaction contain 1,200 samples after a stationary, cross-comparable
+target-paced warmup. Lock stress reports 2.063 ms p95; the mixed-event stress lane
+reports 2.097 ms p95. These are isolated CPU-submission-plus-GPU-timestamp workloads,
+not observed display FPS. The High idle graph is 45 draws / 85,739 triangles with an
+initial 28 renderer geometries / 18 textures. After one-time pool, post, and resize
+warmup, every one of the 11 production event captures holds renderer memory at
+31 geometries / 24 textures, spans 45–48 draws and 85,739–87,211 triangles, preserves
+fixed resource identities, and creates zero event-time resources. Atmosphere capacity is
+tier-sized at construction: Minimal/Low/Medium/High/Ultra/Extreme =
+40/90/180/280/540/700 motes.
+
+The same comprehensive artifact passes the real-board readiness gate, all 11 production
+event routes, 20 pause/resume cycles, explicit application-pause hidden behavior with
+zero update/render delta, layout/resize/stress checks, and the console/shader/process
+gate. Its manual driver records the Three `_animation` scheduler suspended for sampling
+and restarted on exit. The separate
+[direct Electron Page Visibility lane](../artifacts/themes/stillwater/wave8/v6-page-visibility-direct-smoke2/stillwater-wave8-summary.json)
+passes on the exact fingerprint without invoking explicit pause/resume hooks:
+BrowserWindow visibility is true→false→true, `document.hidden` and rendering pause stay
+true throughout the hidden interval, update/render deltas are zero, and one theme canvas
+remains after resume.
+
+Forced WebGL2 is the compatibility backend for the same Three/TSL graph. It is distinct
+from the production Phaser board, which hardcodes WebGL; Phaser 4 has no Canvas renderer,
+so Canvas board fallback is explicitly unsupported rather than silently counted as a
+pass. No additional current-v6 hardware/backend lane is inferred here.
+
+For historical comparison only, the frozen immutable v5 matrix under fingerprint
+`6c91dad8fe2144b02b9dc6aab5b7135a23394f814bd0690792760e7baafb200c`
+was all-pass for its captured bytes:
+
+| Historical v5 lane | Idle / reaction isolated total p95 | Reaction incremental CPU / GPU p95 | Result |
+|---|---:|---:|---|
+| [AMD WebGPU Minimal, 1080p60](../artifacts/themes/stillwater/wave8/final-v5-amd-minimal-1080p60/stillwater-wave8-summary.json) | 4.667 / 4.698 ms | 0 / 0.066 ms | Pass |
+| [AMD WebGPU Medium, 1080p60](../artifacts/themes/stillwater/wave8/final-v5-amd-medium-1080p60/stillwater-wave8-summary.json) | 5.219 / 5.743 ms | 1.2e-7 / 0.524 ms | Pass |
+| [AMD WebGPU High, 1080p60](../artifacts/themes/stillwater/wave8/final-v5-amd-high-1080p60-r2/stillwater-wave8-summary.json) | 9.202 / 9.961 ms | 0 / 0.590 ms | Pass |
+| [Forced WebGL2 Medium, 1080p60](../artifacts/themes/stillwater/wave8/final-v5-webgl2-medium-1080p60/stillwater-wave8-summary.json) | 5.496 / 5.677 ms | 0 / 0.124 ms | Pass |
+| [RTX WebGPU High, 1080p120](../artifacts/themes/stillwater/wave8/final-v5-rtx-high-1080p120/stillwater-wave8-summary.json) | 1.497 / 1.597 ms | 0.100 / 0 ms | Pass |
+| [RTX WebGPU Extreme, 1440p144](../artifacts/themes/stillwater/wave8/final-v5-rtx-extreme-1440p144/stillwater-wave8-summary.json) | 1.724 / 1.759 ms | 0 / 0.066 ms | Pass |
+
+That historical v5 fingerprint also passed
+[30 switch cycles](../artifacts/themes/stillwater/wave8/final-v5-webgpu-high-switch30/stillwater-wave8-summary.json),
+[injected device-loss recovery](../artifacts/themes/stillwater/wave8/final-v5-device-loss/stillwater-wave8-summary.json),
+and live production-path [2P](../artifacts/themes/stillwater/wave8/final-v5-live-local-2p/stillwater-live-local-2p.json) /
+[4P](../artifacts/themes/stillwater/wave8/final-v5-live-local-4p/stillwater-live-local-4p.json)
+layouts. Those results remain valid only for frozen v5 bytes and are not promoted to
+changed v6 source.
+
+Both identities are local-build content identities, not cryptographic attestations or
+served-byte verification; recorded Git context is excluded from the fingerprint.
+Startup telemetry is likewise bounded: hero GLTF timing combines load, parse, and attach
+without separately measuring GPU upload; `warmRenderComplete` is CPU-call return;
+`canvasReveal` is a DOM opacity write, not compositor/GPU presentation; and the LongTask
+observer does not rule out 16.6–50 ms hitches, GC pauses, GPU stalls, or compositor
+delay.
 
 ### 9.3 Three test lanes
 1. **PR lane (hosted CI, SwiftShader/lavapipe):** correctness only — WGSL compile, console errors, golden screenshots with tolerance, leak assertions. **No timing gates** (software-rasterizer timings are meaningless).
@@ -1156,7 +1313,28 @@ Nulls mean "budget declared, baseline pending" — visible and lintable, never s
 ### 9.5 Allocation & GC discipline *(new)*
 The per-theme perf campaigns keep finding the same classes: per-frame `THREE.Color`/vector allocation, per-frame array churn, `queue.shift()` patterns. Codify: scratch-object reuse in per-frame paths; the 5.2 resolver allocates once per lock, not per wave; add a leak gate to the PR lane (jsdom heap snapshot across 60 theme activate/deactivate cycles — the theme-manager LRU already exposes the hook) and keep the "no per-frame allocations in hot loops" rule in review checklists + the `simplify` pass. GC pauses show up as p95/p99 tail — the nightly lane is the detector.
 
-**VRAM residency is crash prevention, not just perf:** on iGPUs, VRAM exhaustion *is* device loss (the frozen-canvas class 4.2 recovers from). The theme-manager LRU already frees GPU memory on eviction — extend it to (a) count compute/storage buffers (7.4's disposal contract feeds this), (b) expose a VRAM-proxy gauge (`renderer.info` textures/geometries) in the perf harness, and (c) treat "evictions while a theme is active" as a §9 alert, since that is the pressure state that precedes a loss.
+**VRAM residency is crash prevention, not just perf:** on iGPUs, VRAM exhaustion *is*
+device loss (the frozen-canvas class 4.2 recovers from). Theme-manager LRU eviction frees
+the evicted instance's owned scene resources; it does **not** imply that every
+theme-associated GPU allocation is destroyed. Stillwater deliberately retains one
+drained renderer/device in a bounded shared pool across normal switches. The pool is
+registered with `ThemeManager` and destroyed only by terminal manager/application
+cleanup. This separation preserves warm reuse without leaving an ownerless GPU device.
+
+Extend the generic contract to (a) count compute/storage buffers, (b) expose a VRAM-proxy
+gauge (`renderer.info` textures/geometries) while treating it as diagnostic rather than
+an allocation census (`renderer.info.programs` is unavailable on Stillwater's renderer),
+and (c) treat evictions while a theme is active as a §9 alert. Stillwater's historical
+v5
+[`final-v5-webgpu-high-switch30`](../artifacts/themes/stillwater/wave8/final-v5-webgpu-high-switch30/stillwater-wave8-summary.json)
+run shows one pooled renderer/device and exact stability across 30 cycles for its selected
+forced-GC retained-object/native-allocation classes; that is reuse evidence, not
+terminal-zero evidence. The current 45-test lifecycle slice pins that normal eviction
+does not drain the pool, full `ThemeManager.cleanup()` invokes the terminal disposer
+exactly once, and renderer `_animation` does not remain active while pooled or paused.
+Three r181's pooled-renderer texture counter can still drift as stale bookkeeping. None
+of these scoped checks establishes that every JavaScript, browser-internal, driver, or
+native class is unretained.
 
 ---
 

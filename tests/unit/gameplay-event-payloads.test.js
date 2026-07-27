@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitHardDrop, emitLevelUp,
 } from '../../src/events/gameplay-events.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -44,12 +45,14 @@ describe('canonical payload shapes', () => {
             clearedRows: [20, 21, 22, 23],
             cascadeCount: 2,
             comboCount: 3,
+            viewportOrigin: { x: 0.4, y: 0.2 },
             source: 'odyssey',
             levelId: 12,
             player: 2,
             position: { x: 1, y: 2 },
         }));
         expect(p.comboCount).toBe(3);
+        expect(p.viewportOrigin).toEqual({ x: 0.4, y: 0.2 }); // Infinity on-screen clear origin
         expect(p.source).toBe('odyssey');
         expect(p.levelId).toBe(12);
         expect(p.player).toBe(2);
@@ -77,8 +80,56 @@ describe('canonical payload shapes', () => {
         };
         expect(capture(EVENTS.PIECE_LOCK, () => emitPieceLock({ piece })))
             .toEqual({ piece });
-        expect(capture(EVENTS.PERFECT_CLEAR, () => emitPerfectClear({ depth: 3, perfectClearBonus: 3750, source: 'online' })))
+        expect(capture(EVENTS.PERFECT_CLEAR, () => emitPerfectClear({
+            depth: 3,
+            perfectClearBonus: 3750,
+            source: 'online',
+        })))
             .toEqual({ depth: 3, perfectClearBonus: 3750, source: 'online' });
+    });
+
+    it('PIECE_LOCK forwards the optional viewportOrigin and still drops unknown keys', () => {
+        // Infinity passes the on-screen normalized lock origin so scrolling-grid locks
+        // do not saturate a theme's fixed-board normalization to the bottom.
+        const piece = {
+            shapeKey: 'T', x: 4, y: 132, shape: [[1]],
+        };
+        const p = capture(EVENTS.PIECE_LOCK, () => emitPieceLock({
+            piece, viewportOrigin: { x: 0.45, y: 0.3 }, bogus: true,
+        }));
+        expect(p).toEqual({ piece, viewportOrigin: { x: 0.45, y: 0.3 } });
+        expect(p.bogus).toBeUndefined();
+    });
+
+    it('HARD_DROP and LEVEL_UP expose stable allowlisted production payloads', () => {
+        const piece = {
+            shapeKey: 'I', x: 3, y: 18, shape: [[1, 1, 1, 1]],
+        };
+        expect(capture(EVENTS.HARD_DROP, () => emitHardDrop({
+            piece,
+            startY: 2,
+            endY: 18,
+            viewportOrigin: { x: 0.5, y: 0.8 },
+            player: 2,
+            bogus: true,
+        }))).toEqual({
+            piece,
+            startY: 2,
+            endY: 18,
+            distance: 16,
+            viewportOrigin: { x: 0.5, y: 0.8 },
+            player: 2,
+        });
+        expect(capture(EVENTS.LEVEL_UP, () => emitLevelUp({
+            level: 7,
+            source: 'odyssey',
+            levelId: 'lake-2',
+            bogus: true,
+        }))).toEqual({
+            level: 7,
+            source: 'odyssey',
+            levelId: 'lake-2',
+        });
     });
 });
 
@@ -91,7 +142,11 @@ describe('one emit site per event (tripwire)', () => {
     const KNOWN = new Set(['src/main.js']);
 
     it('no direct quartet emit outside events/gameplay-events.js (core scope)', () => {
-        const files = execFileSync('git', ['ls-files', 'src/core/**/*.js', 'src/main.js', 'src/events/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
+        const files = execFileSync(
+            'git',
+            ['ls-files', 'src/core/**/*.js', 'src/main.js', 'src/events/**/*.js'],
+            { cwd: repoRoot, encoding: 'utf8' },
+        )
             .split('\n').filter((f) => f && !f.endsWith('.test.js'))
             .map((f) => f.replace(/\\/g, '/'));
         const offenders = [];
@@ -108,15 +163,51 @@ describe('one emit site per event (tripwire)', () => {
         // _getPhysicsCallbacks object literal — the later key silently shadowed
         // the first, muting perfect-clear SFX in both modes for months. Pin:
         // at most one occurrence inside the physics-callbacks method body.
-        for (const mode of ['SinglePlayerMode', 'InfinityMode', 'OdysseyMode', 'LocalMultiplayerMode']) {
-            const src = readFileSync(path.join(repoRoot, 'src', 'core', 'game-modes', `${mode}.js`), 'utf8');
+        const modes = [
+            'SinglePlayerMode',
+            'InfinityMode',
+            'OdysseyMode',
+            'LocalMultiplayerMode',
+        ];
+        for (const mode of modes) {
+            const src = readFileSync(
+                path.join(repoRoot, 'src', 'core', 'game-modes', `${mode}.js`),
+                'utf8',
+            );
             const start = src.search(/_getPhysicsCallbacks\([^)]*\)\s*{/);
             expect(start, `${mode}: _getPhysicsCallbacks not found`).toBeGreaterThan(-1);
             // Method body ends at the next closing brace at 4-space indent.
             const end = src.indexOf('\n    }', start);
             const body = src.slice(start, end === -1 ? undefined : end);
             const count = (body.match(/onPerfectClear:/g) || []).length;
-            expect(count, `${mode} _getPhysicsCallbacks defines onPerfectClear ${count}× — a duplicate key shadows the first`).toBeLessThanOrEqual(1);
+            const message = `${mode} _getPhysicsCallbacks defines onPerfectClear `
+                + `${count}× — a duplicate key shadows the first`;
+            expect(count, message).toBeLessThanOrEqual(1);
         }
+    });
+
+    it('routes hard drop and level up through the intended production adapters', () => {
+        const read = (file) => readFileSync(path.join(repoRoot, file), 'utf8');
+        const single = read('src/core/game-modes/SinglePlayerMode.js');
+        const local = read('src/core/game-modes/LocalMultiplayerMode.js');
+        const infinity = read('src/core/game-modes/InfinityMode.js');
+        const odyssey = read('src/core/game-modes/odyssey-physics-callbacks.js');
+        const online = read('src/core/game-modes/OnlineMultiplayerMode.js');
+
+        expect(single).toMatch(/onHardDrop:[\s\S]*?emitHardDrop\(dropData\)/);
+        expect(single).toMatch(/onLevelUp:[\s\S]*?emitLevelUp\(\{ level \}\)/);
+        expect(local).toMatch(/onHardDrop:[\s\S]*?emitHardDrop\(\{/);
+        expect(infinity).toMatch(
+            /onHardDrop:[\s\S]*?emitHardDrop\(\{[\s\S]*?source: 'infinity'/,
+        );
+        expect(odyssey).toMatch(
+            /onLevelUp:[\s\S]*?emitLevelUp\(\{ level, source: 'odyssey', levelId \}\)/,
+        );
+        expect(odyssey).toMatch(
+            /onHardDrop:[\s\S]*?emitHardDrop\(\{[\s\S]*?source: 'odyssey'/,
+        );
+        expect(online).toMatch(
+            /'game:hard_drop'[\s\S]*?const \{ dropData \} = detail;[\s\S]*?emitHardDrop\(dropData\)/,
+        );
     });
 });

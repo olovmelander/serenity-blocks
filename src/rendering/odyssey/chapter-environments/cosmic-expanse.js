@@ -351,7 +351,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.add(nebulaFar);
     group.userData.nebulaFar = nebulaFar;
 
-    // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams /
+    // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams-v3 /
     // blood-moon density). TWO tiers for parallax: a NEAR tier of brighter iridescent
     // motes that fills the corridor with twinkling life, plus a FAR tier of fine dim dust
     // for deep parallax. Both INSTANCED + CAPPED + scaled off particleCount; the near tier
@@ -855,7 +855,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
         sizes[index] = sizeBase + Math.random() * Math.random() * sizeSpan;
         phases[index] = Math.random() * Math.PI * 2;
         // A minority of motes are "sparks" — brighter, hotter core (energy-driven glow,
-        // adapted from electric-dreams' speed→brightness, here a static per-mote flag).
+        // adapted from electric-dreams-v3's speed→brightness, here a static per-mote flag).
         sparks[index] = Math.random() < sparkRatio ? 1.0 : 0.0;
     }
 
@@ -875,7 +875,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
     const aPhase = attribute('aPhase', 'float');
     const aSpark = attribute('aSpark', 'float');
 
-    // Organic per-particle drift (electric-dreams' per-index phase-shifted turbulence):
+    // Organic per-particle drift (electric-dreams-v3's per-index phase-shifted turbulence):
     // three decorrelated sines so adjacent motes diverge — a living, parallaxing field.
     const dt = time.mul(driftScale * 0.18);
     const center = vec3(

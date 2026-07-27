@@ -74,6 +74,27 @@ describe('Black Hole lock geometry', () => {
         expect(origin.player).toBe(2);
     });
 
+    it('prefers a mode-supplied viewportOrigin over the fixed-board normalization', () => {
+        // Infinity's tall scrolling grid makes piece.y a huge absolute row that would saturate
+        // normalizedY to 1 (bottom); the on-screen origin wins for normalized + centered.
+        const origin = resolveBlackHoleLockOrigin({
+            piece: tPiece({ y: 214 }),
+            viewportOrigin: { x: 0.2, y: 0.1 },
+        });
+        expect(origin.normalized).toEqual({ x: 0.2, y: 0.1 });
+        expect(origin.centered.x).toBeCloseTo(-0.6);
+        expect(origin.centered.y).toBeCloseTo(0.8);
+        expect(origin.board.y).toBeGreaterThan(200); // raw centroid still absolute
+    });
+
+    it('ignores an invalid viewportOrigin and keeps the piece-cell normalization', () => {
+        const origin = resolveBlackHoleLockOrigin({
+            piece: tPiece(),
+            viewportOrigin: { x: 0.2, y: Number.NaN },
+        });
+        expect(origin.normalized.y).toBeCloseTo(0.6875);
+    });
+
     it('uses the previous action origin for a malformed lock without inventing cells', () => {
         const fallback = resolveBlackHoleLockOrigin({ piece: tPiece(), player: 3 });
         const payload = {
@@ -105,6 +126,17 @@ describe('Black Hole lock geometry', () => {
         expect(origin.normalized).toEqual({ x: 0.5, y: 0.9 });
         expect(origin.centered).toEqual({ x: 0, y: -0.8 });
         expect(origin.player).toBe(1);
+    });
+
+    it('prefers a mode-supplied viewportOrigin for the line-clear origin (Infinity)', () => {
+        // Absolute Infinity clear rows would saturate normalizedY to 1 (bottom); on-screen wins.
+        const origin = resolveBlackHoleLineOrigin({
+            clearedRows: [210, 211, 212],
+            viewportOrigin: { x: 0.5, y: 0.3 },
+        });
+        expect(origin.normalized.y).toBeCloseTo(0.3);
+        expect(origin.centered.y).toBeCloseTo(0.4);
+        expect(origin.board.y).toBeGreaterThan(200); // raw mean row still absolute
     });
 });
 

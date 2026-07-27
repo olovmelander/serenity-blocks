@@ -101,6 +101,9 @@ export class NeonDistrictAssets {
 
         // Track loaded state
         this.loaded = false;
+        this.loadPromise = null;
+        this.loadGeneration = 0;
+        this.disposed = false;
 
         if (renderer) {
             this.setRenderer(renderer);
@@ -138,6 +141,10 @@ export class NeonDistrictAssets {
      * Helper to setup texture parameters
      */
     setupTexture(tex, wrap, aniso, name, colorSpace = THREE.SRGBColorSpace) {
+        if (!tex || this.disposed) {
+            tex?.dispose?.();
+            return false;
+        }
         if (wrap) {
             tex.wrapS = THREE.RepeatWrapping;
             tex.wrapT = THREE.RepeatWrapping;
@@ -153,18 +160,30 @@ export class NeonDistrictAssets {
 
         // Store in cache
         this.textures[name] = tex;
+        return true;
     }
 
     /**
      * Fallback to standard texture loading
      */
-    loadStandardTexture(name, wrap, aniso, colorSpace) {
+    loadStandardTexture(name, wrap, aniso, colorSpace, generation = this.loadGeneration) {
         return new Promise((resolve) => {
             this.textureLoader.load(
                 TEXTURE_PATH + name,
                 (tex) => {
-                    this.setupTexture(tex, wrap, aniso, name.replace('.jpg', '').replace('.png', ''), colorSpace);
-                    resolve(tex);
+                    if (generation !== this.loadGeneration || this.disposed) {
+                        tex?.dispose?.();
+                        resolve(null);
+                        return;
+                    }
+                    const accepted = this.setupTexture(
+                        tex,
+                        wrap,
+                        aniso,
+                        name.replace('.jpg', '').replace('.png', ''),
+                        colorSpace,
+                    );
+                    resolve(accepted ? tex : null);
                 },
                 undefined,
                 () => {
@@ -179,24 +198,39 @@ export class NeonDistrictAssets {
      * Load all textures (call once during init) - PARALLEL loading for speed
      */
     async loadAllTextures() {
+        if (this.loaded) {
+            console.log('[NeonDistrictAssets] Already loaded, skipping...');
+            return true;
+        }
+        if (this.disposed) return false;
+        if (this.loadPromise) return this.loadPromise;
+
+        const generation = ++this.loadGeneration;
+        const loadPromise = this.loadAllTexturesForGeneration(generation);
+        this.loadPromise = loadPromise;
+
+        try {
+            return await loadPromise;
+        } finally {
+            if (this.loadPromise === loadPromise) {
+                this.loadPromise = null;
+            }
+        }
+    }
+
+    async loadAllTexturesForGeneration(generation) {
         // Prevent reloading if already loaded
         if (this.loaded) {
             console.log('[NeonDistrictAssets] Already loaded, skipping...');
-            return;
+            return true;
         }
 
         this.ensureKTX2Support();
 
         console.log('[NeonDistrictAssets] Loading textures...');
 
-        const loader = this.textureLoader;
-        const { ktx2Loader } = this;
-        const texPath = TEXTURE_PATH;
-
         // Helper to load texture with high-quality settings and KTX2 fallback
         const loadTex = (name, wrap = false, aniso = true, colorSpace = THREE.SRGBColorSpace) => {
-            const baseName = name.replace('.jpg', '').replace('.png', '');
-
             return new Promise((resolve) => {
                 // TRY KTX2 FIRST (if file exists logic would be here, but we try/fail)
                 // For now, we assume if .ktx2 exists we use it, otherwise fall back.
@@ -224,7 +258,7 @@ export class NeonDistrictAssets {
                 */
 
                 // Default path (Standard)
-                this.loadStandardTexture(name, wrap, aniso, colorSpace).then(resolve);
+                this.loadStandardTexture(name, wrap, aniso, colorSpace, generation).then(resolve);
             });
         };
 
@@ -287,11 +321,15 @@ export class NeonDistrictAssets {
 
         // Load ALL textures in parallel
         await Promise.all(texturePromises);
+        if (generation !== this.loadGeneration || this.disposed) {
+            return false;
+        }
 
         console.log('[NeonDistrictAssets] Textures loaded, creating materials...');
         this.createAdAtlases();
         this.createAllMaterials();
         this.loaded = true;
+        return true;
     }
 
     createAdAtlases() {
@@ -679,6 +717,11 @@ export class NeonDistrictAssets {
      * Dispose all textures and materials
      */
     dispose() {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.loadGeneration += 1;
+        this.loadPromise = null;
+
         // Dispose textures
         Object.values(this.textures).forEach((texture) => {
             if (texture && texture.dispose) texture.dispose();
@@ -698,6 +741,13 @@ export class NeonDistrictAssets {
         this.materials = {};
 
         this.loaded = false;
+        this.ktx2Loader?.dispose?.();
+        this.ktx2Loader = null;
+        this.textureLoader = null;
+        this.loadingManager = null;
+        this.renderer = null;
+        this.isWebGPU = false;
+        this.ktx2Ready = false;
         console.log('[NeonDistrictAssets] Disposed all assets');
     }
 }

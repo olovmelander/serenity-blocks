@@ -22,6 +22,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
         this.resizeHandler = null;
+        this.animationFrameId = null;
         this.time = 0;
 
         // Combo effect arrays
@@ -1121,7 +1122,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         if (!this.isActive) return;
         this.update();
         this.draw();
-        requestAnimationFrame(() => this.animate());
+        this.animationFrameId = requestAnimationFrame(() => this.animate());
     }
 
     cleanup() {

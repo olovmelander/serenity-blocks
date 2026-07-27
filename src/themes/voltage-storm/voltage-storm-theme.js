@@ -369,11 +369,11 @@ export default class VoltageStormTheme extends BaseTheme {
     }
 
     stop() {
-        if (!this.isActive) return;
-        this.clearEffectTimeouts();
-        this.eventUnsubscribers.forEach((u) => u());
-        this.eventUnsubscribers = [];
+        // ThemeManager invalidates activity before invoking terminal cleanup.
+        // Base teardown must therefore be unconditional and idempotent.
         super.stop();
+        this.clearEffectTimeouts();
+        this.clearEventUnsubscribers();
     }
 
     cleanup() {

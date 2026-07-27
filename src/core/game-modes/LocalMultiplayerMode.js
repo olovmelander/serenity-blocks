@@ -25,6 +25,7 @@ import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitHardDrop,
 } from '../../events/gameplay-events.js';
 import {
     showCinematicLoadingOverlay,
@@ -820,6 +821,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onHardDrop: (dropData) => {
+                emitHardDrop({
+                    piece: dropData?.piece || null,
+                    startY: dropData?.startY,
+                    endY: dropData?.endY,
+                    player: playerNum,
+                });
                 const settings = this.deps.settingsManager?.get() || {};
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
                 const playerState = this.multiplayerState?.players?.[playerNum - 1];

@@ -536,6 +536,13 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                     console.log('[Controls] Settings modal open, Escape will close modal');
                     return;
                 }
+                // The Hub's document handler owns Escape while its top-layer
+                // panel is open. Opening Settings underneath it leaves two
+                // modal owners active and can resume/stop the wrong mode when
+                // either layer subsequently closes.
+                if (document.body?.classList?.contains('serenity-hub-open')) {
+                    return;
+                }
                 // Open settings menu (pauses game and shows settings)
                 console.log('[Controls] Opening settings menu with Escape');
                 if (gameActions.openSettingsMenu) gameActions.openSettingsMenu();
@@ -545,6 +552,14 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Block all other input if settings modal is open
             if (settingsModalVisible) {
                 console.log('[Controls] Settings modal open, ignoring input');
+                return;
+            }
+
+            // Serenity Hub owns keyboard/gamepad activation while it is open.
+            // The start/game-over modal can remain visible underneath the hub;
+            // allowing this global handler through would turn Enter/Space on a
+            // theme card into an unrelated game restart.
+            if (document.body?.classList?.contains('serenity-hub-open')) {
                 return;
             }
 
@@ -803,11 +818,14 @@ export function setupClickControls(inputController, startGame, initSound) {
             // Don't handle clicks on UI elements
             if (
                 e.target.closest('button')
+                || e.target.closest('[role="button"]')
                 || e.target.closest('.key-input')
                 || e.target.closest('select')
                 || e.target.closest('input')
                 || e.target.closest('.clickable')
                 || e.target.closest('#demo-browser-modal')
+                || e.target.closest('#serenity-hub-panel')
+                || document.body?.classList?.contains('serenity-hub-open')
             ) {
                 return;
             }

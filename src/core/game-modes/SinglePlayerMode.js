@@ -26,6 +26,7 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitHardDrop, emitLevelUp,
 } from '../../events/gameplay-events.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK,
@@ -1170,8 +1171,12 @@ export class SinglePlayerMode extends BaseGameMode {
                     boardScene.sharedEffects.playB2BChange(true);
                 }
             },
-            onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
+            onLevelUp: (level) => {
+                emitLevelUp({ level });
+                this.deps.soundManager.sfxPlayer.playLevelUp();
+            },
             onHardDrop: (dropData) => {
+                emitHardDrop(dropData);
                 this._applyHardDropTiming(timingState, usesFixedTiming);
 
                 this.deps.soundManager.sfxPlayer.playDrop();

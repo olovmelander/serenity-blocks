@@ -188,7 +188,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         return params;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) {
             console.error('[MoonlitForest] Theme container not found.');
@@ -208,7 +208,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.perfFrameSamples = [];
         this.fxController.reset();
 
-        const rendererReady = await this.initRenderer(container, generation);
+        const rendererReady = await this.initRenderer(container, generation, ownerGeneration);
         if (!rendererReady || generation !== this.runtimeGeneration) return;
 
         const width = Math.max(1, window.innerWidth);
@@ -247,32 +247,21 @@ export default class MoonlitForestTheme extends BaseTheme {
         );
     }
 
-    async createRendererCandidate(forceWebGL) {
+    async createRendererCandidate(forceWebGL, ownerGeneration) {
         const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: false,
             forceWebGL,
             powerPreference: 'high-performance',
         });
-        let timeoutId = null;
-
-        try {
-            await Promise.race([
-                renderer.init(),
-                new Promise((_, reject) => {
-                    timeoutId = setTimeout(() => reject(new Error('Renderer init timeout')), 5000);
-                }),
-            ]);
-            return renderer;
-        } catch (error) {
-            try { renderer.dispose(); } catch (disposeError) { /* noop */ }
-            throw error;
-        } finally {
-            if (timeoutId !== null) clearTimeout(timeoutId);
-        }
+        return this.initializeRendererCandidate(renderer, {
+            timeoutMs: 5000,
+            label: `Moonlit Forest ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+            ownerGeneration,
+        });
     }
 
-    async initRenderer(container, generation) {
+    async initRenderer(container, generation, ownerGeneration = this.lifecycleGeneration) {
         const requestedWebGL = this.forceWebGL === true
             || readBoolParam('forceWebGL', 'moonlitForceWebGL');
         const canAttemptWebGPU = !requestedWebGL
@@ -282,19 +271,27 @@ export default class MoonlitForestTheme extends BaseTheme {
 
         if (canAttemptWebGPU) {
             try {
-                renderer = await this.createRendererCandidate(false);
+                renderer = await this.createRendererCandidate(false, ownerGeneration);
                 if (renderer.backend?.isWebGPUBackend !== true) {
                     renderer.dispose();
                     renderer = null;
                 }
             } catch (error) {
+                if (generation !== this.runtimeGeneration
+                    || ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
                 console.warn('[MoonlitForest] WebGPU init failed; trying WebGL2:', error);
             }
         }
 
         if (!renderer) {
+            if (generation !== this.runtimeGeneration
+                || ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return false;
             try {
-                renderer = await this.createRendererCandidate(true);
+                renderer = await this.createRendererCandidate(true, ownerGeneration);
             } catch (error) {
                 console.error('[MoonlitForest] Renderer init failed:', error);
                 if (generation === this.runtimeGeneration) {
@@ -305,7 +302,10 @@ export default class MoonlitForestTheme extends BaseTheme {
             }
         }
 
-        if (generation !== this.runtimeGeneration || !this.isActive) {
+        if (generation !== this.runtimeGeneration
+            || ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
             renderer.dispose();
             return false;
         }

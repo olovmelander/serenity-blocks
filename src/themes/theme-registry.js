@@ -168,11 +168,11 @@ const RAW_THEME_REGISTRY = [
         icon: './starlight/starlight-theme-icon.png',
     },
     {
-        id: 'swedish-forest',
-        displayName: 'Swedish Forest',
-        module: './swedish-forest/swedish-forest-theme.js',
+        id: 'golden-forest',
+        displayName: 'Golden Forest',
+        module: './golden-forest/golden-forest-theme.js',
         group: 'biomes',
-        icon: './swedish-forest/swedish-forest-theme-icon.png',
+        icon: './golden-forest/golden-forest-theme-icon.png',
     },
     {
         id: 'geode',
@@ -245,17 +245,10 @@ const RAW_THEME_REGISTRY = [
         icon: './moonlit-greenhouse/moonlit-greenhouse-theme-icon.png',
     },
     {
-        id: 'electric-dreams',
-        displayName: 'Electric Dreams',
-        module: './electric-dreams/electric-dreams-theme.js',
-        icon: './electric-dreams/electric-dreams-theme-icon.png',
-        group: 'abstract',
-    },
-    {
         id: 'electric-dreams-v3',
         displayName: 'Electric Dreams V3',
         module: './electric-dreams-v3/electric-dreams-v3-theme.js',
-        icon: './electric-dreams/electric-dreams-theme-icon.png',
+        icon: './electric-dreams-v3/electric-dreams-theme-icon.png',
         group: 'abstract',
     },
     {
@@ -345,16 +338,9 @@ const RAW_THEME_REGISTRY = [
     {
         id: 'sky-children',
         displayName: 'Sky Children',
-        module: './sky-children-v2/sky-children-alias-theme.js',
-        group: 'sky',
-        icon: './sky-children-v2/sky-children-theme-icon.png',
-    },
-    {
-        id: 'sky-children-v2',
-        displayName: 'Sky Children v2',
         module: './sky-children-v2/sky-children-v2-theme.js',
-        icon: './sky-children-v2/sky-children-theme-icon.png',
         group: 'sky',
+        icon: './sky-children-v2/sky-children-theme-icon.png',
     },
     {
         id: 'cinder-drift',
@@ -452,6 +438,7 @@ const RAW_THEME_REGISTRY = [
 const HEAVY_GPU_THEME_IDS = new Set([
     'halcyon-apex',
     'ice-temple',
+    'koi-pond',
     'moonlit-forest',
     'wolfhour',
     'ocean',
@@ -467,7 +454,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'serenity-warp',
     'singing-bowl',
     'starlight',
-    'swedish-forest',
+    'golden-forest',
     'geode',
     'bioluminescence',
     'bioluminescence-2',
@@ -477,8 +464,8 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'luminous-tides',
     'fluid-dreams',
     'crystal-cave',
-    'electric-dreams',
     'electric-dreams-v3',
+    'lunara',
     'solar-eclipse',
     'black-hole',
     'supernova',
@@ -486,7 +473,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'cosmic-noir',
     'chiral-gold',
     'nimbus-veil',
-    'sky-children-v2',
+    'sky-children',
     'cinder-drift',
     'pyrestorm',
     'pyrestorm-v2',
@@ -511,22 +498,47 @@ export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
 
+/**
+ * Retired theme ids that must still resolve.
+ *
+ * The Sky Children rebuild shipped under the working id `sky-children-v2`
+ * alongside a `sky-children` alias entry, so the hub listed one theme twice.
+ * The rebuild is now the only Sky Children and is published under the original
+ * id; persisted settings naming the retired id resolve here instead of failing
+ * the `getThemeMeta` guard in ThemeManager.switchTheme().
+ */
+const RETIRED_THEME_IDS = new Map([
+    ['sky-children-v2', 'sky-children'],
+]);
+
+/**
+ * Map a possibly-retired theme id onto the id the registry publishes today.
+ * Unknown ids pass through unchanged so callers keep their own guards.
+ * @param {string} id
+ * @returns {string}
+ */
+export function resolveThemeId(id) {
+    if (themeMap.has(id)) return id;
+    return RETIRED_THEME_IDS.get(id) ?? id;
+}
+
 export function getThemeIds() {
     return THEME_REGISTRY.map((entry) => entry.id);
 }
 
 export function getThemeMeta(id) {
-    return themeMap.get(id);
+    return themeMap.get(resolveThemeId(id));
 }
 
 /**
  * Idempotent, registry-owned theme-container creation (plan Phase 2.7).
  *
- * 62 themes rely on a hand-written static `<div id="<id>-theme">` in
- * index.html; chiral-gold proved the lazy-create pattern when its div was
- * forgotten. This makes the registry the owner: existing static divs win
+ * Most themes rely on a hand-written static `<div id="<id>-theme">` in
+ * index.html; chiral-gold and serenity-warp use the lazy-create path. This
+ * makes the registry the owner: existing static divs win
  * (getElementById-first), a missing one is created on first activation —
- * NOT 62 divs at boot. Inline base styles mirror chiral-gold's proven set,
+ * without eagerly creating every possible div at boot. Inline base styles
+ * mirror chiral-gold's proven set,
  * since a lazily-created div has no `#<id>-theme` CSS rule to lean on.
  * The static divs stay until their deletion ships as its own verified commit
  * (stacking order against `background-canvas` is the risk).
@@ -555,6 +567,19 @@ export function ensureThemeContainer(themeId) {
         } else {
             document.body.appendChild(container);
         }
+    }
+
+    // Theme containers are application shell nodes, not instance-owned runtime
+    // nodes. Mark both static and lazily-created containers so BaseTheme cleanup
+    // can retain the shell while removing/deactivating only the outgoing runtime.
+    if (container.dataset) {
+        container.dataset.themeRegistryOwned = 'true';
+    } else if (typeof container.setAttribute === 'function') {
+        container.setAttribute('data-theme-registry-owned', 'true');
+    } else {
+        // Lightweight DOM test doubles may expose neither dataset nor
+        // setAttribute; keep the ownership signal available all the same.
+        container.__themeRegistryOwned = true;
     }
     return container;
 }

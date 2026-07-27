@@ -100,6 +100,27 @@ describe('Summer lock mapping', () => {
         expect(oOrigin.centered.y).toBe(1);
     });
 
+    it('prefers a mode-supplied viewportOrigin over the fixed-board normalization', () => {
+        // Infinity's tall scrolling grid: piece.y is a huge absolute row; the on-screen origin
+        // wins so the dew-seal / wreath tracks where the piece actually landed.
+        const origin = resolveSummerLockOrigin({
+            piece: tPiece({ y: 214 }),
+            viewportOrigin: { x: 0.2, y: 0.1 },
+        });
+        expect(origin.normalized).toEqual({ x: 0.2, y: 0.1 });
+        expect(origin.centered.y).toBeCloseTo(0.8);
+        expect(origin.sideLane.side).toBe('left');
+        expect(origin.board.y).toBeGreaterThan(200); // raw centroid still absolute
+    });
+
+    it('ignores an invalid viewportOrigin and keeps the piece-cell normalization', () => {
+        const origin = resolveSummerLockOrigin({
+            piece: tPiece(),
+            viewportOrigin: { x: Number.NaN, y: 0.1 },
+        });
+        expect(origin.normalized.y).toBeCloseTo(0.6875);
+    });
+
     it('falls back to the canonical orientation and centered board for a missing piece', () => {
         const origin = resolveSummerLockOrigin({});
         expect(origin.board).toEqual({ x: 5, y: 14 });

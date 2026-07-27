@@ -121,7 +121,7 @@ export function create({
 
     const moonResult = createMoonNodeMaterial({ texture: moonTexture });
     const { uPulse: uLunarPulse } = moonResult.uniforms;
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(156, 64, 36), moonResult.material);
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(143, 64, 36), moonResult.material);
     moon.position.set(172, 132, -480);
     moon.rotation.y = -0.34;
     group.add(moon);

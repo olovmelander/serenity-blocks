@@ -5131,7 +5131,7 @@ async function bootstrap() {
 
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
         const localMpFlag = urlParams.get('localMp');
-        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1'
+        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('goldenForestBaseline') === '1'
             || localMpFlag === 'host' || localMpFlag === 'join' || localMpFlag === 'watch' || localMpFlag === 'browse' || (typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches); // local-MP test + OS reduced-motion auto-skip the cinematic (matches the boot warp)
         const useMinimalPackagedStartup = shouldUseBaselinePackagedStartup();
 

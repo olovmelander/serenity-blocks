@@ -83,6 +83,9 @@ class GPUContextResilience {
         }
 
         const label = options.label || 'unknown';
+        let onDeviceLost = typeof options.onDeviceLost === 'function'
+            ? options.onDeviceLost
+            : null;
         let active = true;
 
         device.lost.then((info) => {
@@ -94,7 +97,7 @@ class GPUContextResilience {
             eventBus.emit(EVENTS.CONTEXT_LOST, {
                 type: 'webgpu', device, info, label,
             });
-            options.onDeviceLost?.(info);
+            onDeviceLost?.(info);
         });
 
         // Phase 1: Monitor uncaptured WebGPU errors for diagnostics
@@ -114,6 +117,9 @@ class GPUContextResilience {
 
         return () => {
             active = false;
+            // device.lost is a lifetime promise. Drop any theme-local closure
+            // immediately instead of retaining its scene until the GPUDevice dies.
+            onDeviceLost = null;
             if (typeof device.removeEventListener === 'function') {
                 device.removeEventListener('uncapturederror', onUncapturedError);
             }

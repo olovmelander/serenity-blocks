@@ -12,11 +12,29 @@ const compositionSource = readFileSync(
 const compositionExecutableSource = compositionSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
-const waterSource = readFileSync(
+const waterAdapterSource = readFileSync(
     new URL('../../src/playground/effects/stillwater-water.effect.js', import.meta.url),
     'utf8',
 );
+const waterSource = readFileSync(
+    new URL('../../src/themes/stillwater/rendering/stillwater-water.js', import.meta.url),
+    'utf8',
+);
 const waterExecutableSource = waterSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+const waterResponseAdapterSource = readFileSync(
+    new URL('../../src/playground/effects/stillwater-water-response.js', import.meta.url),
+    'utf8',
+);
+const waterResponseSource = readFileSync(
+    new URL(
+        '../../src/themes/stillwater/sim/stillwater-water-response.js',
+        import.meta.url,
+    ),
+    'utf8',
+);
+const waterResponseExecutableSource = waterResponseSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 const playgroundSource = readFileSync(
@@ -48,14 +66,14 @@ function findReversedNumericSmoothsteps(source) {
         .map((match) => match[0]);
 }
 
-describe('Stillwater Wave 1/2 playground contracts', () => {
+describe('Stillwater Wave 1/2/3 playground contracts', () => {
     it('keeps unique Wave metadata IDs on the WebGPU/TSL surface contract', () => {
-        const sources = [compositionSource, waterSource];
+        const sources = [compositionSource, waterAdapterSource];
         const ids = sources.map(extractMetaId);
 
         expect(ids).toEqual(['stillwater-composition', 'stillwater-water']);
         expect(new Set(ids).size).toBe(ids.length);
-        sources.forEach((source) => {
+        [compositionSource, waterSource].forEach((source) => {
             expect(source).toMatch(
                 /import\s+\*\s+as\s+THREE\s+from\s+['"]three\/webgpu['"]/,
             );
@@ -97,9 +115,10 @@ describe('Stillwater Wave 1/2 playground contracts', () => {
     });
 
     it('gates High/Low and auto/off reflection paths before constructing them', () => {
-        expect(waterSource).toContain('const REFLECTOR_SCALE = 0.45;');
+        expect(waterSource).toContain('getStillwaterQualityProfile');
+        expect(waterSource).toContain('reflectorScale: qualityProfile.reflectionScale');
+        expect(waterSource).toContain('responseSlots: Math.max(4, qualityProfile.wakeSlots)');
         expect(waterSource).toContain("params?.get?.('quality')");
-        expect(waterSource).toContain("? 'Low' : 'High'");
         expect(waterSource).toContain("params?.get?.('reflection') || 'auto'");
         expect(waterSource).toContain("['0', 'off', 'false', 'no'].includes(raw)");
         expect(waterSource).toContain("if (reflectionRequest !== 'off')");
@@ -115,12 +134,17 @@ describe('Stillwater Wave 1/2 playground contracts', () => {
         expect(waterSource).toMatch(/\bmaterialXNoiseVec3\s*\(/);
         expect(waterSource).toMatch(/\bmaterialXWorley\s*\(/);
         expect(waterSource).toContain('const calmMask = smoothstep(');
-        expect(waterSource).toContain('const post = new THREE.PostProcessing(renderer);');
+        expect(waterSource).toContain('post = new THREE.PostProcessing(renderer);');
+        expect(waterSource).toContain('if (postEnabled)');
         expect(waterSource).toContain('toneMapping(THREE.ACESFilmicToneMapping');
         expect(waterSource).toContain('post.outputColorTransform = false;');
-        expect(waterSource).toContain('window.__STILLWATER_WATER__ = debugApi;');
-        expect(waterSource).toContain('getDiagnostics: () => ({ ...diagnostics })');
-        expect(waterSource).toContain('materialXFlow: true');
+        expect(waterAdapterSource).toContain('window.__STILLWATER_WATER__ = debugApi;');
+        expect(waterSource).toContain('const getDiagnostics = () => {');
+        expect(waterSource).toContain('if (premiumFlow)');
+        expect(waterSource).toContain("'materialx-broad-analytic-warp'");
+        expect(waterSource).toContain("'materialx-domain-warp'");
+        expect(waterSource).toContain("'layered-analytic-sine'");
+        expect(waterSource).toContain('materialXFlow: premiumFlow');
         expect(waterSource).toContain('calmMask: true');
         expect(waterSource).toContain('const gradeMode = readGrade(params);');
         expect(waterSource).toContain("'ACES-1.0-only'");
@@ -129,18 +153,32 @@ describe('Stillwater Wave 1/2 playground contracts', () => {
 
     it('keeps the lake bed visible and owns pass resources and unavailable counters honestly', () => {
         expect(waterSource).toContain('function makeTerrainGeometry()');
-        expect(waterSource).toContain('shape.holes.push(lakeHole)');
+        // The banks used to be a flat plate with a lake-shaped hole punched in
+        // it, which read as a diorama and left the far shore fully visible. They
+        // are now contoured ribbons running alongside an open channel. The
+        // invariant that still matters is that both the banks and the lake are
+        // driven by the one shared shoreline sampler, so terrain can never
+        // creep over the bed.
+        expect(waterSource).toContain('export function sampleShore(');
+        expect(waterSource).toContain('const section = bankSection(t);');
         expect(waterSource).toContain('function makeLakeCollarGeometry(');
         expect(waterSource).toContain('skyMaterial.fog = false;');
-        expect(waterSource).toContain('scenePass.dispose?.();');
+        expect(waterSource).toContain('scenePass?.dispose?.();');
         expect(waterSource).toContain('waterMaterial.side = THREE.FrontSide');
         expect(waterSource).not.toContain('waterMaterial.side = THREE.DoubleSide');
+        expect(waterSource).toContain(
+            "reflectionNode.reflector.getRenderTarget(reflectionCamera).texture.name = 'output'",
+        );
+        expect(waterSource).toContain('moonMaterial.depthTest = false;');
+        expect(waterSource).toContain('moon.renderOrder = 2;');
+        expect(waterSource).toContain('moonHaloMaterial.depthTest = false;');
+        expect(waterSource).toContain('moonHalo.renderOrder = 1;');
         expect(waterSource).toContain(
             'programs: renderer.info?.programs ? renderer.info.programs.length : null',
         );
     });
 
-    it('defers raw shader, compute feedback, and wake-slot implementation beyond Wave 2', () => {
+    it('keeps Wave 3 fixed-slot responses TSL-only, preallocated, and compute-free', () => {
         expect(waterExecutableSource).not.toMatch(/\b(?:glslFn|wgslFn)\s*\(/);
         expect(waterExecutableSource).not.toMatch(
             /\b(?:vertexShader|fragmentShader)\s*:|THREE\.ShaderMaterial\b/,
@@ -148,14 +186,82 @@ describe('Stillwater Wave 1/2 playground contracts', () => {
         expect(waterExecutableSource).not.toMatch(
             /renderer\.(?:compute|computeAsync)\s*\(|\b(?:storage|instancedArray)\s*\(/,
         );
-        expect(waterExecutableSource).not.toMatch(
-            /\b(?:createWake|updateWake|WAKE_SLOT_COUNT|uWake\w*|wakeSlots?)\s*=/,
+        expect(waterSource).toContain('uniformArray(responseBindings.stateValues');
+        expect(waterSource).toContain('uniformArray(responseBindings.shapeValues');
+        expect(waterSource).toContain('const uResponseActivity = responseBindings ? uniform(0)');
+        expect(waterSource).toContain('const uResponseMode = responseBindings');
+        expect(waterSource).toContain('responseState.getActiveMode(time)');
+        expect(waterSource).toContain('const makeOpticalResponseField = Fn(');
+        expect(waterSource).toContain(
+            'const makeDisplacementResponseHeight = Fn(',
         );
-        expect(waterSource).toContain('wakeSlots: 0');
+        expect(waterSource).toContain(
+            'makeResponseTerms(samplePosition, false, {',
+        );
+        expect(waterSource).toContain(
+            'makeResponseTerms(samplePosition, true)',
+        );
+        expect(waterSource).toContain('height.assign(response.height)');
+        expect(waterSource).toContain('If(uResponseActivity.greaterThan(0)');
+        expect(waterSource).toContain(
+            'uResponseMode.equal(STILLWATER_RESPONSE_KIND.lock)',
+        );
+        expect(waterSource).toContain(
+            'uResponseMode.equal(STILLWATER_RESPONSE_KIND.tetris)',
+        );
+        expect(waterSource).toContain(
+            'uResponseMode.equal(STILLWATER_RESPONSE_KIND.tspin)',
+        );
+        expect(waterSource).toContain('.ElseIf(');
+        expect(waterSource).toContain('const height = float(0).toVar()');
+        expect(waterSource).toContain("fragmentResponse?.get('slope')");
+        expect(waterSource).toContain('responseGraphActive:');
+        expect(waterSource).toContain('responseGraphMode:');
+        expect(waterSource).toContain(
+            'responseGraphModel = leanResponseGraph',
+        );
+        expect(waterSource).toContain(
+            'const leanResponseGraph = qualityProfile.wakeSlots > 0',
+        );
+        expect(waterSource).toContain(
+            'const TETRIS_DEPTH_WAKE_OFFSETS = Object.freeze([-4.5, -1.5, 1.5, 4.5])',
+        );
+        expect(waterSource).toContain('reservedSpecialSlot: responsesEnabled ? 0 : null');
+        expect(waterSource).toContain('TETRIS_DEPTH_WAKE_OFFSETS.length');
+        expect(waterSource).toContain('waterMaterial.positionNode = positionLocal.add(');
+        expect(waterSource).toContain('waterMaterial.emissiveNode = responseLight');
+        expect(waterSource).toContain("params?.get?.('event') || 'idle'");
+        expect(waterSource).toContain("readToggle(params, 'responses', true)");
+        expect(waterSource).toContain('triggerReaction: (type, options)');
+        expect(waterSource).toContain('getResponseState');
+        expect(waterSource).toContain('getResourceState');
+        expect(waterResponseSource).toContain('const stateValues = Array.from(');
+        expect(waterResponseSource).toContain('const shapeValues = Array.from(');
+        expect(waterResponseSource).toContain('let routineCursor = 1;');
+        expect(waterResponseSource).toContain('function getActiveMode(time)');
+        expect(waterResponseExecutableSource).not.toMatch(
+            /\bnew\s+THREE\.(?:Mesh|BufferGeometry|Material)\b/,
+        );
+        expect(waterResponseExecutableSource).not.toMatch(/\.(?:push|splice|shift|unshift)\s*\(/);
         expect(waterSource).toContain('computeFeedback: false');
     });
 
-    it('keeps the Wave 2 numeric smoothstep edges ordered', () => {
+    it('keeps production ownership behind thin playground compatibility adapters', () => {
+        expect(waterSource).toContain('export function createStillwaterWater(');
+        expect(waterSource).not.toContain('export const meta');
+        expect(waterSource).not.toContain('window.__STILLWATER_WATER__');
+        expect(waterAdapterSource).toContain(
+            "from '../../themes/stillwater/rendering/stillwater-water.js'",
+        );
+        expect(waterAdapterSource).toContain('const runtime = createStillwaterWater(context)');
+        expect(waterAdapterSource).not.toContain('new THREE.');
+        expect(waterResponseAdapterSource).toContain(
+            "from '../../themes/stillwater/sim/stillwater-water-response.js'",
+        );
+        expect(waterResponseAdapterSource).not.toContain('function createPackedVector');
+    });
+
+    it('keeps the Wave 3 numeric smoothstep edges ordered', () => {
         expect(findReversedNumericSmoothsteps(waterSource)).toEqual([]);
     });
 

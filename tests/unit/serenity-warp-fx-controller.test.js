@@ -74,6 +74,31 @@ describe('Serenity Warp lock mapping', () => {
         expect(origin.player).toBe(2);
     });
 
+    it('honors a mode-supplied viewportOrigin over the fixed-board normalization', () => {
+        // Infinity's tall scrolling grid makes piece.y a huge absolute row that would
+        // saturate the fixed-board normalizedY to 1 (bottom); the on-screen origin wins.
+        const origin = resolveSerenityWarpLockOrigin({
+            piece: tPiece({ y: 214 }),
+            viewportOrigin: { x: 0.2, y: 0.1 },
+        });
+        expect(origin.normalized).toEqual({ x: 0.2, y: 0.1 });
+        expect(origin.centered.x).toBeCloseTo(-0.6);
+        expect(origin.centered.y).toBeCloseTo(0.8);
+        expect(origin.sideLane.side).toBe('left');
+        expect(origin.sideLane.normalized.y).toBeCloseTo(0.18 + 0.1 * 0.64); // 0.244
+        // The raw board grid coordinates still reflect the actual (absolute) locked cells.
+        expect(origin.board.y).toBeGreaterThan(200);
+    });
+
+    it('ignores an invalid viewportOrigin and keeps the piece-cell board normalization', () => {
+        const origin = resolveSerenityWarpLockOrigin({
+            piece: tPiece(),
+            viewportOrigin: { x: 0.2, y: Number.NaN },
+        });
+        expect(origin.normalized.y).toBeCloseTo(0.6875);
+        expect(origin.sideLane.normalized.y).toBeCloseTo(0.62);
+    });
+
     it('falls back to a canonical four-cell glyph for a malformed shape', () => {
         const glyph = resolveSerenityWarpLockGlyph({
             piece: {

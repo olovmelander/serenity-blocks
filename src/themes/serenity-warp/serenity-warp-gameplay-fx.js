@@ -25,6 +25,7 @@ import {
     smoothstep,
     uniform,
     uv,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -62,6 +63,16 @@ const CELLS_PER_SEAL = 4;
 // The seal renders on an FX plane ~36–38u from the camera; a cell must be this large in
 // world units to read at ~10–12% of screen height instead of the old sub-pixel speck.
 const DEFAULT_SEAL_CELL_SIZE = 3.4;
+// Phase Seal v2 stamps the WHOLE locked tetromino as ONE solid silhouette, not four
+// separate cell tiles. A single quad per piece runs a union-of-box-SDFs fragment: the quad
+// spans ±SEAL_QUAD_HALF cells (wide enough for the 4-long I piece plus glow margin) and the
+// fragment takes min() over the four cell boxes. SEAL_BOX_HALF > 0.5 overlaps neighbours so
+// the union is seamless with no join notch, and the overlap is kept larger than SEAL_EDGE_AA
+// so the exterior-only glow-rim vanishes at internal seams — the piece reads as one block.
+const SEAL_QUAD_HALF = 3.0; // cell units — quad half-extent (covers I ±2.0 + glow margin)
+const SEAL_BOX_HALF = 0.54; // cell half-extent; slight overlap fuses adjacent cells cleanly
+const SEAL_RIM_WIDTH = 0.22; // cell units — width of the outer silhouette glow-rim
+const SEAL_EDGE_AA = 0.03; // cell units — antialias band on the silhouette edge (< overlap)
 const COMMAND_PHASE_SEAL = 1;
 const COMMAND_RING = 2;
 const COMMAND_GATE = 3;
@@ -243,14 +254,18 @@ function writePackedVisual(system, index, alpha, red, green, blue) {
 }
 
 function createPhaseSealSystem(isWebGPU) {
-    const count = MAX.seals * CELLS_PER_SEAL;
+    // One instance per seal (not one per cell): each instance is a single quad that draws the
+    // whole tetromino silhouette via a union-of-box-SDFs fragment. The four centred cell
+    // offsets ride along as two vec4 attributes (aCellsAB = cells 0/1, aCellsCD = cells 2/3).
+    const count = MAX.seals;
     const system = {
         name: 'SerenityWarpPhaseSeals',
         geometry: createQuadGeometry(),
         attributes: [],
-        state: createPoolState(MAX.seals),
+        state: createPoolState(count),
         origin: new Float32Array(count * 3),
-        cell: new Float32Array(count * 2),
+        cellsAB: new Float32Array(count * 4),
+        cellsCD: new Float32Array(count * 4),
         birth: new Float32Array(count),
         invLife: new Float32Array(count).fill(1),
         size: new Float32Array(count),
@@ -259,7 +274,8 @@ function createPhaseSealSystem(isWebGPU) {
         timing: createPackedTiming(count),
     };
     addAttribute(system, 'aOrigin', system.origin, 3);
-    addAttribute(system, 'aCell', system.cell, 2);
+    addAttribute(system, 'aCellsAB', system.cellsAB, 4);
+    addAttribute(system, 'aCellsCD', system.cellsCD, 4);
     addAttribute(system, 'aTiming', system.timing, 4);
     addAttribute(system, 'aColor', system.color, 3);
     system.geometry.instanceCount = count;
@@ -271,7 +287,6 @@ function createPhaseSealSystem(isWebGPU) {
         const material = createNodeMaterial();
         material.vertexNode = Fn(() => {
             const origin = attribute('aOrigin', 'vec3');
-            const cell = attribute('aCell', 'vec2');
             const timing = attribute('aTiming', 'vec4');
             const age = uTime.sub(timing.x).mul(timing.y).clamp(0.0, 1.0);
             const animatedSettle = mix(
@@ -281,8 +296,8 @@ function createPhaseSealSystem(isWebGPU) {
             );
             const settle = mix(float(1.0), animatedSettle, uMotion);
             const viewPosition = cameraViewMatrix.mul(vec4(origin, 1.0)).toVar();
-            const offset = cell.mul(timing.z.mul(1.08))
-                .add(positionLocal.xy.mul(timing.z.mul(0.5))).mul(settle);
+            // Quad spans ±SEAL_QUAD_HALF cells; timing.z is world units per cell.
+            const offset = positionLocal.xy.mul(timing.z.mul(SEAL_QUAD_HALF)).mul(settle);
             viewPosition.x.addAssign(offset.x);
             viewPosition.y.addAssign(offset.y);
             return cameraProjectionMatrix.mul(viewPosition);
@@ -290,22 +305,33 @@ function createPhaseSealSystem(isWebGPU) {
         const colorNode = Fn(() => {
             const timing = attribute('aTiming', 'vec4');
             const color = attribute('aColor', 'vec3');
+            const cellsAB = attribute('aCellsAB', 'vec4');
+            const cellsCD = attribute('aCellsCD', 'vec4');
             const age = uTime.sub(timing.x).mul(timing.y);
-            // Phase Seal v2 — a SOLID rounded-rect stamp of the piece cell (filled body +
-            // bright piece-tinted rim + centre core glow + soft halo), replacing the old
-            // hollow wireframe that read as a debug glitch. Reads as light without bloom.
-            const p = uv().sub(0.5).mul(2.0);
-            const q = abs(p).sub(0.80);
-            const d = length(max(q, float(0.0))).add(min(max(q.x, q.y), float(0.0))).sub(0.16);
-            const body = float(1.0).sub(smoothstep(-0.02, 0.06, d));
-            const innerBody = float(1.0).sub(smoothstep(-0.02, 0.06, d.add(0.06)));
-            const rim = max(body.sub(innerBody), float(0.0));
-            const halo = exp(max(d, float(0.0)).mul(-7.0)).mul(0.6);
-            const core = float(1.0).sub(smoothstep(-0.55, 0.0, d)).mul(0.5);
+            // Phase Seal v2 — a SOLID stamp of the whole locked tetromino. Map the quad UV to
+            // ±SEAL_QUAD_HALF cell-space and union the four cell boxes into ONE connected
+            // silhouette; overlapping boxes fuse seamlessly (no cell gaps, no rounded-corner
+            // notch). Filled body + exterior-only glow-rim (never lights internal seams) +
+            // centroid core glow + soft halo. Reads as one block of light without bloom.
+            const pc = uv().sub(0.5).mul(2.0).mul(SEAL_QUAD_HALF);
+            const boxSDF = (centre) => {
+                const q = abs(pc.sub(centre)).sub(vec2(SEAL_BOX_HALF, SEAL_BOX_HALF));
+                return length(max(q, float(0.0))).add(min(max(q.x, q.y), float(0.0)));
+            };
+            const d = min(
+                min(boxSDF(cellsAB.xy), boxSDF(cellsAB.zw)),
+                min(boxSDF(cellsCD.xy), boxSDF(cellsCD.zw)),
+            );
+            const body = float(1.0).sub(smoothstep(-SEAL_EDGE_AA, SEAL_EDGE_AA, d));
+            const outside = smoothstep(-SEAL_EDGE_AA, SEAL_EDGE_AA, d);
+            const rim = float(1.0)
+                .sub(smoothstep(0.0, SEAL_RIM_WIDTH, max(d, float(0.0)))).mul(outside);
+            const halo = exp(max(d, float(0.0)).mul(-4.2)).mul(0.6);
+            const core = float(1.0).sub(smoothstep(0.0, 1.9, length(pc))).mul(0.4);
             const fade = smoothstep(0.0, 0.08, age)
                 .mul(float(1.0).sub(smoothstep(0.82, 1.0, age)));
             const snap = float(1.0).sub(smoothstep(0.0, 0.1, age));
-            const bodyBright = body.mul(0.95).add(core);
+            const bodyBright = body.mul(float(0.95).add(core));
             const rimBright = rim.mul(float(1.4).add(snap.mul(1.4)));
             const glowBright = halo.mul(0.6);
             const rimColor = mix(color, vec3(1.0, 1.0, 1.0), 0.35);
@@ -322,9 +348,11 @@ function createPhaseSealSystem(isWebGPU) {
         system.intensityNode = uIntensity;
         system.motionNode = uMotion;
     } else {
+        const q = (value) => value.toFixed(4);
         system.material = createFallbackMaterial(`
             attribute vec3 aOrigin;
-            attribute vec2 aCell;
+            attribute vec4 aCellsAB;
+            attribute vec4 aCellsCD;
             attribute vec4 aTiming;
             attribute vec3 aColor;
             uniform float uTime;
@@ -333,19 +361,21 @@ function createPhaseSealSystem(isWebGPU) {
             varying float vAge;
             varying float vAlpha;
             varying vec3 vColor;
+            varying vec4 vCellsAB;
+            varying vec4 vCellsCD;
 
             void main() {
                 vUv = uv;
                 vAge = (uTime - aTiming.x) * aTiming.y;
                 vAlpha = aTiming.w;
                 vColor = aColor;
+                vCellsAB = aCellsAB;
+                vCellsCD = aCellsCD;
                 float age = clamp(vAge, 0.0, 1.0);
                 float animatedSettle = mix(1.12, 1.0, smoothstep(0.11, 0.29, age));
                 float settle = mix(1.0, animatedSettle, uMotion);
                 vec4 viewPosition = viewMatrix * vec4(aOrigin, 1.0);
-                vec2 offset = (
-                    aCell * aTiming.z * 1.08 + position.xy * aTiming.z * 0.5
-                ) * settle;
+                vec2 offset = position.xy * (aTiming.z * ${q(SEAL_QUAD_HALF)}) * settle;
                 viewPosition.xy += offset;
                 gl_Position = projectionMatrix * viewPosition;
             }
@@ -355,20 +385,29 @@ function createPhaseSealSystem(isWebGPU) {
             varying float vAge;
             varying float vAlpha;
             varying vec3 vColor;
+            varying vec4 vCellsAB;
+            varying vec4 vCellsCD;
+
+            float boxSDF(vec2 pc, vec2 c) {
+                vec2 q = abs(pc - c) - vec2(${q(SEAL_BOX_HALF)});
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+            }
 
             void main() {
-                vec2 p = (vUv - 0.5) * 2.0;
-                vec2 q = abs(p) - vec2(0.80);
-                float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.16;
-                float body = 1.0 - smoothstep(-0.02, 0.06, d);
-                float innerBody = 1.0 - smoothstep(-0.02, 0.06, d + 0.06);
-                float rim = max(body - innerBody, 0.0);
-                float halo = exp(max(d, 0.0) * -7.0) * 0.6;
-                float core = (1.0 - smoothstep(-0.55, 0.0, d)) * 0.5;
+                vec2 pc = (vUv - 0.5) * 2.0 * ${q(SEAL_QUAD_HALF)};
+                float d = min(
+                    min(boxSDF(pc, vCellsAB.xy), boxSDF(pc, vCellsAB.zw)),
+                    min(boxSDF(pc, vCellsCD.xy), boxSDF(pc, vCellsCD.zw))
+                );
+                float body = 1.0 - smoothstep(-${q(SEAL_EDGE_AA)}, ${q(SEAL_EDGE_AA)}, d);
+                float outside = smoothstep(-${q(SEAL_EDGE_AA)}, ${q(SEAL_EDGE_AA)}, d);
+                float rim = (1.0 - smoothstep(0.0, ${q(SEAL_RIM_WIDTH)}, max(d, 0.0))) * outside;
+                float halo = exp(max(d, 0.0) * -4.2) * 0.6;
+                float core = (1.0 - smoothstep(0.0, 1.9, length(pc))) * 0.4;
                 float fade = smoothstep(0.0, 0.08, vAge)
                     * (1.0 - smoothstep(0.82, 1.0, vAge));
                 float snap = 1.0 - smoothstep(0.0, 0.1, vAge);
-                float bodyBright = body * 0.95 + core;
+                float bodyBright = body * (0.95 + core);
                 float rimBright = rim * (1.4 + snap * 1.4);
                 float glowBright = halo * 0.6;
                 vec3 rimColor = mix(vColor, vec3(1.0), 0.35);
@@ -1665,32 +1704,36 @@ export class SerenityWarpGameplayFX {
         const system = this.phaseSeals;
         const slot = this._acquireSlot(system, this.limits.seals, time);
         if (slot < 0) return;
-        const inverseLife = 1 / command.life;
-        for (let cellIndex = 0; cellIndex < CELLS_PER_SEAL; cellIndex += 1) {
-            const instance = slot * CELLS_PER_SEAL + cellIndex;
-            const originOffset = instance * 3;
-            const cellOffset = instance * 2;
-            system.origin[originOffset] = command.x;
-            system.origin[originOffset + 1] = command.y;
-            system.origin[originOffset + 2] = command.z;
-            system.cell[cellOffset] = command.cells[cellIndex * 2];
-            system.cell[cellOffset + 1] = command.cells[cellIndex * 2 + 1];
-            system.birth[instance] = time;
-            system.invLife[instance] = inverseLife;
-            system.size[instance] = command.size;
-            system.alpha[instance] = command.alpha * command.intensity;
-            system.color[originOffset] = command.r;
-            system.color[originOffset + 1] = command.g;
-            system.color[originOffset + 2] = command.b;
-            writePackedTiming(
-                system,
-                instance,
-                system.birth[instance],
-                system.invLife[instance],
-                system.size[instance],
-                system.alpha[instance],
-            );
-        }
+        const originOffset = slot * 3;
+        const cellOffset = slot * 4;
+        system.origin[originOffset] = command.x;
+        system.origin[originOffset + 1] = command.y;
+        system.origin[originOffset + 2] = command.z;
+        // The four centred cell offsets pack into two vec4s (cells 0/1 → AB, 2/3 → CD) that
+        // the union-SDF fragment fuses into one solid silhouette.
+        system.cellsAB[cellOffset] = command.cells[0];
+        system.cellsAB[cellOffset + 1] = command.cells[1];
+        system.cellsAB[cellOffset + 2] = command.cells[2];
+        system.cellsAB[cellOffset + 3] = command.cells[3];
+        system.cellsCD[cellOffset] = command.cells[4];
+        system.cellsCD[cellOffset + 1] = command.cells[5];
+        system.cellsCD[cellOffset + 2] = command.cells[6];
+        system.cellsCD[cellOffset + 3] = command.cells[7];
+        system.birth[slot] = time;
+        system.invLife[slot] = 1 / command.life;
+        system.size[slot] = command.size;
+        system.alpha[slot] = command.alpha * command.intensity;
+        system.color[originOffset] = command.r;
+        system.color[originOffset + 1] = command.g;
+        system.color[originOffset + 2] = command.b;
+        writePackedTiming(
+            system,
+            slot,
+            system.birth[slot],
+            system.invLife[slot],
+            system.size[slot],
+            system.alpha[slot],
+        );
         this._activateSlot(system, slot, time + command.life);
         markAttributes(system);
     }
@@ -2023,7 +2066,7 @@ export class SerenityWarpGameplayFX {
     }
 
     _applyInstanceBudgets() {
-        this.phaseSeals.geometry.instanceCount = this.limits.seals * CELLS_PER_SEAL;
+        this.phaseSeals.geometry.instanceCount = this.limits.seals;
         this.rings.geometry.instanceCount = this.limits.rings;
         this.nodes.geometry.instanceCount = this.limits.nodes;
         this.links.geometry.instanceCount = this.limits.links;

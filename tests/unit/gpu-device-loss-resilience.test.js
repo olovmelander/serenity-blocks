@@ -75,6 +75,24 @@ describe('GPU device-loss resilience contract', () => {
         expect(secondFired).toBe(false);
     });
 
+    it('detaches a local loss callback when its theme unsubscribes', async () => {
+        const { device, lose } = fakeDevice();
+        let localCalls = 0;
+        const unsub = gpuResilience.monitorWebGPU(device, {
+            label: 'retired-theme',
+            onDeviceLost: () => {
+                localCalls += 1;
+            },
+        });
+
+        unsub();
+        lose();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(localCalls).toBe(0);
+    });
+
     it('safely no-ops when the device cannot be read', () => {
         const unsub = gpuResilience.monitorWebGPU(null, { label: 'missing' });
         expect(typeof unsub).toBe('function');

@@ -789,13 +789,20 @@ export class SteamNetworking {
     }
 
     /**
-     * Convert ArrayBuffer to base64 string
+     * Convert ArrayBuffer to base64 string.
+     *
+     * P0-6 (review §2.4): the old loop appended one char per byte, growing the
+     * intermediate string O(n) times per broadcast inside the frame callback.
+     * Build it in 32 KB chunks via `String.fromCharCode.apply` instead — the
+     * chunk bound keeps the apply arg count under the engine's call-stack cap.
+     * Byte-identical output to the per-byte version.
      */
     _arrayBufferToBase64(buffer) {
         const bytes = new Uint8Array(buffer);
+        const CHUNK = 0x8000; // 32 KB — bounded arg count for fromCharCode.apply
         let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
         }
         return btoa(binary);
     }

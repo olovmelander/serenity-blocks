@@ -79,6 +79,11 @@ export class BaseTheme {
         this.isPaused = false;
         this.hasStarted = false;
         this.lifecycleState = 'initialized';
+        this.lifecycleGeneration = 0;
+        this.cleanupComplete = false;
+        this._startRequestGeneration = 0;
+        this._startInFlight = null;
+        this.onRuntimeFailure = null;
         this.resourceProfile = 'light';
         this.animationIds = [];
         this.containers = [];
@@ -102,13 +107,69 @@ export class BaseTheme {
      * @returns {Promise<void>}
      */
     async start(webglRenderer, managers = {}) {
+        const requestGeneration = ++this._startRequestGeneration;
+        const requestLifecycleGeneration = this.lifecycleGeneration;
+        const previousStart = this._startInFlight;
+
+        // A theme instance exposes mutable scene/renderer fields, so two
+        // createScene() calls on that identity can never safely overlap: an
+        // older continuation could otherwise publish into the newer runtime.
+        // Queue starts per instance and keep only the latest waiting request.
+        if (previousStart) {
+            try {
+                await previousStart;
+            } catch {
+                // The previous caller receives its own failure. This request
+                // independently decides below whether it still owns a retry.
+            }
+        }
+
+        if (requestGeneration !== this._startRequestGeneration) {
+            console.warn('[BaseTheme] Dropping superseded queued start:', this.name);
+            return false;
+        }
+        if (previousStart && requestLifecycleGeneration !== this.lifecycleGeneration) {
+            console.warn('[BaseTheme] Dropping queued start invalidated by stop/cleanup:', this.name);
+            return false;
+        }
+        if (this.cleanupComplete) {
+            throw new Error(`Theme "${this.name}" cannot restart after terminal cleanup`);
+        }
+
+        const startAttempt = this.runStartAttempt(webglRenderer, managers);
+        this._startInFlight = startAttempt;
+        try {
+            return await startAttempt;
+        } finally {
+            if (this._startInFlight === startAttempt) {
+                this._startInFlight = null;
+            }
+        }
+    }
+
+    /**
+     * Execute one serialized start attempt.
+     * @param {WebGLRenderer} webglRenderer
+     * @param {Object} managers
+     * @returns {Promise<void|boolean>}
+     */
+    async runStartAttempt(webglRenderer, managers = {}) {
         console.log('[BaseTheme] start() called, state:', this.lifecycleState, 'theme:', this.name);
+
+        if (this.cleanupComplete) {
+            throw new Error(`Theme "${this.name}" cannot restart after terminal cleanup`);
+        }
 
         if (this.isActive || this.isPaused) {
             console.warn('[BaseTheme] Theme already active or paused, stopping before restart:', this.name);
             this.stop();
+            // start() means a full scene rebuild, not a pause/resume. Release
+            // the previous standard runtime before a new createScene() can
+            // replace its fields and orphan the old renderer/post chain.
+            this.releaseManagedGpuResources();
         }
 
+        const startGeneration = ++this.lifecycleGeneration;
         this.lifecycleState = 'starting';
         this.isActive = true;
         this.isPaused = false;
@@ -117,9 +178,15 @@ export class BaseTheme {
         // Store resource managers for efficient asset loading
         this.assetManager = managers.assetManager;
         this.audioManager = managers.audioManager;
+        this.onRuntimeFailure = typeof managers.onRuntimeFailure === 'function'
+            ? managers.onRuntimeFailure
+            : this.onRuntimeFailure;
 
         console.log('[BaseTheme] Starting theme:', this.name);
-        console.log('[BaseTheme] WebGL Renderer:', this.webglRenderer);
+        console.log(
+            '[BaseTheme] Shared renderer:',
+            this.webglRenderer?.constructor?.name || 'unavailable',
+        );
         console.log(
             '[BaseTheme] Has loadTheme?',
             this.webglRenderer && typeof this.webglRenderer.loadTheme,
@@ -173,30 +240,77 @@ export class BaseTheme {
                     && this.isActive
                     && typeof this.createScene === 'function') {
                     console.warn(`[BaseTheme] Global Context Restore detected. Rebuilding: ${this.name}`, payload);
-                    this.stop();
-                    this.isActive = true; // Keep active flag
-                    this.createScene().catch((err) => {
+                    const sharedRenderer = this.webglRenderer;
+                    const recoveryManagers = {
+                        assetManager: this.assetManager,
+                        audioManager: this.audioManager,
+                        onRuntimeFailure: this.onRuntimeFailure,
+                    };
+                    this.start(sharedRenderer, recoveryManagers).catch((err) => {
                         console.error('[BaseTheme] Context recovery failed:', err);
+                        try {
+                            this.onRuntimeFailure?.(err);
+                        } catch (notificationError) {
+                            console.error(
+                                '[BaseTheme] Context recovery failure notification failed:',
+                                notificationError,
+                            );
+                        }
                     });
                 }
             });
         }
 
         // Override in subclass to implement theme-specific logic
-        await this.createScene();
+        try {
+            // The generation is an explicit attempt token. Async theme code must
+            // thread it through renderer initialization/fallback paths so an old
+            // start cannot adopt a newer start's lifecycle after an await.
+            await this.createScene(startGeneration);
+        } catch (error) {
+            const startWasCancelled = startGeneration !== this.lifecycleGeneration
+                || this.cleanupComplete
+                || !this.isActive;
+            if (startWasCancelled) {
+                this.retireStaleStartResources(startGeneration);
+                return false;
+            }
+
+            // A current-attempt failure can leave a scene, post chain, renderer,
+            // listeners, or RAFs allocated before the rejection. Retire them
+            // immediately while keeping the object eligible for a clean retry.
+            this.retireStaleStartResources(startGeneration);
+            this.isActive = false;
+            this.isPaused = false;
+            this.lifecycleState = 'failed';
+            throw error;
+        }
+
+        // stop()/cleanup() invalidates the generation synchronously. A timed-out
+        // or superseded createScene must never publish "running" afterwards.
+        if (startGeneration !== this.lifecycleGeneration || !this.isActive) {
+            console.warn('[BaseTheme] Ignoring stale theme start completion:', this.name);
+            this.retireStaleStartResources(startGeneration);
+            return false;
+        }
 
         this.hasStarted = true;
         this.lifecycleState = 'running';
 
         console.log('[BaseTheme] Theme start complete:', this.name);
+        return undefined;
     }
 
     /**
      * Create the theme's visual scene
      * Override this to implement theme-specific scene creation
+     * @param {number} _ownerGeneration lifecycle attempt owner
      * @returns {Promise<void>}
      */
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        if (!Number.isFinite(ownerGeneration)) {
+            throw new TypeError('createScene() requires a finite lifecycle generation');
+        }
         // Override in subclass
         throw new Error('createScene() must be implemented by theme subclass');
     }
@@ -225,15 +339,18 @@ export class BaseTheme {
      */
     stop() {
         console.log('[BaseTheme] stop() called for theme:', this.name, 'state:', this.lifecycleState);
-        if (!this.isActive && !this.isPaused) {
-            console.log('[BaseTheme] Theme already inactive, skipping stop');
-            return;
+        this.lifecycleGeneration += 1;
+        const wasRunning = this.isActive || this.isPaused;
+        if (!wasRunning) {
+            console.log('[BaseTheme] Theme already inactive; running idempotent stop sweep');
         }
 
         this.isActive = false;
         this.isPaused = false;
         this.lifecycleState = 'stopped';
-        console.log('[BaseTheme] Stopping theme:', this.name);
+        if (wasRunning) {
+            console.log('[BaseTheme] Stopping theme:', this.name);
+        }
 
         const themeContainer = document.getElementById(`${this.name}-theme`);
         if (themeContainer) {
@@ -255,6 +372,50 @@ export class BaseTheme {
     }
 
     /**
+     * A manager timeout or terminal cleanup can invalidate start() while an
+     * awaited createScene() is still running. Once that stale work settles,
+     * sweep again: resources created after the first cleanup must not survive
+     * merely because cleanupComplete already made cleanup() idempotent.
+     */
+    retireStaleStartResources(staleGeneration = null) {
+        const newerOwnerIsRunning = Number.isFinite(staleGeneration)
+            && staleGeneration !== this.lifecycleGeneration
+            && !this.cleanupComplete
+            && (this.isActive || this.isPaused)
+            && (
+                this.lifecycleState === 'starting'
+                || this.lifecycleState === 'running'
+                || this.lifecycleState === 'paused'
+            );
+        if (newerOwnerIsRunning) {
+            // A newer start owns the shared instance fields now. Sweeping them
+            // from the stale continuation would stop and dispose the new runtime.
+            console.warn(
+                `[BaseTheme] Stale start retired without sweeping newer runtime: ${this.name}`,
+            );
+            return false;
+        }
+
+        if (this.isActive || this.isPaused || this.lifecycleState !== 'stopped') {
+            try {
+                this.stop();
+            } catch (error) {
+                console.warn(`[BaseTheme] Failed to stop stale start for ${this.name}:`, error);
+            }
+        }
+
+        try {
+            // This terminal sweep is intentionally independent of resourceProfile.
+            // Even a nominally light theme may have allocated a renderer or scene
+            // immediately before its cancelled createScene() settled.
+            this.releaseManagedGpuResources();
+        } catch (error) {
+            console.warn(`[BaseTheme] Failed to release stale start for ${this.name}:`, error);
+        }
+        return true;
+    }
+
+    /**
      * Cancel animation loops registered through BaseTheme plus common legacy RAF fields.
      * Several older themes predate registerAnimation(), so the base teardown also clears
      * those well-known handles to keep inactive themes from retaining a live frame.
@@ -264,12 +425,9 @@ export class BaseTheme {
             ? cancelAnimationFrame
             : null;
 
-        if (!cancelFrame) {
-            this.animationIds = [];
-            return;
+        if (cancelFrame) {
+            this.animationIds.forEach((id) => cancelFrame(id));
         }
-
-        this.animationIds.forEach((id) => cancelFrame(id));
         this.animationIds = [];
 
         [
@@ -280,8 +438,10 @@ export class BaseTheme {
             '_shapeFadeRaf',
         ].forEach((propName) => {
             const id = this[propName];
-            if (typeof id === 'number') {
+            if (typeof id === 'number' && cancelFrame) {
                 cancelFrame(id);
+            }
+            if (typeof id === 'number') {
                 this[propName] = null;
             }
         });
@@ -380,7 +540,19 @@ export class BaseTheme {
     disposeRenderer(renderer = this.renderer, { nullInstance = true } = {}) {
         if (!renderer || renderer === this.webglRenderer) return;
 
-        const { domElement } = renderer;
+        let domElement = null;
+        try {
+            ({ domElement } = renderer);
+        } catch (error) {
+            console.warn(`[BaseTheme] Failed to read renderer canvas for ${this.name}:`, error);
+        }
+        if (typeof renderer.setAnimationLoop === 'function') {
+            try {
+                renderer.setAnimationLoop(null);
+            } catch (error) {
+                console.warn(`[BaseTheme] Failed to stop renderer loop for ${this.name}:`, error);
+            }
+        }
         if (typeof renderer.dispose === 'function') {
             try {
                 renderer.dispose();
@@ -395,42 +567,158 @@ export class BaseTheme {
                 console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
             }
         }
-        if (domElement?.parentNode) {
-            domElement.parentNode.removeChild(domElement);
+        try {
+            if (domElement?.parentNode) {
+                domElement.parentNode.removeChild(domElement);
+            }
+        } catch (error) {
+            console.warn(`[BaseTheme] Failed to detach renderer canvas for ${this.name}:`, error);
         }
-        if (nullInstance && renderer === this.renderer) {
-            this.renderer = null;
+        try {
+            if (nullInstance && renderer === this.renderer) {
+                this.renderer = null;
+            }
+        } catch (error) {
+            console.warn(`[BaseTheme] Failed to clear renderer reference for ${this.name}:`, error);
+        }
+    }
+
+    /**
+     * Initialize a renderer under this lifecycle's ownership.
+     *
+     * WebGPURenderer.init() cannot currently be aborted. A plain `await init()`
+     * lets a renderer finish after stop()/cleanup(), append its canvas, and keep
+     * GPU managers alive. This helper bounds the wait, rejects stale ownership,
+     * and performs a second disposal when a timed-out initialization eventually
+     * settles (Three r181 may make dispose() a no-op before init completes).
+     *
+     * @param {Object} renderer candidate renderer
+     * @param {{ timeoutMs?: number, label?: string, ownerGeneration?: number }} options
+     * @returns {Promise<Object>} the initialized, still-owned renderer
+     */
+    async initializeRendererCandidate(renderer, {
+        timeoutMs = 10000,
+        label = `${this.name} renderer init`,
+        ownerGeneration = this.lifecycleGeneration,
+    } = {}) {
+        if (!renderer || typeof renderer.init !== 'function') {
+            throw new Error(`[BaseTheme] ${label} requires a renderer with init()`);
+        }
+
+        const generation = ownerGeneration;
+        const requiresActiveOwner = this.isActive || this.lifecycleState === 'starting';
+        let timeoutId = null;
+        let initSettled = false;
+        const disposeCandidate = () => {
+            try {
+                this.disposeRenderer(renderer, { nullInstance: false });
+            } catch (error) {
+                // Candidate retirement is a failure boundary. A hostile legacy
+                // canvas parent/getter must not replace the renderer init error
+                // or turn the late-settlement continuation into an unhandled rejection.
+                console.warn(`[BaseTheme] Failed to retire renderer candidate for ${this.name}:`, error);
+            }
+        };
+        if (this.cleanupComplete
+            || generation !== this.lifecycleGeneration
+            || (!this.isActive && this.lifecycleState !== 'initialized')) {
+            disposeCandidate();
+            throw new Error(`${label} was cancelled before initialization`);
+        }
+        const initPromise = Promise.resolve()
+            .then(() => renderer.init())
+            .then(
+                (value) => {
+                    initSettled = true;
+                    return value;
+                },
+                (error) => {
+                    initSettled = true;
+                    throw error;
+                },
+            );
+
+        try {
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(
+                    () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+                    timeoutMs,
+                );
+            });
+            await Promise.race([initPromise, timeoutPromise]);
+
+            if (this.cleanupComplete
+                || generation !== this.lifecycleGeneration
+                || (requiresActiveOwner && !this.isActive)) {
+                throw new Error(`${label} was cancelled`);
+            }
+            return renderer;
+        } catch (error) {
+            if (!initSettled) {
+                // A pre-init dispose is not sufficient in Three r181. Retire the
+                // candidate again after its non-abortable backend init settles.
+                initPromise
+                    .then(disposeCandidate, disposeCandidate)
+                    .catch((lateDisposalError) => {
+                        console.warn(
+                            `[BaseTheme] Late renderer retirement failed for ${this.name}:`,
+                            lateDisposalError,
+                        );
+                    });
+            }
+            disposeCandidate();
+            throw error;
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
         }
     }
 
     releaseManagedGpuResources() {
-        this.cancelAnimationFrames();
-        this.clearEventUnsubscribers();
-        this.removeCommonResizeHandlers();
-        this.removeRendererResilience();
+        const attempt = (label, action) => {
+            try {
+                action();
+            } catch (error) {
+                console.warn(`[BaseTheme] ${label} cleanup failed for ${this.name}:`, error);
+            }
+        };
 
-        if (this.particleSystem && typeof this.particleSystem.dispose === 'function') {
-            this.particleSystem.dispose();
+        attempt('Animation', () => this.cancelAnimationFrames());
+        attempt('Tracked resource', () => this.clearTrackedResources());
+        attempt('Event subscription', () => this.clearEventUnsubscribers());
+        attempt('Resize listener', () => this.removeCommonResizeHandlers());
+        attempt('Renderer resilience', () => this.removeRendererResilience());
+
+        if (this.particleSystem) {
+            attempt('Particle system', () => this.particleSystem.dispose?.());
             this.particleSystem = null;
         }
 
-        this.disposeRuntimeProperty('simulator');
-        this.disposeRuntimeProperty('snowCompute');
-        this.disposeRuntimeProperty('post');
-        this.disposeRuntimeProperty('postProcessing');
-        this.disposeRuntimeProperty('postComposer');
-        this.disposeRuntimeProperty('composer');
+        [
+            'simulator',
+            'snowCompute',
+            'post',
+            'postProcessing',
+            'postComposer',
+            'composer',
+        ].forEach((propName) => {
+            attempt(propName, () => this.disposeRuntimeProperty(propName));
+        });
 
         if (this.scene) {
-            this.disposeThreeJSGroup(this.scene);
-            if (typeof this.scene.clear === 'function') {
-                this.scene.clear();
-            }
+            const scene = this.scene;
+            attempt('Scene graph', () => this.disposeThreeJSGroup(scene));
+            attempt('Scene clear', () => scene.clear?.());
             this.scene = null;
         }
 
         if (this.renderer && this.renderer !== this.webglRenderer) {
-            this.disposeRenderer(this.renderer);
+            const renderer = this.renderer;
+            attempt('Renderer', () => this.disposeRenderer(renderer));
+            if (this.renderer === renderer) {
+                this.renderer = null;
+            }
         }
 
         if (this.camera) {
@@ -447,7 +735,9 @@ export class BaseTheme {
     resume() {
         console.log('[BaseTheme] resume() called for theme:', this.name);
 
-        if (!this.hasStarted) {
+        if (!this.hasStarted
+            || !this.isPaused
+            || this.lifecycleState !== 'paused') {
             return false;
         }
 
@@ -486,16 +776,45 @@ export class BaseTheme {
      * 5. Null out large object references
      */
     cleanup() {
+        if (this.cleanupComplete) {
+            return;
+        }
+        this.cleanupComplete = true;
+        this._startRequestGeneration += 1;
         console.log(`[BaseTheme] Cleaning up theme: ${this.name}`);
 
         // Release restartable runtime resources first, then continue terminal teardown
-        this.releaseInactiveResources();
+        try {
+            this.releaseInactiveResources();
+        } catch (error) {
+            // Cleanup is terminal. Continue through the base safety nets even if
+            // bespoke theme teardown failed part-way through.
+            console.warn(`[BaseTheme] Inactive resource cleanup failed for ${this.name}:`, error);
+            try {
+                this.cancelAnimationFrames();
+                this.clearTrackedResources();
+                this.clearEventUnsubscribers();
+                this.removeCommonResizeHandlers();
+                this.removeRendererResilience();
+                this.releaseManagedGpuResources();
+            } catch (fallbackError) {
+                console.warn(`[BaseTheme] Fallback runtime cleanup failed for ${this.name}:`, fallbackError);
+            }
+        }
 
         // Remove GPU resilience listeners
-        this.removeRendererResilience();
+        try {
+            this.removeRendererResilience();
+        } catch (error) {
+            console.warn(`[BaseTheme] Renderer resilience cleanup failed for ${this.name}:`, error);
+        }
 
         if (this._contextRestoreUnsub) {
-            this._contextRestoreUnsub();
+            try {
+                this._contextRestoreUnsub();
+            } catch (error) {
+                console.warn(`[BaseTheme] Context listener cleanup failed for ${this.name}:`, error);
+            }
             this._contextRestoreUnsub = null;
         }
 
@@ -510,8 +829,19 @@ export class BaseTheme {
         // Remove containers from DOM
         console.log(`[BaseTheme] Removing ${this.containers.length} DOM containers`);
         this.containers.forEach((container) => {
-            if (container && container.parentNode) {
-                container.parentNode.removeChild(container);
+            try {
+                const registryOwned = container?.dataset?.themeRegistryOwned === 'true'
+                    || container?.getAttribute?.('data-theme-registry-owned') === 'true'
+                    || container?.__themeRegistryOwned === true;
+                if (registryOwned) {
+                    container.classList?.remove?.('active');
+                    container.style?.removeProperty?.('opacity');
+                    container.style?.removeProperty?.('visibility');
+                } else if (container && container.parentNode) {
+                    container.parentNode.removeChild(container);
+                }
+            } catch (error) {
+                console.warn(`[BaseTheme] DOM container cleanup failed for ${this.name}:`, error);
             }
         });
         this.containers = [];
@@ -525,11 +855,16 @@ export class BaseTheme {
         // Null out managers (they're shared, so we just clear references)
         this.assetManager = null;
         this.audioManager = null;
+        this.onRuntimeFailure = null;
 
         // Auto-dispose standard Three.js structures if standard properties were used
         if (this.scene) {
             console.log('[BaseTheme] deeply disposing Three.js scene');
-            this.disposeThreeJSGroup(this.scene);
+            try {
+                this.disposeThreeJSGroup(this.scene);
+            } catch (error) {
+                console.warn(`[BaseTheme] Scene cleanup failed for ${this.name}:`, error);
+            }
             this.scene = null;
         }
 
@@ -541,6 +876,9 @@ export class BaseTheme {
 
         // Null out options to release any closures
         this.options = null;
+        this.isActive = false;
+        this.isPaused = false;
+        this.lifecycleState = 'stopped';
 
         console.log(`✅ [BaseTheme] Cleanup complete for theme: ${this.name}`);
     }
@@ -668,7 +1006,10 @@ export class BaseTheme {
      * @param {HTMLElement} container - DOM element to register
      */
     registerContainer(container) {
-        if (container && !this.containers.includes(container)) {
+        const registryOwned = container?.dataset?.themeRegistryOwned === 'true'
+            || container?.getAttribute?.('data-theme-registry-owned') === 'true'
+            || container?.__themeRegistryOwned === true;
+        if (container && !registryOwned && !this.containers.includes(container)) {
             this.containers.push(container);
         }
     }
@@ -931,8 +1272,9 @@ export class BaseTheme {
             return false;
         }
 
-        // Cancel all animation frames to stop GPU work
-        this.animationIds.forEach((id) => cancelAnimationFrame(id));
+        // Cancel BaseTheme-managed RAFs, legacy RAF handles, and Three's
+        // setAnimationLoop scheduler. Suspended themes must own zero live loops.
+        this.cancelAnimationFrames();
         // Reset the common render-loop re-entry guards so the loop can actually RESTART
         // on resume(). Themes typically start their loop only in createScene() and guard
         // re-entry (e.g. `if (this.isAnimating) return` / `if (this.animationLoopStarted)

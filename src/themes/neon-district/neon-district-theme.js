@@ -498,6 +498,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.deferredMaterialLoadComplete = true;
         this.sceneInitialized = false;
         this.isCreatingScene = false;
+        this.sceneCreationPromise = null;
+        this.runtimeGeneration = 0;
+        this.cleanupInProgress = false;
+        this.cleanupComplete = false;
         this.isAnimating = false;
         this.mrtPatchedMaterials = new WeakSet();
         this.featureFlags = {
@@ -807,17 +811,47 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         if (this.sceneInitialized && this.scene && this.renderer) {
             console.log('[NeonDistrict] Scene already initialized - resuming');
             this.startAnimation();
             return;
         }
-        if (this.isCreatingScene) {
+        if (this.cleanupComplete) {
+            throw new Error('[NeonDistrict] Cannot create a scene after cleanup.');
+        }
+        if (this.sceneCreationPromise) {
             console.warn('[NeonDistrict] Scene creation already in progress');
+            await this.sceneCreationPromise;
             return;
         }
+
+        const generation = ++this.runtimeGeneration;
         this.isCreatingScene = true;
+        const creationPromise = this.createSceneForGeneration(generation, ownerGeneration);
+        this.sceneCreationPromise = creationPromise;
+
+        try {
+            await creationPromise;
+        } finally {
+            if (this.sceneCreationPromise === creationPromise) {
+                this.sceneCreationPromise = null;
+            }
+        }
+    }
+
+    isRuntimeCurrent(generation, renderer = this.renderer) {
+        return generation === this.runtimeGeneration
+            && this.isActive
+            && !this.cleanupInProgress
+            && !this.cleanupComplete
+            && (!renderer || renderer === this.renderer);
+    }
+
+    async createSceneForGeneration(
+        generation,
+        ownerGeneration = this.lifecycleGeneration,
+    ) {
         try {
             console.log('[NeonDistrict] Creating cyberpunk cityscape (smart loading)...');
 
@@ -860,9 +894,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             // ═══════════════════════════════════════════════════════════════════════
             // PHASE 1: INSTANT - Core rendering pipeline (< 30ms)
             // ═══════════════════════════════════════════════════════════════════════
-            await this.initRenderer(container);
-            if (!this.renderer) return;
-            this.assets.setRenderer(this.renderer);
+            const rendererReady = await this.initRenderer(
+                container,
+                generation,
+                ownerGeneration,
+            );
+            if (!rendererReady || !this.isRuntimeCurrent(generation)) return;
+            const { assets } = this;
+            assets.setRenderer(this.renderer);
             if (!debugFlags.noPrewarm && this.isWebGPU) {
                 this.prewarmEnabled = true;
             }
@@ -901,8 +940,10 @@ export default class NeonDistrictTheme extends BaseTheme {
             // ═══════════════════════════════════════════════════════════════════════
             // PHASE 1.5: LOAD SYNTHCITY TEXTURES (non-blocking)
             // ═══════════════════════════════════════════════════════════════════════
-            await this.assets.loadAllTextures();
-            if (!this.isActive) return;
+            const texturesLoaded = await assets.loadAllTextures();
+            if (!texturesLoaded
+                || !this.isRuntimeCurrent(generation)
+                || assets !== this.assets) return;
             console.log('[NeonDistrict] SynthCity textures loaded and materials created');
 
             // ═══════════════════════════════════════════════════════════════════════
@@ -924,12 +965,13 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.patchMrtMaterialsForObject(this.scene);
 
             if (this.syncLoadEnabled) {
-                await this.createBuildings();
-                if (!this.isActive) return;
+                await this.createBuildings(generation);
+                if (!this.isRuntimeCurrent(generation)) return;
                 await this.loadRemainingContentInBackground();
-                if (!this.isActive) return;
+                if (!this.isRuntimeCurrent(generation)) return;
                 if (this.prewarmEnabled) {
                     await this.prewarmScene();
+                    if (!this.isRuntimeCurrent(generation)) return;
                 }
                 this.startAnimation();
                 console.log('[NeonDistrict] Phase 1 complete - core rendering active');
@@ -940,9 +982,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // so the transition does not compete with chunked building generation.
                 this.buildingLoadInProgress = true;
                 this.buildingLoadComplete = false;
-                this.buildingLoadPromise = this.createBuildings()
+                this.buildingLoadPromise = this.createBuildings(generation)
                     .then(() => {
-                        if (this.isActive) {
+                        if (this.isRuntimeCurrent(generation)) {
                             return this.loadRemainingContentInBackground();
                         }
                         return null;
@@ -951,25 +993,30 @@ export default class NeonDistrictTheme extends BaseTheme {
                         console.warn('[NeonDistrict] Background building load failed:', error);
                     })
                     .finally(() => {
-                        this.buildingLoadInProgress = false;
-                        this.buildingLoadComplete = true;
+                        if (generation === this.runtimeGeneration) {
+                            this.buildingLoadInProgress = false;
+                            this.buildingLoadComplete = true;
+                        }
                     });
             }
 
+            if (!this.isRuntimeCurrent(generation)) return;
             console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
             this.sceneInitialized = true;
-        } finally {
-            this.isCreatingScene = false;
-        }
 
-        // Music is handled by the global SoundManager flow. The previous
-        // theme-local AudioBuffer path depended on a legacy AudioManager with
-        // loadBuffer/playBuffer (src/utils/audio-manager.js), which was dead code
-        // and has been removed (remediation Phase 2). The injected this.audioManager
-        // is the SoundManager, which never exposed loadBuffer/playBuffer, so that
-        // branch could never execute.
-        if (this.audioManager) {
-            console.info('[NeonDistrict] Using global SoundManager playback flow.');
+            // Music is handled by the global SoundManager flow. The previous
+            // theme-local AudioBuffer path depended on a legacy AudioManager with
+            // loadBuffer/playBuffer (src/utils/audio-manager.js), which was dead code
+            // and has been removed (remediation Phase 2). The injected this.audioManager
+            // is the SoundManager, which never exposed loadBuffer/playBuffer, so that
+            // branch could never execute.
+            if (this.audioManager) {
+                console.info('[NeonDistrict] Using global SoundManager playback flow.');
+            }
+        } finally {
+            if (generation === this.runtimeGeneration) {
+                this.isCreatingScene = false;
+            }
         }
     }
 
@@ -1071,13 +1118,14 @@ export default class NeonDistrictTheme extends BaseTheme {
      */
     loadRemainingContentInBackground() {
         if (this.backgroundLoadPromise) return this.backgroundLoadPromise;
+        const generation = this.runtimeGeneration;
         const workQueue = [];
 
         // Holographic billboards removed in Phase 0 cleanup (performance)
 
         // 2. Rain (Fast)
         workQueue.push(() => {
-            if (!this.isActive) return;
+            if (!this.isRuntimeCurrent(generation)) return;
             if (!this.featureFlags.noRain) {
                 this.createRain();
             }
@@ -1085,7 +1133,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // 3. Wires & Vehicles (OPTIMIZED: Now single draw calls, so we can do them at once)
         workQueue.push(async () => {
-            if (!this.isActive) return;
+            if (!this.isRuntimeCurrent(generation)) return;
             this.createOverheadWires(); // Merged geometry (1 mesh)
             if (!this.featureFlags.noVehicles) {
                 this.createFlyingVehicles(); // InstancedMesh (5 meshes)
@@ -1093,10 +1141,15 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
             // PERF: Prewarm after vehicles to compile their shaders off the render path
             if (this.prewarmEnabled && this.renderer?.compileAsync && !this.isPrewarming) {
+                const { renderer } = this;
                 this.isPrewarming = true;
-                this.renderer.compileAsync(this.scene, this.camera)
+                renderer.compileAsync(this.scene, this.camera)
                     .catch(() => { /* ignore */ })
-                    .finally(() => { this.isPrewarming = false; });
+                    .finally(() => {
+                        if (this.isRuntimeCurrent(generation, renderer)) {
+                            this.isPrewarming = false;
+                        }
+                    });
             }
         });
 
@@ -1104,15 +1157,16 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Final touches - run prewarm BEFORE resuming normal render
         workQueue.push(async () => {
-            if (!this.isActive) return;
+            if (!this.isRuntimeCurrent(generation)) return;
             this.updateGroundReflections();
             this.patchMrtMaterialsForObject(this.scene);
             console.log('[NeonDistrict] Background loading complete - starting prewarm...');
 
             // PERF: Prewarm shaders before resuming render to avoid compilation stalls
             if (this.prewarmEnabled && this.renderer?.compileAsync && !this.isPrewarming) {
+                const { renderer } = this;
                 this.isPrewarming = true;
-                this.renderer.compileAsync(this.scene, this.camera)
+                renderer.compileAsync(this.scene, this.camera)
                     .then(() => {
                         console.log('[NeonDistrict] Shader prewarm complete');
                     })
@@ -1120,7 +1174,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                         console.warn('[NeonDistrict] Prewarm failed:', error);
                     })
                     .finally(() => {
-                        this.isPrewarming = false;
+                        if (this.isRuntimeCurrent(generation, renderer)) {
+                            this.isPrewarming = false;
+                        }
                     });
             }
 
@@ -1136,10 +1192,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         // with deferred WebGPU content from the first gameplay theme.
         this.backgroundLoadInProgress = true;
         this.backgroundLoadComplete = false;
-        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0)
+        this.backgroundLoadPromise = this.processBackgroundQueue(workQueue, 0, generation)
             .finally(() => {
-                this.backgroundLoadInProgress = false;
-                this.backgroundLoadComplete = true;
+                if (generation === this.runtimeGeneration) {
+                    this.backgroundLoadInProgress = false;
+                    this.backgroundLoadComplete = true;
+                }
             });
         return this.backgroundLoadPromise;
     }
@@ -1148,8 +1206,8 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Process work items using requestIdleCallback with time budget.
      * Supports async work items (for shader prewarm) and ensures consistent loading.
      */
-    processBackgroundQueue(queue, index) {
-        if (index >= queue.length || !this.isActive) {
+    processBackgroundQueue(queue, index, generation = this.runtimeGeneration) {
+        if (index >= queue.length || !this.isRuntimeCurrent(generation)) {
             return Promise.resolve();
         }
 
@@ -1159,7 +1217,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             };
 
             const processBatch = async (deadline) => {
-                if (!this.isActive) {
+                if (!this.isRuntimeCurrent(generation)) {
                     finish();
                     return;
                 }
@@ -1187,7 +1245,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     index++;
                 }
 
-                if (index < queue.length && this.isActive) {
+                if (index < queue.length && this.isRuntimeCurrent(generation)) {
                     // Schedule next batch
                     if (typeof requestIdleCallback !== 'undefined') {
                         requestIdleCallback(processBatch, { timeout: 200 });
@@ -1606,30 +1664,50 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Renderer & Camera - Street Level Perspective
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(
+        container,
+        generation = this.runtimeGeneration,
+        ownerGeneration = this.lifecycleGeneration,
+    ) {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
         // Use WebGPU renderer with automatic WebGL2 fallback
-        this.renderer = new THREE.WebGPURenderer({
+        const renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: false,
             forceWebGL: this.forceWebGL,
         });
         try {
-            await this.renderer.init();
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Neon District renderer init',
+                ownerGeneration,
+            });
         } catch (error) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isRuntimeCurrent(generation, null)) {
+                this.disposeRenderer(renderer, { nullInstance: false });
+                return false;
+            }
             console.error('[NeonDistrict] Renderer initialization failed:', error);
-            return;
+            this.disposeRenderer(renderer, { nullInstance: false });
+            throw new Error('[NeonDistrict] Renderer initialization failed.', { cause: error });
         }
 
-        this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
-        this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isRuntimeCurrent(generation, null)) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
 
-        this.renderer.setClearColor(0x150820, 1); // Deep Cyberpunk Purple-Black
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = renderer.backend?.isWebGLBackend === true;
+
+        renderer.setClearColor(0x150820, 1); // Deep Cyberpunk Purple-Black
         // Enable shadow mapping for realistic building shadows on road
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         if (this.isWebGPU) {
             this.maxPixelRatio = Math.min(this.maxPixelRatio, 1.25);
             if (this.qualityPreset?.enablePostProcessing) {
@@ -1637,13 +1715,12 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
         }
         this.applyRenderScale(true);
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.78;
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 0.78;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
-        container.appendChild(this.renderer.domElement);
-        this.registerContainer(container);
+        renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+        container.appendChild(renderer.domElement);
 
         this.scene = new THREE.Scene();
 
@@ -1661,6 +1738,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.cameraDriftSeed = Math.random() * Math.PI * 2;
 
         console.log('[NeonDistrict] Camera positioned in alley');
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1822,7 +1900,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Procedural Cyberpunk Buildings
     // ─────────────────────────────────────────────────────────────────────────
 
-    async createBuildings() {
+    async createBuildings(generation = this.runtimeGeneration) {
         // Skip buildings if noBuildings flag is set (for performance testing)
         if (this.featureFlags?.noBuildings) {
             console.log('[NeonDistrict] Buildings disabled via noBuildings flag');
@@ -1951,7 +2029,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // CREATE BUILDINGS IN SMALL CHUNKS (idle-time loading)
         for (let i = 0; i < buildingConfigs.length; i += CHUNK_SIZE) {
-            if (!this.isActive) return; // Check if stopped
+            if (!this.isRuntimeCurrent(generation)) return; // Check if stopped/superseded
 
             const chunk = buildingConfigs.slice(i, i + CHUNK_SIZE);
 
@@ -1990,7 +2068,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // CREATE OUTER ROW BUILDINGS - Simple boxes for better FPS
         // Single mesh per building, shared materials, no complex features
         // ═══════════════════════════════════════════════════════════════════════
-        if (!this.isActive) return;
+        if (!this.isRuntimeCurrent(generation)) return;
         this.createTier2Instances(tier2Instances);
         this.createOuterBuildingInstances(outerBuildingConfigs);
 
@@ -4021,11 +4099,16 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (!this.scene || !this.camera) return null;
         if (this.prewarmPromise) return this.prewarmPromise;
 
+        const generation = this.runtimeGeneration;
+        const { renderer, scene, camera } = this;
         this.isPrewarming = true;
         this.prewarmPromise = (async () => {
             try {
                 console.log('[NeonDistrict] Prewarming pipelines...');
-                await this.renderer.compileAsync(this.scene, this.camera);
+                await renderer.compileAsync(scene, camera);
+                if (!this.isRuntimeCurrent(generation, renderer)
+                    || scene !== this.scene
+                    || camera !== this.camera) return;
 
                 // PERF: Aggressive warmup renders to force ALL shader compilation
                 // WebGPU defers pipeline creation until first actual use
@@ -4035,6 +4118,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                     const originalTime = this.time;
 
                     for (let i = 0; i < warmupFrames; i++) {
+                        if (!this.isRuntimeCurrent(generation, renderer)
+                            || scene !== this.scene
+                            || camera !== this.camera) return;
                         // Update time to trigger time-dependent shader paths
                         this.time = i * 0.1;
                         if (this.post) {
@@ -4060,7 +4146,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                         if (this.post) {
                             this.post.render();
                         } else {
-                            this.renderer.render(this.scene, this.camera);
+                            renderer.render(scene, camera);
                         }
 
                         // Longer delay every 5 frames to let GPU catch up
@@ -4075,14 +4161,18 @@ export default class NeonDistrictTheme extends BaseTheme {
                     this.time = originalTime;
 
                     // Final compileAsync to catch any stragglers
-                    await this.renderer.compileAsync(this.scene, this.camera);
+                    await renderer.compileAsync(scene, camera);
                 }
 
                 console.log('[NeonDistrict] Prewarm complete');
             } catch (error) {
-                console.warn('[NeonDistrict] Prewarm failed:', error);
+                if (this.isRuntimeCurrent(generation, renderer)) {
+                    console.warn('[NeonDistrict] Prewarm failed:', error);
+                }
             } finally {
-                this.isPrewarming = false;
+                if (generation === this.runtimeGeneration) {
+                    this.isPrewarming = false;
+                }
             }
         })();
 
@@ -4579,6 +4669,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createStreet() {
+        const generation = this.runtimeGeneration;
         // Skip ground if noGround flag is set (for performance testing)
         if (this.featureFlags?.noGround) {
             console.log('[NeonDistrict] Ground disabled via noGround flag');
@@ -4637,10 +4728,14 @@ export default class NeonDistrictTheme extends BaseTheme {
                 new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_ao_2k.jpg`, resolve, undefined, () => resolve(null))),
             ])
                 .then(async ([diffuseMap, normalMap, roughnessMap, aoMap]) => {
-                    if (!this.isActive) return;
+                    const loadedMaps = [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t);
+                    if (!this.isRuntimeCurrent(generation)) {
+                        loadedMaps.forEach((texture) => texture.dispose?.());
+                        return;
+                    }
 
                     // Configure textures for high quality tiling
-                    [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
+                    loadedMaps.forEach((tex) => {
                         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
                         tex.repeat.set(4, 18);
                         tex.anisotropy = 8; // Balanced for perf and less shimmer
@@ -4685,15 +4780,24 @@ export default class NeonDistrictTheme extends BaseTheme {
 
                             // PERF: Prewarm the new material before resuming render
                             if (this.renderer?.compileAsync) {
+                                const { renderer, scene, camera } = this;
                                 try {
-                                    await this.renderer.compileAsync(this.scene, this.camera);
-                                    console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
+                                    await renderer.compileAsync(scene, camera);
+                                    if (this.isRuntimeCurrent(generation, renderer)
+                                        && scene === this.scene
+                                        && camera === this.camera) {
+                                        console.log('[NeonDistrict] WebGPU wet ground upgraded and prewarmed');
+                                    }
                                 } catch (e) {
-                                    console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                                    if (this.isRuntimeCurrent(generation, renderer)) {
+                                        console.warn('[NeonDistrict] Ground prewarm failed:', e);
+                                    }
                                 }
                             }
                         } finally {
-                            this.isPrewarming = false;
+                            if (generation === this.runtimeGeneration) {
+                                this.isPrewarming = false;
+                            }
                         }
                     }
                 })
@@ -4701,8 +4805,10 @@ export default class NeonDistrictTheme extends BaseTheme {
                     console.warn('[NeonDistrict] Wet ground texture upgrade failed:', error);
                 })
                 .finally(() => {
-                    this.deferredMaterialLoadInProgress = false;
-                    this.deferredMaterialLoadComplete = true;
+                    if (generation === this.runtimeGeneration) {
+                        this.deferredMaterialLoadInProgress = false;
+                        this.deferredMaterialLoadComplete = true;
+                    }
                 });
         } else {
             // Create PLACEHOLDER material first (instant display)
@@ -4728,10 +4834,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             ];
 
             Promise.all(texturePromises).then(([diffuseMap, normalMap, roughnessMap, aoMap]) => {
-                if (!this.isActive) return;
+                const loadedMaps = [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t);
+                if (!this.isRuntimeCurrent(generation)) {
+                    loadedMaps.forEach((texture) => texture.dispose?.());
+                    return;
+                }
 
                 // Configure loaded textures
-                [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
+                loadedMaps.forEach((tex) => {
                     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
                     tex.repeat.set(4, 18); // Tiling adjusted for much longer road
                 });
@@ -8230,6 +8340,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.groundMaterial.needsUpdate = true;
         }
 
+        cubeTexture.dispose();
         pmremGenerator.dispose();
         this.proceduralEnvMap = envMap;
         this.applyVehicleEnvMap(envMap);
@@ -8253,12 +8364,16 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (this.featureFlags?.noHdrEnv) return;
         if (typeof HDRLoader !== 'function') return;
 
+        const generation = this.runtimeGeneration;
+        const { renderer, scene } = this;
         const loader = new HDRLoader();
         loader.setDataType(THREE.FloatType); // float RGBA so we can tint the pixels
         loader.load(
             './textures/neon-district/shanghai_bund_2k.hdr',
             (texture) => {
-                if (!this.isActive || !this.scene || !this.renderer) {
+                if (!this.isRuntimeCurrent(generation, renderer)
+                    || scene !== this.scene
+                    || !scene) {
                     texture?.dispose?.();
                     return;
                 }
@@ -8280,12 +8395,16 @@ export default class NeonDistrictTheme extends BaseTheme {
                     }
 
                     texture.mapping = THREE.EquirectangularReflectionMapping;
-                    pmrem = new THREE.PMREMGenerator(this.renderer);
-                    pmrem.compileEquirectangularShader();
+                    pmrem = new THREE.PMREMGenerator(renderer);
                     const hdrEnv = pmrem.fromEquirectangular(texture).texture;
 
-                    const previousEnv = this.scene.environment;
-                    this.scene.environment = hdrEnv;
+                    if (!this.isRuntimeCurrent(generation, renderer) || scene !== this.scene) {
+                        hdrEnv.dispose?.();
+                        return;
+                    }
+
+                    const previousEnv = scene.environment;
+                    scene.environment = hdrEnv;
                     this.hdrEnvMap = hdrEnv;
 
                     if (this.groundMaterial) {
@@ -9118,6 +9237,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     startAnimation() {
         if (this.isAnimating) return;
+        const generation = this.runtimeGeneration;
         this.isAnimating = true;
         if (this.clock?.start) this.clock.start();
         this.cameraDriftSeed = Math.random() * Math.PI * 2;
@@ -9132,14 +9252,24 @@ export default class NeonDistrictTheme extends BaseTheme {
         let consecutiveSlowFrames = 0;
 
         const animate = () => {
-            if (!this.isActive) {
-                this.isAnimating = false;
+            if (!this.isActive || generation !== this.runtimeGeneration) {
+                if (generation === this.runtimeGeneration) {
+                    this.isAnimating = false;
+                }
                 return;
             }
 
             let mark = this.profileStart();
             const animId = requestAnimationFrame(animate);
             this.registerAnimation(animId);
+
+            if (!this.shouldRenderFrame()) {
+                // Keep the clock synchronized so a paused/reduced theme does not
+                // receive a large catch-up delta when rendering resumes.
+                this.clock.getDelta();
+                this.profileEnd();
+                return;
+            }
 
             // Skip render during shader prewarm to avoid compilation stalls
             if (this.isPrewarming) {
@@ -9889,9 +10019,17 @@ export default class NeonDistrictTheme extends BaseTheme {
     stop() {
         console.log('[NeonDistrict] Stopping...');
 
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
+        if (this.isActive || this.isPaused || this.isCreatingScene || this.sceneCreationPromise) {
+            this.runtimeGeneration += 1;
+        }
+        // Detach the public join handle immediately. The old Promise may still
+        // settle, but generation checks prevent it from publishing into this runtime.
+        this.sceneCreationPromise = null;
+        this.isCreatingScene = false;
+
+        // Use the exception-isolated base helper so one bad unsubscribe cannot
+        // prevent the RAF and renderer teardown below.
+        this.clearEventUnsubscribers();
         this.isAnimating = false;
         if (this.clock?.stop) this.clock.stop();
         this.stopLegacyMusicSource();
@@ -9927,7 +10065,46 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     cleanup() {
+        if (this.cleanupComplete || this.cleanupInProgress) return;
+        this.cleanupInProgress = true;
         console.log('[NeonDistrict] Cleaning up...');
+
+        try {
+            // Stop first so no frame can observe the graph while it is being disposed.
+            this.stop();
+            this.disposeRuntimeResources();
+        } finally {
+            // Asset callbacks can outlive TextureLoader. Invalidate their generation
+            // even when a preceding resource disposer throws.
+            if (this.assets) {
+                try {
+                    this.assets.dispose();
+                } catch (error) {
+                    console.warn('[NeonDistrict] Asset cleanup failed:', error);
+                }
+                this.assets = null;
+            }
+
+            try {
+                // Base owns the final scene traversal, post/composer, renderer, RAF,
+                // resilience, and listener safety nets. Keep this in finally.
+                super.cleanup();
+            } finally {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.sceneCreationPromise = null;
+                this.sceneInitialized = false;
+                this.isCreatingScene = false;
+                this.isAnimating = false;
+                this.cleanupInProgress = false;
+                this.cleanupComplete = true;
+                console.log('[NeonDistrict] Cleanup complete');
+            }
+        }
+    }
+
+    disposeRuntimeResources() {
         this.stopLegacyMusicSource();
 
         // Dispose geometries and materials
@@ -10196,8 +10373,6 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.assets = null;
         }
 
-        this.scene = null;
-        this.camera = null;
         this.sceneInitialized = false;
         this.isCreatingScene = false;
         this.isAnimating = false;
@@ -10214,8 +10389,5 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.prewarmRequested = false;
         this.prewarmEnabled = false;
         this.syncLoadEnabled = false;
-
-        super.cleanup();
-        console.log('[NeonDistrict] Cleanup complete');
     }
 }

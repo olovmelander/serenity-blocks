@@ -1,13 +1,83 @@
-# Stillwater Waves 1-2 evidence and renderer decision
+# Stillwater Waves 1-3 evidence and renderer decision
+
+> **Historical checkpoint.** This document records the provisional Waves 1–3 decision.
+> The integrated production renderer decision is now recorded in
+> [`STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md`](STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md).
+> The newer decision controls where the two conclusions differ. The final integrated
+> disposition below links the current acceptance; the frozen Waves 1–3 body remains an
+> as-recorded checkpoint rather than a current ship-status claim.
+>
+> These captures predate the v5 local-build content identity and therefore have no current
+> source/build fingerprint. They are neither cryptographic attestations nor
+> served-byte-verification evidence.
 
 **Date:** 2026-07-13
+**Updated:** 2026-07-26
 
-**Scope:** Wave 1 composition blockout and Wave 2 lake proof from
+**Scope:** Wave 1 composition blockout, Wave 2 lake proof, and Wave 3 isolated responses from
 [`STILLWATER_MASTERPIECE_PLAN_2026-07.md`](STILLWATER_MASTERPIECE_PLAN_2026-07.md).
 
-**Decision:** **Provisional go for continued TSL integration; no production cutover.**
+## Final integrated disposition — 2026-07-26
 
-**Formal section 12 result:** **Deferred, not failed.**
+The provisional decision recorded below has completed its intended path. Production
+Stillwater is now accepted as a WebGPU-primary theme with `WebGPURenderer`'s forced-WebGL2
+backend running the same TSL/NodeMaterial implementation. The controlling rationale,
+proof-gate disposition, and caveats are in the
+[production renderer decision](STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md).
+
+The accepted immutable distribution is
+[`immutable-build-final-20260726-1618-v5`](../artifacts/themes/stillwater/wave8/immutable-build-final-20260726-1618-v5/).
+Every final acceptance artifact carries the same `stillwater-source-build-v5` fingerprint:
+
+`6c91dad8fe2144b02b9dc6aab5b7135a23394f814bd0690792760e7baafb200c`
+
+The final set is all-pass:
+
+- AMD Radeon 610M native-WebGPU
+  [Minimal](../artifacts/themes/stillwater/wave8/final-v5-amd-minimal-1080p60/stillwater-wave8-summary.json),
+  [Medium](../artifacts/themes/stillwater/wave8/final-v5-amd-medium-1080p60/stillwater-wave8-summary.json),
+  and [High](../artifacts/themes/stillwater/wave8/final-v5-amd-high-1080p60-r2/stillwater-wave8-summary.json)
+  at configured 1920×1080/60;
+- AMD Radeon 610M
+  [forced-WebGL2 Medium](../artifacts/themes/stillwater/wave8/final-v5-webgl2-medium-1080p60/stillwater-wave8-summary.json)
+  at configured 1920×1080/60;
+- RTX 5080 Laptop native-WebGPU
+  [High](../artifacts/themes/stillwater/wave8/final-v5-rtx-high-1080p120/stillwater-wave8-summary.json)
+  at configured 1920×1080/120 and
+  [Extreme](../artifacts/themes/stillwater/wave8/final-v5-rtx-extreme-1440p144/stillwater-wave8-summary.json)
+  at configured 2560×1440/144;
+- [thirty repeated switches](../artifacts/themes/stillwater/wave8/final-v5-webgpu-high-switch30/stillwater-wave8-summary.json),
+  [deliberate WebGPU device-loss recovery](../artifacts/themes/stillwater/wave8/final-v5-device-loss/stillwater-wave8-summary.json),
+  and real production-path
+  [two-player](../artifacts/themes/stillwater/wave8/final-v5-live-local-2p/stillwater-live-local-2p.json) /
+  [four-player](../artifacts/themes/stillwater/wave8/final-v5-live-local-4p/stillwater-live-local-4p.json)
+  layouts.
+
+Every response-enabled tier now uses the bounded `lean-four-wake` response graph. The
+[final High WebGPU Tetris capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+shows the four opposing wake filaments with one ready WebGPU canvas and no shader,
+pipeline, or console error. High retains planar reflection and selective bloom.
+
+The performance rows measure an `isolated-manual-production-frame` CPU-submission plus
+GPU-timestamp workload. Their configured 60/120/144 targets are pacing configurations,
+not observed display refresh rates or display-FPS proof; compositor presentation is
+outside the workload total, and p99 is diagnostic at configured 120/144. Lifecycle
+results cover only the selected forced-GC/native constructor census, not universal
+absence of retention. Hero timing combines GLTF load plus parse/attach and does not
+separately measure GPU upload; warm-render completion is CPU-call return, canvas reveal is
+a DOM opacity write, and LongTask evidence cannot rule out 16.6–50 ms hitches, GC, GPU
+stalls, or compositor delay.
+
+The v5 fingerprint is a local build-content identity over the recorded closure, budget,
+and validation logic. It explicitly has no cryptographic attestation, no served-byte
+verification, and no git context in the fingerprint.
+
+## Historical Waves 1–3 decision
+
+**Decision at this checkpoint:** **Provisional go for continued TSL integration; no
+production cutover.**
+
+**Formal section 12 result at this checkpoint:** **Deferred, not failed.**
 
 The Wave 2 lake pilot is accepted as the sole WebGPU-primary implementation candidate,
 with `WebGPURenderer`'s forced-WebGL2 backend serving the same TSL graph. This authorizes
@@ -56,7 +126,8 @@ and the story anchors remain peripheral in every requested layout.
 - a single upward-facing transparent lake pass (`FrontSide`), bounded profiling, honest
   unavailable counters, and explicit reflector/pass/post/material/geometry disposal.
 
-Fixed wake slots and feedback compute remain intentionally absent; they belong to Wave 3.
+At the Wave 2 checkpoint, fixed wake slots and feedback compute were intentionally absent.
+Wave 3 has since added the fixed-slot path; optional feedback compute remains deferred.
 
 ### Capture contract
 
@@ -119,11 +190,12 @@ section 11 limit of 32 calls. The 17-call Low blockout is two calls above the fi
 target of 15, so Low draw merging remains an integration target rather than being waived.
 `programs` remains explicitly unavailable on this renderer and is not counted as zero.
 
-### Warm t=8 performance pilot
+### Historical warm t=8 isolated performance pilot
 
 Each row used `profile=1&trackTimestamp=1`, a three-second warmup, profiler reset, and an
 approximately five-second measurement window. Cells are `n: p50 / p95 / p99 / max` in
-milliseconds.
+milliseconds. This was an isolated playground pilot, not the production manual-frame
+harness, a display-pacing/FPS measurement, or the current Stillwater calibration baseline.
 
 | Backend | Tier / reflection | CPU submission | Frame interval | GPU timestamp |
 |---|---|---|---|---|
@@ -136,12 +208,34 @@ milliseconds.
 | WebGL2/TSL | Low / auto | 868: 0.5 / 1.2 / 1.8 / 4.2 | 867: 5.7 / 6.4 / 6.8 / 20.6 | 28: 0.470 / 0.922 / 0.963 / 0.963 |
 | WebGL2/TSL | Low / off | 878: 0.5 / 0.7 / 0.8 / 1.1 | 877: 5.7 / 6.3 / 6.6 / 6.9 | 29: 0.777 / 1.542 / 1.595 / 1.595 |
 
-All eight pilot rows pass the section 13 60 Hz limits: frame p95 at most 16.6 ms,
-CPU p95 at most 6 ms, GPU p95 at most 9 ms, and frame p99 at most 20.8 ms. Their frame
-p95 values also fall below the 120 Hz (8.3 ms) and 144 Hz (6.9 ms) pilot thresholds.
-This is strong isolated evidence on the recorded discrete GPU, not an iGPU result or a
-full-game guarantee. The small, quantized GPU sample sets also make tiny auto/off
-differences run variance, not reliable feature-cost attribution.
+All eight pilot rows met the checkpoint's then-current 60 Hz limits: frame p95 at most
+16.6 ms, CPU p95 at most 6 ms, GPU p95 at most 9 ms, and frame p99 at most 20.8 ms.
+Their frame p95 values also fell below the 120 Hz (8.3 ms) and 144 Hz (6.9 ms) pilot
+thresholds. This is historical isolated evidence on the recorded discrete GPU, not an
+iGPU result, production acceptance, or a full-game/display-FPS guarantee. The small,
+quantized GPU sample sets also make tiny auto/off differences run variance, not reliable
+feature-cost attribution. Current policy gates p99 only at 60 Hz; p99 is diagnostic at
+120/144 Hz.
+
+## Wave 3 — integrated water-response exit
+
+Wave 3 adds the authorized fixed-slot response system to the same isolated lake pilot:
+10 slots on High, 4 on Low, one reserved special channel, radial-fill displacement, optical
+slope, and restrained response emission. Lock, Tetris, and T-spin are phase-locked through
+`event` and `fxAge`; `responses=off` removes the graph for matched A/B measurements.
+
+Native WebGPU and forced WebGL2 were console-clean, and the three-event hierarchy reads.
+A warmed 48-event mixed storm retained identical array/slot identities and unchanged calls,
+triangles, geometries, textures, objects, owned resources, and material version. Paired
+WebGPU and forced-WebGL2 profiles measured `0.0 ms` incremental CPU p95 and unchanged frame
+p95. Incremental GPU timestamps remain unavailable after the opt-in capture target closed,
+so no GPU-zero claim is made.
+
+Full implementation, capture, counter, and performance evidence:
+[`STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md`](STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md).
+
+**Wave 3 exit:** passed for the isolated visual/resource contract. Production cutover and
+the full section 13 ship gate remain deferred.
 
 ## Section 12 decision
 
@@ -149,12 +243,13 @@ differences run variance, not reliable feature-cost attribution.
 |---|---|---|
 | One TSL graph on WebGPU and forced WebGL2 | Pilot pass | Both backends are console-clean and visually equivalent. |
 | Lake hero capability | Pilot pass | True High reflection and credible Low analytic reflection materially improve the lake language. |
-| Section 13 warm frame budgets | Pilot pass | All eight isolated rows pass through the 144 Hz p95 threshold on the recorded discrete GPU. |
+| Section 13 warm frame budgets | Historical pilot pass | All eight isolated rows met the checkpoint thresholds on the recorded discrete GPU; this is not current production-budget authority. |
 | Matched optimized-WebGL comparison | Open | The historical WebGL scene and this isolated lake contain different content and cameras. |
 | Full height-fog/selective-bloom target | Open | Wave 2 proves lake optics and grade; later waves own atmosphere and post. |
 | Startup and VRAM delta below 10% | Not tested | Requires matched integrated candidates and cold runs. |
 | Device/context-loss rebuild and lifecycle soak | Not tested | Disposal hooks exist, but repeated real-theme rebuild evidence does not. |
-| Real board, gameplay reactions, layouts, iGPU, resize, and quality matrix | Not tested | These belong to the integrated section 13 ship gate. |
+| Isolated lock/Tetris/T-spin reactions | Pilot pass | Wave 3 hierarchy reads with fixed resources on both TSL backends. |
+| Real board, full gameplay director, layouts, iGPU, resize, and quality matrix | Not tested | These belong to later waves and the integrated section 13 ship gate. |
 
 The historical standalone WebGL audit (67 calls, 77,137 triangles, rAF
 p50/p95/p99 4.2/4.3/4.5 ms) remains useful context, but it is not numerically comparable:
@@ -168,11 +263,13 @@ and section 13 gates. No renderer conversion or GLSL deletion is approved by Wav
 
 ## Verification
 
-- ESLint: composition effect, water effect, playground harness, and Wave tests pass.
-- Vitest: `stillwater-playground-waves` plus Wave 0 regressions, 19/19 tests pass.
-- Production Vite build: 853 modules transformed; success. The existing Odyssey/Serenity/
+- ESLint: composition effect, water/response effect, playground harness, and Wave tests pass.
+- Vitest: Wave 0–3 focused regressions, 25/25 tests pass.
+- Production Vite build: 891 modules transformed; success. The existing Odyssey/Infinity/Serenity/
   Summer circular-chunk warning remains unrelated.
 - `git diff --check`: global and scoped checks pass.
 
-The next authorized visual step is Wave 3's fixed-slot dimple/wake system in the isolated
-lake pilot. It must not create per-event meshes, programs, or geometry growth.
+At this checkpoint, the next authorized visual step was Wave 4's isolated forest/canopy
+language, followed by the mushroom cluster/material. Those waves and the integrated
+production proof gates are now complete; the final disposition above supersedes this
+historical no-cutover boundary.

@@ -27,6 +27,7 @@
  * match Summer's (COLS 10, ROWS 20, HIDDEN 4).
  */
 import { SUMMER_TETROMINOS } from '../summer-tetrominos.js';
+import { readLockViewportOrigin } from '../../../events/lock-origin.js';
 
 const BOARD_COLUMNS = 10;
 const VISIBLE_ROWS = 20;
@@ -333,7 +334,10 @@ function originForRows(payload, previousOrigin) {
 
     const rowTotal = rows.reduce((total, row) => total + Number(row), 0);
     const boardY = rowTotal / rows.length + 0.5;
-    const normalizedY = clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
+    // Infinity supplies the ON-SCREEN clear origin; prefer its Y over the fixed-board row
+    // normalization (clearedRows are absolute rows in Infinity → the fallback pins to bottom).
+    const viewport = readLockViewportOrigin(payload);
+    const normalizedY = viewport ? viewport.y : clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
     base.board.y = boardY;
     base.normalized.y = normalizedY;
     base.centered.y = 1 - normalizedY * 2;
@@ -392,8 +396,11 @@ export function resolveSummerLockOrigin(payload = {}) {
     );
     const boardX = centroid.x / glyph.boardCells.length;
     const boardY = centroid.y / glyph.boardCells.length;
-    const normalizedX = clamp01(boardX / BOARD_COLUMNS);
-    const normalizedY = clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
+    // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN lock position; prefer it
+    // over the fixed-board normalization so the seal tracks where the piece actually landed.
+    const viewport = readLockViewportOrigin(payload);
+    const normalizedX = viewport ? viewport.x : clamp01(boardX / BOARD_COLUMNS);
+    const normalizedY = viewport ? viewport.y : clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
 
     return {
         board: { x: boardX, y: boardY },

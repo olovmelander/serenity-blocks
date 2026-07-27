@@ -1916,10 +1916,18 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     }
 
     stop() {
+        // Invalidate any adapter/device request still awaiting completion before
+        // clearing the runtime it would otherwise publish into.
+        this.buildVersion += 1;
+        this.rebuildScheduled = false;
         super.stop();
         this.clearEventUnsubscribers();
         this.resetAnimationLoop();
         this.teardownRuntime();
+        if (this.canvas?.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
         if (this.stellarDebug) {
             this.stellarDebug.dispose();
             this.stellarDebug = null;
