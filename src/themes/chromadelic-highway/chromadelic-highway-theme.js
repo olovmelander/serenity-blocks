@@ -1878,7 +1878,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[ChromadelicHighway] Creating hybrid scene...');
         this.requestBaselineSoakStop();
         this.baselineSoakAbortRequested = false;
@@ -1898,7 +1898,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             return;
         }
 
-        await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady) return;
         if (!this.renderer || !this.scene || !this.camera) {
             console.error('[ChromadelicHighway] Renderer initialization failed.');
             return;
@@ -1959,12 +1960,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     // Hybrid Renderer Init
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const preserveDrawingBuffer = this.flags.baseline === true;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
         let webgpuRenderer = null;
+        let renderer = null;
 
         if (!this.flags.forceWebGL) {
             try {
@@ -1973,8 +1978,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     alpha: false,
                     preserveDrawingBuffer,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Chromadelic Highway WebGPU renderer init',
+                    ownerGeneration,
+                });
             } catch (err) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[ChromadelicHighway] WebGPU init failed, falling back:', err.message);
                 if (webgpuRenderer) {
                     try { webgpuRenderer.dispose(); } catch { /* ignore */ }
@@ -1984,12 +1993,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
 
         if (webgpuRenderer && webgpuRenderer.backend?.isWebGPUBackend === true) {
-            this.renderer = webgpuRenderer;
+            renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.isWebGL = false;
 
             // Handle device loss
-            this.renderer.onDeviceLost = (info) => {
+            renderer.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== renderer) return;
                 this.handleDeviceLoss(info);
             };
         } else {
@@ -1998,7 +2008,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 try { webgpuRenderer.dispose(); } catch { /* ignore */ }
             }
 
-            this.renderer = new THREE.WebGLRenderer({
+            if (!ownsLifecycle()) return false;
+            renderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 powerPreference: 'high-performance',
                 alpha: false,
@@ -2008,6 +2019,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.isWebGL = true;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
         console.log(`[ChromadelicHighway] Using ${this.isWebGPU ? 'WebGPU' : 'WebGL2'} backend`);
 
         // Deep violet cosmic void — fog color matches palette for atmospheric perspective.
@@ -2029,6 +2045,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 12000);
         this.camera.position.set(0, 55, 280);
         this.camera.lookAt(0, 20, -600);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

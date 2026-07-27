@@ -32,6 +32,7 @@ export default class AetherTidesTheme extends BaseTheme {
 
         this.simulator = null;
         this.canvas = null;
+        this.starfieldElement = null;
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
@@ -78,7 +79,11 @@ export default class AetherTidesTheme extends BaseTheme {
         if (this.canvas && this.canvas.parentNode) {
             this.canvas.parentNode.removeChild(this.canvas);
         }
+        if (this.starfieldElement?.parentNode) {
+            this.starfieldElement.parentNode.removeChild(this.starfieldElement);
+        }
         this.canvas = null;
+        this.starfieldElement = null;
         this.lastTime = 0;
         this.blackHoleActive = false;
 
@@ -101,8 +106,9 @@ export default class AetherTidesTheme extends BaseTheme {
                 this.registerContainer(container);
 
                 // Add starfield background if not present
-                if (!container.querySelector('.starfield')) {
-                    const stars = document.createElement('div');
+                let stars = container.querySelector('.starfield');
+                if (!stars) {
+                    stars = document.createElement('div');
                     stars.className = 'starfield';
                     stars.style.position = 'absolute';
                     stars.style.top = '0';
@@ -115,6 +121,7 @@ export default class AetherTidesTheme extends BaseTheme {
                     stars.style.backgroundPosition = '0 0, 40px 60px, 130px 270px';
                     container.insertBefore(stars, this.canvas);
                 }
+                this.starfieldElement = stars;
             } else {
                 console.error('[AetherTides] Theme container not found!');
                 return;
@@ -358,11 +365,11 @@ export default class AetherTidesTheme extends BaseTheme {
     }
 
     stop() {
-        if (!this.isActive) return;
-        this.clearEffectTimeouts();
-        this.eventUnsubscribers.forEach((u) => u());
-        this.eventUnsubscribers = [];
+        // ThemeManager invalidates activity before invoking terminal cleanup.
+        // Base teardown must therefore be unconditional and idempotent.
         super.stop();
+        this.clearEffectTimeouts();
+        this.clearEventUnsubscribers();
     }
 
     cleanup() {
@@ -374,7 +381,11 @@ export default class AetherTidesTheme extends BaseTheme {
         if (this.canvas && this.canvas.parentNode) {
             this.canvas.parentNode.removeChild(this.canvas);
         }
+        if (this.starfieldElement?.parentNode) {
+            this.starfieldElement.parentNode.removeChild(this.starfieldElement);
+        }
         this.canvas = null;
+        this.starfieldElement = null;
         super.cleanup();
     }
 

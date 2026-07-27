@@ -56,6 +56,7 @@ export function createPeakEagles(opts = {}) {
     let variant = null;
     let sharedMaterial = null;
     let matUniforms = null;
+    let disposed = false;
     const active = [];
     let nextSpawnIn = 2 + Math.random() * 4;
     let comboCooldown = 0;
@@ -66,10 +67,25 @@ export function createPeakEagles(opts = {}) {
     const _box = new THREE.Box3();
     const _size = new THREE.Vector3();
 
+    const disposeHierarchy = (root) => {
+        root?.traverse?.((child) => {
+            child.geometry?.dispose?.();
+            const materials = Array.isArray(child.material)
+                ? child.material
+                : [child.material];
+            materials.filter(Boolean).forEach((material) => material.dispose?.());
+        });
+        root?.clear?.();
+    };
+
     async function load() {
         try {
             const gltf = await loader.loadAsync(eagleUrl);
             const root = gltf.scene;
+            if (disposed) {
+                disposeHierarchy(root);
+                return;
+            }
             _box.setFromObject(root);
             _box.getSize(_size);
             const scale = TARGET_SIZE / (Math.max(_size.x, _size.y, _size.z) || 1);
@@ -91,12 +107,14 @@ export function createPeakEagles(opts = {}) {
                 forward: new THREE.Vector3(0, 0, 1),
             };
         } catch (e) {
-            console.warn('[HimalayanPeak] eagle load failed:', e);
+            if (!disposed) {
+                console.warn('[HimalayanPeak] eagle load failed:', e);
+            }
         }
     }
 
     function spawn() {
-        if (!variant || active.length >= maxEagles) return;
+        if (disposed || !variant || active.length >= maxEagles) return;
 
         const model = cloneHierarchy(variant.scene);
         let mixer = null;
@@ -138,6 +156,7 @@ export function createPeakEagles(opts = {}) {
     }
 
     function update(dt, time, scatter = 0, sunColor = null, warmth = 0) {
+        if (disposed) return;
         if (!variant) return;
 
         // Keep the silhouette's warm rim in step with the live alpenglow.
@@ -188,17 +207,21 @@ export function createPeakEagles(opts = {}) {
         spawn,
         update,
         dispose() {
+            if (disposed) return;
+            disposed = true;
             active.forEach((e) => {
                 if (e.mixer) e.mixer.stopAllAction();
                 group.remove(e.pivot);
             });
             active.length = 0;
             if (variant) {
-                variant.scene.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
+                disposeHierarchy(variant.scene);
                 variant = null;
             }
             sharedMaterial?.dispose();
             sharedMaterial = null;
+            matUniforms = null;
+            group.clear();
         },
     };
 }

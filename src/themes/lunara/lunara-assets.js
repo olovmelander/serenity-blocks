@@ -65,10 +65,17 @@ function loadLunaraTexture(url, {
 } = {}) {
     const loader = new THREE.TextureLoader();
     const texture = createPlaceholderTexture({ repeat, color: fallbackColor, colorSpace });
+    texture.userData.lifecycleDisposed = false;
+    texture.addEventListener('dispose', () => {
+        texture.userData.lifecycleDisposed = true;
+    });
     loader.load(
         url,
         (loaded) => {
-            texture.dispose();
+            if (texture.userData.lifecycleDisposed) {
+                loaded.dispose?.();
+                return;
+            }
             texture.image = loaded.image;
             configureTexture(texture, { repeat, colorSpace });
             texture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -79,6 +86,7 @@ function loadLunaraTexture(url, {
         },
         undefined,
         () => {
+            if (texture.userData.lifecycleDisposed) return;
             texture.image = neutralCanvas(fallbackColor) || undefined;
             configureTexture(texture, { repeat, colorSpace });
             texture.needsUpdate = true;

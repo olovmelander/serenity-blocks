@@ -839,7 +839,9 @@ export default class NebulaFlowTheme extends BaseTheme {
     stop() {
         console.log('[NebulaFlow] stop() called');
 
-        if (!this.isActive) return;
+        // Run the canonical sweep even when ThemeManager already invalidated
+        // the public activity flag before entering terminal teardown.
+        super.stop();
 
         if (this.colorCycleTimeout) {
             clearTimeout(this.colorCycleTimeout);
@@ -848,11 +850,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         this.clearEffectTimeouts();
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-
-        // Call parent stop
-        super.stop();
+        this.clearEventUnsubscribers();
 
         console.log('[NebulaFlow] Stopped successfully');
     }

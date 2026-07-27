@@ -180,7 +180,7 @@ export const THEME_SFX_MAP = {
     'stellar-drift': 'StellarDrift',
     'cinder-drift': 'CinderDrift',
     pyrestorm: 'Pyrestorm',
-    'swedish-forest': 'SwedishForest',
+    'golden-forest': 'GoldenForest',
     galaxy: 'Galaxy',
     bioluminescence: 'Bioluminescence',
     'bioluminescence-2': 'Bioluminescence',

@@ -41,6 +41,9 @@ function makeManager() {
         if (gates.has(name)) {
             await new Promise((resolve) => { gates.get(name).push(resolve); });
         }
+        theme.cleanupComplete = false;
+        theme.isActive = true;
+        theme.lifecycleState = 'running';
         manager.activeTheme = theme;
         manager.activeThemeName = name;
         manager.pendingThemeInstance = null;
@@ -68,8 +71,11 @@ describe('ThemeManager coalesced switch queue', () => {
             manager, activations, hold, release,
         } = makeManager();
         hold('ocean');
+        hold('winter');
 
         const first = manager.switchTheme('ocean');
+        let firstSettled = false;
+        first.then(() => { firstSettled = true; });
         await tick();
         expect(manager.isTransitioning).toBe(true);
 
@@ -79,8 +85,13 @@ describe('ThemeManager coalesced switch queue', () => {
         expect(manager.queuedSwitchRequest?.themeName).toBe('winter');
 
         release('ocean');
-        await first;
+        await tick();
+        expect(activations).toEqual(['ocean', 'winter']);
+        expect(firstSettled).toBe(false);
+
+        release('winter');
         const settledOn = await second;
+        await first;
 
         expect(activations).toEqual(['ocean', 'winter']);
         expect(manager.activeThemeName).toBe('winter');
@@ -154,14 +165,15 @@ describe('ThemeManager coalesced switch queue', () => {
         manager.themeRegistry.set('stuck-theme', () => new Promise(() => {}));
 
         const loadPromise = manager.loadTheme('stuck-theme', true);
-        // Fallback-to-forest also fails (not in this test registry), surfacing the root error path.
         const outcome = loadPromise.then(
             () => 'resolved',
             (error) => error.message,
         );
 
         await vi.advanceTimersByTimeAsync(10001);
-        await expect(outcome).resolves.toContain('Forest theme not found');
+        await expect(outcome).resolves.toContain(
+            'Theme "stuck-theme" module import timed out',
+        );
     });
 });
 
@@ -222,5 +234,30 @@ describe('ThemesTab.selectTheme commits the ACTUAL outcome (not the request)', (
 
         expect(tab.themeManager.switchTheme).not.toHaveBeenCalled();
         expect(tab.currentTheme).toBe('ocean'); // shadow resynced
+    });
+
+    it('lets only the latest rapid selection persist settings', async () => {
+        const tab = makeTab({ activeThemeName: 'forest' });
+        const resolvers = [];
+        tab.themeManager.switchTheme = vi.fn(() => new Promise((resolve) => {
+            resolvers.push(resolve);
+        }));
+
+        const first = tab.selectTheme('ocean');
+        const second = tab.selectTheme('winter');
+        tab.themeManager.activeThemeName = 'winter';
+        tab.themeManager.activeTheme = { name: 'winter' };
+
+        resolvers[0]('winter');
+        await first;
+        expect(tab.settingsManager.update).not.toHaveBeenCalled();
+
+        resolvers[1]('winter');
+        await second;
+        expect(tab.settingsManager.update).toHaveBeenCalledTimes(1);
+        expect(tab.settingsManager.update).toHaveBeenCalledWith({
+            backgroundTheme: 'winter',
+            backgroundMode: 'Specific',
+        });
     });
 });

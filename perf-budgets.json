@@ -1,15 +1,16 @@
 {
   "note": "Performance budgets (plan §9.2). Nulls = budget declared, baseline pending — visible and lintable, never silently unfalsifiable. Gate on p95 frame-time, never FPS. Pin adaptive systems (tier + effectScale=1 + fixed pixelRatio) in every capture.",
-  "capturedAt": "2026-07-10",
-  "machine": "dev-iGPU unless noted per row; RTX5080-laptop for nightly lane",
+  "capturedAt": "2026-07-25",
+  "machine": "AMD Radeon 610M low-power adapter for Stillwater baseline; RTX5080-laptop for discrete/nightly lanes unless noted per report",
   "budgets": {
     "timeToMenuReadyMs": { "baseline": null, "max": 4000, "note": "ends at MENU_READY (plan §4.7 KPI decomposition); capture via startup-debug trace" },
     "introDurationMs": { "baseline": null, "max": null, "note": "product choice, tracked not gated" },
     "cascadeInputLatencyP95Ms": { "baseline": 300, "max": 17, "note": "Phase 5.2 KPI — input-to-sim-application during cascades; baseline is the measured 330-400ms class floor" },
     "frameP95Ms": {
-      "perSurface": { "odyssey": null, "heavy-theme-worst": null },
+      "perSurface": { "odyssey": 7, "stillwater": 6, "heavy-theme-worst": null },
       "maxPerTier": { "60hz": 16.6, "120hz": 8.3, "144hz": 6.9 },
-      "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" }
+      "split": { "cpuMaxMs": 6, "gpuMaxMs": 9, "note": "60hz split; scale proportionally" },
+      "stillwaterCalibration": "AMD Radeon 610M, WebGPU Medium, 1920x1080 at 60 Hz, render scale 1, AA off. Corrected r181 NodeFrame manual driver; the 6.0 ms idle baseline is rounded from repeated current-source warmed CPU-submit + GPU-timestamp p95 captures (5.83-5.95 ms). Reactions are governed by absolute, split, p99, and incremental gates rather than this idle-regression baseline."
     },
     "snapshotDeltaWireBytesP95": { "baseline": 490, "max": 80, "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B; keyframes tracked separately" },
     "reliableMsgsPerSec": { "baseline": null, "max": null },

@@ -355,7 +355,7 @@ export default class SingingBowlTheme extends BaseTheme {
                         return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
                     }
                     void main() {
-                        float hue = fract(uTime * 0.15 + vPos.y * 0.1 + ${idx * 0.15});
+                        float hue = fract(uTime * 0.15 + vPos.y * 0.1 + ${(idx * 0.15).toFixed(2)});
                         vec3 col = hsv2rgb(vec3(hue, 0.7, 0.9));
                         float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 2.0);
                         gl_FragColor = vec4(col + fresnel * 0.3, 1.0);
@@ -399,7 +399,7 @@ export default class SingingBowlTheme extends BaseTheme {
                         return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
                     }
                     void main() {
-                        float hue = fract(uTime * 0.2 + length(vPos) * 0.15 + ${idx * 0.2});
+                        float hue = fract(uTime * 0.2 + length(vPos) * 0.15 + ${(idx * 0.2).toFixed(2)});
                         vec3 col = hsv2rgb(vec3(hue, 0.6, 0.95));
                         float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 3.0);
                         gl_FragColor = vec4(col + fresnel * 0.5, 1.0);
@@ -444,7 +444,7 @@ export default class SingingBowlTheme extends BaseTheme {
                     }
                     void main() {
                         float angle = atan(vPos.z, vPos.x);
-                        float hue = fract(uTime * 0.25 + angle * 0.16 + ${idx * 0.33});
+                        float hue = fract(uTime * 0.25 + angle * 0.16 + ${(idx * 0.33).toFixed(2)});
                         vec3 col = hsv2rgb(vec3(hue, 0.7, 0.85));
                         gl_FragColor = vec4(col, 1.0);
                     }

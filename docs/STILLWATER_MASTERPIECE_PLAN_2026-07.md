@@ -1,9 +1,20 @@
 # Stillwater — “The Pool Remembers” Masterpiece Plan
 
-**Status:** Proposed reference plan  
-**Date:** 2026-07-13  
+**Status:** Waves 0–8 implemented; current-source immutable v6 validation passes within
+the rerun scope documented below
+
+**Date:** 2026-07-13
+
+**Updated:** 2026-07-26
+
 **Scope:** \`src/themes/stillwater/\`, its shared-renderer residue, gameplay reactions,
 tetromino presentation, assets, lifecycle, and performance.
+
+**Current evidence:**
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md)
+
+**Production renderer decision:**
+[`STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md`](STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md)
 
 ## Governance and definition of done
 
@@ -14,9 +25,9 @@ ADRs. In particular:
 - [ADR-0007](adr/0007-webgpu-tsl-definition-of-done.md): every visual change needs a
   playground-first screenshot, a console/WebGPU validation check, and a final capture in
   the real theme.
-- [ADR-0008](adr/0008-hybrid-renderer-and-webgl-holdouts.md): Stillwater is an intentional
-  WebGL island today. A WebGPU/TSL port is an explicit per-theme product decision, not
-  cleanup for its own sake.
+- [ADR-0008](adr/0008-hybrid-renderer-and-webgl-holdouts.md): Stillwater began as an
+  intentional WebGL island. Its WebGPU/TSL port required an explicit per-theme product
+  decision rather than cleanup for its own sake.
 - [ADR-0009](adr/0009-theme-codegen-pipeline-removed.md): author the theme and small shared
   helpers directly; do not reintroduce theme code generation.
 - The one-effect-per-session iGPU/TDR rule applies. Each visual pilot below is a separate,
@@ -26,14 +37,20 @@ This document recommends a **proof-gated WebGPU-primary conversion**, because tr
 reflection, integrated surface wakes, selective emissive bloom, a unified grade, and
 GPU-scaled particles are material improvements to Stillwater’s central idea. The
 conversion only proceeds if the TSL pilot passes the visual and performance gate in
-§12. If it does not, Stillwater remains a documented WebGL island and receives the same
-composition, asset, lifecycle, pooling, and quality work without a renderer rewrite.
+§12. The integrated implementation has now earned the Stillwater-specific opt-in recorded
+in
+[`STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md`](STILLWATER_PRODUCTION_RENDERER_DECISION_2026-07.md):
+native WebGPU is primary and forced WebGL2 runs the same TSL graph. The separate Wave 8
+lifecycle evidence passes for its explicitly measured populations. The current v6
+comprehensive High/WebGPU run and genuine Page Visibility drill are all-pass. The broader
+hardware/backend, live-layout, device-loss, and retention matrix remains historical v5
+evidence and is never presented as current-v6 authority; §15 records both scopes.
 
 ## 1. Executive verdict
 
-Stillwater has the right fantasy but not yet the right picture. “A quiet Nordic forest
-whose lake remembers the player” is distinctive and worth preserving. The current scene
-reads as an early procedural blockout:
+At the 2026-07-13 baseline audit, Stillwater had the right fantasy but not yet the right
+picture. “A quiet Nordic forest whose lake remembers the player” was distinctive and
+worth preserving, while the audited scene still read as an early procedural blockout:
 
 - repeated trunk pillars instead of an ancient canopy;
 - stretched spheres instead of a designed shoreline and landscape;
@@ -416,7 +433,8 @@ Stillwater should answer environmentally rather than duplicating those effects.
 - 3–4 transient shaft slots;
 - one special-event slot with priority over routine locks;
 - no geometry, material, or shader creation from gameplay events;
-- no increase in \`renderer.info.programs\` during a warmed reaction storm.
+- no increase in `renderer.info.programs` where a backend exposes it; otherwise record it
+  as unavailable and gate event-time geometry/material object allocation directly.
 
 ## 10. Tetromino presentation
 
@@ -436,29 +454,36 @@ palette and supported gradient/rim/gloss properties:
 | Garbage | wet bark \`#273631\` |
 | Clean garbage | mist sage \`#98B5A9\` |
 
-Validate active, ghost, hold, next, garbage, Canvas fallback, and multiplayer boards.
-The pieces must remain instantly distinguishable without relying on glow.
+Validate active, ghost, hold, next, garbage, and multiplayer presentation on the supported
+Phaser WebGL board. A Phaser Canvas board fallback is unsupported and is not an acceptance
+surface. The pieces must remain instantly distinguishable without relying on glow.
 
 ## 11. Quality tiers and resource targets
 
 Extend the existing six quality levels rather than inventing a second settings system.
 Final counts are tuned from timestamps, but the target shape is:
 
-| Feature | Minimal / Low | Medium | High | Ultra / Extreme |
-|---|---|---|---|---|
-| Lake reflection | analytic | analytic or RT 0.30 | reflector 0.40–0.45 | reflector 0.48–0.52 |
-| Bloom | off | off | selective, ~0.64 source scale | selective, ~0.72 |
-| Fog | analytic height/depth | +1 bounded mist | +1 bounded mist | +2 bounded mist layers |
-| Ambient particles | 40 / 90 | 180 | 320–420 | 520–700 |
-| Hero troll | 3–5k/impostor | 8–12k | 15–20k | 30–35k |
-| Distant troll accents | 0 / 1 | 2 | 3 | 3–5 |
-| Wake slots | 0 / 4 | 6 | 10 | 12 |
-| Transient shaft slots | 0 / 1 | 2 | 3 | 4 |
-| Noise complexity | analytic / 2 octaves | 2–3 octaves | 3 octaves | 3–4 only where bounded |
+| Feature | Minimal | Low | Medium | High | Ultra | Extreme |
+|---|---:|---:|---:|---:|---:|---:|
+| Reflector scale | 0 | 0 | 0 | 0.30 | 0.48 | 0.50 |
+| Selective bloom source scale | off | off | off | 0.45 | 0.69 | 0.72 |
+| Bounded mist layers | 0 | 0 | 1 | 1 | 2 | 2 |
+| Ambient motes | 40 | 90 | 180 | 280 | 540 | 700 |
+| Troll LOD triangles | 3,690 | 3,690 | 9,765 | 17,081 | 32,378 | 32,378 |
+| Wake slots | 0 | 4 | 4 | 10 | 12 | 12 |
+| Transient shaft slots | 0 | 1 | 2 | 3 | 4 | 4 |
+| Noise octaves | 1 | 2 | 2 | 2 | 3 | 4 |
 
 Reapply \`computeScenePixelRatio\` on activation, quality change, display/DPR change, and
 resize. Never let a quality-disabled shader subgraph continue executing behind a zero
 uniform.
+
+The implemented reaction-rune contract is likewise structural: Minimal constructs no rune
+geometry, material, or draw (`disabled-minimal`); Low and Medium construct the bounded
+`etched-lean` rune; High, Ultra, and Extreme construct the bloom-capable
+`mycelial-premium` rune. Quality changes rebuild the runtime, so lower atmosphere tiers
+allocate only their 40/90/180 mote capacity rather than retaining Extreme's 700-slot
+buffers.
 
 ### Structural targets
 
@@ -467,9 +492,23 @@ uniform.
 - ≤3 ambient particle draws;
 - ≤3 real lights;
 - ≤6 large transparent layers;
-- ≤30 live geometries after warmup, excluding backend-owned render targets;
+- ≤30 live geometries at clean idle after warmup, excluding backend-owned render targets;
+  the one-time visible reaction/post warmup may raise the accepted event lane to 31, but
+  repeated events must not grow it;
 - hidden/paused: approximately zero theme update/render work;
-- no long task caused by first visible hero upload or first gameplay reaction.
+- no browser LongTask overlapping the DOM canvas reveal or finalized post-reveal window;
+  GPU upload and hardware presentation require separate instrumentation.
+
+**2026-07-26 immutable measurement note:** the implementation records direct scene
+structure and aggregate renderer submissions separately. The canonical Minimal/Low,
+Medium, and High idle graphs are 15, 22, and 45 aggregate submissions respectively.
+The immutable High idle capture reports 85,739 triangles. A visible fixed-pool reaction
+can add up to three submissions; those transient submissions are not folded into the idle
+number. Clean idle records 28 geometries/18 textures; after one-time reaction, post, and
+screenshot visibility warmup, every event checkpoint is stable at 31/24. These totals
+disclose the reflector/selective-post and fixed-pool hero-capability trades and are never
+presented as an aggregate High result at or below 32 or an event-warmed result at or below
+30 geometries.
 
 ## 12. Renderer proof gate
 
@@ -521,14 +560,26 @@ separate cold and warm runs.
 
 ### Record
 
-- CPU and GPU frame p50/p95/p99;
-- long tasks, allocation/GC spikes, and heap trend;
-- combined draw calls, triangles, programs, geometries, textures, and internal resolution;
+- CPU-submission and renderer GPU-timestamp p50/p95/p99 for the isolated manual
+  production-frame workload; configured target frequency is not observed display FPS;
+- browser LongTask entries, allocation/GC diagnostics, and heap trend. LongTask coverage
+  does not include sub-50 ms frame hitches, GPU/compositor stalls, or every GC pause;
+- combined draw calls, triangles, geometries, textures, and internal resolution.
+  `renderer.info.programs` is recorded as unavailable where the r181 renderer does not
+  expose it, never inferred as zero;
 - shared buffer upload bytes/frame until the old branch is deleted;
-- hero fetch/parse/upload/first-render time;
+- hero GLTF combined load + parse/attach time. GPU upload is not measured separately;
+- warm-render CPU-call return and DOM canvas-opacity reveal. Neither milestone proves GPU
+  queue completion, compositor presentation, or first visible display scanout;
 - active pool counts and return-to-baseline time;
 - hidden/paused frames and duplicate-loop count;
 - visual screenshots and console/validation output.
+
+The cold-activation LongTask check is complete only when the browser observer is supported,
+has stopped, and covers at least 200 ms after canvas reveal; the immutable runs use 250 ms.
+It rejects tasks overlapping reveal or beginning afterward, while pre-reveal masked tasks
+remain diagnostic. The aggregate page-load timer is not substituted for
+`activationToRevealMs`.
 
 ### Frame budgets
 
@@ -589,12 +640,37 @@ T-spin variants through deterministic playground controls.
 
 **Exit:** response hierarchy reads without new meshes, programs, or geometry growth.
 
+**Completed 2026-07-25:** High uses 10 preallocated response slots and Low uses 4, with a
+reserved special channel for four converging Tetris wakes or the cyan/violet T-spin turn.
+The fixed-time hierarchy passed native WebGPU and forced-WebGL2 inspection, and a warmed
+48-event storm left render/resource counters and backing identities unchanged. See
+[`STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md`](STILLWATER_WAVE3_RESPONSE_EVIDENCE_2026-07.md).
+That Wave 3 pilot did not obtain incremental GPU timestamp attribution after its capture
+target closed, so the historical pilot never treated the reaction as zero-cost. The Wave 8
+production harness now measures the warmed idle-to-reaction GPU-timestamp delta and gates
+it at +0.75 ms. The final production graph replaces four repeated full-lake Tetris
+branches with one construction-time-selected periodic signed-distance field while
+preserving four converging ivory wakes. The
+[historical v5 native-WebGPU Tetris capture](../artifacts/themes/stillwater/wave8/final-playground/water-high-tetris-lean-periodic-webgpu-v5.png)
+reports `lean-four-wake`, ten fixed slots, one active reserved special slot, four depth
+wakes, one canvas, and no shader/pipeline failure.
+
 ### Wave 4 — forest and flora
 
 In separate short sessions, prove the instanced tree/canopy language, then the mushroom
 cluster/material. Port terrain, trees, roots, reeds, lilies, and clusters.
 
 **Exit:** target draw counts and board-safe values hold without particles.
+
+**Completed 2026-07-25:** separate historical forest and flora playground sessions
+established the
+hero/mid/far tree language, canopy gaps, shoreline dressing, lilies, and clustered
+mushrooms before integration. The final High forest reports five tree, three dressing,
+and three flora draws; the board aperture has zero focal intrusions and mushrooms use no
+real point lights. A historical v5 production Medium retest confirms the complete 22-draw
+integrated structural graph; current source retains that tier construction, while a new
+board-safe Medium acceptance capture remains pending. See
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md#wave-4--forest-and-flora).
 
 ### Wave 5 — spirit and troll
 
@@ -604,6 +680,12 @@ machines.
 
 **Exit:** both characters are readable, grounded, off-board, warm-loaded, and tiered.
 
+**Completed 2026-07-25:** the spirit now has layered internal form and authored
+observe/respond/withdraw states; the grounded troll uses peripheral
+listen/react/retreat beats. Four quantized animated troll LODs cover 32,378 to 3,690
+triangles and total 889,792 bytes, 91.75% below the retained source. See
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md#wave-5--spirit-and-troll).
+
 ### Wave 6 — atmosphere and post
 
 Prove height fog/soft motes, then selective bloom + LUT/grade. Add only what survives
@@ -611,6 +693,13 @@ High and Low screenshots without flattening the composition.
 
 **Exit:** colored depth, controlled ivory highlights, no hard particle intersections,
 and clean post graph.
+
+**Completed 2026-07-25:** analytic distance/height fog, bounded mist, soft motes, MRT
+emissive isolation, selective bloom, a 16³ LUT, and one ACES output transform form the
+integrated grade. The six atmosphere capacities are 40/90/180/280/540/700 from Minimal
+through Extreme, with each runtime allocating only its tier capacity. Medium and lean
+tiers structurally omit the expensive post graph. See
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md#wave-6--atmosphere-and-post).
 
 ### Wave 7 — gameplay director and pieces
 
@@ -621,6 +710,17 @@ journey capture.
 **Exit:** no duplicate COMBO/LINE_CLEAR spawn, no event allocations, complete hierarchy,
 readable pieces, and no shared-board effect duplication.
 
+**Completed and current-source verified 2026-07-26:** the fixed reaction director covers
+11 canonical production inputs: lock, hard drop, line clear, Tetris, combo 4/7/10, T-spin,
+B2B, perfect clear, and level up, plus reduced motion and multiplayer ownership filtering.
+B2B reaches the dedicated echo route 4, hard drop reaches route 8, and level up reaches
+route 9. The troll's authored reactions are lock glance, line turn/pause, combo wary,
+combo delight, and the perfect-clear bow/look-up sentence. Canonical reactions add no
+event-time resources and at most three draws; Minimal structurally omits the rune while
+Low and above retain a tier-appropriate rune. The folklore tetromino palette is visible on
+the real production board. See
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md#wave-7--reactions-and-pieces).
+
 ### Wave 8 — production polish and ship gate
 
 Tune quality tiers, reflection/bloom scales, LOD transitions, asset compression, exposure,
@@ -628,37 +728,148 @@ and final palette. Run the complete §13 matrix and lifecycle soak.
 
 **Exit:** all §15 acceptance gates pass.
 
+**Evidence scope note:** implementation is complete and §15 passes within the current-v6
+rerun scope. Hardware/backend, live-layout, retention, and recovery cells not repeated
+against the current fingerprint remain explicitly historical or pending rather than being
+folded into that result.
+
+**Implementation completed and current source revalidated 2026-07-26:** the authoritative
+current-source directory is
+[`immutable-build-final-20260726-1800-v6`](../artifacts/themes/stillwater/wave8/immutable-build-final-20260726-1800-v6/)
+with local build-content fingerprint
+`267e6556dc09a9f1df8ad92612de20ad945c6798704348da84f83edbe42c1e70`.
+Its manifest hash is
+`ba47ea361bfa09bd8f57ab7d60bcc8b021a2a37f9e9fad8d970f0776a412b36a`,
+its Stillwater theme-chunk hash is
+`428f1a114a973c37a66dfa1b095c378d6ffe29aee7377cb29e2f3e150346d932`,
+and its 12-file Stillwater manifest-closure hash is
+`752e6c0bb628e6462f62046589c659312f4010d0d96dc672577c2649d0949d6a`.
+The v6 provenance scope remains a local content identity:
+`cryptographicAttestation=false`, `servedBytesVerified=false`, and
+`gitContextIncludedInFingerprint=false`.
+
+The [v6 comprehensive production report](../artifacts/themes/stillwater/wave8/v6-comprehensive-wave0-8/stillwater-wave8-summary.json)
+passes its High/WebGPU Wave 0–8 scope, including 11/11 production event captures, the
+20-cycle pause soak, 20-second explicit app-pause hidden interval, layout and resize
+matrices, 2 Hz lock stress, mixed-reaction stress, fixed-resource identities, frame
+budgets, strict production-board/modal checks, and a clean console. The separate
+[v6 genuine Page Visibility report](../artifacts/themes/stillwater/wave8/v6-page-visibility-direct-smoke2/stillwater-wave8-summary.json)
+also passes without invoking explicit pause/resume hooks.
+
+The earlier v5 dossier is historical evidence only. It records the broader AMD/RTX
+quality/backend matrix, real two-/four-player layouts, thirty-switch retention, and
+deliberate device-loss recovery, but none of those results is promoted to current-v6
+authority without a same-fingerprint rerun. See
+[`STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md`](STILLWATER_WAVES_4_8_EVIDENCE_2026-07.md#wave-8--quality-and-production-performance).
+
 ## 15. Final acceptance gates
+
+**Acceptance status, 2026-07-26:** Waves 0–8 are implemented. The current immutable v6
+High/WebGPU comprehensive run and the separate genuine Page Visibility drill pass. The
+historical v5 dossier remains useful evidence for the broader hardware/backend,
+live-multiplayer, switch-retention, and device-loss matrix, but it is not current-source
+authority. Repository command records remain separate from both build-content identities
+and are not promoted into an attestation.
 
 ### Visual
 
 - The lake, shoreline, canopy, spirit, troll, mushrooms, and particles read as one scene.
-- Board readability wins at every supported aspect/multiplayer layout.
+- Board readability passes the current-v6 synthetic solo/duo/quad/Odyssey policy matrix.
+  Every accepted current-v6 capture is additionally gated on—and visually checked for—the
+  real single-player Phaser board being running and visible, one Stillwater canvas, no
+  Serenity board mode, no blocking modal, and visible board container/stage dimensions.
+  Historical v5 evidence separately covers real two- and four-player local layouts;
+  synthetic overrides are never called live multiplayer evidence.
 - The spirit has internal form and controlled bloom; the troll is grounded and visible.
 - Water reflects and responds without looking like a mirror sheet or a 2D glow blob.
 - Near/mid/far layers remain separable without relying on particles.
-- Routine lock, Tetris, combo tiers, T-spin, B2B, and perfect clear have distinct,
-  serene, folklore-native silhouettes.
+- Lock, hard drop, line clear, Tetris, combo 4/7/10, T-spin, B2B, perfect clear, and
+  level up have distinct, serene, folklore-native responses.
 - Tetrominoes are immediately distinguishable in motion and in next/hold/ghost views.
 
 ### Technical
 
 - One ambient renderer owner and one theme rAF.
-- No event-time geometry/material/shader creation.
-- No shader compile, WebGPU validation, or console errors.
-- Native WebGPU and forced WebGL2 screenshots if the port proceeds.
-- Minimal/Low screenshot and reduced-motion capture.
-- All quality-disabled passes are removed from the graph/dispatch path.
-- Asset readiness, stale-load disposal, device loss, and theme switching are tested.
+- No event-time geometry/material object creation in the instrumented fixed pools;
+  shader-program population is unavailable.
+- The v6 comprehensive and genuine-visibility reports have zero console errors and zero
+  shader/pipeline or renderer-process failures.
+- Forced WebGL2 means `WebGPURenderer`'s WebGL2 backend running the same TSL graph. It is
+  not Phaser Canvas. The production board hardcodes `Phaser.WEBGL`, Phaser 4 supplies no
+  Canvas renderer, and a genuine Canvas 2D board fallback is unsupported.
+- Minimal omits the rune graph and premium post graph structurally; Low and Medium use
+  the lean rune without bloom/LUT; quality-disabled work is absent from construction.
+- Normal Stillwater eviction releases the runtime into one reusable renderer pool after
+  queue drain and transient-cache retirement. Only full `ThemeManager.cleanup()` calls
+  the registered terminal shared-resource disposer, which stops the renderer, calls its
+  terminal `dispose()`, detaches the canvas, and destroys an owned WebGPU device.
+- Stillwater explicitly owns Three r181's private `renderer._animation` callback while
+  pausing, validating, pooling, and resuming. That private dependency is tested and
+  diagnosed because stopping only the theme rAF would leave renderer-owned callbacks
+  alive.
+- Asset readiness and stale-load disposal are current-source tested. Device loss,
+  current-fingerprint switch retention, forced-WebGL2 parity, reduced-motion capture, and
+  live local multiplayer retain historical v5 evidence pending same-v6 reruns.
 - Attribution and source ownership are complete.
 
 ### Performance
 
-- §13 budgets pass on the target lanes.
-- Stress does not grow geometry/program counts after warmup.
-- Hidden/paused work is approximately zero.
-- Thirty switches show no monotonic heap/VRAM-proxy growth.
-- Cold hero load does not create an unmasked visible hitch.
+- The current immutable v6 High/WebGPU 1920×1080/60 Hz comprehensive lane passes:
+  idle total p95/p99 2.031/2.262 ms, reaction total p95 1.997 ms, reaction CPU/GPU p95
+  1.800/0.328 ms, and warmed reaction delta −0.100/+0.066 ms CPU/GPU.
+- The same v6 run passes the 20-second 2 Hz lock lane at 2.062 ms total p95 and the
+  30-second mixed-reaction storm at 2.097 ms total p95. It records 1,200 idle,
+  1,200 reaction, 1,200 lock-stress, and 1,800 storm samples.
+- These values are CPU submission plus renderer GPU timestamp for
+  `isolated-manual-production-frame`; 60 Hz is target pacing, not observed display FPS.
+  Queue-drain cadence/latency and scheduler pacing remain diagnostics and are not display
+  FPS.
+- High idles at 45 aggregate draws and 85,739 triangles. Canonical reactions use at most
+  three additional draws. After the one-time fixed-pool warmup, every event capture keeps
+  the same resource identities and renderer memory, with
+  `perEventResourceCreation=0`. `renderer.info.programs` is unavailable and is never
+  inferred as zero.
+- The v6 comprehensive run passes 20 pause/resume cycles and a 20-second explicit
+  app-pause interval with zero hidden update/render delta. The separate headed
+  Page Visibility run passes a native visible→hidden→visible cycle with
+  `document.hidden` and application pause state changing naturally, no explicit
+  pause/resume hooks, zero hidden update/render delta, and one canvas after resume.
+- Current-v6 cold activation reaches DOM canvas reveal 513 ms after scene start with zero
+  LongTasks overlapping reveal or beginning during the 250 ms post-reveal window. This
+  does not prove GPU/compositor presentation or the absence of every shorter hitch or GC
+  pause.
+- The six historical v5 hardware lanes all passed their recorded budgets, but their exact
+  AMD/RTX values remain historical and are not substituted for an unrecorded v6 hardware
+  matrix. The historical v5 thirty-switch census is likewise not a current-v6 leak claim.
+- Attempted v6 AMD lanes remain rejected diagnostics: visual review found their
+  reaction/final screenshots behind `#game-over-modal` after the recovery gate had
+  false-passed. They require a hardened gate, a new immutable fingerprint, and clean
+  board-visible reruns before any metric can enter acceptance evidence.
+
+### Repository verification
+
+- Current-source focused Stillwater Vitest: pass on 2026-07-26, 18 files / 183 tests.
+- Current-source affected-test selection: pass on 2026-07-26, 236 / 236 tests.
+- Current-source lifecycle and terminal-ownership selection: pass on 2026-07-26,
+  45 / 45 tests.
+- Historical repository-wide `npm test` record: one unrelated Koi Pond assertion failed
+  (`Extreme` DPR expected `1.5`, implementation returned `1.4`); 2,747 / 2,748 tests and
+  711 / 713 suite units passed. This record predates the final current-source fixes and is
+  not relabeled as a v6 run.
+- Current working-tree gates also pass typecheck; the lint ratchet with 1,429 errors
+  against its 1,443 ceiling, 985 warnings, and zero fatal errors; boundaries across 815
+  modules and 2,469 dependencies with zero violations; and the theme lifecycle CLI audit.
+  The raw lint inventory remains governed debt rather than a clean-lint claim.
+- Historical dated records separately show a passing production build and
+  `git diff --check`. No working-tree command record is promoted into the v6 content
+  identity.
+- The final custom-output-directory hygiene rebuild/recheck is intentionally not claimed
+  here until its manifest and closure hashes are reverified against the v6 identity.
+
+These working-tree/source command records are not cryptographically attested and do not
+prove they ran against served v6 bytes. Conversely, the v6 local build-content identity
+includes selected build and validation inputs but does not attest unrelated repository
+commands.
 
 ## 16. Proposed module boundaries
 
@@ -680,6 +891,8 @@ src/themes/stillwater/
   assets/ATTRIBUTION.md
 \`\`\`
 
-The first implementation batch should be Wave 0 only. Once that baseline is trustworthy,
-the highest-value visual work is Wave 1 composition followed by Wave 2 lake proof—not
-particles, more troll behaviors, or post-processing in isolation.
+The boundaries above landed selectively to clarify ownership and disposal. This document
+is now the implemented art-direction reference and the live Wave 8 validation ledger.
+Current-source authority is the immutable v6 build and its passing comprehensive
+High/WebGPU and genuine Page Visibility reports. Broader v5 matrix results remain
+explicitly historical until repeated against that current identity.

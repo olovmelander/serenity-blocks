@@ -495,7 +495,7 @@ export default class LunaraTheme extends BaseTheme {
     // Scene creation
     // -----------------------------------------------------------------------
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         this.applyQualityPreset(this.getCurrentQualityLevel());
 
         const themeContainer = document.getElementById('lunara-theme');
@@ -505,7 +505,7 @@ export default class LunaraTheme extends BaseTheme {
         }
         this.hideLegacyDom();
 
-        const created = await this.initRenderer(themeContainer);
+        const created = await this.initRenderer(themeContainer, ownerGeneration);
         if (!created) return;
 
         this.detailTextures = this.shouldUseDetailTextures() ? createLunaraDetailTextureSet() : null;
@@ -553,10 +553,13 @@ export default class LunaraTheme extends BaseTheme {
         }
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const force = shouldForceWebGL();
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let renderer = null;
 
         if (!force) {
@@ -567,12 +570,16 @@ export default class LunaraTheme extends BaseTheme {
                     alpha: false,
                     forceWebGL: false,
                 });
-                await renderer.init();
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Lunara WebGPU renderer init',
+                    ownerGeneration,
+                });
                 if (renderer.backend?.isWebGPUBackend !== true) {
                     renderer.dispose?.();
                     renderer = null;
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[LunaraTheme] WebGPU init failed, using WebGL2 fallback:', error);
                 renderer?.dispose?.();
                 renderer = null;
@@ -580,6 +587,7 @@ export default class LunaraTheme extends BaseTheme {
         }
 
         if (!renderer) {
+            if (!ownsLifecycle()) return false;
             try {
                 renderer = new THREE.WebGLRenderer({
                     antialias: this.getAntialiasEnabled(),
@@ -592,6 +600,10 @@ export default class LunaraTheme extends BaseTheme {
             }
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = !this.isWebGPU;
@@ -2796,6 +2808,7 @@ export default class LunaraTheme extends BaseTheme {
             if (dom?.parentNode) dom.parentNode.removeChild(dom);
             this.renderer = null;
         }
+        this.camera = null;
 
         this.skyMaterial = null;
         this.starMaterial = null;
@@ -2847,6 +2860,8 @@ export default class LunaraTheme extends BaseTheme {
         this.auroraMaterials = [];
         this.shockwaves = [];
         this.reactionFx = null;
+        this.directionalPrimary = null;
+        this.directionalCompanion = null;
         this.companionOrbitPosition.set(0, 0, 0);
 
         this.showLegacyDom();

@@ -52,7 +52,10 @@ const QUALITY_PRESETS = {
         comboParticleBudget: 7200,
         nebulaCount: 14,
         diskSegments: 96,
-        burstSparkCount: 600,
+        // Combo bursts are GPU-compute + idle-gated (zero cost between combos) and each spark is a
+        // small fixed-pixel additive point, so the buffer can be an order of magnitude larger than the
+        // old 600 — closer to the cosmic-noir spark model — for a real firehose during combo chains.
+        burstSparkCount: 8000,
         // 1.15x supersampling: still above native so the image stays crisp, while bounding
         // the whole pixel-bound pipeline (the ~50% post baseline + disk fill + all overdraw) by ~30%
         // on high-DPR displays. This is the single biggest uniform FPS lever at Extreme.
@@ -71,8 +74,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.35,
         comboScatterMaxBonusSeconds: 4,
         burstDecay: 0.96,
-        burstMinBatchFactor: 0.01,
-        burstMaxBatchFactor: 0.075,
+        burstMinBatchFactor: 0.05,
+        burstMaxBatchFactor: 0.28,
         particleComputeInterval: 0,
         hawkingUpdateInterval: 1 / 45,
         layeredDiskCount: 0,
@@ -84,7 +87,7 @@ const QUALITY_PRESETS = {
         comboParticleBudget: 5200,
         nebulaCount: 8,
         diskSegments: 80,
-        burstSparkCount: 400,
+        burstSparkCount: 5000,
         maxPixelRatio: 1.1,
         bloomStrength: 0.27,
         bloomRadius: 0.48,
@@ -100,8 +103,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.3,
         comboScatterMaxBonusSeconds: 3.5,
         burstDecay: 0.945,
-        burstMinBatchFactor: 0.009,
-        burstMaxBatchFactor: 0.06,
+        burstMinBatchFactor: 0.05,
+        burstMaxBatchFactor: 0.26,
         particleComputeInterval: 1 / 90,
         hawkingUpdateInterval: 1 / 36,
         layeredDiskCount: 0,
@@ -116,7 +119,7 @@ const QUALITY_PRESETS = {
         // layers while retaining native-resolution detail.
         nebulaCount: 0,
         diskSegments: 64,
-        burstSparkCount: 240,
+        burstSparkCount: 2600,
         maxPixelRatio: 1.0,
         bloomStrength: 0.22,
         bloomRadius: 0.42,
@@ -132,8 +135,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.18,
         comboScatterMaxBonusSeconds: 1.8,
         burstDecay: 0.91,
-        burstMinBatchFactor: 0.004,
-        burstMaxBatchFactor: 0.045,
+        burstMinBatchFactor: 0.045,
+        burstMaxBatchFactor: 0.24,
         particleComputeInterval: 1 / 30,
         hawkingUpdateInterval: 1 / 24,
         layeredDiskCount: 0,
@@ -145,7 +148,7 @@ const QUALITY_PRESETS = {
         comboParticleBudget: 2400,
         nebulaCount: 0,
         diskSegments: 48,
-        burstSparkCount: 180,
+        burstSparkCount: 1500,
         maxPixelRatio: 0.95,
         bloomStrength: 0.19,
         bloomRadius: 0.4,
@@ -161,8 +164,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.17,
         comboScatterMaxBonusSeconds: 1.7,
         burstDecay: 0.91,
-        burstMinBatchFactor: 0.004,
-        burstMaxBatchFactor: 0.035,
+        burstMinBatchFactor: 0.04,
+        burstMaxBatchFactor: 0.22,
         particleComputeInterval: 1 / 36,
         hawkingUpdateInterval: 1 / 24,
         layeredDiskCount: 0,
@@ -174,7 +177,7 @@ const QUALITY_PRESETS = {
         comboParticleBudget: 1500,
         nebulaCount: 0,
         diskSegments: 24,
-        burstSparkCount: 120,
+        burstSparkCount: 900,
         maxPixelRatio: 0.85,
         bloomStrength: 0.16,
         bloomRadius: 0.36,
@@ -190,8 +193,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.16,
         comboScatterMaxBonusSeconds: 1.6,
         burstDecay: 0.9,
-        burstMinBatchFactor: 0.004,
-        burstMaxBatchFactor: 0.03,
+        burstMinBatchFactor: 0.04,
+        burstMaxBatchFactor: 0.2,
         particleComputeInterval: 1 / 30,
         hawkingUpdateInterval: 1 / 20,
         layeredDiskCount: 0,
@@ -203,7 +206,7 @@ const QUALITY_PRESETS = {
         comboParticleBudget: 1400,
         nebulaCount: 0,
         diskSegments: 18,
-        burstSparkCount: 72,
+        burstSparkCount: 500,
         maxPixelRatio: 0.85,
         bloomStrength: 0.2,
         bloomRadius: 0.3,
@@ -219,8 +222,8 @@ const QUALITY_PRESETS = {
         comboScatterComboSeconds: 0.14,
         comboScatterMaxBonusSeconds: 1.4,
         burstDecay: 0.9,
-        burstMinBatchFactor: 0.003,
-        burstMaxBatchFactor: 0.025,
+        burstMinBatchFactor: 0.035,
+        burstMaxBatchFactor: 0.18,
         particleComputeInterval: 1 / 24,
         hawkingUpdateInterval: 1 / 18,
         layeredDiskCount: 0,
@@ -323,7 +326,6 @@ export default class BlackHoleTheme extends BaseTheme {
             burstComputeActiveUntil: 0,
             bloomDownsample: 0.8,
             particleComputeAccumulator: 0,
-            particleComputeSuspendedUntil: 0,
             hawkingUpdateAccumulator: 0,
         };
         this.hiddenLegacyGlobals = [];
@@ -430,6 +432,7 @@ export default class BlackHoleTheme extends BaseTheme {
             lastResolve: 0,
             compute: {},
             renderPending: false,
+            nextRenderSampleAt: 0,
         };
 
         // Animation
@@ -494,6 +497,25 @@ export default class BlackHoleTheme extends BaseTheme {
         this.fxOrigin = new THREE.Vector3();
         this.fxStreamVector = new THREE.Vector2();
         this.projectedLensCenter = new THREE.Vector3();
+
+        // Persistent scratch for the per-frame post update. Reused every frame so the render
+        // loop allocates no garbage (the array + params object were previously new each frame,
+        // a steady GC-churn source that shows up as frametime spikes). The constant grade knobs
+        // are set once here; only the four dynamic fields are rewritten in the loop, and
+        // BlackHolePost.update() dedupes unchanged uniforms so this is behaviourally identical.
+        this._lensCenterScratch = [0.5, 0.5];
+        this._postUpdateParams = {
+            bloomStrength: 0,
+            bloomRadius: 0,
+            chromaticStrength: 0,
+            bloomDownsample: 0,
+            lensCenter: this._lensCenterScratch,
+            lensStrength: 0.016,
+            exposure: 0.96,
+            saturation: 1.04,
+            tintStrength: 0.12,
+            ditherStrength: 0.0012,
+        };
 
         console.log('[BlackHole] Theme constructed');
     }
@@ -649,7 +671,7 @@ export default class BlackHoleTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[BlackHole] Creating 3D scene...');
 
         const quality = this.getCurrentQualityLevel();
@@ -683,7 +705,6 @@ export default class BlackHoleTheme extends BaseTheme {
             this.performanceState.burstComputeActiveUntil = 0;
             this.performanceState.bloomDownsample = this.qualityPreset.bloomDownsample ?? 0.58;
             this.performanceState.particleComputeAccumulator = 0;
-            this.performanceState.particleComputeSuspendedUntil = 0;
             this.performanceState.hawkingUpdateAccumulator = 0;
         }
 
@@ -696,7 +717,8 @@ export default class BlackHoleTheme extends BaseTheme {
         // Hide all old CSS-based black hole elements
         this.hideOldDOMElements(container);
 
-        await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady) return;
         this.updateCapabilityFlags();
         const initialDrift = this.computeDriftPosition(0);
         this.driftX = initialDrift.x;
@@ -866,9 +888,12 @@ export default class BlackHoleTheme extends BaseTheme {
     // Renderer & Camera
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
         const createCandidate = async (forceWebGL) => {
             const renderer = new THREE.WebGPURenderer({
@@ -878,7 +903,10 @@ export default class BlackHoleTheme extends BaseTheme {
                 forceWebGL,
             });
             try {
-                await renderer.init();
+                await this.initializeRendererCandidate(renderer, {
+                    label: `Black Hole ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                    ownerGeneration,
+                });
                 return renderer;
             } catch (error) {
                 renderer.dispose();
@@ -898,11 +926,19 @@ export default class BlackHoleTheme extends BaseTheme {
                     renderer = null;
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[BlackHole] WebGPU init failed, falling back to WebGL2:', error);
             }
         }
-        if (!renderer) renderer = await createCandidate(true);
+        if (!renderer) {
+            if (!ownsLifecycle()) return false;
+            renderer = await createCandidate(true);
+        }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
 
@@ -940,6 +976,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.probeWebGPUCapabilities();
 
         console.log('[BlackHole] Renderer initialized');
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1421,21 +1458,24 @@ export default class BlackHoleTheme extends BaseTheme {
             this.particleCompute.dispose();
             this.particleCompute = null;
         }
-        // The burst is deliberately analytic on both backends. Profiling showed
-        // that dispatching a complete storage bank and immediately consuming it
-        // in the additive MRT pass was far more expensive than the visual earned.
-        // Keeping this dormant branch makes the compute implementation available
-        // for focused experiments without putting it on the shipping path.
-        if (this.qualityPreset.enableBurstCompute && this.isWebGPU && this.flags.useCompute) {
+        // Ambient stardust is GPU-simulated on WebGPU. The integration (gravity pull, orbital
+        // assist, plane damping, out-of-bounds reset) runs in BlackHoleParticleCompute over one
+        // persistent storage buffer, and the point material reads positions straight from it — no
+        // per-frame CPU loop over thousands of motes and no per-frame attribute upload. The kernel
+        // is a faithful port of the CPU integrator (same reference-cadence damping constants), so
+        // the dust reads the same. The CPU integrator further down stays as the WebGL2 / no-compute
+        // fallback (used whenever particleCompute is null).
+        if (this.isWebGPU && this.flags.useCompute) {
             try {
                 this.particleCompute = new BlackHoleParticleCompute(particleCount);
                 this.particleCompute.setInitialState(positions, velocities, colors, sizes, lifetimes, randoms);
                 this.particleCompute.createComputeNode();
             } catch (error) {
-                console.warn('[BlackHole] Particle compute init failed, falling back to CPU:', error);
+                console.warn('[BlackHole] Ambient particle compute init failed, using CPU dust:', error);
+                this.particleCompute?.dispose?.();
                 this.particleCompute = null;
-                this.flags.useCompute = false;
-                this.flags.useLensing = false;
+                // Leave useCompute on so the GPU burst-spark banks are unaffected; the CPU
+                // integrator transparently drives the ambient dust when particleCompute is null.
             }
         }
 
@@ -1838,10 +1878,11 @@ export default class BlackHoleTheme extends BaseTheme {
             || this.particleEventBoost > 0.08
             || this.time <= this.comboScatterHoldUntil;
         const baseInterval = this.qualityPreset.particleComputeInterval ?? 0;
-        // Combo motion is force-driven, but dispatching the ambient simulation
-        // at the display's full 120/144 Hz adds no useful detail. Bound it to
-        // 20 Hz (or a tier's cheaper baseline) and integrate the elapsed delta.
-        if (active) return Math.max(baseInterval, 1 / 20);
+        // During a combo the dust moves FAST (surge suction), so the sim must update every frame to
+        // look smooth — throttling here reads as "low Hz" stepping precisely when the motion is
+        // fastest. GPU compute is cheap, so run the ambient sim at full frame rate (Extreme, base 0)
+        // or at least 60 Hz (lower tiers) while a combo is active; only throttle slow idle drift.
+        if (active) return Math.min(baseInterval, 1 / 60);
         return baseInterval;
     }
 
@@ -1874,12 +1915,40 @@ export default class BlackHoleTheme extends BaseTheme {
     // sample simply leaves drs.gpu stale, and DRS transparently falls back to frame delta.
     sampleRenderGpuTiming() {
         if (!this.gpuTimings?.enabled || this.gpuTimings.renderPending) return;
+        // Sample the render-pass cost at ~15 Hz rather than every frame. It feeds the
+        // dynamic-resolution EMA, which is consumed at 2 Hz (drs.adjustInterval) and already
+        // smoothed; sampling faster only adds a per-frame resolveTimestampsAsync().then().catch()
+        // Promise chain with no effect on the scale decision. At steady state on a GPU that never
+        // downscales this is behaviourally identical.
+        if (this.time < this.gpuTimings.nextRenderSampleAt) return;
+        this.gpuTimings.nextRenderSampleAt = this.time + (1 / 15);
         const { renderer } = this;
         if (!renderer?.backend?.trackTimestamp) return;
-        this.gpuTimings.renderPending = true;
-        renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
+        const ownerGeneration = this.lifecycleGeneration;
+        const timingState = this.gpuTimings;
+        timingState.renderPending = true;
+
+        let resolvePromise;
+        try {
+            resolvePromise = renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
+        } catch {
+            timingState.renderPending = false;
+            return;
+        }
+
+        resolvePromise
             .then((duration) => {
-                this.gpuTimings.renderPending = false;
+                // Timestamp resolves outlive a frame and may finish after stop()/cleanup().
+                // Never publish a result into a later start of this same mutable theme object.
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || renderer !== this.renderer
+                    || timingState !== this.gpuTimings
+                    || !this.isActive
+                    || this.cleanupComplete
+                    || !timingState.enabled) {
+                    return;
+                }
+                timingState.renderPending = false;
                 if (typeof duration !== 'number' || !(duration > 0)) return;
                 const drs = this.dynamicResolution;
                 if (!drs?.gpu) return;
@@ -1889,47 +1958,72 @@ export default class BlackHoleTheme extends BaseTheme {
                 drs.gpu.valid = true;
                 drs.gpu.lastSampleAt = this.time;
             })
-            .catch(() => { this.gpuTimings.renderPending = false; });
+            .catch(() => {
+                // A stale completion must not clear a newer generation's pending sample.
+                if (ownerGeneration === this.lifecycleGeneration
+                    && renderer === this.renderer
+                    && timingState === this.gpuTimings) {
+                    timingState.renderPending = false;
+                }
+            });
     }
 
     async updateGpuTimings() {
-        if (!this.gpuTimings?.enabled || !this.renderer?.backend) return;
+        const { renderer } = this;
+        const timingState = this.gpuTimings;
+        if (!timingState?.enabled || !renderer?.backend) return;
+        const ownerGeneration = this.lifecycleGeneration;
         const now = performance.now();
         // Drain the compute-timestamp pool at ~2 Hz. trackTimestamp now runs in normal
         // play (for DRS), so the compute pool must be resolved often enough that it never
         // approaches the query-pool cap and emits a warning.
-        if (now - this.gpuTimings.lastResolve < 500) return;
-        this.gpuTimings.lastResolve = now;
+        if (now - timingState.lastResolve < 500) return;
+        timingState.lastResolve = now;
 
         try {
-            await this.renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
-        } catch (error) {
-            return;
-        }
+            await renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
 
-        const { backend } = this.renderer;
-        const compute = {};
-        const addTiming = (label, node) => {
-            if (!node) return;
-            const uid = backend.getTimestampUID(node);
-            if (backend.hasTimestamp(uid)) {
-                compute[label] = backend.getTimestamp(uid);
+            // cleanup() disposes the renderer synchronously while timestamp resolution is
+            // asynchronous. Use the captured identity and lifecycle generation on both
+            // sides of the await so a late completion cannot touch the retired runtime.
+            if (ownerGeneration !== this.lifecycleGeneration
+                || renderer !== this.renderer
+                || timingState !== this.gpuTimings
+                || !this.isActive
+                || this.cleanupComplete
+                || !timingState.enabled
+                || !renderer.backend) {
+                return;
             }
-        };
 
-        addTiming('particles', this.particleCompute?.computeNode);
-        this.burstComputeBanks.forEach((burstCompute, index) => {
-            addTiming(`burst-${index}`, burstCompute?.computeNode);
-        });
-        if (!this.burstComputeBanks.length) {
-            addTiming('burst', this.burstCompute?.computeNode);
-        }
-        addTiming('lensing', this.starLensingCompute?.computeNode);
+            const { backend } = renderer;
+            const compute = {};
+            const addTiming = (label, node) => {
+                if (!node) return;
+                const uid = backend.getTimestampUID(node);
+                if (backend.hasTimestamp(uid)) {
+                    compute[label] = backend.getTimestamp(uid);
+                }
+            };
 
-        this.gpuTimings.compute = compute;
+            addTiming('particles', this.particleCompute?.computeNode);
+            this.burstComputeBanks.forEach((burstCompute, index) => {
+                addTiming(`burst-${index}`, burstCompute?.computeNode);
+            });
+            if (!this.burstComputeBanks.length) {
+                addTiming('burst', this.burstCompute?.computeNode);
+            }
+            addTiming('lensing', this.starLensingCompute?.computeNode);
 
-        if (this.flags.baseline && Object.keys(compute).length) {
-            console.log('[BlackHole] GPU compute timings (ms):', compute);
+            timingState.compute = compute;
+
+            if (this.flags.baseline && Object.keys(compute).length) {
+                console.log('[BlackHole] GPU compute timings (ms):', compute);
+            }
+        } catch {
+            // Timing telemetry is opportunistic. A disposed backend or a failed query must
+            // never reject into the animation loop.
+            return;
         }
     }
 
@@ -2711,10 +2805,10 @@ export default class BlackHoleTheme extends BaseTheme {
                 comboCount * (this.qualityPreset.comboScatterComboSeconds ?? 0.25),
             );
         this.comboScatterHoldUntil = Math.max(this.comboScatterHoldUntil, this.time + scatterHoldSeconds);
-        this.performanceState.particleComputeSuspendedUntil = Math.max(
-            this.performanceState.particleComputeSuspendedUntil,
-            this.time + 1.65,
-        );
+        // NOTE: the ambient dust compute is deliberately NOT suspended here anymore. Freezing it for
+        // ~1.65 s after each burst made the gravity settle look choppy/"low Hz" exactly when the
+        // player is watching the post-combo suck-in. The dust runs on its own GPU buffer and its
+        // compute is dispatched before the frame's render, so it can run every frame with no hazard.
 
         // Keep combo forces additive: bursts add energy instead of subtracting suction.
         this.gravitySurgeFactor = Math.min(40.0, this.gravitySurgeFactor + surgeGain * 0.35);
@@ -2727,9 +2821,12 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Prefer dedicated burst systems (like Galaxy/Blood Moon behavior).
         if (this.isWebGPU && this.flags.useCompute && this._hasAnyBurstComputeNode) {
-            const triggerCount = Math.min(1 + Math.floor(comboCount / 6), 2);
+            // Bigger combos throw more, larger waves. The buffer is large and idle-gated, so up to
+            // three staggered emissions per combo is affordable; intensity is allowed to reach 1.0 so
+            // a high combo actually hits the preset's max batch factor rather than topping out at ~0.9.
+            const triggerCount = Math.min(1 + Math.floor(comboCount / 4), 3);
             for (let i = 0; i < triggerCount; i++) {
-                const intensity = Math.min(0.9, comboCount / 12 + i * 0.06);
+                const intensity = Math.min(1.0, comboCount / 9 + i * 0.08);
                 const requestedCount = this.getBurstComputeSpawnCountForIntensity(intensity);
                 this.emitBurstParticles(requestedCount, this.random() * Math.PI * 2, true);
             }
@@ -3323,9 +3420,14 @@ export default class BlackHoleTheme extends BaseTheme {
             this.time += delta;
             this.updateDynamicResolution(delta);
             this.processGameplayFx(delta);
-            // updateGpuTimings is async; only invoke it when timings are actually enabled so we don't
-            // allocate a throwaway Promise + schedule a microtask every frame during normal play.
-            if (this.gpuTimings.enabled) this.updateGpuTimings();
+            // updateGpuTimings is async and resolves the compute-timestamp pool at ~2 Hz. Invoking
+            // it every frame allocated a throwaway Promise + microtask even on the frames it bailed
+            // at its own 500 ms check. Gate that cadence here, synchronously, so the async call only
+            // happens when there is actually a pool to drain.
+            if (this.gpuTimings.enabled
+                && performance.now() - this.gpuTimings.lastResolve >= 500) {
+                this.updateGpuTimings();
+            }
 
             // Smooth intensity transitions
             this.diskIntensity += (this.diskTargetIntensity - this.diskIntensity)
@@ -3608,26 +3710,20 @@ export default class BlackHoleTheme extends BaseTheme {
             this.projectedLensCenter
                 .set(this.driftX || 0, this.driftY || 0, this.driftZ || 0)
                 .project(this.camera);
-            const lensCenter = [
-                this.projectedLensCenter.x * 0.5 + 0.5,
-                this.projectedLensCenter.y * 0.5 + 0.5,
-            ];
+            this._lensCenterScratch[0] = this.projectedLensCenter.x * 0.5 + 0.5;
+            this._lensCenterScratch[1] = this.projectedLensCenter.y * 0.5 + 0.5;
             if (this.postProcessing) {
-                this.postProcessing.update({
-                    bloomStrength: this.qualityPreset.bloomStrength
-                        * (1 + this.bloomPulseIntensity * 0.6 + this.comboVisualEnergy * 0.2),
-                    bloomRadius: this.qualityPreset.bloomRadius,
-                    chromaticStrength: 0,
-                    bloomDownsample: this.getAdaptiveBloomDownsample(),
-                    lensCenter,
-                    lensStrength: 0.016
-                        + this.comboVisualEnergy * 0.018
-                        + (this.fxSignals.lockCompression || 0) * 0.01,
-                    exposure: 0.96,
-                    saturation: 1.04,
-                    tintStrength: 0.12,
-                    ditherStrength: 0.0012,
-                });
+                // Only the four dynamic fields change per frame; the rest (chromaticStrength,
+                // lensCenter ref, exposure, saturation, tint, dither) were set once in the ctor.
+                const postParams = this._postUpdateParams;
+                postParams.bloomStrength = this.qualityPreset.bloomStrength
+                    * (1 + this.bloomPulseIntensity * 0.6 + this.comboVisualEnergy * 0.2);
+                postParams.bloomRadius = this.qualityPreset.bloomRadius;
+                postParams.bloomDownsample = this.getAdaptiveBloomDownsample();
+                postParams.lensStrength = 0.016
+                    + this.comboVisualEnergy * 0.018
+                    + (this.fxSignals.lockCompression || 0) * 0.01;
+                this.postProcessing.update(postParams);
             }
 
             // Render
@@ -3650,17 +3746,6 @@ export default class BlackHoleTheme extends BaseTheme {
 
     updateParticles(delta) {
         if (!this.particles) return;
-
-        // The analytic combo sparks carry the foreground motion. Avoid a
-        // compute/render overlap hazard while those waves are visible, then
-        // fold the bounded elapsed time into the next ambient update.
-        if (this.time < this.performanceState.particleComputeSuspendedUntil) {
-            this.performanceState.particleComputeAccumulator = Math.min(
-                0.075,
-                this.performanceState.particleComputeAccumulator + delta,
-            );
-            return;
-        }
 
         if (this.isWebGPU && this.flags.useCompute && this.particleCompute?.computeNode && this.renderer?.compute) {
             const computeInterval = this.getParticleComputeInterval();
@@ -3697,6 +3782,24 @@ export default class BlackHoleTheme extends BaseTheme {
 
         if (!this.particleAttributes) return;
 
+        // The GPU-compute particle path is dormant on this build (no preset sets
+        // enableBurstCompute), so this analytic integration is the LIVE ambient sim — a
+        // per-frame main-thread loop over up to `particleCount` dust motes plus a full
+        // position+lifetime attribute upload. Earlier GPU-visibility profiling missed this
+        // cost because it toggled `.visible`, not the update. Cap it at 60 Hz and fold the
+        // skipped display frames into one bounded, integrated timestep. The integrator is
+        // already stepScale-correct (damping uses `** stepScale`; forces scale by dt), so a
+        // larger dt lands the motes in the same places — visually identical for slow background
+        // dust. 60 Hz was chosen as the cap because it matches the most common panel refresh
+        // and stays at every-frame on a 60 Hz display (zero behaviour change there), while
+        // removing up to ~3/4 of this work on a 120/240 Hz panel. The accumulator also folds in
+        // any time banked by the post-combo suspension window above, matching the compute path.
+        const CPU_PARTICLE_INTERVAL = 1 / 60;
+        this.performanceState.particleComputeAccumulator += delta;
+        if (this.performanceState.particleComputeAccumulator < CPU_PARTICLE_INTERVAL) return;
+        const simDelta = Math.min(0.075, this.performanceState.particleComputeAccumulator);
+        this.performanceState.particleComputeAccumulator = 0;
+
         const positions = this.particleAttributes.position.array;
         const velocities = this.particleVelocities;
         const lifetimes = this.particleLifetimes;
@@ -3704,9 +3807,9 @@ export default class BlackHoleTheme extends BaseTheme {
         const comboScatterWindowActive = this.time <= this.comboScatterHoldUntil;
         const normalY = this.diskSinTilt;
         const normalZ = this.diskCosTilt;
-        const stepScale = delta * 60.0;
-        const planePullScale = delta * 60.0;
-        const planeDamp = Math.min(0.35, delta * 5.0);
+        const stepScale = simDelta * 60.0;
+        const planePullScale = simDelta * 60.0;
+        const planeDamp = Math.min(0.35, simDelta * 5.0);
 
         const activeCount = Math.min(
             lifetimes.length,
@@ -3738,7 +3841,7 @@ export default class BlackHoleTheme extends BaseTheme {
                     const nz = pz / dist;
 
                     // Outward force - stronger when closer to center, scaled by burstFactor
-                    const burstStrength = effectiveBurstFactor * (400.0 / (dist + 50)) * delta;
+                    const burstStrength = effectiveBurstFactor * (400.0 / (dist + 50)) * simDelta;
 
                     velocities[i3] += nx * burstStrength;
                     velocities[i3 + 1] += ny * burstStrength;
@@ -3767,15 +3870,22 @@ export default class BlackHoleTheme extends BaseTheme {
 
                     // Gravity pull - increases closer to center
                     // Reduced from 1200 to 800 for even slower "floating" feel
-                    let pullStrength = (800.0 / (distSq + 100)) * delta;
+                    let pullStrength = (800.0 / (distSq + 100)) * simDelta;
                     if (comboLocked) {
                         // Preserve combo burst trails so they accumulate across close combos.
                         pullStrength *= 0.08;
                     }
 
-                    // STRONG suction during combos
+                    // STRONG suction during combos, eased smoothly back to normal on the way out.
+                    // The boost keeps its full impact strength at high surge (equals the old
+                    // 5 + surge*2 once surge >= 4) but eases CONTINUOUSLY down to 1.0 as the surge
+                    // fades, instead of holding ~5x and then snapping to 1x — so the post-combo pull
+                    // settles smoothly rather than cutting out. Mirrors the GPU kernel exactly.
                     if (this.gravitySurgeFactor > 0) {
-                        pullStrength *= (5.0 + this.gravitySurgeFactor * 2.0);
+                        const surge = this.gravitySurgeFactor;
+                        const t = Math.max(0, Math.min(1, surge * 0.25)); // smoothstep(0, 4, surge)
+                        const surgeEase = t * t * (3.0 - 2.0 * t);
+                        pullStrength *= (1.0 + surge * 2.0 + surgeEase * 4.0);
                     }
 
                     velocities[i3] -= px * pullStrength;
@@ -3875,7 +3985,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
             // Decay lifetime
             if (lifetimes[i] < 1.0) {
-                lifetimes[i] += delta * 0.5;
+                lifetimes[i] += simDelta * 0.5;
                 if (lifetimes[i] > 1.0) lifetimes[i] = 1.0;
             }
         }
@@ -3911,6 +4021,13 @@ export default class BlackHoleTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
+        // Invalidate timestamp work before any renderer/backend can be disposed. In-flight
+        // promises are generation-fenced above; clearing these flags also makes stop()
+        // immediately quiescent from the animation loop's point of view.
+        if (this.gpuTimings) {
+            this.gpuTimings.enabled = false;
+            this.gpuTimings.renderPending = false;
+        }
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         if (this.resizeHandler) {
@@ -3959,7 +4076,6 @@ export default class BlackHoleTheme extends BaseTheme {
             // We enabled timestamp tracking for GPU-timed DRS; turn it back off before
             // teardown so nothing lingers on the backend if it is ever pooled/reused.
             if (this.renderer.backend) this.renderer.backend.trackTimestamp = false;
-            this.gpuTimings.enabled = false;
             this.removeRendererResilience();
             this.disposeRenderer(this.renderer, { nullInstance: false });
         }

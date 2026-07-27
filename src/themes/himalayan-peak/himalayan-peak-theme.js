@@ -129,7 +129,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         return typeof window === 'undefined' || window.settings?.backgroundComboEffects === true;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) {
             console.error('[HimalayanPeak] Container not found');
@@ -146,25 +146,38 @@ export default class HimalayanPeakTheme extends BaseTheme {
         const w = window.innerWidth;
         const h = window.innerHeight;
 
+        const renderer = new THREE.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
         try {
-            this.renderer = new THREE.WebGPURenderer({
-                antialias: this.getAntialiasEnabled(),
-                alpha: false,
-                powerPreference: 'high-performance',
+            await this.initializeRendererCandidate(renderer, {
+                timeoutMs: 4000,
+                label: 'Himalayan Peak WebGPU renderer init',
+                ownerGeneration,
             });
-            await Promise.race([
-                this.renderer.init(),
-                new Promise((_, reject) => { setTimeout(() => reject(new Error('WebGPU init timeout')), 4000); }),
-            ]);
-            if (this.renderer.backend?.isWebGPUBackend !== true) {
+            if (renderer.backend?.isWebGPUBackend !== true) {
                 throw new Error('WebGPU backend not active after init');
             }
         } catch (err) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return;
             console.error('[HimalayanPeak] WebGPU init failed:', err);
+            this.disposeRenderer(renderer, { nullInstance: false });
             container.innerHTML = '<div style="color:#c8d2f0;text-align:center;padding:2em;'
                 + `font-family:sans-serif;">WebGPU initialization failed: ${err.message}</div>`;
             return;
         }
+
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
 
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
         this.renderer.setSize(w, h);

@@ -19,6 +19,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
         this.simulator = null;
         this.canvas = null;
+        this.canvasTexture = null;
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
@@ -105,6 +106,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
                     `;
                     texture.style.backgroundSize = '4px 4px';
                     container.insertBefore(texture, this.canvas);
+                    this.canvasTexture = texture;
                 }
             } else {
                 console.error('[ChromaticImpasto] Theme container not found!');
@@ -464,23 +466,41 @@ export default class ChromaticImpastoTheme extends BaseTheme {
     }
 
     stop() {
-        if (!this.isActive) return;
-        this.clearEffectTimeouts();
-        this.eventUnsubscribers.forEach((u) => u());
-        this.eventUnsubscribers = [];
+        // ThemeManager invalidates activity before invoking terminal cleanup.
+        // Base teardown must therefore be unconditional and idempotent.
         super.stop();
+        this.clearEffectTimeouts();
+        this.clearEventUnsubscribers();
+
+        const { simulator } = this;
+        this.simulator = null;
+        try {
+            simulator?.cleanup?.();
+        } catch (error) {
+            console.warn('[ChromaticImpasto] Simulator cleanup failed:', error);
+        }
+
+        const { canvas } = this;
+        this.canvas = null;
+        try {
+            canvas?.parentNode?.removeChild?.(canvas);
+        } catch (error) {
+            console.warn('[ChromaticImpasto] Canvas removal failed:', error);
+        }
+
+        // The registry owns the outer theme shell, but this texture node is
+        // created by this instance and must not accumulate in that shell.
+        const { canvasTexture } = this;
+        this.canvasTexture = null;
+        try {
+            canvasTexture?.parentNode?.removeChild?.(canvasTexture);
+        } catch (error) {
+            console.warn('[ChromaticImpasto] Canvas texture removal failed:', error);
+        }
     }
 
     cleanup() {
         this.stop();
-        if (this.simulator) {
-            this.simulator.cleanup();
-            this.simulator = null;
-        }
-        if (this.canvas && this.canvas.parentNode) {
-            this.canvas.parentNode.removeChild(this.canvas);
-        }
-        this.canvas = null;
         super.cleanup();
     }
 

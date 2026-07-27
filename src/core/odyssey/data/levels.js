@@ -961,7 +961,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.241,
 
         theme: {
-            primary: 'swedish-forest',
+            primary: 'golden-forest',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -3426,7 +3426,7 @@ const BASE_LEVEL_CONFIGS = [
 
         theme: {
             primary: 'chromatic-impasto',
-            overlays: ['electric-dreams'],
+            overlays: ['electric-dreams-v3'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
@@ -3495,7 +3495,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.907,
 
         theme: {
-            primary: 'electric-dreams',
+            primary: 'electric-dreams-v3',
             overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
             transitionIn: 'warp',
             transitionDuration: 6000,
@@ -3568,7 +3568,7 @@ const BASE_LEVEL_CONFIGS = [
 
         theme: {
             primary: 'singing-bowl',
-            overlays: ['electric-dreams', 'black-hole'],
+            overlays: ['electric-dreams-v3', 'black-hole'],
             transitionIn: 'warp',
             transitionDuration: 6000,
         },

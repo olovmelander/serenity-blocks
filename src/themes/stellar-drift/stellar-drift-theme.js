@@ -1573,7 +1573,13 @@ export default class StellarDriftTheme extends BaseTheme {
         // its closure pinned this entire theme instance (scene included) on the
         // never-resolving promise for EVERY activation — heap-snapshot-confirmed as the
         // dominant SB-15 WebGPU-lane leak (~2.9 MB/toggle). Rely on onDeviceLost only.
+        const rendererAtRegistration = this.renderer;
+        const ownerGeneration = this.lifecycleGeneration;
         this.renderer.onDeviceLost = (info) => {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete
+                || this.renderer !== rendererAtRegistration) return;
             this.handleDeviceLoss(info);
         };
     }
@@ -2230,7 +2236,7 @@ export default class StellarDriftTheme extends BaseTheme {
         return summary;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[StellarDrift] Creating Andromeda-style scene...');
 
         this.refreshRuntimeFlags();
@@ -2252,7 +2258,7 @@ export default class StellarDriftTheme extends BaseTheme {
             return;
         }
 
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady || !this.renderer || !this.scene || !this.camera) {
             console.error('[StellarDrift] Renderer initialization failed.');
             return;
@@ -2326,12 +2332,15 @@ export default class StellarDriftTheme extends BaseTheme {
     // Renderer & Camera (Matching Andromeda exactly)
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         if (!container || typeof window === 'undefined') return false;
 
         const width = window.innerWidth;
         const height = window.innerHeight;
         const preserveDrawingBuffer = this.flags.baseline === true;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let renderer = null;
         let webgpuRenderer = null;
 
@@ -2344,7 +2353,10 @@ export default class StellarDriftTheme extends BaseTheme {
                     preserveDrawingBuffer,
                     forceWebGL: false,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Stellar Drift WebGPU renderer init',
+                    ownerGeneration,
+                });
                 if (webgpuRenderer.backend?.isWebGPUBackend === true) {
                     renderer = webgpuRenderer;
                 } else {
@@ -2352,6 +2364,7 @@ export default class StellarDriftTheme extends BaseTheme {
                     webgpuRenderer = null;
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[StellarDrift] WebGPU init failed, falling back to WebGL2:', error);
                 webgpuRenderer?.dispose();
                 webgpuRenderer = null;
@@ -2359,6 +2372,7 @@ export default class StellarDriftTheme extends BaseTheme {
         }
 
         if (!renderer) {
+            if (!ownsLifecycle()) return false;
             try {
                 renderer = new THREE.WebGLRenderer({
                     antialias: this.getAntialiasEnabled(),
@@ -2372,6 +2386,10 @@ export default class StellarDriftTheme extends BaseTheme {
             }
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = renderer.isWebGLRenderer === true

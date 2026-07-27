@@ -14,6 +14,8 @@ import {
     attribute,
     clamp,
     cos,
+    dot,
+    exp,
     float,
     length,
     max,

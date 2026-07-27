@@ -6,6 +6,7 @@
  * the renderer. It owns timing state, but never reads gameplay state or touches
  * Three.js objects.
  */
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 
 const BOARD_COLUMNS = 10;
 const VISIBLE_ROWS = 20;
@@ -14,6 +15,10 @@ const MAX_SHAPE_SIZE = 8;
 
 const DEFAULT_MAX_COMMANDS = 24;
 const MAX_CONFIGURED_COMMANDS = 64;
+
+// Shared, immutable empty result for drainCommands() on the common (idle) frame — avoids a
+// per-frame array allocation. Frozen so any accidental mutation by a caller fails loudly.
+const EMPTY_COMMANDS = Object.freeze([]);
 
 export const BLACK_HOLE_FX_COMMAND = Object.freeze({
     PIECE_LOCK: 'black-hole:piece-lock',
@@ -256,11 +261,20 @@ export function resolveBlackHoleLockOrigin(payload = {}, fallbackOrigin = null) 
         }),
         { x: 0, y: 0 },
     );
-    return originFromBoardPoint(
+    const origin = originFromBoardPoint(
         centroid.x / glyph.boardCells.length,
         centroid.y / glyph.boardCells.length,
         payload,
     );
+    // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN lock position; prefer it
+    // over the fixed-board normalization so the effect tracks where the piece actually landed.
+    // Keep origin.board as the true centroid (the onPieceLock coalesce key reads it).
+    const viewport = readLockViewportOrigin(payload);
+    if (viewport) {
+        origin.normalized = { x: viewport.x, y: viewport.y };
+        origin.centered = { x: viewport.x * 2 - 1, y: 1 - viewport.y * 2 };
+    }
+    return origin;
 }
 
 /** Resolve a row-aligned origin, retaining the previous action as a safe fallback. */
@@ -280,7 +294,15 @@ export function resolveBlackHoleLineOrigin(payload = {}, fallbackOrigin = null) 
     }
 
     const meanRow = rows.reduce((total, row) => total + row, 0) / rows.length;
-    return originFromBoardPoint(BOARD_COLUMNS / 2, meanRow + 0.5, payload);
+    const origin = originFromBoardPoint(BOARD_COLUMNS / 2, meanRow + 0.5, payload);
+    // Infinity supplies the ON-SCREEN clear origin; prefer its Y over the fixed-board row
+    // normalization (clearedRows are absolute rows in Infinity → the fallback pins to bottom).
+    const viewport = readLockViewportOrigin(payload);
+    if (viewport) {
+        origin.normalized.y = viewport.y;
+        origin.centered.y = 1 - viewport.y * 2;
+    }
+    return origin;
 }
 
 /** Sample the three lock beats without timers or refresh-rate assumptions. */
@@ -733,14 +755,23 @@ export default class BlackHoleFXController {
     }
 
     getSignals() {
-        return {
-            ...this.signals,
-            activeLockCount: this.activeLocks.length,
-            timeMs: this.timeMs,
-        };
+        // Reuse a persistent view object. step() calls this every animation frame, so a fresh
+        // spread here was a steady per-frame allocation. Object.assign copies into the existing
+        // object (no allocation) and stays robust if the signal shape changes. Callers read the
+        // fields immediately within the frame and never retain the object across a step, so a
+        // shared instance is safe.
+        const view = this._signalsView || (this._signalsView = {});
+        Object.assign(view, this.signals);
+        view.activeLockCount = this.activeLocks.length;
+        view.timeMs = this.timeMs;
+        return view;
     }
 
     drainCommands() {
+        // The queue is empty on the vast majority of frames (commands only enqueue on
+        // lock/clear/combo events). Return a shared empty array in that case so the per-frame
+        // drain allocates nothing; only swap in a fresh backing array when there is real work.
+        if (this.pendingCommands.length === 0) return EMPTY_COMMANDS;
         const commands = this.pendingCommands;
         this.pendingCommands = [];
         return commands;

@@ -1876,7 +1876,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[CosmicNoir] Creating stunning 3D cosmic noir scene...');
 
         this.cancelAnimationLoop();
@@ -1923,7 +1923,8 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         container.innerHTML = '';
 
-        await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady) return;
         if (!this.renderer || !this.scene || !this.camera) {
             console.error('[CosmicNoir] Renderer initialization failed');
             return;
@@ -1996,13 +1997,17 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Renderer & Camera
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const preserveDrawingBuffer = this.flags.preserveDrawingBuffer === true;
         const trackTimestamp = this.performanceInstrumentationEnabled === true;
         const webgpuAntialias = this.getWebGpuAntialiasEnabled();
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let webgpuRenderer = null;
+        let renderer = null;
 
         if (!this.flags.forceWebGL) {
             try {
@@ -2013,8 +2018,12 @@ export default class CosmicNoirTheme extends BaseTheme {
                     preserveDrawingBuffer,
                     trackTimestamp,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Cosmic Noir WebGPU renderer init',
+                    ownerGeneration,
+                });
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[CosmicNoir] WebGPU init failed, falling back to WebGL2:', error.message);
                 if (webgpuRenderer) {
                     webgpuRenderer.dispose();
@@ -2034,7 +2043,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         if (hasWebGPUBackend && !compatibilityGuardEnabled) {
-            this.renderer = webgpuRenderer;
+            renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.isWebGL = false;
         } else {
@@ -2043,7 +2052,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 webgpuRenderer = null;
             }
 
-            this.renderer = new THREE.WebGLRenderer({
+            if (!ownsLifecycle()) return false;
+            renderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 powerPreference: 'high-performance',
                 alpha: false,
@@ -2053,7 +2063,11 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.isWebGL = true;
         }
 
-        if (!this.renderer) return;
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
 
         this.renderer.setClearColor(0x000000, 1); // Pure black background
         this.renderer.setPixelRatio(this.getRendererPixelRatio());
@@ -2067,12 +2081,20 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
 
-        this.setupRendererResilience(this.renderer, {
-            webgpuDevice: this.isWebGPU ? this.renderer?.backend?.device : null,
-            onDeviceLost: (info) => {
+        // WebGPUBackend already owns device.lost and dispatches through the
+        // renderer's replaceable callback. Register there so teardown can
+        // sever the theme closure instead of retaining it on device.lost.
+        this.setupRendererResilience(this.renderer);
+        if (this.isWebGPU) {
+            const rendererAtRegistration = this.renderer;
+            this.setupRendererResilience(null, {
+                webgpuDevice: rendererAtRegistration.backend?.device,
+            });
+            rendererAtRegistration.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== rendererAtRegistration) return;
                 this.handleDeviceLoss(info);
-            },
-        });
+            };
+        }
         this.registerContainer(container);
 
         this.scene = new THREE.Scene();
@@ -2098,6 +2120,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.scene.add(ambientLight);
 
         console.log(`[CosmicNoir] Renderer initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

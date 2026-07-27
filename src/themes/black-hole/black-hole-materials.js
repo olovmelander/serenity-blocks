@@ -957,7 +957,19 @@ export function createBurstSparkNodeMaterial(params = {}) {
     })();
 
     const sizeLife = float(1.0).sub(lifeValue.mul(0.6));
-    material.sizeNode = baseSize.mul(sizeLife);
+    // Cosmic-noir-style depth attenuation. sizeAttenuation is off, so sizeNode is in raw pixels;
+    // dividing by view-space depth shrinks the far half of the explosion (a real fill saving now the
+    // buffer is an order of magnitude larger) and adds a genuine depth cue, while the clamp bounds the
+    // near field so a spark passing close to the camera can't balloon into a fill spike. K≈1045 keeps a
+    // spark at the black hole's ~1045-unit camera distance at its former pixel size, so the overall
+    // scale reads the same — only the depth spread is new. Inactive sparks are alpha-0 regardless.
+    const burstViewPos = modelViewMatrix.mul(vec4(positionNode, float(1.0)));
+    const burstDepth = max(float(1.0), burstViewPos.z.negate());
+    material.sizeNode = clamp(
+        baseSize.mul(sizeLife).mul(float(1045.0)).div(burstDepth),
+        float(2.0),
+        float(20.0),
+    );
 
     const center = uv().sub(0.5);
     const dist = length(center);

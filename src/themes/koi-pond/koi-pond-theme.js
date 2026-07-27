@@ -1,958 +1,835 @@
-import { BaseTheme } from '../base-theme.js';
-import { KOI_POND_TETROMINOS } from './koi-pond-tetrominos.js';
-import { eventBus, EVENTS } from '../../events/event-bus.js';
-
+/* eslint-disable import/no-extraneous-dependencies, import/no-unresolved */
 /**
- * Koi Pond Theme - A serene aquatic sanctuary (Top-Down View)
+ * Koi Pond — "Moonwake Sanctuary" production adapter.
  *
- * Features:
- * - Gracefully swimming koi fish viewed from above
- * - Floating lily pads with gentle bobbing
- * - Dynamic water ripples following the fish
- * - Shimmering water surface with light reflections
- * - Cherry blossom petals floating on surface
- *
- * Theme-integrated combo effects (all top-down perspective):
- * - Ripple impacts spreading outward
- * - Koi fish darting/swirling excitedly
- * - Lily pad wobbles from water disturbance
- * - Cherry blossom petal scatter
- * - Water droplet ring impacts
- * - Light glints dancing on water surface
- * - Swirling water currents
- *
- * Quality Presets: Minimal, Low, Medium, High, Ultra, Extreme
+ * The visual implementation lives in rendering/koi-pond-runtime.js and is
+ * shared with the playground proof. This class owns only BaseTheme lifecycle,
+ * backend selection, gameplay-event forwarding, quality changes, warmup, and
+ * deterministic teardown.
  */
+import * as THREE from 'three/webgpu';
+
+import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { getViewport } from '../../utils/viewport.js';
+import { KOI_POND_TETROMINOS } from './koi-pond-tetrominos.js';
+import {
+    KOI_POND_LAYOUT,
+    getKoiPondPixelRatioCap,
+    normalizeKoiPondQuality,
+} from './rendering/koi-pond-layout.js';
+import { createKoiPondRuntime } from './rendering/koi-pond-runtime.js';
+import { KoiPondPost, getKoiPondPostProfile } from './rendering/koi-pond-post.js';
+
+const RENDERER_INIT_TIMEOUT_MS = 5_500;
+const PERFORMANCE_SAMPLE_LIMIT = 240;
+// Reduced-motion idle frames present at ~32 fps; full rate resumes on any reaction.
+const REDUCED_MOTION_FRAME_MS = 1000 / 32;
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function readBoolParam(...keys) {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return keys.some((key) => {
+        if (!params.has(key)) return false;
+        const value = params.get(key);
+        return value === null
+            || value === ''
+            || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+    });
+}
+
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || {};
+    if (detail.type === key) {
+        return {
+            present: true,
+            value: detail.value
+                ?? detail[key]
+                ?? detail.changed?.[key]
+                ?? detail.settings?.[key],
+        };
+    }
+    const sources = [detail, detail.changed, detail.settings];
+    for (let index = 0; index < sources.length; index += 1) {
+        const source = sources[index];
+        if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+            return { present: true, value: source[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function isDirectSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || {};
+    return detail.type === key
+        || Object.prototype.hasOwnProperty.call(detail, key)
+        || (
+            detail.changed
+            && Object.prototype.hasOwnProperty.call(detail.changed, key)
+        );
+}
+
+function normalizeBooleanSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(normalized)) return false;
+        if (['true', '1', 'on', 'yes'].includes(normalized)) return true;
+    }
+    return value === true;
+}
+
 export default class KoiPondTheme extends BaseTheme {
     constructor() {
         super('koi-pond');
-        this.koiInstances = [];
-        this.lilyPadInstances = [];
-        this.lastRippleTime = 0;
+
+        this.resourceProfile = 'heavy-gpu';
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.runtime = null;
+        this.post = null;
+        this.isWebGPU = false;
+        this.quality = 'High';
+        this.forceWebGL = false;
+        this.runtimeGeneration = 0;
+        this.animationLoopStarted = false;
+        this.animationDriver = null;
+        this.lastFrameTimeMs = null;
+        this.lastRenderTimeMs = null;
+        this.elapsedTime = 0;
         this.eventUnsubscribers = [];
-        this.animationFrameId = null;
-        this.effectTimeouts = new Set();
-
-        // Graphics quality presets
-        this.qualityChangeHandler = null;
-        this.currentQuality = 'High';
-        this.qualityPresets = {
-            Minimal: {
-                // Lily pads
-                lilyPadCount: 3,
-                lilyPadAnimationEnabled: false,
-
-                // Koi fish
-                koiCount: 3,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: false,
-                rippleInterval: 2000,
-
-                // Water surface
-                waterShimmerEnabled: false,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 0,
-
-                // Effects
-                enableComboEffects: false,
-                rippleImpactCount: 0,
-                koiDartCount: 0,
-                lilyPadWobbleCount: 0,
-                petalScatterCount: 0,
-                dropletRingCount: 0,
-                lightGlintCount: 0,
-                waterSwirlCount: 0,
-
-                // Performance
-                animationFrameSkip: 3,
-            },
-            Low: {
-                // Lily pads
-                lilyPadCount: 4,
-                lilyPadAnimationEnabled: true,
-
-                // Koi fish
-                koiCount: 4,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: true,
-                rippleInterval: 1500,
-
-                // Water surface
-                waterShimmerEnabled: true,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 5,
-
-                // Effects
-                enableComboEffects: true,
-                rippleImpactCount: 2,
-                koiDartCount: 1,
-                lilyPadWobbleCount: 1,
-                petalScatterCount: 4,
-                dropletRingCount: 2,
-                lightGlintCount: 4,
-                waterSwirlCount: 1,
-
-                // Performance
-                animationFrameSkip: 2,
-            },
-            Medium: {
-                // Lily pads
-                lilyPadCount: 5,
-                lilyPadAnimationEnabled: true,
-
-                // Koi fish
-                koiCount: 5,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: true,
-                rippleInterval: 1000,
-
-                // Water surface
-                waterShimmerEnabled: true,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 10,
-
-                // Effects
-                enableComboEffects: true,
-                rippleImpactCount: 3,
-                koiDartCount: 2,
-                lilyPadWobbleCount: 2,
-                petalScatterCount: 8,
-                dropletRingCount: 4,
-                lightGlintCount: 8,
-                waterSwirlCount: 2,
-
-                // Performance
-                animationFrameSkip: 1,
-            },
-            High: {
-                // Lily pads
-                lilyPadCount: 6,
-                lilyPadAnimationEnabled: true,
-
-                // Koi fish
-                koiCount: 7,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: true,
-                rippleInterval: 700,
-
-                // Water surface
-                waterShimmerEnabled: true,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 15,
-
-                // Effects
-                enableComboEffects: true,
-                rippleImpactCount: 4,
-                koiDartCount: 3,
-                lilyPadWobbleCount: 3,
-                petalScatterCount: 12,
-                dropletRingCount: 6,
-                lightGlintCount: 12,
-                waterSwirlCount: 3,
-
-                // Performance
-                animationFrameSkip: 0,
-            },
-            Ultra: {
-                // Lily pads
-                lilyPadCount: 8,
-                lilyPadAnimationEnabled: true,
-
-                // Koi fish
-                koiCount: 9,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: true,
-                rippleInterval: 500,
-
-                // Water surface
-                waterShimmerEnabled: true,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 20,
-
-                // Effects
-                enableComboEffects: true,
-                rippleImpactCount: 5,
-                koiDartCount: 4,
-                lilyPadWobbleCount: 4,
-                petalScatterCount: 16,
-                dropletRingCount: 8,
-                lightGlintCount: 16,
-                waterSwirlCount: 4,
-
-                // Performance
-                animationFrameSkip: 0,
-            },
-            Extreme: {
-                // Lily pads
-                lilyPadCount: 10,
-                lilyPadAnimationEnabled: true,
-
-                // Koi fish
-                koiCount: 12,
-                koiAnimationEnabled: true,
-
-                // Ripples
-                rippleEnabled: true,
-                rippleInterval: 400,
-
-                // Water surface
-                waterShimmerEnabled: true,
-
-                // Floating petals (ambient)
-                floatingPetalCount: 30,
-
-                // Effects
-                enableComboEffects: true,
-                rippleImpactCount: 6,
-                koiDartCount: 5,
-                lilyPadWobbleCount: 5,
-                petalScatterCount: 24,
-                dropletRingCount: 10,
-                lightGlintCount: 24,
-                waterSwirlCount: 5,
-
-                // Performance
-                animationFrameSkip: 0,
-            },
-        };
-
-        // Active preset reference
-        this.activePreset = this.qualityPresets.High;
+        this.reducedMotionQuery = null;
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.settingsRebuildQueued = false;
+        this.performanceEnabled = false;
+        this.frameSamples = [];
+        this.diagnosticsApi = null;
+        this.appliedAntialiasing = null;
+        this.pendingQuality = null;
+        this.pendingAntialiasing = null;
+        this.settingsResizeQueued = false;
     }
 
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const timeoutId = window.setTimeout(() => {
-            this.effectTimeouts.delete(timeoutId);
-            callback();
-        }, delayMs);
-        this.effectTimeouts.add(timeoutId);
-        return timeoutId;
+    getQualitySetting() {
+        if (typeof window === 'undefined') return 'High';
+        const params = new URLSearchParams(window.location.search);
+        return normalizeKoiPondQuality(
+            params.get('koiQuality')
+                || params.get('quality')
+                || window.settings?.effectQuality
+                || window.settings?.graphicsQuality
+                || 'High',
+        );
     }
 
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-        this.effectTimeouts.clear();
+    getRuntimeParams() {
+        const params = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search)
+            : new URLSearchParams();
+        if (!params.has('quality')) params.set('quality', this.quality);
+        return params;
     }
 
-    /**
-     * Get current graphics quality from settings
-     */
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
+    prefersReducedMotion() {
+        if (typeof window === 'undefined') return false;
+        return window.settings?.reducedMotion === true
+            || this.reducedMotionQuery?.matches === true
+            || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     }
 
-    /**
-     * Apply a graphics quality preset
-     */
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`[KoiPondTheme] Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
+    getEffectsIntensity() {
+        if (typeof window === 'undefined') return 1;
+        if (window.settings?.backgroundComboEffects === false) return 0;
+        // Reduced-motion shaping belongs to the routing/runtime layer. Keeping
+        // this as a simple on/off gate avoids multiplying the same attenuation
+        // through the theme, router, and renderer until seals become illegible.
+        return 1;
+    }
+
+    effectsAllowed(eventName) {
+        if (!this.isActive || this.isPaused) return false;
+        if (typeof window !== 'undefined' && window.settings?.backgroundComboEffects === false) {
+            return false;
+        }
+        if (
+            eventName === 'PIECE_LOCK'
+            && typeof window !== 'undefined'
+            && window.settings?.pieceLockRipple === false
+        ) {
+            return false;
+        }
+        return true;
+    }
+
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error('[KoiPond] Theme container not found.');
+
+        this.disposeRuntime();
+        // Koi Pond owns the complete background. The shared transparent renderer
+        // would otherwise keep a second zero-draw loop alive behind this canvas.
+        this.webglRenderer?.stop?.();
+        const generation = ++this.runtimeGeneration;
+
+        container.replaceChildren();
+        container.style.overflow = 'hidden';
+        container.style.background = '#020b0a';
+
+        this.quality = this.pendingQuality ?? this.getQualitySetting();
+        const antialiasOverride = this.pendingAntialiasing;
+        this.pendingQuality = null;
+        this.pendingAntialiasing = null;
+        const rendererSettingsAtBuildStart = this.getRendererSettingsSnapshot();
+        this.performanceEnabled = readBoolParam('koiPerf', 'koiProfile', 'profile');
+        this.frameSamples = [];
+        this.reducedMotionQuery = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+
+        const rendererReady = await this.initRenderer(
+            container,
+            generation,
+            antialiasOverride,
+            ownerGeneration,
+        );
+        if (!rendererReady
+            || generation !== this.runtimeGeneration
+            || ownerGeneration !== this.lifecycleGeneration) return;
+
+        const viewport = getViewport();
+        const width = Math.max(1, viewport.width);
+        const height = Math.max(1, viewport.height);
+        const cameraLayout = KOI_POND_LAYOUT.camera;
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(
+            cameraLayout.fov,
+            width / height,
+            cameraLayout.near,
+            cameraLayout.far,
+        );
+
+        try {
+            this.runtime = createKoiPondRuntime({
+                scene: this.scene,
+                camera: this.camera,
+                renderer: this.renderer,
+                params: this.getRuntimeParams(),
+                quality: this.quality,
+                reducedMotion: this.prefersReducedMotion(),
+                intensity: this.getEffectsIntensity(),
+            });
+            this.runtime.camera?.(0, this.camera);
+            this.applyRuntimeSettings();
+            // Water sets ACES on the renderer for its standalone playground proof.
+            // The theme owns grading through the AgX post chain instead, so the
+            // renderer must not double tone-map — renderOutput applies the
+            // renderer's NoToneMapping + sRGB OETF to the post graph's linear output.
+            this.renderer.toneMapping = THREE.NoToneMapping;
+            this.createPost();
+            await this.warmRuntime(generation);
+        } catch (error) {
+            console.error('[KoiPond] Moonwake Sanctuary creation failed:', error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
         }
 
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        if (this.isActive) {
-            this.refreshQualityDependentElements();
-        }
-
-        console.log(`🐟 [KoiPondTheme] Applied ${quality} quality preset`);
-    }
-
-    /**
-     * Refresh elements that depend on quality settings
-     */
-    refreshQualityDependentElements() {
-        const lilyPadContainer = document.getElementById('lily-pads');
-        if (lilyPadContainer) {
-            lilyPadContainer.innerHTML = '';
-            this.lilyPadInstances = [];
-            this.createLilyPads();
-        }
-
-        const koiContainer = document.getElementById('koi-fish');
-        if (koiContainer) {
-            koiContainer.innerHTML = '';
-            this.koiInstances = [];
-            this.createKoiFish();
-        }
-
-        const petalContainer = document.getElementById('koi-pond-petals');
-        if (petalContainer) {
-            petalContainer.innerHTML = '';
-            this.createFloatingPetals();
-        }
-
-        this.updateWaterShimmer();
-    }
-
-    /**
-     * Setup listener for quality setting changes
-     */
-    setupQualityListener() {
-        this.teardownQualityListener();
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-            this.applyQualityPreset(newQuality);
-        };
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    teardownQualityListener() {
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-    }
-
-    async createScene() {
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
-
-        this.createLilyPads();
-        this.createKoiFish();
-        this.createFloatingPetals();
-        this.updateWaterShimmer();
+        if (generation !== this.runtimeGeneration || !this.isActive) return;
+        // Listen only after the async renderer warmup. Any quality/AA change
+        // that landed during that gap is reconciled immediately below, which
+        // avoids rebuilding a renderer while its pipelines are still compiling.
         this.setupEventListeners();
-        this.startRippleLoop();
+        if (this.reconcileRendererSettings(rendererSettingsAtBuildStart)) return;
+        this.installDiagnostics();
+        this.animate();
+        console.log(
+            `[KoiPond] Moonwake Sanctuary ready (${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, ${this.quality})`,
+        );
     }
 
-    /**
-     * Create lily pads
-     */
-    createLilyPads() {
-        const container = document.getElementById('lily-pads');
-        if (!container) return;
-
-        const preset = this.activePreset;
-
-        for (let i = 0; i < preset.lilyPadCount; i++) {
-            const pad = document.createElement('div');
-            pad.className = 'lily-pad';
-
-            if (!preset.lilyPadAnimationEnabled) {
-                pad.style.animation = 'none';
-            }
-
-            const size = Math.random() * 50 + 70;
-            pad.style.width = `${size}px`;
-            pad.style.height = `${size}px`;
-            pad.style.setProperty('--x-pos', `${10 + Math.random() * 80}vw`);
-            pad.style.setProperty('--y-pos', `${10 + Math.random() * 80}vh`);
-            pad.style.animationDelay = `-${Math.random() * 20}s`;
-
-            container.appendChild(pad);
-            this.lilyPadInstances.push(pad);
-        }
-
-        this.registerContainer(container);
-    }
-
-    /**
-     * Create koi fish
-     */
-    createKoiFish() {
-        const container = document.getElementById('koi-fish');
-        if (!container) return;
-
-        const preset = this.activePreset;
-        const koiColors = [
-            { base: '#f08c28', spots: ['#000', '#fff'] },
-            { base: '#fff', spots: ['#d44d2d', '#000'] },
-            { base: '#333', spots: ['#f08c28', '#fff'] },
-            { base: '#f2c94c', spots: ['#fff'] },
-            { base: '#ff6b6b', spots: ['#fff', '#ffd93d'] },
-            { base: '#c9b037', spots: ['#8b0000', '#fff'] },
-        ];
-
-        for (let i = 0; i < preset.koiCount; i++) {
-            const koi = document.createElement('div');
-            koi.className = 'koi';
-
-            const colors = koiColors[Math.floor(Math.random() * koiColors.length)];
-            let spotsSvg = '';
-            const spotCount = Math.floor(Math.random() * 4) + 2;
-            for (let j = 0; j < spotCount; j++) {
-                spotsSvg += `<circle cx="${Math.random() * 80 + 10}" cy="${Math.random() * 20 + 10}" r="${Math.random() * 6 + 4}" fill="${colors.spots[Math.floor(Math.random() * colors.spots.length)]}" opacity="${Math.random() * 0.3 + 0.6}"/>`;
-            }
-            const koiSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"><path d="M50 0 C20 0, 0 20, 0 20 S20 40, 50 40 C80 40, 100 20, 100 20 S80 0, 50 0 Z" fill="${colors.base}"/>${spotsSvg}</svg>`;
-            koi.style.backgroundImage = `url('data:image/svg+xml;utf8,${encodeURIComponent(koiSvg)}')`;
-
-            for (let j = 1; j <= 5; j++) {
-                koi.style.setProperty(`--x${j}`, `${Math.random() * 90}vw`);
-                koi.style.setProperty(`--y${j}`, `${Math.random() * 90}vh`);
-                koi.style.setProperty(`--r${j}`, `${Math.random() * 360}deg`);
-            }
-
-            const duration = Math.random() * 10 + 20;
-            koi.style.animationDuration = `${duration}s`;
-            koi.style.animationDelay = `-${Math.random() * duration}s`;
-
-            if (!preset.koiAnimationEnabled) {
-                koi.style.animation = 'none';
-            }
-
-            container.appendChild(koi);
-            this.koiInstances.push(koi);
-        }
-
-        this.registerContainer(container);
-    }
-
-    /**
-     * Create floating cherry blossom petals on the water surface
-     */
-    createFloatingPetals() {
-        const container = document.getElementById('koi-pond-petals');
-        if (!container) return;
-
-        const preset = this.activePreset;
-
-        for (let i = 0; i < preset.floatingPetalCount; i++) {
-            const petal = document.createElement('div');
-            petal.className = 'floating-petal';
-
-            petal.style.left = `${Math.random() * 100}%`;
-            petal.style.top = `${Math.random() * 100}%`;
-            petal.style.animationDelay = `${Math.random() * 20}s`;
-            petal.style.animationDuration = `${25 + Math.random() * 15}s`;
-            petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 40}vw`);
-            petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 40}vh`);
-            petal.style.setProperty('--rotation', `${Math.random() * 720 - 360}deg`);
-
-            container.appendChild(petal);
-        }
-
-        this.registerContainer(container);
-    }
-
-    updateWaterShimmer() {
-        const waterSurface = document.querySelector('#koi-pond-theme .water-surface');
-        if (!waterSurface) return;
-        if (!this.activePreset.waterShimmerEnabled) {
-            waterSurface.style.animation = 'none';
-        }
-    }
-
-    startRippleLoop() {
-        const rippleContainer = document.getElementById('koi-ripples');
-        if (!rippleContainer) return;
-
-        const rippleLoop = (timestamp) => {
-            if (!this.isActive) return;
-
-            const preset = this.activePreset;
-
-            if (preset.rippleEnabled && timestamp - this.lastRippleTime > preset.rippleInterval) {
-                this.lastRippleTime = timestamp;
-
-                if (this.koiInstances.length > 0) {
-                    const koi = this.koiInstances[Math.floor(Math.random() * this.koiInstances.length)];
-                    const rect = koi.getBoundingClientRect();
-
-                    if (rect.top > 0 && rect.left > 0 && rect.bottom < window.innerHeight && rect.right < window.innerWidth) {
-                        const ripple = document.createElement('div');
-                        ripple.className = 'koi-ripple';
-                        ripple.style.left = `${rect.left + rect.width * 0.2}px`;
-                        ripple.style.top = `${rect.top + rect.height / 2}px`;
-                        ripple.style.width = `${rect.width * 1.5}px`;
-                        ripple.style.height = `${rect.width * 1.5}px`;
-                        ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
-                        rippleContainer.appendChild(ripple);
-                    }
-                }
-            }
-
-            this.animationFrameId = requestAnimationFrame(rippleLoop);
-            this.registerAnimation(this.animationFrameId);
+    async createRendererCandidate(forceWebGL, antialiasEnabled = this.getAntialiasEnabled()) {
+        const renderer = new THREE.WebGPURenderer({
+            antialias: antialiasEnabled,
+            alpha: false,
+            forceWebGL,
+            powerPreference: 'high-performance',
+        });
+        let timeoutId = null;
+        let timeoutWon = false;
+        const disposeCandidate = () => {
+            try { renderer.setAnimationLoop?.(null); } catch (error) { /* noop */ }
+            try { renderer.dispose(); } catch (error) { /* noop */ }
         };
+        const initPromise = Promise.resolve().then(() => renderer.init());
 
-        this.animationFrameId = requestAnimationFrame(rippleLoop);
-        this.registerAnimation(this.animationFrameId);
-        this.registerContainer(rippleContainer);
+        try {
+            await Promise.race([
+                initPromise,
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(
+                        () => {
+                            timeoutWon = true;
+                            reject(new Error('Renderer init timeout'));
+                        },
+                        RENDERER_INIT_TIMEOUT_MS,
+                    );
+                }),
+            ]);
+            return renderer;
+        } catch (error) {
+            if (timeoutWon) {
+                // Three r181's dispose() is a no-op before init completes. The
+                // backend init itself is not abortable, so dispose on late
+                // success to prevent a timed-out candidate from stranding its
+                // managers/animation loop after fallback has already started.
+                initPromise.then(disposeCandidate, disposeCandidate);
+            }
+            disposeCandidate();
+            throw error;
+        } finally {
+            if (timeoutId !== null) clearTimeout(timeoutId);
+        }
+    }
+
+    async initRenderer(
+        container,
+        generation,
+        antialiasOverride = null,
+        ownerGeneration = this.lifecycleGeneration,
+    ) {
+        const requestedWebGL = this.forceWebGL
+            || readBoolParam('forceWebGL', 'koiForceWebGL');
+        const canAttemptWebGPU = !requestedWebGL
+            && typeof navigator !== 'undefined'
+            && !!navigator.gpu;
+        const antialiasEnabled = typeof antialiasOverride === 'boolean'
+            ? antialiasOverride
+            : this.getAntialiasEnabled();
+        let renderer = null;
+
+        if (canAttemptWebGPU) {
+            try {
+                renderer = await this.createRendererCandidate(false, antialiasEnabled);
+                if (renderer.backend?.isWebGPUBackend !== true) {
+                    renderer.dispose();
+                    renderer = null;
+                }
+            } catch (error) {
+                if (generation !== this.runtimeGeneration
+                    || ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
+                console.warn('[KoiPond] WebGPU init failed; trying WebGL2:', error);
+            }
+        }
+
+        if (!renderer) {
+            if (generation !== this.runtimeGeneration
+                || ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return false;
+            try {
+                renderer = await this.createRendererCandidate(true, antialiasEnabled);
+            } catch (error) {
+                if (generation === this.runtimeGeneration
+                    && ownerGeneration === this.lifecycleGeneration
+                    && this.isActive
+                    && !this.cleanupComplete) {
+                    const message = document.createElement('div');
+                    message.textContent = 'Koi Pond needs WebGPU or WebGL2.';
+                    message.style.cssText = [
+                        'color:#c9e5d8',
+                        'font-family:sans-serif',
+                        'padding:2em',
+                        'text-align:center',
+                    ].join(';');
+                    container.replaceChildren(message);
+                }
+                throw new Error('Koi Pond could not initialize WebGPU or WebGL2.', {
+                    cause: error,
+                });
+            }
+        }
+
+        if (generation !== this.runtimeGeneration
+            || ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            renderer.dispose();
+            return false;
+        }
+
+        const viewport = getViewport();
+        const width = Math.max(1, viewport.width);
+        const height = Math.max(1, viewport.height);
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.appliedAntialiasing = antialiasEnabled;
+        renderer.setPixelRatio(this.getEffectivePixelRatio(
+            getKoiPondPixelRatioCap(this.quality),
+            'theme',
+        ));
+        renderer.setSize(width, height, false);
+        renderer.setClearColor(0x020b0a, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.id = 'koi-pond-renderer';
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = [
+            'position:absolute',
+            'inset:0',
+            'width:100%',
+            'height:100%',
+            'z-index:0',
+            'pointer-events:none',
+        ].join(';');
+        container.appendChild(renderer.domElement);
+
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (this.isWebGPU) {
+            this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+                recover: async () => {
+                    if (this.gpuRecoveryAttempted) {
+                        throw new Error('Koi Pond WebGPU recovery already attempted.');
+                    }
+                    this.gpuRecoveryAttempted = true;
+                    this.forceWebGL = true;
+                    if (this.isActive) await this.createScene();
+                },
+            });
+        }
+        return true;
+    }
+
+    createPost() {
+        this.disposePost();
+        if (!this.renderer || !this.scene || !this.camera) return;
+        const profile = getKoiPondPostProfile(this.quality);
+        if (!profile.enabled) return;
+        try {
+            this.post = new KoiPondPost(this.renderer, this.scene, this.camera, profile);
+            const viewport = getViewport();
+            this.post.setSize(
+                Math.max(1, viewport.width),
+                Math.max(1, viewport.height),
+            );
+        } catch (error) {
+            console.warn('[KoiPond] Post-processing setup failed; rendering unblended:', error);
+            this.disposePost();
+        }
+    }
+
+    disposePost() {
+        if (!this.post) return;
+        try {
+            this.post.dispose();
+        } catch (error) {
+            console.warn('[KoiPond] Post-processing cleanup failed:', error);
+        }
+        this.post = null;
+    }
+
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this.post) {
+            this.post.update({ time: this.elapsedTime });
+            this.post.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
+
+    async warmRuntime(generation) {
+        if (!this.runtime || !this.renderer || !this.scene || !this.camera) return;
+
+        this.runtime.camera?.(0, this.camera);
+        this.runtime.update?.(0, 0);
+        const restoreCompileState = this.runtime.prepareForCompile?.() || (() => {});
+        try {
+            try {
+                await this.renderer.compileAsync?.(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[KoiPond] Pipeline precompile was incomplete:', error);
+            }
+            if (generation !== this.runtimeGeneration || !this.renderer) return;
+            // Warm through the post chain: a real post.render() compiles the
+            // bloom/MRT pipelines now, dodging the first-frame black screen the
+            // black-hole theme documented from deferred post compilation.
+            this.renderFrame();
+        } finally {
+            restoreCompileState();
+        }
     }
 
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLineClear(data.lineCount);
+        this.clearEventUnsubscribers();
+        const forward = (eventName) => (payload) => {
+            if (this.effectsAllowed(eventName)) {
+                this.runtime?.pulse?.(eventName, payload ?? {});
             }
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onCombo(data.comboCount);
-            }
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock();
-            }
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-    }
-
-    /**
-     * Get a random position avoiding the center game board
-     */
-    getEdgePosition(zone = 'any') {
-        const regions = {
-            topLeft: {
-                xMin: 0, xMax: 25, yMin: 0, yMax: 30,
-            },
-            topRight: {
-                xMin: 75, xMax: 100, yMin: 0, yMax: 30,
-            },
-            bottomLeft: {
-                xMin: 0, xMax: 25, yMin: 70, yMax: 100,
-            },
-            bottomRight: {
-                xMin: 75, xMax: 100, yMin: 70, yMax: 100,
-            },
-            leftSide: {
-                xMin: 0, xMax: 20, yMin: 20, yMax: 80,
-            },
-            rightSide: {
-                xMin: 80, xMax: 100, yMin: 20, yMax: 80,
-            },
-            topEdge: {
-                xMin: 20, xMax: 80, yMin: 0, yMax: 15,
-            },
-            bottomEdge: {
-                xMin: 20, xMax: 80, yMin: 85, yMax: 100,
-            },
         };
 
-        let availableRegions;
-        switch (zone) {
-        case 'corner': availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']; break;
-        case 'side': availableRegions = ['leftSide', 'rightSide']; break;
-        default: availableRegions = Object.keys(regions);
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.PIECE_LOCK, forward('PIECE_LOCK')),
+            eventBus.on(EVENTS.LINE_CLEAR, forward('LINE_CLEAR')),
+            eventBus.on(EVENTS.COMBO, forward('COMBO')),
+            eventBus.on(EVENTS.TSPIN, forward('TSPIN')),
+            eventBus.on(EVENTS.B2B, forward('B2B')),
+            eventBus.on(EVENTS.PERFECT_CLEAR, forward('PERFECT_CLEAR')),
+        );
+
+        const handleSettingsChanged = (payload) => {
+            const effectQualityUpdate = readSettingUpdate(payload, 'effectQuality');
+            const graphicsQualityUpdate = readSettingUpdate(payload, 'graphicsQuality');
+            const qualityUpdate = effectQualityUpdate.present
+                ? effectQualityUpdate
+                : graphicsQualityUpdate;
+            const requestedQuality = this.pendingQuality ?? this.quality;
+            const nextQuality = qualityUpdate.present
+                ? normalizeKoiPondQuality(qualityUpdate.value ?? requestedQuality)
+                : requestedQuality;
+            const qualityChanged = qualityUpdate.present && nextQuality !== requestedQuality;
+
+            const antialiasUpdate = readSettingUpdate(payload, 'enableAntialiasing');
+            const requestedAntialiasing = this.pendingAntialiasing
+                ?? this.appliedAntialiasing
+                ?? this.getAntialiasEnabled();
+            const nextAntialiasing = normalizeBooleanSetting(
+                antialiasUpdate.value,
+                requestedAntialiasing,
+            );
+            const antialiasChanged = antialiasUpdate.present
+                && nextAntialiasing !== requestedAntialiasing;
+            if (qualityChanged || antialiasChanged) {
+                if (qualityChanged) this.pendingQuality = nextQuality;
+                if (antialiasChanged) this.pendingAntialiasing = nextAntialiasing;
+                this.queueRuntimeRebuild();
+                return;
+            }
+            this.applyRuntimeSettings();
+            const renderScaleUpdate = readSettingUpdate(payload, 'renderScale');
+            if (
+                isDirectSettingUpdate(payload, 'renderScale')
+                || (
+                    renderScaleUpdate.present
+                    && this.hasEffectivePixelRatioChanged()
+                )
+            ) {
+                this.queueRuntimeResize();
+            }
+        };
+
+        this.registerEventListener(window, 'settingsChanged', handleSettingsChanged);
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, handleSettingsChanged),
+        );
+        if (this.reducedMotionQuery?.addEventListener) {
+            this.registerEventListener(this.reducedMotionQuery, 'change', () => {
+                this.applyRuntimeSettings();
+            });
         }
 
-        const regionName = availableRegions[Math.floor(Math.random() * availableRegions.length)];
-        const region = regions[regionName];
+        const resetPointer = () => {
+            this.runtime?.resetPointer?.();
+        };
+        const handlePointerMove = (event) => {
+            if (
+                !this.isActive
+                || this.isPaused
+                || this.prefersReducedMotion()
+                || event?.isPrimary === false
+                || event?.pointerType === 'touch'
+            ) {
+                resetPointer();
+                return;
+            }
+            const container = document.getElementById(`${this.name}-theme`);
+            const bounds = container?.getBoundingClientRect?.();
+            const viewport = getViewport();
+            const left = Number.isFinite(bounds?.left) ? bounds.left : 0;
+            const top = Number.isFinite(bounds?.top) ? bounds.top : 0;
+            const width = Math.max(1, Number(bounds?.width) || viewport.width || 1);
+            const height = Math.max(1, Number(bounds?.height) || viewport.height || 1);
+            const clientX = Number(event?.clientX);
+            const clientY = Number(event?.clientY);
+            if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+                resetPointer();
+                return;
+            }
+            const x = clamp(((clientX - left) / width) * 2 - 1, -1, 1);
+            const y = clamp(1 - ((clientY - top) / height) * 2, -1, 1);
+            this.runtime?.setPointer?.(x, y);
+        };
+        this.registerEventListener(window, 'pointermove', handlePointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'pointercancel', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+    }
+
+    getRendererSettingsSnapshot() {
         return {
-            x: region.xMin + Math.random() * (region.xMax - region.xMin),
-            y: region.yMin + Math.random() * (region.yMax - region.yMin),
+            quality: this.getQualitySetting(),
+            antialiasing: normalizeBooleanSetting(
+                typeof window !== 'undefined'
+                    ? window.settings?.enableAntialiasing
+                    : undefined,
+                this.getAntialiasEnabled(),
+            ),
         };
     }
 
-    // ===== COMBO EFFECT HANDLERS =====
+    reconcileRendererSettings(buildStart = this.getRendererSettingsSnapshot()) {
+        const live = this.getRendererSettingsSnapshot();
+        // A staged bus delta may intentionally lead the global settings object.
+        // Preserve the values just used to build unless the underlying settings
+        // actually changed again during the listener-free async init window.
+        const liveQuality = this.pendingQuality
+            ?? (live.quality !== buildStart.quality ? live.quality : this.quality);
+        const liveAntialiasing = this.pendingAntialiasing
+            ?? (
+                live.antialiasing !== buildStart.antialiasing
+                    ? live.antialiasing
+                    : this.appliedAntialiasing
+            );
+        const qualityChanged = liveQuality !== this.quality;
+        const antialiasChanged = liveAntialiasing !== this.appliedAntialiasing;
 
-    onLineClear(lineCount) {
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
-
-        if (lineCount >= 4) {
-            // Tetris! Major water disturbance
-            this.triggerRippleImpacts(6);
-            this.triggerKoiDart(4);
-            this.triggerWaterSwirls(3);
-            this.triggerPetalScatter(20);
-            this.triggerLightGlints(15);
-            this.wobbleLilyPads(1.5);
-        } else if (lineCount >= 2) {
-            // Multi-line: noticeable disturbance
-            this.triggerRippleImpacts(lineCount + 1);
-            this.triggerKoiDart(lineCount);
-            this.triggerPetalScatter(lineCount * 4);
-            this.triggerDropletRings(lineCount * 2);
-            this.wobbleLilyPads(1.2);
-        } else {
-            // Single line: subtle effect
-            this.triggerRippleImpacts(2);
-            this.triggerLightGlints(6);
-            this.wobbleLilyPads(1.05);
-        }
+        if (qualityChanged) this.pendingQuality = liveQuality;
+        if (antialiasChanged) this.pendingAntialiasing = liveAntialiasing;
+        if (qualityChanged || antialiasChanged) this.queueRuntimeRebuild();
+        return qualityChanged || antialiasChanged || this.settingsRebuildQueued;
     }
 
-    onCombo(comboCount) {
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
-
-        if (comboCount >= 8) {
-            // Epic combo: Fish feeding frenzy!
-            this.triggerKoiFrenzy();
-            this.triggerWaterSwirls(5);
-            this.triggerRippleImpacts(8);
-            this.triggerPetalScatter(30);
-            this.triggerLightGlints(20);
-        } else if (comboCount >= 5) {
-            // High combo: Excited fish
-            this.triggerKoiDart(4);
-            this.triggerWaterSwirls(3);
-            this.triggerRippleImpacts(5);
-            this.triggerPetalScatter(15);
-        } else if (comboCount >= 3) {
-            // Medium combo: Some activity
-            this.triggerKoiDart(2);
-            this.triggerRippleImpacts(3);
-            this.triggerDropletRings(4);
-            this.wobbleLilyPads(1.3);
-        } else {
-            // Low combo: Light shimmer
-            this.triggerLightGlints(8);
-            this.triggerRippleImpacts(2);
-        }
+    hasEffectivePixelRatioChanged() {
+        if (!this.renderer) return false;
+        const nextPixelRatio = this.getEffectivePixelRatio(
+            getKoiPondPixelRatioCap(this.quality),
+            'theme',
+        );
+        const appliedPixelRatio = this.renderer.getPixelRatio?.();
+        return !Number.isFinite(appliedPixelRatio)
+            || Math.abs(nextPixelRatio - appliedPixelRatio) > 0.001;
     }
 
-    onPieceLock() {
-        if (!this.activePreset.enableComboEffects) return;
-
-        // Very subtle lily pad wobble
-        this.wobbleLilyPads(1.02);
-
-        // Small chance for extra visual feedback
-        const roll = Math.random();
-        if (roll < 0.35) {
-            // 35% chance: small ripple
-            this.triggerPieceLockRipple();
-        } else if (roll < 0.55) {
-            // 20% chance: water glint
-            this.triggerPieceLockGlint();
-        } else if (roll < 0.65) {
-            // 10% chance: petal drift
-            this.triggerPieceLockPetal();
-        }
-    }
-
-    /**
-     * Trigger a small ripple for piece lock
-     */
-    triggerPieceLockRipple() {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const ripple = document.createElement('div');
-        ripple.className = 'piece-lock-ripple';
-
-        const pos = this.getEdgePosition('any');
-        ripple.style.left = `${pos.x}%`;
-        ripple.style.top = `${pos.y}%`;
-
-        container.appendChild(ripple);
-        this.scheduleEffectTimeout(() => ripple.remove(), 800);
-    }
-
-    /**
-     * Trigger a water glint for piece lock
-     */
-    triggerPieceLockGlint() {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const glint = document.createElement('div');
-        glint.className = 'piece-lock-glint';
-
-        const pos = this.getEdgePosition('any');
-        glint.style.left = `${pos.x}%`;
-        glint.style.top = `${pos.y}%`;
-
-        container.appendChild(glint);
-        this.scheduleEffectTimeout(() => glint.remove(), 400);
-    }
-
-    /**
-     * Trigger a single petal for piece lock
-     */
-    triggerPieceLockPetal() {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const petal = document.createElement('div');
-        petal.className = 'piece-lock-petal';
-
-        const pos = this.getEdgePosition('any');
-        petal.style.left = `${pos.x}%`;
-        petal.style.top = `${pos.y}%`;
-        petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 40}px`);
-        petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 40}px`);
-
-        container.appendChild(petal);
-        this.scheduleEffectTimeout(() => petal.remove(), 1200);
-    }
-
-    // ===== TOP-DOWN COMBO EFFECTS =====
-
-    /**
-     * Trigger ripple impacts spreading outward (top-down view)
-     */
-    triggerRippleImpacts(count = 3) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const actualCount = Math.min(count, this.activePreset.rippleImpactCount * 2);
-
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const pos = this.getEdgePosition('any');
-
-                // Create multiple concentric ripples
-                for (let r = 0; r < 3; r++) {
-                    this.scheduleEffectTimeout(() => {
-                        const ripple = document.createElement('div');
-                        ripple.className = 'impact-ripple';
-                        ripple.style.left = `${pos.x}%`;
-                        ripple.style.top = `${pos.y}%`;
-                        container.appendChild(ripple);
-                        this.scheduleEffectTimeout(() => ripple.remove(), 2000);
-                    }, r * 100);
-                }
-            }, i * 150);
-        }
-    }
-
-    /**
-     * Trigger koi fish darting away (viewed from above)
-     */
-    triggerKoiDart(count = 2) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const actualCount = Math.min(count, this.activePreset.koiDartCount);
-        const koiColors = ['#f08c28', '#fff', '#333', '#f2c94c', '#ff6b6b'];
-
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const dartKoi = document.createElement('div');
-                dartKoi.className = 'darting-koi';
-
-                const pos = this.getEdgePosition('any');
-                dartKoi.style.left = `${pos.x}%`;
-                dartKoi.style.top = `${pos.y}%`;
-
-                const color = koiColors[Math.floor(Math.random() * koiColors.length)];
-                dartKoi.style.setProperty('--koi-color', color);
-
-                // Random dart direction
-                const angle = Math.random() * 360;
-                dartKoi.style.setProperty('--dart-angle', `${angle}deg`);
-                dartKoi.style.setProperty('--dart-distance', `${100 + Math.random() * 150}px`);
-
-                container.appendChild(dartKoi);
-
-                // Add ripple trail
-                this.addRippleAt(pos.x, pos.y);
-
-                this.scheduleEffectTimeout(() => dartKoi.remove(), 800);
-            }, i * 200);
-        }
-    }
-
-    /**
-     * Trigger koi feeding frenzy (multiple fish circling excitedly)
-     */
-    triggerKoiFrenzy() {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const koiColors = ['#f08c28', '#fff', '#333', '#f2c94c', '#ff6b6b', '#c9b037'];
-        const frenzyCount = 6;
-
-        // Choose a frenzy center point
-        const centerPos = this.getEdgePosition('corner');
-
-        for (let i = 0; i < frenzyCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const koi = document.createElement('div');
-                koi.className = 'frenzy-koi';
-
-                koi.style.left = `${centerPos.x}%`;
-                koi.style.top = `${centerPos.y}%`;
-
-                const color = koiColors[Math.floor(Math.random() * koiColors.length)];
-                koi.style.setProperty('--koi-color', color);
-                koi.style.setProperty('--orbit-radius', `${40 + Math.random() * 60}px`);
-                koi.style.setProperty('--start-angle', `${(i / frenzyCount) * 360}deg`);
-                koi.style.setProperty('--orbit-direction', Math.random() > 0.5 ? '1' : '-1');
-
-                container.appendChild(koi);
-                this.scheduleEffectTimeout(() => koi.remove(), 2000);
-            }, i * 100);
-        }
-
-        // Add central splash
-        this.triggerRippleImpacts(3);
-    }
-
-    /**
-     * Wobble lily pads from water disturbance
-     */
-    wobbleLilyPads(intensity = 1.2) {
-        this.lilyPadInstances.forEach((pad, index) => {
-            this.scheduleEffectTimeout(() => {
-                pad.classList.add('lily-pad-wobble');
-                pad.style.setProperty('--wobble-intensity', intensity);
-
-                this.scheduleEffectTimeout(() => {
-                    pad.classList.remove('lily-pad-wobble');
-                }, 800);
-            }, index * 50);
+    queueRuntimeResize() {
+        if (this.settingsResizeQueued) return;
+        this.settingsResizeQueued = true;
+        const scheduledGeneration = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.settingsResizeQueued = false;
+            if (!this.isActive || scheduledGeneration !== this.runtimeGeneration) return;
+            const viewport = getViewport();
+            this.resize(viewport.width, viewport.height);
         });
     }
 
-    /**
-     * Trigger cherry blossom petals scattering on water
-     */
-    triggerPetalScatter(count = 10) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const actualCount = Math.min(count, this.activePreset.petalScatterCount * 2);
-
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const petal = document.createElement('div');
-                petal.className = 'scatter-petal';
-
-                const pos = this.getEdgePosition('any');
-                petal.style.left = `${pos.x}%`;
-                petal.style.top = `${pos.y}%`;
-
-                // Random drift direction
-                petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 100}px`);
-                petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 100}px`);
-                petal.style.setProperty('--rotation', `${Math.random() * 360}deg`);
-
-                container.appendChild(petal);
-                this.scheduleEffectTimeout(() => petal.remove(), 2500);
-            }, i * 50);
-        }
+    queueRuntimeRebuild() {
+        if (this.settingsRebuildQueued) return;
+        this.settingsRebuildQueued = true;
+        const scheduledGeneration = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.settingsRebuildQueued = false;
+            if (!this.isActive || scheduledGeneration !== this.runtimeGeneration) return;
+            this.createScene().catch((error) => {
+                console.error('[KoiPond] Settings rebuild failed:', error);
+            });
+        });
     }
 
-    /**
-     * Trigger water droplet ring impacts (like rain drops from above)
-     */
-    triggerDropletRings(count = 4) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const actualCount = Math.min(count, this.activePreset.dropletRingCount);
-
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const droplet = document.createElement('div');
-                droplet.className = 'droplet-ring';
-
-                const pos = this.getEdgePosition('any');
-                droplet.style.left = `${pos.x}%`;
-                droplet.style.top = `${pos.y}%`;
-
-                container.appendChild(droplet);
-                this.scheduleEffectTimeout(() => droplet.remove(), 1000);
-            }, i * 100);
-        }
+    applyRuntimeSettings() {
+        this.runtime?.configureGameplay?.({
+            quality: this.quality,
+            reducedMotion: this.prefersReducedMotion(),
+            intensity: this.getEffectsIntensity(),
+        });
     }
 
-    /**
-     * Trigger light glints dancing on water surface
-     */
-    triggerLightGlints(count = 8) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
-
-        const actualCount = Math.min(count, this.activePreset.lightGlintCount * 2);
-
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const glint = document.createElement('div');
-                glint.className = 'water-glint';
-
-                const pos = this.getEdgePosition('any');
-                glint.style.left = `${pos.x}%`;
-                glint.style.top = `${pos.y}%`;
-
-                container.appendChild(glint);
-                this.scheduleEffectTimeout(() => glint.remove(), 600);
-            }, i * 40);
-        }
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const safeWidth = Math.max(1, Number(width) || 1);
+        const safeHeight = Math.max(1, Number(height) || 1);
+        this.camera.aspect = safeWidth / safeHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio(
+            getKoiPondPixelRatioCap(this.quality),
+            'theme',
+        ));
+        this.renderer.setSize(safeWidth, safeHeight, false);
+        this.runtime?.resize?.(safeWidth, safeHeight);
+        this.post?.setSize(safeWidth, safeHeight);
     }
 
-    /**
-     * Trigger swirling water currents (top-down spiral)
-     */
-    triggerWaterSwirls(count = 2) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
+    animate() {
+        if (this.animationLoopStarted || !this.runtime || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameTimeMs = null;
+        this.lastRenderTimeMs = null;
 
-        const actualCount = Math.min(count, this.activePreset.waterSwirlCount);
+        this.animationDriver = this.safeAnimate((timestamp) => {
+            const rawDelta = this.lastFrameTimeMs === null
+                ? 1 / 60
+                : (timestamp - this.lastFrameTimeMs) / 1000;
+            const sampledDelta = Number.isFinite(rawDelta)
+                ? Math.max(0, rawDelta)
+                : 1 / 60;
+            const delta = clamp(sampledDelta, 0, 0.05);
+            this.lastFrameTimeMs = timestamp;
+            this.elapsedTime += delta;
 
-        for (let i = 0; i < actualCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                const swirl = document.createElement('div');
-                swirl.className = 'water-swirl';
-
-                const pos = this.getEdgePosition('corner');
-                swirl.style.left = `${pos.x}%`;
-                swirl.style.top = `${pos.y}%`;
-                swirl.style.setProperty('--swirl-direction', Math.random() > 0.5 ? '1' : '-1');
-
-                container.appendChild(swirl);
-                this.scheduleEffectTimeout(() => swirl.remove(), 2000);
-            }, i * 300);
-        }
+            // The runtime reports whether any reaction is live this frame. The
+            // sim clock always advances; only the GPU present is gated so a
+            // near-static reduced-motion pond costs ~30 fps of power, not 240 —
+            // and snaps back to full rate the instant a lock/combo lands.
+            const active = this.runtime?.update?.(this.elapsedTime, delta);
+            let shouldRender = true;
+            if (this.prefersReducedMotion() && active === false) {
+                if (
+                    this.lastRenderTimeMs !== null
+                    && timestamp - this.lastRenderTimeMs < REDUCED_MOTION_FRAME_MS
+                ) {
+                    shouldRender = false;
+                }
+            }
+            if (shouldRender) {
+                this.renderFrame();
+                this.lastRenderTimeMs = timestamp;
+            }
+            // Simulation remains overload-safe, while diagnostics retain raw
+            // wall stalls instead of silently flooring every report at 20 FPS.
+            this.collectPerformanceSample(sampledDelta);
+        }, { maxConsecutiveErrors: 3 });
+        const animationId = requestAnimationFrame(this.animationDriver);
+        this.registerAnimation(animationId);
     }
 
-    /**
-     * Add a small ripple at a specific position
-     */
-    addRippleAt(x, y) {
-        const container = document.getElementById('koi-pond-effects');
-        if (!container) return;
+    collectPerformanceSample(delta) {
+        if (!this.performanceEnabled || !Number.isFinite(delta) || delta <= 0) return;
+        this.frameSamples.push(delta * 1_000);
+        if (this.frameSamples.length > PERFORMANCE_SAMPLE_LIMIT) this.frameSamples.shift();
+    }
 
-        const ripple = document.createElement('div');
-        ripple.className = 'small-ripple';
-        ripple.style.left = `${x}%`;
-        ripple.style.top = `${y}%`;
-        container.appendChild(ripple);
-        this.scheduleEffectTimeout(() => ripple.remove(), 1000);
+    installDiagnostics() {
+        if (typeof window === 'undefined') return;
+        this.diagnosticsApi = Object.freeze({
+            getDiagnostics: () => this.getDiagnostics(),
+        });
+        window.__KOI_POND_THEME__ = this.diagnosticsApi;
+    }
+
+    getDiagnostics() {
+        const runtime = this.runtime?.getDiagnostics?.() || {};
+        const samples = this.frameSamples;
+        const averageFrameMs = samples.length > 0
+            ? samples.reduce((sum, value) => sum + value, 0) / samples.length
+            : null;
+        const sorted = samples.length > 0 ? [...samples].sort((a, b) => a - b) : [];
+        const p95Index = Math.floor((sorted.length - 1) * 0.95);
+        const p95FrameMs = sorted.length > 0 ? sorted.at(p95Index) : null;
+        return {
+            ...runtime,
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            reducedMotion: this.prefersReducedMotion(),
+            averageFrameMs,
+            p95FrameMs,
+            averageFps: averageFrameMs ? 1_000 / averageFrameMs : null,
+        };
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+
+        if (
+            typeof window !== 'undefined'
+            && this.diagnosticsApi
+            && window.__KOI_POND_THEME__ === this.diagnosticsApi
+        ) {
+            delete window.__KOI_POND_THEME__;
+        }
+        this.diagnosticsApi = null;
+
+        // Post owns GPU render targets bound to this renderer; release before
+        // the runtime + renderer teardown below (SB-15 leak discipline).
+        this.disposePost();
+
+        if (this.runtime) {
+            try {
+                this.runtime.dispose?.();
+            } catch (error) {
+                console.warn('[KoiPond] Runtime cleanup failed:', error);
+            }
+            this.runtime = null;
+        }
+
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            this.disposeRenderer(renderer, { nullInstance: false });
+        }
+
+        this.reducedMotionQuery = null;
+        this.animationLoopStarted = false;
+        this.animationDriver = null;
+        this.lastFrameTimeMs = null;
+        this.elapsedTime = 0;
+        this.frameSamples = [];
+        this.isWebGPU = false;
+        this.appliedAntialiasing = null;
+    }
+
+    async whenCriticalReady() {
+        return !!(this.runtime && this.renderer && this.scene && this.camera);
     }
 
     getTetrominoConfig() {
         return KOI_POND_TETROMINOS;
     }
 
-    stop() {
-        if (!this.isActive) return;
-        this.clearEffectTimeouts();
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-        this.teardownQualityListener();
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameTimeMs = null;
+            this.runtime?.resetPointer?.({ immediate: true });
         }
+        return paused;
+    }
+
+    resume() {
+        if (!this.runtime || !this.renderer || !this.scene || !this.camera) return false;
+        const resumed = super.resume();
+        if (resumed) this.lastFrameTimeMs = null;
+        return resumed;
+    }
+
+    stop() {
         super.stop();
+        this.disposeRuntime();
     }
 
     cleanup() {
         this.stop();
-        this.koiInstances = [];
-        this.lilyPadInstances = [];
         super.cleanup();
     }
 }

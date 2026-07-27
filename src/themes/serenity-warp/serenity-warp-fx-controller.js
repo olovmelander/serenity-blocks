@@ -6,6 +6,7 @@
  * own frame loop. This keeps the selectable theme's reactions out of the shared intro.
  */
 import { SERENITY_WARP_TETROMINOS } from './serenity-warp-tetrominos.js';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 
 const BOARD_COLUMNS = 10;
 const VISIBLE_ROWS = 20;
@@ -296,7 +297,10 @@ function originForRows(payload, previousOrigin) {
 
     const rowTotal = rows.reduce((total, row) => total + Number(row), 0);
     const boardY = rowTotal / rows.length + 0.5;
-    const normalizedY = clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
+    // Infinity supplies the ON-SCREEN clear origin; prefer its Y over the fixed-board row
+    // normalization (clearedRows are absolute rows in Infinity → the fallback pins to bottom).
+    const viewport = readLockViewportOrigin(payload);
+    const normalizedY = viewport ? viewport.y : clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
     base.board.y = boardY;
     base.normalized.y = normalizedY;
     base.centered.y = 1 - normalizedY * 2;
@@ -353,6 +357,8 @@ export function resolveSerenityWarpLockGlyph(payload = {}) {
 /**
  * Map a locked piece to both board-normalized coordinates and a viewport-normalized side lane.
  * Side-lane X keeps the effect outside the Matrix; Y remains aligned with the lock centroid.
+ * A mode-supplied `viewportOrigin` (readLockViewportOrigin — Infinity's on-screen lock
+ * position for its tall scrolling grid) wins over the fixed-board math.
  */
 export function resolveSerenityWarpLockOrigin(payload = {}) {
     const glyph = resolveSerenityWarpLockGlyph(payload);
@@ -366,8 +372,9 @@ export function resolveSerenityWarpLockOrigin(payload = {}) {
     );
     const boardX = centroid.x / glyph.boardCells.length;
     const boardY = centroid.y / glyph.boardCells.length;
-    const normalizedX = clamp01(boardX / BOARD_COLUMNS);
-    const normalizedY = clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
+    const viewport = readLockViewportOrigin(payload);
+    const normalizedX = viewport ? viewport.x : clamp01(boardX / BOARD_COLUMNS);
+    const normalizedY = viewport ? viewport.y : clamp01((boardY - HIDDEN_ROWS) / VISIBLE_ROWS);
 
     return {
         board: { x: boardX, y: boardY },

@@ -873,10 +873,8 @@ export default class CinderDriftTheme extends BaseTheme {
     }
 
     stop() {
-        if (!this.isActive) return;
         super.stop();
-        this.eventUnsubscribers.forEach((u) => u());
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
         window.removeEventListener('resize', this.boundResizeHandler);
     }
 

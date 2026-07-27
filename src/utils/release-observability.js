@@ -11,8 +11,11 @@ const defaultWait = (delayMs) => new Promise((resolve) => {
 });
 
 /**
- * Install Vite dynamic-import recovery. Only the first preload failure reloads;
- * every failure is prevented so Vite's default unhandled path cannot take over.
+ * Observe Vite dynamic-import failures without taking ownership away from the
+ * importer. ThemeManager owns a bounded retry and fallback policy; preventing
+ * the event makes Vite resolve the failed import as `undefined`, while reloading
+ * here destroys a live game session. Let the import promise reject so its caller
+ * can recover without a page reload.
  *
  * @param {{
  *   windowRef?: Window,
@@ -26,14 +29,8 @@ export function installPreloadErrorRecovery({
 } = {}) {
     if (!windowRef?.addEventListener) return () => {};
 
-    let handled = false;
     const handlePreloadError = (event) => {
-        logError('[BuildResilience] Dynamic preload failed:', event);
-        event?.preventDefault?.();
-
-        if (handled) return;
-        handled = true;
-        windowRef.location?.reload?.();
+        logError('[BuildResilience] Dynamic preload failed; delegating to importer recovery:', event?.payload || event);
     };
 
     windowRef.addEventListener('vite:preloadError', handlePreloadError);

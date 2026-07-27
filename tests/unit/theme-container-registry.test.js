@@ -37,6 +37,7 @@ describe('ensureThemeContainer (plan §2.7)', () => {
         const staticDiv = { id: 'forest-theme', className: 'theme-container', style: {} };
         const { created } = fakeDom({ existing: { 'forest-theme': staticDiv } });
         expect(ensureThemeContainer('forest')).toBe(staticDiv);
+        expect(staticDiv.__themeRegistryOwned).toBe(true);
         expect(created).toHaveLength(0);
     });
 
@@ -47,6 +48,7 @@ describe('ensureThemeContainer (plan §2.7)', () => {
         expect(container.className).toBe('theme-container');
         expect(container.style.position).toBe('fixed');
         expect(container.style.zIndex).toBe('-1');
+        expect(container.__themeRegistryOwned).toBe(true);
         expect(body.children[0]).toBe(container);
     });
 

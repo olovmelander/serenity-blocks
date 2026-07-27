@@ -224,6 +224,8 @@ export class ThemesTab {
         this.themeParamInputHandler = (event) => this.handleThemeParamInput(event);
         this.tabContainer = null;
         this.tabClickHandler = null;
+        this.tabKeydownHandler = null;
+        this.themeSelectionGeneration = 0;
         this.searchInputHandler = null;
         this.debouncedSearchHandler = null;
         this.iconObserver = null;
@@ -355,8 +357,7 @@ export class ThemesTab {
             'Singing Bowl': 'bowl',
             Starlight: 'star',
             'Sky Children': 'cloud',
-            'Sky Children v2': 'cloud',
-            'Swedish Forest': 'tree',
+            'Golden Forest': 'tree',
             Geode: 'gem',
             Bioluminescence: 'jellyfish',
             'Void Ember': 'flame',
@@ -513,6 +514,9 @@ export class ThemesTab {
                 <div class="theme-card ${isActive ? 'active' : ''}"
                      data-theme="${theme.id}"
                      tabindex="0"
+                     role="button"
+                     aria-label="Select ${theme.displayName} theme"
+                     aria-pressed="${isActive}"
                      style="--theme-gradient: ${colorScheme.gradient}">
                     <div class="theme-swatch" style="background: ${colorScheme.gradient}">
                         ${iconHtml}
@@ -670,6 +674,7 @@ export class ThemesTab {
 
             const themeCard = target.closest('.theme-card');
             if (themeCard && this.tabContainer.contains(themeCard)) {
+                event.stopPropagation();
                 const themeId = themeCard.dataset.theme;
                 if (themeId) {
                     this.selectTheme(themeId).catch((error) => {
@@ -688,6 +693,21 @@ export class ThemesTab {
         };
 
         this.tabContainer.addEventListener('click', this.tabClickHandler);
+        this.tabKeydownHandler = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const themeCard = event.target?.closest?.('.theme-card');
+            if (!themeCard || !this.tabContainer.contains(themeCard)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            const themeId = themeCard.dataset.theme;
+            if (themeId) {
+                this.selectTheme(themeId).catch((error) => {
+                    console.error('[ThemesTab] Failed to select theme:', error);
+                });
+            }
+        };
+        this.tabContainer.addEventListener('keydown', this.tabKeydownHandler);
         this.iconLoadHandler = (event) => {
             const icon = event.target;
             this.markThemeIconReady(icon);
@@ -971,6 +991,9 @@ export class ThemesTab {
      * @param {string} themeId - Theme ID to apply
      */
     async selectTheme(themeId) {
+        const selectionGeneration = (this.themeSelectionGeneration ?? 0) + 1;
+        this.themeSelectionGeneration = selectionGeneration;
+
         // Guard against the MANAGER's truth, not this tab's shadow copy: after any
         // failed/superseded switch the shadow used to claim a theme that never
         // started, making a re-click of the wanted theme a silent no-op.
@@ -987,6 +1010,13 @@ export class ThemesTab {
         // coalesced follow-up it was queued behind) settles — possibly on a
         // DIFFERENT theme than requested (drop, supersede, or forest fallback).
         await this.themeManager.switchTheme(themeId);
+
+        // A newer card activation owns the UI/settings commit. The manager
+        // coalesces rapid requests, so an older caller must not persist an
+        // intermediate theme and enqueue it again through settingsChanged.
+        if (selectionGeneration !== this.themeSelectionGeneration) {
+            return;
+        }
 
         // Commit only what actually happened. Persisting the *requested* id after
         // a failed switch stored a theme that never started — the hub badge lied
@@ -1055,6 +1085,7 @@ export class ThemesTab {
             const isActive = themeId === this.currentTheme;
 
             card.classList.toggle('active', isActive);
+            card.setAttribute('aria-pressed', String(isActive));
 
             // Update active indicator
             const swatch = card.querySelector('.theme-swatch');
@@ -1128,6 +1159,10 @@ export class ThemesTab {
         if (this.tabContainer && this.tabClickHandler) {
             this.tabContainer.removeEventListener('click', this.tabClickHandler);
             this.tabClickHandler = null;
+        }
+        if (this.tabContainer && this.tabKeydownHandler) {
+            this.tabContainer.removeEventListener('keydown', this.tabKeydownHandler);
+            this.tabKeydownHandler = null;
         }
 
         // Clean up search input listener

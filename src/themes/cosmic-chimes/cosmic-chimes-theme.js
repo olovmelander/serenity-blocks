@@ -667,18 +667,17 @@ export default class CosmicChimesTheme extends BaseTheme {
     }
 
     stop() {
-        if (!this.isActive) return;
+        // Base teardown is unconditional: the manager invalidates isActive
+        // synchronously before it calls a theme's terminal cleanup.
+        super.stop();
         this.clearEffectTimeouts();
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
         this.teardownQualityListener();
 
         // Clear all active effects
         const container = document.getElementById('cosmic-chimes-effects');
         if (container) container.innerHTML = '';
         this.activeEffectCount = 0;
-
-        super.stop();
     }
 
     cleanup() {

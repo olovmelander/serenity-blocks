@@ -341,7 +341,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.rng = null;
         this.baselineStats = null;
         this.baselineLogged = false;
-        this.deviceLostPromise = null;
+        this.deviceLostRenderer = null;
         this.starBaseCount = 0;
         this.starDrawCount = 0;
         this.gpuTimeMs = 0;
@@ -638,22 +638,47 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     attachWebGPUDeviceLostHandler() {
-        if (!this.isWebGPU || this.deviceLostPromise || !this.renderer?.backend?.device?.lost) {
+        if (!this.isWebGPU || !this.renderer?.backend?.device?.lost) {
             return;
         }
 
-        this.deviceLostPromise = this.renderer.backend.device.lost.then((info) => {
-            this.deviceLostPromise = null;
-            this.handleWebGPUDeviceLost(info);
-        });
+        const renderer = this.renderer;
+        if (this.deviceLostRenderer === renderer) return;
+        if (this.deviceLostRenderer) {
+            this.deviceLostRenderer.onDeviceLost = null;
+        }
+        const ownerGeneration = this.lifecycleGeneration;
+        renderer.onDeviceLost = (info) => {
+            if (this.deviceLostRenderer === renderer) {
+                this.deviceLostRenderer = null;
+            }
+            if (ownerGeneration !== this.lifecycleGeneration
+                || renderer !== this.renderer
+                || !this.isActive
+                || this.cleanupComplete) return;
+            this.handleWebGPUDeviceLost(info, ownerGeneration, renderer);
+        };
+        this.deviceLostRenderer = renderer;
     }
 
-    async handleWebGPUDeviceLost(info) {
+    async handleWebGPUDeviceLost(
+        info,
+        ownerGeneration = this.lifecycleGeneration,
+        lostRenderer = this.renderer,
+    ) {
         console.warn('[NeonDusk] WebGPU device lost, falling back to WebGL2', info);
-        if (!this.container || !this.isActive) return;
+        if (!this.container
+            || !this.isActive
+            || this.cleanupComplete
+            || ownerGeneration !== this.lifecycleGeneration
+            || lostRenderer !== this.renderer) return;
 
         this.forceWebGL = true;
-        await this.initRenderer(this.container);
+        const rendererReady = await this.initRenderer(this.container, ownerGeneration);
+        if (!rendererReady
+            || ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) return;
         this.setupPostProcessing();
         this.onResize();
     }
@@ -982,7 +1007,7 @@ export default class NeonDuskTheme extends BaseTheme {
     // SCENE CREATION
     // =========================================================================
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[NeonDusk] Creating Three.js scene...');
 
         const container = document.getElementById('neon-dusk-theme');
@@ -1009,7 +1034,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.renderMetrics = null;
 
         // Initialize renderer
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) {
             console.error('[NeonDusk] Renderer initialization failed');
             return;
@@ -1048,9 +1073,13 @@ export default class NeonDuskTheme extends BaseTheme {
         console.log(`[NeonDusk] Scene created with ${quality} quality`);
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+        if (!ownsLifecycle()) return false;
 
         this.container = container;
 
@@ -1059,8 +1088,10 @@ export default class NeonDuskTheme extends BaseTheme {
             container.removeChild(this.renderer.domElement);
         }
         if (this.renderer) {
+            this.renderer.onDeviceLost = null;
             this.disposeRenderer(this.renderer, { nullInstance: false });
         }
+        this.deviceLostRenderer = null;
 
         let renderer = null;
 
@@ -1071,8 +1102,12 @@ export default class NeonDuskTheme extends BaseTheme {
                     antialias: this.getAntialiasEnabled(),
                     powerPreference: 'high-performance',
                 });
-                await renderer.init();
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Neon Dusk WebGPU renderer init',
+                    ownerGeneration,
+                });
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[NeonDusk] WebGPU init failed, falling back to WebGL2:', error);
                 renderer = null;
             }
@@ -1089,20 +1124,25 @@ export default class NeonDuskTheme extends BaseTheme {
 
         if (renderer && renderer.backend?.isWebGPUBackend === true) {
             this.isWebGPU = true;
-            this.renderer = renderer;
         } else {
+            if (!ownsLifecycle()) return false;
             this.isWebGPU = false;
-            this.renderer = new THREE.WebGLRenderer({
+            renderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 alpha: false,
                 powerPreference: 'high-performance',
             });
         }
 
-        if (!this.renderer) {
+        if (!renderer) {
             return false;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
         this.renderer.setClearColor(0x08000f, 1);
         this.renderer.sortObjects = true;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -4006,6 +4046,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Dispose Three.js resources LAST to avoid WebGPU errors
         if (this.renderer) {
+            this.renderer.onDeviceLost = null;
             this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('neon-dusk-theme');
             if (container && container.contains(this.renderer.domElement)) {
@@ -4015,7 +4056,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
         this.baselineStats = null;
         this.baselineLogged = false;
-        this.deviceLostPromise = null;
+        this.deviceLostRenderer = null;
 
         this.scene = null;
         this.camera = null;

@@ -29,10 +29,14 @@ import {
 } from 'three/tsl';
 import { DISK_COS_TILT, DISK_SIN_TILT } from './black-hole-disk-basis.js';
 
-// High quality dispatches the ambient simulation at 30 Hz. Velocities are kept in
-// "units per reference tick" so existing authored speeds stay intact while motion,
-// damping and orbital assistance remain stable at other compute cadences.
-const PARTICLE_REFERENCE_HZ = 30.0;
+// The ambient integrator MUST share the CPU integrator's reference cadence. The CPU authored
+// every per-step constant (0.98505/0.998 damping, the 0.0009 orbital assist, position += vel*stepScale)
+// against stepScale = simDelta*60 — a 60 Hz reference tick. Velocities are stored in units per
+// reference tick, so this constant is that tick rate; it MUST be 60. At 30 (the earlier value)
+// position advance, flow/burst damping and orbital assist all ran at HALF rate, so the dust held a
+// slow-decaying orbit instead of spiralling into the hole. The compute-dispatch cadence is
+// independent of this (delta is integrated), so any real framerate reproduces the same motion.
+const PARTICLE_REFERENCE_HZ = 60.0;
 const MAX_PARTICLE_DELTA = 0.075;
 
 // RingGeometry is authored in local XY and rotated by -PI * 0.42 around X.
@@ -206,18 +210,28 @@ export class BlackHoleParticleCompute {
                         });
                     }).Else(() => {
                         const basePullStrength = float(800.0).div(dist.mul(dist).add(100.0)).mul(delta);
-                        const surgeBoost = float(5.0).add(gravitySurge.mul(2.0));
-                        const surgedPullStrength = basePullStrength.mul(
-                            mix(float(1.0), surgeBoost, step(float(0.001), gravitySurge)),
-                        );
+                        // STRONG suction during combos, eased smoothly back to 1.0 on the way out
+                        // (no step snap). Equals the old 5 + surge*2 for surge >= 4 (full impact) and
+                        // reaches 1.0 continuously as surge -> 0, so the post-combo pull settles
+                        // smoothly. Mirrors the CPU path: 1 + surge*2 + smoothstep(0,4,surge)*4.
+                        const surgeBoost = float(1.0)
+                            .add(gravitySurge.mul(2.0))
+                            .add(smoothstep(float(0.0), float(4.0), gravitySurge).mul(4.0));
+                        const surgedPullStrength = basePullStrength.mul(surgeBoost);
                         // Keep combo-emitted particles from snapping straight back to center.
                         const pullStrength = surgedPullStrength.mul(
                             mix(float(1.0), float(0.08), lockActive),
                         );
 
-                        vel.x.addAssign(dir.x.mul(pullStrength));
-                        vel.y.addAssign(dir.y.mul(pullStrength));
-                        vel.z.addAssign(dir.z.mul(pullStrength));
+                        // Match the CPU integrator EXACTLY: it pulls with the full position
+                        // vector (`vel -= pos * pullStrength`), so the inward force scales with
+                        // distance (|pull| ~ 800/d·dt). Using the unit `dir` here made the pull
+                        // ~d× too weak (|pull| ~ 800/d²·dt) — at a ~400-unit dust radius that is
+                        // hundreds of times weaker, so the dust orbited instead of being sucked in.
+                        // toCenter == -pos here (compute runs black-hole-at-origin).
+                        vel.x.addAssign(toCenter.x.mul(pullStrength));
+                        vel.y.addAssign(toCenter.y.mul(pullStrength));
+                        vel.z.addAssign(toCenter.z.mul(pullStrength));
 
                         // Preserve the old High-tier 0.995 * 0.99 damping at the
                         // 30 Hz reference cadence, with exponential time scaling.
@@ -252,21 +266,26 @@ export class BlackHoleParticleCompute {
                 );
                 const tangent = normalize(tangentRaw.add(vec3(0.0001, 0.0001, 0.0001)));
 
-                const innerBias = float(1.0).sub(smoothstep(float(220.0), float(750.0), radialDist));
+                // Match the CPU's LINEAR innerBias ramp exactly: 1 - clamp((radialDist-220)/530, 0, 1).
+                // A smoothstep here is a cubic curve that runs ~7% stronger in the inner disk, adding
+                // extra orbit-holding tangential push that resists the inward spiral.
+                const innerBias = float(1.0).sub(clamp(radialDist.sub(220.0).div(530.0), float(0.0), float(1.0)));
                 const orbitalAssist = float(0.0009).add(innerBias.mul(0.0015)).mul(referenceStep);
                 vel.x.addAssign(tangent.x.mul(orbitalAssist));
                 vel.y.addAssign(tangent.y.mul(orbitalAssist));
                 vel.z.addAssign(tangent.z.mul(orbitalAssist));
 
-                // The former delta * 60 term equals 2 at High's 30 Hz cadence.
+                // CPU: planePull = clampedPlaneOffset * planePullScale, planePullScale = simDelta*60.
+                // referenceStep now == simDelta*60, so scale by it directly. (The old x2 only existed to
+                // fake a 60 Hz step out of the previous 30 Hz reference; keeping it would now double this.)
                 const planePull = clamp(planeOffset.mul(0.0035), float(-0.32), float(0.32))
-                    .mul(float(2.0).mul(referenceStep));
+                    .mul(referenceStep);
                 vel.x.subAssign(normal.x.mul(planePull));
                 vel.y.subAssign(normal.y.mul(planePull));
                 vel.z.subAssign(normal.z.mul(planePull));
 
                 const normalVelocity = vel.x.mul(normal.x).add(vel.y.mul(normal.y)).add(vel.z.mul(normal.z));
-                // 1/6 was the normal-velocity damping at the 30 Hz reference step.
+                // Normal-velocity plane damping; uPlaneDamping = min(0.35, dt*5), matching the CPU.
                 vel.x.subAssign(normal.x.mul(normalVelocity).mul(planeDamp));
                 vel.y.subAssign(normal.y.mul(normalVelocity).mul(planeDamp));
                 vel.z.subAssign(normal.z.mul(normalVelocity).mul(planeDamp));
@@ -339,7 +358,9 @@ export class BlackHoleParticleCompute {
         // damping once on the CPU instead of three pow() operations per invocation.
         this.uBurstDamping.value = 0.998 ** referenceStep;
         this.uFlowDamping.value = 0.98505 ** referenceStep;
-        this.uPlaneDamping.value = 1.0 - (5.0 / 6.0) ** referenceStep;
+        // CPU planeDamp = Math.min(0.35, simDelta*5) exactly. The old 1-(5/6)^referenceStep only
+        // coincidentally matched at the previous 30 Hz reference; at 60 Hz it would over-damp ~2x.
+        this.uPlaneDamping.value = Math.min(0.35, safeDelta * 5.0);
         this.uTime.value = params.time ?? this.uTime.value;
         if (params.blackHolePos) {
             this.uBlackHolePos.value.copy(params.blackHolePos);

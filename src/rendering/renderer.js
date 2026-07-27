@@ -1566,6 +1566,5 @@ export class WebGLRenderer {
             // branches above re-start the loop the moment content appears.
             this.stop();
         }
-        // Note: electric-dreams theme uses DOM-based CSS animations, not WebGL particles
     }
 }

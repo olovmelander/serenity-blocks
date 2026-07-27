@@ -645,3 +645,70 @@ describe('InfinityMode fixed-tick loop adapter', () => {
         expect(boardScene.sharedEffects.getClearTier).not.toHaveBeenCalled();
     });
 });
+
+describe('InfinityMode on-screen lock origin (theme reaction placement)', () => {
+    // Exercise the pure camera-window arithmetic directly on the prototype — no full mode
+    // construction required. This is the emit-side mapping that turns an absolute grid row
+    // into the ON-SCREEN normalized origin themes place lock effects at.
+    const origin = (ctx, piece) => InfinityMode.prototype._pieceLockViewportOrigin.call(ctx, piece);
+    const tPiece = (x, y) => ({ shape: [[1, 1, 1], [0, 1, 0]], x, y });
+
+    it('maps an absolute grid row to its on-screen position via the camera window', () => {
+        const ctx = {
+            visibleRows: 20,
+            boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 90 } },
+        };
+        // centroidRow = 100 + mean(row∈{0,0,0,1}) + 0.5 = 100.75 → (100.75-90)/20 = 0.5375
+        // centroidCol = 3 + mean(col∈{0,1,2,1}) + 0.5 = 4.5 → 4.5/10 = 0.45
+        expect(origin(ctx, tPiece(3, 100))).toEqual({ x: 0.45, y: 0.5375 });
+    });
+
+    it('tracks the scroll: the same piece row reads higher when the camera has scrolled up', () => {
+        const near = origin(
+            { visibleRows: 20, boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 98 } } },
+            tPiece(3, 100),
+        );
+        const far = origin(
+            { visibleRows: 20, boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 90 } } },
+            tPiece(3, 100),
+        );
+        expect(near.y).toBeLessThan(far.y); // closer to the viewport top when camera trails it
+    });
+
+    it('prefers activeTopRow, then currentTopRow, then the gameState camera mirror', () => {
+        expect(origin({
+            visibleRows: 20,
+            gameState: { cameraRow: 40 },
+            boardScene: { cameraSettings: { visibleRows: 20, currentTopRow: 95 } },
+        }, tPiece(3, 100)).y).toBeCloseTo((100.75 - 95) / 20);
+        expect(origin({
+            visibleRows: 20,
+            gameState: { cameraRow: 90 },
+            boardScene: { cameraSettings: { visibleRows: 20 } },
+        }, tPiece(3, 100)).y).toBeCloseTo((100.75 - 90) / 20);
+    });
+
+    it('clamps to [0,1] and returns undefined without a usable piece', () => {
+        const ctx = { visibleRows: 20, boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 0 } } };
+        expect(origin(ctx, tPiece(3, 1000)).y).toBe(1); // far below the window
+        expect(origin(ctx, null)).toBeUndefined();
+        expect(origin(ctx, { x: 3, y: 5 })).toBeUndefined(); // no shape
+        expect(origin(ctx, { shape: [[0, 0]], x: 3, y: 5 })).toBeUndefined(); // no filled cells
+    });
+
+    // Line-clear origin: cleared rows' mean row mapped through the same camera window.
+    const clearOrigin = (ctx, rows) => InfinityMode.prototype._lineClearViewportOrigin.call(ctx, rows);
+
+    it('maps cleared rows to a horizontally centered on-screen origin', () => {
+        const ctx = { visibleRows: 20, boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 90 } } };
+        // meanRow = mean(100,102) + 0.5 = 101.5 → (101.5 - 90)/20 = 0.575; x centered.
+        expect(clearOrigin(ctx, [100, 102])).toEqual({ x: 0.5, y: 0.575 });
+    });
+
+    it('returns undefined for empty/absent cleared rows', () => {
+        const ctx = { visibleRows: 20, boardScene: { cameraSettings: { visibleRows: 20, activeTopRow: 90 } } };
+        expect(clearOrigin(ctx, [])).toBeUndefined();
+        expect(clearOrigin(ctx, undefined)).toBeUndefined();
+        expect(clearOrigin(ctx, ['x', null])).toBeUndefined(); // no finite rows
+    });
+});

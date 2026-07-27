@@ -67,6 +67,15 @@ const DEFAULT_ADAPTERS = Object.freeze({
 const clone = (o) => ({ x: o?.x || 0, y: o?.y || 0, z: o?.z || 0 });
 const cloneAll = (arr) => (Array.isArray(arr) ? arr.map(clone) : []);
 
+// A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock position on
+// the payload; the resolvers prefer it over the fixed-board piece.y. Inlined (not imported)
+// to keep this director dependency-free — it mirrors src/events/lock-origin.js.
+const readViewportOrigin = (payload) => {
+    const v = payload && payload.viewportOrigin;
+    if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return null;
+    return { x: Math.max(0, Math.min(1, v.x)), y: Math.max(0, Math.min(1, v.y)) };
+};
+
 const DEFAULT_RESOLVERS = Object.freeze({
     lockOrigin: () => ({ x: 0, y: 0, z: 0 }), // centroid of the locked piece
     lockCells: () => [{ x: 0, y: 0, z: 0 }], // world centers of each filled cell
@@ -152,12 +161,19 @@ export class StarlightReactionDirector {
 
     // ── event intake (pure; also callable directly by tests / the effect) ──────
 
-    onPieceLock(d = {}) { this._mark(d, (r) => { r.lock = true; r.piece = d.piece || null; }); }
+    onPieceLock(d = {}) {
+        this._mark(d, (r) => {
+            r.lock = true;
+            r.piece = d.piece || null;
+            r.viewportOrigin = readViewportOrigin(d);
+        });
+    }
 
     onLineClear(d = {}) {
         this._mark(d, (r) => {
             r.lineCount = Math.max(1, Number(d.lineCount) || 1);
             r.clearedRows = Array.isArray(d.clearedRows) ? d.clearedRows.slice() : [];
+            r.viewportOrigin = readViewportOrigin(d) || r.viewportOrigin;
         });
     }
 
@@ -283,8 +299,8 @@ export class StarlightReactionDirector {
 
     /** Lock, no clear (§4.7): cell-centered stellar seal + one shallow release wave. */
     _cueLock(player, r) {
-        const cells = cloneAll(this.resolvers.lockCells(r.piece, player));
-        const centroid = clone(this.resolvers.lockOrigin(r.piece, player));
+        const cells = cloneAll(this.resolvers.lockCells(r.piece, player, r.viewportOrigin));
+        const centroid = clone(this.resolvers.lockOrigin(r.piece, player, r.viewportOrigin));
         const accent = r.piece?.accent;
         // Seal renderer plays its own envelope (deferred no-op in production). On top, a
         // subtle edv3-style "tap" so every lock reads: a small dim ring at the lock point,
@@ -302,8 +318,8 @@ export class StarlightReactionDirector {
 
     /** Single/double/triple: row sweep + a screen-wide fan of waves/rings + meteor shower. */
     _cueLineClear(player, r, combo) {
-        const rows = cloneAll(this.resolvers.rowOrigins(r.clearedRows, player));
-        const centroid = clone(this.resolvers.rowsOrigin(r.clearedRows, player));
+        const rows = cloneAll(this.resolvers.rowOrigins(r.clearedRows, player, r.viewportOrigin));
+        const centroid = clone(this.resolvers.rowsOrigin(r.clearedRows, player, r.viewportOrigin));
         const n = r.lineCount | 0;
         const warm = combo >= 4 ? 1.15 : 1.0; // resonance warms + lengthens the sweep
         const lanes = n >= 3 ? 3 : n; // wider fan for bigger clears (single→1, double→2)
@@ -352,8 +368,8 @@ export class StarlightReactionDirector {
 
     /** Tetris: four linked row sweeps bottom→top, then a wide hero burst. */
     _cueTetris(player, r) {
-        const rows = cloneAll(this.resolvers.rowOrigins(r.clearedRows, player));
-        const centroid = clone(this.resolvers.rowsOrigin(r.clearedRows, player));
+        const rows = cloneAll(this.resolvers.rowOrigins(r.clearedRows, player, r.viewportOrigin));
+        const centroid = clone(this.resolvers.rowsOrigin(r.clearedRows, player, r.viewportOrigin));
         rows.forEach((row, k) => {
             this._at(k * 0.055, () => this.adapters.wave(row, { boost: 0.8, speed: 1.6, sigma: 28 }));
         });
@@ -406,7 +422,7 @@ export class StarlightReactionDirector {
 
     /** Combo apex (≥10 with a clear): sky-wide nova + meteor shower + constellation birth. */
     _cueComboApex(player, r, st) {
-        const origin = clone(this.resolvers.rowsOrigin(r.clearedRows, player));
+        const origin = clone(this.resolvers.rowsOrigin(r.clearedRows, player, r.viewportOrigin));
         st.apexAt = this.time; // arm the cooldown/hysteresis
         this._spread((o, s) => this.adapters.impulse(o, 4.0 * s, IMPULSE.ATTRACTOR), origin, 2); // inhale wide
         this._spread((o, s) => this.adapters.impulse(o, 10.0 * s, IMPULSE.RADIAL), origin, 2, 0.18, 0.05); // bloom
@@ -423,7 +439,7 @@ export class StarlightReactionDirector {
 
     /** Perfect clear: quiet half-beat, then a full-field reveal — fireball + signs everywhere. */
     _cuePerfectClear(player, r) {
-        const origin = clone(this.resolvers.rowsOrigin(r.clearedRows, player));
+        const origin = clone(this.resolvers.rowsOrigin(r.clearedRows, player, r.viewportOrigin));
         this._at(0.25, () => this.adapters.meteor('fireball', {}));
         this._at(0.3, () => this.adapters.meteor('shower', { count: 5 }));
         this._comboSigns(10); // full-field constellation reveal

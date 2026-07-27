@@ -13,7 +13,7 @@
  *    tornado, ocean, chromadelic read them bare (NaN on rename); ~35 more
  *    silently degrade to their `|| 1` fallbacks.
  *  - clearedRows and cascadeCount are ALWAYS present on LINE_CLEAR (defaults
- *    [] / 1) — starlight/wolfhour/electric-dreams place effects from
+ *    [] / 1) — starlight/wolfhour/electric-dreams-v3 place effects from
  *    clearedRows; halcyon/vesper scale by cascadeCount.
  *  - NEVER add a field named `detail` — ~10 themes unwrap
  *    `payload?.detail || payload`, so a `detail` key would shadow the payload.
@@ -42,8 +42,12 @@ const COMMON_OPTIONALS = ['source', 'levelId', 'player', 'position'];
 
 /**
  * @param {{ lineCount: number, clearedRows?: number[], cascadeCount?: number,
- *   comboCount?: number, source?: string, levelId?: string|number,
- *   player?: number, position?: {x:number,y:number} }} payload
+ *   comboCount?: number, viewportOrigin?: {x:number,y:number}, source?: string,
+ *   levelId?: string|number, player?: number, position?: {x:number,y:number} }} payload
+ *   `viewportOrigin` is the optional ON-SCREEN normalized origin of the cleared rows (0..1,
+ *   top-left), supplied by modes whose board does not map 1:1 to the fixed matrix (Infinity's
+ *   scrolling grid, where clearedRows are absolute indices growing into the hundreds) so
+ *   themes place clear effects on-screen instead of pinning to the bottom. Mirrors PIECE_LOCK.
  */
 export function emitLineClear({
     lineCount, clearedRows = [], cascadeCount = 1, ...extra
@@ -52,7 +56,7 @@ export function emitLineClear({
         lineCount,
         clearedRows,
         cascadeCount,
-        ...pickAllowed(extra, ['comboCount', ...COMMON_OPTIONALS]),
+        ...pickAllowed(extra, ['comboCount', 'viewportOrigin', ...COMMON_OPTIONALS]),
     });
 }
 
@@ -65,13 +69,20 @@ export function emitCombo({ comboCount, ...extra }) {
 }
 
 /**
- * @param {{ piece: object|null, source?: string, levelId?: string|number,
- *   player?: number }} payload
+ * @param {{ piece: object|null, viewportOrigin?: {x:number,y:number},
+ *   source?: string, levelId?: string|number, player?: number }} payload
  *   piece sub-fields shape/x/y are read by starlight/chiral-gold/wolfhour/
- *   halcyon to place lock-origin effects.
+ *   halcyon to place lock-origin effects. `viewportOrigin` is an optional
+ *   ON-SCREEN normalized lock position (0..1, top-left) that modes whose board
+ *   does not map 1:1 to the fixed 10×20 matrix supply so those effects track the
+ *   real lock — Infinity's tall scrolling grid pins to the bottom without it
+ *   (piece.y is an absolute row in a board that grows into the hundreds).
  */
 export function emitPieceLock({ piece, ...extra }) {
-    eventBus.emit(EVENTS.PIECE_LOCK, { piece, ...pickAllowed(extra, COMMON_OPTIONALS) });
+    eventBus.emit(EVENTS.PIECE_LOCK, {
+        piece,
+        ...pickAllowed(extra, ['viewportOrigin', ...COMMON_OPTIONALS]),
+    });
 }
 
 /**
@@ -100,4 +111,38 @@ export function emitTSpin({ lineCount, ...extra }) {
  */
 export function emitB2B({ active = true, ...extra } = {}) {
     eventBus.emit(EVENTS.B2B, { active, ...pickAllowed(extra, COMMON_OPTIONALS) });
+}
+
+/**
+ * @param {{ piece?: object|null, startY?: number, endY?: number, distance?: number,
+ *   viewportOrigin?: {x:number,y:number}, source?: string, levelId?: string|number,
+ *   player?: number, position?: {x:number,y:number} }} payload
+ */
+export function emitHardDrop({
+    piece = null, startY, endY, distance, ...extra
+} = {}) {
+    let resolvedDistance = 0;
+    if (Number.isFinite(distance)) {
+        resolvedDistance = Math.max(0, Number(distance));
+    } else if (Number.isFinite(startY) && Number.isFinite(endY)) {
+        resolvedDistance = Math.max(0, Number(endY) - Number(startY));
+    }
+    eventBus.emit(EVENTS.HARD_DROP, {
+        piece,
+        startY,
+        endY,
+        distance: resolvedDistance,
+        ...pickAllowed(extra, ['viewportOrigin', ...COMMON_OPTIONALS]),
+    });
+}
+
+/**
+ * @param {{ level: number, source?: string, levelId?: string|number,
+ *   player?: number, position?: {x:number,y:number} }} payload
+ */
+export function emitLevelUp({ level, ...extra }) {
+    eventBus.emit(EVENTS.LEVEL_UP, {
+        level,
+        ...pickAllowed(extra, COMMON_OPTIONALS),
+    });
 }

@@ -171,7 +171,7 @@ export default class PyrestormV2Theme extends BaseTheme {
         return container;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         this.qualityName = this._getQualityFromSettings();
         this.qualityPreset = QUALITY_PRESETS[this.qualityName] || QUALITY_PRESETS.High;
 
@@ -188,26 +188,37 @@ export default class PyrestormV2Theme extends BaseTheme {
             );
             return;
         }
+        const renderer = new THREE.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
         try {
-            this.renderer = new THREE.WebGPURenderer({
-                antialias: this.getAntialiasEnabled(),
-                alpha: false,
-                powerPreference: 'high-performance',
+            await this.initializeRendererCandidate(renderer, {
+                timeoutMs: 4000,
+                label: 'Pyrestorm V2 WebGPU renderer init',
+                ownerGeneration,
             });
-            await Promise.race([
-                this.renderer.init(),
-                new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('WebGPU init timeout')), 4000);
-                }),
-            ]);
-            if (this.renderer.backend?.isWebGPUBackend !== true) {
+            if (renderer.backend?.isWebGPUBackend !== true) {
                 throw new Error('WebGPU backend not active after init');
             }
         } catch (err) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return;
             console.error('[PyrestormV2] WebGPU init failed:', err);
+            this.disposeRenderer(renderer, { nullInstance: false });
             this._showFallbackMessage(container, `WebGPU initialization failed: ${err.message}`);
             return;
         }
+
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
 
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(this.qualityPreset.maxPixelRatio));
         this.renderer.setSize(w, h);

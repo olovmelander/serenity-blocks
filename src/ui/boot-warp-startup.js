@@ -3,7 +3,11 @@ import { performanceMonitor } from '../utils/performance-monitor.js';
 import { markStartup } from './startup-debug.js';
 
 export const INTRO_RENDERER_READY_TIMEOUT_MS = 8000;
-export const BOOT_WARP_PREWARM_TIMEOUT_MS = 6500;
+// Prewarm now waits for the GPU to actually EXECUTE the primed frames (see
+// BootWarpTransition._prewarmInternal), so a cold Dawn/driver pipeline cache spends its
+// real shader-compile time here — measured ~3s on a cold cache — instead of stalling the
+// play loop. The budget is sized for that, not for the old "queue it and hope" prime.
+export const BOOT_WARP_PREWARM_TIMEOUT_MS = 12000;
 export const BOOT_WARP_MIN_VISIBLE_MS = 5000;
 export const BOOT_WARP_DEFAULT_DURATION_MS = 6500;
 export const BOOT_WARP_REVEAL_PROGRESS = 0.06;
@@ -22,6 +26,29 @@ export const BOOT_WARP_THEME_IDLE_MAX_WAIT_MS = 45000;
 // a DETERMINISTIC failure (same TSL codegen throw every attempt) must not retry forever.
 export const BOOT_WARP_MAX_PREWARM_ATTEMPTS = 3;
 export const BOOT_WARP_REQUIRED_TITLE_SAFETY_MS = 120000;
+// Progress is advanced by RENDERED frames, and each frame's contribution is clamped to
+// this. A frame-production stall (cold pipeline compile, background-tab throttle, another
+// process grabbing the GPU) must never fast-forward the flight: with a wall clock, a 3s
+// stall handed the ident straight to a mid-flight warp at progress ~0.48. 64ms ≈ 4 frames
+// at 60Hz, so ordinary jitter still plays at true speed.
+export const BOOT_WARP_MAX_FRAME_DELTA_MS = 64;
+// A frame interval at or under this counts as a healthy cadence. Deliberately generous
+// (12.5fps) — it is a stall detector, not a performance bar.
+export const BOOT_WARP_HEALTHY_FRAME_DELTA_MS = 80;
+// Consecutive healthy frames required before the ident may cross-dissolve to the warp.
+// Each rAF callback proves the previous frame reached the compositor, so this is direct
+// evidence the warp is actually animating on screen — never hand off into a frozen frame.
+export const BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL = 3;
+// Grace on that cadence gate. Hardware that simply runs slow (a sustained sub-12.5fps
+// warp) would otherwise never satisfy the gate and would sit on the studio ident until the
+// flight ran out. The gate exists to dodge a multi-second COMPILE stall, not to withhold the
+// handoff from a slow machine, so after this long past the reveal point we hand over anyway
+// — a janky warp beats an ident that overstays its welcome.
+export const BOOT_WARP_CADENCE_GRACE_MS = 1500;
+// Ceiling on the post-flight top-up used to satisfy the min-visible contract. Past the end
+// of the flight there is no animation left, so every extra ms holds a DEAD final frame —
+// which is what read as "it pauses just before the transition completes".
+export const BOOT_WARP_MAX_FROZEN_TAIL_MS = 250;
 
 function nowMs() {
     return typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -109,6 +136,8 @@ export async function playBootWarpHandoff(options = {}) {
     let minVisibleMarked = false;
     let latestProgress = 0;
     let warpAudioStarted = false;
+    // When the flight first became eligible to hand over — the clock the cadence grace runs on.
+    let revealReadyAt = null;
 
     const visibleMs = () => (visibleStartedAt === null ? 0 : Math.max(0, nowMs() - visibleStartedAt));
     const interruptedStatus = (playResult = {}) => ({
@@ -186,9 +215,27 @@ export async function playBootWarpHandoff(options = {}) {
         onProgress: (progress, state = {}) => {
             if (signal?.aborted) return;
             latestProgress = progress;
+            // The handoff needs THREE proofs, not one: the gem is lit (progress), a frame
+            // was drawn (firstFrameRendered), and frames are actually reaching the screen
+            // (cadenceHealthy). Without the last one the ident could cross-dissolve onto a
+            // warp that was about to freeze for seconds on a cold pipeline compile.
+            const readyToReveal = state.firstFrameRendered !== false
+                && progress >= timing.revealProgress;
+            if (readyToReveal && revealReadyAt === null) {
+                revealReadyAt = nowMs();
+            }
+            const cadenceGraceExpired = revealReadyAt !== null
+                && (nowMs() - revealReadyAt) >= BOOT_WARP_CADENCE_GRACE_MS;
             if (!shellDismissed
-                && state.firstFrameRendered !== false
-                && progress >= timing.revealProgress) {
+                && readyToReveal
+                && (state.cadenceHealthy !== false || cadenceGraceExpired)) {
+                if (state.cadenceHealthy === false) {
+                    markStartup('boot-warp:reveal-cadence-grace-expired', {
+                        progress,
+                        waitedMs: roundMs(nowMs() - revealReadyAt),
+                        frameDeltaMs: state.frameDeltaMs,
+                    }, { level: 'warn' });
+                }
                 shellDismissed = true;
                 visibleStartedAt = nowMs();
                 markStartup('boot-warp:visible-start', {
@@ -229,10 +276,23 @@ export async function playBootWarpHandoff(options = {}) {
         return fallbackStatus;
     }
 
+    // play() has resolved, so the flight is over and nothing is animating any more. A
+    // top-up here holds a FROZEN final frame, so it is capped hard: on a correct reveal
+    // (progress ~0.06) the visible span is already ~5.5s and the top-up is zero, and if
+    // the reveal was late for any reason a short beat beats a dead multi-second hold.
     const remainingVisibleMs = timing.minVisibleMs - visibleMs();
     if (remainingVisibleMs > 0) {
+        const topUpMs = Math.min(remainingVisibleMs, BOOT_WARP_MAX_FROZEN_TAIL_MS);
+        if (remainingVisibleMs > topUpMs) {
+            markStartup('boot-warp:min-visible-truncated', {
+                requestedMs: roundMs(remainingVisibleMs),
+                appliedMs: topUpMs,
+                visibleMs: roundMs(visibleMs()),
+                minVisibleMs: timing.minVisibleMs,
+            }, { level: 'warn' });
+        }
         const completed = await waitMsOrAbort(
-            remainingVisibleMs,
+            topUpMs,
             setTimeoutFn,
             clearTimeoutFn,
             signal,

@@ -97,7 +97,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall'],
+            primary: ['forest', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall'],
             supporting: [],
         },
 
@@ -246,7 +246,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 10],
 
         themes: {
-            primary: ['fluid-dreams', 'nebula-flow', 'chromadelic-highway', 'voltage-storm', 'chromatic-impasto', 'electric-dreams', 'singing-bowl'],
+            primary: ['fluid-dreams', 'nebula-flow', 'chromadelic-highway', 'voltage-storm', 'chromatic-impasto', 'electric-dreams-v3', 'singing-bowl'],
             supporting: [],
         },
 

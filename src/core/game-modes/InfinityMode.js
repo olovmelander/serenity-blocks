@@ -34,6 +34,7 @@ import { installLegacyBoardJuiceInputWrapper } from '../../ui/infinity/legacy-bo
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
+    emitHardDrop,
 } from '../../events/gameplay-events.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
@@ -1406,9 +1407,16 @@ export class InfinityMode extends BaseGameMode {
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
 
-                // Emit event for theme reactions
+                // Emit event for theme reactions. Pass the ON-SCREEN clear origin so theme
+                // clear effects track the scrolling viewport instead of pinning to the bottom
+                // (clearedRows are absolute rows in Infinity's tall grid).
                 console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
-                emitLineClear({ lineCount, clearedRows, cascadeCount });
+                emitLineClear({
+                    lineCount,
+                    clearedRows,
+                    cascadeCount,
+                    viewportOrigin: this._lineClearViewportOrigin(clearedRows),
+                });
 
                 // Track combo stats for infinity mode
                 if (callbackState.infinityStats && callbackState.comboState) {
@@ -1451,6 +1459,13 @@ export class InfinityMode extends BaseGameMode {
             },
             onHardDrop: (dropData) => {
                 if (!ownsCallbackSession()) return;
+                emitHardDrop({
+                    piece: dropData?.piece || null,
+                    startY: dropData?.startY,
+                    endY: dropData?.endY,
+                    viewportOrigin: this._pieceLockViewportOrigin(dropData?.piece),
+                    source: 'infinity',
+                });
                 if (usesFixedTiming) {
                     applyFixedHardDropHitStop(callbackState);
                 } else {
@@ -1603,8 +1618,11 @@ export class InfinityMode extends BaseGameMode {
             // Piece lock ripple effect
             onPieceLock: (piece) => {
                 if (!ownsCallbackSession()) return;
-                // Emit event for theme reactions
-                emitPieceLock({ piece });
+                // Emit event for theme reactions. Infinity scrolls a fixed camera window over
+                // a tall grid, so pass the ON-SCREEN lock origin — otherwise theme lock effects
+                // (e.g. Serenity Warp's Phase Seal) pin to the bottom, since piece.y is an
+                // absolute row in a board that grows into the hundreds.
+                emitPieceLock({ piece, viewportOrigin: this._pieceLockViewportOrigin(piece) });
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
@@ -1991,6 +2009,81 @@ export class InfinityMode extends BaseGameMode {
         const pieceBottomRow = piece.y + (piece.shape?.length || 0) - 1;
 
         return pieceBottomRow >= cameraBottomRow;
+    }
+
+    /**
+     * On-screen normalized origin (0 = top of the viewport, 1 = bottom / left → right) of a
+     * locked piece, using the SAME camera transform the Phaser board draws with
+     * (screenRowFraction = (row - activeTopRow) / visibleRows). Themes consume this via the
+     * PIECE_LOCK payload so lock effects follow the scrolling window instead of the fixed
+     * 10×20 board math. Returns undefined when camera/piece state is unavailable so the theme
+     * falls back to its own normalization.
+     * @private
+     */
+    _pieceLockViewportOrigin(piece) {
+        const shape = piece?.shape;
+        if (!Array.isArray(shape)
+            || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) {
+            return undefined;
+        }
+        let sumRow = 0;
+        let sumCol = 0;
+        let filled = 0;
+        for (let r = 0; r < shape.length; r += 1) {
+            const row = shape[r];
+            if (!Array.isArray(row)) continue;
+            for (let c = 0; c < row.length; c += 1) {
+                if (row[c]) { sumRow += r; sumCol += c; filled += 1; }
+            }
+        }
+        if (filled === 0) return undefined;
+
+        const cameraSettings = this.boardScene?.cameraSettings;
+        const visibleRows = cameraSettings?.visibleRows || this.visibleRows;
+        if (!(visibleRows > 0)) return undefined;
+        // Float top row (not floored) for exact alignment with the lerped camera centre.
+        // Prefer activeTopRow (this frame's clamped value) → currentTopRow → gameState mirror.
+        let topRow = this.gameState?.cameraRow ?? 0;
+        if (Number.isFinite(cameraSettings?.currentTopRow)) topRow = cameraSettings.currentTopRow;
+        if (Number.isFinite(cameraSettings?.activeTopRow)) topRow = cameraSettings.activeTopRow;
+
+        const centroidRow = piece.y + sumRow / filled + 0.5;
+        const centroidCol = piece.x + sumCol / filled + 0.5;
+        return {
+            x: Math.max(0, Math.min(1, centroidCol / COLS)),
+            y: Math.max(0, Math.min(1, (centroidRow - topRow) / visibleRows)),
+        };
+    }
+
+    /**
+     * On-screen normalized origin of a set of cleared rows (full-width clears are horizontally
+     * centered, so x=0.5). Uses the same camera-window transform as _pieceLockViewportOrigin so
+     * theme clear effects follow the scrolling window. Returns undefined when camera/rows are
+     * unavailable → theme falls back to its own row normalization.
+     * @private
+     */
+    _lineClearViewportOrigin(clearedRows) {
+        if (!Array.isArray(clearedRows) || clearedRows.length === 0) return undefined;
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < clearedRows.length; i += 1) {
+            const row = clearedRows[i];
+            if (Number.isFinite(row)) { sum += row; count += 1; }
+        }
+        if (count === 0) return undefined;
+
+        const cameraSettings = this.boardScene?.cameraSettings;
+        const visibleRows = cameraSettings?.visibleRows || this.visibleRows;
+        if (!(visibleRows > 0)) return undefined;
+        let topRow = this.gameState?.cameraRow ?? 0;
+        if (Number.isFinite(cameraSettings?.currentTopRow)) topRow = cameraSettings.currentTopRow;
+        if (Number.isFinite(cameraSettings?.activeTopRow)) topRow = cameraSettings.activeTopRow;
+
+        const meanRow = sum / count + 0.5;
+        return {
+            x: 0.5,
+            y: Math.max(0, Math.min(1, (meanRow - topRow) / visibleRows)),
+        };
     }
 
     /**

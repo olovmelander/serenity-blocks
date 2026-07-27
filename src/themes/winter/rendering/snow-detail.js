@@ -48,9 +48,17 @@ function loadTex(fileName, placeholderHex) {
     tex.colorSpace = THREE.NoColorSpace; // we read luminance / raw normal, not graded colour
     tex.anisotropy = 4;
     tex.needsUpdate = true;
+    tex.userData.lifecycleDisposed = false;
+    tex.addEventListener('dispose', () => {
+        tex.userData.lifecycleDisposed = true;
+    });
     new THREE.TextureLoader().load(
         `${ASSET_BASE}${fileName}`,
         (loaded) => {
+            if (tex.userData.lifecycleDisposed) {
+                loaded.dispose?.();
+                return;
+            }
             tex.image = loaded.image;
             tex.needsUpdate = true;
             loaded.dispose?.();

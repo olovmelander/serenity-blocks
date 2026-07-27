@@ -953,6 +953,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.pulseIntensity = 0;
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
+        this.animationFrameId = null;
 
         // Textures
         this.caveRockTextures = null;
@@ -1895,9 +1896,9 @@ export default class BioluminescenceTheme extends BaseTheme {
                 this.renderer.render(this.scene, this.camera);
             }
 
-            requestAnimationFrame(animate);
+            this.animationFrameId = requestAnimationFrame(animate);
         };
-        requestAnimationFrame(animate);
+        this.animationFrameId = requestAnimationFrame(animate);
     }
 
     resize(w, h) {

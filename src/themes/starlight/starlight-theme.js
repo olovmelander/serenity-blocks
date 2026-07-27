@@ -144,7 +144,7 @@ export default class StarlightTheme extends BaseTheme {
         return this.qualityName !== 'Minimal' && this.qualityName !== 'Low';
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) {
             console.error('[Starlight] Container not found');
@@ -156,7 +156,7 @@ export default class StarlightTheme extends BaseTheme {
         this.qualityName = this._getQualityFromSettings();
         this.postProfile = getStarlightPostProfile(this.qualityName);
 
-        const ok = await this._initRenderer(container);
+        const ok = await this._initRenderer(container, ownerGeneration);
         if (!ok) return;
 
         const w = window.innerWidth;
@@ -230,7 +230,7 @@ export default class StarlightTheme extends BaseTheme {
      * stardust river (later phase) needs true WebGPU, which is gated separately.
      * Returns true on success.
      */
-    async _initRenderer(container) {
+    async _initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const w = window.innerWidth;
         const h = window.innerHeight;
         const antialias = this.getAntialiasEnabled();
@@ -243,12 +243,11 @@ export default class StarlightTheme extends BaseTheme {
                 powerPreference: 'high-performance',
                 forceWebGL,
             });
-            await Promise.race([
-                r.init(),
-                new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('WebGPU init timeout')), 5000);
-                }),
-            ]);
+            await this.initializeRendererCandidate(r, {
+                timeoutMs: 5000,
+                label: `Starlight ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            });
             return r;
         };
 
@@ -257,18 +256,27 @@ export default class StarlightTheme extends BaseTheme {
             try {
                 renderer = await make(false);
                 if (renderer.backend?.isWebGPUBackend !== true) {
-                    renderer.dispose();
+                    this.disposeRenderer(renderer, { nullInstance: false });
                     renderer = null;
                 }
             } catch (err) {
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
                 console.warn('[Starlight] WebGPU init failed, trying WebGL2 backend:', err);
                 renderer = null;
             }
         }
         if (!renderer) {
+            if (ownerGeneration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete) return false;
             try {
                 renderer = await make(true); // WebGL2 backend of WebGPURenderer
             } catch (err) {
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
                 console.error('[Starlight] Renderer init failed:', err);
                 container.innerHTML = '<div style="color:#aab;text-align:center;padding:2em;'
                     + 'font-family:sans-serif;">Starlight needs WebGPU or WebGL2. '
@@ -277,6 +285,12 @@ export default class StarlightTheme extends BaseTheme {
             }
         }
 
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this._computeAvailable = this.isWebGPU && typeof renderer.compute === 'function';

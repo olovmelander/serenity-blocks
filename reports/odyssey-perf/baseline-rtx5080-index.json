@@ -1,9 +1,9 @@
 {
-  "createdAt": "2026-07-25T19:52:19.557Z",
+  "createdAt": "2026-07-26T19:57:10.407Z",
   "tag": "rtx5080",
   "mode": "committed",
   "runs": 1,
-  "scenario": "idle",
+  "scenario": "load",
   "quality": "Extreme",
   "targetFrameRate": 240,
   "caches": [
@@ -14,7 +14,7 @@
     {
       "cache": "cold",
       "save": "fresh",
-      "file": "reports\\odyssey-perf\\baseline-rtx5080-cold-fresh-idle.json"
+      "file": "reports\\odyssey-perf\\baseline-rtx5080-cold-fresh-load.json"
     }
   ]
 }

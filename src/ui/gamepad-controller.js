@@ -630,6 +630,41 @@ export class GamepadController {
             const freshGamepad = gamepads[gamepad.index];
             if (!freshGamepad) continue;
 
+            // The Serenity Hub is a top-layer input owner. Start/game-over
+            // modals and game-mode cards can remain visible underneath it, so
+            // routing A/B/Start to those first can restart or replace the
+            // active game while the player is confirming a theme selection.
+            const hubIsOpen = this.serenityModeActive
+                && this.serenityModeCallbacks
+                && this.serenityModeCallbacks.isHubOpen?.() === true;
+            if (hubIsOpen) {
+                this.processGamepadInput(freshGamepad, slot);
+
+                // A Hub action can close the panel during this call (notably B).
+                // Latch the same physical buttons for the hidden modal/menu
+                // owners so a still-held close/confirm press cannot become a
+                // fresh restart or game-mode activation on the next poll.
+                const previousState = this.previousStates[slot];
+                const mainButtons = [
+                    BUTTON_MAP.A,
+                    BUTTON_MAP.B,
+                    BUTTON_MAP.X,
+                    BUTTON_MAP.Y,
+                    BUTTON_MAP.START,
+                ];
+                previousState.gameOverButton = mainButtons.some(
+                    (buttonIndex) => freshGamepad.buttons[buttonIndex]?.pressed,
+                );
+                previousState.gameModeSelect = freshGamepad.buttons[BUTTON_MAP.A]?.pressed;
+                continue;
+            }
+
+            // Defensive DOM fallback for the short interval where the panel is
+            // open but its controller callbacks are not yet available.
+            if (document.body?.classList?.contains('serenity-hub-open')) {
+                continue;
+            }
+
             // Check for game over modal - any button press restarts (only for player 1)
             if (slot === 0) {
                 const gameOverModal = document.getElementById('game-over-modal');
@@ -1617,6 +1652,17 @@ export class GamepadController {
      */
     processGamepadInput(gamepad, slot) {
         const prevState = this.previousStates[slot];
+        const hubIsOpen = this.serenityModeActive
+            && this.serenityModeCallbacks
+            && this.serenityModeCallbacks.isHubOpen?.() === true;
+
+        // The Hub owns every button while visible, including Start. Route it
+        // before the global Settings shortcut so Settings cannot open beneath
+        // a theme card confirmation.
+        if (hubIsOpen) {
+            this.processSerenityModeInput(gamepad, slot);
+            return;
+        }
 
         // Handle START button for settings (for player 1 only)
         // BUT skip if menu navigation is enabled (menus handle their own START button)
@@ -1639,15 +1685,8 @@ export class GamepadController {
         // If in Serenity Mode AND the hub is open, use Serenity Mode input handling exclusively
         // Otherwise, process both Serenity shortcuts (SELECT to open hub) AND game input
         if (this.serenityModeActive && this.serenityModeCallbacks) {
-            const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
-
             // Always process Serenity Mode input for hub toggle (SELECT button) and other shortcuts
             this.processSerenityModeInput(gamepad, slot);
-
-            // If hub is open, don't process game input (tetromino controls)
-            if (hubIsOpen) {
-                return;
-            }
             // If hub is closed, continue to process game input below
         }
 

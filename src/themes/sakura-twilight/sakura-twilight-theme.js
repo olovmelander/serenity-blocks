@@ -110,7 +110,20 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.smoothedPointerY = 0;
     }
 
+    isLifecycleCurrent(generation) {
+        return generation === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+    }
+
+    disposeLoadedGltf(gltf) {
+        if (gltf?.scene) {
+            this.disposeThreeJSGroup(gltf.scene);
+        }
+    }
+
     async createScene() {
+        const generation = this.lifecycleGeneration;
         console.log('[SakuraTheme] Initialization started (Optimized)');
 
         const container = document.getElementById('sakura-twilight-theme');
@@ -161,17 +174,19 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.scene.add(dirLight);
 
         // 5. Load Assets & Generate Forest
-        await this.loadModelAndCreateForest();
+        const forestReady = await this.loadModelAndCreateForest(generation);
+        if (forestReady === false || !this.isLifecycleCurrent(generation)) return;
+
         this.createPetals();
         this.createGrass(); // Add animated grass
         this.createMoon(); // Add moon with glow
         this.createFujiMountain(); // Add 3D Fuji mountain in horizon
         this.createStarfield(); // Add twinkling stars
         this.createLanterns(); // Add glowing lanterns
-        await this.loadFoxes(); // Add wandering foxes
+        const foxesReady = await this.loadFoxes(generation); // Add wandering foxes
+        if (foxesReady === false || !this.isLifecycleCurrent(generation)) return;
 
         this.setupEventListeners();
-        this.isActive = true;
         this.animate();
 
         // 6. Listeners & Loop
@@ -205,10 +220,14 @@ export default class SakuraTwilightTheme extends BaseTheme {
         console.log('[SakuraTheme] Initialization complete');
     }
 
-    async loadModelAndCreateForest() {
+    async loadModelAndCreateForest(generation = this.lifecycleGeneration) {
         const loader = new GLTFLoader();
         try {
             const gltf = await loader.loadAsync(modelUrl);
+            if (!this.isLifecycleCurrent(generation)) {
+                this.disposeLoadedGltf(gltf);
+                return false;
+            }
 
             // --- Extract Geometries and Materials ---
             let trunkGeo = null; let
@@ -276,14 +295,14 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // Merge all canopy geometries into one
             if (canopyGeometries.length === 0) {
                 console.error('[SakuraTheme] No canopy geometries found!');
-                return;
+                return true;
             }
             console.log(`[SakuraTheme] Merging ${canopyGeometries.length} canopy geometries`);
             const mergedCanopyGeo = BufferGeometryUtils.mergeGeometries(canopyGeometries, false);
 
             if (!trunkGeo || !mergedCanopyGeo) {
                 console.error('[SakuraTheme] Missing tree parts!');
-                return;
+                return true;
             }
 
             // CRITICAL FIX: Use TRUNK's base Y as the ground reference
@@ -489,8 +508,13 @@ export default class SakuraTwilightTheme extends BaseTheme {
             this.shadowMesh = shadowMesh;
 
             console.log(`[SakuraTheme] Forest generated (Optimized). Instances: ${placedCount}`);
+            return true;
         } catch (error) {
+            if (!this.isLifecycleCurrent(generation)) {
+                return false;
+            }
             console.error('[SakuraTheme] Error loading model:', error);
+            return true;
         }
     }
 
@@ -2655,11 +2679,15 @@ export default class SakuraTwilightTheme extends BaseTheme {
         });
     }
 
-    async loadFoxes() {
+    async loadFoxes(generation = this.lifecycleGeneration) {
         const loader = new GLTFLoader();
 
         try {
             const gltf = await loader.loadAsync(foxModelUrl);
+            if (!this.isLifecycleCurrent(generation)) {
+                this.disposeLoadedGltf(gltf);
+                return false;
+            }
 
             // Extract animations from the loaded model
             const animations = {};
@@ -2774,8 +2802,13 @@ export default class SakuraTwilightTheme extends BaseTheme {
             }
 
             console.log(`[SakuraTheme] Loaded ${this.foxes.length} foxes`);
+            return true;
         } catch (error) {
+            if (!this.isLifecycleCurrent(generation)) {
+                return false;
+            }
             console.error('[SakuraTheme] Error loading fox model:', error);
+            return true;
         }
     }
 
@@ -3294,28 +3327,33 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
     stop() {
         console.log('[SakuraTheme] Stopping...');
+        super.stop();
         if (this.animationId) cancelAnimationFrame(this.animationId);
         this.animationId = null;
         window.removeEventListener('resize', this.boundResizeHandler);
-        window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
+        if (this.handleDisplaySettingsChange) {
+            window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
+            this.handleDisplaySettingsChange = null;
+        }
 
         // Remove event subscriptions
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
 
         // Cleanup fox resources
         for (const mixer of this.foxMixers) {
             mixer.stopAllAction();
         }
-        super.stop();
     }
 
     cleanup() {
-        super.cleanup();
-        this.foxMixers = [];
-        this.foxes = [];
-        this.instancedMeshes = [];
-        this.sharedCanopyMaterial = null;
+        try {
+            super.cleanup();
+        } finally {
+            this.foxMixers = [];
+            this.foxes = [];
+            this.instancedMeshes = [];
+            this.sharedCanopyMaterial = null;
+        }
     }
 
     /**

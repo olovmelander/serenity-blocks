@@ -184,7 +184,10 @@ export function create({ scene, camera, renderer }) {
     {
         const direction = normalize(positionLocal);
         const height = smoothstep(-0.18, 0.72, direction.y);
-        const horizon = pow(smoothstep(0.40, 0.0, abs(direction.y.add(0.03))), float(2.2));
+        const horizon = pow(
+            smoothstep(0.0, 0.40, abs(direction.y.add(0.03))).oneMinus(),
+            float(2.2),
+        );
         const skyBase = mix(vec3(0.004, 0.022, 0.026), vec3(0.002, 0.004, 0.012), height);
         skyMaterial.colorNode = skyBase.add(vec3(0.022, 0.070, 0.062).mul(horizon));
         skyMaterial.side = THREE.BackSide;

@@ -103,7 +103,12 @@ afterEach(() => {
 });
 
 describe('opponent watcher animation quality', () => {
-    it('keeps fractional x/y in the render dirty signature', () => {
+    it('quantizes the render dirty signature to whole cells (P0-7 §2.8)', () => {
+        // The opponent piece is snapshot-INTERPOLATED. A tenths-precision signature changed
+        // almost every frame, defeating the dirty-check and forcing a full-board repaint plus a
+        // getBoundingClientRect forced-layout per watched opponent, per frame. Whole-cell
+        // quantization is stable across sub-cell motion (the mini-board renders at cell
+        // granularity, so sub-cell precision was never visible).
         const watcher = makeWatcher();
 
         const a = watcher._computePieceHash({
@@ -116,9 +121,13 @@ describe('opponent watcher animation quality', () => {
             type: 'T', x: 4.1, y: 5.2, rotation: 0,
         });
 
-        expect(a).not.toBe(b);
-        expect(b).not.toBe(c);
-        expect(b).toBe('T|40|52|0');
+        // Sub-cell interpolation within the same cell → identical signature (no repaint).
+        expect(a).toBe(b);
+        expect(b).toBe(c);
+        expect(b).toBe('T|4|5|0');
+
+        // A genuine whole-cell move still changes it (real visual change → repaint).
+        expect(watcher._computePieceHash({ type: 'T', x: 4, y: 6, rotation: 0 })).not.toBe(b);
     });
 
     it('projects ghost rows from floored interpolated y', () => {

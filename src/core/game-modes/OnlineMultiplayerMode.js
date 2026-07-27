@@ -14,7 +14,7 @@ import { MatchConfigModal } from '../../ui/match-config-modal.js';
 import { MatchResultsModal } from '../../ui/match-results-modal.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear,
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitHardDrop,
 } from '../../events/gameplay-events.js';
 import { OpponentWatchManager } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
@@ -1508,6 +1508,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (!this.mainBoardScene) return;
 
                 const { dropData } = detail;
+                emitHardDrop(dropData);
 
                 this.deps.soundManager?.sfxPlayer.playDrop();
 

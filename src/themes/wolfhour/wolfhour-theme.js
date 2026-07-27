@@ -14,6 +14,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { WOLFHOUR_TETROMINOS } from './wolfhour-tetrominos.js';
 
@@ -1265,7 +1266,7 @@ export default class WolfhourTheme extends BaseTheme {
     // Scene Creation
     // ─────────────────────────────────────────────────────────────────────────
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[Wolfhour] Creating Three.js scene...');
         this.computeFallbackPending = false;
 
@@ -1317,7 +1318,8 @@ export default class WolfhourTheme extends BaseTheme {
         }
         this.container = container;
 
-        await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
+        if (!rendererReady) return;
 
         this.materialFactories = null;
         this.computeFactories = null;
@@ -1389,9 +1391,13 @@ export default class WolfhourTheme extends BaseTheme {
     // Renderer & Camera
     // ─────────────────────────────────────────────────────────────────────────
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+        let selectedRenderer = null;
 
         this.isWebGPU = false;
         this.isWebGL = false;
@@ -1416,10 +1422,13 @@ export default class WolfhourTheme extends BaseTheme {
                     trackTimestamp: this.flags.baseline === true,
                 });
 
-                await renderer.init();
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Wolfhour WebGPU renderer init',
+                    ownerGeneration,
+                });
 
                 if (renderer.backend && renderer.backend.isWebGPUBackend) {
-                    this.renderer = renderer;
+                    selectedRenderer = renderer;
                     this.isWebGPU = true;
 
                     this.capabilities.webgpu = true;
@@ -1436,13 +1445,15 @@ export default class WolfhourTheme extends BaseTheme {
                     renderer.domElement?.remove?.();
                 }
             } catch (err) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[Wolfhour] WebGPU initialization failed:', err);
             }
         }
 
-        if (!this.renderer) {
+        if (!selectedRenderer) {
+            if (!ownsLifecycle()) return false;
             console.log('[Wolfhour] Initializing WebGL fallback renderer');
-            this.renderer = new THREE.WebGLRenderer({
+            selectedRenderer = new THREE.WebGLRenderer({
                 antialias: this.getAntialiasEnabled(),
                 alpha: false,
                 powerPreference: 'high-performance',
@@ -1456,6 +1467,11 @@ export default class WolfhourTheme extends BaseTheme {
             this.capabilities.supportsCompute = false;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(selectedRenderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = selectedRenderer;
         // Apply policy flags
         this.flags.usePost = this.capabilities.supportsPost
             && !this.flags.noPost
@@ -1482,14 +1498,24 @@ export default class WolfhourTheme extends BaseTheme {
         // Setup Device-Loss handling
         if (this.isWebGPU && this.renderer.backend && this.renderer.backend.device) {
             const rendererAtRegistration = this.renderer;
-            this.renderer.backend.device.lost.then((info) => {
-                if (!this.isActive || this.renderer !== rendererAtRegistration) return;
+            const ownerGenerationAtRegistration = ownerGeneration;
+            rendererAtRegistration.onDeviceLost = (info) => {
+                if (ownerGenerationAtRegistration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete
+                    || this.renderer !== rendererAtRegistration) return;
                 this.handleDeviceLost(info, rendererAtRegistration);
-            });
+            };
         }
+        const rendererAtRegistration = this.renderer;
+        const ownerGenerationAtRegistration = ownerGeneration;
         this.webglContextLostHandler = (e) => {
             e.preventDefault();
-            this.handleDeviceLost(e);
+            if (ownerGenerationAtRegistration !== this.lifecycleGeneration
+                || !this.isActive
+                || this.cleanupComplete
+                || this.renderer !== rendererAtRegistration) return;
+            this.handleDeviceLost(e, rendererAtRegistration);
         };
         this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler);
 
@@ -1514,6 +1540,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.configureRendererColorPipeline();
 
         console.log(`[Wolfhour] Renderer initialized (WebGPU: ${this.isWebGPU}, WebGL: ${this.isWebGL})`);
+        return true;
     }
 
     handleDeviceLost(info, rendererAtLoss = this.renderer) {
@@ -1939,7 +1966,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         const segments = ['Minimal', 'Low'].includes(this.activeQualityLevel) ? 32 : 48;
         const moon = new THREE.Mesh(
-            new THREE.SphereGeometry(245, segments, Math.max(20, Math.floor(segments * 0.58))),
+            new THREE.SphereGeometry(225, segments, Math.max(20, Math.floor(segments * 0.58))),
             moonMaterial,
         );
         const heroX = THREE.MathUtils.clamp((this.camera?.right || 900) * 0.43, 300, 410);
@@ -2646,9 +2673,15 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
-        const u = THREE.MathUtils.clamp(Number.isFinite(centroidX) ? centroidX / 10 : 0.5, 0, 1);
+        // A scrolling/nonstandard mode (Infinity) supplies the ON-SCREEN normalized lock
+        // position; prefer it over the fixed-board centroid, which pins to the bottom lane in
+        // Infinity (piece.y is an absolute row that grows into the hundreds).
+        const viewport = readLockViewportOrigin(detail);
+        const u = viewport
+            ? viewport.x
+            : THREE.MathUtils.clamp(Number.isFinite(centroidX) ? centroidX / 10 : 0.5, 0, 1);
         const visibleY = Number.isFinite(centroidY) ? centroidY - 4 : 10;
-        const v = THREE.MathUtils.clamp(visibleY / 20, 0, 1);
+        const v = viewport ? viewport.y : THREE.MathUtils.clamp(visibleY / 20, 0, 1);
         const side = u < 0.5 ? -1 : 1;
         const rect = this.getVisibleBoardRect(data);
         const margin = rect ? Math.max(32, rect.width * 0.14) : window.innerWidth * 0.07;
@@ -2682,7 +2715,10 @@ export default class WolfhourTheme extends BaseTheme {
                 || this.lastReactiveOrigin;
         }
         const meanRow = rows.reduce((sum, row) => sum + Number(row || 0), 0) / rows.length;
-        const v = THREE.MathUtils.clamp((meanRow - 4 + 0.5) / 20, 0, 1);
+        // Infinity supplies the ON-SCREEN clear origin; prefer its Y over the fixed-board row
+        // normalization (clearedRows are absolute rows in Infinity → the fallback pins to bottom).
+        const viewport = readLockViewportOrigin(detail);
+        const v = viewport ? viewport.y : THREE.MathUtils.clamp((meanRow - 4 + 0.5) / 20, 0, 1);
         const rect = this.getVisibleBoardRect(data);
         const screenX = rect ? rect.right + Math.max(32, rect.width * 0.14) : window.innerWidth * 0.69;
         const screenY = rect ? rect.top + v * rect.height : window.innerHeight * (0.18 + v * 0.64);
@@ -5195,6 +5231,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         if (this.renderer) {
+            this.renderer.onDeviceLost = null;
             this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer.domElement.remove();
             this.renderer = null;

@@ -3,13 +3,16 @@
  */
 
 import { THEMES } from '../core/constants.js';
-import { THEME_REGISTRY, getThemeMeta, ensureThemeContainer } from './theme-registry.js';
+import {
+    THEME_REGISTRY, getThemeMeta, resolveThemeId, ensureThemeContainer,
+} from './theme-registry.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
 const THEME_LIFECYCLE_TIMEOUT = 10000;
+const HEAVY_THEME_LIFECYCLE_TIMEOUT = 20000;
 
 /**
  * Race a promise against a timeout. Rejects if the promise doesn't resolve in time.
@@ -70,7 +73,13 @@ export class ThemeManager {
         this.activeTheme = null;
         this.activeThemeName = 'forest';
         this.themeInstances = new Map(); // Cache loaded theme instances
+        this.inFlightThemeLoads = new Map();
+        this.disposedThemeInstances = new WeakSet();
         this.themeRegistry = new Map(); // Map theme names to lazy importers
+        // Static/shared GPU resources outlive individual cached theme instances.
+        // Keep their terminal disposers after normal eviction so switch-time reuse
+        // remains possible, then invoke them exactly once from full manager cleanup.
+        this.terminalThemeResourceDisposers = new Map();
         this.randomThemeInterval = null;
         this.isTransitioning = false;
         // Coalesced switch queue: a switch requested mid-transition is remembered
@@ -78,6 +87,7 @@ export class ThemeManager {
         // of being silently dropped. Waiters are the callers' promises.
         this.queuedSwitchRequest = null;
         this.queuedSwitchWaiters = [];
+        this.switchDrainPromise = null;
         this.themesSuspended = true;
         this.pendingThemeName = null;
         this.pendingThemeInstance = null;
@@ -88,6 +98,12 @@ export class ThemeManager {
         this.adjacentThemePreloadIdleId = null;
         this.runtimeConfig = runtimeConfig;
         this.allowSuspendedRuntimeReuse = true;
+        this.lifecycleGeneration = 0;
+        this.suspensionGeneration = 0;
+        this.themeIntentGeneration = 0;
+        this.activationAttempts = new WeakMap();
+        this.cancelledActivationAttempt = Object.freeze({ cancelled: true });
+        this.isDisposed = false;
 
         // LRU cache management
         const startupPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
@@ -140,19 +156,33 @@ export class ThemeManager {
         });
     }
 
-    async resolveThemeImporter(themeName, importer) {
+    async resolveThemeImporter(
+        themeName,
+        importer,
+        generation = this.lifecycleGeneration,
+    ) {
         try {
             return await importer();
         } catch (error) {
             const message = error?.message || String(error);
-            const looksLikeChunkFailure = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|preload/i.test(message);
+            const looksLikeChunkFailure = (
+                /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|preload/i
+            ).test(message);
 
             if (!looksLikeChunkFailure) {
                 throw error;
             }
+            if (this.isDisposed || generation !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" module import was cancelled`);
+            }
 
             console.warn(`[ThemeManager] Dynamic import failed for "${themeName}", retrying once`, error);
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            await new Promise((resolve) => {
+                setTimeout(resolve, 100);
+            });
+            if (this.isDisposed || generation !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" module import retry was cancelled`);
+            }
             return importer();
         }
     }
@@ -175,8 +205,38 @@ export class ThemeManager {
         return getThemeMeta(themeName)?.performanceClass === 'heavy';
     }
 
+    getThemeLifecycleTimeout(themeName) {
+        return this.isHeavyGpuTheme(themeName)
+            ? HEAVY_THEME_LIFECYCLE_TIMEOUT
+            : THEME_LIFECYCLE_TIMEOUT;
+    }
+
     isStartupEligibleTheme(themeName) {
         return getThemeMeta(themeName)?.startupEligible !== false;
+    }
+
+    registerTerminalThemeResourceDisposer(themeName, ThemeClass) {
+        if (typeof ThemeClass?.disposeSharedResources !== 'function') {
+            return;
+        }
+        this.terminalThemeResourceDisposers.set(
+            themeName,
+            () => ThemeClass.disposeSharedResources(),
+        );
+    }
+
+    disposeTerminalThemeResources() {
+        for (const [themeName, disposeResources] of this.terminalThemeResourceDisposers) {
+            try {
+                disposeResources();
+            } catch (error) {
+                console.warn(
+                    `[ThemeManager] Shared theme resource cleanup failed: ${themeName}`,
+                    error,
+                );
+            }
+        }
+        this.terminalThemeResourceDisposers.clear();
     }
 
     deactivateThemeRuntime(themeInstance, themeName) {
@@ -196,8 +256,36 @@ export class ThemeManager {
     clearRendererThemeResources() {
         if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
             console.log('[ThemeManager] Clearing renderer theme resources');
-            this.webglRenderer.clearThemeResources();
+            try {
+                this.webglRenderer.clearThemeResources();
+                return true;
+            } catch (error) {
+                // Renderer cleanup is a best-effort boundary. A defective renderer
+                // must not prevent theme ownership pointers/cache entries from being
+                // retired, otherwise the next switch can revive a half-disposed theme.
+                console.warn('[ThemeManager] Failed to clear renderer theme resources:', error);
+            }
         }
+        return false;
+    }
+
+    isHealthyActiveTheme(themeName) {
+        const theme = this.activeTheme;
+        return Boolean(
+            theme
+            && this.activeThemeName === themeName
+            && theme.cleanupComplete !== true
+            && theme.isActive === true
+            && theme.lifecycleState === 'running',
+        );
+    }
+
+    isReusablePendingTheme(themeInstance) {
+        return Boolean(
+            themeInstance
+            && themeInstance.cleanupComplete !== true
+            && themeInstance.lifecycleState !== 'failed',
+        );
     }
 
     removeThemeFromCache(themeName, themeInstance = null) {
@@ -213,25 +301,187 @@ export class ThemeManager {
         this.themeLRU = this.themeLRU.filter((entry) => entry !== themeName);
     }
 
+    /**
+     * Last-resort terminal sweep for a theme whose bespoke cleanup threw or
+     * whose asynchronous init settled after it had already been cancelled.
+     * Every phase is isolated so one defective subsystem cannot keep RAFs,
+     * listeners, a renderer, or a scene alive.
+     */
+    forceRetireThemeInstance(themeInstance, themeName, reason = 'cleanup failure') {
+        if (!themeInstance) {
+            return;
+        }
+
+        const resolvedThemeName = themeName || themeInstance.name || 'unknown';
+        const attempt = (label, action) => {
+            try {
+                action();
+            } catch (error) {
+                console.warn(
+                    `[ThemeManager] Forced ${label} failed for ${resolvedThemeName} (${reason})`,
+                    error,
+                );
+            }
+        };
+
+        attempt('stop', () => themeInstance.stop?.());
+        attempt('animation cleanup', () => themeInstance.cancelAnimationFrames?.());
+        attempt('tracked resource cleanup', () => themeInstance.clearTrackedResources?.());
+        attempt('event cleanup', () => themeInstance.clearEventUnsubscribers?.());
+        attempt('resize cleanup', () => themeInstance.removeCommonResizeHandlers?.());
+        attempt('resilience cleanup', () => themeInstance.removeRendererResilience?.());
+
+        if (themeInstance._contextRestoreUnsub) {
+            attempt('context listener cleanup', () => themeInstance._contextRestoreUnsub());
+            themeInstance._contextRestoreUnsub = null;
+        }
+
+        attempt('managed GPU cleanup', () => themeInstance.releaseManagedGpuResources?.());
+
+        // releaseManagedGpuResources() is deliberately best-effort and a custom
+        // implementation can throw before reaching the common scene/renderer.
+        if (themeInstance.scene) {
+            attempt('scene cleanup', () => {
+                themeInstance.disposeThreeJSGroup?.(themeInstance.scene);
+                themeInstance.scene?.clear?.();
+            });
+            themeInstance.scene = null;
+        }
+        if (themeInstance.renderer
+            && themeInstance.renderer !== themeInstance.webglRenderer) {
+            attempt('renderer cleanup', () => {
+                if (typeof themeInstance.disposeRenderer === 'function') {
+                    themeInstance.disposeRenderer(themeInstance.renderer);
+                } else {
+                    const canvas = themeInstance.renderer?.domElement;
+                    themeInstance.renderer?.setAnimationLoop?.(null);
+                    themeInstance.renderer?.dispose?.();
+                    if (canvas?.parentNode) {
+                        canvas.parentNode.removeChild(canvas);
+                    }
+                    themeInstance.renderer = null;
+                }
+            });
+        }
+
+        if (Array.isArray(themeInstance.containers)) {
+            themeInstance.containers.forEach((container) => {
+                attempt('container cleanup', () => {
+                    const registryOwned = container?.dataset?.themeRegistryOwned === 'true'
+                        || container?.getAttribute?.('data-theme-registry-owned') === 'true'
+                        || container?.__themeRegistryOwned === true;
+                    if (registryOwned) {
+                        container.classList?.remove?.('active');
+                    } else if (container?.parentNode) {
+                        container.parentNode.removeChild(container);
+                    }
+                });
+            });
+            themeInstance.containers = [];
+        }
+
+        themeInstance.isActive = false;
+        themeInstance.isPaused = false;
+        themeInstance.cleanupComplete = true;
+        themeInstance.lifecycleState = 'stopped';
+    }
+
+    invalidateThemeInstanceLifecycle(themeInstance, themeName) {
+        const resolvedThemeName = themeName || themeInstance?.name || 'unknown';
+        const invalidate = (property, value) => {
+            try {
+                themeInstance[property] = value;
+            } catch (error) {
+                console.warn(
+                    `[ThemeManager] Failed to invalidate ${property} for ${resolvedThemeName}`,
+                    error,
+                );
+            }
+        };
+        const generation = Number.isFinite(themeInstance.lifecycleGeneration)
+            ? themeInstance.lifecycleGeneration + 1
+            : 1;
+
+        // This happens before any bespoke stop()/cleanup() call. Incrementing the
+        // generation synchronously prevents async start continuations from
+        // publishing a retired runtime. Keep the active flags intact for the
+        // cleanup call itself: several legacy stop() overrides use isActive as the
+        // guard that decides whether their bespoke GPU/listener disposal must run.
+        // The override (or the forced BaseTheme sweep) clears those flags before
+        // this synchronous call stack can yield to stale async work.
+        invalidate('lifecycleGeneration', generation);
+        invalidate('lifecycleState', 'stopping');
+    }
+
     disposeThemeInstance(themeInstance, themeName, { removeFromCache = false } = {}) {
         if (!themeInstance) {
             return;
         }
 
         const resolvedThemeName = themeName || themeInstance.name || 'unknown';
+        const canTrackIdentity = (typeof themeInstance === 'object' && themeInstance !== null)
+            || typeof themeInstance === 'function';
+        const alreadyDisposed = canTrackIdentity
+            && this.disposedThemeInstances.has(themeInstance);
+        const managerOwnedRuntime = this.activeTheme === themeInstance
+            || this.pendingThemeInstance === themeInstance;
+        const orphanRuntimeWithoutReplacement = !this.activeTheme
+            && (
+                themeInstance.isActive === true
+                || themeInstance.isPaused === true
+                || themeInstance.lifecycleState === 'starting'
+                || themeInstance.lifecycleState === 'running'
+            );
+        const ownedRuntime = managerOwnedRuntime || orphanRuntimeWithoutReplacement;
+        let forcedSweepCompleted = false;
 
         try {
-            if (typeof themeInstance.cleanup === 'function') {
-                themeInstance.cleanup();
-            } else if (this.isHeavyGpuTheme(resolvedThemeName) && typeof themeInstance.releaseInactiveResources === 'function') {
-                themeInstance.releaseInactiveResources();
-            } else if (typeof themeInstance.stop === 'function') {
-                themeInstance.stop();
+            if (!alreadyDisposed) {
+                if (canTrackIdentity) {
+                    // Mark first so re-entrant cleanup paths still tear down once.
+                    this.disposedThemeInstances.add(themeInstance);
+                }
+                this.activationAttempts.delete(themeInstance);
+                this.invalidateThemeInstanceLifecycle(themeInstance, resolvedThemeName);
+                if (typeof themeInstance.cleanup === 'function') {
+                    themeInstance.cleanup();
+                } else if (
+                    this.isHeavyGpuTheme(resolvedThemeName)
+                    && typeof themeInstance.releaseInactiveResources === 'function'
+                ) {
+                    themeInstance.releaseInactiveResources();
+                } else if (typeof themeInstance.stop === 'function') {
+                    themeInstance.stop();
+                }
             }
         } catch (error) {
             console.warn(`[ThemeManager] Theme cleanup failed: ${resolvedThemeName}`, error);
+            this.forceRetireThemeInstance(
+                themeInstance,
+                resolvedThemeName,
+                'theme cleanup threw',
+            );
+            forcedSweepCompleted = true;
         } finally {
-            this.clearRendererThemeResources();
+            // A legacy override can return before super.cleanup() without
+            // throwing (often because it observed the synchronously-invalidated
+            // isActive flag). If it did not publish terminal completion, run the
+            // same isolated common sweep used for an exception.
+            if (!alreadyDisposed
+                && !forcedSweepCompleted
+                && themeInstance.cleanupComplete !== true) {
+                this.forceRetireThemeInstance(
+                    themeInstance,
+                    resolvedThemeName,
+                    'theme cleanup did not complete',
+                );
+            }
+
+            // Evicting an init-only cache entry must not clear the renderer
+            // resources owned by a different active theme.
+            if (ownedRuntime) {
+                this.clearRendererThemeResources();
+            }
 
             if (this.activeTheme === themeInstance) {
                 this.activeTheme = null;
@@ -248,31 +498,132 @@ export class ThemeManager {
         }
     }
 
+    handleThemeRuntimeFailure(themeInstance, themeName, error) {
+        if (!themeInstance || this.isDisposed) {
+            return;
+        }
+
+        const managerOwnsInstance = this.activeTheme === themeInstance
+            || this.pendingThemeInstance === themeInstance
+            || this.themeInstances.get(themeName) === themeInstance;
+        if (!managerOwnsInstance || this.disposedThemeInstances.has(themeInstance)) {
+            return;
+        }
+
+        console.error(`[ThemeManager] Theme runtime failed; replacing "${themeName}":`, error);
+        const remainSuspended = this.themesSuspended;
+        this.disposeThemeInstance(themeInstance, themeName, {
+            removeFromCache: true,
+        });
+
+        if (remainSuspended) {
+            // Preserve the user's selection, but never revive the failed object.
+            // resumeThemes() will construct a fresh identity on the next entry.
+            this.activeThemeName = themeName;
+            this.pendingThemeName = themeName;
+            this.pendingThemeInstance = null;
+            return;
+        }
+
+        // Route recovery through the normal latest-wins switch queue. It creates
+        // a fresh identity, retains fallback policy, and cannot overlap another
+        // user selection already in flight.
+        this.switchTheme(themeName, true).catch((recoveryError) => {
+            console.error(
+                `[ThemeManager] Failed to replace runtime for "${themeName}":`,
+                recoveryError,
+            );
+        });
+    }
+
     /**
      * Evict oldest theme from cache if over limit
-     * Protects active theme from eviction
+     * Protects active, pending, and newly-loaded themes from eviction.
      */
-    evictOldThemeIfNeeded() {
-        if (this.themeInstances.size <= this.maxCachedThemes) {
-            return; // Under limit, no eviction needed
-        }
+    evictOldThemeIfNeeded(protectedThemeInstance = null) {
+        while (this.themeInstances.size > this.maxCachedThemes) {
+            let evicted = false;
 
-        // Find oldest theme that's not currently active
-        for (const themeName of this.themeLRU) {
-            if (themeName !== this.activeThemeName) {
-                console.log(`[ThemeManager] Evicting old theme from cache: ${themeName}`);
+            for (const themeName of this.themeLRU) {
                 const themeInstance = this.themeInstances.get(themeName);
-
-                if (themeInstance) {
-                    this.disposeThemeInstance(themeInstance, themeName, {
-                        removeFromCache: true,
-                    });
+                const isProtected = themeInstance
+                    && (
+                        themeInstance === protectedThemeInstance
+                        || themeInstance === this.activeTheme
+                        || themeInstance === this.pendingThemeInstance
+                    );
+                if (!themeInstance || isProtected) {
+                    continue;
                 }
 
-                console.log(`[ThemeManager] Cache size after eviction: ${this.themeInstances.size}/${this.maxCachedThemes}`);
-                break; // Only evict one at a time
+                console.log(`[ThemeManager] Evicting old theme from cache: ${themeName}`);
+                this.disposeThemeInstance(themeInstance, themeName, {
+                    removeFromCache: true,
+                });
+                console.log(
+                    `[ThemeManager] Cache size after eviction: ${this.themeInstances.size}/${this.maxCachedThemes}`,
+                );
+                evicted = true;
+                break;
+            }
+
+            if (!evicted) {
+                return false;
             }
         }
+        return true;
+    }
+
+    ensureThemeCacheCapacity(themeName) {
+        if (this.themeInstances.has(themeName)) {
+            return true;
+        }
+        if (!Number.isFinite(this.maxCachedThemes) || this.maxCachedThemes < 1) {
+            return false;
+        }
+
+        // Make room before importing/constructing. In particular, a cap=1
+        // manager with one active theme must not construct a candidate, evict
+        // that same candidate, then hand its disposed identity to activation.
+        while (this.themeInstances.size >= this.maxCachedThemes) {
+            let evicted = false;
+            for (const cachedThemeName of this.themeLRU) {
+                const cachedTheme = this.themeInstances.get(cachedThemeName);
+                if (!cachedTheme
+                    || cachedTheme === this.activeTheme
+                    || cachedTheme === this.pendingThemeInstance) {
+                    continue;
+                }
+
+                this.disposeThemeInstance(cachedTheme, cachedThemeName, {
+                    removeFromCache: true,
+                });
+                evicted = true;
+                break;
+            }
+
+            if (!evicted) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    assertThemeCacheCapacity(themeName) {
+        if (!this.ensureThemeCacheCapacity(themeName)) {
+            throw new Error(
+                `Theme cache has no safe capacity for "${themeName}" while the current runtime is protected`,
+            );
+        }
+    }
+
+    /**
+     * Evict an inactive instance before a new candidate is constructed.
+     * Kept separate from the post-insert limit check so the candidate can
+     * never evict itself and be returned after cleanup.
+     */
+    prepareThemeCacheSlot(themeName) {
+        this.assertThemeCacheCapacity(themeName);
     }
 
     /**
@@ -282,6 +633,35 @@ export class ThemeManager {
      * @returns {Promise<BaseTheme>} Theme instance
      */
     async loadTheme(themeName, silent = false) {
+        if (this.themeInstances.has(themeName)) {
+            if (!silent) {
+                console.log(`[ThemeManager] Theme "${themeName}" found in cache`);
+            }
+            this.updateLRU(themeName);
+            return this.themeInstances.get(themeName);
+        }
+
+        if (this.inFlightThemeLoads.has(themeName)) {
+            return this.inFlightThemeLoads.get(themeName);
+        }
+
+        if (this.isDisposed) {
+            throw new Error(`ThemeManager is disposed; cannot load "${themeName}"`);
+        }
+
+        const generation = this.lifecycleGeneration;
+        const loadPromise = this.loadThemeCandidate(themeName, silent, generation);
+        this.inFlightThemeLoads.set(themeName, loadPromise);
+        try {
+            return await loadPromise;
+        } finally {
+            if (this.inFlightThemeLoads.get(themeName) === loadPromise) {
+                this.inFlightThemeLoads.delete(themeName);
+            }
+        }
+    }
+
+    async loadThemeCandidate(themeName, silent = false, generation = this.lifecycleGeneration) {
         // Check if already loaded
         if (this.themeInstances.has(themeName)) {
             if (!silent) {
@@ -294,13 +674,11 @@ export class ThemeManager {
         // Get module path
         const importer = this.themeRegistry.get(themeName);
         if (!importer) {
-            if (themeName === 'forest') {
-                throw new Error('Forest theme not found in registry — cannot fallback');
-            }
-            console.error(`Theme "${themeName}" not found in registry, falling back to forest`);
-            return this.loadTheme('forest', silent);
+            throw new Error(`Theme "${themeName}" not found in registry`);
         }
+        this.prepareThemeCacheSlot(themeName);
 
+        let themeInstance = null;
         try {
             if (!silent) {
                 console.log(`[ThemeManager] Loading theme "${themeName}" from disk`);
@@ -311,35 +689,104 @@ export class ThemeManager {
             // used to hang this await forever with isTransitioning stuck true —
             // silently killing every future theme switch for the session.
             const module = await withTimeout(
-                Promise.resolve(this.resolveThemeImporter(themeName, importer)),
-                THEME_LIFECYCLE_TIMEOUT,
+                Promise.resolve(this.resolveThemeImporter(themeName, importer, generation)),
+                this.getThemeLifecycleTimeout(themeName),
                 `Theme "${themeName}" module import`,
             );
+            if (this.isDisposed || generation !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" module import was cancelled`);
+            }
+            // Cache occupancy can change while the module import is in flight.
+            // Re-check before construction so a protected cap=1 runtime still
+            // cannot cause a construct-then-self-evict outcome.
+            this.prepareThemeCacheSlot(themeName);
             const ThemeClass = module.default;
+            if (typeof ThemeClass !== 'function') {
+                throw new Error(`Theme "${themeName}" module has no default theme class`);
+            }
 
             // Instantiate the theme
-            const themeInstance = new ThemeClass();
+            themeInstance = new ThemeClass();
             themeInstance.resourceProfile = getThemeMeta(themeName)?.resourceProfile || 'light';
+            if (typeof themeInstance.init !== 'function') {
+                throw new Error(`Theme "${themeName}" does not implement init()`);
+            }
 
-            // Initialize the theme (with timeout to prevent game freeze)
-            await withTimeout(themeInstance.init(), THEME_LIFECYCLE_TIMEOUT, `Theme "${themeName}" init`);
+            // Initialize the theme (with timeout to prevent game freeze). Keep
+            // the original promise so a timed-out init can be swept again when
+            // it eventually settles; otherwise resources allocated after the
+            // first candidate cleanup could escape terminal ownership.
+            let initSettled = false;
+            const initPromise = Promise.resolve()
+                .then(() => themeInstance.init())
+                .then(
+                    (value) => {
+                        initSettled = true;
+                        return value;
+                    },
+                    (error) => {
+                        initSettled = true;
+                        throw error;
+                    },
+                );
+            try {
+                await withTimeout(
+                    initPromise,
+                    this.getThemeLifecycleTimeout(themeName),
+                    `Theme "${themeName}" init`,
+                );
+            } catch (error) {
+                if (!initSettled) {
+                    const retireLateCandidate = () => {
+                        this.forceRetireThemeInstance(
+                            themeInstance,
+                            themeName,
+                            'late init settlement',
+                        );
+                    };
+                    initPromise.then(retireLateCandidate, retireLateCandidate);
+                }
+                throw error;
+            }
+            if (this.isDisposed || generation !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" load was cancelled`);
+            }
+            if (themeInstance.name && themeInstance.name !== themeName) {
+                throw new Error(
+                    `Theme identity mismatch: requested "${themeName}", loaded "${themeInstance.name}"`,
+                );
+            }
+            this.registerTerminalThemeResourceDisposer(themeName, ThemeClass);
 
             // Cache the instance
             this.themeInstances.set(themeName, themeInstance);
             this.updateLRU(themeName);
 
             // Evict old themes if cache is full
-            this.evictOldThemeIfNeeded();
+            const cacheWithinLimit = this.evictOldThemeIfNeeded(themeInstance);
+            if (!cacheWithinLimit || this.themeInstances.size > this.maxCachedThemes) {
+                throw new Error(
+                    `Theme cache could not safely retain "${themeName}" within its capacity`,
+                );
+            }
+            if (this.themeInstances.get(themeName) !== themeInstance
+                || this.disposedThemeInstances.has(themeInstance)) {
+                throw new Error(`Theme "${themeName}" was retired while entering the cache`);
+            }
 
             if (!silent) {
-                console.log(`[ThemeManager] Theme "${themeName}" loaded. Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`);
+                console.log(
+                    `[ThemeManager] Theme "${themeName}" loaded.`,
+                    `Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`,
+                );
             }
             return themeInstance;
         } catch (error) {
             console.error(`Failed to load theme "${themeName}":`, error);
-            // Fallback to forest if not already trying to load it
-            if (themeName !== 'forest') {
-                return this.loadTheme('forest', silent);
+            if (themeInstance) {
+                this.disposeThemeInstance(themeInstance, themeName, {
+                    removeFromCache: this.themeInstances.get(themeName) === themeInstance,
+                });
             }
             throw error;
         }
@@ -361,6 +808,7 @@ export class ThemeManager {
             }
 
             // Use requestIdleCallback if available, otherwise setTimeout
+            // eslint-disable-next-line no-await-in-loop
             await new Promise((resolve) => {
                 const loadTask = async () => {
                     try {
@@ -466,39 +914,54 @@ export class ThemeManager {
      * Switch to a new theme
      * @param {string} themeName - Name of theme to switch to
      * @param {boolean} immediate - Skip transition if true
-     * @returns {Promise<void>}
+     * @returns {Promise<string|null>} finally-active theme name
      */
-    async switchTheme(themeName, immediate = false) {
+    async switchTheme(requestedTheme, immediate = false) {
+        // Retired ids still arrive from persisted settings and saved runs;
+        // resolve before anything keys instances, containers or LRU off the name.
+        const themeName = resolveThemeId(requestedTheme);
         console.log('[ThemeManager] switchTheme called:', themeName);
-        const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const previousTheme = this.activeThemeName;
 
-        if (this.isTransitioning) {
-            // Do NOT drop the request (the old behavior): during a multi-second
-            // heavy-theme switch, a click on another theme card used to vanish —
-            // leaving the hub UI/settings claiming a theme that never started.
-            // Coalesce instead: only the LATEST request is kept; every caller's
-            // promise resolves (with the finally-active theme name) once the
-            // queue drains after the in-flight switch settles.
-            console.log('[ThemeManager] Transition in progress — queueing switch to:', themeName);
-            this.queuedSwitchRequest = { themeName, immediate };
-            return new Promise((resolve) => {
-                this.queuedSwitchWaiters.push(resolve);
-            });
+        if (this.isDisposed) {
+            console.warn('[ThemeManager] Ignoring theme switch after terminal cleanup:', themeName);
+            return this.activeThemeName;
         }
 
-        if (this.activeThemeName === themeName && this.activeTheme) {
-            console.log('[ThemeManager] Already on theme:', themeName);
-            return this.activeThemeName; // Already on this theme
-        }
-
-        // Validate theme name
         if (!getThemeMeta(themeName)) {
             console.error('[ThemeManager] Invalid theme name:', themeName);
             return this.activeThemeName;
         }
 
-        this.isTransitioning = true;
+        // Every accepted public selection is a new latest-wins intent, even a
+        // same-name click. resumeThemes() uses this token to avoid publishing a
+        // stale theme after an awaited fresh load.
+        this.themeIntentGeneration += 1;
+
+        if (!this.isTransitioning
+            && !this.switchDrainPromise
+            && this.isHealthyActiveTheme(themeName)) {
+            console.log('[ThemeManager] Already on theme:', themeName);
+            return this.activeThemeName;
+        }
+
+        this.queuedSwitchRequest = { themeName, immediate };
+        const outcome = new Promise((resolve) => {
+            this.queuedSwitchWaiters.push(resolve);
+        });
+        this.drainQueuedThemeSwitch();
+        return outcome;
+    }
+
+    async performThemeSwitch(themeName) {
+        console.log('[ThemeManager] switchTheme called:', themeName);
+        const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const previousTheme = this.activeThemeName;
+        const transactionGeneration = this.lifecycleGeneration;
+
+        if (this.isHealthyActiveTheme(themeName)) {
+            console.log('[ThemeManager] Already on theme:', themeName);
+            return this.activeThemeName; // Already on this theme
+        }
 
         try {
             this.clearAdjacentThemePreloadQueue();
@@ -506,7 +969,11 @@ export class ThemeManager {
 
             const outgoingTheme = this.activeTheme || this.pendingThemeInstance;
             const outgoingThemeName = this.activeTheme ? this.activeThemeName : this.pendingThemeName;
-            if (outgoingTheme && outgoingThemeName !== themeName) {
+            const samePendingThemeCanBeReused = outgoingTheme === this.pendingThemeInstance
+                && outgoingThemeName === themeName
+                && this.isReusablePendingTheme(outgoingTheme);
+            if (outgoingTheme
+                && (outgoingThemeName !== themeName || !samePendingThemeCanBeReused)) {
                 console.log('[ThemeManager] Disposing current theme before switch:', outgoingThemeName);
                 this.disposeThemeInstance(outgoingTheme, outgoingThemeName, {
                     removeFromCache: true,
@@ -516,6 +983,12 @@ export class ThemeManager {
             console.log('[ThemeManager] Loading theme:', themeName);
             // Load the new theme
             const newTheme = await this.loadTheme(themeName);
+            if (this.isDisposed || transactionGeneration !== this.lifecycleGeneration) {
+                throw new Error(`Theme switch to "${themeName}" was cancelled`);
+            }
+            if (this.disposedThemeInstances.has(newTheme)) {
+                throw new Error(`Theme switch loaded a disposed "${themeName}" instance`);
+            }
             // Log the name only — logging the instance itself pins the whole theme
             // (scene graph included) in Chromium's console message store until the
             // message rotates out, even with DevTools closed. Measured at multiple
@@ -536,10 +1009,16 @@ export class ThemeManager {
             this.pendingThemeInstance = null;
             this.pendingThemeName = null;
 
-            if (!this.activeTheme && themeName !== 'forest') {
+            if (!this.isDisposed && !this.activeTheme && themeName !== 'forest') {
                 console.warn('[ThemeManager] Falling back to forest theme after switch failure');
                 try {
                     const forestTheme = await this.loadTheme('forest');
+                    if (this.isDisposed || transactionGeneration !== this.lifecycleGeneration) {
+                        throw new Error('Forest fallback was cancelled');
+                    }
+                    if (this.disposedThemeInstances.has(forestTheme)) {
+                        throw new Error('Forest fallback loaded a disposed instance');
+                    }
                     this.pendingThemeInstance = forestTheme;
                     this.pendingThemeName = 'forest';
 
@@ -549,7 +1028,10 @@ export class ThemeManager {
                         await this.activateThemeInstance(forestTheme, 'forest');
                     }
                 } catch (fallbackError) {
-                    console.error('[ThemeManager] Failed to activate fallback theme after switch failure:', fallbackError);
+                    console.error(
+                        '[ThemeManager] Failed to activate fallback theme after switch failure:',
+                        fallbackError,
+                    );
                     this.activeThemeName = null;
                 }
             }
@@ -560,55 +1042,107 @@ export class ThemeManager {
                 toTheme: themeName,
                 durationMs: endedAt - switchStartedAt,
             });
-            this.isTransitioning = false;
-            this.drainQueuedThemeSwitch();
         }
         return this.activeThemeName;
     }
 
     /**
-     * Run the coalesced switch request (if any) that arrived while a transition
-     * was in flight, then settle every waiter with the finally-active theme name.
-     * Called from switchTheme's finally AFTER isTransitioning is cleared, so the
-     * queued request takes the normal switch path (no recursion while locked).
+     * Drain the coalesced latest-wins queue under one lifecycle owner.
+     * Public switch promises settle only after no newer request remains.
      */
     drainQueuedThemeSwitch() {
-        const queued = this.queuedSwitchRequest;
-        if (!queued) return;
-        this.queuedSwitchRequest = null;
-        const waiters = this.queuedSwitchWaiters;
-        this.queuedSwitchWaiters = [];
-        const settle = () => {
-            const name = this.activeThemeName;
-            waiters.forEach((resolve) => {
-                try {
-                    resolve(name);
-                } catch (error) {
-                    console.error('[ThemeManager] Queued switch waiter failed:', error);
-                }
-            });
-        };
+        if (this.isTransitioning || this.switchDrainPromise) {
+            return this.switchDrainPromise;
+        }
 
-        // The in-flight switch may have already landed on the queued target
-        // (e.g. the user re-clicked the loading theme). Nothing to do.
-        if (queued.themeName === this.activeThemeName && this.activeTheme) {
-            settle();
+        if (!this.queuedSwitchRequest) {
+            this.settleQueuedThemeSwitches();
+            return Promise.resolve(this.activeThemeName);
+        }
+
+        this.isTransitioning = true;
+        this.switchDrainPromise = (async () => {
+            try {
+                while (this.queuedSwitchRequest) {
+                    const queued = this.queuedSwitchRequest;
+                    this.queuedSwitchRequest = null;
+                    try {
+                        // eslint-disable-next-line no-await-in-loop
+                        await this.performThemeSwitch(queued.themeName);
+                    } catch (error) {
+                        console.error('[ThemeManager] Queued theme switch failed:', error);
+                    }
+                }
+            } finally {
+                this.isTransitioning = false;
+                this.switchDrainPromise = null;
+                this.settleQueuedThemeSwitches();
+            }
+            return this.activeThemeName;
+        })();
+
+        return this.switchDrainPromise;
+    }
+
+    settleQueuedThemeSwitches() {
+        if (this.isTransitioning || this.switchDrainPromise || this.queuedSwitchRequest) {
             return;
         }
 
-        this.switchTheme(queued.themeName, queued.immediate)
-            .catch((error) => {
-                console.error('[ThemeManager] Queued theme switch failed:', error);
-            })
-            .then(settle);
+        const name = this.activeThemeName;
+        const waiters = this.queuedSwitchWaiters;
+        this.queuedSwitchWaiters = [];
+        waiters.forEach((resolve) => {
+            try {
+                resolve(name);
+            } catch (error) {
+                console.error('[ThemeManager] Queued switch waiter failed:', error);
+            }
+        });
     }
 
     async activateThemeInstance(themeInstance, themeName) {
         if (!themeInstance) {
-            console.error('[ThemeManager] Cannot activate null theme instance');
-            return;
+            throw new Error(`Cannot activate null theme instance for "${themeName}"`);
+        }
+        if (this.isDisposed) {
+            throw new Error(`ThemeManager is disposed; cannot activate "${themeName}"`);
+        }
+        if (themeInstance.name && themeInstance.name !== themeName) {
+            throw new Error(
+                `Theme identity mismatch: activating "${themeName}" with "${themeInstance.name}"`,
+            );
+        }
+        if (this.disposedThemeInstances.has(themeInstance)) {
+            throw new Error(`Theme "${themeName}" was already disposed`);
         }
 
+        const activationGeneration = this.lifecycleGeneration;
+        const activationSuspensionGeneration = this.suspensionGeneration;
+        const activationAttempt = Symbol(`activate:${themeName}`);
+        this.activationAttempts.set(themeInstance, activationAttempt);
+        const ownsActivation = () => (
+            this.activationAttempts.get(themeInstance) === activationAttempt
+        );
+        const retireCancelledActivation = () => {
+            const currentAttempt = this.activationAttempts.get(themeInstance);
+            const newerActivationOwnsInstance = currentAttempt
+                && currentAttempt !== activationAttempt
+                && currentAttempt !== this.cancelledActivationAttempt;
+            if (newerActivationOwnsInstance) {
+                return;
+            }
+
+            // A terminally-disposed start can still run legacy code after its
+            // await. Sweep again after that completion, even if the identity is
+            // already in disposedThemeInstances. No newer activation may ever
+            // share this object; resume constructs a fresh identity instead.
+            this.forceRetireThemeInstance(
+                themeInstance,
+                themeName,
+                'cancelled activation settled late',
+            );
+        };
         console.log('[ThemeManager] Activating theme:', themeName, 'isActive:', themeInstance.isActive);
 
         // Stop current active theme if different from the one we're activating
@@ -626,27 +1160,66 @@ export class ThemeManager {
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
         try {
-            await withTimeout(
+            const started = await withTimeout(
                 themeInstance.start(this.webglRenderer, {
                     assetManager: this.assetManager,
                     audioManager: this.audioManager,
+                    onRuntimeFailure: (error) => {
+                        this.handleThemeRuntimeFailure(themeInstance, themeName, error);
+                    },
                 }),
-                THEME_LIFECYCLE_TIMEOUT,
+                this.getThemeLifecycleTimeout(themeName),
                 `Theme "${themeName}" start`,
             );
+            if (!ownsActivation()) {
+                console.warn(
+                    `[ThemeManager] Ignoring superseded activation completion: ${themeName}`,
+                );
+                retireCancelledActivation();
+                return themeName;
+            }
+            const suspendedDuringStart = activationSuspensionGeneration
+                !== this.suspensionGeneration
+                && this.pendingThemeInstance === themeInstance;
+            if (suspendedDuringStart) {
+                // Mode suspension won the race. Keep this restartable (not
+                // terminally disposed) as the pending target; resumeThemes()
+                // will perform a fresh full activation.
+                try {
+                    themeInstance.stop?.();
+                } catch (error) {
+                    console.warn(`[ThemeManager] Failed to retire suspended start for "${themeName}":`, error);
+                }
+                try {
+                    themeInstance.releaseManagedGpuResources?.();
+                } catch (error) {
+                    console.warn(`[ThemeManager] Failed to release suspended start for "${themeName}":`, error);
+                }
+                themeInstance.isActive = false;
+                themeInstance.isPaused = false;
+                themeInstance.lifecycleState = 'stopped';
+                this.activeTheme = null;
+                this.activeThemeName = themeName;
+                return themeName;
+            }
+            if (started === false
+                || this.isDisposed
+                || activationGeneration !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" start was cancelled`);
+            }
         } catch (error) {
+            if (!ownsActivation()) {
+                console.warn(
+                    `[ThemeManager] Ignoring superseded activation failure: ${themeName}`,
+                    error,
+                );
+                retireCancelledActivation();
+                return themeName;
+            }
             console.error(`[ThemeManager] Theme "${themeName}" failed to start:`, error);
             this.disposeThemeInstance(themeInstance, themeName, {
                 removeFromCache: true,
             });
-            // Attempt fallback to forest if this wasn't already forest
-            if (themeName !== 'forest') {
-                console.warn('[ThemeManager] Falling back to forest theme');
-                const forestTheme = await this.loadTheme('forest');
-                await this.activateThemeInstance(forestTheme, 'forest');
-                return;
-            }
-            // Forest itself failed — no further fallback possible
             throw error;
         }
 
@@ -661,6 +1234,7 @@ export class ThemeManager {
         console.log('[ThemeManager] Theme activation complete:', themeName);
 
         this.queueAdjacentThemePreload();
+        return themeName;
     }
 
     /**
@@ -680,7 +1254,8 @@ export class ThemeManager {
      * @param {{ maxWarmMs?: number, postWarmFrames?: number }} [options]
      * @returns {Promise<boolean>} true if the theme ended up warm + parked
      */
-    async prewarmTheme(themeName, { maxWarmMs = 7000, postWarmFrames = 30 } = {}) {
+    async prewarmTheme(requestedTheme, { maxWarmMs = 7000, postWarmFrames = 30 } = {}) {
+        const themeName = resolveThemeId(requestedTheme);
         if (!themeName || this.isTransitioning) return false;
         if (this.isPackagedWindowsSafeMode()) return false;
         // Only pre-warm from the idle/suspended menu state — never over a live theme.
@@ -701,23 +1276,47 @@ export class ThemeManager {
             }
         });
 
+        const prewarmGeneration = this.lifecycleGeneration;
+        const assertPrewarmOwner = (phase) => {
+            if (this.isDisposed || prewarmGeneration !== this.lifecycleGeneration) {
+                throw new Error(`Theme "${themeName}" prewarm was cancelled during ${phase}`);
+            }
+            if (this.queuedSwitchRequest
+                && this.queuedSwitchRequest.themeName !== themeName) {
+                throw new Error(`Theme "${themeName}" prewarm was superseded during ${phase}`);
+            }
+        };
+        let theme = null;
         this.isTransitioning = true;
         try {
-            const theme = await this.loadTheme(themeName);
-            if (!theme || this.activeTheme) return false;
+            theme = await this.loadTheme(themeName);
+            assertPrewarmOwner('load');
+            if (!theme) return false;
+            if (this.activeTheme) {
+                if (this.activeTheme === theme) return false;
+                throw new Error(`Theme "${themeName}" prewarm was superseded by an active theme`);
+            }
 
             if (!theme.hasStarted) {
                 console.log(`[ThemeManager] Pre-warming theme (hidden): ${themeName}`);
                 theme._prewarmHidden = true;
                 try {
-                    await withTimeout(
+                    ensureThemeContainer(themeName);
+                    const started = await withTimeout(
                         theme.start(this.webglRenderer, {
                             assetManager: this.assetManager,
                             audioManager: this.audioManager,
+                            onRuntimeFailure: (error) => {
+                                this.handleThemeRuntimeFailure(theme, themeName, error);
+                            },
                         }),
-                        THEME_LIFECYCLE_TIMEOUT,
+                        this.getThemeLifecycleTimeout(themeName),
                         `Theme "${themeName}" prewarm`,
                     );
+                    assertPrewarmOwner('start');
+                    if (started === false) {
+                        throw new Error(`Theme "${themeName}" prewarm was cancelled`);
+                    }
 
                     // Let the theme's own render loop compile scene pipelines: wait for
                     // the scene graph to stop growing (deferred rIC subsystems finished).
@@ -726,7 +1325,12 @@ export class ThemeManager {
                     let lastCount = -1;
                     while (performance.now() - startedAt < maxWarmMs) {
                         // eslint-disable-next-line no-await-in-loop
-                        await nextFrame();
+                        await withTimeout(
+                            nextFrame(),
+                            1000,
+                            `Theme "${themeName}" prewarm frame`,
+                        );
+                        assertPrewarmOwner('scene stabilization');
                         if (this.activeTheme) break; // user entered — abandon warm
                         const count = theme.scene?.children?.length ?? 0;
                         if (count === lastCount) {
@@ -743,16 +1347,29 @@ export class ThemeManager {
                     // compileAsync(scene) — they compile on the first post.render()).
                     for (let i = 0; i < postWarmFrames && !this.activeTheme; i += 1) {
                         // eslint-disable-next-line no-await-in-loop
-                        await nextFrame();
+                        await withTimeout(
+                            nextFrame(),
+                            1000,
+                            `Theme "${themeName}" post-warm frame`,
+                        );
+                        assertPrewarmOwner('post-warm frames');
                     }
 
                     // Final compile sweep for stragglers.
                     if (typeof theme.renderer?.compileAsync === 'function' && theme.scene && theme.camera) {
                         try {
-                            await theme.renderer.compileAsync(theme.scene, theme.camera);
+                            await withTimeout(
+                                Promise.resolve(theme.renderer.compileAsync(theme.scene, theme.camera)),
+                                3000,
+                                `Theme "${themeName}" final prewarm compile`,
+                            );
                         } catch (compileErr) {
-                            // non-fatal
+                            console.warn(
+                                `[ThemeManager] Final prewarm compile skipped for "${themeName}":`,
+                                compileErr,
+                            );
                         }
+                        assertPrewarmOwner('final compile');
                     }
                 } finally {
                     theme._prewarmHidden = false;
@@ -761,14 +1378,28 @@ export class ThemeManager {
 
             // If the user entered a mode mid-warm, activateThemeInstance already took
             // over — don't clobber it.
-            if (this.activeTheme) return false;
+            if (this.activeTheme) {
+                if (this.activeTheme !== theme) {
+                    this.disposeThemeInstance(theme, themeName, {
+                        removeFromCache: true,
+                    });
+                }
+                return false;
+            }
+            assertPrewarmOwner('parking');
 
             // Park it: pause the loop, keep GPU resources warm, expose as the pending
             // resume target. Mirrors the state suspendThemes() leaves for an active
             // theme, which resumeThemes() quick-resumes smoothly.
-            if (typeof theme.pause === 'function') {
-                theme.pause();
+            const paused = typeof theme.pause === 'function'
+                ? theme.pause()
+                : false;
+            if (!paused
+                || theme.isPaused !== true
+                || theme.lifecycleState !== 'paused') {
+                throw new Error(`Theme "${themeName}" could not be paused after prewarm`);
             }
+            assertPrewarmOwner('state publication');
             this.pendingThemeInstance = theme;
             this.pendingThemeName = themeName;
             this.activeThemeName = themeName;
@@ -778,16 +1409,27 @@ export class ThemeManager {
             return true;
         } catch (error) {
             console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
+            if (theme && this.activeTheme !== theme) {
+                this.disposeThemeInstance(theme, themeName, {
+                    removeFromCache: true,
+                });
+            }
             return false;
         } finally {
             this.isTransitioning = false;
             // A user switch requested during the prewarm window was queued —
             // honor it now (same contract as switchTheme's finally).
-            this.drainQueuedThemeSwitch();
+            if (!this.isDisposed) {
+                this.drainQueuedThemeSwitch();
+            }
         }
     }
 
     suspendThemes() {
+        // This token makes a suspension request observable even when activation
+        // began while themesSuspended was already true (for example resume from
+        // the menu). A boolean alone cannot distinguish that race.
+        this.suspensionGeneration += 1;
         if (this.activeTheme) {
             console.log('[ThemeManager] Suspending active theme:', this.activeThemeName);
             const paused = this.allowSuspendedRuntimeReuse
@@ -802,12 +1444,36 @@ export class ThemeManager {
             this.pendingThemeInstance = this.activeTheme;
             this.pendingThemeName = this.activeThemeName;
             this.activeTheme = null;
+        } else if (
+            this.pendingThemeInstance
+            && (
+                this.pendingThemeInstance.isActive === true
+                || this.pendingThemeInstance.lifecycleState === 'starting'
+            )
+        ) {
+            // A mode can suspend while activateThemeInstance() is awaiting a
+            // heavy scene start. Invalidate that start synchronously so its
+            // later completion cannot publish an active theme behind the menu.
+            // The object itself is terminally retired: restarting the same
+            // mutable instance before its old createScene() settles lets the old
+            // continuation overwrite the new renderer/scene.
+            console.log('[ThemeManager] Cancelling in-flight activation for suspension:', this.pendingThemeName);
+            const pendingTheme = this.pendingThemeInstance;
+            const pendingThemeName = this.pendingThemeName || this.activeThemeName;
+            this.activationAttempts.set(
+                pendingTheme,
+                this.cancelledActivationAttempt,
+            );
+            this.disposeThemeInstance(pendingTheme, pendingThemeName, {
+                removeFromCache: true,
+            });
+            this.pendingThemeInstance = null;
+            this.pendingThemeName = pendingThemeName;
+            this.activeThemeName = pendingThemeName;
         }
 
-        if (!this.allowSuspendedRuntimeReuse
-            && this.webglRenderer
-            && typeof this.webglRenderer.clearThemeResources === 'function') {
-            this.webglRenderer.clearThemeResources();
+        if (!this.allowSuspendedRuntimeReuse) {
+            this.clearRendererThemeResources();
             console.log('[ThemeManager] Theme suspended, renderer resources released');
         } else {
             console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
@@ -816,22 +1482,91 @@ export class ThemeManager {
         this.themesSuspended = true;
     }
 
+    async resumeLatestThemeIntent(staleThemeInstance, staleThemeName) {
+        // Let the newer switch finish publishing its pending/active ownership
+        // before deciding whether the stale load is still cache-only.
+        const activeSwitch = this.switchDrainPromise;
+        if (activeSwitch) {
+            await activeSwitch;
+        }
+
+        const latestOwnsStaleInstance = this.activeTheme === staleThemeInstance
+            || this.pendingThemeInstance === staleThemeInstance;
+        if (staleThemeInstance
+            && !latestOwnsStaleInstance
+            && this.themeInstances.get(staleThemeName) === staleThemeInstance) {
+            this.disposeThemeInstance(staleThemeInstance, staleThemeName, {
+                removeFromCache: true,
+            });
+        }
+
+        if (!this.isDisposed && this.themesSuspended) {
+            return this.resumeThemes();
+        }
+        return undefined;
+    }
+
     async resumeThemes() {
+        // A switch requested while themes are suspended can still be loading its
+        // target. Wait for that transaction to publish the latest pending owner
+        // before deciding what to resume; otherwise the outgoing name can be
+        // resurrected for a single frame and immediately torn down again.
+        const activeSwitch = this.switchDrainPromise;
+        if (activeSwitch) {
+            await activeSwitch;
+            if (this.isDisposed) {
+                return;
+            }
+            return this.resumeThemes();
+        }
+
         if (!this.themesSuspended) {
             console.log('[ThemeManager] Themes not suspended, nothing to resume');
             return;
         }
 
         const themeName = this.pendingThemeName || this.activeThemeName;
-        const themeInstance = this.pendingThemeInstance || (themeName ? this.themeInstances.get(themeName) : null);
+        const resumeSuspensionGeneration = this.suspensionGeneration;
+        const resumeIntentGeneration = this.themeIntentGeneration;
+        let themeInstance = this.pendingThemeInstance
+            || (themeName ? this.themeInstances.get(themeName) : null);
 
-        if (!themeName || !themeInstance) {
+        if (!themeName) {
             console.warn('[ThemeManager] No theme queued to resume');
             this.themesSuspended = false;
             return;
         }
 
-        console.log('[ThemeManager] Resuming themes - themeName:', themeName, 'isActive:', themeInstance.isActive, 'pendingTheme:', !!this.pendingThemeInstance);
+        if (!themeInstance) {
+            console.log('[ThemeManager] Loading a fresh theme identity for resume:', themeName);
+            themeInstance = await this.loadTheme(themeName);
+            if (this.isDisposed) {
+                this.disposeThemeInstance(themeInstance, themeName, {
+                    removeFromCache: true,
+                });
+                return;
+            }
+            if (resumeIntentGeneration !== this.themeIntentGeneration) {
+                return this.resumeLatestThemeIntent(themeInstance, themeName);
+            }
+            if (resumeSuspensionGeneration !== this.suspensionGeneration) {
+                this.disposeThemeInstance(themeInstance, themeName, {
+                    removeFromCache: true,
+                });
+                return;
+            }
+            this.pendingThemeInstance = themeInstance;
+            this.pendingThemeName = themeName;
+        }
+
+        console.log(
+            '[ThemeManager] Resuming themes - themeName:',
+            themeName,
+            'isActive:',
+            themeInstance.isActive,
+            'pendingTheme:',
+            !!this.pendingThemeInstance,
+        );
 
         // Check if theme was ever started (has isActive been true before)
         // If the theme was loaded but never started, we need to do full activation
@@ -840,11 +1575,20 @@ export class ThemeManager {
         if (wasNeverStarted) {
             console.log('[ThemeManager] Theme was never started, performing full activation');
             await this.activateThemeInstance(themeInstance, themeName);
+            if (resumeIntentGeneration !== this.themeIntentGeneration) {
+                return this.resumeLatestThemeIntent(themeInstance, themeName);
+            }
             return;
         }
 
-        // If resuming the exact same theme instance that was suspended, try quick resume
-        if (themeInstance === this.pendingThemeInstance && !this.activeTheme) {
+        // Only an actually-paused runtime is safe to resume in place. A stopped
+        // instance must take the full activation path so its scene and loops rebuild.
+        const canQuickResume = this.allowSuspendedRuntimeReuse
+            && themeInstance === this.pendingThemeInstance
+            && !this.activeTheme
+            && themeInstance.isPaused === true
+            && themeInstance.lifecycleState === 'paused';
+        if (canQuickResume) {
             console.log('[ThemeManager] Attempting quick resume for theme:', themeName);
 
             this.activeTheme = themeInstance;
@@ -860,6 +1604,9 @@ export class ThemeManager {
                 // Resume failed or not supported, do full restart
                 console.log('[ThemeManager] Quick resume failed, performing full restart');
                 await this.activateThemeInstance(themeInstance, themeName);
+                if (resumeIntentGeneration !== this.themeIntentGeneration) {
+                    return this.resumeLatestThemeIntent(themeInstance, themeName);
+                }
             } else {
                 // Successfully resumed
                 this.pendingThemeInstance = null;
@@ -892,7 +1639,11 @@ export class ThemeManager {
             // Different theme or no pending instance, do full activation
             console.log('[ThemeManager] Performing full theme activation');
             await this.activateThemeInstance(themeInstance, themeName);
+            if (resumeIntentGeneration !== this.themeIntentGeneration) {
+                return this.resumeLatestThemeIntent(themeInstance, themeName);
+            }
         }
+        return undefined;
     }
 
     /**
@@ -958,6 +1709,8 @@ export class ThemeManager {
             const timer = setTimeout(() => {
                 if (!settled) {
                     settled = true;
+                    // Defined immediately below before this timer can run.
+                    // eslint-disable-next-line no-use-before-define
                     unsubscribe();
                     console.warn('[ThemeManager] Theme readiness timed out after', timeoutMs, 'ms');
                     resolve(false);
@@ -1076,44 +1829,94 @@ export class ThemeManager {
      * Clean up all theme resources
      */
     cleanup() {
+        if (this.isDisposed) {
+            return;
+        }
         console.log('[ThemeManager] Starting full cleanup...');
 
+        this.isDisposed = true;
+        this.lifecycleGeneration += 1;
+        this.themeIntentGeneration += 1;
         this.stopRandomThemeInterval();
         this.clearAdjacentThemePreloadQueue();
         this.deferAdjacentThemePreload = false;
         this.pendingAdjacentThemePreload = false;
+        this.queuedSwitchRequest = null;
+        this.inFlightThemeLoads.clear();
 
-        if (this.activeTheme) {
-            this.activeTheme.stop();
-        }
+        const switchWaiters = this.queuedSwitchWaiters;
+        this.queuedSwitchWaiters = [];
+        switchWaiters.forEach((resolve) => {
+            try {
+                resolve(null);
+            } catch (error) {
+                console.warn('[ThemeManager] Failed to settle switch during cleanup:', error);
+            }
+        });
 
         // Stop all audio before cleaning up
         const stopAudio = this.audioManager?.stopBackgroundMusic || this.audioManager?.stopAll;
         if (stopAudio) {
             console.log('[ThemeManager] Stopping all audio');
-            stopAudio.call(this.audioManager);
+            try {
+                stopAudio.call(this.audioManager);
+            } catch (error) {
+                console.warn('[ThemeManager] Audio cleanup failed:', error);
+            }
         }
 
-        // Cleanup all cached theme instances
-        console.log(`[ThemeManager] Cleaning up ${this.themeInstances.size} cached themes`);
-        for (const [themeName, theme] of this.themeInstances.entries()) {
+        // active/pending instances are not guaranteed to remain cached while an
+        // asynchronous transition is in flight. Dispose every known identity once.
+        const themeNamesByInstance = new Map();
+        for (const [themeName, theme] of this.themeInstances) {
+            themeNamesByInstance.set(theme, themeName);
+        }
+        if (this.activeTheme) {
+            themeNamesByInstance.set(
+                this.activeTheme,
+                this.activeThemeName || this.activeTheme.name,
+            );
+        }
+        if (this.pendingThemeInstance) {
+            themeNamesByInstance.set(
+                this.pendingThemeInstance,
+                this.pendingThemeName || this.pendingThemeInstance.name,
+            );
+        }
+
+        console.log(`[ThemeManager] Cleaning up ${themeNamesByInstance.size} theme instances`);
+        for (const [theme, themeName] of themeNamesByInstance) {
             console.log(`[ThemeManager] Cleaning up theme: ${themeName}`);
-            if (typeof theme.cleanup === 'function') {
-                theme.cleanup();
+            try {
+                this.disposeThemeInstance(theme, themeName);
+            } catch (error) {
+                // disposeThemeInstance already isolates ordinary subclass failures,
+                // but keep terminal cleanup progressing even for pathological
+                // accessors/proxies that throw during the manager's final sweep.
+                console.warn(`[ThemeManager] Terminal theme cleanup failed: ${themeName}`, error);
             }
         }
         this.themeInstances.clear();
+        this.pendingThemeInstance = null;
+        this.pendingThemeName = null;
+        this.disposeTerminalThemeResources();
 
         // Clean up renderer resources after themes release their references
         if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
             console.log('[ThemeManager] Cleaning up renderer');
-            this.webglRenderer.cleanup();
+            try {
+                this.webglRenderer.cleanup();
+            } catch (error) {
+                console.warn('[ThemeManager] Renderer cleanup failed:', error);
+            }
         }
 
         // Clear LRU tracking
         this.themeLRU = [];
 
         this.activeTheme = null;
+        this.activeThemeName = null;
+        this.themesSuspended = true;
         this.webglRenderer = null;
 
         console.log('✅ [ThemeManager] Cleanup complete');

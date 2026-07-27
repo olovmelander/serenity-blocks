@@ -8,6 +8,35 @@ if (!window.g_OceanGltfCache) {
 }
 
 const gltfLoader = new GLTFLoader();
+let cacheGeneration = 0;
+
+function disposeCachedScene(scene) {
+    scene?.traverse?.((child) => {
+        child.geometry?.dispose?.();
+        const materials = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+        materials.filter(Boolean).forEach((material) => {
+            Object.values(material).forEach((value) => {
+                if (value?.isTexture) value.dispose();
+            });
+            material.dispose?.();
+        });
+    });
+    scene?.clear?.();
+}
+
+export function disposeOceanGltfCache() {
+    cacheGeneration += 1;
+    const cachedLoads = new Set(window.g_OceanGltfCache.values());
+    window.g_OceanGltfCache.clear();
+    cachedLoads.forEach((loadPromise) => {
+        Promise.resolve(loadPromise).then(
+            (gltf) => disposeCachedScene(gltf?.scene),
+            () => {},
+        );
+    });
+}
 
 function cloneOwnedScene(source) {
     let hasSkinnedMesh = false;
@@ -47,11 +76,22 @@ function cloneOwnedScene(source) {
 export async function loadGltfCached(url) {
     let loadPromise = window.g_OceanGltfCache.get(url);
     if (!loadPromise) {
-        loadPromise = gltfLoader.loadAsync(url).catch((err) => {
-            // Remove from cache on failure so future attempts can retry
-            window.g_OceanGltfCache.delete(url);
-            throw err;
-        });
+        const loadGeneration = cacheGeneration;
+        loadPromise = gltfLoader.loadAsync(url)
+            .then((gltf) => {
+                if (loadGeneration !== cacheGeneration) {
+                    disposeCachedScene(gltf.scene);
+                    throw new Error(`Ocean GLTF load was cancelled: ${url}`);
+                }
+                return gltf;
+            })
+            .catch((err) => {
+                // Remove from cache on failure so future attempts can retry.
+                if (window.g_OceanGltfCache.get(url) === loadPromise) {
+                    window.g_OceanGltfCache.delete(url);
+                }
+                throw err;
+            });
         window.g_OceanGltfCache.set(url, loadPromise);
     }
 

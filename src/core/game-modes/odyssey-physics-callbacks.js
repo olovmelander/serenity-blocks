@@ -6,6 +6,8 @@ import {
     emitPerfectClear,
     emitPieceLock,
     emitTSpin,
+    emitHardDrop,
+    emitLevelUp,
 } from '../../events/gameplay-events.js';
 import { DEMO_FIXED_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import {
@@ -54,8 +56,18 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             mode.deps.soundManager?.sfxPlayer?.playB2B?.();
             mode._getBoardScene?.()?.sharedEffects?.playB2BChange?.(true);
         },
-        onLevelUp: () => mode.deps.soundManager?.sfxPlayer?.playLevelUp(),
+        onLevelUp: (level) => {
+            emitLevelUp({ level, source: 'odyssey', levelId });
+            mode.deps.soundManager?.sfxPlayer?.playLevelUp();
+        },
         onHardDrop: (dropData) => {
+            emitHardDrop({
+                piece: dropData?.piece || null,
+                startY: dropData?.startY,
+                endY: dropData?.endY,
+                source: 'odyssey',
+                levelId,
+            });
             if (usesFixedTiming) {
                 applyFixedHardDropHitStop(gameState);
             } else if (!prefersOdysseyReducedMotion(mode)) {

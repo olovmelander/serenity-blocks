@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "TWO SETS OF NUMBERS, AND THE DIFFERENCE MATTERS.",
+    "",
+    "`bauerSource` is measured from eight public-domain John Bauer scans on Wikimedia",
+    "Commons (Tuvstarr gazing into the tarn; Annu sitter Tuvstarr kvar; The Princess",
+    "and the Trolls; Little Bianca Maria; Elk & Cottongrass; A Forest Troll NMB 342;",
+    "En kvall vid midsommartid; Sagoprinsessan; Humpe in the Woods).",
+    "",
+    "Those absolute values CANNOT be chased directly. Bauer is watercolour on aged",
+    "paper: paper-white shows through every wash, which lifts median luma and",
+    "suppresses HSV saturation. A dark digital night render is a different medium and",
+    "will never sit in that band without being washed out. Measured proof: the",
+    "project's own concept reference (a painterly night forest, and the image this",
+    "theme was built toward) scores p50 16.8 / sat p50 0.59 - it fails the raw Bauer",
+    "band exactly as our render does, and in the same direction.",
+    "",
+    "`targets` below are therefore operational, derived from what IS transferable",
+    "between media: top-end compression, and the concentration of the bright note.",
+    "Both are calibrated against the concept reference, which is same-medium.",
+    "See docs/STILLWATER_BAUER_MASTERPIECE_PLAN_2026-07.md.",
+    "",
+    "saturation.p50 is a BAND, not a ceiling: driving chroma to zero scores well",
+    "against the raw Bauer scans yet reads as washed-out grey in this medium.",
+    "Bauer is muted, not colourless - moss green, ochre and blue-grey all survive.",
+    "",
+    "bright.fraction has a FLOOR as well as a ceiling: a frame with no bright",
+    "note at all scores well on every other metric and is compositionally dead."
+  ],
+  "bauerSource": {
+    "lumaP50Range": [
+      24,
+      36
+    ],
+    "lumaP25Range": [
+      15,
+      26
+    ],
+    "lumaP75Range": [
+      39,
+      51
+    ],
+    "lumaP95Range": [
+      57,
+      71
+    ],
+    "saturationP50Range": [
+      0.19,
+      0.32
+    ],
+    "flatFractionRange": [
+      0.5,
+      0.66
+    ],
+    "note": "Provenance only. Do not gate on these."
+  },
+  "conceptReference": {
+    "file": "public/playground-refs/stillwater-composition-concept-2026-07.png",
+    "lumaP50": 16.8,
+    "lumaP75": 27.2,
+    "lumaP95": 33.47,
+    "lumaTopSpread": 6.27,
+    "saturationP50": 0.59,
+    "flatFraction": 0.7934,
+    "brightFraction": 0.0003,
+    "brightSpreadFraction": 0.1409,
+    "note": "Same-medium calibration target. This is what we actually chase."
+  },
+  "targets": {
+    "luma.p50": {
+      "min": 12,
+      "max": 22
+    },
+    "luma.p75": {
+      "max": 30
+    },
+    "saturation.p50": {
+      "min": 0.34,
+      "max": 0.62
+    },
+    "saturation.p99": {
+      "max": 0.94
+    },
+    "flatFraction": {
+      "min": 0.6
+    },
+    "largestFlatFraction": {
+      "min": 0.18
+    },
+    "bright.fraction": {
+      "min": 0.0004,
+      "max": 0.01
+    },
+    "bright.spreadFraction": {
+      "max": 0.18
+    }
+  },
+  "diagnostics": {
+    "luma.p95": {
+      "max": 38
+    },
+    "luma.topSpread": {
+      "max": 12
+    },
+    "note": "Derived from a reference with no strong specular water lane. Stillwater's moon path is a large bright region BY DESIGN, so these two cannot be met without a shoulder that also crushes the spirit. Tracked, not gated - revisit if the painterly pass (Wave 4) changes the top end."
+  }
+}

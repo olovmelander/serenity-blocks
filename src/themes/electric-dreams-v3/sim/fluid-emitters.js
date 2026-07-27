@@ -40,11 +40,13 @@ export class FluidEmitters {
         this.sim = sim;
         this.focalPoint = focalPoint?.clone?.() || new THREE.Vector3(0, 0, 0);
         this._unsubs = [];
+        this._timerIds = new Set();
         this._enabled = true;
     }
 
     /** Subscribe to all game events. Returns unsub function. */
     attach() {
+        this._enabled = true;
         this._unsubs.push(
             eventBus.on(EVENTS.PIECE_LOCK, (data) => this._onPieceLock(data)),
             eventBus.on(EVENTS.HARD_DROP, (data) => this._onHardDrop(data)),
@@ -61,9 +63,22 @@ export class FluidEmitters {
             try { unsub?.(); } catch (e) { /* ignore */ }
         }
         this._unsubs = [];
+        this._enabled = false;
+        this._timerIds.forEach((timerId) => clearTimeout(timerId));
+        this._timerIds.clear();
     }
 
     setEnabled(enabled) { this._enabled = !!enabled; }
+
+    _schedule(callback, delayMs) {
+        const timerId = setTimeout(() => {
+            this._timerIds.delete(timerId);
+            if (!this._enabled || !this.sim) return;
+            callback();
+        }, delayMs);
+        this._timerIds.add(timerId);
+        return timerId;
+    }
 
     /**
      * Resolve event origin to a world-space point near the focal area.
@@ -111,8 +126,7 @@ export class FluidEmitters {
         } else if (lineCount === 4) {
             // Tetris: dramatic detonation + a secondary vortex 80ms later.
             this.sim.pushImpulse(origin, 6.5, VORTEX_AXIS, IMPULSE_TYPE.RADIAL);
-            setTimeout(() => {
-                if (!this._enabled || !this.sim) return;
+            this._schedule(() => {
                 const v = this._eventOrigin(data, 0.3);
                 _scratchDir.set(0, 0, 1).normalize();
                 this.sim.pushImpulse(v, 3.5, _scratchDir, IMPULSE_TYPE.VORTEX);
@@ -165,13 +179,13 @@ export class FluidEmitters {
         if (!this._enabled) return;
         // Strong attractor — mass condenses inward. Held for ~2s by re-emitting
         // every 150ms (decay rate is ~170ms half-life, so 150ms keeps it sustained).
-        const origin = this._eventOrigin({}, 0);
+        const origin = this._eventOrigin({}, 0).clone();
         let pulses = 0;
         const repeat = () => {
             if (pulses >= 12 || !this._enabled || !this.sim) return;
             this.sim.pushImpulse(origin, 1.8, VORTEX_AXIS, IMPULSE_TYPE.ATTRACTOR);
             pulses += 1;
-            setTimeout(repeat, 150);
+            this._schedule(repeat, 150);
         };
         repeat();
     }

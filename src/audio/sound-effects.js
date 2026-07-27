@@ -314,7 +314,7 @@ export function createSoundSets(createTone, createRichTone) {
                 });
             },
         },
-        SwedishForest: {
+        GoldenForest: {
             move: () => richTone({
                 oscillators: [{ type: 'sine', freq: 400, gain: 0.3 }], // Very soft wood block
                 noise: { type: 'pink', gain: 0.1 }, // Barely audible crunch

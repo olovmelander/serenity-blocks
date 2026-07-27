@@ -123,7 +123,7 @@ describe('behavioral release gates', () => {
         });
     });
 
-    it('recovers once from preload errors and removes the listener on cleanup', () => {
+    it('reports preload errors without reloading or swallowing the import rejection', () => {
         const listeners = new Map();
         const reload = vi.fn();
         const windowRef = {
@@ -140,8 +140,8 @@ describe('behavioral release gates', () => {
         listeners.get('vite:preloadError')({ preventDefault });
         listeners.get('vite:preloadError')({ preventDefault });
 
-        expect(preventDefault).toHaveBeenCalledTimes(2);
-        expect(reload).toHaveBeenCalledTimes(1);
+        expect(preventDefault).not.toHaveBeenCalled();
+        expect(reload).not.toHaveBeenCalled();
         expect(logError).toHaveBeenCalledTimes(2);
 
         cleanup();

@@ -806,14 +806,25 @@ describe('boot warp startup decision', () => {
     it('keeps the warp visible for the minimum before fade or title reveal', async () => {
         const clock = mockPerformanceNow(100);
         const {
+            BOOT_WARP_FADE_PROGRESS,
             BOOT_WARP_MIN_VISIBLE_MS,
+            BOOT_WARP_REVEAL_PROGRESS,
+            BOOT_WARP_TITLE_PROGRESS,
             playBootWarpHandoff,
         } = await import('../../src/ui/boot-warp-startup.js');
         const events = [];
+        const healthy = { firstFrameRendered: true, cadenceHealthy: true };
         const warpTransition = {
             play: vi.fn(async ({ onProgress }) => {
                 events.push(`play:${clock.value}`);
-                onProgress(1, { firstFrameRendered: true });
+                onProgress(BOOT_WARP_REVEAL_PROGRESS, healthy);
+                // Past the title gate on progress, but the flight has not been on screen
+                // long enough yet — neither the fade nor the title may fire here.
+                clock.advance(BOOT_WARP_MIN_VISIBLE_MS - 1);
+                onProgress(BOOT_WARP_TITLE_PROGRESS, healthy);
+                clock.advance(1);
+                onProgress(BOOT_WARP_FADE_PROGRESS, healthy);
+                onProgress(1, healthy);
                 return {
                     status: 'complete',
                     firstFrameRendered: true,
@@ -850,10 +861,140 @@ describe('boot warp startup decision', () => {
         expect(events).toEqual([
             'play:100',
             'dismiss:warp-handoff:100',
-            `wait:${BOOT_WARP_MIN_VISIBLE_MS}`,
             `fade:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
             `title:warp-progress:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
         ]);
+        // The contract is paid for by the FLIGHT, never by holding a dead final frame.
+        expect(events.some((event) => event.startsWith('wait:'))).toBe(false);
+        clock.restore();
+    });
+
+    it('caps the post-flight hold so a late reveal cannot freeze on a dead frame', async () => {
+        const clock = mockPerformanceNow(100);
+        const {
+            BOOT_WARP_MAX_FROZEN_TAIL_MS,
+            BOOT_WARP_MIN_VISIBLE_MS,
+            playBootWarpHandoff,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const waits = [];
+        const warpTransition = {
+            // Degenerate flight: it reveals and ends in the same beat, so the min-visible
+            // contract cannot be met by anything that is still animating.
+            play: vi.fn(async ({ onProgress }) => {
+                onProgress(1, { firstFrameRendered: true, cadenceHealthy: true });
+                return {
+                    status: 'complete', firstFrameRendered: true, durationMs: 6500, progress: 1,
+                };
+            }),
+            fadeOut: vi.fn(() => Promise.resolve()),
+        };
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            urlParams: new URLSearchParams('warpDur=100'),
+            introAnimation: { revealTitle: vi.fn() },
+            dismissStartupShell: vi.fn(),
+            soundManager: { playOneShotFile: vi.fn() },
+            setTimeoutFn: (callback, ms) => {
+                waits.push(ms);
+                clock.advance(ms);
+                callback();
+                return 1;
+            },
+        });
+
+        expect(result.shellDismissed).toBe(true);
+        expect(waits).toEqual([BOOT_WARP_MAX_FROZEN_TAIL_MS]);
+        expect(BOOT_WARP_MAX_FROZEN_TAIL_MS).toBeLessThan(BOOT_WARP_MIN_VISIBLE_MS);
+        clock.restore();
+    });
+
+    it('withholds the ident handoff until the warp is actually producing frames', async () => {
+        const {
+            BOOT_WARP_REVEAL_PROGRESS,
+            playBootWarpHandoff,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const dismissals = [];
+        const warpTransition = {
+            play: vi.fn(async ({ onProgress }) => {
+                // Rendered, past the reveal gate — but the compositor is starving, so
+                // handing over now would cross-dissolve onto a frozen warp.
+                onProgress(BOOT_WARP_REVEAL_PROGRESS, {
+                    firstFrameRendered: true,
+                    cadenceHealthy: false,
+                });
+                const dismissedWhileStalled = dismissals.length;
+                onProgress(BOOT_WARP_REVEAL_PROGRESS, {
+                    firstFrameRendered: true,
+                    cadenceHealthy: true,
+                });
+                return {
+                    status: 'complete',
+                    firstFrameRendered: true,
+                    durationMs: 6500,
+                    progress: 1,
+                    dismissedWhileStalled,
+                };
+            }),
+            fadeOut: vi.fn(() => Promise.resolve()),
+        };
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            urlParams: new URLSearchParams('warpDur=100'),
+            introAnimation: { revealTitle: vi.fn() },
+            dismissStartupShell: vi.fn((reason) => dismissals.push(reason)),
+            soundManager: { playOneShotFile: vi.fn() },
+            setTimeoutFn: (callback) => { callback(); return 1; },
+        });
+
+        expect(result.dismissedWhileStalled).toBe(0);
+        expect(dismissals).toEqual(['warp-handoff']);
+    });
+
+    it('hands over anyway when slow hardware never reaches a healthy cadence', async () => {
+        const clock = mockPerformanceNow(100);
+        const {
+            BOOT_WARP_CADENCE_GRACE_MS,
+            BOOT_WARP_REVEAL_PROGRESS,
+            playBootWarpHandoff,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const dismissals = [];
+        const warpTransition = {
+            play: vi.fn(async ({ onProgress }) => {
+                // A machine that simply renders slowly: never healthy, but never frozen.
+                const stalled = { firstFrameRendered: true, cadenceHealthy: false };
+                onProgress(BOOT_WARP_REVEAL_PROGRESS, stalled);
+                const dismissedImmediately = dismissals.length;
+                clock.advance(BOOT_WARP_CADENCE_GRACE_MS);
+                onProgress(BOOT_WARP_REVEAL_PROGRESS + 0.01, stalled);
+                const dismissedAfterGrace = dismissals.length;
+                onProgress(1, stalled);
+                return {
+                    status: 'complete',
+                    firstFrameRendered: true,
+                    durationMs: 6500,
+                    progress: 1,
+                    dismissedImmediately,
+                    dismissedAfterGrace,
+                };
+            }),
+            fadeOut: vi.fn(() => Promise.resolve()),
+        };
+
+        const result = await playBootWarpHandoff({
+            warpTransition,
+            urlParams: new URLSearchParams('warpDur=100'),
+            introAnimation: { revealTitle: vi.fn() },
+            dismissStartupShell: vi.fn((reason) => dismissals.push(reason)),
+            soundManager: { playOneShotFile: vi.fn() },
+            setTimeoutFn: (callback, ms) => { clock.advance(ms); callback(); return 1; },
+        });
+
+        // Held at first, handed over once the grace expired — the ident never overstays.
+        expect(result.dismissedImmediately).toBe(0);
+        expect(result.dismissedAfterGrace).toBe(1);
+        expect(result.shellDismissed).toBe(true);
         clock.restore();
     });
 
@@ -1010,14 +1151,159 @@ describe('boot warp prewarm budget', () => {
 
         expect(progress[0]).toBe(0);
 
-        clock.advance(6500);
-        raf.runNext();
+        for (let i = 0; i < 400 && raf.length > 0; i += 1) {
+            clock.advance(60);
+            raf.runNext();
+        }
         await expect(playPromise).resolves.toMatchObject({
             status: 'complete',
             firstFrameRendered: true,
             progress: 1,
         });
         clock.restore();
+    });
+
+    it('advances the flight on clamped rendered frames so a stall cannot skip past it', async () => {
+        installDom();
+        const clock = mockPerformanceNow(1000);
+        const raf = installRafQueue();
+        const {
+            BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL,
+            BOOT_WARP_MAX_FRAME_DELTA_MS,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+        await transition.prewarm({ timeoutMs: 100 });
+
+        const durationMs = 6500;
+        const samples = [];
+        const playPromise = transition.play({
+            durationMs,
+            onProgress: (p, state) => samples.push({ p, ...state }),
+        });
+
+        raf.runNext();
+        expect(samples[0].p).toBe(0);
+
+        // A multi-second compositor stall (cold pipeline compile) contributes at most one
+        // clamped frame — the old wall clock jumped straight to the middle of the flight.
+        clock.advance(9000);
+        raf.runNext();
+        expect(samples[1].p).toBeCloseTo(BOOT_WARP_MAX_FRAME_DELTA_MS / durationMs, 6);
+        expect(samples[1].cadenceHealthy).toBe(false);
+
+        // Recovery edge. Pinning the TRUE state (not just the false one) is what stops the
+        // producer being reverted to a constant, and requiring more than one good frame is
+        // the actual contract: a single frame after a stall does not prove frames are
+        // flowing again, which is exactly what the ident is being handed over on.
+        expect(BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL).toBeGreaterThan(1);
+        clock.advance(60);
+        raf.runNext();
+        expect(samples[samples.length - 1].cadenceHealthy).toBe(false);
+
+        let framesToHealthy = 1;
+        while (framesToHealthy < 10 && !samples[samples.length - 1].cadenceHealthy) {
+            clock.advance(60);
+            raf.runNext();
+            framesToHealthy += 1;
+        }
+        expect(samples[samples.length - 1].cadenceHealthy).toBe(true);
+        expect(framesToHealthy).toBe(BOOT_WARP_HEALTHY_FRAMES_FOR_REVEAL);
+
+        for (let i = 0; i < 400 && raf.length > 0; i += 1) {
+            clock.advance(60);
+            raf.runNext();
+        }
+
+        const result = await playPromise;
+        expect(result.status).toBe('complete');
+        // Every millisecond of the flight was played, even though wall clock ran far longer.
+        expect(result.elapsedMs).toBeGreaterThanOrEqual(durationMs);
+        expect(result.wallElapsedMs).toBeGreaterThan(durationMs + 8000);
+        clock.restore();
+    });
+
+    it('hands the ident over at the reveal beat when the real flight drives the real handoff', async () => {
+        // End-to-end across the seam the other tests fake: a REAL BootWarpTransition.play()
+        // feeding the REAL playBootWarpHandoff. Every other test hand-authors the progress
+        // state, so a producer that stopped reporting a healthy cadence would slip through
+        // them all and quietly demote every boot to the 1500ms grace path.
+        installDom();
+        const clock = mockPerformanceNow(1000);
+        const raf = installRafQueue();
+        const {
+            BOOT_WARP_REVEAL_PROGRESS,
+            playBootWarpHandoff,
+        } = await import('../../src/ui/boot-warp-startup.js');
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+        await transition.prewarm({ timeoutMs: 100 });
+
+        let latestProgress = 0;
+        let dismissedAtProgress = null;
+        const observedTransition = {
+            // Observe only — the real play() still produces the state and the real handoff
+            // still consumes it.
+            play: (opts) => transition.play({
+                ...opts,
+                onProgress: (p, state) => {
+                    latestProgress = p;
+                    opts.onProgress?.(p, state);
+                },
+            }),
+            fadeOut: () => Promise.resolve(),
+        };
+
+        const handoffPromise = playBootWarpHandoff({
+            warpTransition: observedTransition,
+            urlParams: new URLSearchParams(),
+            introAnimation: { revealTitle: vi.fn() },
+            soundManager: { playOneShotFile: vi.fn() },
+            dismissStartupShell: vi.fn(() => { dismissedAtProgress = latestProgress; }),
+            setTimeoutFn: (callback, ms) => { clock.advance(ms); callback(); return 1; },
+        });
+
+        for (let i = 0; i < 2000 && raf.length > 0; i += 1) {
+            clock.advance(16);
+            raf.runNext();
+        }
+
+        const result = await handoffPromise;
+        expect(result.shellDismissed).toBe(true);
+        expect(result.status).toBe('complete');
+        // Handed over on the ignition beat, NOT mid-flight (the reported bug was 0.477) and
+        // not on the slow-hardware grace fallback (~0.29 at this duration).
+        expect(dismissedAtProgress).toBeGreaterThanOrEqual(BOOT_WARP_REVEAL_PROGRESS);
+        expect(dismissedAtProgress).toBeLessThan(0.1);
+        clock.restore();
+    });
+
+    it('holds prewarm until the GPU has executed the primed frames', async () => {
+        installDom();
+        const drained = deferred();
+        const device = {
+            queue: { onSubmittedWorkDone: vi.fn(() => drained.promise) },
+        };
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition({ device });
+
+        let settled = null;
+        const prewarmPromise = transition.prewarm({ timeoutMs: 5000 })
+            .then((value) => { settled = value; return value; });
+
+        for (let i = 0; i < 30; i += 1) {
+            // eslint-disable-next-line no-await-in-loop -- draining pending microtasks
+            await Promise.resolve();
+        }
+        expect(device.queue.onSubmittedWorkDone).toHaveBeenCalled();
+        // The pipelines are queued but the driver may still be compiling — reporting ready
+        // here is what let the compile land inside play() and starve the flight.
+        expect(settled).toBeNull();
+        expect(transition.lastPrewarmStatus).not.toBe('ready');
+
+        drained.resolve();
+        await expect(prewarmPromise).resolves.toBe(true);
+        expect(transition.lastPrewarmStatus).toBe('ready');
     });
 
     it('reports render-failed-before-visible when first play render throws', async () => {

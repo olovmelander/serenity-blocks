@@ -508,8 +508,6 @@ export default class SupernovaTheme extends BaseTheme {
     }
 
     dispose() {
-        super.dispose();
-
         window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
@@ -548,6 +546,19 @@ export default class SupernovaTheme extends BaseTheme {
         this.mainGroup = null;
         this.shockwaves = [];
         this.flares = [];
+    }
+
+    cleanup() {
+        if (this.cleanupComplete) return;
+
+        try {
+            this.dispose();
+        } finally {
+            // BaseTheme owns the canonical terminal lifecycle contract. Keep
+            // this in finally so its safety nets run even if legacy disposal
+            // encounters an already-lost renderer or scene resource.
+            super.cleanup();
+        }
     }
 
     getTetrominoConfig() {

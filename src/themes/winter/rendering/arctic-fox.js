@@ -57,11 +57,16 @@ const _origin = new THREE.Vector3();
 // rotation.y = atan2(dirX, dirZ).)
 const MAG_NORTH = new THREE.Vector2(0.42, -0.91); // NNE → toward the aurora
 const MAG_NORTH_HEADING = Math.atan2(MAG_NORTH.x, MAG_NORTH.y);
-// Paw-trail gait (fractions of the fox's size): stride = spacing between footfall events;
-// FWD = how far the front/back feet sit from body centre; STANCE = L/R foot spread.
-const PAW_STRIDE = 0.5;
-const PAW_STANCE = 0.09;
-const PAW_FWD = 0.16;
+// Paw-trail gait (fractions of the fox's length). Foxes are famous for the DIRECT-REGISTER
+// trot: the hind foot lands in the print the front foot just made, so the trail is a single,
+// nearly dead-straight line of marks — "as if the animal was walking on a tightrope", a
+// "string of pearls". It is the most recognisable trail in the winter woods, and it is the
+// opposite of a dog's two-abreast overstep trot. So: ONE mark per footfall on the body
+// centre-line, with only a whisper of L/R offset, plus a shallow groove connecting them
+// (in deep powder a fox plows as much as it steps — that groove is what makes the LANE read
+// at distance, which is the whole game at this grazing camera).
+const PAW_STRIDE = 0.55; // spacing between footfalls
+const PAW_LATERAL = 0.022; // the barely-perceptible zig either side of the centre-line
 function approachAngle(a, b, rate, dt) {
     let d = b - a;
     while (d > Math.PI) d -= Math.PI * 2;
@@ -83,7 +88,10 @@ export function createArcticFox(scene, {
     nearZ = 250,
     farZ = -1500,
     farScale = 0.5,
-    onFootstep = null, // (footX, footZ, headingUx, headingUz, modelScale) → paw-trail stamp
+    // Snow-deformation field (createPawTrail). Optional — null means the foxes leave no marks.
+    trail = null,
+    // Footfall powder (createSnowPuffs). Optional.
+    puffs = null,
 } = {}) {
     const group = new THREE.Group();
     group.name = 'winter-arctic-fox';
@@ -91,9 +99,21 @@ export function createArcticFox(scene, {
 
     const loader = new GLTFLoader();
     let src = null; // { scene, clip }
+    let disposed = false;
     let groundReady = false;
     const foxes = []; // { root, mixer, path, speed, t }
     const meshes = [groundMesh, ...groundMeshes].filter(Boolean);
+
+    const disposeHierarchy = (root) => {
+        root?.traverse?.((child) => {
+            child.geometry?.dispose?.();
+            const materials = Array.isArray(child.material)
+                ? child.material
+                : [child.material];
+            materials.filter(Boolean).forEach((material) => material.dispose?.());
+        });
+        root?.clear?.();
+    };
 
     // Raycast every ground mesh and take the HIGHEST hit so the fox stands on the
     // lake ice (above the carved basin floor) when over the lake, and on the snow
@@ -153,6 +173,50 @@ export function createArcticFox(scene, {
         rest: 'CurlSleep',
     };
 
+    // ── Snow marks ────────────────────────────────────────────────────────────
+    // The ground REMEMBERS what happened on it. A fox that only marks the snow while trotting
+    // is a fox that never pounced, dug or slept — and the mousing pounce is the best thing this
+    // theme does. Frozen Wilds' whole trick is that you can retrace a fight from the snow.
+
+    /** The fox's RENDERED size right now — it shrinks with depth, so far foxes mark small. */
+    function renderScale(fx) {
+        const k = THREE.MathUtils.smoothstep(fx.root.position.z, farZ, nearZ);
+        return fx.modelScale * (farScale + (1 - farScale) * k);
+    }
+
+    /** Heading unit from the fox's facing (model faces +Z, so rotation.y = atan2(dirX, dirZ)). */
+    function facing(fx) {
+        return [Math.sin(fx.root.rotation.y), Math.cos(fx.root.rotation.y)];
+    }
+
+    /** The snow SURFACE under a fox (root sits `footSink` into it). */
+    function surfaceY(fx) {
+        return fx.root.position.y + footSink;
+    }
+
+    /** Advance the gait accumulator and, on a footfall, lay down a direct-register print. */
+    function footfall(fx, x, z, ux, uz, moved) {
+        if (!trail && !puffs) return;
+        fx.trailDist += moved;
+        const s = renderScale(fx);
+        if (fx.trailDist < s * PAW_STRIDE) return;
+        fx.trailDist = 0;
+        const off = s * PAW_LATERAL * fx.footSide;
+        const px = x + uz * off;
+        const pz = z - ux * off;
+        if (trail) {
+            // The plow groove first, so the print then presses into it, not the other way.
+            if (fx.hasPaw) trail.stampDrag(fx.lastPawX, fx.lastPawZ, px, pz, s);
+            trail.stampPaw(px, pz, ux, uz, s);
+        }
+        // A trotting paw only whispers powder up — the eruptions are saved for the pounce.
+        if (puffs) puffs.burst(px, surfaceY(fx), pz, s, ux, uz, 2, 0.45);
+        fx.lastPawX = px;
+        fx.lastPawZ = pz;
+        fx.hasPaw = true;
+        fx.footSide = -fx.footSide;
+    }
+
     function play(fx, name, once, timeScale = 1) {
         const next = fx.actions[name];
         if (!next) return;
@@ -168,11 +232,21 @@ export function createArcticFox(scene, {
     }
     function setState(fx, s) {
         fx.state = s; fx.stateTime = 0;
+        // Break the plow groove whenever the fox stops travelling, so a pause doesn't get
+        // stitched to wherever it resumes.
+        if (s !== 'trot') fx.hasPaw = false;
         if (s === 'trot') {
             play(fx, 'Run', false, 1); // timeScale matched to ground speed in update()
             fx.trotDur = 7 + Math.random() * 9;
             return;
         }
+        if (s === 'pounce' && trail) {
+            // Take-off: the hind legs drive and kick a smear of snow BACKWARD.
+            const [ux, uz] = facing(fx);
+            trail.stampScuff(fx.basePos.x, fx.basePos.z, ux, uz, renderScale(fx));
+            fx.pounceLanded = false;
+        }
+        if (s === 'dig') fx.digTimer = 0;
         if (s === 'listen') {
             // aim the coming pounce toward magnetic north (mostly) — the rest are the
             // foxes' less-aligned, lower-success attempts.
@@ -184,6 +258,7 @@ export function createArcticFox(scene, {
             const a = fx.actions.CurlSleep;
             play(fx, 'CurlSleep', true, 0.6); // a slow nap: curl → sleep (breathing) → uncurl
             fx.stateDur = a ? a.getClip().duration / 0.6 : 4.5;
+            fx.restMark = 0; // the body impression deepens as it settles (see update())
             return;
         }
         const action = fx.actions[STATE_CLIP[s]];
@@ -217,6 +292,7 @@ export function createArcticFox(scene, {
         const mid = a.root.position.clone().add(b.root.position).multiplyScalar(0.5);
         for (const [fx, partner] of [[a, b], [b, a]]) {
             fx.state = 'greet'; fx.stateTime = 0; fx.stateDur = GREET_DURATION;
+            fx.hasPaw = false; // don't stitch a groove from wherever it was trotting
             fx.greetPartner = partner; fx.greetType = type; fx.greetMid = mid;
             fx.basePos.copy(fx.root.position);
             fx.greetRadius = Math.hypot(fx.root.position.x - mid.x, fx.root.position.z - mid.z);
@@ -241,11 +317,19 @@ export function createArcticFox(scene, {
         try {
             gltf = await loader.loadAsync(foxUrl);
         } catch (e) {
-            console.warn('[ArcticFox] failed to load arctic-fox.glb:', e);
+            if (!disposed) {
+                console.warn('[ArcticFox] failed to load arctic-fox.glb:', e);
+            }
+            return;
+        }
+        if (disposed) {
+            disposeHierarchy(gltf.scene);
             return;
         }
         gltf.scene.traverse((o) => {
             if (!o.isMesh) return;
+            const oldMaterials = Array.isArray(o.material) ? o.material : [o.material];
+            oldMaterials.filter(Boolean).forEach((material) => material.dispose?.());
             o.material = makeFurMaterial(); // cool even snow-white fur (TSL)
             o.frustumCulled = false;
             o.castShadow = false;
@@ -258,7 +342,7 @@ export function createArcticFox(scene, {
     }
 
     function spawn(i) {
-        if (!src) return;
+        if (disposed || !src) return;
         const root = new THREE.Group();
         const model = cloneHierarchy(src.scene);
         const s = scale * (0.85 + Math.random() * 0.3);
@@ -301,6 +385,12 @@ export function createArcticFox(scene, {
             hasPrev: false,
             trailDist: 0,
             footSide: 1, // paw-trail gait accumulator + L/R alternation
+            lastPawX: 0,
+            lastPawZ: 0,
+            hasPaw: false, // previous print → the plow groove is drawn from it
+            pounceLanded: false,
+            digTimer: 0,
+            restMark: 0,
             gcY: fallbackY,
             gcValid: false,
             rayPhase: i % 3, // amortized ground-raycast cache
@@ -313,6 +403,7 @@ export function createArcticFox(scene, {
 
     let _frame = 0;
     function update(dt) {
+        if (disposed) return;
         _frame += 1;
         // Greeting encounters: tick cooldowns, then pair-check trotting foxes.
         for (const fx of foxes) if (fx.greetCooldown > 0) fx.greetCooldown -= dt;
@@ -361,28 +452,12 @@ export function createArcticFox(scene, {
                     const strideRate = fx.modelScale * 0.66; // units/s the clip strides at timeScale 1
                     fx.current.setEffectiveTimeScale(THREE.MathUtils.clamp(groundSpeed / strideRate, 0.25, 2.2));
                 }
-                // Paw-trail: as the fox trots, drop SMALL individual prints in a 4-foot
-                // DIAGONAL gait — front foot one side + back foot the other, alternating each
-                // stride — so you see four separate paw marks, not one big paw.
-                if (onFootstep && fx.hasPrev) {
+                // Direct-register trot → a single-file string of prints joined by a plow groove.
+                if (fx.hasPrev) {
                     const mvx = p.x - fx.prevX;
                     const mvz = p.z - fx.prevZ;
-                    fx.trailDist += Math.sqrt(mvx * mvx + mvz * mvz);
-                    if (fx.trailDist >= fx.modelScale * PAW_STRIDE) {
-                        fx.trailDist = 0;
-                        const hl = Math.sqrt(hx * hx + hz * hz) || 1;
-                        const ux = hx / hl;
-                        const uz = hz / hl; // forward unit
-                        const rx = uz;
-                        const rz = -ux; // right unit
-                        const ms = fx.modelScale;
-                        const fwd = ms * PAW_FWD;
-                        const st = ms * PAW_STANCE * fx.footSide;
-                        // front foot (ahead, one side) + back foot (behind, other side)
-                        onFootstep(p.x + ux * fwd + rx * st, p.z + uz * fwd + rz * st, ux, uz, ms);
-                        onFootstep(p.x - ux * fwd - rx * st, p.z - uz * fwd - rz * st, ux, uz, ms);
-                        fx.footSide = -fx.footSide;
-                    }
+                    const hl = Math.sqrt(hx * hx + hz * hz) || 1;
+                    footfall(fx, p.x, p.z, hx / hl, hz / hl, Math.sqrt(mvx * mvx + mvz * mvz));
                 }
                 fx.prevX = p.x; fx.prevZ = p.z; fx.hasPrev = true;
                 if (fx.stateTime >= fx.trotDur) startBehavior(fx);
@@ -403,7 +478,12 @@ export function createArcticFox(scene, {
                     const ang = fx.greetAng0 + tau * Math.PI * 2;
                     const cx = fx.greetMid.x + Math.cos(ang) * fx.greetRadius;
                     const cz = fx.greetMid.z + Math.sin(ang) * fx.greetRadius;
+                    const moved = Math.hypot(cx - fx.root.position.x, cz - fx.root.position.z);
                     fx.root.position.set(cx, groundY(cx, cz) - footSink, cz);
+                    // Two foxes greeting tread a little ring into the snow — a story you can
+                    // still read after they've wandered off.
+                    const [gx, gz] = facing(fx);
+                    footfall(fx, cx, cz, gx, gz, moved);
                 } else { // bow — stay put
                     fx.root.position.copy(fx.basePos);
                 }
@@ -425,11 +505,46 @@ export function createArcticFox(scene, {
                         fx.basePos.y + leapHeight(tau) * fx.leapAmp,
                         fx.basePos.z + Math.cos(fx.root.rotation.y) * f,
                     );
+                    // IMPACT. leapHeight() lands the arc by tau ≈ 0.82 — the headfirst dive
+                    // punches a deep, high-lipped crater with four splayed paw marks around it.
+                    // The signature moment of the whole theme, and until now it left no mark.
+                    if (!fx.pounceLanded && tau >= 0.82) {
+                        fx.pounceLanded = true;
+                        const [ux, uz] = facing(fx);
+                        const s = renderScale(fx);
+                        if (trail) trail.stampCrater(fx.root.position.x, fx.root.position.z, ux, uz, s);
+                        // …and the powder ERUPTS. This is the theme's money shot.
+                        if (puffs) {
+                            const { x: cx, z: cz } = fx.root.position;
+                            puffs.burst(cx, surfaceY(fx), cz, s, ux, uz, 12, 1.5);
+                        }
+                    }
                 } else if (fx.state === 'rest') {
                     // sink to lie down as it curls, rise as it uncurls (matches the clip)
                     const tau = THREE.MathUtils.clamp(fx.stateTime / Math.max(0.01, fx.stateDur), 0, 1);
                     const env = tau < 0.25 ? tau / 0.25 : (tau > 0.8 ? Math.max(0, (1 - tau) / 0.2) : 1);
                     fx.root.position.set(fx.basePos.x, fx.basePos.y - env * fx.modelScale * 0.30, fx.basePos.z);
+                    // A sleeping fox slowly presses a wide, soft body hollow into the powder —
+                    // stamped in a few instalments so it DEEPENS as the fox settles.
+                    if (trail && env > 0.2 && fx.restMark < 4 && fx.stateTime > fx.restMark * 0.5) {
+                        fx.restMark += 1;
+                        const [ux, uz] = facing(fx);
+                        trail.stampBody(fx.basePos.x, fx.basePos.z, ux, uz, renderScale(fx), 0.4);
+                    }
+                } else if (fx.state === 'dig') {
+                    // Digging throws snow backward in a scattered fan.
+                    fx.digTimer -= dt;
+                    if (fx.digTimer <= 0) {
+                        fx.digTimer = 0.18;
+                        const [ux, uz] = facing(fx);
+                        const s = renderScale(fx);
+                        if (trail) trail.stampDig(fx.basePos.x, fx.basePos.z, ux, uz, s, fx.stateTime);
+                        if (puffs) {
+                            const dx = fx.basePos.x + ux * s * 0.1;
+                            const dz = fx.basePos.z + uz * s * 0.1;
+                            puffs.burst(dx, surfaceY(fx), dz, s, ux, uz, 3, 0.9);
+                        }
+                    }
                 } else {
                     fx.root.position.copy(fx.basePos);
                 }
@@ -447,8 +562,13 @@ export function createArcticFox(scene, {
     }
 
     function dispose() {
+        if (disposed) return;
+        disposed = true;
         for (const fx of foxes) { if (fx.mixer) fx.mixer.stopAllAction(); group.remove(fx.root); }
         foxes.length = 0;
+        disposeHierarchy(src?.scene);
+        src = null;
+        group.clear();
         scene.remove(group);
     }
 

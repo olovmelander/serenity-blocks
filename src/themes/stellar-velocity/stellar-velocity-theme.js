@@ -1712,37 +1712,34 @@ export default class StellarVelocityTheme extends BaseTheme {
     setupRendererResilience() {
         if (!this.renderer?.domElement) return;
         const resilienceToken = this.rendererResilienceToken;
+        const rendererAtRegistration = this.renderer;
+        const ownerGeneration = this.lifecycleGeneration;
+        const ownsLifecycle = () => resilienceToken === this.rendererResilienceToken
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete
+            && this.renderer === rendererAtRegistration;
 
         if (this.isWebGL) {
             this.webglContextLostHandler = (event) => {
-                if (resilienceToken !== this.rendererResilienceToken || !this.isActive) return;
+                if (!ownsLifecycle()) return;
                 event.preventDefault();
                 console.warn('[StellarVelocity] WebGL context lost');
             };
             this.webglContextRestoredHandler = () => {
-                if (resilienceToken !== this.rendererResilienceToken || !this.isActive) return;
+                if (!ownsLifecycle()) return;
                 console.warn('[StellarVelocity] WebGL context restored');
                 this.resize(window.innerWidth, window.innerHeight);
             };
-            this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
-            this.renderer.domElement.addEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
+            rendererAtRegistration.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
+            rendererAtRegistration.domElement.addEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
             return;
         }
 
-        this.renderer.onDeviceLost = (info) => {
-            if (resilienceToken !== this.rendererResilienceToken || !this.isActive) return;
+        rendererAtRegistration.onDeviceLost = (info) => {
+            if (!ownsLifecycle()) return;
             void this.handleDeviceLoss(info);
         };
-
-        const deviceLostPromise = this.renderer?.backend?.device?.lost;
-        if (deviceLostPromise && typeof deviceLostPromise.then === 'function') {
-            deviceLostPromise.then((info) => {
-                if (resilienceToken !== this.rendererResilienceToken || !this.isActive) return;
-                void this.handleDeviceLoss(info);
-            }).catch(() => {
-                // Ignore teardown races.
-            });
-        }
     }
 
     disposePostProcessingStack() {
@@ -2853,7 +2850,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     // Scene Creation
     // ─────────────────────────────────────────────────────────────────────────
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[StellarVelocity] Creating Three.js warp drive scene...');
 
         this.cancelAnimationLoop();
@@ -2897,7 +2894,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             return;
         }
 
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady || !this.renderer || !this.scene || !this.camera) {
             console.error('[StellarVelocity] Renderer initialization failed.');
             return;
@@ -2958,12 +2955,15 @@ export default class StellarVelocityTheme extends BaseTheme {
         console.log('[StellarVelocity] Scene created successfully');
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         if (!container || typeof window === 'undefined') return false;
 
         const width = window.innerWidth;
         const height = window.innerHeight;
         const preserveDrawingBuffer = this.flags.baseline === true;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
         let renderer = null;
 
         if (!this.shouldForceWebGL()) {
@@ -2975,19 +2975,24 @@ export default class StellarVelocityTheme extends BaseTheme {
                     alpha: false,
                     preserveDrawingBuffer,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Stellar Velocity WebGPU renderer init',
+                    ownerGeneration,
+                });
                 if (webgpuRenderer.backend?.isWebGPUBackend === true) {
                     renderer = webgpuRenderer;
                 } else {
                     webgpuRenderer.dispose();
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[StellarVelocity] WebGPU init failed, falling back to WebGL2:', error);
                 webgpuRenderer?.dispose?.();
             }
         }
 
         if (!renderer) {
+            if (!ownsLifecycle()) return false;
             try {
                 renderer = new THREE.WebGLRenderer({
                     antialias: this.getAntialiasEnabled(),
@@ -3001,6 +3006,10 @@ export default class StellarVelocityTheme extends BaseTheme {
             }
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
         this.renderer = renderer;
         this.rendererResilienceToken += 1;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
@@ -5736,7 +5745,9 @@ export default class StellarVelocityTheme extends BaseTheme {
     stop() {
         console.log('[StellarVelocity] stop() called');
 
-        if (!this.isActive) return;
+        // The manager invalidates isActive before terminal cleanup; always run
+        // the base sweep and the bespoke runtime retirement.
+        super.stop();
 
         this.clock.stop();
         this.cancelAnimationLoop();
@@ -5747,7 +5758,6 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.removeBaselineHelpers();
         this.stopHyperdriveSequence();
         this.starWarpBoost = 0;
-        super.stop();
         console.log('[StellarVelocity] Stopped successfully');
     }
 

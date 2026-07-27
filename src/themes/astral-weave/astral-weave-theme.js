@@ -570,7 +570,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         this.refreshFlags();
         this.installPointUvWarningFilter();
         this.cleanupRuntime();
@@ -581,7 +581,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.applyQualityPreset(quality);
 
         const container = this.ensureContainer();
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) {
             console.error('[AstralWeave] Failed to initialize renderer');
             return;
@@ -605,9 +605,13 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+        let selectedRenderer = null;
 
         this.isWebGPU = false;
         this.isWebGL = false;
@@ -628,9 +632,12 @@ export default class AstralWeaveTheme extends BaseTheme {
                     preserveDrawingBuffer: this.flags.baseline === true,
                     powerPreference: 'high-performance',
                 });
-                await renderer.init();
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Astral Weave WebGPU renderer init',
+                    ownerGeneration,
+                });
                 if (renderer.backend?.isWebGPUBackend === true) {
-                    this.renderer = renderer;
+                    selectedRenderer = renderer;
                     this.isWebGPU = true;
                     this.capabilities.webgpu = true;
                     this.capabilities.maxColorAttachments = renderer.capabilities?.maxColorAttachments ?? 8;
@@ -643,13 +650,15 @@ export default class AstralWeaveTheme extends BaseTheme {
                     renderer.domElement?.remove?.();
                 }
             } catch (error) {
+                if (!ownsLifecycle()) return false;
                 console.warn('[AstralWeave] WebGPU init failed, using WebGL fallback:', error);
             }
         }
 
-        if (!this.renderer) {
+        if (!selectedRenderer) {
+            if (!ownsLifecycle()) return false;
             try {
-                this.renderer = new THREE.WebGLRenderer({
+                selectedRenderer = new THREE.WebGLRenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
                     powerPreference: 'high-performance',
@@ -667,6 +676,11 @@ export default class AstralWeaveTheme extends BaseTheme {
             }
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(selectedRenderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = selectedRenderer;
         this.flags.usePost = this.capabilities.supportsPost
             && this.qualityPreset.enablePost === true
             && !this.flags.noPost;
@@ -693,15 +707,21 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.camera.position.copy(this.cameraBasePosition);
         this.camera.lookAt(0, 3.8, -8);
 
-        if (this.isWebGPU && this.renderer?.backend?.device?.lost) {
-            this.renderer.backend.device.lost.then((info) => {
-                this.handleDeviceLost(info);
-            });
+        const rendererAtRegistration = this.renderer;
+        if (this.isWebGPU) {
+            // Three owns the device.lost promise and dispatches through this
+            // replaceable callback. Avoid attaching an undetachable .then()
+            // closure that would retain a stopped theme for the device lifetime.
+            rendererAtRegistration.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== rendererAtRegistration) return;
+                this.handleDeviceLost(info, ownerGeneration, rendererAtRegistration);
+            };
         }
 
         this.webglContextLostHandler = (event) => {
             event.preventDefault();
-            this.handleDeviceLost(event);
+            if (!ownsLifecycle() || this.renderer !== rendererAtRegistration) return;
+            this.handleDeviceLost(event, ownerGeneration, rendererAtRegistration);
         };
         this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
         return true;
@@ -2153,33 +2173,52 @@ export default class AstralWeaveTheme extends BaseTheme {
         if (this.postProcessing?.setSize) this.postProcessing.setSize(width, height);
     }
 
-    handleDeviceLost(info) {
-        if (this.deviceLossRecoveryInProgress || !this.isActive) return;
+    handleDeviceLost(
+        info,
+        ownerGeneration = this.lifecycleGeneration,
+        renderer = this.renderer,
+    ) {
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+        if (this.deviceLossRecoveryInProgress || !ownsLifecycle() || renderer !== this.renderer) return;
         this.deviceLossRecoveryInProgress = true;
         console.warn('[AstralWeave] Device/context lost, recovering:', info);
 
         setTimeout(async () => {
+            if (ownerGeneration !== this.lifecycleGeneration) return;
             this.deviceLossRecoveryInProgress = false;
-            if (!this.isActive) return;
+            if (!ownsLifecycle() || renderer !== this.renderer) return;
             if (this.isWebGPU) {
-                await this.requestWebGLFallback('device-lost', info);
+                await this.requestWebGLFallback('device-lost', info, ownerGeneration);
                 return;
             }
-            await this.createScene();
+            await this.createScene(ownerGeneration);
         }, 0);
     }
 
-    async requestWebGLFallback(reason = 'runtime-fallback', error = null) {
+    async requestWebGLFallback(
+        reason = 'runtime-fallback',
+        error = null,
+        ownerGeneration = this.lifecycleGeneration,
+    ) {
+        if (ownerGeneration !== this.lifecycleGeneration
+            || !this.isActive
+            || this.cleanupComplete) return;
         if (this.renderFallbackInProgress) return;
         this.renderFallbackInProgress = true;
         console.warn('[AstralWeave] Switching to WebGL fallback:', reason, error || '');
         this.flags.forceWebGL = true;
         try {
-            if (this.isActive) {
-                await this.createScene();
+            if (ownerGeneration === this.lifecycleGeneration
+                && this.isActive
+                && !this.cleanupComplete) {
+                await this.createScene(ownerGeneration);
             }
         } finally {
-            this.renderFallbackInProgress = false;
+            if (ownerGeneration === this.lifecycleGeneration) {
+                this.renderFallbackInProgress = false;
+            }
         }
     }
 
@@ -2447,6 +2486,7 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         if (this.renderer) {
             const { domElement } = this.renderer;
+            this.renderer.onDeviceLost = null;
             this.renderer.dispose?.();
             if (domElement?.parentNode) {
                 domElement.parentNode.removeChild(domElement);
@@ -2483,6 +2523,8 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.burstNodeData = null;
         this.shockwaves = [];
         this.lastRenderPath = 'disposed';
+        this.deviceLossRecoveryInProgress = false;
+        this.renderFallbackInProgress = false;
         this.isWebGPU = false;
         this.isWebGL = false;
         this.capabilities = {

@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
-import { realpathSync, copyFileSync, existsSync } from 'node:fs';
+import {
+  realpathSync,
+  copyFileSync,
+  existsSync,
+  rmSync,
+} from 'node:fs';
 import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 
 // Resolve the project root to its real on-disk casing (canonical uppercase drive
@@ -11,6 +16,54 @@ import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-asset
 // (`index.html?html-proxy&index=0.js`) 500s with "No matching HTML proxy module
 // found", and the desktop shell reports "Renderer entry did not start".
 const projectRoot = realpathSync.native(__dirname);
+
+function resolveBuildOutputDir(config) {
+  return path.isAbsolute(config.build.outDir)
+    ? config.build.outDir
+    : path.resolve(config.root, config.build.outDir);
+}
+
+function createPrunePlaygroundReferencesPlugin() {
+  let outputDir = path.resolve(projectRoot, 'dist');
+
+  return {
+    name: 'prune-playground-references',
+    apply: 'build',
+    configResolved(config) {
+      outputDir = resolveBuildOutputDir(config);
+    },
+    closeBundle() {
+      rmSync(path.resolve(outputDir, 'playground-refs'), {
+        recursive: true,
+        force: true,
+      });
+    },
+  };
+}
+
+function createCopyLegalNoticesPlugin() {
+  let outputDir = path.resolve(projectRoot, 'dist');
+
+  return {
+    name: 'copy-legal-notices',
+    apply: 'build',
+    configResolved(config) {
+      outputDir = resolveBuildOutputDir(config);
+    },
+    closeBundle() {
+      for (const file of ['CREDITS.md', 'README.md']) {
+        const src = path.resolve(projectRoot, file);
+        const dest = path.resolve(outputDir, file);
+        if (!existsSync(src)) {
+          throw new Error(
+            `[copy-legal-notices] Required repository-root legal source is missing: ${src}`,
+          );
+        }
+        copyFileSync(src, dest);
+      }
+    },
+  };
+}
 
 export default defineConfig({
   // Force a canonical-cased root so dev-server module resolution is launch-cwd agnostic.
@@ -29,21 +82,15 @@ export default defineConfig({
     createThemeThumbnailAssetPlugin({
       projectRoot,
     }),
+    // Playground concept/reference images are local iteration inputs. Vite copies
+    // public/ wholesale, so remove this dev-only 17+ MB directory from shipping
+    // web/Electron artifacts while keeping it available on the dev server.
+    createPrunePlaygroundReferencesPlugin(),
     // Copy top-level legal/credit notices into the build output so they ship with
     // both the web build (dist → GitHub Pages) and the Electron build (which packs
     // dist/**/*). Required so third-party attributions (CC-BY, the SynthCity MIT
     // notice, etc.) actually reach end users.
-    {
-      name: 'copy-legal-notices',
-      apply: 'build',
-      closeBundle() {
-        for (const file of ['CREDITS.md', 'README.md']) {
-          const src = path.resolve(projectRoot, file);
-          const dest = path.resolve(projectRoot, 'dist', file);
-          if (existsSync(src)) copyFileSync(src, dest);
-        }
-      },
-    },
+    createCopyLegalNoticesPlugin(),
   ],
 
   // Server configuration

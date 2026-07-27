@@ -33,14 +33,15 @@
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
-    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
+    "capture:themes": "node scripts/validate-all-themes.mjs",
     "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
     "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
     "perf:odyssey:baseline": "node scripts/odyssey-perf-baseline.mjs",
     "perf:odyssey:compare": "node scripts/odyssey-perf-compare.mjs",
     "perf:odyssey:nightly": "node scripts/odyssey-perf-nightly.mjs",
     "perf:budgets:gate": "node scripts/perf-budgets-gate.mjs",
-    "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
+    "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs",
+    "bauer:metrics": "node scripts/bauer-metrics.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",

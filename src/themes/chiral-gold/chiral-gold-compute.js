@@ -510,7 +510,7 @@ export class ChiralGoldBurstCompute {
 
             // To ensure stateful integration doesn't overwrite manually,
             // we snapshot spawn parameters strictly once per trigger.
-            const isInitialized = pos.w.equals(spawnTime);
+            const isInitialized = pos.w.equal(spawnTime);
             const justSpawned = active.and(isInitialized.not());
 
             If(justSpawned, () => {

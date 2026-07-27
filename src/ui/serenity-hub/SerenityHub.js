@@ -422,6 +422,12 @@ export class SerenityHub {
         // Document keydown handler (ESC to close)
         this.documentKeydownHandler = (e) => {
             if (e.key === 'Escape' && this.isOpen) {
+                e.preventDefault();
+                // Other document-level mode handlers also bind Escape (for
+                // example Serenity Mode's exit-to-menu action). The topmost
+                // Hub owns this keypress; do not let one action both close the
+                // panel and stop/deactivate the current game mode.
+                e.stopImmediatePropagation();
                 this.hide();
             }
         };

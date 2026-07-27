@@ -343,7 +343,7 @@ function parseSkyV2Flags() {
 }
 
 export default class SkyChildrenV2Theme extends BaseTheme {
-    constructor(themeName = 'sky-children-v2') {
+    constructor(themeName = 'sky-children') {
         super(themeName);
 
         this.flags = parseSkyV2Flags();
@@ -481,6 +481,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         this._vegetationCallbackId = null;
         this._asyncTimeouts = new Set();
+        this._asyncWaitResolvers = new Map();
 
         this.performance = {
             frameTimes: [],
@@ -502,6 +503,12 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         // No preload assets required.
     }
 
+    isLifecycleCurrent(generation) {
+        return generation === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+    }
+
     scheduleAsyncTimeout(callback, delayMs = 0) {
         const timeoutId = window.setTimeout(() => {
             this._asyncTimeouts.delete(timeoutId);
@@ -511,15 +518,27 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         return timeoutId;
     }
 
-    waitForAsyncTurn(delayMs = 0) {
+    waitForAsyncTurn(delayMs = 0, generation = this.lifecycleGeneration) {
         return new Promise((resolve) => {
-            this.scheduleAsyncTimeout(resolve, delayMs);
+            const timeoutId = window.setTimeout(() => {
+                this._asyncTimeouts.delete(timeoutId);
+                this._asyncWaitResolvers.delete(timeoutId);
+                resolve(this.isLifecycleCurrent(generation));
+            }, delayMs);
+            this._asyncTimeouts.add(timeoutId);
+            this._asyncWaitResolvers.set(timeoutId, resolve);
         });
     }
 
     clearAsyncTimeouts() {
-        this._asyncTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        [...this._asyncTimeouts].forEach((timeoutId) => {
+            window.clearTimeout(timeoutId);
+            const resolveWait = this._asyncWaitResolvers.get(timeoutId);
+            this._asyncWaitResolvers.delete(timeoutId);
+            resolveWait?.(false);
+        });
         this._asyncTimeouts.clear();
+        this._asyncWaitResolvers.clear();
     }
 
     getTetrominoConfig() {
@@ -573,7 +592,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         return container;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const generation = ownerGeneration;
         this.removeDebugHelpers();
         this.refreshRuntimeFlags();
         this.applyQualityFromSettings();
@@ -593,7 +613,10 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
         container.innerHTML = '';
 
-        const rendererReady = await this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container, generation);
+        if (!this.isLifecycleCurrent(generation)) {
+            return;
+        }
         if (!rendererReady) {
             console.error('[SkyChildrenV2] Unable to initialize renderer.');
             container.innerHTML = '<div style="color:#c8d2f0;text-align:center;padding:2em;'
@@ -608,7 +631,10 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.clock.start();
         this.startAnimation();
 
-        await this.buildScene();
+        const sceneReady = await this.buildScene(generation);
+        if (sceneReady === false || !this.isLifecycleCurrent(generation)) {
+            return;
+        }
         this.setupPostProcessing();
 
         // Defer vegetation so the first frame (mountains, sky, terrain) renders immediately
@@ -617,7 +643,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
         this._vegetationCallbackId = this.scheduleAsyncTimeout(() => {
             this._vegetationCallbackId = null;
-            if (this.scene && this.terrainField) {
+            if (this.isLifecycleCurrent(generation) && this.scene && this.terrainField) {
                 this.createVegetation();
                 this.syncCarpetDebug();
             }
@@ -636,7 +662,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         );
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, generation = this.lifecycleGeneration) {
         const antialias = this.getAntialiasEnabled();
         const forceWebGL = this.flags.forceWebGL === true;
         const adapterOptions = getWebGPUAdapterOptions();
@@ -649,9 +675,19 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                     forceWebGL: false,
                     powerPreference: adapterOptions?.powerPreference,
                 });
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Sky Children V2 WebGPU renderer init',
+                    ownerGeneration: generation,
+                });
+                if (!this.isLifecycleCurrent(generation)) {
+                    this.disposeRenderer(webgpuRenderer, { nullInstance: false });
+                    return false;
+                }
                 renderer = webgpuRenderer;
             } catch (error) {
+                if (!this.isLifecycleCurrent(generation)) {
+                    return false;
+                }
                 console.warn('[SkyChildrenV2] WebGPU init failed, trying fallback:', error);
             }
         }
@@ -662,15 +698,30 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                     antialias,
                     forceWebGL: true,
                 });
-                await webgpuFallbackRenderer.init();
+                await this.initializeRendererCandidate(webgpuFallbackRenderer, {
+                    label: 'Sky Children V2 WebGL fallback renderer init',
+                    ownerGeneration: generation,
+                });
+                if (!this.isLifecycleCurrent(generation)) {
+                    this.disposeRenderer(webgpuFallbackRenderer, { nullInstance: false });
+                    return false;
+                }
                 renderer = webgpuFallbackRenderer;
             } catch (fallbackError) {
+                if (!this.isLifecycleCurrent(generation)) {
+                    return false;
+                }
                 console.warn('[SkyChildrenV2] WebGPURenderer forceWebGL fallback failed:', fallbackError);
             }
         }
 
         if (!renderer) {
             console.error('[SkyChildrenV2] No WebGPURenderer backend available.');
+            return false;
+        }
+
+        if (!this.isLifecycleCurrent(generation)) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return false;
         }
 
@@ -693,6 +744,9 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         if (this.isWebGPU && typeof renderer.onDeviceLost === 'function') {
             renderer.onDeviceLost = (info) => {
+                if (!this.isLifecycleCurrent(generation) || this.renderer !== renderer) {
+                    return;
+                }
                 this.requestWebGLFallback('device-lost', info);
             };
         }
@@ -735,7 +789,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
     }
 
-    async buildScene() {
+    async buildScene(generation = this.lifecycleGeneration) {
         this.scene = new THREE.Scene();
         this.scene.fog = new THREE.FogExp2(0xb8d0df, this.qualityPreset.fogDensity);
 
@@ -755,16 +809,17 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.createLighting();
         this.createSkyDome();
         this.syncUniforms(); // prime palettes before the first frame
-        await this.waitForAsyncTurn(0);
+        if (!await this.waitForAsyncTurn(0, generation)) return false;
 
         await this.createTerrainField();
-        await this.waitForAsyncTurn(0);
+        if (!this.isLifecycleCurrent(generation)) return false;
+        if (!await this.waitForAsyncTurn(0, generation)) return false;
 
-        await this.createTerrain();
-        await this.waitForAsyncTurn(0);
+        if (!await this.createTerrain(generation)) return false;
+        if (!await this.waitForAsyncTurn(0, generation)) return false;
 
-        await this.createMountains();
-        await this.waitForAsyncTurn(0);
+        if (!await this.createMountains(generation)) return false;
+        if (!await this.waitForAsyncTurn(0, generation)) return false;
 
         this.createClouds();
         this.createGlintField();
@@ -774,6 +829,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         // Vegetation is deferred — see createScene()
         this.syncPathDebug();
         this.syncCarpetDebug();
+        return true;
     }
 
     /** Detail textures are only worth their bandwidth/fetches at Medium tier and up. */
@@ -1120,7 +1176,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         return geometry;
     }
 
-    async createTerrain() {
+    async createTerrain(generation = this.lifecycleGeneration) {
         if (this.terrainMesh) {
             if (this.terrainMesh.parent) {
                 this.terrainMesh.parent.remove(this.terrainMesh);
@@ -1148,7 +1204,12 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         const segments = Math.round((this.qualityPreset.terrainSegments ?? 200) * 1.35);
         const geometry = new THREE.PlaneGeometry(this.terrainSize, this.terrainSize, segments, segments);
         geometry.rotateX(-Math.PI / 2);
-        await this.waitForAsyncTurn(0);
+        if (!await this.waitForAsyncTurn(0, generation)
+            || !this.isLifecycleCurrent(generation)
+            || !this.scene) {
+            geometry.dispose();
+            return false;
+        }
 
         // Painterly terrain material reads the shared uniform block (colored
         // shadows, soft wrap, warm rim, dew glints, aerial perspective == sky).
@@ -1180,6 +1241,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         skirt.renderOrder = -1;
         this.terrainSkirtMesh = skirt;
         this.scene.add(skirt);
+        return true;
     }
 
     distortMountainGeometry(geometry, seed = 0) {
@@ -1257,7 +1319,11 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         geometry.computeVertexNormals();
     }
 
-    async createMountains() {
+    async createMountains(generation = this.lifecycleGeneration) {
+        if (!this.isLifecycleCurrent(generation) || !this.scene) {
+            return false;
+        }
+
         if (this.mountainGroup) {
             this.scene.remove(this.mountainGroup);
             this.disposeObject3D(this.mountainGroup);
@@ -1270,6 +1336,26 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         const mountainMaterial = createFarRangeMaterial(this.u, this.skyDetailTextures?.mountain ?? null);
 
         const group = new THREE.Group();
+        let summitLight = null;
+        const disposePendingMountains = () => {
+            if (summitLight) {
+                if (summitLight.group?.parent === group) {
+                    group.remove(summitLight.group);
+                }
+                summitLight.dispose?.();
+                summitLight = null;
+            }
+            this.disposeObject3D(group);
+        };
+        const yieldToLifecycle = async () => {
+            const canContinue = await this.waitForAsyncTurn(0, generation);
+            if (!canContinue || !this.isLifecycleCurrent(generation) || !this.scene) {
+                disposePendingMountains();
+                return false;
+            }
+            return true;
+        };
+
         // Fewer peaks, spread WIDE with gaps, pushed far back and anchored low so
         // only their upper ridges crest the horizon — open sky + haze between them
         // (the look bible's "far atmosphere" depth band), not a continuous wall.
@@ -1302,7 +1388,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             );
             group.add(mountain);
             // eslint-disable-next-line no-await-in-loop
-            await this.waitForAsyncTurn(0);
+            if (!await yieldToLifecycle()) return false;
         }
 
         // A single centerpiece peak, centered like the holy mountain in the look photo.
@@ -1313,12 +1399,12 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         heroPeak.scale.set(1.25, 1.55, 1.25); // taller, pointier hero summit (Sky-COTL)
         group.add(heroPeak);
         // eslint-disable-next-line no-await-in-loop
-        await this.waitForAsyncTurn(0);
+        if (!await yieldToLifecycle()) return false;
 
         // Summit Light Beam & Horizontal Lens Flare Wings
         const apexPos = new THREE.Vector3(0, 213, -820);
-        this.summitLight = createSummitLight(this.u, apexPos);
-        group.add(this.summitLight.group);
+        summitLight = createSummitLight(this.u, apexPos);
+        group.add(summitLight.group);
 
         // A mid-ground peak poking directly through the cloud-sea in the mid-distance on the left.
         const midGeometry = new THREE.ConeGeometry(130, 300, 60, 36, true);
@@ -1328,7 +1414,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         midPeak.scale.set(1.4, 1.3, 1.4);
         group.add(midPeak);
         // eslint-disable-next-line no-await-in-loop
-        await this.waitForAsyncTurn(0);
+        if (!await yieldToLifecycle()) return false;
 
         const wingConfigs = [
             {
@@ -1348,11 +1434,13 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             wing.scale.set(1.5, 0.9, 1.5);
             group.add(wing);
             // eslint-disable-next-line no-await-in-loop
-            await this.waitForAsyncTurn(0);
+            if (!await yieldToLifecycle()) return false;
         }
 
+        this.summitLight = summitLight;
         this.mountainGroup = group;
         this.scene.add(group);
+        return true;
     }
 
     clearPathDebug() {
@@ -1865,21 +1953,28 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.applyVegetationDensityScale();
 
         if (options.rebuild === true && this.scene) {
+            const generation = this.lifecycleGeneration;
             // The sky dome reads the shared uniform block (not uniformSets) and is
             // tier-independent, so it survives the rebuild untouched.
             this.uniformSets = [];
             (async () => {
                 await this.createTerrainField();
-                await this.createTerrain();
-                await this.createMountains();
+                if (!this.isLifecycleCurrent(generation)) return;
+                if (!await this.createTerrain(generation)) return;
+                if (!await this.createMountains(generation)) return;
+                if (!this.isLifecycleCurrent(generation)) return;
                 this.createClouds();
 
-                await this.waitForAsyncTurn(0);
+                if (!await this.waitForAsyncTurn(0, generation)) return;
                 this.createVegetation();
                 this.syncPathDebug();
                 this.syncCarpetDebug();
                 this.setupPostProcessing();
-            })();
+            })().catch((error) => {
+                if (this.isLifecycleCurrent(generation)) {
+                    console.error('[SkyChildrenV2] Quality rebuild failed:', error);
+                }
+            });
         }
 
         return true;
@@ -2489,10 +2584,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             this._vegetationCallbackId = null;
         }
 
-        this.eventUnsubscribers.forEach((unsubscribe) => {
-            if (typeof unsubscribe === 'function') unsubscribe();
-        });
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
 
         if (this.postComposer) {
             this.postComposer.dispose();
@@ -2510,10 +2602,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose?.();
-            if (this.renderer.domElement?.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

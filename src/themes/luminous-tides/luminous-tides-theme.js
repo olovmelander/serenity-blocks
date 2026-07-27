@@ -1142,13 +1142,11 @@ export default class LuminousTidesTheme extends BaseTheme {
     stop() {
         console.log('[LuminousTides] stop() called');
 
-        if (!this.isActive) return;
+        super.stop();
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
+        this.clearEventUnsubscribers();
 
-        super.stop();
         console.log('[LuminousTides] Stopped');
     }
 

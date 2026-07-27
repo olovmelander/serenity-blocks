@@ -1127,7 +1127,6 @@ export default class GalaxyTheme extends BaseTheme {
     }
 
     dispose() {
-        super.dispose();
         this.clearEffectTimeouts();
 
         window.removeEventListener('resize', this.boundResizeHandler);
@@ -1179,6 +1178,19 @@ export default class GalaxyTheme extends BaseTheme {
         });
         this.lockFx.direction.set(0, 0, 0);
         this.syncLockUniforms(1.0);
+    }
+
+    cleanup() {
+        if (this.cleanupComplete) return;
+
+        try {
+            this.dispose();
+        } finally {
+            // BaseTheme owns the canonical terminal lifecycle contract. Keep
+            // this in finally so its safety nets run even if legacy disposal
+            // encounters an already-lost renderer or scene resource.
+            super.cleanup();
+        }
     }
 
     getTetrominoConfig() {

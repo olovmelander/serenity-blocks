@@ -515,7 +515,7 @@ function configureChapter2WaterSurface(part, {
 // and bloom tagging as Chapter 2; only transform/scale change so the surface-world terrain
 // has enough coverage after the breach. The water renders behind the terrain so the
 // additive Chapter 2 material cannot flood the green land.
-// Golden-hour reflective LAKE (Swedish-Forest-inspired, FULLY PROCEDURAL — no render target): a
+// Golden-hour reflective LAKE (Golden-Forest-inspired, FULLY PROCEDURAL — no render target): a
 // calm cool-teal water body that warms into a peach-gold reflected sky at the grazing rim (the
 // reduced-fresnel warm-reflectance trick, rf0≈0.09 — NOT a mirror-blue ocean), with a camera-
 // relative golden SUN-GLITTER path, faked dark shore/tree silhouette reflections on the far shore,
@@ -750,7 +750,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const sandAmount = smoothstep(1.0, 6.0, relHeight);
 
     const sandColor = vec3(0.36, 0.46, 0.42); // Cool muted shore, below water in value
-    // VISUAL POLISH (de-wash): pull the grass into RICH saturated greens (swedish-forest /
+    // VISUAL POLISH (de-wash): pull the grass into RICH saturated greens (golden-forest /
     // sakura-twilight palette discipline) — a vivid lit spring green low, a deep forest green
     // high — so the hills read green rather than the old pale wash. A subtle blue-green
     // variation by ground noise breaks the plastic uniformity.
@@ -1567,7 +1567,7 @@ export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
 }
 
 // Spruce stands (creative plan item 5): the second species — five overlapping canopy
-// cones on a short trunk (the swedish-forest merged-spruce grammar), darker and spikier
+// cones on a short trunk (the golden-forest merged-spruce grammar), darker and spikier
 // than the deciduous rounds so mixed stands read as forest, not uniform stamping.
 // Evergreen: no autumn recolor (the conifers hold their green into the snow).
 export function createSpruceTreesTSL(uTime = uniform(0), count = 22, options = {}) {
@@ -2152,11 +2152,11 @@ export function createButterflyMaterialTSL() {
     return material;
 }
 
-// Drifting bird silhouettes — adapted from swedish-forest-birds' swept-wing shape. Each
+// Drifting bird silhouettes — adapted from golden-forest-birds' swept-wing shape. Each
 // bird is a small body triangle (tail -> beak -> shoulder) plus two SWEPT wings (root ->
 // tip -> trailing edge) so the silhouette reads as a real bird, not a flat V. The wing tips
 // carry Y extent, so the update loop's scale.y flap actually beats the wings up/down. Dark
-// warm-grey silhouette with a faint distance haze lift (matches the swedish-forest birds).
+// warm-grey silhouette with a faint distance haze lift (matches the golden-forest birds).
 // Animated in updateSurfaceWorldEnvironment via group.userData.birds (API unchanged).
 export function createBirdsTSL(count = 7) {
     const group = new THREE.Group();

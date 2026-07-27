@@ -633,15 +633,19 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
     }
 
-    async initRenderer(container) {
+    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const antialias = this.getAntialiasEnabled();
         const preserveDrawingBuffer = this.baselineEnabled === true;
+        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
         this.renderer = null;
         this.isWebGPU = false;
         this.isWebGL = false;
+        let renderer = null;
 
         if (this.enableWebGPU && !this.forceWebGL) {
             const webgpuRenderer = new THREE.WebGPURenderer({
@@ -651,26 +655,33 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 forceWebGL: false,
                 preserveDrawingBuffer,
             });
+            let webgpuReady = false;
             try {
-                await webgpuRenderer.init();
+                await this.initializeRendererCandidate(webgpuRenderer, {
+                    label: 'Synthwave Sunset WebGPU renderer init',
+                    ownerGeneration,
+                });
+                webgpuReady = true;
             } catch (error) {
+                if (!ownsLifecycle()) return null;
                 console.warn('[Synthwave3D] WebGPU init failed, falling back to WebGL2:', error);
             }
 
-            const isWebGPU = webgpuRenderer.backend?.isWebGPUBackend === true;
+            const isWebGPU = webgpuReady && webgpuRenderer.backend?.isWebGPUBackend === true;
             if (isWebGPU && this.webgpuMaterialsReady) {
-                this.renderer = webgpuRenderer;
+                renderer = webgpuRenderer;
                 this.isWebGPU = true;
             } else {
                 webgpuRenderer.dispose();
             }
         }
 
-        if (!this.renderer) {
+        if (!renderer) {
+            if (!ownsLifecycle()) return null;
             if (this.enableWebGPU && !this.webgpuMaterialsReady) {
                 console.warn('[Synthwave3D] WebGPU requested but TSL materials are not ready. Using WebGL2 fallback.');
             }
-            this.renderer = new WebGLRenderer({
+            renderer = new WebGLRenderer({
                 alpha: false,
                 antialias,
                 powerPreference: 'high-performance',
@@ -679,14 +690,20 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.isWebGL = true;
         }
 
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return null;
+        }
+        this.renderer = renderer;
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(this.getDynamicPixelRatio());
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
+        return renderer;
     }
 
-    async createScene() {
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         console.log('[Synthwave3D] Initializing Three.js scene...');
 
         const container = document.getElementById('synthwave-sunset-theme');
@@ -756,17 +773,21 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.currentQuality = this.getGraphicsQuality();
         this.activePreset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
 
-        await this.initRenderer(container);
-        if (!this.renderer || !this.isActive || this._sceneToken !== sceneToken) {
-            if (this.renderer) {
+        const renderer = await this.initRenderer(container, ownerGeneration);
+        if (!renderer) return;
+        if (!this.isActive
+            || ownerGeneration !== this.lifecycleGeneration
+            || this._sceneToken !== sceneToken) {
+            if (this.renderer === renderer) {
                 try {
-                    this.disposeRenderer(this.renderer, { nullInstance: false });
+                    this.disposeRenderer(renderer, { nullInstance: false });
                 } catch (error) {
                     console.warn('[Synthwave3D] Renderer dispose failed during abort:', error);
                 }
-                if (container.contains(this.renderer.domElement)) {
-                    container.removeChild(this.renderer.domElement);
+                if (container.contains(renderer.domElement)) {
+                    container.removeChild(renderer.domElement);
                 }
+                this.renderer = null;
             }
             return;
         }

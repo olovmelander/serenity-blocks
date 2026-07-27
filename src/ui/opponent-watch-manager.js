@@ -157,7 +157,15 @@ export class OpponentWatchManager {
     }
 
     /**
-     * Compute fast hash for piece state (for dirty-checking)
+     * Compute fast hash for piece state (for dirty-checking).
+     *
+     * P0-7 (review §2.8): quantize position to WHOLE cells, not tenths. The opponent piece is
+     * snapshot-INTERPOLATED, so a tenths-precision hash changed almost every frame — defeating
+     * the dirty-check in _animate and forcing a full-board connected-component repaint plus a
+     * `getBoundingClientRect` forced-layout (in _renderMiniBoard) for every watched opponent,
+     * every frame. The mini-board renders at cell granularity, so sub-cell precision was never
+     * visible; whole-cell quantization repaints only on an actual cell/rotation change (≈the
+     * event-driven snapshot cadence) while staying visually identical on the mini-board.
      * @private
      */
     _computePieceHash(piece) {
@@ -169,7 +177,7 @@ export class OpponentWatchManager {
         const x = Number.isFinite(Number(piece.x)) ? Number(piece.x) : 0;
         const y = Number.isFinite(Number(piece.y)) ? Number(piece.y) : 0;
         const rotation = Number.isFinite(Number(piece.rotation)) ? Number(piece.rotation) : 0;
-        return `${type}|${Math.round(x * 10)}|${Math.round(y * 10)}|${rotation}`;
+        return `${type}|${Math.round(x)}|${Math.round(y)}|${rotation}`;
     }
 
     /**

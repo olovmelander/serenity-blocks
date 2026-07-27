@@ -6,7 +6,7 @@ const { app, BrowserWindow } = electron;
 
 const THEMES = [
     'himalayan-peak', 'ice-temple', 'moonlit-forest', 'wolfhour',
-    'nebula-flow', 'sky-children-v2', 'black-hole'
+    'nebula-flow', 'sky-children', 'black-hole'
 ];
 
 const DEV_SERVER_PORT = 4174;

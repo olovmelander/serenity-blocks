@@ -66,6 +66,27 @@ describe('Moonlit Forest gameplay FX routing', () => {
         expect(mapMoonlitOriginToWorld(origin)).toEqual({ x: 180, z: 12 });
     });
 
+    it('prefers a mode-supplied viewportOrigin over the fixed-board normalization', () => {
+        // Infinity's tall scrolling grid: piece.y is a huge absolute row; the on-screen origin
+        // wins so the sparkle/mist anchor tracks where the piece actually landed.
+        const origin = resolveMoonlitPieceLockOrigin({
+            piece: { x: 3, y: 214, shape: [[1, 1, 1], [0, 1, 0]] },
+            viewportOrigin: { x: 0.2, y: 0.1 },
+        });
+        expect(origin.normalized).toEqual({ x: 0.2, y: 0.1 });
+        expect(origin.centered.x).toBeCloseTo(-0.6);
+        expect(origin.centered.y).toBeCloseTo(0.8);
+        expect(origin.board.y).toBeGreaterThan(200); // raw centroid still absolute
+    });
+
+    it('ignores an invalid viewportOrigin and keeps the piece-cell normalization', () => {
+        const origin = resolveMoonlitPieceLockOrigin({
+            piece: { x: 3, y: 17, shape: [[1, 1, 1], [0, 1, 0]] },
+            viewportOrigin: { y: 0.1 },
+        });
+        expect(origin.normalized.y).toBeCloseTo(0.6875);
+    });
+
     it('maps Serenity viewport clicks into the bounded water clearing', () => {
         expect(mapMoonlitViewportPointToWorld({ x: 500, y: 250 }, 1000, 500))
             .toEqual({ x: 0, z: -62 });
