@@ -245,3 +245,52 @@ baked crust). Escape hatch: `?earthCoreBakeNoise=0` (dev) / `localStorage.sereni
 Net win: ~0.9 s faster COLD earth-core compile (first launch / after a Dawn-cache evict),
 imperceptible visual, no meaningful warm-cache cost. A GPU-gen (Storage3DTexture + `textureStore`
 compute) would take the residual ~74 ms gen to exactly zero — a nice-to-have, no longer required.
+
+## 7. Chapter first-visit hitches — measured diagnosis + staged plan (2026-07-28)
+
+Symptom (user): lag EVERY time a new chapter starts on first visit; smooth once all
+chapters have been visited (scroll back/forth is lag-free). Classic first-visit warm hitch.
+
+**Measured (RTX 5080, rapid nav 2→8 keeping the camera in motion so the idle-gated warm
+stays off):** first-visit frame gaps of **0.5–2.1 s per chapter** — ch8 2129ms (created
+on-demand), ch4 1398, ch7 1030, ch6 560, ch5 362, ch2 413. Critically the hitches are on
+the **FAR chapters (ch4–8), not the near ch3** — surface-world (ch3) is the heaviest but is
+warmed early, so it doesn't hitch. That signature = a **scheduling** problem, not per-chapter.
+
+**Root causes (three, compounding):**
+1. **Deferred create is paced/serial** — ch3–8 aren't *created* until ~20s post-reveal, so
+   scrolling early hits UN-created chapters (create-on-demand = the ~2s ch8 hitch).
+2. **Serial prewarm drain** — one chapter compiled at a time, so surface-world's huge compile
+   blocked ch4–8's compiles for seconds. FIXED `dcb5db9` → bounded-concurrent (3 at a time,
+   nearest-first) + render-warm start 900→450ms.
+3. **Idle-gated render-warm** — the render-warm (first real render = GPU **upload** + first
+   update) only runs when idle+camera-settled, so scrolling starves it.
+
+**surface-world (ch3) is a compile monster** — instrumented ~22s cold compile (likely inflated
+by background contention, but clearly the heaviest): it's the tree/grass/water/bird "green land"
+with ~15–20 materials → ~30–50 pipelines. It has only 3 `snoise3` → **NOT noise-bakeable**; it
+needs **pipeline-count reduction** (material sharing — some done, `-44 variants`). Its compile is
+COLD-only (Dawn-cached after first launch).
+
+**KEY distinction — cold vs recurring:** the *compile* part of a hitch is COLD-first-launch only
+(Dawn disk-caches pipelines). The *upload* part (GPU geometry/texture upload on the first render
+each session) is **NOT cached → recurs every session**. So the user's "lags EVERY time" is
+largely the **upload-bound render-warm**, and the fix is render-warm-AHEAD, not (only) baking.
+
+**Which chapters are noise-compile-heavy (bakeable, Stage 1):** by call-site count —
+cosmic-expanse (14 `fbm3`, value noise, light geometry → compile-dominated), deep-ocean (10
+`snoise3`), surface-world (10 `snoise3` but material-count-dominated). mountain-peaks (3
+`snoise3`, big displaced geometry → UPLOAD-dominated, not bakeable) and urban (create-heavy).
+
+**Remaining staged plan (multi-session, each verified):**
+- **Stage 3b (render-warm-ahead):** predictive render-warm of the chapters just ahead of the
+  camera, done during the post-reveal idle + micro-pauses (atomic renders can't run mid-scroll
+  without hitching) — the fix for the RECURRING (upload) hitch.
+- **Stage 1 (bakes):** noise→texture for the noise-compile-heavy chapters (cosmic, deep-ocean),
+  same as earth-core.
+- **surface-world pipeline reduction:** cut its ~30–50 pipeline variants (the dominant cold
+  compile) via more material sharing / fewer distinct materials.
+- **Stage 2 (front-load):** once per-chapter warm is cheap, front-load compiles at load
+  (Dawn-cached → warm launches instant, hitch-free).
+
+Landed this pass: `dcb5db9` (bounded-concurrent prewarm + earlier warm start).
