@@ -113,3 +113,44 @@ chapters — the biggest *smoothness* win. Risk: med (material/geometry change �
 **Everything here is now measurable + verifiable locally** (perf-session `--screenshot` +
 the per-item compile trace + the anti-throttle switches). The discipline: A/B back-to-back
 (git-stash), and screenshot-A/B any visual change.
+
+## 6. The loading-overlay "freeze" — root cause + PARTIAL FIX (2026-07-27)
+
+**Symptom (user):** starting Odyssey, the loading overlay's stars/dots/rings freeze
+instead of animating while the mode loads.
+
+**Diagnosis (chrome-devtools MCP on the RTX 5080, in-page rAF + `getComputedStyle(overlay)`
+sampler + screenshot bursts):**
+- The overlay is shown (`_showOdysseyUI` → `showCinematicLoadingOverlay('ODYSSEY')`,
+  opacity 0, fade-in scheduled via a double-rAF) and then `onActivate` goes **straight**
+  into the cold WebGPU board build (`_showBoardView` → `_initializeOdysseyBoard` →
+  `boardController.initialize`). The chain to the first real paint-yield (`renderer.init`)
+  is **all microtask awaits**, so the browser never paints the overlay until *after* the
+  build — the user sees a **frozen mode-select menu** (confirmed: burst screenshots during
+  load show the menu + the earth-core lava behind it, `perfMonitor last: ~5920ms`, i.e. a
+  single multi-second rAF gap; the "ODYSSEY" overlay is not yet visible).
+- `setCinematicLoadingOverlayBuilding` (the main.js theme-path "hide the motion during the
+  build" workaround) is **not wired on the Odyssey path**, so on Odyssey the animations are
+  never hidden — they genuinely freeze.
+- The build already yields between coarse steps (`_yieldToMain`, double-rAF), but the
+  sampler shows the whole build as ~one 4–6 s rAF gap: the **earth-core (ch1) shader
+  compile (~3.1 s)** saturates the GPU process, and while a WebGPU pipeline compile owns
+  the GPU, **BeginFrame/vsync is starved → the compositor cannot present** → even
+  compositor (transform/opacity) animations freeze. Corroborated: `Page.captureScreenshot`
+  could not return a frame *during* the block — every burst shot resolved only *post*-block.
+
+**Landed (partial) — `8ed24d2`:** `waitForCinematicLoadingOverlayPresented()` (3 rAFs + a
+macrotask, 250 ms rAF-starvation safety net, headless guard) awaited in `onActivate`
+**before** `_showBoardView`. Now the overlay paints + commits its compositor animations
+*before* the build. Verified: overlay reaches `opacity 1` and animates at ~6 ms frame gaps
+**before** the build's block (was: frozen menu, overlay never visible). Fixes the
+wrong-screen / "hung menu" half.
+
+**Residual (NOT fixed):** the ~3.1 s earth-core-compile window still freezes the overlay
+(GPU/BeginFrame starvation — no on-page animation, compositor or main-thread, can run while
+the GPU compiles for seconds). This is the **same compile-gated bottleneck as §2** — the
+only real fixes are the **Lever 1 bake** (cut ch1's compile so the freeze is short) or a
+**menu-idle board pre-warm** (compile earth-core in the background while the player is on
+the menu, so entering Odyssey finds the pipeline already built — moves the stall out of the
+click, but costs menu-time GPU/memory and needs its own lifecycle). Both are focused
+follow-ups; do them in the perf-session/playground loop, not bolted onto an overlay change.
