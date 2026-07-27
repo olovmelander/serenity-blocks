@@ -56,6 +56,29 @@ create/node/post work, and the `compiles` bucket (1946 ms) is the **un-overlappe
 | **4** | **Prioritize next-chapter breach/warm** so the first seam doesn't compile on-screen (the 205 ms transition spike is a first-transition compile) | transition hitch | removes the 205 ms seam spike | med | yes — transition scenario |
 | **5** | **Tier-gate octave counts by quality** (earth-core + shared noise) | compiles (Low/Med only) | broadens the win to weaker GPUs; no Extreme change | low | yes |
 
+## 4a. The seam-hitch ROOT CAUSE (found 2026-07-27, `--diag`)
+
+The 205 ms transition spike is **not** un-warmed streaming — it's a **bug**: the
+background render-warm **fails** for chapters **3, 5, 8**:
+
+```
+[OdysseyBoard] Background render-warm failed for chapter 5: setPipeline … not of type 'GPURenderPipeline'
+```
+
+`_renderWarmChapterOffscreen` (OdysseyBoardController.js:1184) does one
+`renderer.render(scene, camera)` with the chapter visible; it throws `setPipeline(undefined)`,
+is caught (:1204), but `env._renderWarmed = true` is set **anyway** (:1153) — so the chapter
+is flagged warm while its real pipeline was never built → it **compiles on-screen on first
+visit** = the spike. **Correlated:** ch3 (surface-world) + ch8 (urban-dreams) flood
+`THREE.TSL: Vertex attribute "normal" not found on geometry` at create — a material sampling
+normals on a geometry with no `normal` attribute, i.e. a pipeline-variant the group
+`compileAsync` didn't build. **Fix direction:** find the normal-less-geometry/normal-material
+combo in surface-world/urban-dreams (the `_probeWarmFailure` probe at :1236 names it, but is
+gated to `?odysseyAAA=1` and doesn't fire under `odysseyPerfRun`; un-gate it for `--diag`
+captures), add the missing normal attribute or drop the normal read, and stop marking
+`_renderWarmed=true` on a thrown warm. **Impact:** removes the seam hitches for the ~3 affected
+chapters — the biggest *smoothness* win. Risk: med (material/geometry change → screenshot A/B).
+
 ## 5. Recommended sequence
 
 1. **Lever 1 (bake)** — biggest *safe-to-verify* load win now that screenshot A/B is
