@@ -108,14 +108,27 @@ function fbm(pInput, octaves = 4, sn = snoise3) {
     return f;
 }
 
-// ── Bake lever (DEFAULT-OFF, experimental) ───────────────────────────────────────
-// ?earthCoreBakeNoise=1 swaps the LOW/MID-freq bulk of moltenRockField (warp/rivers/crust,
-// ~18 of its 21 snoise3) from analytic mx_noise to a single baked 3D-noise texture fetch
-// each — trimming earth-core's cold WebGPU compile. The sharp high-freq VEIN stays analytic
-// (trilinear texture creasing would show as extra filaments there). Off = byte-identical to
-// today. See docs/ODYSSEY_AAA_PERF_FINDINGS_2026-07.md §6b + the playground A/B harness.
-const EARTH_CORE_BAKE_NOISE = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('earthCoreBakeNoise') === '1';
+// ── Bake lever (DEFAULT-ON) ──────────────────────────────────────────────────────
+// Swaps the LOW/MID-freq bulk of moltenRockField (warp/rivers/crust, ~18 of its 21 snoise3)
+// from analytic mx_noise to a single baked 3D-noise texture fetch each — trims earth-core's
+// COLD WebGPU compile by ~900 ms (measured; warm-cache launches already compile fast, so this
+// helps first launch / after a Dawn-cache evict). The sharp high-freq VEIN stays analytic
+// (trilinear texture creasing would show as extra filaments there). In-scene A/B'd as
+// imperceptible (docs §6b/§6c). Escape hatch: `?earthCoreBakeNoise=0` (dev URL) or
+// `localStorage.serenity.earthCoreBakeNoise='0'` (packaged Electron) to force analytic.
+function _readEarthCoreBakeFlag() {
+    if (typeof window === 'undefined') return false;
+    try {
+        const url = new URLSearchParams(window.location.search).get('earthCoreBakeNoise');
+        if (url === '0') return false;
+        if (url === '1') return true;
+        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreBakeNoise');
+        if (ls === '0') return false;
+        if (ls === '1') return true;
+    } catch { /* URL/localStorage unavailable — fall through to default */ }
+    return true; // default ON
+}
+const EARTH_CORE_BAKE_NOISE = _readEarthCoreBakeFlag();
 const BAKED_NOISE_PERIOD = 10; // world units per texture tile (features/unit = grid/period = 2)
 let _bakedNoiseTex = null;
 function _getBakedNoiseSampler() {

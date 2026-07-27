@@ -231,19 +231,17 @@ background rock. (2) **net positive** — −922 ms compile, net −1.1 s board-
 +221 ms inline gen. NB: the saving is a COLD-cache phenomenon (warm Dawn-cache repeat launches
 compile fast regardless) — so this improves the FIRST-launch earth-core freeze specifically.
 
-**Status: DEFAULT-OFF, proven.** ⚠️ **The inline noise-texture gen (+221 ms) is a per-board-build
-cost, but the −922 ms only helps COLD launches** (warm Dawn-cache repeat launches already compile
-fast). So flipping default-on **with the inline gen would make the common WARM-cache repeat launch
-~221 ms SLOWER** for ~0 benefit — a net regression on the common path. Therefore eliminating the
-per-launch gen is **REQUIRED to ship (not optional)**:
-- **(required)** replace the inline `buildTileableNoise3D` with either a pre-baked asset (a raw
-  Float32 `.bin` or KTX2, ~14 MB for 96³ / far less compressed, loaded async once — mind the
-  "odyssey assets untracked → git add" gotcha) OR GPU-generated noise (a compute/slice render at
-  load, ~tens of ms, no shipped asset). Then the −922 ms is net on cold and there's no warm-cache
-  penalty.
-- **(then)** verify a couple more earth-core camera angles + the molten-pocket/obsidian-column
-  material up close (the other `moltenRockField` consumer, seen at level entry), and flip
-  `EARTH_CORE_BAKE_NOISE` default to on.
+**Status: SHIPPED — DEFAULT-ON.** The per-launch gen cost (originally +221 ms) was the ship
+blocker (it would regress warm-cache launches, which get no compile benefit). Root cause: the
+sampler only reads `.r` but the generator built 3 RGB channels — dropping to a single RedFormat
+Float32 channel cut the gen ~3× to **within measurement noise** (the earth-core `creates` bucket
+returned to the procedural ~937 ms level). With the gen no longer a meaningful warm-cache cost,
+`EARTH_CORE_BAKE_NOISE` was flipped to **default-on**: measured no-flag baked cold compile
+~1145 ms (vs ~2114 procedural), and the baked earth-core renders correctly in-scene incl. the
+rock-cluster/obsidian-geode `moltenRockField` consumers up close (sharp analytic veins, natural
+baked crust). Escape hatch: `?earthCoreBakeNoise=0` (dev) / `localStorage.serenity.earthCoreBakeNoise='0'`
+(packaged Electron) forces analytic.
 
-Net: the bake is a genuine COLD-first-launch win (imperceptible, −922 ms compile), but only worth
-shipping once the noise is asset/GPU-sourced rather than CPU-generated per launch.
+Net win: ~0.9 s faster COLD earth-core compile (first launch / after a Dawn-cache evict),
+imperceptible visual, no meaningful warm-cache cost. A GPU-gen (Storage3DTexture + `textureStore`
+compute) would take the residual ~74 ms gen to exactly zero — a nice-to-have, no longer required.
