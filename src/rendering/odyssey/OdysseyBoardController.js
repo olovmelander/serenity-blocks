@@ -279,6 +279,10 @@ export class OdysseyBoardController {
         this.adaptiveQualityEnabled = options.adaptiveQuality !== false
             && !readBooleanUrlFlag('odysseyDisableAdaptiveQuality');
         this.debugOverlayActive = false;
+        // Diagnostic: un-gate _probeWarmFailure independently of the debug HUD (?odysseyWarmProbe=1).
+        // The HUD masks the render-warm setPipeline failure (Heisenbug), so the probe needs its own
+        // flag to name the culprit while the bug still reproduces.
+        this._warmProbeEnabled = typeof window !== 'undefined' && readBooleanUrlFlag('odysseyWarmProbe');
         this.captureChapterIds = parseChapterIdList(
             options.captureChapterIds || readCaptureChapterIdsFromUrl(),
         );
@@ -1149,8 +1153,18 @@ export class OdysseyBoardController {
             }
             idx += 1;
             if (!env._renderWarmed) {
-                this._renderWarmChapterOffscreen(ch, env);
-                env._renderWarmed = true;
+                const warmed = this._renderWarmChapterOffscreen(ch, env);
+                if (warmed) {
+                    env._renderWarmed = true;
+                } else {
+                    // The offscreen warm threw setPipeline(undefined) — a compile-vs-warm race
+                    // (ch3/5/8 on a cold GPU). Do NOT mark it warmed; RE-QUEUE it (bounded) so a
+                    // later pass — after the pipeline fully resolves — actually warms it, instead of
+                    // the chapter compiling on-screen on first visit (the 205ms seam hitch).
+                    this._bgWarmRetries = this._bgWarmRetries || {};
+                    this._bgWarmRetries[ch] = (this._bgWarmRetries[ch] || 0) + 1;
+                    if (this._bgWarmRetries[ch] <= 5) order.push(ch);
+                }
             }
             this._bgRenderWarmCurrent = null;
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
@@ -1183,13 +1197,14 @@ export class OdysseyBoardController {
      */
     _renderWarmChapterOffscreen(chapterId, env) {
         const group = env?.group;
-        if (!group || !this.renderer || !this.scene || !this.camera) return;
+        if (!group || !this.renderer || !this.scene || !this.camera) return false;
         // Bind the offscreen post scene-pass target FIRST; if post is inactive (null), skip —
         // rendering would otherwise hit the canvas and FLASH the warming chapter's full-screen
         // sky dome (BackSide, renderOrder -100) for a frame. The live loop warms it in the
         // no-post fallback instead.
         const saved = this._beginPostTargetCompile();
-        if (!saved) return;
+        if (!saved) return false;
+        let succeeded = false;
         const prevVisible = group.visible;
         const frustumOverrides = [];
         group.traverse((child) => {
@@ -1201,6 +1216,7 @@ export class OdysseyBoardController {
         try {
             group.visible = true;
             this.renderer.render(this.scene, this.camera);
+            succeeded = true;
         } catch (error) {
             console.warn(`[OdysseyBoard] Background render-warm failed for chapter ${chapterId}:`, error?.message || error);
             // DIAGNOSTIC (debug overlay only, ?odysseyAAA=1): the failure-path probe re-renders the
@@ -1209,7 +1225,7 @@ export class OdysseyBoardController {
             // ~138 stray full-scene renders to the post-reveal background-load window (a real chunk
             // of the "feels frozen for ~45s" jank). Gate it to the debug flag so shipped/normal runs
             // just log the one warning above and move on; ?odysseyAAA=1 still gets the culprit probe.
-            if (this.debugOverlayActive) {
+            if (this.debugOverlayActive || this._warmProbeEnabled) {
                 if (!this._warmProbedChapters) this._warmProbedChapters = new Set();
                 if (!this._warmProbedChapters.has(chapterId)) {
                     this._warmProbedChapters.add(chapterId);
@@ -1223,6 +1239,7 @@ export class OdysseyBoardController {
                 child.frustumCulled = frustumCulled;
             });
         }
+        return succeeded;
     }
 
     /**
