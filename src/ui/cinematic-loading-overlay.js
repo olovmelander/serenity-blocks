@@ -42,6 +42,52 @@ export function showCinematicLoadingOverlay(title) {
 }
 
 /**
+ * Resolves once the loading overlay has actually been painted at least once and
+ * its compositor keyframe animations (drifting stars / bouncing dots / pulsing
+ * rings) have been committed to the compositor thread.
+ *
+ * Call this AFTER {@link showCinematicLoadingOverlay} and BEFORE kicking off heavy,
+ * main-thread-blocking / GPU-saturating work (e.g. a cold WebGPU board/theme build).
+ * Without it, the overlay is only appended (opacity 0, fade-in scheduled via rAF) and
+ * the caller's synchronous build runs in the *same* task — so the browser never paints
+ * the overlay until the build finishes, and its transform/opacity animations are never
+ * promoted. The user then sees a frozen menu (or a frozen overlay) instead of a live
+ * loading animation. Yielding a real paint here gets the overlay on-screen and its
+ * animations running on the compositor before the build steals the main thread.
+ *
+ * @returns {Promise<void>}
+ */
+export function waitForCinematicLoadingOverlayPresented() {
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+        };
+        // Headless/test environments (jsdom) have no rAF — resolve on a plain
+        // macrotask so this never blocks a build that has no compositor anyway.
+        if (typeof requestAnimationFrame !== 'function') {
+            setTimeout(done, 0);
+            return;
+        }
+        // rAF#1 + rAF#2: show()'s own double-rAF sets opacity=1 on frame 2; rAF#3
+        // lets that style commit + the compositor promote/start the keyframes. The
+        // trailing macrotask hop guarantees at least one full present cycle.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(done, 0);
+                });
+            });
+        });
+        // Safety net: never let overlay presentation gate the build indefinitely if
+        // rAF is starved (e.g. the tab is backgrounded during load).
+        setTimeout(done, 250);
+    });
+}
+
+/**
  * Morph the existing cinematic loading overlay into an in-place countdown.
  * @param {{
  *   startCount?: number,

@@ -434,8 +434,12 @@ describe('OdysseyMode level entry bootstrap', () => {
             settled = true;
         });
 
-        await Promise.resolve();
-        await Promise.resolve();
+        // onActivate now yields a real paint (waitForCinematicLoadingOverlayPresented)
+        // so the loading overlay is on-screen before the board build; that resolves on
+        // a macrotask, so flush macrotasks until the build kicks off (bounded).
+        for (let i = 0; i < 5 && mode._showBoardView.mock.calls.length === 0; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
 
         expect(mode._showBoardView).toHaveBeenCalledTimes(1);
         expect(mode.boardViewReadyPromise).toBe(boardViewPromise);
