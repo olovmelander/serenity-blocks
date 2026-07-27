@@ -73,7 +73,11 @@ import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
-import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
+import {
+    showCinematicLoadingOverlay,
+    dismissCinematicLoadingOverlay,
+    waitForCinematicLoadingOverlayPresented,
+} from '../../ui/cinematic-loading-overlay.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
@@ -388,6 +392,10 @@ export class OdysseyMode extends BaseGameMode {
         // Default to board view (level selection)
         this.isInBoardView = true;
         try {
+            // Paint the ODYSSEY overlay + commit its compositor animations before the
+            // cold WebGPU board build steals the main thread (else the build runs in the
+            // same task and the overlay never paints — user sees a frozen menu).
+            await waitForCinematicLoadingOverlayPresented();
             this.boardViewReadyPromise = this._showBoardView();
             await this.boardViewReadyPromise;
         } catch (error) {

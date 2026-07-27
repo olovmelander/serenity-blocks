@@ -17,6 +17,7 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 vi.mock('../../src/ui/cinematic-loading-overlay.js', () => ({
     showCinematicLoadingOverlay: vi.fn(),
     dismissCinematicLoadingOverlay: vi.fn(() => Promise.resolve()),
+    waitForCinematicLoadingOverlayPresented: vi.fn(() => Promise.resolve()),
     transitionCinematicLoadingOverlayToCountdown: vi.fn(),
     setCinematicLoadingOverlayBuilding: vi.fn(),
 }));
