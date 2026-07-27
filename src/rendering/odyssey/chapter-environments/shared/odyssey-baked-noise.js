@@ -11,7 +11,9 @@
  *
  * Gradient (Perlin) noise — matches `mx_noise_float`'s ~centred [-1,1] distribution so the
  * consuming field's smoothstep thresholds behave; Float32 (no 8-bit contour banding);
- * periodic gradients so the texture tiles seamlessly; RGB carry three decorrelated fields.
+ * periodic gradients so the texture tiles seamlessly. SINGLE channel (Red): the consuming
+ * field decorrelates its layers by sampling at different world offsets, so one field is
+ * enough — building 3 channels was ~3x wasted gen (samplers only ever read `.r`).
  */
 
 import * as THREE from 'three/webgpu';
@@ -56,25 +58,19 @@ export function buildTileableNoise3D(res = 96, grid = 20, period = 10, seed = 13
         return lerp(lerp(x00, x10, v), lerp(x01, x11, v), w); // ~[-1,1] (|g|=√2)
     };
 
-    const data = new Float32Array(res * res * res * 4);
-    const seeds = [seed, seed + 9173, seed + 51001];
+    const data = new Float32Array(res * res * res); // single channel (Red)
     let off = 0;
     for (let z = 0; z < res; z += 1) {
         for (let y = 0; y < res; y += 1) {
             for (let x = 0; x < res; x += 1) {
-                for (let c = 0; c < 3; c += 1) {
-                    const s = seeds[c];
-                    const ox = (s % 7); const oy = (s % 13); const oz = (s % 5);
-                    const n = perlin((x / res) * grid + ox, (y / res) * grid + oy, (z / res) * grid + oz, s);
-                    data[off + c] = n * 0.5 + 0.5; // store [0,1]; shader restores [-1,1]
-                }
-                data[off + 3] = 1.0;
-                off += 4;
+                const n = perlin((x / res) * grid, (y / res) * grid, (z / res) * grid, seed);
+                data[off] = n * 0.5 + 0.5; // store [0,1]; shader restores [-1,1]
+                off += 1;
             }
         }
     }
     const tex = new THREE.Data3DTexture(data, res, res, res);
-    tex.format = THREE.RGBAFormat;
+    tex.format = THREE.RedFormat;
     tex.type = THREE.FloatType;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
