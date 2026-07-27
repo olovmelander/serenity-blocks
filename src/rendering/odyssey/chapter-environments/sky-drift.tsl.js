@@ -820,7 +820,7 @@ export function createLenticularCloudTSL(uTime = uniform(0), options = {}) {
     // breath keeps the edge organic while the cloud itself STAYS STILL (its stillness
     // against the streaming wisps is the landmark read).
     const lens = smoothstep(0.5, 0.12, length(centered.mul(vec2(1.0, 2.6))));
-    const breath = fbm2(vUv.mul(3.0).add(uTime.mul(0.006))).mul(0.25).add(0.85);
+    const breath = fbm2(vUv.mul(3.0).add(uTime.mul(0.006)), 4).mul(0.25).add(0.85);
     // Moonlit silver top over a shadowed base; deepens with dusk.
     const duskT = smoothstep(0.2, 0.7, uDusk);
     const top = mix(vec3(0.78, 0.74, 0.7), vec3(0.56, 0.64, 0.78), duskT);
@@ -866,7 +866,7 @@ export function createNoctilucentVeilTSL(uTime = uniform(0), options = {}) {
     const waveA = sin(vUv.x.mul(40.0).add(vUv.y.mul(26.0)).add(uTime.mul(0.18)));
     const waveB = sin(vUv.x.mul(34.0).sub(vUv.y.mul(30.0)).sub(uTime.mul(0.14)));
     const herring = pow(clamp(waveA.mul(waveB), 0.0, 1.0), 1.6);
-    const breakup = fbm2(vUv.mul(5.0).add(uTime.mul(0.01))).mul(0.5).add(0.5);
+    const breakup = fbm2(vUv.mul(5.0).add(uTime.mul(0.01)), 4).mul(0.5).add(0.5);
     const filaments = herring.mul(smoothstep(0.3, 0.75, breakup));
 
     const centered = vUv.sub(0.5);
@@ -988,7 +988,7 @@ export function createDarkWispsTSL(uTime = uniform(0), count = 10) {
     material.colorNode = vec3(0.035, 0.048, 0.095); // ink-shadow shred, visibly below the rail
     const dist = length(uv().sub(0.5));
     const shred = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.4);
-    const breakup = fbm2(uv().mul(3.4).add(aSeed)).mul(0.5).add(0.5);
+    const breakup = fbm2(uv().mul(3.4).add(aSeed), 4).mul(0.5).add(0.5);
     material.opacityNode = shred.mul(smoothstep(0.24, 0.68, breakup)).mul(0.68);
     material.transparent = true;
     material.depthWrite = false;
