@@ -154,3 +154,22 @@ only real fixes are the **Lever 1 bake** (cut ch1's compile so the freeze is sho
 the menu, so entering Odyssey finds the pipeline already built — moves the stall out of the
 click, but costs menu-time GPU/memory and needs its own lifecycle). Both are focused
 follow-ups; do them in the perf-session/playground loop, not bolted onto an overlay change.
+
+### 6a. Octave-cut lever is EXHAUSTED (13-agent adversarial workflow, 2026-07-27)
+
+Before reaching for the risky bake, we ran a fan-out (4 material-group analyzers × per-cut
+adversarial verifiers) over all 15 earth-core TSL pipelines to find *safe* instruction-count
+cuts. **Key structural finding:** the local `fbm()` helper (earth-core.tsl.js ~L88) computes
+its **3 base octaves UNCONDITIONALLY** and only gates the 4th on `if (octaves >= 4)`. So
+`fbm(...,3) -> fbm(...,2)` is a **byte-identical no-op** (zero compile saving) — the "just cut
+more octaves" idea is mostly a mirage. Every noise site is *already* at the 3-octave floor
+except the two `createLavaFallTSL` streaks, which defaulted to 4 octaves; those were cut to 3
+(landed `ccad529`, 2 snoise3 removed, screenshot-verified identical). **Net: the safe
+mechanical octave lever is now spent** (~0.4 s, within run-to-run compile noise). Going below
+3 octaves requires adding an `octaves >= 3` guard to `fbm()` and cutting at threshold-fed
+sites (veinRidge/crustMap/cloud-density) — the verifiers flagged these as visible-banding
+risks. So meaningful further compile reduction genuinely requires the **bake** (replace
+moltenRockField's ~21 snoise3 with 1–2 texture() samples — big win, high visual risk) or the
+**menu-idle pre-warm**. NB: cold ch1 compile is very noisy run-to-run (measured 3123 / 4053 /
+5028 ms across three runs; the 5028 run had koi-pond WebGPU contention) — any compile A/B must
+be back-to-back, and sub-0.5 s deltas are unmeasurable.
