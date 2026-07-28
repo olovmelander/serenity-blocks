@@ -789,6 +789,17 @@ export class ChapterEnvironmentManager {
                     });
                     gud.ownedTextures.length = 0; // idempotent: a second teardown frees nothing
                 }
+                // Chapters register non-texture GPU resources needing teardown here — e.g. a hero
+                // reflector()'s render targets, which live in a node graph the traverse can't reach
+                // (SB-15 leak trap). Each entry is any object with a .dispose(); best-effort.
+                if (Array.isArray(gud.ownedDisposables)) {
+                    gud.ownedDisposables.forEach((d) => {
+                        try {
+                            if (d && typeof d.dispose === 'function') d.dispose();
+                        } catch { /* best-effort teardown */ }
+                    });
+                    gud.ownedDisposables.length = 0; // idempotent
+                }
             }
             this.environmentGroup.remove(env.group);
         }
