@@ -47,6 +47,8 @@ import {
     positionLocal,
     positionWorld,
     pow,
+    reflector,
+    screenUV,
     sin,
     smoothstep,
     texture,
@@ -528,6 +530,7 @@ function configureChapter2WaterSurface(part, {
 // river/sea want to fill to their scaled extent, so they pass false).
 function buildGoldenWaterMaterial(uTime, {
     uSeason = uniform(0), uOpacity = uniform(1), useRadialEdge = true, rippleAmp = 0.16,
+    reflection = null,
 } = {}) {
     const sunDir = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
 
@@ -561,18 +564,29 @@ function buildGoldenWaterMaterial(uTime, {
     const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
         .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
     skyRefl = skyRefl.mul(mix(float(0.9), float(1.08), bands));
-    let color = mix(bodyCol, skyRefl, reflectance);
-
-    // Faked dark shore/tree silhouette reflections toward the FAR shore (high uv.y), rippled so
-    // they wobble like water — the reflected tree-stands + Great Tree without a mirror pass.
+    // vUv is also used by the radial shore alpha below, so declare it before the branch.
     const vUv = uv();
-    const ripd = sin(wpos.z.mul(1.4).add(uTime.mul(0.6))).mul(0.05)
-        .add(sin(wpos.x.mul(0.8).add(uTime.mul(0.3))).mul(0.03));
-    const silBase = sin(wpos.x.mul(0.14).add(2.0)).mul(0.5).add(0.5)
-        .mul(sin(wpos.x.mul(0.33).sub(1.0)).mul(0.5).add(0.5));
-    const silhouette = smoothstep(0.42, 0.85, silBase.add(ripd));
-    const farMask = smoothstep(0.4, 0.8, vUv.y.add(ripd));
-    color = mix(color, vec3(0.07, 0.11, 0.09), silhouette.mul(farMask).mul(0.6));
+    let color;
+    if (reflection) {
+        // REAL planar mirror (flag ch3HeroMirror): fold the ACTUAL treeline + sky at the grazing
+        // rim, replacing the faked uv.y silhouettes (which read as a copper sheet in-scene).
+        // screenUV.flipX() is REQUIRED to match the reflector's stored UV; ripple-distort it by
+        // the wobble normal so the reflection wobbles like water. Reduced-fresnel weight keeps the
+        // body dark teal head-on and only ignites the mirror at the grazing far rim.
+        const reflUV = screenUV.flipX().add(vec2(nrm.x, nrm.z).mul(0.04));
+        color = mix(bodyCol, reflection.sample(reflUV).rgb, reflectance);
+    } else {
+        color = mix(bodyCol, skyRefl, reflectance);
+        // Faked dark shore/tree silhouette reflections toward the FAR shore (high uv.y), rippled so
+        // they wobble like water — the reflected tree-stands + Great Tree without a mirror pass.
+        const ripd = sin(wpos.z.mul(1.4).add(uTime.mul(0.6))).mul(0.05)
+            .add(sin(wpos.x.mul(0.8).add(uTime.mul(0.3))).mul(0.03));
+        const silBase = sin(wpos.x.mul(0.14).add(2.0)).mul(0.5).add(0.5)
+            .mul(sin(wpos.x.mul(0.33).sub(1.0)).mul(0.5).add(0.5));
+        const silhouette = smoothstep(0.42, 0.85, silBase.add(ripd));
+        const farMask = smoothstep(0.4, 0.8, vUv.y.add(ripd));
+        color = mix(color, vec3(0.07, 0.11, 0.09), silhouette.mul(farMask).mul(0.6));
+    }
 
     // Golden SUN-GLITTER path (camera-relative half-vector spec): a piercing highlight + broad
     // glow toward the low sun + a shimmer band — the golden-hour signature; tracks the moving cam.
@@ -608,7 +622,9 @@ function buildGoldenWaterMaterial(uTime, {
 export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
     const uSeason = options.uSeason ?? uniform(0);
     const uOpacity = uniform(1);
-    const { material } = buildGoldenWaterMaterial(uTime, { uSeason, uOpacity, useRadialEdge: true });
+    const { material } = buildGoldenWaterMaterial(uTime, {
+        uSeason, uOpacity, useRadialEdge: true, reflection: options.reflection ?? null,
+    });
 
     const geometry = new THREE.PlaneGeometry(SURFACE_LAKE_RADIUS * 2.5, SURFACE_LAKE_RADIUS * 2.5, 32, 32);
     geometry.rotateX(-Math.PI / 2);
@@ -621,7 +637,7 @@ export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
     };
 }
 
-export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) {
+export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, options = {}) {
     const uOpacity = uniform(1);
     const uDepth = uniform(CH3_WATER_READABILITY_SETTINGS.ch2SurfaceDepth);
     const deepWaterOptions = { uDepth, uOpacity };
@@ -672,7 +688,21 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     // HERO LAKE surface: the procedural GOLDEN-HOUR REFLECTIVE lake (createGoldenLakeTSL) pooled
     // over the carved basin (SURFACE_LAKE_CENTER) — same warm palette as the river/sea, but with a
     // soft radial shore dissolve since it's a discrete pool rather than a filled corridor.
-    const lakeBuilt = createGoldenLakeTSL(uTime, {});
+    // Real planar mirror for the HERO lake only (flag ch3HeroMirror; sea/river stay analytic —
+    // broad flat sheets don't earn a mirror pass). The target defines the mirror plane at the
+    // lake surface Y IN THE OCEAN GROUP'S LOCAL SPACE — byte-identical to the lake mesh Y set
+    // below — so it rides the chapter group's world transform exactly as the water does.
+    let reflection = null;
+    if (options.enableReflector) {
+        reflection = reflector({ resolutionScale: 0.5, bounces: false, generateMipmaps: false });
+        reflection.target.rotateX(-Math.PI / 2);
+        reflection.target.position.set(
+            SURFACE_LAKE_CENTER.x,
+            surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4,
+            SURFACE_LAKE_CENTER.z,
+        );
+    }
+    const lakeBuilt = createGoldenLakeTSL(uTime, { reflection });
     const lake = lakeBuilt.mesh;
     lake.position.set(
         SURFACE_LAKE_CENTER.x,
@@ -685,6 +715,10 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     group.add(sea);
     group.add(river);
     group.add(lake);
+    // The reflector target rides the ocean group (same space as the lake); it is a render helper,
+    // not a mesh, so it is never tagged onto the reflection layer (the whole ocean group is
+    // excluded from that layer by createSurfaceWorldEnvironment → no water-reflects-water feedback).
+    if (reflection) group.add(reflection.target);
     group.userData.readability = CH3_WATER_READABILITY_SETTINGS;
     group.userData.sea = sea;
     group.userData.river = river;
@@ -700,6 +734,7 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
         river,
         riverMaterial: riverPart.material,
         riverGeometry: riverPart.geometry,
+        reflection,
         uniforms: { uOpacity },
     };
 }

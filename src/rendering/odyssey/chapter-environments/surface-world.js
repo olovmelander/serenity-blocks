@@ -894,6 +894,24 @@ function buildBridgeConiferPlacements() {
     return out;
 }
 
+// ── Ch3 HERO MIRROR (flag ch3HeroMirror) ─────────────────────────────────────────────
+// Opt-in REAL reflector() planar mirror for the hero lake (default OFF → the chapter is
+// byte-identical to today). Enable with URL ?ch3HeroMirror=1 or localStorage
+// 'odyssey.ch3HeroMirror'='1'. Headless-guarded. See the isolated proof effect
+// src/playground/effects/surface-world-hero-lake.effect.js + the rebuild plan doc.
+const CH3_REFLECTION_LAYER = 2;
+function readCh3HeroMirrorFlag() {
+    try {
+        if (typeof window === 'undefined') return false;
+        const q = new URLSearchParams(window.location.search).get('ch3HeroMirror');
+        if (q === '1' || q === 'true') return true;
+        if (q === '0' || q === 'false') return false;
+        return window.localStorage?.getItem('odyssey.ch3HeroMirror') === '1';
+    } catch {
+        return false;
+    }
+}
+
 export function createSurfaceWorldEnvironment() {
     const group = new THREE.Group();
     group.name = 'surface-world-environment';
@@ -945,7 +963,7 @@ export function createSurfaceWorldEnvironment() {
     group.add(sky);
 
     // 2. Ocean Surface (Bottom) - visible from above and below
-    const ocean = createOceanSurface(uniforms, surfaceOffsetY);
+    const ocean = createOceanSurface(uniforms, surfaceOffsetY, readCh3HeroMirrorFlag());
     ocean.name = 'ocean-surface';
     ocean.userData.kind = 'persistent-blue-sea-with-river';
     group.add(ocean);
@@ -1272,6 +1290,36 @@ export function createSurfaceWorldEnvironment() {
         group.position.y = chapterCenterY;
     }
 
+    // HERO MIRROR (flag ch3HeroMirror): tag every non-water mesh onto the reflection layer so the
+    // hero lake's reflector() renders them (sky, terrain, treeline, mountains, trees…). The ocean
+    // group (sea/river/lake + the reflector target) is EXCLUDED, so water never reflects water
+    // (feedback). The group is translation-only (above), so the target's horizontal mirror plane
+    // stays valid in world space. Whole-scene mirroring is the simple/correct first cut; selective
+    // far-silhouette tagging is a documented perf follow-up. Virtual-camera layer wired lazily in
+    // updateSurfaceWorldEnvironment (it needs the render camera).
+    const ch3Reflection = ocean.userData?.ch3Reflection ?? null;
+    if (ch3Reflection) {
+        group.userData.ch3Reflection = ch3Reflection;
+        for (const child of group.children) {
+            if (child === ocean) continue;
+            child.traverse((o) => {
+                if (o.isMesh || o.isInstancedMesh) o.layers.enable(CH3_REFLECTION_LAYER);
+            });
+        }
+        // Harden teardown (SB-15 leak trap): register the reflector's GPU resources so the
+        // ChapterEnvironmentManager frees them on eviction/theme-switch — the generic material
+        // traverse cannot reach a node-graph reflector's render targets. Best-effort + idempotent.
+        (group.userData.ownedDisposables ??= []).push({
+            dispose() {
+                try {
+                    ch3Reflection.reflector?.renderTargets?.forEach?.((rt) => rt?.dispose?.());
+                    ch3Reflection.renderTargets?.forEach?.((rt) => rt?.dispose?.());
+                    ch3Reflection.dispose?.();
+                } catch { /* best-effort teardown */ }
+            },
+        });
+    }
+
     return group;
 }
 
@@ -1288,8 +1336,15 @@ function createSkyBackground(uniforms) {
 // WebGPU/TSL: paradise ocean delegated to createOceanSurfaceTSL (Gerstner waves +
 // caustics + fresnel). Same PlaneGeometry(300,300,64,64) rotated flat, positioned at
 // surfaceOffsetY. uTime shared in; returned uOpacity tagged for the fade collectors.
-function createOceanSurface(uniforms, surfaceOffsetY = -15) {
-    const { mesh, uniforms: builderUniforms } = createOceanSurfaceTSL(uniforms.uTime, surfaceOffsetY);
+function createOceanSurface(uniforms, surfaceOffsetY = -15, enableReflector = false) {
+    const { mesh, reflection, uniforms: builderUniforms } = createOceanSurfaceTSL(
+        uniforms.uTime,
+        surfaceOffsetY,
+        { enableReflector },
+    );
+    // Surface the hero-lake reflector (flag ch3HeroMirror) so createSurfaceWorldEnvironment can
+    // tag the reflection layer and updateSurfaceWorldEnvironment can wire its virtual camera.
+    if (reflection) mesh.userData.ch3Reflection = reflection;
     return tagUniforms(mesh, builderUniforms);
 }
 
@@ -1498,6 +1553,18 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // HERO MIRROR (flag ch3HeroMirror): wire the reflector's virtual camera to render ONLY the
+    // reflection layer (needs the render camera, which the environment build lacks). Once, guarded.
+    const { ch3Reflection } = group.userData;
+    if (ch3Reflection && camera && !group.userData._ch3ReflWired) {
+        try {
+            ch3Reflection.reflector.getVirtualCamera(camera).layers.set(CH3_REFLECTION_LAYER);
+            group.userData._ch3ReflWired = true;
+        } catch {
+            /* reflector API-shape guard — leave unwired; the mirror simply won't render */
+        }
     }
 
     // Season scalar (creative plan item 6): chapter-local progress 0→1 scripts the
