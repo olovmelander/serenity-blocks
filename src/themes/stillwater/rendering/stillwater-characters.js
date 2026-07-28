@@ -497,8 +497,10 @@ export function createStillwaterCharacters({
         if (spiritAura) spiritGroup.add(spiritAura);
         if (filaments) spiritGroup.add(filaments);
         if (spiritMotes) spiritGroup.add(spiritMotes);
-        spiritGroup.position.set(-18.4, 5.2, -20.5);
-        spiritGroup.scale.setScalar(1.34);
+        spiritGroup.position.set(-18.6, 4.9, -8.0);
+        // Larger as well as nearer: together these take her from ~1.5% to ~2.7% of
+        // frame height, which is the difference between a detail and a subject.
+        spiritGroup.scale.setScalar(1.95);
         // The reflector gets the readable spirit core only. The larger aura and
         // filament veil are transparent accents and would multiply reflection
         // overdraw without improving the silhouette.
@@ -539,7 +541,7 @@ export function createStillwaterCharacters({
         const flicker = float(0.86)
             .add(sin(uTime.mul(2.7)).mul(0.09))
             .add(sin(uTime.mul(6.1).add(1.7)).mul(0.05));
-        const lanternEmission = vec3(1.0, 0.63, 0.26).mul(flicker.mul(1.05));
+        const lanternEmission = vec3(1.0, 0.63, 0.26).mul(flicker.mul(0.72));
         lanternMaterial.colorNode = lanternEmission;
         lanternMaterial.transparent = true;
         lanternMaterial.depthWrite = false;
@@ -833,9 +835,25 @@ export function createStillwaterCharacters({
         trollGroup.position.y = TROLL_GROUND_Y
             + state.troll.delight * 0.12
             - state.troll.bow * 0.06;
-        trollGroup.position.z = -19.2 + state.troll.turn * 0.10;
+        // Z now comes from the 2D path rather than a fixed line.
+        trollGroup.position.z = (Number.isFinite(state.troll.z) ? state.troll.z : -19.2)
+            + state.troll.turn * 0.10;
         trollGroup.rotation.x = state.troll.bow * 0.12 - state.troll.lookUp * 0.085;
-        trollGroup.rotation.y = -0.52
+        // Facing: while walking he faces where he is going; when he stops, he
+        // turns toward her. Blending on stride rather than switching avoids the
+        // snap that would betray the state machine underneath.
+        const walkHeading = Number.isFinite(state.troll.heading) ? state.troll.heading : -0.52;
+        const spiritDx = state.spirit.x - trollGroup.position.x;
+        const spiritDz = state.spirit.z - trollGroup.position.z;
+        const towardSpirit = Math.atan2(spiritDx, -spiritDz);
+        let towardDelta = towardSpirit - walkHeading;
+        while (towardDelta > Math.PI) towardDelta -= Math.PI * 2;
+        while (towardDelta < -Math.PI) towardDelta += Math.PI * 2;
+        // Attention rises when he is still AND she is present — the noticing is
+        // what the whole relationship is made of, so it gets the clean read.
+        const attention = Math.min(1, (1 - Math.min(1, strideRate)) * state.troll.reveal);
+        trollGroup.rotation.y = walkHeading
+            + towardDelta * attention * 0.55
             + state.troll.look * 0.08
             - state.troll.glance * 0.13
             + state.troll.turn * 0.16;

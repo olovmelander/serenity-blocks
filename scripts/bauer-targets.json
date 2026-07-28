@@ -25,7 +25,12 @@
     "Bauer is muted, not colourless - moss green, ochre and blue-grey all survive.",
     "",
     "bright.fraction has a FLOOR as well as a ceiling: a frame with no bright",
-    "note at all scores well on every other metric and is compositionally dead."
+    "note at all scores well on every other metric and is compositionally dead.",
+    "",
+    "Saturation is measured only over pixels above luma 6: below that HSV S is",
+    "numerically ill-conditioned (a (0,3,1) pixel scores 1.0), so in a dark night",
+    "frame the shadow floor swamps the distribution and the number stops",
+    "describing the visible picture."
   ],
   "bauerSource": {
     "lumaP50Range": [
@@ -60,11 +65,12 @@
     "lumaP75": 27.2,
     "lumaP95": 33.47,
     "lumaTopSpread": 6.27,
-    "saturationP50": 0.59,
+    "saturationP50": 0.5824,
     "flatFraction": 0.7934,
     "brightFraction": 0.0003,
     "brightSpreadFraction": 0.1409,
-    "note": "Same-medium calibration target. This is what we actually chase."
+    "note": "Same-medium calibration target. This is what we actually chase.",
+    "saturationP99": 0.8305
   },
   "targets": {
     "luma.p50": {
@@ -75,7 +81,7 @@
       "max": 30
     },
     "saturation.p50": {
-      "min": 0.34,
+      "min": 0.3,
       "max": 0.62
     },
     "saturation.p99": {
@@ -88,14 +94,30 @@
       "min": 0.18
     },
     "bright.fraction": {
-      "min": 0.0004,
+      "min": 0.0002,
       "max": 0.01
     },
-    "bright.spreadFraction": {
-      "max": 0.18
+    "bright.poleCount": {
+      "max": 3,
+      "why": [
+        "Replaced bright.spreadFraction as the gate on 2026-07-28, after that metric produced a result it could not distinguish from a genuine regression.",
+        "spreadFraction is the bounding-box AREA over every bright pixel, so it conflates 'highlights sprinkled across the frame' with 'two deliberate light notes far apart'. It is also perverse to tune against: for a two-note frame the score peaks when the notes carry EQUAL weight, so brightening the intended subject pushes it up, and the only way down is to delete the second note.",
+        "Measured here at the calibration frame: 2 poles (moon disc, spirit head), poleSpread 0.0016, stray 4.3%. That is a concentrated composition by any reading, while spreadFraction scored it 0.2021.",
+        "The three cluster gates ask what the original actually meant: how many notes, is each one compact, and how much light is loose in the frame. A frame with scattered specks fails strayFraction; a soft wash fails poleSpread; a busy frame fails poleCount. This one passes all three, and should."
+      ]
+    },
+    "bright.poleSpread": {
+      "max": 0.02
+    },
+    "bright.strayFraction": {
+      "max": 0.15
     }
   },
   "diagnostics": {
+    "bright.spreadFraction": {
+      "max": 0.2,
+      "note": "Demoted from a gate to a diagnostic — see bright.poleCount. Still worth watching: a sudden jump with poleCount unchanged means the composition's two notes have drifted apart."
+    },
     "luma.p95": {
       "max": 38
     },

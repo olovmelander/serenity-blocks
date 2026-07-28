@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -6,14 +7,60 @@ import {
     STILLWATER_TROLL_GESTURE,
     STILLWATER_TROLL_PATH_X,
 } from '../../src/themes/stillwater/sim/stillwater-character-state.js';
+import { resolveStillwaterLayout } from '../../src/themes/stillwater/composition/stillwater-layout.js';
+
+/**
+ * "Clear of the board" is a SCREEN-space property, so it has to be measured in
+ * screen space. This used to be a bare `x <= -14` world-space threshold, which
+ * silently assumed the anchors would never change depth: move a character 12
+ * units toward the camera and the same world x is a completely different place
+ * in frame — further from the board, as it happens — yet the constant reads as
+ * a violation. Project through the authored camera and ask the real question.
+ */
+// Clearance is measured from a character's ORIGIN, so the gate has to cover the
+// widest silhouette that origin carries. The spirit's robe reaches about 2.5% of
+// frame width either side at her authored scale; 6% leaves the robe edge clear
+// with room for the anchor jitter and the sway.
+const BOARD_MARGIN = 0.06;
+const LAYOUT = resolveStillwaterLayout({ aspect: 16 / 9 });
+const [BOARD_RECT] = LAYOUT.boardSafeRegions;
+
+function makeSoloCamera() {
+    const camera = new THREE.PerspectiveCamera(
+        LAYOUT.camera.fov,
+        16 / 9,
+        LAYOUT.camera.near,
+        LAYOUT.camera.far,
+    );
+    camera.position.set(...LAYOUT.camera.position);
+    camera.lookAt(...LAYOUT.camera.target);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+    return camera;
+}
+
+const SOLO_CAMERA = makeSoloCamera();
+
+/** Fraction of frame width between a world point and the nearest board edge. */
+function boardClearance(x, y, z) {
+    const projected = new THREE.Vector3(x, y, z).project(SOLO_CAMERA);
+    const screenX = projected.x * 0.5 + 0.5;
+    // A point is outside on exactly one side, so the clearance is whichever of
+    // the two edge distances is positive; `min` would report every point as an
+    // intrusion.
+    return Math.max(
+        BOARD_RECT.x - screenX,
+        screenX - (BOARD_RECT.x + BOARD_RECT.width),
+    );
+}
 
 describe('Stillwater Wave 5 character state', () => {
     it('keeps every authored spirit and troll anchor outside the board aperture', () => {
-        Object.values(STILLWATER_SPIRIT_ANCHORS).forEach(([x]) => {
-            expect(x).toBeLessThanOrEqual(-14);
+        Object.entries(STILLWATER_SPIRIT_ANCHORS).forEach(([beat, [x, y, z]]) => {
+            expect(boardClearance(x, y, z), `spirit ${beat}`).toBeGreaterThan(BOARD_MARGIN);
         });
-        Object.values(STILLWATER_TROLL_PATH_X).forEach((x) => {
-            expect(x).toBeGreaterThanOrEqual(17);
+        Object.entries(STILLWATER_TROLL_PATH_X).forEach(([beat, [x, z]]) => {
+            expect(boardClearance(x, 1.6, z), `troll ${beat}`).toBeGreaterThan(BOARD_MARGIN);
         });
     });
 
@@ -24,13 +71,16 @@ describe('Stillwater Wave 5 character state', () => {
 
         for (let frame = 0; frame < 1_400; frame += 1) {
             machine.update(1 / 60);
-            if (frame % 20 === 0) positions.push(machine.state.spirit.x);
+            if (frame % 20 === 0) {
+                const { x, y, z } = machine.state.spirit;
+                positions.push({ x, y, z });
+            }
         }
 
         expect(machine.state.spirit).toBe(spiritIdentity);
-        expect(positions.every((x) => x <= -14)).toBe(true);
+        expect(positions.every(({ x, y, z }) => boardClearance(x, y, z) > BOARD_MARGIN)).toBe(true);
         for (let index = 1; index < positions.length; index += 1) {
-            expect(Math.abs(positions[index] - positions[index - 1])).toBeLessThan(1.5);
+            expect(Math.abs(positions[index].x - positions[index - 1].x)).toBeLessThan(1.5);
         }
     });
 
@@ -42,8 +92,9 @@ describe('Stillwater Wave 5 character state', () => {
 
         for (let frame = 0; frame < 240; frame += 1) machine.update(1 / 60);
 
-        expect(machine.state.spirit.x).toBeLessThanOrEqual(-14);
-        expect(machine.state.troll.x).toBeGreaterThanOrEqual(17);
+        const { spirit, troll } = machine.state;
+        expect(boardClearance(spirit.x, spirit.y, spirit.z)).toBeGreaterThan(BOARD_MARGIN);
+        expect(boardClearance(troll.x, 1.6, troll.z)).toBeGreaterThan(BOARD_MARGIN);
         expect(machine.state.spirit.attention).toBeLessThan(1.2);
         expect(machine.state.troll.cue).toBeLessThan(1.2);
     });

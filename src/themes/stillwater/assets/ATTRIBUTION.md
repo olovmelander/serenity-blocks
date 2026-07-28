@@ -81,3 +81,29 @@ The authored figure replaces a procedural `LatheGeometry` silhouette, which is
 retained in `stillwater-characters.js` as the fallback when the GLB is
 unavailable; `authoredSpiritReady` in the character diagnostics reports which of
 the two is live.
+
+## Hero trees
+
+`hero-trees.glb` is a project-owned asset, authored procedurally in Blender 5.1
+on 2026-07-28 for this repository. No third-party geometry, texture, scan or
+generative-model output was used.
+
+| Mesh | Triangles | Role |
+| --- | ---: | --- |
+| `SWTreeA` | 360 | Distant hero anchor, forest space (-89, -14) |
+| `SWTreeB` | 360 | Distant hero anchor, forest space (91, -16) |
+| `SWTreeC` | 402 | Distant hero anchor, forest space (-108, -72) |
+
+Construction is deterministic: a nine-sided ring swept along a kinked spine with
+an elephant-foot root flare in the lowest 12%, a dominant lean, two abrupt
+direction changes, and bark ridges as real geometry whose phase varies with
+height so the outline wanders rather than fluting. Three low boughs per trunk
+reach outward before turning up — that horizontal is the species cue a cone or a
+lollipop cannot give.
+
+The three trunks are merged into a single mesh at load so they cost one draw, and
+share the existing wood material; the loader supplies the `aPhase`/`aSway` vertex
+attributes that material expects for wind, which a plain glTF export does not
+carry. A failed load leaves the procedural hero segments, which is a valid
+picture rather than a broken one — `draws.authoredHeroes` in the forest
+diagnostics reports which is live.

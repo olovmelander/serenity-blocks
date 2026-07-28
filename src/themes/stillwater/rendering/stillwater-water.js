@@ -39,6 +39,7 @@ import {
     uniform,
     uniformArray,
     uv,
+    viewportSharedTexture,
     vec2,
     vec3,
     vec4,
@@ -577,7 +578,12 @@ export function createStillwaterWater({
         vec3(0.92, 0.80, 0.58),
         vec3(0.60, 0.82, 0.78),
         moonGrain.mul(0.34).add(moonLimb.mul(0.22)),
-    ).mul(mix(float(1.28), float(0.76), moonLimb));
+    // The moon reads as the light SOURCE; the spirit has to read as the
+    // subject. With both at the top of the range the eye had two equal poles and
+    // settled on neither. Ceding the very top of the value range to her costs
+    // the moon nothing — it is still the brightest thing in the sky, and its
+    // lane on the water is a separate specular term that is untouched.
+    ).mul(mix(float(0.98), float(0.62), moonLimb));
     moonMaterial.depthWrite = false;
     moonMaterial.depthTest = false;
     moonMaterial.fog = false;
@@ -626,15 +632,26 @@ export function createStillwaterWater({
     const groundLit = clamp(abs(normalWorld.y), 0, 1);
     // The near bank must sit far below the water in value or the picture reads
     // as a canal cut through a lit lawn. Only the far bank lifts, into mist.
-    const groundNear = mix(vec3(0.002, 0.007, 0.006), vec3(0.011, 0.027, 0.017), groundGrain);
-    const groundFar = vec3(0.062, 0.112, 0.116);
+    const groundNear = mix(vec3(0.001, 0.004, 0.003), vec3(0.007, 0.018, 0.012), groundGrain);
+    const groundFar = vec3(0.088, 0.150, 0.156);
     // A second, tighter grain band plus a damp moss skirt at the waterline keep
     // the banks from reading as one smooth gradient ramp.
+    // Multi-scale detail. One frequency reads as a single repeating pattern; three
+    // octaves at different scales read as ground.
     const groundDetail = materialXNoiseVec3(positionWorld.mul(0.42), 0.5).y.mul(0.5).add(0.5);
-    const mossSkirt = smoothstep(0.2, 4.5, positionWorld.y).oneMinus();
+    const groundFine = materialXNoiseVec3(positionWorld.mul(1.7), 0.5).z.mul(0.5).add(0.5);
+    const groundCoarse = materialXNoiseVec3(positionWorld.mul(0.11), 0.5).x.mul(0.5).add(0.5);
+    // Moss by SLOPE, not by world height. The previous term was a height band,
+    // which is a horizontal contour crossing the bank's geometry bands — that is
+    // the shading seam, and no amount of softening fixes a mask whose domain is
+    // wrong. Slope is a property of the surface, so it cannot cross it.
+    const groundSlope = clamp(abs(normalWorld.y), 0, 1);
+    const mossSkirt = smoothstep(0.62, 0.97, groundSlope)
+        .mul(mix(float(0.55), float(1.25), groundCoarse));
     groundMaterial.colorNode = mix(groundFar, groundNear, groundDepth)
         .mul(mix(float(0.55), float(1.05), groundLit))
         .mul(mix(float(0.78), float(1.20), groundDetail))
+        .mul(mix(float(0.88), float(1.10), groundFine))
         .add(vec3(0.005, 0.013, 0.008).mul(mossSkirt.mul(groundDepth)))
         // Warm practical spill: the moss and roots around the spirit are lit by
         // it, which is what makes the figure read as a light source rather than
@@ -1351,7 +1368,15 @@ export function createStillwaterWater({
     const fragmentResponse = responseState
         ? makeOpticalResponseField(waterPosition, calmMask, responseShoreGate)
         : null;
-    const opticalStrength = mix(float(0.125), float(0.014), calmMask);
+    // Distance ramp on the surface detail. Far water must resolve to a single
+    // flat value: at range the ripple is below a pixel, so keeping it alive
+    // produces shimmer rather than detail — and a flat far plane is also what
+    // the Bauer read wants, since every mid-frequency gradient we leave in the
+    // distance fights the depth plates.
+    const surfaceViewDistance = length(positionWorld.sub(cameraPosition));
+    const detailNear = smoothstep(12, 46, surfaceViewDistance).oneMinus();
+    const opticalStrength = mix(float(0.125), float(0.014), calmMask)
+        .mul(float(0.18).add(detailNear.mul(0.82)));
     const opticalSlope = clamp(
         flowField
             .mul(opticalStrength)
@@ -1384,6 +1409,17 @@ export function createStillwaterWater({
         .mul(float(1).sub(calmMask.mul(0.90)))
         .mul(smoothstep(0.08, 0.78, shoreDepth));
     waterColor = waterColor.add(vec3(0.16, 0.36, 0.31).mul(activeRipple.mul(0.17)));
+
+    // Shore-weighted refraction. viewportSharedTexture is r181's screen-colour
+    // source; without a depth prepass it can bleed foreground silhouettes, so
+    // the offset stays small and the weight decays fast with depth.
+    const refractionDepth = clamp(shoreDepth.mul(6), 0, 6);
+    const refractionWeight = pow(float(2.718), refractionDepth.mul(-0.9)).mul(0.55);
+    const refractionOffset = flowField.mul(0.022).mul(refractionWeight);
+    const refracted = viewportSharedTexture(
+        screenUV.add(refractionOffset).clamp(vec2(0.002), vec2(0.998)),
+    ).rgb;
+    waterColor = mix(waterColor, waterColor.mul(0.55).add(refracted.mul(0.45)), refractionWeight);
 
     // Practical reflections. A still lake returns a light source as a long
     // column stretched along the view axis, broken up by the surface ripple —
@@ -1441,6 +1477,20 @@ export function createStillwaterWater({
     // Ripple breakup dominates: a still-lake reflection is a chain of glints,
     // so the flat base term stays low or the column reads as painted haze.
     const columnBreak = float(0.16).add(activeRipple.mul(3.2)).add(fresnel.mul(0.42));
+    // Shoreline foam. Two bands: a tight intersection line where the water meets
+    // the bank, and a broader swash behind it. Never white — foam at night is a
+    // pale sage, and a white line would become a second bright note competing
+    // with the spirit.
+    const foamNoise = materialXNoiseVec3(vec3(waterPosition.mul(1.6), uTime.mul(0.08)), 0.5)
+        .x.mul(0.5).add(0.5);
+    const shoreProximity = inward.oneMinus();
+    const intersection = smoothstep(0.86, 0.995, shoreProximity);
+    const swash = smoothstep(0.62, 0.90, shoreProximity)
+        .mul(smoothstep(0.90, 0.995, shoreProximity).oneMinus());
+    const foam = intersection.mul(0.55).add(swash.mul(0.30))
+        .mul(mix(float(0.45), float(1.0), foamNoise));
+    waterColor = waterColor.add(vec3(0.34, 0.42, 0.36).mul(foam.mul(0.42)));
+
     waterColor = waterColor
         .add(SPIRIT_WARM.mul(spiritColumn.mul(columnBreak).mul(0.30)))
         .add(LANTERN_AMBER.mul(lanternColumn.mul(columnBreak).mul(0.34)))
@@ -1506,14 +1556,47 @@ export function createStillwaterWater({
             0.01,
             0.10,
         );
-        const reflected = reflectionNode.sample(reflectionUv).blur(reflectionBlur).rgb;
+        // Vertical smear. A single tap reflects the spirit's head as a hard
+        // octagonal disc — the reflector's own resolution made legible, floating
+        // on the lake with no figure under it. Water does not do that: a bright
+        // source on rippled water elongates into a shimmering column. Two extra
+        // taps along screen-Y both fix the artefact and give the mirror the one
+        // motion cue it was missing, for the price of two fetches.
+        const smearOffset = vec2(0, 0.019);
+        const smearBlur = reflectionBlur.mul(2.4);
+        const reflectedRaw = reflectionNode.sample(reflectionUv).blur(reflectionBlur).rgb
+            .mul(0.52)
+            .add(reflectionNode.sample(reflectionUv.add(smearOffset)).blur(smearBlur).rgb.mul(0.24))
+            .add(reflectionNode.sample(reflectionUv.sub(smearOffset)).blur(smearBlur).rgb.mul(0.24));
+        // Highlight knee. The spirit's head is the brightest object in the scene
+        // by an order of magnitude, and an unclamped mirror hands the lake a
+        // second one — a hot white lozenge that reads as a lantern floating on
+        // the water rather than as her light in it. Compressing only the top of
+        // the reflected range leaves the treeline untouched; the moon lane is a
+        // separate specular term and is not affected.
+        const reflectedHot = smoothstep(0.30, 1.30, dot(reflectedRaw, vec3(0.2126, 0.7152, 0.0722)));
+        const reflectedTamed = reflectedRaw.mul(mix(float(1), float(0.38), reflectedHot));
+        // Painted-mirror transform: pull toward luminance, darken, and lift the
+        // toe so the reflection reads as pigment sitting in dark water rather
+        // than as a second copy of the world.
+        const reflectedLuma = dot(reflectedTamed, vec3(0.2126, 0.7152, 0.0722));
+        // Painted, but PRESENT. The previous 0.62 luminance pull and 0.66
+        // multiply were tuned to stop the lake reading as a mirror and
+        // overshot into it reading as nothing — the treeline disappeared from
+        // the largest single area of the frame. Keep the desaturation and the
+        // toe lift; give back the value.
+        const reflected = mix(
+            reflectedLuma.mul(vec3(0.62, 0.86, 0.82)),
+            reflectedTamed,
+            0.88,
+        ).mul(1.02).add(vec3(0.006, 0.013, 0.015));
         // Fresnel alone bottoms the near field out at ~6% reflection, because the
         // camera looks almost straight down at the water closest to it. That is
         // physically reasonable for a perfect dielectric but it made the troll
         // and spirit reflections mathematically present and visually invisible.
         // A raised floor keeps the characters readable in the mirror without
         // flattening the grazing-angle falloff that sells the far water.
-        const reflectionWeight = clamp(fresnel.mul(0.95).add(0.21), 0.20, 0.88)
+        const reflectionWeight = clamp(fresnel.mul(0.95).add(0.42), 0.42, 0.94)
             .mul(float(1).sub(shoreBand.mul(0.28)));
         waterColor = mix(waterColor, reflected.mul(vec3(0.86, 0.96, 0.92)), reflectionWeight);
     } else if (reflectionMode === 'analytic') {

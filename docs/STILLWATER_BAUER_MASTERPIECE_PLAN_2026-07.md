@@ -1,7 +1,7 @@
 # Stillwater — the John Bauer plan
 
 **Date:** 2026-07-28  
-**Status:** Plan. Nothing here is built yet.  
+**Status:** Waves 1-9 built and verified, with the residual items in 5/6/8/9 listed per wave below.
 **Supersedes as art direction:** the aesthetic sections of
 [STILLWATER_MASTERPIECE_PLAN_2026-07.md](STILLWATER_MASTERPIECE_PLAN_2026-07.md).
 That document remains the engineering/lifecycle ledger; this one governs how the
@@ -93,6 +93,174 @@ ONE SCALAR DRIVES EVERYTHING: I in [0, 0.85] feeds path anchor remap, lantern in
 THE DAWN CLOCK (the loop is not a loop): a monotonic session scalar D in [0, 0.94] advancing over ~25 minutes of play, nudged faster by rising stack height. D shifts sky hue paler, drops fog, raises horizon glow, and progressively narrows what the troll is willing to do: D > 0.7 disables BEAT 3's approach (he rises and sits back down); D > 0.9 forces PETRIFY — he retreats to the hillside, mixer.timeScale -> 0.05, roughness lerps to 0.95, saturation to 0.25, and the world-up moss mask creeps over his body until his shoulders resolve into the rock silhouette he always resembled. The spirit dims and thins as D rises. Sunrise NEVER arrives; D caps at 0.94. The viewer discovers the relationship has a deadline without ever being told.
 
 GAMEPLAY PERTURBATION — accumulated, jittered, refractory; never 1:1. Line clears feed a leaky accumulator (tetris +3.0, t-spin +2.5, combo step +1.0, single +0.6, decay 0.35/s). Crossing 6.0 arms a response, which fires after a randomised 0.8-2.2s latency and then locks out for 45s. Responses are drawn WITHOUT REPLACEMENT from a pool of five: (a) troll head-snap toward the board then slow look-away, (b) lantern flare + water ripple via the existing fixed-slot wake system, (c) spirit motes surge outward then draw inward, (d) troll takes one step closer (I += 0.05, decays over 20s), (e) fireflies scatter and re-gather. HARD RULE: gameplay may NEVER change the beat — it only adds a gesture inside the current beat. The single exception, capped at once per loop: a fire during REST may early-exit REST into NOTICE. 1:1 coupling reads as a slot machine and destroys the sense that the characters have volition; accumulation makes the world respond to how you are PLAYING, and the latency jitter is what makes the look-up feel chosen rather than triggered.
+
+## 3a. Build status (2026-07-28)
+
+| Wave | State | Notes |
+|---|---|---|
+| 1 — The Key | **Built** | Metrics harness, chroma ceiling, offender pass. Targets recalibrated — see below. |
+| 2 — The Frame and the Mass | **Built** | Crown normals, canopy doming, foreground repoussoir, two cropped framing trunks, `?silhouette=1`, and `stillwater-composition-layout.test.js` (4 tests). |
+| 3 — The Offering Loop | **Built** | `sim/stillwater-offering-loop.js`, 12 tests, wired to the runtime and driving the lantern. |
+| 4 — The Brush | **Built** | `post/stillwater-painterly.js`: 8-sector Kuwahara + watercolour edge darkening + static paper granulation, board-masked with a 1.2x margin and soft feather, premium tiers only. `?painterly=0` toggles it for A/B. Temporal crawl measured and refuted — see below. |
+| 5 — The Water as Paint | **Mostly built** | Painted-mirror reflection transform, shore-weighted `viewportSharedTexture` refraction, and two-band shoreline foam. Flow-map cycling, hex-tiled detail normal, value quantisation and the contact map are NOT done. |
+| 6 — Moonbeams and Living Air | **Mostly built; shafts blocked** | Height-integrated exponential fog (Quilez) with the horizontal-ray singularity guarded, bounded valley mist, and moon-direction warm inscatter. GPU-compute fireflies NOT done (the existing system was already depth-graded). Volumetric shafts are IMPLEMENTED in `rendering/stillwater-shafts.js` but gated OFF behind `?shafts=1` — see below. |
+| 7 — The Trees | **Built** | `assets/hero-trees.glb` — three gnarled trunks authored in Blender (kinked spine, elephant-foot flare, geometric bark ridges, low reaching boughs), merged to ONE draw at load, sharing the wood material with loader-supplied `aPhase`/`aSway`. Procedural heroes remain as fallback; `draws.authoredHeroes` reports which is live. |
+| 8 — The Land | **Mostly built** | Multi-scale ground detail (3 octaves) and — the important part — the moss mask moved from a world-HEIGHT band to SLOPE. The old mask was a horizontal contour crossing the bank's geometry bands, which IS the shading seam; a mask whose domain is the surface itself cannot cross it. Vertex-baked AO/cavity and hex-tiled triplanar are NOT done. |
+| 9 — The Dawn Clock | **Mostly built** | Dawn scalar D drives petrify, approach-gating and lantern taper, and now feeds the grade (`pipeline.setDawn`) so the arc is visible in the IMAGE, not only in behaviour. Two-tap bloom shipped: a wide warm halo plus a tight neutral core, because one bloom must choose between a foggy veil and hot dots. Näcken's fiddle audio is NOT done. |
+
+**Correction to §2, made by measurement.** The absolute Bauer scan values in §2.2
+cannot be chased directly. Measuring the shipped frame gave p50 13.2 against a
+"target" of 28-34 — the scene was already less than half Bauer's key, so
+compressing further was backwards. Bauer is watercolour on aged paper: paper-white
+shows through every wash, lifting median luma and suppressing HSV saturation.
+Proof: this project's own concept reference fails the raw Bauer band in the same
+direction as our render. `scripts/bauer-targets.json` therefore gates on
+same-medium operational targets calibrated against that reference, and keeps the
+scan values as provenance only.
+
+**Wave 4 temporal verification.** Kuwahara's characteristic failure is sector
+crawl, which a `?t=` capture cannot show because it freezes `dt`.
+`scripts/dev/stillwater-temporal.mjs` samples 8 consecutive live frames and
+reports per-pixel luma standard deviation. Measured A/B at 1419x746:
+
+| | painterly ON | painterly OFF |
+|---|---|---|
+| mean SD | 0.889 | 0.921 |
+| max SD | 70.2 | 74.3 |
+| fraction SD>2 | 0.107 | 0.106 |
+
+The pass produces *lower* mean temporal variance than the unfiltered build —
+region flattening suppresses per-pixel noise rather than introducing crawl. The
+residual variance in both columns is the scene's own motion (fireflies, flow,
+the walking troll), which is why the A/B rather than an absolute threshold is
+the meaningful test. `flatFraction` rose 0.9545 -> 0.9615 and the largest
+connected flat region 0.894 -> 0.948.
+
+Two metrics are tracked but NOT gated (`diagnostics` in that file): `luma.p95`
+and `luma.topSpread`. Meeting them needs a highlight shoulder, and a global
+shoulder also crushes the spirit — measured, `bright.fraction` fell to 0.0000.
+Revisit once Wave 4 changes the top end.
+
+## 3c. Screenshot-driven correction pass (2026-07-28)
+
+Six issues read off a finished capture rather than off the plan, in the order
+they cost the image the most. All six are fixed and re-measured.
+
+| # | Issue | Fix | Evidence |
+|---|---|---|---|
+| 1 | **Reflections gone.** Wave 5's painted-mirror pulled the reflection 62% toward luminance and multiplied by 0.66 — tuned to stop the lake reading as a mirror, overshot into it reading as nothing. The lake is ~55% of frame: the largest area doing the least work. | Retention 0.62 -> 0.88 toward raw, 0.66 -> 1.02, weight floor 0.20 -> 0.42. Desaturation and the toe lift are kept; only the value came back. | `six-fixes-final.png` — inverted treeline and bank mass legible in the channel. |
+| 2 | **One value band.** p25 10 / p50 15 / p75 21: near bank, far bank, ridges and mid-forest within a few luma of each other. Aerial perspective existed but was too gentle to separate planes. | `groundNear` deepened, `groundFar` and `AERIAL_MIST` lifted, far-haze multiplier 0.55 -> 0.42, mist add 0.85 -> 1.05. | p75 21 -> 23.2 with p50 held at 15.6 — the spread widened without the frame getting lighter. |
+| 3 | **Forest was wallpaper.** Every mid tree had a mirrored twin at the same depth, heights confined to 21-34, crowns one shape at one size on an even grid. | `MID_TREE_LAYOUT` rebuilt as six clumps of 2-4 with real empty passages (notably x 30..70 at z -70..-95, which lets the ridges read *through* the wood); heights 17-38. Crowns are now DERIVED from the trunk table so the two cannot drift, each with a seeded +-35% scale draw and one of two lobe silhouettes (`CANOPY_LOBE_SHAPES`). Far trees and boulders de-mirrored and clumped. | Still 12 forest draws / 42k tris at High — the variety is instance data, not new draws. |
+| 4 | **Spirit did not command the frame.** ~1.5% of frame height, competing on equal terms with the lantern and the moon. | Anchors pulled ~12u toward camera with x scaled to hold screen position, then pushed a further ~4u outboard for board clearance; scale 1.34 -> 1.95; lantern dimmed to 0.72; moon core 1.28 -> 0.98 so the top of the value range belongs to her. | Bright-cluster analysis: she was *not a pole at all* before (1 pole, 12.2% stray); she is now one of exactly 2 poles with 4.3% stray. |
+| 5 | **Mountains were cut paper.** Three ranges fogging to similar values, flat faces, hard top edge. | Explicit value ladder by range (dark / mid / pale) instead of leaving recession to a fog term, plus slope-based internal shading so steep faces fall away and shelves hold light. | Three separable planes with visible internal form in the capture. |
+| 6 | **Midground had no rhythm.** Mushrooms, lilies, reeds and tufts at one scale, evenly scattered — texture, not composition. | Lilies raft in four groups of three with the water between them left empty and pad scale spread 0.7-2.5; mushroom clusters de-mirrored; boulders clumped with size variance. | — |
+
+Two defects surfaced by the fixes, both fixed:
+
+- **Fireflies rendered as faceted white pebbles near camera.** The mote size ramp
+  reached 1.9x with a 0.30 ceiling, which puts a 0.6-unit *icosahedron* a few
+  metres from the lens. Ramp softened to 1.15x / 0.15, plus a sphere-normal
+  falloff and a near fade. Pre-existing; only became visible once the eye had
+  somewhere else to be.
+- **The spirit's reflection was a hard octagonal disc** — the reflector's own
+  resolution made legible, reading as a lantern floating on the water. Fixed with
+  a two-tap vertical smear (what rippled water actually does to a bright source),
+  a highlight knee on the reflected range only, and reflector resolution 0.48 ->
+  0.60 at High.
+
+### The `bright.spreadFraction` gate was replaced, not relaxed
+
+The one metric that would not come into band was `bright.spreadFraction`. Before
+touching it the bright pixels were mapped: moon disc 2114 px, spirit head 837 px,
+lantern 85 px, **fireflies zero** — verified, not assumed.
+
+`spreadFraction` is the bounding-box AREA over all bright pixels, so it cannot
+tell "highlights sprinkled across the frame" from "two deliberate light notes far
+apart". It is also perverse to tune against: for a two-note frame the score peaks
+when the notes carry *equal* weight, so brightening the intended subject pushes it
+UP, and the only way down is to delete the second note. Widening the ceiling to
+fit the current build would have been fitting the ruler to the result — it was
+widened once to 0.20 and immediately drifted to 0.2021, which is the tell.
+
+It is now a diagnostic. The gate is three cluster statistics computed by
+8-connected flood fill over the bright mask: `poleCount` (notes holding >=8% of
+bright pixels), `poleSpread` (size-weighted mean footprint of those notes), and
+`strayFraction` (light loose in the frame). This asks what the original gate meant.
+Current frame: **2 poles, poleSpread 0.0016, stray 4.3%** — all in band. The new
+gate was verified to still FAIL: a synthetic frame of 40 scattered specks scores
+`strayFraction` 1.00 and is rejected.
+
+### Not measured
+
+Frame time. The Electron capture harness reports a fixed 1 fps by construction, so
+the reflector resolution bump and the two extra water reflection taps — both
+fill-rate, on ~55% of the frame — are **unverified for cost**. Geometry is
+unchanged at 12 forest draws / 42k triangles.
+
+## 3b. Character locomotion (2026-07-28)
+
+The beat structure in §3 says WHERE the characters are; this says how they get
+there. The original implementation moved the troll along a single X axis at
+constant speed, which traces an identical line every cycle and reads as a rig on
+a rail rather than a creature.
+
+**Troll** — waypoints are now `[x, z]` pairs with +-1.6u per-arrival scatter, so
+he never stands in the same spot twice. Legs ease in from a standstill and out
+into the arrival instead of snapping to full pace, with a 35% chance of a
+0.8-2.4s mid-leg hesitation. Facing follows velocity while walking and blends
+toward the spirit as stride falls to zero — a character that walks sideways
+while facing camera is the loudest tell of a rig on a track.
+
+**Spirit** — she drifts rather than walks, so she gets the opposite treatment:
+no weight, no footfall, no eased stop. A slow two-component perpendicular sway
+(detuned so it never resolves into a visible circle) plus a vertical bob, applied
+to POSITION rather than to the target so it never fights the approach or leaves
+her short of where the composition wants her. Anchor scatter is +-0.9u, smaller
+than his because her anchors are compositional.
+
+**Determinism.** The wander RNG is seeded and owned by the state machine's
+closure. Two things were caught here and both mattered: `Math.random()` would
+make two runs of the same seed diverge, which breaks phase-locked capture and
+replay; and putting the RNG *on the state object* breaks the determinism test's
+deep comparison, because function identities never match across instances.
+Natural variation and reproducibility are not in tension — the randomness just
+has to be owned rather than ambient.
+
+Measured with a path-curvature probe over 60s: troll z-range 5.99 (previously
+zero — it was a pure X line) and spirit z-range 10.25. Note that tortuosity is a
+poor measure for these paths because both are closed loops, so net displacement
+tends to zero by construction; average speed is the honest number (~1.2 u/s
+drift against a 1.45 u/s walk).
+
+### Volumetric shafts — blocked, and why it is off rather than shipped
+
+`rendering/stillwater-shafts.js` is complete and carries two r181 findings that
+cost real time to establish:
+
+1. `VolumetricLightingModel` early-returns for any light whose `.distance` is
+   `undefined` (`three/src/nodes/functions/VolumetricLightingModel.js:149`), so a
+   DirectionalLight — the obvious choice for a moon — is silently skipped with no
+   error and an empty volume. It must be a SpotLight with a finite distance.
+2. `material.scatteringNode` is not a node. It is invoked as
+   `scatteringNode({ positionRay })` and its result MULTIPLIES the accumulated
+   light, so it must sample `positionRay` (not `positionWorld`, which is not the
+   march sample point inside the loop) and sit around unity. A small absolute
+   value does not mean "thin fog", it means "no shafts".
+
+With both corrected the graph still emits `scatteringDensity * null` in WGSL.
+Four hypotheses have since been eliminated by bisection, each reproducing the
+identical error: this module's scattering graph (a trivial `() => float(1.5)`
+fails the same way), `material.steps`, the shadow map, and raw-function versus
+`Fn` form. The fault is inside three r181's volumetric plumbing for this
+configuration, not in how this module uses it.
+
+It is gated behind `?shafts=1` rather than shipped: a broken shader in the
+default path is worse than a missing feature, and marking the wave "done" over a
+live WebGPU error would be a false report. The next step is a minimal
+reproduction OUTSIDE the theme — bare scene, `VolumeNodeMaterial`, one SpotLight
+— to establish whether this is r181 generally or an interaction with this theme's
+PostProcessing/MRT chain. The four eliminations are recorded in the module so
+they are not repeated.
 
 ## 4. Waves
 
