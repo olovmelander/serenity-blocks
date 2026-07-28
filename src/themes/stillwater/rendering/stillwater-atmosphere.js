@@ -13,19 +13,22 @@ import {
     abs,
     attribute,
     cameraPosition,
+    dot,
     clamp,
     color,
     float,
     fog,
     length,
     linearDepth,
+    max,
     mix,
     mx_fractal_noise_float as materialXFractalNoise,
+    normalWorld,
     positionGeometry,
     positionLocal,
+    normalize,
     positionWorld,
     pow,
-    rangeFogFactor,
     sin,
     smoothstep,
     uniform,
@@ -201,14 +204,42 @@ export function createStillwaterAtmosphere({
 
     // Colored aerial perspective: dense near the lake bed, lifted toward
     // moon-cyan in the canopy, and always ordered from near to far.
-    const distanceFactor = rangeFogFactor(34, 230);
-    const lowHeightBand = smoothstep(1.5, 24, positionWorld.y).oneMinus();
+    // Height-integrated exponential fog (Quilez). Integrating density along the
+    // ray rather than sampling it at the fragment is what makes fog POOL in the
+    // valley instead of hanging as a uniform veil over everything — and pooling
+    // is what produces stacked depth planes rather than one smooth Z gradient.
+    const viewRay = positionWorld.sub(cameraPosition);
+    const rayDistance = length(viewRay);
+    const rayDirY = viewRay.y.div(max(rayDistance, float(0.001)));
+    // Guard the horizontal-ray singularity; without this a ray with y~0
+    // divides by zero and the whole frame flashes.
+    const safeRayY = mix(rayDirY, float(0.0001), rayDirY.abs().lessThan(0.0001));
+    const FOG_DENSITY = 0.030;
+    const FOG_FALLOFF = 0.055;
+    const heightTerm = float(FOG_DENSITY)
+        .mul(pow(float(Math.E), cameraPosition.y.negate().mul(FOG_FALLOFF)))
+        .div(FOG_FALLOFF);
+    const integrated = heightTerm.mul(
+        float(1).sub(pow(float(Math.E), safeRayY.negate().mul(FOG_FALLOFF).mul(rayDistance))),
+    ).div(safeRayY);
+    const distanceFactor = float(1).sub(pow(float(Math.E), integrated.negate().abs())).clamp();
+
+    // Bounded valley mist: dense low and near the channel centre, absent on the
+    // slopes. Mist that sits IN the valley creates layers; mist over everything
+    // flattens the frame.
+    const valleyMist = smoothstep(-1.0, 6.0, positionWorld.y).oneMinus()
+        .mul(smoothstep(10.0, 34.0, positionWorld.x.abs()).oneMinus())
+        .mul(materialXFractalNoise(positionWorld.mul(0.035).add(vec3(0, 0, uTime.mul(0.012))), 2, 2.0, 0.5)
+            .mul(0.5).add(0.6));
     const fogFactor = distanceFactor
-        .mul(float(0.28).add(lowHeightBand.mul(0.34)))
-        .add(distanceFactor.pow(2).mul(0.07))
+        .add(valleyMist.mul(distanceFactor).mul(0.55))
         .clamp();
+    // Warm inscatter toward the moon, cool away from it: the cheapest way to
+    // make fog feel lit rather than painted on.
+    const moonward = pow(max(dot(normalize(viewRay), normalize(vec3(0.42, 0.30, -0.85))), float(0)), 6);
     const highColorMix = smoothstep(2, 48, positionWorld.y).mul(0.26);
-    const fogColorNode = mix(color(FOG_SAGE), color(FOG_CYAN), highColorMix);
+    const fogColorNode = mix(color(FOG_SAGE), color(FOG_CYAN), highColorMix)
+        .add(vec3(0.10, 0.085, 0.055).mul(moonward.mul(0.7)));
     const atmosphereFogNode = fog(fogColorNode, fogFactor);
     scene.fogNode = atmosphereFogNode;
 
@@ -254,12 +285,17 @@ export function createStillwaterAtmosphere({
             0,
             1,
         );
+        // The near multiplier used to reach 1.9x with a 0.30 ceiling, which put a
+        // 0.6-unit icosahedron a few metres from the lens: a firefly rendered as a
+        // faceted white pebble floating over the lake. Motes are distant sparks by
+        // definition, so the size ramp is gentler and the ceiling is well under
+        // the point where the 20-face silhouette becomes legible.
         const moteSize = clamp(
             baseSize
                 .mul(float(0.82).add(shimmer.mul(0.24)))
-                .mul(mix(float(1.9), float(0.42), moteDepth)),
+                .mul(mix(float(1.15), float(0.42), moteDepth)),
             0.018,
-            0.30,
+            0.15,
         );
         moteMaterial.positionNode = positionGeometry
             .mul(moteSize)
@@ -276,9 +312,19 @@ export function createStillwaterAtmosphere({
             vec3(MOTE_AMBER.r, MOTE_AMBER.g, MOTE_AMBER.b),
             warmth.mul(0.88).mul(moteDepth.oneMinus()),
         ).mul(float(0.52).add(firefly.mul(0.55)));
+        // A sphere-normal falloff turns the flat-shaded icosahedron into a soft
+        // round glow, and a near fade retires any mote that wanders into the
+        // camera's lap rather than letting it become the brightest thing in frame.
+        const moteRound = clamp(dot(
+            normalize(normalWorld),
+            normalize(cameraPosition.sub(positionWorld)),
+        ), 0, 1).pow(0.75);
+        const moteNearFade = smoothstep(0.02, 0.11, moteDepth);
         moteMaterial.opacityNode = shimmer
             .mul(depthFade)
             .mul(mix(float(0.86), float(0.30), moteDepth))
+            .mul(moteRound)
+            .mul(moteNearFade)
             .clamp();
         moteMaterial.fog = true;
     }

@@ -210,7 +210,11 @@ describe('Stillwater Wave 6 atmosphere and post contracts', () => {
     it('keeps atmosphere TSL-only, bounded, depth-aware, and allocation-free per frame', () => {
         expect(atmosphereSource).toContain("from 'three/webgpu'");
         expect(atmosphereSource).toContain("from 'three/tsl'");
-        expect(atmosphereSource).toContain('rangeFogFactor(34, 230)');
+        expect(atmosphereSource).toContain(// Wave 6 replaced the range-fog approximation with height-integrated
+        // exponential fog (Quilez), which is what makes fog POOL in the valley
+        // rather than hang as a uniform veil.
+            'const integrated =',
+        );
         expect(atmosphereSource).toContain('positionWorld.y');
         expect(atmosphereSource).toContain(
             'class StillwaterViewportDepthTextureNode extends THREE.ViewportDepthTextureNode',

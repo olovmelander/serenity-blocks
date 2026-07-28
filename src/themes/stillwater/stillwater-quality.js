@@ -95,7 +95,7 @@ const PROFILES = {
     },
     Ultra: {
         maxPixelRatio: 1.65,
-        reflectionScale: 0.48,
+        reflectionScale: 0.60,
         bloom: true,
         bloomScale: 0.69,
         lutSize: 16,
@@ -114,7 +114,7 @@ const PROFILES = {
     },
     Extreme: {
         maxPixelRatio: 1.8,
-        reflectionScale: 0.5,
+        reflectionScale: 0.66,
         bloom: true,
         bloomScale: 0.72,
         lutSize: 16,

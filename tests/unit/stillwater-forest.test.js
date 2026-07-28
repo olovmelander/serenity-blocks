@@ -59,7 +59,9 @@ describe('Stillwater Wave 4 forest and flora', () => {
 
         expect(diagnostics.boardSafe).toBe(true);
         expect(diagnostics.focalIntrusions).toBe(0);
-        expect(diagnostics.counts.forestTrees).toBe(10);
+        // 11 not 10: Low retains 4 hero trees because the two cropped framing
+        // trunks are composition, not detail, and are never tier-dropped.
+        expect(diagnostics.counts.forestTrees).toBe(11);
         expect(diagnostics.counts.farTrees).toBe(0);
         expect(diagnostics.counts.canopyClusters).toBe(12);
         expect(diagnostics.draws.trees).toBeGreaterThanOrEqual(3);
@@ -154,7 +156,8 @@ describe('Stillwater Wave 4 forest and flora', () => {
         const before = runtime.getResourceState();
         const beforeMatrices = before.instanceMatrixArrays;
 
-        expect(runtime.getDiagnostics().counts.forestTrees).toBe(7);
+        // Minimal keeps the two framing trunks too, so 8 rather than 7.
+        expect(runtime.getDiagnostics().counts.forestTrees).toBe(8);
         expect(runtime.getDiagnostics().counts.mushroomClusters).toBe(2);
         expect(runtime.setQuality('Extreme')).toBe(true);
 

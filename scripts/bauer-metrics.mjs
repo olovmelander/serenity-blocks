@@ -112,19 +112,28 @@ function lumaField({
     return luma;
 }
 
+/**
+ * HSV saturation, measured only over pixels bright enough for chroma to mean
+ * anything. Near black the metric is ill-conditioned — a pixel of (0, 3, 1)
+ * scores a full 1.0 — so in a dark night frame the shadow floor dominates the
+ * distribution and the number stops describing the picture anyone sees.
+ * Everything at or below `lumaFloor` is excluded rather than clamped, so the
+ * result is "chroma of the visible image".
+ */
 function saturationField({
     width, height, channels, data,
-}) {
-    const sat = new Float32Array(width * height);
-    for (let i = 0, p = 0; i < sat.length; i += 1, p += channels) {
+}, luma, lumaFloor) {
+    const sat = [];
+    for (let i = 0, p = 0; i < width * height; i += 1, p += channels) {
+        if (luma[i] < lumaFloor) continue;
         const r = data[p];
         const g = data[p + 1];
         const b = data[p + 2];
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
-        sat[i] = max === 0 ? 0 : (max - min) / max;
+        sat.push(max === 0 ? 0 : (max - min) / max);
     }
-    return sat;
+    return Float32Array.from(sat);
 }
 
 function percentile(sorted, q) {
@@ -187,7 +196,20 @@ function largestFlatRegion(grad, width, height, threshold) {
     return best / (width * height);
 }
 
-/** Where the bright pixels are — the whole composition rests on this being ONE place. */
+/**
+ * Where the bright pixels are.
+ *
+ * `spreadFraction` — the bounding-box area over ALL bright pixels — was the
+ * original gate, and it conflates two things a painter would never confuse:
+ * a frame with highlights sprinkled everywhere, and a frame with two deliberate
+ * light notes that happen to be far apart. Worse, it is a trap to tune against:
+ * for a two-note composition the score peaks when the notes carry equal weight,
+ * so making the intended subject brighter can push it UP, and the only way down
+ * is to abandon the second note. It is kept as a diagnostic.
+ *
+ * The gate is now the question actually worth asking: how many distinct notes
+ * are there, is each one compact, and how much light is loose in the frame?
+ */
 function brightRegion(luma, width, height, threshold) {
     let count = 0;
     let sumX = 0;
@@ -196,8 +218,10 @@ function brightRegion(luma, width, height, threshold) {
     let minY = height;
     let maxX = -1;
     let maxY = -1;
+    const mask = new Uint8Array(width * height);
     for (let i = 0; i < luma.length; i += 1) {
         if (luma[i] <= threshold) continue;
+        mask[i] = 1;
         const x = i % width;
         const y = (i / width) | 0;
         count += 1;
@@ -210,28 +234,93 @@ function brightRegion(luma, width, height, threshold) {
     }
     if (!count) {
         return {
-            fraction: 0, centroid: null, bbox: null, spreadFraction: 0,
+            fraction: 0,
+            centroid: null,
+            bbox: null,
+            spreadFraction: 0,
+            poleCount: 0,
+            poleSpread: 0,
+            strayFraction: 0,
         };
     }
     const bbox = {
         x0: minX / width, y0: minY / height, x1: maxX / width, y1: maxY / height,
     };
+
+    // 8-connected clustering. Diagonal connectivity matters: a bloom halo is
+    // dithered at its edge and 4-connectivity shatters a single glow into dozens
+    // of fragments, which would read as "scattered" when it is one note.
+    const seen = new Uint8Array(width * height);
+    const queue = new Int32Array(count);
+    const clusters = [];
+    for (let start = 0; start < mask.length; start += 1) {
+        if (!mask[start] || seen[start]) continue;
+        let head = 0;
+        let tail = 0;
+        queue[tail += 1] = start;
+        seen[start] = 1;
+        let size = 0;
+        let cx0 = width;
+        let cy0 = height;
+        let cx1 = -1;
+        let cy1 = -1;
+        while (head < tail) {
+            const i = queue[head += 1];
+            size += 1;
+            const x = i % width;
+            const y = (i / width) | 0;
+            if (x < cx0) cx0 = x;
+            if (y < cy0) cy0 = y;
+            if (x > cx1) cx1 = x;
+            if (y > cy1) cy1 = y;
+            for (let dy = -1; dy <= 1; dy += 1) {
+                const ny = y + dy;
+                if (ny < 0 || ny >= height) continue;
+                for (let dx = -1; dx <= 1; dx += 1) {
+                    const nx = x + dx;
+                    if (nx < 0 || nx >= width) continue;
+                    const n = ny * width + nx;
+                    if (!mask[n] || seen[n]) continue;
+                    seen[n] = 1;
+                    queue[tail += 1] = n;
+                }
+            }
+        }
+        clusters.push({
+            size,
+            spread: ((cx1 - cx0 + 1) / width) * ((cy1 - cy0 + 1) / height),
+        });
+    }
+    clusters.sort((a, b) => b.size - a.size);
+    // A "pole" is a note the eye actually reads: at least 8% of the frame's
+    // bright pixels. Everything under that is a stray spark.
+    const poles = clusters.filter((cluster) => cluster.size >= count * 0.08);
+    const poleMass = poles.reduce((sum, cluster) => sum + cluster.size, 0);
     return {
         fraction: count / (width * height),
         centroid: { x: (sumX / count) / width, y: (sumY / count) / height },
         bbox,
-        // How much of the frame the bright pixels are scattered across. A single
-        // focal note gives a small box; competing highlights give a large one.
         spreadFraction: (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0),
+        poleCount: poles.length,
+        // Size-weighted mean footprint of the notes themselves. Bauer's light
+        // notes are small and hard-edged; a soft wash over a quarter of the
+        // frame is a different painting.
+        poleSpread: poleMass
+            ? poles.reduce((sum, c) => sum + c.spread * c.size, 0) / poleMass
+            : 0,
+        // Light loose in the frame — the thing the old gate was reaching for.
+        strayFraction: (count - poleMass) / count,
     };
 }
 
 export function measureCapture(file, options = {}) {
     const flatThreshold = options.flatThreshold ?? 4;
     const brightThreshold = options.brightThreshold ?? 80;
+    // Below this luma, HSV saturation is numerical noise, not colour.
+    const saturationLumaFloor = options.saturationLumaFloor ?? 6;
     const image = decodePng(file);
     const luma = lumaField(image);
-    const sat = saturationField(image);
+    const sat = saturationField(image, luma, saturationLumaFloor);
     const grad = gradientField(luma, image.width, image.height);
 
     const [p5, p25, p50, p75, p95] = percentiles(luma, [0.05, 0.25, 0.5, 0.75, 0.95]);
@@ -255,7 +344,7 @@ export function measureCapture(file, options = {}) {
             // midtones, so nothing except the focal note escapes upward.
             topSpread: p95 - p75,
         },
-        saturation: { p50: satP50, p99: satP99 },
+        saturation: { p50: satP50, p99: satP99, sampled: sat.length / (image.width * image.height) },
         flatFraction: flatCount / grad.length,
         largestFlatFraction: largestFlatRegion(grad, image.width, image.height, flatThreshold),
         bright: brightRegion(luma, image.width, image.height, brightThreshold),
@@ -274,7 +363,9 @@ const FALLBACK_TARGETS = {
     flatFraction: { min: 0.45 },
     largestFlatFraction: { min: 0.18 },
     'bright.fraction': { max: 0.05 },
-    'bright.spreadFraction': { max: 0.20 },
+    'bright.poleCount': { max: 3 },
+    'bright.poleSpread': { max: 0.02 },
+    'bright.strayFraction': { max: 0.15 },
 };
 
 function readPath(object, dotted) {
@@ -343,7 +434,11 @@ function main(argv) {
                 ? `  centroid ${formatNumber(bright.centroid.x)},${formatNumber(bright.centroid.y)}`
                 : '';
             process.stdout.write(
-                `  L>80  frac ${formatNumber(bright.fraction)}  spread ${formatNumber(bright.spreadFraction)}`
+                `  L>80  frac ${formatNumber(bright.fraction)}`
+                + `  poles ${bright.poleCount}`
+                + `  poleSpread ${formatNumber(bright.poleSpread)}`
+                + `  stray ${formatNumber(bright.strayFraction)}`
+                + `  bboxSpread ${formatNumber(bright.spreadFraction)}`
                 + `${centroidText}
 `,
             );

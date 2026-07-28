@@ -31,6 +31,10 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import {
+    createStillwaterPainterly,
+    createStillwaterPainterlyMask,
+} from './stillwater-painterly.js';
 import { getStillwaterQualityProfile } from '../stillwater-quality.js';
 
 const DEFAULT_BLOOM_STRENGTH = 0.48;
@@ -154,6 +158,7 @@ export function getStillwaterPostConfig({
     quality = 'High',
     qualityProfile = null,
     bloomEnabled = true,
+    painterlyEnabled = true,
     gradeMode = 'full',
 } = {}) {
     const profile = resolveProfile(quality, qualityProfile);
@@ -167,6 +172,14 @@ export function getStillwaterPostConfig({
 
     return Object.freeze({
         quality: profile.name,
+        // Region flattening is premium-tier: it is the most expensive thing in
+        // the chain, and the lean tiers exist precisely to avoid it.
+        painterly: useBloom && normalizedGrade === 'full' && painterlyEnabled !== false,
+        painterlyStrength: 0.85,
+        // Solo board rect, normalized — mirrors STILLWATER_BOARD_SAFE_REGIONS.
+        boardRect: Object.freeze({
+            x: 0.32, y: 0.09, width: 0.36, height: 0.82,
+        }),
         gradeMode: normalizedGrade,
         useBloom,
         useMRT: useBloom,
@@ -204,6 +217,7 @@ export class StillwaterPipeline {
         quality = 'High',
         qualityProfile = null,
         bloomEnabled = true,
+        painterlyEnabled = true,
         gradeMode = 'full',
         bloomStrength = DEFAULT_BLOOM_STRENGTH,
         bloomRadius = DEFAULT_BLOOM_RADIUS,
@@ -220,6 +234,7 @@ export class StillwaterPipeline {
             quality,
             qualityProfile,
             bloomEnabled,
+            painterlyEnabled,
             gradeMode,
         });
         this.size = { width: 0, height: 0 };
@@ -241,6 +256,8 @@ export class StillwaterPipeline {
         const sceneColor = this.scenePass.getTextureNode('output');
         const baseSample = sceneColor.sample(screenUV);
         this.bloomNode = null;
+        this.bloomCoreNode = null;
+        this.bloomCombined = null;
         let hdrColor = baseSample.rgb;
 
         if (this.config.useBloom) {
@@ -261,14 +278,55 @@ export class StillwaterPipeline {
                     Math.max(1, Math.round(height * this.config.bloomScale)),
                 );
             };
-            hdrColor = hdrColor.add(this.bloomNode.rgb);
+            // Second tap: a tight, near-neutral core. A single bloom is forced to
+            // choose between a foggy screen-wide veil and hot dots; two taps give
+            // the lantern and the spirit a crisp core inside a large soft halo,
+            // which is how a painter renders a light at night. The wide tap is
+            // tinted warm because scattered light at night IS warmer than its
+            // source, and the core stays neutral so the spirit reads as ivory
+            // rather than amber.
+            this.bloomCoreNode = bloom(
+                bloomSource,
+                bloomStrength * 0.55,
+                0.25,
+                0.85,
+            );
+            this.bloomCoreNode._nMips = 2;
+            const coreSetSize = this.bloomCoreNode.setSize.bind(this.bloomCoreNode);
+            this.bloomCoreNode.setSize = (width, height) => {
+                coreSetSize(
+                    Math.max(1, Math.round(width * this.config.bloomScale)),
+                    Math.max(1, Math.round(height * this.config.bloomScale)),
+                );
+            };
+            this.bloomCombined = this.bloomNode.rgb
+                .mul(vec3(1.06, 0.97, 0.86))
+                .add(this.bloomCoreNode.rgb);
+            if (!this.config.painterly) hdrColor = hdrColor.add(this.bloomCombined);
+        }
+
+        // Wave 4 — the brush. Region-flattening runs on the composed scene BEFORE
+        // tone mapping, masked off the play field. Bloom is deliberately added
+        // after, so the spirit's glow is not itself flattened into a patch.
+        if (this.config.painterly) {
+            const painterlyMask = createStillwaterPainterlyMask({
+                board: this.config.boardRect,
+            });
+            hdrColor = createStillwaterPainterly({
+                colorNode: sceneColor,
+                strengthNode: painterlyMask.mul(this.config.painterlyStrength),
+            });
+            if (this.bloomCombined) hdrColor = hdrColor.add(this.bloomCombined);
         }
 
         this.uExposure = uniform(exposure);
+        // Session arc. Sunrise never arrives, but the air thins and the key
+        // lifts fractionally as it approaches — enough to feel, not to notice.
+        this.uDawn = uniform(0);
         const aces = toneMapping(
             THREE.ACESFilmicToneMapping,
             this.uExposure,
-            vec4(hdrColor, baseSample.a),
+            vec4(hdrColor.mul(float(1).add(this.uDawn.mul(0.16))), baseSample.a),
         );
         let graded = aces.rgb;
 
@@ -360,6 +418,11 @@ export class StillwaterPipeline {
         return Promise.resolve();
     }
 
+    /** Session arc scalar in 0..1 from the Offering Loop. */
+    setDawn(value) {
+        if (this.uDawn) this.uDawn.value = Math.min(1, Math.max(0, Number(value) || 0));
+    }
+
     setSize(width, height) {
         if (
             !Number.isFinite(width)
@@ -386,6 +449,7 @@ export class StillwaterPipeline {
         this.disposed = true;
         this.scenePass?.dispose?.();
         disposeBloomNodeDeep(this.bloomNode);
+        if (this.bloomCoreNode) disposeBloomNodeDeep(this.bloomCoreNode);
         this.lutTexture?.dispose?.();
         this.postProcessing?.dispose?.();
         if (this.postProcessing?._quadMesh?.material) {
@@ -416,6 +480,8 @@ export class StillwaterPipeline {
 
         this.scenePass = null;
         this.bloomNode = null;
+        this.bloomCoreNode = null;
+        this.bloomCombined = null;
         this.lutTexture = null;
         this.postProcessing = null;
     }

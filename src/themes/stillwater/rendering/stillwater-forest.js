@@ -32,7 +32,10 @@ import {
     vec3,
 } from 'three/tsl';
 
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getStillwaterQualityProfile } from '../stillwater-quality.js';
+import heroTreesUrl from '../assets/hero-trees.glb?url';
 import { bankHeightAt, sampleShore } from './stillwater-water.js';
 
 // The transform the runtime mounts this group with. Exported so the runtime and
@@ -45,13 +48,23 @@ export const FOREST_WORLD_Z = -4;
 const TAU = Math.PI * 2;
 const FOREST_SEED = 18641;
 const REDUCED_MOTION_TIME_SCALE = 0.08;
-const HERO_TREE_COUNT = 3;
+const HERO_TREE_COUNT = 5;
+
+// Authored trunks (Blender -> hero-trees.glb) placed at the three distant hero
+// anchors. Procedural segments still carry the two cropped framing trunks,
+// which are pure silhouette and gain nothing from authored detail.
+// [nodeName, x, z, yRotation, scale]
+const AUTHORED_HERO_PLACEMENT = Object.freeze([
+    ['SWTreeA', -58, -14, 0.5, 1.35],
+    ['SWTreeB', 63, -18, 2.3, 1.30],
+    ['SWTreeC', -108, -70, 4.1, 1.45],
+]);
 const MID_TREE_COUNT = 18;
 const FAR_TREE_COUNT = 22;
 const NEAR_CANOPY_COUNT = 22;
 const FAR_CANOPY_COUNT = 12;
 const ROOT_SEGMENT_COUNT = 18;
-const BOULDER_COUNT = 14;
+const BOULDER_COUNT = 16;
 const REED_COUNT = 72;
 // Grass/fern tufts sharing the reed blade geometry and draw. The near banks
 // were large unbroken slabs of mid-value green; ground cover is the cheapest
@@ -65,16 +78,28 @@ const LILY_COUNT = 12;
 const MUSHROOM_CLUSTER_COUNT = 4;
 const BOARD_SAFE_HALF_WIDTH = 24;
 
+// Clumped, not scattered. The previous table paired every tree with a mirrored
+// twin at the same depth and kept heights inside 21..34, which is the recipe for
+// wallpaper: identical repeating units on an even grid. Real treelines arrive in
+// knots of two to four with genuine empty passages between them, and the height
+// spread has to be wide enough that no two neighbours read as the same object.
+// The passages matter as much as the clumps — the gap on the right at z -70..-95
+// is what lets the far ridges read through the forest instead of behind it.
 const MID_TREE_LAYOUT = Object.freeze([
-    [-58, -42, 22, -0.10, 0], [61, -39, 21, 0.08, 1],
-    [-47, -67, 27, 0.08, 2], [51, -69, 26, -0.07, 0],
-    [-68, -91, 31, -0.05, 1], [70, -94, 30, 0.05, 2],
-    [-38, -109, 24, 0.07, 0], [40, -112, 23, -0.06, 1],
-    [-82, -71, 34, 0.04, 2], [84, -73, 33, -0.04, 0],
-    [-55, -126, 26, -0.05, 1], [58, -128, 25, 0.06, 2],
-    [-101, -105, 29, 0.04, 0], [103, -108, 28, -0.04, 1],
-    [-75, -139, 25, -0.03, 2], [78, -140, 24, 0.04, 0],
-    [-116, -133, 27, 0.03, 1], [118, -136, 26, -0.03, 2],
+    // Clump A — left near, tight knot of three.
+    [-63, -38, 25, -0.12, 0], [-54, -44, 17, 0.09, 2], [-45, -36, 30, -0.05, 1],
+    // Clump B — right near, a pair, offset in depth from A.
+    [56, -49, 21, 0.10, 1], [66, -43, 33, -0.06, 0],
+    // Clump C — left mid, the densest mass in frame.
+    [-89, -74, 34, 0.05, 2], [-80, -81, 26, -0.08, 0],
+    [-70, -71, 38, 0.03, 1], [-59, -78, 20, 0.07, 2],
+    // ...and a passage opposite it. Nothing between x 30..70 at this depth.
+    // Clump D — right, further back, reads through that passage.
+    [76, -97, 29, -0.04, 0], [86, -91, 22, 0.06, 2], [96, -101, 35, -0.03, 1],
+    // Clump E — left far.
+    [-107, -128, 27, 0.04, 1], [-97, -121, 19, -0.05, 0], [-86, -131, 31, 0.03, 2],
+    // Clump F — right far, a pair plus one isolate holding the corner.
+    [63, -134, 24, -0.04, 2], [72, -127, 18, 0.05, 1], [118, -139, 28, -0.03, 0],
 ]);
 
 const NEAR_CANOPY_LAYOUT = Object.freeze([
@@ -91,24 +116,27 @@ const NEAR_CANOPY_LAYOUT = Object.freeze([
     [57.7, 34.6, 28.8, 26.9, 10.6, 25.0, 2.3],
     [-89, 50, -14, 14, 8.0, 10.5, 0.2],
     [91, 49, -16, 14, 7.8, 10.4, 1.1],
-    [-108, 46, -72, 12, 7.0, 9.2, 2.2],
-    [-58, 20, -42, 7.0, 4.2, 5.4, 0.7],
-    [61, 19, -39, 7.1, 4.2, 5.5, 1.6],
-    [-47, 25, -67, 8.2, 4.7, 6.1, 2.8],
-    [51, 24, -69, 8.0, 4.6, 6.0, 0.4],
-    [-68, 29, -91, 9.0, 5.2, 6.8, 2.0],
-    [70, 28, -94, 8.8, 5.1, 6.7, 1.2],
-    [-38, 22, -109, 6.8, 4.0, 5.2, 2.6],
-    [40, 21, -112, 6.7, 3.9, 5.1, 0.9],
-    [-82, 31, -71, 9.6, 5.4, 7.2, 2.4],
-    [84, 30, -73, 9.4, 5.3, 7.1, 1.8],
-    [-55, 24, -126, 7.3, 4.2, 5.5, 0.3],
-    [58, 23, -128, 7.2, 4.1, 5.4, 2.9],
-    [-101, 27, -105, 8.4, 4.8, 6.3, 1.4],
-    [103, 26, -108, 8.2, 4.7, 6.2, 0.6],
-    [-75, 23, -139, 7.1, 4.0, 5.3, 2.2],
-    [78, 22, -140, 7.0, 3.9, 5.2, 1.0],
-    [-116, 25, -133, 7.8, 4.4, 5.8, 2.7],
+    [-108, 46, -72, 12, 7.0, 9.2, 2.2, 0],
+    // Every remaining crown is derived from its trunk, so the two tables can
+    // never drift apart, and each gets its own width, height and silhouette from
+    // a seeded draw. Uniform crowns are the single loudest "this is a game asset"
+    // tell in a forest; +-35% of scale variance plus a second shape removes it.
+    ...MID_TREE_LAYOUT.map(([x, z, height], index) => {
+        const rng = makeRng(FOREST_SEED + 977 + index * 31);
+        const spread = 0.65 + rng() * 0.70;
+        const shape = rng() < 0.38 ? 1 : 0;
+        const width = height * (shape === 1 ? 0.20 : 0.30) * spread;
+        return Object.freeze([
+            x,
+            height * (shape === 1 ? 0.94 : 0.88),
+            z,
+            width,
+            height * (shape === 1 ? 0.26 : 0.19) * (0.85 + rng() * 0.4),
+            width * (0.82 + rng() * 0.26),
+            rng() * TAU,
+            shape,
+        ]);
+    }),
 ]);
 const NEAR_CANOPY_LOBES_PER_CLUSTER = 5;
 // Crowns are authored much wider than tall, which reads as an umbrella plate
@@ -116,89 +144,59 @@ const NEAR_CANOPY_LOBES_PER_CLUSTER = 5;
 // extent so the light-to-dark ramp has somewhere to travel.
 const CANOPY_DOME = 1.42;
 
+// Lobe placement for the two crown silhouettes, as fractions of the cluster
+// extent: [dx, dy, dz, fx, fy, fz, phaseOffset, tiltX, tiltZ]. Shape 0 is the
+// broad Bauer oak mass; shape 1 stacks tighter and taller so a treeline built
+// from both reads as a mixed wood rather than one repeated asset.
+const CANOPY_LOBE_SHAPES = Object.freeze([
+    Object.freeze([
+        Object.freeze([0, -0.04, 0, 0.98, 0.82, 0.94, 0, -0.05, 0.04]),
+        Object.freeze([-0.40, -0.22, 0.18, 0.72, 0.64, 0.76, 0.73, 0.08, -0.12]),
+        Object.freeze([0.36, 0.14, -0.16, 0.76, 0.72, 0.78, 1.41, -0.10, 0.10]),
+        Object.freeze([0.12, 0.32, 0.34, 0.60, 0.56, 0.64, 2.21, 0.06, -0.08]),
+        Object.freeze([-0.24, 0.05, -0.40, 0.65, 0.58, 0.60, 3.57, -0.07, 0.13]),
+    ]),
+    Object.freeze([
+        Object.freeze([0, 0.10, 0, 0.86, 0.90, 0.84, 0, -0.03, 0.03]),
+        Object.freeze([-0.22, -0.34, 0.14, 0.78, 0.62, 0.74, 0.91, 0.05, -0.07]),
+        Object.freeze([0.20, -0.18, -0.18, 0.72, 0.66, 0.70, 1.83, -0.06, 0.05]),
+        Object.freeze([0.08, 0.46, 0.10, 0.52, 0.54, 0.50, 2.60, 0.04, -0.05]),
+        Object.freeze([-0.14, 0.28, -0.22, 0.58, 0.60, 0.56, 3.94, -0.04, 0.08]),
+    ]),
+]);
+
 const NEAR_CANOPY_LOBE_LAYOUT = Object.freeze(
-    NEAR_CANOPY_LAYOUT.flatMap(([x, y, z, sx, sySource, sz, phase]) => {
+    NEAR_CANOPY_LAYOUT.flatMap(([x, y, z, sx, sySource, sz, phase, shape = 0]) => {
         const sy = sySource * CANOPY_DOME;
-        return [
-            Object.freeze([
-                x,
-                y - sy * 0.04,
-                z,
-                sx * 0.98,
-                sy * 0.82,
-                sz * 0.94,
-                phase,
+        return CANOPY_LOBE_SHAPES[shape].map(
+            ([dx, dy, dz, fx, fy, fz, dPhase, tiltX, tiltZ]) => Object.freeze([
+                x + sx * dx,
+                y + sy * dy,
+                z + sz * dz,
+                sx * fx,
+                sy * fy,
+                sz * fz,
+                phase + dPhase,
                 0,
-                -0.05,
-                0.04,
+                tiltX,
+                tiltZ,
             ]),
-            Object.freeze([
-                x - sx * 0.40,
-                y - sy * 0.22,
-                z + sz * 0.18,
-                sx * 0.72,
-                sy * 0.64,
-                sz * 0.76,
-                phase + 0.73,
-                0,
-                0.08,
-                -0.12,
-            ]),
-            Object.freeze([
-                x + sx * 0.36,
-                y + sy * 0.14,
-                z - sz * 0.16,
-                sx * 0.76,
-                sy * 0.72,
-                sz * 0.78,
-                phase + 1.41,
-                0,
-                -0.10,
-                0.10,
-            ]),
-            // Two further clumps per crown. Three lobes still merged into a single
-            // rounded mass; overlapping clumps at different heights and depths are
-            // what make a canopy read as foliage rather than as one blob.
-            Object.freeze([
-                x + sx * 0.12,
-                y + sy * 0.32,
-                z + sz * 0.34,
-                sx * 0.60,
-                sy * 0.56,
-                sz * 0.64,
-                phase + 2.21,
-                0,
-                0.06,
-                -0.08,
-            ]),
-            Object.freeze([
-                x - sx * 0.24,
-                y + sy * 0.05,
-                z - sz * 0.40,
-                sx * 0.65,
-                sy * 0.58,
-                sz * 0.60,
-                phase + 3.57,
-                0,
-                -0.07,
-                0.13,
-            ]),
-        ];
+        );
     }),
 );
 
 const FAR_TREE_LAYOUT = Object.freeze([
-    [-118, -143, 27, 5.0], [119, -143, 26, 4.9],
-    [-104, -151, 34, 6.0], [105, -151, 33, 5.9],
-    [-91, -146, 23, 4.4], [92, -147, 24, 4.5],
-    [-79, -155, 31, 5.5], [80, -155, 30, 5.4],
-    [-67, -149, 21, 4.1], [68, -150, 22, 4.2],
-    [-55, -158, 28, 5.1], [56, -158, 27, 5.0],
-    [-43, -151, 20, 3.9], [44, -152, 19, 3.8],
-    [-31, -159, 25, 4.7], [32, -159, 26, 4.8],
-    [-126, -159, 22, 4.2], [128, -160, 23, 4.3],
-    [-111, -169, 29, 5.2], [112, -169, 28, 5.1],
-    [-72, -170, 25, 4.6], [74, -170, 24, 4.5],
+    [-121, -141, 30, 5.4], [113, -147, 24, 4.6],
+    [-108, -152, 36, 6.3], [99, -144, 33, 5.8],
+    [-94, -145, 21, 4.1], [88, -156, 26, 4.8],
+    [-84, -157, 32, 5.6], [77, -149, 19, 3.7],
+    [-64, -147, 25, 4.7], [70, -161, 30, 5.3],
+    [-57, -160, 18, 3.6], [52, -153, 27, 5.0],
+    [-40, -152, 29, 5.2], [45, -164, 21, 4.0],
+    [-29, -163, 22, 4.3], [35, -156, 34, 5.9],
+    [-131, -157, 26, 4.9], [124, -167, 20, 3.9],
+    [-114, -171, 33, 5.8], [107, -162, 28, 5.1],
+    [-75, -172, 23, 4.4], [61, -173, 31, 5.5],
 ]);
 
 const FAR_CANOPY_LAYOUT = Object.freeze([
@@ -211,13 +209,19 @@ const FAR_CANOPY_LAYOUT = Object.freeze([
 ]);
 
 const BOULDER_LAYOUT = Object.freeze([
-    [-72, 1.0, 16, 4.8, 2.2, 3.7, 0.4], [71, 0.9, 14, 4.4, 2.0, 4.0, 1.2],
-    [-54, 0.7, -2, 3.3, 1.5, 2.7, 2.1], [56, 0.8, -5, 3.6, 1.6, 2.9, 0.7],
-    [-65, 1.2, -31, 4.0, 2.0, 3.2, 1.8], [67, 1.1, -34, 3.8, 1.8, 3.4, 2.6],
-    [-49, 0.7, -59, 2.7, 1.4, 2.3, 0.2], [52, 0.8, -63, 2.9, 1.4, 2.4, 1.5],
-    [-83, 1.0, -77, 3.8, 1.8, 3.0, 2.9], [85, 1.0, -80, 3.6, 1.7, 3.1, 0.8],
-    [-61, 0.8, -105, 2.8, 1.3, 2.5, 1.9], [63, 0.8, -108, 3.0, 1.4, 2.6, 2.4],
-    [-101, 1.1, -119, 3.5, 1.6, 2.9, 0.5], [103, 1.1, -121, 3.4, 1.6, 2.8, 1.7],
+    // Foreground repoussoir first, so the tier scale can never drop them.
+    [-34.5, 1.4, 43.0, 14.5, 8.0, 11.0, 0.6],
+    [37.0, 1.0, 45.5, 13.0, 7.0, 10.0, 2.2],
+    // Boulders cluster where the trees do and leave the passages open, so the
+    // midground has beats and rests rather than an even sprinkle of props.
+    [-74, 1.0, 18, 5.6, 2.6, 4.2, 0.4], [-66, 0.7, 11, 2.4, 1.1, 2.0, 1.9],
+    [69, 0.9, 14, 4.4, 2.0, 4.0, 1.2],
+    [-57, 0.7, -4, 3.3, 1.5, 2.7, 2.1], [-51, 0.6, -9, 1.9, 0.9, 1.6, 0.9],
+    [61, 1.2, -33, 4.6, 2.2, 3.5, 1.8], [68, 0.8, -29, 2.2, 1.0, 1.9, 2.6],
+    [-88, 1.0, -76, 4.2, 2.0, 3.2, 2.9], [-79, 0.8, -82, 2.6, 1.2, 2.2, 0.8],
+    [-70, 0.7, -73, 1.8, 0.9, 1.6, 1.4],
+    [84, 0.8, -99, 3.0, 1.4, 2.6, 2.4],
+    [-104, 1.1, -124, 3.5, 1.6, 2.9, 0.5], [66, 1.1, -131, 3.4, 1.6, 2.8, 1.7],
 ]);
 
 // Lilies are derived from the shoreline rather than hand-listed, so they always
@@ -226,9 +230,19 @@ const BOULDER_LAYOUT = Object.freeze([
 const LILY_LAYOUT = Object.freeze((() => {
     const rng = makeRng(FOREST_SEED + 431);
     const entries = [];
+    // Pads raft together, they do not sprinkle. Four rafts of three along the
+    // channel, with the water between them left genuinely empty — texture becomes
+    // composition the moment there is somewhere for the eye to rest.
+    const RAFTS = [
+        { t: 0.33, side: -1, spread: 0.030 },
+        { t: 0.44, side: 1, spread: 0.026 },
+        { t: 0.58, side: -1, spread: 0.022 },
+        { t: 0.68, side: 1, spread: 0.020 },
+    ];
     for (let index = 0; index < LILY_COUNT; index += 1) {
-        const side = index % 2 === 0 ? -1 : 1;
-        const t = 0.30 + (index / LILY_COUNT) * 0.42 + rng() * 0.04;
+        const raft = RAFTS[Math.floor(index / 3) % RAFTS.length];
+        const { side } = raft;
+        const t = raft.t + (rng() - 0.5) * raft.spread * 2;
         const profile = shoreProfile(t);
         const edge = side < 0 ? profile.left : profile.right;
         const center = (profile.left + profile.right) * 0.5;
@@ -237,8 +251,8 @@ const LILY_LAYOUT = Object.freeze((() => {
         entries.push(Object.freeze([
             THREE.MathUtils.lerp(edge, center, inset),
             0.10,
-            profile.z + (rng() - 0.5) * 9,
-            1.1 + rng() * 1.1,
+            profile.z + (rng() - 0.5) * 5,
+            0.7 + rng() * 1.8,
             rng() * TAU,
         ]));
     }
@@ -247,8 +261,8 @@ const LILY_LAYOUT = Object.freeze((() => {
 
 const MUSHROOM_CLUSTERS = Object.freeze([
     Object.freeze({
-        x: -48,
-        z: 0,
+        x: -52,
+        z: 6,
         order: 0,
         entries: Object.freeze([
             [-2.2, -0.5, 1.00, -0.4, 0], [-0.6, 0.4, 0.72, 0.3, 1],
@@ -257,8 +271,8 @@ const MUSHROOM_CLUSTERS = Object.freeze([
         ]),
     }),
     Object.freeze({
-        x: 49,
-        z: -2,
+        x: 44,
+        z: -14,
         order: 1 / 3,
         entries: Object.freeze([
             [-2.4, 0.3, 0.82, 0.6, 1], [-0.8, -0.7, 1.04, -0.2, 0],
@@ -267,8 +281,8 @@ const MUSHROOM_CLUSTERS = Object.freeze([
         ]),
     }),
     Object.freeze({
-        x: -43,
-        z: -43,
+        x: -39,
+        z: -47,
         order: 2 / 3,
         entries: Object.freeze([
             [-2.0, -0.4, 0.74, 0.5, 0], [-0.5, 0.6, 0.96, -0.4, 1],
@@ -277,8 +291,8 @@ const MUSHROOM_CLUSTERS = Object.freeze([
         ]),
     }),
     Object.freeze({
-        x: 44,
-        z: -49,
+        x: 71,
+        z: -58,
         order: 1,
         entries: Object.freeze([
             [-2.3, 0.4, 0.64, -0.6, 1], [-0.7, -0.6, 0.88, 0.3, 0],
@@ -703,15 +717,23 @@ function makeMushroomCapGeometry() {
 // and far separate on value alone rather than relying on particles or fog cards.
 // Near foliage collapses toward silhouette, which is what makes the overhead
 // canopy read as a framing device; far foliage dissolves into the mist band.
-const AERIAL_MIST = vec3(0.075, 0.128, 0.132);
+const AERIAL_MIST = vec3(0.100, 0.158, 0.164);
 
-function withAerialPerspective(colorNode) {
+/**
+ * @param {number} nearFloor how dark a near-camera surface collapses to. Foliage
+ *   wants near-silhouette (0.22); rock wants enough left to read as form, or the
+ *   foreground repoussoir becomes a flat black paper cutout.
+ */
+function withAerialPerspective(colorNode, nearFloor = 0.22) {
     const viewDistance = length(positionWorld.sub(cameraPosition));
     const nearShade = smoothstep(22, 85, viewDistance);
     const farHaze = smoothstep(95, 235, viewDistance);
-    return mix(colorNode.mul(0.22), colorNode, nearShade)
-        .mul(mix(float(1), float(0.55), farHaze))
-        .add(AERIAL_MIST.mul(farHaze.mul(0.85)));
+    // Separation between planes is what structures depth; a gentle ramp leaves
+    // near, mid and far within a few luma of each other and the frame reads as
+    // one wash. Near collapses harder, far lifts further.
+    return mix(colorNode.mul(nearFloor), colorNode, nearShade)
+        .mul(mix(float(1), float(0.42), farHaze))
+        .add(AERIAL_MIST.mul(farHaze.mul(1.05)));
 }
 
 function pushSegment(target, start, end, radius, phase, sway) {
@@ -725,15 +747,16 @@ function pushSegment(target, start, end, radius, phase, sway) {
 }
 
 function appendTreeSegments(target, {
-    x, z, height, lean, variant, hero,
+    x, z, height, lean, variant, hero, radiusScale = 1,
 }) {
+    const r = (value) => value * radiusScale;
     const phase = (x * 0.071 + z * 0.029 + variant * 1.71) % TAU;
     const base = [x, 0, z];
     const bendX = lean * height;
     const mid = [x + bendX * 0.34, height * 0.54, z - Math.abs(lean) * 4];
     const top = [x + bendX, height, z - Math.abs(lean) * 8];
-    pushSegment(target, base, mid, hero ? 3.0 : 1.75, phase, 0);
-    pushSegment(target, mid, top, hero ? 2.15 : 1.22, phase + 0.4, hero ? 0.09 : 0.06);
+    pushSegment(target, base, mid, r(hero ? 3.0 : 1.75), phase, 0);
+    pushSegment(target, mid, top, r(hero ? 2.15 : 1.22), phase + 0.4, hero ? 0.09 : 0.06);
 
     const forkY = height * (variant === 1 ? 0.68 : 0.73);
     const forkBase = [
@@ -746,7 +769,7 @@ function appendTreeSegments(target, {
         target,
         forkBase,
         [top[0] - height * 0.24 * side, height * 0.91, top[2] - height * 0.10],
-        hero ? 1.45 : 0.78,
+        r(hero ? 1.45 : 0.78),
         phase + 1.3,
         hero ? 0.13 : 0.09,
     );
@@ -754,7 +777,7 @@ function appendTreeSegments(target, {
         target,
         forkBase,
         [top[0] + height * 0.22 * side, height * 0.87, top[2] - height * 0.07],
-        hero ? 1.35 : 0.72,
+        r(hero ? 1.35 : 0.72),
         phase + 2.6,
         hero ? 0.12 : 0.085,
     );
@@ -773,7 +796,7 @@ function appendTreeSegments(target, {
             height * (hero ? 0.69 : 0.64),
             lowerForkBase[2] + height * (variant === 0 ? 0.08 : -0.055),
         ],
-        hero ? 1.16 : 0.61,
+        r(hero ? 1.16 : 0.61),
         phase + 4.2,
         hero ? 0.095 : 0.065,
     );
@@ -783,20 +806,20 @@ function appendTreeSegments(target, {
             target,
             [x + bendX * 0.19, height * 0.37, z],
             [x - height * 0.16, height * 0.62, z - height * 0.05],
-            0.66,
+            r(0.66),
             phase + 3.1,
             0.07,
         );
     }
 
     if (hero) {
-        pushSegment(target, base, [x - 12, 0.55, z + 8], 1.18, phase, 0);
-        pushSegment(target, base, [x + 13, 0.42, z + 9], 1.10, phase, 0);
+        pushSegment(target, base, [x - 12, 0.55, z + 8], r(1.18), phase, 0);
+        pushSegment(target, base, [x + 13, 0.42, z + 9], r(1.10), phase, 0);
         pushSegment(
             target,
             base,
             [x + Math.sign(x) * 10, 0.34, z - 8],
-            0.98,
+            r(0.98),
             phase,
             0,
         );
@@ -807,6 +830,16 @@ function buildHeroSegments() {
     const segments = [];
     const ends = [0];
     [
+        // Two near trunks that leave the frame entirely. A cropped tree tells
+        // the viewer the forest continues past the edge; an uncropped one is a
+        // prop. Sited ~17u from the camera so they exit the top of frame with
+        // no crown visible, which is also why they carry no canopy cluster.
+        {
+            x: -19.6, z: 50, height: 62, lean: 0.05, variant: 0, hero: true, radiusScale: 0.42,
+        },
+        {
+            x: 21.2, z: 53, height: 60, lean: -0.04, variant: 1, hero: true, radiusScale: 0.40,
+        },
         {
             x: -89, z: -14, height: 58, lean: 0.18, variant: 0, hero: true,
         },
@@ -1168,16 +1201,30 @@ export function createStillwaterForest({
             normalize(vec3(0.42, 0.68, 0.60)),
         ), 0, 1);
         const heightLift = smoothstep(-4, 46, positionWorld.y);
-        const body = mix(
-            vec3(0.022, 0.058, 0.058),
-            vec3(0.075, 0.140, 0.132),
-            heightLift,
+        // Layered recession, stated as an explicit value ladder rather than left
+        // to a fog term. Three ranges that fog to similar values read as one flat
+        // cut-paper silhouette no matter how good the geometry is; three ranges
+        // that are plainly dark / mid / pale read as distance even when each one
+        // is internally flat. Bauer stacks his hills exactly this way.
+        const nearBody = mix(vec3(0.013, 0.036, 0.036), vec3(0.048, 0.094, 0.092), heightLift);
+        const farBody = mix(vec3(0.092, 0.140, 0.150), vec3(0.138, 0.184, 0.196), heightLift);
+        const body = mix(nearBody, farBody, pow(haze, 0.82));
+        // Internal form, so each layer is a massif and not a shape. Steep faces
+        // fall into shadow, shelves and crest flats hold the light — this is the
+        // only cue that survives at silhouette scale, and it costs one dot.
+        const slope = smoothstep(0.12, 0.80, abs(normalWorld.y));
+        const shadowFace = body.mul(
+            mix(float(0.46), float(1.0), moonward).mul(mix(float(0.70), float(1.0), slope)),
         );
-        const lit = body.add(vec3(0.085, 0.150, 0.170).mul(pow(moonward, 1.6).mul(0.85)));
-        // Snowless cold crests: only the very top of the nearest range keeps any
-        // saturation, the rest dissolves toward the sky's mist band.
-        const mist = vec3(0.108, 0.163, 0.171);
-        ridgeMaterial.colorNode = mix(lit, mist, haze.mul(0.62).add(heightLift.mul(0.10)));
+        const lit = shadowFace.add(
+            vec3(0.115, 0.185, 0.205)
+                .mul(pow(moonward, 1.25).mul(1.15))
+                .mul(mix(float(1), float(0.34), haze)),
+        );
+        // Only the crest of the nearest range keeps saturation; the rest is
+        // already at its ladder value and needs no further wash.
+        const mist = vec3(0.128, 0.176, 0.188);
+        ridgeMaterial.colorNode = mix(lit, mist, haze.mul(0.20).add(heightLift.mul(0.06)));
     }
     const ridge = add(new THREE.Mesh(ownGeometry(makeRidgeGeometry()), ridgeMaterial));
     ridge.position.set(0, 0, 0);
@@ -1225,6 +1272,57 @@ export function createStillwaterForest({
     const heroGeometry = ownGeometry(makeTrunkGeometry(11, 4, 0.61));
     const heroWood = add(createSegmentMesh(THREE, heroGeometry, woodMaterial, heroData.segments));
     heroWood.name = 'stillwater-hero-root-flare-trees';
+
+    // Authored hero trunks. Loaded asynchronously and merged into ONE mesh so the
+    // three of them cost a single draw; a failed load simply leaves the
+    // procedural heroes, which is a valid picture rather than a broken one.
+    let authoredHeroes = null;
+    let authoredHeroReady = false;
+    let authoredHeroCancelled = false;
+    (async () => {
+        try {
+            const gltf = await new GLTFLoader().loadAsync(heroTreesUrl);
+            if (authoredHeroCancelled) return;
+            gltf.scene.updateMatrixWorld(true);
+            const parts = [];
+            for (const [nodeName, x, z, rotation, scale] of AUTHORED_HERO_PLACEMENT) {
+                const source = gltf.scene.getObjectByName(nodeName);
+                if (!source?.geometry) continue;
+                const geometry = source.geometry.clone();
+                geometry.scale(scale, scale, scale);
+                geometry.rotateY(rotation);
+                geometry.translate(x, 0, z);
+                parts.push(geometry);
+            }
+            if (!parts.length) return;
+            const merged = mergeGeometries(parts);
+            parts.forEach((geometry) => geometry.dispose());
+            if (!merged) return;
+            merged.computeVertexNormals();
+            merged.computeBoundingSphere();
+            // The shared wood material drives sway from per-vertex aPhase/aSway.
+            // The GLB carries neither, so supply them: a constant phase per
+            // trunk and a small sway so the authored heroes breathe like the
+            // procedural ones instead of standing rigid beside them.
+            const vertexCount = merged.getAttribute('position').count;
+            const phases = new Float32Array(vertexCount);
+            const sways = new Float32Array(vertexCount);
+            for (let index = 0; index < vertexCount; index += 1) {
+                phases[index] = (index % 3) * 2.1;
+                sways[index] = 0.05;
+            }
+            merged.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+            merged.setAttribute('aSway', new THREE.BufferAttribute(sways, 1));
+            authoredHeroes = add(new THREE.Mesh(ownGeometry(merged), woodMaterial));
+            authoredHeroes.name = 'stillwater-authored-hero-trunks';
+            // The procedural heroes at these anchors are now redundant; keep only
+            // the two cropped framing trunks so the two never z-fight.
+            heroWood.count = heroData.ends[2];
+            authoredHeroReady = true;
+        } catch {
+            authoredHeroReady = false;
+        }
+    })();
 
     const midData = buildMidSegments();
     const midGeometry = ownGeometry(makeTrunkGeometry(9, 3, 2.37));
@@ -1362,11 +1460,11 @@ export function createStillwaterForest({
     {
         const grain = noiseFloat(positionWorld.mul(0.18)).mul(0.5).add(0.5);
         const top = smoothstep(-0.2, 0.82, normalWorld.y);
-        boulderMaterial.colorNode = mix(
+        boulderMaterial.colorNode = withAerialPerspective(mix(
             vec3(0.038, 0.068, 0.060),
             vec3(0.165, 0.245, 0.190),
             grain.mul(top),
-        );
+        ), 0.46);
         boulderMaterial.roughnessNode = float(0.98);
         boulderMaterial.metalnessNode = float(0);
     }
@@ -1688,7 +1786,9 @@ export function createStillwaterForest({
         currentProfile = profile;
         const leanTier = profile.name === 'Minimal' || profile.name === 'Low';
         const mediumBudgetTier = profile.name === 'Medium';
-        currentHeroTrees = profile.forestTrees >= 24 ? HERO_TREE_COUNT : 2;
+        // The two framing trunks are first in the list and never dropped: they
+        // are composition, not detail.
+        currentHeroTrees = profile.forestTrees >= 24 ? HERO_TREE_COUNT : 4;
         const remainingTrees = Math.max(0, profile.forestTrees - currentHeroTrees);
         currentMidTrees = Math.min(
             MID_TREE_COUNT,
@@ -1907,6 +2007,7 @@ export function createStillwaterForest({
                 estimated: terrainDraws + treeDraws + dressingDraws + floraDraws,
                 terrain: terrainDraws,
                 trees: treeDraws,
+                authoredHeroes: authoredHeroReady,
                 dressing: dressingDraws,
                 flora: floraDraws,
                 treeTarget: [4, 7],
@@ -1944,6 +2045,8 @@ export function createStillwaterForest({
     }
 
     function dispose() {
+        // Stop a late GLB attaching to a torn-down scene.
+        authoredHeroCancelled = true;
         if (disposed) return;
         disposed = true;
         scene.remove(root);

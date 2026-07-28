@@ -43,6 +43,12 @@ import {
     StillwaterPipeline,
 } from '../post/stillwater-pipeline.js';
 import {
+    createStillwaterShafts,
+} from './stillwater-shafts.js';
+import {
+    createStillwaterOfferingLoop,
+} from '../sim/stillwater-offering-loop.js';
+import {
     STILLWATER_CUE,
     STILLWATER_EVENT,
     StillwaterReactionDirector,
@@ -279,6 +285,10 @@ export function createStillwaterRuntime({
     const reducedMotion = readToggle(params, 'reducedMotion', false)
         || readToggle(params, 'reduced', false);
     const bloomEnabled = readToggle(params, 'bloom', true);
+    // `?painterly=0` disables the Kuwahara pass for A/B comparison — the only
+    // honest way to attribute temporal crawl to the filter rather than to the
+    // scene's own motion.
+    const painterlyEnabled = readToggle(params, 'painterly', true);
     const validationTelemetry = readToggle(params, 'validationTelemetry', false);
     const gradeMode = String(params?.get?.('grade') || 'full').toLowerCase() === 'aces'
         ? 'aces'
@@ -321,6 +331,13 @@ export function createStillwaterRuntime({
     let postPixelRatio = 1;
     let disposed = false;
     let lanternSited = false;
+    // The story. Renderer-free and authoritative for ambient character intent;
+    // the existing character state machine still owns pose and locomotion.
+    const offeringLoop = createStillwaterOfferingLoop();
+    // Premium tiers only: the raymarch is the single most expensive thing in
+    // the scene and the lean tiers exist to avoid exactly this.
+    let shafts = null;
+    let offering = null;
     let finalMrtSweepComplete = false;
     let materialAudit = Object.freeze({
         tracked: 0,
@@ -345,6 +362,7 @@ export function createStillwaterRuntime({
             quality: qualityProfile.name,
             qualityProfile,
             bloomEnabled,
+            painterlyEnabled,
             gradeMode,
             bloomStrength,
         });
@@ -410,6 +428,16 @@ export function createStillwaterRuntime({
             mistEnabled: true,
             reducedMotion,
         });
+        // Volumetric moonshafts are OFF by default: the r181 VolumeNodeMaterial
+        // scattering graph currently emits `scatteringDensity * null` in WGSL on
+        // this configuration, which is a shader error, and shipping a broken
+        // shader to keep a feature nominally "done" is worse than shipping
+        // without it. Opt in with `?shafts=1` to continue debugging.
+        // The module and its two hard-won r181 gotchas are retained in
+        // rendering/stillwater-shafts.js.
+        if (qualityProfile.bloom && !reducedMotion && readToggle(params, 'shafts', false)) {
+            shafts = createStillwaterShafts({ root: scene });
+        }
 
         reactions = createStillwaterReactions({
             root: integrationRoot,
@@ -674,8 +702,24 @@ export function createStillwaterRuntime({
         return detach;
     }
 
+    // Weights for the Offering Loop's leaky accumulator. Deliberately NOT a 1:1
+    // trigger map: gameplay raises a pool, and only sustained good play arms an
+    // ambient gesture. One-to-one coupling reads as a slot machine.
+    const OFFERING_WEIGHTS = Object.freeze({
+        [STILLWATER_EVENT.LINE_CLEAR]: 'lineClear',
+        [STILLWATER_EVENT.COMBO]: 'combo',
+        [STILLWATER_EVENT.TSPIN]: 'tspin',
+        [STILLWATER_EVENT.PERFECT_CLEAR]: 'perfectClear',
+        [STILLWATER_EVENT.HARD_DROP]: 'hardDrop',
+    });
+
     function pulse(eventName, payload = EMPTY_PAYLOAD) {
         const canonicalEvent = normalizedCanonicalEvent(eventName);
+        const offeringKind = canonicalEvent === STILLWATER_EVENT.LINE_CLEAR
+            && Number(payload?.lines) >= 4
+            ? 'tetris'
+            : OFFERING_WEIGHTS[canonicalEvent];
+        if (offeringKind) offeringLoop.notifyGameplay(offeringKind);
         if (canonicalEvent === STILLWATER_EVENT.PIECE_LOCK) {
             return director.onPieceLock(payload);
         }
@@ -816,6 +860,23 @@ export function createStillwaterRuntime({
             );
             lanternSited = true;
         }
+        if (offering && qualityProfile.bloom) {
+            water.setLanternGlow?.(
+                LANTERN_WORLD.x,
+                LANTERN_WORLD.y,
+                LANTERN_WORLD.z,
+                offering.lanternIntensity,
+            );
+        }
+        // Advance the Offering Loop and let it drive the lantern. Intimacy is
+        // the one scalar the ambient story exposes: several consumers read it,
+        // which is what makes the scene feel authored rather than assembled.
+        offering = offeringLoop.update(delta);
+        shafts?.update(time);
+        // The shafts fade as dawn approaches: the night is ending.
+        shafts?.setIntensity(0.85 * (1 - offering.dawn * 0.55));
+        // The arc has to be visible in the IMAGE, not only in behaviour.
+        pipeline?.setDawn?.(offering.dawn);
         const spiritGlow = characters.getSpiritGlow?.();
         if (spiritGlow) {
             water.setSpiritGlow?.(
@@ -980,6 +1041,17 @@ export function createStillwaterRuntime({
                 forestTerrain: false,
                 reflectionLayer: REFLECTION_LAYER,
                 forestTransform: FOREST_TRANSFORM,
+                offering: offering ? {
+                    beat: offering.beat,
+                    intimacy: offering.intimacy,
+                    separation: offering.separation,
+                    lanternIntensity: offering.lanternIntensity,
+                    reach: offering.reach,
+                    dawn: offering.dawn,
+                    petrified: offering.petrified,
+                    featureToken: offering.featureToken,
+                    response: offering.response,
+                } : null,
                 postOutputs: 1,
             },
             query: {
