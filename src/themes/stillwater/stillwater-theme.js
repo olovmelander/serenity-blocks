@@ -841,11 +841,13 @@ export default class StillwaterTheme extends BaseTheme {
         } catch (error) {
             if (timeoutWon) {
                 // r181 cannot abort backend initialization. Dispose a late
-                // winner so a timed-out native candidate cannot survive beside
-                // the forced-WebGL2 fallback.
+                // winner only once init settles — disposing mid-init races the
+                // backend setup — so a timed-out native candidate cannot
+                // survive beside the forced-WebGL2 fallback.
                 initPromise.then(disposeCandidate, disposeCandidate);
+            } else {
+                disposeCandidate();
             }
-            disposeCandidate();
             throw error;
         } finally {
             if (timeoutId !== null) clearTimeout(timeoutId);

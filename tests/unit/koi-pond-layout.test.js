@@ -19,7 +19,7 @@ describe('Koi Pond production layout', () => {
     it('keeps production DPR caps inside the measured 1.5 ceiling', () => {
         expect(getKoiPondPixelRatioCap('Minimal')).toBe(0.8);
         expect(getKoiPondPixelRatioCap('High')).toBe(1.35);
-        expect(getKoiPondPixelRatioCap('Extreme')).toBe(1.5);
+        expect(getKoiPondPixelRatioCap('Extreme')).toBe(1.4);
     });
 
     it('maps left and right router lanes to mirrored pond positions', () => {

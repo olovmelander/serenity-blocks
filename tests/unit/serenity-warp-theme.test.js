@@ -431,13 +431,15 @@ describe('Serenity Warp theme adapter', () => {
         const staleStart = theme.start({ loadTheme: vi.fn() });
         await vi.waitFor(() => expect(rendererMocks.webgpuInstances).toHaveLength(1));
         theme.stop();
-        await theme.start({ loadTheme: vi.fn() });
+        // start() serializes per instance, so the replacement start queues
+        // behind the stale one and only proceeds once the stale init settles.
+        const currentStart = theme.start({ loadTheme: vi.fn() });
+        resolveFirstInit(true);
+        await staleStart;
+        await currentStart;
 
         const [staleVisual, currentVisual] = rendererMocks.webgpuInstances;
         expect(theme.visual).toBe(currentVisual);
-        resolveFirstInit(true);
-        await staleStart;
-
         expect(staleVisual.destroy).toHaveBeenCalledTimes(1);
         expect(currentVisual.destroy).not.toHaveBeenCalled();
         expect(theme.visual).toBe(currentVisual);

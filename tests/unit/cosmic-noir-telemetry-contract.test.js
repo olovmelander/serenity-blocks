@@ -38,7 +38,7 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
         const ultraPreset = sourceBetween(presetsSource, '    Ultra: {', '    High: {');
         const initRendererSource = sourceBetween(
             themeSource,
-            '    async initRenderer(container) {',
+            '    async initRenderer(container',
             '    createStarfield() {',
         );
 
@@ -90,7 +90,7 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
     it('enables WebGPU timestamp tracking only for perf or baseline sessions', () => {
         const initRendererSource = sourceBetween(
             themeSource,
-            '    async initRenderer(container) {',
+            '    async initRenderer(container',
             '    createStarfield() {',
         );
         const constructorSource = sourceBetween(
@@ -101,11 +101,11 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
         const webgpuOptionsSource = sourceBetween(
             initRendererSource,
             'new THREE_WEBGPU.WebGPURenderer({',
-            '                await webgpuRenderer.init();',
+            'await this.initializeRendererCandidate(webgpuRenderer',
         );
         const webglOptionsSource = sourceBetween(
             initRendererSource,
-            'this.renderer = new THREE.WebGLRenderer({',
+            'renderer = new THREE.WebGLRenderer({',
             '            this.isWebGPU = false;',
         );
 
