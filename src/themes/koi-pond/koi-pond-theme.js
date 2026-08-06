@@ -289,8 +289,9 @@ export default class KoiPondTheme extends BaseTheme {
                 // success to prevent a timed-out candidate from stranding its
                 // managers/animation loop after fallback has already started.
                 initPromise.then(disposeCandidate, disposeCandidate);
+            } else {
+                disposeCandidate();
             }
-            disposeCandidate();
             throw error;
         } finally {
             if (timeoutId !== null) clearTimeout(timeoutId);

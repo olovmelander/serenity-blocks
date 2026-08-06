@@ -30,7 +30,6 @@
  * heap/DOM counters, GPU metadata, and the complete renderer console to artifacts/.
  */
 /* eslint-disable import/no-extraneous-dependencies, no-await-in-loop */
-import electron from 'electron';
 import { spawn } from 'child_process';
 import { readFileSync } from 'fs';
 import {
@@ -46,7 +45,11 @@ import {
     collectStillwaterSourceBuildFingerprint,
 } from './stillwater-artifact-provenance.mjs';
 
-const { app, BrowserWindow } = electron;
+// Lazy electron import: the npm shim throws when the binary is absent
+// (npm ci --ignore-scripts), and the unit tests import this module only for
+// its pure evaluate* helpers. The launch path below guards on `app` anyway.
+const electron = await import('electron').then((m) => m.default ?? m).catch(() => null);
+const { app, BrowserWindow } = electron ?? {};
 const ROOT = process.cwd();
 const PERF_BUDGET_DOCUMENT = JSON.parse(
     readFileSync(path.join(ROOT, 'perf-budgets.json'), 'utf8'),

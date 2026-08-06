@@ -2409,8 +2409,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const localColor = this._getPlayerColor(this.steamNetworking?.steamId) || '#4fd1c5';
         const accentRgb = this._parseAccentColorToRgb(localColor);
         const prefersReducedMotion = typeof window !== 'undefined'
-            && typeof window.matchMedia === 'function'
-            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
         container.style.setProperty('--round-start-accent', localColor);
         container.style.setProperty('--round-start-accent-rgb', `${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}`);
