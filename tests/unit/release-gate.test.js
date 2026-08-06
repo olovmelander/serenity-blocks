@@ -281,10 +281,12 @@ describe('behavioral release gates', () => {
         expect(themes.get('ocean').start).toHaveBeenCalledWith(renderer, {
             assetManager,
             audioManager: null,
+            onRuntimeFailure: expect.any(Function),
         });
         expect(themes.get('winter').start).toHaveBeenCalledWith(renderer, {
             assetManager,
             audioManager: null,
+            onRuntimeFailure: expect.any(Function),
         });
         expect(themes.get('ocean').cleanup).toHaveBeenCalledTimes(1);
         expect(manager.activeTheme).toBe(themes.get('winter'));
