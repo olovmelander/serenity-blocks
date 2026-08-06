@@ -24,8 +24,7 @@ import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B,
-    emitHardDrop,
+    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B, emitHardDrop,
 } from '../../events/gameplay-events.js';
 import {
     showCinematicLoadingOverlay,
@@ -821,19 +820,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             },
             onHardDrop: (dropData) => {
-                emitHardDrop({
-                    piece: dropData?.piece || null,
-                    startY: dropData?.startY,
-                    endY: dropData?.endY,
-                    player: playerNum,
-                });
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                emitHardDrop({ ...dropData, player: playerNum });
+                const prefersReducedMotion = this.deps.settingsManager?.get()?.reducedMotion
+                    || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
                 const playerState = this.multiplayerState?.players?.[playerNum - 1];
                 if (!prefersReducedMotion && playerState) {
                     playerState.hitStopRemaining = Math.max(playerState.hitStopRemaining || 0, 30);
                 }
-
                 this.deps.soundManager.sfxPlayer.playHardDrop();
                 this.boardScenes.forEach((scene) => {
                     if (scene && scene.playHardDropEffect) {

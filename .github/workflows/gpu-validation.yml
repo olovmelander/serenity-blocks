@@ -19,10 +19,13 @@ name: Odyssey GPU Validation
 #    render-validation waits for a self-hosted GPU runner (plan §9.3 nightly RTX
 #    lane). It never blocks a PR either way.
 
+# The nightly schedule is retired for now: every scheduled run since 2026-07-15
+# failed the same way (Chromium shared-memory unavailable on hosted runners —
+# the exact limitation documented above), so the daily red added no information.
+# Run on demand via workflow_dispatch; the schedule returns with the
+# self-hosted GPU runner (plan §9.3).
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * *' # nightly ~06:00 UTC
 
 permissions:
   contents: read
