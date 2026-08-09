@@ -1126,6 +1126,21 @@ export class OdysseyBoardController {
                 setTimeout(step, 200);
                 return;
             }
+            // WARM AHEAD OF THE CAMERA: re-target toward the player's LIVE position each step —
+            // warm the un-warmed chapter nearest the CURRENT focus next (swap it to idx), so the
+            // sweep chases the scroll direction instead of following a stale start-time order. The
+            // chapter the user is scrolling TOWARD is warmed before arrival, which is the point of
+            // killing the first-visit hitch (revisits were already smooth once warmed).
+            const liveFocus = Number.isFinite(this.focusChapter) ? this.focusChapter : focus;
+            let bestJ = idx;
+            for (let j = idx + 1; j < order.length; j += 1) {
+                if (Math.abs(order[j] - liveFocus) < Math.abs(order[bestJ] - liveFocus)) bestJ = j;
+            }
+            if (bestJ !== idx) {
+                const swap = order[idx];
+                order[idx] = order[bestJ];
+                order[bestJ] = swap;
+            }
             const ch = order[idx];
             this._bgRenderWarmCurrent = ch;
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
@@ -1181,9 +1196,13 @@ export class OdysseyBoardController {
             }
             this._bgRenderWarmCurrent = null;
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
-            setTimeout(step, 120);
+            // Tighter cadence (was 120ms) so the orient-pause + each settle-pause warm MORE chapters
+            // before the user scrolls on — this delay only runs between successful warms in an idle/
+            // settled window (active scroll bails at the _canRunBackgroundTask gate above), so it
+            // never bunches warm renders onto a live scroll frame.
+            setTimeout(step, 75);
         };
-        setTimeout(step, 450); // let the reveal settle briefly, then warm ahead during the orient-pause
+        setTimeout(step, 280); // let the reveal settle briefly, then warm ahead during the orient-pause
     }
 
     /**
