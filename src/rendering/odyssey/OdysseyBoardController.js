@@ -716,6 +716,9 @@ export class OdysseyBoardController {
                 levelPositions: this.presentationLayout.levelPositions,
                 chapterPositions: this.presentationLayout.chapterPositions,
                 startPosition: this.presentationLayout.levelPositions[0] ?? 0,
+                // Tune the max scroll speed in-game to taste: ?odysseyMaxScroll=0.2 (slower, even
+                // smoother) .. 0.4 (the old fast cap). Default 0.26. Caps hard flicks only.
+                maxScrollVelocity: Number.parseFloat(readUrlValue('odysseyMaxScroll')) || undefined,
             },
         );
 

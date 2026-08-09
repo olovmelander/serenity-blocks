@@ -401,8 +401,9 @@ export class ChapterEnvironmentManager {
         this.chapterLodEnabled = options.chapterLOD === true;
         // Velocity threshold (camera-progress Δ per updateVisibility call, ~per frame) above which
         // the journey drops to the cheap LOD tier — a fast scroll can't show per-chapter detail
-        // anyway (~0.006 ≈ crossing a chapter in ~0.35s). Tunable via the board controller.
-        this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.006;
+        // anyway. Set BELOW the 0.26 maxScrollVelocity cap (~0.0043/frame at 60fps) so it still
+        // fires within the capped range: 0.003 ≈ scrolling >0.18 progress/sec. Tunable.
+        this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.003;
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
