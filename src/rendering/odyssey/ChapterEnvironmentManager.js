@@ -992,6 +992,34 @@ export class ChapterEnvironmentManager {
     }
 
     /**
+     * Stage 2 lightweight-streaming — generic FAR-tier particle LOD. When a chapter is nearly faded
+     * ('far' = <35% opaque, or 'hidden'), hide its dense THREE.Points clouds (dust/embers/sparkles):
+     * cheap to skip, and at that opacity it is imperceptible; restored the instant the chapter rises
+     * back to mid/near. POINTS-ONLY + high-count so it never touches structural instanced geometry
+     * (trees/buildings/star-structures). Called only on a detailLevel TRANSITION (a few times per
+     * scroll), never per frame. Per-mesh _farLodHidden flag makes restore exact + idempotent.
+     * @private
+     */
+    _applyFarParticleLod(group, detailLevel) {
+        if (!group) return;
+        const shed = detailLevel === 'far' || detailLevel === 'hidden';
+        group.traverse((o) => {
+            if (!o.isPoints) return;
+            const count = o.geometry?.attributes?.position?.count ?? 0;
+            if (count < 300) return;
+            if (shed) {
+                if (o.visible) {
+                    o.userData._farLodHidden = true;
+                    o.visible = false;
+                }
+            } else if (o.userData._farLodHidden) {
+                o.visible = true;
+                o.userData._farLodHidden = false;
+            }
+        });
+    }
+
+    /**
      * Update environment visibility based on camera Y position
      * @param {number} cameraY - Current camera Y position
      */
@@ -1094,6 +1122,10 @@ export class ChapterEnvironmentManager {
                 else detailLevel = 'far';
             }
             env.group.userData.detailLevel = detailLevel;
+            if (this.chapterLodEnabled && env._lastDetailLevel !== detailLevel) {
+                this._applyFarParticleLod(env.group, detailLevel);
+                env._lastDetailLevel = detailLevel;
+            }
             const isVisible = opacity > 0;
             env.group.visible = isVisible;
 
