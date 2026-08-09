@@ -472,14 +472,19 @@ export class OdysseyCameraController {
             // down on the journey at an elevated 3/4 angle; pulled back via followDistance.
             followOffset: new THREE.Vector3(0, 7, 18),
             followLerpSpeed: 0.03,
-            scrollSpeed: 0.15, // Reduced from 0.5
+            // Input SENSITIVITY: how far one wheel/mousepad delta moves the target. Mousepads emit
+            // a flood of small deltas, so a high value makes a single swipe run the target far ahead
+            // and the camera race across the map (the "way too fast" feel). Lowered 0.5 -> 0.15 ->
+            // 0.09; tunable in-game via the board controller (?odysseyScrollSpeed=).
+            scrollSpeed: Number.isFinite(options.scrollSpeed) ? options.scrollSpeed : 0.09,
             // Cap on manual scroll velocity (progress units/sec). A hard wheel flick used to
             // build unbounded velocity and teleport across the map; this keeps the travel readable
             // AND lets the background render-warm + per-chapter LOD stay ahead of the player. The
             // gentle cinematic auto-drift is well under this, so it only bites flicks. Lowered
-            // 0.4 -> 0.26 (a chapter in ~0.48s, not ~0.3s) to tame super-fast mousepad scrolling;
-            // tunable via the board controller (?odysseyMaxScroll=).
-            maxScrollVelocity: Number.isFinite(options.maxScrollVelocity) ? options.maxScrollVelocity : 0.26,
+            // 0.4 -> 0.15 to tame super-fast mousepad scrolling; tunable via the board controller
+            // (?odysseyMaxScroll=). NOTE: normal swipes rarely reach this cap — scrollSpeed above is
+            // the primary "how fast does the mousepad scroll" lever; this only bounds hard flicks.
+            maxScrollVelocity: Number.isFinite(options.maxScrollVelocity) ? options.maxScrollVelocity : 0.15,
             focusDistance: 10,
             minPosition: 0, // Allow scrolling all the way to Level 1
             maxPosition: 1, // Allow scrolling all the way to the end
