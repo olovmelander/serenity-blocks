@@ -869,7 +869,12 @@ export class CustomCursor {
 
     updateCanvasSize() {
         if (!this.trailCanvas) return;
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        // The trail is a soft blurry glow, so it does NOT need device-pixel supersampling. Cap the
+        // backing store at 1x (was min(dpr, 2)): on a high-DPI display that's a ~4x cut to the
+        // fullscreen canvas that gets clearRect + redrawn + composited EVERY frame — reclaiming
+        // frame-budget headroom in every mode (the frame-tail investigation's open fix #7). The
+        // change is imperceptible for a radial glow and never touches the crisp cursor element.
+        const ratio = Math.min(window.devicePixelRatio || 1, 1);
         this.trailCanvas.width = Math.floor(window.innerWidth * ratio);
         this.trailCanvas.height = Math.floor(window.innerHeight * ratio);
         this.trailCanvas.style.width = `${window.innerWidth}px`;
