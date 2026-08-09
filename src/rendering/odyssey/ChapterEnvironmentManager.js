@@ -399,6 +399,10 @@ export class ChapterEnvironmentManager {
         // updateVisibility + read by each chapter's update(). OFF → detailLevel is always
         // 'near'/'hidden' → behaviour identical to today.
         this.chapterLodEnabled = options.chapterLOD === true;
+        // Velocity threshold (camera-progress Δ per updateVisibility call, ~per frame) above which
+        // the journey drops to the cheap LOD tier — a fast scroll can't show per-chapter detail
+        // anyway (~0.006 ≈ crossing a chapter in ~0.35s). Tunable via the board controller.
+        this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.006;
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -1034,9 +1038,17 @@ export class ChapterEnvironmentManager {
                 this.chapterPositions,
                 this._blendStateScratch,
             );
+            // Velocity-aware LOD: smoothed |Δprogress| per call. During a FAST scroll the player
+            // can't perceive per-chapter detail, so the loop below forces the whole journey to the
+            // cheap 'far' tier (reflector + all dense Points off via the Stage 1/2 gates); full
+            // detail returns the instant they slow. Motion hides it → safe even for the centre.
+            const dp = Math.abs(this.cameraProgress - (this._lodLastProgress ?? this.cameraProgress));
+            this._lodLastProgress = this.cameraProgress;
+            this._lodScrollSpeed = (this._lodScrollSpeed ?? 0) * 0.6 + dp * 0.4;
         } else {
             this.cameraY = position ?? 0;
         }
+        const fastScroll = this.chapterLodEnabled && (this._lodScrollSpeed ?? 0) > this._lodFastThreshold;
 
         // A6: the env-opacity / content crossfade reads the WIDER ecotone overlap weights
         // when present (both adjacent biomes co-present across the band) and falls back to
@@ -1116,10 +1128,15 @@ export class ChapterEnvironmentManager {
             // so MID/FAR chapters still crossfade — only their heavy content is gated in update().
             let detailLevel = opacity > 0 ? 'near' : 'hidden';
             if (this.chapterLodEnabled && opacity > 0) {
-                const activeCh = this._resolvedBlendState?.activeChapter;
-                if (chapterId === activeCh || opacity >= 0.85) detailLevel = 'near';
-                else if (opacity >= 0.35) detailLevel = 'mid';
-                else detailLevel = 'far';
+                if (fastScroll) {
+                    // Whole journey to the cheap tier while blasting past — motion hides it.
+                    detailLevel = 'far';
+                } else {
+                    const activeCh = this._resolvedBlendState?.activeChapter;
+                    if (chapterId === activeCh || opacity >= 0.85) detailLevel = 'near';
+                    else if (opacity >= 0.35) detailLevel = 'mid';
+                    else detailLevel = 'far';
+                }
             }
             env.group.userData.detailLevel = detailLevel;
             if (this.chapterLodEnabled && env._lastDetailLevel !== detailLevel) {
