@@ -60,6 +60,7 @@ import { readFlag } from '../flags.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 import { generateSessionSeed } from '../session-rng.js';
 import { ThemeTransitionManager } from '../odyssey/ThemeTransitionManager.js';
+import { isEffectWarmEnabled, prewarmActiveThemeEffects } from '../../rendering/odyssey/effect-prewarm.js';
 import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardController.js';
 import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntryTransition.js';
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
@@ -2637,6 +2638,14 @@ export class OdysseyMode extends BaseGameMode {
 
         // Initialize minimap for tall boards
         this._initializeMinimap();
+
+        // Prewarm the active theme's gameplay-effect pipelines under the blackout (flag
+        // ?odysseyEffectWarm=1, default OFF) so they don't compile on first-use during play — the
+        // recurring frame-tail spikes. See src/rendering/odyssey/effect-prewarm.js. Byte-identical
+        // to today until the flag is set + verified in-game.
+        if (isEffectWarmEnabled()) {
+            await prewarmActiveThemeEffects(this.deps?.themeManager?.activeTheme);
+        }
 
         this.levelPrepared = true;
         this.entryPhase = 'prepared';
