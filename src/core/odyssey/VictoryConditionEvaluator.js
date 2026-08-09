@@ -276,9 +276,17 @@ export class VictoryConditionEvaluator {
                 continue;
             }
 
+            // Star tiers key their combo requirement as `combo`, but the tracked metric is
+            // `maxCombo` (the peak combo reached during the level) — the SAME mapping the primary
+            // victory path (evaluate: case 'combo') and the bonus path (evaluateBonuses: case
+            // 'combo') already apply. Without this alias `trackedMetrics.combo` is undefined and
+            // GameState exposes no `.combo` either, so the value collapses to 0 → every combo-gated
+            // star tier (~30 across the campaign) is mathematically unearnable.
+            const metricKey = key === 'combo' ? 'maxCombo' : key;
+
             // Get value from metrics or gameState
-            let value = this.trackedMetrics[key];
-            const gameStateValue = gameState?.[key];
+            let value = this.trackedMetrics[metricKey];
+            const gameStateValue = gameState?.[metricKey];
             if (
                 gameState
                 && (value === undefined || (key === 'score' && value === 0 && Number(gameStateValue) > 0))

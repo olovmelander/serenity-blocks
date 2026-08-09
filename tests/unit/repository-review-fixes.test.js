@@ -118,6 +118,42 @@ describe('repository review security and correctness fixes', () => {
         }, { score: 2500 })).toBe(2);
     });
 
+    it('awards combo-gated Odyssey star tiers from the tracked max combo', () => {
+        const evaluator = new VictoryConditionEvaluator();
+        evaluator.onCombo(5); // peak combo reached during the level → maxCombo = 5
+
+        // Tiers are keyed `combo` but the metric is `maxCombo`; without the alias these collapse
+        // to 0 and are unearnable no matter how the player performs.
+        expect(evaluator.calculateStars({
+            one: { combo: 1 },
+            two: { combo: 3 },
+            three: { combo: 5 },
+        }, {})).toBe(3);
+    });
+
+    it('does not award a combo star tier the player fell short of', () => {
+        const evaluator = new VictoryConditionEvaluator();
+        evaluator.onCombo(4); // maxCombo = 4, below the 3-star threshold of 5
+
+        expect(evaluator.calculateStars({
+            one: { combo: 1 },
+            two: { combo: 3 },
+            three: { combo: 5 },
+        }, {})).toBe(2);
+    });
+
+    it('requires every condition in a mixed combo star tier', () => {
+        const evaluator = new VictoryConditionEvaluator();
+        evaluator.onCombo(5); // maxCombo = 5, but zero cascades so far
+
+        // combo met, cascades not → tier fails
+        expect(evaluator.calculateStars({ three: { cascades: 2, combo: 5 } }, {})).toBe(0);
+
+        evaluator.onCascade(3);
+        evaluator.onCascade(2); // cascades = 2 → both conditions now met
+        expect(evaluator.calculateStars({ three: { cascades: 2, combo: 5 } }, {})).toBe(3);
+    });
+
     it('rejects null input payloads without throwing', () => {
         const validator = new InputValidator();
         expect(validator.validateInput('peer', 'move', null)).toEqual({
