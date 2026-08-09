@@ -474,10 +474,12 @@ export class OdysseyCameraController {
             followLerpSpeed: 0.03,
             scrollSpeed: 0.15, // Reduced from 0.5
             // Cap on manual scroll velocity (progress units/sec). A hard wheel flick used to
-            // build unbounded velocity and teleport across the map; this keeps the travel
-            // readable AND lets the background chapter render-warm stay ahead of the player.
-            // The gentle cinematic auto-drift is well under this, so it only bites flicks.
-            maxScrollVelocity: 0.4,
+            // build unbounded velocity and teleport across the map; this keeps the travel readable
+            // AND lets the background render-warm + per-chapter LOD stay ahead of the player. The
+            // gentle cinematic auto-drift is well under this, so it only bites flicks. Lowered
+            // 0.4 -> 0.26 (a chapter in ~0.48s, not ~0.3s) to tame super-fast mousepad scrolling;
+            // tunable via the board controller (?odysseyMaxScroll=).
+            maxScrollVelocity: Number.isFinite(options.maxScrollVelocity) ? options.maxScrollVelocity : 0.26,
             focusDistance: 10,
             minPosition: 0, // Allow scrolling all the way to Level 1
             maxPosition: 1, // Allow scrolling all the way to the end
