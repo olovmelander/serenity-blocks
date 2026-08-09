@@ -394,6 +394,11 @@ export class ChapterEnvironmentManager {
         this.chapterPositions = Array.isArray(options.chapterPositions) && options.chapterPositions.length >= 2
             ? [...options.chapterPositions]
             : [...CHAPTER_POSITIONS];
+        // Stage 1 lightweight-streaming (flag ?odysseyChapterLOD=1): when ON, off-center chapters
+        // shed their heaviest sublayers via a per-frame detailLevel signal written in
+        // updateVisibility + read by each chapter's update(). OFF → detailLevel is always
+        // 'near'/'hidden' → behaviour identical to today.
+        this.chapterLodEnabled = options.chapterLOD === true;
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -1076,6 +1081,19 @@ export class ChapterEnvironmentManager {
                     1,
                 );
             env.group.userData.chapterOpacity = opacity;
+            // Stage 1 — per-chapter detail LOD signal. Off-center chapters read 'mid'/'far' so their
+            // own update() sheds heavy sublayers WITHOUT teardown (no re-create hitch, no recompile).
+            // Flag OFF (or the active/near chapter) always resolves to 'near'/'hidden' → identical to
+            // today. String literals only, no per-frame allocation. group.visible is unchanged below,
+            // so MID/FAR chapters still crossfade — only their heavy content is gated in update().
+            let detailLevel = opacity > 0 ? 'near' : 'hidden';
+            if (this.chapterLodEnabled && opacity > 0) {
+                const activeCh = this._resolvedBlendState?.activeChapter;
+                if (chapterId === activeCh || opacity >= 0.85) detailLevel = 'near';
+                else if (opacity >= 0.35) detailLevel = 'mid';
+                else detailLevel = 'far';
+            }
+            env.group.userData.detailLevel = detailLevel;
             const isVisible = opacity > 0;
             env.group.visible = isVisible;
 
