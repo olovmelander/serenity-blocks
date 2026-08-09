@@ -1573,15 +1573,13 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         }
     }
 
-    // Stage 1 LOD (flag odysseyChapterLOD): when Ch3 is OFF-CENTER, shed its two standout costs —
-    // the reflector()'s 2nd scene render (the ocean subgroup) + the ~2,000 additive particle quads
-    // (meadow flowers + pollen). Zero teardown; restored the instant detail returns to 'near'.
-    // detailLevel is 'near' whenever the flag is off, so this is a no-op unless the flag is on.
-    const detailLevel = group.userData.detailLevel || 'near';
-    const fullDetail = detailLevel === 'near';
-    if (group.userData.ocean) group.userData.ocean.visible = fullDetail;
-    if (group.userData.meadowFlowers) group.userData.meadowFlowers.visible = fullDetail;
-    if (group.userData.pollen) group.userData.pollen.visible = fullDetail;
+    // Stage 1 LOD (flag odysseyChapterLOD): shed Ch3's two standout costs when OFF-CENTER — the
+    // reflector()'s 2nd scene render (the ocean subgroup) + the ~2,000 additive particle quads
+    // (meadow flowers + pollen). Computed here but APPLIED further down, AFTER the surface-element +
+    // ocean visibility writes (which are plain assignments that would otherwise clobber it) — and
+    // only ever force-HIDES so at full detail the normal gates stand. No-op when the flag is off
+    // (detailLevel = 'near' → fullDetail = true).
+    const fullDetail = (group.userData.detailLevel || 'near') === 'near';
 
     // Season scalar (creative plan item 6): chapter-local progress 0→1 scripts the
     // spring→autumn→winter arc through light. Drives the in-shader season gates AND the
@@ -1706,6 +1704,16 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { ocean } = group.userData;
     if (ocean) {
         ocean.visible = surfaceGate > 0 && waterCrossingState.waterCrossingVisible;
+    }
+
+    // Stage 1 LOD shed (flag odysseyChapterLOD): force-hide the reflector water + the big meadow/
+    // pollen particle clouds when Ch3 is OFF-CENTER. Placed AFTER the surface-element + ocean
+    // visibility writes above so it wins (they are plain assignments that would otherwise clobber
+    // it); force-HIDE only, so at full detail the normal gates stand. No-op when the flag is off.
+    if (!fullDetail) {
+        if (ocean) ocean.visible = false;
+        if (group.userData.meadowFlowers) group.userData.meadowFlowers.visible = false;
+        if (group.userData.pollen) group.userData.pollen.visible = false;
     }
 
     // Alpine pieces: toggle on the combined gate + drive their dedicated opacity targets.

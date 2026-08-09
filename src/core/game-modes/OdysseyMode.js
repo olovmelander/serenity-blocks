@@ -2645,6 +2645,10 @@ export class OdysseyMode extends BaseGameMode {
         // to today until the flag is set + verified in-game.
         if (isEffectWarmEnabled()) {
             await prewarmActiveThemeEffects(this.deps?.themeManager?.activeTheme);
+            // The prewarm await suspends AFTER the session was created; if the level was retired or
+            // replaced during it (quit/restart under the blackout), bail like every other async
+            // continuation here rather than stamping a stale prepared state onto a dead session.
+            if (!this._isLevelSessionActive(session)) return false;
         }
 
         this.levelPrepared = true;
