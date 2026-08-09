@@ -1290,12 +1290,15 @@ export function createSurfaceWorldEnvironment() {
         group.position.y = chapterCenterY;
     }
 
-    // HERO MIRROR (flag ch3HeroMirror): tag every non-water mesh onto the reflection layer so the
-    // hero lake's reflector() renders them (sky, terrain, treeline, mountains, trees…). The ocean
-    // group (sea/river/lake + the reflector target) is EXCLUDED, so water never reflects water
-    // (feedback). The group is translation-only (above), so the target's horizontal mirror plane
-    // stays valid in world space. Whole-scene mirroring is the simple/correct first cut; selective
-    // far-silhouette tagging is a documented perf follow-up. Virtual-camera layer wired lazily in
+    // HERO MIRROR (flag ch3HeroMirror): tag the far-silhouette meshes onto the reflection layer so
+    // the hero lake's reflector() renders them (sky, terrain, treeline, mountains, tree stands…).
+    // The ocean group (sea/river/lake + the reflector target) is EXCLUDED, so water never reflects
+    // water (feedback). SELECTIVE by instance count: DENSE instanced foliage/particle clouds (meadow
+    // flowers ~3600, wildflowers ~1400, pollen/motes…) barely register in the grazing, blurry lake
+    // reflection but would DOUBLE their draw cost in the mirror's 2nd scene pass — so any instanced
+    // mesh over ~250 instances is skipped. Structural single meshes and modest stands (trees/spruce/
+    // tree-line ≤~120) still reflect. The group is translation-only (above), so the target's
+    // horizontal mirror plane stays valid in world space. Virtual-camera layer wired lazily in
     // updateSurfaceWorldEnvironment (it needs the render camera).
     const ch3Reflection = ocean.userData?.ch3Reflection ?? null;
     if (ch3Reflection) {
@@ -1303,7 +1306,10 @@ export function createSurfaceWorldEnvironment() {
         for (const child of group.children) {
             if (child === ocean) continue;
             child.traverse((o) => {
-                if (o.isMesh || o.isInstancedMesh) o.layers.enable(CH3_REFLECTION_LAYER);
+                if (!(o.isMesh || o.isInstancedMesh)) return;
+                // Skip dense foliage/particle clouds — heavy in the 2nd pass, invisible in the mirror.
+                if (o.isInstancedMesh && (o.count ?? 0) > 250) return;
+                o.layers.enable(CH3_REFLECTION_LAYER);
             });
         }
         // Harden teardown (SB-15 leak trap): register the reflector's GPU resources so the
