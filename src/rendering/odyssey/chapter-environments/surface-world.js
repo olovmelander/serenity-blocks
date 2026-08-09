@@ -1573,6 +1573,16 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         }
     }
 
+    // Stage 1 LOD (flag odysseyChapterLOD): when Ch3 is OFF-CENTER, shed its two standout costs —
+    // the reflector()'s 2nd scene render (the ocean subgroup) + the ~2,000 additive particle quads
+    // (meadow flowers + pollen). Zero teardown; restored the instant detail returns to 'near'.
+    // detailLevel is 'near' whenever the flag is off, so this is a no-op unless the flag is on.
+    const detailLevel = group.userData.detailLevel || 'near';
+    const fullDetail = detailLevel === 'near';
+    if (group.userData.ocean) group.userData.ocean.visible = fullDetail;
+    if (group.userData.meadowFlowers) group.userData.meadowFlowers.visible = fullDetail;
+    if (group.userData.pollen) group.userData.pollen.visible = fullDetail;
+
     // Season scalar (creative plan item 6): chapter-local progress 0→1 scripts the
     // spring→autumn→winter arc through light. Drives the in-shader season gates AND the
     // JS-side key-light lerp below.

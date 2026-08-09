@@ -318,6 +318,14 @@ export class OdysseyBoardController {
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
         this.chapterEvictionWindow = Number.parseInt(readUrlValue('odysseyChapterEvictWindow'), 10) || 2;
+        // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
+        // chapters shed their heaviest sublayers (Ch3's reflector 2nd render, big additive particle
+        // clouds) via a detailLevel signal their update() reads — no teardown, no recompile. Stage 1
+        // of the lightweight-streaming plan (docs/ODYSSEY_LIGHTWEIGHT_STREAMING_PLAN.md). Suppressed
+        // during capture-restricted runs.
+        this.chapterLodEnabled = (options.chapterLOD === true
+            || readBooleanUrlFlag('odysseyChapterLOD'))
+            && !this.restrictStartupChapterLoading;
         this.backgroundChapterLoadingEnabled = options.backgroundChapterLoading !== false
             && !this.restrictStartupChapterLoading
             && !readBooleanUrlFlag('odysseyDisableBackgroundLoading')
@@ -558,6 +566,7 @@ export class OdysseyBoardController {
         // so launches can overlap safely; the pool barrier sits before the warm-up replay.
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
             chapterPositions: this.presentationLayout.chapterPositions,
+            chapterLOD: this.chapterLodEnabled,
         });
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
