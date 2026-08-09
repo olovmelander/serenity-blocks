@@ -52,9 +52,14 @@ export async function prewarmActiveThemeEffects(theme) {
         });
         if (hidden.length === 0) return;
 
-        // Compile scene-pass materials of the now-visible meshes up front (no display).
+        // Compile scene-pass materials of the now-visible meshes up front (no display). Bounded like
+        // the rAF wait below: a stalled / never-settling compile (device-loss, GPU BeginFrame
+        // starvation) must not hang level start, so race it against a timeout.
         if (typeof theme.renderer?.compileAsync === 'function' && theme.camera) {
-            await theme.renderer.compileAsync(scene, theme.camera).catch(() => {});
+            await Promise.race([
+                theme.renderer.compileAsync(scene, theme.camera).catch(() => {}),
+                new Promise((r) => { setTimeout(r, 250); }),
+            ]);
         }
         // Let the theme's own render loop draw a few masked frames so the selective-bloom / MRT
         // variant pipelines (which need a real render) compile now. Timeout-bounded so a throttled

@@ -567,8 +567,9 @@ export class OdysseyBoardController {
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
             chapterPositions: this.presentationLayout.chapterPositions,
             chapterLOD: this.chapterLodEnabled,
-            // Tune the fast-scroll velocity threshold in-game: ?odysseyLodFastSpeed=0.01 (higher =
-            // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.006.
+            // Tune the fast-scroll velocity threshold in-game: ?odysseyLodFastSpeed=0.004 (higher =
+            // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.0015
+            // (must stay below the ~0.0025/frame reachable at the 0.15 maxScrollVelocity cap).
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
         });
         const compilePool = [];
