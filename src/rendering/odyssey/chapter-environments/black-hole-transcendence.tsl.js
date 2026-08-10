@@ -374,13 +374,21 @@ export function createSharedMotifMaterialsTSL(uTime = uniform(0), uEnergy = unif
 
 // ── Deep-violet ambient wash (additive, camera-enveloping; must NOT blow white) ──
 
+// Post-fog-removal retune (backlog #3 follow-up): these floors/gains were "raised HARD
+// (B2 stop-the-crush)" back when the profile FogExp2 (density 0.012) was washing every
+// surface toward violet — the wash had to shout just to keep the frame off RGB-black.
+// Now that material.fog=false lets the void-dome backstop + heroes read on their own, the
+// camera-enveloping fresnel wash was the dominant OVER-bright element: a rim-bright
+// additive BackSide sphere reads as a giant white halo ringing the view and blowing the
+// frame edges out. Dialed back to its intended SUBTLE backstop role — the void dome (raised
+// violet floors) still prevents black, but the wash no longer dominates the finale.
 export const CH7_AMBIENT_WASH_SETTINGS = Object.freeze({
-    centerFloor: 0.86,
-    rimGain: 0.78,
-    opacityFloor: 0.42,
-    opacityCap: 0.72,
+    centerFloor: 0.56,
+    rimGain: 0.42,
+    opacityFloor: 0.20,
+    opacityCap: 0.44,
     sphereRadius: 360,
-    floorColor: [0.17, 0.095, 0.31],
+    floorColor: [0.14, 0.078, 0.26],
 });
 
 /**
