@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
+import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 import {
     GAME_MODES, COLS, ROWS,
 } from '../constants.js';
@@ -1374,7 +1375,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _registerEffectHandlers() {
         const localSteamId = this.steamNetworking?.steamId;
-        const settings = this.deps.settingsManager?.get() || {};
+        // Read settings per event, not once at registration: these handlers live
+        // for the whole match, so a snapshot here froze the effect toggles at
+        // whatever they were when the match started.
+        const settingsOf = () => this.deps.settingsManager?.get() || {};
+        // True consecutive-clear combo for the local board. The COMBO wire event
+        // carries cascade depth, and LINE_CLEAR_IMPACT carries no cascade index at
+        // all, so the chain is derived from the LINE_CLEAR / PIECE_LOCK pair.
+        this._comboTracker = this._comboTracker || new ComboTracker();
+        this._comboTracker.reset();
 
         // Line clear effect handler
         this.lineClearEffectUnsub = onMultiplayerEvent(
@@ -1384,13 +1393,19 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (detail.steamId !== localSteamId) return;
                 if (!this.mainBoardScene) return;
 
+                // Advance the real combo before the flash reads the tint state.
+                announceCombo(this._comboTracker, this.mainBoardScene, {
+                    popupEnabled: settingsOf().comboPopupEffect,
+                });
+
                 // Emit event for theme integration
                 emitLineClear({
                     lineCount: detail.rows?.length || 0,
                     clearedRows: detail.rows || [],
                 });
 
-                // Trigger flash effect on cleared rows
+                // Trigger flash effect on cleared rows (lineClearEffects is
+                // enforced inside SharedEffects).
                 if (this.mainBoardScene.triggerLineClearFlash && detail.rows) {
                     this.mainBoardScene.triggerLineClearFlash(detail.rows);
                 }
@@ -1433,15 +1448,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
                 const comboCount = detail.comboCount || 0;
 
-                // Emit event for theme integration
+                // Emit event for theme integration. The payload is cascade DEPTH;
+                // themes have keyed off it since launch, so it stays unchanged.
                 emitCombo({ comboCount });
 
-                // Show combo popup
-                if (settings.comboPopupEffect && this.mainBoardScene.showComboPopup) {
-                    this.mainBoardScene.showComboPopup(comboCount);
-                }
-
-                // Show cascade wave indicator
+                // No popup here — that is the real combo's job, driven from the
+                // LINE_CLEAR handler. This event's board feedback is the cascade
+                // wave, which is what the payload actually describes.
                 if (this.mainBoardScene.sharedEffects?.showCascadeWave) {
                     this.mainBoardScene.sharedEffects.showCascadeWave(comboCount);
                 }
@@ -1488,7 +1501,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // Emit event for theme integration
                 emitPieceLock({ piece });
 
-                // Create piece lock ripple effect
+                // Ungated bookkeeping: a lock that clears nothing breaks the chain.
+                noteLockForCombo(this._comboTracker, this.mainBoardScene);
+
+                // Create piece lock ripple effect (pieceLockRipple is enforced
+                // inside SharedEffects).
                 if (piece && this.mainBoardScene.createPieceLockRipple) {
                     this.mainBoardScene.createPieceLockRipple(piece);
                 }

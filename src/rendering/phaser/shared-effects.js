@@ -141,6 +141,33 @@ export class SharedEffects {
     }
 
     /**
+     * Read a player-facing effect toggle.
+     *
+     * The gates live here rather than in each mode's physics callbacks for two
+     * reasons: every caller (5 game modes plus the legacy main.js path) gets them
+     * for free — previously only main.js honoured lineClearEffects/pieceLockRipple,
+     * so both toggles were dead in real play — and the callbacks stay free of live
+     * settings reads, which the fixed-tick determinism guards depend on.
+     *
+     * Defaults to enabled when no settings source is reachable (headless tests,
+     * capture harnesses) so effects never silently vanish.
+     *
+     * @param {string} key
+     * @returns {boolean}
+     * @private
+     */
+    _effectEnabled(key) {
+        try {
+            const settings = (typeof window !== 'undefined' && window.settingsManager?.get?.())
+                || this.scene?.gameState?.settings;
+            if (settings && key in settings) return Boolean(settings[key]);
+        } catch (e) {
+            // Settings unavailable (torn down / restricted) — fall through to enabled.
+        }
+        return true;
+    }
+
+    /**
      * Impact freeze ("hit-stop"): briefly halts the scene clock + tweens so a big
      * hit reads as a punch. Phaser timers are frozen during the stop, so the
      * restore MUST run on the real wall-clock via setTimeout.
@@ -261,6 +288,7 @@ export class SharedEffects {
      */
     triggerLineClearFlash(clearedRows) {
         if (!clearedRows || clearedRows.length === 0) return;
+        if (!this._effectEnabled('lineClearEffects')) return;
 
         const PhaserRef = window.Phaser;
         const width = this.scene.cols * this.scene.blockSize;
@@ -361,6 +389,7 @@ export class SharedEffects {
      */
     createPieceLockRipple(piece) {
         if (!piece) return;
+        if (!this._effectEnabled('pieceLockRipple')) return;
 
         const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
 
@@ -438,12 +467,30 @@ export class SharedEffects {
     }
 
     /**
+     * Set the combo level that drives particle tints and intensity multipliers.
+     *
+     * This is deliberately separate from showComboPopup(): the popup is optional
+     * (settings.comboPopupEffect) and only appears from 2x upward, whereas the
+     * tint/multiplier state must track every clear — including the reset back to
+     * 0 when a chain breaks. Wiring them together left currentComboCount pinned
+     * at the last announced value for the rest of the run, permanently inflating
+     * particle speed/scale/lifespan/count and rainbow-tinting ordinary clears.
+     *
+     * @param {number} comboCount - Current consecutive-clear combo (0 = no chain).
+     */
+    setComboCount(comboCount) {
+        const next = Number(comboCount);
+        this.currentComboCount = Number.isFinite(next) && next > 0 ? next : 0;
+    }
+
+    /**
      * Show combo popup effect
      * @param {number} comboCount - Combo count
      */
     showComboPopup(comboCount) {
-        // Store combo count for enhanced particle effects
-        this.currentComboCount = comboCount;
+        // Keep the tint/multiplier state in sync for callers that only drive the
+        // popup; setComboCount() is the authoritative entry point.
+        this.setComboCount(comboCount);
 
         // Create text popup (center of visible canvas)
         // This should be in screen coordinates (visible area only, no hidden rows)
@@ -492,6 +539,7 @@ export class SharedEffects {
      * @param {number} lineCount - Number of lines cleared simultaneously
      */
     playLineClearImpact(lineCount = 1) {
+        if (!this._effectEnabled('lineClearEffects')) return;
         const clampedLineCount = Math.max(1, Math.min(4, lineCount));
         const tier = this.getClearTier(lineCount);
         const reduced = this._reducedMotion();
@@ -750,8 +798,15 @@ export class SharedEffects {
     }
 
     /**
-     * Spawn a radial wave effect for extreme combos
-     * Uses compatibility layer for Phaser 3/4 support
+     * Spawn a radial wave effect for extreme combos.
+     *
+     * ONE emitter for the whole ring. This used to allocate an emitter *per
+     * particle* — `60 + comboCount * 10` game objects, each with its own
+     * destroy timer (≈140 at combo 8), rebuilt on every high combo and on every
+     * perfect clear. The even angular spacing that loop produced is reproduced
+     * by a stepped `angle` op, which walks start→end across successive
+     * particles of a single burst, so the look is unchanged.
+     *
      * @param {number} comboCount - Current combo count
      */
     spawnRadialWave(comboCount) {
@@ -766,51 +821,54 @@ export class SharedEffects {
         const ringParticleCount = Math.round(60 + (comboCount * 10));
         const waveSpeed = 200 + (comboCount * 20);
 
-        // Create expanding ring of particles
-        for (let i = 0; i < ringParticleCount; i++) {
-            const angle = (i / ringParticleCount) * Math.PI * 2;
-            const dirX = Math.cos(angle);
-            const dirY = Math.sin(angle);
+        // Per-particle tint: an array cycles across the burst the same way the
+        // old loop's `getComboTint(comboCount, i)` did. Built via getComboTint so
+        // a scene-level palette override still applies.
+        const tint = comboCount >= 5
+            ? Array.from({ length: 7 }, (_, i) => this.getComboTint(comboCount, i))
+            : this.getComboTint(comboCount, 0);
 
-            // Use compatibility layer
-            const emitter = createParticleEmitter(this.scene, centerX, centerY, this.lineClearParticleKey, {
-                speedX: dirX * waveSpeed,
-                speedY: dirY * waveSpeed,
-                lifespan: { min: 500, max: 800 },
-                quantity: 1,
-                alpha: { start: 1, end: 0 },
-                scale: { start: 1.5, end: 0.3 },
-                gravityY: 0, // No gravity for clean ring expansion
-                blendMode: 'ADD',
-                on: false,
-                tint: this.getComboTint(comboCount, i),
-            });
+        const emitter = createParticleEmitter(this.scene, centerX, centerY, this.lineClearParticleKey, {
+            angle: { start: 0, end: 360, steps: ringParticleCount },
+            speed: waveSpeed, // exact, not a range — constant speed keeps the ring circular
+            lifespan: { min: 500, max: 800 },
+            quantity: 0, // required for explode()
+            alpha: { start: 1, end: 0 },
+            scale: { start: 1.5, end: 0.3 },
+            gravityY: 0, // No gravity for clean ring expansion
+            blendMode: 'ADD',
+            on: false,
+            tint,
+        });
 
-            if (!emitter) {
-                console.warn('[SharedEffects] Failed to create radial wave particle', i);
-                continue;
-            }
-
-            if (emitter.setDepth) {
-                emitter.setDepth(3);
-            }
-
-            // Particles ignore camera scroll - positioned in screen coordinates
-            if (emitter.setScrollFactor) {
-                emitter.setScrollFactor(0);
-            }
-
-            emitParticles(emitter, 1);
-
-            this.scene.time.delayedCall(900, () => {
-                if (emitter) {
-                    destroyParticleEmitter(emitter);
-                    this.activeParticleSystems.delete(emitter);
-                }
-            });
-
-            this.activeParticleSystems.add(emitter);
+        if (!emitter) {
+            console.warn('[SharedEffects] Failed to create radial wave emitter');
+            return;
         }
+
+        if (emitter.setDepth) {
+            emitter.setDepth(3);
+        }
+
+        // Particles ignore camera scroll - positioned in screen coordinates
+        if (emitter.setScrollFactor) {
+            emitter.setScrollFactor(0);
+        }
+
+        if (!emitParticles(emitter, ringParticleCount)) {
+            destroyParticleEmitter(emitter);
+            return;
+        }
+
+        const timer = this.scene.time.delayedCall(900, () => {
+            if (emitter) {
+                destroyParticleEmitter(emitter);
+                this.activeParticleSystems.delete(emitter);
+            }
+        });
+        this._trackTimer(timer);
+
+        this.activeParticleSystems.add(emitter);
     }
 
     /**
@@ -1027,92 +1085,6 @@ export class SharedEffects {
             onComplete: () => {
                 ringGraphics.destroy();
             },
-        });
-    }
-
-    /**
-     * Create landing impact effect when blocks settle after falling
-     * @param {Array<Object>} pieces - Array of pieces that just landed
-     */
-    createLandingImpact(pieces) {
-        if (!pieces || pieces.length === 0) return;
-        if (!this.scene.textures.exists(this.lineClearParticleKey)) return;
-        if (!this.getQualityConfig()?.particles) return;
-
-        const PhaserRef = window.Phaser;
-        if (!PhaserRef || !PhaserRef.Geom || !PhaserRef.Geom.Rectangle) return;
-
-        pieces.forEach((piece) => {
-            if (!piece.shape || !piece.fallDistance || piece.fallDistance < 2) return;
-
-            // Find bottom blocks of the piece
-            const bottomBlocks = [];
-            piece.shape.forEach((row, localY) => {
-                row.forEach((cell, localX) => {
-                    if (cell > 0) {
-                        // Check if this is a bottom block (no block below it)
-                        const isBottom = localY === piece.shape.length - 1
-                            || piece.shape[localY + 1][localX] === 0;
-                        if (isBottom) {
-                            bottomBlocks.push({
-                                x: piece.x + localX,
-                                y: piece.finalY + localY,
-                            });
-                        }
-                    }
-                });
-            });
-
-            // Create impact particles at each bottom block
-            bottomBlocks.forEach((block) => {
-                const screenY = (block.y - this.scene.hiddenRows) * this.scene.blockSize;
-                const screenX = block.x * this.scene.blockSize;
-
-                // Only spawn if visible
-                if (screenY < 0) return;
-
-                const emitter = createParticleEmitter(
-                    this.scene,
-                    screenX + this.scene.blockSize / 2,
-                    screenY + this.scene.blockSize,
-                    this.lineClearParticleKey,
-                    {
-                        speed: { min: 30, max: 80 },
-                        angle: { min: -180, max: 0 },
-                        lifespan: { min: 200, max: 400 },
-                        quantity: 0,
-                        alpha: { start: 0.7, end: 0 },
-                        scale: { start: 0.6, end: 0.1 },
-                        gravityY: 200,
-                        blendMode: 'ADD',
-                        on: false,
-                        tint: parseInt(this.getPieceColor(piece, '#ffffff').replace('#', ''), 16) || 0xffffff,
-                    },
-                );
-
-                if (!emitter) return;
-
-                if (emitter.setDepth) {
-                    emitter.setDepth(2);
-                }
-
-                if (emitter.setScrollFactor) {
-                    emitter.setScrollFactor(0);
-                }
-
-                // More particles for longer falls
-                const particleCount = Math.min(Math.floor(piece.fallDistance / 2) * 2, 8);
-                emitParticles(emitter, particleCount);
-
-                this.scene.time.delayedCall(500, () => {
-                    if (emitter) {
-                        destroyParticleEmitter(emitter);
-                        this.activeParticleSystems.delete(emitter);
-                    }
-                });
-
-                this.activeParticleSystems.add(emitter);
-            });
         });
     }
 

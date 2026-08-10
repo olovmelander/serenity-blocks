@@ -62,8 +62,13 @@ export function createMultiplayerBoardScene(
             super(key || 'MultiplayerBoardScene', boardConfig);
             console.log(`[MultiplayerBoardScene] Constructor called with key: ${key}, blockSize: ${boardConfig.blockSize}`);
 
-            // SharedEffects instance (will be initialized in create())
+            // SharedEffects instance (will be initialized in create()).
+            // BoardScene exposes the same instance under BOTH names and callers
+            // reach for `scene.sharedEffects?.…` — without the alias every such
+            // call (T-spin, back-to-back, cascade wave, perfect clear, clear-tier
+            // hit-stop, combo state) silently no-opped on multiplayer boards.
             this.effects = null;
+            this.sharedEffects = null;
 
             // Keep these for backward compatibility
             this.activeParticleSystems = new Set();
@@ -125,6 +130,7 @@ export function createMultiplayerBoardScene(
 
                 // Initialize SharedEffects
                 this.effects = new SharedEffects(this);
+                this.sharedEffects = this.effects;
                 console.log(`[MultiplayerBoardScene] SharedEffects initialized for ${this.scene?.key || 'unknown'}`);
 
                 this.applyViewport();
@@ -317,6 +323,7 @@ export function createMultiplayerBoardScene(
                     this.effects.cleanup();
                     this.effects = null;
                 }
+                this.sharedEffects = null;
 
                 super.shutdown();
                 this.labelText?.destroy();

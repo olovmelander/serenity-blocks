@@ -16,6 +16,7 @@ import {
     applyFixedPerfectClearHitStop,
 } from '../fixed-hit-stop-policy.js';
 import { fenceOdysseyPhysicsCallbacks } from '../odyssey/odyssey-level-session.js';
+import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 
 export function prefersOdysseyReducedMotion(
     mode,
@@ -31,6 +32,10 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         gameState, hybridEngine, levelId, simulationClock,
     } = session;
     const usesFixedTiming = simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
+    // One attempt = one combo chain. Physics' triggerCombo carries cascade depth
+    // (ADR-0011 pins that payload), so the real combo is tracked here.
+    const comboTracker = new ComboTracker();
+    const settingsOf = () => mode.deps.settingsManager?.get() || {};
     const baseCallbacks = {
         onMove: () => mode.deps.soundManager?.sfxPlayer?.playMove(),
         onRotate: () => mode.deps.soundManager?.sfxPlayer?.playRotate(),
@@ -38,6 +43,11 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
             const cascadeCount = rest[3] ?? 1;
             mode.deps.soundManager?.sfxPlayer?.playLineClear(cascadeCount);
+            // Before triggerFlash in the pinned schedule, so the clear visuals
+            // read a combo value that already includes this clear.
+            announceCombo(comboTracker, mode._getBoardScene?.(), {
+                popupEnabled: settingsOf().comboPopupEffect,
+            });
             emitLineClear({
                 lineCount,
                 clearedRows,
@@ -78,13 +88,18 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             mode.boardJuice?.dip(3);
             mode.boardJuice?.bounce();
         },
+        // Cascade signal — the payload is cascade DEPTH, kept as-is for themes.
+        // The board popup is driven from onLineClear; the cascade's own board
+        // feedback is triggerCascadeWave below.
         triggerCombo: (comboCount) => {
             emitCombo({ comboCount, source: 'odyssey', levelId });
-            mode._getBoardScene()?.showComboPopup?.(comboCount);
         },
         triggerCascadeWave: (cascadeCount) => {
             mode._getBoardScene()?.sharedEffects?.showCascadeWave?.(cascadeCount);
         },
+        // Effect toggles (lineClearEffects / pieceLockRipple) are enforced inside
+        // SharedEffects so this stays free of live settings reads — the fixed-tick
+        // determinism guards assert the timing path consults no settings.
         triggerFlash: (fullLines) => {
             mode._getBoardScene()?.triggerLineClearFlash?.(fullLines);
         },
@@ -105,6 +120,9 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         },
         onPieceLock: (piece) => {
             emitPieceLock({ piece });
+            // Bookkeeping first, and ungated: a lock that clears nothing is what
+            // breaks a chain, whether or not the ripple is switched on.
+            noteLockForCombo(comboTracker, mode._getBoardScene?.());
             mode._getBoardScene()?.createPieceLockRipple?.(piece);
             mode.boardJuice?.dip(1);
             mode.boardJuice?.pulse(1.005);

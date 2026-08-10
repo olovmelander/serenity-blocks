@@ -1,5 +1,6 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
+import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 import {
     GameState,
     spawnPiece,
@@ -114,6 +115,10 @@ export class SinglePlayerMode extends BaseGameMode {
         this._activeSession = null;
         this._stoppedSession = null;
         this._stopPromise = null;
+
+        // True consecutive-clear combo. Physics' triggerCombo carries CASCADE
+        // depth (pinned by ADR-0011), so the combo is derived here instead.
+        this._comboTracker = new ComboTracker();
     }
 
     getModeId() {
@@ -263,6 +268,7 @@ export class SinglePlayerMode extends BaseGameMode {
             simulationClock: this._sessionSimulationClock,
         });
         this._stoppedSession = null;
+        this._comboTracker.reset();
 
         // Reset game over processing flag so game over can trigger again
         this.isProcessingGameOver = false;
@@ -1151,6 +1157,13 @@ export class SinglePlayerMode extends BaseGameMode {
                 const cascadeCount = rest[3] ?? 1;
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
 
+                // Advance the real combo BEFORE the clear visuals run: the pinned
+                // schedule puts onLineClear ahead of triggerFlash, so the particle
+                // tint/intensity read the value that includes this clear.
+                announceCombo(this._comboTracker, this._getBoardScene(), {
+                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
+                });
+
                 // Emit event for theme reactions
                 console.log('[SinglePlayer] Emitting LINE_CLEAR event, count:', lineCount);
                 emitLineClear({ lineCount, clearedRows, cascadeCount });
@@ -1185,18 +1198,14 @@ export class SinglePlayerMode extends BaseGameMode {
                     boardScene.playHardDropEffect(dropData);
                 }
             },
-            // Trigger combo visual effects
+            // Cascade signal. The payload is cascade DEPTH, not a combo — themes
+            // have keyed off it since launch, so it keeps emitting unchanged.
+            // The board popup is driven from onLineClear instead; the cascade's
+            // own board feedback is triggerCascadeWave below.
             triggerCombo: (comboCount) => {
                 // Emit event for theme reactions
-                console.log('[SinglePlayer] Emitting COMBO event, comboCount:', comboCount);
+                console.log('[SinglePlayer] Emitting COMBO event, cascadeDepth:', comboCount);
                 emitCombo({ comboCount });
-
-                const settings = this.deps.settingsManager.get();
-                const boardScene = this._getBoardScene();
-                if (settings.comboPopupEffect && boardScene) {
-                    boardScene.showComboPopup(comboCount);
-                    console.log(`[SinglePlayer] Combo popup triggered: ${comboCount}x`);
-                }
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {
@@ -1206,17 +1215,22 @@ export class SinglePlayerMode extends BaseGameMode {
                     console.log(`[SinglePlayer] Cascade wave ${cascadeCount} triggered`);
                 }
             },
-            // Line clear flash effect
+            // Line clear flash effect. The lineClearEffects toggle is enforced
+            // inside SharedEffects (so every caller honours it, and this callback
+            // stays free of live settings reads for fixed-tick determinism); the
+            // legacy canvas fallback has no such layer, so it gates here.
             triggerFlash: (fullLines) => {
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.triggerLineClearFlash) {
                     boardScene.triggerLineClearFlash(fullLines);
-                } else {
+                } else if (this.deps.settingsManager.get().lineClearEffects) {
                     triggerLineClearFlashCanvas(fullLines);
                 }
             },
             // Camera shake + particle impact
             onLineClearImpact: (lineCount, cascadeCount) => {
+                // Timing (hit-stop) is sim state, not decoration — it stays outside
+                // the visual toggle so gameplay feel is identical either way.
                 this._applyLineClearImpactTiming(lineCount, timingState, usesFixedTiming);
 
                 const boardScene = this._getBoardScene();
@@ -1261,6 +1275,10 @@ export class SinglePlayerMode extends BaseGameMode {
             onPieceLock: (piece) => {
                 // Emit event for theme reactions
                 emitPieceLock({ piece });
+
+                // Combo bookkeeping runs on every lock, independent of any visual
+                // toggle — a lock that clears nothing is what breaks a chain.
+                noteLockForCombo(this._comboTracker, this._getBoardScene());
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
