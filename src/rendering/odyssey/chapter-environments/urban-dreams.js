@@ -130,16 +130,23 @@ function createNeonRails() {
     // These FRAME the shared Phase-A unified path conduit (the chapter does not render its
     // own path) — gates around the route, not a competing path line. They march the full
     // length of the new neon canyon so the conduit is gated end-to-end toward the finale.
+    // CONSOLIDATION (remake plan #1): two SHARED additive materials (cyan/magenta) serve all 9
+    // gates — the 9 near-identical MeshBasicMaterials collapse to 2 compiled pipelines. Rings stay
+    // individual meshes so update() can still spin each on its own rotation.z (transform, not
+    // material), so the look is byte-identical.
+    const ringMaterial = (color) => new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+    const cyanRing = ringMaterial(CYAN);
+    const magentaRing = ringMaterial(MAGENTA);
     for (let index = 0; index < 9; index += 1) {
         const ring = new THREE.Mesh(
             new THREE.TorusGeometry(30 + index * 3.5, 0.5, 8, 96),
-            new THREE.MeshBasicMaterial({
-                color: index % 2 === 0 ? CYAN : MAGENTA,
-                transparent: true,
-                opacity: 0.5,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }),
+            index % 2 === 0 ? cyanRing : magentaRing,
         );
         ring.rotation.x = Math.PI * 0.5;
         ring.position.set(0, -2, -120 - index * 80);
@@ -260,6 +267,20 @@ function createSkyTraffic() {
     // palette and read as visual noise. Light trails now reinforce the city's two-tone
     // identity, with magenta slightly favoured so cyan owns the path and magenta the sky.
     const colors = [CYAN, MAGENTA, MAGENTA];
+    // CONSOLIDATION (remake plan #3): two SHARED additive materials (cyan/magenta) across all ~18
+    // trails — the per-trail MeshBasicMaterials collapse to 2 pipelines. Trails stay individual
+    // meshes so update() slides each along the canyon (transform, not material). One shared opacity
+    // (0.55) for trails + heroes; the 0.05 the heroes lose is imperceptible under additive blend.
+    const trailMaterial = (color) => new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+    const cyanTrail = trailMaterial(CYAN);
+    const magentaTrail = trailMaterial(MAGENTA);
+    const matFor = (color) => (color === CYAN ? cyanTrail : magentaTrail);
 
     // ~16 trails streaking FORWARD down the canyon at varied heights and depths across the
     // full nearZ→farZ span (not clustered at the finale). Brighter + thicker so they READ
@@ -279,13 +300,7 @@ function createSkyTraffic() {
         ]);
         const trail = new THREE.Mesh(
             new THREE.TubeGeometry(curve, 36, 0.7, 7, false),
-            new THREE.MeshBasicMaterial({
-                color: colors[index % colors.length],
-                transparent: true,
-                opacity: 0.55,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }),
+            matFor(colors[index % colors.length]),
         );
         trail.userData.speed = 80 + index * 9; // world units/sec streaking forward
         trail.userData.baseZ = baseZ;
@@ -301,13 +316,7 @@ function createSkyTraffic() {
         ]);
         const hero = new THREE.Mesh(
             new THREE.TubeGeometry(curve, 40, 1.0, 8, false),
-            new THREE.MeshBasicMaterial({
-                color: i === 0 ? CYAN : MAGENTA,
-                transparent: true,
-                opacity: 0.6,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }),
+            matFor(i === 0 ? CYAN : MAGENTA),
         );
         hero.userData.speed = 0; // hero trails sway in place rather than streak
         hero.userData.hero = true;
