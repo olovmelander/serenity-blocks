@@ -1131,6 +1131,11 @@ export function createStillwaterRuntime({
         resetReactions,
         setReducedMotion,
         setLayout,
+        // The three reaction draws are built at scene build but parked
+        // visible=false (stillwater-reactions.js:210/:296/:422). Handing the
+        // theme their root lets the masked warm render create their pipelines
+        // instead of paying for them on the first line clear.
+        getWarmupRoots: () => (reactions?.root ? [reactions.root] : []),
         getCaptureMeta: () => ({
             event: queryEvent,
             fxAge: queryFxAge,

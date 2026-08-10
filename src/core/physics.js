@@ -32,26 +32,186 @@ const physicsWarn = (...args) => {
     if (PHYSICS_DEBUG) console.warn(...args);
 };
 
-function waitForAnimationFrame(durationMs) {
+const perfNow = typeof performance !== 'undefined' && performance?.now
+    ? () => performance.now()
+    : () => Date.now();
+
+/**
+ * Longest stretch of owed animation the pacer will compress into a single
+ * catch-up burst before it starts waiting again.
+ *
+ * Without a bound, a machine that is persistently slower than the nominal
+ * timeline would let every remaining step resolve instantly and the whole
+ * cascade would snap. A competitive player still has to *read* which rows
+ * cleared, so we cap how much can vanish at once and re-anchor the timeline.
+ */
+const MAX_ANIMATION_CATCHUP_MS = 120;
+
+/**
+ * Cascade gravity: milliseconds per row of fall.
+ *
+ * Ported from Quadra (source/player.cc, `Player_check_link::step`). Quadra runs
+ * a fixed 10ms simulation tick (`while (acc >= 10) { acc -= 10; overmind.step(); }`
+ * in quadra.cc's main_loop) and its cascade alternates two steps per row — one
+ * step flood-fills block connectivity, the next moves every unsupported block
+ * down exactly one row. That is 2 x 10ms = 20ms per row, constant, with no
+ * acceleration and no easing.
+ *
+ * We were at 16ms (62.5 rows/sec), which read as frantic. Note the previous
+ * frame-quantised implementation accidentally landed near this value — an
+ * 18-row cascade measured 552ms against Quadra's 520ms — which is why it felt
+ * right before the pacer started hitting the authored constants exactly.
+ *
+ * See docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §8.
+ */
+const GRAVITY_STEP_MS = 20;
+
+/**
+ * How long the completed rows stay on screen before the stack collapses.
+ *
+ * Quadra's `Player_flash_lines` (source/player.cc:738) holds for 16 ticks =
+ * 160ms, strobing a solid bar across each cleared row, then cuts to the fall.
+ *
+ * We already draw that bar: `triggerLineClearFlash`
+ * (rendering/phaser/shared-effects.js:262) adds a full-width additive stripe per
+ * cleared row and tweens it out over `220 + index * 40`ms. The effect was never
+ * the problem — the board collapsed out from under it after only 70ms. Holding
+ * 160ms lets the stripe read before the rows vanish.
+ *
+ * NOTE: the per-cell `alpha` fade this hold used to run was dead code. It wrote
+ * onto the `cloneBoardGrid` scratch that only `callbacks.updateBoard` sees, and
+ * every definition of that callback is an empty no-op (main.js:3390, :4633),
+ * while the renderer draws from `gameState.boardGrid`
+ * (rendering/phaser/base-board-scene.js:814). Do not reintroduce a per-cell
+ * flash without first giving the renderer a way to read it.
+ */
+const LINE_CLEAR_HOLD_MS = 160;
+
+/**
+ * Beat between the rows disappearing and the stack starting to fall.
+ *
+ * Quadra gets this for free: `Player_check_link`'s first tick only flood-fills
+ * connectivity (`fill_bloc`) and moves nothing, so there is a full 10ms tick
+ * where the row is gone and the stack still hangs. That beat is what makes the
+ * collapse read as a consequence rather than a jump-cut.
+ *
+ * We had no equivalent — nothing repainted between `removeClearedLines` and the
+ * first gravity step, so the first frame after the hold already had everything
+ * moved down a row. Cause and effect landed on the same frame.
+ */
+const SETTLE_LEAD_MS = 20;
+
+/**
+ * Beat after the last block lands, before the next wave or the next piece.
+ * Mirrors Quadra's final `Player_check_link` pass, whose move step moves nothing
+ * before `ret()` — the collapse gets a moment to land.
+ */
+const SETTLE_TAIL_MS = 20;
+
+/**
+ * Hold the completed rows on screen while the clear stripe plays.
+ * Shared by the legacy and resolved paths so the two cannot drift — the §5.10
+ * differential gate compares them.
+ *
+ * @param {Array<Array<Object|null>>} markedBoard scratch clone for updateBoard
+ * @param {number} speedClass per-wave multiplier (1.0 / 0.8 / 0.6 / 0.5)
+ * @param {Object} callbacks physics callbacks (updateBoard / draw)
+ * @param {{wait:(ms:number)=>Promise<boolean>}} pacer shared animation timeline
+ */
+async function holdClearedRows(markedBoard, speedClass, callbacks, pacer) {
+    if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
+    if (callbacks.draw) callbacks.draw();
+    await pacer.wait(LINE_CLEAR_HOLD_MS * speedClass);
+}
+
+/**
+ * The "rows are gone, nothing has moved yet" beat. Must run AFTER the cleared
+ * rows are removed from the board and BEFORE the first gravity step, and must
+ * repaint — `markBoardDirty` is what makes the static layer redraw.
+ *
+ * @param {Object} gameState
+ * @param {number} speedClass per-wave multiplier
+ * @param {Object} callbacks physics callbacks
+ * @param {{wait:(ms:number)=>Promise<boolean>}} pacer shared animation timeline
+ */
+async function settleLead(gameState, speedClass, callbacks, pacer) {
+    markBoardDirty(gameState);
+    if (callbacks.draw) callbacks.draw();
+    await pacer.wait(SETTLE_LEAD_MS * speedClass);
+}
+
+/** Resolve once the wall clock reaches `deadlineMs`. */
+function waitUntil(deadlineMs) {
     const raf = typeof window !== 'undefined' ? window.requestAnimationFrame : null;
-    const perfNow = typeof performance !== 'undefined' && performance?.now ? () => performance.now() : () => Date.now();
 
     if (!raf) {
-        return new Promise((resolve) => setTimeout(resolve, durationMs));
+        return new Promise((resolve) => setTimeout(resolve, Math.max(0, deadlineMs - perfNow())));
     }
 
     return new Promise((resolve) => {
-        const start = perfNow();
-        const tick = (now) => {
-            const elapsed = (typeof now === 'number' ? now : perfNow()) - start;
-            if (elapsed >= durationMs) {
-                resolve();
-            } else {
-                raf(tick);
-            }
+        const tick = () => {
+            if (perfNow() >= deadlineMs) resolve();
+            else raf(tick);
         };
         raf(tick);
     });
+}
+
+/**
+ * Wall-clock pacer for the line-clear / cascade animation.
+ *
+ * The old scheme awaited `durationMs` per step against a fresh `performance.now()`
+ * baseline, so every step cost at least one whole frame and any overshoot was
+ * discarded. Real cost was therefore `ceil(d / frameTime) * frameTime` per step:
+ * with the 16ms-per-row gravity loop, a 72ms frame turned a 10-row cascade from
+ * 267ms into 936ms, and a 108ms frame into 1.4s. That is what "the cascades fall
+ * and clear in a slow and laggy way" actually was — the animation multiplied the
+ * frame-time tail instead of absorbing it.
+ *
+ * A pacer keeps ONE timeline for the whole sequence (all flash stages, every
+ * gravity row, across cascade waves) and gives each step an absolute deadline.
+ * When a long frame has already carried the clock past the next deadline the
+ * wait returns without yielding, so the sequence catches up inside that frame
+ * rather than spending another one on a single row. Total wall-clock duration
+ * stays ~nominal at any frame rate; degradation shows up as fewer intermediate
+ * frames drawn, not as a slower cascade.
+ *
+ * See docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §3.
+ *
+ * @param {Object} gameState
+ * @returns {{wait: (durationMs: number) => Promise<boolean>}}
+ */
+function createAnimationPacer(gameState) {
+    let anchor = perfNow();
+    let scheduledMs = 0;
+
+    return {
+        /**
+         * Consume `durationMs` of the animation timeline.
+         * @returns {Promise<boolean>} true when it actually yielded a frame,
+         *   false when the clock had already run past this step.
+         */
+        async wait(durationMs) {
+            advanceReplaySimulationClock(gameState, durationMs);
+            if (gameState?.isSeeking) return false;
+
+            scheduledMs += Math.max(0, Number(durationMs) || 0);
+            const deadline = anchor + scheduledMs;
+            const lateness = perfNow() - deadline;
+
+            if (lateness >= 0) {
+                // Behind schedule: catch up now instead of burning another frame.
+                // Re-anchor so persistent slowness cannot compound into a snap.
+                if (lateness > MAX_ANIMATION_CATCHUP_MS) {
+                    anchor += lateness - MAX_ANIMATION_CATCHUP_MS;
+                }
+                return false;
+            }
+
+            await waitUntil(deadline);
+            return true;
+        },
+    };
 }
 
 function advanceReplaySimulationClock(gameState, durationMs) {
@@ -74,12 +234,13 @@ function advanceReplaySimulationClock(gameState, durationMs) {
     }
 }
 
-async function waitForPhysicsDelay(gameState, durationMs) {
-    advanceReplaySimulationClock(gameState, durationMs);
-
-    if (!gameState?.isSeeking) {
-        await waitForAnimationFrame(durationMs);
-    }
+/**
+ * Pacer for callers that animate a single step outside a larger sequence.
+ * Sequences (clear → gravity → next wave) must share ONE pacer so overshoot
+ * carries across steps — see createAnimationPacer.
+ */
+function resolvePacer(gameState, pacer) {
+    return pacer || createAnimationPacer(gameState);
 }
 
 /* moved to cascade-helpers.js: isPartOfPiece */
@@ -93,6 +254,9 @@ async function waitForPhysicsDelay(gameState, durationMs) {
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified in place)
  * @param {Function} drawCallback - Function to call for visual updates
  * @param {Array<Array<boolean>>} placementGrid - 2D array to track which cells moved (optional)
+ * @param {{wait: (ms:number)=>Promise<boolean>}} [pacer] - shared animation
+ *   timeline from the enclosing clear sequence; a private one is created when
+ *   gravity is driven standalone.
  * @returns {Promise<void>} Resolves when all blocks have settled
  */
 export async function applyGravity(
@@ -100,7 +264,9 @@ export async function applyGravity(
     drawCallback,
     placementGrid = null,
     callbacks = {},
+    pacer = null,
 ) {
+    const animationPacer = resolvePacer(gameState, pacer);
     const { lockedPieces, boardGrid } = gameState;
     let blocksStillFalling = true;
 
@@ -140,9 +306,9 @@ export async function applyGravity(
         maxPotentialFall = Math.max(maxPotentialFall, fallDistance);
     });
 
-    // Fixed gravity delay - same speed for all game modes
-    // This ensures consistent, snappy cascade feel everywhere
-    const gravityDelay = 16; // ms - fixed delay for consistent speed
+    // Fixed gravity delay - same speed for all game modes and every cascade
+    // wave, matching Quadra's constant 2-tick-per-row fall. See GRAVITY_STEP_MS.
+    const gravityDelay = GRAVITY_STEP_MS;
 
     physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
 
@@ -219,14 +385,12 @@ export async function applyGravity(
             // PERFORMANCE: Throttling will be applied in InfinityMode
             callbacks.onGravityStep?.();
 
-            // Use requestAnimationFrame-based timing for smooth, consistent gravity
-            if (!gameState.isSeeking) {
-                const startTime = performance.now();
-                await waitForPhysicsDelay(gameState, gravityDelay);
-                const actualDelay = performance.now() - startTime;
-                physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
-            } else {
-                await waitForPhysicsDelay(gameState, gravityDelay);
+            // Paced against the sequence timeline, so a long frame advances
+            // several rows instead of costing a whole frame for one row.
+            // eslint-disable-next-line no-await-in-loop
+            const yielded = await animationPacer.wait(gravityDelay);
+            if (!yielded && !gameState.isSeeking) {
+                physicsLog('[Gravity] Behind schedule — catching up without yielding a frame');
             }
         }
     }
@@ -499,6 +663,9 @@ function getContiguousSpan(columns) {
 export async function processPhysicsLegacy(gameState, callbacks) {
     let linesClearedThisTurn = 0;
     let cascadeCount = 0;
+    // One timeline for the whole clear→gravity→next-wave sequence so a stalled
+    // frame is repaid across the following steps instead of stretching each one.
+    const pacer = createAnimationPacer(gameState);
 
     const comboState = gameState.comboState || {
         manualColumns: gameState.lastPlacedPieceX || [],
@@ -735,56 +902,21 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         physicsLog('[Physics] Clearing moved[][] array for gravity tracking');
         resetMovedArray(placementGrid);
 
-        // --- Enhanced Visual Feedback with Smooth Fade Animation ---
-        // Multi-stage flash effect for smoother, faster transition
-        // Timing gets progressively faster for cascades to maintain momentum
+        // --- Line-clear flash (Quadra rhythm — see LINE_CLEAR_FLASH_BEATS) ---
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
-        // Progressive speed multiplier: Faster for responsive cascades
-        // Cascade 1: 1.0x (70ms total) - Quick but visible
-        // Cascade 2-4: 0.8x (56ms) - Faster for cascades
-        // Cascade 5-9: 0.6x (42ms) - Quick cascade speed
-        // Cascade 10+: 0.5x (35ms) - Very fast for mega cascades
+        // Per-wave speed class. Quadra itself has no cascade speed-up — every
+        // wave gets the full 160ms hold — but deep chains are spectacle here and
+        // the wave payload already carries this multiplier, so keep it: wave 1
+        // is Quadra-exact at 160ms and later waves tighten.
+        // Cascade 1: 1.0x (160ms) · 2-4: 0.8x (128ms) · 5-9: 0.6x (96ms) · 10+: 0.5x (80ms)
         const speedMultiplier = cascadeCount === 1 ? 1.0
             : cascadeCount <= 4 ? 0.8
                 : cascadeCount <= 9 ? 0.6 : 0.5;
 
-        // Stage 1: Keep original colors, full opacity - quick flash
-        fullLines.forEach((y) => {
-            for (let x = 0; x < COLS; x++) {
-                if (markedBoard[y][x]) {
-                    markedBoard[y][x].alpha = 1.0;
-                }
-            }
-        });
-        if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
-        if (callbacks.draw) callbacks.draw();
-        await waitForPhysicsDelay(gameState, 30 * speedMultiplier);
-
-        // Stage 2: Keep original colors, slightly dimmed - smooth transition
-        fullLines.forEach((y) => {
-            for (let x = 0; x < COLS; x++) {
-                if (markedBoard[y][x]) {
-                    markedBoard[y][x].alpha = 0.6;
-                }
-            }
-        });
-        if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
-        if (callbacks.draw) callbacks.draw();
-        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
-
-        // Stage 3: Keep original colors, fade to transparent - smooth final fade
-        fullLines.forEach((y) => {
-            for (let x = 0; x < COLS; x++) {
-                if (markedBoard[y][x]) {
-                    markedBoard[y][x].alpha = 0.2;
-                }
-            }
-        });
-        if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
-        if (callbacks.draw) callbacks.draw();
-        await waitForPhysicsDelay(gameState, 20 * speedMultiplier);
+        // eslint-disable-next-line no-await-in-loop
+        await holdClearedRows(markedBoard, speedMultiplier, callbacks, pacer);
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
@@ -796,8 +928,17 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         // Snapshot board state before gravity so the next cascade can compare deltas
         preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
+        // Beat: rows gone, stack still hanging (Quadra's connectivity-scan tick)
+        // eslint-disable-next-line no-await-in-loop
+        await settleLead(gameState, speedMultiplier, callbacks, pacer);
+
         // Phase 2: Apply gravity to individual blocks and track movement
-        await applyGravity(gameState, callbacks.draw, placementGrid, callbacks);
+        // eslint-disable-next-line no-await-in-loop
+        await applyGravity(gameState, callbacks.draw, placementGrid, callbacks, pacer);
+
+        // Beat: let the collapse land before the next wave or the next piece
+        // eslint-disable-next-line no-await-in-loop
+        await pacer.wait(SETTLE_TAIL_MS * speedMultiplier);
 
         // Phase 3: Recursive cascade - continue the loop to check for new lines
         // The while(true) loop will automatically check for new complete lines
@@ -1017,6 +1158,9 @@ export async function processPhysicsResolved(
 ) {
     assertPreparedPhysicsOrigin(gameState, result);
 
+    // Shared with the legacy path: one animation timeline for every wave.
+    const pacer = createAnimationPacer(gameState);
+
     for (const wave of result.waves) {
         // One live array per wave, threaded through flash + clear exactly like
         // the legacy loop's `fullLines` (triggerFlash consumers get the same
@@ -1088,30 +1232,22 @@ export async function processPhysicsResolved(
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
 
-        // --- Flash stages: verbatim legacy animation (30/20/20ms × class) ---
+        // --- Flash: same shared schedule the legacy path runs ---
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
-        const flashStages = [[1.0, 30], [0.6, 20], [0.2, 20]];
-        for (const [alpha, delay] of flashStages) {
-            fullLines.forEach((y) => {
-                for (let x = 0; x < COLS; x++) {
-                    if (markedBoard[y][x]) {
-                        markedBoard[y][x].alpha = alpha;
-                    }
-                }
-            });
-            if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
-            if (callbacks.draw) callbacks.draw();
-            // eslint-disable-next-line no-await-in-loop
-            await waitForPhysicsDelay(gameState, delay * wave.speedMultiplierClass);
-        }
+        // eslint-disable-next-line no-await-in-loop
+        await holdClearedRows(markedBoard, wave.speedMultiplierClass, callbacks, pacer);
 
         // --- Clear + split + settle (same deterministic helpers) ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         gameState.lockedPieces = findConnectedComponents(gameState.boardGrid);
         // eslint-disable-next-line no-await-in-loop
-        await applyGravity(gameState, callbacks.draw, null, callbacks);
+        await settleLead(gameState, wave.speedMultiplierClass, callbacks, pacer);
+        // eslint-disable-next-line no-await-in-loop
+        await applyGravity(gameState, callbacks.draw, null, callbacks, pacer);
+        // eslint-disable-next-line no-await-in-loop
+        await pacer.wait(SETTLE_TAIL_MS * wave.speedMultiplierClass);
     }
 
     finalizeResolvedPhysics(gameState, callbacks, result);

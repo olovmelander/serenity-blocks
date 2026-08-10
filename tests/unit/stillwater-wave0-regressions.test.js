@@ -826,6 +826,10 @@ describe('Stillwater production adapter regression gates', () => {
         const drain = new Promise((resolve) => {
             releaseDrain = resolve;
         });
+        // Activation now drains once (warmRuntime fences the reaction-pipeline
+        // prewarm with queue.onSubmittedWorkDone). These assertions count drains
+        // caused by the behaviour under test, so discount the activation drain.
+        queue.onSubmittedWorkDone.mockClear();
         queue.onSubmittedWorkDone.mockImplementationOnce(() => drain);
         renderer.setSize.mockClear();
         runtime.resize.mockClear();
@@ -869,6 +873,10 @@ describe('Stillwater production adapter regression gates', () => {
         const firstDrain = new Promise((resolve) => {
             releaseFirstDrain = resolve;
         });
+        // Activation now drains once (warmRuntime fences the reaction-pipeline
+        // prewarm with queue.onSubmittedWorkDone). These assertions count drains
+        // caused by the behaviour under test, so discount the activation drain.
+        firstQueue.onSubmittedWorkDone.mockClear();
         firstQueue.onSubmittedWorkDone.mockImplementationOnce(() => firstDrain);
         firstRenderer.setSize.mockClear();
 
@@ -880,6 +888,7 @@ describe('Stillwater production adapter regression gates', () => {
         await theme.start(sharedRenderer);
         const secondRenderer = stillwaterMocks.rendererInstances[1];
         const secondQueue = secondRenderer.backend.device.queue;
+        secondQueue.onSubmittedWorkDone.mockClear();
         secondRenderer.setSize.mockClear();
 
         theme.resize(1100, 800);
@@ -996,6 +1005,9 @@ describe('Stillwater production adapter regression gates', () => {
         const [renderer] = stillwaterMocks.rendererInstances;
         const debug = window.__STILLWATER_MASTERPIECE__;
         const { queue } = renderer.backend.device;
+        // Activation drains once (warmRuntime fences the reaction-pipeline prewarm);
+        // this test counts the drain performed by stepValidationFrame.
+        queue.onSubmittedWorkDone.mockClear();
         runtime.update.mockClear();
         runtime.render.mockClear();
         renderer.info.reset.mockClear();

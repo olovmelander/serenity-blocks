@@ -237,7 +237,7 @@ export function create({
     // ════ PLANETS — HUGE backlit worlds (hatom phase-5): crescent rims + atmospheric halos ════
     // The worlds are ALWAYS in the sky (calm crescents while dormant, mirrored in the lake free);
     // their crescents + halos INTENSIFY at the Cosmos beat (uCosmos), when the light-wisp streaks
-    // + monolith join as the climax flourish.
+    // join as the climax flourish.
     const planets = new THREE.Group();
     const cosmosGroup = new THREE.Group(); // the giant worlds (always visible)
     planets.add(cosmosGroup);
@@ -361,47 +361,6 @@ export function create({
         }
     }
     scene.add(track(planets));
-
-    // ════ COSMOS MONOLITH — a near-black slab rising from the lake at the climax (hatom phase-5) ════
-    let monolith = null;
-    let monoBeam = null;
-    if (tier >= 2) {
-        const monoMat = new THREE.MeshBasicNodeMaterial();
-        const mf = mx_fractal_noise_float(positionLocal.mul(0.22), 3).mul(0.5).add(0.5);
-        const etch = smoothstep(0.035, 0.0, abs(mf.sub(0.5))); // faint glowing etched seams
-        const mN = normalize(normalWorld);
-        const mV = normalize(cameraPosition.sub(positionWorld));
-        const mFres = pow(clamp(float(1.0).sub(dot(mN, mV)), 0.0, 1.0), float(3.0));
-        monoMat.colorNode = vec3(0.008, 0.007, 0.016)
-            .add(vec3(1.0, 0.6, 0.25).mul(etch).mul(uCosmos).mul(0.22))
-            .add(vec3(0.5, 0.6, 0.95).mul(mFres).mul(0.10));
-        monoMat.toneMapped = false;
-        monolith = new THREE.Mesh(new THREE.BoxGeometry(13, 44, 4.5), monoMat);
-        monolith.position.set(38, -46, -128); // submerged; rises with uCosmos in update()
-        monolith.rotation.y = 0.22;
-        monolith.visible = false;
-        scene.add(track(monolith));
-        // the vertical light beam standing behind the slab
-        const beamMat = new THREE.MeshBasicNodeMaterial();
-        const bu = uv();
-        const bx2 = abs(bu.x.sub(0.5)).mul(2.0);
-        const shaft = pow(smoothstep(1.0, 0.0, bx2), float(2.4));
-        const bFade = smoothstep(1.0, 0.12, bu.y).mul(smoothstep(0.0, 0.22, bu.y));
-        const bStreak = sin(bu.y.mul(30.0).sub(uTime.mul(0.8))).mul(0.5).add(0.5).mul(0.35)
-            .add(0.65);
-        beamMat.colorNode = vec3(1.1, 0.9, 0.7).mul(shaft).mul(bFade).mul(bStreak)
-            .mul(uCosmos)
-            .mul(0.34);
-        beamMat.transparent = true;
-        beamMat.blending = THREE.AdditiveBlending;
-        beamMat.depthWrite = false;
-        beamMat.toneMapped = false;
-        beamMat.fog = false;
-        monoBeam = new THREE.Mesh(new THREE.PlaneGeometry(24, 170), beamMat);
-        monoBeam.position.set(38, 62, -134);
-        monoBeam.visible = false;
-        scene.add(track(monoBeam));
-    }
 
     // ════ TWILIGHT FILL RIG (V4 1.1) — colored bounce so darks read as plum/indigo, not grey-black ════
     // The hero relic is a practical light: a warm amber radial bounce onto the terrain, escalation-gated so
@@ -1885,7 +1844,7 @@ export function create({
             wing.visible = uAscend.value > 0.001; // skip the additive wing plane entirely while dormant
             uCosmos.value = clamp01((sEased - 0.85) / 0.15); // planet ensemble blooms in at the Cosmos crest
             // Cosmos climax: the worlds are always in the sky — only the light-wisp streaks are
-            // gated; raise the monolith out of the lake on a smooth ease, billboard the atmo halos.
+            // gated; billboard the atmo halos.
             const ce = uCosmos.value;
             streakGroup.visible = ce > 0.001;
             // FX: stamp queued bursts/waves with THIS clock (the one uTime carries — see spawn note);
@@ -1917,12 +1876,6 @@ export function create({
                 if ((time - waveState[i].t0) < waveState[i].life) { anyWaveAlive = true; break; }
             }
             wave.visible = anyWaveAlive;
-            if (monolith) {
-                const es = ce * ce * (3 - 2 * ce); // smoothstep ease
-                monolith.position.y = -46 + 60 * es;
-                monolith.visible = ce > 0.001;
-                monoBeam.visible = ce > 0.001;
-            }
             if (camera) {
                 for (let i = 0; i < haloSprites.length; i += 1) {
                     haloSprites[i].quaternion.copy(camera.quaternion);

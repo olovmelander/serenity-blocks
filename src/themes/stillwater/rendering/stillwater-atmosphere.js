@@ -40,8 +40,13 @@ import { getStillwaterQualityProfile } from '../stillwater-quality.js';
 
 export const STILLWATER_ATMOSPHERE_MAX_MOTES = 700;
 
-const FOG_SAGE = 0x173b34;
-const FOG_CYAN = 0x346967;
+const FOG_SAGE = 0x123f34;
+// Aerial perspective shifts hue, it does not grey things out. With the fog
+// finally switched on, the previous pair pulled measured chroma from 0.44 to
+// 0.31 — one nudge off the floor — because the scene's greens were mixing
+// toward a neutral teal. Both are pushed to a higher-saturation version of the
+// same hue so distance costs value and hue, not colour itself.
+const FOG_CYAN = 0x2a706b;
 const MOTE_IVORY = new THREE.Color(0xfff1c9);
 const MOTE_CYAN = new THREE.Color(0x9ccfd0);
 const MOTE_AMBER = new THREE.Color(0xffc271);
@@ -214,7 +219,13 @@ export function createStillwaterAtmosphere({
     // Guard the horizontal-ray singularity; without this a ray with y~0
     // divides by zero and the whole frame flashes.
     const safeRayY = mix(rayDirY, float(0.0001), rayDirY.abs().lessThan(0.0001));
-    const FOG_DENSITY = 0.030;
+    // 0.030 was authored while the factor below evaluated to zero, so it had
+    // never been seen. Switched on it put 42% fog on the NEAR bank at 40 units
+    // and buried the whole value ladder in a uniform veil. Calibrated against
+    // the scene's real depth range instead: 13% at the near bank, 35% through
+    // the mid-forest, 50% on the first ridge, 71% on the furthest — an aerial
+    // ramp rather than a curtain.
+    const FOG_DENSITY = 0.008;
     const FOG_FALLOFF = 0.055;
     const heightTerm = float(FOG_DENSITY)
         .mul(pow(float(Math.E), cameraPosition.y.negate().mul(FOG_FALLOFF)))
@@ -222,15 +233,37 @@ export function createStillwaterAtmosphere({
     const integrated = heightTerm.mul(
         float(1).sub(pow(float(Math.E), safeRayY.negate().mul(FOG_FALLOFF).mul(rayDistance))),
     ).div(safeRayY);
-    const distanceFactor = float(1).sub(pow(float(Math.E), integrated.negate().abs())).clamp();
+    // `.negate().abs()` is abs(-x), i.e. +|x| — the negation the exponential
+    // needs was cancelled by the abs that followed it, so this evaluated to
+    // 1 - e^(+x) <= 0, and the trailing clamp(0,1) floored it to exactly ZERO.
+    // The whole height-fog, the valley mist that multiplies it, and the moonward
+    // inscatter were dead on every fragment at every tier. `integrated` is
+    // provably >= 0 (heightTerm > 0, and the bracketed term keeps the sign of
+    // safeRayY in both numerator and denominator), so the abs is redundant —
+    // but it is kept, ordered correctly, because it is what makes that guarantee
+    // explicit at the point of use.
+    const distanceFactor = float(1).sub(pow(float(Math.E), integrated.abs().negate())).clamp();
 
     // Bounded valley mist: dense low and near the channel centre, absent on the
     // slopes. Mist that sits IN the valley creates layers; mist over everything
     // flattens the frame.
-    const valleyMist = smoothstep(-1.0, 6.0, positionWorld.y).oneMinus()
-        .mul(smoothstep(10.0, 34.0, positionWorld.x.abs()).oneMinus())
-        .mul(materialXFractalNoise(positionWorld.mul(0.035).add(vec3(0, 0, uTime.mul(0.012))), 2, 2.0, 0.5)
-            .mul(0.5).add(0.6));
+    // The bounded shape is cheap; the 2-octave fractal that breaks it up is not,
+    // and scene fog runs per fragment on EVERY fogged material — motes, water,
+    // wood, terrain. The lean tiers exist for GPUs where that matters, so they
+    // get the shape and a constant in place of the noise. The silhouette of the
+    // mist is identical; only its internal turbulence is premium.
+    const valleyShape = smoothstep(-1.0, 6.0, positionWorld.y).oneMinus()
+        .mul(smoothstep(10.0, 34.0, positionWorld.x.abs()).oneMinus());
+    const valleyMist = premiumMist
+        ? valleyShape.mul(
+            materialXFractalNoise(
+                positionWorld.mul(0.035).add(vec3(0, 0, uTime.mul(0.012))),
+                2,
+                2.0,
+                0.5,
+            ).mul(0.5).add(0.6),
+        )
+        : valleyShape.mul(0.85);
     const fogFactor = distanceFactor
         .add(valleyMist.mul(distanceFactor).mul(0.55))
         .clamp();

@@ -14,7 +14,8 @@
 import * as THREE from 'three/webgpu';
 import {
     uniform, attribute, uv, positionLocal, positionGeometry, positionWorld, cameraPosition,
-    normalize, dot, clamp, pow, mix, max, abs, length, vec2, vec3, float, sin, smoothstep, oneMinus,
+    normalize, dot, clamp, pow, mix, max, abs, length, vec2, vec3, float, sin, cos, atan,
+    smoothstep, oneMinus,
 } from 'three/tsl';
 import {
     createSkyBackgroundTSL,
@@ -47,21 +48,29 @@ function makeMeadowMaterial(uTime) {
     const aPhase = attribute('aPhase', 'float');
 
     // ── Fragment SHAPE (alpha) — one quad, two silhouettes selected by aType ──
-    // Grass: a tapered blade, wide base → thin tip.
-    const halfW = mix(float(0.13), float(0.006), vUv.y);
-    const blade = oneMinus(smoothstep(halfW.sub(0.02), halfW, abs(vUv.x.sub(0.5))));
-    // Flower: a thin stem (lower) + a small round head (upper).
-    const stem = oneMinus(smoothstep(0.02, 0.045, abs(vUv.x.sub(0.5))))
-        .mul(oneMinus(smoothstep(0.66, 0.72, vUv.y)));
-    const head = oneMinus(smoothstep(0.09, 0.12, length(vUv.sub(vec2(0.5, 0.83)))));
+    // Grass: a gently tapered blade, wide soft base → thin tip (a touch wider than a spike so the
+    // field reads as a soft mass, not a bed of needles).
+    const halfW = mix(float(0.17), float(0.012), pow(vUv.y, float(0.85)));
+    const blade = oneMinus(smoothstep(halfW.sub(0.03), halfW, abs(vUv.x.sub(0.5))));
+    // Flower: a thin stem (lower) + a real 5-petal daisy head (upper), not a round blob.
+    const stem = oneMinus(smoothstep(0.018, 0.04, abs(vUv.x.sub(0.5))))
+        .mul(oneMinus(smoothstep(0.60, 0.68, vUv.y)));
+    const c = vUv.sub(vec2(0.5, 0.82));
+    const ang = atan(c.y, c.x);
+    const rad = length(c);
+    // 5 scalloped petals: the petal radius swells + pinches around the ring.
+    const petalR = float(0.11).mul(cos(ang.mul(5.0)).mul(0.30).add(0.70));
+    const head = oneMinus(smoothstep(petalR.sub(0.02), petalR, rad));
+    const disc = oneMinus(smoothstep(0.022, 0.05, rad)); // bright pollen centre
     const flowerMask = max(stem, head);
     const mask = mix(blade, flowerMask, aType);
 
     // ── Colour ──
     // Grass: darker base → brighter, warmer tip (uv.y).
     const grassCol = aTint.mul(mix(float(0.6), float(1.22), vUv.y));
-    // Flower: green stem, aTint petal head.
-    const flowerCol = mix(vec3(0.2, 0.4, 0.15), aTint, head);
+    // Flower: green stem → aTint petals → warm-gold pollen disc centre.
+    const petalCol = mix(aTint, vec3(1.0, 0.86, 0.36), disc);
+    const flowerCol = mix(vec3(0.2, 0.4, 0.15), petalCol, head);
     let col = mix(grassCol, flowerCol, aType);
 
     // Backlit golden-hour glow — blade tips + petals ignite when the view continues toward the sun
@@ -133,25 +142,50 @@ export function create({ scene }) {
     const yUp = new THREE.Vector3(0, 1, 0);
     const sVec = new THREE.Vector3();
     const pVec = new THREE.Vector3();
+
+    // Flower DRIFTS — blooms cluster into a handful of intentional colour events (one petal colour
+    // per drift), NOT a uniform sprinkle. This is the "less clutter, more intentional" read: the eye
+    // sees a few saturated patches of colour on a clean sage meadow instead of confetti.
+    const DRIFTS = [];
+    for (let d = 0; d < 7; d += 1) {
+        DRIFTS.push({
+            x: (Math.random() - 0.5) * 78,
+            z: 4 - Math.random() * Math.random() * 92,
+            r: 5 + Math.random() * 9,
+            petal: PETALS[(Math.random() * PETALS.length) | 0],
+        });
+    }
+
     for (let i = 0; i < COUNT; i += 1) {
-        // Scatter in a wide swath in front of the camera, denser near, thinning to the horizon.
-        const x = (Math.random() - 0.5) * 95;
-        const z = 8 - Math.random() * Math.random() * 115; // biased toward the near field
-        const isFlower = Math.random() < 0.1;
-        const s = isFlower ? 0.85 + Math.random() * 0.5 : 0.7 + Math.random() * 1.1;
+        const isFlower = Math.random() < 0.085;
+        let x; let z; let petal = null;
+        if (isFlower) {
+            // Poisson-ish disc scatter around one drift centre (sqrt → uniform area density).
+            const drift = DRIFTS[(Math.random() * DRIFTS.length) | 0];
+            const a = Math.random() * Math.PI * 2;
+            const rr = Math.sqrt(Math.random()) * drift.r;
+            x = drift.x + Math.cos(a) * rr;
+            z = drift.z + Math.sin(a) * rr;
+            ({ petal } = drift);
+        } else {
+            // Grass: wide swath, denser near, thinning to the horizon.
+            x = (Math.random() - 0.5) * 95;
+            z = 8 - Math.random() * Math.random() * 115;
+        }
+        const s = isFlower ? 1.0 + Math.random() * 0.6 : 0.7 + Math.random() * 1.1;
         quat.setFromAxisAngle(yUp, Math.random() * Math.PI * 2);
         pVec.set(x, 0, z);
-        sVec.set(s * (isFlower ? 0.5 : 0.4), s, 1);
+        sVec.set(s * (isFlower ? 0.55 : 0.4), s, 1);
         m4.compose(pVec, quat, sVec);
         mesh.setMatrixAt(i, m4);
 
         typeArr[i] = isFlower ? 1 : 0;
         phaseArr[i] = Math.random() * Math.PI * 2;
         if (isFlower) {
-            const p = PETALS[(Math.random() * PETALS.length) | 0];
-            tintArr[i * 3] = p[0];
-            tintArr[i * 3 + 1] = p[1];
-            tintArr[i * 3 + 2] = p[2];
+            // Slight per-bloom variation around the drift's colour so a patch reads as one species.
+            tintArr[i * 3] = Math.min(1, petal[0] + (Math.random() - 0.5) * 0.08);
+            tintArr[i * 3 + 1] = Math.min(1, petal[1] + (Math.random() - 0.5) * 0.08);
+            tintArr[i * 3 + 2] = Math.min(1, petal[2] + (Math.random() - 0.5) * 0.08);
         } else {
             tintArr[i * 3] = 0.14 + Math.random() * 0.08; // sage → lush green variation
             tintArr[i * 3 + 1] = 0.28 + Math.random() * 0.16;

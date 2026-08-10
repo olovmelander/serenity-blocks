@@ -7,6 +7,10 @@ import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import { initGpuLossCoordinator } from '../utils/gpu-loss-coordinator.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { computeScenePixelRatio } from '../utils/desktop-performance-policy.js';
+import {
+    createFramePacer, resetFramePacer, shouldRenderAtTargetFps, resolveTargetFps,
+} from './theme-frame-pacer.js';
+import { readFlag } from '../core/flags.js';
 
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
@@ -88,6 +92,9 @@ export class BaseTheme {
         this.animationIds = [];
         this.containers = [];
         this.webglLayers = [];
+        // Caps the theme's render loop to the player's Target Frame Rate.
+        // `?noThemeFpsCap=1` (or localStorage serenity.noThemeFpsCap=1) disables it.
+        this._framePacer = createFramePacer();
     }
 
     /**
@@ -331,6 +338,37 @@ export class BaseTheme {
      */
     async whenFullReady() {
         return true;
+    }
+
+    /**
+     * Object3D roots containing gameplay-FX drawables that are parked at
+     * `visible = false` until an event reveals them.
+     *
+     * Such objects are skipped by `compileAsync` and by every warm render
+     * (three r181 `Renderer._projectObject` returns early on `visible === false`,
+     * and `compileAsync` uses that same traversal), so their pipelines compile
+     * on the first gameplay frame that reveals them — a 70-190ms GPU stall with
+     * no JS longtask. A theme that declares its FX root gets those pipelines
+     * compiled during its masked warm window instead.
+     *
+     * See src/themes/shared/warm-hidden-drawables.js.
+     * @returns {Array<any>}
+     */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /**
+     * True when this theme's scene pass renders into a multi-target (MRT)
+     * framebuffer. A bare `compileAsync(scene, camera)` is unsafe on such
+     * themes — it binds no render target, so it caches a one-output shader that
+     * is then reused for the multi-attachment pass, which poisons the pipeline
+     * cache and blanks the affected objects. Consumers must skip bare sweeps
+     * when this is true.
+     * @returns {boolean}
+     */
+    usesMrtScenePass() {
+        return false;
     }
 
     /**
@@ -707,14 +745,14 @@ export class BaseTheme {
         });
 
         if (this.scene) {
-            const scene = this.scene;
+            const { scene } = this;
             attempt('Scene graph', () => this.disposeThreeJSGroup(scene));
             attempt('Scene clear', () => scene.clear?.());
             this.scene = null;
         }
 
         if (this.renderer && this.renderer !== this.webglRenderer) {
-            const renderer = this.renderer;
+            const { renderer } = this;
             attempt('Renderer', () => this.disposeRenderer(renderer));
             if (this.renderer === renderer) {
                 this.renderer = null;
@@ -1166,6 +1204,22 @@ export class BaseTheme {
             return false;
         }
 
+        // Cap the theme's render rate to the player's Target Frame Rate.
+        // Without this the theme renders once per vsync — 240 full scene draws
+        // per second on a 240Hz panel for a 60Hz simulation — leaving no GPU
+        // headroom to absorb a stall. See theme-frame-pacer.js.
+        if (this._themeFpsCapEnabled === undefined) {
+            this._themeFpsCapEnabled = !readFlag('noThemeFpsCap', false);
+        }
+        if (this._themeFpsCapEnabled) {
+            if (!this._framePacer) this._framePacer = createFramePacer();
+            return shouldRenderAtTargetFps(
+                this._framePacer,
+                performance.now(),
+                resolveTargetFps(),
+            );
+        }
+
         // Normal rendering
         return true;
     }
@@ -1298,6 +1352,9 @@ export class BaseTheme {
      * call a no-op. Override for custom loop management.
      */
     restartRenderLoop() {
+        // A restart follows a pause, a GPU loss, or a resize — the cadence
+        // estimate from before the gap says nothing about the cadence after it.
+        resetFramePacer(this._framePacer);
         const starters = [
             'animate',
             'startAnimationLoop',

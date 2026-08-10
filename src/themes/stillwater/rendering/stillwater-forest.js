@@ -64,7 +64,6 @@ const FAR_TREE_COUNT = 22;
 const NEAR_CANOPY_COUNT = 22;
 const FAR_CANOPY_COUNT = 12;
 const ROOT_SEGMENT_COUNT = 18;
-const BOULDER_COUNT = 16;
 const REED_COUNT = 72;
 // Grass/fern tufts sharing the reed blade geometry and draw. The near banks
 // were large unbroken slabs of mid-value green; ground cover is the cheapest
@@ -223,6 +222,12 @@ const BOULDER_LAYOUT = Object.freeze([
     [84, 0.8, -99, 3.0, 1.4, 2.6, 2.4],
     [-104, 1.1, -124, 3.5, 1.6, 2.9, 0.5], [66, 1.1, -131, 3.4, 1.6, 2.8, 1.7],
 ]);
+
+// Derived, never hand-maintained. These were separate numbers and drifted: the
+// de-mirroring pass left 15 entries while the constant still said 16, so the
+// instanced draw asked for one more matrix than the buffer held on High, Ultra
+// and Extreme (detailScale is exactly 1 on all three).
+const BOULDER_COUNT = BOULDER_LAYOUT.length;
 
 // Lilies are derived from the shoreline rather than hand-listed, so they always
 // float inboard of the waterline instead of being stranded when the lake shape
@@ -1808,7 +1813,13 @@ export function createStillwaterForest({
             Math.max(0, profile.canopyClusters - currentNearCanopies),
         );
 
-        heroWood.count = heroData.ends[currentHeroTrees];
+        // Once the authored trunks have loaded, the procedural heroes past the
+        // two cropped framing trunks are redundant and would z-fight with them.
+        // The GLB loader already trimmed the count for that reason, but this line
+        // ran on every quality change and put them straight back — so switching
+        // graphics quality after load resurrected the duplicates the loader had
+        // just removed.
+        heroWood.count = heroData.ends[authoredHeroReady ? 2 : currentHeroTrees];
         midWood.count = midData.ends[currentMidTrees];
         nearCanopies.count = currentNearCanopies * NEAR_CANOPY_LOBES_PER_CLUSTER;
         farTrees.count = currentFarTrees;

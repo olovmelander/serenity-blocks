@@ -880,9 +880,14 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const sideLandFade = oneMinus(smoothstep(128.0, 198.0, abs(vPosition.x).add(sideNoise)));
     const frontNoise = landscapeNoise(vPosition.xz.mul(0.047).add(vec2(3.8, 11.2))).sub(0.5).mul(44.0);
     const frontLandFade = smoothstep(-64.0, 72.0, vPosition.z.negate().add(frontNoise));
-    const edgeBlend = smoothstep(0.28, 0.84, uSnowBlend);
+    // MOUNTAIN↔TERRAIN CONTINUITY (remake plan, art fix #1): apply the noisy edge dissolve ALWAYS,
+    // not only once winter's uSnowBlend lifts. The meadow used to end on a hard straight green card
+    // against the Ch4 sky in golden-hour (edgeBlend=0 until snow), which is exactly the "mountain
+    // feels like a disconnected backdrop" read. Dissolving the far/side/front edges every season
+    // melts the ground into the foothill skirt + distant range from frame 1. Winter is unchanged
+    // (edgeBlend was already ~1 there); only the golden-hour view gains the soft continuous edge.
     const edgeFade = farLandFade.mul(sideLandFade).mul(frontLandFade);
-    material.opacityNode = uOpacity.mul(landAlpha).mul(mix(float(1.0), edgeFade, edgeBlend));
+    material.opacityNode = uOpacity.mul(landAlpha).mul(edgeFade);
     material.transparent = true;
     material.depthWrite = false;
     material.userData.waterShelfFade = {
@@ -1003,16 +1008,17 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
         snowStartY: 18.0,
     });
 
-    // Far-depth opacity fade so the skirt's back edge dissolves into the distant range
-    // instead of ending on a hard line (only once winter blend lifts the snow up the ramp).
-    const snowBlendRamp = smoothstep(0.36, 0.78, uSnowBlend);
+    // Far-depth opacity fade so the skirt's back edge dissolves into the distant range instead of
+    // ending on a hard line. MOUNTAIN↔TERRAIN CONTINUITY (remake plan, art fix #1): apply it ALWAYS,
+    // not only once winter's snow lifts up the ramp — so the meadow→foothill-bridge→peak handoff is
+    // continuous from frame 1 in golden-hour too (winter was already applying it).
     const depth = vWorldPosition.z.negate();
     const farFade = oneMinus(smoothstep(250.0, 650.0, depth.sub(terrainNoise.mul(80.0))));
     const sideNoise = bridgeNoise(vWorldPosition.xz.mul(0.012).add(vec2(4.3, 8.9))).sub(0.5).mul(70.0);
     const sideFade = oneMinus(smoothstep(285.0, 450.0, abs(vWorldPosition.x).add(sideNoise)));
     const frontNoise = bridgeNoise(vWorldPosition.xz.mul(0.016).add(vec2(9.7, 1.8))).sub(0.5).mul(90.0);
     const frontFade = smoothstep(230.0, 420.0, depth.add(frontNoise));
-    const seamFade = mix(float(1.0), farFade.mul(sideFade).mul(frontFade), snowBlendRamp);
+    const seamFade = farFade.mul(sideFade).mul(frontFade);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -1231,17 +1237,24 @@ const SURFACE_WIND_DIR = new THREE.Vector2(0.94, 0.34);
 // Height-masked wind sway for the instanced 3D wildflowers (Midsommar's makeFloraMat grammar):
 // the bloom top bends along the wind while the stem stays rooted, phased PER-INSTANCE by a
 // world-XZ attribute (positionNode runs BEFORE instanceMatrix, so the final world pos isn't
-// available here — aWorldXZ is baked on the CPU at placement). `height` = the geometry's local
-// height (~1 for the unit-authored flora); amp/stiff/flutter are the per-species wind feel.
-function floraSwayNode(uTime, height, amp, stiff, flutter) {
-    const yN = clamp(positionLocal.y.div(float(Math.max(0.001, height))), 0.0, 1.0);
-    const mask = pow(yN, float(stiff));
+// available here — aWorldXZ is baked on the CPU at placement).
+//
+// CONSOLIDATION (remake plan action #2): the per-species params (amp/stiff/flutter/height) come
+// from a per-instance `aSway` attribute instead of baked float() constants, so ONE material object
+// drives ALL wildflower species — the 5 near-identical species materials (which differed ONLY by
+// these constants) collapse to a single compiled pipeline, killing 4 of the chapter's first-visit
+// compiles with zero visual change. aSway = vec4(amp, stiff, flutter, height); each species fills
+// it uniformly across its instances.
+function floraSwayNodeShared(uTime) {
+    const aSway = attribute('aSway', 'vec4');
+    const yN = clamp(positionLocal.y.div(aSway.w), 0.0, 1.0);
+    const mask = pow(yN, aSway.y);
     const wxz = attribute('aWorldXZ', 'vec2');
     const ph = wxz.x.mul(0.6).add(wxz.y.mul(0.45));
     const sway = sin(uTime.mul(1.05).add(ph)).mul(0.7)
         .add(sin(uTime.mul(0.46).add(ph.mul(1.7))).mul(0.3));
-    const bend = sway.mul(float(amp)).mul(mask);
-    const flut = sin(uTime.mul(5.5).add(ph.mul(3.0))).mul(float(flutter)).mul(yN);
+    const bend = sway.mul(aSway.x).mul(mask);
+    const flut = sin(uTime.mul(5.5).add(ph.mul(3.0))).mul(aSway.z).mul(yN);
     return positionLocal.add(vec3(
         float(SURFACE_WIND_DIR.x).mul(bend).add(flut),
         bend.abs().mul(-0.03),
@@ -1461,20 +1474,25 @@ export function createWildflowersTSL(uTime = uniform(0), count = 1400) {
     const parts = [];
     const dummy = new THREE.Object3D();
 
+    // ONE shared material across all five species (remake plan action #2). The species differ only
+    // in geometry + the sway constants, which now ride the per-instance aSway attribute — so this
+    // single MeshBasicNodeMaterial compiles ONCE instead of five times. colorNode still reads each
+    // geometry's baked vertex colour, so every species keeps its exact palette.
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = floraSwayNodeShared(uTime);
+    material.colorNode = attribute('color', 'vec3'); // baked linear vertex colour
+    material.side = THREE.DoubleSide;
+    material.toneMapped = false; // keep the family colours vivid (matches the chapter props)
+
     WILDFLOWER_SPECIES.forEach((sp) => {
         const geo = sp.build();
         geo.computeBoundingBox();
-        const gh = geo.boundingBox.max.y - geo.boundingBox.min.y;
+        const gh = Math.max(0.001, geo.boundingBox.max.y - geo.boundingBox.min.y);
         const cnt = Math.max(1, Math.round(count * sp.frac));
-
-        const material = new THREE.MeshBasicNodeMaterial();
-        material.positionNode = floraSwayNode(uTime, gh, sp.amp, sp.stiff, sp.flutter);
-        material.colorNode = attribute('color', 'vec3'); // baked linear vertex colour
-        material.side = THREE.DoubleSide;
-        material.toneMapped = false; // keep the family colours vivid (matches the chapter props)
 
         const mesh = new THREE.InstancedMesh(geo, material, cnt);
         const aWorldXZ = new Float32Array(cnt * 2);
+        const aSway = new Float32Array(cnt * 4); // (amp, stiff, flutter, height) — uniform per species
         let n = 0;
         let guard = 0;
         while (n < cnt && guard < cnt * 24) {
@@ -1492,11 +1510,16 @@ export function createWildflowersTSL(uTime = uniform(0), count = 1400) {
             mesh.setMatrixAt(n, dummy.matrix);
             aWorldXZ[n * 2] = x;
             aWorldXZ[n * 2 + 1] = z;
+            aSway[n * 4] = sp.amp;
+            aSway[n * 4 + 1] = sp.stiff;
+            aSway[n * 4 + 2] = sp.flutter;
+            aSway[n * 4 + 3] = gh;
             n += 1;
         }
         mesh.count = n;
         mesh.instanceMatrix.needsUpdate = true;
         geo.setAttribute('aWorldXZ', new THREE.InstancedBufferAttribute(aWorldXZ, 2));
+        geo.setAttribute('aSway', new THREE.InstancedBufferAttribute(aSway, 4));
         mesh.frustumCulled = false;
         group.add(mesh);
         parts.push({ mesh, material, geometry: geo });

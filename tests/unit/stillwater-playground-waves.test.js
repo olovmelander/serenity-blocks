@@ -116,7 +116,12 @@ describe('Stillwater Wave 1/2/3 playground contracts', () => {
 
     it('gates High/Low and auto/off reflection paths before constructing them', () => {
         expect(waterSource).toContain('getStillwaterQualityProfile');
-        expect(waterSource).toContain('reflectorScale: qualityProfile.reflectionScale');
+        // The quality profile remains the SOURCE of the reflector scale; the
+        // `?reflectScale=` override exists only so the cost of the reflector can
+        // be measured against a baseline, and the profile is its fallback.
+        expect(waterSource).toContain(
+            'reflectorScale: readReflectScale(params, qualityProfile.reflectionScale)',
+        );
         expect(waterSource).toContain('responseSlots: Math.max(4, qualityProfile.wakeSlots)');
         expect(waterSource).toContain("params?.get?.('quality')");
         expect(waterSource).toContain("params?.get?.('reflection') || 'auto'");

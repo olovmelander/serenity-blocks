@@ -20,7 +20,15 @@ import {
 import { loadOdysseyGltfCached } from './odyssey-gltf-loader.js';
 import { getOdysseyConiferAssetRecords } from './odyssey-conifer-assets.js';
 
-function createConiferMaterial(uSnowBlend, maxY) {
+// CONSOLIDATION (remake plan action #1): ONE shared conifer material per snow-blend uniform.
+// The material used to differ ONLY by each species' geometry `maxY` (baked into the snow-cap
+// gradient), which minted a fresh pipeline per species AND per belt call — 6 materials for Ch3
+// alone. `maxY` now rides a per-instance `aMaxY` attribute, so every species mesh + both belts
+// (main + bridge, same uSnowBlend) reuse a SINGLE compiled pipeline. Cached by the uSnowBlend
+// uniform object so each chapter (Ch3, Ch4) keeps its own material (their snow lines differ).
+const _sharedConiferMaterials = new WeakMap();
+
+function createConiferMaterial(uSnowBlend) {
     const material = new THREE.MeshLambertNodeMaterial();
     // Albedo = the GLB's baked vertex colours (snow/foliage/bark). They ship muted, so under
     // the warm key + golden fog they wash to pale grey blobs — boost saturation + deepen so
@@ -30,12 +38,24 @@ function createConiferMaterial(uSnowBlend, maxY) {
     const lum = raw.r.mul(0.299).add(raw.g.mul(0.587)).add(raw.b.mul(0.114));
     const vColor = mix(vec3(lum, lum, lum), raw, float(1.55)).mul(0.92); // +saturation, slight deepen
     // Extra snow cap toward the winter/altitude end: lift the upper canopy toward white as
-    // uSnowBlend rises (the GLB already carries baked snow; this deepens it).
-    const topFrac = positionLocal.y.div(float(Math.max(0.001, maxY)));
+    // uSnowBlend rises (the GLB already carries baked snow; this deepens it). aMaxY = this
+    // instance's species geometry height (uniform across a species), so the gradient is correct
+    // for every species from the one shared material.
+    const aMaxY = attribute('aMaxY', 'float');
+    const topFrac = positionLocal.y.div(aMaxY);
     const snowCap = smoothstep(0.4, 0.92, topFrac).mul(uSnowBlend).mul(0.7);
     material.colorNode = mix(vColor, vec3(0.93, 0.96, 1.0), snowCap);
     material.side = THREE.DoubleSide;
     return material;
+}
+
+function getSharedConiferMaterial(uSnowBlend) {
+    let mat = _sharedConiferMaterials.get(uSnowBlend);
+    if (!mat) {
+        mat = createConiferMaterial(uSnowBlend);
+        _sharedConiferMaterials.set(uSnowBlend, mat);
+    }
+    return mat;
 }
 
 /**
@@ -76,7 +96,11 @@ export function createSnowConiferBelt({ placementsBySpecies = {}, uSnowBlend } =
             geo.computeBoundingBox();
             const maxY = geo.boundingBox.max.y;
 
-            const material = createConiferMaterial(uSnow, maxY);
+            const material = getSharedConiferMaterial(uSnow);
+            // Per-instance species height for the shared material's snow-cap gradient (uniform
+            // across this species' instances). Lets the one material serve fir/pine/spruce.
+            const aMaxY = new Float32Array(placements.length).fill(Math.max(0.001, maxY));
+            geo.setAttribute('aMaxY', new THREE.InstancedBufferAttribute(aMaxY, 1));
             const mesh = new THREE.InstancedMesh(geo, material, placements.length);
             mesh.name = `snow-conifer-${record.id}`;
             mesh.frustumCulled = false;

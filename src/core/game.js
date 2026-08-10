@@ -1328,6 +1328,23 @@ let activeLoopCount = 0;
 const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
 
 /**
+ * Upper bound on the per-update simulation delta.
+ *
+ * The loop is driven by requestAnimationFrame, so `delta` is however long the
+ * browser took to hand us a frame — including GPU stalls of 100ms+ that carry
+ * no JS long task (see docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §2).
+ * Feeding that raw into DAS made `advanceDas` fire its owed catch-up repeats in
+ * one go: at the default 40ms ARR a 108ms frame moved the piece three columns
+ * at once. Gravity did the same through processAutoDrop.
+ *
+ * Clamping trades a little simulation time for determinism under load — after a
+ * stall the piece resumes from where the player last saw it instead of
+ * teleporting. 50ms (3 frames at 60Hz) absorbs ordinary hitches while still
+ * letting genuine slow play advance.
+ */
+const MAX_SIMULATION_DELTA_MS = 50;
+
+/**
  * Main game loop function
  * @param {number} time - Current timestamp from requestAnimationFrame
  * @param {GameState} gameState - Current game state
@@ -1364,6 +1381,10 @@ export function updateGame(time, gameState, callbacks = {}) {
     if (!gameState.isPaused) {
         const previousTime = Number.isFinite(gameState.lastTime) ? gameState.lastTime : safeTime;
         const delta = Math.max(0, safeTime - previousTime);
+        // Raw `delta` stays the wall-clock quantity (sim clock, hit-stop expiry).
+        // Player-visible motion runs on the clamped one so a GPU stall cannot be
+        // replayed as a burst of moves — see MAX_SIMULATION_DELTA_MS.
+        const steppedDelta = Math.min(delta, MAX_SIMULATION_DELTA_MS);
         gameState.lastTime = safeTime;
 
         if (gameState.isReplay) {
@@ -1392,14 +1413,14 @@ export function updateGame(time, gameState, callbacks = {}) {
             && !gameState.isSeeking
             && typeof window !== 'undefined';
         if (shouldPollExternalInput && window.inputController) {
-            window.inputController.updateDAS(delta);
+            window.inputController.updateDAS(steppedDelta);
         }
         if (shouldPollExternalInput && window.gamepadController) {
             window.gamepadController.advanceGameplayInput(safeTime);
         }
 
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)
-        processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks);
+        processAutoDrop(gameState, steppedDelta, playDropCallback, physicsCallbacks);
 
         if (monitoring) {
             performanceMonitor.updateEnd();
