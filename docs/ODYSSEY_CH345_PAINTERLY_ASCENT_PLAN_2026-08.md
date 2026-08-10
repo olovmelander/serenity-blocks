@@ -170,6 +170,39 @@ construction* rather than hand-matched hexes.
 
 ---
 
+## 5b. Axis 2 — Landscape geometry cohesion (the terrain must be one place, not just one air)
+
+*From a dedicated read-only geometry investigation. Surprising headline: **the mountains are NOT the
+discontinuity.** Ch3's distant range, Ch4's climbed peaks and Ch5's receding ring are the **same three
+meshes at identical absolute world coordinates** — `getCanonicalMountainRangeWorldSpecs()`
+(`canonical-mountain-range.js:58-168`) world-locks them (peak feet anchored to `chapter3Center.y`), and
+each host does `meshLocal = worldPos − hostCenter` so `meshWorld = worldPos` regardless of chapter. The
+range you see far across the meadow literally IS the range you climb. What swaps is the **FLOOR + the
+cloud layers.***
+
+Resolved world-Y climb: Ch3 cam 297→366 (center 332), Ch4 366→516 (center 441), Ch5 516→655 (center 586).
+
+**Geometry discontinuities (ranked levers):**
+
+| # | Discontinuity | Lever | Impact/Effort |
+|---|---|---|---|
+| **D1** | **Ch5 has NO floor.** Ch4's cloud-sea deck (the silver sea the peaks rise from, world-Y 312, r2600) is Ch4-only and fades out at the seam → the floor *vanishes* entering Ch5 instead of receding below. **Sharpest 4→5 break.** | **L1: extend `createCloudSeaDeckTSL` into Ch5** (world-locked Y≈312) so the SAME sea recedes below as you climb — sells "above the clouds" + is the literal shared cloud through-line the colour plan also wants | **High / Low-Med** |
+| **D2** | Ch4 has **two floors 65u apart** — snow-floor disc (Y247, r3000, z−1327) vs cloud-sea deck (Y312, r2600, z−827) | **L2: collapse to one Ch4 datum** aligned to Ch3 hill/water band (~290-314) + peak feet (302-322) so the 3→4→5 floor sits in one ~290-315 ribbon | High / Med |
+| **D3** | **Finite planes vs huge discs** — Ch3 terrain is `PlaneGeometry(400,400)` (±200) + water; Ch4's r3000 snow disc undercuts it ~40u and spills past the ±200 rim → a visible *second, lower* floor + horizon-radius jump during crossfade | **L4: give Ch3 the same far floor/horizon disc** (or hand the terrain melt into it) so past the rim the eye sees the shared far floor, not sky-then-second-disc | Med / Med |
+| **D4** | **Foothill bridge fades instead of connecting** — Ch3's bridge crest (~325-330) sits 13-78u above Ch4's floor AND `resolveSurfaceWorldSeamRecedeState` dissolves it across the last 22% of Ch3 (`surface-world.js:819-840,1586`) | **L3: make the bridge a real physical ramp** — match `foothillBridgeHeight` crest to Ch4's floor datum + STOP the seam-recede so it persists through the crossfade | High / Med |
+| **D5** | **One-sided tree-line** — Ch3 conifers `count:0` (clean meadow) but Ch4 seeds 80 *at* the seam → the forest "begins" at the boundary | Add a thinning far treeline on the Ch3 foothill side (meadow stays clean; only the far approach gets a treeline — natural meadow→treeline→snow), or soften Ch4's seam seeding | Med / Low |
+| **D6** | **Coplanar double-draw** — the shared peaks are 3 separate instances co-drawn at identical coords during each crossfade → z-fight/flicker risk + doubled cost | **L5: one hosted canonical-range instance** under a persistent world-anchored group (like the light rig) all three chapters reference | Med / Med-High (perf win too) |
+| **D7** | Hero summit (crown 1022) never climbed above (cam maxes 655 Ch5 / 781 Ch6) → stays towering overhead | L6 (optional): lower the center-hero crown anchor or push its base further in Z so it reads distant | Low-Med / Low |
+
+**Weave into the waves:** L4 + L3(Ch3 side) → Wave A/B; L2 → Wave B (Ch4); **L1 (highest) → Wave C (Ch5)**;
+L5 → Wave D. The **shared persistent cloud-sea deck (L1)** is the convergence of both axes — it is
+simultaneously the geometry floor AND the colour plan's "cloud through-line," so it should become a
+world-anchored shared element (like the canonical range) that Ch4 and Ch5 both host.
+
+**Preserve:** the canonical range is already correct — do NOT reposition the peaks; the fix is the floor,
+the bridge handoff, and giving Ch5 a floor. `createDistantMountainsTSL` (surface-world.tsl.js:2604) is
+dead code (Ch3 uses the canonical builder) — ignore it.
+
 ## 6. Technique reference (realtime, WebGPU/TSL r181)
 - **Sky:** two-colour vertical gradient by `pow`'d normalized `view.y` (zenith→horizon) + soft sun disc +
   Mie glow. Stylized-clean; no full light-march needed.
