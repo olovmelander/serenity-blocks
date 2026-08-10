@@ -173,9 +173,15 @@ export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     seaWidth: 1320,
     seaDepth: 1140,
     seaCenterX: -30,
-    seaCenterZ: 128,
+    // ONE water body (user: "still not one lake and looks squared"). The sea is now enlarged to
+    // cover the WHOLE valley (centre pulled back to 40, depth ×2.0 → z≈−260..340), so it is the
+    // single continuous water surface and the ONLY visible water edge is the organic grass
+    // shoreline (where the terrain rises above the waterline) — never a plane's square rim. The
+    // separate river/lake planes (which showed hard square edges over the water) are hidden; this
+    // sea subsumes them. seaCenterZ 40 stays > corridorCenterZ 34 (test pin).
+    seaCenterZ: 40,
     seaScaleX: 4.2,
-    seaScaleZ: 0.82,
+    seaScaleZ: 2.0,
     // Fix A finish: collapsed 3.0 → 0 so the Ch3 sea sits at exactly waterSurfaceY — the SAME world
     // plane as the Ch2 breach ceiling (no more 3u "double surface" the camera crossed twice) AND
     // exactly at the terrain shading waterline (surfaceWorldY, which is independent of seaYOffset —
@@ -647,6 +653,10 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // (surfaceOffsetY + seaYOffset + 0.4). configureChapter2WaterSurface only sets x/z, so set
     // Y here to keep the river plane in the identical world position it had before.
     river.position.y = surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08;
+    // The enlarged sea now IS the whole valley's water; the separate river plane's hard square rim
+    // showed over the water, so it's hidden (kept for the name/renderOrder test pins). renderOrder
+    // draws transparents in order regardless of Y, so it can't just sit "under" the sea.
+    river.visible = false;
 
     // HERO LAKE surface: the procedural GOLDEN-HOUR REFLECTIVE lake (createGoldenLakeTSL) pooled
     // over the carved basin (SURFACE_LAKE_CENTER) — same warm palette as the river/sea, but with a
@@ -672,6 +682,10 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
         surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08,
         SURFACE_LAKE_CENTER.z,
     );
+    // Hidden for the same reason as the river: the enlarged sea is the single water surface, and the
+    // hero-lake plane's square rim was the "looks squared" offender. (Reflector stays wired for the
+    // opt-in hero-mirror flag; it's off by default so the hidden mesh is inert.)
+    lake.visible = false;
 
     const group = new THREE.Group();
     group.name = 'surface-ocean-tsl';

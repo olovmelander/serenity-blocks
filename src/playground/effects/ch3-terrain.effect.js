@@ -48,11 +48,10 @@ export function create({ scene }) {
 
     return {
         camera(time, camera) {
-            // LOW forward journey view (mimics the in-game spline camera): near the corridor mouth,
-            // low over the water, looking down-valley toward the lake so the flanking grass hills
-            // read at the actual flight angle — not just a director's overview.
-            camera.position.set(-6, 29, 120);
-            camera.lookAt(-26, 9, -165);
+            // LOW forward journey view (the in-game spline angle): flying up the valley over the
+            // water toward the far mountains, grass hills flanking.
+            camera.position.set(-6, 30, 130);
+            camera.lookAt(-26, 12, -170);
             camera.fov = 62;
             camera.updateProjectionMatrix();
         },
