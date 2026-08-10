@@ -50,7 +50,6 @@ import {
     createMoltenPocketMaterialTSL,
     createContactShadowDecalTSL,
     createFirstHeartTSL,
-    createSeleniteCrystalsTSL,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
@@ -1563,15 +1562,13 @@ function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial) {
     const chamber = new THREE.Group();
     chamber.name = 'selenite-geode-chamber';
 
-    const crystals = createSeleniteCrystalsTSL(uniforms.uTime, uniforms.uPulseIntensity, {
-        uSeam: uniforms.uSeam,
-        uOpacity: uniforms.uOpacity,
-        beamCount: 12,
-    });
-    crystals.mesh.scale.set(1.55, 1.9, 1.55);
-    chamber.add(crystals.mesh);
+    // Selenite crystal beams removed per user request (2026-08): the chapel keeps its warm
+    // molten-pocket backlight, basalt shell and corona sprite (the group the tests + visibility
+    // targets reference), just without the gypsum blades. createSeleniteCrystalsTSL is now unused
+    // (left exported in earth-core.tsl.js as harmless dead code; no shared material depends on it).
 
-    // Molten pocket beneath — the warm backlight that makes the selenite glow.
+    // Molten pocket beneath — the warm backlight that used to make the selenite glow; kept as the
+    // chamber's warm heart.
     const pocket = createMoltenPocketTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
