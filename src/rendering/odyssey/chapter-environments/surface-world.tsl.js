@@ -854,13 +854,15 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // foothill skirt / mountain range with a noisy depth fade. This keeps the Ch3 meadow from
     // ending as a straight green card against the Ch4 sky.
     const edgeNoise = landscapeNoise(vPosition.xz.mul(0.035)).sub(0.5).mul(42.0);
-    // MOUNTAIN↔TERRAIN CONTINUITY (fixed): melt ONLY the FAR edge (the last strip before the
-    // foothills, depth ~155→215) into the range so the meadow doesn't end on a hard green card —
-    // while the near + mid meadow stay FULLY SOLID. The earlier version also dissolved the
-    // front/side edges every frame, which faded the foreground + mid ground and read as
-    // "the ground is missing" (user report). Only the far lip dissolves now; everything the
-    // camera stands on stays opaque ground.
-    const farMelt = oneMinus(smoothstep(155.0, 215.0, vPosition.z.negate().add(edgeNoise)));
+    // MOUNTAIN↔TERRAIN CONTINUITY: dissolve the terrain's whole OUTER RIM (all four plane edges, via
+    // the Chebyshev distance max(|x|,|z|)) into the atmosphere so the meadow never ends on a hard
+    // green card/triangle — the seam capture showed the old far-z-only melt left the SIDE edges hard,
+    // reading as a sharp green wedge at the Ch3→Ch4 seam. The fade only bites past ~±178 (a ~28u
+    // border), so the whole valley — lake, hills, and the ground the camera stands on — stays FULLY
+    // solid; only the outermost lip melts. (The earlier "ground missing" bug was fading the near/mid
+    // ground; this fades only the far rim, which the eye reads as terrain receding into the range.)
+    const rimDist = max(abs(vPosition.x), abs(vPosition.z));
+    const farMelt = oneMinus(smoothstep(178.0, 206.0, rimDist.add(edgeNoise)));
     material.opacityNode = uOpacity.mul(landAlpha).mul(farMelt);
     material.transparent = true;
     material.depthWrite = false;
