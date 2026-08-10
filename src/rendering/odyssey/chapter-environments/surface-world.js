@@ -60,7 +60,6 @@ import {
     createSnowMotesTSL,
     CH3_BIRD_SILHOUETTE_SETTINGS,
     getTerrainHeight,
-    foothillBridgeHeight,
 } from './surface-world.tsl.js';
 
 /**
@@ -866,31 +865,6 @@ export function resolveSurfaceWorldSurfaceExitState(
 // Snow-conifer placements that climb the foothill bridge across the Ch3→Ch4 seam, thinning to
 // the tree line (none above ~70% of the climb → bare snow). Anchored to the exact bridge
 // surface (foothillBridgeHeight) and kept off the carved player corridor (around x=-18).
-function buildBridgeConiferPlacements() {
-    const out = { spruce: [], pine: [], fir: [] };
-    let placed = 0;
-    let guard = 0;
-    while (placed < 90 && guard < 90 * 18) {
-        guard += 1;
-        const x = (Math.random() - 0.5) * 560;
-        const gz = -210 - Math.random() * 520; // climb zone (-210 .. -730)
-        if (Math.abs(x + 18) < 90) continue; // off the carved corridor
-        const climb = Math.min(1, Math.max(0, (-gz - 180) / 640));
-        if (climb > 0.7) continue; // tree line ends — bare snow above
-        if (Math.random() > (1 - climb * 0.8)) continue; // thin toward the line
-        const y = foothillBridgeHeight(x, gz);
-        let species = 'fir';
-        if (climb < 0.38) species = 'spruce';
-        else if (climb < 0.6) species = 'pine';
-        const scale = (0.6 + Math.random() * 0.55) * (1 - climb * 0.4);
-        out[species].push({
-            x, y: y - 0.3, z: gz, scale, rotationY: Math.random() * Math.PI * 2,
-        });
-        placed += 1;
-    }
-    return out;
-}
-
 // ── Ch3 HERO MIRROR (flag ch3HeroMirror) ─────────────────────────────────────────────
 // Opt-in REAL reflector() planar mirror for the hero lake (default OFF → the chapter is
 // byte-identical to today). Enable with URL ?ch3HeroMirror=1 or localStorage
@@ -1019,15 +993,17 @@ export function createSurfaceWorldEnvironment() {
     // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
     // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
     // zoned (deliberate clumps + open negative space), not a scattered carpet.
-    // Declutter (user report "flowers look cluttery"): 1400 -> 800. Still clusters into the
-    // SURFACE_FLOWER_PATCHES drifts (intentional colour events), just sparser between them.
-    const meadowFlowers = createWildflowers(uniforms, 800);
+    // CLEAN LANDSCAPE (user: "remove trees and grass and flowers"): the scattered wildflower
+    // carpet is stripped to zero. The Ch3 hero is now the rolling grass hills + the single hero
+    // tree + the water — not a flower meadow. Kept as a count-0 group (SURFACE_FLOWER_PATCHES infra
+    // intact) so one saturated drift can be re-added as an accent if the meadow reads too bare.
+    const meadowFlowers = createWildflowers(uniforms, 0);
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);
     group.userData.meadowFlowers = meadowFlowers;
 
-    const trees = createTrees(uniforms, 12); // declutter: 16 -> 12 deliberate deciduous rounds
+    const trees = createTrees(uniforms, 0); // CLEAN LANDSCAPE: scattered deciduous rounds cut (object kept for cc0 + fallback pins)
     trees.name = 'trees';
     trees.position.y = terrainOffsetY;
     group.add(trees);
@@ -1039,7 +1015,7 @@ export function createSurfaceWorldEnvironment() {
     // drops two vocabularies of visual clutter AND two first-visit pipeline compiles. The deciduous
     // rounds + Great Tree carry the near/mid forest; the conifer belt carries the flank silhouette.
 
-    const reeds = createReeds(uniforms, 130);
+    const reeds = createReeds(uniforms, 0); // CLEAN LANDSCAPE: reed clutter cut
     reeds.name = 'reeds';
     reeds.position.y = terrainOffsetY;
     group.add(reeds);
@@ -1068,7 +1044,7 @@ export function createSurfaceWorldEnvironment() {
         // not the foothill-bridge zone beyond it; cluster on the FAR meadow edge (the tree line
         // climbing toward the seam). The Ch4 side seeds its own conifers on its lower slopes.
         placementsBySpecies: buildConiferBeltPlacements({
-            count: 115, // declutter: 170 -> 115 (thinner, more deliberate tree-line)
+            count: 0, // CLEAN LANDSCAPE: flank conifer tree-line cut (object+key kept); bare hills→mountains reads cleaner
             area: { x: 360, zMin: -188, zMax: -60 },
             heightBand: { base: 6, line: 26 },
             sampleHeight: (x, z) => getTerrainHeight(x, z),
@@ -1083,7 +1059,10 @@ export function createSurfaceWorldEnvironment() {
     // exactly as the Mountains chapter takes over (a real, well-modelled tree line).
     const bridgeConiferBelt = createSnowConiferBelt({
         uSnowBlend: coniferSnowBlend,
-        placementsBySpecies: buildBridgeConiferPlacements(),
+        // CLEAN LANDSCAPE: the bridge tree-line is cut too (empty placements → 0 instances). Ch3→Ch4
+        // continuity comes from the continuous terrain slope + the shared canonical peaks (Fix D),
+        // not a conifer belt. Object + key kept so the snow-blend collection + tests stay intact.
+        placementsBySpecies: { spruce: [], pine: [], fir: [] },
     });
     bridgeConiferBelt.name = 'snow-conifer-belt-bridge';
     bridgeConiferBelt.position.y = terrainOffsetY;
@@ -1116,7 +1095,7 @@ export function createSurfaceWorldEnvironment() {
                 y: pt.y - chapterCenterY - 1.6 + Math.random() * 1.4,
                 z: pt.z - chapterRange.center.z + (Math.random() - 0.5) * 3,
             };
-            fgPlacements.push(local);
+            // CLEAN LANDSCAPE: near-field pass-by silhouettes stripped → fgPlacements stays empty.
             if (i % 2 === 0) {
                 leafPlacements.push({
                     x: local.x + side * (3 + Math.random() * 14),
@@ -1135,21 +1114,21 @@ export function createSurfaceWorldEnvironment() {
     group.add(foregroundLayer);
     group.userData.foregroundLayer = foregroundLayer;
 
-    const fallingLeaves = createFallingLeaves(uniforms, 90, leafPlacements);
+    const fallingLeaves = createFallingLeaves(uniforms, 0, leafPlacements); // CLEAN LANDSCAPE: autumn leaf drift cut (object kept truthy)
     fallingLeaves.name = 'falling-leaves';
     fallingLeaves.position.y += terrainOffsetY;
     group.add(fallingLeaves);
     group.userData.fallingLeaves = fallingLeaves;
 
     // Winter snow motes (creative plan asset 9): the final act's particle story.
-    const snowMotes = createSnowMotes(uniforms, 160);
+    const snowMotes = createSnowMotes(uniforms, 0); // CLEAN LANDSCAPE: winter motes cut (object+key kept)
     snowMotes.name = 'snow-motes';
     group.add(snowMotes);
     group.userData.snowMotes = snowMotes;
 
     // 10. Warm-amber pollen motes drifting in the golden-hour light. (Remake plan declutter:
     // 600 -> 300 — still a soft golden shimmer, half the additive fill.)
-    const pollen = createPollen(uniforms, 300);
+    const pollen = createPollen(uniforms, 0); // CLEAN LANDSCAPE: pollen additive shimmer cut
     pollen.name = 'pollen';
     group.add(pollen);
     group.userData.pollen = pollen;
