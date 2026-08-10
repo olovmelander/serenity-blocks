@@ -306,23 +306,30 @@ export function createBlackHoleTSL(uTime, uEnergy) {
     // radial-feathered halo (alpha→0 before both ring edges) so the hero seats into the
     // void haze with no concentric hard ring lines floating on black.
     const glowColors = [new THREE.Color(0xff7b3a), new THREE.Color(0x7f3cff)];
+    const glowOpacity = [0.12, 0.08];
+    // CONSOLIDATION (remake plan): ONE shared glow material for both halo rings — same feather
+    // graph, only colour + opacity differ, moved onto a per-mesh aGlowColor (vec4 = rgb + a).
+    const gv = uv().y;
+    const gFeather = pow(smoothstep(0.0, 0.5, gv).mul(oneMinus(smoothstep(0.5, 1.0, gv))).mul(4.0), 1.1);
+    const aGlowColor = attribute('aGlowColor', 'vec4');
+    const glowMat = new THREE.MeshBasicNodeMaterial();
+    glowMat.colorNode = aGlowColor.xyz.mul(gFeather);
+    glowMat.opacityNode = clamp(gFeather, 0.0, 1.0).mul(aGlowColor.w);
+    glowMat.transparent = true;
+    glowMat.depthWrite = false;
+    glowMat.blending = THREE.AdditiveBlending;
+    glowMat.side = THREE.DoubleSide;
+    glowMat.userData.emitsBloom = true;
     [0, 1].forEach((index) => {
-        const glowMat = new THREE.MeshBasicNodeMaterial();
-        const gv = uv().y;
-        // Soft bell across the ring band: feathered to 0 at both inner + outer edges.
-        const gFeather = pow(smoothstep(0.0, 0.5, gv).mul(oneMinus(smoothstep(0.5, 1.0, gv))).mul(4.0), 1.1);
         const gc = glowColors[index];
-        glowMat.colorNode = vec3(gc.r, gc.g, gc.b).mul(gFeather);
-        glowMat.opacityNode = clamp(gFeather, 0.0, 1.0).mul(0.12 - index * 0.04);
-        glowMat.transparent = true;
-        glowMat.depthWrite = false;
-        glowMat.blending = THREE.AdditiveBlending;
-        glowMat.side = THREE.DoubleSide;
-        glowMat.userData.emitsBloom = true;
-        const ring = new THREE.Mesh(
-            new THREE.RingGeometry(40 + index * 22, 70 + index * 30, 96, 1),
-            glowMat,
-        );
+        const geometry = new THREE.RingGeometry(40 + index * 22, 70 + index * 30, 96, 1);
+        const n = geometry.attributes.position.count;
+        const arr = new Float32Array(n * 4);
+        for (let i = 0; i < n; i += 1) {
+            arr[i * 4] = gc.r; arr[i * 4 + 1] = gc.g; arr[i * 4 + 2] = gc.b; arr[i * 4 + 3] = glowOpacity[index];
+        }
+        geometry.setAttribute('aGlowColor', new THREE.BufferAttribute(arr, 4));
+        const ring = new THREE.Mesh(geometry, glowMat);
         group.add(ring);
     });
 
