@@ -12,7 +12,7 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    uniform, positionWorld, normalize, mix, smoothstep, vec3, float, clamp,
+    uniform, positionWorld, normalize, mix, smoothstep, vec3, clamp,
 } from 'three/tsl';
 import { buildOdysseyWaterSurface } from '../../rendering/odyssey/chapter-environments/shared/odyssey-water-surface.tsl.js';
 

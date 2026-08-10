@@ -48,7 +48,6 @@ import {
     positionWorld,
     pow,
     reflector,
-    screenUV,
     sin,
     smoothstep,
     texture,
@@ -58,6 +57,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { snoise3 } from './shared/odyssey-tsl-noise.js';
+import { buildOdysseyWaterSurface } from './shared/odyssey-water-surface.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import {
     MOUNTAIN_SKIRT_MEADOW,
@@ -532,91 +532,22 @@ function buildGoldenWaterMaterial(uTime, {
     uSeason = uniform(0), uOpacity = uniform(1), useRadialEdge = true, rippleAmp = 0.16,
     reflection = null,
 } = {}) {
-    const sunDir = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
-
-    const wpos = positionWorld;
-    const eyeDir = normalize(cameraPosition.sub(wpos));
-    const dist = length(cameraPosition.sub(wpos));
-    const rt = uTime.mul(0.35);
-
-    // Faked calm surface normal (low-amplitude drifting tilt) — a lake, not chop.
-    const ripA = sin(wpos.x.mul(0.11).add(rt)).add(sin(wpos.z.mul(0.09).sub(rt.mul(0.8))));
-    const ripB = sin(wpos.x.mul(0.045).add(wpos.z.mul(0.038)).add(rt.mul(0.6)));
-    const nrm = normalize(vec3(ripA.mul(0.035).add(ripB.mul(0.02)), 1.0, ripB.mul(0.035).sub(ripA.mul(0.02))));
-
-    // Reduced-fresnel WARM reflectance: coloured/dark water at normal view, reflective only at the
-    // grazing rim → the opposite of a mirror-blue sea.
-    const theta = clamp(dot(eyeDir, nrm), 0.0, 1.0);
-    const rf0 = float(0.09);
-    const reflectance = rf0.add(oneMinus(rf0).mul(pow(oneMinus(theta), float(5.0))));
-
-    // Depth gradient: cool teal body near/deep → warmer toward the far horizon; winter cools it.
-    const depthFactor = smoothstep(20.0, 240.0, dist);
-    const winterT = smoothstep(0.7, 0.95, uSeason);
-    const bodyCol = mix(vec3(0.035, 0.13, 0.16), vec3(0.06, 0.22, 0.26), depthFactor); // rich cool teal
-    // Warm reflected sky — a saturated golden-hour gradient (bright gold toward the far horizon)
-    // so the reflective surface reads GOLDEN, not pale grey; winter cools it toward pale blue.
-    let skyRefl = mix(vec3(0.62, 0.42, 0.28), vec3(0.90, 0.68, 0.42), depthFactor); // amber → warm gold
-    skyRefl = mix(skyRefl, vec3(0.60, 0.72, 0.86), winterT.mul(0.7));
-    // Horizontal ripple light-bands (Firewatch): faint brighter/darker streaks across the surface
-    // so it reads as rippled water, not a flat metallic sheet. Low frequency + gentle amplitude so
-    // the broad sea plane gets soft glancing bands, NOT a regular corduroy weave.
-    const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
-        .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
-    skyRefl = skyRefl.mul(mix(float(0.9), float(1.08), bands));
-    // vUv is also used by the radial shore alpha below, so declare it before the branch.
-    const vUv = uv();
-    let color;
-    if (reflection) {
-        // REAL planar mirror (flag ch3HeroMirror): fold the ACTUAL treeline + sky at the grazing
-        // rim, replacing the faked uv.y silhouettes (which read as a copper sheet in-scene).
-        // screenUV.flipX() is REQUIRED to match the reflector's stored UV; ripple-distort it by
-        // the wobble normal so the reflection wobbles like water. Reduced-fresnel weight keeps the
-        // body dark teal head-on and only ignites the mirror at the grazing far rim.
-        const reflUV = screenUV.flipX().add(vec2(nrm.x, nrm.z).mul(0.04));
-        color = mix(bodyCol, reflection.sample(reflUV).rgb, reflectance);
-    } else {
-        color = mix(bodyCol, skyRefl, reflectance);
-        // Faked dark shore/tree silhouette reflections toward the FAR shore (high uv.y), rippled so
-        // they wobble like water — the reflected tree-stands + Great Tree without a mirror pass.
-        const ripd = sin(wpos.z.mul(1.4).add(uTime.mul(0.6))).mul(0.05)
-            .add(sin(wpos.x.mul(0.8).add(uTime.mul(0.3))).mul(0.03));
-        const silBase = sin(wpos.x.mul(0.14).add(2.0)).mul(0.5).add(0.5)
-            .mul(sin(wpos.x.mul(0.33).sub(1.0)).mul(0.5).add(0.5));
-        const silhouette = smoothstep(0.42, 0.85, silBase.add(ripd));
-        const farMask = smoothstep(0.4, 0.8, vUv.y.add(ripd));
-        color = mix(color, vec3(0.07, 0.11, 0.09), silhouette.mul(farMask).mul(0.6));
-    }
-
-    // Golden SUN-GLITTER path (camera-relative half-vector spec): a piercing highlight + broad
-    // glow toward the low sun + a shimmer band — the golden-hour signature; tracks the moving cam.
-    const halfV = normalize(sunDir.add(eyeDir));
-    const specDot = clamp(dot(nrm, halfV), 0.0, 1.0);
-    const shimmer = sin(wpos.z.mul(7.0).add(uTime.mul(2.0))).mul(0.5).add(0.5)
-        .mul(sin(wpos.x.mul(3.2).add(uTime.mul(1.4))).mul(0.5).add(0.5));
-    const glitter = pow(specDot, float(90.0)).mul(2.4).add(pow(specDot, float(14.0)).mul(0.28));
-    const sunPath = glitter.mul(shimmer.mul(0.5).add(0.7));
-    color = color.add(vec3(1.0, 0.72, 0.34).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
-
-    // Soft radial shore alpha (plane UV 0.5 = centre) so a pooled lake dissolves into the bank;
-    // the river/sea fill to their scaled edge instead (useRadialEdge = false → alpha 1).
-    const distFromCenter = length(vUv.sub(0.5)).mul(2.0);
-    const edgeAlpha = useRadialEdge ? oneMinus(smoothstep(0.82, 1.0, distFromCenter)) : float(1.0);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color;
-    material.opacityNode = edgeAlpha.mul(uOpacity);
-    // Gentle vertical ripple (local-space phase so the positionNode isn't circular).
-    material.positionNode = positionLocal.add(vec3(
-        0.0,
-        sin(positionLocal.x.mul(0.11).add(rt)).add(sin(positionLocal.z.mul(0.09).sub(rt.mul(0.8)))).mul(rippleAmp),
-        0.0,
-    ));
-    material.transparent = true;
-    material.depthWrite = false;
-    material.side = THREE.DoubleSide;
-    material.toneMapped = false;
-    return { material, uniforms: { uOpacity, uSeason } };
+    // The Ch3 sea/river/lake are now the ONE shared Odyssey water surface (unified with the Ch2
+    // breach ceiling — shared/odyssey-water-surface.tsl.js). Ch3 water is "surfaced" (uDepth=1 →
+    // the caustic underside only shows if the camera dips beneath a wave) and calm (a small wave
+    // scale mapped from the old rippleAmp). The golden-hour top, camera-relative sun-glitter,
+    // reduced-fresnel body and optional hero-lake reflector all live in the shared builder, so
+    // nothing here reads as the old cool cyan caustic slab and the breach is one continuous
+    // membrane (the same surface simply shows its golden top from above, caustic teal from below).
+    return buildOdysseyWaterSurface(uTime, {
+        uDepth: uniform(1),
+        uSeason,
+        uOpacity,
+        uWaveScale: uniform(rippleAmp * 0.6),
+        useRadialEdge,
+        baseAlpha: 1.0,
+        reflection,
+    });
 }
 
 export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
@@ -656,6 +587,11 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // sea and river meshes — a single NodeMaterial pipeline for both, same draw/pipeline share the
     // old cyan reuse had, now warm. rippleAmp trimmed vs the lake since these are broad flat sheets.
     const warmWater = buildGoldenWaterMaterial(uTime, { uOpacity, useRadialEdge: false, rippleAmp: 0.1 });
+    // BUG FIX: the sea MESH was built by createDeepOceanWaterSurfaceTSL with the deep-ocean cyan
+    // material and nothing ever reassigned mesh.material — only the dict handle seaPart.material was
+    // repointed — so the foreground sea rendered the (disposed) cyan additive caustic while the
+    // river/lake rendered gold in the SAME frame. Reassign the mesh material so sea = river = lake.
+    seaPart.mesh.material = warmWater.material;
     seaPart.material = warmWater.material;
     const sea = configureChapter2WaterSurface(seaPart, {
         name: 'surface-chapter-02-water-foreground',
