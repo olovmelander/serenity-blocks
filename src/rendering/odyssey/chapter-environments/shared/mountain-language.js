@@ -83,11 +83,15 @@ export const MOUNTAIN_PALETTE = Object.freeze({
     // pole leans steel-blue; the neutral pole keeps a touch of warm schist so distant rock
     // doesn't go monochrome.
     rockNeutral: 0x39424d,
-    rockCool: 0x202f40,
-    // Shadowed-face bounce — deep cold blue, colder + darker as coolTemp climbs (more
-    // contrast on the unlit faces, less wash).
-    shadowNeutral: 0x1f2a39,
-    shadowCool: 0x0e1c30,
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B/C): the cool rock pole lightened 0x202f40 →
+    // 0x3b4d63 so exposed rock reads as grey alpine stone (the reference), not near-black slate that
+    // blobs navy against the bright daylight sky.
+    rockCool: 0x3b4d63,
+    // Shadowed-face bounce — a COOL BLUE now, not near-black. At 0x0e1c30 the unlit faces read as a
+    // dark navy silhouette against the bright sky (a leftover of the moonlit-dusk contrast intent);
+    // lightened toward a luminous ice-blue so daylight snow shadows stay cool but airy.
+    shadowNeutral: 0x3c506c,
+    shadowCool: 0x33547a,
     // Atmospheric fog body — neutral sky-blue haze -> denser deep cool blue.
     fogNeutral: 0x7fa4cf,
     fogCool: 0x33506e,

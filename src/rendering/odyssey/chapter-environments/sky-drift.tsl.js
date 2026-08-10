@@ -410,11 +410,14 @@ function createSharedCloudMaterialTSL(uTime, uDusk) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = density.mul(edge).mul(mix(float(0.08), float(0.16), duskT));
+    // PAINTERLY-ASCENT REPALETTE (Wave C): opacity up (0.08–0.16 → 0.38–0.5) and NormalBlending
+    // (was Additive) so the whitened strata read as soft solid white cloud wisps occluding the blue
+    // sky, not faint additive violet haze.
+    material.opacityNode = density.mul(edge).mul(mix(float(0.38), float(0.5), duskT));
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     return material;
 }
 
@@ -449,13 +452,17 @@ export function createCloudStrataTSL(uTime, options = {}) {
     // 6 sheets redistributed across the full z -90..-680 span (was 10); each merges the
     // role of ~1.7 of the old sheets, so coverage/scale are bumped for a richer single
     // layer in place of the thinner pairs it replaces.
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): tints whitened from lavender → soft blue-grey
+    // underside (0xcbdaea) + bright white lit top (0xfafdff) so the strata read as sunlit white
+    // cloud wisps, not violet night veils. (The horizontal cloud-SEA deck below the camera — the
+    // Europa "drift above the sea" floor — is added separately.)
     const strata = [
-        [-150, 84, -210, -0.92, 0.08, 0.18, 0.52, 0xd6d2f0, 0xfff0da, 0.42, 2.0],
-        [150, 56, -330, -0.98, 0.16, -0.14, 0.62, 0xc7cdf2, 0xffe9d2, 0.46, 2.3],
-        [-118, 92, -450, -0.88, -0.10, 0.18, 0.78, 0xe2d4ee, 0xfff3e0, 0.42, 1.8],
-        [136, 70, -570, -0.98, 0.16, -0.16, 0.86, 0xbfc6ee, 0xffead4, 0.48, 2.5],
-        [-126, 74, -700, -0.92, -0.12, 0.16, 0.98, 0xe0d6ee, 0xfff4e2, 0.4, 1.8],
-        [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcfccf1, 0xffead2, 0.44, 2.1],
+        [-150, 84, -210, -0.92, 0.08, 0.18, 0.52, 0xcbdaea, 0xfafdff, 0.42, 2.0],
+        [150, 56, -330, -0.98, 0.16, -0.14, 0.62, 0xcbdaea, 0xfafdff, 0.46, 2.3],
+        [-118, 92, -450, -0.88, -0.10, 0.18, 0.78, 0xcbdaea, 0xfafdff, 0.42, 1.8],
+        [136, 70, -570, -0.98, 0.16, -0.16, 0.86, 0xcbdaea, 0xfafdff, 0.48, 2.5],
+        [-126, 74, -700, -0.92, -0.12, 0.16, 0.98, 0xcbdaea, 0xfafdff, 0.4, 1.8],
+        [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcbdaea, 0xfafdff, 0.44, 2.1],
     ];
     const uDusk = options.uDusk ?? uniform(0);
     const material = createSharedCloudMaterialTSL(uTime, uDusk);
