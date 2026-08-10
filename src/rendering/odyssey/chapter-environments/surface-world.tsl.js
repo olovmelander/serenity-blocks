@@ -311,30 +311,43 @@ function smoothstepCPU(min0, max0, value) {
 export function getTerrainHeight(x, z) {
     const d = Math.sqrt(x * x + z * z);
 
-    // River corridor computed FIRST (byte-identical to surfaceCorridorCenter) so the far ridgeline
-    // can be NOTCHED where the river runs — a valley-mouth the snowmelt stream exits.
+    // River / flight-lane centre — BYTE-IDENTICAL to surfaceCorridorCenter so the carve + the
+    // meadow keep-out agree, and so the far ridgeline can be NOTCHED where the river runs.
     const riverCenter = SURFACE_LAKE_CENTER.x + Math.sin((z + 150) * 0.011) * 20;
     const channel = 1 - smoothstepCPU(0, 46, Math.abs(x - riverCenter));
+    const laneDist = Math.abs(x - riverCenter);
 
-    // Layered rolling hills — broad swells + CALMED fine ripples (painterly larger forms, not
-    // busy micro-bumps) + a broad valley swell.
-    let noise = Math.sin(x * 0.018) * Math.cos(z * 0.021) * 11; // broad rolling swells
-    noise += Math.sin(x * 0.05) * Math.sin(z * 0.05) * 3; // mid ripple (calmed 5→3)
-    noise += Math.sin(x * 0.1 + z * 0.2) * 1; // fine ripple (calmed 2→1)
-    noise += Math.cos(x * 0.034 - z * 0.028) * 4; // cross-roll for non-repeating hills
-    noise += Math.sin(x * 0.012) * Math.cos(z * 0.009) * 7; // broad valley swell
+    // ── CORRIDOR VALLEY (Fix B: "the grass hills do not exist"). The old terrain was an ORIGIN-
+    // centred BOWL (baseH −30→+20 with distance) whose entire near/mid field sat below the
+    // waterline, so the flight lane flew over a flat washed water plane and the only relief (the
+    // far ridgeline, amp 22) hid behind fog. Now the ground is a green VALLEY the lane threads:
+    // the lane FLOOR stays low (fills with the river/lake — the water leading line) and the ground
+    // RISES into rolling grass hills on BOTH flanks, close to the path, so real hills read right
+    // beside the camera instead of a flat pale sheet. ──
+    const valleyRise = smoothstepCPU(10, 132, laneDist) * 26; // lane floor → +26 grass shoulders
+    // Gentle down-valley grade: the breach/foreground (+z) opens lower; the ground climbs toward
+    // the mountains (−z) so the valley feeds the far ridgeline / foothill hand-off.
+    const grade = smoothstepCPU(150, -260, z) * 12;
+    const baseH = -13.0 + valleyRise + grade;
+
+    // Rolling grass hills — a MID octave the journey camera actually reads (λ≈105-125) + a broad
+    // swell + a cross-roll for non-repeating shoulders + a calmed fine ripple + a broad valley
+    // swell. Flank-biased (amplitude grows with distance from the lane) so the shoulders swell
+    // higher than the valley floor — the path threads a green trough between hills.
+    const flankGain = 0.45 + smoothstepCPU(14, 150, laneDist) * 0.8;
+    let hills = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 6; // MID octave — the camera reads THIS
+    hills += Math.cos(x * 0.045 + z * 0.04) * 4; // mid cross-roll → non-repeating shoulders
+    hills += Math.sin(x * 0.018) * Math.cos(z * 0.021) * 6; // broad rolling swell
+    hills += Math.sin(x * 0.1 + z * 0.13) * 1; // fine ripple (calmed)
+    hills += Math.sin(x * 0.012) * Math.cos(z * 0.009) * 3; // broad valley swell
+    hills *= flankGain;
+
     // Far RIDGELINE band (horizon hill silhouette), NOTCHED where the river runs so a gap in the
-    // foothills reads as the stream's source.
+    // foothills reads as the stream's source at the valley mouth.
     const ridgeline = Math.sin(x * 0.009) * Math.cos(z * 0.006) * 22;
-    noise += ridgeline * smoothstepCPU(120, 260, d) * (1 - channel * 0.75);
+    const farBand = ridgeline * smoothstepCPU(120, 260, d) * (1 - channel * 0.75);
 
-    const viewDist = 180.0;
-    let distFactor = Math.min(d / viewDist, 1.0);
-    distFactor **= 2.0;
-
-    const baseH = -30.0 + (distFactor * 50.0);
-
-    let h = baseH + (noise * smoothstepCPU(50, 100, d));
+    let h = baseH + hills + farBand;
 
     // Carve the winding river channel — a stream GROWING deeper toward the far mountains (the
     // snowmelt source) so it reads as one connected water leading line threading the lake.
@@ -346,8 +359,8 @@ export function getTerrainHeight(x, z) {
     h -= (1 - smoothstepCPU(0, SURFACE_LAKE_RADIUS, lakeD)) * 34;
 
     // Triangle-rule LANDMARKS (BotW three-point frame): a smooth KNOLL lifting the hero Great Tree
-    // (left third) so it reads against the sky, + a steeper rocky OUTCROP (right third, crowned
-    // with spruce) that screens the range and balances the hero. Both clear of the river + lake.
+    // (left third) so it reads against the sky, + a steeper rocky OUTCROP (right third) that
+    // balances the hero. Both clear of the river + lake.
     const knollD = Math.hypot(x - SURFACE_GREAT_TREE_POS.x, z - SURFACE_GREAT_TREE_POS.z);
     h += (1 - smoothstepCPU(0, 42, knollD)) * 16;
     const outD = Math.hypot(x - 74, z + 176);
