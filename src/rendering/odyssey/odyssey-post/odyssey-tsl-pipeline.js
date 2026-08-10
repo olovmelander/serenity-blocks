@@ -122,13 +122,13 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [0.86, 0.98, 1.10], contrast: 1.12, vignette: 1.28, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
     },
-    // 3 Surface World — Midsommar golden-hour meadow. Re-aimed WARM from the old cool-green cast:
-    // the previous tint [0.97,1.04,0.95] pulled R+B DOWN and G UP (cool/green), fighting the
-    // golden-hour intent on TOP of the shared ACES muting; now warm (R up, B down) with more
-    // saturation + contrast + a lighter vignette so the meadow reads vivid + sunlit. (Tint
-    // renormalises to origLuma → hue-only shift, safe against ACES; A/B in-game.)
+    // 3 Surface World — PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): flipped from the warm
+    // golden-hour tint [1.04,1.01,0.92] to a bright, slightly-cool DAYLIGHT stock (raise B, drop the
+    // warm R lift) so the meadow reads as a vivid blue-sky afternoon; vignette opened 0.75→0.55 for
+    // the airy high-key look; saturation held high (1.12) so the flowers/water pop. This is the
+    // start of the shared near-neutral daylight grade Ch3/4/5 converge on (Wave D).
     {
-        tint: [1.04, 1.01, 0.92], contrast: 1.05, vignette: 0.75, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
+        tint: [0.99, 1.00, 1.04], contrast: 1.05, vignette: 0.55, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 4 Mountains — open, airy, light vignette (REFERENCE stock).
     {
