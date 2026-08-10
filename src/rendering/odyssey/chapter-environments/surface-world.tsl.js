@@ -2417,9 +2417,9 @@ export function createCloudsTSL(uTime = uniform(0)) {
     const uOpacity = uniform(1);
     const vUv = uv();
 
-    // Golden-hour-lit cloud strata: a warm sun-lit top and a cooler shaded base, with the
-    // structure coming from layered FBM rather than a flat white puff. Keeps the upper
-    // frame from washing white — the cloud body sits at a moderate value and reads as form.
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): big soft white DAYLIGHT CUMULUS — near-white
+    // sunlit tops over soft blue-grey undersides, structure from layered FBM. The hero sky element
+    // of the reference images; the turquoise lake below reflects these (see the water repalette).
     const t = uTime.mul(0.045);
 
     // Stretched coords give horizontal STRATA (wide, layered banks) not round blobs.
@@ -2430,21 +2430,24 @@ export function createCloudsTSL(uTime = uniform(0)) {
     const n3 = snoise3(vec3(sx.mul(4.3).add(t.mul(0.6)), sy.mul(4.3), t.mul(0.8))).mul(0.25);
     const body = n1.add(n2).add(n3);
 
-    // Soft elliptical mask (wider than tall) so banks fade at the edges, not as a disc.
-    const ex = vUv.x.sub(0.5).mul(1.7);
-    const ey = vUv.y.sub(0.5).mul(2.6);
+    // Rounder, puffier BILLOWING mask (was a flat wide ellipse → thin strata) so the banks read as
+    // big soft CUMULUS, not haze veils.
+    const ex = vUv.x.sub(0.5).mul(1.4);
+    const ey = vUv.y.sub(0.5).mul(1.6);
     const dist = length(vec2(ex, ey));
-    const mask = oneMinus(smoothstep(0.35, 1.0, dist));
+    const mask = oneMinus(smoothstep(0.30, 0.95, dist));
 
-    const density = smoothstep(0.15, 0.78, body.add(0.5)).mul(mask);
+    // Tighter density band → defined puffy cores with soft edges (was a thin low-contrast smear).
+    const density = smoothstep(0.30, 0.80, body.add(0.5)).mul(mask);
 
-    // Light from above-and-warm: top of each puff catches warm sun, base stays cool/dim.
+    // Bright DAYLIGHT cumulus: near-white sunlit top, soft blue-grey shaded underside (was warm gold).
     const litTop = uv().y; // 0 at base, 1 at top of the plane
-    const sunlit = vec3(0.96, 0.84, 0.66); // Warm golden-lit cloud top
-    const shaded = vec3(0.58, 0.66, 0.80); // Cool blue-grey shaded base
+    const sunlit = vec3(0.98, 0.99, 1.0); // Bright white cloud top
+    const shaded = vec3(0.72, 0.80, 0.90); // Soft blue-grey shaded underside
     const color = mix(shaded, sunlit, smoothstep(0.25, 0.95, litTop.add(body.mul(0.12))));
 
-    const alpha = density.mul(0.10).mul(uOpacity);
+    // Opaque enough to read as solid cumulus (was 0.10 thin strata); NormalBlending keeps them white.
+    const alpha = density.mul(0.62).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -2454,8 +2457,8 @@ export function createCloudsTSL(uTime = uniform(0)) {
     material.side = THREE.DoubleSide;
     material.blending = THREE.NormalBlending;
 
-    // Wide, low-profile planes read as horizontal cloud banks/strata.
-    const geometry = new THREE.PlaneGeometry(90, 26);
+    // Taller planes so the billowing mask reads as cumulus puffs, not flat horizontal strata.
+    const geometry = new THREE.PlaneGeometry(84, 46);
 
     const group = new THREE.Group();
     group.name = 'clouds-tsl';
