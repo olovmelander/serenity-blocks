@@ -136,12 +136,11 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [1.01, 1.00, 1.01], contrast: 1.03, vignette: 0.60, chroma: 1.0, sat: 1.10, shoulderKnee: 0.86,
     },
-    // 5 Sky & Drift — warm violet haze, open frame.
-    // READY (unverified) FIX pending a capture pass: contrast 0.98→1.04 + sat 1.06→1.11 to give the
-    // weakest/flattest chapter (3/5, reads washed — contrast is BELOW neutral) depth. Reverted for
-    // now because it couldn't be visually confirmed headless; re-apply once ch5 can be eyeballed.
+    // 5 Sky & Drift — PAINTERLY-ASCENT (Wave C): magenta-violet twilight tint [1.05,0.96,1.07] →
+    // cool-sky daylight [0.99,1.01,1.05]; contrast 0.98 (sub-neutral, flattened the sky) → 1.05; sat
+    // 1.06 → 1.12 so the bright blue + white cloud-sea pop. The brightest chapter of the ascent.
     {
-        tint: [1.05, 0.96, 1.07], contrast: 0.98, vignette: 0.70, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
+        tint: [0.99, 1.01, 1.05], contrast: 1.05, vignette: 0.60, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 6 Space — cool indigo, slightly closer frame (REFERENCE stock).
     {
