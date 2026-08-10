@@ -511,6 +511,12 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.transparent = true;
+    // CRITICAL (2026-08, Wave A): the sky dome is a radius-2500 BackSide sphere, so the scene's
+    // FogExp2 fogged it to ~100% → the entire azure→cyan gradient was being REPLACED by the pale
+    // fog colour, which is why the sky always read as a flat washed cyan no matter the gradient. A
+    // sky dome is the backdrop at infinity and must never be fogged (same class of bug as the finale
+    // space heroes). fog=false lets the deep-blue zenith actually read — the #1 de-wash lever.
+    material.fog = false;
 
     const geometry = new THREE.SphereGeometry(2500, 64, 48);
     const mesh = new THREE.Mesh(geometry, material);
@@ -775,7 +781,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // BotW painterly sage: pull the vivid spring green toward a warmer OLIVE/sage (R nearer G, a
     // yellow-green rather than a saturated emerald) so the meadow reads like a sun-bleached Hyrule
     // field, not a neon lawn. Still lush — just muted enough to sit under the golden-hour grade.
-    const grassColorLow = vec3(0.20, 0.46, 0.12); // richer meadow green (was pale sage — user: "ground feels missing/washed")
+    const grassColorLow = vec3(0.26, 0.58, 0.17); // vivid daylight spring green (Wave A: was olive 0.20,0.46,0.12)
     // Creative plan Ch3 item 1: shaded pole pulled toward #0D3A16 so tree silhouettes
     // separate from the ground in grayscale (the collapsed-value fix).
     const grassColorHigh = vec3(0.05, 0.15, 0.07); // Deep shaded sage-forest green
@@ -804,25 +810,25 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // De-wash: the cool fill is pulled DOWN + warmed toward neutral so it stops graying the
     // greens, and the overall exposure is lifted so the saturated base survives the shading
     // (peak channel still capped well below white).
-    const lightDir = normalize(vec3(-0.62, 0.34, -0.71)); // low, warm, raking from the left
+    const lightDir = normalize(vec3(-0.62, 0.34, -0.71)); // raking key (azimuth kept; Wave-D unifies the sun)
     const diff = max(dot(vNormal, lightDir), 0.0);
-    // Warm direct key + softer, warmer fill (keeps midtones saturated, never grays the green).
-    const warmKey = vec3(0.98, 0.82, 0.48).mul(diff.mul(0.66));
-    // Dimmer + warmer fill (was 0.45,0.56,0.60 ×0.42) so the shadows deepen for real terrain FORM
-    // and stop graying the green — the flat pale wash the user flagged as "ground feels missing".
-    const coolFill = vec3(0.40, 0.50, 0.46).mul(0.30);
+    // PAINTERLY-ASCENT REPALETTE (Wave A): the direct key is now bright NEUTRAL DAYLIGHT (was warm
+    // gold 0.98,0.82,0.48, which gilded the whole meadow olive) so the grass stays vivid green; the
+    // fill is a brighter cool SKY-blue that lifts shadows toward blue like the reference.
+    const warmKey = vec3(0.97, 0.99, 0.93).mul(diff.mul(0.72));
+    const coolFill = vec3(0.55, 0.64, 0.70).mul(0.34);
     color = color.mul(warmKey.add(coolFill));
-    // Warm rim/backlight on grazing slope edges (pow falloff, tinted amber, capped).
+    // Cool sky rim/backlight on grazing slope edges (was amber → now a soft sky-blue lift, capped).
     const rimFactor = pow(oneMinus(max(dot(vNormal, normalize(cameraPosition.sub(vPosition))), 0.0)), 2.0);
-    color = color.add(vec3(0.92, 0.70, 0.36).mul(rimFactor).mul(0.11));
+    color = color.add(vec3(0.82, 0.90, 0.98).mul(rimFactor).mul(0.10));
     // Fake long-shadow banding: project worldXZ onto the sun azimuth and band it so the
     // raking light reads as long cast shadows across the valley (subtle, value-only).
     const sunAz = vec2(-0.62, -0.71);
     const shadowPhase = dot(vPosition.xz, sunAz).mul(0.045);
     const longShadow = sin(shadowPhase).mul(0.5).add(0.5);
-    // Strengthened banding amplitude (0.12 → 0.2, plan item 1) — the raking light must
-    // carve readable value structure into the valley, not a faint shimmer.
-    color = color.mul(longShadow.mul(0.28).add(0.72));
+    // Softer banding for the bright daylight meadow (Wave A: 0.28 → 0.16) — keep a hint of relief
+    // structure without carving dark cast-shadow stripes into the lit high-key field.
+    color = color.mul(longShadow.mul(0.16).add(0.84));
 
     // Distance fog (pushed back AND thinned so distant terrain keeps its color instead
     // of dissolving into white). Fog tint is a real SATURATED sky blue, not a pale wash, and
