@@ -29,9 +29,17 @@ export function create({ scene }) {
     const uTime = uniform(0);
     const uSeason = uniform(0.12);
 
+    // Reproduce the LIVE vertical relationship exactly (pick surfaceWorldY = 0):
+    //   waterLevel   = surfaceWorldY            = 0     (createLandscape arg)
+    //   terrainOffset= surfaceOffsetY + 7       = 7     (landscape.position.y)
+    //   sea base     = surfaceOffsetY           = 0     (createOceanSurface arg; seaYOffset now 0)
+    // → relHeight = (getTerrainHeight + 7) − 0 = getTerrainHeight + 7 (live), and the sea plane
+    //   seats at the shoreline waterline (8u above the clamped lakebed). The builder defaults the
+    //   terrain mesh to y=−15, so we MUST override it or the shading + water seat are wrong.
     const sky = createSkyBackgroundTSL(uTime, { uSeason });
-    const terrain = createLandscapeTSL(uTime, -7.0); // matches live relHeight (mesh at y=0)
-    const water = createOceanSurfaceTSL(uTime, -15);
+    const terrain = createLandscapeTSL(uTime, 0.0);
+    terrain.mesh.position.y = 7;
+    const water = createOceanSurfaceTSL(uTime, 0);
 
     scene.add(sky.mesh);
     scene.add(terrain.mesh);
@@ -43,8 +51,8 @@ export function create({ scene }) {
             // LOW forward journey view (mimics the in-game spline camera): near the corridor mouth,
             // low over the water, looking down-valley toward the lake so the flanking grass hills
             // read at the actual flight angle — not just a director's overview.
-            camera.position.set(-6, 14, 120);
-            camera.lookAt(-26, 6, -160);
+            camera.position.set(-6, 29, 120);
+            camera.lookAt(-26, 9, -165);
             camera.fov = 62;
             camera.updateProjectionMatrix();
         },

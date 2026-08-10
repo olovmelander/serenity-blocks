@@ -176,7 +176,12 @@ export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     seaCenterZ: 128,
     seaScaleX: 4.2,
     seaScaleZ: 0.82,
-    seaYOffset: 3.0,
+    // Fix A finish: collapsed 3.0 → 0 so the Ch3 sea sits at exactly waterSurfaceY — the SAME world
+    // plane as the Ch2 breach ceiling (no more 3u "double surface" the camera crossed twice) AND
+    // exactly at the terrain shading waterline (surfaceWorldY, which is independent of seaYOffset —
+    // the sea used to float 3u above the shoreline, leaving a band of "dry" grass under the water).
+    // The river/lake keep their +0.4 as a z-bias only (distinct renderOrders avoid z-fighting).
+    seaYOffset: 0,
     seaRenderOrder: -7,
     riverRenderOrder: -6,
     waterShelfFadeMin: -5.5,
