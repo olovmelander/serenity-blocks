@@ -653,6 +653,20 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     } else {
         group.position.y = chapterCenterY;
     }
+
+    // FogExp2 WASHOUT fix (backlog #3): the whole chapter is a SPACE scene — the hero
+    // event horizon + secondary singularities sit at z≈−780, where the profile's violet
+    // fog (density 0.012) reaches ~100% and collapses every additive surface to a flat
+    // fog-coloured blob. Space has no atmospheric fog; the intended depth comes entirely
+    // from the void-dome backstop + ambient wash + additive falloff + parallax dust
+    // shells. Disable fog on EVERY material so the heroes read at full contrast (the same
+    // reason deep-ocean.tsl.js sets material.fog=false on its distant creatures).
+    group.traverse((child) => {
+        if (!child.material) return;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => { m.fog = false; });
+    });
+
     return group;
 }
 
