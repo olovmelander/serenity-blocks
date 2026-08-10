@@ -993,11 +993,12 @@ export function createSurfaceWorldEnvironment() {
     // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
     // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
     // zoned (deliberate clumps + open negative space), not a scattered carpet.
-    // CLEAN LANDSCAPE (user: "remove trees and grass and flowers"): the scattered wildflower
-    // carpet is stripped to zero. The Ch3 hero is now the rolling grass hills + the single hero
-    // tree + the water — not a flower meadow. Kept as a count-0 group (SURFACE_FLOWER_PATCHES infra
-    // intact) so one saturated drift can be re-added as an accent if the meadow reads too bare.
-    const meadowFlowers = createWildflowers(uniforms, 0);
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): the meadow flowers are RESTORED. The user's new
+    // reference (a bright Ghibli/Genshin lakeside meadow) wants a lush flower carpet — buttercup-
+    // yellow, daisy-white, lupine-purple, cornflower-blue, poppy — which is exactly the species
+    // palette createWildflowersTSL already carries, placed banks-dense / corridor-clear by the shared
+    // composition grammar. (Trees stay out — the reference is a flower meadow, not a forest.)
+    const meadowFlowers = createWildflowers(uniforms, 1200);
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);

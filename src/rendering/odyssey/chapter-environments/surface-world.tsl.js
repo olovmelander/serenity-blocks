@@ -436,13 +436,19 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     // toward that horizon. Reference look: sky-children-v2 sun (core/corona/halo) + the
     // himalayan/sakura warm-horizon palettes. Values capped (peak channel ≲ 0.78) so the
     // ACES+exposure pass keeps the hue and never washes to white.
-    const uZenith = uniform(new THREE.Color(0x1452b8)); // Deep saturated zenith blue
-    const uMid = uniform(new THREE.Color(0x2f86d8)); // Clear, SATURATED mid azure (was washed)
-    const uHorizon = uniform(new THREE.Color(0xf0b878)); // Warm golden-hour horizon
-    const uHaze = uniform(new THREE.Color(0xf2d49e)); // Warm ground-haze band (waterline)
-    const uPeach = uniform(new THREE.Color(0xf8a898)); // Saturated sunset-peach mid-band (Midsommar)
-    const uSunCore = uniform(new THREE.Color(0xffe6a8)); // Soft warm sun core (not pure white)
-    const uSunGlow = uniform(new THREE.Color(0xffc26a)); // Golden halo around the sun
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): flip Ch3 from warm golden-hour to the shared
+    // BRIGHT DAYLIGHT anchor — vivid azure zenith fading to a light cyan-blue horizon, the Ghibli/
+    // Genshin/Europa sky of the reference images. The sunset gold/peach bands become pale cyan so
+    // the meadow reads as a bright afternoon, and the turquoise lake below has a blue sky + white
+    // cumulus to mirror (see the water repalette). Sun colour whitened here; its POSITION stays on
+    // SURFACE_SUN_DIR until the Wave-D shared-sun pass. Winter poles (below) unchanged.
+    const uZenith = uniform(new THREE.Color(0x2360c8)); // Vivid daylight azure zenith
+    const uMid = uniform(new THREE.Color(0x3f8fe0)); // Clear saturated mid azure
+    const uHorizon = uniform(new THREE.Color(0xbfe4f2)); // Light cyan-blue daylight horizon (was warm gold)
+    const uHaze = uniform(new THREE.Color(0xd6ecf6)); // Pale cyan-white waterline haze (was warm)
+    const uPeach = uniform(new THREE.Color(0xcfe6f4)); // Soft cyan mid-band (was sunset peach — neutralized)
+    const uSunCore = uniform(new THREE.Color(0xfff6e2)); // Near-white daylight sun core
+    const uSunGlow = uniform(new THREE.Color(0xffe4b0)); // Soft warm-white halo (was gold)
     const uOpacity = uniform(1);
     // uTime is part of the live uniform set; reference it so the shared tick stays valid.
     const t0 = uTime.mul(0.0);

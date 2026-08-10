@@ -172,23 +172,23 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // Deepened (capture review): 0x9ec6e8/0xaec8e0 were so pale that FogExp2
             // washed the upper frame near-white. A richer mid sky-blue reads as a real
             // daytime sky and lets the vegetation/clouds register against it.
-            skyColor: 0x4d95cf,
-            // Golden-hour scene fog (was cool 0x4f8fb8): a warm desaturated gold so the whole
-            // distance — meadow hills + the snow range — reads as warm atmospheric scatter
-            // (alpenglow on the peaks) instead of a cool blue veil that buried the warm rig.
-            fogColor: 0xb8a47e,
-            // Creative plan Ch3 item 1 (value restoration): the fog lift was the enemy —
-            // 0.004 → 0.0024 so the dark foreground layer does the luminosity work and
-            // the pastels read luminous instead of washed.
+            skyColor: 0x5aa8e0,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): warm golden-hour fog (0xb8a47e) → the
+            // SHARED bright light-cyan daylight haze anchor (~0xbcd8ec). This is the #1 cohesion
+            // lever — Ch3/4/5 all breathe the same air, so the range/distance reads as one bright
+            // afternoon instead of gold→winter→indigo. Density stays low (0.0016) per the anchor.
+            fogColor: 0xbcd8ec,
             fogDensity: 0.0016,
-            ambientLight: 0xfff8e7,
+            // Neutral-cool daylight ambient (was warm 0xfff8e7) + high-key exposure so the meadow
+            // reads luminous. lightDir stays until the Wave-D shared-sun pass; colour whitened to
+            // the shared warm-white sun (~0xfff4e0).
+            ambientLight: 0xeaf2ff,
             ambientIntensity: 0.58,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
-            // High warm sun.
             lightDir: [0.4, 0.8, 0.45],
-            lightColor: 0xfff1d0,
+            lightColor: 0xfff4e0,
             lightIntensity: 1.15,
-            exposure: 0.98,
+            exposure: 1.05,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.LEY_LINE,

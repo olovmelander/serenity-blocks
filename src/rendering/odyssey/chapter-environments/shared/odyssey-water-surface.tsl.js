@@ -155,11 +155,14 @@ export function buildOdysseyWaterSurface(uTime, {
     const reflectance = rf0.add(float(0.55).sub(rf0).mul(pow(oneMinus(theta), float(5.0))));
     const depthFactor = smoothstep(20.0, 240.0, camDist);
     const winterT = smoothstep(0.7, 0.95, uSeason);
-    // Richer teal-blue body so the surface reads as WATER head-on AND at grazing (deepened +
-    // saturated vs the old pale teal). Overshoot for the in-game ACES/exposure wash.
-    const bodyCol = mix(vec3(0.02, 0.16, 0.24), vec3(0.03, 0.24, 0.34), depthFactor);
-    // Warm-gold reflected sky, peak pulled down so it doesn't blow to white under the in-game grade.
-    let skyRefl = mix(vec3(0.50, 0.38, 0.26), vec3(0.78, 0.60, 0.36), depthFactor); // amber → warm gold
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): clean bright TURQUOISE→blue lake body (was dark
+    // teal) so the surface reads as the clear Ghibli/Genshin lake of the reference. Only the ABOVE
+    // branch changes — the BELOW underwater ceiling (Ch2 breach) is untouched; surfacing into the
+    // now-blue Ch3 sky is consistent for the breach too. Overshoot for the in-game ACES/exposure wash.
+    const bodyCol = mix(vec3(0.10, 0.48, 0.56), vec3(0.06, 0.34, 0.58), depthFactor); // turquoise near → blue far
+    // Reflected sky flipped warm-gold → cool SKY-BLUE / white so the lake mirrors the new blue sky +
+    // white cumulus. Winter pole (below) unchanged.
+    let skyRefl = mix(vec3(0.55, 0.72, 0.88), vec3(0.80, 0.88, 0.98), depthFactor); // sky-blue → bright white-blue
     skyRefl = mix(skyRefl, vec3(0.55, 0.68, 0.82), winterT.mul(0.7));
     const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
         .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
@@ -176,15 +179,16 @@ export function buildOdysseyWaterSurface(uTime, {
         // read as dirty dark blobs. Wave crests + light bands + glitter carry the surface variation.
         aboveColor = mix(bodyCol, skyRefl, reflectance);
     }
-    // Golden SUN-GLITTER (camera-relative half-vector spec) — the golden-hour signature; an
-    // above-water phenomenon (rides inside aboveColor, so `facing` fades it out below the surface).
+    // SUN-GLITTER (camera-relative half-vector spec) — whitened from gold to a cool bright sparkle
+    // for the daylight lake; an above-water phenomenon (rides inside aboveColor, so `facing` fades it
+    // out below the surface).
     const halfV = normalize(sun.add(eyeDir));
     const specDot = clamp(dot(nrm, halfV), 0.0, 1.0);
     const shimmer = sin(wpos.z.mul(7.0).add(uTime.mul(2.0))).mul(0.5).add(0.5)
         .mul(sin(wpos.x.mul(3.2).add(uTime.mul(1.4))).mul(0.5).add(0.5));
     const glitter = pow(specDot, float(90.0)).mul(1.4).add(pow(specDot, float(14.0)).mul(0.22));
     const sunPath = glitter.mul(shimmer.mul(0.5).add(0.7));
-    aboveColor = aboveColor.add(vec3(1.0, 0.72, 0.34).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
+    aboveColor = aboveColor.add(vec3(0.92, 0.96, 1.0).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
 
     // ── The membrane: one surface, view-dependent. ──
     const color = mix(belowColor, aboveColor, facing);

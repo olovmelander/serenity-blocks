@@ -95,7 +95,15 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
 
         const profile = ODYSSEY_CHAPTER_PROFILES.find((chapter) => chapter.id === 3);
         expect(profile.atmosphere.ambientIntensity).toBeLessThan(0.7);
-        expect(profile.atmosphere.exposure).toBeLessThanOrEqual(1);
+        // PAINTERLY-ASCENT REPALETTE (2026-08): Ch3 is now bright high-key COOL daylight, so exposure
+        // is deliberately >1; the "washed beige" read is now prevented by the COOL fog/ambient (blue-
+        // dominant), not by holding exposure below 1. A loose ceiling still guards a runaway blowout.
+        expect(profile.atmosphere.exposure).toBeGreaterThan(1);
+        expect(profile.atmosphere.exposure).toBeLessThanOrEqual(1.15);
+        const ch3Fog = colorChannels(profile.atmosphere.fogColor);
+        expect(ch3Fog.b).toBeGreaterThan(ch3Fog.r); // cool cyan haze, never warm beige
+        const ch3Ambient = colorChannels(profile.atmosphere.ambientLight);
+        expect(ch3Ambient.b).toBeGreaterThanOrEqual(ch3Ambient.r); // neutral-cool ambient
         // Masterplan D2 dim (0x96a842 → 0x687d31): live capture showed the ch3 path was the
         // journey's worst figure-ground offender — the pin follows chapter-profile.js.
         expect(profile.path.emissiveColor).toBe(0x687d31);
