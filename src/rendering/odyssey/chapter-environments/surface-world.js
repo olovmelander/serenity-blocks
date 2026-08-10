@@ -1468,7 +1468,14 @@ function createDistantMountains(uniforms, hostCenter = null) {
         hostCenter,
         hostChapterId: 3,
         name: 'canonical-distant-mountains',
-        uTransition: uniforms.uSeason,
+        // PEAK-LIGHTING MATCH (Fix D, "disconnected from the winter mountains"): these ARE Ch4's
+        // canonical peaks seen from Ch3, so they must be lit the SAME on both sides of the seam.
+        // Feeding uSeason drove alpenScale=oneMinus(uSeason)→0 at the seam (no alpenglow, cold),
+        // while Ch4 gives them full alpenglow — so the peaks flipped warm→cold as you crossed. Left
+        // null → constant full alpenglow, matching Ch4's warm-lit peaks. The valley still winters
+        // (grass/fog via uSeason) and the peaks still whiten via uSnowBlend, but the distant
+        // destination mountains glow warm continuously across the boundary.
+        uTransition: null,
         baseOpacity: 1,
     });
     group.name = 'distant-mountains';
