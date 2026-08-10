@@ -114,8 +114,14 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     },
 };
 
-const MOUNTAIN_TRANSITION_START = 0.08;
-const MOUNTAIN_TRANSITION_END = 0.28;
+// RETIMED to the EXIT band (was 0.08/0.28). uTransition drives the chapter to NIGHT, and the
+// summit-ignite / sun disc / ray fan / alpenglow are all gated by oneMinus(uTransition) — so with
+// night reached by 28% the entire back 72% of the chapter (including the summit-glow climax that
+// rises at progress 0.62→0.9) rendered as dead dark night with NO warm hero elements. Pushing the
+// night to the exit band keeps the graded dusk sky + lit peaks for most of the ascent, lets the
+// summit blaze through the climax, then falls to night at the 4→5 hand-off.
+const MOUNTAIN_TRANSITION_START = 0.72;
+const MOUNTAIN_TRANSITION_END = 0.98;
 // SEAM 4->5: the Chapter 4 hero mountain chain is a locked world landmark and Chapter 5
 // inherits the exact same chain. Only auxiliary Ch4 summit props fade across the exit.
 const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 local progress for prop/atmosphere fade
