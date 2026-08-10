@@ -48,7 +48,6 @@ import {
     pow,
     sin,
     smoothstep,
-    sqrt,
     step,
     uniform,
     uv,
@@ -58,6 +57,7 @@ import {
 } from 'three/tsl';
 import { snoise3, fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
+import { buildOdysseyWaterSurface } from './shared/odyssey-water-surface.tsl.js';
 
 // ── Deep-sea gradient sphere (-100 backstop; must NOT bloom) ─────────────────────
 
@@ -129,74 +129,26 @@ export function createOceanGradientTSL(options = {}) {
     return { mesh, material, geometry };
 }
 
-// ── Gerstner-wave water ceiling with caustics (additive, bloom-eligible) ─────────
-
-function gerstnerWave(dir, steep, wlen, p, t) {
-    const k = float(6.28318).div(wlen);
-    const c = sqrt(float(9.8).div(k));
-    const d = normalize(dir);
-    const f = k.mul(dot(d, p.xz).sub(c.mul(t)));
-    const a = float(steep).div(k);
-    return vec3(d.x.mul(a).mul(cos(f)), a.mul(sin(f)), d.y.mul(a).mul(cos(f)));
-}
+// ── Water ceiling (the breach membrane) — now the shared Odyssey water surface ────
 
 export function createWaterSurfaceTSL(uTime, surfaceOffsetY = 20, options = {}) {
     const uDepth = options.uDepth ?? uniform(0);
     const uOpacity = options.uOpacity ?? uniform(1);
-    const uSurfaceColor = uniform(new THREE.Color(0x0a9bb8)); // brighter teal at the surface
-    const uDeepColor = uniform(new THREE.Color(0x062a55)); // deeper indigo trough
 
-    const time = uTime.mul(0.5);
-    const posL = positionLocal;
-
-    // Gerstner waves + value-noise detail → vertex displacement.
-    const wave = gerstnerWave(vec2(1.0, 0.3), 0.2, 25.0, posL, time)
-        .add(gerstnerWave(vec2(0.7, 0.7), 0.15, 18.0, posL, time.mul(1.1)));
-    const detail = snoise3(vec3(posL.x.mul(0.08), posL.z.mul(0.08), time.mul(0.3))).mul(2.0);
-    const elevation = wave.y.add(detail);
-    const displaced = vec3(posL.x.add(wave.x), posL.y.add(elevation), posL.z.add(wave.z));
-
-    const vPos = varying(displaced);
-    const vElev = varying(elevation);
-    const vUv = uv();
-
-    // Caustics from two scrolling noise layers, sharpened.
-    const causticsUV = vPos.xz.mul(0.15);
-    const c1 = snoise3(vec3(causticsUV.x, causticsUV.y, uTime.mul(0.2)));
-    const c2 = snoise3(vec3(causticsUV.x.mul(1.4), causticsUV.y.mul(1.4), uTime.mul(-0.15)));
-    // Sharper exponent => brighter caustic veins with darker water between them
-    // (higher contrast, less of a flat wash on the ceiling).
-    const caustics = pow(c1.add(c2).mul(0.5).add(0.5), 4.0);
-
-    // The caustic ceiling BRIGHTENS AND LOWERS into the final act (the plan's
-    // surface-breach approach): from ~85% progress the bright ceiling fills the frame.
-    // Vibrancy plan 1.2 — KILL THE WALLPAPER. The caustic veins carried a 0.42 brightness FLOOR,
-    // so the bright ceiling bloomed at EVERY depth (looking up at the foot = full-frame caustic
-    // wall, the documented failure). Drop the floor to 0.05 so the veins only IGNITE on approach,
-    // and dim the ceiling's BASE colour at the foot too so the whole sheet sits near uDeepColor in
-    // the twilight act and only fills the frame as the surface nears.
-    const approach = smoothstep(0.5, 0.95, uDepth);
-    const ceilingLight = mix(float(0.45), float(1.0), approach);
-    // CLAMP the elevation mix factor to [0,1]. At Gerstner+noise wave FOLDS, vElev spikes very
-    // negative, the unclamped factor (vElev*0.1+0.5) went below 0, mix() EXTRAPOLATED the colour
-    // below black, and AdditiveBlending then SUBTRACTED it — printing the dark "oil-slick" blob
-    // on the breach frame (pre-existing bug, visible in the baseline captures).
-    let color = mix(uDeepColor, uSurfaceColor, clamp(vElev.mul(0.1).add(0.5), 0.0, 1.0)).mul(ceilingLight);
-    color = color.add(vec3(0.55, 0.95, 1.0).mul(caustics).mul(approach.mul(0.85).add(0.05)));
-
-    const dist = length(vUv.sub(0.5)).mul(2.0);
-    const alpha = oneMinus(smoothstep(0.8, 1.0, dist)).mul(0.8).mul(uOpacity);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = displaced;
-    material.colorNode = color;
-    material.opacityNode = alpha;
-    material.transparent = true;
-    material.side = THREE.DoubleSide;
-    material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
-    material.userData.emitsBloom = true;
-    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+    // The breach ceiling is now the ONE shared Odyssey water surface (unified with the Ch3
+    // sea/river/lake — see shared/odyssey-water-surface.tsl.js). uDepth ignites the caustic
+    // underside on the ascent; from below the camera reads the caustic-teal ceiling, and the SAME
+    // material shows its golden-hour top once breached — so "coming up through the water" is one
+    // membrane, not a cyan→gold material swap. baseAlpha 0.8 + radial edge match the old ceiling's
+    // soft vignette; uWaveScale 1 keeps the full Gerstner swell of the deep-ocean surface.
+    const { material } = buildOdysseyWaterSurface(uTime, {
+        uDepth,
+        uOpacity,
+        uWaveScale: uniform(1),
+        useRadialEdge: true,
+        baseAlpha: 0.8,
+    });
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge (preserve the existing hook)
 
     const geometry = new THREE.PlaneGeometry(300, 300, 48, 48);
     geometry.rotateX(Math.PI / 2);

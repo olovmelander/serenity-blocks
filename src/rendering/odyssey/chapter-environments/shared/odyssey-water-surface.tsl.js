@@ -128,7 +128,7 @@ export function buildOdysseyWaterSurface(uTime, {
     // NormalBlending pass serves both sides — no separate AdditiveBlending material. ──
     const uSurfaceColor = uniform(new THREE.Color(ODYSSEY_WATER_PALETTE.surfaceColor));
     const uDeepColor = uniform(new THREE.Color(ODYSSEY_WATER_PALETTE.deepColor));
-    const caustic = ODYSSEY_WATER_PALETTE.caustic;
+    const { caustic } = ODYSSEY_WATER_PALETTE;
     const causticsUV = wpos.xz.mul(0.15);
     const cc1 = snoise3(vec3(causticsUV.x, causticsUV.y, uTime.mul(0.2)));
     const cc2 = snoise3(vec3(causticsUV.x.mul(1.4), causticsUV.y.mul(1.4), uTime.mul(-0.15)));
@@ -140,8 +140,10 @@ export function buildOdysseyWaterSurface(uTime, {
     const ceilingLight = mix(float(0.45), float(1.0), approach);
     // Clamp the elevation mix factor to [0,1]: at Gerstner folds vElev spikes very negative and an
     // unclamped mix() extrapolates below black (the old additive "oil-slick" breach blob).
+    const causticCol = vec3(caustic[0], caustic[1], caustic[2]);
+    const causticGain = caustics.mul(approach.mul(0.85).add(0.05));
     let belowColor = mix(uDeepColor, uSurfaceColor, clamp(vElev.mul(0.1).add(0.5), 0.0, 1.0)).mul(ceilingLight);
-    belowColor = belowColor.add(vec3(caustic[0], caustic[1], caustic[2]).mul(caustics).mul(approach.mul(0.85).add(0.05)));
+    belowColor = belowColor.add(causticCol.mul(causticGain));
 
     // ── ABOVE look: golden-hour reduced-fresnel reflectance (rf0≈0.09 → coloured body head-on,
     // reflective only at the grazing rim) toward a warm-gold reflected sky. ──
@@ -204,5 +206,10 @@ export function buildOdysseyWaterSurface(uTime, {
     // in a normal range so it does not over-bloom; verified in the playground.
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity };
-    return { material, uniforms: { uOpacity, uDepth, uSeason, uWaveScale } };
+    return {
+        material,
+        uniforms: {
+            uOpacity, uDepth, uSeason, uWaveScale,
+        },
+    };
 }
