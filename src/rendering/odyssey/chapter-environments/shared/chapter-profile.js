@@ -178,7 +178,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // lever — Ch3/4/5 all breathe the same air, so the range/distance reads as one bright
             // afternoon instead of gold→winter→indigo. Density stays low (0.0016) per the anchor.
             fogColor: 0xbcd8ec,
-            fogDensity: 0.0016,
+            // Density pulled back (0.0016 → 0.0011) after the Wave-A capture read too milky/washed —
+            // aerial haze should hug the far mountains, not veil the whole mid-ground. Keeps the
+            // reference's crisp saturated depth (deep water, readable peaks) under the bright sky.
+            fogDensity: 0.0011,
             // Neutral-cool daylight ambient (was warm 0xfff8e7) + high-key exposure so the meadow
             // reads luminous. lightDir stays until the Wave-D shared-sun pass; colour whitened to
             // the shared warm-white sun (~0xfff4e0).
@@ -188,7 +191,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             lightDir: [0.4, 0.8, 0.45],
             lightColor: 0xfff4e0,
             lightIntensity: 1.15,
-            exposure: 1.05,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.LEY_LINE,
