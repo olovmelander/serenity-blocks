@@ -370,21 +370,24 @@ export function createSkyDriftEnvironment(options = {}) {
 }
 
 function setupSkyLighting(group) {
-    group.add(new THREE.AmbientLight(0x1a1a2e, 0.3));
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): bright cool-white DAYLIGHT ambient (was dark
+    // indigo 0x1a1a2e@0.3, which lit the sky chapter like night); the cosmic purple/cyan glows are
+    // dimmed so they no longer tint the sunlit clouds, and the warm sun key is strengthened.
+    group.add(new THREE.AmbientLight(0x9fc4e8, 0.6));
 
-    const purpleGlow = new THREE.PointLight(0x9933FF, 0.4, 400); // Increased range
+    const purpleGlow = new THREE.PointLight(0x9933FF, 0.12, 400);
     purpleGlow.position.set(-50, 40, -600);
     group.add(purpleGlow);
     group.userData.purpleGlow = purpleGlow;
 
-    const cyanGlow = new THREE.PointLight(0x3399FF, 0.3, 400);
+    const cyanGlow = new THREE.PointLight(0x3399FF, 0.10, 400);
     cyanGlow.position.set(60, 20, -600);
     group.add(cyanGlow);
     group.userData.cyanGlow = cyanGlow;
 
     // Warm sun key — placed toward the on-camera sun azimuth so the clouds catch a
     // warm sun-side rim (matches the baked Mie sun / sun-glow sprite).
-    const sunKey = new THREE.PointLight(0xffcf88, 0.42, 600);
+    const sunKey = new THREE.PointLight(0xffe4b8, 0.6, 600);
     sunKey.position.copy(SKY_DRIFT_SUN_DIR.clone().multiplyScalar(360));
     group.add(sunKey);
     group.userData.sunKey = sunKey;
@@ -415,7 +418,12 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
         const tStart = group.userData.chapterTStart ?? 0.5;
         const tEnd = group.userData.chapterTEnd ?? 0.67;
         const span = Math.max(tEnd - tStart, 1e-4);
-        dusk = THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1);
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): CAP dusk low so the chapter stays bright
+        // daylight. This is the master switch — it un-stages the aurora + noctilucent veil (both
+        // uDusk-gated), stops the strata moonlighting and the sun-death, and keeps the glows from
+        // shifting aurora-green. The whole dusk→night script is neutralized at the source; Ch5 is
+        // now the sunlit cloud-sea payoff, not a night sky.
+        dusk = Math.min(THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1), 0.1);
         uniforms.uDusk.value = dusk;
     }
 

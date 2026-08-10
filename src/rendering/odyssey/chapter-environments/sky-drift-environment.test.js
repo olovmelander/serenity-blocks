@@ -55,7 +55,7 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         expect(group.userData.darkWisps?.name).toBe('sky-drift-dark-wisps');
     });
 
-    it('drives the dusk script while keeping the summit ring visible until it is passed', () => {
+    it('stays bright daylight (dusk script removed) while keeping the summit ring visible until passed', () => {
         stubCanvasDocument();
 
         const group = createSkyDriftEnvironment({ particleCount: 120 });
@@ -71,16 +71,17 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         expect(entrySunIntensity).toBeGreaterThan(0.3);
         const ringBaseY = group.userData.summitRing.userData.baseY;
 
-        // Late chapter: dusk ≈ 1 — the sun key is dead, the ring sank and faded, and
-        // the point glows have shifted toward aurora green (g channel dominates).
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): the dusk→night script is REMOVED — Ch5 is now
+        // the bright daylight cloud-sea payoff. uDusk is CAPPED low, the warm sun key stays ALIVE the
+        // whole chapter, and the glows no longer shift aurora-green. The summit ring is still
+        // camera-pass gated (visible until passed), which is what this test now guards.
         updateSkyDriftEnvironment(group, 0.016, 2.0, null, tEnd, null);
-        expect(uniforms.uDusk.value).toBeCloseTo(1, 5);
-        expect(group.userData.sunKey.intensity).toBeCloseTo(0, 5);
+        expect(uniforms.uDusk.value).toBeLessThanOrEqual(0.12); // capped daylight, never a full dusk
+        expect(group.userData.sunKey.intensity).toBeGreaterThan(0.3); // sun stays alive
         expect(group.userData.summitRing.position.y).toBe(ringBaseY);
         (group.userData.summitRingOpacityUniforms || []).forEach((target) => {
             expect(target.value).toBeCloseTo(target.__odysseyBaseOpacity ?? 0.9, 5);
         });
-        expect(group.userData.purpleGlow.color.g).toBeGreaterThan(group.userData.purpleGlow.color.b);
 
         // Even after the Sky->Space boundary, a not-yet-passed summit must remain fully
         // readable. Aurora recedes here, but the mountain ring is camera-pass gated only.

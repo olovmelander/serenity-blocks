@@ -263,19 +263,21 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.BEYOND,
         palette: { primary: 0xffdd00, accent: 0xaad4ff, shadow: 0x141a2e },
         atmosphere: {
-            // Deepened (capture review): 0xc8b6d6/0xb9a6c8 washed the frame near-white.
-            // A richer warm-violet keeps the bright/hazy daytime identity while letting
-            // the cloud strata, aurora and sun read instead of a flat pale wash.
-            skyColor: 0x4a426a,
-            fogColor: 0x303656,
-            fogDensity: 0.0035,
-            ambientLight: 0x2f3850,
-            ambientIntensity: 0.34,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): Ch5 flipped from dark warm-violet
+            // twilight to the shared BRIGHT DAYLIGHT anchor — this is the top of the ascent, drifting
+            // above a sunlit cloud-sea, so it should be the BRIGHTEST chapter, not the darkest. Sky
+            // azure, fog → shared light-cyan haze, ambient bright cool-white (was 0x2f3850@0.34, which
+            // lit the sky chapter like night — a ~9× fill collapse), exposure lifted to high-key.
+            skyColor: 0x3f7fd0,
+            fogColor: 0xbcd8ec,
+            fogDensity: 0.0022,
+            ambientLight: 0xeaf2ff,
+            ambientIntensity: 0.6,
             skyFeatures: ['cloudDeck', 'aurora', 'rainVeil'],
             lightDir: [0.2, 0.7, 0.5],
-            lightColor: 0xcfe0ff,
-            lightIntensity: 0.95,
-            exposure: 0.96,
+            lightColor: 0xfff4e0,
+            lightIntensity: 1.0,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.JET_STREAM,
