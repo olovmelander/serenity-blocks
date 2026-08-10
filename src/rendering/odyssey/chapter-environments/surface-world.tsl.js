@@ -329,21 +329,23 @@ export function getTerrainHeight(x, z) {
     // the lane FLOOR stays low (fills with the river/lake — the water leading line) and the ground
     // RISES into rolling grass hills on BOTH flanks, close to the path, so real hills read right
     // beside the camera instead of a flat pale sheet. ──
-    // BROAD water floor (user: "come up in the middle of the grass"): the grass hills used to rise
-    // just ~10u from the lane, so the camera surfaced in a narrow water slot with grass crowding it.
-    // Widened the flat valley floor to ~±46 so you emerge into OPEN water and the hills frame it
-    // from the shores instead of pressing in — the water reads as a broad connected river/valley.
-    const valleyRise = smoothstepCPU(46, 178, laneDist) * 22; // broad water floor → grass set back
-    // Gentle down-valley grade: the breach/foreground (+z) opens lower; the ground climbs toward
-    // the mountains (−z) so the valley feeds the far ridgeline / foothill hand-off.
-    const grade = smoothstepCPU(150, -260, z) * 12;
-    const baseH = -13.0 + valleyRise + grade;
+    // ONE broad LAKE (user: "I want one water sea not two separate ponds — it does not read as one
+    // lake"). The valley floor stays UNIFORMLY below the waterline across a wide ±66 central band
+    // that runs the length of the chapter, so the whole water surface reads as a single continuous
+    // lake — not a wide foreground sea + a narrow river + a separate hero-lake pool. The grass hills
+    // rise only OUTSIDE the lake, framing it from the far shores.
+    const valleyRise = smoothstepCPU(66, 196, laneDist) * 22; // ±66 continuous lake → grass set back
+    // Gentle down-valley grade — kept low enough that the lake stays water all the way to the
+    // foothills (baseH −14 + grade ≤ −2 out to z≈−250), so the water never dries into a mid-valley
+    // island that would split it into two pools.
+    const grade = smoothstepCPU(150, -260, z) * 11;
+    const baseH = -14.0 + valleyRise + grade;
 
     // Rolling grass hills — a MID octave the journey camera actually reads (λ≈105-125) + a broad
     // swell + a cross-roll for non-repeating shoulders + a calmed fine ripple + a broad valley
     // swell. Flank-biased (amplitude grows with distance from the lane) so the shoulders swell
-    // higher than the valley floor — the path threads a broad water valley framed by hills.
-    const flankGain = 0.4 + smoothstepCPU(50, 182, laneDist) * 0.8;
+    // higher than the lake — the lake threads a broad basin framed by hills on the far shores.
+    const flankGain = 0.4 + smoothstepCPU(70, 200, laneDist) * 0.8;
     let hills = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 6; // MID octave — the camera reads THIS
     hills += Math.cos(x * 0.045 + z * 0.04) * 4; // mid cross-roll → non-repeating shoulders
     hills += Math.sin(x * 0.018) * Math.cos(z * 0.021) * 6; // broad rolling swell
@@ -576,7 +578,10 @@ export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
     const uSeason = options.uSeason ?? uniform(0);
     const uOpacity = uniform(1);
     const { material } = buildGoldenWaterMaterial(uTime, {
-        uSeason, uOpacity, useRadialEdge: true, reflection: options.reflection ?? null,
+        // useRadialEdge FALSE (was true): the hero lake used to dissolve into a discrete ellipse,
+        // which read as a separate pond floating in the grass. It now fills to its extent so it
+        // blends with the sea/river as ONE continuous lake surface (same material + Y).
+        uSeason, uOpacity, useRadialEdge: false, reflection: options.reflection ?? null,
     });
 
     const geometry = new THREE.PlaneGeometry(SURFACE_LAKE_RADIUS * 2.5, SURFACE_LAKE_RADIUS * 2.5, 32, 32);
@@ -641,7 +646,7 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // Match the second-builder's mesh Y exactly: the original river sat 0.4u above the sea
     // (surfaceOffsetY + seaYOffset + 0.4). configureChapter2WaterSurface only sets x/z, so set
     // Y here to keep the river plane in the identical world position it had before.
-    river.position.y = surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4;
+    river.position.y = surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08;
 
     // HERO LAKE surface: the procedural GOLDEN-HOUR REFLECTIVE lake (createGoldenLakeTSL) pooled
     // over the carved basin (SURFACE_LAKE_CENTER) — same warm palette as the river/sea, but with a
@@ -656,7 +661,7 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
         reflection.target.rotateX(-Math.PI / 2);
         reflection.target.position.set(
             SURFACE_LAKE_CENTER.x,
-            surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4,
+            surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08,
             SURFACE_LAKE_CENTER.z,
         );
     }
@@ -664,7 +669,7 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     const lake = lakeBuilt.mesh;
     lake.position.set(
         SURFACE_LAKE_CENTER.x,
-        surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.4,
+        surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08,
         SURFACE_LAKE_CENTER.z,
     );
 
