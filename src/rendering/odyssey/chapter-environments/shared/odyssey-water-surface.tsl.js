@@ -152,14 +152,14 @@ export function buildOdysseyWaterSurface(uTime, {
     // CAP the reflectance so the coloured body ALWAYS shows through — even at the grazing gameplay
     // angle. An uncapped reduced-fresnel drove the surface to the pale sky reflection at grazing, so
     // in-game (after ACES) the water washed to near-white and read as flat "ponds", not water.
-    const reflectance = rf0.add(float(0.55).sub(rf0).mul(pow(oneMinus(theta), float(5.0))));
+    const reflectance = rf0.add(float(0.44).sub(rf0).mul(pow(oneMinus(theta), float(5.0))));
     const depthFactor = smoothstep(20.0, 240.0, camDist);
     const winterT = smoothstep(0.7, 0.95, uSeason);
     // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): clean bright TURQUOISE→blue lake body (was dark
     // teal) so the surface reads as the clear Ghibli/Genshin lake of the reference. Only the ABOVE
     // branch changes — the BELOW underwater ceiling (Ch2 breach) is untouched; surfacing into the
     // now-blue Ch3 sky is consistent for the breach too. Overshoot for the in-game ACES/exposure wash.
-    const bodyCol = mix(vec3(0.10, 0.48, 0.56), vec3(0.06, 0.34, 0.58), depthFactor); // turquoise near → blue far
+    const bodyCol = mix(vec3(0.08, 0.56, 0.62), vec3(0.05, 0.30, 0.60), depthFactor); // richer turquoise near → deep blue far
     // Reflected sky flipped warm-gold → cool SKY-BLUE / white so the lake mirrors the new blue sky +
     // white cumulus. Winter pole (below) unchanged.
     let skyRefl = mix(vec3(0.55, 0.72, 0.88), vec3(0.80, 0.88, 0.98), depthFactor); // sky-blue → bright white-blue
