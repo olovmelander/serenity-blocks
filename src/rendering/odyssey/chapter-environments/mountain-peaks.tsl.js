@@ -164,10 +164,13 @@ export function createMountainSkyTSL(uTransition) {
     // but the silver band is pulled a touch deeper/cleaner and the alpine + zenith bands go
     // markedly richer + darker so the dome reads as a high, clear stratospheric blue with real
     // top-to-bottom contrast — not the flat pale blue-grey wash the captures showed.
-    const uGilt = uniform(new THREE.Color(0xe6b483)); // warm gilt horizon (h < 0.05)
-    const uSilver = uniform(new THREE.Color(0xaac6e0)); // silver-cyan (0.05–0.3)
-    const uAlpine = uniform(new THREE.Color(0x3a6ba6)); // richer alpine blue (0.3–0.6)
-    const uZenith = uniform(new THREE.Color(0x132247)); // deep indigo zenith (h > 0.7)
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): Ch4 rebright from moonlit-dusk to the shared
+    // BRIGHT DAYLIGHT anchor so it climbs under the SAME vivid blue sky as Ch3 (deep azure zenith →
+    // light cyan horizon). Was warm-gilt horizon over an indigo near-space zenith (a dusk dome).
+    const uGilt = uniform(new THREE.Color(0xbfe4f2)); // light cyan-blue horizon (was warm gilt) — matches Ch3
+    const uSilver = uniform(new THREE.Color(0x8fc0e8)); // light azure (0.05–0.3)
+    const uAlpine = uniform(new THREE.Color(0x3f8fe0)); // clear azure (0.3–0.6) — matches Ch3 mid
+    const uZenith = uniform(new THREE.Color(0x2360c8)); // vivid daylight azure zenith — matches Ch3
     // Night targets (driven by uTransition) — the whole dome falls to near-black so the
     // 4→5 exit and the chapter's night lerp still read.
     const uGiltNight = uniform(new THREE.Color(0x0a0a14));
@@ -192,9 +195,9 @@ export function createMountainSkyTSL(uTransition) {
     color = mix(color, alpine, smoothstep(0.12, 0.34, hClamped));
     color = mix(color, zenith, smoothstep(0.34, 0.72, hClamped));
 
-    // Aerosol-thinning: above the silver band the air thins toward space-dark — subtract a
-    // little luminance on the upper dome so the zenith goes deep, never washed.
-    const aerosol = oneMinus(pow(hClamped, 0.6)).mul(0.12);
+    // Aerosol-thinning cut right back (0.12 → 0.02): at 0.12 it dragged the upper dome toward
+    // space-dark (part of the old dusk read). A bright daylight sky keeps a luminous blue zenith.
+    const aerosol = oneMinus(pow(hClamped, 0.6)).mul(0.02);
     color = color.sub(aerosol).max(0.0);
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -202,6 +205,10 @@ export function createMountainSkyTSL(uTransition) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.transparent = true;
+    // CRITICAL (Wave B): un-fog the sky dome — same bug Ch3 had. This is a radius-6000 BackSide dome,
+    // so the scene FogExp2 fogged it to ~100% and replaced the whole gradient with the flat fog
+    // colour. A backdrop-at-infinity must never be fogged; fog=false lets the azure gradient read.
+    material.fog = false;
 
     const geometry = new THREE.SphereGeometry(6000, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);

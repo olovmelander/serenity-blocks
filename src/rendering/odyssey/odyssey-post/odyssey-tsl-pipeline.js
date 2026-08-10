@@ -130,9 +130,11 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [0.99, 1.00, 1.04], contrast: 1.05, vignette: 0.55, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
-    // 4 Mountains — open, airy, light vignette (REFERENCE stock).
+    // 4 Mountains — PAINTERLY-ASCENT (Wave B): neutralized the cool-blue cast ([1.02,1.00,1.06] →
+    // [1.01,1.00,1.01]) so the bright daylight snow reads clean-white, not cold; sat lifted 1.06 →
+    // 1.10 to match Ch3's vivid daylight. Part of the shared near-neutral stock (Wave D).
     {
-        tint: [1.02, 1.00, 1.06], contrast: 1.03, vignette: 0.74, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
+        tint: [1.01, 1.00, 1.01], contrast: 1.03, vignette: 0.60, chroma: 1.0, sat: 1.10, shoulderKnee: 0.86,
     },
     // 5 Sky & Drift — warm violet haze, open frame.
     // READY (unverified) FIX pending a capture pass: contrast 0.98→1.04 + sat 1.06→1.11 to give the
