@@ -1599,12 +1599,17 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // The Ch3->Ch4 terrain-edge dissolve is authored as part of the season story, not only
     // altitude. Near the seam the chapter can be visually winter while the camera-height
     // snow ramp still lags, so let late-season progress pull the same snow/edge uniform up.
-    // Fix D ("green grass slams into the snow"): the frost used to start at 0.58 and reach full
-    // only at 0.86, but the ecotone crossfade into Ch4's snow begins BEFORE that — so bright green
-    // grass abutted the snow floor. Pulled it earlier (0.5→0.72) so the valley whitens during the
-    // approach and reads as one continuous green→frost→snow gradient into the mountains, while the
-    // green hero valley (emergence + lake beats) still holds through the first ~half of the chapter.
-    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.5, 0.72);
+    // Fix D + "green→winter POP" (2026-08): the frost band was too NARROW and completed too EARLY.
+    // [0.5,0.72] in seasonValue maps to global progress [0.278,0.311] — the meadow flipped green→
+    // full-snow over just ~0.033 of progress and then sat white for ~0.04 BEFORE Ch4 even begins
+    // fading in (entry [0.322,0.352]) or the manager's ecotone crossfade ([0.322,0.382]). Two
+    // separated beats (early whitening, then the biome swap) read as a pop. Widen the END to 0.98
+    // so the whitening spans the whole approach and COMPLETES right at the seam (seasonValue 0.98 ≈
+    // progress 0.349 ≈ ch4Start 0.352 / the crossfade midpoint), turning it into one continuous
+    // green→frost→snow gradient. Start stays 0.5 so the green hero valley still holds through the
+    // first ~half (emergence + lake beats). heightSnowBlend still Math.max-tops it to a hard 1 by
+    // the exact boundary, so full snow is guaranteed at the handoff with no seam.
+    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.5, 0.98);
     const snowBlend = Math.max(heightSnowBlend, seasonSnowBlend);
 
     const snowBlendUniformTargets = group.userData.snowBlendUniformTargets || [];
