@@ -37,6 +37,7 @@ import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
 import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
 import { createIntroNebulaSky } from './intro-nebula-sky.js';
+import { COLORS } from '../core/constants.js';
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import {
     INTRO_TETROMINO_BLOCK_RADIUS,
@@ -193,15 +194,9 @@ export default class ThreeJSIntroRendererWebGPU {
         // itself uses NoToneMapping, so toneMappingExposure no longer applies).
         this.uExposure = uniform(this.visualProfile?.post?.baseExposure ?? 1.13);
 
-        this.COLORS = {
-            I: 0xff0000,
-            O: 0xff9900,
-            T: 0x0000ff,
-            S: 0x00ffff,
-            Z: 0x00ff00,
-            J: 0xffff00,
-            L: 0xcc00cc,
-        };
+        // Single source of truth for the default piece palette.
+        // THREE.Color accepts the '#rrggbb' strings directly, so no conversion.
+        this.COLORS = COLORS;
 
         this.phaseState = this.getPhasePreset(INTRO_PHASES.BOOT);
         this.phaseTargetState = { ...this.phaseState };

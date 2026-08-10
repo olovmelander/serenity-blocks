@@ -8,6 +8,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
+import { COLORS } from '../core/constants.js';
 import {
     INTRO_TETROMINO_CLICK_IMPULSE,
     INTRO_TETROMINO_MAX_SPEED,
@@ -83,16 +84,9 @@ export default class ThreeJSIntroRenderer {
         this.COLLISION_POOL_SIZE = 10;
         this.SHOOTING_STAR_POOL_SIZE = 5;
 
-        // Constants
-        this.COLORS = {
-            I: 0xff0000, // Red
-            O: 0xff9900, // Orange
-            T: 0x0000ff, // Blue
-            S: 0x00ffff, // Cyan
-            Z: 0x00ff00, // Green
-            J: 0xffff00, // Yellow
-            L: 0xcc00cc, // Purple
-        };
+        // Constants — single source of truth for the default piece palette.
+        // THREE.Color accepts the '#rrggbb' strings directly, so no conversion.
+        this.COLORS = COLORS;
 
         // Tetromino shapes based on constants.js but optimized for 3D construction
         // relative coordinates from center

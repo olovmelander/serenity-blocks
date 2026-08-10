@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
+import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
@@ -763,7 +764,26 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      * @param {number} playerNum - 1-based player index (1-4)
      */
+    /**
+     * True consecutive-clear combo, one chain per player. Physics' triggerCombo
+     * carries cascade depth (ADR-0011 pins that payload), so it is derived here.
+     * @param {number} playerNum
+     * @returns {ComboTracker}
+     * @private
+     */
+    _getComboTracker(playerNum) {
+        if (!this._comboTrackers) this._comboTrackers = new Map();
+        let tracker = this._comboTrackers.get(playerNum);
+        if (!tracker) {
+            tracker = new ComboTracker();
+            this._comboTrackers.set(playerNum, tracker);
+        }
+        return tracker;
+    }
+
     _getPhysicsCallbacks(playerNum) {
+        const comboTracker = this._getComboTracker(playerNum);
+        const sceneFor = () => this.boardScenes?.[playerNum - 1];
         return {
             onMove: () => {
                 this.deps.soundManager.sfxPlayer.playMove();
@@ -775,6 +795,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 const cascadeCount = rest[3] ?? 1;
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
+                // Real combo for THIS player, announced on their own board only.
+                announceCombo(comboTracker, sceneFor(), {
+                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
+                });
                 // Emit event for theme reactions
                 emitLineClear({ lineCount, clearedRows, cascadeCount, player: playerNum });
             },
@@ -796,6 +820,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             },
             onPieceLock: (piece) => {
                 emitPieceLock({ piece, player: playerNum });
+                noteLockForCombo(comboTracker, sceneFor());
             },
             onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.deps.settingsManager?.get() || {};
@@ -852,16 +877,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
             },
             onGarbageReceived: () => this.deps.soundManager.sfxPlayer.playGarbageReceived?.(),
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
-            // Trigger combo visual effects
+            // Cascade signal — payload is cascade DEPTH, kept as-is for themes.
+            // The popup used to fire here on EVERY player's board; it now comes
+            // from onLineClear and lands only on the player who cleared.
             triggerCombo: (comboCount) => {
                 emitCombo({ comboCount, player: playerNum });
-                const settings = this.deps.settingsManager.get();
-                // Show combo effects on all active board scenes
-                this.boardScenes.forEach((scene) => {
-                    if (scene && settings.comboPopupEffect && scene.showComboPopup) {
-                        scene.showComboPopup(comboCount);
-                    }
-                });
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {

@@ -1,5 +1,6 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
+import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -156,6 +157,9 @@ export class InfinityMode extends BaseGameMode {
         // Legacy window input decoration is session-owned. Fixed input bypasses
         // these globals entirely and writes through the canonical dispatcher.
         this._legacyBoardJuiceInputOwner = null;
+
+        // True consecutive-clear combo (physics' triggerCombo is cascade depth).
+        this._comboTracker = new ComboTracker();
 
         // One immutable session owns every async stop/result continuation. The
         // clock identity is latched so experimental clocks fail closed.
@@ -1389,6 +1393,9 @@ export class InfinityMode extends BaseGameMode {
             && this.gameState === callbackState,
         );
 
+        // One session = one combo chain.
+        this._comboTracker.reset();
+
         this.physicsCallbacks = {
             onMove: () => {
                 if (ownsCallbackSession()) {
@@ -1406,6 +1413,11 @@ export class InfinityMode extends BaseGameMode {
                 const cascadeCount = rest[3] ?? 1;
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
+
+                // Real consecutive-clear combo, advanced before the clear visuals run.
+                announceCombo(this._comboTracker, this._getBoardScene(), {
+                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
+                });
 
                 // Emit event for theme reactions. Pass the ON-SCREEN clear origin so theme
                 // clear effects track the scrolling viewport instead of pinning to the bottom
@@ -1509,13 +1521,8 @@ export class InfinityMode extends BaseGameMode {
                     callbackState.infinityStats.maxCombo = comboCount;
                     console.log(`[Infinity] New max combo: ${comboCount}`);
                 }
-
-                const settings = this.deps.settingsManager.get();
-                const boardScene = this._getBoardScene();
-                if (settings.comboPopupEffect && boardScene) {
-                    boardScene.showComboPopup(comboCount);
-                    console.log(`[Infinity] Combo popup triggered: ${comboCount}x`);
-                }
+                // No popup here: the payload is cascade DEPTH. The board popup is
+                // driven from onLineClear; cascades get triggerCascadeWave below.
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {
@@ -1550,11 +1557,13 @@ export class InfinityMode extends BaseGameMode {
                 const boardScene = this._getBoardScene();
                 console.log('[Infinity] triggerFlash: boardScene:', !!boardScene, 'triggerLineClearFlash:', !!boardScene?.triggerLineClearFlash);
 
-                // Trigger flash effect with Phaser or Canvas fallback
+                // Trigger flash effect with Phaser or Canvas fallback. The
+                // lineClearEffects toggle is enforced inside SharedEffects; only
+                // the legacy canvas fallback needs its own gate.
                 if (boardScene && boardScene.triggerLineClearFlash) {
                     console.log('[Infinity] Calling boardScene.triggerLineClearFlash');
                     boardScene.triggerLineClearFlash(fullLines);
-                } else {
+                } else if (this.deps.settingsManager.get().lineClearEffects) {
                     console.log('[Infinity] Using canvas fallback for line clear flash');
                     triggerLineClearFlashCanvas(fullLines);
                 }
@@ -1625,6 +1634,8 @@ export class InfinityMode extends BaseGameMode {
                 emitPieceLock({ piece, viewportOrigin: this._pieceLockViewportOrigin(piece) });
 
                 const boardScene = this._getBoardScene();
+                // Ungated bookkeeping: a lock that clears nothing breaks the chain.
+                noteLockForCombo(this._comboTracker, boardScene);
                 if (boardScene && boardScene.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);
                 } else {
