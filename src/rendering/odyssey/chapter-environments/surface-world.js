@@ -1599,7 +1599,12 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // The Ch3->Ch4 terrain-edge dissolve is authored as part of the season story, not only
     // altitude. Near the seam the chapter can be visually winter while the camera-height
     // snow ramp still lags, so let late-season progress pull the same snow/edge uniform up.
-    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.58, 0.86);
+    // Fix D ("green grass slams into the snow"): the frost used to start at 0.58 and reach full
+    // only at 0.86, but the ecotone crossfade into Ch4's snow begins BEFORE that — so bright green
+    // grass abutted the snow floor. Pulled it earlier (0.5→0.72) so the valley whitens during the
+    // approach and reads as one continuous green→frost→snow gradient into the mountains, while the
+    // green hero valley (emergence + lake beats) still holds through the first ~half of the chapter.
+    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.5, 0.72);
     const snowBlend = Math.max(heightSnowBlend, seasonSnowBlend);
 
     const snowBlendUniformTargets = group.userData.snowBlendUniformTargets || [];
