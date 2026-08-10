@@ -28,6 +28,7 @@ import * as THREE from 'three/webgpu';
 import {
     abs,
     atan,
+    attribute,
     clamp,
     cos,
     dot,
@@ -574,24 +575,33 @@ export function createHeroPlanetTSL(uTime) {
         new THREE.Color(0x9fb6ff),
     ];
     const ringOpacity = [0.34, 0.26, 0.18];
+    // CONSOLIDATION (remake plan): ONE shared ring material across the 3 belts. The graph is
+    // identical; only colour + opacity differ, moved onto a per-mesh aRingColor (vec4 = rgb + a)
+    // attribute, so the 3 belts compile a SINGLE pipeline. Values preserved → byte-identical rings.
+    const rv = uv().y;
+    const ripple = sin(rv.mul(48.0)).mul(0.5).add(0.5).mul(0.5)
+        .add(0.5);
+    const feather = smoothstep(0.0, 0.12, rv).mul(oneMinus(smoothstep(0.85, 1.0, rv)));
+    const aRingColor = attribute('aRingColor', 'vec4');
+    const ringMat = new THREE.MeshBasicNodeMaterial();
+    ringMat.colorNode = aRingColor.xyz.mul(ripple);
+    ringMat.opacityNode = feather.mul(ripple).mul(aRingColor.w);
+    ringMat.transparent = true;
+    ringMat.depthWrite = false;
+    ringMat.blending = THREE.AdditiveBlending;
+    ringMat.side = THREE.DoubleSide;
     ringInner.forEach((inner, bandIndex) => {
         const outer = ringOuter[bandIndex];
         const color = ringColor[bandIndex];
         const opacity = ringOpacity[bandIndex];
-        const ringMat = new THREE.MeshBasicNodeMaterial();
-        // Radial coordinate across the ring quad (uv.y spans inner→outer on a
-        // RingGeometry's v); fine ripples + soft inner/outer feather.
-        const rv = uv().y;
-        const ripple = sin(rv.mul(48.0)).mul(0.5).add(0.5).mul(0.5)
-            .add(0.5);
-        const feather = smoothstep(0.0, 0.12, rv).mul(oneMinus(smoothstep(0.85, 1.0, rv)));
-        ringMat.colorNode = vec3(color.r, color.g, color.b).mul(ripple);
-        ringMat.opacityNode = feather.mul(ripple).mul(opacity);
-        ringMat.transparent = true;
-        ringMat.depthWrite = false;
-        ringMat.blending = THREE.AdditiveBlending;
-        ringMat.side = THREE.DoubleSide;
-        const ring = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 128, 2), ringMat);
+        const geometry = new THREE.RingGeometry(inner, outer, 128, 2);
+        const n = geometry.attributes.position.count;
+        const arr = new Float32Array(n * 4);
+        for (let i = 0; i < n; i += 1) {
+            arr[i * 4] = color.r; arr[i * 4 + 1] = color.g; arr[i * 4 + 2] = color.b; arr[i * 4 + 3] = opacity;
+        }
+        geometry.setAttribute('aRingColor', new THREE.BufferAttribute(arr, 4));
+        const ring = new THREE.Mesh(geometry, ringMat);
         ring.rotation.x = Math.PI * 0.42;
         ring.rotation.z = 0.18;
         group.add(ring);
