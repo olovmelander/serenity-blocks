@@ -1254,7 +1254,14 @@ export class ChapterEnvironmentManager {
      * @param {object|null} directorState - Optional OdysseyDirector state for audio-reactive environments
      */
     update(delta, camera = null, cameraProgress = null, directorState = null) {
-        this.time += delta;
+        // Clamp delta to [0, 1/30s] ONCE here (Wave-0 F): the manager owns `this.time`, which
+        // feeds every chapter's shader uTime and all env.update() integration, plus the
+        // transition timer below. A tab-refocus or GC stall yields a huge raw delta that,
+        // unclamped, jerks every chapter's animation forward in one visible jump. Capping at
+        // 33 ms (a 30 fps floor) turns the spike into a gentle catch-up and guards negative
+        // deltas — one place instead of a clamp in all eight chapter update() loops.
+        const dt = Math.min(Math.max(delta, 0), 1 / 30);
+        this.time += dt;
 
         // Update each visible environment, then QW4-crossfade its rig lights by the SAME
         // opacity the visibility pass applied to the chapter's meshes (env.lastOpacity), so
@@ -1264,7 +1271,7 @@ export class ChapterEnvironmentManager {
         this.environments.forEach((env) => {
             const updated = !!(env.group.visible && env.update);
             if (updated) {
-                env.update(env.group, delta, this.time, camera, cameraProgress, directorState);
+                env.update(env.group, dt, this.time, camera, cameraProgress, directorState);
             }
             if (env.rigLights && env.rigLights.length > 0) {
                 const weight = env.lastOpacity ?? (env.group.visible ? 1 : 0);
@@ -1280,7 +1287,7 @@ export class ChapterEnvironmentManager {
 
         // Handle transition animation
         if (this.isTransitioning) {
-            this.transitionProgress += (delta * 1000) / this.transitionDuration;
+            this.transitionProgress += (dt * 1000) / this.transitionDuration;
 
             if (this.transitionProgress >= 1) {
                 this.transitionProgress = 1;

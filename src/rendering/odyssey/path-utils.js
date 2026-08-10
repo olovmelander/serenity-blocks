@@ -8,6 +8,13 @@ export const ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET = 10;
 let cachedCurve = null;
 let activeControlPoints = ODYSSEY_PATH_DATA.controlPoints.map((point) => ({ ...point }));
 let activeChapterPositions = [...(ODYSSEY_PATH_DATA.chapterPositions || [])];
+// Wave-0 E: getActiveOdysseyChapterPositions() sits on the per-frame hot path (called via
+// default args ~5×/frame in Ch3, 2× in Ch4, 1× in Ch5), and used to clone a fresh array on
+// every call → steady 60 fps GC pressure. The positions only change when the path layout is
+// re-authored, so cache a FROZEN copy and hand out that shared reference. Callers read it
+// read-only (verified — none sort/push/mutate it); the freeze turns any accidental mutation
+// into a throw instead of silently corrupting the source. Rebuilt only in set/reset below.
+let frozenChapterPositions = Object.freeze(activeChapterPositions.slice());
 
 function cloneControlPoints(controlPoints = []) {
     return controlPoints.map((point) => ({
@@ -32,12 +39,14 @@ export function setOdysseyPathLayout(layout = {}) {
 
     if (nextChapterPositions && nextChapterPositions.length >= 2) {
         activeChapterPositions = [...nextChapterPositions];
+        frozenChapterPositions = Object.freeze(activeChapterPositions.slice());
     }
 }
 
 export function resetOdysseyPathLayout() {
     activeControlPoints = cloneControlPoints(ODYSSEY_PATH_DATA.controlPoints || []);
     activeChapterPositions = [...(ODYSSEY_PATH_DATA.chapterPositions || [])];
+    frozenChapterPositions = Object.freeze(activeChapterPositions.slice());
     cachedCurve = null;
 }
 
@@ -50,7 +59,7 @@ export function getActiveOdysseyPathData() {
 }
 
 export function getActiveOdysseyChapterPositions() {
-    return [...activeChapterPositions];
+    return frozenChapterPositions;
 }
 
 export function buildOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {
