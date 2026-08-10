@@ -792,7 +792,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // BotW painterly sage: pull the vivid spring green toward a warmer OLIVE/sage (R nearer G, a
     // yellow-green rather than a saturated emerald) so the meadow reads like a sun-bleached Hyrule
     // field, not a neon lawn. Still lush — just muted enough to sit under the golden-hour grade.
-    const grassColorLow = vec3(0.26, 0.42, 0.17); // Sage-olive lit meadow
+    const grassColorLow = vec3(0.20, 0.46, 0.12); // richer meadow green (was pale sage — user: "ground feels missing/washed")
     // Creative plan Ch3 item 1: shaded pole pulled toward #0D3A16 so tree silhouettes
     // separate from the ground in grayscale (the collapsed-value fix).
     const grassColorHigh = vec3(0.05, 0.15, 0.07); // Deep shaded sage-forest green
@@ -824,8 +824,10 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const lightDir = normalize(vec3(-0.62, 0.34, -0.71)); // low, warm, raking from the left
     const diff = max(dot(vNormal, lightDir), 0.0);
     // Warm direct key + softer, warmer fill (keeps midtones saturated, never grays the green).
-    const warmKey = vec3(0.98, 0.82, 0.48).mul(diff.mul(0.58));
-    const coolFill = vec3(0.45, 0.56, 0.60).mul(0.42);
+    const warmKey = vec3(0.98, 0.82, 0.48).mul(diff.mul(0.66));
+    // Dimmer + warmer fill (was 0.45,0.56,0.60 ×0.42) so the shadows deepen for real terrain FORM
+    // and stop graying the green — the flat pale wash the user flagged as "ground feels missing".
+    const coolFill = vec3(0.40, 0.50, 0.46).mul(0.30);
     color = color.mul(warmKey.add(coolFill));
     // Warm rim/backlight on grazing slope edges (pow falloff, tinted amber, capped).
     const rimFactor = pow(oneMinus(max(dot(vNormal, normalize(cameraPosition.sub(vPosition))), 0.0)), 2.0);
@@ -875,19 +877,14 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // foothill skirt / mountain range with a noisy depth fade. This keeps the Ch3 meadow from
     // ending as a straight green card against the Ch4 sky.
     const edgeNoise = landscapeNoise(vPosition.xz.mul(0.035)).sub(0.5).mul(42.0);
-    const farLandFade = oneMinus(smoothstep(84.0, 190.0, vPosition.z.negate().add(edgeNoise)));
-    const sideNoise = landscapeNoise(vPosition.xz.mul(0.041).add(vec2(7.1, 2.4))).sub(0.5).mul(32.0);
-    const sideLandFade = oneMinus(smoothstep(128.0, 198.0, abs(vPosition.x).add(sideNoise)));
-    const frontNoise = landscapeNoise(vPosition.xz.mul(0.047).add(vec2(3.8, 11.2))).sub(0.5).mul(44.0);
-    const frontLandFade = smoothstep(-64.0, 72.0, vPosition.z.negate().add(frontNoise));
-    // MOUNTAIN↔TERRAIN CONTINUITY (remake plan, art fix #1): apply the noisy edge dissolve ALWAYS,
-    // not only once winter's uSnowBlend lifts. The meadow used to end on a hard straight green card
-    // against the Ch4 sky in golden-hour (edgeBlend=0 until snow), which is exactly the "mountain
-    // feels like a disconnected backdrop" read. Dissolving the far/side/front edges every season
-    // melts the ground into the foothill skirt + distant range from frame 1. Winter is unchanged
-    // (edgeBlend was already ~1 there); only the golden-hour view gains the soft continuous edge.
-    const edgeFade = farLandFade.mul(sideLandFade).mul(frontLandFade);
-    material.opacityNode = uOpacity.mul(landAlpha).mul(edgeFade);
+    // MOUNTAIN↔TERRAIN CONTINUITY (fixed): melt ONLY the FAR edge (the last strip before the
+    // foothills, depth ~155→215) into the range so the meadow doesn't end on a hard green card —
+    // while the near + mid meadow stay FULLY SOLID. The earlier version also dissolved the
+    // front/side edges every frame, which faded the foreground + mid ground and read as
+    // "the ground is missing" (user report). Only the far lip dissolves now; everything the
+    // camera stands on stays opaque ground.
+    const farMelt = oneMinus(smoothstep(155.0, 215.0, vPosition.z.negate().add(edgeNoise)));
+    material.opacityNode = uOpacity.mul(landAlpha).mul(farMelt);
     material.transparent = true;
     material.depthWrite = false;
     material.userData.waterShelfFade = {
@@ -1012,13 +1009,12 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
     // ending on a hard line. MOUNTAIN↔TERRAIN CONTINUITY (remake plan, art fix #1): apply it ALWAYS,
     // not only once winter's snow lifts up the ramp — so the meadow→foothill-bridge→peak handoff is
     // continuous from frame 1 in golden-hour too (winter was already applying it).
+    // Dissolve ONLY the skirt's far BACK edge into the distant range so it doesn't end on a hard
+    // line — but keep the bridge FRONT solid so it seats onto the meadow's far edge with no
+    // transparent gap between them (the earlier always-on front fade opened that gap, part of the
+    // "ground feels missing" report). Far-only melt; the bridge the eye travels up stays opaque.
     const depth = vWorldPosition.z.negate();
-    const farFade = oneMinus(smoothstep(250.0, 650.0, depth.sub(terrainNoise.mul(80.0))));
-    const sideNoise = bridgeNoise(vWorldPosition.xz.mul(0.012).add(vec2(4.3, 8.9))).sub(0.5).mul(70.0);
-    const sideFade = oneMinus(smoothstep(285.0, 450.0, abs(vWorldPosition.x).add(sideNoise)));
-    const frontNoise = bridgeNoise(vWorldPosition.xz.mul(0.016).add(vec2(9.7, 1.8))).sub(0.5).mul(90.0);
-    const frontFade = smoothstep(230.0, 420.0, depth.add(frontNoise));
-    const seamFade = farFade.mul(sideFade).mul(frontFade);
+    const seamFade = oneMinus(smoothstep(250.0, 650.0, depth.sub(terrainNoise.mul(80.0))));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
