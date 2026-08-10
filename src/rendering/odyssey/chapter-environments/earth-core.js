@@ -1002,18 +1002,31 @@ export function createEarthCoreEnvironment(options = {}) {
     group.userData.firstHeart = heart.mesh;
     group.userData.firstHeartBaseScale = heartBaseScale;
 
+    // Ch1 BOOT-WARP saver: ONE shared isColumn=true molten material for the colonnade walls, the
+    // selenite chamber shell, the obsidian columns AND the ceiling slabs — all byte-identical (only
+    // geometry/transform differ; uniforms are shared/constant), so the chapter's heaviest graph
+    // (moltenRockField, ~28 snoise3/frag) compiles ONCE at boot instead of once per site. Those
+    // duplicate cold pipeline compiles (~2.7s each) were a root of the boot-warp BeginFrame-
+    // starvation freeze. Same pattern the chapter already uses for the decal/god-ray/horizon mats.
+    const sharedColumnMaterial = createMoltenPocketMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        true,
+    ).material;
+
     // 12c. Basalt colonnade WALLS (plan asset 3): 6–8 clustered hex-column groups per
     // side, 55–90 units off-path, size-graded 60→160, continuous along the corridor —
     // the cavern walls that fix the 08–13 emptiness. ONE merged geometry / draw call
     // (Fingal's Cave colonnade grammar; respects the <100 draw-call budget).
-    const colonnade = createColonnadeWalls(uniforms, staging);
+    const colonnade = createColonnadeWalls(uniforms, staging, sharedColumnMaterial);
     group.add(colonnade);
     group.userData.colonnade = colonnade;
 
     // 12d. Selenite geode CHAPEL (plan asset 4) — the mid-chapter beat filling the
     // 08–11 dead zone: translucent crystal beams off the right of the rail, backlit by
     // a molten pocket beneath, framed by a dark basalt shell.
-    createSeleniteChamber(group, uniforms, staging);
+    createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial);
 
     // 13. Silhouetted obsidian COLUMNS — §3.2/§3.3 staged repoussoir framing. The
     //     columns are now placed to BRACKET each frame edge ACROSS the descent: the
@@ -1056,19 +1069,8 @@ export function createEarthCoreEnvironment(options = {}) {
         x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 112, giant: false,
     });
 
-    // Share ONE material across all obsidian columns + ceiling slabs: the node graph is
-    // byte-identical for isColumn=true (only geometry/transform differ) and all uniforms are
-    // shared/constant, so 12 separate MeshStandardNodeMaterial compiles of the chapter's
-    // heaviest graph (moltenRockField, ~28 snoise3/frag) collapse to 1 — a cold-start
-    // pipeline-variant cut with zero visual change (same pattern the chapter already uses for
-    // god-rays / horizons / contact-decals). The manager's opacity crossfade still drives the
-    // single shared material.uniforms.uOpacity for the whole set.
-    const sharedColumnMaterial = createMoltenPocketMaterialTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uBakedBounce,
-        true,
-    ).material;
+    // Columns + ceiling slabs reuse the hoisted sharedColumnMaterial (built above so the colonnade
+    // + selenite shell share it too) — the isColumn=true graph compiles once for the whole chapter.
 
     const columns = columnSpecs.map((spec) => {
         const col = createObsidianColumnTSL(
@@ -1512,7 +1514,7 @@ function pushSeatClearOfPath(seat, radius, groupCenter) {
  * costs a single draw call under the column material (charred silhouette, lake-lit
  * fresnel rim + emissive veining).
  */
-function createColonnadeWalls(uniforms, staging) {
+function createColonnadeWalls(uniforms, staging, sharedMaterial) {
     const stations = [0.06, 0.18, 0.32, 0.46, 0.62, 0.74, 0.85];
     const prismGeometries = [];
     stations.forEach((ft, si) => {
@@ -1541,13 +1543,8 @@ function createColonnadeWalls(uniforms, staging) {
     });
     const merged = mergeGeometries(prismGeometries, false);
     prismGeometries.forEach((g) => g.dispose());
-    const { material } = createMoltenPocketMaterialTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uBakedBounce,
-        true, // column treatment: charred silhouette + lake-lit rim/veins
-    );
-    const mesh = new THREE.Mesh(merged, material);
+    // Reuse the hoisted shared isColumn=true material (no per-site compile).
+    const mesh = new THREE.Mesh(merged, sharedMaterial);
     mesh.name = 'basalt-colonnade-walls';
     mesh.frustumCulled = false;
     return mesh;
@@ -1558,7 +1555,7 @@ function createColonnadeWalls(uniforms, staging) {
  * the rail at the mid-chapter dead zone, backlit by a molten pocket beneath, framed by
  * a dark basalt shell, with one warm corona so it reads from across the cavern.
  */
-function createSeleniteChamber(group, uniforms, staging) {
+function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial) {
     const station = 0.45;
     const frame = staging.frame(station);
     const chapelPosition = staging.at(station, { lateral: 16, forward: -2, up: 32 });
@@ -1600,13 +1597,8 @@ function createSeleniteChamber(group, uniforms, staging) {
     }
     const shellGeometry = mergeGeometries(shellGeometries, false);
     shellGeometries.forEach((g) => g.dispose());
-    const { material: shellMaterial } = createMoltenPocketMaterialTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uBakedBounce,
-        true,
-    );
-    const shell = new THREE.Mesh(shellGeometry, shellMaterial);
+    // Reuse the hoisted shared isColumn=true material (the shell is byte-identical to the columns).
+    const shell = new THREE.Mesh(shellGeometry, sharedColumnMaterial);
     shell.name = 'selenite-chamber-shell';
     chamber.add(shell);
 
