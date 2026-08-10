@@ -476,9 +476,19 @@ export class PerformanceMonitor {
         if (fps > this.metrics.maxFPS) this.metrics.maxFPS = fps;
         if (frameTime > this.metrics.maxFrameTime) this.metrics.maxFrameTime = frameTime;
 
-        // Calculate averages
-        this.metrics.avgFPS = this.calculateAverage(this.fpsHistory);
+        // Calculate averages.
+        //
+        // avgFPS is THROUGHPUT — 1000 / mean(frameTime) — not mean(1000 / frameTime).
+        // Averaging reciprocals is Jensen's inequality in action: it weights cheap
+        // frames far above the expensive ones that actually consume wall-clock time.
+        // On a bimodal trace (many 8ms frames plus a few 100ms stalls) that reported
+        // ~2x the real rate and hid exactly the stutter players feel — a panel could
+        // show "114.0 FPS" next to its own avgFrameTime of 17.2ms (= 58 fps).
+        // See docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §1.
         this.metrics.avgFrameTime = this.calculateAverage(this.frameTimes);
+        this.metrics.avgFPS = this.metrics.avgFrameTime > 0
+            ? 1000 / this.metrics.avgFrameTime
+            : 0;
 
         this.lastFrameTime = now;
     }
@@ -1065,6 +1075,25 @@ export class PerformanceMonitor {
         };
     }
 
+    /**
+     * Tail expressed as frame rates so it can sit beside the headline number.
+     *
+     * "1% low" is the rate implied by the 99th-percentile frame time — the
+     * standard way to report stutter, and the honest replacement for the old
+     * min/max-of-instantaneous-fps "range" (which reported things like
+     * "0 - 833 fps" because a single 1.2ms sample became 833).
+     *
+     * @returns {{low1Pct:number, low5Pct:number}} fps
+     */
+    getLowFPS() {
+        const p99 = this.calculatePercentile(this.frameTimes, 99);
+        const p95 = this.calculatePercentile(this.frameTimes, 95);
+        return {
+            low1Pct: p99 > 0 ? 1000 / p99 : 0,
+            low5Pct: p95 > 0 ? 1000 / p95 : 0,
+        };
+    }
+
     getFrameTimeSamples() {
         return [...this.frameTimeLog];
     }
@@ -1131,9 +1160,11 @@ export class PerformanceMonitor {
             },
             fps: {
                 current: this.metrics.fps.toFixed(1),
+                // Throughput (1000 / mean frame time), not the mean of per-frame rates.
                 average: this.metrics.avgFPS.toFixed(1),
-                min: this.metrics.minFPS.toFixed(1),
-                max: this.metrics.maxFPS.toFixed(1),
+                // The tail is what players feel; min/max of instantaneous rates was noise.
+                low1Pct: this.getLowFPS().low1Pct.toFixed(1),
+                low5Pct: this.getLowFPS().low5Pct.toFixed(1),
             },
             frameTime: {
                 current: `${this.metrics.frameTime.toFixed(2)}ms`,
@@ -1360,10 +1391,12 @@ export class PerformanceMonitor {
         const stableFrameTime = this.metrics.avgFrameTime || this.metrics.frameTime;
         const safeFPS = Number.isFinite(stableFPS) ? stableFPS : 0;
         const safeFrameTime = Number.isFinite(stableFrameTime) ? stableFrameTime : 0;
-        const minFPS = Number.isFinite(this.metrics.minFPS) && this.metrics.minFPS !== Infinity
-            ? this.metrics.minFPS
-            : safeFPS;
-        const maxFPS = Number.isFinite(this.metrics.maxFPS) ? this.metrics.maxFPS : safeFPS;
+        const lows = this.getLowFPS();
+        const low1Pct = Number.isFinite(lows.low1Pct) ? lows.low1Pct : safeFPS;
+        const low5Pct = Number.isFinite(lows.low5Pct) ? lows.low5Pct : safeFPS;
+        let low1PctColor = '#f00';
+        if (low1Pct >= 55) low1PctColor = '#0f0';
+        else if (low1Pct >= 30) low1PctColor = '#ff0';
         const memoryUsed = Number.isFinite(this.metrics.memoryUsed) ? this.metrics.memoryUsed : 0;
         const memoryLimit = Number.isFinite(this.metrics.memoryLimit) && this.metrics.memoryLimit > 0
             ? this.metrics.memoryLimit
@@ -1391,8 +1424,9 @@ export class PerformanceMonitor {
             memoryColor,
             memoryPercent,
             uptime,
-            minFPS,
-            maxFPS,
+            low1Pct,
+            low5Pct,
+            low1PctColor,
             memoryUsed,
             memoryLimit,
             frameDrops: Number.isFinite(this.metrics.frameDrops) ? this.metrics.frameDrops : 0,
@@ -1456,8 +1490,10 @@ export class PerformanceMonitor {
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
                 ${displayMetrics.fps.toFixed(1)} <span style="font-size: 14px;">FPS</span>
             </div>
-            <div style="color: #888; font-size: 12px; margin-bottom: 8px;">
-                ${displayMetrics.minFPS.toFixed(0)} - ${displayMetrics.maxFPS.toFixed(0)} fps range
+            <div style="font-size: 12px; margin-bottom: 8px;">
+                <span style="color: #888;">1% low</span>
+                <span style="color: ${displayMetrics.low1PctColor}; font-weight: bold;">${displayMetrics.low1Pct.toFixed(0)}</span>
+                <span style="color: #888;">· 5% low ${displayMetrics.low5Pct.toFixed(0)} fps</span>
             </div>
             <div style="margin-top: 8px; color: ${displayMetrics.frameTimeColor}; font-size: 13px;">
                 Frame: ${displayMetrics.frameTime.toFixed(1)}ms / ${FRAME_BUDGET_MS.toFixed(1)}ms
@@ -1630,6 +1666,10 @@ if (typeof window !== 'undefined') {
         recordCounters: (counters) => performanceMonitor.recordCounters(counters),
         getCounters: () => ({ ...performanceMonitor.renderCounters }),
         getPercentiles: () => performanceMonitor.getFrameTimePercentiles(),
+        // Throughput + tail as frame rates. Prefer these over the raw `fps`
+        // metric when eyeballing smoothness — see
+        // docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §1.
+        getLowFPS: () => performanceMonitor.getLowFPS(),
         getFrameTimes: () => performanceMonitor.getFrameTimeSamples(),
         getFrameTimeSummary: (targetFrameRate) => performanceMonitor.getFrameTimeSummary(targetFrameRate),
         setAdaptiveDownscaleSuppressed: (b) => performanceMonitor.setAdaptiveDownscaleSuppressed(b),

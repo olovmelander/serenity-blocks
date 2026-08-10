@@ -183,6 +183,22 @@ function readReflectionRequest(params) {
     return ['0', 'off', 'false', 'no'].includes(raw) ? 'off' : 'auto';
 }
 
+/**
+ * `?reflectScale=<0..1>` overrides the reflector's resolution scale and
+ * `?reflectSmear=0` collapses the three-tap vertical smear to one tap. Both
+ * exist so the cost of the 2026-07-28 mirror work is MEASURABLE rather than
+ * asserted: the four cells (0.48|0.60) x (1|3 taps) attribute frame time to the
+ * resolution bump and the extra fetches separately. Defaults are the shipped
+ * values, so neither flag changes production behaviour.
+ */
+function readReflectScale(params, fallback) {
+    const raw = params?.get?.('reflectScale');
+    if (raw == null) return fallback;
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(1, Math.max(0, parsed));
+}
+
 function readGrade(params) {
     return String(params?.get?.('grade') || 'full').toLowerCase() === 'aces'
         ? 'aces'
@@ -439,7 +455,7 @@ export function createStillwaterWater({
     const quality = {
         detailFlow: qualityProfile.detailFlow,
         secondCaustic: qualityProfile.secondCaustic,
-        reflectorScale: qualityProfile.reflectionScale,
+        reflectorScale: readReflectScale(params, qualityProfile.reflectionScale),
         responseSlots: Math.max(4, qualityProfile.wakeSlots),
         lakeRings: qualityProfile.waterRings,
     };
@@ -1413,13 +1429,25 @@ export function createStillwaterWater({
     // Shore-weighted refraction. viewportSharedTexture is r181's screen-colour
     // source; without a depth prepass it can bleed foreground silhouettes, so
     // the offset stays small and the weight decays fast with depth.
-    const refractionDepth = clamp(shoreDepth.mul(6), 0, 6);
-    const refractionWeight = pow(float(2.718), refractionDepth.mul(-0.9)).mul(0.55);
-    const refractionOffset = flowField.mul(0.022).mul(refractionWeight);
-    const refracted = viewportSharedTexture(
-        screenUV.add(refractionOffset).clamp(vec2(0.002), vec2(0.998)),
-    ).rgb;
-    waterColor = mix(waterColor, waterColor.mul(0.55).add(refracted.mul(0.45)), refractionWeight);
+    //
+    // Premium tiers only. This costs a framebuffer copy and splits the pass, and
+    // it was running on all six tiers — including the three that have no
+    // reflector at all precisely because their GPUs cannot afford one. It only
+    // ever shows in the shallow band at the shoreline, so the lean tiers lose a
+    // detail they were never going to be looked at closely for.
+    if (qualityProfile.bloom === true) {
+        const refractionDepth = clamp(shoreDepth.mul(6), 0, 6);
+        const refractionWeight = pow(float(2.718), refractionDepth.mul(-0.9)).mul(0.55);
+        const refractionOffset = flowField.mul(0.022).mul(refractionWeight);
+        const refracted = viewportSharedTexture(
+            screenUV.add(refractionOffset).clamp(vec2(0.002), vec2(0.998)),
+        ).rgb;
+        waterColor = mix(
+            waterColor,
+            waterColor.mul(0.55).add(refracted.mul(0.45)),
+            refractionWeight,
+        );
+    }
 
     // Practical reflections. A still lake returns a light source as a long
     // column stretched along the view axis, broken up by the surface ripple —
@@ -1564,10 +1592,15 @@ export function createStillwaterWater({
         // motion cue it was missing, for the price of two fetches.
         const smearOffset = vec2(0, 0.019);
         const smearBlur = reflectionBlur.mul(2.4);
-        const reflectedRaw = reflectionNode.sample(reflectionUv).blur(reflectionBlur).rgb
-            .mul(0.52)
-            .add(reflectionNode.sample(reflectionUv.add(smearOffset)).blur(smearBlur).rgb.mul(0.24))
-            .add(reflectionNode.sample(reflectionUv.sub(smearOffset)).blur(smearBlur).rgb.mul(0.24));
+        const smearEnabled = readToggle(params, 'reflectSmear', true);
+        const reflectedRaw = smearEnabled
+            ? reflectionNode.sample(reflectionUv).blur(reflectionBlur).rgb
+                .mul(0.52)
+                .add(reflectionNode.sample(reflectionUv.add(smearOffset))
+                    .blur(smearBlur).rgb.mul(0.24))
+                .add(reflectionNode.sample(reflectionUv.sub(smearOffset))
+                    .blur(smearBlur).rgb.mul(0.24))
+            : reflectionNode.sample(reflectionUv).blur(reflectionBlur).rgb;
         // Highlight knee. The spirit's head is the brightest object in the scene
         // by an order of magnitude, and an unclamped mirror hands the lake a
         // second one — a hot white lozenge that reads as a lantern floating on

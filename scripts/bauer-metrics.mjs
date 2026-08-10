@@ -170,7 +170,7 @@ function largestFlatRegion(grad, width, height, threshold) {
     const flat = new Uint8Array(width * height);
     for (let i = 0; i < flat.length; i += 1) flat[i] = grad[i] < threshold ? 1 : 0;
     const seen = new Uint8Array(width * height);
-    const queue = new Int32Array(width * height);
+    const queue = new Int32Array(width * height + 1); // see brightRegion: +1 for the 1-based writes
     let best = 0;
     for (let start = 0; start < flat.length; start += 1) {
         if (!flat[start] || seen[start]) continue;
@@ -251,7 +251,12 @@ function brightRegion(luma, width, height, threshold) {
     // dithered at its edge and 4-connectivity shatters a single glow into dozens
     // of fragments, which would read as "scattered" when it is one note.
     const seen = new Uint8Array(width * height);
-    const queue = new Int32Array(count);
+    // count + 1, not count: the writes below are `queue[tail += 1]`, so slot 0 is
+    // never used and a fill of N pixels needs indices 1..N. Sized at `count` the
+    // final write lands out of bounds and a typed array DISCARDS it silently —
+    // and that happens precisely when one cluster holds every bright pixel, which
+    // is the single-focal-note composition this metric exists to reward.
+    const queue = new Int32Array(count + 1);
     const clusters = [];
     for (let start = 0; start < mask.length; start += 1) {
         if (!mask[start] || seen[start]) continue;

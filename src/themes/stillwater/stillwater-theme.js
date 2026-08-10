@@ -21,6 +21,8 @@ import {
     normalizeStillwaterQuality,
 } from './stillwater-quality.js';
 import { createStillwaterRuntime } from './rendering/stillwater-runtime.js';
+import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
+import { readFlag } from '../../core/flags.js';
 import { STILLWATER_TETROMINOS } from './stillwater-tetrominos.js';
 
 const RENDERER_INIT_TIMEOUT_MS = 5_500;
@@ -334,6 +336,8 @@ export default class StillwaterTheme extends BaseTheme {
             simulationUpdates: 0,
             composedRenders: 0,
             warmupRenders: 0,
+            warmedReactionDraws: 0,
+            warmUnreachableDraws: 0,
             gameplayRenders: 0,
             validationRenders: 0,
             animationLoopStarts: 0,
@@ -1118,12 +1122,24 @@ export default class StillwaterTheme extends BaseTheme {
         if (this.isActive) await this.createScene();
     }
 
+    getWarmupRoots() {
+        return this.runtime?.getWarmupRoots?.() ?? [];
+    }
+
+    usesMrtScenePass() {
+        return this.runtime?.getDiagnostics?.()?.post?.useMRT === true;
+    }
+
     async warmRuntime(generation) {
         if (!this.runtime || !this.renderer || !this.scene || !this.camera) return;
 
         this.runtime.camera?.(0, this.camera);
+        // MUST stay before the reveal: reactions.update() unconditionally
+        // re-hides anything whose expiry has passed, and every expiry starts at
+        // DORMANT_BIRTH, so a reveal placed before this call un-reveals itself.
         this.runtime.update?.(0, 0);
-        const usesMrt = this.runtime.getDiagnostics?.()?.post?.useMRT === true;
+
+        const usesMrt = this.usesMrtScenePass();
         if (!usesMrt) {
             try {
                 await this.renderer.compileAsync?.(this.scene, this.camera);
@@ -1132,13 +1148,65 @@ export default class StillwaterTheme extends BaseTheme {
             }
         }
         if (generation !== this.runtimeGeneration || !this.renderer) return;
-        // A real post/reflection render is authoritative for MRT tiers:
-        // compileAsync(scene, camera) compiles against a one-target framebuffer
-        // and can poison r181's cache before the two-target output/emissive pass.
-        // The canvas remains masked while this exact shipped graph warms.
-        if (this.renderRuntime('warmup')) {
-            this.recordActivationMilestone('warmRenderComplete', generation);
+
+        // The three reaction draws are built at scene build but parked
+        // visible=false, so compileAsync and every warm render skip them and
+        // their pipelines compile on the first line clear instead — measured at
+        // 187.9ms / 171.3ms / 79.3ms with zero longtasks. Reveal them across the
+        // warm render below so that cost lands here, behind the mask.
+        //
+        // ORDERING IS LOAD-BEARING: the reveal is deliberately NOT live across
+        // the compileAsync above. That call binds no render target, so it would
+        // bake a one-output shader under a cache key carrying no target
+        // component — the exact poisoned-cache black screen this method's
+        // comment already guards against. Pinned by a source-order test.
+        const warmEnabled = readFlag('stillwaterReactionWarm', true);
+        const reveal = warmEnabled
+            ? revealHiddenDrawables(this.getWarmupRoots(), {
+                camera: this.camera,
+                onUnreachable: (object) => {
+                    this.lifecycleCounters.warmUnreachableDraws += 1;
+                    console.warn(
+                        '[Stillwater] Reaction draw is outside the camera layers; '
+                        + 'its pipeline cannot be warmed:',
+                        object?.name,
+                    );
+                },
+            })
+            : { revealed: 0, skipped: 0, restore: () => {} };
+
+        try {
+            // compileAsync never updates matrices, and a stale matrixWorld flips
+            // frontFaceCW in the pipeline cache key. Scoped to the revealed
+            // roots — never a forced whole-scene pass.
+            this.getWarmupRoots().forEach((root) => root?.updateMatrixWorld?.(true));
+
+            // A real post/reflection render is authoritative for MRT tiers:
+            // compileAsync(scene, camera) compiles against a one-target
+            // framebuffer and can poison r181's cache before the two-target
+            // output/emissive pass. This render goes through the shipped
+            // pipeline, so the compile context is identical to a live gameplay
+            // frame. Every revealed draw is dormant (alive = 0 => opacity 0,
+            // motes zero-area), so nothing paints.
+            // The canvas remains masked while this exact shipped graph warms.
+            if (this.renderRuntime('warmup')) {
+                this.lifecycleCounters.warmedReactionDraws = reveal.revealed;
+                this.recordActivationMilestone('warmRenderComplete', generation);
+            }
+        } finally {
+            reveal.restore();
         }
+
+        // NO GPU FENCE HERE, DELIBERATELY. Awaiting queue.onSubmittedWorkDone()
+        // at this point yields control for ~200-400ms while the warm render's
+        // command buffer is still in flight, and activation proceeds to rebuild
+        // render targets underneath it — measured as a reproducible
+        // "Destroyed texture [depthBuffer] used in a submit" uncaptured error
+        // that is absent without the await. The reveal above already creates the
+        // pipelines (verified: cache 77 -> 80), which is the whole point; the
+        // fence only decided WHEN we stop waiting for Dawn. If the first visible
+        // frames are ever measured to spike, hold the activation mask across an
+        // extra rendered frame rather than awaiting the queue here.
     }
 
     renderRuntime(source = 'gameplay') {

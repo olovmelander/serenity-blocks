@@ -56,38 +56,75 @@ describe('Stillwater composition layout', () => {
         }
     });
 
-    it('reserves the centre of frame: no discrete prop projects into the board rect', () => {
+    it('reserves the centre of frame: no prop CROWDS the board', () => {
+        // This assertion used to skip `isInstancedMesh` and then drop anything
+        // wider than 60u. Every discrete prop in this forest is instanced and
+        // every remaining mesh is a spanning surface, so it inspected exactly
+        // ZERO objects and could never fail — measured: 12 meshes, 3
+        // non-instanced, 0 surviving both filters.
+        //
+        // It also asked the wrong question. The scene is a backdrop and the
+        // board is a translucent overlay in front of it, so props legitimately
+        // appear behind the play field: 105 instances project inside the rect,
+        // nearly all of them distant reeds and lilies down the channel. What
+        // would actually damage the product is a prop big and near enough to
+        // CROWD the board — so that is what is measured, per instance, from the
+        // real instance matrices.
         const { scene, camera, layout } = makeForest('Extreme');
         const [board] = layout.boardSafeRegions;
-        const projected = new THREE.Vector3();
-        const size = new THREE.Vector3();
-        const box = new THREE.Box3();
-        const intruders = [];
+        // A flat radius threshold cannot separate these cases: a legitimate
+        // treetop on the horizon subtends 0.064 and a boulder dropped into the
+        // middle of the lake subtends 0.068. What distinguishes them is DEPTH —
+        // background scenery sits behind the play field, an occluder sits in
+        // front of it — so the allowance scales with distance. Measured worst
+        // case inside the rect, per band (Extreme):
+        //   dist   0-60  max 0.028   (lilies)
+        //   dist  60-90  max 0.023   (lilies)
+        //   dist  90-140 max 0.043   (shore roots)
+        //   dist 140+    max 0.064   (far forest)
+        // This line sits ~35% above each, and rejects the mid-lake boulder that
+        // a flat 0.10 gate waved through.
+        const maxScreenRadiusAt = (distance) => 0.02 + distance * 0.0003;
+        const matrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const scale = new THREE.Vector3();
+        const rotation = new THREE.Quaternion();
+        const edge = new THREE.Vector3();
+        const crowders = [];
 
         scene.updateMatrixWorld(true);
         scene.traverse((object) => {
-            if (!object.isMesh || object.isInstancedMesh || !object.geometry) return;
-            box.setFromObject(object);
-            if (box.isEmpty()) return;
-            box.getSize(size);
-            // Spanning surfaces — terrain, the lake plane, the ridge — are the
-            // ground and the horizon. Their bounding-box centre necessarily
-            // lands mid-frame because they span the whole scene, so a centre
-            // test says nothing about them. Only DISCRETE props can occlude the
-            // board, and the widest of those (a boulder) is well under 60u
-            // against a 250-850u backdrop.
-            if (size.x > 60) return;
-            box.getCenter(projected);
-            projected.project(camera);
-            const screenX = projected.x * 0.5 + 0.5;
-            const screenY = 0.5 - projected.y * 0.5;
-            const insideX = screenX > board.x && screenX < board.x + board.width;
-            const insideY = screenY > board.y && screenY < board.y + board.height;
-            // Only geometry in FRONT of the camera can occlude the board.
-            if (insideX && insideY && projected.z < 1) intruders.push(object.name || object.type);
+            if (!object.isInstancedMesh || !object.geometry) return;
+            object.geometry.computeBoundingSphere?.();
+            const baseRadius = object.geometry.boundingSphere?.radius ?? 0;
+            if (!baseRadius) return;
+            // `.count` and not the buffer length: the quality tier decides how
+            // many instances actually draw.
+            for (let index = 0; index < object.count; index += 1) {
+                object.getMatrixAt(index, matrix);
+                matrix.premultiply(object.matrixWorld);
+                matrix.decompose(position, rotation, scale);
+                edge.copy(position).setX(position.x + baseRadius * Math.max(scale.x, scale.y, scale.z));
+                const centre = position.clone().project(camera);
+                // Only geometry in FRONT of the camera can crowd anything.
+                if (centre.z >= 1) continue;
+                const screenX = centre.x * 0.5 + 0.5;
+                const screenY = 0.5 - centre.y * 0.5;
+                const insideX = screenX > board.x && screenX < board.x + board.width;
+                const insideY = screenY > board.y && screenY < board.y + board.height;
+                if (!insideX || !insideY) continue;
+                const screenRadius = Math.abs(edge.project(camera).x - centre.x) * 0.5;
+                const allowed = maxScreenRadiusAt(position.distanceTo(camera.position));
+                if (screenRadius > allowed) {
+                    crowders.push(
+                        `${object.name || object.type}[${index}] `
+                        + `r=${screenRadius.toFixed(3)} > ${allowed.toFixed(3)}`,
+                    );
+                }
+            }
         });
 
-        expect(intruders).toEqual([]);
+        expect(crowders).toEqual([]);
     });
 
     it('pins the solo camera the composition was authored against', () => {

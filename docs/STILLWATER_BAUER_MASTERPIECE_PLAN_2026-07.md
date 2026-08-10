@@ -190,12 +190,141 @@ Current frame: **2 poles, poleSpread 0.0016, stray 4.3%** — all in band. The n
 gate was verified to still FAIL: a synthetic frame of 40 scattered specks scores
 `strayFraction` 1.00 and is rejected.
 
-### Not measured
+### Frame time, measured (2026-07-28)
 
-Frame time. The Electron capture harness reports a fixed 1 fps by construction, so
-the reflector resolution bump and the two extra water reflection taps — both
-fill-rate, on ~55% of the frame — are **unverified for cost**. Geometry is
-unchanged at 12 forest draws / 42k triangles.
+The mirror work — reflector resolution 0.48 -> 0.60 at High, plus two extra
+reflector taps on ~55% of the frame — was shipped unmeasured. It has now been
+measured, and the answer is that **it is below the noise floor, because the scene
+is CPU-bound.**
+
+Two false starts are worth recording, because both produce numbers that look real:
+
+1. `scripts/playground-capture.mjs` creates its window with `show: false` unless
+   `--show` is passed, and a hidden Electron window has rAF throttled to ~1 Hz.
+   Every "1 fps" HUD reading through that path is the throttle, not the scene.
+2. Wall-clock rAF deltas measure host scheduling as much as rendering. A first
+   sweep using them ranked the *cheapest* configuration as the slowest, twice —
+   background load moved more than the effect did. Wall-clock A/B is not a valid
+   instrument for a change this small.
+
+`scripts/dev/playground-frametime.mjs` drives the playground's own bounded
+profiler (`?profile=1&trackTimestamp=1`), which drains WebGPU timestamp queries.
+`gpuMs` is measured on the device and is immune to host contention.
+`?reflectScale=<0..1>` and `?reflectSmear=0` were added to `stillwater-water.js`
+so the two halves of the change can be priced separately; both default to the
+shipped values.
+
+High tier, 1578x918 internal, RTX 5080. Re-measured on a quiet machine AFTER the
+fog defect below was fixed — the first sweep priced zero fog, because the fog was
+not running, and was taken while four review agents loaded the same CPU:
+
+| Cell | reflectScale | taps | GPU p50 | frame p50 | CPU p50 |
+|---|---|---|---|---|---|
+| A - pre-change | 0.48 | 1 | 0.197 ms | 1.6-1.7 ms | 1.5 ms |
+| C - **shipped** | 0.60 | 3 | 0.197 ms | 2.0-3.8 ms | 1.8-3.5 ms |
+| D - stress | 1.00 | 3 | 0.262 ms | 4.9 ms | 4.7 ms |
+
+The GPU timer quantises to 0.0655 ms. A and C are **identical** — both exactly
+three quanta — and the stress cell at 2.8x the shipped reflection pixel count
+costs exactly one more. The shipped change is a fraction of that and is not
+resolvable by this instrument.
+
+Do not read the frame column across rows. The SAME configuration (C) measured
+2.0 ms in one launch and 3.8 ms in another; wall-clock varies about 2x between
+Electron launches regardless of what is being rendered, which is the same effect
+that made the first sweep rank the cheapest cell slowest. Only `gpuMs` is
+comparable across runs.
+
+What IS robust across every run is the ratio: `cpuMs` tracks `frameMs` almost
+exactly in all of them (1.5/1.6, 3.5/3.8, 4.7/4.9), while GPU sits at
+0.20-0.26 ms. **The CPU accounts for ~95% of frame time and the GPU is busy
+roughly 5-12% of it.** Fill-rate is not the constraint here and was not the
+constraint when the mirror was added. Anyone chasing performance should profile
+the per-frame JS in the runtime update and the character state machine, not the
+shaders. The tier gates added for the refraction and the fog noise are prudence
+for weaker GPUs, not a fix for a measured problem on this one.
+## 3d. Adversarial review of the correction pass (2026-07-28)
+
+Four independent review lenses (TSL correctness, GPU cost, test contracts, the
+metric harness itself) over the changed modules, each finding then put to a
+separate agent prompted to REFUTE it. 10 of 38 survived. Every one below was then
+verified by hand before being acted on — the agents were right about all of them,
+but two of the three "high" perf items were design observations rather than
+defects, and one proposed reproduction was simply mis-placed.
+
+**The fog was completely dead.** `distanceFactor` read
+
+    float(1).sub(pow(float(Math.E), integrated.negate().abs())).clamp()
+
+`.negate().abs()` is `abs(-x)` = `+|x|`, so the negation the exponential needed was
+cancelled by the `abs` that followed it. `integrated` is provably non-negative, so
+this evaluated to `1 - e^(+x) <= 0` and the trailing `clamp(0,1)` floored it to
+exactly **zero**. Height fog, the valley mist that multiplies it, and the moonward
+inscatter contributed nothing on any fragment at any tier. This is the same family
+as the reversed-`smoothstep` trap: an expression that reads correctly, compiles
+clean, and silently evaluates to zero.
+
+Switching it on immediately exposed a second problem: `FOG_DENSITY = 0.030` had been
+authored **blind** and put 42% fog on the near bank at 40 units, burying the whole
+value ladder in a uniform veil. Calibrated against the scene's real depth range to
+0.008 — 13% near bank, 35% mid-forest, 50% first ridge, 71% furthest. The fog hue
+was then pushed to a more saturated version of the same colour, because live fog
+pulled measured chroma from 0.44 to 0.31, one nudge off the floor: aerial perspective
+should cost value and shift hue, not neutralise colour.
+
+Worth recording: **the metric gates passed the over-fogged frame.** `flatFraction`
+even *improved*, to 0.9935 — because everything had been flattened into mush. The
+harness cannot tell "beautifully simplified" from "washed out". Only the screenshot
+caught it.
+
+| # | Finding | Verification | Fix |
+|---|---|---|---|
+| 1 | Height fog identically zero | Traced the sign by hand; `integrated >= 0` proven from both branches of the ray-Y division | Operand order corrected to `.abs().negate()`, density recalibrated, fog hue re-saturated |
+| 2 | `BOULDER_COUNT` 16 vs 15 layout entries | Counted programmatically; `detailScale` is exactly 1 on High/Ultra/Extreme, so the draw asked for 16 matrices from a 15-matrix buffer | `BOULDER_COUNT` now DERIVED as `BOULDER_LAYOUT.length` — the two can no longer drift |
+| 3 | Flood-fill queue one slot short | Reproduced the exact pattern in isolation: `Int32Array(count)` with `queue[tail += 1]` writes 1..count, and index `count` is silently DISCARDED by a typed array. Bites when one cluster holds every bright pixel — i.e. the single-focal-note ideal the metric exists to reward | `count + 1`; same `+1` applied to `largestFlatRegion` |
+| 4 | Board-aperture test inspects zero objects | Measured: 12 meshes, 3 non-instanced, **0** surviving both filters. The test could never fail | Rewritten — see below |
+| 5 | Troll contact shadow pinned at the pre-move anchor | Disc was a world-space distance from a hardcoded (18.2, -19.2); new waypoints start at x 22.2, so it sat ~4u from a 3u falloff — detached at every beat | Falloff moved to disc-LOCAL coordinates and the mesh now tracks him each frame |
+| 6 | Refraction ran on all six tiers | Confirmed ungated; the three lean tiers have no reflector *precisely because* their GPUs cannot afford one | Gated to `qualityProfile.bloom === true` |
+| 7 | Fog's 2-octave fractal ran per fragment on every fogged material at every tier | Confirmed ungated, and it became a real cost the moment the fog started working | Lean tiers keep the mist SHAPE and lose only its internal turbulence |
+| 8 | Procedural hero trunks resurrect on any quality change | The GLB loader trims `heroWood.count` to 2 so the authored trunks do not z-fight the procedural ones, but `applyQualityProfile` reassigns that count unconditionally — so changing graphics quality after load put the duplicates straight back | Count clamps to 2 while `authoredHeroReady`. Measured side effect: removing the doubled trunks lifted saturation p50 from 0.32 to 0.47, which also retired the concern about sitting on the chroma floor |
+
+Not addressed: the authored hero trunks are not on the reflection layer, so they
+do not appear in the lake. They are cropped framing elements at the frame edges,
+largely outside the water, and adding them is a composition decision rather than
+a defect fix — left for a deliberate pass.
+
+### The composition guard was ceremonial in both directions
+
+The board-aperture test skipped `isInstancedMesh` and then dropped anything wider
+than 60u. Every discrete prop in this forest is instanced and every remaining mesh
+is a spanning surface, so it inspected nothing. The runtime's `focalIntrusions`
+diagnostic is little better: a world-space `|x|` check over three hardcoded magic
+numbers plus the mushroom cluster x's.
+
+It also asked the wrong question. The scene is a backdrop and the board is a
+translucent overlay in front of it, so props legitimately appear behind the play
+field — **105 instances project inside the rect**, nearly all distant reeds and
+lilies down the channel. What would damage the product is a prop near and large
+enough to CROWD the board.
+
+A flat apparent-size threshold cannot express that: a legitimate treetop on the
+horizon subtends 0.064 of frame width and a boulder dropped in the middle of the
+lake subtends 0.068. What separates them is DEPTH. Measured worst case inside the
+rect, by distance band at Extreme:
+
+| distance | worst apparent radius | what it is |
+|---|---|---|
+| 0-60 | 0.028 | lilies |
+| 60-90 | 0.023 | lilies |
+| 90-140 | 0.043 | shore roots |
+| 140+ | 0.064 | far forest |
+
+The gate is now `0.02 + distance * 0.0003`, roughly 35% above each band, evaluated
+per INSTANCE from the real instance matrices. Verified in both directions: it
+passes the clean scene and **fails** on a boulder planted mid-lake
+(`r=0.062 > 0.038`). The first attempt to prove it could fail used a boulder that
+projected off the bottom of the frame at screenY 1.68 — a reminder that a test
+which has never been seen to fail has not been tested.
 
 ## 3b. Character locomotion (2026-07-28)
 

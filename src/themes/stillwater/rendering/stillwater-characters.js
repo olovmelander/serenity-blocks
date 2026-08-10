@@ -16,6 +16,7 @@ import {
     modelViewMatrix,
     normalWorld,
     normalize,
+    positionLocal,
     positionWorld,
     pow,
     sin,
@@ -559,7 +560,13 @@ export function createStillwaterCharacters({
     let contactDisc = null;
     if (mode !== 'spirit' && !leanTier) {
         const contactMaterial = ownMaterial(new THREE.MeshBasicNodeMaterial());
-        const contactRadius = positionWorld.xz.sub(vec3(18.2, 0, -19.2).xz).length();
+        // Disc-LOCAL radius, so the falloff travels with the mesh. It used to be
+        // a world-space distance from the hardcoded point (18.2, -19.2) — roughly
+        // under his old `water` beat — so once the waypoints moved outboard the
+        // shadow sat about four units from a three-unit falloff: fully detached
+        // at every beat, and silently wrong before that whenever he walked.
+        // Non-instanced geometry, so positionLocal is safe here.
+        const contactRadius = positionLocal.xy.length();
         contactMaterial.colorNode = vec3(0.004, 0.012, 0.009);
         contactMaterial.opacityNode = float(0.32)
             .mul(float(1).sub(clamp(contactRadius.div(3.0), 0, 1)));
@@ -573,7 +580,7 @@ export function createStillwaterCharacters({
         contactDisc.rotation.x = -Math.PI / 2;
         // The disc sits nearer the waterline than the troll, where the bank has
         // barely lifted off the surface.
-        contactDisc.position.set(18.2, 0.06, -19.2);
+        contactDisc.position.set(trollGroup.position.x, 0.06, trollGroup.position.z);
         contactDisc.scale.set(1.2, 0.54, 1);
         characterGroup.add(contactDisc);
     }
@@ -838,6 +845,12 @@ export function createStillwaterCharacters({
         // Z now comes from the 2D path rather than a fixed line.
         trollGroup.position.z = (Number.isFinite(state.troll.z) ? state.troll.z : -19.2)
             + state.troll.turn * 0.10;
+        // The contact shadow tracks him on the ground plane; its own height is
+        // fixed at the waterline, so it must not inherit his gesture bob.
+        if (contactDisc) {
+            contactDisc.position.x = trollGroup.position.x;
+            contactDisc.position.z = trollGroup.position.z;
+        }
         trollGroup.rotation.x = state.troll.bow * 0.12 - state.troll.lookUp * 0.085;
         // Facing: while walking he faces where he is going; when he stops, he
         // turns toward her. Blending on stride rather than switching avoids the

@@ -49,7 +49,6 @@ import {
     createSunRaysTSL,
     createCloudsTSL,
     createTreesTSL,
-    createTreeLineTSL,
     createReedsTSL,
     createGreatTreeTSL,
     createFallingLeavesTSL,
@@ -57,7 +56,6 @@ import {
     createPollenTSL,
     createBirdsTSL,
     createSunDiscTSL,
-    createSpruceTreesTSL,
     createForegroundPassByTSL,
     createSnowMotesTSL,
     createButterflyMaterialTSL,
@@ -1036,22 +1034,13 @@ export function createSurfaceWorldEnvironment() {
     group.add(trees);
     group.userData.trees = trees;
 
-    // Spruce stands — the second species (creative plan item 5): mixed stands with the
-    // deciduous rounds so the forest reads as forest, never uniform stamping.
-    const spruces = createSpruces(uniforms, 12);
-    spruces.name = 'spruce-trees';
-    spruces.position.y = terrainOffsetY;
-    group.add(spruces);
-    group.userData.spruces = spruces;
+    // Remake plan action #1 (tree declutter + compile cut): the procedural spruce stands and the
+    // mid-distance procedural tree-line are CUT. Both were redundant with the shared GLB snow-
+    // conifer belt below — which is the real, well-modelled Ch3↔Ch4 tree-line — so removing them
+    // drops two vocabularies of visual clutter AND two first-visit pipeline compiles. The deciduous
+    // rounds + Great Tree carry the near/mid forest; the conifer belt carries the flank silhouette.
 
-    // Mid-distance tree LINE (2nd instanced pass) — layers the hill silhouette in depth.
-    const treeLine = createTreeLine(uniforms, 30);
-    treeLine.name = 'tree-line';
-    treeLine.position.y = terrainOffsetY;
-    group.add(treeLine);
-    group.userData.treeLine = treeLine;
-
-    const reeds = createReeds(uniforms, 220);
+    const reeds = createReeds(uniforms, 130);
     reeds.name = 'reeds';
     reeds.position.y = terrainOffsetY;
     group.add(reeds);
@@ -1174,7 +1163,7 @@ export function createSurfaceWorldEnvironment() {
     const quaterniusNatureLayer = createQuaterniusNatureLayer(group, terrainOffsetY);
     group.add(quaterniusNatureLayer);
     group.userData.quaterniusNatureLayer = quaterniusNatureLayer;
-    group.userData.quaterniusProceduralFallbacks = [trees, spruces, treeLine, greatTree, birds];
+    group.userData.quaterniusProceduralFallbacks = [trees, greatTree, birds];
 
     // Golden-hour raking key (Batch B5): a LOW warm directional sun raking from the left
     // gilds the hills with long shadows, balanced by a cool sky-fill ambient that keeps the
@@ -1217,8 +1206,6 @@ export function createSurfaceWorldEnvironment() {
         butterflies,
         meadowFlowers,
         trees,
-        spruces,
-        treeLine,
         reeds,
         coniferBelt,
         bridgeConiferBelt,
@@ -1234,8 +1221,9 @@ export function createSurfaceWorldEnvironment() {
     group.userData.waterSurfaceY = surfaceWorldY;
     group.userData.snowBlendUniformTargets = [
         ...collectUniformTargetsFromRoots(
-            // trees + spruces whiten toward the seam so the deciduous→conifer→snow belt blends.
-            [landscape, foothillBridge, distantMountains, trees, spruces],
+            // Deciduous trees whiten toward the seam so the deciduous→conifer→snow belt blends
+            // (the procedural spruces that also carried uSnowBlend were cut — belt handles it now).
+            [landscape, foothillBridge, distantMountains, trees],
             'uSnowBlend',
         ),
         // The conifer belts whiten with the same season/altitude snow blend.
@@ -1399,12 +1387,6 @@ function createTrees(uniforms, count) {
     return tagUniforms(mesh, builderUniforms); // uSnowBlend → whitens toward the seam
 }
 
-// WebGPU/TSL: mid-distance tree LINE (2nd instanced pass). Returns the InstancedMesh.
-function createTreeLine(uniforms, count) {
-    const { mesh } = createTreeLineTSL(uniforms.uTime, count);
-    return mesh;
-}
-
 function createReeds(uniforms, count) {
     const { mesh } = createReedsTSL(uniforms.uTime, count);
     return mesh;
@@ -1452,12 +1434,6 @@ function createBirds(count) {
     group.userData.cc0Candidate = CH3_BIRD_SILHOUETTE_SETTINGS.cc0Candidate;
     group.userData.animatedCc0Candidate = CH3_BIRD_SILHOUETTE_SETTINGS.animatedCc0Candidate;
     return group;
-}
-
-// Spruce stands — second species, evergreen (no autumn recolor).
-function createSpruces(uniforms, count) {
-    const { mesh, uniforms: builderUniforms } = createSpruceTreesTSL(uniforms.uTime, count);
-    return tagUniforms(mesh, builderUniforms); // uSnowBlend → spruces whiten toward the seam
 }
 
 // Foreground pass-by silhouettes; uOpacity tagged for the surface fade collectors.

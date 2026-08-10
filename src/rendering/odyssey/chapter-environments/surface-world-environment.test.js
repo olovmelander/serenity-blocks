@@ -54,7 +54,7 @@ function colorChannels(hex) {
 }
 
 describe('Surface World chapter environment (creative plan ch3)', () => {
-    it('mounts the ocean, foreground pass-by layer, spruce stands, and snow motes', () => {
+    it('mounts the ocean, foreground pass-by layer, conifer tree-line, and snow motes', () => {
         stubCanvasDocument();
 
         const group = createSurfaceWorldEnvironment();
@@ -63,7 +63,11 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         // Cabin removed from Ch3 (no human-structure cue) — the meadow/lake/great-tree carry it.
         expect(group.userData.cabin).toBeUndefined();
         expect(group.userData.foregroundLayer?.name).toBe('foreground-pass-by');
-        expect(group.userData.spruces?.name).toBe('spruce-trees');
+        // Remake plan action #1: the redundant procedural spruce + tree-line stands are cut; the
+        // shared GLB snow-conifer belt is now the ONE tree-line (Ch3↔Ch4 continuous), so we assert
+        // the surviving belt instead of the removed procedural spruces.
+        expect(group.userData.coniferBelt?.name).toBe('snow-conifer-belt');
+        expect(group.userData.spruces).toBeUndefined();
         expect(group.userData.snowMotes?.name).toBe('snow-motes');
         expect(group.userData.quaterniusNatureLayer?.name)
             .toBe('quaternius-cc0-nature-assets');
