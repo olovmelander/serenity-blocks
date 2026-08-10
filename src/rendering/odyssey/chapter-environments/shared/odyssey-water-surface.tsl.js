@@ -1,0 +1,208 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// ONE Odyssey water surface — the membrane the camera rises THROUGH at the Ch2→Ch3 breach.
+//
+// The whole "coming up through the water" complaint is that the underside (Ch2 deep-ocean
+// ceiling) and the topside (Ch3 sea/river/lake) were UNRELATED materials — an additive cyan
+// caustic sheet vs a normal-blended warm-gold fresnel water — so breaching hard-popped the look.
+//
+// This builder makes the SAME surface show its caustic-teal underside from below and its
+// golden-hour top from above, selected per-pixel by `facing` (does the eye look up at it or down
+// on it). One NormalBlending pass serves both sides: the caustic "additive glow" is folded into
+// the colour (`color.add(...)`) exactly as the golden sun-glitter already composites, so there is
+// no second blend mode and no material swap across the membrane.
+//
+// Both `createWaterSurfaceTSL` (Ch2) and `createOceanSurfaceTSL`/`createGoldenLakeTSL` (Ch3) call
+// this so the palette, normal, displacement and light are literally the same graph on both sides.
+// Governing plan: docs/ODYSSEY_JOURNEY_COMPOSITION_REWORK_PLAN_2026-08.md §2 (Fix A).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import * as THREE from 'three/webgpu';
+import {
+    cameraPosition,
+    clamp,
+    cos,
+    dot,
+    float,
+    length,
+    mix,
+    normalize,
+    oneMinus,
+    positionLocal,
+    positionWorld,
+    pow,
+    screenUV,
+    sin,
+    smoothstep,
+    sqrt,
+    uniform,
+    uv,
+    varying,
+    vec2,
+    vec3,
+} from 'three/tsl';
+import { snoise3 } from './odyssey-tsl-noise.js';
+
+// The ONE sun the whole underwater→surface stretch shares — byte-identical to surface-world's
+// SURFACE_SUN_DIR so the god-rays the diver rises toward and the sea/lake glitter agree.
+export const ODYSSEY_WATER_SUN_DIR = new THREE.Vector3(-0.48, 0.18, -0.86).normalize();
+
+// The ONE water palette — byte-identical to Ch2's uDeepColor/uSurfaceColor + caustic crest and to
+// CH3_WATER_READABILITY_SETTINGS.deepColor/shallowColor/crestColor, so the declared water-continuity
+// contract finally reaches the pixels on BOTH sides of the membrane.
+export const ODYSSEY_WATER_PALETTE = Object.freeze({
+    deepColor: 0x062a55,
+    surfaceColor: 0x0a9bb8,
+    caustic: Object.freeze([0.55, 0.95, 1.0]),
+});
+
+// Gerstner wave (byte-identical to the deep-ocean ceiling's) — the swell silhouette below the
+// breach; eased toward a calm sheet above by uWaveScale so the surface SHAPE morphs continuously.
+function gerstnerWave(dir, steep, wlen, p, t) {
+    const k = float(6.28318).div(wlen);
+    const c = sqrt(float(9.8).div(k));
+    const d = normalize(dir);
+    const f = k.mul(dot(d, p.xz).sub(c.mul(t)));
+    const a = float(steep).div(k);
+    return vec3(d.x.mul(a).mul(cos(f)), a.mul(sin(f)), d.y.mul(a).mul(cos(f)));
+}
+
+/**
+ * The unified Odyssey water material.
+ * @param {*} uTime shared time uniform
+ * @param {object} opts
+ * @param {*} [opts.uDepth]     Ch2 ascent 0..1 — ignites the caustic underside on approach.
+ * @param {*} [opts.uSeason]    Ch3 winter cool 0..1.
+ * @param {*} [opts.uOpacity]   ecotone crossfade opacity.
+ * @param {*} [opts.uWaveScale] 1 = full Ch2 swell; ~0.06 = calm Ch3 above-water ripple.
+ * @param {THREE.Vector3} [opts.sunDir] shared sun.
+ * @param {boolean} [opts.useRadialEdge] dissolve the plane at its rim (pooled lake) vs fill (sea/river).
+ * @param {number}  [opts.baseAlpha] surface opacity ceiling (Ch2 ceiling used 0.8; Ch3 fills at 1.0).
+ * @param {*} [opts.reflection] optional reflector() node for the hero lake mirror.
+ * @returns {{ material: THREE.MeshBasicNodeMaterial, uniforms: object }}
+ */
+export function buildOdysseyWaterSurface(uTime, {
+    uDepth = uniform(1),
+    uSeason = uniform(0),
+    uOpacity = uniform(1),
+    uWaveScale = uniform(1),
+    sunDir = ODYSSEY_WATER_SUN_DIR,
+    useRadialEdge = false,
+    baseAlpha = 1.0,
+    reflection = null,
+} = {}) {
+    const sun = vec3(sunDir.x, sunDir.y, sunDir.z);
+    const wpos = positionWorld;
+    const eyeDir = normalize(cameraPosition.sub(wpos));
+    const camDist = length(cameraPosition.sub(wpos));
+    const rt = uTime.mul(0.35);
+    const gt = uTime.mul(0.5);
+
+    // ── ONE displacement: Gerstner swell + value-noise detail, amplitude scaled by uWaveScale so
+    // the surface silhouette eases from the full Ch2 swell to a calm Ch3 sheet across the breach. ──
+    const posL = positionLocal;
+    const wave = gerstnerWave(vec2(1.0, 0.3), 0.2, 25.0, posL, gt)
+        .add(gerstnerWave(vec2(0.7, 0.7), 0.15, 18.0, posL, gt.mul(1.1)));
+    const detail = snoise3(vec3(posL.x.mul(0.08), posL.z.mul(0.08), gt.mul(0.3))).mul(2.0);
+    const elevation = wave.y.add(detail);
+    const vElev = varying(elevation);
+
+    // ── ONE analytic surface normal (small drifting ripple tilt), always ~+Y. Feeds BOTH the
+    // facing test and the topside fresnel — NOT Gerstner-derived, so wave folds never sparkle. ──
+    const ripA = sin(wpos.x.mul(0.11).add(rt)).add(sin(wpos.z.mul(0.09).sub(rt.mul(0.8))));
+    const ripB = sin(wpos.x.mul(0.045).add(wpos.z.mul(0.038)).add(rt.mul(0.6)));
+    const nrm = normalize(vec3(
+        ripA.mul(0.035).add(ripB.mul(0.02)),
+        1.0,
+        ripB.mul(0.035).sub(ripA.mul(0.02)),
+    ));
+
+    // facing: 0 = seen from BELOW (caustic teal underside) → 1 = seen from ABOVE (golden top).
+    // Driven by the eye's HEIGHT above the (horizontal) water plane, NOT the grazing dot(eyeDir,nrm)
+    // — the dot conflates "looking along the surface toward the horizon" (grazing, from above) with
+    // "the camera is under the water", which bled the dark caustic underside into the far field. The
+    // height test is exact for a horizontal water plane and blends per-wave-crest right at the breach.
+    const eyeHeight = cameraPosition.y.sub(wpos.y);
+    const facing = smoothstep(-1.5, 1.5, eyeHeight);
+
+    // ── BELOW look: the caustic ceiling, folded additive-IN-COLOUR (color.add) so ONE
+    // NormalBlending pass serves both sides — no separate AdditiveBlending material. ──
+    const uSurfaceColor = uniform(new THREE.Color(ODYSSEY_WATER_PALETTE.surfaceColor));
+    const uDeepColor = uniform(new THREE.Color(ODYSSEY_WATER_PALETTE.deepColor));
+    const caustic = ODYSSEY_WATER_PALETTE.caustic;
+    const causticsUV = wpos.xz.mul(0.15);
+    const cc1 = snoise3(vec3(causticsUV.x, causticsUV.y, uTime.mul(0.2)));
+    const cc2 = snoise3(vec3(causticsUV.x.mul(1.4), causticsUV.y.mul(1.4), uTime.mul(-0.15)));
+    // CLAMP the base to [0,1] BEFORE pow: cc1+cc2 can be negative (down to ~−0.5), and WGSL
+    // pow(negative, 4.0) is undefined → NaN. The old additive Ch2 ceiling hid the NaN (0 over the
+    // black abyss), but a NormalBlending mix propagates it to the pixel as black speckle blobs.
+    const caustics = pow(clamp(cc1.add(cc2).mul(0.5).add(0.5), 0.0, 1.0), float(4.0));
+    const approach = smoothstep(0.5, 0.95, uDepth);
+    const ceilingLight = mix(float(0.45), float(1.0), approach);
+    // Clamp the elevation mix factor to [0,1]: at Gerstner folds vElev spikes very negative and an
+    // unclamped mix() extrapolates below black (the old additive "oil-slick" breach blob).
+    let belowColor = mix(uDeepColor, uSurfaceColor, clamp(vElev.mul(0.1).add(0.5), 0.0, 1.0)).mul(ceilingLight);
+    belowColor = belowColor.add(vec3(caustic[0], caustic[1], caustic[2]).mul(caustics).mul(approach.mul(0.85).add(0.05)));
+
+    // ── ABOVE look: golden-hour reduced-fresnel reflectance (rf0≈0.09 → coloured body head-on,
+    // reflective only at the grazing rim) toward a warm-gold reflected sky. ──
+    const theta = clamp(dot(eyeDir, nrm), 0.0, 1.0);
+    const rf0 = float(0.09);
+    const reflectance = rf0.add(oneMinus(rf0).mul(pow(oneMinus(theta), float(5.0))));
+    const depthFactor = smoothstep(20.0, 240.0, camDist);
+    const winterT = smoothstep(0.7, 0.95, uSeason);
+    const bodyCol = mix(vec3(0.035, 0.13, 0.16), vec3(0.06, 0.22, 0.26), depthFactor); // rich cool teal
+    let skyRefl = mix(vec3(0.62, 0.42, 0.28), vec3(0.90, 0.68, 0.42), depthFactor); // amber → warm gold
+    skyRefl = mix(skyRefl, vec3(0.60, 0.72, 0.86), winterT.mul(0.7));
+    const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
+        .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
+    skyRefl = skyRefl.mul(mix(float(0.9), float(1.08), bands));
+    const vUv = uv();
+    let aboveColor;
+    if (reflection) {
+        // REAL planar mirror (hero lake): fold the actual treeline + sky at the grazing rim.
+        const reflUV = screenUV.flipX().add(vec2(nrm.x, nrm.z).mul(0.04));
+        aboveColor = mix(bodyCol, reflection.sample(reflUV).rgb, reflectance);
+    } else {
+        // Broad sea/river: pure warm reflective body — NO faked tree-silhouette reflections. The
+        // foliage is stripped (Fix C), so reflected treeline would be inconsistent, and up close it
+        // read as dirty dark blobs. Wave crests + light bands + glitter carry the surface variation.
+        aboveColor = mix(bodyCol, skyRefl, reflectance);
+    }
+    // Golden SUN-GLITTER (camera-relative half-vector spec) — the golden-hour signature; an
+    // above-water phenomenon (rides inside aboveColor, so `facing` fades it out below the surface).
+    const halfV = normalize(sun.add(eyeDir));
+    const specDot = clamp(dot(nrm, halfV), 0.0, 1.0);
+    const shimmer = sin(wpos.z.mul(7.0).add(uTime.mul(2.0))).mul(0.5).add(0.5)
+        .mul(sin(wpos.x.mul(3.2).add(uTime.mul(1.4))).mul(0.5).add(0.5));
+    const glitter = pow(specDot, float(90.0)).mul(2.4).add(pow(specDot, float(14.0)).mul(0.28));
+    const sunPath = glitter.mul(shimmer.mul(0.5).add(0.7));
+    aboveColor = aboveColor.add(vec3(1.0, 0.72, 0.34).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
+
+    // ── The membrane: one surface, view-dependent. ──
+    const color = mix(belowColor, aboveColor, facing);
+
+    // Radial shore alpha (pooled lake) or fill to the scaled edge (sea/river/ceiling).
+    const distFromCenter = length(vUv.sub(0.5)).mul(2.0);
+    const edgeAlpha = useRadialEdge
+        ? oneMinus(smoothstep(0.82, 1.0, distFromCenter))
+        : float(1.0);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = edgeAlpha.mul(float(baseAlpha)).mul(uOpacity);
+    // ONE displacement, eased by uWaveScale (Gerstner swell below → calm ripple above).
+    material.positionNode = vec3(
+        posL.x.add(wave.x.mul(uWaveScale)),
+        posL.y.add(elevation.mul(uWaveScale)),
+        posL.z.add(wave.z.mul(uWaveScale)),
+    );
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.toneMapped = false;
+    // The caustic underside is bloom-eligible (Ch2 parity). `facing` keeps the golden top's colour
+    // in a normal range so it does not over-bloom; verified in the playground.
+    material.userData.emitsBloom = true;
+    material.uniforms = { uOpacity };
+    return { material, uniforms: { uOpacity, uDepth, uSeason, uWaveScale } };
+}
