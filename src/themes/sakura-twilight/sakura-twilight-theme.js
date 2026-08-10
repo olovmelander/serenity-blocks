@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { BaseTheme } from '../base-theme.js';
-import modelUrl from './assets/landscape-glb.glb?url';
+import modelUrl from '../shared/assets/landscape-glb.glb?url';
 import foxModelUrl from './assets/Fox.glb?url';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';

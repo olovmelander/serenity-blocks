@@ -40,12 +40,12 @@ import {
     vec3,
 } from 'three/tsl';
 
-import birchUrl from '../../summer/assets/summer_birch_lod.glb?url';
-import firUrl from '../../winter/assets/fir_lod.glb?url';
-// The hero canopy is lifted from the sakura-twilight landscape GLB — the same
+import birchUrl from '../../shared/assets/summer_birch_lod.glb?url';
+import firUrl from '../../shared/assets/fir_lod.glb?url';
+// The hero canopy is lifted from the shared landscape GLB — the same
 // leaf-card tree the art direction is chasing. Vite emits one shared asset for
-// both themes, so this adds no bytes beyond what sakura already ships.
-import sakuraLandscapeUrl from '../../sakura-twilight/assets/landscape-glb.glb?url';
+// every theme using it, so this adds no bytes beyond what sakura already ships.
+import sakuraLandscapeUrl from '../../shared/assets/landscape-glb.glb?url';
 
 const TAU = Math.PI * 2;
 const MOON_DIRECTION = [-0.36, 0.82, -0.44];
