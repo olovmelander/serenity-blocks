@@ -373,6 +373,79 @@ function sheetBackScatter(rot) {
  * span the full travel volume so the dolly never sees an empty pale gap. The radial
  * feather (createCloudSheetTSL) is also tightened so each sheet covers fewer pixels.
  */
+// CONSOLIDATION (remake plan): ONE shared cloud material for all 6 strata sheets. The identical
+// FBM/feather/lit graph reads every per-sheet variation (tint, lit, back-scatter, scale, drift,
+// coverage) from constant per-mesh geometry attributes instead of baked-in JS constants, so the 6
+// co-visible sheets compile a SINGLE pipeline instead of 6. All values are preserved exactly, so
+// the strata are byte-identical to the per-sheet build (createCloudSheetTSL, kept for the A/B).
+function createSharedCloudMaterialTSL(uTime, uDusk) {
+    const duskT = smoothstep(0.14, 0.52, uDusk);
+    const aTint = attribute('aTint', 'vec3');
+    const aLit = attribute('aLit', 'vec3');
+    // Pack (scale, drift, coverage, back-scatter) into ONE vec4: 3 built-in vertex buffers
+    // (position/normal/uv) + 3 custom (aTint/aLit/aParams) stays under WebGPU's 8-buffer limit
+    // (6 separate custom float attributes overflowed it → 9 buffers).
+    const aParams = attribute('aParams', 'vec4');
+    const aScale = aParams.x;
+    const aDrift = aParams.y;
+    const aCoverage = aParams.z;
+    const aBackScatter = aParams.w;
+    const uTint = mix(aTint, vec3(0.12, 0.16, 0.28), duskT.mul(0.9));
+    const uLit = mix(aLit, vec3(0.36, 0.46, 0.64), duskT.mul(0.82));
+
+    const vUv = uv();
+    const p = vUv.mul(aScale);
+    const t = uTime.mul(aDrift);
+    const base = fbm2(p.add(vec2(t, t.mul(0.4))), 3);
+    const detail = fbm2(p.mul(2.1).sub(vec2(t.mul(0.7), 0.0)), 3);
+    const field = base.mul(0.65).add(detail.mul(0.45));
+    const lo = max(float(0.05), float(0.92).sub(aCoverage));
+    const density = smoothstep(lo, lo.add(0.34), field);
+    const centered = vUv.sub(0.5);
+    const edge = smoothstep(0.30, 0.0, length(centered));
+    const rim = smoothstep(0.15, 0.5, density).mul(smoothstep(0.95, 0.55, density));
+    const litCore = smoothstep(0.35, 0.85, vUv.y).mul(density);
+    const lit = clamp(
+        litCore.mul(0.38).add(rim.mul(0.46)).add(aBackScatter.mul(density).mul(0.24)),
+        0.0,
+        1.0,
+    );
+    const color = mix(uTint, uLit, lit);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = density.mul(edge).mul(mix(float(0.08), float(0.16), duskT));
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    return material;
+}
+
+function bakeCloudSheetAttributes(geometry, {
+    tintHex, litHex, backScatter, scale, drift, coverage,
+}) {
+    const n = geometry.attributes.position.count;
+    const tint = new THREE.Color(tintHex);
+    const litC = new THREE.Color(litHex);
+    const bs = THREE.MathUtils.clamp(backScatter, 0, 1);
+    const cov = THREE.MathUtils.clamp(coverage, 0, 1);
+    const aTint = new Float32Array(n * 3);
+    const aLit = new Float32Array(n * 3);
+    const aParams = new Float32Array(n * 4); // (scale, drift, coverage, back-scatter)
+    for (let i = 0; i < n; i += 1) {
+        aTint[i * 3] = tint.r; aTint[i * 3 + 1] = tint.g; aTint[i * 3 + 2] = tint.b;
+        aLit[i * 3] = litC.r; aLit[i * 3 + 1] = litC.g; aLit[i * 3 + 2] = litC.b;
+        aParams[i * 4] = scale;
+        aParams[i * 4 + 1] = drift;
+        aParams[i * 4 + 2] = cov;
+        aParams[i * 4 + 3] = bs;
+    }
+    geometry.setAttribute('aTint', new THREE.BufferAttribute(aTint, 3));
+    geometry.setAttribute('aLit', new THREE.BufferAttribute(aLit, 3));
+    geometry.setAttribute('aParams', new THREE.BufferAttribute(aParams, 4));
+}
+
 export function createCloudStrataTSL(uTime, options = {}) {
     const group = new THREE.Group();
     group.name = 'cloud-strata';
@@ -388,24 +461,27 @@ export function createCloudStrataTSL(uTime, options = {}) {
         [-126, 74, -700, -0.92, -0.12, 0.16, 0.98, 0xe0d6ee, 0xfff4e2, 0.4, 1.8],
         [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcfccf1, 0xffead2, 0.44, 2.1],
     ];
+    const uDusk = options.uDusk ?? uniform(0);
+    const material = createSharedCloudMaterialTSL(uTime, uDusk);
     const parts = [];
     strata.forEach((cfg, i) => {
         const rot = [cfg[3], cfg[4], cfg[5]];
-        const sheet = createCloudSheetTSL(uTime, {
+        const geometry = new THREE.PlaneGeometry(620, 360, 1, 1);
+        bakeCloudSheetAttributes(geometry, {
             tintHex: cfg[7],
             litHex: cfg[8],
-            coverage: cfg[9],
+            backScatter: sheetBackScatter(rot),
             scale: cfg[10],
             drift: 0.009 + i * 0.0012,
-            backScatter: sheetBackScatter(rot),
-            dusk: options.uDusk ?? null,
+            coverage: cfg[9],
         });
-        sheet.mesh.position.set(cfg[0], cfg[1], cfg[2]);
-        sheet.mesh.rotation.set(rot[0], rot[1], rot[2]);
-        sheet.mesh.scale.setScalar(cfg[6]);
-        sheet.mesh.renderOrder = -55 + i; // behind heroes, in front of dome
-        group.add(sheet.mesh);
-        parts.push(sheet);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(cfg[0], cfg[1], cfg[2]);
+        mesh.rotation.set(rot[0], rot[1], rot[2]);
+        mesh.scale.setScalar(cfg[6]);
+        mesh.renderOrder = -55 + i; // behind heroes, in front of dome
+        group.add(mesh);
+        parts.push({ mesh, material, geometry });
     });
     return { group, parts };
 }
