@@ -38,23 +38,29 @@ function makeCamera() {
 
 describe('Koi Pond camera director', () => {
     it('critically damps pointer intent into the bounded authored pose', () => {
-        const camera = makeCamera();
-        const director = createKoiPondCameraDirector({ camera });
-        director.apply();
-        director.setPointer(1, 1);
+        // The ambient breath/wander drift is a deliberate world-space offset
+        // keyed to the absolute clock, so two directors stepped over identical
+        // times carry identical drift — differencing them isolates exactly the
+        // damped pointer contribution.
+        const settle = (pointerX, pointerY) => {
+            const camera = makeCamera();
+            const director = createKoiPondCameraDirector({ camera });
+            director.apply();
+            director.setPointer(pointerX, pointerY);
+            for (let frame = 0; frame < 120; frame += 1) {
+                director.update(frame / 60, 1 / 60);
+            }
+            return camera.position;
+        };
+        const rest = settle(0, 0);
+        const swung = settle(1, 1);
 
-        for (let frame = 0; frame < 120; frame += 1) {
-            director.update(frame / 60, 1 / 60);
-        }
-
-        expect(camera.position.x).toBeCloseTo(
-            KOI_POND_LAYOUT.camera.position.x
-                + KOI_POND_LAYOUT.camera.parallax.position.x,
+        expect(swung.x - rest.x).toBeCloseTo(
+            KOI_POND_LAYOUT.camera.parallax.position.x,
             2,
         );
-        expect(camera.position.y).toBeCloseTo(
-            KOI_POND_LAYOUT.camera.position.y
-                + KOI_POND_LAYOUT.camera.parallax.position.y,
+        expect(swung.y - rest.y).toBeCloseTo(
+            KOI_POND_LAYOUT.camera.parallax.position.y,
             2,
         );
     });

@@ -45,8 +45,11 @@
     "src/core/steam/steam-networking.js",
     "src/events/event-bus.js",
     "src/events/gameplay-events.js",
+    "src/events/lock-origin.js",
     "src/events/multiplayer-events.js",
     "src/rendering/odyssey/chapter-environments/registry.js",
+    "src/themes/shared/bloom-dispose.js",
+    "src/themes/shared/composer-dispose.js",
     "src/utils/gpu-loss-coordinator.js",
     "src/utils/viewport.js"
   ]
