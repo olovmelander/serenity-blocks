@@ -621,6 +621,10 @@ async function run() {
     win.destroy();
 }
 
+// Force the discrete GPU (RTX 5080) like electron/main.js:46 — this capture script is its own
+// Electron main, so it must set the switch itself. Without it a heavy 2-chapter seam capture can
+// fall back to the iGPU and TDR-bluescreen the machine.
+app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
