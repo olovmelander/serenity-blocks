@@ -497,17 +497,20 @@ export function createCloudStrataTSL(uTime, options = {}) {
  * @param {number} stripeFreq stripe count along width (varies per shaft for variety)
  * @param {number} phase animation phase offset
  */
-export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 0, options = {}) {
-    const uDusk = options.uDusk ?? uniform(0);
+// CONSOLIDATION (remake plan): shared god-ray fan material. Per-fan stripe freq + phase move from
+// baked build params to a per-mesh aFanParams (vec2) attribute, so a fan splay compiles ONE
+// pipeline instead of one-per-fan. Values preserved exactly → byte-identical shafts.
+function createGodRayFanMaterial(uTime, uDusk) {
     const vUv = uv();
     const centered = vUv.sub(0.5);
-
+    const aFanParams = attribute('aFanParams', 'vec2'); // (stripeFreq, phase)
     // Tight radial mask → a contained shaft, feathered to 0 before the quad edge.
-    // Tightened (0.46→0.40, x-feather 0.7→0.62) so an OBLIQUE view can never reveal a
-    // straight plane edge (the frames 09/10/13 billboard seams from the capture).
     const radial = smoothstep(0.40, 0.0, length(centered.mul(vec2(0.62, 1.0))));
     // Animated bright stripes raking along the shaft (the volumetric god-ray look).
-    const stripes = pow(max(0.0, sin(vUv.x.mul(stripeFreq).add(uTime.mul(0.2)).add(phase))), 3.0).mul(0.22);
+    const stripes = pow(
+        max(0.0, sin(vUv.x.mul(aFanParams.x).add(uTime.mul(0.2)).add(aFanParams.y))),
+        3.0,
+    ).mul(0.22);
     // Warm sun colour fading toward the far (top) end of the shaft.
     const color = mix(vec3(1.0, 0.85, 0.6), vec3(0.85, 0.66, 0.42), vUv.y);
     // Length falloff: brightest near the sun (shaft base), fading toward the viewer.
@@ -524,8 +527,20 @@ export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
+    return material;
+}
 
+export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 0, options = {}) {
+    const uDusk = options.uDusk ?? uniform(0);
+    const material = options.material ?? createGodRayFanMaterial(uTime, uDusk);
     const geometry = new THREE.PlaneGeometry(150, 460, 1, 1);
+    const n = geometry.attributes.position.count;
+    const params = new Float32Array(n * 2);
+    for (let i = 0; i < n; i += 1) {
+        params[i * 2] = stripeFreq;
+        params[i * 2 + 1] = phase;
+    }
+    geometry.setAttribute('aFanParams', new THREE.BufferAttribute(params, 2));
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'sky-drift-god-ray-fan';
     return { mesh, material, geometry };
@@ -557,8 +572,11 @@ export function createCloudBreakShaftTSL(uTime = uniform(0), options = {}) {
         },
     ];
     const parts = [];
+    // ONE shared material across the 3 fans (per-fan freq/phase ride the aFanParams attribute).
+    const uDusk = options.uDusk ?? uniform(0);
+    const material = createGodRayFanMaterial(uTime, uDusk);
     fans.forEach((cfg) => {
-        const fan = createGodRayFanTSL(uTime, cfg.freq, cfg.phase, options);
+        const fan = createGodRayFanTSL(uTime, cfg.freq, cfg.phase, { ...options, material });
         fan.mesh.position.set(...cfg.pos);
         fan.mesh.rotation.set(...cfg.rot);
         fan.mesh.scale.setScalar(cfg.s);
