@@ -270,10 +270,23 @@ export class LevelNodeManager {
         const end = chapterPositions[1] ?? 0.093;
         const span = Math.max(end - start, 1e-4);
         const local = THREE.MathUtils.clamp((this.cameraProgress - start) / span, 0, 1);
-        return Math.max(
+        const rawQuench = Math.max(
             THREE.MathUtils.smoothstep(local, CHAPTER_1_NODE_QUENCH_START, CHAPTER_1_NODE_QUENCH_END),
             THREE.MathUtils.smoothstep(this.cameraProgress, 0.078, 0.083),
         );
+        // The quench retires chapter-1 orbs the camera has CLIMBED PAST (so the molten chapter's
+        // nodes don't linger as you ascend). But it was driven purely by GLOBAL progress, so it
+        // also shrank orbs still AHEAD of the camera — levels 4 & 5 (pathPos 0.056/0.074) collapsed
+        // to CHAPTER_1_NODE_MIN_SCALE (0) as you dollied toward them, and the isVisible gate then
+        // culled them entirely (the user's "orbs after level 3 shrink to super small on approach").
+        // Gate the quench behind a per-node "passed" factor so an orb only starts to quench once
+        // the camera has actually gone beyond its own pathPosition; approaching orbs stay full size.
+        const passed = THREE.MathUtils.smoothstep(
+            this.cameraProgress,
+            node.pathPosition,
+            node.pathPosition + 0.006,
+        );
+        return rawQuench * passed;
     }
 
     _createSharedLockTextures() {
@@ -490,6 +503,15 @@ export class LevelNodeManager {
         this.lockInstancedMesh = new THREE.InstancedMesh(lockGeo, lockMat, count);
         this.lockInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.lockInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
+        // Disable whole-mesh frustum culling: this InstancedMesh is repositioned in world space
+        // every frame (only the ~proximity window gets real matrices; the rest stay scale-0), but
+        // three.js computes its bounding sphere LAZILY from the matrices present at first render —
+        // which are confined to the path start — and caches it forever. Once the camera climbs
+        // past the start, that stale start-region sphere leaves the frustum and the ENTIRE lock
+        // mesh is culled, so every later orb's lock vanished. Per-instance scale-0 already hides
+        // off-window locks, so this only stops the bogus whole-mesh cull. (Matches particleSystem +
+        // innerCoreMesh, which are repositioned the same way and already set frustumCulled=false.)
+        this.lockInstancedMesh.frustumCulled = false;
         this.scene.add(this.lockInstancedMesh);
 
         // 4. Star Instanced Mesh (Plane Mesh) - 3 stars per level
@@ -508,6 +530,10 @@ export class LevelNodeManager {
         this.starInstancedMesh = new THREE.InstancedMesh(starGeo, starMat, count * 3);
         this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.starInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
+        // Same stale-cached-bounding-sphere fix as the lock mesh above: without this the whole star
+        // InstancedMesh gets frustum-culled once the camera leaves the path-start region, so every
+        // later orb's star rating disappeared. Per-instance scale-0 still hides off-window stars.
+        this.starInstancedMesh.frustumCulled = false;
         this.scene.add(this.starInstancedMesh);
 
         // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
