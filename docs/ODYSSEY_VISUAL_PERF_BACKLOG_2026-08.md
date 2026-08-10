@@ -4,6 +4,18 @@
 RTX 5080, one continuous journey. Tags: [PERF] frame-cost, [VISUAL] look, [SEAM] continuity. Capture
 any chapter/seam on the dGPU via `scripts/odyssey-chapter-capture.mjs --chapter N` / `--seam N-M`.*
 
+## Shipped (2026-08-10)
+
+- ✅ **#1 Ch4 night-transition retime** — MOUNTAIN_TRANSITION_START/END → 0.72/0.98; climax resurrected (capture-verified).
+- ✅ **#2 Ch1 molten consolidation** — hoisted shared column/pocket materials; 2 dup cold compiles removed.
+- ✅ **#3 Ch7+Ch8 FogExp2 washout** — blanket `material.fog=false` at the end of both .js builders (heroes at z≈−600..−780 were ~100% fogged → violet blob). Ch8 neon + Ch7 hero capture-verified.
+- ✅ **#4 Ch7+Ch8 uOpacity threading** — every node material now `.mul(uOpacity)` + `material.uniforms={uOpacity}` (manager reads material.uniforms; .js runtime only takes {mesh} so it must be set in the .tsl builder). Kills the seam hard-pops.
+- ✅ **Ch7 ambient-wash retune** (fog-removal follow-up) — the camera-enveloping fresnel wash was the dominant over-bright halo; CH7_AMBIENT_WASH_SETTINGS dialed back. *Open:* the accretion halo ring still reads hot in dead-center captures → art-direction call, deferred to in-game (board-centered) judgment.
+- ✅ **Wave-0 E+F** — central delta-clamp in ChapterEnvironmentManager.update() ([0,1/30], covers Ch1-8); `getActiveOdysseyChapterPositions()` returns a frozen shared ref (was per-call clone, ~5×/frame Ch3).
+- ✅ **Ch3 foothill-bridge hard edges** (from in-game caps, not in the original Top 10) — Chebyshev rim-fade on all 4 bridge edges; the "water→grass with hard squared edges" now reads as one continuous lake→meadow→mountains.
+
+**Deferred (need art-direction / focused pass):** #8 Ch3 key light is really a per-act azimuth reconciliation with Ch4 (3→4 shadow flip) — needs the user. #5 Ch2 FrontSide is winding-dependent + marginal (and Ch2 deliberately keeps fog=true on creatures — do NOT blanket-kill fog there).
+
 ## Top 10 (ranked by impact ÷ effort)
 
 1. **[VISUAL] Ch4: retime the night transition** — `MOUNTAIN_TRANSITION_START/END` 0.08/0.28 →
