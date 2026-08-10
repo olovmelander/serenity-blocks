@@ -191,8 +191,16 @@ export function createCanonicalMountainRangeTSL({
         includesFarRange: includeFarRange,
     };
 
+    // CONSOLIDATION (remake plan #4): peaks that share a treatment (all MAIN hero peaks; both
+    // FAR_RANGE peaks) have a byte-identical material graph — so build the material ONCE per
+    // treatment and reuse it across their meshes. Ch3's 3 canonical peaks collapse 3 pipelines → 1;
+    // Ch4's far range collapses 2 → 1. Per-peak silhouette is all geometry + world position, so the
+    // shared material still renders each peak distinctly. Keyed by the treatment object identity
+    // (each treatment pairs 1:1 with a base + isHero in getCanonicalMountainRangeWorldSpecs).
+    const materialByTreatment = new Map();
     const parts = getCanonicalMountainRangeWorldSpecs({ includeForeground, includeFarRange })
         .map((spec) => {
+            const sharedMaterial = materialByTreatment.get(spec.treatment) ?? null;
             const mountain = createFBMMountainTSL({
                 size: spec.size,
                 height: spec.height,
@@ -203,7 +211,9 @@ export function createCanonicalMountainRangeTSL({
                 transition,
                 summitGlow,
                 isHero: spec.isHero,
+                material: sharedMaterial,
             });
+            if (!sharedMaterial) materialByTreatment.set(spec.treatment, mountain.material);
             mountain.mesh.name = spec.id;
             mountain.mesh.userData.canonicalMountainSpec = {
                 id: spec.id,
