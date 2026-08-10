@@ -52,7 +52,11 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         expect(group.userData.lenticular?.name).toBe('lenticular-landmark');
         expect(group.userData.noctilucent?.name).toBe('noctilucent-veil');
         expect(group.userData.iceCrystals?.name).toBe('sky-drift-ice-crystals');
-        expect(group.userData.darkWisps?.name).toBe('sky-drift-dark-wisps');
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): the near-black DARK WISPS are removed (a
+        // night motif), and Ch5 now mounts the shared CLOUD-SEA DECK (landscape lever L1) so the
+        // sunlit sea persists below across the 4→5 handoff instead of the floor vanishing.
+        expect(group.userData.darkWisps).toBeUndefined();
+        expect(group.userData.cloudSea).toBeTruthy();
     });
 
     it('stays bright daylight (dusk script removed) while keeping the summit ring visible until passed', () => {
