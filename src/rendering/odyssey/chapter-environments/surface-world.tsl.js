@@ -329,7 +329,11 @@ export function getTerrainHeight(x, z) {
     // the lane FLOOR stays low (fills with the river/lake — the water leading line) and the ground
     // RISES into rolling grass hills on BOTH flanks, close to the path, so real hills read right
     // beside the camera instead of a flat pale sheet. ──
-    const valleyRise = smoothstepCPU(10, 132, laneDist) * 26; // lane floor → +26 grass shoulders
+    // BROAD water floor (user: "come up in the middle of the grass"): the grass hills used to rise
+    // just ~10u from the lane, so the camera surfaced in a narrow water slot with grass crowding it.
+    // Widened the flat valley floor to ~±46 so you emerge into OPEN water and the hills frame it
+    // from the shores instead of pressing in — the water reads as a broad connected river/valley.
+    const valleyRise = smoothstepCPU(46, 178, laneDist) * 22; // broad water floor → grass set back
     // Gentle down-valley grade: the breach/foreground (+z) opens lower; the ground climbs toward
     // the mountains (−z) so the valley feeds the far ridgeline / foothill hand-off.
     const grade = smoothstepCPU(150, -260, z) * 12;
@@ -338,8 +342,8 @@ export function getTerrainHeight(x, z) {
     // Rolling grass hills — a MID octave the journey camera actually reads (λ≈105-125) + a broad
     // swell + a cross-roll for non-repeating shoulders + a calmed fine ripple + a broad valley
     // swell. Flank-biased (amplitude grows with distance from the lane) so the shoulders swell
-    // higher than the valley floor — the path threads a green trough between hills.
-    const flankGain = 0.45 + smoothstepCPU(14, 150, laneDist) * 0.8;
+    // higher than the valley floor — the path threads a broad water valley framed by hills.
+    const flankGain = 0.4 + smoothstepCPU(50, 182, laneDist) * 0.8;
     let hills = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 6; // MID octave — the camera reads THIS
     hills += Math.cos(x * 0.045 + z * 0.04) * 4; // mid cross-roll → non-repeating shoulders
     hills += Math.sin(x * 0.018) * Math.cos(z * 0.021) * 6; // broad rolling swell

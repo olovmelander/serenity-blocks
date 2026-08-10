@@ -149,12 +149,18 @@ export function buildOdysseyWaterSurface(uTime, {
     // reflective only at the grazing rim) toward a warm-gold reflected sky. ──
     const theta = clamp(dot(eyeDir, nrm), 0.0, 1.0);
     const rf0 = float(0.09);
-    const reflectance = rf0.add(oneMinus(rf0).mul(pow(oneMinus(theta), float(5.0))));
+    // CAP the reflectance so the coloured body ALWAYS shows through — even at the grazing gameplay
+    // angle. An uncapped reduced-fresnel drove the surface to the pale sky reflection at grazing, so
+    // in-game (after ACES) the water washed to near-white and read as flat "ponds", not water.
+    const reflectance = rf0.add(float(0.55).sub(rf0).mul(pow(oneMinus(theta), float(5.0))));
     const depthFactor = smoothstep(20.0, 240.0, camDist);
     const winterT = smoothstep(0.7, 0.95, uSeason);
-    const bodyCol = mix(vec3(0.035, 0.13, 0.16), vec3(0.06, 0.22, 0.26), depthFactor); // rich cool teal
-    let skyRefl = mix(vec3(0.62, 0.42, 0.28), vec3(0.90, 0.68, 0.42), depthFactor); // amber → warm gold
-    skyRefl = mix(skyRefl, vec3(0.60, 0.72, 0.86), winterT.mul(0.7));
+    // Richer teal-blue body so the surface reads as WATER head-on AND at grazing (deepened +
+    // saturated vs the old pale teal). Overshoot for the in-game ACES/exposure wash.
+    const bodyCol = mix(vec3(0.02, 0.16, 0.24), vec3(0.03, 0.24, 0.34), depthFactor);
+    // Warm-gold reflected sky, peak pulled down so it doesn't blow to white under the in-game grade.
+    let skyRefl = mix(vec3(0.50, 0.38, 0.26), vec3(0.78, 0.60, 0.36), depthFactor); // amber → warm gold
+    skyRefl = mix(skyRefl, vec3(0.55, 0.68, 0.82), winterT.mul(0.7));
     const bands = sin(wpos.z.mul(0.16).add(uTime.mul(0.4))).mul(0.5).add(0.5)
         .mul(sin(wpos.x.mul(0.09).sub(uTime.mul(0.25))).mul(0.5).add(0.5));
     skyRefl = skyRefl.mul(mix(float(0.9), float(1.08), bands));
@@ -176,7 +182,7 @@ export function buildOdysseyWaterSurface(uTime, {
     const specDot = clamp(dot(nrm, halfV), 0.0, 1.0);
     const shimmer = sin(wpos.z.mul(7.0).add(uTime.mul(2.0))).mul(0.5).add(0.5)
         .mul(sin(wpos.x.mul(3.2).add(uTime.mul(1.4))).mul(0.5).add(0.5));
-    const glitter = pow(specDot, float(90.0)).mul(2.4).add(pow(specDot, float(14.0)).mul(0.28));
+    const glitter = pow(specDot, float(90.0)).mul(1.4).add(pow(specDot, float(14.0)).mul(0.22));
     const sunPath = glitter.mul(shimmer.mul(0.5).add(0.7));
     aboveColor = aboveColor.add(vec3(1.0, 0.72, 0.34).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
 
