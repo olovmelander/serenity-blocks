@@ -861,7 +861,10 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // border), so the whole valley — lake, hills, and the ground the camera stands on — stays FULLY
     // solid; only the outermost lip melts. (The earlier "ground missing" bug was fading the near/mid
     // ground; this fades only the far rim, which the eye reads as terrain receding into the range.)
-    const rimDist = max(abs(vPosition.x), abs(vPosition.z));
+    // Use positionLocal (the plane's own [-200,200] coords), NOT positionWorld — the chapter group
+    // is offset along the spline, so worldX/worldZ don't line up with the plane edges (the first cut
+    // used positionWorld and the edge stayed hard). max(|localX|,|localZ|) is the true rim distance.
+    const rimDist = max(abs(positionLocal.x), abs(positionLocal.z));
     const farMelt = oneMinus(smoothstep(178.0, 206.0, rimDist.add(edgeNoise)));
     material.opacityNode = uOpacity.mul(landAlpha).mul(farMelt);
     material.transparent = true;
