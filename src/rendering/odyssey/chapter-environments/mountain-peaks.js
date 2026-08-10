@@ -114,14 +114,14 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     },
 };
 
-// RETIMED to the EXIT band (was 0.08/0.28). uTransition drives the chapter to NIGHT, and the
-// summit-ignite / sun disc / ray fan / alpenglow are all gated by oneMinus(uTransition) — so with
-// night reached by 28% the entire back 72% of the chapter (including the summit-glow climax that
-// rises at progress 0.62→0.9) rendered as dead dark night with NO warm hero elements. Pushing the
-// night to the exit band keeps the graded dusk sky + lit peaks for most of the ascent, lets the
-// summit blaze through the climax, then falls to night at the 4→5 hand-off.
-const MOUNTAIN_TRANSITION_START = 0.72;
-const MOUNTAIN_TRANSITION_END = 0.98;
+// PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): the day→NIGHT beat is DROPPED. The "one bright
+// ascent" reads as one afternoon where you simply climb higher, and Ch5 is now a sunlit cloud-sea
+// (not a night sky), so falling to night at the 4→5 hand-off contradicts the whole arc. Pushing
+// START/END past 1.0 pins uTransition ≈ 0 for the entire chapter → the dome stays bright daylight
+// and the summit-ignite / sun disc / ray fan / alpenglow (all gated by oneMinus(uTransition)) fire
+// fully, so the summit crests into MORE light as the bright climax. (Was 0.72/0.98.)
+const MOUNTAIN_TRANSITION_START = 1.5;
+const MOUNTAIN_TRANSITION_END = 2.0;
 // SEAM 4->5: the Chapter 4 hero mountain chain is a locked world landmark and Chapter 5
 // inherits the exact same chain. Only auxiliary Ch4 summit props fade across the exit.
 const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 local progress for prop/atmosphere fade
@@ -361,12 +361,13 @@ export function createMountainPeaksEnvironment(options = {}) {
     // Chapter 5 opens starless — stars are Chapter 6's identity. The old 1000-star shell
     // was part of the washed lilac read and leaked "space" into the alpine act.)
 
-    // Lighting — lower, cooler ambient so shadowed faces stay deep blue (more contrast),
-    // and a brighter, crisper moon key so snow caps pop as bright silhouettes.
-    const ambient = new THREE.AmbientLight(0x2b3a52, 0.3);
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): bright DAYLIGHT rig (was cold ambient + a moon
+    // key). Neutral-cool bright ambient fills the snow luminously, and the former "moon" is now a
+    // warm-white SUN matching Ch3's key so the alpine climb reads as the same bright afternoon.
+    const ambient = new THREE.AmbientLight(0xbfd4e8, 0.6);
     group.add(ambient);
 
-    const moonLight = new THREE.DirectionalLight(0xcfe6ff, 0.72);
+    const moonLight = new THREE.DirectionalLight(0xfff4e0, 0.95); // warm-white daylight sun (was moon 0xcfe6ff)
     moonLight.position.set(50, 100, 50);
     group.add(moonLight);
 

@@ -223,17 +223,21 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.LIVING,
         palette: { primary: 0x88ccff, accent: 0xffd6c0, shadow: 0x1c2a3a },
         atmosphere: {
-            skyColor: 0x3a4f66,
-            fogColor: 0x7d93ad,
-            fogDensity: 0.005,
-            ambientLight: 0xbdc3c7,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): dark-slate/grey-blue dusk atmosphere →
+            // the shared BRIGHT DAYLIGHT anchor. skyColor daylight azure, fog → shared light-cyan
+            // haze (0xbcd8ec) at low density (was 0.005, a 3× spike that closed the world in at the
+            // mountains — now 0.0015, only marginally hazier than Ch3 for airy alpine aerial
+            // perspective). Ambient bright cool-white; sun colour warm-white (matches Ch3).
+            skyColor: 0x5aa8e0,
+            fogColor: 0xbcd8ec,
+            fogDensity: 0.0015,
+            ambientLight: 0xeaf2ff,
             ambientIntensity: 0.6,
             skyFeatures: ['heroSummit', 'aerialHaze', 'snowPlume'],
-            // Low raking sun (drives alpenglow at peak energy).
             lightDir: [0.7, 0.25, 0.4],
-            lightColor: 0xffe0c0,
+            lightColor: 0xfff4e0,
             lightIntensity: 1.05,
-            exposure: 1.05,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.CAIRN_RIDGE,
