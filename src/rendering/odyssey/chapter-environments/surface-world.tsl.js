@@ -997,10 +997,19 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
     // "ground feels missing" report). Far-only melt; the bridge the eye travels up stays opaque.
     const depth = vWorldPosition.z.negate();
     const seamFade = oneMinus(smoothstep(250.0, 650.0, depth.sub(terrainNoise.mul(80.0))));
+    // Dissolve the skirt's NEAR + SIDE lips into the atmosphere too (not just the far back edge):
+    // the seam captures showed the bridge ending on hard opaque GREEN card edges (its near front
+    // lip + its left/right sides) reading as sharp wedges over the golden haze at the Ch3→Ch4
+    // approach. Fading all four plane rims (Chebyshev-style on the bridge's local coords, a noisy
+    // ~80u lip) lets the ramp melt into the haze on every side; the mid stays fully solid so the
+    // ground the eye travels up is continuous. The far edge additionally keeps its range seamFade.
+    const edgeNoiseZ = bridgeNoise(vWorldPosition.xz.mul(0.03)).sub(0.5).mul(40.0);
+    const rimFadeZ = oneMinus(smoothstep(258.0, 336.0, abs(vLocalPosition.z).add(edgeNoiseZ)));
+    const rimFadeX = oneMinus(smoothstep(388.0, 456.0, abs(vLocalPosition.x).add(edgeNoiseZ)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = uOpacity.mul(seamFade);
+    material.opacityNode = uOpacity.mul(seamFade).mul(rimFadeZ).mul(rimFadeX);
     material.transparent = true;
     material.depthWrite = true;
     material.depthTest = true;
