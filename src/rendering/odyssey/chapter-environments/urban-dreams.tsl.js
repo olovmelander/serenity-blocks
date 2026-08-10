@@ -732,32 +732,38 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
         { height: 96, width: 96, y: -120 },
     ];
 
+    // CONSOLIDATION (remake plan #2): the 4 tiers alternate between just TWO conduit configs
+    // (even = cyan→magenta, odd = magenta→cyan) and TWO frame colours — so build 2 shared conduit
+    // materials + 2 shared frame materials and reuse them by parity. 8 pipelines → 4. All cores
+    // share the one uReveal so the spire still ignites as one; per-tier size is geometry only.
+    const conduitEven = createConduitMaterial(uTimeNode, uEnergyNode, {
+        colorA: CYAN, colorB: MAGENTA, uReveal,
+    });
+    const conduitOdd = createConduitMaterial(uTimeNode, uEnergyNode, {
+        colorA: MAGENTA, colorB: CYAN, uReveal,
+    });
+    const frameMaterial = (color) => new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+    const frameCyan = frameMaterial(CYAN);
+    const frameMagenta = frameMaterial(MAGENTA);
+    materials.push(conduitEven, conduitOdd, frameCyan, frameMagenta);
+
     tiers.forEach(({ height, width, y }, index) => {
-        // Energy-conduit core (converted) — reveal-driven glow.
+        // Energy-conduit core — reveal-driven glow (shared conduit material by parity).
         const coreGeo = new THREE.BoxGeometry(width, height, width * 0.55);
-        const coreMat = createConduitMaterial(uTimeNode, uEnergyNode, {
-            colorA: index % 2 === 0 ? CYAN : MAGENTA,
-            colorB: index % 2 === 0 ? MAGENTA : CYAN,
-            uReveal,
-        });
-        const core = new THREE.Mesh(coreGeo, coreMat);
+        const core = new THREE.Mesh(coreGeo, index % 2 === 0 ? conduitEven : conduitOdd);
         core.position.y = y;
         group.add(core);
         geometries.push(coreGeo);
-        materials.push(coreMat);
 
-        // Torus frame — MeshBasic, left as-is.
+        // Torus frame — MeshBasic, shared frame material by parity.
         const frameGeo = new THREE.TorusGeometry(width * 0.72, 0.8, 8, 72);
-        const frame = new THREE.Mesh(
-            frameGeo,
-            new THREE.MeshBasicMaterial({
-                color: index % 2 === 0 ? CYAN : MAGENTA,
-                transparent: true,
-                opacity: 0.42,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }),
-        );
+        const frame = new THREE.Mesh(frameGeo, index % 2 === 0 ? frameCyan : frameMagenta);
         frame.rotation.x = Math.PI * 0.5;
         frame.position.y = y + height * 0.42;
         group.add(frame);
