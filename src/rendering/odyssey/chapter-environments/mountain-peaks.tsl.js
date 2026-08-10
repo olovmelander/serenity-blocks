@@ -309,9 +309,28 @@ export function createFBMMountainTSL(config = {}) {
         // Whether this instance fires the on-screen sun alpenglow + summit ignite (hero
         // peaks). Foothills/aprons stay cool so the read isn't muddied.
         isHero = true,
+        // CONSOLIDATION (remake plan #4): a pre-built material to REUSE across peaks that share
+        // treatment/base/isHero — their node graph is byte-identical, and the per-peak silhouette
+        // comes entirely from geometry (aHeight) + world position, so one compiled pipeline serves
+        // them all. When null (every existing caller), the material + uniforms are built below,
+        // exactly as before. Backward-compatible.
+        material: providedMaterial = null,
     } = config;
 
     const geometry = buildMountainGeometry({ size, height, seed });
+
+    // Fast path: reuse the shared material (only build this peak's geometry + mesh). Its live
+    // uniforms are stashed on userData so the caller still gets them for its opacity/snow-blend
+    // collectors.
+    if (providedMaterial) {
+        const sharedUniforms = providedMaterial.userData?.odysseyMountainUniforms ?? null;
+        const sharedMesh = new THREE.Mesh(geometry, providedMaterial);
+        sharedMesh.position.copy(position);
+        if (isHero) sharedMesh.userData.emitsBloom = true;
+        return {
+            mesh: sharedMesh, material: providedMaterial, geometry, uniforms: sharedUniforms,
+        };
+    }
 
     // One canonical palette (snow / shadowed-snow / rock / shadow / fog / alpenglow / rim) —
     // driven by the instance's coolTemp via the shared resolver. The ice-blue shadowed-snow
@@ -419,17 +438,18 @@ export function createFBMMountainTSL(config = {}) {
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
+    // Stash the live uniforms so a shared-material reuse (remake plan #4, providedMaterial path
+    // above) can hand the same uniform set back to the caller's collectors.
+    const uniforms = {
+        uTransition, uOpacity, uSnowBlend, uSummitGlow,
+    };
+    material.userData.odysseyMountainUniforms = uniforms;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(position);
     if (isHero) mesh.userData.emitsBloom = true; // summit ignite gilds via threshold bloom
     return {
-        mesh,
-        material,
-        geometry,
-        uniforms: {
-            uTransition, uOpacity, uSnowBlend, uSummitGlow,
-        },
+        mesh, material, geometry, uniforms,
     };
 }
 

@@ -58,7 +58,6 @@ import {
     createSunDiscTSL,
     createForegroundPassByTSL,
     createSnowMotesTSL,
-    createButterflyMaterialTSL,
     CH3_BIRD_SILHOUETTE_SETTINGS,
     getTerrainHeight,
     foothillBridgeHeight,
@@ -1013,11 +1012,9 @@ export function createSurfaceWorldEnvironment() {
     clouds.name = 'clouds';
     group.add(clouds);
 
-    // Butterflies - only visible above water
-    const butterflies = createButterflies(20);
-    butterflies.name = 'butterflies';
-    group.add(butterflies);
-    group.userData.butterflies = butterflies;
+    // Butterflies CUT (remake plan #5 / declutter): 20 separate JS-animated meshes = 20 draws +
+    // a material for little on-screen value; the pollen + falling-leaves + birds carry the meadow's
+    // life. Removing them drops a material, 20 draws, and the per-frame animation loop below.
 
     // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
     // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
@@ -1148,8 +1145,9 @@ export function createSurfaceWorldEnvironment() {
     group.add(snowMotes);
     group.userData.snowMotes = snowMotes;
 
-    // 10. Warm-amber pollen motes drifting in the golden-hour light.
-    const pollen = createPollen(uniforms, 600);
+    // 10. Warm-amber pollen motes drifting in the golden-hour light. (Remake plan declutter:
+    // 600 -> 300 — still a soft golden shimmer, half the additive fill.)
+    const pollen = createPollen(uniforms, 300);
     pollen.name = 'pollen';
     group.add(pollen);
     group.userData.pollen = pollen;
@@ -1203,7 +1201,6 @@ export function createSurfaceWorldEnvironment() {
         sun,
         rays,
         clouds,
-        butterflies,
         meadowFlowers,
         trees,
         reeds,
@@ -1236,7 +1233,6 @@ export function createSurfaceWorldEnvironment() {
             sun,
             rays,
             clouds,
-            butterflies,
             foregroundLayer,
             snowMotes,
             pollen,
@@ -1509,25 +1505,6 @@ function createDistantMountains(uniforms, hostCenter = null) {
     return group;
 }
 
-function createButterflies(count) {
-    const group = new THREE.Group();
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    // Soft honey-amber wing material delegated to the .tsl.js builder (alongside pollen /
-    // leaves / snow-motes) — was a raw opaque pure-orange MeshBasicMaterial that read as
-    // hard garish squares. One shared material across all `count` meshes.
-    const material = createButterflyMaterialTSL();
-
-    for (let i = 0; i < count; i++) {
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.userData = {
-            speed: 0.5 + Math.random(),
-            offset: Math.random() * 100,
-        };
-        group.add(mesh);
-    }
-    return group;
-}
-
 // NOTE: the foothill valley mist is now built inside createDistantMountainsTSL (the
 // .tsl.js builder) — the live createMountainMist GLSL helper was removed in the WebGPU swap.
 
@@ -1757,18 +1734,6 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const sky = group.userData.skyElement;
     if (sky) {
         sky.visible = !isUnderwater;
-    }
-
-    const { butterflies } = group.userData;
-    if (butterflies && !isUnderwater) {
-        butterflies.children.forEach((b) => {
-            const t = time * b.userData.speed + b.userData.offset;
-            b.position.x = Math.sin(t * 0.5) * 30;
-            b.position.y = Math.cos(t * 0.3) * 10;
-            b.position.z = Math.sin(t * 0.2) * 5 - 20;
-            b.rotation.x = Math.sin(t * 10) * 0.5;
-            b.rotation.y = Math.atan2(Math.cos(t * 0.5), -Math.sin(t * 0.3));
-        });
     }
 
     // Drifting birds — wide lazy circles overhead with a swept-wing flap (banked into the
