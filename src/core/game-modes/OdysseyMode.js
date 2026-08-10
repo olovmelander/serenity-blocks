@@ -3079,6 +3079,10 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
+        // The board dies before the retry modal arrives over it. Not fired on the
+        // victory-lap path above, where a top-out is a completion, not a defeat.
+        this._getBoardScene?.()?.sharedEffects?.playGameOver?.();
+
         // Top-out fails the level. (E5: the former per-level `failureType` branch was dead — both
         // arms called failLevel('top-out') — so it collapses to this single call. Re-introduce a
         // real branch here if a level ever needs a non-failure top-out.)
@@ -3291,6 +3295,32 @@ export class OdysseyMode extends BaseGameMode {
      * Show board view (level selection)
      * @private
      */
+    /**
+     * Build the node-progress snapshot (furthest unlocked level + per-level completion/stars) from
+     * OdysseyStateManager. Extracted so the warm/parked board can RE-SYNC it on every return: the
+     * board is kept alive across a level entry+return (not rebuilt), and node lock/star state is
+     * snapshotted only at build time — so a level unlocked DURING the session (e.g. level 4 after
+     * finishing level 3) would otherwise stay locked on the stale board and its orb un-clickable
+     * (LevelNodeManager.raycast rejects locked nodes → no hover → no select → no Play).
+     * @returns {{furthestLevel:number, levelProgress:Object}}
+     */
+    _buildOdysseyProgressData() {
+        const levelProgress = {};
+        for (let i = 1; i <= this.levelRegistry.getTotalLevels(); i++) {
+            const completion = this.odysseyState.getLevelCompletion(i);
+            if (completion) {
+                levelProgress[i] = {
+                    completed: true,
+                    stars: completion.stars || 0,
+                };
+            }
+        }
+        return {
+            furthestLevel: Math.max(...Array.from(this.odysseyState.unlockedLevels)),
+            levelProgress,
+        };
+    }
+
     async _showBoardView(options = {}) {
         const {
             focusLevelId = this.selectedLevelId,
@@ -3314,6 +3344,13 @@ export class OdysseyMode extends BaseGameMode {
         this._perfMark(boardInitMark);
         await this._initializeOdysseyBoard();
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
+        // Re-sync node lock/star state from OdysseyStateManager on EVERY board show, not just the
+        // one-time build. The board is warm/parked across a level entry+return (_buildOdysseyBoard
+        // early-returns when boardController already exists), so without this a level unlocked
+        // mid-session — level 4 the moment you finish level 3 — stays locked on the stale board and
+        // its orb can't be clicked. updateProgress re-runs nodeManager.updateFromProgress so the
+        // freshly-unlocked orb becomes hoverable/clickable immediately.
+        this.boardController?.updateProgress?.(this._buildOdysseyProgressData());
         this.closeOdysseyNavigator({ restoreBoardPreview: true });
         this._restoreBoardOverlayAfterLaunchAttempt();
 
@@ -3466,23 +3503,8 @@ export class OdysseyMode extends BaseGameMode {
         const levelData = this.levelRegistry.getAllLevelPresentations();
         const presentationLayout = this.levelRegistry.getPresentationLayout();
 
-        // Get progress data
-        // Build level progress from OdysseyStateManager
-        const levelProgress = {};
-        for (let i = 1; i <= this.levelRegistry.getTotalLevels(); i++) {
-            const completion = this.odysseyState.getLevelCompletion(i);
-            if (completion) {
-                levelProgress[i] = {
-                    completed: true,
-                    stars: completion.stars || 0,
-                };
-            }
-        }
-
-        const progressData = {
-            furthestLevel: Math.max(...Array.from(this.odysseyState.unlockedLevels)),
-            levelProgress,
-        };
+        // Get progress data (shared with the warm-board re-sync in _showBoardView).
+        const progressData = this._buildOdysseyProgressData();
 
         // Initialize the board
         await this.boardController.initialize(levelData, progressData, presentationLayout);
