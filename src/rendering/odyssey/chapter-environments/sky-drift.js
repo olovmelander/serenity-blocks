@@ -36,10 +36,10 @@ import {
     createLenticularCloudTSL,
     createNoctilucentVeilTSL,
     createIceCrystalsTSL,
-    createDarkWispsTSL,
     SKY_DRIFT_SUN_DIR,
 } from './sky-drift.tsl.js';
 import { createCanonicalMountainRangeTSL } from './shared/canonical-mountain-range.js';
+import { createCloudSeaDeckTSL } from './mountain-peaks.tsl.js';
 
 /**
  * Sky Drift environment configuration
@@ -332,6 +332,22 @@ export function createSkyDriftEnvironment(options = {}) {
     group.userData.summitRing = summitRing;
     group.userData.summitRingOpacityUniforms = ringOpacityUniforms;
 
+    // CLOUD-SEA DECK (2026-08, Wave C — landscape lever L1): the sharpest 4→5 geometry break was
+    // that Ch4's cloud-sea deck (the silver sea its peaks rise from) is Ch4-only and FADES OUT at
+    // the seam, so Ch5 had NO floor — you drifted in empty sky instead of ABOVE the sea. Give Ch5
+    // the SAME deck, WORLD-LOCKED at the Ch4 deck's world-Y (≈312), so the sunlit cloud-sea persists
+    // and recedes below as the camera climbs (516→655) — the Europa "above the clouds" read and a
+    // literal ground handoff between the chapters.
+    const ch4Range = getChapterPathRange(4);
+    const cloudSeaWorldY = (ch4Range?.start?.y ?? 366) - 54; // matches mountain-peaks' cloud-sea deck
+    const cloudSea = createCloudSeaDeckTSL({
+        uTime: uniforms.uTime,
+        uTransition: uniform(0), // stay bright — no night cooling
+        y: cloudSeaWorldY - chapterCenterY, // local offset → world-locked at the shared sea altitude
+    });
+    group.add(cloudSea.mesh);
+    group.userData.cloudSea = cloudSea.mesh;
+
     // LENTICULAR LANDMARK (creative plan asset 5): the stationary lens-cloud stack
     // mid-right of the path around 45–55% — kills the dead stretch as a scale object.
     const lenticular = createLenticularCloudTSL(uniforms.uTime, { uDusk: uniforms.uDusk });
@@ -347,14 +363,12 @@ export function createSkyDriftEnvironment(options = {}) {
     group.add(noctilucent.mesh);
     group.userData.noctilucent = noctilucent.mesh;
 
-    // ICE SPINDRIFT (creative plan asset 6) + DARK FOREGROUND WISPS (asset 8): the
-    // near-field sparkle and the near-black value anchor the lavender wash never had.
+    // ICE SPINDRIFT (creative plan asset 6): near-field sparkle. The DARK FOREGROUND WISPS (asset 8,
+    // a near-black value anchor for the old lavender-dusk wash) are REMOVED — a night motif that
+    // would speckle black against the bright daylight sky.
     const iceCrystals = createIceCrystalsTSL(uniforms.uTime, 120, { uDusk: uniforms.uDusk });
     group.add(iceCrystals.mesh);
     group.userData.iceCrystals = iceCrystals.mesh;
-    const darkWisps = createDarkWispsTSL(uniforms.uTime, 16);
-    group.add(darkWisps.mesh);
-    group.userData.darkWisps = darkWisps.mesh;
 
     setupSkyLighting(group);
     // Anchor the whole environment to the path's FULL centre (x/y/z), not just Y,
