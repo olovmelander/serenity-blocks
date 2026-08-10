@@ -1055,12 +1055,16 @@ export function createMoltenPocketTSL(
     uBakedBounce = uniform(1),
     options = {},
 ) {
-    const { material } = createMoltenPocketMaterialTSL(
+    // CONSOLIDATION (remake plan, boot-reveal saver): reuse a shared isColumn=false material when
+    // provided. The moltenRockField graph (~21 snoise3 — the chapter's heaviest, first-compiled-on-
+    // reveal pipeline) is byte-identical across pockets; only the geometry `size` differs. Passing
+    // one shared material collapses N pocket compiles to 1. Backward-compatible (default builds one).
+    const material = options.material ?? createMoltenPocketMaterialTSL(
         uTime,
         uPulseIntensity,
         uBakedBounce,
         { ...options, isColumn: false },
-    );
+    ).material;
     const geometry = new THREE.IcosahedronGeometry(size, 2);
     const pos = geometry.attributes.position;
     for (let i = 0; i < pos.count; i += 1) {

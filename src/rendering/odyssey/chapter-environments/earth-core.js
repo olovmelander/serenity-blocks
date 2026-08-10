@@ -1776,6 +1776,17 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial =
     // ones whose local Y sits inside the chapter's framed corridor.
     const nodeTs = [0.0, 0.019, 0.037, 0.056, 0.074, 0.093];
     const pockets = [];
+    // ONE shared isColumn=false molten material across all 6 pockets (remake plan boot-reveal
+    // saver): the heaviest graph (moltenRockField) now compiles ONCE instead of 6× on the first
+    // reveal render. Pockets keep individual geometry + meshes (seam-sink test reads per-object
+    // position.y); only the material object is shared. uOpacity is threaded so the ecotone
+    // opacity bridge still reaches it (earth-core-environment.test.js).
+    const sharedPocketMaterial = createMoltenPocketMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        { isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+    ).material;
     nodeTs.forEach((t, i) => {
         const pt = getOdysseyPathPointAt(t);
         const local = new THREE.Vector3(
@@ -1789,7 +1800,7 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial =
             uniforms.uPulseIntensity,
             size,
             uniforms.uBakedBounce,
-            { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+            { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, material: sharedPocketMaterial },
         );
         // Seat the shelf as a LEDGE clearly to one side of and below the node. The side
         // offset (1.35×) exceeds the shelf radius, so the shelf never crosses the on-path
