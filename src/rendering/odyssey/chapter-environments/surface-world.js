@@ -1019,13 +1019,15 @@ export function createSurfaceWorldEnvironment() {
     // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
     // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
     // zoned (deliberate clumps + open negative space), not a scattered carpet.
-    const meadowFlowers = createWildflowers(uniforms, 1400);
+    // Declutter (user report "flowers look cluttery"): 1400 -> 800. Still clusters into the
+    // SURFACE_FLOWER_PATCHES drifts (intentional colour events), just sparser between them.
+    const meadowFlowers = createWildflowers(uniforms, 800);
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);
     group.userData.meadowFlowers = meadowFlowers;
 
-    const trees = createTrees(uniforms, 16);
+    const trees = createTrees(uniforms, 12); // declutter: 16 -> 12 deliberate deciduous rounds
     trees.name = 'trees';
     trees.position.y = terrainOffsetY;
     group.add(trees);
@@ -1066,7 +1068,7 @@ export function createSurfaceWorldEnvironment() {
         // not the foothill-bridge zone beyond it; cluster on the FAR meadow edge (the tree line
         // climbing toward the seam). The Ch4 side seeds its own conifers on its lower slopes.
         placementsBySpecies: buildConiferBeltPlacements({
-            count: 170,
+            count: 115, // declutter: 170 -> 115 (thinner, more deliberate tree-line)
             area: { x: 360, zMin: -188, zMax: -60 },
             heightBand: { base: 6, line: 26 },
             sampleHeight: (x, z) => getTerrainHeight(x, z),
