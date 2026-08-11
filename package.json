@@ -133,7 +133,7 @@
     "ez-steam-api": "0.57.1",
     "phaser": "^4.1.0",
     "steamworks.js": "0.4.0",
-    "three": "^0.181.2"
+    "three": "^0.185.1"
   },
   "overrides": {
     "koffi": "2.15.1"
