@@ -1,0 +1,245 @@
+/**
+ * ODYSSEY ACT II — THE WORLD HEIGHT FIELD.
+ *
+ * One continuous surface from the ocean floor to the summit, replacing the seven independent
+ * ground surfaces the shipped build spreads across chapters 2–5 (Ch3's meadow plate and
+ * foothill skirt; Ch4's snow disc, cloud deck and three apron planes; Ch5's inherited deck).
+ *
+ * See docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §3.1–§3.2. The structure follows the plan's
+ * macro/detail split:
+ *
+ *   MACRO  — analytic, smooth, closed-form in world position. Full float precision, evaluated
+ *            identically in JS and (when ported) in TSL. This is where the landmarks live.
+ *   RELIEF — multi-octave ridged noise, baked to a half-float texture. Local only (±150u),
+ *            because half-float epsilon at 1000u is ~0.5u and would terrace a gentle slope.
+ *
+ * THE LANDMARKS ARE TERMS IN THIS FUNCTION, NOT MESHES. That is the whole point: a massif that
+ * is a term in the ground cannot z-fight the ground, cannot be crossfaded out of step with it,
+ * cannot be seen through, and cannot pop. Every one of those is a bug this branch has shipped a
+ * fix for.
+ *
+ * The four canonical peaks keep their EXACT shipped world positions and crown heights, because
+ * the compositions they produce are ones the project has already validated in-game — notably
+ * the far-left flank and the Ch4 hero massif silhouette. Those numbers are pinned by tests.
+ */
+
+/** Sea level. Ch2's ceiling and Ch3's water surface are the same world plane in the shipped build. */
+export const ODYSSEY_SEA_LEVEL = 287.31;
+
+/** The datum the canonical peaks' feet sit on. */
+export const ODYSSEY_MASSIF_FOOT_Y = 297.5;
+
+/** How deep the open ocean floor sits below sea level, far from the landmass. */
+export const ODYSSEY_ABYSS_DEPTH = 207;
+
+/**
+ * The canonical peaks, transcribed from shared/canonical-mountain-range.js. `radius` is the
+ * shipped `size * MOUNTAIN_DISPLACEMENT.coneRadiusFrac` (0.45), i.e. the footprint the
+ * displaced cone actually reaches — not the plane it was drawn on.
+ */
+export const ODYSSEY_MASSIFS = Object.freeze([
+    Object.freeze({
+        id: 'hero', x: -182.7, z: -1059.3, radius: 603, height: 720, exponent: 1.7, footY: 297.5,
+    }),
+    Object.freeze({
+        id: 'left-main', x: -412.7, z: -979.3, radius: 414, height: 360, exponent: 1.6, footY: 297.5,
+    }),
+    Object.freeze({
+        id: 'right-main', x: 47.3, z: -1009.3, radius: 405, height: 340, exponent: 1.6, footY: 297.5,
+    }),
+    // NOTE the different datum: the shipped far-left flank sits 50u lower than the others.
+    Object.freeze({
+        id: 'far-left', x: -1892.7, z: -1639.3, radius: 675, height: 430, exponent: 1.55, footY: 247.5,
+    }),
+]);
+
+/**
+ * THE SHORE PROFILE.
+ *
+ * Not a radial blob — a profile along Z, solved against the altitudes the rail actually flies.
+ * The first attempt used a radial landmass centred on the massifs, which put the seabed at 246
+ * where the Chapter 2 rail dives to y=128: the camera flew through the ocean floor for the
+ * first 49 samples of Act II. The ocean has to be deep where the ocean is.
+ *
+ * The rail's own numbers are the specification:
+ *
+ *   z ≈ +8    Ch2 begins, rail y 128   → seabed must sit well below 128
+ *   z ≈ -26   the breach, rail y 287   → still open water
+ *   z ≈ -250  Ch3, rail y ~320         → the shoreline
+ *   z ≈ -420  Ch4 approach, rail y 380 → land
+ *   z ≈ -1059 the hero massif          → crown 1017.5
+ */
+const ABYSS_Y = 80; // ocean floor in the open sea
+const SHELF_RISE = 245; // how far the continental shelf climbs to the shore plateau
+const SHELF_FROM_Z = 60;
+const SHELF_TO_Z = -260;
+const INLAND_RISE = 60; // the land keeps climbing toward the peaks
+const INLAND_FROM_Z = -300;
+const INLAND_TO_Z = -900;
+const LAND_X = -220;
+const LAND_HALF_WIDTH = 2400;
+
+/** The Ch3 basin — an inland lake bowl, sited past the shoreline rather than in the surf. */
+const BASIN_X = -150;
+const BASIN_Z = -520;
+const BASIN_RX = 430;
+const BASIN_RZ = 330;
+const BASIN_DEPTH = 42;
+
+function smoothstep01(edge0, edge1, x) {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - (2 * t));
+}
+
+export const ODYSSEY_RELIEF_SCALE = 150;
+
+// ── noise ────────────────────────────────────────────────────────────────────────
+
+// Integer bit-mix, not sin(dot(..)) * 43758. The bake is a million samples and each one runs
+// eight noise calls over four hashes; a transcendental hash puts ~32 million sin() on the
+// startup critical path, which measured 3x slower end to end.
+function hash2(x, y) {
+    let h = ((x | 0) * 374761393) + ((y | 0) * 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function valueNoise(x, y) {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const fx = x - ix;
+    const fy = y - iy;
+    const ux = fx * fx * (3 - (2 * fx));
+    const uy = fy * fy * (3 - (2 * fy));
+    const a = hash2(ix, iy);
+    const b = hash2(ix + 1, iy);
+    const c = hash2(ix, iy + 1);
+    const d = hash2(ix + 1, iy + 1);
+    return (((a * (1 - ux)) + (b * ux)) * (1 - uy)) + ((((c * (1 - ux)) + (d * ux)) * uy));
+}
+
+/**
+ * Polynomial smooth-max. Peaks must JOIN, not stack: summing two overlapping cones builds a
+ * dome between them, and taking a hard max leaves a crease along the join. Both read as
+ * obviously synthetic. `k` is the blend width in world units.
+ */
+export function smoothMax(a, b, k) {
+    // The blend width scales with MAGNITUDE. A plain polynomial smooth-max adds k/4 even when
+    // both inputs are equal, so smoothMax(0, 0, 26) returns 6.5 — and folding that over four
+    // massifs silently lifted the entire world 26u, above sea level, leaving no ocean at all.
+    // Scaling k to zero as the inputs go to zero makes it degrade to an exact max.
+    const kEff = Math.min(k, Math.max(0, Math.max(a, b)));
+    if (kEff <= 1e-6) return Math.max(a, b);
+    const h = Math.max(0, Math.min(1, 0.5 + ((0.5 * (a - b)) / kEff)));
+    return (b + ((a - b) * h)) + (kEff * h * (1 - h));
+}
+
+/** A single massif's contribution, in world units above the foot datum. */
+export function massifTerm(massif, x, z) {
+    const d = Math.hypot(x - massif.x, z - massif.z);
+    const cone = Math.max(0, 1 - (d / massif.radius));
+    return (cone ** massif.exponent) * massif.height;
+}
+
+// ── the field ────────────────────────────────────────────────────────────────────
+
+/**
+ * MACRO form — analytic and smooth. Ocean floor, the landmass that carries the shore, the Ch3
+ * basin, and the four canonical peaks joined with a smooth max.
+ */
+export function odysseyWorldMacro(x, z) {
+    // Continental shelf climbing from the abyss to the shore plateau, then a gentler inland
+    // rise toward the peaks. Both taper laterally so the world returns to open ocean in x.
+    const shelfT = smoothstep01(SHELF_FROM_Z, SHELF_TO_Z, z);
+    const inlandT = smoothstep01(INLAND_FROM_Z, INLAND_TO_Z, z);
+    const lateralN = (x - LAND_X) / LAND_HALF_WIDTH;
+    const lateral = Math.max(0, 1 - (lateralN * lateralN));
+    const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral);
+
+    // The Ch3 basin, scooped out so the chapter-3 lake has somewhere to sit.
+    const bx = (x - BASIN_X) / BASIN_RX;
+    const bz = (z - BASIN_Z) / BASIN_RZ;
+    const basin = Math.exp(-((bx * bx) + (bz * bz))) * -BASIN_DEPTH;
+
+    const ground = land + basin;
+
+    // THE PEAKS RISE FROM THE GROUND, they do not replace it.
+    //
+    // The first version smooth-maxed the ground against an absolute `footY + cone`, which is
+    // wrong twice over: outside a footprint the cone is zero, so the expression collapses to a
+    // constant 297.5 and floors the whole planet above sea level; and it ignores that the
+    // shipped peaks do not share one datum.
+    //
+    // Each peak instead contributes a RISE above the local ground, carried on a pedestal that
+    // blends from the surrounding land to that peak's own shipped foot datum across the outer
+    // third of its footprint. Outside the footprint the contribution is exactly zero, so the
+    // ocean stays an ocean; at the centre the crown lands exactly on the shipped value.
+    let rise = 0;
+    for (let i = 0; i < ODYSSEY_MASSIFS.length; i += 1) {
+        const m = ODYSSEY_MASSIFS[i];
+        const d = Math.hypot(x - m.x, z - m.z);
+        const cone = Math.max(0, 1 - (d / m.radius));
+        if (cone <= 0) continue;
+        const t = Math.max(0, Math.min(1, cone / 0.35));
+        const pedestalBlend = t * t * (3 - (2 * t));
+        const pedestal = pedestalBlend * (m.footY - ground);
+        const peak = pedestal + ((cone ** m.exponent) * m.height);
+        rise = smoothMax(rise, peak, 26);
+    }
+
+    return ground + rise;
+}
+
+/** How much baked relief a point carries — ridges concentrate on the peaks. */
+export function odysseyWorldDetailWeight(x, z) {
+    let strongest = 0;
+    for (let i = 0; i < ODYSSEY_MASSIFS.length; i += 1) {
+        const m = ODYSSEY_MASSIFS[i];
+        const d = Math.hypot(x - m.x, z - m.z);
+        strongest = Math.max(strongest, Math.max(0, 1 - (d / (m.radius * 1.25))));
+    }
+    // The base weight is deliberately low. Relief is what gives the massif its character, but
+    // away from the peaks it is also the only thing that can push terrain up through the rail,
+    // and the rail's clearance margin is the one budget a height field must never overspend.
+    return 0.16 + (0.84 * strongest);
+}
+
+/** LOCAL RELIEF, baked to half-float. Frequency band is set by the bake resolution, not taste. */
+export function odysseyWorldRelief(x, z) {
+    // Domain warp so ridgelines meander instead of running radially off each cone.
+    const wf = 0.0009;
+    const wx = (valueNoise((x * wf) + 31.7, (z * wf) - 11.3) - 0.5) * 300;
+    const wz = (valueNoise((x * wf) - 7.1, (z * wf) + 53.9) - 0.5) * 300;
+    const px = x + wx;
+    const pz = z + wz;
+
+    let ridged = 0;
+    let amp = 1;
+    let freq = 0.0022;
+    let norm = 0;
+    for (let o = 0; o < 5; o += 1) {
+        const n = valueNoise((px * freq) + (o * 17.3), (pz * freq) - (o * 9.1));
+        ridged += amp * (1 - Math.abs((n * 2) - 1));
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.03;
+    }
+    ridged = (ridged / norm) ** 1.85;
+    const relief = (ridged - 0.30) * ODYSSEY_RELIEF_SCALE;
+    return Math.max(-ODYSSEY_RELIEF_SCALE, Math.min(ODYSSEY_RELIEF_SCALE, relief));
+}
+
+/**
+ * THE drawn surface. Everything that needs to know where the ground is calls this — the vertex
+ * shader (via macro + a sampled relief texture), prop seating, and camera grounding. One
+ * function, so a tree can never float and a shadow can never disagree with a silhouette.
+ */
+export function odysseyWorldHeight(x, z) {
+    return odysseyWorldMacro(x, z)
+        + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+}
+
+/** Depth of water at a point; negative means dry land. */
+export function odysseyWaterDepth(x, z) {
+    return ODYSSEY_SEA_LEVEL - odysseyWorldHeight(x, z);
+}
