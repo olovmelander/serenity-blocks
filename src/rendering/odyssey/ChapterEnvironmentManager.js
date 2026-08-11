@@ -126,6 +126,25 @@ const JOURNEY_END_BAND = 0.18;
 const SEAM_56_CARRY_HOLD_BAND = 0.4; // fraction of Space span the Ch5 env stays fully present
 const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the Ch5 env has faded out
 
+// 5→6 EARTH-AT-SUMMIT ignite: Chapter 6 owns the hero gas giant the player sees from the
+// mountain top, but the chapter used to be hard-zero until the boundary — by which point
+// the bright sky was already gone, so the "earth" could only ever appear against black.
+// Ignite ch6 across the last ~43% of Ch5 so its group is present (and its update() runs)
+// while the sky is still daylight. This ONLY grants presence: cosmic-expanse.js gates
+// every element except the gas giant behind its own post-boundary `spaceReveal`, so this
+// does NOT re-wash Space bright or pull stars/nebula/black hole into the Ch5 frame.
+// The ignite SATURATES before the boundary (unlike the generic `ramp` helper, which only
+// reaches 1 at the boundary) so the chapter is already fully weighted by the time the
+// earth's own reveal fades up — otherwise the two ramps compound and the earth would only
+// reach full opacity at the boundary, i.e. exactly when the sky starts going dark.
+const SEAM_56_EARTH_IGNITE_START = 0.45; // fraction of the Ch5 span before the boundary
+const SEAM_56_EARTH_IGNITE_END = 0.32; // ...and where it reaches full weight
+// Hold full presence just past the boundary until the normal ecotone crossfade has
+// caught up (it completes within ~6% of the Space span), so releasing the boost is a
+// no-op rather than a dip. Without a release the boost would pin ch6 visible through
+// chapters 7 and 8.
+const SEAM_56_EARTH_HOLD_BAND = 0.10; // fraction of the Space span
+
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
     return t * t * t * (t * (t * 6 - 15) + 10);
@@ -977,7 +996,33 @@ export class ChapterEnvironmentManager {
         };
 
         if (chapterId === 8) return ramp(SEAM_78_AFTERGLOW_BAND);
+        if (chapterId === 6) return this._earthIgniteBoost(progress);
         return 0;
+    }
+
+    /**
+     * 5→6 EARTH-AT-SUMMIT ignite (presence only — see SEAM_56_EARTH_IGNITE_START).
+     * @param {number} progress current path progress (0..1)
+     * @returns {number} 0..1 presence boost for chapter 6
+     */
+    _earthIgniteBoost(progress) {
+        const boundary = this.chapterPositions[5];
+        const skyStart = this.chapterPositions[4];
+        const nextBoundary = this.chapterPositions[6] ?? 1;
+        if (!Number.isFinite(boundary) || !Number.isFinite(skyStart) || boundary <= skyStart) {
+            return 0;
+        }
+
+        if (progress >= boundary) {
+            if (!Number.isFinite(nextBoundary) || nextBoundary <= boundary) return 0;
+            const holdEnd = boundary + (nextBoundary - boundary) * SEAM_56_EARTH_HOLD_BAND;
+            return progress <= holdEnd ? 1 : 0;
+        }
+
+        const skySpan = boundary - skyStart;
+        const igniteStart = boundary - skySpan * SEAM_56_EARTH_IGNITE_START;
+        const igniteEnd = boundary - skySpan * SEAM_56_EARTH_IGNITE_END;
+        return smoothstep01((progress - igniteStart) / Math.max(1e-5, igniteEnd - igniteStart));
     }
 
     /**
@@ -1192,7 +1237,17 @@ export class ChapterEnvironmentManager {
                 }
             }
             for (const [id, sub] of rangeHosts) {
-                if (sub) sub.visible = id === authorityId && authorityOpacity > 0;
+                if (sub) {
+                    const isAuthority = id === authorityId && authorityOpacity > 0;
+                    sub.visible = isAuthority;
+                    // Sticky verdict (2026-08): this pass runs on throttled updateVisibility
+                    // frames, but the chapter env update() loops run EVERY frame and
+                    // surface-world unconditionally re-showed its copy — so past the 3→4
+                    // authority flip both byte-identical coplanar chains co-drew (z-fight)
+                    // until Ch3's whole group hid ~0.419. Envs must honour this flag in
+                    // their own per-frame visible writes.
+                    sub.userData.rangeAuthority = isAuthority;
+                }
             }
         }
 

@@ -1,117 +1,220 @@
-# Odyssey Ch6 — earth-at-summit + space placement (handoff)
+# Odyssey Ch6 — earth-at-summit + space placement
 
-Status as of 2026-08-11. **Ch3 work is DONE and shipped** (see commits below). This document carries
-the *unstarted* half: the two Ch6 asks. Everything here was measured by replaying the real spline and
-camera math, not estimated — trust the numbers.
+**STATUS: SHIPPED 2026-08-11.** Both asks are implemented, unit-guarded, and verified with
+real WebGPU in-game captures. This document now records what was measured, what changed, and
+what was deliberately left alone. The original diagnosis is kept (§1–§2) because the numbers
+are what the fix was solved against.
 
-## The two user asks (verbatim intent)
+## The two user asks
 
-1. "adjust the path spline so that we see the earth shape at the top of the mountains **before it gets
-   dark**" — and, from earlier feedback, "I love that we see the earth form in distance from the
-   mountain top but it needs to be **darker and that we still see it**".
-2. "adjust the spline and the assets in space to have **better placement** or fix the path so it is
-   **better aligned with the camera**."
+1. "adjust the path spline so that we see the earth shape at the top of the mountains **before
+   it gets dark**" — and "I love that we see the earth form in distance from the mountain top
+   but it needs to be **darker and that we still see it**".
+2. "adjust the spline and the assets in space to have **better placement** or fix the path so
+   it is **better aligned with the camera**."
 
 ## Chapter anchors
 
 `chapterPositions = [0.000, 0.093, 0.204, 0.389, 0.556, 0.648, 0.815, 0.944, 1.000]`
-ch4 = 0.389, ch5 = 0.556, **ch6 = 0.648**, ch7 = 0.815, `spaceSpan = 0.167`.
+ch5 = 0.556, **ch6 = 0.648**, ch7 = 0.815, `spaceSpan = 0.167`.
 
-## Ask 1 — why the earth CANNOT currently appear before dark
+---
 
-There is **no dedicated earth object**. The round planet seen from the summit is the Ch6 **hero gas
-giant** (`createHeroPlanet`, `cosmic-expanse.js:467-476`). `earth-core.js` is Chapter 1 (lava core),
-and `sky-drift.js:320` deliberately renders no planets in Ch5.
+## §1 Ask 1 — why the earth could not appear before dark
 
-Three gates stack, and all three land *after* the darkening:
+There is **no dedicated earth object**. The round planet seen from the summit is the Ch6 hero
+gas giant (`createHeroPlanet`); `earth-core.js` is Chapter 1 and `sky-drift.js` renders no
+planets in Ch5 by design. Three gates all landed *after* the darkening:
 
-| Event | Metric | Value |
+| Event | global progress |
+|---|---|
+| ch6 env opacity is 0 until the boundary (no 5→6 early ignite) | ≤ 0.648 |
+| SPACE-BACKDROP FADE begins (`sky-drift.js`, band = `spaceSpan*0.12`) | 0.648 |
+| bright dome hard-gated `.visible = false` | ≈ 0.666 |
+| `heroReveal` STARTS | ≈ 0.668 |
+
+The windows were **disjoint**. Note `approach` (which drives `heroReveal`) is derived from
+camera.y against the chapter's y-range, so it is pinned at 0 through all of Ch5 — it cannot be
+used for a pre-boundary reveal at all.
+
+### There was a second, hidden cause — FOG
+
+Even once the planet was made visible pre-boundary, capture showed it as a **pale ghost**, not
+a dark world. Ch5's bright daylight `FogExp2` (density ≈ 0.0024) fogs the planet's ~1050-unit
+distance by **≈99.8%** — it was being painted almost entirely in sky colour. `material.fog =
+false` on the hero planet is what actually delivered "darker, and that we still see it".
+(Same class of bug as the Ch3/4/5 sky-dome fog unlock.)
+
+## §2 Ask 2 — the heroes were off the camera's look axis
+
+Measured on the shipped build: heroes sat **31–68° off the forward ray** against a ~49°
+horizontal / ~33° vertical half-FOV — the gas giant reached **ndcX −1.00 by p=0.68**, i.e.
+entirely off the left of the screen. The baseline capture confirms it: both planets crammed
+half-clipped against the left edge with the right 40% of frame dead-empty.
+
+The root cause was **not** the asset positions alone — it was the spline. Replaying
+`computeFollowFrame` over the shipped curve:
+
+- cp17 stalled in z (−654 → −662 while x ran +32) and cp18/19 overshot to x=+61 before
+  snapping back to cp20's x=0.
+- Aim lurched **13.13°/0.3% of progress**, pitch swinging 32 → 42 → −10, yaw 57 → 83 → 103.
+- The aim **pitched below the horizon** mid-ascent.
+
+With the aim swinging ~50° in each axis, no fixed A→B asset lerp could stay framed.
+
+---
+
+## §3 What shipped
+
+### 3.1 Ch6 spline + 6→7 corner re-authored — `src/core/odyssey/data/odyssey-layout.js`
+
+Control points 17–20 turn the zigzag into one smooth banking climb **and** replace the
+6→7 hairpin with a helical climb-and-turn:
+
+| | shipped | now |
 |---|---|---|
-| ch6 env opacity is 0 until the boundary (`ChapterEnvironmentManager.js:1084-1086`; no 5→6 early-ignite — the `_seamInBoostFor` early-reveal is 7→8 only, `:1090-1096`) | global | ≤ 0.648 |
-| SPACE-BACKDROP FADE begins (`sky-drift.js:487-513`, band = `spaceSpan*0.12` = 0.02004) | global | 0.648 |
-| bright dome half gone | global | ≈ 0.658 |
-| bright dome hard-gated `.visible = false` | global | ≈ 0.666 |
-| `heroReveal = rampBetween(approach, 0.12, 0.36)` STARTS (`cosmic-expanse.js:141-152`, applied `:1278`) | global | ≈ 0.668 |
-| earth fully visible | global | ≈ 0.708 |
+| cp17 | (−63.5, 765.5, −662.0) | (−38.1, 763.3, −693.1) |
+| cp18 | (15.0, 781.0, −718.0) | (53.4, 798.6, −742.8) |
+| cp19 | (61.0, 782.0, −708.0) | (64.1, 812.9, −729.3) |
+| cp20 | (0.0, 804.0, −680.0) | (1.3, 840.3, −677.3) |
 
-**The windows are disjoint.** The earth is a dark-space-only object by construction.
+| metric | before | after |
+|---|---|---|
+| max Ch6 aim turn | 13.13°/0.3%p | **2.25** |
+| total aim turn across Ch6 | 127° | **28°** |
+| Ch6 aim pitch below horizon | yes (to −10°) | **never below +10°** |
+| **Ch7-entry max RAIL turn** | **146.4** | **17.1** |
+| rail ever descending (0.648→0.905) | yes | **never** |
 
-`nebulaReveal`/`uVoidSkyOpacity` use `rampBetween(approach, 0.24, 0.58)` (`:1262-1268`), so at
-`approach <= 0` they are 0 — i.e. an early ch6 ignite would *probably* not drag the void dome into
-Ch5 and darken it. **Verify that claim in source before relying on it.**
+**The 6→7 hairpin.** The shipped path ran +X to x=+61 then *reversed* straight back to
+cp20's x=0 — a 118° tangent flip inside 0.006 of progress, which is the hard elbow visible
+in-game. (My first pass made it slightly worse at 122° and added a descent through it.) It
+cannot be removed by shortening the excursion — total arc length is fixed, so the detour has
+to exist. The fix is to spend that length as a **wide helical sweep that keeps climbing
+through the turn** instead of an out-and-back: the turn is now spread across ~0.02 of
+progress and the rail never stops ascending.
 
-## Ask 2 — the heroes are off the camera's look axis
+> Constraining only the rail was not enough. An intermediate solve fixed the corner but let
+> the optimiser flatten the path early to set up the turn, which dropped the Ch6 camera aim
+> to −2° — the rail still rose while the camera stared at nothing. The objective needs a
+> floor on the **aim pitch**, not just on the rail tangent.
 
-Camera is tangent-follow, no fixed look-at (`computeFollowFrame`, `OdysseyCameraController.js:1656-1731`).
-BEYOND act: `followDistance 42`, `fovBase 66` (`chapter-profile.js:81-83`) → **half-FOV ≈ 49° horizontal,
-≈ 33° vertical**. `climbBias = clamp((tangent.y+0.15)*0.55, 0, 0.65) * climbScale` pushes the aim UP
-(`:1711-1713`). Ch6 framing overrides (`:123-128`): `lookRight:-3.2, lookUp:2.4, camRight:2.6, camUp:1.0`;
-ch6 has `worldUp:0` (no leveling — Ch5 *does* use worldUp, `:288-317`).
+> **ARC LENGTH IS LOAD-BEARING.** Path positions are arc-length parameterised over the WHOLE
+> curve, so changing total length re-maps every chapter's p → world position. A first attempt
+> shortened the curve 74u and slid chapters 1–5 by up to **54u** — which would have silently
+> broken the Ch4 hero-peak clearance. The shipped points hold the total at **1767.58 vs
+> 1767.57**: ch1–ch4 within 0.01u, ch5 within 0.28u. Pinned by `odyssey-path-layout.test.js`.
 
-Measured angle between camera forward and the direction to each hero:
+### 3.2 Hero triad re-solved — `cosmic-expanse.js` `APPROACH`
 
-```
-p=0.648 approach 0.00 camPos(-213,638,-577) fwd(0.70,0.54,-0.46): BH 48.8°  PLANET 44.1°  GALAXY 31.8°
-p=0.70  approach 0.32 camPos(-154,696,-620) fwd(0.74,0.50,-0.45): BH 51.1°  PLANET 46.4°  GALAXY 33.5°
-p=0.73  approach 0.51 camPos(-117,720,-654) fwd(0.74,0.65,-0.15): BH 68.2°  PLANET 64.5°  GALAXY 50.5°
-p=0.76  approach 0.93 camPos( -83,773,-649) fwd(0.81,0.04,-0.58): BH 41.8°  PLANET 33.4°  GALAXY 28.2°
-```
+Endpoints were **solved**, not eyeballed: the real camera was replayed across Ch6 and A/B
+least-squares fitted so each hero holds a target NDC. Each hero's *distance* is preserved, so
+apparent size and the tuned scale ramps are unchanged — only direction changed.
 
-31–68° off-axis against ~49°/33° → at or beyond the frame edge for most of the chapter. The angle
-**spikes near p=0.73 because the path crests** (tangent.y peaks 0.75) while the assets stay low and deep.
+| hero | ndc entry → exit | distance |
+|---|---|---|
+| black hole | (−0.38, +0.20) → (−0.35, +0.38) upper-LEFT | 1263 → 866 |
+| gas giant | (+0.14, −0.32) → (+0.21, −0.23) lower-CENTRE-right | 1047 → 756 |
+| galaxy | (+0.50, +0.26) → (+0.57, +0.38) upper-RIGHT | 1213 → 958 |
 
-Current `APPROACH` table (local coords, lerped A→B by `smoothstep(approach)`, `cosmic-expanse.js:94-122`),
-group anchor world `(-75.2, 718.3, -656.1)`:
+Worst-case |ndcX| across 4:3 → 21:9 is 0.75. Nothing clips.
 
-```
-bhXa:100 bhXb:200 | bhYa:70 bhYb:185 | bhZa:-1080 bhZb:-900 | bhScaleA:1.2 bhScaleB:2.6
-planetA {x:170,y:30,z:-840,s:34/28}   planetB {x:280,y:95,z:-740,s:60/28}
-galaxyA {x:340,y:250,z:-900,s:155}    galaxyB {x:450,y:310,z:-820,s:250}
-nebula pillar FIXED local (-170,40,-600) → world (-245,758,-1256)  ← OPPOSITE side from the heroes
-```
+**Re-solve the fit whenever the spline moves.** The endpoints are fitted against a replay of
+the camera, so any control-point edit invalidates them.
 
-Note `cosmic-expanse.js:100-103`: a previous "move planets into camera direction" fix pulled the
-lateral +X overshoot back ~40%. **That moved them the wrong way.**
+### 3.3 Ambient corridor frame — `cosmic-expanse.js`
 
-Ideal on-axis LOCAL positions computed at p=0.648 (same distance, on the forward ray):
-`BH (696,569,-474)`, `PLANET (544,451,-373)`, `GALAXY (658,540,-448)` — i.e. currently ~450–600 too far
-−X, ~300–500 too low, ~450–600 too deep. **Caveat: a single fixed A→B lerp cannot stay framed**, because
-the ideal Y target collapses from ~570 at entry to ~90 by p=0.76 as the path crests. Consider a 3-point
-march (A→M→B) or deriving positions from the camera forward ray at runtime.
+The nebula tiers, dust tiers, streak motes and asteroid garland are all authored with depth
+along local −Z, which assumed a −Z corridor; Ch6 travels +X/+Y, so they sat **43–84° off-axis**.
+They now hang off one `cosmic-corridor` group whose origin sits on the camera's travel and
+whose −Z runs down the chapter chord. Same authored parameters, now **1–14° off-axis**; in
+corridor space the camera travels almost straight down −Z with only ±23 lateral drift. Dust
+tiers contain the travel 11/11 samples; nebula tiers correctly stay ahead as backdrop.
 
-Spline (`src/core/odyssey/data/odyssey-layout.js:13-42`, CatmullRom tension 0.3), Ch5→Ch6 span:
-```
-idx15 {x:-210,y:622,z:-572}  idx16 {x:-96,y:733,z:-654}  idx17 {x:-63.5,y:765.5,z:-662}
-idx18 {x:15,y:781,z:-718}    idx19 {x:61,y:782,z:-708}
-```
-Ch6 travel Δworld = (+218, +127, −124) — a climbing arc, **not** a −z tunnel.
+The nebula **pillar** is placed *from* the corridor frame but not parented to it (the corridor
+rotation would tilt a Pillars-of-Creation column ~45°); it stays world-vertical, yaws to face
+back down the corridor, and tracks 15° → 39° off-axis across its reveal window.
 
-## Three candidate approaches
+### 3.4 Earth-at-summit staging — `cosmic-expanse.js` + `ChapterEnvironmentManager.js`
 
-- **(A) Move the assets** onto the look ray (raise +X/+Y, roughly halve −Z depth). Must solve the
-  p=0.73 crest.
-- **(B) Flatten the Ch6 aim** so forward points where the heroes already live: `climbScale` well below
-  1, a partial `worldUp` (as Ch5 uses), and/or strong negative `lookUp` in `CHAPTER_FRAMING_OVERRIDES[6]`.
-  This kills the `climbBias` up-push that currently throws the aim above the heroes.
-- **(C) Re-author the spline** (control points 15→19 climb +Y ~160 while going −Z only ~145 → ~45°
-  upward tangent). **HIGHEST RISK** — the spline is load-bearing for Ch5 hero-peak clearance.
+- `SEAM_56_EARTH_IGNITE_*` (manager): ignites ch6 across the Ch5 tail so the group is present
+  (and its `update()` runs) while the sky is still daylight. It **saturates before** the
+  boundary so it does not compound with the earth's own reveal ramp, and is released just past
+  the boundary once the ecotone crossfade has caught up.
+- `resolveSummitEarthStaging()` (env): `earthReveal` fades the gas giant up over the summit;
+  `spaceReveal` holds **everything else** — stars, black hole, nebula, dust, void dome, aurora
+  bridge, lights — at zero until the camera is actually in Space.
+- `setOpacityScale` now also flips `.visible`, so the pre-boundary presence costs no fill.
+- `material.fog = false` on the hero planet (see §1).
 
-## HARD CONSTRAINTS — do not violate
+### 3.5 Ch6 horizon levelling — `OdysseyCameraController.js`
 
-1. **Do not re-wash space bright.** The user already complained space was "much too bright when
-   viewing the planets"; it was fixed by the fast backdrop fade + dark void (commit b7db9d62). Deep
-   space must stay black/starfield with the planet **dark but visible**.
-2. **Do not kill the 5→6 aurora carry** (`SEAM_56_AURORA_CARRY_BAND` 0.85 / hold band 0.4).
-3. The spline is load-bearing for Ch5 hero-peak clearance.
-4. Tests to keep green: `cosmic-expanse-environment.test.js`, `sky-drift-environment.test.js`,
-   `chapter-environment-manager.test.js`, `OdysseyDirector.test.js`.
+`CHAPTER_FRAMING_OVERRIDES[6].worldUp = 0.55`. Ch5 hands over at worldUp 0.5 (roll ≈ 11.6°);
+ch6 used to drop to worldUp 0 and roll **23.3°** — a lurch right where the carried summit ring
+and aurora are still on screen. Now enters at 10.5° (continuous) and settles to ~5.7°.
 
-## Verification
+### 3.6 Asteroid garland — now self-shaded (`createAsteroidRockTSL`)
 
-Capture with `npm run capture:odyssey:chapter -- --seam 5-6 --seamWidth 0.06 --duration 8000 --offsets ...`
-(and `--chapter 6`). Use a **fresh `ODYSSEY_CAPTURE_PORT` each run** and redirect stdout to a file.
-⚠️ Per-chapter short sessions only — full-journey WebGPU captures have TDR-crashed the iGPU.
+The garland's note claimed rim/fill light "comes free from the chapter's two lights". It does
+not: the rig is one dim ambient plus a point light 600u away, so `0x0b0e18` rendered as **pure
+black**. That went unnoticed while the garland was 43–84° off-axis; once the corridor frame put
+it where the camera looks, it punched flat black holes through the carried aurora.
 
-Prove: (a) the earth-form is clearly visible from the summit **while the sky is still bright**, and
-stays visible (dark, not blown out) as space darkens; (b) the heroes are inside the frame at all four
-sampled progress values **including the p=0.73 crest**.
+`MeshStandardMaterial` could not be rescued — at every albedo/emissive/intensity combination
+tried the rocks stayed black or went flat, because **no usable light reaches them** (a bright
+emissive just swamped what little there was and erased all form). Chapter 6 is otherwise
+entirely unlit MeshBasic/TSL surfaces with hand-authored shading, so the rocks now do the same:
+a wrapped view-space key, a warm accretion bounce, a fresnel rim, and a shadow floor that is
+never pure black. Shading in **view space** is not world-anchored but is immune to
+instanced-normal handling and guarantees every rock shows a lit face, a terminator and a dark
+side from any angle. Seats were also widened and scales trimmed so the close passes graze the
+frame rather than eclipse it.
+
+---
+
+## §4 Verification
+
+**Unit guards** (all green, and each falsified against the pre-fix values):
+- `tests/unit/odyssey-ch6-hero-framing.test.js` — drives the REAL `OdysseyCameraController`
+  over the REAL spline with the REAL framing, builds the REAL env, projects each hero. Fails
+  on the old values with `blackHole ndcX −1.29`.
+- `odyssey-path-layout.test.js` — Ch6 turn-rate + no-dive + **total arc length**. Fails on the
+  old spline with max turn 17.4 (limit 3). The pre-existing Ch4 hero-peak clearance test still
+  passes.
+- `cosmic-expanse-environment.test.js` — summit staging, corridor placement, hero march.
+- `ChapterEnvironmentManager.test.js` — ignite ramp, saturation, release, chapter scoping.
+
+Full suite: **310 test files pass.**
+
+**In-game captures** (WebGPU, `npm run capture:odyssey:chapter`, per-chapter short sessions):
+- `artifacts/odyssey/wave-v/seam-5-6-high-webgpu/seam-5-6-6000ms.png` — **p=0.6346, full
+  daylight**: the gas giant reads as a solid banded world above the summit. This is ask 1.
+- `.../seam-5-6-6600ms.png` — p=0.6535: still visible as the sky fades. "That we still see it."
+- `.../chapter-06-high-webgpu/chapter-06-motion-03.png` — heroes spread across the frame;
+  compare against the baseline capture where both planets were half-clipped off the left edge.
+  Also shows the garland reading as dark rocks with form rather than black discs.
+- `.../seam-6-7-high-webgpu/seam-6-7-7600ms.png` — p=0.8331, exactly where the hairpin used to
+  be: the rail now sweeps through as one continuous curve.
+
+> The **first frame of every capture run shows the main menu** — the board has not taken over
+> yet. That is a harness warm-up artifact (present in baseline too), not a rendering fault.
+> Also: the seam pan is **eased, not linear** in time. Read `currentPosition` from the JSON
+> sidecar; do not assume offset ÷ duration. And `cd` out of the artifact directory before
+> re-capturing or the harness fails with `EBUSY`.
+
+## §5 Constraints — all honoured
+
+1. **Space was not re-washed bright.** Deep space stays black/starfield; the gate runs the
+   other way too (nothing but the earth may enter the daylight frame).
+2. **5→6 aurora carry untouched** (`SEAM_56_AURORA_CARRY_BAND` 0.85 / hold 0.4).
+3. **Spline arc length preserved**, so Ch5 hero-peak clearance is intact (≤0.28u drift).
+4. `cosmic-expanse-environment.test.js`, `sky-drift-environment.test.js`,
+   `chapter-environment-manager.test.js`, `OdysseyDirector.test.js` all green.
+
+## §6 Known, pre-existing, NOT addressed
+
+- **The Ch5 aurora/cloud carry washes the left ~55% of early Ch6 green.** Present identically
+  in the baseline capture. It is protected by constraint 2, so it was left alone — but it is
+  the most obvious remaining blemish in Space and is worth its own pass.
+- Ch7's deep shaft (cp21+) is near-vertical, which makes yaw degenerate there. Measured,
+  deliberately not touched — the 6→7 *corner* leading into it is fixed (§3.1).

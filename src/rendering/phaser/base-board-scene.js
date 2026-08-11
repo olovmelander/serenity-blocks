@@ -406,7 +406,32 @@ export function createBaseBoardScene(
                 return palette[Math.min(comboCount, palette.length - 1)];
             }
 
-            return palette[index % palette.length];
+            // 5+ escalates INTO the bright end of the ramp. Sampling the whole
+            // ramp mixed the darker entries into high combos, so a long chain got
+            // busier rather than hotter — the opposite of how the combo popup
+            // escalates. Keep a little per-particle variation, but only upward.
+            const hot = this._getComboHotPalette();
+            const reach = Math.min((comboCount - 5) / 5, 1); // 5..10+ -> 0..1
+            const step = Math.floor(reach * (hot.length - 1));
+            return hot[Math.min(hot.length - 1, step + (index % 2))];
+        }
+
+        /**
+         * Brightening half of the combo ramp, ascending — the escalation track
+         * for high combos.
+         * @private
+         */
+        _getComboHotPalette() {
+            const baseColor = this._getThemeComboBaseColor();
+            if (this._comboHotCache && this._comboHotCache.base === baseColor) {
+                return this._comboHotCache.colors;
+            }
+            const rgb = this._parseColor(baseColor);
+            const colors = rgb
+                ? [0, 0.2, 0.4, 0.62].map((amount) => this._adjustColor(rgb, amount))
+                : [0x00ffff];
+            this._comboHotCache = { base: baseColor, colors };
+            return colors;
         }
 
         /**

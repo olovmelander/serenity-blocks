@@ -125,6 +125,13 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         lookUp: 2.4,
         camRight: 2.6,
         camUp: 1.0,
+        // Horizon levelling (2026-08). Ch5 hands over at worldUp 0.5 (its exit framing),
+        // which leaves the camera rolled ~11.6 deg at the boundary; ch6 used to drop
+        // straight back to worldUp 0 and roll 23.3 deg — a visible lurch right where the
+        // carried summit ring + aurora are still on screen. 0.55 enters at 10.5 deg (i.e.
+        // continuous with Ch5) and settles to ~5.7 deg. Space needs no hard-level horizon,
+        // so this stops short of Ch5's 0.92 and keeps some path-frame character.
+        worldUp: 0.55,
     }),
     // 7 — Black Hole (transcendence): preserve the strong entry composition — keep
     // the accretion disk biased off dead-centre (slightly low-right) for the run.

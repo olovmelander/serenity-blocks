@@ -1565,6 +1565,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     return;
                 }
                 this._flashGarbageIndicator('flash', 500);
+                // The HUD indicator alone left the playfield silent about the one
+                // thing that just shoved the whole stack upward.
+                this.mainBoardScene?.sharedEffects?.playGarbageArrival?.(
+                    detail.rows ?? detail.lineCount ?? detail.count ?? 1,
+                );
             },
         );
         this.cleanupHandlers.push(this.garbageInsertedUnsub);

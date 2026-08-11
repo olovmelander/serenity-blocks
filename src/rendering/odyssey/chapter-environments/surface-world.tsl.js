@@ -43,7 +43,9 @@ import {
     mix,
     normalize,
     normalView,
+    normalWorld,
     oneMinus,
+    positionGeometry,
     positionLocal,
     positionWorld,
     pow,
@@ -207,10 +209,16 @@ export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     seaYOffset: 0,
     seaRenderOrder: -7,
     riverRenderOrder: -6,
-    waterShelfFadeMin: -5.5,
-    waterShelfFadeMax: 1.5,
-    wetShoreColor: [0.018, 0.22, 0.55],
-    wetShoreBlend: 0.96,
+    // Tightened -5.5/1.5 → -2.6/0.9 (waterline v2): the wide half-transparent terrain
+    // shelf smeared a pale wedge across every shoreline. A tight cut keeps the ground
+    // edge readable right up to the foam line. (Test pins only the signs.)
+    waterShelfFadeMin: -2.6,
+    waterShelfFadeMax: 0.9,
+    // Softened from the "crisp dark line" navy ([0.018,0.22,0.55] @ 0.96): the water now
+    // owns the boundary via its depth-based shore blend, so the terrain side contributes a
+    // gentle wet-earth darkening instead of a second hard stripe at the same line.
+    wetShoreColor: [0.10, 0.20, 0.30],
+    wetShoreBlend: 0.55,
 });
 
 export const CH3_TREE_VALUE_SETTINGS = Object.freeze({
@@ -645,7 +653,7 @@ function configureChapter2WaterSurface(part, {
 // river/sea want to fill to their scaled extent, so they pass false).
 function buildGoldenWaterMaterial(uTime, {
     uSeason = uniform(0), uOpacity = uniform(1), useRadialEdge = true, rippleAmp = 0.16,
-    reflection = null,
+    reflection = null, shore = null,
 } = {}) {
     // The Ch3 sea/river/lake are now the ONE shared Odyssey water surface (unified with the Ch2
     // breach ceiling — shared/odyssey-water-surface.tsl.js). Ch3 water is "surfaced" (uDepth=1 →
@@ -662,7 +670,44 @@ function buildGoldenWaterMaterial(uTime, {
         useRadialEdge,
         baseAlpha: 1.0,
         reflection,
+        shore,
     });
+}
+
+// ── SHORE HEIGHTMAP BAKE (depth-based shoreline blend) ──────────────────────────
+// getTerrainHeight sampled over the landscape's exact 400×400 plate into a half-float
+// R texture the shared water builder reads by world XZ. Half-float because WebGPU only
+// guarantees FILTERABLE float sampling at 16 bits (float32-filterable is optional on
+// Dawn); 512² over ±200 gives ~0.78u/texel, linear-filtered — well inside the 2.6u
+// shore band. Baked from the SAME CPU function that displaces the terrain mesh, so the
+// two can never drift apart.
+const SHORE_HEIGHT_RES = 512;
+const SHORE_PLATE_HALF = 200;
+
+function bakeShoreHeightTexture() {
+    const data = new Uint16Array(SHORE_HEIGHT_RES * SHORE_HEIGHT_RES);
+    const step = (SHORE_PLATE_HALF * 2) / SHORE_HEIGHT_RES;
+    for (let j = 0; j < SHORE_HEIGHT_RES; j += 1) {
+        const z = -SHORE_PLATE_HALF + (j + 0.5) * step;
+        for (let i = 0; i < SHORE_HEIGHT_RES; i += 1) {
+            const x = -SHORE_PLATE_HALF + (i + 0.5) * step;
+            data[j * SHORE_HEIGHT_RES + i] = THREE.DataUtils.toHalfFloat(getTerrainHeight(x, z));
+        }
+    }
+    const tex = new THREE.DataTexture(
+        data,
+        SHORE_HEIGHT_RES,
+        SHORE_HEIGHT_RES,
+        THREE.RedFormat,
+        THREE.HalfFloatType,
+    );
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
 }
 
 export function createGoldenLakeTSL(uTime = uniform(0), options = {}) {
@@ -722,8 +767,22 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // did not hide it the water ended on a ruler-straight horizon line. The shared rim dissolve is
     // now noise-broken (two octaves, see shared/odyssey-water-surface.tsl.js), so enabling it gives
     // the sea an organic meandering coastline in every direction instead of a machined edge.
+    // Depth-based SHORE BLEND for the sea+river sheet (the sharp-intersection fix): the
+    // water fades out and lightens over its true depth against the baked terrain, so every
+    // interior shoreline shallowing replaces the old raw geometric clip line. The origin /
+    // base-Y uniforms are driven by the live env (group world position + terrainOffsetY).
+    const uShoreOriginXZ = uniform(new THREE.Vector2(0, 0));
+    const uShoreBaseY = uniform(0);
+    const shore = {
+        heightTexture: bakeShoreHeightTexture(),
+        uOriginXZ: uShoreOriginXZ,
+        uBaseY: uShoreBaseY,
+        extent: SHORE_PLATE_HALF,
+        band: 1.1,
+        shallowTint: [0.30, 0.58, 0.50],
+    };
     const warmWater = buildGoldenWaterMaterial(uTime, {
-        uOpacity, useRadialEdge: true, rippleAmp: 0.1, reflection,
+        uOpacity, useRadialEdge: true, rippleAmp: 0.1, reflection, shore,
     });
     // BUG FIX: the sea MESH was built by createDeepOceanWaterSurfaceTSL with the deep-ocean cyan
     // material and nothing ever reassigned mesh.material — only the dict handle seaPart.material was
@@ -805,7 +864,9 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
         riverMaterial: riverPart.material,
         riverGeometry: riverPart.geometry,
         reflection,
-        uniforms: { uOpacity },
+        // uShoreOriginXZ / uShoreBaseY: the live env aligns the baked shore heightfield to
+        // the terrain's world placement (group world XZ + group Y + terrainOffsetY).
+        uniforms: { uOpacity, uShoreOriginXZ, uShoreBaseY },
     };
 }
 
@@ -855,7 +916,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const relHeight = vPosition.y.sub(uWaterLevel).add(t0);
     const sandAmount = smoothstep(1.0, 6.0, relHeight);
 
-    const sandColor = vec3(0.36, 0.46, 0.42); // Cool muted shore, below water in value
+    const sandColor = vec3(0.32, 0.36, 0.24); // warm wet earth between grass and shallows (was cool grey-teal)
     // VISUAL POLISH (de-wash): pull the grass into RICH saturated greens (golden-forest /
     // sakura-twilight palette discipline) — a vivid lit spring green low, a deep forest green
     // high — so the hills read green rather than the old pale wash. A subtle blue-green
@@ -867,13 +928,22 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // Creative plan Ch3 item 1: shaded pole pulled toward #0D3A16 so tree silhouettes
     // separate from the ground in grayscale (the collapsed-value fix).
     const grassColorHigh = vec3(0.05, 0.15, 0.07); // Deep shaded sage-forest green
-    const grassColor = mix(grassColorLow, grassColorHigh, smoothstep(5.0, 30.0, relHeight));
+    // Ramp lifted (5,30)→(12,42): relHeight = terrain h + 7, so the old start=5 put the
+    // WALKABLE meadow (h≈3-7 ⇒ rel 10-14) already 10-30% toward the near-black pole while
+    // every plant on it kept constant bright greens — the "pasted-on vegetation" altitude
+    // mechanism. Now the whole meadow band stays fully grassColorLow and the deep-shade
+    // pole is reserved for genuine high crests (h ≥ 35).
+    const grassColor = mix(grassColorLow, grassColorHigh, smoothstep(12.0, 42.0, relHeight));
 
     let color = mix(sandColor, grassColor, sandAmount);
 
-    // Creative plan Ch3 item 3: a dark WET-SAND band in the 1–2 height units above the
-    // water clamp, so every shoreline reads as a crisp dark line between land and water.
-    const wetBand = oneMinus(smoothstep(1.0, 2.8, relHeight));
+    // Was "a crisp dark line between land and water" (BotW readability item 3) — but with
+    // the water surface now carrying a real depth-based shore blend, the near-opaque navy
+    // stripe double-painted the boundary as exactly the sharp intersection line the shore
+    // blend removes. Widened + softened to a wet-earth darkening that hands off into the
+    // water's own shallows. (Deviation from the frozen CH3_WATER_READABILITY numbers is
+    // deliberate; the env test pins only deepColor + the shelf-fade signs.)
+    const wetBand = oneMinus(smoothstep(0.8, 3.4, relHeight));
     color = mix(
         color,
         vec3(...CH3_WATER_READABILITY_SETTINGS.wetShoreColor),
@@ -881,9 +951,17 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     );
 
     // Subtle ground noise to break up the plastic look + add green tonal variation.
-    const groundNoise = fract(
-        sin(dot(vPosition.xz.mul(0.1), vec2(12.9898, 78.233))).mul(43758.5453),
-    );
+    // PIXELATION FIX (2026-08): this was the classic fract(sin(dot(...)*43758.5453)) hash —
+    // per-fragment WHITE noise (decorrelates over ~1e-4 world units), far beyond Nyquist at
+    // any resolution, so every framebuffer pixel got an independent random tint at 26% mix.
+    // Under DRS below native it upscaled into multi-pixel random blocks — the "chunky
+    // pixelated meadow". (WGSL also only guarantees sin() accuracy on [-π,π]; the hash arg
+    // reached ~1800 rad and degraded into structured clumps on some GPUs.) Replaced with
+    // two octaves of the module's band-limited gradient noise: ~4.5u painterly mottling +
+    // a ~1.1u fine grain — both safely above the pixel footprint at all rail distances, so
+    // the variation filters correctly instead of sizzling.
+    const groundNoise = landscapeNoise(vPosition.xz.mul(0.22)).mul(0.65)
+        .add(landscapeNoise(vPosition.xz.mul(0.9)).mul(0.35));
     color = mix(color, color.mul(vec3(0.82, 1.10, 0.78)), groundNoise.mul(0.26));
 
     // Golden-hour raking key (Batch B5): a LOW warm sun rakes the hills, a cool sky fill
@@ -912,14 +990,19 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // structure without carving dark cast-shadow stripes into the lit high-key field.
     color = color.mul(longShadow.mul(0.16).add(0.84));
 
-    // Distance fog (pushed back AND thinned so distant terrain keeps its color instead
-    // of dissolving into white). Fog tint is a real SATURATED sky blue, not a pale wash, and
-    // thinned further so the far green hills keep their hue (atmospheric, not milky).
+    // GROUND DE-WASH (2026-08, "landscape doesn't connect to the hills"): the landscape
+    // was DOUBLE-fogged — this authored haze PLUS the scene FogExp2 (density ~0.0024 ⇒
+    // ~30% wash at 250u, ~60% at 400u), which whitened every hill base into a pale halo so
+    // the hills read as pasted behind mist instead of rising from the meadow. Same class of
+    // bug as the sky dome / finale space heroes ("#1 de-wash lever": material.fog=false,
+    // set below). This authored haze now stands alone: fog-family blue-grey (not the old
+    // warm amber that fought the daylight palette), starting past the playable meadow and
+    // HEIGHT-WEIGHTED so hill crests shed the haze while valleys hold it — aerial
+    // perspective that seats the hills instead of erasing them.
     const dist = length(vPosition.xz);
-    const fog = smoothstep(250.0, 420.0, dist);
-    // Golden-hour haze (was cool sky-blue 0x2d70b3): distant terrain now dissolves into warm
-    // amber scatter that belongs to the low sun + warm horizon, not a cool veil that fought it.
-    color = mix(color, vec3(0.74, 0.62, 0.44), fog.mul(0.20));
+    const fog = smoothstep(220.0, 560.0, dist);
+    const fogHeightWeight = mix(float(1.0), float(0.5), smoothstep(10.0, 30.0, relHeight));
+    color = mix(color, vec3(0.47, 0.56, 0.63), fog.mul(fogHeightWeight).mul(0.42));
 
     // GREEN STAYS GREEN (in-game: "I do not want the green to swap to winter, i want the green to be
     // green and that we transition into the mountain winter landscape without like changing the
@@ -940,6 +1023,10 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
+    // GROUND DE-WASH: opt out of the scene FogExp2 — the authored height-weighted haze
+    // above is the landscape's ONE atmosphere now (see the comment there; double-fogging
+    // whitened every hill base into a pale disconnected halo).
+    material.fog = false;
     // The CPU terrain clamps underwater basins to a flat low shelf. Let that submerged
     // shelf become transparent so the reused Chapter 2 water surface is visible BETWEEN
     // the camera and the islands, while green land remains opaque.
@@ -1018,10 +1105,19 @@ export function foothillBridgeHeight(x, worldZ) {
     const centerShelf = 1 - clamp01(Math.abs(xm) / 170, 0, 1);
     const pathCorridor = 1 - clamp01(Math.abs(x + 18) / 140, 0, 1);
     const shoulderMask = smoothstep01(70, 360, Math.abs(xm + (Math.sin(worldZ * 0.019) * 24)));
+    // RELIEF (2026-08, "the skirt feels flat"): measured peak-to-peak across 300u of x, the
+    // skirt had 7.3u of relief where the meadow beside it has 60.2u — about an eighth, which
+    // reads as a plane laid next to a landscape. Two finer octaves added (the original three
+    // are all ~45-110u wavelength, so the surface had no detail at the scale the eye reads as
+    // ground), and the amplitude below is raised. Kept as cheap analytic sin/cos so the CPU
+    // bake stays fast and `foothillBridgeHeight` remains a pure exported function (the
+    // snow-conifer belt seats its props by calling it).
     const noise = (
         Math.sin(x * 0.022) * Math.cos(worldZ * 0.013) * 0.55
         + Math.sin((x + worldZ) * 0.009) * 0.3
         + Math.cos((x * 0.018) - (worldZ * 0.01)) * 0.22
+        + Math.sin((x * 0.052) + (worldZ * 0.039)) * 0.20
+        + Math.cos((x * 0.091) - (worldZ * 0.075)) * 0.11
     );
     // COASTAL PLAIN handoff: the skirt used to start at -18, i.e. ~11u BELOW the waterline, so the
     // sea ran up the carved corridor and lapped the foot of the range ("the water goes to close the
@@ -1031,11 +1127,40 @@ export function foothillBridgeHeight(x, worldZ) {
     const base = -18 + (easedClimb * 26) + ((1 - easedClimb) * 14);
     const centerLift = centerShelf * (4.5 + (easedClimb * 6.5));
     const shoulderLift = shoulderMask * ((6 + (easedClimb * 22)) * 0.75);
-    const ridgeLift = noise * (4 + (easedClimb * 6));
+    // Amplitude raised 4/6 → 13/10 for real undulation, but damped along the flight corridor
+    // so the lane the camera rides stays smooth (the carve below assumes a calm centre).
+    const ridgeLift = noise * (13 + (easedClimb * 10)) * (1 - (pathCorridor * 0.72));
     const backRise = smoothstep01(0.55, 1.0, easedClimb) * 11.5;
     const corridorCarve = pathCorridor * (10 + (easedClimb * 8));
     const frontFeather = (1 - smoothstep01(0.0, 0.12, easedClimb)) * 0.6; // was 2.5 — dug a trench at the handoff
-    return base + centerLift + shoulderLift + ridgeLift + backRise - corridorCarve - frontFeather;
+    const raw = base + centerLift + shoulderLift + ridgeLift + backRise - corridorCarve - frontFeather;
+
+    // WELD TO THE MEADOW. The skirt plane and the landscape plate overlap in worldZ ≈ -100..-200,
+    // and their heightfields disagreed by a mean of 17.5u and up to 61u there — at x=+120 the
+    // meadow rises to +36 while the skirt sat at -5, so the skirt sliced straight through the
+    // hills. That is the "disconnected" read: two surfaces at different heights pretending to be
+    // one landscape.
+    //
+    // Through the hand-off band the skirt now converges onto getTerrainHeight itself, sitting just
+    // BELOW it. Ordering makes that invisible and seamless: the skirt is renderOrder -2 (drawn
+    // first) and the meadow is drawn over it, so while the meadow is opaque it simply hides the
+    // skirt; as the meadow's own rim melts (its farMelt runs rimDist 172→250) the skirt emerges at
+    // essentially the same height and CONTINUES the surface, with no ledge to see.
+    //
+    // The weld is damped outside the meadow plate in x, because getTerrainHeight keeps returning
+    // values where no meadow mesh exists — matching it out there would sculpt the skirt to an
+    // invisible surface. The damp band mirrors the meadow's own rim melt.
+    // The weld must stay FULL across the meadow's entire melt band, not release inside it.
+    // The meadow's alpha melts over rimDist 172→250 (max(|x|,|z|)); the first cut released the
+    // weld from 170/-190, i.e. exactly where the meadow turns semi-transparent — so the skirt's
+    // (now much larger) ridges diverged from the terrain by up to 27u right where the meadow was
+    // see-through, and they showed THROUGH it as dark angular shapes poking out of the hills.
+    // Hold the weld until the meadow is fully gone (past rimDist 250), then release.
+    const weldZ = smoothstep01(-360, -255, worldZ); // 1 while the meadow still draws, 0 past it
+    const weldX = 1 - clamp01((Math.abs(x) - 255) / 85, 0, 1);
+    const weld = weldZ * weldX;
+    if (weld <= 0.001) return raw;
+    return raw + ((getTerrainHeight(x, worldZ) - 0.5) - raw) * weld;
 }
 
 function buildFoothillBridgeGeometry() {
@@ -1084,8 +1209,10 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
     // pilot/harness uniformity and is referenced as a no-op so the look is unchanged.
     const t0 = uTime.mul(0.0);
 
-    // vNormal → normalView, vWorldPosition → positionWorld, vLocalPosition → positionLocal.
-    const vNormal = normalView;
+    // World-space normal — the foothill skirt shares mountainSkirtColorNode's world-space
+    // key light with the peaks, so it must use the same frame or the skirt de-syncs from the
+    // range it ramps into (same port bug; see createFBMMountainTSL).
+    const vNormal = normalWorld;
     const vWorldPosition = positionWorld.add(t0);
     const vLocalPosition = positionLocal;
 
@@ -1144,6 +1271,12 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
+    // ATMOSPHERE PARITY: the landscape it grows out of and the range it climbs into BOTH opt out
+    // of the scene FogExp2 and carry their own authored haze. The skirt did not — so the one
+    // surface bridging them was the only one getting a pale scene-fog wash mixed in, which
+    // flattened its contrast and made it read as a separate, hazier layer between two crisp ones.
+    // Its own mountainSkirtColorNode fog ramp is its atmosphere, exactly like its neighbours.
+    material.fog = false;
     material.opacityNode = uOpacity.mul(seamFade).mul(rimFadeZ).mul(rimFadeX);
     material.transparent = true;
     material.depthWrite = true;
@@ -1190,7 +1323,12 @@ function createGrassTexture() {
         const color = `hsl(108, 58%, ${lightness}%)`;
         drawBlade(x, h, w, l, color);
     }
-    return new THREE.CanvasTexture(canvas);
+    const grassTex = new THREE.CanvasTexture(canvas);
+    // Hygiene for if fluffy grass is ever restored (currently dormant — live add is
+    // commented out): blades are authored in sRGB hsl(), and the rail camera grazes them.
+    grassTex.colorSpace = THREE.SRGBColorSpace;
+    grassTex.anisotropy = 8;
+    return grassTex;
 }
 
 export function createFluffyGrassTSL(uTime = uniform(0), count = 1000) {
@@ -1602,7 +1740,24 @@ export function createWildflowersTSL(uTime = uniform(0), count = 1400) {
     // geometry's baked vertex colour, so every species keeps its exact palette.
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = floraSwayNodeShared(uTime);
-    material.colorNode = attribute('color', 'vec3'); // baked linear vertex colour
+    // ROOT-TIE (2026-08 "pasted-on" fix): the baked stem greens (~0x3f7a28-0x4f7a2a linear)
+    // are about HALF the value and 1.6× the saturation of the flat-lit terrain product
+    // (0.161, 0.383, 0.111) and receive none of its key/fill shading — every drift stood on
+    // an alien stalk. Blend the lower stem from the exact lit-meadow colour up into the
+    // baked species colour, so each flower grows OUT of the ground it stands on. yN uses
+    // positionGeometry (NOT positionLocal — r181 InstanceNode reassigns positionLocal
+    // before positionNode runs) over the species height carried in aSway.w. Heads keep
+    // their vivid baked colour (and toneMapped=false) — only the roots seat.
+    const stemNorm = clamp(
+        positionGeometry.y.div(attribute('aSway', 'vec4').w.max(0.001)),
+        0.0,
+        1.0,
+    );
+    material.colorNode = mix(
+        vec3(0.161, 0.383, 0.111),
+        attribute('color', 'vec3'),
+        smoothstep(0.20, 0.55, stemNorm),
+    );
     material.side = THREE.DoubleSide;
     material.toneMapped = false; // keep the family colours vivid (matches the chapter props)
 
@@ -2708,8 +2863,9 @@ export function createDistantMountainTSL(config = {}) {
     const uSnowBlend = uniform(0);
     const uOpacity = uniform(1);
 
-    // vNormal → normalView, vWorldPosition → positionWorld, vHeight → aHeight.
-    const vNormal = normalView;
+    // World-space normal (same port bug as the live peaks; this builder is currently
+    // unused by the live path but kept consistent so it cannot re-introduce it).
+    const vNormal = normalWorld;
     const vWorldPosition = positionWorld;
     const vHeight = attribute('aHeight', 'float');
 

@@ -1,1 +1,1 @@
-export { ensureCircleTexture } from './graphics.js';
+export { ensureCircleTexture, ensureSquareTexture, ensureStreakTexture } from './graphics.js';

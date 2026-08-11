@@ -236,7 +236,13 @@ export class OdysseyTslPipeline {
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
         this.postProcessing = new THREE.PostProcessing(renderer);
-        const scenePass = pass(scene, camera);
+        // MEADOW-ALIASING FIX (2026-08): QW1 dropped renderer-level MSAA (antialias:false)
+        // and let the post grain soften edges — but the Ch3 wildflower carpet is thousands
+        // of 1-3px vertex-coloured petals, and with zero scene-pass samples they alias into
+        // raw pixel confetti (worst under DRS upscaling). r181's PassNode takes per-pass
+        // samples independent of the renderer flag, so the SCENE pass alone gets MSAA on
+        // tiers that opted in (post passes stay single-sampled). Default 0 = QW1 unchanged.
+        const scenePass = pass(scene, camera, { samples: params.sceneSamples ?? 0 });
         this.scenePass = scenePass;
 
         const sceneColor = scenePass.getTextureNode('output');

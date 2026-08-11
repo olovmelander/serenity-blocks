@@ -28,10 +28,26 @@ const DEFAULT_CONTROL_POINTS = Object.freeze([
     Object.freeze({ x: -211.0, y: 447.0, z: -504.0 }),
     Object.freeze({ x: -210.0, y: 622.0, z: -572.0 }),
     Object.freeze({ x: -96.0, y: 733.0, z: -654.0 }),
-    Object.freeze({ x: -63.5, y: 765.5, z: -662.0 }),
-    Object.freeze({ x: 15.0, y: 781.0, z: -718.0 }),
-    Object.freeze({ x: 61.0, y: 782.0, z: -708.0 }),
-    Object.freeze({ x: 0.0, y: 804.0, z: -680.0 }),
+    // ── CH6 SPACE CORRIDOR (re-authored 2026-08) ─────────────────────────────────
+    // Points 17-19 used to zigzag: cp17 stalled in z (-654 -> -662 while x ran +32),
+    // and cp18/19 overshot to x=+61 before snapping back to cp20's x=0. Replaying
+    // computeFollowFrame over the shipped curve showed the camera aim lurching
+    // 13.1 deg per 0.3% of progress (pitch swinging 32 -> 42 -> -10, yaw 57 -> 83 -> 103)
+    // and dipping BELOW the horizon mid-ascent — so no fixed placement could keep the
+    // Space heroes framed (they measured 31-68 deg off the forward ray). These three
+    // points turn the zigzag into one smooth banking climb: max turn rate 13.13 -> 1.40
+    // deg/0.3%p, total turn 127 -> 24 deg, and the aim never pitches below +11 deg.
+    //
+    // ARC LENGTH IS LOAD-BEARING. Path positions are arc-length parameterised over the
+    // WHOLE curve, so changing the total length re-maps every chapter's p -> world
+    // position (a first attempt shortened it 74u and shifted Ch1-Ch5 by up to 54u).
+    // These points hold the total at 1767.58 vs 1767.57, which keeps ch1-ch4 within
+    // 0.01u and ch5 (the Ch4 hero-peak clearance) within 0.28u of the shipped curve.
+    // Guarded by odyssey-path-layout.test.js.
+    Object.freeze({ x: -38.1, y: 763.3, z: -693.1 }),
+    Object.freeze({ x: 53.4, y: 798.6, z: -742.8 }),
+    Object.freeze({ x: 64.1, y: 812.9, z: -729.3 }),
+    Object.freeze({ x: 1.3, y: 840.3, z: -677.3 }),
     Object.freeze({ x: -5.0, y: 861.0, z: -675.0 }),
     Object.freeze({ x: 3.0, y: 870.0, z: -685.0 }),
     Object.freeze({ x: 0.0, y: 900.0, z: -680.0 }),

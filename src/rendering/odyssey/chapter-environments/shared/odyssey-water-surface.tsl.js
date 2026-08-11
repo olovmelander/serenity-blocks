@@ -34,6 +34,7 @@ import {
     sin,
     smoothstep,
     sqrt,
+    texture,
     uniform,
     uv,
     varying,
@@ -79,6 +80,18 @@ function gerstnerWave(dir, steep, wlen, p, t) {
  * @param {boolean} [opts.useRadialEdge] dissolve the plane at its rim (pooled lake) vs fill (sea/river).
  * @param {number}  [opts.baseAlpha] surface opacity ceiling (Ch2 ceiling used 0.8; Ch3 fills at 1.0).
  * @param {*} [opts.reflection] optional reflector() node for the hero lake mirror.
+ * @param {object} [opts.shore] optional DEPTH-BASED SHORE BLEND — removes the raw geometric
+ *   intersection line wherever terrain rises through the sheet. The terrain heightfield is
+ *   BAKED by the caller into a half-float texture (sampled here by world XZ), so the water
+ *   evaluates the exact same ground the terrain mesh was displaced by — no scene depth
+ *   texture needed (awkward in the r181 WebGPU forward pass) and no hand-ported height
+ *   function to drift when the terrain is re-authored. Shape:
+ *   { heightTexture, uOriginXZ (vec2 uniform: terrain plate world origin),
+ *     uBaseY (float uniform: terrain world base Y), extent (plate half-size, world units),
+ *     band (alpha fade depth, world units), shallowTint ([r,g,b] lagoon shallows) }.
+ *   Alpha fades 0→1 over `band` of true water depth, and the colour lifts toward
+ *   shallowTint over ~3× the band, so every shoreline reads as a natural shallowing
+ *   instead of a hard clip. Ch3-only today; omit for byte-identical Ch2 behaviour.
  * @returns {{ material: THREE.MeshBasicNodeMaterial, uniforms: object }}
  */
 export function buildOdysseyWaterSurface(uTime, {
@@ -90,6 +103,7 @@ export function buildOdysseyWaterSurface(uTime, {
     useRadialEdge = false,
     baseAlpha = 1.0,
     reflection = null,
+    shore = null,
 } = {}) {
     const sun = vec3(sunDir.x, sunDir.y, sunDir.z);
     const wpos = positionWorld;
@@ -192,7 +206,50 @@ export function buildOdysseyWaterSurface(uTime, {
     aboveColor = aboveColor.add(vec3(0.92, 0.96, 1.0).mul(sunPath).mul(oneMinus(winterT.mul(0.6))));
 
     // ── The membrane: one surface, view-dependent. ──
-    const color = mix(belowColor, aboveColor, facing);
+    let color = mix(belowColor, aboveColor, facing);
+
+    // ── Optional depth-based SHORE BLEND (see the option doc above). ──
+    let shoreAlpha = float(1.0);
+    if (shore) {
+        const plateHalf = float(shore.extent);
+        const shoreLocal = wpos.xz.sub(shore.uOriginXZ);
+        const shoreUvNode = shoreLocal.add(plateHalf).div(plateHalf.mul(2.0));
+        // Only inside the baked terrain plate — beyond it there is no land, so the open
+        // sea keeps its authored look (and the clamped texture edge can't smear inward).
+        const inPlate = smoothstep(0.0, 0.03, shoreUvNode.x)
+            .mul(oneMinus(smoothstep(0.97, 1.0, shoreUvNode.x)))
+            .mul(smoothstep(0.0, 0.03, shoreUvNode.y))
+            .mul(oneMinus(smoothstep(0.97, 1.0, shoreUvNode.y)));
+        const terrainY = texture(shore.heightTexture, shoreUvNode).r.add(shore.uBaseY);
+        const depthBelow = wpos.y.sub(terrainY); // true water depth over the baked ground
+        // Alpha: dissolve to 0 exactly at the land line over `band` of depth. Topside only
+        // (facing) — the Ch2-breach underside must never thin. Band is smooth (no noise),
+        // honouring the "dissolve band wider than its noise swing" rule by having none.
+        // NB the band is now TIGHT (~1u): the shore terrain slopes are shallow (the wade
+        // ramp), so a wide depth band smeared into tens of horizontal units of mush — the
+        // first cut (2.6u) read as fog, not a waterline. A tight band + the foam rim below
+        // gives a *defined* natural line.
+        const shoreT = smoothstep(0.0, shore.band, depthBelow);
+        const shoreMix = inPlate.mul(facing);
+        shoreAlpha = mix(float(1.0), shoreT, shoreMix);
+        // Colour: lift the shallows toward a bright lagoon tint over ~3x the alpha band so
+        // the deep body hands off through real-looking shallows instead of ending abruptly.
+        const shallowT = smoothstep(0.0, shore.band * 3.0, depthBelow);
+        const tint = vec3(shore.shallowTint[0], shore.shallowTint[1], shore.shallowTint[2]);
+        const shallowed = mix(tint, color, shallowT.mul(0.65).add(0.35));
+        color = mix(color, shallowed, shoreMix);
+        // FOAM RIM: a soft bright ring just offshore (depth ~0.15–1.6 × band units) where
+        // the alpha ramp is already mostly opaque, so it reads as the waterline itself —
+        // the single strongest "natural shoreline" cue. Gentle drifting noise breaks it up
+        // (modulates brightness only, never the alpha band, so no hard-snap risk).
+        const foamBand = smoothstep(0.15, 0.55, depthBelow)
+            .mul(oneMinus(smoothstep(0.9, 1.7, depthBelow)));
+        const foamNoise = snoise3(vec3(wpos.x.mul(0.32), wpos.z.mul(0.32), uTime.mul(0.25)))
+            .mul(0.5)
+            .add(0.5);
+        const foam = foamBand.mul(foamNoise.mul(0.45).add(0.30)).mul(shoreMix);
+        color = color.add(vec3(0.88, 0.94, 0.96).mul(foam));
+    }
 
     // Radial shore alpha (pooled lake) or fill to the scaled edge (sea/river/ceiling).
     const distFromCenter = length(vUv.sub(0.5)).mul(2.0);
@@ -208,7 +265,7 @@ export function buildOdysseyWaterSurface(uTime, {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = edgeAlpha.mul(float(baseAlpha)).mul(uOpacity);
+    material.opacityNode = edgeAlpha.mul(float(baseAlpha)).mul(uOpacity).mul(shoreAlpha);
     // ONE displacement, eased by uWaveScale (Gerstner swell below → calm ripple above).
     material.positionNode = vec3(
         posL.x.add(wave.x.mul(uWaveScale)),

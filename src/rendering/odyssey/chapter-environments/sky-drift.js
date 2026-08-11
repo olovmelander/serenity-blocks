@@ -341,7 +341,9 @@ export function createSkyDriftEnvironment(options = {}) {
         // copies the silhouette does not pop tone. (Was uniform(0.55) — a partial alpenglow that
         // differed from Ch4's full-lit copy at the 4→5 hand-off.)
         uTransition: null,
-        includeFarRange: false,
+        // Flank chains (2026-08, was false): all three L5 hosts must agree or the far
+        // silhouettes would vanish in one frame at the 4→5 authority flip.
+        includeFarRange: true,
         opacityTargets: ringOpacityUniforms,
         baseOpacity: 1,
     });
