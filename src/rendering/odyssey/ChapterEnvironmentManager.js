@@ -22,7 +22,6 @@ import {
 import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-environments/registry.js';
 import {
     SEAM_34_COLOUR_HALF_WIDTH,
-    SEAM_34_ALPINE_BRIDGE,
     SEAM_45_COLOUR_HALF_WIDTH,
     SEAM_45_SKY_BRIDGE,
     SEAM_56_COLOUR_HALF_WIDTH,
@@ -1495,9 +1494,13 @@ export class ChapterEnvironmentManager {
             );
         }
 
-        // SEAM 3->4 WIDE COLOUR + DENSITY LERP: bridge the warm living-world sky into
-        // cold alpine air over a wider window than the content ecotone. The midpoint stays
-        // saturated and lower-density, avoiding the pale blue fog wall seen in board shots.
+        // WAVE 0.3 (2026-08): the alpine BRIDGE MIDPOINT is deleted; the wide WINDOW is kept.
+        // Ch3 and Ch4 now carry byte-identical fogColor (0xbcd8ec) and skyColor (0x5aa8e0)
+        // after the daylight re-palette, so routing the lerp through 0x638699 forced the fog
+        // through a 3.0x luminance dip (rel-lum 0.659 -> 0.220 -> 0.659) at 2.18x density
+        // (0.0011 -> 0.0024 -> 0.0015) over 196u and then undid it — a dip to nowhere, left
+        // over from a dusk look that no longer exists. A direct lerp over the SAME wide window
+        // keeps the smooth handoff (still wider than the content ecotone) and removes the dip.
         const boundary34 = this.chapterPositions[3];
         if (Number.isFinite(boundary34)) {
             const colourStart = boundary34 - SEAM_34_COLOUR_HALF_WIDTH;
@@ -1510,42 +1513,16 @@ export class ChapterEnvironmentManager {
                     const colourBlend = smootherstep01(
                         (p - colourStart) / (colourEnd - colourStart),
                     );
-                    lerpColorViaBridge(
-                        skyColor,
-                        surface3.skyColor,
-                        SEAM_34_ALPINE_BRIDGE.skyColor,
-                        mountains4.skyColor,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    lerpColorViaBridge(
-                        fogColor,
-                        surface3.fogColor,
-                        SEAM_34_ALPINE_BRIDGE.fogColor,
-                        mountains4.fogColor,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    lerpColorViaBridge(
-                        ambientLight,
-                        surface3.ambientLight,
-                        SEAM_34_ALPINE_BRIDGE.ambientLight,
-                        mountains4.ambientLight,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    ambientIntensity = lerpNumberViaBridge(
-                        surface3.ambientIntensity,
-                        SEAM_34_ALPINE_BRIDGE.ambientIntensity,
-                        mountains4.ambientIntensity,
-                        colourBlend,
-                    );
-                    fogDensity = lerpNumberViaBridge(
-                        surface3.fogDensity,
-                        SEAM_34_ALPINE_BRIDGE.fogDensity,
-                        mountains4.fogDensity,
-                        colourBlend,
-                    );
+                    skyColor.set(surface3.skyColor)
+                        .lerp(this._blendColorScratch.set(mountains4.skyColor), colourBlend);
+                    fogColor.set(surface3.fogColor)
+                        .lerp(this._blendColorScratch.set(mountains4.fogColor), colourBlend);
+                    ambientLight.set(surface3.ambientLight)
+                        .lerp(this._blendColorScratch.set(mountains4.ambientLight), colourBlend);
+                    const aiA = surface3.ambientIntensity;
+                    const aiB = mountains4.ambientIntensity;
+                    ambientIntensity = THREE.MathUtils.lerp(aiA, aiB, colourBlend);
+                    fogDensity = THREE.MathUtils.lerp(surface3.fogDensity, mountains4.fogDensity, colourBlend);
                 }
             }
         }

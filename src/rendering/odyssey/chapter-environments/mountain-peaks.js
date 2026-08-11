@@ -51,6 +51,8 @@ import {
     createMountainSkyTSL,
     createFBMMountainTSL,
     createSnowFloorTSL,
+    snowFloorRelief,
+    SNOW_FLOOR_LOCAL_Z,
     createCloudSeaDeckTSL,
     createMountainSunTSL,
     buildMountainGeometry,
@@ -92,8 +94,13 @@ function buildCh4SeamConiferPlacements(floorY) {
         if (climb < 0.4) species = 'spruce';
         else if (climb < 0.65) species = 'pine';
         const scale = (0.7 + Math.random() * 0.6) * (1 - climb * 0.35);
+        // WAVE 0.5: seat on the drawn surface, not on a flat plane. The snow floor carries
+        // +/-11u of baked relief; planting at a constant floorY + 1 put trees a measured mean
+        // -4.5u out (range -26.3 .. +15.7). Sample in the floor mesh's own frame: it sits at
+        // massif-local (0, floorY, SNOW_FLOOR_LOCAL_Z), so geometry-local z is z - that offset.
+        const groundY = floorY + snowFloorRelief(x, z - SNOW_FLOOR_LOCAL_Z);
         out[species].push({
-            x, y: floorY + 1, z, scale, rotationY: Math.random() * Math.PI * 2,
+            x, y: groundY, z, scale, rotationY: Math.random() * Math.PI * 2,
         });
         placed += 1;
     }
@@ -270,7 +277,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     // ~302 (foothillBaseY+10), onto the hero-center peak foot (~302) and Ch3's corridor-back ground,
     // ~10u below the cloud-sea deck (foothillBaseY+20). The two Ch4 grounds that were 65u apart
     // become one ~290-312 band aligned with Ch3 — no more double-floor / lower-disc undercut. (The
-    // seam conifer belt seats at floorY+1 so it rises with the floor onto the peak feet too.)
+    // seam conifer belt seats on the floor's own relief — see snowFloorRelief.)
     const snowFloorY = foothillBaseY + 10;
     const snowFloor = createSnowFloorTSL(uTimeNode, snowFloorY);
     massif.add(snowFloor.group);

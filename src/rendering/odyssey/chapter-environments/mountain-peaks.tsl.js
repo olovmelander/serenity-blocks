@@ -529,6 +529,25 @@ export function createFBMMountainTSL(config = {}) {
 // Radial snow-floor apron (FrontSide; must NOT bloom)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// SNOW-FLOOR RELIEF — the single source of truth for the floor's height, exported so
+// anything SEATED on the floor samples exactly the surface that is drawn instead of
+// guessing a constant. (Wave 0.5: the Ch4 seam conifer belt was planted at a flat
+// floorY + 1 with no heightfield sample at all, leaving a measured mean error of -4.5u
+// against the surface — 37.7% of cells buried a 6-17u tree by more than 8u and 18.0%
+// floated it by more than 4u.) Coordinates are GEOMETRY-LOCAL, i.e. relative to the
+// snow-floor mesh's own centre, which sits at massif-local (0, snowFloorY, -900).
+//
+// This is the CPU-mirror principle from the One World plan in miniature: the drawn
+// surface and the prop placement must come from one function, never two.
+export function snowFloorRelief(x, z) {
+    const noise = (nx, nz, scale) => Math.sin(nx * scale) * Math.cos(nz * scale * 0.8) * 0.5
+        + Math.sin(nx * scale * 2.3) * Math.cos(nz * scale * 1.7) * 0.25;
+    return noise(x, z, 0.01) * 8 + noise(x, z, 0.025) * 3;
+}
+
+/** Massif-local Z of the snow-floor mesh centre (mesh.position.set(0, offsetY, -900)). */
+export const SNOW_FLOOR_LOCAL_Z = -900;
+
 function buildSnowFloorGeometry() {
     const radius = 3000;
     // LOD (perf §3b): the floor's low-amplitude sine displacement (±~11 units over a
@@ -539,14 +558,8 @@ function buildSnowFloorGeometry() {
     geometry.rotateX(-Math.PI / 2);
 
     const positionAttr = geometry.attributes.position;
-    const noise = (x, z, scale) => Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5
-        + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
-
     for (let i = 0; i < positionAttr.count; i += 1) {
-        const x = positionAttr.getX(i);
-        const z = positionAttr.getZ(i);
-        const height = noise(x, z, 0.01) * 8 + noise(x, z, 0.025) * 3;
-        positionAttr.setY(i, height);
+        positionAttr.setY(i, snowFloorRelief(positionAttr.getX(i), positionAttr.getZ(i)));
     }
     geometry.computeVertexNormals();
     return geometry;
