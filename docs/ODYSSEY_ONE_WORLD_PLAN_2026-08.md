@@ -392,7 +392,28 @@ floating/buried conifers (§1.3) permanently.
 (`EnvironmentNode` ×2, `Background.js`) — **nothing injects it for user materials**. Omitting
 it is a WGSL validation error, i.e. a black chapter, not a warning.
 
-### 3.3 The far range: **pre-baked LUTs**, not a per-frame raymarch
+### 3.3 The far range: **SUPERSEDED — the world simply does not end**
+
+> **RESOLVED BY MEASUREMENT, 2026-08.** This whole pillar turned out to be unnecessary and is
+> retained below only as the reasoning that led to the test.
+>
+> The clipmap's own structure already solves it: **each additional ring level doubles the world
+> reach for a near-constant per-ring triangle cost.** Measured on the discrete lane, taking
+> `LEVELS` from 7 to 10 moved reach from **6,554 u to 52,429 u — 8× further — for +41 %
+> triangles and a GPU p50 of 7.012 ms both before and after, byte-identical.**
+>
+> So there is no LUT pipeline, no spline stations, no cross-fade, no parallax artefact and no
+> extra 6 MB of textures. Shipped at `LEVELS 9` (26 km), which is past the useful range anyway
+> once the camera's far plane and the aerial perspective are accounted for. The property is
+> pinned by a unit test in `odyssey-clipmap.test.js`.
+>
+> One real consequence, found the same way: a sky dome sized off `reach` falls outside the
+> camera's far plane once reach is large, and the sky renders **black**. Size the dome
+> independently and widen the far plane deliberately.
+
+<details><summary>Original reasoning (superseded)</summary>
+
+#### The far range: pre-baked LUTs, not a per-frame raymarch
 
 **This pillar is demoted, and it is the single biggest change from the first draft.**
 
@@ -415,6 +436,8 @@ have.
 
 This still deletes the canonical mountain chain, the L5 dedup, `rangeAuthority` and the entire
 alpha-rim-fade bug class — the architectural win survives intact.
+
+</details>
 
 ### 3.4 One sun, one analytic sky
 

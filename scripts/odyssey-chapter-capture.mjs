@@ -295,7 +295,15 @@ async function bootstrapOdyssey(win) {
                 const bc = window.odysseyMode?.boardController;
                 if (!bc?.isActive || !bc.cameraController || !bc.environmentManager) return false;
                 const envs = bc.environmentManager.environments;
-                return required.every((chapterId) => envs?.has(chapterId))
+                // A chapter whose ground comes from the continuous Act II world is never
+                // created as an environment, so requiring an entry for it here can never
+                // become true. This predicate predates the idea that a chapter's ground might
+                // live somewhere other than its own diorama; without this it simply waits out
+                // its 140s timeout and reports a boot failure that never happened.
+                const suppressed = bc.environmentManager.suppressedChapters;
+                const satisfied = (chapterId) => envs?.has(chapterId)
+                    || (!!bc.oneWorld && !!suppressed?.has?.(chapterId));
+                return required.every(satisfied)
                     && (bc.pendingChapterLoads?.size || 0) === 0;
             });
             if (!ready) return { ok: false, reason: 'required chapter environments not ready' };
