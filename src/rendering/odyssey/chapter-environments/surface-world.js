@@ -1592,11 +1592,11 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     } = visibilityState;
     const auroraPreviewState = resolveSurfaceWorldAuroraPreviewState(cameraProgress);
     const alpineRampState = resolveSurfaceWorldAlpineRampState(cameraProgress);
-    // SEAM 3->4 recede: 1->0 across the final stretch of Ch3 into the Surface→Mountains seam
-    // so the waterfall + distant range fade BEFORE the group hides (no pop), and the distant
-    // range cross-dissolves with the rising Mountains peaks rather than swapping shape hard.
-    const seamRecedeState = resolveSurfaceWorldSeamRecedeState(cameraProgress);
-    const { recedeOpacity } = seamRecedeState;
+    // SEAM 3->4: the distant range + foothill bridge no longer recede here — under the L5 peak
+    // dedup only ONE copy of the shared canonical chain draws through the boundary, so the drawn
+    // copy holds constant opacity and the manager hides the whole group past the seam (see the
+    // distantMountainOpacity + alpineOpacity comments below). resolveSurfaceWorldSeamRecedeState is
+    // kept (its unit test pins the ramp) but no longer consumed by the live env.
     const { surfaceExitOpacity } = resolveSurfaceWorldSurfaceExitState(cameraProgress);
     const waterCrossingState = resolveSurfaceWorldWaterCrossingState(cameraProgress);
     // ENTRY RAMP (frames 01–02 slab pop + petal leak fix): every surface element rises
@@ -1612,9 +1612,14 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // bridge cannot leak into deep Ch4. recedeOpacity is retained below for the distant range, which
     // SHOULD cross-dissolve with the rising Ch4 peaks.
     const alpineOpacity = surfaceGate * alpineRampState.rampOpacity;
+    // L5 HAND-OFF (in-game "transparent / switching mountain" fix): do NOT recede the distant range
+    // at the 3→4 seam. The L5 authority pass draws only ONE copy of the shared canonical chain
+    // through the boundary, so the drawn copy must hold CONSTANT opacity — receding it to 0 by the
+    // boundary faded the silhouette to see-through and then Ch4's main-peaks popped in at the flip.
+    // recedeOpacity is retained above for other seam elements; the manager hides the whole Ch3 group
+    // once the ecotone weight reaches 0, so the range can't leak into deep Ch4.
     const distantMountainOpacity = surfaceGate
-        * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity)
-        * recedeOpacity;
+        * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity);
 
     const { snowTransition } = group.userData;
     const heightSnowBlend = snowTransition
