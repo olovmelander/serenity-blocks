@@ -23,6 +23,8 @@ import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-
 import {
     SEAM_34_COLOUR_HALF_WIDTH,
     SEAM_34_ALPINE_BRIDGE,
+    SEAM_45_COLOUR_HALF_WIDTH,
+    SEAM_45_SKY_BRIDGE,
     SEAM_56_COLOUR_HALF_WIDTH,
     SEAM_56_AURORA_BRIDGE,
 } from './chapter-environments/shared/seam-bridges.js';
@@ -1457,6 +1459,62 @@ export class ChapterEnvironmentManager {
                         surface3.fogDensity,
                         SEAM_34_ALPINE_BRIDGE.fogDensity,
                         mountains4.fogDensity,
+                        colourBlend,
+                    );
+                }
+            }
+        }
+
+        // SEAM 4->5 WIDE COLOUR + DENSITY LERP: bridge Mountains' bright azure into Sky-Drift's
+        // deeper blue through a pale-cyan high-key midpoint, so the alpine -> cloud-cathedral
+        // handoff brightens rather than snaps. Mirrors the 3->4 alpine bridge; colour-only (no
+        // extra ecotone render cost).
+        const boundary45 = this.chapterPositions[4];
+        if (Number.isFinite(boundary45)) {
+            const colourStart = boundary45 - SEAM_45_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary45 + SEAM_45_COLOUR_HALF_WIDTH;
+            const p = environmentProgress;
+            if (p >= colourStart && p <= colourEnd) {
+                const mountains4 = this.chapterEnvironmentById.get(4);
+                const sky5 = this.chapterEnvironmentById.get(5);
+                if (mountains4 && sky5) {
+                    const colourBlend = smootherstep01(
+                        (p - colourStart) / (colourEnd - colourStart),
+                    );
+                    lerpColorViaBridge(
+                        skyColor,
+                        mountains4.skyColor,
+                        SEAM_45_SKY_BRIDGE.skyColor,
+                        sky5.skyColor,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    lerpColorViaBridge(
+                        fogColor,
+                        mountains4.fogColor,
+                        SEAM_45_SKY_BRIDGE.fogColor,
+                        sky5.fogColor,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    lerpColorViaBridge(
+                        ambientLight,
+                        mountains4.ambientLight,
+                        SEAM_45_SKY_BRIDGE.ambientLight,
+                        sky5.ambientLight,
+                        colourBlend,
+                        this._blendColorScratch,
+                    );
+                    ambientIntensity = lerpNumberViaBridge(
+                        mountains4.ambientIntensity,
+                        SEAM_45_SKY_BRIDGE.ambientIntensity,
+                        sky5.ambientIntensity,
+                        colourBlend,
+                    );
+                    fogDensity = lerpNumberViaBridge(
+                        mountains4.fogDensity,
+                        SEAM_45_SKY_BRIDGE.fogDensity,
+                        sky5.fogDensity,
                         colourBlend,
                     );
                 }

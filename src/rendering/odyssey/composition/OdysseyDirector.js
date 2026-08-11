@@ -27,8 +27,10 @@ import {
 // E3 — one source of truth for the 3->4/5->6 colour bridges (was copy-pasted here + in CEM).
 import {
     SEAM_34_ALPINE_BRIDGE,
+    SEAM_45_SKY_BRIDGE,
     SEAM_56_AURORA_BRIDGE,
     SEAM_34_COLOUR_HALF_WIDTH as SEAM_34_ALPINE_COLOUR_HALF_WIDTH,
+    SEAM_45_COLOUR_HALF_WIDTH as SEAM_45_SKY_COLOUR_HALF_WIDTH,
     SEAM_56_COLOUR_HALF_WIDTH as SEAM_56_AURORA_COLOUR_HALF_WIDTH,
 } from '../chapter-environments/shared/seam-bridges.js';
 
@@ -286,6 +288,57 @@ export class OdysseyDirector {
                     SEAM_34_ALPINE_BRIDGE.fogDensity,
                     mountains4.fogDensity,
                     alpineBlend,
+                );
+            }
+        }
+
+        // SEAM 4->5 colour bridge: Mountains' bright azure -> Sky-Drift's deeper blue via a
+        // pale-cyan high-key midpoint (mirrors the 3->4 alpine bridge). Director-side atmo only.
+        const boundary45 = this.chapterPositions?.[4];
+        if (Number.isFinite(boundary45)) {
+            const colourStart = boundary45 - SEAM_45_SKY_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary45 + SEAM_45_SKY_COLOUR_HALF_WIDTH;
+            if (ascentProgress >= colourStart && ascentProgress <= colourEnd) {
+                const mountains4 = getChapterProfile(4).atmosphere;
+                const sky5 = getChapterProfile(5).atmosphere;
+                const skyBlend = smootherstep01(
+                    (ascentProgress - colourStart) / (colourEnd - colourStart),
+                );
+                lerpColorViaBridge(
+                    atmo.skyColor,
+                    mountains4.skyColor,
+                    SEAM_45_SKY_BRIDGE.skyColor,
+                    sky5.skyColor,
+                    skyBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.fogColor,
+                    mountains4.fogColor,
+                    SEAM_45_SKY_BRIDGE.fogColor,
+                    sky5.fogColor,
+                    skyBlend,
+                    this._scratchA,
+                );
+                lerpColorViaBridge(
+                    atmo.ambientColor,
+                    mountains4.ambientLight,
+                    SEAM_45_SKY_BRIDGE.ambientLight,
+                    sky5.ambientLight,
+                    skyBlend,
+                    this._scratchA,
+                );
+                atmo.ambientIntensity = lerpNumberViaBridge(
+                    mountains4.ambientIntensity,
+                    SEAM_45_SKY_BRIDGE.ambientIntensity,
+                    sky5.ambientIntensity,
+                    skyBlend,
+                );
+                atmo.fogDensity = lerpNumberViaBridge(
+                    mountains4.fogDensity,
+                    SEAM_45_SKY_BRIDGE.fogDensity,
+                    sky5.fogDensity,
+                    skyBlend,
                 );
             }
         }

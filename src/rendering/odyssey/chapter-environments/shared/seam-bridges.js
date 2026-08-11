@@ -23,6 +23,18 @@ export const SEAM_34_ALPINE_BRIDGE = Object.freeze({
     fogDensity: 0.0024,
 });
 
+// SEAM 4→5 bright-sky bridge (2026-08, Wave D): the day→sky handoff had NO colour bridge (only 3→4
+// alpine + 5→6 aurora existed). A pale-cyan high-key midpoint so Ch4's bright azure eases into Ch5's
+// deeper blue without a snap, matching the SEAM_34/56 treatment.
+export const SEAM_45_COLOUR_HALF_WIDTH = 0.05;
+export const SEAM_45_SKY_BRIDGE = Object.freeze({
+    skyColor: 0x9fc6e8,
+    fogColor: 0xc4dbee,
+    ambientLight: 0xeaf2ff,
+    ambientIntensity: 0.6,
+    fogDensity: 0.0018,
+});
+
 export const SEAM_56_COLOUR_HALF_WIDTH = 0.07;
 export const SEAM_56_AURORA_BRIDGE = Object.freeze({
     skyColor: 0x06162f,
