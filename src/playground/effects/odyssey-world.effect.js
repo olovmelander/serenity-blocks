@@ -460,13 +460,36 @@ export function create({ scene, camera }) {
     const uShadowTint = uniform(new THREE.Color(0.44, 0.58, 0.82));
     const uAerialK = uniform(0.00016);
     const uExposure = uniform(1);
+    // 0 in air, 1 fully submerged. Driven from the camera's altitude against sea level, with a
+    // band wide enough that breaking the surface is a transition rather than a switch.
+    const uSubmerged = uniform(0);
 
     const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
+    // ── ONE ATMOSPHERE, TWO MEDIA (plan 3.5) ────────────────────────────────────
+    //
+    // An air-only aerial model cannot serve Chapter 2, and the plan is explicit that it would
+    // re-fork at the very first seam if it tried. Water is not "air but bluer": it extinguishes
+    // roughly two orders of magnitude faster, it converges on its own colour rather than the
+    // sky's, and the red end of the spectrum is gone within metres. Same function, one extra
+    // parameter — which is the whole point of writing it once.
+    const DEEP_WATER = vec3(0.020, 0.105, 0.165);
     const applyAerial = (lit, wp) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
-        const t = float(1).sub(exp(d.mul(uAerialK.negate())));
-        return mix(lit, skyColourFor(to.div(max(d, float(0.001))).y), clamp(t, 0, 0.82));
+        const dirY = to.div(max(d, float(0.001))).y;
+
+        const air = mix(lit, skyColourFor(dirY), clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82));
+
+        // Underwater: heavy extinction toward the deep colour, and a shallow-water lift near
+        // the surface so the breach reads as light above rather than a uniform murk.
+        const wT = clamp(float(1).sub(exp(d.mul(-0.0075))), 0, 0.97);
+        const surfaceGlow = smoothstep(float(-0.15), float(0.75), dirY).mul(0.5);
+        const waterTarget = mix(DEEP_WATER, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
+        // Red goes first: a cheap, correct-feeling absorption bias.
+        const absorbed = lit.mul(vec3(0.42, 0.86, 1.0));
+        const submergedCol = mix(absorbed, waterTarget, wT);
+
+        return mix(air, submergedCol, uSubmerged);
     };
 
     const clipmapXZ = (spacing0, halfN) => {
@@ -585,10 +608,18 @@ export function create({ scene, camera }) {
     // ── SKY ──
     const skyMat = new THREE.MeshBasicNodeMaterial();
     const skyDir = normalize(positionWorld.sub(cameraPosition));
-    skyMat.colorNode = skyColourFor(skyDir.y)
+    const skyAir = skyColourFor(skyDir.y)
         .add(vec3(1, 0.86, 0.66).mul(smoothstep(float(0.90), float(1), dot(skyDir, uSunDir)).pow(3).mul(0.3)))
-        .add(vec3(1, 0.97, 0.9).mul(smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSunDir)).mul(2.2)))
-        .mul(uExposure);
+        .add(vec3(1, 0.97, 0.9).mul(smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSunDir)).mul(2.2)));
+    // Submerged, the dome is not a sky — it is the water column, brightening toward the
+    // surface above and falling away to the deep below. Without this the breach happens
+    // against a blue sky the camera should not be able to see yet.
+    const skyWater = mix(
+        DEEP_WATER.mul(0.5),
+        skyColourFor(float(0.4)).mul(0.55),
+        smoothstep(float(-0.25), float(0.85), skyDir.y),
+    );
+    skyMat.colorNode = mix(skyAir, skyWater, uSubmerged).mul(uExposure);
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
     const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(Math.min(ground.reach * 1.7, 22000), 32, 20), skyMat);
@@ -627,7 +658,14 @@ export function create({ scene, camera }) {
     wl = wl.add(vec3(0.92, 0.97, 0.99).mul(
         smoothstep(float(2.6), float(0.15), depth).mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.55),
     ));
-    waterMat.colorNode = applyAerial(wl, positionWorld).mul(uExposure);
+    // Seen from BELOW the surface is a bright ceiling, not a body of water: it is where the
+    // sky is. FrontSide culled it entirely, so from Chapter 2 the camera looked straight
+    // through the sea into the sky — the exact see-through-the-world class of bug this rebuild
+    // exists to delete.
+    const underside = skyColourFor(float(0.65)).mul(0.85)
+        .add(vec3(1, 0.96, 0.88).mul(spec.mul(0.6)));
+    const waterSeen = mix(wl, underside, uSubmerged);
+    waterMat.colorNode = applyAerial(waterSeen, positionWorld).mul(uExposure);
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
@@ -787,6 +825,14 @@ export function create({ scene, camera }) {
             uShadowTint.value.setRGB(...cs.groundShadow);
             uAerialK.value = cs.fogDensity;
             uExposure.value = cs.exposure;
+
+            // The breach. A 9-unit band, so surfacing is a moment with a duration rather than
+            // a frame where the world changes medium.
+            const eyeY = pt.y + 16;
+            uSubmerged.value = Math.max(0, Math.min(
+                1,
+                (ODYSSEY_SEA_LEVEL + 4.5 - eyeY) / 9,
+            ));
 
             // Drop chunks the camera cannot plausibly see. Frustum culling handles direction;
             // this handles distance, which on a rail is the bigger win.
