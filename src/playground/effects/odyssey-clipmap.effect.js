@@ -24,6 +24,7 @@ import {
     positionWorld, smoothstep, texture, uniform, varying, vec2, vec3, dFdx, dFdy, length,
     cameraPosition,
 } from 'three/tsl';
+import { sampleColourScript } from '../../rendering/odyssey/odyssey-colour-script.js';
 
 export const meta = {
     id: 'odyssey-clipmap',
@@ -407,17 +408,21 @@ function buildClipmapGeometry(gridN = GRID_N, holeShrink = HOLE_SHRINK) {
 // Plan 3.5: the aerial perspective's far limit must converge on the EXACT sky the sky itself
 // draws. If it does not, the clipmap's far edge draws as a hard silhouette at a fixed radius
 // with the world apparently standing on it. Both callers therefore go through skyColourFor().
-const SKY_HORIZON = [0.72, 0.82, 0.93];
-const SKY_ZENITH = [0.19, 0.40, 0.76];
-const AERIAL_K = 0.00016; // extinction per world unit
 const AERIAL_MAX = 0.82;
 
+// Driven by the colour script (src/rendering/odyssey/odyssey-colour-script.js) rather than
+// hardcoded here, so the palette is DATA with unit-tested invariants instead of numbers buried
+// in a shader. These are module-level so the sky, the ground and the water all read the same
+// live values - one atmosphere, one palette, no chance of drift.
+const uSkyHorizon = uniform(new THREE.Color(0.72, 0.82, 0.93));
+const uSkyZenith = uniform(new THREE.Color(0.19, 0.40, 0.76));
+const uSunColour = uniform(new THREE.Color(1.0, 0.95, 0.86));
+const uGroundShadowTint = uniform(new THREE.Color(0.44, 0.58, 0.82));
+const uAerialK = uniform(0.00016);
+const uExposure = uniform(1.0);
+
 function skyColourFor(dirY) {
-    return mix(
-        vec3(...SKY_HORIZON),
-        vec3(...SKY_ZENITH),
-        clamp(dirY.mul(1.55).add(0.26), 0.0, 1.0),
-    );
+    return mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0.0, 1.0));
 }
 
 /**
@@ -429,7 +434,7 @@ function applyAerial(litColour, worldPos) {
     const toFrag = worldPos.sub(cameraPosition);
     const d = length(toFrag);
     const dirY = toFrag.div(max(d, float(0.001))).y;
-    const t = float(1.0).sub(exp(d.mul(-AERIAL_K)));
+    const t = float(1.0).sub(exp(d.mul(uAerialK.negate())));
     return mix(litColour, skyColourFor(dirY), clamp(t, 0.0, AERIAL_MAX));
 }
 
@@ -583,15 +588,15 @@ export function create({ scene, camera, renderer }) {
     // Sky light still reaches shadowed ground, and it is COOLER than the sun - that colour
     // separation between lit and shadowed is most of what makes a landscape read as three
     // dimensional. Shadowed snow going blue is the same effect.
-    const sky = vec3(0.44, 0.58, 0.82);
-    const sun = vec3(1.00, 0.95, 0.86);
+    // Sun colour and the cool shadow tint both come from the colour script, so "the light
+    // changes as you climb" is one table edit rather than a shader change.
     const direct = ndl.mul(sunVis).mul(0.92);
-    let lit = albedo.mul(sun.mul(direct.add(0.06)).add(sky.mul(0.36)));
+    let lit = albedo.mul(uSunColour.mul(direct.add(0.06)).add(uGroundShadowTint.mul(0.36)));
 
     // ONE atmosphere, applied through the shared function the water uses too.
     lit = applyAerial(lit, positionWorld);
 
-    material.colorNode = lit;
+    material.colorNode = lit.mul(uExposure);
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -694,7 +699,7 @@ export function create({ scene, camera, renderer }) {
         .mul(smoothstep(float(-0.4), float(0.5), depth));
     waterLit = waterLit.add(vec3(0.92, 0.97, 0.99).mul(foam.mul(0.55)));
 
-    waterMat.colorNode = applyAerial(waterLit, positionWorld);
+    waterMat.colorNode = applyAerial(waterLit, positionWorld).mul(uExposure);
     // The shoreline: the sea simply stops where the bed rises through it. A band far wider
     // than the swell that perturbs it, or the waterline snaps instead of feathering.
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0.0, 1.0);
@@ -737,6 +742,18 @@ export function create({ scene, camera, renderer }) {
         cameraRadius: 2400,
         update(time) {
             uTime.value = time;
+
+            // THE ASCENT. Path progress drives the colour script, which drives every palette
+            // slot at once. This is what stops "one world" from being one uniformly grey world:
+            // the geometry is continuous, and the LIGHT is what carries the journey's arc.
+            const journeyP = Math.min(1, 0.18 + (time * 0.02));
+            const cs = sampleColourScript(journeyP);
+            uSkyHorizon.value.setRGB(...cs.skyHorizon);
+            uSkyZenith.value.setRGB(...cs.skyZenith);
+            uSunColour.value.setRGB(...cs.sun);
+            uGroundShadowTint.value.setRGB(...cs.groundShadow);
+            uAerialK.value = cs.fogDensity;
+            uExposure.value = cs.exposure;
             // The LOD centre follows the GROUND TRACK - never the camera eye (plan 3.1 point
             // 4). Centring on the camera makes the ground change shape when only the camera
             // moves, which is exactly what would break the hero framing.
