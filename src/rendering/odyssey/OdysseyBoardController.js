@@ -128,6 +128,12 @@ function readPixelRatioOverrideFromUrl() {
 
 /** Chapters whose ground the continuous Act II world replaces. */
 const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
+/**
+ * Scene-linear scale for the world's HDR output before the post stack. Measured in-game at
+ * 1.0, the sky reached luma 200 against 129 standalone and the massif washed to pale haze:
+ * a display-referred palette leaves an ACES curve no room and blooms the sky over everything.
+ */
+const ONE_WORLD_OUTPUT_SCALE = 0.55;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -591,7 +597,14 @@ export class OdysseyBoardController {
             // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
             try {
                 const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
-                this.oneWorld = createOdysseyWorld({ quality: weakLane ? 'low' : 'high' });
+                this.oneWorld = createOdysseyWorld({
+                    quality: weakLane ? 'low' : 'high',
+                    // The post stack owns exposure and applies ACES after it, so the world
+                    // must not apply exposure a second time, and must hand over scene-linear
+                    // values rather than the display-referred palette the playground wants.
+                    applyExposure: false,
+                    outputScale: ONE_WORLD_OUTPUT_SCALE,
+                });
                 this.scene.add(this.oneWorld.group);
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
             } catch (error) {

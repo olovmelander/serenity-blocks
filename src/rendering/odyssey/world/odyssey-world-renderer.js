@@ -330,7 +330,22 @@ export function scatterTrees(heightAt, {
 
 // ── the world ────────────────────────────────────────────────────────────────────
 
-export function createOdysseyWorld({ quality = 'high' } = {}) {
+/**
+ * @param {object} [opts]
+ * @param {string} [opts.quality] 'high' | 'low'
+ * @param {boolean} [opts.applyExposure] whether the WORLD applies the colour script's
+ *   exposure. True standalone (the playground has no post stack). FALSE inside the game,
+ *   where odyssey-tsl-pipeline.js owns exposure and applies ACES after it — otherwise
+ *   exposure is applied twice.
+ * @param {number} [opts.outputScale] scales the world's HDR output before it reaches a post
+ *   stack. The palette is authored display-referred, which is right for a flat playground but
+ *   far too hot for a pipeline that then adds bloom and an ACES curve: measured in-game, sky
+ *   came out at luma 200 against 129 standalone and the massif washed to pale haze. Scene-
+ *   linear output is what a tonemapper needs room to work with.
+ */
+export function createOdysseyWorld({
+    quality = 'high', applyExposure = true, outputScale = 1,
+} = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
@@ -360,6 +375,7 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
     const uShadowTint = uniform(new THREE.Color(0.44, 0.58, 0.82));
     const uAerialK = uniform(0.00016);
     const uExposure = uniform(1);
+    const uOutputScale = uniform(outputScale);
     const uSubmerged = uniform(0);
 
     const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
@@ -482,7 +498,8 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
     const ndl = max(dot(normal, uSunDir), 0);
     const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
         .add(uShadowTint.mul(0.36)));
-    groundMat.colorNode = applyAerial(lit, positionWorld).mul(uExposure);
+    const toOutput = (c) => (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
+    groundMat.colorNode = toOutput(applyAerial(lit, positionWorld));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -506,7 +523,7 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
         skyColourFor(float(0.4)).mul(0.55),
         smoothstep(float(-0.25), float(0.85), skyDir.y),
     );
-    skyMat.colorNode = mix(skyAir, skyWater, uSubmerged).mul(uExposure);
+    skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
     const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(Math.min(ground.reach * 1.7, 22000), 32, 20), skyMat);
@@ -548,7 +565,7 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
     // the camera looked straight through the sea into the sky.
     const underside = skyColourFor(float(0.65)).mul(0.85)
         .add(vec3(1, 0.96, 0.88).mul(spec.mul(0.6)));
-    waterMat.colorNode = applyAerial(mix(wl, underside, uSubmerged), positionWorld).mul(uExposure);
+    waterMat.colorNode = toOutput(applyAerial(mix(wl, underside, uSubmerged), positionWorld));
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
@@ -596,11 +613,11 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
         vec3(0.235, 0.375, 0.175),
         gShade.mul(0.75).add(gTint.mul(0.25)),
     );
-    treeMat.colorNode = applyAerial(
+    treeMat.colorNode = toOutput(applyAerial(
         treeBase.mul(uSunColour.mul(max(dot(normalWorld, uSunDir), 0).mul(0.35).add(0.55))
             .add(uShadowTint.mul(0.30))),
         positionWorld,
-    ).mul(uExposure);
+    ));
 
     const treeMeshes = [];
     const m4 = new THREE.Matrix4();
@@ -653,6 +670,8 @@ export function createOdysseyWorld({ quality = 'high' } = {}) {
         trees: trees.length,
         forestChunks: treeMeshes.length,
         materials: 4,
+        applyExposure,
+        outputScale,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
 
