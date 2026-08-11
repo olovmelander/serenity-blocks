@@ -53,6 +53,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { snoise3 } from './shared/odyssey-tsl-noise.js';
+import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import {
     billboardWorld,
     makeQuadInstancedGeometry,
@@ -77,7 +78,7 @@ const FOOTHILL_APRON_TREATMENT = resolveMountainTreatment({
 // On-screen sun / alpenglow direction for the Mountains chapter. The shader keyDir is
 // aligned to this so lit faces face the sun and the alpenglow fires where the disc is.
 // (Matches the plan's profile lightDir (0.7,0.25,0.4); B7 owns the profile entry itself.)
-export const MOUNTAIN_LIGHT_DIR = Object.freeze([0.7, 0.25, 0.4]);
+export const MOUNTAIN_LIGHT_DIR = Object.freeze([...ODYSSEY_SUN]);
 // Real alpenglow (plan ch4 §Lighting): stronger + lower than Surface's shared defaults.
 const ALPEN_STRENGTH = 0.6; // 0.42 → 0.6
 const ALPEN_HEIGHT_LO = 0.48; // 0.55 → 0.48
@@ -238,7 +239,7 @@ export function createCloudSeaDeckTSL({
     const uTopWarm = uniform(new THREE.Color(0xf2e3cf)); // white-gold sunlit billow tops
     const uTrough = uniform(new THREE.Color(0x9fb3cc)); // cool shaded troughs
     const uFogEdge = uniform(new THREE.Color(0xb9cee2)); // distance fog-edge (matches silver band)
-    const uLightDir = uniform(new THREE.Vector3(0.7, 0.25, 0.4).normalize());
+    const uLightDir = uniform(new THREE.Vector3(...MOUNTAIN_LIGHT_DIR).normalize());
     const uOpacity = uniform(0.92); // capped < 1.0 (no white blowout, soft additive-free top)
 
     // 3-octave value-FBM billow scrolling slowly over world XZ (NO per-frame alloc).
@@ -492,7 +493,7 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     // as crisp snow rather than a flat grey sheet.
     const uSnowColor = uniform(new THREE.Color(0xe6edf3));
     const uShadowColor = uniform(new THREE.Color(0x5f7184));
-    const uLightDir = uniform(new THREE.Vector3(0.3, 0.8, 0.5).normalize());
+    const uLightDir = uniform(new THREE.Vector3(...MOUNTAIN_LIGHT_DIR).normalize());
     const uOpacity = uniform(1);
     const time = uTime ?? uniform(0);
 

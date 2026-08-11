@@ -58,6 +58,7 @@ import {
 } from 'three/tsl';
 import { snoise3 } from './shared/odyssey-tsl-noise.js';
 import { buildOdysseyWaterSurface } from './shared/odyssey-water-surface.tsl.js';
+import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import {
     MOUNTAIN_SKIRT_MEADOW,
@@ -430,7 +431,7 @@ function seasonWinterT(uSeason) {
 // the terrain key light (normalize(-0.62,0.34,-0.71)) and with the god-ray fan (which
 // already biases left); previously the disc/dome sat front-RIGHT (0.40,0.16,-0.90),
 // contradicting both, so the god-rays fanned from an empty patch of sky.
-export const SURFACE_SUN_DIR = new THREE.Vector3(-0.48, 0.18, -0.86).normalize();
+export const SURFACE_SUN_DIR = new THREE.Vector3(...ODYSSEY_SUN).normalize();
 
 export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     const uSeason = options.uSeason ?? uniform(0);
@@ -819,7 +820,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // De-wash: the cool fill is pulled DOWN + warmed toward neutral so it stops graying the
     // greens, and the overall exposure is lifted so the saturated base survives the shading
     // (peak channel still capped well below white).
-    const lightDir = normalize(vec3(-0.62, 0.34, -0.71)); // raking key (azimuth kept; Wave-D unifies the sun)
+    const lightDir = normalize(vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z)); // raking key = shared ODYSSEY_SUN
     const diff = max(dot(vNormal, lightDir), 0.0);
     // PAINTERLY-ASCENT REPALETTE (Wave A): the direct key is now bright NEUTRAL DAYLIGHT (was warm
     // gold 0.98,0.82,0.48, which gilded the whole meadow olive) so the grass stays vivid green; the
@@ -832,7 +833,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     color = color.add(vec3(0.82, 0.90, 0.98).mul(rimFactor).mul(0.10));
     // Fake long-shadow banding: project worldXZ onto the sun azimuth and band it so the
     // raking light reads as long cast shadows across the valley (subtle, value-only).
-    const sunAz = vec2(-0.62, -0.71);
+    const sunAz = vec2(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.z);
     const shadowPhase = dot(vPosition.xz, sunAz).mul(0.045);
     const longShadow = sin(shadowPhase).mul(0.5).add(0.5);
     // Softer banding for the bright daylight meadow (Wave A: 0.28 → 0.16) — keep a hint of relief
@@ -2407,13 +2408,13 @@ export function createSunRaysTSL(uTime = uniform(0), options = {}) {
     mesh.frustumCulled = false;
     const dummy = new THREE.Object3D();
     for (let i = 0; i < beamCount; i += 1) {
-        // Bias the fan to the left (sun-side) with a tight spread around it.
+        // Bias the fan to the RIGHT (sun-side) now that ODYSSEY_SUN is upper-right (Wave D).
         dummy.position.set(
-            -40 + (Math.random() - 0.5) * 70,
-            20,
+            40 + (Math.random() - 0.5) * 70,
+            40,
             -30 - Math.random() * 50,
         );
-        dummy.rotation.set(0, 0, 0.18 + (Math.random() - 0.5) * 0.4); // lean toward the sun
+        dummy.rotation.set(0, 0, -0.18 + (Math.random() - 0.5) * 0.4); // lean toward the (upper-right) sun
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
     }
@@ -2789,7 +2790,7 @@ export function createCabinTSL(uTime = uniform(0)) {
     let color = mix(falu, roofDark, smoothstep(4.45, 4.8, py));
     color = mix(color, trim, trimBand);
     // The same raking key the landscape uses, so the cabin sits in the scene's light.
-    const lightDir = normalize(vec3(-0.62, 0.34, -0.71));
+    const lightDir = normalize(vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z));
     const diff = max(dot(normalView, lightDir), 0.0);
     color = color.mul(diff.mul(0.5).add(vec3(0.62, 0.68, 0.74).mul(0.5)));
 

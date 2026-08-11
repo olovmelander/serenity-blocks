@@ -15,6 +15,15 @@
  * blending happens in the director with reusable scratch THREE.Color instances.
  */
 
+/**
+ * The ONE Odyssey daylight sun — high-front, down-corridor (2026-08, Wave D). Shared by the shading
+ * rig (profile lightDir, below) AND every in-shader disc/water/key const so the light never teleports
+ * across Ch3→Ch4→Ch5. Plain array (this module is intentionally THREE-free); consumers wrap it in
+ * THREE.Vector3().normalize() and the director normalizes the profile copy. Points TOWARD the sun
+ * (all Odyssey light dirs use that convention).
+ */
+export const ODYSSEY_SUN = Object.freeze([0.35, 0.62, -0.70]);
+
 /** Narrative acts (see plan §3.1). */
 export const ODYSSEY_ACTS = Object.freeze({
     ORIGIN: 'origin', // I — Earth Core, Deep Ocean — close & enclosed
@@ -188,7 +197,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             ambientLight: 0xeaf2ff,
             ambientIntensity: 0.58,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
-            lightDir: [0.4, 0.8, 0.45],
+            lightDir: [...ODYSSEY_SUN],
             lightColor: 0xfff4e0,
             lightIntensity: 1.15,
             exposure: 1.02,
@@ -234,7 +243,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             ambientLight: 0xeaf2ff,
             ambientIntensity: 0.6,
             skyFeatures: ['heroSummit', 'aerialHaze', 'snowPlume'],
-            lightDir: [0.7, 0.25, 0.4],
+            lightDir: [...ODYSSEY_SUN],
             lightColor: 0xfff4e0,
             lightIntensity: 1.05,
             exposure: 1.02,
@@ -274,7 +283,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             ambientLight: 0xeaf2ff,
             ambientIntensity: 0.6,
             skyFeatures: ['cloudDeck', 'aurora', 'rainVeil'],
-            lightDir: [0.2, 0.7, 0.5],
+            lightDir: [...ODYSSEY_SUN],
             lightColor: 0xfff4e0,
             lightIntensity: 1.0,
             exposure: 1.02,
