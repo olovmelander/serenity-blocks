@@ -191,7 +191,13 @@ export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     // sea subsumes them. seaCenterZ 40 stays > corridorCenterZ 34 (test pin).
     seaCenterZ: 40,
     seaScaleX: 4.2,
-    seaScaleZ: 2.0,
+    // ONE CONNECTED WORLD (in-game: "this gap between the mountain and water looks quite off").
+    // At ×2.0 the sea ended at z≈−260 on a hard straight rim, while the meadow's own rim melted out
+    // by z≈−206 and the foothill bridge only reached full presence past z≈−242 — so a band of the
+    // valley had NO ground in it at all: the pale empty gap between the water and the mountain base.
+    // ×3.0 carries the water back to z≈−410, well under the bridge's opaque front, so the sea always
+    // runs beneath the land that continues on toward the range instead of stopping short of it.
+    seaScaleZ: 3.0,
     // Fix A finish: collapsed 3.0 → 0 so the Ch3 sea sits at exactly waterSurfaceY — the SAME world
     // plane as the Ch2 breach ceiling (no more 3u "double surface" the camera crossed twice) AND
     // exactly at the terrain shading waterline (surfaceWorldY, which is independent of seaYOffset —
@@ -1053,7 +1059,17 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
     // ~80u lip) lets the ramp melt into the haze on every side; the mid stays fully solid so the
     // ground the eye travels up is continuous. The far edge additionally keeps its range seamFade.
     const edgeNoiseZ = bridgeNoise(vWorldPosition.xz.mul(0.03)).sub(0.5).mul(40.0);
-    const rimFadeZ = oneMinus(smoothstep(258.0, 336.0, abs(vLocalPosition.z).add(edgeNoiseZ)));
+    // ONE CONNECTED WORLD: the rim fade used to be SYMMETRIC on |localZ|, so the bridge's FRONT lip
+    // (localZ→+340, i.e. worldZ≈−160..−242) dissolved in exactly the band where the meadow's own rim
+    // melt (178→206) was already dissolving. Two fades over the same ground = no ground: the pale
+    // empty gap between the water and the mountain base. The front lip is UNDERLAPPED by solid
+    // meadow (which stays opaque to worldZ≈−178), so it does not need to melt at all — only a thin
+    // feather at the very edge as insurance. The BACK lip keeps the full melt into the range.
+    const zLocalN = vLocalPosition.z.add(edgeNoiseZ);
+    const backness = oneMinus(smoothstep(-30.0, 30.0, zLocalN)); // 1 toward the range, 0 toward the meadow
+    const backRim = oneMinus(smoothstep(258.0, 336.0, abs(zLocalN)));
+    const frontRim = oneMinus(smoothstep(330.0, 344.0, abs(zLocalN)));
+    const rimFadeZ = mix(frontRim, backRim, backness);
     const rimFadeX = oneMinus(smoothstep(388.0, 456.0, abs(vLocalPosition.x).add(edgeNoiseZ)));
 
     const material = new THREE.MeshBasicNodeMaterial();

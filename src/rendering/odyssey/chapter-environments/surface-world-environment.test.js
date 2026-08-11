@@ -221,23 +221,35 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         expect(resolveSurfaceWorldEntryRampState(null).entryOpacity).toBe(1);
     });
 
-    it('keeps Chapter 2 water as an early crossing and gives the horizon to mountains', () => {
+    it('holds the water through the valley and only releases it into the mountains seam', () => {
         const positions = getActiveOdysseyChapterPositions();
         const ch3Start = positions[2];
         const ch4Start = positions[3];
         const span = ch4Start - ch3Start;
 
+        // ONE CONNECTED WORLD: water and meadow are co-located, so fading the sea out mid-chapter
+        // read as the ground SWAPPING from water to grass in place. The sea must stay fully present
+        // across the whole valley traverse — the only water edge is the organic grass shoreline.
         const early = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.2, positions);
         expect(early.waterCrossingOpacity).toBe(1);
         expect(early.waterCrossingVisible).toBe(true);
 
-        const fading = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.4, positions);
-        expect(fading.waterCrossingOpacity).toBeGreaterThan(0);
-        expect(fading.waterCrossingOpacity).toBeLessThan(1);
+        const mid = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.5, positions);
+        expect(mid.waterCrossingOpacity).toBe(1);
+        expect(mid.waterCrossingVisible).toBe(true);
 
-        const late = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.65, positions);
-        expect(late.waterCrossingOpacity).toBe(0);
-        expect(late.waterCrossingVisible).toBe(false);
+        const lateValley = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.65, positions);
+        expect(lateValley.waterCrossingOpacity).toBe(1);
+        expect(lateValley.waterCrossingVisible).toBe(true);
+
+        // It only releases into the Ch3→Ch4 seam, where the bridge + range already hold the frame.
+        const seam = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.9, positions);
+        expect(seam.waterCrossingOpacity).toBeGreaterThan(0);
+        expect(seam.waterCrossingOpacity).toBeLessThan(1);
+
+        const handedOff = resolveSurfaceWorldWaterCrossingState(ch4Start, positions);
+        expect(handedOff.waterCrossingOpacity).toBe(0);
+        expect(handedOff.waterCrossingVisible).toBe(false);
 
         const mountainReveal = resolveSurfaceWorldAlpineRampState(ch3Start + span * 0.1, positions);
         expect(mountainReveal.rampOpacity).toBeGreaterThan(0);

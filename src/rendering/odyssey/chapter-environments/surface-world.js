@@ -759,8 +759,16 @@ const SURFACE_SEAM_SURFACE_EXIT_BAND = 0.06; // fraction of Ch3 span per side of
 // The canonical Ch4 chain is already atmospheric through its base/edge alpha; keeping the
 // preview nearly opaque prevents the live board from reading as see-through ghost peaks.
 const SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY = 1.0;
-const SURFACE_WATER_CROSSING_FADE_START = 0.28;
-const SURFACE_WATER_CROSSING_FADE_END = 0.52;
+// ONE CONNECTED WORLD (in-game: "we first see water and then it swaps to grass, like the grass is
+// where the water was placed"). The water and the meadow are CO-LOCATED — the terrain is a
+// heightfield sitting +7 above a flat sea plane, dipping into it to form the basins. So fading the
+// whole sea out mid-chapter did not "cross" the water, it DELETED it, and the grass that was always
+// underneath became the ground: a surface swap in place. The sea now holds full presence for
+// essentially the whole chapter and only releases into the Ch3→Ch4 seam (where the foothill bridge
+// and the range have already taken the frame), so the shoreline stays the only water edge the eye
+// ever reads and the valley remains one continuous world.
+const SURFACE_WATER_CROSSING_FADE_START = 0.82;
+const SURFACE_WATER_CROSSING_FADE_END = 0.99;
 
 /**
  * ENTRY RAMP (creative plan Transition In): the landscape slab popped into frame 01–02
