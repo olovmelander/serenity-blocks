@@ -254,7 +254,12 @@ export function createMountainPeaksEnvironment(options = {}) {
     // snow instead of the cloud-sea rim + bare FBM plane edges. This builder was authored +
     // validated in the pilot but was never added to the LIVE scene — the "square baseplate /
     // not smooth at the bottom" the user reported. Shares the ticked uTimeNode for its sparkle.
-    const snowFloorY = foothillBaseY - 45;
+    // L2 FLOOR-DATUM COLLAPSE (2026-08, Wave D): raise the snow-floor disc from world Y ~247 to
+    // ~302 (foothillBaseY+10), onto the hero-center peak foot (~302) and Ch3's corridor-back ground,
+    // ~10u below the cloud-sea deck (foothillBaseY+20). The two Ch4 grounds that were 65u apart
+    // become one ~290-312 band aligned with Ch3 — no more double-floor / lower-disc undercut. (The
+    // seam conifer belt seats at floorY+1 so it rises with the floor onto the peak feet too.)
+    const snowFloorY = foothillBaseY + 10;
     const snowFloor = createSnowFloorTSL(uTimeNode, snowFloorY);
     massif.add(snowFloor.group);
     group.userData.snowFloor = snowFloor.mesh;

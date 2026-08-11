@@ -1582,9 +1582,14 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { entryOpacity } = resolveSurfaceWorldEntryRampState(cameraProgress);
     const surfaceGate = surfaceOpacity * entryOpacity;
     const surfaceElementOpacity = surfaceGate * surfaceExitOpacity;
-    // The alpine pieces are gated by BOTH the underwater surface fade AND the
-    // Surface→Mountains ramp, then receded across the seam so they cross-dissolve out.
-    const alpineOpacity = surfaceGate * alpineRampState.rampOpacity * recedeOpacity;
+    // L3 BRIDGE-CONNECT (2026-08, Wave D): the foothill bridge (the only alpineElement) is gated by
+    // the underwater surface fade AND the Surface→Mountains ramp, but is NO LONGER receded across the
+    // seam — it must persist as a SOLID ramp through the 3→4 crossfade so the ground physically hands
+    // off to Ch4's raised snow floor (world ~302) instead of dissolving into a 65u cliff. The manager
+    // hides the whole Ch3 group (group.visible = opacity>0) once the ecotone weight reaches 0, so the
+    // bridge cannot leak into deep Ch4. recedeOpacity is retained below for the distant range, which
+    // SHOULD cross-dissolve with the rising Ch4 peaks.
+    const alpineOpacity = surfaceGate * alpineRampState.rampOpacity;
     const distantMountainOpacity = surfaceGate
         * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity)
         * recedeOpacity;
