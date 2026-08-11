@@ -158,6 +158,11 @@ function createSkyGradient(uniforms) {
     // (a ch5 CHAPTER_LOOK is deferred); the sun is the single on-camera hero here.
     if (uniforms) {
         uniforms.uSunDir = gradientUniforms.uSunDir;
+        // SEAM 5→6 (in-game "space too bright" fix): expose the bright-daylight dome's alpha so
+        // update() can fade the BACKDROP out past the Space boundary. The manager crossfade can't
+        // reach a NodeMaterial opacityNode, so this uOpacity was stuck at 1.0 and the 5→6 carry
+        // dragged the opaque azure dome into the vacuum, washing Space white.
+        uniforms.uSkyOpacity = gradientUniforms.uOpacity;
     }
     return mesh;
 }
@@ -275,7 +280,9 @@ export function createSkyDriftEnvironment(options = {}) {
 
     // Sky background — the structured vertical gradient + the BOOSTED on-camera Mie
     // sun (the hero). createSkyGradient surfaces uniforms.uSunDir for B7.
-    group.add(createSkyGradient(uniforms));
+    const skyGradient = createSkyGradient(uniforms);
+    group.add(skyGradient);
+    group.userData.skyGradient = skyGradient;
 
     const cloudDecks = createCloudDecks();
     group.add(cloudDecks);
@@ -356,6 +363,8 @@ export function createSkyDriftEnvironment(options = {}) {
     });
     group.add(cloudSea.mesh);
     group.userData.cloudSea = cloudSea.mesh;
+    group.userData.cloudSeaReveal = cloudSea.uniforms.uReveal; // 5→6 space-backdrop fade
+    group.userData.cloudSeaOpacityUniform = cloudSea.uniforms.uOpacity; // base 0.92; chapter crossfade
 
     // LENTICULAR LANDMARK (creative plan asset 5): the stationary lens-cloud stack
     // mid-right of the path around 45–55% — kills the dead stretch as a scale object.
@@ -464,6 +473,34 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
     // instead of popping when group.visible finally flips. Defaults to 1 (pilot/playground,
     // no manager) so standalone use is unchanged.
     const chapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+
+    // ── SEAM 5→6: DARK-SPACE BACKDROP HANDOFF (in-game "space too bright" regression fix) ──────
+    // The 5→6 carry keeps the whole Ch5 group present ~85% into Space so the aurora + summit ring
+    // can linger; Wave-C made Ch5's sky-dome bright DAYLIGHT, so the carry now drags that opaque
+    // dome (+ cloud-sea + strata) into the vacuum and washes Space WHITE — additive cosmic glows
+    // vanish and dark bodies read as "black circles". Fade the BACKDROP here, DECOUPLED from the
+    // carry: 1 through Ch5, easing to 0 across the first ~12% of Space past the boundary. The aurora
+    // + summit ring are EXCLUDED (they keep the long carry and now read on the dark vacuum).
+    const skyChapterPositions = getActiveOdysseyChapterPositions();
+    const ch6StartP = skyChapterPositions?.[5];
+    const ch7StartP = skyChapterPositions?.[6];
+    let spaceBackdropFade = 1;
+    if (Number.isFinite(ch6StartP) && Number.isFinite(cameraProgress) && cameraProgress > ch6StartP) {
+        const spaceSpan = (Number.isFinite(ch7StartP) && ch7StartP > ch6StartP)
+            ? ch7StartP - ch6StartP : 0.15;
+        spaceBackdropFade = 1 - smoothstep01(
+            (cameraProgress - ch6StartP) / Math.max(1e-5, spaceSpan * 0.12),
+        );
+    }
+    if (uniforms?.uSkyOpacity) uniforms.uSkyOpacity.value = spaceBackdropFade * chapterOpacity;
+    if (group.userData.cloudSeaReveal) group.userData.cloudSeaReveal.value = spaceBackdropFade;
+    // Cloud strata + additive daytime backdrop have no reachable opacity uniform; gate them off once
+    // the dome fade has effectively completed so no bright residual lingers in the vacuum.
+    const backdropVisible = spaceBackdropFade > 0.02;
+    [group.userData.skyGradient, group.userData.cloudStrata, group.userData.sunGlow,
+        group.userData.lightShaft, group.userData.lenticular, group.userData.noctilucent,
+        group.userData.iceCrystals, group.userData.rainVeils, group.userData.cloudDecks]
+        .forEach((o) => { if (o) o.visible = backdropVisible; });
 
     // RECEDING SUMMIT RING: the same Ch4 hero chain remains visible until the camera has
     // actually passed it. Dusk may change the sky, but it does NOT delete the mountain

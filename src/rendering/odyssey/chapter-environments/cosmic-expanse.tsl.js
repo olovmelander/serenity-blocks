@@ -396,13 +396,13 @@ export function createHeroPlanetSurfaceTSL(uTime) {
 
     // Day / night terminator (view-space normal vs. light dir).
     const diffuse = max(0.0, dot(normalView, normalize(uLightDir)));
-    color = color.mul(diffuse.mul(0.92).add(0.16));
+    color = color.mul(diffuse.mul(0.9).add(0.10)); // darker night side (in-game: earth moodier but still lit)
 
     // Hot rim/limb light — a tight tangerine sunlit limb on the lit side so the
     // planet has a crisp 3D edge (the lead's "rim light"), feathered by fresnel.
     const fresEdge = max(0.0, dot(normalView, positionViewDirection));
     const limb = pow(oneMinus(fresEdge), 5.0);
-    color = color.add(vec3(1.0, 0.62, 0.28).mul(limb).mul(diffuse.mul(0.8).add(0.2)).mul(1.1));
+    color = color.add(vec3(1.0, 0.62, 0.28).mul(limb).mul(diffuse.mul(0.8).add(0.2)).mul(0.7)); // calmer hot limb
 
     // Cool scattered atmosphere rim (wider, dimmer than the hot limb).
     const fresAtmo = pow(oneMinus(fresEdge), 2.4);
@@ -561,7 +561,7 @@ export function createHeroPlanetTSL(uTime) {
     const haloFres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 3.2);
     const haloMat = new THREE.MeshBasicNodeMaterial();
     haloMat.colorNode = vec3(0.42, 0.6, 1.0);
-    haloMat.opacityNode = haloFres.mul(0.55);
+    haloMat.opacityNode = haloFres.mul(0.34); // dimmer blue atmosphere halo (darker earth)
     haloMat.transparent = true;
     haloMat.depthWrite = false;
     haloMat.blending = THREE.AdditiveBlending;
