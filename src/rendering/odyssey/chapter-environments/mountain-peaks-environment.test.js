@@ -15,12 +15,17 @@ describe('Mountain Peaks chapter environment (creative plan ch4)', () => {
         expect(group.userData.prayerFlags?.name).toBe('prayer-flag-line');
         expect(group.userData.waymarks?.name).toBe('alpine-waymarks');
         expect(group.userData.eagles?.name).toBe('mountain-eagles');
+        // 2026-08: the canonical set now includes the far-range LEFT flank silhouette
+        // (enabled in ALL THREE L5 hosts — ch3 preview / ch4 mainPeaks / ch5 summitRing —
+        // so the authority hand-offs stay byte-identical). Its right-hand twin was removed:
+        // at only +560 off-centre it projected inside the massif's own span and read as a
+        // ghost ridge behind the hero's shoulder rather than as a flank.
         expect(group.userData.mainPeaks?.userData.specIds)
-            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS]);
+            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS, 'ch4-far-left']);
         expect(group.userData.mainPeaks?.children)
-            .toHaveLength(CANONICAL_HERO_MOUNTAIN_SPEC_IDS.length);
-        expect(group.userData.mainPeaks?.userData.isSingleHeroChain).toBe(true);
-        expect(group.userData.foregroundRidge).toBeNull();
+            .toHaveLength(CANONICAL_HERO_MOUNTAIN_SPEC_IDS.length + 1);
+        expect(group.userData.mainPeaks?.userData.canonicalMountainRange.includesFarRange)
+            .toBe(true);
         // Cairns ×2 + summit cross live inside the waymarks group.
         expect(group.userData.waymarks.children.length).toBeGreaterThanOrEqual(3);
         // Stars are Chapter 6's identity — the alpine act is starless (creative plan).
@@ -94,7 +99,9 @@ describe('Mountain Peaks chapter environment (creative plan ch4)', () => {
         const span = ch4Start - ch3Start;
         const targets = group.userData.mainPeakOpacityUniformTargets;
 
-        expect(targets).toHaveLength(CANONICAL_HERO_MOUNTAIN_SPEC_IDS.length);
+        // +2 since 2026-08: the far-range flank silhouettes ride the same canonical group
+        // and therefore the same entry-fade targets (they must rise with the chain).
+        expect(targets).toHaveLength(CANONICAL_HERO_MOUNTAIN_SPEC_IDS.length + 1);
         expect(resolveMountainPeaksEntryState(ch4Start - span * 0.25, positions).entryOpacity).toBe(0);
         expect(resolveMountainPeaksEntryState(ch4Start, positions).entryOpacity).toBe(1);
 
