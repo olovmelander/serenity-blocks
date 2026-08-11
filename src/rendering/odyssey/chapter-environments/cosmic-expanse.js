@@ -97,29 +97,27 @@ const APPROACH = {
     // so it anchors the corner without swallowing the left half.
     bhScaleA: 1.2,
     bhScaleB: 2.6,
-    bhXa: 180,
-    bhXb: 320,
+    // FORWARD-CORRIDOR BIAS (in-game "move planets into camera direction" fix): the hero triad was
+    // banked hard to +X so it sat off the RIGHT edge as the camera dollied down the path. Pulled the
+    // lateral overshoot back ~40% (black hole / planet / galaxy X) so the heroes sit more in the
+    // forward view while keeping some +X (the camera aims up-right).
+    bhXa: 100,
+    bhXb: 200,
     bhZa: -1080,
     bhZb: -900,
     bhYa: 70,
     bhYb: 185,
-    // Gas giant: a near hero arrayed along the FORWARD direction (the camera aims up-right,
-    // so a centred hero needs a high +X/+Y). Pushed further toward the rail's vanishing point
-    // and set FURTHER away (deeper z) + scaled down again so it recedes cleanly into the act
-    // rather than sitting left-of-centre.
     planetA: {
-        x: 300, y: 30, z: -840, s: 34 / 28,
+        x: 170, y: 30, z: -840, s: 34 / 28,
     },
     planetB: {
-        x: 480, y: 95, z: -740, s: 60 / 28,
+        x: 280, y: 95, z: -740, s: 60 / 28,
     },
-    // Galaxy: anchors the upper-RIGHT third — pushed further +X/+Y and deeper toward the
-    // forward direction so it reads as the far focal on the rail's side, not centre.
     galaxyA: {
-        x: 600, y: 250, z: -900, s: 155,
+        x: 340, y: 250, z: -900, s: 155,
     },
     galaxyB: {
-        x: 780, y: 310, z: -820, s: 250,
+        x: 450, y: 310, z: -820, s: 250,
     },
 };
 
@@ -420,6 +418,14 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const streakMotes = createStreakMotes(uniforms, 90);
     group.add(streakMotes);
     group.userData.streakMotes = streakMotes;
+
+    // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
+    // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
+    // "aurora gone" fix). The builder existed (createAuroraFilamentBridge, below) but was never
+    // added to the group. It self-gates via uApproach so it's present at the handoff.
+    const auroraBridge = createAuroraFilamentBridge(uniforms);
+    group.add(auroraBridge);
+    group.userData.auroraBridge = auroraBridge;
     group.userData.entryContinuity = {
         stars: [starsFar, starsNear],
         destination: [blackHole, debris],
@@ -1008,7 +1014,9 @@ export function createAuroraFilamentBridge(uniforms) {
     const crimson = mix(vec3(0.78, 0.12, 0.22), vec3(0.91, 0.28, 0.36), strands); // #C71F37→#E8485C
     const color = mix(green, crimson, recolor);
     const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
-    const alive = oneMinus(smoothstep(0.22, 0.44, uApproach));
+    // Linger as a visible aurora across most of the crossing, then dissolve into nebula filaments
+    // (was smoothstep(0.22,0.44) → gone by ~18% local progress, too brief to read as the hero aurora).
+    const alive = oneMinus(smoothstep(0.5, 0.85, uApproach));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(strands.add(0.4));
