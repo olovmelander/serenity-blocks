@@ -191,13 +191,14 @@ export const CH3_WATER_READABILITY_SETTINGS = Object.freeze({
     // sea subsumes them. seaCenterZ 40 stays > corridorCenterZ 34 (test pin).
     seaCenterZ: 40,
     seaScaleX: 4.2,
-    // ONE CONNECTED WORLD (in-game: "this gap between the mountain and water looks quite off").
-    // At ×2.0 the sea ended at z≈−260 on a hard straight rim, while the meadow's own rim melted out
-    // by z≈−206 and the foothill bridge only reached full presence past z≈−242 — so a band of the
-    // valley had NO ground in it at all: the pale empty gap between the water and the mountain base.
-    // ×3.0 carries the water back to z≈−410, well under the bridge's opaque front, so the sea always
-    // runs beneath the land that continues on toward the range instead of stopping short of it.
-    seaScaleZ: 3.0,
+    // WATER SET BACK FROM THE RANGE (in-game: "it still feels like the water goes to close the
+    // mountain... then land between the water and mountain so it feels connected"). At ×2.0 the sea
+    // ended at z≈−260 on a hard straight rim, leaving the pale empty gap; ×3.0 closed the gap but ran
+    // the water all the way up the carved corridor to the foot of the range. ×2.4 with the noise-broken
+    // rim dissolve (useRadialEdge, see below) starts releasing the water around z≈−220 and finishes by
+    // z≈−320 — short of the first slope and on a wandering coastline — while the terrain's coastalRise
+    // and the lifted foothill skirt carry dry land on from there into the mountain.
+    seaScaleZ: 2.4,
     // Fix A finish: collapsed 3.0 → 0 so the Ch3 sea sits at exactly waterSurfaceY — the SAME world
     // plane as the Ch2 breach ceiling (no more 3u "double surface" the camera crossed twice) AND
     // exactly at the terrain shading waterline (surfaceWorldY, which is independent of seaYOffset —
@@ -344,6 +345,19 @@ export function getTerrainHeight(x, z) {
     const channel = 1 - smoothstepCPU(0, 46, Math.abs(x - riverCenter));
     const laneDist = Math.abs(x - riverCenter);
 
+    // ── MEANDERING SHORE (in-game: "i want... shoreline that is not straight so we need curved
+    // land... no straight edges for water land or anything so it feels natural"). Every band that
+    // decides where water ends and land begins used to key off laneDist — the DISTANCE FROM THE
+    // CORRIDOR — so all of them ran parallel to the lane and the shoreline came out as long straight
+    // rails down the valley. shoreDist offsets that lane by three incommensurate waves (two in z,
+    // one in x) before measuring, so the same carves now produce a wandering coast with bays and
+    // headlands. riverCenter itself is UNTOUCHED — it is byte-identical to surfaceCorridorCenter and
+    // the prop keep-outs depend on that agreement.
+    const shoreMeander = Math.sin(z * 0.0225 + 0.7) * 30
+        + Math.cos(z * 0.0475 - 1.1) * 15
+        + Math.sin(x * 0.019 + 2.3) * 13;
+    const shoreDist = Math.abs(x - riverCenter - shoreMeander);
+
     // ── CORRIDOR VALLEY (Fix B: "the grass hills do not exist"). The old terrain was an ORIGIN-
     // centred BOWL (baseH −30→+20 with distance) whose entire near/mid field sat below the
     // waterline, so the flight lane flew over a flat washed water plane and the only relief (the
@@ -356,7 +370,7 @@ export function getTerrainHeight(x, z) {
     // that runs the length of the chapter, so the whole water surface reads as a single continuous
     // lake — not a wide foreground sea + a narrow river + a separate hero-lake pool. The grass hills
     // rise only OUTSIDE the lake, framing it from the far shores.
-    const valleyRise = smoothstepCPU(66, 196, laneDist) * 22; // ±66 continuous lake → grass set back
+    const valleyRise = smoothstepCPU(66, 196, shoreDist) * 22; // meandering lake → grass set back
     // Gentle down-valley grade — kept low enough that the lake stays water all the way to the
     // foothills (baseH −14 + grade ≤ −2 out to z≈−250), so the water never dries into a mid-valley
     // island that would split it into two pools.
@@ -389,7 +403,11 @@ export function getTerrainHeight(x, z) {
 
     // HERO LAKE basin — the river's mid-course pool (the river now threads its centre).
     const lakeD = Math.hypot(x - SURFACE_LAKE_CENTER.x, z - SURFACE_LAKE_CENTER.z);
-    h -= (1 - smoothstepCPU(0, SURFACE_LAKE_RADIUS, lakeD)) * 34;
+    // Lobed, not circular: perturbing the basin radius by angle gives the pool bays and points, so
+    // its shoreline never reads as a compass-drawn arc (part of the "no straight edges" pass).
+    const lakeAngle = Math.atan2(z - SURFACE_LAKE_CENTER.z, x - SURFACE_LAKE_CENTER.x);
+    const lakeLobe = Math.sin(lakeAngle * 3.0 + 0.6) * 13 + Math.sin(lakeAngle * 5.0 - 1.2) * 7;
+    h -= (1 - smoothstepCPU(0, SURFACE_LAKE_RADIUS, lakeD + lakeLobe)) * 34;
 
     // Triangle-rule LANDMARKS (BotW three-point frame): a smooth KNOLL lifting the hero Great Tree
     // (left third) so it reads against the sky, + a steeper rocky OUTCROP (right third) that
@@ -419,11 +437,27 @@ export function getTerrainHeight(x, z) {
     // instead of surfacing as a mid-water island (the reason the snap existed — this STRENGTHENS the
     // one-lake invariant), then (2) ease sub-shoreline terrain down to the floor on a smooth curve so
     // the shader's wet-sand + landAlpha fade bands finally shade a real sloping shoreline.
-    const lakeBed = 1 - smoothstepCPU(62, 150, laneDist); // 1 mid-water → 0 on the banks
+    // COASTAL PLAIN (in-game: "it still feels like the water goes to close the mountain... then land
+    // between the water and mountain so it feels connected"). The valley floor used to stay under the
+    // waterline all the way to the far edge, so the sea ran right up to the foot of the range with no
+    // shore in between. The ground now RISES across the back of the chapter, lifting the far valley
+    // clear of the water so a real coastal plain separates the last wave from the first slope — and
+    // the foothill bridge then continues that land up into the mountain. The rise is noise-warped so
+    // its own leading edge is a wandering coast, never a straight line across the valley.
+    const coastalWarp = Math.sin(x * 0.014 + 1.9) * 34 + Math.cos(x * 0.031 - 0.4) * 16;
+    const coastalRise = smoothstepCPU(-95, -275, z + coastalWarp) * 30;
+    h += coastalRise;
+
+    const lakeBed = 1 - smoothstepCPU(62, 150, shoreDist); // 1 mid-water → 0 on the banks
     h -= lakeBed * 12; // sink the bed clear under the waterline
     if (h < 3.0) {
         const wade = smoothstepCPU(3.0, -20.0, h); // 0 at the grass line → 1 in the deep bed
-        h = 3.0 - 18.0 * wade; // smooth grass(3) → floor(-15) beach ramp
+        // The clamp used to flatten every submerged vertex onto ONE smooth ramp, so the shallows read
+        // as a machined plate. A low-amplitude bed ripple (strongest in deep water, vanishing at the
+        // grass line so the shoreline stays clean) gives the bed natural relief.
+        const bedRipple = Math.sin(x * 0.048) * Math.cos(z * 0.041) * 1.7
+            + Math.sin((x + z) * 0.029 + 0.8) * 1.2;
+        h = 3.0 - 18.0 * wade + bedRipple * wade; // smooth grass(3) → rippled floor beach ramp
     }
 
     return h;
@@ -684,8 +718,12 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
             SURFACE_LAKE_CENTER.z,
         );
     }
+    // NO STRAIGHT EDGES: the sea used to fill flat to its rectangular plane rim, so wherever land
+    // did not hide it the water ended on a ruler-straight horizon line. The shared rim dissolve is
+    // now noise-broken (two octaves, see shared/odyssey-water-surface.tsl.js), so enabling it gives
+    // the sea an organic meandering coastline in every direction instead of a machined edge.
     const warmWater = buildGoldenWaterMaterial(uTime, {
-        uOpacity, useRadialEdge: false, rippleAmp: 0.1, reflection,
+        uOpacity, useRadialEdge: true, rippleAmp: 0.1, reflection,
     });
     // BUG FIX: the sea MESH was built by createDeepOceanWaterSurfaceTSL with the deep-ocean cyan
     // material and nothing ever reassigned mesh.material — only the dict handle seaPart.material was
@@ -908,7 +946,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // As winter approaches, dissolve the far square edge of the Surface terrain into the
     // foothill skirt / mountain range with a noisy depth fade. This keeps the Ch3 meadow from
     // ending as a straight green card against the Ch4 sky.
-    const edgeNoise = landscapeNoise(vPosition.xz.mul(0.035)).sub(0.5).mul(42.0);
+    const edgeNoise = landscapeNoise(vPosition.xz.mul(0.035)).sub(0.5).mul(45.0);
     // MOUNTAIN↔TERRAIN CONTINUITY: dissolve the terrain's whole OUTER RIM (all four plane edges, via
     // the Chebyshev distance max(|x|,|z|)) into the atmosphere so the meadow never ends on a hard
     // green card/triangle — the seam capture showed the old far-z-only melt left the SIDE edges hard,
@@ -919,8 +957,17 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // Use positionLocal (the plane's own [-200,200] coords), NOT positionWorld — the chapter group
     // is offset along the spline, so worldX/worldZ don't line up with the plane edges (the first cut
     // used positionWorld and the edge stayed hard). max(|localX|,|localZ|) is the true rim distance.
-    const rimDist = max(abs(positionLocal.x), abs(positionLocal.z));
-    const farMelt = oneMinus(smoothstep(178.0, 206.0, rimDist.add(edgeNoise)));
+    // NO STRAIGHT EDGES: max(|x|,|z|) is a SQUARE — the meadow melted on a box, so at grazing angles
+    // its far rim still read as an angular card with straight sides and hard corners. Blending that
+    // Chebyshev distance toward the Euclidean one rounds the melt into an island silhouette, and the
+    // (widened) noise warp then breaks the remaining regularity so no edge reads as authored.
+    const rimCheb = max(abs(positionLocal.x), abs(positionLocal.z));
+    const rimRound = length(positionLocal.xz);
+    const rimDist = mix(rimCheb, rimRound, 0.6);
+    // The band must stay WIDER than the noise swing. At 38u wide against a +-58u warp the noise
+    // dominated the gradient, so alpha snapped between 0 and 1 and the rim came back as a hard
+    // angular wedge instead of dissolving. A 78u band against a +-45u warp keeps it a soft coast.
+    const farMelt = oneMinus(smoothstep(172.0, 250.0, rimDist.add(edgeNoise)));
     material.opacityNode = uOpacity.mul(landAlpha).mul(farMelt);
     material.transparent = true;
     material.depthWrite = false;
@@ -958,28 +1005,42 @@ export function foothillBridgeHeight(x, worldZ) {
     const backZ = -820;
     const climb = clamp01((-worldZ - 180) / Math.abs(backZ - frontZ), 0, 1);
     const easedClimb = climb * climb * (3 - (2 * climb));
-    const centerShelf = 1 - clamp01(Math.abs(x) / 170, 0, 1);
+    // NO STRAIGHT EDGES: the shelf/shoulder bands keyed off |x| alone, so every ridge and every
+    // band boundary on the skirt ran dead straight down -Z. Offsetting x by a slow wave in worldZ
+    // (and the shoulder by a second, different one) bends them into wandering spurs and gullies.
+    const bridgeMeander = Math.sin(worldZ * 0.0125 + 0.4) * 46 + Math.cos(worldZ * 0.027 - 1.6) * 20;
+    const xm = x - bridgeMeander;
+    const centerShelf = 1 - clamp01(Math.abs(xm) / 170, 0, 1);
     const pathCorridor = 1 - clamp01(Math.abs(x + 18) / 140, 0, 1);
-    const shoulderMask = smoothstep01(70, 360, Math.abs(x));
+    const shoulderMask = smoothstep01(70, 360, Math.abs(xm + (Math.sin(worldZ * 0.019) * 24)));
     const noise = (
         Math.sin(x * 0.022) * Math.cos(worldZ * 0.013) * 0.55
         + Math.sin((x + worldZ) * 0.009) * 0.3
         + Math.cos((x * 0.018) - (worldZ * 0.01)) * 0.22
     );
-    const base = -18 + (easedClimb * 26);
+    // COASTAL PLAIN handoff: the skirt used to start at -18, i.e. ~11u BELOW the waterline, so the
+    // sea ran up the carved corridor and lapped the foot of the range ("the water goes to close the
+    // mountain"). Lifting the FRONT (the term decays to 0 by the top, so the back edge that meets the
+    // range is unchanged) brings the near skirt up to about the waterline, so the meadow hands off to
+    // dry rising land and the water is left behind well before the first slope.
+    const base = -18 + (easedClimb * 26) + ((1 - easedClimb) * 14);
     const centerLift = centerShelf * (4.5 + (easedClimb * 6.5));
     const shoulderLift = shoulderMask * ((6 + (easedClimb * 22)) * 0.75);
     const ridgeLift = noise * (4 + (easedClimb * 6));
     const backRise = smoothstep01(0.55, 1.0, easedClimb) * 11.5;
     const corridorCarve = pathCorridor * (10 + (easedClimb * 8));
-    const frontFeather = (1 - smoothstep01(0.0, 0.12, easedClimb)) * 2.5;
+    const frontFeather = (1 - smoothstep01(0.0, 0.12, easedClimb)) * 0.6; // was 2.5 — dug a trench at the handoff
     return base + centerLift + shoulderLift + ridgeLift + backRise - corridorCarve - frontFeather;
 }
 
 function buildFoothillBridgeGeometry() {
     const bridgeWidth = 920;
-    const bridgeDepth = 680;
-    const bridgeCenterZ = -500;
+    // Reach the skirt FORWARD (depth 680 -> 880, centre -500 -> -540) so its front edge lands at
+    // worldZ ~ -100 instead of ~ -160. With the lip now solid it must be tucked well inside the
+    // meadow's opaque area (which starts dissolving around rimDist 172), otherwise that straight
+    // plane edge is exposed as a hard green wedge once the meadow's rim melts past it.
+    const bridgeDepth = 880;
+    const bridgeCenterZ = -540;
     const geometry = new THREE.PlaneGeometry(bridgeWidth, bridgeDepth, 104, 112);
     geometry.rotateX(-Math.PI / 2);
 
@@ -1067,8 +1128,8 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
     // feather at the very edge as insurance. The BACK lip keeps the full melt into the range.
     const zLocalN = vLocalPosition.z.add(edgeNoiseZ);
     const backness = oneMinus(smoothstep(-30.0, 30.0, zLocalN)); // 1 toward the range, 0 toward the meadow
-    const backRim = oneMinus(smoothstep(258.0, 336.0, abs(zLocalN)));
-    const frontRim = oneMinus(smoothstep(330.0, 344.0, abs(zLocalN)));
+    const backRim = oneMinus(smoothstep(334.0, 436.0, abs(zLocalN)));
+    const frontRim = oneMinus(smoothstep(422.0, 440.0, abs(zLocalN)));
     const rimFadeZ = mix(frontRim, backRim, backness);
     const rimFadeX = oneMinus(smoothstep(388.0, 456.0, abs(vLocalPosition.x).add(edgeNoiseZ)));
 
