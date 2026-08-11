@@ -57,6 +57,11 @@ function createWindow() {
         show: SHOW_WINDOW,
         backgroundColor: '#000000',
         webPreferences: {
+            // A HIDDEN BrowserWindow throttles requestAnimationFrame to 1 Hz. Without this the
+            // profile lane reports frameMs p50 ~1000 ms with cpuMs p50 ~0.9 ms — a throttle,
+            // not a load — and every measurement taken through this script is meaningless.
+            // scripts/odyssey-chapter-capture.mjs has always set it; this one did not.
+            backgroundThrottling: false,
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
