@@ -143,8 +143,13 @@ const SPRUCE_HEARTS = [
 // banks-wide carpet): east lake shore, sunlit left hill shoulder, a drift up toward the hero, and
 // a deep-right rhythm patch. { x, z, r } — filled by even-disc sampling, terrain-gated.
 const SURFACE_FLOWER_PATCHES = [
-    { x: 56, z: -150, r: 24 }, { x: -104, z: -108, r: 26 },
-    { x: -56, z: -196, r: 20 }, { x: 92, z: -232, r: 20 },
+    { x: 56, z: -150, r: 28 }, { x: -104, z: -108, r: 30 },
+    { x: -56, z: -196, r: 22 }, { x: 92, z: -232, r: 22 },
+    // FOREGROUND meadow banks (Wave D composition): two near-field drifts flanking the lake's NEAR
+    // shore so the bottom of the held vista reads as a lush flower bank, not open water. On the
+    // raised OUTBOARD banks (|x|≈120-126, z≈-50..-60) where the terrain clears the waterline;
+    // surfaceFlowerPatchSample still gates each sample at h>=4.0 (sub-waterline samples rejected).
+    { x: 122, z: -58, r: 30 }, { x: -126, z: -50, r: 28 },
 ];
 // Even-disc sample within a random patch (sqrt(rand) radius = uniform area).
 function surfaceFlowerPatchSample() {
@@ -631,7 +636,23 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // One golden material (no radial dissolve → fills to the scaled plane edge) shared by BOTH the
     // sea and river meshes — a single NodeMaterial pipeline for both, same draw/pipeline share the
     // old cyan reuse had, now warm. rippleAmp trimmed vs the lake since these are broad flat sheets.
-    const warmWater = buildGoldenWaterMaterial(uTime, { uOpacity, useRadialEdge: false, rippleAmp: 0.1 });
+    // HERO-LAKE REAL MIRROR (Wave D, flag ch3HeroMirror): build the planar reflector FIRST so the
+    // VISIBLE sea material can sample it. The hero-lake mesh is hidden (the enlarged sea is the one
+    // water body), so the mirror must ride the SEA to actually show the reflected blue sky + white
+    // cumulus on the water; the hidden lake still receives it for parity.
+    let reflection = null;
+    if (options.enableReflector) {
+        reflection = reflector({ resolutionScale: 0.5, bounces: false, generateMipmaps: false });
+        reflection.target.rotateX(-Math.PI / 2);
+        reflection.target.position.set(
+            SURFACE_LAKE_CENTER.x,
+            surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08,
+            SURFACE_LAKE_CENTER.z,
+        );
+    }
+    const warmWater = buildGoldenWaterMaterial(uTime, {
+        uOpacity, useRadialEdge: false, rippleAmp: 0.1, reflection,
+    });
     // BUG FIX: the sea MESH was built by createDeepOceanWaterSurfaceTSL with the deep-ocean cyan
     // material and nothing ever reassigned mesh.material — only the dict handle seaPart.material was
     // repointed — so the foreground sea rendered the (disposed) cyan additive caustic while the
@@ -673,20 +694,8 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15, 
     // HERO LAKE surface: the procedural GOLDEN-HOUR REFLECTIVE lake (createGoldenLakeTSL) pooled
     // over the carved basin (SURFACE_LAKE_CENTER) — same warm palette as the river/sea, but with a
     // soft radial shore dissolve since it's a discrete pool rather than a filled corridor.
-    // Real planar mirror for the HERO lake only (flag ch3HeroMirror; sea/river stay analytic —
-    // broad flat sheets don't earn a mirror pass). The target defines the mirror plane at the
-    // lake surface Y IN THE OCEAN GROUP'S LOCAL SPACE — byte-identical to the lake mesh Y set
-    // below — so it rides the chapter group's world transform exactly as the water does.
-    let reflection = null;
-    if (options.enableReflector) {
-        reflection = reflector({ resolutionScale: 0.5, bounces: false, generateMipmaps: false });
-        reflection.target.rotateX(-Math.PI / 2);
-        reflection.target.position.set(
-            SURFACE_LAKE_CENTER.x,
-            surfaceOffsetY + CH3_WATER_READABILITY_SETTINGS.seaYOffset + 0.08,
-            SURFACE_LAKE_CENTER.z,
-        );
-    }
+    // reflection is now created ABOVE (shared by the visible sea AND this hidden hero-lake mesh —
+    // one RTT sampled by both), so the mirror rides the sea that actually renders.
     const lakeBuilt = createGoldenLakeTSL(uTime, { reflection });
     const lake = lakeBuilt.mesh;
     lake.position.set(

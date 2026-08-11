@@ -877,9 +877,31 @@ function readCh3HeroMirrorFlag() {
         const q = new URLSearchParams(window.location.search).get('ch3HeroMirror');
         if (q === '1' || q === 'true') return true;
         if (q === '0' || q === 'false') return false;
-        return window.localStorage?.getItem('odyssey.ch3HeroMirror') === '1';
+        const stored = window.localStorage?.getItem('odyssey.ch3HeroMirror');
+        if (stored === '1') return true;
+        if (stored === '0') return false;
+        // Default ON for capable tiers (the reflector RTT is a real 2nd-pass cost): High/Ultra/
+        // Extreme mirror the real blue sky + white cumulus onto the lake; Medium and below keep the
+        // cheaper analytic sky reflection.
+        const tier = String(window.settings?.effectQuality || 'High').toLowerCase();
+        return tier === 'high' || tier === 'ultra' || tier === 'extreme';
     } catch {
         return false;
+    }
+}
+
+// Foreground-lushness instance budget, quality-tier scaled (the flower + grass instancers are the
+// chapter's densest meshes). Full density on High+, trimmed on Medium and below. Headless → full.
+function readCh3DensityScale() {
+    try {
+        if (typeof window === 'undefined') return 1;
+        const tier = String(window.settings?.effectQuality || 'High').toLowerCase();
+        if (tier === 'minimal') return 0.3;
+        if (tier === 'low') return 0.45;
+        if (tier === 'medium') return 0.7;
+        return 1;
+    } catch {
+        return 1;
     }
 }
 
@@ -998,7 +1020,7 @@ export function createSurfaceWorldEnvironment() {
     // yellow, daisy-white, lupine-purple, cornflower-blue, poppy — which is exactly the species
     // palette createWildflowersTSL already carries, placed banks-dense / corridor-clear by the shared
     // composition grammar. (Trees stay out — the reference is a flower meadow, not a forest.)
-    const meadowFlowers = createWildflowers(uniforms, 1200);
+    const meadowFlowers = createWildflowers(uniforms, Math.round(2400 * readCh3DensityScale()));
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);
