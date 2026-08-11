@@ -585,10 +585,21 @@ export class OdysseyBoardController {
         });
 
         if (this.oneWorldEnabled) {
-            const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
-            this.oneWorld = createOdysseyWorld({ quality: weakLane ? 'low' : 'high' });
-            this.scene.add(this.oneWorld.group);
-            console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
+            // A feature flag must never be able to brick boot. If the world fails to build we
+            // log it and fall back to the shipped chapter environments rather than leaving the
+            // journey with no ground at all — the failure mode that cost a capture cycle here
+            // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
+            try {
+                const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+                this.oneWorld = createOdysseyWorld({ quality: weakLane ? 'low' : 'high' });
+                this.scene.add(this.oneWorld.group);
+                console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
+            } catch (error) {
+                console.error('[OdysseyBoard] One World failed to build; falling back', error);
+                this.oneWorld = null;
+                this.oneWorldEnabled = false;
+                this.environmentManager.suppressedChapters = new Set();
+            }
         }
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
