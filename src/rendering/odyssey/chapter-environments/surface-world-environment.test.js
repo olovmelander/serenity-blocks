@@ -74,8 +74,8 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         expect(group.userData.distantMountains.userData.canonicalMountainRange.sourceChapter)
             .toBe(4);
         expect(group.userData.distantMountains.userData.specIds)
-            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS]);
-        expect(group.userData.distantMountains.userData.isSingleHeroChain)
+            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS, 'ch4-far-left']);
+        expect(group.userData.distantMountains.userData.canonicalMountainRange.includesFarRange)
             .toBe(true);
         expect(group.userData.quaterniusNatureLayer.userData.assetRecords.length)
             .toBeGreaterThanOrEqual(12);

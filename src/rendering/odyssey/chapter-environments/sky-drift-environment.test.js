@@ -39,12 +39,13 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         const group = createSkyDriftEnvironment({ particleCount: 120 });
 
         expect(group.userData.summitRing?.name).toBe('receding-summit-ring');
-        expect(group.userData.summitRing.children.length).toBe(3);
+        // 3 hero peaks + 2 far-range flank silhouettes (enabled 2026-08 in all L5 hosts).
+        expect(group.userData.summitRing.children.length).toBe(4);
         expect(group.userData.summitRing.userData.canonicalMountainRange.sourceChapter)
             .toBe(4);
         expect(group.userData.summitRing.userData.specIds)
-            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS]);
-        expect(group.userData.summitRing.userData.isSingleHeroChain)
+            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS, 'ch4-far-left']);
+        expect(group.userData.summitRing.userData.canonicalMountainRange.includesFarRange)
             .toBe(true);
         group.userData.summitRingOpacityUniforms.forEach((target) => {
             expect(target.__odysseyBaseOpacity).toBe(1);

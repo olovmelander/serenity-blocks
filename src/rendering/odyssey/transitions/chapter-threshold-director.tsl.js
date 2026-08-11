@@ -53,6 +53,12 @@ const DEFAULT_PARTICLE = 0xbdefff;
 // co-present biome overlap (ChapterEnvironmentManager ecotone), so the full-screen veil
 // wash and the scanning portal ring are demoted from "the event" to faint accents.
 const VEIL_ACCENT_ALPHA = 0.34; // was effectively up to 0.92 (a near-opaque white wash)
+
+// Radial feather for the veil quad, in units of `r = length(uv * 2 - 1)`. `end` MUST stay at
+// or below 1.0: every point on the quad's boundary has r >= 1, so an `end` above 1.0 leaves
+// the additive veil lit along its own edges and it renders as a hard-edged rectangle.
+// Guarded by chapter-threshold-veil.test.js.
+export const VEIL_RADIAL_FEATHER = Object.freeze({ start: 0.78, end: 1.0 });
 const RING_ACCENT_ALPHA = 0.4; // ceiling for the scanning-ring accent alpha
 
 /**
@@ -193,8 +199,18 @@ export function createVeilMaterialTSL(uTime = uniform(0), u = makeThresholdUnifo
     // A6: the veil used to wash the seam to a near-opaque (0.92) full-screen glow that hid
     // a hard portal cut. The ecotone now carries the transition, so the veil is demoted to
     // a faint colour breath over the overlap — low alpha ceiling + softer additive punch.
+    // The radial feather MUST reach zero by r = 1. `r` is length(uv * 2 - 1), so every point
+    // on the quad's boundary has r >= 1 (exactly 1 at the edge midpoints, up to 1.414 at the
+    // corners) — ending the ramp at 1.28 left the veil at 59% of its weight along all four
+    // edges, and an additive quad that is 59% lit at its own border draws its border. Against
+    // Ch4's now-opaque massif that showed up as a hard-edged bright RECTANGLE hanging in the
+    // mountain, reading exactly like a transparent window cut through it. The ramp START is
+    // unchanged, so the veil's solid core keeps its authored size; only the amputated tail is
+    // given room to finish.
     const alpha = clamp(
-        band.mul(uIntensity).mul(oneMinus(smoothstep(0.78, 1.28, r))).mul(VEIL_ACCENT_ALPHA),
+        band.mul(uIntensity)
+            .mul(oneMinus(smoothstep(VEIL_RADIAL_FEATHER.start, VEIL_RADIAL_FEATHER.end, r)))
+            .mul(VEIL_ACCENT_ALPHA),
         0.0,
         VEIL_ACCENT_ALPHA,
     );

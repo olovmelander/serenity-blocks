@@ -41,6 +41,7 @@ import {
     mix,
     normalize,
     normalView,
+    normalWorld,
     oneMinus,
     positionLocal,
     positionWorld,
@@ -59,11 +60,30 @@ import {
     makeQuadInstancedGeometry,
 } from './shared/odyssey-tsl-billboard.js';
 import {
+    MOUNTAIN_DISPLACEMENT,
     MOUNTAIN_SHADING,
     mountainColorNode,
     mountainCpuDisplacement,
     resolveMountainTreatment,
 } from './shared/mountain-language.js';
+
+// ── Rim fade (alpha) ──────────────────────────────────────────────────────────────
+// Where the peak's alpha dissolves, as a RADIUS fraction of the plane's uv space (0.5 is
+// the mid-edge, ~0.707 a corner). It must sit at or beyond the displaced cone's own
+// footprint — `MOUNTAIN_DISPLACEMENT.coneRadiusFrac` — or the fade eats into standing
+// mountain and the body renders semi-transparent (see the SOLID BODY note at the alpha
+// site). Guarded by mountain-peaks-solidity.test.js.
+export const MOUNTAIN_RIM_FADE = Object.freeze({
+    // Both bounds sit OUTSIDE the footprint, with enough margin that even the inward half
+    // of the edge-noise wobble (startFrac − noiseAmplitude/2 = 0.451) still clears
+    // coneRadiusFrac. Everything the eye can see as mountain is therefore at alpha 1, and
+    // this fade only ever acts on the dead flat margin out toward the plane's corners —
+    // where `mountainCpuDisplacement` has already returned a hard 0 and `baseFade` has
+    // taken the alpha down anyway. Belt-and-braces, not a silhouette-shaping tool.
+    startFrac: MOUNTAIN_DISPLACEMENT.coneRadiusFrac + 0.012,
+    endFrac: MOUNTAIN_DISPLACEMENT.coneRadiusFrac + 0.055,
+    noiseAmplitude: 0.022, // peak-to-peak uv wobble added to the radius
+});
 
 // ── Canonical mountain treatments (ONE language; see shared/mountain-language.js) ──
 // Heroes ride the cool pole (saturated cool blue); the lower foothill apron pulls the
@@ -361,8 +381,16 @@ export function createFBMMountainTSL(config = {}) {
     // Rose-gold the summit ignites toward at climax (warm, but capped so it blooms soft).
     const uSummit = uniform(new THREE.Color(0xffc59a));
 
-    // Stage values: vNormal → normalView, vWorldPosition → positionWorld, vHeight → aHeight.
-    const vNormal = normalView;
+    // WORLD-SPACE SHADING NORMAL (2026-08). This was `normalView` — a mechanical artefact of
+    // the GLSL→TSL port (the original `vNormal` varying was a world/model normal). Every
+    // consumer in mountainSurfaceColorNode dots it against WORLD-space constants: the key
+    // light (MOUNTAIN_SHADING.keyDir / ODYSSEY_SUN), the snow slope gate (dot with world up)
+    // and the rim (dot with a world view vector). Mixing the two spaces glued the lighting to
+    // the CAMERA: the terminator swept across the massif as the rail moved, the snow slope
+    // gate re-cut where snow could sit, and the camera-facing bulk was pinned at ambient-only
+    // (which is what made it crush to navy once scene fog stopped masking it). That is the
+    // dominant "changes shape / feels like many different modelled mountains" cause.
+    const vNormal = normalWorld;
     const vWorldPosition = positionWorld;
     const vHeight = attribute('aHeight', 'float');
 
@@ -399,8 +427,18 @@ export function createFBMMountainTSL(config = {}) {
         snowNoise,
         // uTransition drives the chapter to night — fade the warm alpenglow as it does.
         alpenScale: oneMinus(uTransition),
+        // NOTE: the hero peaks deliberately do NOT override `keyDir` any more. They used to
+        // key off MOUNTAIN_LIGHT_DIR (= ODYSSEY_SUN, ~(0.35, 0.62, −0.70)) — a −z direction,
+        // i.e. the sun sits BEHIND the range — so every camera-facing slope had ndl = 0 and
+        // the massif rendered as an unlit navy silhouette. That went unnoticed only because
+        // the shading normal was in view space (see createFBMMountainTSL), which scrambled
+        // the dot product into something incidentally brighter; fixing the normal exposed the
+        // real back-lighting. The heroes now share MOUNTAIN_SHADING.keyDir with every other
+        // alpine surface — including the far-range flank, whose front-lit read is the one the
+        // look was validated against — which is what "ONE mountain language" is supposed to
+        // mean. The summit ignite below still keys off MOUNTAIN_LIGHT_DIR so the crown fires
+        // toward the actual sun disc.
         ...(isHero ? {
-            keyDir: MOUNTAIN_LIGHT_DIR,
             alpenStrength: ALPEN_STRENGTH,
             alpenHeightLo: ALPEN_HEIGHT_LO,
             snowSparkle,
@@ -426,19 +464,38 @@ export function createFBMMountainTSL(config = {}) {
     const dist = length(vWorldPosition.sub(cameraPosition));
     const fogFactor = smoothstep(MOUNTAIN_SHADING.fogNear, MOUNTAIN_SHADING.fogFar, dist)
         .mul(MOUNTAIN_SHADING.fogMax);
-    const baseMist = smoothstep(0.15, 0.0, vHeight).mul(uBaseMistStrength);
+    // Band tightened 0.15 → 0.07 (2026-08): at 0.15 of the hero's 720u height the fog
+    // shelf reached world y ≈ 410 — well above rail eye height — washing a horizontal mist
+    // band across the mountain's middle for the whole Ch3→4 approach. 0.07 caps it ~352,
+    // below the rail, so the mist hugs the feet where it belongs.
+    const baseMist = smoothstep(0.07, 0.0, vHeight).mul(uBaseMistStrength);
     color = mix(color, uFog, max(baseMist.sub(fogFactor), 0.0));
 
     // Base fade — hide the hard plane edge at low heights.
     const baseFade = smoothstep(uBaseFadeStart, uBaseFadeEnd, vHeight);
+    // ── SOLID BODY (2026-08, in-game: "why can I see straight through the hero mountain?") ──
+    // The rim fade used to be RECTANGULAR — a per-axis ramp over uv 0→0.16 and 0.84→1.0. On the
+    // 1340u hero plane that is 214u of fade per edge, but the displaced cone only reaches
+    // size * coneRadiusFrac = 603u from centre — so 147u of genuine, standing mountain BODY sat
+    // inside the fade band on every side. Measured on the hero flank: at 500u out (a face still
+    // 227u tall) alpha was 0.89, at 550u (121u tall) it was 0.59. Those fragments pass alphaTest
+    // and write depth, but they still BLEND with everything drawn before them — the far-range
+    // flanks at renderOrder -3, the apron at -2 — so background ridges showed straight through
+    // the massif's shoulders. Nothing to do with the chapter crossfade: uOpacity is a hard 1 for
+    // the whole of Ch4 (resolveMountainPeaksEntryState saturates at ch4Start).
+    //
+    // The fade is now RADIAL and keyed to the cone's own footprint, so it only ever covers the
+    // dead flat margin between the circular mountain and the square plane's corners. The body is
+    // opaque, period. Band 0.055 wide vs a ±0.011 noise swing — wider than the swing, so the
+    // edge still dissolves organically instead of snapping (the dissolve-band rule).
     const mountainUv = uv();
-    const uvEdgeNoise = fbmValue2(vWorldPosition.xz.mul(0.013), 3).sub(0.5).mul(0.035);
-    const noisyUvX = mountainUv.x.add(uvEdgeNoise);
-    const noisyUvY = mountainUv.y.add(uvEdgeNoise.mul(0.55));
-    const sideFade = smoothstep(0.0, 0.16, noisyUvX)
-        .mul(oneMinus(smoothstep(0.84, 1.0, noisyUvX)))
-        .mul(smoothstep(0.0, 0.1, noisyUvY))
-        .mul(oneMinus(smoothstep(0.9, 1.0, noisyUvY)));
+    const uvEdgeNoise = fbmValue2(vWorldPosition.xz.mul(0.013), 3).sub(0.5).mul(0.022);
+    const uvRadius = mountainUv.sub(0.5).length().add(uvEdgeNoise);
+    const sideFade = oneMinus(smoothstep(
+        MOUNTAIN_RIM_FADE.startFrac,
+        MOUNTAIN_RIM_FADE.endFrac,
+        uvRadius,
+    ));
     const alpha = uOpacity.mul(baseFade).mul(sideFade);
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -506,7 +563,9 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
 
     // vPosition = local position (model space) in the GLSL twin.
     const vPosition = positionLocal;
-    const vNormal = normalView;
+    // World-space normal: lit below against MOUNTAIN_LIGHT_DIR, a WORLD vector (same
+    // mixed-space port bug as the peaks — see createFBMMountainTSL).
+    const vNormal = normalWorld;
 
     // Soft lighting with ambient lift.
     const NdotL = dot(vNormal, uLightDir);
