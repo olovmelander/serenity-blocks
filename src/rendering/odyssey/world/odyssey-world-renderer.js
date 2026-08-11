@@ -69,6 +69,14 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
 });
 
 const RELIEF_EXTENT = 9000;
+/**
+ * Altitude of the one cloud deck, in world units. Chosen against the RAIL, not against a
+ * chapter: the path leaves the shore at ~300, crosses 424 entering the ascent, tops Ch5's
+ * climb at 656 and reaches the summit crown near 1017. A deck at 660 is therefore far
+ * overhead from the valley, at eye height through the climb, and comfortably below the
+ * summit — the three readings Ch3, Ch5 and Ch4 used to build separately.
+ */
+const CLOUD_DECK_Y = 660;
 
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
@@ -230,15 +238,26 @@ function bakeDetailNormal(res = 256) {
         }
     }
     const at = (i, j) => field[((((j % res) + res) % res) * res) + (((i % res) + res) % res)];
-    const data = new Uint16Array(res * res * 2);
+    // RG are DERIVATIVES — signed, centred on zero — for the ground's bump term. BA carry the
+    // scalar field itself at two frequencies, which the bake already computed and used to throw
+    // away. The cloud deck needs a DENSITY, and reading it off the derivative channels gives a
+    // field centred on zero that no coverage threshold can ever cross: the deck rendered
+    // completely empty until this was widened. One texture, one fetch path, both uses served.
+    const coarse = new Float32Array(res * res);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) coarse[(j * res) + i] = vn(i, j, 1 / 96);
+    }
+    const data = new Uint16Array(res * res * 4);
     for (let j = 0; j < res; j += 1) {
         for (let i = 0; i < res; i += 1) {
-            const idx = ((j * res) + i) * 2;
+            const idx = ((j * res) + i) * 4;
             data[idx] = THREE.DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) * 0.5);
             data[idx + 1] = THREE.DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) * 0.5);
+            data[idx + 2] = THREE.DataUtils.toHalfFloat(field[(j * res) + i]);
+            data[idx + 3] = THREE.DataUtils.toHalfFloat(coarse[(j * res) + i]);
         }
     }
-    const tex = new THREE.DataTexture(data, res, res, THREE.RGFormat, THREE.HalfFloatType);
+    const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.RepeatWrapping;
@@ -386,6 +405,13 @@ export function createOdysseyWorld({
     const water = buildOdysseyClipmap({
         gridN: 32, levels: q.levels, baseSpacing: waterSpacing, holeShrink: 1,
     });
+    // The cloud deck rides the same coarse lattice as the water: it is a smooth surface with
+    // no small-scale geometry, so its detail belongs in the density field, not in triangles.
+    const cloudSpacing = waterSpacing * 1.6;
+    const cloudGeo = buildOdysseyClipmap({
+        gridN: 32, levels: q.levels, baseSpacing: cloudSpacing, holeShrink: 1,
+    });
+    const cloudReach = cloudGeo.reach;
 
     const uLodCenter = uniform(new THREE.Vector2(0, 0));
     const uTime = uniform(0);
@@ -622,6 +648,72 @@ export function createOdysseyWorld({
     waterMesh.name = 'odyssey-world-water';
     group.add(waterMesh);
 
+    // ── cloud deck ─────────────────────────────────────────────────────────────────
+    // The single highest-value thing the chapters were doing that the world was not.
+    // Ch3's biggest loss was its 15 cumulus banks, Ch4's was its cloud-SEA disc, Ch5's was
+    // its six FBM strata — three chapters authoring three views of ONE physical layer, each
+    // in its own local frame, which is the whole disease this rebuild exists to cure. Here
+    // it is one deck at one altitude, and the reading changes because the RAIL CLIMBS
+    // THROUGH it: cumulus overhead from the shore, strata at eye height on the ascent, a
+    // sunlit sea below you from the summit. Nothing switches; the camera just moves.
+    const cl = clipmapXZ(cloudSpacing, 16);
+    const cloudMat = new THREE.MeshBasicNodeMaterial();
+
+    // Billow, so the deck is a weather system and not a pane of glass. Cheap: two sines
+    // against a texture lookup, all in the vertex stage.
+    const billow = texture(detailTex, cl.worldXZ.mul(0.00042)).level(0).b.sub(0.5).mul(165)
+        .add(cl.worldXZ.x.mul(0.0016).add(uTime.mul(0.02)).sin().mul(34));
+    cloudMat.positionNode = vec3(cl.worldXZ.x, float(CLOUD_DECK_Y).add(billow), cl.worldXZ.y);
+
+    // Coverage is a property of the MAP, not of a chapter index. The rail runs inland and
+    // upward as it climbs (z falls from the shore at +60 to the ascent at -700), so a deck
+    // that thickens inland gives broken daylight cumulus over the valley and a solid sea
+    // under the summit — the two things Ch3 and Ch4 each hand-authored — from one term.
+    // The threshold is placed against the MEASURED distribution of the density field, not an
+    // assumed one: sampled over the deck it runs p10 0.42 / p50 0.58 / p90 0.70, so a coverage
+    // control expressed as "1 - cover" sat almost entirely above the field's own range and the
+    // deck rendered empty. 0.63 leaves broken cumulus over the valley; 0.40 is a near-solid sea.
+    const cloudThreshold = mix(
+        float(0.63),
+        float(0.40),
+        smoothstep(float(-150), float(-760), cl.worldXZ.y),
+    );
+    const vThresh = varying(cloudThreshold, 'vThresh');
+    const cUvA = varying(cl.worldXZ.mul(0.00205), 'vCUvA');
+    const cUvB = varying(cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)), 'vCUvB');
+    const cUvC = varying(cl.worldXZ.mul(0.01420).add(vec2(0.58, 0.12)), 'vCUvC');
+    const drift = uTime.mul(0.0016);
+    const density = texture(detailTex, cUvA.add(vec2(drift, 0))).a.mul(0.52)
+        .add(texture(detailTex, cUvB.add(vec2(drift.mul(1.7), 0))).b.mul(0.32))
+        .add(texture(detailTex, cUvC).b.mul(0.16));
+
+    // Fade the deck out at the lattice rim, or its far edge draws a horizon-wide straight
+    // line across the sky — the same failure mode as a uv feather that never reaches 1.
+    const cloudDist = length(cl.worldXZ.sub(uLodCenter));
+    const rim = float(1).sub(smoothstep(float(cloudReach * 0.62), float(cloudReach * 0.95), cloudDist));
+    const puff = smoothstep(vThresh, vThresh.add(0.06), density);
+
+    // Lit from above, shaded beneath, and the transition is the density itself: a thin edge
+    // passes light and glows, a thick core does not. That single term is what separates a
+    // cumulus from a grey disc, seen from either side.
+    const cloudTop = uSunColour.mul(1.06).add(uSkyZenith.mul(0.10));
+    const cloudBase = mix(uShadowTint.mul(1.35).add(uSkyHorizon.mul(0.42)), cloudTop, puff.oneMinus().mul(0.85));
+    const fromAbove = smoothstep(float(-60), float(90), cameraPosition.y.sub(float(CLOUD_DECK_Y)));
+    const cloudCol = mix(cloudBase, cloudTop, fromAbove);
+    cloudMat.colorNode = toOutput(applyAerial(cloudCol, positionWorld));
+    cloudMat.opacityNode = puff.mul(rim).mul(float(1).sub(uSubmerged)).mul(0.94);
+    cloudMat.transparent = true;
+    cloudMat.depthWrite = false;
+    cloudMat.side = THREE.DoubleSide;
+
+    const cloudMesh = new THREE.Mesh(cloudGeo.geometry, cloudMat);
+    cloudMesh.frustumCulled = false;
+    cloudMesh.matrixAutoUpdate = false;
+    cloudMesh.updateMatrix();
+    cloudMesh.renderOrder = 6;
+    cloudMesh.name = 'odyssey-world-clouds';
+    group.add(cloudMesh);
+
     // ── forest ──
     const treeGeo = buildTreeGeometry();
     const trees = scatterTrees(relief.sample, {
@@ -709,7 +801,7 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
@@ -726,7 +818,7 @@ export function createOdysseyWorld({
         reach: ground.reach,
         trees: trees.length,
         forestChunks: treeMeshes.length,
-        materials: 4,
+        materials: 5,
         applyExposure,
         outputScale,
         outputSaturation,
@@ -778,7 +870,7 @@ export function createOdysseyWorld({
         },
         dispose() {
             group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-            [groundMat, waterMat, skyMat, treeMat].forEach((m) => m.dispose());
+            [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => m.dispose());
             [heightTex, sunVisTex, detailTex].forEach((t) => t.dispose());
             treeGeo.dispose();
         },
