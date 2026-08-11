@@ -56,6 +56,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md](ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CHAPTER_MASTERPIECE_PLAN.md](ODYSSEY_CHAPTER_MASTERPIECE_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CHAPTER_PERF_PLAN.md](ODYSSEY_CHAPTER_PERF_PLAN.md) | Reference | Odyssey performance context. |
+| [ODYSSEY_ONE_WORLD_PLAN_2026-08.md](ODYSSEY_ONE_WORLD_PLAN_2026-08.md) | Tactical | Odyssey Ch2–Ch6 world-cohesion rebuild (one continuous ground, one sun, one atmosphere). Reference target: Noniv/snowflow_demo. Supersedes per-chapter cohesion patching; scope excludes Ch1/Ch7/Ch8. |
 | [ODYSSEY_CINEMATIC_JOURNEY_PLAN.md](ODYSSEY_CINEMATIC_JOURNEY_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md](ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md) | Reference | Prompt/source material. |
 | [ODYSSEY_DEEP_OCEAN_VIBRANCY_PLAN.md](ODYSSEY_DEEP_OCEAN_VIBRANCY_PLAN.md) | Reference | Odyssey chapter/theme plan. |
