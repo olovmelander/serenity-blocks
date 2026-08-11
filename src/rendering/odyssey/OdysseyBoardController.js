@@ -9,6 +9,7 @@ import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
+import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -21,7 +22,7 @@ import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js'
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
-import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
+import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
 import { buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples } from './odyssey-warmup-plan.js';
 import {
@@ -124,6 +125,9 @@ function readPixelRatioOverrideFromUrl() {
     if (!Number.isFinite(value) || value <= 0) return null;
     return Math.min(2, Math.max(0.5, value));
 }
+
+/** Chapters whose ground the continuous Act II world replaces. */
+const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -318,6 +322,12 @@ export class OdysseyBoardController {
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
         this.chapterEvictionWindow = Number.parseInt(readUrlValue('odysseyChapterEvictWindow'), 10) || 2;
+        // ONE WORLD (default OFF; opt-in ?odysseyOneWorld=1). Replaces the chapter-2..5 diorama
+        // environments with a single continuous surface — see
+        // docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md. Flagged rather than switched so the shipped
+        // journey is bit-identical until it is capture-verified in the real game.
+        this.oneWorldEnabled = options.oneWorld === true || readBooleanUrlFlag('odysseyOneWorld');
+        this.oneWorld = null;
         // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
         // chapters shed their heaviest sublayers (Ch3's reflector 2nd render, big additive particle
         // clouds) via a detailLevel signal their update() reads — no teardown, no recompile. Stage 1
@@ -571,7 +581,15 @@ export class OdysseyBoardController {
             // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.0015
             // (must stay below the ~0.0025/frame reachable at the 0.15 maxScrollVelocity cap).
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
+            suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
+
+        if (this.oneWorldEnabled) {
+            const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+            this.oneWorld = createOdysseyWorld({ quality: weakLane ? 'low' : 'high' });
+            this.scene.add(this.oneWorld.group);
+            console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
+        }
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
         this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
@@ -2235,6 +2253,21 @@ export class OdysseyBoardController {
                     this.lastGlobalEnvUpdateTime = nowMs;
                     this.lastGlobalEnvUpdateProgress = cameraProgress;
                 }
+            }
+
+            // ONE WORLD: the continuous Act II surface is driven from the GROUND-TRACK point,
+            // never the camera eye — centring the clipmap on the eye makes the ground change
+            // shape when only the camera moves, which would break the hero framing.
+            if (this.oneWorld) {
+                const railPoint = getOdysseyPathPointAt(cameraProgress);
+                const actStart = this.presentationLayout.chapterPositions[1];
+                const actEnd = this.presentationLayout.chapterPositions[5];
+                const span = (actEnd - actStart) || 1;
+                this.oneWorld.update(
+                    this.time,
+                    railPoint,
+                    (cameraProgress - actStart) / span,
+                );
             }
 
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
