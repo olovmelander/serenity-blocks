@@ -161,7 +161,10 @@ describe('OdysseyDirector', () => {
         expect(state.boundaryId).toBe('5-6');
         expect(state.atmosphere.skyColor.getHex()).toBe(0x06162f);
         expect(state.atmosphere.fogColor.getHex()).toBe(0x09283f);
-        expect(state.atmosphere.fogDensity).toBeGreaterThan(0.002);
+        // Ch5's fog was thinned by the Wave-C daylight repalette (0.0035 → 0.0022, it is now the
+        // bright sunlit cloud-sea), so the density the aurora bridge carries into the 5→6 boundary is
+        // correspondingly lower — still a real space haze, just fed from a brighter Sky chapter.
+        expect(state.atmosphere.fogDensity).toBeGreaterThan(0.0015);
     });
 
     it('uses a saturated alpine atmosphere bridge through the Surface to Mountains boundary', () => {

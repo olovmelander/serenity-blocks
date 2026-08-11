@@ -128,19 +128,19 @@ const CHAPTER_SIGNATURES = Object.freeze([
     // the airy high-key look; saturation held high (1.12) so the flowers/water pop. This is the
     // start of the shared near-neutral daylight grade Ch3/4/5 converge on (Wave D).
     {
-        tint: [0.99, 1.00, 1.04], contrast: 1.05, vignette: 0.55, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.56, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 4 Mountains — PAINTERLY-ASCENT (Wave B): neutralized the cool-blue cast ([1.02,1.00,1.06] →
     // [1.01,1.00,1.01]) so the bright daylight snow reads clean-white, not cold; sat lifted 1.06 →
     // 1.10 to match Ch3's vivid daylight. Part of the shared near-neutral stock (Wave D).
     {
-        tint: [1.01, 1.00, 1.01], contrast: 1.03, vignette: 0.60, chroma: 1.0, sat: 1.10, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.58, chroma: 1.0, sat: 1.10, shoulderKnee: 0.86,
     },
     // 5 Sky & Drift — PAINTERLY-ASCENT (Wave C): magenta-violet twilight tint [1.05,0.96,1.07] →
     // cool-sky daylight [0.99,1.01,1.05]; contrast 0.98 (sub-neutral, flattened the sky) → 1.05; sat
     // 1.06 → 1.12 so the bright blue + white cloud-sea pop. The brightest chapter of the ascent.
     {
-        tint: [0.99, 1.01, 1.05], contrast: 1.05, vignette: 0.60, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.58, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 6 Space — cool indigo, slightly closer frame (REFERENCE stock).
     {
