@@ -1166,6 +1166,36 @@ export class ChapterEnvironmentManager {
             env.lastVisible = isVisible;
         });
 
+        // ── L5 CANONICAL-RANGE DEDUP: draw ONE copy of the hero chain through each seam ──────
+        // Chapters 3/4/5 each host the SAME world-locked hero chain at identical coords, so during
+        // the 3→4 and 4→5 crossfades two byte-identical coplanar copies co-draw (z-fight + doubled
+        // fill). Draw only the highest-opacity host through each seam (tie → active chapter); hide
+        // the redundant copies. Ch5's ring is pinned to snow=1 + full alpenglow (see sky-drift.js) so
+        // the hand-off is invisible. Fixed 3-slot scan; no per-frame allocation of note.
+        if (mode === 'progress') {
+            const g3 = this.environments.get(3)?.group;
+            const g4 = this.environments.get(4)?.group;
+            const g5 = this.environments.get(5)?.group;
+            const rangeHosts = [
+                [3, g3?.userData?.distantMountains, g3?.userData?.chapterOpacity ?? 0],
+                [4, g4?.userData?.mainPeaks, g4?.userData?.chapterOpacity ?? 0],
+                [5, g5?.userData?.summitRing, g5?.userData?.chapterOpacity ?? 0],
+            ];
+            const activeCh = this._resolvedBlendState?.activeChapter;
+            let authorityId = -1;
+            let authorityOpacity = 0;
+            for (const [id, sub, op] of rangeHosts) {
+                if (!sub || op <= 0) continue;
+                if (op > authorityOpacity || (op === authorityOpacity && id === activeCh)) {
+                    authorityOpacity = op;
+                    authorityId = id;
+                }
+            }
+            for (const [id, sub] of rangeHosts) {
+                if (sub) sub.visible = id === authorityId && authorityOpacity > 0;
+            }
+        }
+
         // B7 — graceful journey-end ramp on the finale env (held by urban env / post).
         if (mode === 'progress') {
             this._applyJourneyEndDriver(this.cameraProgress);

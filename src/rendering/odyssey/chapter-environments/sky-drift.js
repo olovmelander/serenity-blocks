@@ -318,14 +318,23 @@ export function createSkyDriftEnvironment(options = {}) {
     // forward view, then fades only after the camera has actually passed it; no separate
     // replacement mountain assets, no silhouette swap.
     const ringOpacityUniforms = [];
-    const { group: summitRing } = createCanonicalMountainRangeTSL({
+    const { group: summitRing, parts: summitRingParts } = createCanonicalMountainRangeTSL({
         hostCenter: chapterRange?.center,
         hostChapterId: 5,
         name: 'receding-summit-ring',
-        uTransition: uniform(0.55),
+        // L5 DEDUP continuity (Wave D): null → constant full alpenglow, matching Ch3's distant
+        // preview and Ch4's main-peaks, so when the manager hands seam authority between the coplanar
+        // copies the silhouette does not pop tone. (Was uniform(0.55) — a partial alpenglow that
+        // differed from Ch4's full-lit copy at the 4→5 hand-off.)
+        uTransition: null,
         includeFarRange: false,
         opacityTargets: ringOpacityUniforms,
         baseOpacity: 1,
+    });
+    // Pin the ring to full winter snow like Ch4's main-peaks so the shared silhouette is
+    // byte-identical across the 4→5 hand-off (the manager draws only one copy through the seam).
+    summitRingParts.forEach((part) => {
+        if (part.uniforms?.uSnowBlend) part.uniforms.uSnowBlend.value = 1;
     });
     summitRing.userData.baseY = summitRing.position.y;
     group.add(summitRing);
