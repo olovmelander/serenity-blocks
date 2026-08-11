@@ -244,6 +244,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     });
     massif.add(cloudSea.mesh);
     group.userData.cloudSea = cloudSea.mesh;
+    group.userData.cloudSeaOpacityUniform = cloudSea.uniforms.uOpacity; // base 0.92; chapter crossfade
 
     const foothillApron = createFoothillApron(uTransition, foothillBaseY, opacityTargets);
     massif.add(foothillApron);
@@ -263,6 +264,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     const snowFloor = createSnowFloorTSL(uTimeNode, snowFloorY);
     massif.add(snowFloor.group);
     group.userData.snowFloor = snowFloor.mesh;
+    group.userData.snowFloorOpacityUniform = snowFloor.uniforms.uOpacity; // 3→4 snow-floor crossfade
 
     // Ch4 tree-line continuity across the 3→4 seam (see buildCh4SeamConiferPlacements above):
     // a low winter conifer belt on the near snow-floor slopes so the Ch3 forest carries into
@@ -886,6 +888,17 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // The Ch4 background ground planes (snow-floor disc + cloud-sea deck) use opacityNode, so the
+    // manager's material.opacity crossfade can't reach them — they popped in at group.visible. Fade
+    // them with the chapter weight so they RISE across the 3→4 ecotone instead of snapping on.
+    const mpChapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    if (group.userData.cloudSeaOpacityUniform) {
+        group.userData.cloudSeaOpacityUniform.value = 0.92 * mpChapterOpacity;
+    }
+    if (group.userData.snowFloorOpacityUniform) {
+        group.userData.snowFloorOpacityUniform.value = mpChapterOpacity;
     }
 
     const cameraY = camera?.position?.y ?? group.position.y;

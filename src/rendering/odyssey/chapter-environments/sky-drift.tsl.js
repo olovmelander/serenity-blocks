@@ -375,7 +375,7 @@ function sheetBackScatter(rot) {
 // coverage) from constant per-mesh geometry attributes instead of baked-in JS constants, so the 6
 // co-visible sheets compile a SINGLE pipeline instead of 6. All values are preserved exactly, so
 // the strata are byte-identical to the per-sheet build (createCloudSheetTSL, kept for the A/B).
-function createSharedCloudMaterialTSL(uTime, uDusk) {
+function createSharedCloudMaterialTSL(uTime, uDusk, uFade = null) {
     const duskT = smoothstep(0.14, 0.52, uDusk);
     const aTint = attribute('aTint', 'vec3');
     const aLit = attribute('aLit', 'vec3');
@@ -414,7 +414,10 @@ function createSharedCloudMaterialTSL(uTime, uDusk) {
     // PAINTERLY-ASCENT REPALETTE (Wave C): opacity up (0.08–0.16 → 0.38–0.5) and NormalBlending
     // (was Additive) so the whitened strata read as soft solid white cloud wisps occluding the blue
     // sky, not faint additive violet haze.
-    material.opacityNode = density.mul(edge).mul(mix(float(0.38), float(0.5), duskT));
+    // .mul(fade): the manager crossfade can't reach a NodeMaterial opacityNode, so without this the
+    // bright white strata POPPED in at the 4→5 seam when group.visible flipped. uFade = chapterOpacity.
+    const fade = uFade ?? uniform(1);
+    material.opacityNode = density.mul(edge).mul(mix(float(0.38), float(0.5), duskT)).mul(fade);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -466,7 +469,7 @@ export function createCloudStrataTSL(uTime, options = {}) {
         [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcbdaea, 0xfafdff, 0.44, 2.1],
     ];
     const uDusk = options.uDusk ?? uniform(0);
-    const material = createSharedCloudMaterialTSL(uTime, uDusk);
+    const material = createSharedCloudMaterialTSL(uTime, uDusk, options.uChapterFade);
     const parts = [];
     strata.forEach((cfg, i) => {
         const rot = [cfg[3], cfg[4], cfg[5]];
