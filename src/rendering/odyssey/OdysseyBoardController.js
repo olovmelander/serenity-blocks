@@ -1702,7 +1702,11 @@ export class OdysseyBoardController {
                 }
                 // Parallax mid/far depth filler so the corridor between chapter set pieces
                 // is never empty void (reads chapter-profile + path-utils; one cohesive rig).
-                this.corridorField = new OdysseyCorridorField(this.scene);
+                this.corridorField = new OdysseyCorridorField(this.scene, {
+                    // Act II is a continuous landscape now, not a set piece with void around
+                    // it — its parallax sheets would be overdraw in front of a real horizon.
+                    suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
+                });
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
@@ -1716,14 +1720,20 @@ export class OdysseyBoardController {
                 // pool barrier in initialize() awaits them before the warm-up replay).
                 const corridorWarm = this._prewarmGroup(this.corridorField?.group, 'corridor field');
                 const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
+                // The world is not a chapter env group either, so it misses the same prewarm
+                // and would compile four materials on the first Act II frame — the whole point
+                // of collapsing 66 materials into 4 is lost if they land as a cold stall.
+                const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
                 if (this._compilePool) {
                     this._compilePool.push(
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
+                        this._timedCompile('one-world', worldWarm),
                     );
                 } else {
                     await corridorWarm;
                     await breachWarm;
+                    await worldWarm;
                 }
             }
 

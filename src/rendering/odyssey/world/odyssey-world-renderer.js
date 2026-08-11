@@ -51,6 +51,8 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         shadowRes: 512,
         treeSpacing: 15,
         detailScales: 2,
+        cavity: 0.30,
+        ridgeRock: 0.16,
     },
     low: {
         gridN: 96,
@@ -61,6 +63,8 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         shadowRes: 384,
         treeSpacing: 24,
         detailScales: 1,
+        cavity: 0.24,
+        ridgeRock: 0.12,
     },
 });
 
@@ -86,6 +90,13 @@ function buildReliefBake(reliefRes) {
 
     // AUX: derivatives central-differenced from the BAKED heights, never re-evaluated
     // analytically, so lighting describes exactly the surface the vertex shader displaces to.
+    // A carries CURVATURE — the discrete Laplacian, mean(4-neighbours) - centre, divided by the
+    // step so it is dimensionless. Positive is concave (a gully, the neighbours stand above
+    // you), negative convex (a ridge). It is the difference between a landform that reads as
+    // rock and one that reads as a smooth pile: first derivatives only tell the light which
+    // way a face points, and every face of a cone points somewhere plausible. The channel was
+    // already allocated and written as a literal zero, so this costs bake time and nothing
+    // else — no VRAM, no bandwidth, no extra fetch.
     const data = new Uint16Array(reliefRes * reliefRes * 4);
     for (let j = 0; j < reliefRes; j += 1) {
         for (let i = 0; i < reliefRes; i += 1) {
@@ -93,7 +104,10 @@ function buildReliefBake(reliefRes) {
             data[idx] = THREE.DataUtils.toHalfFloat(relief[(j * reliefRes) + i]);
             data[idx + 1] = THREE.DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) / (2 * step));
             data[idx + 2] = THREE.DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) / (2 * step));
-            data[idx + 3] = THREE.DataUtils.toHalfFloat(0);
+            const neighbourMean = (at(i + 1, j) + at(i - 1, j) + at(i, j + 1) + at(i, j - 1)) / 4;
+            data[idx + 3] = THREE.DataUtils.toHalfFloat(
+                (neighbourMean - relief[(j * reliefRes) + i]) / step,
+            );
         }
     }
     // Half-float is filterable everywhere with no feature request; float32-filterable is
@@ -381,6 +395,11 @@ export function createOdysseyWorld({
     const uSunColour = uniform(new THREE.Color(1, 0.95, 0.86));
     const uShadowTint = uniform(new THREE.Color(0.44, 0.58, 0.82));
     const uAerialK = uniform(0.00016);
+    // How hard the baked curvature reads. Two separate gains because they answer different
+    // questions: cavity is "how deep does this gully feel", ridgeRock is "has the weather
+    // stripped this crest back to stone".
+    const uCavity = uniform(q.cavity);
+    const uRidgeRock = uniform(q.ridgeRock);
     const uExposure = uniform(1);
     const uOutputScale = uniform(outputScale);
     const uOutputSat = uniform(outputSaturation);
@@ -475,6 +494,11 @@ export function createOdysseyWorld({
         const gate = float(1).sub(smoothstep(float(wl / 6), float(wl / 1.5), footprint));
         bump = bump.add(texture(detailTex, positionWorld.xz.div(wl)).rg.mul(amp).mul(gate));
     });
+    // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
+    // with the detail rather than surviving as shading over a lattice too coarse to show it.
+    const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
+    const gully = max(curvature, 0);
+    const crest = max(curvature.negate(), 0);
     const flatness = clamp(baseNormal.y, 0, 1);
     const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
 
@@ -488,10 +512,10 @@ export function createOdysseyWorld({
     const wSand = float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL - 2), float(ODYSSEY_SEA_LEVEL + 26), height));
     const wSnow = smoothstep(float(620), float(790), height)
         .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
-    const wRock = max(
+    const wRock = clamp(max(
         smoothstep(float(0.17), float(0.40), slope),
         smoothstep(float(470), float(640), height).mul(0.75),
-    );
+    ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
     let albedo = vec3(0.30, 0.44, 0.22);
     albedo = mix(albedo, vec3(0.70, 0.64, 0.47), wSand);
     albedo = mix(albedo, vec3(0.36, 0.34, 0.33), wRock);
@@ -504,8 +528,11 @@ export function createOdysseyWorld({
 
     const sunVis = texture(sunVisTex, vUv).r;
     const ndl = max(dot(normal, uSunDir), 0);
+    // Cavity occlusion: sunVis already knows what the massifs shadow, but it is baked at a
+    // resolution that cannot see a gully. This is the small-scale half of the same term.
+    const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
     const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
-        .add(uShadowTint.mul(0.36)));
+        .add(uShadowTint.mul(0.36))).mul(cavity);
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
