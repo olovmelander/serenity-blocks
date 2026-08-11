@@ -14,7 +14,8 @@
 import * as THREE from 'three/webgpu';
 import {
     abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, length, max, mix,
-    normalize, positionWorld, smoothstep, texture, uniform, varying, vec2, vec3, cameraPosition,
+    normalize, normalWorld, positionWorld, smoothstep, texture, uniform, varying, vec2, vec3, cameraPosition,
+    attribute as tslAttribute, positionGeometry, sin as tslSin,
 } from 'three/tsl';
 import {
     ODYSSEY_MASSIFS,
@@ -222,6 +223,127 @@ function bakeDetailNormal(res = 256) {
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
     return tex;
+}
+
+// ── VEGETATION ───────────────────────────────────────────────────────────────────
+//
+// Stylised conifers built from stacked cones: no textures, no alpha, no imported assets. That
+// last point is not just tidiness — alpha-tested foliage cards alias viciously on a silhouette
+// against a bright sky, and this project has MSAA but no TAA, so the cheapest way to win the
+// aliasing fight is to not pick it. Solid geometry has a real silhouette that MSAA can resolve.
+const TREE_TIERS = 3;
+const TREE_SIDES = 6;
+
+function buildTreeGeometry() {
+    const positions = [];
+    const normals = [];
+    const shade = []; // 0 at the base of a tier, 1 at its tip — cheap vertical shading
+    const trunkH = 0.9;
+    const trunkR = 0.10;
+
+    // Trunk: a prism, so the tree reads as standing rather than floating.
+    for (let i = 0; i < TREE_SIDES; i += 1) {
+        const a0 = (i / TREE_SIDES) * Math.PI * 2;
+        const a1 = ((i + 1) / TREE_SIDES) * Math.PI * 2;
+        const p0 = [Math.cos(a0) * trunkR, 0, Math.sin(a0) * trunkR];
+        const p1 = [Math.cos(a1) * trunkR, 0, Math.sin(a1) * trunkR];
+        const nx = Math.cos((a0 + a1) / 2);
+        const nz = Math.sin((a0 + a1) / 2);
+        [[p0[0], 0, p0[2], 0], [p1[0], 0, p1[2], 0], [p1[0], trunkH, p1[2], 0.2],
+            [p0[0], 0, p0[2], 0], [p1[0], trunkH, p1[2], 0.2], [p0[0], trunkH, p0[2], 0.2]]
+            .forEach(([x, y, z, sv]) => {
+                positions.push(x, y, z);
+                normals.push(nx, 0.1, nz);
+                shade.push(sv);
+            });
+    }
+
+    // Foliage tiers.
+    for (let t = 0; t < TREE_TIERS; t += 1) {
+        const f = t / TREE_TIERS;
+        const base = trunkH + (f * 2.5);
+        const top = base + 1.55 - (f * 0.25);
+        const radius = 1.0 - (f * 0.27);
+        for (let i = 0; i < TREE_SIDES; i += 1) {
+            const a0 = (i / TREE_SIDES) * Math.PI * 2;
+            const a1 = ((i + 1) / TREE_SIDES) * Math.PI * 2;
+            const nx = Math.cos((a0 + a1) / 2);
+            const nz = Math.sin((a0 + a1) / 2);
+            positions.push(Math.cos(a0) * radius, base, Math.sin(a0) * radius);
+            positions.push(Math.cos(a1) * radius, base, Math.sin(a1) * radius);
+            positions.push(0, top, 0);
+            for (let k = 0; k < 3; k += 1) normals.push(nx, 0.45, nz);
+            shade.push(0.15, 0.15, 1.0);
+        }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('aShade', new THREE.Float32BufferAttribute(shade, 1));
+    return geo;
+}
+
+/**
+ * Scatter trees on the CPU HEIGHT MIRROR.
+ *
+ * This is the pillar the shipped build breaks: its Ch4 conifer belt is planted at a constant Y
+ * with no heightfield sample at all, sitting a measured mean -4.5u from the surface with 37.7%
+ * of cells burying a 6-17u tree by more than 8u. Sampling the same mirror the vertex shader
+ * displaces to makes floating and buried trees structurally impossible.
+ *
+ * Placement is a JITTERED GRID rather than pure random: pure random clumps and leaves holes at
+ * exactly the scale the eye reads as a mistake, while a jittered grid gives even coverage with
+ * no lattice visible. Density then follows the biome — above the waterline, below the snow,
+ * off the steep faces — with a noise mask so the forest has edges instead of a uniform carpet.
+ */
+function scatterTrees(heightAt, opts) {
+    const {
+        cx, cz, radius, spacing, seaLevel, snowStart,
+    } = opts;
+    const out = [];
+    const rnd = (i, j, salt) => {
+        let h = ((i | 0) * 374761393) + ((j | 0) * 668265263) + (salt * 2654435761);
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+    const steps = Math.ceil((radius * 2) / spacing);
+    for (let j = 0; j < steps; j += 1) {
+        for (let i = 0; i < steps; i += 1) {
+            const gx = cx - radius + (i * spacing);
+            const gz = cz - radius + (j * spacing);
+            const x = gx + ((rnd(i, j, 1) - 0.5) * spacing * 0.95);
+            const z = gz + ((rnd(i, j, 2) - 0.5) * spacing * 0.95);
+            if (Math.hypot(x - cx, z - cz) > radius) continue;
+
+            const y = heightAt(x, z);
+            if (y < seaLevel + 3) continue; // no trees in the surf
+            if (y > snowStart) continue; // tree line
+
+            // Slope from the mirror itself, so the rule matches the drawn surface.
+            const e = 4;
+            const dx = (heightAt(x + e, z) - heightAt(x - e, z)) / (2 * e);
+            const dz = (heightAt(x, z + e) - heightAt(x, z - e)) / (2 * e);
+            const slope = Math.hypot(dx, dz);
+            if (slope > 0.62) continue; // conifers do not grow on cliffs
+
+            // Forest EDGES: a low-frequency mask so the canopy thins and clears rather than
+            // covering everything uniformly to its altitude limit.
+            const mask = rnd(Math.floor(x / 140), Math.floor(z / 140), 3);
+            const altitudeFalloff = 1 - Math.max(0, (y - (snowStart - 130)) / 130);
+            if (rnd(i, j, 4) > (0.35 + (mask * 0.95)) * Math.max(0.12, altitudeFalloff)) continue;
+
+            out.push({
+                x,
+                y,
+                z,
+                scale: 3.2 + (rnd(i, j, 5) * 3.4),
+                rot: rnd(i, j, 6) * Math.PI * 2,
+                tint: rnd(i, j, 7),
+            });
+        }
+    }
+    return out;
 }
 
 function buildClipmap(gridN, holeShrink, spacing) {
@@ -506,6 +628,108 @@ export function create({ scene }) {
     waterMesh.renderOrder = 1;
     scene.add(waterMesh);
 
+    // ── FOREST ──
+    //
+    // CHUNKED, and the reason is measured. 15,427 trees at ~30 triangles each is 463k
+    // triangles — 2.4x the entire ground — and it cost 3.4 ms. Collapsing distant instances to
+    // degenerate triangles in the vertex stage changed NOTHING (8.52 -> 8.65 ms, inside the
+    // noise), which says the cost is vertex processing, not fill: those vertices are submitted
+    // and transformed whether or not they rasterise anything.
+    //
+    // So the fix is to not submit them. One InstancedMesh per world-space cell, each with real
+    // bounds, gives three's frustum culling something to work with for free, and lets a simple
+    // distance test drop everything behind and far ahead of a camera that is on a rail anyway.
+    // All chunks share ONE material, so this costs draw calls (cheap) and not pipelines
+    // (expensive — 40-45 ms of compile each).
+    const treeGeo = buildTreeGeometry();
+    const trees = scatterTrees(world.sample, {
+        cx: -220,
+        cz: -620,
+        radius: 1750,
+        spacing: 15,
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        snowStart: 640,
+    });
+    const treeCount = trees.length;
+
+    const CHUNK = 420;
+    const chunks = new Map();
+    trees.forEach((t) => {
+        const key = `${Math.floor(t.x / CHUNK)}|${Math.floor(t.z / CHUNK)}`;
+        if (!chunks.has(key)) chunks.set(key, []);
+        chunks.get(key).push(t);
+    });
+
+    const treeMat = new THREE.MeshBasicNodeMaterial();
+    const treeMeshes = [];
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const v3 = new THREE.Vector3();
+    const sc = new THREE.Vector3();
+    const axis = new THREE.Vector3(0, 1, 0);
+
+    chunks.forEach((list) => {
+        const n = list.length;
+        const geo = treeGeo.clone();
+        const aPhase = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+        const aTint = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+        const mesh = new THREE.InstancedMesh(geo, treeMat, n);
+        let cx = 0;
+        let cz = 0;
+        let maxY = -Infinity;
+        let minY = Infinity;
+        list.forEach((t, i) => {
+            q.setFromAxisAngle(axis, t.rot);
+            v3.set(t.x, t.y, t.z);
+            sc.set(t.scale, t.scale * (0.85 + (t.tint * 0.4)), t.scale);
+            mesh.setMatrixAt(i, m4.compose(v3, q, sc));
+            aPhase.setX(i, t.rot * 3.7);
+            aTint.setX(i, t.tint);
+            cx += t.x;
+            cz += t.z;
+            maxY = Math.max(maxY, t.y + (t.scale * 5));
+            minY = Math.min(minY, t.y);
+        });
+        cx /= n;
+        cz /= n;
+        geo.setAttribute('aPhase', aPhase);
+        geo.setAttribute('aTint', aTint);
+        mesh.instanceMatrix.needsUpdate = true;
+        // Real bounds, so three can cull the chunk instead of trusting a sphere derived from
+        // one un-instanced tree at the origin.
+        mesh.boundingSphere = new THREE.Sphere(
+            new THREE.Vector3(cx, (minY + maxY) / 2, cz),
+            (CHUNK * 0.75) + ((maxY - minY) / 2) + 40,
+        );
+        mesh.frustumCulled = true;
+        mesh.userData.centre = new THREE.Vector2(cx, cz);
+        mesh.name = 'odyssey-forest-chunk';
+        scene.add(mesh);
+        treeMeshes.push(mesh);
+    });
+
+    // WIND: one field for the whole world. A single shared motion across every biome is the
+    // strongest continuity signal after light direction (Ghost of Tsushima's guiding wind), and
+    // it costs one sin() in the vertex stage.
+    // positionGeometry, NOT positionLocal: in r181 InstanceNode has already rewritten
+    // positionLocal by the time positionNode runs, so a height mask built on it lands in the
+    // wrong space. This project has paid for that one before.
+    const gShade = tslAttribute('aShade', 'float');
+    const gPhase = tslAttribute('aPhase', 'float');
+    const gTint = tslAttribute('aTint', 'float');
+    const swayMask = clamp(positionGeometry.y.div(4.5), 0, 1);
+    const gust = tslSin(uTime.mul(1.4).add(gPhase).add(positionWorld.x.mul(0.006)))
+        .mul(0.10).mul(swayMask.mul(swayMask));
+    treeMat.positionNode = positionGeometry.add(vec3(gust, 0, gust.mul(0.55)));
+
+    const treeDark = vec3(0.050, 0.105, 0.070);
+    const treeLit = vec3(0.235, 0.375, 0.175);
+    const treeBase = mix(treeDark, treeLit, gShade.mul(0.75).add(gTint.mul(0.25)));
+    const treeNdl = max(dot(normalWorld, uSunDir), 0.0);
+    const treeLitCol = treeBase.mul(uSunColour.mul(treeNdl.mul(0.35).add(0.55))
+        .add(uShadowTint.mul(0.30)));
+    treeMat.colorNode = applyAerial(treeLitCol, positionWorld).mul(uExposure);
+
     const cp = getActiveOdysseyChapterPositions();
     const ACT_START = cp[1];
     const ACT_END = cp[5];
@@ -514,6 +738,8 @@ export function create({ scene }) {
         groundTriangles: ground.triangles,
         waterTriangles: water.triangles,
         reach: ground.reach,
+        trees: treeCount,
+        forestChunks: treeMeshes.length,
         bakeMs: { world: +(t1 - t0).toFixed(1), sunVis: +(t2 - t1).toFixed(1), total: +(t2 - t0).toFixed(1) },
         actRange: [ACT_START, ACT_END],
     };
@@ -541,6 +767,13 @@ export function create({ scene }) {
             uShadowTint.value.setRGB(...cs.groundShadow);
             uAerialK.value = cs.fogDensity;
             uExposure.value = cs.exposure;
+
+            // Drop chunks the camera cannot plausibly see. Frustum culling handles direction;
+            // this handles distance, which on a rail is the bigger win.
+            for (let i = 0; i < treeMeshes.length; i += 1) {
+                const c = treeMeshes[i].userData.centre;
+                treeMeshes[i].visible = Math.hypot(c.x - pt.x, c.y - pt.z) < 1450;
+            }
         },
         camera(time, cam) {
             // The REAL Odyssey rail, framed the way the shipped camera frames it: the eye
@@ -565,6 +798,9 @@ export function create({ scene }) {
         resize() {},
         dispose() {
             [groundMesh, skyMesh, waterMesh].forEach((m) => scene.remove(m));
+            treeMeshes.forEach((m) => { scene.remove(m); m.geometry.dispose(); });
+            treeGeo.dispose();
+            treeMat.dispose();
             ground.geometry.dispose();
             water.geometry.dispose();
             mat.dispose();
