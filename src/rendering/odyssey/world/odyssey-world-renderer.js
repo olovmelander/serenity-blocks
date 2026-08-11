@@ -344,7 +344,7 @@ export function scatterTrees(heightAt, {
  *   linear output is what a tonemapper needs room to work with.
  */
 export function createOdysseyWorld({
-    quality = 'high', applyExposure = true, outputScale = 1,
+    quality = 'high', applyExposure = true, outputScale = 1, skyRadius = null,
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
@@ -526,7 +526,12 @@ export function createOdysseyWorld({
     skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
-    const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(Math.min(ground.reach * 1.7, 22000), 32, 20), skyMat);
+    // The dome must sit INSIDE the camera's far plane. Sized off `reach` it lands at 22,000:
+    // fine for the playground's 30,000 far plane, and entirely CLIPPED by the game's 9,000 —
+    // where the shipped r=4000 atmosphere backstop fills in and the world's own sky, colour
+    // script and all, is never seen. Callers with a tighter frustum pass their own radius.
+    const domeRadius = Number.isFinite(skyRadius) ? skyRadius : Math.min(ground.reach * 1.7, 22000);
+    const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(domeRadius, 32, 20), skyMat);
     skyMesh.frustumCulled = false;
     skyMesh.renderOrder = -100;
     skyMesh.name = 'odyssey-world-sky';
@@ -672,6 +677,7 @@ export function createOdysseyWorld({
         materials: 4,
         applyExposure,
         outputScale,
+        skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
 

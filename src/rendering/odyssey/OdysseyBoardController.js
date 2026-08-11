@@ -134,6 +134,8 @@ const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
  * a display-referred palette leaves an ACES curve no room and blooms the sky over everything.
  */
 const ONE_WORLD_OUTPUT_SCALE = 0.55;
+/** Sky dome radius for the board camera (near 0.1 / far 9000). */
+const ONE_WORLD_SKY_RADIUS = 3600;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -604,6 +606,9 @@ export class OdysseyBoardController {
                     // values rather than the display-referred palette the playground wants.
                     applyExposure: false,
                     outputScale: ONE_WORLD_OUTPUT_SCALE,
+                    // Inside the board camera's 9,000 far plane, and inside the shipped
+                    // r=4000 atmosphere backstop so the world's sky paints in front of it.
+                    skyRadius: ONE_WORLD_SKY_RADIUS,
                 });
                 this.scene.add(this.oneWorld.group);
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
@@ -2222,7 +2227,12 @@ export class OdysseyBoardController {
         // at seams + low max-weight so the zenith→horizon gradient never flattens during a
         // crossfade. Set BEFORE atmosphere.update so its gradient-uniform writes are skipped
         // while hidden. Reversible via ?odysseyDomeCullOff=1.
-        if (this.atmosphere && this._domeCullEnabled) {
+        if (this.atmosphere && this.oneWorld) {
+            // ONE SKY (plan 3.4). The world draws its own full-coverage dome driven by the
+            // colour script, so the global backstop is pure full-screen overdraw AND it
+            // competes for the same pixels with a different palette.
+            this.atmosphere.setDomeVisible(false);
+        } else if (this.atmosphere && this._domeCullEnabled) {
             const weightsMap = blendState?.weights;
             const maxWeight = weightsMap ? Math.max(0, ...Object.values(weightsMap)) : 0;
             const domeInSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
