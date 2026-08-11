@@ -337,6 +337,12 @@ export function scatterTrees(heightAt, {
  *   exposure. True standalone (the playground has no post stack). FALSE inside the game,
  *   where odyssey-tsl-pipeline.js owns exposure and applies ACES after it — otherwise
  *   exposure is applied twice.
+ * @param {number} [opts.outputSaturation] pulls the world's output toward its own luma before
+ *   it reaches a post stack that adds saturation of its own. The Odyssey grade lifts master
+ *   saturation 1.15x and chapter saturation a further ~1.10x on top of a black crush, which
+ *   drove the sky's already-low red channel to a clamped ZERO. The world therefore has to hand
+ *   that stack a FLATTER image than the one it wants on screen; 1.0 (the playground) is the
+ *   image as authored.
  * @param {number} [opts.outputScale] scales the world's HDR output before it reaches a post
  *   stack. The palette is authored display-referred, which is right for a flat playground but
  *   far too hot for a pipeline that then adds bloom and an ACES curve: measured in-game, sky
@@ -344,7 +350,8 @@ export function scatterTrees(heightAt, {
  *   linear output is what a tonemapper needs room to work with.
  */
 export function createOdysseyWorld({
-    quality = 'high', applyExposure = true, outputScale = 1, skyRadius = null,
+    quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1,
+    skyRadius = null,
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
@@ -376,6 +383,7 @@ export function createOdysseyWorld({
     const uAerialK = uniform(0.00016);
     const uExposure = uniform(1);
     const uOutputScale = uniform(outputScale);
+    const uOutputSat = uniform(outputSaturation);
     const uSubmerged = uniform(0);
 
     const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
@@ -498,7 +506,10 @@ export function createOdysseyWorld({
     const ndl = max(dot(normal, uSunDir), 0);
     const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
         .add(uShadowTint.mul(0.36)));
-    const toOutput = (c) => (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
+    const toOutput = (c) => {
+        const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
+        return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
+    };
     groundMat.colorNode = toOutput(applyAerial(lit, positionWorld));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
@@ -667,6 +678,20 @@ export function createOdysseyWorld({
     });
 
     const t2 = (typeof performance !== 'undefined' ? performance.now() : 0);
+    // The game puts a per-CHAPTER FogExp2 on the scene. Left on, it saturates the sky dome —
+    // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
+    // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
+    // These four materials carry their own aerial perspective; the scene fog is not theirs.
+    [groundMat, waterMat, skyMat, treeMat].forEach((m) => { m.fog = false; });
+
+    // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
+    // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
+    // instead of the chapter profiles of chapters that no longer exist. Colour is pre-scaled
+    // into the same output space the world's own materials write.
+    const fogState = { color: new THREE.Color(), density: 0.0004 };
+    // FogExp2 is 1-exp(-(d*z)^2); applyAerial is 1-exp(-K*z). Equal at z = FOG_MATCH_DISTANCE.
+    const FOG_MATCH_DISTANCE = 1200;
+
     const stats = {
         quality,
         groundTriangles: ground.triangles,
@@ -677,6 +702,7 @@ export function createOdysseyWorld({
         materials: 4,
         applyExposure,
         outputScale,
+        outputSaturation,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
@@ -685,6 +711,7 @@ export function createOdysseyWorld({
         group,
         stats,
         heightAt: relief.sample,
+        fog: fogState,
         /**
          * @param {number} time seconds
          * @param {{x:number,y:number,z:number}} railPoint the GROUND-TRACK point — never the
@@ -702,6 +729,17 @@ export function createOdysseyWorld({
             uShadowTint.value.setRGB(...cs.groundShadow);
             uAerialK.value = cs.fogDensity;
             uExposure.value = cs.exposure;
+            const fogScale = (applyExposure ? cs.exposure : 1) * outputScale;
+            const fogR = cs.skyHorizon[0] * fogScale;
+            const fogG = cs.skyHorizon[1] * fogScale;
+            const fogB = cs.skyHorizon[2] * fogScale;
+            const fogL = (0.2126 * fogR) + (0.7152 * fogG) + (0.0722 * fogB);
+            fogState.color.setRGB(
+                fogL + ((fogR - fogL) * outputSaturation),
+                fogL + ((fogG - fogL) * outputSaturation),
+                fogL + ((fogB - fogL) * outputSaturation),
+            );
+            fogState.density = Math.sqrt(cs.fogDensity / FOG_MATCH_DISTANCE);
             uSubmerged.value = Math.max(0, Math.min(
                 1,
                 (ODYSSEY_SEA_LEVEL + 4.5 - (railPoint.y + 16)) / 9,

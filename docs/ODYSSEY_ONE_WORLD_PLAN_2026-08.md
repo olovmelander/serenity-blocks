@@ -625,6 +625,29 @@ both lanes** that either confirms or kills the §8 budget.
 ### Wave 3 — Swap the ground in; re-seat every prop on the CPU mirror
 ### Wave 4 — Baked range LUTs; delete the canonical chain and `rangeAuthority`
 ### Wave 5 — One atmosphere + one sky; migrate the 12 fog opt-outs; add the lint
+
+**Landed early, because nothing downstream could be judged without it.** The world looked
+right in the playground and pale-grey in-game, and the cause was not the palette, the
+exposure or the post stack: the board sets `scene.fog = FogExp2(...)` and
+`ChapterEnvironmentManager` rewrites its colour and density **every frame from the chapter
+profile**. FogExp2 is `1 − exp(−(d·z)²)`; the world's sky dome sits 3,600 u out, which is
+~100 % saturated at every density the chapters use. The colour script had never once been
+visible in-game, and the ground was being fogged twice — by `applyAerial` and again by a
+chapter that no longer draws anything.
+
+Two halves, and both are needed:
+
+- The world's four materials set `fog = false`. They carry their own aerial perspective.
+- The world **drives** `scene.fog.color`/`.density` and the clear colour for everything it
+  does *not* draw — path ribbon, level orbs, traveller — ramped over the first and last 6 %
+  of Act II so chapters 1 and 6 still hand over without a step. `applyAerial` is
+  `1 − exp(−K·z)` and FogExp2 is `1 − exp(−(d·z)²)`; they are made equal at
+  `FOG_MATCH_DISTANCE = 1200` via `d = sqrt(K / 1200)`, so one curve describes the whole frame.
+
+This is the third time this trap has cost a session (the painterly-ascent sky dome, the Ch6
+summit earth, and now this), which is what the planned lint is for: a material drawn beyond
+~1 km in the Odyssey scene that has not opted out of scene fog is almost always a bug.
+
 ### Wave 6 — Transitions become occlusion; delete the ecotone machinery
 ### Wave 7 — Perf, tiers, residency; re-budget the rail furniture (69 % of triangles)
 
