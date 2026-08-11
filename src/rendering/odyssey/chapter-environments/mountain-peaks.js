@@ -284,8 +284,14 @@ export function createMountainPeaksEnvironment(options = {}) {
         hostCenter: chapterRange?.center,
         hostChapterId: 4,
         name: 'main-peaks',
-        uTransition,
-        summitGlow: uSummitGlow,
+        // L5 CONTINUITY (in-game "several different mountains switching" fix): the shared hero chain
+        // must look IDENTICAL in Ch3/Ch4/Ch5 so the L5 authority hand-off is invisible. Ch3 + Ch5
+        // already pass uTransition:null + no summitGlow (constant daylight, full alpenglow, no crown
+        // ignite). Driving a crown ignite on ONLY the Ch4 copy is what made the peak POP tone at the
+        // 4→5 authority flip. The summit-ignite RING + sun disc + banner plume still carry the
+        // climax, so nothing cinematic is lost on the peak surface itself.
+        uTransition: null,
+        summitGlow: null,
         opacityTargets: mainPeakOpacityTargets,
     });
     // SNOW PARITY (3→4 seam): this is the SAME canonical chain the Ch3 distant preview shows,

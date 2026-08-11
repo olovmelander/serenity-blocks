@@ -445,7 +445,14 @@ export function createFBMMountainTSL(config = {}) {
     material.colorNode = color;
     material.opacityNode = alpha;
     material.transparent = true;
-    material.depthWrite = false;
+    // SOLIDITY FIX (in-game feedback): write depth so the peak OCCLUDES the clouds/sky behind it.
+    // With depthWrite:false a same/later-bucket transparent cloud (e.g. sky-drift dark-wisps at
+    // renderOrder 0) that sits BEHIND the peak paints over it → the peak read see-through even at
+    // alpha 1. Safe now because the L5 dedup draws only ONE coplanar copy (no coplanar z-fight) and
+    // the geometry is byte-identical across chapters. alphaTest discards the invisible base/side
+    // fringe so it doesn't write a depth HALO cutting an oversized silhouette out of the sky.
+    material.depthWrite = true;
+    material.alphaTest = 0.04;
     // Stash the live uniforms so a shared-material reuse (remake plan #4, providedMaterial path
     // above) can hand the same uniform set back to the caller's collectors.
     const uniforms = {
