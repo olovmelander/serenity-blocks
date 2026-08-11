@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import { OdysseyDirector } from './OdysseyDirector.js';
 import { OdysseyAudioReactor } from './OdysseyAudioReactor.js';
 import {
@@ -167,14 +168,44 @@ describe('OdysseyDirector', () => {
         expect(state.atmosphere.fogDensity).toBeGreaterThan(0.0015);
     });
 
-    it('uses a saturated alpine atmosphere bridge through the Surface to Mountains boundary', () => {
+    // WAVE 0.3 (2026-08): the alpine bridge MIDPOINT is deleted; its wide WINDOW is kept.
+    // Ch3 and Ch4 carry identical fog/sky after the daylight re-palette, so routing through
+    // 0x527da2 / 0x638699 @ 0.0024 was a 3.0x luminance dip and a 2.18x density spike over
+    // 196u that then undid itself. Guard the invariant, not the old constants.
+    it('crosses the Surface to Mountains boundary without leaving its own endpoint range', () => {
         const director = new OdysseyDirector({ chapterPositions });
-        const state = director.update(1 / 60, { ascentProgress: 0.36, audio: null });
+        const luma = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
-        expect(state.boundaryId).toBe('3-4');
-        expect(state.atmosphere.skyColor.getHex()).toBe(0x527da2);
-        expect(state.atmosphere.fogColor.getHex()).toBe(0x638699);
-        expect(state.atmosphere.fogDensity).toBeCloseTo(0.0024, 5);
+        const at = (p) => {
+            const s = director.update(1 / 60, { ascentProgress: p, audio: null });
+            return {
+                fogLuma: luma(s.atmosphere.fogColor),
+                skyLuma: luma(s.atmosphere.skyColor),
+                density: s.atmosphere.fogDensity,
+            };
+        };
+
+        const start = at(0.36 - 0.055);
+        const end = at(0.36 + 0.055);
+        const lo = (a, b) => Math.min(a, b);
+        const hi = (a, b) => Math.max(a, b);
+
+        for (let i = 0; i <= 30; i += 1) {
+            const p = (0.36 - 0.055) + (0.11 * (i / 30));
+            const s = at(p);
+            expect(s.fogLuma).toBeGreaterThanOrEqual(lo(start.fogLuma, end.fogLuma) - 1e-4);
+            expect(s.fogLuma).toBeLessThanOrEqual(hi(start.fogLuma, end.fogLuma) + 1e-4);
+            expect(s.density).toBeGreaterThanOrEqual(lo(start.density, end.density) - 1e-9);
+            expect(s.density).toBeLessThanOrEqual(hi(start.density, end.density) + 1e-9);
+        }
+
+        expect(director.update(1 / 60, { ascentProgress: 0.36, audio: null }).boundaryId)
+            .toBe('3-4');
+
+        // Falsification: the deleted midpoint violated both bounds.
+        expect(luma(new THREE.Color(0x638699)))
+            .toBeLessThan(lo(start.fogLuma, end.fogLuma) - 0.05);
+        expect(0.0024).toBeGreaterThan(hi(start.density, end.density));
     });
 
     it('raises smoothed energy toward audio energy and decays a beat pulse', () => {

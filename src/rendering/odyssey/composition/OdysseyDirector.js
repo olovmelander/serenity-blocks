@@ -26,7 +26,6 @@ import {
 } from '../chapter-environments/shared/chapter-profile.js';
 // E3 — one source of truth for the 3->4/5->6 colour bridges (was copy-pasted here + in CEM).
 import {
-    SEAM_34_ALPINE_BRIDGE,
     SEAM_45_SKY_BRIDGE,
     SEAM_56_AURORA_BRIDGE,
     SEAM_34_COLOUR_HALF_WIDTH as SEAM_34_ALPINE_COLOUR_HALF_WIDTH,
@@ -253,42 +252,19 @@ export class OdysseyDirector {
                 const alpineBlend = smootherstep01(
                     (ascentProgress - colourStart) / (colourEnd - colourStart),
                 );
-                lerpColorViaBridge(
-                    atmo.skyColor,
-                    surface3.skyColor,
-                    SEAM_34_ALPINE_BRIDGE.skyColor,
-                    mountains4.skyColor,
-                    alpineBlend,
-                    this._scratchA,
-                );
-                lerpColorViaBridge(
-                    atmo.fogColor,
-                    surface3.fogColor,
-                    SEAM_34_ALPINE_BRIDGE.fogColor,
-                    mountains4.fogColor,
-                    alpineBlend,
-                    this._scratchA,
-                );
-                lerpColorViaBridge(
-                    atmo.ambientColor,
-                    surface3.ambientLight,
-                    SEAM_34_ALPINE_BRIDGE.ambientLight,
-                    mountains4.ambientLight,
-                    alpineBlend,
-                    this._scratchA,
-                );
-                atmo.ambientIntensity = lerpNumberViaBridge(
-                    surface3.ambientIntensity,
-                    SEAM_34_ALPINE_BRIDGE.ambientIntensity,
-                    mountains4.ambientIntensity,
-                    alpineBlend,
-                );
-                atmo.fogDensity = lerpNumberViaBridge(
-                    surface3.fogDensity,
-                    SEAM_34_ALPINE_BRIDGE.fogDensity,
-                    mountains4.fogDensity,
-                    alpineBlend,
-                );
+                // WAVE 0.3: bridge midpoint deleted, wide window kept — see the matching
+                // note in ChapterEnvironmentManager. Ch3/Ch4 share fog+sky colours, so the
+                // old midpoint was a 3.0x luminance dip to nowhere.
+                atmo.skyColor.set(surface3.skyColor)
+                    .lerp(this._scratchA.set(mountains4.skyColor), alpineBlend);
+                atmo.fogColor.set(surface3.fogColor)
+                    .lerp(this._scratchA.set(mountains4.fogColor), alpineBlend);
+                atmo.ambientColor.set(surface3.ambientLight)
+                    .lerp(this._scratchA.set(mountains4.ambientLight), alpineBlend);
+                const aiA = surface3.ambientIntensity;
+                const aiB = mountains4.ambientIntensity;
+                atmo.ambientIntensity = THREE.MathUtils.lerp(aiA, aiB, alpineBlend);
+                atmo.fogDensity = THREE.MathUtils.lerp(surface3.fogDensity, mountains4.fogDensity, alpineBlend);
             }
         }
 
