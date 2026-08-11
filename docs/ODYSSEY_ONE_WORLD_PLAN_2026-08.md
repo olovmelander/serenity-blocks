@@ -1,6 +1,11 @@
 # Odyssey — One World Plan (2026-08)
 
-**Status:** Proposed. Supersedes the per-chapter cohesion patching in
+**Status:** Proposed — **revision 2**, after a second research round (snowflow source read
+end to end, the three.js r181 WebGPU/TSL ecosystem surveyed against `node_modules`, art
+direction from nine shipped games, and an adversarial performance review). Revision 2 demoted
+the raymarched far range, added band-limiting, shadows, a colour script and a two-lane budget,
+and found that the frame number the whole plan was justified by is not GPU time. Supersedes
+the per-chapter cohesion patching in
 [ODYSSEY_CH3_CH4_POLISH_2026-08.md](ODYSSEY_CH3_CH4_POLISH_2026-08.md) (rounds 1–8), which
 should be read as the evidence log that motivated this document.
 
@@ -221,6 +226,36 @@ Three more facts that shape the plan:
 
 ---
 
+## 2.5 What the reference actually costs — and the measurement problem
+
+snowflow's headline is 3.22 ms GPU at 2560×1440 on an **RTX 5070 Ti**. Scaling that to the
+Radeon 610M lane, from datasheets:
+
+| | 610M (RDNA2, 2 CU, 8 TMU, **4 ROP**, shared DDR5, 15 W) | RTX 5070 Ti | ratio |
+|---|---|---|---|
+| FP32 | 468–563 GFLOPS | 43.9 TFLOPS | **78×** |
+| Pixel fill | 7.6–8.8 GPixel/s | 235.4 GPixel/s | **27×** |
+| Texture fill | 15.2–17.6 GTexel/s | 686.6 GTexel/s | **39×** |
+| Bandwidth | shared DDR5 | 896 GB/s | ~15× |
+
+After the 4× resolution divisor (2560×1440 → 1280×720) the effective penalty is ~19.5×
+ALU-bound, ~6.75× fill-bound, ~3.75× bandwidth-bound, then **×1.3–2.0 for TSL→WGSL** (no
+register-level control). snowflow's 3.22 ms ports to **~20–60 ms on the 610M** if copied
+literally. It only fits because most of that frame is things Odyssey does not need.
+
+**The measurement problem, which is worse.** Odyssey's "7.0 ms p95" is a rAF-to-rAF
+presentation delta from `src/core/frame-rate-controller.js:432-436`, captured on an RTX 5080
+at 720p. **It is not GPU time.** It will barely move when 137 draws become 20. This repo has
+already been burned by exactly this class of error (an FPS counter that inflated 2× by taking
+a mean of reciprocals). Nothing below is trustworthy until the real split exists — hence
+Wave −1.
+
+The most likely 610M bottleneck has never been measured at all: **55 level-node orbs × 3
+nested transparent `depthWrite:false` spheres**, which on a 4-ROP part is a large amount of
+blended overdraw sitting in front of everything.
+
+---
+
 ## 3. Target architecture — "One World"
 
 ### 3.0 The ownership model — chapters are intervals on the path, not partitions of space
@@ -228,303 +263,495 @@ Three more facts that shape the plan:
 **The environment should not be divided into chapters at all.** A chapter is a *progression*
 concept, not a *spatial* one. Today it is both, and that conflation is the root cause in §1.
 
-Ask what a chapter is actually for, and it splits into three things:
-
-1. **Progression** — which levels live here, star totals, unlocks, the difficulty curve.
-   This is data (`levels.js`, `chapters.js`).
-2. **Presentation** — which board theme you get when you enter a level here.
-3. **Environment** — what the world looks like here.
-
-Only (3) is spatial, and it is precisely the one that must *not* be a partition. (1) and (2)
-are properties of a **scalar path position `p`**, and a scalar does not need the world cut
-into pieces to be read.
+Ask what a chapter is for and it splits into three things: which levels live here; which
+board theme you get; what the world looks like. Only the third is spatial, and it is exactly
+the one that must not be a partition. The other two are properties of a **scalar path
+position `p`**, and a scalar does not need the world cut into pieces to be read.
 
 So invert the ownership:
 
 | | Owns | Does **not** own |
 |---|---|---|
-| **The World** | one ground, one sky, one sun, one atmosphere, biome as a function of world position | any notion of "chapter" |
+| **The World** | one ground, one water sheet, one sky, one sun, one atmosphere; biome as a function of world position | any notion of "chapter" |
 | **The Path** | the spline, arc length, `p` | geometry |
-| **A Chapter** | an interval `[pStart, pEnd)`: its levels, its board theme, its colour-script keyframe, which set-pieces are active | ground, sky, atmosphere, mountains |
+| **A Chapter** | an interval `[pStart, pEnd)`: its levels, its board theme, its colour-script keyframe, which set-pieces are active | ground, water, sky, atmosphere, mountains |
 
-The world exposes three queries and nothing else: `height(x, z)`, `biome(worldPos)`,
-`aerial(worldPos, colour)`. Set dressing is placed in **world space by region** and streamed
-by distance from the camera — not parented to a chapter group.
+The world exposes three queries: `height(x, z)`, `biome(worldPos)`,
+`aerial(worldPos, colour, medium)`. Set dressing is placed in **world space by region** and
+streamed by camera distance — never parented to a chapter group.
 
-Everything that hurts today is a consequence of the current ownership, and simply ceases to
-exist under this one:
+Everything that hurts today is a consequence of the current ownership and simply ceases to
+exist under this one: no chapter-local frames → no `toLocalPosition` → no duplicated mountain
+chains → no `rangeAuthority`; no two worlds co-present → no crossfade → no dead `opacityNode`
+writes, no binary `group.visible` pop; a continuous world has no seams, so seams survive only
+as **colour-script keyframes** and **level-set boundaries**, both just data along `p`.
 
-- no chapter-local frames → no `toLocalPosition` → **no duplicated mountain chains** → no
-  `rangeAuthority`, no L5 dedup
-- no two worlds co-present → **no crossfade** → no double-exposure, no dead `opacityNode`
-  writes, no binary `group.visible` pop
-- no environment "seam" — a continuous world has no seams. Seams survive only as
-  **colour-script keyframes** and **level-set boundaries**, both of which are just data
-  interpolated along `p`
-- residency becomes **distance-based streaming along arc length**, which is what actually
-  matters for memory, instead of chapter create/evict
-
-And the chapter identities the user likes are *not* lost — they become **emergent**. The rail
-climbs, so the land around it is green low and snowy high. "Chapter 3 is green, Chapter 4 is
-alpine" stops being a fact you assert with a chapter counter and becomes a fact you observe
-because you gained 600 units of altitude. That is the difference between ascending a mountain
-and watching two dioramas swap.
+And the chapter identities are not lost — they become **emergent**. The rail climbs, so the
+land is green low and snowy high.
 
 ### 3.0.1 Three acts, not eight chapters
 
-One world for *everything* would be wrong too — some chapters are genuinely different places:
-
 | Act | Chapters | Treatment |
 |---|---|---|
-| **I — Earth Core** | ch1 | A separate place (inside the earth). Stays a diorama. |
-| **II — The Ascent** | **ch2–ch6** | **ONE WORLD.** Ocean floor → ocean → shore → hills → alpine → cloud → edge of space. Literally one mountain rising out of one ocean into one sky. |
-| **III — Beyond** | ch7–ch8 | Separate places (black hole, city). Stay dioramas. |
+| **I — Earth Core** | ch1 | Separate place. Stays a diorama. |
+| **II — The Ascent** | **ch2–ch6** | **ONE WORLD.** One mountain rising out of one ocean into one sky. |
+| **III — Beyond** | ch7–ch8 | Separate places. Stay dioramas. |
 
-This is why the cohesion failure is so visible in ch3–ch5 and invisible in ch7–ch8: Act II is
-the only stretch that is *supposed* to be one continuous place, and it is the only stretch
-built as if it were not.
+That leaves exactly **two** act boundaries needing a real transition, and both should be
+**occlusion** moments (a dive, a breach, a cloud bank), not alpha crossfades.
 
-That leaves exactly **two** act boundaries needing a real transition — and both should be
-occlusion moments (a dive, a breach, a whiteout), not alpha crossfades. Two authored moments
-instead of seven crossfades that can never look right.
+### 3.1 One ground clipmap + one water sheet — **two** draws, not one
 
----
+A camera-following nested-ring geometry clipmap: one static mesh, one material, one draw
+call, all placement / CDLOD morph / displacement in the **vertex stage**, zero CPU rebuild,
+zero per-frame upload.
 
-Six changes implement Act II. Each deletes a whole category of bug rather than patching
-instances.
+**Correction to the first draft:** a heightfield is single-valued, so "ocean floor + ocean
+surface" is inherently **two sheets**. Pillar 1 is *two* draws — a ground clipmap and a water
+clipmap. Settle it now, because §3.7 requires the Ch2→Ch3 transition to pass *through* the
+water surface.
 
-### 3.1 One ground: a camera-following geometry clipmap
+Concrete constants (the first draft's "~300 k triangles" was **1.9× oversized for zero visual
+gain**):
 
-Replace **all** of it — Ch3's meadow plate and foothill skirt, Ch4's snow disc, cloud deck
-and three apron planes, Ch5's cloud deck, Ch2's (degenerate, zero-area) seabed — with a
-single nested-ring geometry clipmap centred on the camera, exactly as snowflow does it:
+| Lane | GRID_N | LEVELS | BASE_SPACING | HOLE_SHRINK | Triangles | Reach |
+|---|---|---|---|---|---|---|
+| RTX | 128 | 7 | 1.5 u | 3 | 189,008 | 6,144 u |
+| 610M | 96 | 7 | 1.5 u | 2 | 107,856 | 4,608 u |
 
-- ~8 nested rings, **one static mesh, one material, one draw call**
-- vertices carry only `(gridIndex, ringLevel)`; **all** world placement, CDLOD morphing and
-  displacement happen in the vertex stage
-- no CPU geometry rebuilds, no per-frame uploads, no plates, no welds
+Both exceed the first draft's stated 2,500–3,000 u radius at 30–50 % of its triangle budget.
 
-The weld problem, the plate-mismatch problem and the "two grounds at different heights"
-problem all cease to exist **by construction** — there is only ever one surface.
-
-Sizing for Odyssey (world units ≈ metres; spline arc length 1767.58 u; hero massif 1340 u
-wide at ~850 u out): a radius of ~2500–3000 u with ~1.5 u inner spacing. Budget ~300 k
-triangles — roughly what the Ch3 plates + Ch4 surfaces already cost, but in **one draw**.
-
-### 3.2 One height function, baked once, mirrored to CPU
-
-A single `odysseyWorldHeight(x, z)` continuous over the whole terrestrial act: coastal
-shelf → lake basin → green hills → the massif → the summit. Baked once into an **RG16F**
-texture (height + packed derivative) and mirrored back to the CPU.
-
-> **Format note:** snowflow uses RG32F. In WebGPU `float32-filterable` is an *optional*
-> feature that must be explicitly requested; **half-float is core-filterable**. Use RG16F
-> unless a spike proves precision is insufficient (this repo already hit this exact wall
-> when baking the Ch3 shore heightmap).
-
-The CPU mirror is what makes props seat **exactly** on the surface that is drawn — killing
-the floating/buried conifers (§1.3) permanently, and giving level-node placement a real
-ground to sit on.
-
-### 3.3 The distant range is raymarched on the sky — no geometry at all
-
-This is the single highest-leverage idea for Odyssey specifically. snowflow's far range is
-*"a heightfield raymarched on the skybox — no geometry, behind everything by construction,
-with analytic normals, ridges occluding ridges, and a second short march toward the sun for
-its own cast shadows"* at ~1.2 ms.
-
-Adopting it deletes, in one move:
-
-- the canonical mountain chain (4 meshes, a 4,225-vertex hero, shared across 3 chapters)
-- the entire `rangeAuthority` / L5-dedup system
-- the alpha rim-fade class of bug — **this whole session's battle**
-- the far-range `renderOrder` juggling (−3/−2/−1) and every ghost-ridge-through-the-massif
-  artefact
-
-A raymarched range is *behind everything by construction*. It cannot z-fight, cannot be
-seen through, cannot crossfade wrong, and costs one fullscreen-ish pass instead of four
-transparent meshes.
-
-### 3.4 One sun and one analytic sky
-
-Delete `MOUNTAIN_SHADING.keyDir`. Everything keys off a single sun vector that is a function
-of journey progress — so the sun *moving* as you ascend becomes the colour script rather
-than a discontinuity. Fix the three surviving view-space-normal sites.
-
-Follow snowflow's reasoning for going analytic rather than captured: *"the whole look hangs
-on a sun 10–15° up: with a model, the elevation slider correctly drags the horizon warmth,
-the zenith gradient, the ambient tint and the direct sun colour along with it."* One sky
-model, baked to a small equirect LUT + SH irradiance, re-baked only when the sun moves
-appreciably. That single control is what makes an ascent read as one day in one place.
-
-### 3.5 One atmosphere, applied by everything
-
-A shared TSL node `odysseyAerial(worldPos, litColor)` that every world material calls.
-Deletes: the scene `FogExp2`, all twelve `material.fog = false` opt-outs, the three
-competing authored haze ramps, and all three seam bridges (`SEAM_34/45/56`).
-
-Aerial perspective is the classic unifier — it is what makes a multi-biome world read as one
-planet. Today it is the thing most responsible for the world reading as separate layers.
-
-### 3.6 Biome is a function of the world, not of the chapter index
+The vertex function, adopted verbatim from the reference:
 
 ```
-biome(worldY, slope, wetness, distanceFromWater) → { grass, rock, snow, sand }
+spacing     = baseSpacing * exp2(level)
+origin      = floor(camXZ / (spacing*2)) * (spacing*2)   // snap to TWICE the spacing
+local       = grid * spacing
+cheb        = max(|local.x|, |local.z|) / (gridHalfN * spacing)
+morph       = clamp((cheb - 0.70) / 0.16, 0, 1)          // completes at 0.86
+coarseLocal = (floor(grid * 0.5) * 2.0) * spacing
+local       = mix(local, coarseLocal, morph)
+worldXZ     = origin + local
+effSpacing  = spacing * (1 + morph)    // varying: gates every band-limiting decision
 ```
 
-Height-blended (not linearly lerped — linear blending of splat weights is what makes
-transitions look muddy). The snowline becomes a **world altitude**, so it follows the
-terrain instead of arriving because a chapter counter incremented.
+Four non-obvious, load-bearing points:
 
-"Chapter 3 is green, Chapter 4 is alpine" then becomes **emergent**: the rail climbs, so the
-land around it is greener low and snowier high. That is the difference between *ascending a
-mountain* and *watching two dioramas swap*.
+1. **Snap to 2× spacing, not 1×** — otherwise lattice parity flips between frames and the
+   surface shimmers.
+2. **The morph is not distance-driven.** It morphs by normalised Chebyshev position *within
+   the ring*, which is stateless and exactly reproducible in the shadow pass.
+3. **HARD INVARIANT, documented nowhere, fails silently as cracks:**
+   `morphEnd ≤ 1 − 4·HOLE_SHRINK / GRID_N`.
+   The reference satisfies it at N=160 / shrink=3 / morphEnd=0.86 (margin 0.065). At
+   N=64 / shrink=3 the ceiling is 0.8125 < 0.86 → cracks. **Assert it in the mesh builder and
+   unit-test it.**
+4. **`lodCenter` comes from the spline's GROUND-TRACK point at the current `p`, never from
+   the camera eye** — otherwise a camera push or look-around re-samples the same ground
+   between two ring spacings and visibly changes its shape. (The reference hit this and moved
+   the centre off the camera for exactly this reason.) This directly protects the Ch6 hero
+   framing the user has already praised.
 
-Chapters keep their identity through **props and colour script**, not through owning a
-world: fish, birds, flowers, aurora, the space act. Those crossfade fine — they are small,
-sparse and rarely silhouette-defining.
+Three three.js mesh-setup requirements, **all silent failures**: `frustumCulled = false`;
+`matrixAutoUpdate = false` with an identity matrix; and a **manually assigned
+`geometry.boundingSphere`** — three would otherwise compute a radius from the fake
+`(i, level, j)` attribute values and use that nonsense for shadow-map culling. Read the
+addressing as `attribute('position','vec3')`, **never `positionLocal`**, which the node
+pipeline may already have rewritten (same trap class as the r181 `InstanceNode` /
+`positionGeometry` issue already in this project's memory).
 
-### 3.7 Where a real change is needed, use occlusion — not alpha
+### 3.2 Height: local relief baked, the ascent analytic
 
-On a rail you always know what the camera can see, which makes occlusion-driven transitions
-both cheap and bulletproof. Ch5→Ch6 (leaving the planet) should happen **through** the cloud
-deck, with the deck as the occluder. Ch2→Ch3 should happen through the water surface — which
-requires the terrain to be solid underwater, which today it is not (§1.4).
+**Amended.** Do **not** bake absolute world height. Half-float epsilon at 2,000 u is ~1.0 u —
+unusable for a surface geometry displaces to.
+
+- Bake only **local relief (±150 u)**, where RG16F epsilon is 0.06 u, into an **RG16F 2048²**
+  texture.
+- Add the large-scale ascent **analytically** as a smooth function of spline arc length.
+  Odyssey already owns that function, so this is *simpler*, not harder.
+
+RG16F is filterable everywhere with no feature request; `float32-filterable` is optional and
+r181's defensive fallback covers only `DataTexture`, **not render-target textures** — a float
+RT on a non-supporting adapter is a validation error, not graceful degradation. So do not
+build an R32F path at all.
+
+**AUX BAKE** — a named artefact, RGBA16F 1024², carrying `(dH/dx, dH/dz, biome mask,
+curvature)`. **Derive normals by central-differencing the baked height texture, never by
+re-evaluating the analytic derivative.** That guarantees lighting describes the exact surface
+the vertex shader displaces to, and structurally kills the "phantom shading seam" class
+already logged against Ch3/Ch4. Three lines of TSL for the highest value-per-line in the
+entire reference. A wide-stencil (6-texel) Laplacian in the A channel becomes a free
+curvature-derived biome selector feeding §3.6.
+
+A CPU mirror of the height makes props seat **exactly** on the drawn surface — killing the
+floating/buried conifers (§1.3) permanently.
+
+**PROJECT RULE, lint-able:** any `texture()` reachable from `positionNode` or `geometryNode`
+**must** carry `.level(0)` (or use `textureLevel()` / `textureLoad()`). WGSL forbids
+`textureSample` in the vertex stage, and r181 auto-injects a level in only three places
+(`EnvironmentNode` ×2, `Background.js`) — **nothing injects it for user materials**. Omitting
+it is a WGSL validation error, i.e. a black chapter, not a warning.
+
+### 3.3 The far range: **pre-baked LUTs**, not a per-frame raymarch
+
+**This pillar is demoted, and it is the single biggest change from the first draft.**
+
+Raymarching the range on the sky is beautiful and it is what the reference does — at ~240
+gradient-noise evaluations per marched pixel, costing 1.2 ms of its 3.22 ms frame on an RTX
+5070 Ti (37 %). On the 610M the arithmetic is:
+
+| Resolution | Cost (610M) | Verdict |
+|---|---|---|
+| Full | 13.97 ms (8.38 ms with trig stripped) | reject |
+| Half | 3.49 / 2.10 ms | reject |
+| Quarter | 0.87 / 0.52 ms | reject — blocky hero silhouette |
+
+All rejected. **Because Odyssey is a rail with a known camera path**, pre-bake ~12 equirect
+range LUTs at spline stations ~150 u apart (12 × 512×256 RGBA16F = **6 MB**) and cross-fade
+two at runtime: **~0.02 ms and zero compile risk**, with *better* parallax control than the
+reference has. Do not fall back to a quarter-res per-frame march — it makes the hero
+silhouette blocky, and that silhouette is the one hard edge the composition is allowed to
+have.
+
+This still deletes the canonical mountain chain, the L5 dedup, `rangeAuthority` and the entire
+alpha-rim-fade bug class — the architectural win survives intact.
+
+### 3.4 One sun, one analytic sky
+
+Delete `MOUNTAIN_SHADING.keyDir`. **`ODYSSEY_SUN` becomes a lint rule, not a convention.**
+
+> **Trap already paid for once this session:** `ODYSSEY_SUN` has negative Z, so keying the
+> massif off it makes its camera-facing flank back-lit (measured ndl 0.00 vs 0.67). Unifying
+> is right, but the sun's *direction* must be re-solved against the hero composition, not
+> adopted blind. This is an art solve with a measurable constraint, not a find-and-replace.
+
+Analytic sky (Nishita/Hillaire-style single scattering plus a multiple-scattering
+approximation) baked to an equirect LUT + SH irradiance + mip-based specular, re-baked only
+when the sun moves appreciably. Analytic rather than captured because *the whole look hangs on
+sun elevation*: one slider must drag horizon warmth, zenith gradient, ambient tint and direct
+sun colour together.
+
+Extend the ground-bounce solve to be **biome-aware** — ocean ~0.06, sand ~0.35, grass ~0.18,
+snow ~0.85 — and iterate bake → project SH → recompute bounce three times. Ambient and shadow
+colour then track the ascent automatically, which is what the 12 fog opt-outs and 3 authored
+ramps were standing in for.
+
+Use `scene.backgroundNode` and three's shipped `equirectUV()` rather than a manual skybox
+mesh — removes a mesh, a material and a draw call versus the reference.
+
+### 3.5 One atmosphere, medium-parameterised
+
+`odysseyAerial(worldPos, litColour, medium)` — applied by **every** world material, lerping
+air↔water on camera Y vs sea level, with separate extinction coefficients and a separate
+inscatter source below the waterline. An air-only model cannot serve Ch2 and would re-fork at
+the very first seam.
+
+**API rule, adopted verbatim:** pass the **sky LUT into the node**, never a pre-sampled
+colour. The correct inscatter colour depends on the extinction the function itself computes —
+and the old signature is precisely what let seven materials each decide what "the sky here"
+meant (§1.5's three competing ramps).
+
+Firewatch's device is the cheapest way to make this read as *painted*: fog colour is a **1D
+gradient LUT indexed by normalised camera distance** — one texture sample, and it is what
+makes a flat-shaded world look hand-painted.
+
+Three construction details worth copying, including the two mistakes the reference documents:
+the near-field lookup must be tilted **up** (`viewDir + (0, 0.42, 0)`) and read from a
+**blurred mip**, so short paths get the cool dome rather than the horizon band; the far limit
+must converge on the **exact mip-0 sky sample the sky itself draws**, or the clipmap's far
+edge draws as a hard silhouette at a fixed radius; and the Mie forward lobe must be **inside**
+the crossfade, not added on top, or the horizon becomes a hard-topped white wall.
+
+**Migration task:** the 12 `material.fog = false` opt-outs must flip to `fog: true` with an
+aerial node that is *identity at their depth* — not stay opted out. `NodeMaterial.setupFog()`
+only runs when `material.fog === true`, so leaving them false makes the large
+silhouette-defining surfaces the ones that never receive the new atmosphere: the same
+inversion that produced the measured 5.9× mismatch. Gate with a lint asserting **zero**
+`material.fog = false` and **zero** `FogExp2` under `src/rendering/odyssey/`.
+
+> `exponentialHeightFogFactor` **does not exist in r181** (it is r182+). Hand-roll the factor
+> — about 30 lines of TSL.
+
+### 3.6 Biome from world state, not chapter index
+
+`biome(worldY, slope, wetness, curvature) → { grass, rock, snow, sand }`, **height-blended**
+(not linearly lerped — linear splat blending is what makes transitions muddy). The snowline
+becomes a world altitude, so it follows terrain instead of arriving because a counter
+incremented. Curvature comes free from the aux bake's A channel.
+
+### 3.7 PILLAR 7 (NEW) — footprint band-limiting
+
+**Multiply every procedural layer by `1 − smoothstep(lo, hi, worldPixelFootprint)`**, fade
+bands at ~`[wavelength/6, wavelength/1.5]`, using `dFdx`/`dFdy` of world position (both
+exported by r181 TSL) and the clipmap's `effSpacing` varying.
+
+This is the mechanism-level fix for the already-logged **"pixelated meadow"** complaint. It is
+what MSAA and TAA both *fundamentally cannot do* — the signal is already wrong before it is
+sampled. And it makes the shader **faster**, because most pixels early-out of most layers.
+
+Compute the derivatives **once at graph top in uniform control flow** and thread them into
+gradient-sampled fetches; WGSL forbids implicit-derivative sampling under non-uniform flow.
+Carry a second **narrow-axis** footprint (min of the two axis lengths) for anything that must
+not change appearance when the camera merely tilts.
+
+### 3.8 Shadows (absent from the first draft entirely)
+
+| Lane | Budget |
+|---|---|
+| 610M | **one** 1024² cascade over the near rings (~0.12 ms) + curvature AO from the aux bake |
+| RTX | at most **two** 2048² cascades |
+
+Three 2048² cascades is 12.58 Mpixel of depth per frame — on 4 ROPs that is 1.43 ms of pure
+fill before any shading. Do **not** hand-roll per-cascade depth materials the way the
+reference had to: r181 derives the shadow pass from the same NodeMaterial
+(`positionNode` → `positionLocal`, with `castShadowPositionNode` as an explicit override).
+Use the **non-morphed nearest height fetch** in the shadow path so shadows do not swim as the
+clipmap morphs.
+
+### 3.9 The colour script (absent from the first draft — and it is what makes it beautiful)
+
+> *"'One world' is an ownership change with no art direction in it. Without this table the
+> default outcome is one uniformly grey world."*
+
+`src/rendering/odyssey/odyssey-colour-script.js` — 6–8 keyframes on `p`, each carrying a
+5-slot palette (sky zenith, sky horizon, key/sun colour, ground-lit, ground-shadow) plus
+exposure, fog density, fog-LUT id and wind strength. Interpolated in **Oklab**, uploaded once
+per frame.
+
+Two unit-testable invariants:
+
+1. The far-plane colour at `t = 1.0` of every keyframe lands within **ΔHue ≤ 8°** and
+   **ΔChroma ≤ 0.02** of one declared `HORIZON_ANCHOR` — Shadow of the Colossus'
+   single-hue-convergence rule, which is what makes very different biomes read as one
+   continent.
+2. Hue change **≤ 12° per 0.05 of `p`**, except at declared occlusion seams.
+
+### 3.10 Art-direction contract
+
+From the games research, as checkable rules:
+
+- **One persistent landmark that is a TERM IN THE HEIGHT FUNCTION**, never a separate mesh,
+  with a deliberate exemption from full atmospheric wash so it never sinks into the sky. Its
+  angular size must grow **monotonically** across the ascent (Journey never lets the mountain
+  shrink).
+- **Baton pass.** The ocean floor cannot see the massif, so one anchor cannot span Act II.
+  Anchors hand over **only while both are visible in the same frame**: godray shaft → shore
+  massif → summit → earth.
+- **Anti-bullseye** (BotW): partially occlude the landmark so the player moves *around*
+  something to keep seeing it. Triangular landforms at three scales — large (global
+  landmark), medium (occluders, so you can surprise), small (rhythm, and they make the large
+  ones read as large by juxtaposition).
+- **One wind field** across every biome (Ghost of Tsushima) — grass, cloth, spindrift and
+  cloud all agreeing is the strongest continuity signal after light direction, and it costs
+  almost nothing.
+- **Cloud banks that conform to terrain** as the transition device (The Pathless) — fog as a
+  traversable object, not a post effect. This *is* the Ch5→Ch6 occlusion moment.
+- **The glitter gate** (Journey's sand; ports 1:1 to snow): sample a Gaussian-distributed
+  random normal G, `R = reflect(L, G)`, and **threshold** `dot(R, V)`. The cheapest way to
+  make a texture-free surface look expensive. It aliases without TAA → **hard-off on the
+  610M**.
 
 ---
 
 ## 4. What survives
 
-Non-negotiable, and explicitly preserved:
-
-- **The rail, the spline and its arc length.** 1767.58 u is load-bearing — path positions
-  are arc-length parameterised over the whole curve, so changing the total re-maps every
-  chapter's p → world position (a prior 74 u shortening shifted ch1–ch5 by up to 54 u).
-- **The persistent light rig.** Lights are reparented out of chapter groups into one
-  never-hidden rig; toggling `visible` on a group containing lights nulls
-  `LightsNode._lightNodes` and forces a full pipeline re-resolve. One constant light set,
-  always.
-- **The level nodes and the board handoff.** Untouched.
-- **Compositions the user has explicitly praised**: the far-left flank mountain, and the
-  Ch4 hero massif silhouette. These must be *authored into* the height function and A/B'd
-  against the current captures, not left to noise.
-- Chapters 1, 7, 8 — out of scope entirely.
+- **The rail, the spline and its arc length** — 1767.58 u is load-bearing.
+- **The persistent light rig** — one constant light set, always. Toggling `visible` on a group
+  containing lights nulls `LightsNode._lightNodes` and forces a full pipeline re-resolve.
+- **The level nodes and the board handoff.**
+- **Compositions the user has praised**: the far-left flank and the Ch4 hero massif silhouette
+  — authored *into* the height function and A/B'd against current captures.
+- Chapters 1, 7, 8.
 
 ---
 
 ## 5. Waves
 
-Each wave ships something visible and has a proof gate. Wave 0 is independent of the
-rebuild and can ship immediately.
+### Wave −1 — Measure first (blocking; nothing else is trustworthy without it)
 
-### Wave 0 — Stop the bleeding (small, high confidence)
+Instrument the **current** scene with `renderer.trackTimestamp = true` and
+`await renderer.resolveTimestampsAsync('render')`; publish a GPU-time split (scene / shadow /
+post / bloom) for **both lanes** into `reports/odyssey-perf/`. Include a **hidden-vs-shown A/B
+of the level-node group** — 55 × 3 nested transparent spheres is the most likely 610M
+bottleneck and has never been measured.
+
+Measurement discipline as an exit criterion: **median and p99 only, never mean**; fixed-size
+ring buffer, recompute throttled to ~4 Hz, zero allocation in the render loop; draw calls
+latched once per frame from `renderer.info.render.drawCalls`.
+
+### Wave 0 — Stop the bleeding (ship first, unconditionally)
 
 | # | Change | Fixes |
 |---|---|---|
-| 0.1 | Fold `chapterOpacity` into Ch3's alpine/skirt alpha | The 27.7 %-of-frame, one-frame pop → a 106 u ramp |
-| 0.2 | Delete `MOUNTAIN_SHADING.keyDir`; key everything off `ODYSSEY_SUN`. Fix the 3 view-space-normal sites | The 72.5° sun split; the camera-swinging terminator |
-| 0.3 | Delete `SEAM_34_ALPINE_BRIDGE` | A 3.0× luminance dip to nowhere between two identical endpoints |
-| 0.4 | Terrain solid underwater: widen `landAlpha` below the waterline, `DoubleSide`, `depthWrite: true` | "See through the bottom of the grassy hills" |
-| 0.5 | Seat the conifer belt on the heightfield | Trees buried 26 u / floating 16 u |
+| 0.1 | Fold `chapterOpacity` into Ch3's alpine/skirt alpha | the 27.7 %-of-frame one-frame pop |
+| 0.2 | Delete `MOUNTAIN_SHADING.keyDir`; re-solve one sun against the hero composition; fix the 3 view-space-normal sites | the 72.5° sun split |
+| 0.3 | Delete `SEAM_34_ALPINE_BRIDGE` | a 3.0× luminance dip between identical endpoints |
+| 0.4 | `depthWrite: true` unconditionally; `DoubleSide` **only below the waterline** | "see through the bottom of the hills" |
+| 0.5 | Seat the conifer belt on the heightfield | trees buried 26 u / floating 16 u |
 
-**Proof gate:** seam 2-3 and seam 3-4 captures; a numeric guard asserting no per-frame alpha
-delta above a threshold for any surface covering >5 % of frame.
+> 0.4 amended: `DoubleSide` on the whole plate doubles rasterised fragments on a 4-ROP GPU,
+> on a surface Wave 3 deletes. `depthWrite: true` is free and is most of the fix.
 
-### Wave 1 — The spike (playground only, zero repo risk)
+### Wave 1 — The spike (playground; zero repo risk; falsifies the budget)
 
-Build `src/playground/effects/odyssey-clipmap.effect.js`: one clipmap mesh, one material,
-height from one baked RG16F function, CDLOD morph in the vertex stage, height-blended biome
-splat, analytic sky, shared aerial node.
+`src/playground/effects/odyssey-clipmap.effect.js`. **Proof gate:** ≤ 4 draws for
+ground + water + sky + range; clean console; screenshot-verified; and a **GPU-time split on
+both lanes** that either confirms or kills the §8 budget.
 
-**Proof gate:** ≤ 3 draw calls for ground + sky; clean console (zero WebGPU validation
-errors); screenshot-verified against the snowflow reference; frame time measured on **both**
-the RTX lane and the iGPU lane. **This wave decides whether the rest of the plan is real.**
-
-Open spike questions to answer here, not before:
-- vertex-stage texture sampling in TSL — `texture(map, uv)` inside `positionNode` (three
-  emits an explicit-LOD sample in the vertex stage); `textureLoad` is the unfiltered fallback
-- CDLOD morph factor without per-frame CPU work
-- whether RG16F precision is sufficient over the full height range
-
-### Wave 2 — Author the world height field
-
-One continuous `odysseyWorldHeight` from the ocean shelf to the summit, with the hero massif
-and the left flank authored in deliberately. Verify the rail never intersects terrain and
-that the praised compositions still frame correctly at 4:3 → 21:9.
-
-### Wave 3 — Swap the ground in
-
-Delete the Ch3 plates, Ch4 disc/deck/apron, Ch5 deck, Ch2 seabed. Clipmap in. Re-seat every
-prop on the CPU height mirror.
-
-### Wave 4 — Raymarched far range
-
-Delete the canonical chain and the entire `rangeAuthority` / L5-dedup system.
-
-### Wave 5 — One atmosphere, one sky
-
-Shared aerial node everywhere; delete the twelve fog opt-outs, the three competing ramps and
-all three seam bridges.
-
-### Wave 6 — Transitions become occlusion
-
-Delete the ecotone machinery (§1.2(c) — it is already dead code). Ch5→Ch6 through the cloud
-deck; Ch2→Ch3 through the water.
-
-### Wave 7 — Perf, tiers, residency
-
-Chunked ribbon streaming by arc length with hysteresis. Rebuild quality tiers so they
-actually gate something. Separately (and independently of this plan): re-budget the rail
-furniture, which is 69 % of drawn triangles.
+### Wave 2 — Height field + aux bake + **2a: the colour script**
+### Wave 3 — Swap the ground in; re-seat every prop on the CPU mirror
+### Wave 4 — Baked range LUTs; delete the canonical chain and `rangeAuthority`
+### Wave 5 — One atmosphere + one sky; migrate the 12 fog opt-outs; add the lint
+### Wave 6 — Transitions become occlusion; delete the ecotone machinery
+### Wave 7 — Perf, tiers, residency; re-budget the rail furniture (69 % of triangles)
 
 ---
 
-## 6. Risks and honest unknowns
+## 6. Risks, and what to cut
 
-- **The clipmap is unproven in this repo.** Wave 1 exists solely to de-risk it. If the spike
-  fails, Wave 0 still stands on its own and the fallback is a single large displaced plane
-  with distance-based tessellation — less elegant, same cohesion benefit.
-- **snowflow is Babylon + hand-written WGSL, not three.js + TSL.** The *architecture*
-  transfers completely; **none** of the code does. Treat every snowflow number as a target,
-  not a promise.
-- **Triangles do not go down.** ~300 k of clipmap replaces ~300 k of plates. The win is
-  draws, materials, compile time and — above all — cohesion. Anyone expecting a triangle
-  win will be disappointed; the triangles are in the rail furniture.
-- **Aliasing.** A continuous terrain silhouette aliases badly. snowflow solves it with TAA
-  (Halton jitter written into the projection, depth reprojection, variance clipping).
-  Odyssey currently has an uncommitted 4× MSAA at High+. TAA is the better answer and is a
-  substantial build in its own right — scope it explicitly or accept MSAA.
-- **Losing what works.** The current Ch3 lake, meadow dressing and the specific hero
-  composition are liked. They must be re-authored deliberately and A/B'd against captures,
-  not regenerated and hoped for.
-- **No iGPU baseline exists.** `reports/odyssey-perf/` contains only RTX 5080 files. The
-  weak lane's entire evidence base is "transition spikes 60–311 ms" plus two TDR bluescreens.
-  A fresh baseline on both lanes is a prerequisite for claiming any win.
+**Cut as gold-plating:** the per-frame raymarched range (saves 8–14 ms on the iGPU); three
+shadow cascades and PCSS (saves 1.3 ms); TRAA on the iGPU (saves 1.3–1.5 ms and removes
+ring-snap ghosting); bicubic height fetch in the vertex stage (the CPU mirror must match the
+shader *exactly*, and matching 4-tap bicubic in JS is 3× the code and 3× the places to get
+grounding silently wrong); the 300 k triangle budget; any `float32-filterable` probe; three
+triplanar detail scales (one, footprint-gated, on the iGPU); the 80 m toroidal deformation
+buffer (33.5 MB of VRAM, and nothing in Odyssey carves the ground).
+
+**Cheap win:** replace `grad2()`'s cos/sin lattice gradient with `normalize(hash22(i)*2−1)` —
+eight transcendentals per noise evaluation at RDNA2's ¼ transcendental rate is ~40 % of every
+noise call; the hash form is ~4× cheaper and visually indistinguishable on a landform.
+
+**TDR mitigation (absent from the first draft, despite two prior bluescreens):** tile **every**
+bake into ≤ 16 dispatches with a rAF yield between them; assert no single dispatch exceeds
+~100 ms. Windows TDR fires at 2 s per GPU command and these are exactly the sustained-ALU
+shapes that crashed this machine.
+
+**Bake → compile → reveal is an explicit ordering constraint, not an emergent one.** The
+ground material's first compile binds whatever is in the height target, and uninitialised
+VRAM read as a height puts **NaN into a vertex position**. This repo already has a logged
+boot-warp cold-pipeline-stall of exactly this shape.
+
+**Anti-aliasing — the first draft asked the wrong question.** It is not "TAA or MSAA": MSAA
+fixes the geometric silhouette, band-limiting (§3.7) fixes shader-space aliasing, and you need
+both.
+
+- RTX: **8× MSAA** via `pass(scene, camera, { samples: 8 })` — a one-token change. `PassNode`
+  bypasses the renderer-level cap; `Renderer.js:264`'s
+  `samples || (antialias === true) ? 4 : 0` precedence bug hard-caps `renderer.samples` at 4
+  with getter-only access.
+- 610M: 4× MSAA + band-limiting, nothing else. **Reject TRAA** (~1.3–1.5 ms = 19–21 % of
+  budget). Clipmap-specific TRAA hazard even on RTX: the ring origin snaps by 2× spacing and
+  that motion is **not in the model matrix**, so velocity is wrong at every snap.
+- `FSR1Node` / `TAAUNode` — the real iGPU lever — are **r182+** and absent here. Schedule the
+  version bump deliberately, budgeting r183's `PostProcessing` → `RenderPipeline` rename and
+  r182's PCF → Vogel-disk shadow change.
+
+**Prior art to steal from instead of porting Babylon:** `Braffolk/fable5-world-demo` —
+three.js WebGPU + TSL, TypeScript, CDLOD quadtree terrain with a storage-buffer heightfield
+mirrored to CPU, a Hillaire LUT atmosphere with an `aerial()` node, 4-cascade shadows and a
+far-shell ring. It solves pillars 1, 2, 4, 5 and a variant of 3 **in the exact stack this repo
+uses**.
 
 ---
 
 ## 7. Decisions needed
 
-1. **Scope** — confirm the three-act split (§3.0.1): Act II (Ch2–Ch6) becomes one world;
-   Ch1/Ch7/Ch8 stay dioramas.
-2. **Appetite** — Wave 0 alone is a few days and removes the three worst discontinuities.
-   Waves 1–7 are a genuine rebuild of the terrestrial act. Which are we committing to now?
-3. **Re-authoring** — are we willing to lose the current Ch3 lake/meadow set dressing and
-   re-author it on the new ground?
-4. **Anti-aliasing** — TAA (correct, expensive) or keep MSAA (cheap, worse on terrain
-   silhouettes)?
+1. **Scope** — confirm the three-act split (§3.0.1).
+2. **Appetite** — Wave −1 + Wave 0 is roughly a week and removes the measured
+   discontinuities. Waves 1–7 are a genuine rebuild of the ascent.
+3. **Re-authoring** — willing to lose the current Ch3 lake/meadow dressing and re-author it?
+4. ~~TAA or MSAA~~ — resolved: both, per lane (§6).
+
+---
+
+## 8. Budget (the contract the implementation is held to)
+
+All figures are **GPU time** from `resolveTimestampsAsync('render')`, p95 over a 512-frame
+ring buffer. "Cap" fails the build.
+
+### Lane A — RTX 5080, 1920×1080, 8× MSAA. Frame budget 6.9 ms.
+
+| System | target | cap |
+|---|---|---|
+| Clipmap ground vertex + setup (189 k tris) | 0.10 | 0.20 |
+| Terrain fragment (3 detail scales, gated) | 0.55 | 0.80 |
+| Water sheet (2nd draw) | 0.25 | 0.40 |
+| Sky (backgroundNode + LUT) | 0.05 | 0.10 |
+| Far range (2 baked LUT taps) | 0.02 | 0.05 |
+| Aerial node, amortised | 0.10 | 0.20 |
+| Shadows (2 × 2048²) | 0.35 | 0.55 |
+| Vegetation + props | 0.40 | 0.65 |
+| Rail furniture | 0.45 | 0.70 |
+| Post | 0.55 | 0.80 |
+| 8× MSAA ROP + resolve | 0.50 | 0.75 |
+| **GPU total** | **3.32** | **4.00** |
+
+### Lane B — Radeon 610M, 1280×720, 4× MSAA. Frame budget 7.0 ms p95.
+
+| System | target | cap |
+|---|---|---|
+| Clipmap ground vertex + setup (108 k tris) | 0.15 | 0.25 |
+| Terrain fragment (1 detail scale, gated, hash-gradient noise) | 0.80 | 1.10 |
+| Water sheet | 0.35 | 0.50 |
+| Sky | 0.05 | 0.10 |
+| Far range (2 baked LUT taps) | 0.02 | 0.05 |
+| Aerial node, amortised | 0.20 | 0.30 |
+| Shadows (1 × 1024², near rings) | 0.15 | 0.25 |
+| Vegetation + props | 0.45 | 0.70 |
+| Rail furniture — **UNMEASURED** | 0.60 | 0.90 |
+| Post (CA off, bloom @0.25, tonemap + grade fused) | 0.70 | 1.00 |
+| 4× MSAA ROP + resolve | 0.45 | 0.60 |
+| **GPU total** | **3.92** | **5.75** |
+
+Headroom at target is 2.5 ms, and it exists **only** because the raymarch is baked (would add
+8.4–14.0 ms), cascades 2–3 are cut (1.3 ms), TRAA is absent (1.3–1.5 ms) and the terrain runs
+one footprint-gated detail scale (0.7–1.2 ms). **Restore any two and the lane fails.**
+
+**Hard prohibitions on Lane B, enforced by tier:** no per-frame raymarch at any resolution; no
+TRAA, no velocity MRT; ≤ 1 shadow cascade at ≤ 1024²; ≤ 1 triplanar detail scale; ≤ 3 active
+noise octaves per fragment (kill any octave whose projected wavelength is below 2.5 px); no
+transparent surface without an explicit fill budget.
+
+### Startup budget (equally binding, currently ungated)
+
+| | |
+|---|---|
+| Act II material objects | **≤ 24** (from ~115) |
+| Cold `NodeBuilder.build()` for Act II | **≤ 1.0 s** (from ~4.8 s at 40–45 ms each) |
+| All bakes, wall clock, behind the overlay | ≤ 400 ms |
+| Any single GPU dispatch | ≤ 100 ms |
+| Bakes tiled into | ≤ 16 dispatches, each followed by a rAF yield |
+
+The material-object budget is **the largest concrete win in the plan and was unstated in the
+first draft**: removing ~91 objects at ~42 ms each is ~3.8 s of cold compile. Count the four
+bake materials explicitly — the plan puts them on the critical path.
+
+### VRAM (the 610M shares system DDR5 — halve every texture versus the reference)
+
+Height RG16F 2048² 16.8 MB · aux RGBA16F 1024² 8.4 MB · CPU mirror 4.2 MB · sky LUT 0.5 MB ·
+12 range LUTs 6.0 MB · clipmap VB+IB 2.1 MB · 1 shadow cascade 4.2 MB · 4× MSAA colour+depth
+~44 MB → **~86 MB** (vs the reference's ~350 MB).
+
+**Gate:** wire all of the above into `perf-budgets.json` and fail `perf:budgets:gate` on any
+cap breach. **Add the 610M baseline first** — nothing in this budget is measured on that lane
+yet. It is arithmetic on datasheets and must be treated as a hypothesis to falsify in Wave 1,
+not as a result.
 
 ---
 
 ## Sources
 
-- [Noniv/snowflow_demo](https://github.com/Noniv/snowflow_demo) — MIT; WebGPU + Babylon.js +
-  hand-written WGSL. 8-ring clipmap, ~870 m radius, 333 k tris, one draw call; heightfield
-  baked to 4096² RG32F and mirrored to CPU; far range raymarched on the skybox; Nishita
-  single-scattering baked to an equirect LUT + SH irradiance; 3 world-space PCSS cascades;
-  TAA + bloom + light shafts + DoF + SSR + AgX. 3.22 ms GPU @ 2560×1440, 15–19 draws.
-- [Live demo](https://snowflow-lilac.vercel.app/)
-- [three.js WebGPU TSL procedural terrain example](https://threejs.org/examples/webgpu_tsl_procedural_terrain.html)
-- [TSL specification](https://threejs.org/docs/pages/TSL.html)
-- In-repo: `docs/ODYSSEY_CH3_CH4_POLISH_2026-08.md`, `reports/odyssey-perf/baseline-rtx5080-*.json`,
+- [Noniv/snowflow_demo](https://github.com/Noniv/snowflow_demo) — MIT. Read end to end:
+  `clipmapMesh.js`, `heightfield.js`, `terrain.js`, `sky.js`, `lib/*.wgsl`, the bakes,
+  `settings.js`, `perf.js`. [Live demo](https://snowflow-lilac.vercel.app/)
+- `Braffolk/fable5-world-demo` — three.js WebGPU + TSL CDLOD terrain, Hillaire atmosphere,
+  `aerial()` node. The closest prior art in the exact stack.
+- three.js r181 source as ground truth: `TextureNode.js`, `NodeMaterial.js`, `Renderer.js`,
+  `PassNode.js`, `WGSLNodeBuilder.js`, `Background.js`, `three/addons/tsl/display/*`
+- GDC: *The Art of Journey* (Matt Nava), *Designing Journey* (Jenova Chen), Journey sand
+  rendering (John Edwards), *Creating the Art of ABZÛ*, *The Art of Firewatch* / *Making the
+  World of Firewatch* (Jane Ng), *Guiding Wind* (Ghost of Tsushima)
+- Hardware: [Radeon 610M](https://gadgetversus.com/graphics-card/amd-radeon-610m-specs/),
+  [RTX 5070 Ti](https://cputronic.com/en/gpu/nvidia-geforce-rtx-5070-ti)
+- In-repo: `docs/ODYSSEY_CH3_CH4_POLISH_2026-08.md`, `reports/odyssey-perf/`,
   `perf-budgets.json`, `docs/adr/0007-webgpu-tsl-definition-of-done.md`
