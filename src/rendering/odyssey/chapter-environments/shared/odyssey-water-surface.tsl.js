@@ -196,8 +196,14 @@ export function buildOdysseyWaterSurface(uTime, {
 
     // Radial shore alpha (pooled lake) or fill to the scaled edge (sea/river/ceiling).
     const distFromCenter = length(vUv.sub(0.5)).mul(2.0);
+    // NO STRAIGHT EDGES (in-game: "i want no straight edges for water land or anything so it feels
+    // natural"). A bare radial dissolve still reads as a machined circle, and no dissolve at all
+    // leaves the plane's ruler-straight rectangular rim. Break the rim with two octaves of
+    // low-frequency noise so the water ends on an organic, meandering coastline in every direction.
+    const rimBreak = snoise3(vec3(vUv.x.mul(3.1), vUv.y.mul(3.1), 0.0)).mul(0.15)
+        .add(snoise3(vec3(vUv.x.mul(7.3), vUv.y.mul(7.3), 4.7)).mul(0.06));
     const edgeAlpha = useRadialEdge
-        ? oneMinus(smoothstep(0.82, 1.0, distFromCenter))
+        ? oneMinus(smoothstep(0.72, 1.0, distFromCenter.add(rimBreak)))
         : float(1.0);
 
     const material = new THREE.MeshBasicNodeMaterial();
