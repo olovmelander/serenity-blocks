@@ -31,6 +31,7 @@ import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
+import { createBoardEffectHandlers } from './core/game-modes/board-effect-callbacks.js';
 import steamService from './core/steam/steam-service.js';
 import { richPresenceManager } from './core/steam/rich-presence-manager.js';
 import { SteamInviteManager } from './core/steam/steam-invite-manager.js';
@@ -51,7 +52,9 @@ import { createBoardScene } from './rendering/phaser/board-scene.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
-import { emitLineClear, emitCombo, emitPieceLock } from './events/gameplay-events.js';
+import {
+    emitLineClear, emitCombo, emitPieceLock, emitHardDrop,
+} from './events/gameplay-events.js';
 import { initViewportBroadcaster } from './utils/viewport.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
@@ -1798,6 +1801,14 @@ class SerenityBlocks {
 
         if (this.multiplayerBoardScenes?.length) {
             this.multiplayerBoardScenes.forEach((scene) => scene?.setEffectQuality?.(quality));
+        }
+
+        // Local MP's live per-player boards hang off the ACTIVE MODE, not the
+        // legacy array above — they never received the user's effect-quality
+        // setting and ran at the BaseBoardScene default forever.
+        const modeScenes = this.gameModeManager?.getCurrentMode()?.boardScenes;
+        if (Array.isArray(modeScenes)) {
+            modeScenes.forEach((scene) => scene?.setEffectQuality?.(quality));
         }
 
         if (this.webglRenderer?.setEffectQuality) {
@@ -4576,6 +4587,25 @@ class SerenityBlocks {
             ? () => options.onPlayerTopOut(playerNum - 1, playerState)
             : () => this.endMultiplayerGame(playerNum);
 
+        // Shared four-beat visual handlers (lock/clear/combo/cascade) — ONE
+        // wiring with the mode classes (board-effect-callbacks.js), memoized per
+        // player on the mode instance so ComboTracker tint state survives the
+        // legacy MP loop rebuilding this callbacks object every frame.
+        const effectHandlers = (() => {
+            if (!currentMode) return createBoardEffectHandlers({ getScene: sceneRef });
+            if (!currentMode._boardEffectHandlers) currentMode._boardEffectHandlers = new Map();
+            let handlers = currentMode._boardEffectHandlers.get(playerNum);
+            if (!handlers) {
+                handlers = createBoardEffectHandlers({
+                    getScene: sceneRef,
+                    // BoardJuice guards its own `disabled` flag internally.
+                    getJuice: () => currentMode[`boardJuiceP${playerNum}`],
+                });
+                currentMode._boardEffectHandlers.set(playerNum, handlers);
+            }
+            return handlers;
+        })();
+
         const callbacks = {
             draw: () => {
                 // Sync board scenes from the active mode
@@ -4593,16 +4623,8 @@ class SerenityBlocks {
                     currentMode._syncBoardScenes();
                 }
             },
-            onLineClear: (count, holeColumns, rowMasks = [], ...rest) => {
+            onLineClear: (count, _holeColumns, _rowMasks, ...rest) => {
                 const clearedRows = Array.isArray(rest[0]) ? rest[0] : [];
-                const holes = Array.isArray(holeColumns) ? holeColumns : [];
-                const maskSummary = rowMasks
-                    .map((mask, index) => `#${index + 1}[${mask.join(', ')}]`)
-                    .join(' ');
-                console.log(
-                    `[Multiplayer] Player ${playerNum} cascade wave cleared ${count} line(s) → holes [${holes.join(', ')}] ${maskSummary ? `masks ${maskSummary}` : ''}`,
-                );
-
                 // Emit event for theme reactions
                 emitLineClear({ lineCount: count, player: playerNum, clearedRows });
             },
@@ -4643,18 +4665,19 @@ class SerenityBlocks {
                 }
                 this.soundManager.sfxPlayer.playDrop();
                 const scene = sceneRef();
-                console.log(`[Main] onHardDrop for player ${playerNum}, scene exists: ${!!scene}, playHardDropEffect exists: ${!!scene?.playHardDropEffect}`, dropData);
                 if (scene?.playHardDropEffect) {
                     scene.playHardDropEffect(dropData);
                 }
+
+                // Emit for theme reactions — every other mode already does; this
+                // emit previously lived only in the mode's DEAD builder, so
+                // themes never actually received hard drops in local MP.
+                emitHardDrop({ ...dropData, player: playerNum });
             },
+            // Settings gating happens once, inside SharedEffects — the former
+            // call-site gate here double-gated MP while SP had none.
             triggerFlash: (clearedRows) => {
-                const settings = this.settingsManager.get();
-                const scene = sceneRef();
-                console.log(`[Multiplayer] Player ${playerNum} triggerFlash called for rows:`, clearedRows, 'scene:', !!scene);
-                if (settings.lineClearEffects && scene?.triggerLineClearFlash) {
-                    scene.triggerLineClearFlash(clearedRows);
-                }
+                effectHandlers.clearFlashBeat(clearedRows);
             },
             triggerBackgroundPulse: (lineCount) => {
                 // Optional: could add background pulse per player
@@ -4675,50 +4698,20 @@ class SerenityBlocks {
                         playerState.hitStopRemaining = hitStop;
                     }
                 }
-                console.log(`[Multiplayer] Player ${playerNum} onLineClearImpact called for ${lineCount} lines, effects enabled:`, settings.lineClearEffects);
-                if (settings.lineClearEffects) {
-                    const scene = sceneRef();
-                    if (scene?.playLineClearImpact) {
-                        scene.playLineClearImpact(lineCount);
-                    }
-                }
-
-                // Trigger BoardJuice (pulse) for the player
-                if (currentMode && playerNum) {
-                    const juice = currentMode[`boardJuiceP${playerNum}`];
-                    if (juice && !juice.disabled) {
-                        const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
-                        juice.pulse(intensity);
-                    }
-                }
+                effectHandlers.clearImpactBeat(lineCount);
             },
             triggerCombo: (comboCount) => {
-                const settings = this.settingsManager.get();
-                if (settings.comboPopupEffect) {
-                    const scene = sceneRef();
-                    if (scene?.showComboPopup) {
-                        scene.showComboPopup(comboCount);
-                    }
-                }
+                effectHandlers.comboBeat(comboCount);
 
                 // Emit event for theme reactions
                 emitCombo({ comboCount, player: playerNum });
             },
+            triggerCascadeWave: (cascadeCount) => {
+                // Mega-only inside SharedEffects; silent below 10.
+                effectHandlers.cascadeWaveBeat(cascadeCount);
+            },
             onPieceLock: (piece) => {
-                const settings = this.settingsManager.get();
-                const scene = sceneRef();
-                if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
-                    scene.createPieceLockRipple(piece);
-                }
-
-                // Trigger BoardJuice (dip + bounce/pulse) for the player
-                if (currentMode && playerNum) {
-                    const juice = currentMode[`boardJuiceP${playerNum}`];
-                    if (juice && !juice.disabled) {
-                        juice.dip(1);
-                        juice.pulse(1.005);
-                    }
-                }
+                effectHandlers.lockBeat(piece);
 
                 // Quadra handicap: accumulate per-opponent stamps on each placement
                 // (no-op unless players have differing handicap levels).

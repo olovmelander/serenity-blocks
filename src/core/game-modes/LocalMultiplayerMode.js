@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
-import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
@@ -25,15 +24,11 @@ import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitTSpin, emitB2B, emitHardDrop,
-} from '../../events/gameplay-events.js';
-import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
 import { createBoardScene } from '../../rendering/phaser/board-scene.js';
-import { createMultiplayerBoardScene } from '../../rendering/phaser/multiplayer/board-panel.js';
 import {
     captureLocalMultiplayerClock,
     captureLocalMultiplayerRound,
@@ -757,142 +752,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     /** Start the multiplayer game loop. @private */
     _startGameLoop() {
         startLocalMultiplayerModeLoop(this);
-    }
-
-    /**
-     * Get physics callbacks for sound effects and juice
-     * @private
-     * @param {number} playerNum - 1-based player index (1-4)
-     */
-    /**
-     * True consecutive-clear combo, one chain per player. Physics' triggerCombo
-     * carries cascade depth (ADR-0011 pins that payload), so it is derived here.
-     * @param {number} playerNum
-     * @returns {ComboTracker}
-     * @private
-     */
-    _getComboTracker(playerNum) {
-        if (!this._comboTrackers) this._comboTrackers = new Map();
-        let tracker = this._comboTrackers.get(playerNum);
-        if (!tracker) {
-            tracker = new ComboTracker();
-            this._comboTrackers.set(playerNum, tracker);
-        }
-        return tracker;
-    }
-
-    _getPhysicsCallbacks(playerNum) {
-        const comboTracker = this._getComboTracker(playerNum);
-        const sceneFor = () => this.boardScenes?.[playerNum - 1];
-        return {
-            onMove: () => {
-                this.deps.soundManager.sfxPlayer.playMove();
-            },
-            onRotate: () => {
-                this.deps.soundManager.sfxPlayer.playRotate();
-            },
-            onLineClear: (lineCount, ...rest) => {
-                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
-                const cascadeCount = rest[3] ?? 1;
-                this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
-                // Real combo for THIS player, announced on their own board only.
-                announceCombo(comboTracker, sceneFor(), {
-                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
-                });
-                // Emit event for theme reactions
-                emitLineClear({ lineCount, clearedRows, cascadeCount, player: playerNum });
-            },
-            onTSpin: (lineCount) => {
-                emitTSpin({ lineCount, player: playerNum });
-                this.deps.soundManager.sfxPlayer.playTSpin?.();
-                const scene = this.boardScenes?.[playerNum - 1];
-                if (scene?.sharedEffects?.playTSpinEffect) {
-                    scene.sharedEffects.playTSpinEffect(lineCount);
-                }
-            },
-            onB2B: () => {
-                emitB2B({ player: playerNum });
-                this.deps.soundManager.sfxPlayer.playB2B?.();
-                const scene = this.boardScenes?.[playerNum - 1];
-                if (scene?.sharedEffects?.playB2BChange) {
-                    scene.sharedEffects.playB2BChange(true);
-                }
-            },
-            onPieceLock: (piece) => {
-                emitPieceLock({ piece, player: playerNum });
-                noteLockForCombo(comboTracker, sceneFor());
-            },
-            onLineClearImpact: (lineCount, cascadeCount) => {
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                const playerState = this.multiplayerState?.players?.[playerNum - 1];
-                if (!prefersReducedMotion && playerState) {
-                    const scene = this.boardScenes?.[playerNum - 1];
-                    let hitStop = 0;
-                    if (scene?.sharedEffects) {
-                        const tier = scene.sharedEffects.getClearTier(lineCount);
-                        hitStop = tier?.hitStop || 0;
-                    } else if (lineCount >= 4) {
-                        hitStop = 70;
-                    }
-                    if (hitStop > 0) {
-                        playerState.hitStopRemaining = hitStop;
-                    }
-                }
-                const scene = this.boardScenes?.[playerNum - 1];
-                if (scene?.playLineClearImpact) {
-                    scene.playLineClearImpact(lineCount, cascadeCount);
-                }
-            },
-            onHardDrop: (dropData) => {
-                emitHardDrop({ ...dropData, player: playerNum });
-                const prefersReducedMotion = this.deps.settingsManager?.get()?.reducedMotion
-                    || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                const playerState = this.multiplayerState?.players?.[playerNum - 1];
-                if (!prefersReducedMotion && playerState) {
-                    playerState.hitStopRemaining = Math.max(playerState.hitStopRemaining || 0, 30);
-                }
-                this.deps.soundManager.sfxPlayer.playHardDrop();
-                this.boardScenes.forEach((scene) => {
-                    if (scene && scene.playHardDropEffect) {
-                        scene.playHardDropEffect(dropData);
-                    }
-                });
-            },
-            onPerfectClear: (depth, perfectClearBonus) => {
-                const settings = this.deps.settingsManager?.get() || {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                const playerState = this.multiplayerState?.players?.[playerNum - 1];
-                if (!prefersReducedMotion && playerState) {
-                    playerState.hitStopRemaining = 110;
-                }
-
-                emitPerfectClear({ depth, perfectClearBonus, player: playerNum });
-                this.deps.soundManager.sfxPlayer.playPerfectClear?.();
-
-                const scene = this.boardScenes?.[playerNum - 1];
-                if (scene?.sharedEffects?.playPerfectClear) {
-                    scene.sharedEffects.playPerfectClear(depth);
-                }
-            },
-            onGarbageReceived: () => this.deps.soundManager.sfxPlayer.playGarbageReceived?.(),
-            onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
-            // Cascade signal — payload is cascade DEPTH, kept as-is for themes.
-            // The popup used to fire here on EVERY player's board; it now comes
-            // from onLineClear and lands only on the player who cleared.
-            triggerCombo: (comboCount) => {
-                emitCombo({ comboCount, player: playerNum });
-            },
-            // Trigger cascade wave visual effect
-            triggerCascadeWave: (cascadeCount) => {
-                // Show cascade wave on all active board scenes
-                this.boardScenes.forEach((scene) => {
-                    if (scene && scene.sharedEffects && scene.sharedEffects.showCascadeWave) {
-                        scene.sharedEffects.showCascadeWave(cascadeCount);
-                    }
-                });
-            },
-        };
     }
 
     /**
@@ -1949,166 +1808,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Ensure multiplayer board scenes exist
-     * @private
-     */
-    async _ensureMultiplayerBoardScenes(forceRestart = false) {
-        const { phaserGame } = this.deps;
-        let MultiplayerBoardSceneClass = this.deps.MultiplayerBoardSceneClass
-            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
-
-        if (!MultiplayerBoardSceneClass) {
-            console.log('[LocalMultiplayer] MultiplayerBoardSceneClass not found, attempting dynamic creation...');
-            try {
-                MultiplayerBoardSceneClass = createMultiplayerBoardScene(Phaser);
-            } catch (err) {
-                console.error('[LocalMultiplayer] Failed to dynamically generate MultiplayerBoardScene class:', err);
-            }
-        }
-
-        if (!phaserGame || !MultiplayerBoardSceneClass) {
-            throw new Error('Phaser game or MultiplayerBoardScene class not available');
-        }
-
-        // Check if scenes already exist
-        let scene1 = phaserGame.scene?.getScene('BoardPanel1');
-        let scene2 = phaserGame.scene?.getScene('BoardPanel2');
-
-        // If scenes don't exist or we're forcing a restart, create/recreate them
-        if (!scene1 || !scene2 || forceRestart) {
-            console.log('[LocalMultiplayer] Creating board panel scenes...');
-
-            // Calculate viewport dimensions
-            // Calculate viewport dimensions
-            const blockSize = this._calculateDynamicBlockSize();
-            const singleBoardWidth = COLS * blockSize;
-            const boardHeight = ROWS * blockSize;
-
-            // Update CSS variables
-            this._updateBoardCSSVariables(blockSize);
-
-            // Player 1 viewport (left side)
-            const player1Viewport = {
-                x: 0,
-                y: 0,
-                width: singleBoardWidth,
-                height: boardHeight,
-            };
-
-            // Player 2 viewport (right side, with gap)
-            const player2Viewport = {
-                x: singleBoardWidth + this.boardGap,
-                y: 0,
-                width: singleBoardWidth,
-                height: boardHeight,
-            };
-
-            // Create scene instances with unique keys
-            // We MUST pass instances because Phaser doesn't support unique keys when passing CLASS
-            const scene1Instance = new MultiplayerBoardSceneClass('BoardPanel1', { blockSize });
-            const scene2Instance = new MultiplayerBoardSceneClass('BoardPanel2', { blockSize });
-
-            // Add scenes with their instances
-            phaserGame.scene.add('BoardPanel1', scene1Instance, false);
-            phaserGame.scene.add('BoardPanel2', scene2Instance, false);
-
-            // Start them manually with init data
-            phaserGame.scene.start('BoardPanel1', {
-                playerId: 1,
-                viewport: player1Viewport,
-                playerLabel: 'PLAYER 1',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0,
-            });
-
-            phaserGame.scene.start('BoardPanel2', {
-                playerId: 2,
-                viewport: player2Viewport,
-                playerLabel: 'PLAYER 2',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0,
-            });
-
-            // Wait for scenes to initialize
-            await new Promise((resolve) => setTimeout(resolve, 150));
-
-            // Get scene references
-            scene1 = phaserGame.scene?.getScene('BoardPanel1');
-            scene2 = phaserGame.scene?.getScene('BoardPanel2');
-        } else {
-            // Scenes already exist, restart them with fresh data
-            console.log('[LocalMultiplayer] Reusing existing board panel scenes...');
-
-            // Calculate viewport dimensions
-            // Calculate viewport dimensions
-            const blockSize = this._calculateDynamicBlockSize();
-            const singleBoardWidth = COLS * blockSize;
-            const boardHeight = ROWS * blockSize;
-
-            // Update CSS variables
-            this._updateBoardCSSVariables(blockSize);
-
-            // Player 1 viewport (left side)
-            const player1Viewport = {
-                x: 0,
-                y: 0,
-                width: singleBoardWidth,
-                height: boardHeight,
-            };
-
-            // Player 2 viewport (right side, with gap)
-            const player2Viewport = {
-                x: singleBoardWidth + this.boardGap,
-                y: 0,
-                width: singleBoardWidth,
-                height: boardHeight,
-            };
-
-            // Restart scenes - stop them first, then start with new data
-            phaserGame.scene.stop('BoardPanel1');
-            phaserGame.scene.stop('BoardPanel2');
-
-            // Start both scenes - they should run in parallel
-            phaserGame.scene.start('BoardPanel1', {
-                playerId: 1,
-                viewport: player1Viewport,
-                playerLabel: 'PLAYER 1',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0,
-            });
-
-            phaserGame.scene.start('BoardPanel2', {
-                playerId: 2,
-                viewport: player2Viewport,
-                playerLabel: 'PLAYER 2',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0,
-            });
-        }
-
-        if (scene1 && scene2) {
-            // Make scenes visible and active
-            scene1.scene.setVisible(true);
-            scene1.scene.setActive(true);
-            scene2.scene.setVisible(true);
-            scene2.scene.setActive(true);
-
-            // Verify camera viewports are set correctly
-            if (scene1.cameras && scene1.cameras.main) {
-                console.log('[LocalMultiplayer] Player 1 viewport:', scene1.cameras.main.x, scene1.cameras.main.y, scene1.cameras.main.width, scene1.cameras.main.height);
-            }
-            if (scene2.cameras && scene2.cameras.main) {
-                console.log('[LocalMultiplayer] Player 2 viewport:', scene2.cameras.main.x, scene2.cameras.main.y, scene2.cameras.main.width, scene2.cameras.main.height);
-            }
-
-            this.boardScenes = [scene1, scene2];
-            console.log('[LocalMultiplayer] Board scenes ready:', {
-                scene0: scene1.scene?.key,
-                scene1: scene2.scene?.key,
-                array: this.boardScenes,
-            });
-        } else {
-            throw new Error('Failed to create multiplayer board scenes');
-        }
-    }
-
-    /**
      * Create separate Phaser game instances for each player
      * @private
      */
@@ -2212,6 +1911,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Wait for all scenes to fully initialize
         await new Promise((resolve) => setTimeout(resolve, 200));
 
+        // Apply the user's effect-quality tier. These per-player scenes never
+        // received it before — they ran at the BaseBoardScene default 'High'
+        // regardless of the setting.
+        const quality = this.deps.settingsManager?.get?.().effectQuality;
+        if (quality) {
+            this.boardScenes.forEach((scene) => scene?.setEffectQuality?.(quality));
+        }
+
         // Initialize BoardJuice for each player's canvas
         this._initBoardJuice();
 
@@ -2260,8 +1967,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _createBotActions(playerIndex) {
         const playerNum = playerIndex + 1;
         const getPlayerState = () => this.multiplayerState?.players?.[playerIndex];
-        const getPhysicsCallbacks = () => this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
-            || this._getPhysicsCallbacks(playerNum);
+        // main.js injects the ONE live callback builder. The mode's former local
+        // fallback builder was dead code that fixes kept landing in — deleted.
+        const getPhysicsCallbacks = () => this.deps.getMultiplayerPhysicsCallbacks?.(playerNum) || {};
         const playMove = () => this.deps.soundManager?.sfxPlayer?.playMove?.();
         const playRotate = () => this.deps.soundManager?.sfxPlayer?.playRotate?.();
         const playDrop = () => this.deps.soundManager?.sfxPlayer?.playDrop?.();

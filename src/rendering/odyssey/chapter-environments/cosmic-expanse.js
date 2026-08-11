@@ -47,13 +47,14 @@ import {
     vec2,
     vec3,
 } from 'three/tsl';
-import { getChapterPathRange } from '../path-utils.js';
+import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import {
     createVoidSkyTSL,
     createBlackHoleTSL,
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
     createNebulaPillarTSL,
+    createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
@@ -91,35 +92,77 @@ export const COSMIC_EXPANSE_CONFIG = {
 // upper-LEFT (the destination omen), the gas giant becomes a BIG near hero in the lower-CENTRE
 // (out of the left clutter), and the galaxy anchors the empty upper-RIGHT. Each marches A→B by
 // uApproach as the camera dollies.
+// ── SOLVED PLACEMENT (2026-08) ───────────────────────────────────────────────────
+// The endpoints below are no longer eyeballed. They were SOLVED offline by replaying
+// the real camera (OdysseyCameraController.computeFollowFrame + the 2048-sample path
+// LUT, BEYOND act followDistance 42 / fovBase 66) across chapter 6 and least-squares
+// fitting A/B so each hero holds a target NDC while the camera dollies.
+//
+// WHY THE OLD NUMBERS FAILED: chapter 6 runs +X/+Y (forward is ~(0.82, 0.40, -0.40)),
+// but the triad was authored as if the corridor ran -Z. Measured against the shipped
+// build the heroes sat 31-68 deg off the forward ray versus a ~49 deg horizontal /
+// ~33 deg vertical half-FOV — i.e. off the LEFT edge for most of the chapter (the gas
+// giant reached ndcX -1.00 by p=0.68). The note that used to live here, about pulling
+// the lateral overshoot back ~40% "into the camera direction", moved them the WRONG way.
+//
+// The re-solve keeps each hero's DISTANCE (so apparent size, and therefore the tuned
+// scale ramps below, are unchanged) and only changes direction. Resulting framing,
+// verified from 4:3 through 21:9:
+//   black hole  ndc (-0.38, +0.20) -> (-0.35, +0.38)  upper-LEFT, rising, 1263 -> 866
+//   gas giant   ndc (+0.14, -0.32) -> (+0.21, -0.23)  lower-CENTRE-right, 1047 -> 756
+//   galaxy      ndc (+0.50, +0.26) -> (+0.57, +0.38)  upper-RIGHT anchor, 1213 -> 958
+// Worst-case |ndcX| across all aspect ratios is 0.75 (galaxy at 4:3); nothing clips.
 const APPROACH = {
-    // Black hole: the destination omen, upper-left. Eased slightly off the far-left edge so
-    // the full accretion disk reads in frame (was clipping the left), scale trimmed a touch
-    // so it anchors the corner without swallowing the left half.
+    // Black hole: the destination omen. Holds the upper-left third and LOOMS (scale
+    // 1.2 -> 2.6, distance 1271 -> 885) as the camera closes on the 6->7 seam.
     bhScaleA: 1.2,
     bhScaleB: 2.6,
-    // FORWARD-CORRIDOR BIAS (in-game "move planets into camera direction" fix): the hero triad was
-    // banked hard to +X so it sat off the RIGHT edge as the camera dollied down the path. Pulled the
-    // lateral overshoot back ~40% (black hole / planet / galaxy X) so the heroes sit more in the
-    // forward view while keeping some +X (the camera aims up-right).
-    bhXa: 100,
-    bhXb: 200,
-    bhZa: -1080,
-    bhZb: -900,
-    bhYa: 70,
-    bhYb: 185,
+    bhXa: 392,
+    bhXb: 607,
+    bhZa: -842,
+    bhZb: -647,
+    bhYa: 586,
+    bhYb: 387,
     planetA: {
-        x: 170, y: 30, z: -840, s: 34 / 28,
+        x: 756, y: 322, z: -277, s: 34 / 28,
     },
     planetB: {
-        x: 280, y: 95, z: -740, s: 60 / 28,
+        x: 805, y: 110, z: -221, s: 60 / 28,
     },
     galaxyA: {
-        x: 340, y: 250, z: -900, s: 155,
+        x: 750, y: 743, z: 106, s: 155,
     },
     galaxyB: {
-        x: 450, y: 310, z: -820, s: 250,
+        x: 942, y: 449, z: 39, s: 250,
     },
 };
+
+// ── EARTH AT THE SUMMIT ──────────────────────────────────────────────────────────
+// "See the earth shape at the top of the mountains BEFORE it gets dark." The "earth"
+// is this chapter's hero gas giant; there is no separate earth object (earth-core.js is
+// Chapter 1, and Ch5 deliberately renders no planets). It could not appear before dark
+// because THREE gates stacked after the darkening: ch6 env opacity was 0 until the
+// boundary (0.648), the bright Ch5 dome is hard-gated off by ~0.666, and heroReveal
+// (chapter-local `approach`) does not even start until ~0.668 — `approach` is derived
+// from camera.y against the chapter's y-range, so it is pinned at 0 through all of Ch5.
+//
+// Fix: drive the gas giant's reveal from GLOBAL progress instead, across the Ch5 tail
+// while the sky is still full daylight. The solved planetA position happens to sweep in
+// from the upper right and settle centre-low exactly across that window (measured ndc at
+// 16:10: (0.79, 0.38) at p=0.608 -> (0.13, -0.32) at the boundary), so the planet needs
+// no extra keyframe — it simply fades up where it already sits and stays put.
+//
+// Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
+export const SUMMIT_EARTH_REVEAL = Object.freeze({
+    // 0.41 of the Ch5 span before the boundary => p ~= 0.610, just as the camera crests.
+    startBeforeBoundary: 0.41,
+    // Fully present by p ~= 0.634 — comfortably before the 5->6 backdrop fade begins.
+    endBeforeBoundary: 0.15,
+    // Fraction of the Space span over which the REST of the chapter (stars, black hole,
+    // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
+    // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
+    spaceGateBand: 0.06,
+});
 
 const _approachVec = new THREE.Vector3();
 
@@ -160,6 +203,45 @@ function rampBetween(value, start, end) {
     return smoothstep01((value - start) / Math.max(1e-5, end - start));
 }
 
+/**
+ * Resolve the two GLOBAL-progress gates that stage the Sky -> Space hand-off.
+ *
+ * `earthReveal` fades the hero gas giant up during the Ch5 summit, while the sky is
+ * still bright; `spaceReveal` holds everything else (stars, black hole, nebula, dust,
+ * lights) at zero until the camera is actually past the boundary, so the early ignite
+ * cannot leak deep-space clutter into the daylight frame.
+ *
+ * `spaceReveal` is 1 OUTSIDE the summit window in both directions — below it the manager
+ * keeps the chapter at zero opacity anyway, and returning 1 there keeps headless callers
+ * that pass a chapter-local progress (no camera) behaving exactly as before.
+ *
+ * @param {number} progress global path progress 0..1
+ * @param {number} ch5Start global progress where chapter 5 begins
+ * @param {number} ch6Start global progress where chapter 6 begins (the Space boundary)
+ * @param {number} ch7Start global progress where chapter 7 begins
+ * @returns {{earthReveal: number, spaceReveal: number, summitStart: number}}
+ */
+export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start) {
+    if (!Number.isFinite(progress) || !Number.isFinite(ch5Start) || !Number.isFinite(ch6Start)
+        || ch6Start <= ch5Start) {
+        return { earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN };
+    }
+    const skySpan = ch6Start - ch5Start;
+    const summitStart = ch6Start - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
+    const summitEnd = ch6Start - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+    const spaceSpan = (Number.isFinite(ch7Start) && ch7Start > ch6Start)
+        ? ch7Start - ch6Start
+        : 0.167;
+    const gateEnd = ch6Start + spaceSpan * SUMMIT_EARTH_REVEAL.spaceGateBand;
+
+    const earthReveal = rampBetween(progress, summitStart, summitEnd);
+    const spaceReveal = (progress >= summitStart && progress < gateEnd)
+        ? rampBetween(progress, ch6Start, gateEnd)
+        : 1;
+
+    return { earthReveal, spaceReveal, summitStart };
+}
+
 export function resolveCosmicEntryContinuity(progress) {
     const t = THREE.MathUtils.clamp(progress ?? 0, 0, 1);
     const settings = COSMIC_ENTRY_CONTINUITY_SETTINGS;
@@ -184,6 +266,12 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
     if (!root) return;
     const opacity = THREE.MathUtils.clamp(scale, 0, 1)
         * THREE.MathUtils.clamp(chapterOpacity, 0, 1);
+    // Fully-faded content is SKIPPED, not drawn at alpha 0. This matters now that the
+    // 5→6 early ignite makes the whole chapter present (and therefore drawable) across
+    // the Ch5 summit while only the earth is allowed to show: without this the nebula
+    // and dust billboard stacks would pay their full fill cost for nothing. The material
+    // opacities are still written every call so nothing can pop back at a stale value.
+    root.visible = opacity > 0.002;
     root.traverse((child) => {
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((material) => {
@@ -195,6 +283,43 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
             material.opacity = material.userData.baseOpacity * opacity;
         });
     });
+}
+
+// ── AMBIENT CORRIDOR FRAME ───────────────────────────────────────────────────────
+// The nebula tiers, dust tiers, streak motes and asteroid garland are all authored the
+// same way: spread in local x/y, depth running along local -Z. That assumes a -Z
+// corridor, but chapter 6 travels +X/+Y — so measured against the shipped build those
+// fields sat 43-84 deg off the camera's forward ray. The camera flew down an empty lane
+// with the whole cloud mass off to one side.
+//
+// Rather than re-author every field's spans, put them under ONE group whose origin sits
+// on the camera's travel and whose -Z points down the chapter corridor. Every authored
+// parameter then means what it says. Re-measured with this frame, the same fields land
+// 1-14 deg off-axis. The chapter chord is used as the corridor axis (7.4 deg off the
+// mean camera forward — immaterial for fields that subtend 30+ deg) so this stays
+// correct if the spline is re-authored again.
+const CORRIDOR_BACKSET = 40;
+const CORRIDOR_LOCAL_FORWARD = new THREE.Vector3(0, 0, -1);
+const PATH_UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Local-space frame for chapter 6's ambient fields.
+ * @param {{start: THREE.Vector3, end: THREE.Vector3}|null} chapterRange
+ * @returns {{origin: THREE.Vector3, forward: THREE.Vector3, quaternion: THREE.Quaternion}}
+ */
+export function resolveCosmicCorridorFrame(chapterRange) {
+    const forward = new THREE.Vector3(0, 0, -1);
+    if (chapterRange?.start && chapterRange?.end) {
+        forward.copy(chapterRange.end).sub(chapterRange.start);
+        if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+        forward.normalize();
+    }
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(CORRIDOR_LOCAL_FORWARD, forward);
+    // The eye trails the path by followDistance, so the corridor origin sits slightly
+    // BEHIND the chapter's mid point (which is the group origin) — that centres the
+    // fields on the camera's travel rather than on the rail.
+    const origin = forward.clone().multiplyScalar(-CORRIDOR_BACKSET);
+    return { origin, forward, quaternion };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -231,6 +356,18 @@ export function createCosmicExpanseEnvironment(options = {}) {
         uVoidSkyOpacity: uniform(0),
     };
     group.userData.uniforms = uniforms;
+
+    // Ambient fields (nebula / dust / streaks / asteroids) hang off this so their
+    // authored -Z depth axis actually runs down the chapter corridor. Heroes are NOT
+    // parented here — they are solved directly in group-local space (see APPROACH).
+    const corridorFrame = resolveCosmicCorridorFrame(chapterRange);
+    const corridor = new THREE.Group();
+    corridor.name = 'cosmic-corridor';
+    corridor.position.copy(corridorFrame.origin);
+    corridor.quaternion.copy(corridorFrame.quaternion);
+    group.add(corridor);
+    group.userData.corridor = corridor;
+    group.userData.corridorFrame = corridorFrame;
 
     const particleCount = options.particleCount || 1000;
 
@@ -324,7 +461,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-points',
         },
     );
-    group.add(nebulaVolume);
+    corridor.add(nebulaVolume);
     group.userData.nebulaVolume = nebulaVolume;
 
     // 2c. FAR nebula tier — large, very dim, deep, drifting much slower for parallax.
@@ -346,7 +483,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-far',
         },
     );
-    group.add(nebulaFar);
+    corridor.add(nebulaFar);
     group.userData.nebulaFar = nebulaFar;
 
     // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams-v3 /
@@ -371,7 +508,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-near',
         },
     );
-    group.add(dustNear);
+    corridor.add(dustNear);
     group.userData.dustNear = dustNear;
 
     const dustFar = createCosmicDust(
@@ -391,12 +528,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-far',
         },
     );
-    group.add(dustFar);
+    corridor.add(dustFar);
     group.userData.dustFar = dustFar;
 
     // 2d. Hero nebula PILLAR — a one-time Pillars-of-Creation reveal off the mid-act
     // path, faded in via uApproach (mid-chapter beat). Capped to ONE.
-    const nebulaPillar = createNebulaPillar(uniforms);
+    const nebulaPillar = createNebulaPillar(uniforms, corridorFrame);
     group.add(nebulaPillar);
     group.userData.nebulaPillar = nebulaPillar;
 
@@ -406,7 +543,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // toward the hole + violet fill come free from the chapter's two lights. Two or
     // three pass within ~30 units of the camera corridor for genuine scale shock.
     const asteroids = createAsteroidGarland();
-    group.add(asteroids);
+    corridor.add(asteroids);
     group.userData.asteroids = asteroids;
 
     // 2g. AURORA→FILAMENT BRIDGE (creative plan asset 8, Transition In beat 3): the
@@ -416,7 +553,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // 2h. STREAK-MOTE TIER (creative plan asset 6): a sparse rail-hugging tier of
     // slightly elongated quads that sell forward speed through the long middle act.
     const streakMotes = createStreakMotes(uniforms, 90);
-    group.add(streakMotes);
+    corridor.add(streakMotes);
     group.userData.streakMotes = streakMotes;
 
     // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
@@ -429,9 +566,18 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.userData.entryContinuity = {
         stars: [starsFar, starsNear],
         destination: [blackHole, debris],
-        heroes: [heroPlanet, galaxy],
+        // EARTH AT THE SUMMIT: the gas giant is staged on its own GLOBAL-progress reveal
+        // so it can rise over the still-bright Ch5 sky (see SUMMIT_EARTH_REVEAL). Every
+        // other Space element — the galaxy included — stays behind the post-boundary
+        // gate, so nothing but the earth bleeds into the daylight frame.
+        earth: [heroPlanet],
+        heroes: [galaxy],
         nebula: [nebulaVolume, nebulaFar],
         clutter: [dustNear, dustFar, asteroids, streakMotes],
+        // The carried aurora filaments self-gate on uApproach, which is 0 through all of
+        // Ch5 — i.e. fully green and fully alive. Without this they would hang in the
+        // daylight sky the moment the early ignite makes the chapter visible.
+        bridge: [auroraBridge],
     };
 
     // Lighting (ominous accretion key)
@@ -472,6 +618,20 @@ function createHeroPlanet(uniforms) {
     group.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
     group.scale.setScalar(APPROACH.planetA.s);
     group.userData.planet = planet;
+    // FOG OFF — the reason the summit earth read as a pale ghost instead of a dark world.
+    // This is a celestial body at effectively infinite distance, but it is a real mesh
+    // ~1050 units out, and Chapter 5's bright daylight FogExp2 (density ~0.0024) fogs
+    // that distance by ~99.8% — the planet was being painted almost entirely in sky
+    // colour. Capture confirmed it: washed-out pale disc while the sky was bright, correct
+    // moody banding once Space went dark and the fog with it. Disabling fog is what makes
+    // the ask ("darker, and that we still see it") true against the daylight sky; it costs
+    // nothing in Space, where there is no fog to lose.
+    group.traverse((child) => {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+            if (material) material.fog = false;
+        });
+    });
     return group;
 }
 
@@ -620,15 +780,37 @@ function createNebulaVolume(uniforms, count, opts = {}) {
     return points;
 }
 
-function createNebulaPillar(uniforms) {
-    // Hero nebula PILLAR (one-time mid-chapter reveal). B-COMPOSE: re-placed LEFT of and
-    // deep behind the corridor (camera travels +X, so a left-biased tall column stays
-    // framed as a vertical backdrop instead of sweeping off the right edge low). Lifted +
-    // grown so the Pillars-of-Creation reveal reads as a real mid-chapter beat. Faded in
-    // by uApproach. A single tall additive plane — capped to one (no per-frame alloc).
+// Where the pillar sits in the corridor frame: deep ahead, off to the LEFT, lifted.
+// Tuned against the real camera: the column tracks 15 deg -> 39 deg off the forward
+// ray across its reveal window (vs a ~49 deg horizontal half-FOV), so it is fully in
+// frame from the moment it fades up and only drifts wide as the camera passes it.
+const PILLAR_CORRIDOR_OFFSET = Object.freeze({ depth: 780, left: 230, lift: 160 });
+// The new station is ~1.3x further out than the authored one, so the plane grows by
+// the same factor: apparent size is unchanged, only the direction is fixed.
+const PILLAR_SCALE = Object.freeze({ width: 260, height: 546 });
+const _pillarScratch = new THREE.Vector3();
+const _pillarRight = new THREE.Vector3();
+
+function createNebulaPillar(uniforms, corridorFrame) {
+    // Hero nebula PILLAR (one-time mid-chapter reveal), faded in by uApproach. A single
+    // tall additive plane — capped to one (no per-frame alloc).
+    //
+    // Placed FROM the corridor frame rather than parented to it: a Pillars-of-Creation
+    // column has to stand upright, and the corridor rotation would tilt it ~45 deg. So
+    // take the corridor's deep-left station but keep world-vertical, yawing only enough
+    // to face back down the corridor. Its authored local station (-170, 40, -600) sat
+    // 58-94 deg off the camera's forward ray — on the opposite side from everything else.
     const { mesh } = createNebulaPillarTSL(uniforms.uTime, uniforms.uApproach);
-    mesh.position.set(-170, 40, -600);
-    mesh.scale.set(200, 420, 1);
+    const frame = corridorFrame ?? resolveCosmicCorridorFrame(null);
+    _pillarRight.crossVectors(frame.forward, PATH_UP).normalize();
+    _pillarScratch.copy(frame.origin)
+        .addScaledVector(frame.forward, PILLAR_CORRIDOR_OFFSET.depth)
+        .addScaledVector(_pillarRight, -PILLAR_CORRIDOR_OFFSET.left);
+    _pillarScratch.y += PILLAR_CORRIDOR_OFFSET.lift;
+    mesh.position.copy(_pillarScratch);
+    // Yaw-only billboard toward the corridor origin so the column stays vertical.
+    mesh.rotation.y = Math.atan2(frame.origin.x - mesh.position.x, frame.origin.z - mesh.position.z);
+    mesh.scale.set(PILLAR_SCALE.width, PILLAR_SCALE.height, 1);
     mesh.frustumCulled = false;
     return mesh;
 }
@@ -955,11 +1137,17 @@ const _asteroidDummy = new THREE.Object3D();
 function createAsteroidGarland() {
     const count = 12;
     const geometry = new THREE.IcosahedronGeometry(1, 1);
-    const material = new THREE.MeshStandardMaterial({
-        color: 0x0b0e18,
-        roughness: 0.95,
-        metalness: 0.05,
-    });
+    // The authored note claimed an "orange accretion rim + violet fill come free from the
+    // chapter's two lights" — in practice the rig is one dim ambient plus a point light
+    // 600u away, so 0x0b0e18 rendered as pure black. That went unnoticed while the garland
+    // sat 43-84 deg off the forward ray; now that the corridor frame puts it where the
+    // camera is actually looking, capture showed it punching flat black holes in the frame
+    // (worst over the carried Ch5 aurora). A lifted albedo plus a small self-lit floor makes
+    // them read as dark rock silhouettes independent of how much light reaches them.
+    // Self-shaded (see createAsteroidRockTSL): this chapter's light rig cannot light the
+    // garland, and the previous MeshStandardMaterial rendered as pure black discs punched
+    // through the carried aurora.
+    const material = createAsteroidRockTSL();
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     mesh.name = 'asteroid-garland';
     mesh.frustumCulled = false;
@@ -970,13 +1158,16 @@ function createAsteroidGarland() {
     for (let i = 0; i < count; i += 1) {
         const t = i / (count - 1);
         // Diagonal garland: low-left near → high-right far (with the hero march), a few
-        // pulled tight to the corridor (within ~30u) for the close passes.
+        // pulled tight to the corridor for the close passes. Now that the garland really
+        // does sit on the camera's lane (corridor frame), the close rocks are held off the
+        // rail laterally so they graze the frame instead of eclipsing it, and the biggest
+        // ones are kept to the far end of the run.
         const tight = i % 4 === 0;
-        seats[i * 3] = THREE.MathUtils.lerp(-30, 150, t) + (Math.random() - 0.5) * 30;
-        seats[i * 3 + 1] = THREE.MathUtils.lerp(-16, 96, t) + (Math.random() - 0.5) * 24;
-        seats[i * 3 + 2] = THREE.MathUtils.lerp(-180, -520, t)
+        seats[i * 3] = THREE.MathUtils.lerp(-70, 190, t) + (Math.random() - 0.5) * 30;
+        seats[i * 3 + 1] = THREE.MathUtils.lerp(-40, 110, t) + (Math.random() - 0.5) * 24;
+        seats[i * 3 + 2] = THREE.MathUtils.lerp(-260, -640, t)
             + (tight ? 60 : (Math.random() - 0.5) * 60);
-        scales[i] = tight ? 4 + Math.random() * 4 : 6 + Math.random() * 12;
+        scales[i] = tight ? 3 + Math.random() * 3 : 5 + Math.random() * 10;
         spins[i * 3] = (Math.random() - 0.5) * 0.3;
         spins[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
         spins[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
@@ -1162,6 +1353,25 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const entryState = resolveCosmicEntryContinuity(approach);
     group.userData.entryContinuityState = entryState;
 
+    // ── EARTH AT THE SUMMIT / SPACE GATE ─────────────────────────────────────────
+    // Driven by GLOBAL progress (not `approach`, which is pinned at 0 until the camera
+    // climbs past the chapter's yStart around p=0.66 — long after the sky has gone).
+    // `earthReveal` fades the gas giant up over the bright Ch5 summit; `spaceReveal`
+    // holds the rest of the chapter at zero until the camera is actually in Space, so
+    // the early ignite cannot drag stars, the black hole or nebula into the daylight.
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    const staging = resolveSummitEarthStaging(
+        cameraProgress,
+        chapterPositions?.[4],
+        chapterPositions?.[5],
+        chapterPositions?.[6],
+    );
+    const { spaceReveal } = staging;
+    group.userData.summitEarthStaging = staging;
+    // The earth, once shown from the summit, never dips back out (the ask was that we
+    // "still see it" once space darkens) — hence max() against the staged hero reveal.
+    const earthReveal = Math.max(entryState.heroReveal, staging.earthReveal);
+
     const { blackHole, debris } = group.userData;
     if (blackHole) {
         // Ever-present DESTINATION OMEN: looms larger + rides up into the upper third as
@@ -1233,7 +1443,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const { diskLight } = group.userData;
     if (diskLight) {
-        const lightReveal = Math.max(entryState.destinationReveal, entryState.nebulaReveal * 0.75);
+        const lightReveal = Math.max(entryState.destinationReveal, entryState.nebulaReveal * 0.75)
+            * spaceReveal;
         diskLight.intensity = (
             1.0 + Math.sin(time * 0.7) * 0.25 + (uniforms?.uEnergy?.value ?? 0) * 0.4
         ) * lightReveal;
@@ -1259,7 +1470,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
 
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
-    const voidSkyOpacity = entryState.nebulaReveal * chapterOpacity;
+    const voidSkyOpacity = entryState.nebulaReveal * spaceReveal * chapterOpacity;
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
@@ -1269,15 +1480,34 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const entryTargets = group.userData.entryContinuity;
     if (entryTargets) {
-        entryTargets.stars.forEach((object) => setOpacityScale(object, entryState.starReveal, chapterOpacity));
-        entryTargets.destination.forEach((object) => setOpacityScale(
+        entryTargets.stars.forEach((object) => setOpacityScale(
             object,
-            entryState.destinationReveal,
+            entryState.starReveal * spaceReveal,
             chapterOpacity,
         ));
-        entryTargets.heroes.forEach((object) => setOpacityScale(object, entryState.heroReveal, chapterOpacity));
-        entryTargets.nebula.forEach((object) => setOpacityScale(object, entryState.nebulaReveal, chapterOpacity));
-        entryTargets.clutter.forEach((object) => setOpacityScale(object, entryState.clutterReveal, chapterOpacity));
+        entryTargets.destination.forEach((object) => setOpacityScale(
+            object,
+            entryState.destinationReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        // The earth is the ONE element allowed through before the boundary.
+        entryTargets.earth.forEach((object) => setOpacityScale(object, earthReveal, chapterOpacity));
+        entryTargets.heroes.forEach((object) => setOpacityScale(
+            object,
+            entryState.heroReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        entryTargets.nebula.forEach((object) => setOpacityScale(
+            object,
+            entryState.nebulaReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        entryTargets.clutter.forEach((object) => setOpacityScale(
+            object,
+            entryState.clutterReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        entryTargets.bridge.forEach((object) => setOpacityScale(object, spaceReveal, chapterOpacity));
     }
 }
 

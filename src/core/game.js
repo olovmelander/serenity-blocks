@@ -1395,19 +1395,14 @@ export function updateGame(time, gameState, callbacks = {}) {
         const tickMs = Number(gameState.simTickMs) || (1000 / 60);
         gameState.simFrame = Math.max(0, Math.round((gameState.simTimeMs || 0) / tickMs));
 
-        if (gameState.hitStopRemaining > 0) {
-            gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delta);
-            if (drawCallback) drawCallback();
-            if (updateStatsCallback) updateStatsCallback();
-            if (monitoring) {
-                performanceMonitor.updateEnd();
-            }
-            return;
-        }
-
         // Phase 3: Advance input repeat (DAS/ARR) using the same authoritative
         // delta as gravity, so input timing is frame-rate independent and unified
         // under one simulation clock.
+        //
+        // This runs BEFORE the hit-stop early-return, matching the local-MP loop
+        // order. When it ran after, a quad's 70ms hit-stop silently froze the
+        // held-key repeat timers too — a per-quad input stall unique to single
+        // player that read as glitchiness next to MP.
         const shouldPollExternalInput = !gameState.suppressExternalInput
             && !gameState.isReplay
             && !gameState.isSeeking
@@ -1417,6 +1412,16 @@ export function updateGame(time, gameState, callbacks = {}) {
         }
         if (shouldPollExternalInput && window.gamepadController) {
             window.gamepadController.advanceGameplayInput(safeTime);
+        }
+
+        if (gameState.hitStopRemaining > 0) {
+            gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delta);
+            if (drawCallback) drawCallback();
+            if (updateStatsCallback) updateStatsCallback();
+            if (monitoring) {
+                performanceMonitor.updateEnd();
+            }
+            return;
         }
 
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)

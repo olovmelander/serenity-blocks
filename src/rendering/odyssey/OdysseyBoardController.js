@@ -1556,6 +1556,10 @@ export class OdysseyBoardController {
                 bloomStrength: 0.32,
                 bloomThreshold: 0.85,
                 bloomRadius: 0.7,
+                // Scene-pass MSAA (meadow petal aliasing fix), High tier and above only —
+                // the sub-pixel wildflower geometry needs real sample coverage; lower tiers
+                // keep QW1's zero-sample pass (the iGPU budget that motivated it).
+                sceneSamples: ['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0,
             });
             if (Number.isFinite(postQualityOverride)) {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
@@ -1927,11 +1931,16 @@ export class OdysseyBoardController {
      */
     _applyRenderScale(renderScale) {
         if (!this.renderer) return;
-        this._drs.renderScale = renderScale;
+        // Odyssey legibility floor (2026-08): the adaptive controller may ride the global
+        // policy floor (0.5), but below ~0.65 the browser upscale turns the Ch3 meadow's
+        // fine detail into visible pixel blocks. Clamp Odyssey only; when pinned here the
+        // adaptive tier ladder escalates to its bloom-shed / post-soften rungs instead.
+        const clampedRenderScale = Math.max(renderScale, 0.65);
+        this._drs.renderScale = clampedRenderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;
         const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
-            renderScale,
+            renderScale: clampedRenderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',

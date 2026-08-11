@@ -46,7 +46,6 @@ import {
     createFoothillBridgeTSL,
     createFluffyGrassTSL,
     createWildflowersTSL,
-    createSunRaysTSL,
     createCloudsTSL,
     createTreesTSL,
     createReedsTSL,
@@ -1006,10 +1005,15 @@ export function createSurfaceWorldEnvironment() {
     group.add(sun);
     group.userData.sun = sun;
 
-    // 5. Volumetric Sun Rays - only visible above water
-    const rays = createSunRays(uniforms);
-    rays.name = 'sun-rays';
-    group.add(rays);
+    // 5. Volumetric Sun Rays — CUT from the live scene (in-game: "some light yellow sun rays
+    // that I want to remove, they feel cluttery"). Seven additive gold beams (1.0, 0.86, 0.56)
+    // leaning toward the sun, bloom-tagged, drawn in front of the massif — they read as pale
+    // streaky veiling over the mountain rather than as atmosphere. The builder stays exported
+    // for the playground probes (ch3-surface-world / ch3-hero-sun effects); only the live
+    // chapter stops adding it. The sun DISC above is kept — that is the actual light source.
+    // const rays = createSunRays(uniforms);
+    // rays.name = 'sun-rays';
+    // group.add(rays);
 
     // 6. Soft Procedural Clouds - only visible above water
     const clouds = createClouds(uniforms);
@@ -1211,7 +1215,6 @@ export function createSurfaceWorldEnvironment() {
         ocean,
         landscape,
         sun,
-        rays,
         clouds,
         meadowFlowers,
         trees,
@@ -1243,7 +1246,6 @@ export function createSurfaceWorldEnvironment() {
             ocean,
             landscape,
             sun,
-            rays,
             clouds,
             foregroundLayer,
             snowMotes,
@@ -1284,6 +1286,17 @@ export function createSurfaceWorldEnvironment() {
         group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
     } else {
         group.position.y = chapterCenterY;
+    }
+
+    // SHORE BLEND ALIGNMENT: the water's baked terrain heightfield samples by WORLD XZ, so
+    // hand it the terrain plate's world placement (group world + terrainOffsetY). Set here
+    // once the group is anchored; update() refreshes it in case the group ever moves (the
+    // layout editor can re-anchor chapters live).
+    group.userData.terrainOffsetY = terrainOffsetY;
+    const shoreUniforms = ocean.userData.odysseyUniforms;
+    if (shoreUniforms?.uShoreOriginXZ && shoreUniforms?.uShoreBaseY) {
+        shoreUniforms.uShoreOriginXZ.value.set(group.position.x, group.position.z);
+        shoreUniforms.uShoreBaseY.value = group.position.y + terrainOffsetY;
     }
 
     // HERO MIRROR (flag ch3HeroMirror): tag the far-silhouette meshes onto the reflection layer so
@@ -1471,16 +1484,6 @@ function createSunDisc(uniforms) {
     return tagUniforms(group, builderUniforms);
 }
 
-// WebGPU/TSL: additive golden volumetric sun-rays delegated to createSunRaysTSL (its
-// builder owns the 5-beam group + bloom-eligible additive material). Returns the group;
-// uOpacity tagged on the group for the fade collectors.
-function createSunRays(uniforms) {
-    const { group, uniforms: builderUniforms } = createSunRaysTSL(uniforms.uTime, {
-        uSeason: uniforms.uSeason,
-    });
-    return tagUniforms(group, builderUniforms);
-}
-
 // WebGPU/TSL: soft procedural clouds delegated to createCloudsTSL (its builder owns the
 // 6-puff group + NormalBlending transparent material). Returns the group; uOpacity tagged
 // on the group for the fade collectors.
@@ -1489,11 +1492,12 @@ function createClouds(uniforms) {
     return tagUniforms(group, builderUniforms);
 }
 
-// WebGPU/TSL: 3 distant peaks + base valley mist delegated to createDistantMountainsTSL
-// (its builder owns the byte-identical per-mountain cone/FBM bakes, the GPU snow/rock/fog
-// shading, and the 4-plane mist). Each peak mesh + the mist meshes are tagged with their
-// uSnowBlend/uOpacity nodes so the collectors drive snow + surface fade. The mist group is
-// exposed on userData.foothillMist for parity with the live API.
+// WebGPU/TSL: Ch3 renders CHAPTER 4's canonical hero chain (+ the far-range flanks) at the
+// same world coordinates via the shared canonical-mountain-range builder, so the mountains are
+// visible from Ch3 and never swap silhouettes at the seam. (This used to delegate to
+// surface-world.tsl.js's own createDistantMountainsTSL; that builder now serves the WebGPU
+// pilot only — see createSurfaceWorldPilotTSL.) Each peak mesh is tagged with its
+// uSnowBlend/uOpacity nodes so the collectors drive snow + surface fade.
 function createDistantMountains(uniforms, hostCenter = null) {
     const { group, parts } = createCanonicalMountainRangeTSL({
         hostCenter,
@@ -1507,6 +1511,9 @@ function createDistantMountains(uniforms, hostCenter = null) {
         // (grass/fog via uSeason) and the peaks still whiten via uSnowBlend, but the distant
         // destination mountains glow warm continuously across the boundary.
         uTransition: null,
+        // Flank chains (2026-08): all three L5 hosts must agree on includeFarRange or the
+        // silhouettes would pop in/out at each authority hand-off.
+        includeFarRange: true,
         baseOpacity: 1,
     });
     group.name = 'distant-mountains';
@@ -1531,6 +1538,14 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // Keep the water's shore heightfield aligned to the terrain plate (cheap scalar writes;
+    // matters only if the group is re-anchored live, e.g. by the layout editor).
+    const shoreUniforms = group.userData.ocean?.userData?.odysseyUniforms;
+    if (shoreUniforms?.uShoreOriginXZ && shoreUniforms?.uShoreBaseY) {
+        shoreUniforms.uShoreOriginXZ.value.set(group.position.x, group.position.z);
+        shoreUniforms.uShoreBaseY.value = group.position.y + (group.userData.terrainOffsetY ?? 0);
     }
 
     // HERO MIRROR (flag ch3HeroMirror): wire the reflector's virtual camera to render ONLY the
@@ -1599,7 +1614,10 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         surfaceOpacity,
     } = visibilityState;
     const auroraPreviewState = resolveSurfaceWorldAuroraPreviewState(cameraProgress);
-    const alpineRampState = resolveSurfaceWorldAlpineRampState(cameraProgress);
+    // resolveSurfaceWorldAlpineRampState is kept + exported (its unit test pins the ramp, and it
+    // documents the original "no alpine pieces during Deep Ocean" contract) but is no longer
+    // consumed here: alpineBreachReveal below enforces the same contract off the probe height
+    // while letting the alpine world arrive SOLID the moment the camera surfaces.
     // SEAM 3->4: the distant range + foothill bridge no longer recede here — under the L5 peak
     // dedup only ONE copy of the shared canonical chain draws through the boundary, so the drawn
     // copy holds constant opacity and the manager hides the whole group past the seam (see the
@@ -1612,6 +1630,18 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { entryOpacity } = resolveSurfaceWorldEntryRampState(cameraProgress);
     const surfaceGate = surfaceOpacity * entryOpacity;
     const surfaceElementOpacity = surfaceGate * surfaceExitOpacity;
+    // BREACH REVEAL — shared by BOTH alpine pieces (the canonical chain and the foothill
+    // skirt). They are the "world beyond the water": a world-locked landmark and the ground
+    // ramp running to it, so they are revealed by the camera clearing the surface, not by a
+    // ramp measured in chapter progress. Keyed to the path probe's height above the waterline:
+    // 0 while the 2→3 ecotone opens (p ≈ 0.192, so nothing can pop in when the manager first
+    // shows the group), ~1.0 by p ≈ 0.200 — before Ch3 nominally starts — and still 0 through
+    // deep Chapter 2, which is what the old alpine ramp existed to guarantee.
+    const alpineBreachReveal = THREE.MathUtils.smoothstep(
+        surfaceProbeY,
+        waterSurfaceY + 1,
+        waterSurfaceY + 7,
+    );
     // L3 BRIDGE-CONNECT (2026-08, Wave D): the foothill bridge (the only alpineElement) is gated by
     // the underwater surface fade AND the Surface→Mountains ramp, but is NO LONGER receded across the
     // seam — it must persist as a SOLID ramp through the 3→4 crossfade so the ground physically hands
@@ -1619,15 +1649,36 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // hides the whole Ch3 group (group.visible = opacity>0) once the ecotone weight reaches 0, so the
     // bridge cannot leak into deep Ch4. recedeOpacity is retained below for the distant range, which
     // SHOULD cross-dissolve with the rising Ch4 peaks.
-    const alpineOpacity = surfaceGate * alpineRampState.rampOpacity;
+    // Was `surfaceGate * alpineRampState.rampOpacity` — the entry ramp (0.126 at the chapter
+    // start) TIMES a ramp that only completed 52% into Ch3, so the skirt sat at 17% opacity at
+    // p=0.235 and 40% at p=0.250 while the range above it was already fully solid: the massif
+    // read as floating over a haze band instead of sitting on rising ground. It now shares the
+    // chain's breach reveal, so the alpine world arrives as one solid piece.
+    const alpineOpacity = surfaceOpacity * alpineBreachReveal;
     // L5 HAND-OFF (in-game "transparent / switching mountain" fix): do NOT recede the distant range
     // at the 3→4 seam. The L5 authority pass draws only ONE copy of the shared canonical chain
     // through the boundary, so the drawn copy must hold CONSTANT opacity — receding it to 0 by the
     // boundary faded the silhouette to see-through and then Ch4's main-peaks popped in at the flip.
     // recedeOpacity is retained above for other seam elements; the manager hides the whole Ch3 group
     // once the ecotone weight reaches 0, so the range can't leak into deep Ch4.
-    const distantMountainOpacity = surfaceGate
-        * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity);
+    // BREACH REVEAL (in-game: "the mountains are transparent when we come up and become solid
+    // after a short while — I want them solid directly"). The chain used to ride `surfaceGate`
+    // = surfaceOpacity × entryOpacity. surfaceOpacity was never the problem (it is already 1.0
+    // at path y ≈ 289, i.e. BEFORE Ch3 starts); `entryOpacity` was — it is a progress ramp that
+    // is only 0.126 at the chapter start and does not reach 1 until ~7% into Ch3, so the massif
+    // sat see-through for the whole first stretch of the walk.
+    //
+    // That ramp was authored for the NEAR surface elements — the landscape slab and the petals
+    // that popped/leaked at the breach — and it is right for them. The canonical chain is not one
+    // of those: it is a world-locked landmark already sitting on the horizon, so it should be
+    // revealed by the camera clearing the water, not by an alpha ramp measured in chapter
+    // progress. It gets its own short probe-height reveal instead, which finishes BEFORE the
+    // chapter nominally begins — so the mountains are already fully solid the moment the player
+    // comes up. The band still starts below the waterline, so it cannot pop in when the manager
+    // first makes the Ch3 group visible (the 2→3 ecotone opens at p ≈ 0.192), and it is still 0
+    // through deep Chapter 2 — the "alpine peaks during Deep Ocean" leak stays fixed.
+    const distantMountainOpacity = surfaceOpacity * alpineBreachReveal
+        * SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY;
 
     const { snowTransition } = group.userData;
     const heightSnowBlend = snowTransition
@@ -1730,7 +1781,12 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (distantMountainElements) {
         distantMountainElements.forEach((element) => {
             if (element) {
-                element.visible = distantMountainOpacity > 0;
+                // Honour the manager's L5 canonical-range dedup verdict: this write runs
+                // every frame while the manager's dedup runs on throttled visibility frames,
+                // so an unconditional re-show here co-drew both coplanar hero-chain copies
+                // (z-fight) from the 3→4 authority flip until Ch3's group hid (~p 0.419).
+                element.visible = distantMountainOpacity > 0
+                    && element.userData.rangeAuthority !== false;
             }
         });
     }

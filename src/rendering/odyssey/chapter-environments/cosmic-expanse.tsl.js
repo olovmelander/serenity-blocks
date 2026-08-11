@@ -417,6 +417,48 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     return { mesh, material, geometry };
 }
 
+// ── Asteroid garland rock — self-shaded, no dependency on the light rig ──────────
+//
+// WHY THIS IS NOT A MeshStandardMaterial: chapter 6 has essentially no usable lighting.
+// Every other surface here is an unlit MeshBasic/TSL node material with hand-authored
+// shading, and the one DirectionalLight in the rig does not reach the garland once the
+// manager has reparented the chapter's lights — capture showed the rocks rendering as
+// PURE BLACK discs punched through the carried aurora, at every albedo/emissive/intensity
+// combination tried. So the rocks shade themselves, exactly like the hero planet does.
+//
+// Shading runs in VIEW space (normalView against a fixed view-space key). That is not
+// physically anchored to the world, but it is immune to instanced-normal handling and it
+// guarantees every rock shows a lit face, a terminator and a dark side — i.e. form — from
+// any angle. For tumbling background debris that reads correctly and never degenerates.
+export function createAsteroidRockTSL() {
+    const uKey = uniform(new THREE.Vector3(0.48, 0.62, 0.62).normalize());
+    const uLit = uniform(new THREE.Color(0x4c4658)); // cool violet key (the void)
+    const uWarm = uniform(new THREE.Color(0xc46636)); // accretion-orange bounce
+    const uDark = uniform(new THREE.Color(0x0d0c14)); // shadow floor, never pure black
+
+    const n = normalize(normalView);
+    const key = clamp(dot(n, normalize(uKey)), 0.0, 1.0);
+    // Wrapped diffuse — a hard terminator on a small dark rock reads as a hole, a wrapped
+    // one keeps the silhouette legible while still showing which way it faces.
+    const wrapped = pow(key.mul(0.72).add(0.28), 1.35);
+
+    // Warm bounce from below/behind, standing in for the accretion glow the rig cannot
+    // deliver, so the rocks sit in the scene instead of floating on top of it.
+    const bounce = clamp(dot(n, normalize(vec3(-0.35, -0.55, 0.42))), 0.0, 1.0).mul(0.35);
+
+    let color = mix(uDark, uLit, wrapped);
+    color = color.add(uWarm.mul(bounce).mul(0.38));
+
+    // Fresnel rim so the silhouette edge separates from whatever is behind it.
+    const fres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 2.6);
+    color = color.add(vec3(0.55, 0.52, 0.72).mul(fres).mul(0.20));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.fog = false;
+    return material;
+}
+
 // ── Distant galaxy / quasar — a sharp, persistent deep-space anchor (bloom) ───────
 //
 // A single far-placed quad (front-facing -z toward the forward camera; DoubleSide so

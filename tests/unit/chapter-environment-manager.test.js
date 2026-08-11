@@ -123,7 +123,12 @@ describe('Chapter 3 to 4 ground continuity', () => {
         // Depth-insensitive to insertion order: the material-sharing perf refactor builds the
         // sibling foothill right after the shared one, so child order is an implementation
         // detail — the contract is the three apron depths.
-        expect([...apronZ].sort((a, b) => b - a)).toEqual([-600, -710, -860]);
+        // 2026-08 recomposition: the apron moved from -600/-710/-860 (IN FRONT of / level
+        // with the canonical hero plane at world z ≈ -967..-1107, where its cool-treated
+        // crests cut a "second environment" band across the hero's middle) to BEHIND the
+        // plane's back edge — background fill on the flanks. The contract stays: all three
+        // depths sit BEHIND the hero plane and stay mutually staggered.
+        expect([...apronZ].sort((a, b) => b - a)).toEqual([-1350, -1450, -1600]);
         expect(fullAnchors.length).toBe(3);
         // Hero peaks ride the cool pole; the apron pulls toward neutral grey. After the Wave-C rock
         // repalette (rockCool 0x202f40 → 0x3b4d63, lifted off near-black to stop the navy blob), the
