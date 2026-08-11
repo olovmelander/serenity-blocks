@@ -72,13 +72,14 @@ import {
     vec3,
 } from 'three/tsl';
 import { fbm2 } from './shared/odyssey-tsl-noise.js';
+import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 // Shared forward-aim sun direction. Ch5 has no on-screen space objects, so the sun is
 // the single on-camera hero/anchor/light source: it reads on the DEFAULT forward aim
 // (B7 adds a CHAPTER_LOOK biasing the aim up-and-right so the disc sits upper-right).
 // Exposed so the gradient, sun-glow sprite and god-ray fans all share ONE direction.
-export const SKY_DRIFT_SUN_DIR = new THREE.Vector3(0.34, 0.30, -0.88).normalize();
+export const SKY_DRIFT_SUN_DIR = new THREE.Vector3(...ODYSSEY_SUN).normalize();
 
 // ── Daytime warm-violet sky dome (-100 backstop; must NOT bloom) ─────────────────
 

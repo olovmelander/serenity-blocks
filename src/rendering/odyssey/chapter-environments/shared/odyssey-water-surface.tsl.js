@@ -41,10 +41,11 @@ import {
     vec3,
 } from 'three/tsl';
 import { snoise3 } from './odyssey-tsl-noise.js';
+import { ODYSSEY_SUN } from './chapter-profile.js';
 
 // The ONE sun the whole underwater→surface stretch shares — byte-identical to surface-world's
 // SURFACE_SUN_DIR so the god-rays the diver rises toward and the sea/lake glitter agree.
-export const ODYSSEY_WATER_SUN_DIR = new THREE.Vector3(-0.48, 0.18, -0.86).normalize();
+export const ODYSSEY_WATER_SUN_DIR = new THREE.Vector3(...ODYSSEY_SUN).normalize();
 
 // The ONE water palette — byte-identical to Ch2's uDeepColor/uSurfaceColor + caustic crest and to
 // CH3_WATER_READABILITY_SETTINGS.deepColor/shallowColor/crestColor, so the declared water-continuity
