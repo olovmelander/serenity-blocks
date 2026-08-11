@@ -83,6 +83,24 @@ async function main() {
                     ? [...(bc.environmentManager.environments?.keys?.() || [])].sort() : null,
                 pendingChapterLoads: bc.pendingChapterLoads?.size ?? null,
                 sceneChildren: bc.scene?.children?.length ?? null,
+                worldChildren: (() => {
+                    const g = (bc.scene?.children || []).find((c) => c.name === 'odyssey-act2-world');
+                    if (!g) return null;
+                    return g.children.slice(0, 6).map((c) => ({
+                        name: c.name,
+                        visible: c.visible,
+                        renderOrder: c.renderOrder,
+                        frustumCulled: c.frustumCulled,
+                        matVisible: c.material ? c.material.visible : null,
+                        geoRadius: c.geometry?.boundingSphere?.radius ?? null,
+                    }));
+                })(),
+                groupVisible: (bc.scene?.children || []).find(
+                    (c) => c.name === 'odyssey-act2-world',
+                )?.visible ?? null,
+                atmosphereDomeVisible: bc.atmosphere?.dome?.visible ?? null,
+                cameraFar: bc.camera?.far ?? null,
+                cameraNear: bc.camera?.near ?? null,
                 worldInScene: !!(bc.scene?.children || []).find(
                     (c) => c.name === 'odyssey-act2-world',
                 ),

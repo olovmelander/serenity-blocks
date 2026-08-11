@@ -129,11 +129,20 @@ function readPixelRatioOverrideFromUrl() {
 /** Chapters whose ground the continuous Act II world replaces. */
 const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 /**
- * Scene-linear scale for the world's HDR output before the post stack. Measured in-game at
- * 1.0, the sky reached luma 200 against 129 standalone and the massif washed to pale haze:
- * a display-referred palette leaves an ACES curve no room and blooms the sky over everything.
+ * Scene-linear scale for the world's HDR output before the post stack. 1.0 leaves an ACES
+ * curve no headroom and blooms the sky over everything. 0.55 was fitted while the scene fog
+ * still washed the world to pastel; with the world's materials opted out of that fog the
+ * whole frame came back ~40 % too dark, hence 0.82.
  */
-const ONE_WORLD_OUTPUT_SCALE = 0.55;
+const ONE_WORLD_OUTPUT_SCALE = 0.82;
+/**
+ * ...and the world hands that stack a FLATTER image than it wants on screen, because the
+ * stack is not neutral: master grade lifts saturation 1.15x, chapter 4 lifts a further 1.10x,
+ * and a 0.018 black crush plus a 1.07 S-curve sits underneath both. Fed the palette as
+ * authored, the sky's low red channel came out CLAMPED AT ZERO — a pure ultramarine no
+ * daylight sky has. The grade supplies the vividness; the world supplies the hue.
+ */
+const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
 
@@ -336,6 +345,7 @@ export class OdysseyBoardController {
         // journey is bit-identical until it is capture-verified in the real game.
         this.oneWorldEnabled = options.oneWorld === true || readBooleanUrlFlag('odysseyOneWorld');
         this.oneWorld = null;
+        this._oneWorldActT = 0;
         // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
         // chapters shed their heaviest sublayers (Ch3's reflector 2nd render, big additive particle
         // clouds) via a detailLevel signal their update() reads — no teardown, no recompile. Stage 1
@@ -606,6 +616,7 @@ export class OdysseyBoardController {
                     // values rather than the display-referred palette the playground wants.
                     applyExposure: false,
                     outputScale: ONE_WORLD_OUTPUT_SCALE,
+                    outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
                     // Inside the board camera's 9,000 far plane, and inside the shipped
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
@@ -2297,11 +2308,8 @@ export class OdysseyBoardController {
                 const actStart = this.presentationLayout.chapterPositions[1];
                 const actEnd = this.presentationLayout.chapterPositions[5];
                 const span = (actEnd - actStart) || 1;
-                this.oneWorld.update(
-                    this.time,
-                    railPoint,
-                    (cameraProgress - actStart) / span,
-                );
+                this._oneWorldActT = (cameraProgress - actStart) / span;
+                this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
             }
 
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
@@ -2311,6 +2319,29 @@ export class OdysseyBoardController {
                 cameraProgress,
                 this.cinematicJourneyActive ? directorState : null,
             );
+
+            // ONE WORLD owns the air. The manager above is still cross-fading scene fog and the
+            // clear colour from the profiles of chapters 2-5 — chapters that no longer draw
+            // anything — which is a second, contradictory atmosphere laid over the world's own.
+            // Hand both to the colour script, ramped at the act edges so chapters 1 and 6 still
+            // hand over without a step. The world's own materials opt out of scene fog entirely
+            // (they carry applyAerial); this is for everything else in the frame: the path
+            // ribbon, the level orbs, the traveller.
+            if (this.oneWorld) {
+                const t = this._oneWorldActT;
+                const e = Math.max(0, Math.min(1, Math.min(t / 0.06, (1 - t) / 0.06)));
+                const w = e * e * (3 - (2 * e));
+                if (w > 0) {
+                    const worldFog = this.oneWorld.fog;
+                    if (this.scene.fog) {
+                        this.scene.fog.color.lerp(worldFog.color, w);
+                        this.scene.fog.density += (worldFog.density - this.scene.fog.density) * w;
+                        this.renderer.setClearColor(this.scene.fog.color, 1);
+                    } else {
+                        this.renderer.setClearColor(worldFog.color, 1);
+                    }
+                }
+            }
         }
 
         // Track the active chapter (used to gate ch7-only Black Hole per-frame work below).
