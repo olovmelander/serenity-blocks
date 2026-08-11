@@ -837,9 +837,10 @@ function landscapeNoise(p) {
 
 export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const uWaterLevel = uniform(waterLevel);
+    // uSnowBlend is kept (the manager's snowBlendUniformTargets still drive it) but the meadow no
+    // longer repaints itself white — see the "GREEN STAYS GREEN" note below. The snow COLOUR
+    // uniforms went with the repaint; the skirt/peaks own the winter palette now.
     const uSnowBlend = uniform(0);
-    const uSnowColor = uniform(new THREE.Color(0xf2f7ff));
-    const uSnowShadow = uniform(new THREE.Color(0x9fb0c2));
     const uOpacity = uniform(1);
     // The live landscape shader is time-independent; uTime stays in the signature for
     // pilot/harness uniformity and is referenced as a no-op so the look is unchanged.
@@ -920,18 +921,22 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // amber scatter that belongs to the low sun + warm horizon, not a cool veil that fought it.
     color = mix(color, vec3(0.74, 0.62, 0.44), fog.mul(0.20));
 
-    // Snow blend (winter transition).
-    const snowNoise = landscapeNoise(vPosition.xz.mul(0.06));
-    const snowHeight = smoothstep(6.0, 20.0, relHeight);
-    const snowPatch = smoothstep(0.35, 0.75, snowNoise);
-
-    const farSnowNoise = oneMinus(smoothstep(-260.0, -140.0, vPosition.z.add(snowNoise.mul(60.0))));
-
-    let snowMask = max(snowPatch.mul(snowHeight), farSnowNoise);
-    snowMask = snowMask.mul(uSnowBlend);
-
-    const snowTint = mix(uSnowShadow, uSnowColor, snowNoise.mul(0.35).add(0.65));
-    color = mix(color, snowTint, snowMask);
+    // GREEN STAYS GREEN (in-game: "I do not want the green to swap to winter, i want the green to be
+    // green and that we transition into the mountain winter landscape without like changing the
+    // color... I want the lower ground to have the same green grass color as the hills. Now some
+    // hills swap from grass green to snow filled").
+    //
+    // The meadow used to be REPAINTED white in place as the season drove uSnowBlend, and because the
+    // mask was `snowHeight = smoothstep(6, 20, relHeight)` it whitened by ALTITUDE — so the hills
+    // turned snowy while the low ground stayed green and the two stopped reading as one field. That
+    // is a season recolour of the same ground, which is exactly what we do not want: winter should
+    // be somewhere the journey TRAVELS TO, not something that happens to the meadow it is standing on.
+    //
+    // The meadow now keeps its grass colour for the whole chapter. The green -> rock -> snow ramp
+    // still exists, but only on the geometry that is actually the mountain world: the foothill skirt
+    // (mountainSkirtColorNode blends MOUNTAIN_SKIRT_MEADOW at its base up into rock and snow at its
+    // top) and the peaks above it. So the transition happens by MOVING up the skirt into the range.
+    // uSnowBlend stays in the returned uniforms so the collectors/targets are unchanged.
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -1099,8 +1104,12 @@ export function createFoothillBridgeTSL(uTime = uniform(0)) {
         vWorldPosition,
         vLocalHeight: vLocalPosition.y,
         noise: terrainNoise,
-        rockStartY: 26.0,
-        snowStartY: 18.0,
+        // Raised (+10) to compensate for the skirt's lifted front: mountainSkirtColorNode ramps
+        // meadow -> rock -> snow off vLocalHeight, so lifting the geometry pulled rock and snow
+        // DOWNHILL toward the meadow — the opposite of "green stays green". With these the near
+        // skirt reads grass like the meadow it joins, and only the climb turns rock then snow.
+        rockStartY: 36.0,
+        snowStartY: 28.0,
     });
 
     // Far-depth opacity fade so the skirt's back edge dissolves into the distant range instead of
@@ -2552,10 +2561,18 @@ export function createCloudsTSL(uTime = uniform(0)) {
 
     // Rounder, puffier BILLOWING mask (was a flat wide ellipse → thin strata) so the banks read as
     // big soft CUMULUS, not haze veils.
-    const ex = vUv.x.sub(0.5).mul(1.4);
-    const ey = vUv.y.sub(0.5).mul(1.6);
+    // ORGANIC CLOUD EDGES (in-game: "the clouds ... feels like they are cut in a straight line on
+    // the left side, they need to be more organic and not have straight lines either").
+    // The falloff ran to 0.95 but the ellipse only REACHED 0.7 at the quad's left/right edge, so the
+    // cloud was still ~40% opaque where the geometry stopped — the plane boundary itself became the
+    // silhouette: a dead-straight vertical cut. Scaling by 2.0 makes dist == 1.0 exactly at the edge
+    // midpoints, and the band now completes at 0.82 so even the worst-case noise warp lands on 0
+    // before the rim. The noise then breaks the remaining ellipse into a billowing, irregular edge.
+    const ex = vUv.x.sub(0.5).mul(2.0);
+    const ey = vUv.y.sub(0.5).mul(2.0);
     const dist = length(vec2(ex, ey));
-    const mask = oneMinus(smoothstep(0.30, 0.95, dist));
+    const maskWarp = snoise3(vec3(sx.mul(0.85), sy.mul(0.85), t.mul(0.5))).mul(0.18);
+    const mask = oneMinus(smoothstep(0.40, 0.82, dist.add(maskWarp)));
 
     // Tighter density band → defined puffy cores with soft edges (was a thin low-contrast smear).
     const density = smoothstep(0.30, 0.80, body.add(0.5)).mul(mask);
