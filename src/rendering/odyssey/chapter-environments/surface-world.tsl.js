@@ -144,13 +144,17 @@ const SPRUCE_HEARTS = [
 // banks-wide carpet): east lake shore, sunlit left hill shoulder, a drift up toward the hero, and
 // a deep-right rhythm patch. { x, z, r } — filled by even-disc sampling, terrain-gated.
 const SURFACE_FLOWER_PATCHES = [
-    { x: 56, z: -150, r: 28 }, { x: -104, z: -108, r: 30 },
+    // East lakeside drift nudged OUTBOARD (was {56,-150} — its centre sat below the h>=4 gate, so it
+    // was already a thin sliver) onto the solid east bank.
+    { x: 108, z: -150, r: 22 }, { x: -104, z: -108, r: 30 },
     { x: -56, z: -196, r: 22 }, { x: 92, z: -232, r: 22 },
-    // FOREGROUND meadow banks (Wave D composition): two near-field drifts flanking the lake's NEAR
-    // shore so the bottom of the held vista reads as a lush flower bank, not open water. On the
-    // raised OUTBOARD banks (|x|≈120-126, z≈-50..-60) where the terrain clears the waterline;
-    // surfaceFlowerPatchSample still gates each sample at h>=4.0 (sub-waterline samples rejected).
-    { x: 122, z: -58, r: 30 }, { x: -126, z: -50, r: 28 },
+    // LEFT-frame fill (in-game "empty left" fix): a bloom bank on the new left-shoulder knoll
+    // (getTerrainHeight leftShoulder) gives the left frame content, seated on solid ground.
+    { x: -150, z: -150, r: 30 },
+    // FOREGROUND meadow banks: centred on the two foreground bank KNOLLS carved in getTerrainHeight
+    // (fgBankR / fgBankL) so the WHOLE disc clears the waterline (h >> 4) and the flowers seat on a
+    // broad solid bank instead of the waterline sliver that read as a "floating island".
+    { x: 138, z: -74, r: 24 }, { x: -140, z: -70, r: 24 },
 ];
 // Even-disc sample within a random patch (sqrt(rand) radius = uniform area).
 function surfaceFlowerPatchSample() {
@@ -389,8 +393,31 @@ export function getTerrainHeight(x, z) {
     const outD = Math.hypot(x - 74, z + 176);
     h += (1 - smoothstepCPU(0, 34, outD)) * 22;
 
-    if (h < -2.0) {
-        h = -15.0;
+    // FOREGROUND BANK KNOLLS + LEFT SHOULDER (in-game "floating flower islands" + "empty left" fix):
+    // broad low knolls that lift the near-field foreground banks and a left mid-ground shoulder clear
+    // of the waterline, so the foreground flower drifts seat on solid BROAD ground instead of a thin
+    // waterline sliver that read as a "floating island", and the empty left third gains a hill
+    // silhouette. Same smooth-knoll grammar as the hero knoll/outcrop above; kept off the corridor +
+    // lake so they never dam the single water body.
+    const fgBankR = Math.hypot(x - 138, z + 74);
+    h += (1 - smoothstepCPU(0, 44, fgBankR)) * 14;
+    const fgBankL = Math.hypot(x + 140, z + 70);
+    h += (1 - smoothstepCPU(0, 44, fgBankL)) * 14;
+    const leftShoulder = Math.hypot(x + 150, z + 150);
+    h += (1 - smoothstepCPU(0, 52, leftShoulder)) * 18;
+
+    // NATURAL WADE-IN SHORELINE (in-game "abrupt water↔land" fix; was: hard `h < -2 → -15` snap). The
+    // snap made every shoreline a ~13u vertical wall and left the meadow perched ~+5 above the water
+    // plane — reading in-game as "floating banks" and a hard water/land seam. Give the water a real
+    // bed the banks slope INTO: (1) deepen the central lake band so a gentle slope reaches true depth
+    // instead of surfacing as a mid-water island (the reason the snap existed — this STRENGTHENS the
+    // one-lake invariant), then (2) ease sub-shoreline terrain down to the floor on a smooth curve so
+    // the shader's wet-sand + landAlpha fade bands finally shade a real sloping shoreline.
+    const lakeBed = 1 - smoothstepCPU(62, 150, laneDist); // 1 mid-water → 0 on the banks
+    h -= lakeBed * 12; // sink the bed clear under the waterline
+    if (h < 3.0) {
+        const wade = smoothstepCPU(3.0, -20.0, h); // 0 at the grass line → 1 in the deep bed
+        h = 3.0 - 18.0 * wade; // smooth grass(3) → floor(-15) beach ramp
     }
 
     return h;
