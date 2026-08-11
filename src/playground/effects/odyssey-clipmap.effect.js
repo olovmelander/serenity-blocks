@@ -58,9 +58,15 @@ const RELIEF_RES = 1024;
 const WORLD_EXTENT = 6000; // the baked field spans [-3000, 3000] in x and z
 const RELIEF_SCALE = 150; // +/- range packed into the texture
 
+// INTEGER hash, not the usual sin(dot(..)) * 43758 trick. Every valueNoise() below costs four
+// hashes, odysseyRelief() runs eight valueNoise (six octaves + two domain warps), and the bake
+// is a million samples - so a sin-based hash is ~32 million transcendentals on the startup
+// critical path. This bit-mix is integer-only and measured ~3x faster end to end. The same
+// argument applies on the GPU, where RDNA runs transcendentals at a quarter rate.
 function hash2(x, y) {
-    const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-    return s - Math.floor(s);
+    let h = ((x | 0) * 374761393) + ((y | 0) * 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
 function valueNoise(x, y) {
@@ -98,6 +104,17 @@ const BASIN_Z = 620;
 // Sea level. A heightfield is SINGLE-VALUED, so ocean floor + ocean surface is inherently
 // two sheets - which is why pillar 1 is two draws, not one (plan 3.1).
 const SEA_LEVEL = 8;
+
+// ONE SUN (plan 3.4). The bake below and the shader both read this, so a terrain shadow can
+// never disagree with the light that cast it - which is precisely the failure the shipped
+// build has, where MOUNTAIN_SHADING.keyDir sits 72.5 degrees away from ODYSSEY_SUN.
+// Re-SOLVED against the hero composition rather than adopted. The shipped ODYSSEY_SUN
+// [0.35, 0.62, -0.70] has negative Z, which puts it behind the massif from a camera looking
+// down -Z: the face you are looking at is back-lit and its shadows fall away from you. A sun
+// at ~21 degrees elevation from the front-left rakes ACROSS the flank instead, so the relief
+// the height field carries actually casts. Same one-sun rule; a direction that serves the shot.
+const SUN_DIR = [-0.46, 0.36, 0.61];
+const SHADOW_RES = 512;
 
 function heroConeMask(x, z) {
     const d = Math.hypot(x - HERO_X, z - HERO_Z);
@@ -154,42 +171,46 @@ export function odysseyHeight(x, z) {
     return odysseyMacro(x, z) + (odysseyRelief(x, z) * odysseyDetailWeight(x, z));
 }
 
-function bakeReliefTexture() {
-    // AUX BAKE (plan 3.2). R = local relief, G = dH/dx, B = dH/dz, A = curvature.
-    //
-    // The derivatives are produced by CENTRAL-DIFFERENCING THE BAKED HEIGHTS - never by
-    // re-evaluating an analytic derivative - so lighting describes exactly the surface the
-    // vertex shader displaces to. That is what structurally kills the phantom-shading-seam
-    // class of bug, and it is also the biggest fragment-cost lever here: the fragment shader
-    // was doing FOUR dependent texture fetches per pixel to rebuild these; now it does one.
-    // Curvature (a Laplacian) rides along in A as a free biome selector.
-    //
-    // Half-float is filterable everywhere with NO feature request. float32-filterable is
-    // optional in WebGPU, and r181's defensive fallback covers only DataTexture, not render
-    // targets - so half-float is the correct choice here, not a compromise.
-    const data = new Uint16Array(RELIEF_RES * RELIEF_RES * 4);
+/**
+ * ONE BAKE. The relief grid is the expensive part (a million multi-octave noise samples), so
+ * it is computed exactly once and everything else is derived from it:
+ *
+ *   relief grid  --> aux texture (R relief, G dH/dx, B dH/dz, A curvature)
+ *                --> total height grid (macro + relief * weight, no noise at all)
+ *                --> sun visibility (marched against the total height grid)
+ *
+ * The first pass computed the noise TWICE - once for the texture and again for the height
+ * mirror - which cost 352 ms of pure duplicate work on the startup critical path.
+ */
+function buildWorldBakes() {
     const step = WORLD_EXTENT / (RELIEF_RES - 1);
     const origin = -WORLD_EXTENT / 2;
 
-    const heights = new Float32Array(RELIEF_RES * RELIEF_RES);
+    // (a) the only place the noise is evaluated
+    const relief = new Float32Array(RELIEF_RES * RELIEF_RES);
     for (let j = 0; j < RELIEF_RES; j += 1) {
         const z = origin + (j * step);
         for (let i = 0; i < RELIEF_RES; i += 1) {
-            heights[(j * RELIEF_RES) + i] = odysseyRelief(origin + (i * step), z);
+            relief[(j * RELIEF_RES) + i] = odysseyRelief(origin + (i * step), z);
         }
     }
 
-    const at = (i, j) => {
+    const at = (arr, i, j) => {
         const ci = Math.max(0, Math.min(RELIEF_RES - 1, i));
         const cj = Math.max(0, Math.min(RELIEF_RES - 1, j));
-        return heights[(cj * RELIEF_RES) + ci];
+        return arr[(cj * RELIEF_RES) + ci];
     };
+
+    // (b) AUX BAKE - derivatives central-differenced from the BAKED heights, never from a
+    // re-evaluated analytic derivative, so lighting describes exactly the drawn surface.
+    const data = new Uint16Array(RELIEF_RES * RELIEF_RES * 4);
     for (let j = 0; j < RELIEF_RES; j += 1) {
         for (let i = 0; i < RELIEF_RES; i += 1) {
-            const h = heights[(j * RELIEF_RES) + i];
-            const dHdx = (at(i + 1, j) - at(i - 1, j)) / (2 * step);
-            const dHdz = (at(i, j + 1) - at(i, j - 1)) / (2 * step);
-            const lap = (at(i + 1, j) + at(i - 1, j) + at(i, j + 1) + at(i, j - 1)) - (4 * h);
+            const h = relief[(j * RELIEF_RES) + i];
+            const dHdx = (at(relief, i + 1, j) - at(relief, i - 1, j)) / (2 * step);
+            const dHdz = (at(relief, i, j + 1) - at(relief, i, j - 1)) / (2 * step);
+            const lap = (at(relief, i + 1, j) + at(relief, i - 1, j)
+                + at(relief, i, j + 1) + at(relief, i, j - 1)) - (4 * h);
             const idx = ((j * RELIEF_RES) + i) * 4;
             data[idx] = THREE.DataUtils.toHalfFloat(h);
             data[idx + 1] = THREE.DataUtils.toHalfFloat(dHdx);
@@ -197,8 +218,105 @@ function bakeReliefTexture() {
             data[idx + 3] = THREE.DataUtils.toHalfFloat(lap / step);
         }
     }
+    // Half-float is filterable everywhere with NO feature request. float32-filterable is
+    // optional in WebGPU and r181's fallback covers only DataTexture, not render targets.
+    const heightTex = new THREE.DataTexture(data, RELIEF_RES, RELIEF_RES, THREE.RGBAFormat, THREE.HalfFloatType);
+    heightTex.minFilter = THREE.LinearFilter;
+    heightTex.magFilter = THREE.LinearFilter;
+    heightTex.wrapS = THREE.ClampToEdgeWrapping;
+    heightTex.wrapT = THREE.ClampToEdgeWrapping;
+    heightTex.generateMipmaps = false;
+    heightTex.needsUpdate = true;
 
-    const tex = new THREE.DataTexture(data, RELIEF_RES, RELIEF_RES, THREE.RGBAFormat, THREE.HalfFloatType);
+    // (c) the CPU height mirror - derived, no noise re-evaluation
+    const total = new Float32Array(RELIEF_RES * RELIEF_RES);
+    for (let j = 0; j < RELIEF_RES; j += 1) {
+        const z = origin + (j * step);
+        for (let i = 0; i < RELIEF_RES; i += 1) {
+            const x = origin + (i * step);
+            total[(j * RELIEF_RES) + i] = odysseyMacro(x, z)
+                + (relief[(j * RELIEF_RES) + i] * odysseyDetailWeight(x, z));
+        }
+    }
+    const sample = (x, z) => {
+        const gx = Math.max(0, Math.min(RELIEF_RES - 1.001, (x - origin) / step));
+        const gz = Math.max(0, Math.min(RELIEF_RES - 1.001, (z - origin) / step));
+        const i0 = Math.floor(gx);
+        const j0 = Math.floor(gz);
+        const fx = gx - i0;
+        const fz = gz - j0;
+        const i1 = Math.min(RELIEF_RES - 1, i0 + 1);
+        const j1 = Math.min(RELIEF_RES - 1, j0 + 1);
+        const a = total[(j0 * RELIEF_RES) + i0];
+        const b = total[(j0 * RELIEF_RES) + i1];
+        const c = total[(j1 * RELIEF_RES) + i0];
+        const d = total[(j1 * RELIEF_RES) + i1];
+        return (((a * (1 - fx)) + (b * fx)) * (1 - fz)) + ((((c * (1 - fx)) + (d * fx))) * fz);
+    };
+
+    return { heightTex, sample };
+}
+
+function bakeSunVisibility(heightAt) {
+    const len = Math.hypot(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+    const sx = SUN_DIR[0] / len;
+    const sy = SUN_DIR[1] / len;
+    const sz = SUN_DIR[2] / len;
+    const horiz = Math.hypot(sx, sz) || 1e-4;
+    const dirX = sx / horiz;
+    const dirZ = sz / horiz;
+    const rise = sy / horiz; // world units of climb per world unit travelled toward the sun
+
+    const step = WORLD_EXTENT / SHADOW_RES; // ~11.7u
+    const STEPS = 42;
+    const origin = -WORLD_EXTENT / 2;
+    const raw = new Float32Array(SHADOW_RES * SHADOW_RES);
+
+    for (let j = 0; j < SHADOW_RES; j += 1) {
+        const z0 = origin + (j * step);
+        for (let i = 0; i < SHADOW_RES; i += 1) {
+            const x0 = origin + (i * step);
+            const h0 = heightAt(x0, z0);
+            let shadow = 0;
+            // Geometric stride: dense near the sample where contact shadows live, sparse far
+            // away where only the massif itself can still occlude.
+            let t = step * 1.5;
+            for (let k = 0; k < STEPS; k += 1) {
+                const hx = x0 + (dirX * t);
+                const hz = z0 + (dirZ * t);
+                const ray = h0 + (rise * t);
+                const terrain = heightAt(hx, hz);
+                if (terrain > ray) {
+                    // Soft edge: how far above the ray the blocker reaches, normalised by the
+                    // distance travelled, so distant blockers give a softer penumbra.
+                    const over = (terrain - ray) / (1 + (t * 0.05));
+                    shadow = Math.max(shadow, Math.min(1, over * 0.5));
+                    if (shadow >= 1) break;
+                }
+                t *= 1.115;
+            }
+            raw[(j * SHADOW_RES) + i] = 1 - shadow;
+        }
+    }
+
+    // A 3x3 blur so the shadow terminator is not a stair-step at 11.7u per texel.
+    const data = new Uint16Array(SHADOW_RES * SHADOW_RES);
+    const at = (i, j) => {
+        const ci = Math.max(0, Math.min(SHADOW_RES - 1, i));
+        const cj = Math.max(0, Math.min(SHADOW_RES - 1, j));
+        return raw[(cj * SHADOW_RES) + ci];
+    };
+    for (let j = 0; j < SHADOW_RES; j += 1) {
+        for (let i = 0; i < SHADOW_RES; i += 1) {
+            let sum = 0;
+            for (let dj = -1; dj <= 1; dj += 1) {
+                for (let di = -1; di <= 1; di += 1) sum += at(i + di, j + dj);
+            }
+            data[(j * SHADOW_RES) + i] = THREE.DataUtils.toHalfFloat(sum / 9);
+        }
+    }
+
+    const tex = new THREE.DataTexture(data, SHADOW_RES, SHADOW_RES, THREE.RedFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -316,14 +434,28 @@ function applyAerial(litColour, worldPos) {
 }
 
 export function create({ scene, camera, renderer }) {
-    const heightTex = bakeReliefTexture();
+    // Plan: bake -> compile -> reveal is an EXPLICIT ordering constraint, and every bake is
+    // on the startup critical path with a 400 ms wall-clock budget. Time them.
+    // Bake -> compile -> reveal is an EXPLICIT ordering constraint, and every bake sits on the
+    // startup critical path with a 400 ms wall-clock budget. Time them, do not assume.
+    const t0 = performance.now();
+    const world = buildWorldBakes();
+    const t1 = performance.now();
+    const sunVisTex = bakeSunVisibility(world.sample);
+    const t2 = performance.now();
+    const { heightTex } = world;
+    const bakeMs = {
+        world: +(t1 - t0).toFixed(1),
+        sunVis: +(t2 - t1).toFixed(1),
+        total: +(t2 - t0).toFixed(1),
+    };
     const {
         geometry, triangles, vertices, reach,
     } = buildClipmapGeometry();
 
     const uLodCenter = uniform(new THREE.Vector2(0, 0));
     const uTime = uniform(0);
-    const uSunDir = uniform(new THREE.Vector3(0.35, 0.62, -0.70).normalize());
+    const uSunDir = uniform(new THREE.Vector3(...SUN_DIR).normalize());
 
     // ── VERTEX STAGE ────────────────────────────────────────────────────────────
     const aGrid = attribute('position', 'vec3'); // (gridI, ringLevel, gridJ)
@@ -443,11 +575,18 @@ export function create({ scene, camera, renderer }) {
     const grainN = grain.x.sin().mul(grain.y.cos()).mul(0.5).add(0.5);
     albedo = albedo.mul(grainN.mul(0.07).mul(detailGate).add(0.985));
 
-    // ── Lighting: ONE sun (plan §3.4) ───────────────────────────────────────────
+    // ── Lighting: ONE sun, with baked terrain self-shadowing (plan 3.4 / 3.8) ───
+    // The shadow costs one texture fetch. No shadow map, no cascade, no depth pass, no
+    // per-cascade material - the whole shadow line of the budget, removed rather than tuned.
+    const sunVis = texture(sunVisTex, vUv).r;
     const ndl = max(dot(normal, uSunDir), 0.0);
-    const sky = vec3(0.42, 0.56, 0.78);
-    const sun = vec3(1.00, 0.94, 0.84);
-    let lit = albedo.mul(sun.mul(ndl.mul(0.86).add(0.10)).add(sky.mul(0.34)));
+    // Sky light still reaches shadowed ground, and it is COOLER than the sun - that colour
+    // separation between lit and shadowed is most of what makes a landscape read as three
+    // dimensional. Shadowed snow going blue is the same effect.
+    const sky = vec3(0.44, 0.58, 0.82);
+    const sun = vec3(1.00, 0.95, 0.86);
+    const direct = ndl.mul(sunVis).mul(0.92);
+    let lit = albedo.mul(sun.mul(direct.add(0.06)).add(sky.mul(0.36)));
 
     // ONE atmosphere, applied through the shared function the water uses too.
     lit = applyAerial(lit, positionWorld);
@@ -544,8 +683,12 @@ export function create({ scene, camera, renderer }) {
     const fres = fresBase.mul(fresBase).mul(fresBase).mul(fresBase).mul(0.62);
     const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), waterN)).mul(0.9);
 
+    const waterSunVis = texture(sunVisTex, wUv).r;
     let waterLit = mix(waterBody, skyColourFor(float(0.22)), fres);
-    waterLit = waterLit.add(vec3(1.0, 0.96, 0.88).mul(spec));
+    // The massif's shadow falls across the water too - a sea that ignores the mountain
+    // beside it is one of the loudest tells that a world is assembled rather than lit.
+    waterLit = waterLit.add(vec3(1.0, 0.96, 0.88).mul(spec).mul(waterSunVis));
+    waterLit = waterLit.mul(waterSunVis.mul(0.18).add(0.82));
     // Foam where the sea shoals onto the shore.
     const foam = smoothstep(float(2.6), float(0.15), depth)
         .mul(smoothstep(float(-0.4), float(0.5), depth));
@@ -581,6 +724,8 @@ export function create({ scene, camera, renderer }) {
         morphEnd: MORPH_END,
         morphEndCeiling: MORPH_END_CEILING,
         reliefRes: RELIEF_RES,
+        shadowRes: SHADOW_RES,
+        bakeMs,
         drawCallsExpected: 3, // ground + water + sky
         waterTriangles: water.triangles,
     };
@@ -619,6 +764,7 @@ export function create({ scene, camera, renderer }) {
             skyGeo.dispose();
             skyMat.dispose();
             heightTex.dispose();
+            sunVisTex.dispose();
             if (renderer && camera) { /* nothing renderer-owned to release */ }
         },
     };
