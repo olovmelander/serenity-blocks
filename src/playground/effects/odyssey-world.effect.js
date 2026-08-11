@@ -163,6 +163,67 @@ function bakeSunVisibility(heightAt) {
     return tex;
 }
 
+/**
+ * TILEABLE DETAIL NORMAL, baked once at 256².
+ *
+ * The first version evaluated mx_noise_vec3 two or three times per PIXEL. Measured, that was
+ * ~8.6 ms of a 11.6 ms frame — gradient noise is on the order of a hundred ALU per call, and
+ * a fragment shader runs it a million times a frame.
+ *
+ * Re-reading the reference settled it: snowflow's "three tiled detail scales" are TILED
+ * TEXTURES, not procedural noise. A filtered fetch costs about one ALU-equivalent. The
+ * lattice indices below wrap modulo the period, which is what makes the result seamlessly
+ * tileable — sampling a non-tiling noise with RepeatWrapping would show a grid of seams.
+ */
+function bakeDetailNormal(res = 256) {
+    const h = (ix, iy) => {
+        const wx = ((ix % res) + res) % res;
+        const wy = ((iy % res) + res) % res;
+        let v = (wx * 374761393) + (wy * 668265263);
+        v = Math.imul(v ^ (v >>> 13), 1274126177);
+        return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+    };
+    const vn = (x, y, freq) => {
+        const fx = x * freq;
+        const fy = y * freq;
+        const ix = Math.floor(fx);
+        const iy = Math.floor(fy);
+        const tx = fx - ix;
+        const ty = fy - iy;
+        const ux = tx * tx * (3 - (2 * tx));
+        const uy = ty * ty * (3 - (2 * ty));
+        const a = h(ix, iy);
+        const b = h(ix + 1, iy);
+        const c = h(ix, iy + 1);
+        const d = h(ix + 1, iy + 1);
+        return (((a * (1 - ux)) + (b * ux)) * (1 - uy)) + ((((c * (1 - ux)) + (d * ux)) * uy));
+    };
+    // Two octaves, both periodic in `res`.
+    const field = new Float32Array(res * res);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) {
+            field[(j * res) + i] = (vn(i, j, 1 / 32) * 0.65) + (vn(i, j, 1 / 11) * 0.35);
+        }
+    }
+    const at = (i, j) => field[((((j % res) + res) % res) * res) + (((i % res) + res) % res)];
+    const data = new Uint16Array(res * res * 2);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) {
+            const idx = ((j * res) + i) * 2;
+            data[idx] = THREE.DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) * 0.5);
+            data[idx + 1] = THREE.DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) * 0.5);
+        }
+    }
+    const tex = new THREE.DataTexture(data, res, res, THREE.RGFormat, THREE.HalfFloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
+}
+
 function buildClipmap(gridN, holeShrink, spacing) {
     const half = gridN / 2;
     const perLevel = (gridN + 1) * (gridN + 1);
@@ -249,6 +310,7 @@ export function create({ scene }) {
     const world = buildBakes();
     const t1 = performance.now();
     const sunVisTex = bakeSunVisibility(world.sample);
+    const detailTex = bakeDetailNormal();
     const t2 = performance.now();
     const { heightTex } = world;
 
@@ -292,9 +354,23 @@ export function create({ scene }) {
     const vUv = varying(reliefUv, 'vUv');
     const gRelief = texture(heightTex, reliefUv).level(0).r;
     const gWeight = tslDetailWeight(g.worldXZ);
-    const gY = tslWorldMacro(g.worldXZ).add(gRelief.mul(gWeight));
+    const gMacro = tslWorldMacro(g.worldXZ);
+    const gY = gMacro.add(gRelief.mul(gWeight));
     const vWeight = varying(gWeight, 'vW');
     const vSpacing = varying(g.spacing, 'vS');
+
+    // MACRO GRADIENT IN THE VERTEX STAGE.
+    //
+    // The first version finite-differenced tslWorldMacro() in the FRAGMENT, which meant three
+    // evaluations per pixel, each walking four massifs with a pow() and an exp(). Measured, the
+    // whole frame went from 2.95 ms to 19.07 ms. The macro is smooth by construction — its
+    // shortest feature is a 405u cone — so a per-vertex gradient is not an approximation worth
+    // worrying about, and it costs three evaluations per VERTEX instead of per pixel.
+    const MACRO_EPS = 6.0;
+    const gMacroDx = tslWorldMacro(g.worldXZ.add(vec2(MACRO_EPS, 0))).sub(gMacro).div(MACRO_EPS);
+    const gMacroDz = tslWorldMacro(g.worldXZ.add(vec2(0, MACRO_EPS))).sub(gMacro).div(MACRO_EPS);
+    const vMacroDx = varying(gMacroDx, 'vMDx');
+    const vMacroDz = varying(gMacroDz, 'vMDz');
 
     const mat = new THREE.MeshBasicNodeMaterial();
     mat.positionNode = vec3(g.worldXZ.x, gY, g.worldXZ.y);
@@ -302,15 +378,42 @@ export function create({ scene }) {
     const aux = texture(heightTex, vUv);
     const hDx = aux.g.mul(vWeight);
     const hDz = aux.b.mul(vWeight);
-    // Macro gradient by finite difference of the analytic macro at fragment scale.
-    const eps = float(6.0);
-    const mHere = tslWorldMacro(positionWorld.xz);
-    const mDx = tslWorldMacro(positionWorld.xz.add(vec2(6, 0))).sub(mHere).div(eps);
-    const mDz = tslWorldMacro(positionWorld.xz.add(vec2(0, 6))).sub(mHere).div(eps);
-    const normal = normalize(vec3(hDx.add(mDx).negate(), 1, hDz.add(mDz).negate()));
+    const baseNormal = normalize(vec3(hDx.add(vMacroDx).negate(), 1, hDz.add(vMacroDz).negate()));
+
+    // ── PILLAR 7: three footprint-gated detail scales ───────────────────────────
+    //
+    // The baked relief resolves 8.8 world units per texel, so at close range the surface is
+    // smooth and reads as plastic. Raising the bake resolution is the expensive answer; the
+    // cheap one is to add the missing octaves ANALYTICALLY in the fragment and fade each of
+    // them out by its own world-space pixel footprint.
+    //
+    // The fade band per layer is roughly [wavelength/6, wavelength/1.5]. Below that a layer's
+    // wavelength has fallen under a couple of pixels: it carries no information, it only
+    // aliases, and no amount of MSAA or TAA can recover it because the signal is already wrong
+    // BEFORE it is sampled. Gating is not an optimisation here, it is the correctness fix —
+    // and it happens to make the shader faster, since most pixels early-out of most layers.
+    const detailFootprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
+    const detailScales = [
+        { world: 26, amp: 0.34 }, // wavelength in world units — boulders and gully walls
+        { world: 7.5, amp: 0.20 }, // surface break-up
+    ];
+    let bump = vec2(0, 0);
+    detailScales.forEach(({ world: wavelength, amp }) => {
+        const gate = float(1).sub(smoothstep(float(wavelength / 6), float(wavelength / 1.5), detailFootprint));
+        const d = texture(detailTex, positionWorld.xz.div(wavelength));
+        bump = bump.add(d.rg.mul(amp).mul(gate));
+    });
+
+    // Perturb less on near-vertical faces: world-XZ noise stretches badly there, and a
+    // triplanar blend is not worth its cost for a surface this close to a heightfield.
+    const flatness = clamp(baseNormal.y, 0.0, 1.0);
+    const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
 
     const height = positionWorld.y;
-    const slope = clamp(float(1).sub(normal.y), 0, 1);
+    // BIOME follows the LANDFORM, lighting follows the grain. Driving the biome from the
+    // detailed normal made grass and rock patches track the surface noise instead of the
+    // terrain, which reads as camouflage blotching rather than a mountainside.
+    const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
     const footprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
     const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
         .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
@@ -369,8 +472,11 @@ export function create({ scene }) {
     waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
 
-    const bedY = tslWorldMacro(positionWorld.xz)
-        .add(texture(heightTex, wUv).r.mul(tslDetailWeight(positionWorld.xz)));
+    // Same again for the sea: the bed's macro term is a vertex-stage varying, not a
+    // per-pixel walk over four massifs.
+    const vBedMacro = varying(tslWorldMacro(w.worldXZ), 'vBedMacro');
+    const vBedWeight = varying(tslDetailWeight(w.worldXZ), 'vBedW');
+    const bedY = vBedMacro.add(texture(heightTex, wUv).r.mul(vBedWeight));
     const depth = float(ODYSSEY_SEA_LEVEL).sub(bedY);
     const body = mix(
         mix(vec3(0.34, 0.70, 0.71), vec3(0.12, 0.42, 0.62), clamp(depth.div(18), 0, 1)),
@@ -466,6 +572,7 @@ export function create({ scene }) {
             waterMat.dispose();
             skyMesh.geometry.dispose();
             heightTex.dispose();
+            detailTex.dispose();
             sunVisTex.dispose();
         },
     };
