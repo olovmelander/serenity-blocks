@@ -210,7 +210,10 @@ function createCloudDecks() {
  * (Trimmed 10 → 6 for overdraw; fewer-bigger-richer sheets read the same.)
  */
 function createCloudStrata(uniforms) {
-    const { group } = createCloudStrataTSL(uniforms.uTime, { uDusk: uniforms.uDusk });
+    const { group } = createCloudStrataTSL(uniforms.uTime, {
+        uDusk: uniforms.uDusk,
+        uChapterFade: uniforms.uChapterFade,
+    });
     return group;
 }
 
@@ -272,6 +275,10 @@ export function createSkyDriftEnvironment(options = {}) {
         uTime: uniform(0),
         uEnergy: uniform(0.4),
         uDusk: uniform(0),
+        // Chapter crossfade the manager CANNOT reach (these builders use opacityNode, which ignores
+        // material.opacity). Multiplied into the strata alpha; driven from chapterOpacity in update
+        // so the bright cloud field fades in/out smoothly instead of popping when group.visible flips.
+        uChapterFade: uniform(1),
     };
     group.userData.uniforms = uniforms;
     const chapterPositions = getActiveOdysseyChapterPositions();
@@ -473,6 +480,9 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
     // instead of popping when group.visible finally flips. Defaults to 1 (pilot/playground,
     // no manager) so standalone use is unchanged.
     const chapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    // Fade the bright cloud strata IN with the chapter weight (4→5 entry) so they don't POP in when
+    // the manager flips group.visible (the manager can't reach their opacityNode).
+    if (uniforms?.uChapterFade) uniforms.uChapterFade.value = chapterOpacity;
 
     // ── SEAM 5→6: DARK-SPACE BACKDROP HANDOFF (in-game "space too bright" regression fix) ──────
     // The 5→6 carry keeps the whole Ch5 group present ~85% into Space so the aurora + summit ring
@@ -513,7 +523,12 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
             if (target.__odysseyBaseOpacity === undefined) {
                 target.__odysseyBaseOpacity = target.value;
             }
-            target.value = target.__odysseyBaseOpacity * ringFade * chapterOpacity;
+            // 4→5 L5-DEDUP HANDOFF: gate by the 5→6 EXIT opacity, NOT the raw chapterOpacity.
+            // chapterOpacity also ramps 0→1 across the 4→5 ENTRY, so at the L5 authority flip the
+            // shared summit swapped from ungated mainPeaks@1.0 to summitRing@~0.5 = a dip-then-pop.
+            // exit-opacity is 1.0 through the whole 4→5 handoff and only eases at the 5→6 tail.
+            target.value = target.__odysseyBaseOpacity * ringFade
+                * resolveSkyDriftAuroraExitOpacity(cameraProgress);
         });
     }
 

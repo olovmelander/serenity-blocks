@@ -554,7 +554,7 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     group.add(mesh);
 
     return {
-        group, mesh, material, geometry, uniforms: { uTime: time },
+        group, mesh, material, geometry, uniforms: { uTime: time, uOpacity },
     };
 }
 
