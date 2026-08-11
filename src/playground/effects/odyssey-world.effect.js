@@ -15,7 +15,7 @@ import * as THREE from 'three/webgpu';
 import {
     abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, length, max, mix,
     normalize, normalWorld, positionWorld, smoothstep, texture, uniform, varying, vec2, vec3, cameraPosition,
-    attribute as tslAttribute, positionGeometry, sin as tslSin,
+    attribute as tslAttribute, positionGeometry, positionLocal, sin as tslSin,
 } from 'three/tsl';
 import {
     ODYSSEY_MASSIFS,
@@ -35,7 +35,7 @@ export const meta = {
 
 // Clipmap sized to reach past the far-left flank (x -1893) and the massifs (z -1640).
 const GRID_N = 128;
-const LEVELS = 7;
+const LEVELS = 9;
 const BASE_SPACING = 1.6;
 const HOLE_SHRINK = 3;
 const HALF = GRID_N / 2;
@@ -427,7 +427,18 @@ function tslDetailWeight(worldXZ) {
     return strongest.mul(0.84).add(0.16);
 }
 
-export function create({ scene }) {
+export function create({ scene, camera }) {
+    // DEPTH RANGE. The playground's default camera is near 0.1 / far 20,000, and the clipmap
+    // now reaches 26 km — so the sky dome, sized off `reach`, fell entirely BEYOND the far
+    // plane and the sky rendered black. Widen the far plane for the world, and pull the near
+    // plane out to 1.0 while doing it: 0.1/30000 is a depth ratio of 300,000, which is asking
+    // for z-fighting between the ground and a water sheet only metres above it.
+    if (camera) {
+        camera.near = 1.0;
+        camera.far = 30000;
+        camera.updateProjectionMatrix();
+    }
+
     const t0 = performance.now();
     const world = buildBakes();
     const t1 = performance.now();
@@ -580,7 +591,7 @@ export function create({ scene }) {
         .mul(uExposure);
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
-    const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(ground.reach * 1.7, 32, 20), skyMat);
+    const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(Math.min(ground.reach * 1.7, 22000), 32, 20), skyMat);
     skyMesh.frustumCulled = false;
     skyMesh.renderOrder = -100;
     scene.add(skyMesh);
@@ -711,16 +722,25 @@ export function create({ scene }) {
     // WIND: one field for the whole world. A single shared motion across every biome is the
     // strongest continuity signal after light direction (Ghost of Tsushima's guiding wind), and
     // it costs one sin() in the vertex stage.
-    // positionGeometry, NOT positionLocal: in r181 InstanceNode has already rewritten
-    // positionLocal by the time positionNode runs, so a height mask built on it lands in the
-    // wrong space. This project has paid for that one before.
+    // THE INSTANCING RULE, and it is subtler than the note this project already carries.
+    //
+    // r181's NodeMaterial.setupPosition() runs `instancedMesh(object).toStack()` — which does
+    // `positionLocal.assign(instanceMatrix * positionLocal)` (InstanceNode.js:166) — and THEN,
+    // if positionNode is set, `positionLocal.assign(positionNode)`. So whatever positionNode
+    // evaluates to REPLACES the instance transform outright.
+    //
+    // positionGeometry is the raw `attribute('position')`; positionLocal is the varying the
+    // instance matrix was written into (Position.js:11 and :19). Therefore:
+    //   - the POSITION must be built from positionLocal, or every instance collapses to origin
+    //   - a local-space MASK must read positionGeometry, or it is measured in instance space
+    // The existing project note covers the second half; this is the first.
     const gShade = tslAttribute('aShade', 'float');
     const gPhase = tslAttribute('aPhase', 'float');
     const gTint = tslAttribute('aTint', 'float');
     const swayMask = clamp(positionGeometry.y.div(4.5), 0, 1);
     const gust = tslSin(uTime.mul(1.4).add(gPhase).add(positionWorld.x.mul(0.006)))
         .mul(0.10).mul(swayMask.mul(swayMask));
-    treeMat.positionNode = positionGeometry.add(vec3(gust, 0, gust.mul(0.55)));
+    treeMat.positionNode = positionLocal.add(vec3(gust, 0, gust.mul(0.55)));
 
     const treeDark = vec3(0.050, 0.105, 0.070);
     const treeLit = vec3(0.235, 0.375, 0.175);
@@ -793,7 +813,22 @@ export function create({ scene }) {
                 pt.y + 16,
                 pt.z - ((tz / tl) * 30),
             );
-            cam.lookAt(ahead.x, ahead.y + 10, ahead.z);
+            // Look ALONG the rail, with the pitch clamped rather than biased. Aiming straight
+            // at a point further down the path pitches ~37 degrees up through Ch5's climb (the
+            // whole world leaves the frustum); biasing the aim toward the camera's own
+            // altitude over-corrects into a top-down view of the ground. A clamp keeps the
+            // path direction and only limits how far the horizon may leave frame — which is
+            // what the shipped build's per-chapter framing overrides are doing by hand.
+            const dx = ahead.x - cam.position.x;
+            const dy = ahead.y - cam.position.y;
+            const dz = ahead.z - cam.position.z;
+            const horiz = Math.hypot(dx, dz) || 1;
+            const pitch = Math.max(-0.30, Math.min(0.16, dy / horiz));
+            cam.lookAt(
+                cam.position.x + dx,
+                cam.position.y + (pitch * horiz),
+                cam.position.z + dz,
+            );
         },
         resize() {},
         dispose() {
