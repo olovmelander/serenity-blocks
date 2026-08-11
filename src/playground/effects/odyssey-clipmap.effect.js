@@ -95,6 +95,9 @@ const HERO_R = 1500;
 const HERO_H = 620;
 const BASIN_X = 260;
 const BASIN_Z = 620;
+// Sea level. A heightfield is SINGLE-VALUED, so ocean floor + ocean surface is inherently
+// two sheets - which is why pillar 1 is two draws, not one (plan 3.1).
+const SEA_LEVEL = 8;
 
 function heroConeMask(x, z) {
     const d = Math.hypot(x - HERO_X, z - HERO_Z);
@@ -205,29 +208,43 @@ function bakeReliefTexture() {
     return tex;
 }
 
+/** Base spacing that keeps a coarser lattice at the SAME world reach. */
+function spacingFor(gridN) {
+    return (BASE_SPACING * GRID_N) / gridN;
+}
+
 // ── The clipmap mesh — built once, never touched again ───────────────────────────
-function buildClipmapGeometry() {
-    const perLevel = (GRID_N + 1) * (GRID_N + 1);
+function buildClipmapGeometry(gridN = GRID_N, holeShrink = HOLE_SHRINK) {
+    // The morph must complete before the ring overlap band begins, per config.
+    const ceiling = 1 - ((4 * holeShrink) / gridN);
+    if (MORPH_END > ceiling) {
+        throw new Error(
+            `[odyssey-clipmap] morphEnd ${MORPH_END} exceeds ceiling ${ceiling.toFixed(4)} `
+            + `for gridN=${gridN}, holeShrink=${holeShrink} - the rings will crack.`,
+        );
+    }
+    const half = gridN / 2;
+    const perLevel = (gridN + 1) * (gridN + 1);
     const positions = new Float32Array(LEVELS * perLevel * 3);
     const indices = [];
-    const holeHalf = (HALF / 2) - HOLE_SHRINK;
+    const holeHalf = (half / 2) - holeShrink;
 
     for (let level = 0; level < LEVELS; level += 1) {
         const vertBase = level * perLevel;
-        for (let j = 0; j <= GRID_N; j += 1) {
-            for (let i = 0; i <= GRID_N; i += 1) {
-                const v = (vertBase + j * (GRID_N + 1) + i) * 3;
+        for (let j = 0; j <= gridN; j += 1) {
+            for (let i = 0; i <= gridN; i += 1) {
+                const v = (vertBase + (j * (gridN + 1)) + i) * 3;
                 // NOT a position: (gridI, ringLevel, gridJ). The vertex stage turns this into
                 // a world position. Nothing here is ever uploaded again.
-                positions[v] = i - HALF;
+                positions[v] = i - half;
                 positions[v + 1] = level;
-                positions[v + 2] = j - HALF;
+                positions[v + 2] = j - half;
             }
         }
-        for (let j = 0; j < GRID_N; j += 1) {
-            for (let i = 0; i < GRID_N; i += 1) {
-                const gi = i - HALF;
-                const gj = j - HALF;
+        for (let j = 0; j < gridN; j += 1) {
+            for (let i = 0; i < gridN; i += 1) {
+                const gi = i - half;
+                const gj = j - half;
                 if (level > 0) {
                     // Skip quads entirely inside the hole this ring surrounds. The hole is cut
                     // HOLE_SHRINK cells SMALLER than the ring inside it, so consecutive rings
@@ -236,9 +253,9 @@ function buildClipmapGeometry() {
                     const inHole = Math.max(Math.abs(gi), Math.abs(gi + 1), Math.abs(gj), Math.abs(gj + 1)) <= holeHalf;
                     if (inHole) continue;
                 }
-                const a = vertBase + j * (GRID_N + 1) + i;
+                const a = vertBase + (j * (gridN + 1)) + i;
                 const b = a + 1;
-                const c = a + (GRID_N + 1);
+                const c = a + (gridN + 1);
                 const d = c + 1;
                 // Alternate the diagonal per quad; a uniform diagonal leaves a faint corduroy
                 // of shading seams all running the same way.
@@ -256,7 +273,7 @@ function buildClipmapGeometry() {
     geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
     // three would otherwise compute a bounding sphere from the FAKE (i, level, j) values and
     // use that nonsense for culling. Assign the real world extent by hand.
-    const reach = HALF * BASE_SPACING * (2 ** (LEVELS - 1));
+    const reach = half * spacingFor(gridN) * (2 ** (LEVELS - 1));
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), reach * Math.SQRT2 + RELIEF_SCALE);
     geometry.boundingBox = new THREE.Box3(
         new THREE.Vector3(-reach, -RELIEF_SCALE, -reach),
@@ -267,6 +284,37 @@ function buildClipmapGeometry() {
     };
 }
 
+// ── ONE SKY, ONE ATMOSPHERE — shared by the dome, the ground and the water ───────
+//
+// Plan 3.5: the aerial perspective's far limit must converge on the EXACT sky the sky itself
+// draws. If it does not, the clipmap's far edge draws as a hard silhouette at a fixed radius
+// with the world apparently standing on it. Both callers therefore go through skyColourFor().
+const SKY_HORIZON = [0.72, 0.82, 0.93];
+const SKY_ZENITH = [0.19, 0.40, 0.76];
+const AERIAL_K = 0.00016; // extinction per world unit
+const AERIAL_MAX = 0.82;
+
+function skyColourFor(dirY) {
+    return mix(
+        vec3(...SKY_HORIZON),
+        vec3(...SKY_ZENITH),
+        clamp(dirY.mul(1.55).add(0.26), 0.0, 1.0),
+    );
+}
+
+/**
+ * THE atmosphere. Every world surface calls this and nothing rolls its own — which is the
+ * whole point: the shipped Odyssey has six competing atmospheres, and three surfaces that
+ * physically touch recede toward three different colours at three different rates.
+ */
+function applyAerial(litColour, worldPos) {
+    const toFrag = worldPos.sub(cameraPosition);
+    const d = length(toFrag);
+    const dirY = toFrag.div(max(d, float(0.001))).y;
+    const t = float(1.0).sub(exp(d.mul(-AERIAL_K)));
+    return mix(litColour, skyColourFor(dirY), clamp(t, 0.0, AERIAL_MAX));
+}
+
 export function create({ scene, camera, renderer }) {
     const heightTex = bakeReliefTexture();
     const {
@@ -274,6 +322,7 @@ export function create({ scene, camera, renderer }) {
     } = buildClipmapGeometry();
 
     const uLodCenter = uniform(new THREE.Vector2(0, 0));
+    const uTime = uniform(0);
     const uSunDir = uniform(new THREE.Vector3(0.35, 0.62, -0.70).normalize());
 
     // ── VERTEX STAGE ────────────────────────────────────────────────────────────
@@ -400,13 +449,8 @@ export function create({ scene, camera, renderer }) {
     const sun = vec3(1.00, 0.94, 0.84);
     let lit = albedo.mul(sun.mul(ndl.mul(0.86).add(0.10)).add(sky.mul(0.34)));
 
-    // ── One aerial-perspective function, applied here and by everything else ────
-    // Distance from the EYE, not from the world origin. The first pass hazed by absolute
-    // world position, so ground 2000u from origin was 57% washed even when it was near.
-    const dist = length(positionWorld.sub(cameraPosition));
-    const horizonCol = vec3(0.70, 0.80, 0.92);
-    const aerial = float(1.0).sub(exp(dist.mul(-0.00016)));
-    lit = mix(lit, horizonCol, clamp(aerial, 0.0, 0.80));
+    // ONE atmosphere, applied through the shared function the water uses too.
+    lit = applyAerial(lit, positionWorld);
 
     material.colorNode = lit;
     material.side = THREE.FrontSide;
@@ -421,16 +465,111 @@ export function create({ scene, camera, renderer }) {
     // A matching sky so the aerial perspective converges on something (plan §3.5: the far
     // limit must converge on the exact sky the sky itself draws, or the clipmap's far edge
     // draws as a hard silhouette at a fixed radius).
-    const skyGeo = new THREE.SphereGeometry(reach * 1.6, 24, 16);
+    // The sky the aerial perspective converges on — same function, so the far limit matches
+    // by construction rather than by tuning.
+    const skyGeo = new THREE.SphereGeometry(reach * 1.7, 32, 20);
     const skyMat = new THREE.MeshBasicNodeMaterial();
-    const up = clamp(positionWorld.y.div(reach).mul(2.2).add(0.12), 0.0, 1.0);
-    skyMat.colorNode = mix(vec3(0.70, 0.80, 0.92), vec3(0.24, 0.44, 0.78), up);
+    const skyDir = normalize(positionWorld.sub(cameraPosition));
+    const sunDisc = smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSunDir));
+    const sunGlow = smoothstep(float(0.90), float(1.0), dot(skyDir, uSunDir)).pow(3.0);
+    skyMat.colorNode = skyColourFor(skyDir.y)
+        .add(vec3(1.0, 0.86, 0.66).mul(sunGlow.mul(0.30)))
+        .add(vec3(1.0, 0.97, 0.90).mul(sunDisc.mul(2.2)));
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
     const skyMesh = new THREE.Mesh(skyGeo, skyMat);
     skyMesh.frustumCulled = false;
     skyMesh.renderOrder = -100;
     scene.add(skyMesh);
+
+    // ── THE WATER SHEET — the second draw (plan 3.1) ────────────────────────────
+    // Same clipmap geometry, same vertex buffer, same index buffer: a second material only.
+    // Zero extra memory for the mesh; one extra draw call for an entire ocean.
+    const waterMat = new THREE.MeshBasicNodeMaterial();
+
+    // EXPERIMENT (measured): the sea is flat, so it does not need the ground's lattice. A
+    // coarse clipmap at the SAME reach tests whether the water's cost is vertex or fill.
+    const WATER_GRID_N = 32;
+    const WATER_HOLE_SHRINK = 1; // ceiling 0.875 >= morphEnd 0.86; shrink 2 would crack
+    const water = buildClipmapGeometry(WATER_GRID_N, WATER_HOLE_SHRINK);
+    const WATER_SPACING = (BASE_SPACING * GRID_N) / WATER_GRID_N;
+    const WATER_HALF = WATER_GRID_N / 2;
+
+    const wSpacing = float(WATER_SPACING).mul(exp2(aGrid.y));
+    const wSnap = wSpacing.mul(2.0);
+    const wOrigin = floor(uLodCenter.div(wSnap)).mul(wSnap);
+    const wGridXZ = vec2(aGrid.x, aGrid.z);
+    const wLocal = wGridXZ.mul(wSpacing);
+    const wCheb = max(abs(wLocal.x), abs(wLocal.y)).div(wSpacing.mul(float(WATER_HALF)));
+    const wMorph = clamp(wCheb.sub(float(MORPH_START)).div(float(MORPH_END - MORPH_START)), 0.0, 1.0);
+    const wCoarse = floor(wGridXZ.mul(0.5)).mul(2.0).mul(wSpacing);
+    const wWorldXZ = wOrigin.add(mix(wLocal, wCoarse, wMorph));
+
+    // Gentle swell. Amplitude is tiny next to a 620u massif on purpose — the sea reads through
+    // its shading and its shoreline, not through geometry.
+    const swell = wWorldXZ.x.mul(0.010).add(uTime.mul(0.55)).sin()
+        .mul(wWorldXZ.y.mul(0.013).sub(uTime.mul(0.4)).cos())
+        .mul(0.55);
+    waterMat.positionNode = vec3(wWorldXZ.x, float(SEA_LEVEL).add(swell), wWorldXZ.y);
+
+    const wUv = varying(wWorldXZ.div(float(WORLD_EXTENT)).add(0.5), 'vWaterUv');
+
+    // The seabed comes from the SAME height function the land does — one world, so the
+    // shoreline is where the two surfaces genuinely meet rather than an authored band.
+    const bedRelief = texture(heightTex, wUv).r;
+    const bedHeroD = length(positionWorld.xz.sub(vec2(HERO_X, HERO_Z)));
+    const bedCone = max(float(0.0), float(1.0).sub(bedHeroD.div(float(HERO_R))));
+    const bedBasinV = positionWorld.xz.sub(vec2(BASIN_X, BASIN_Z)).div(vec2(760.0, 560.0));
+    const bedY = bedCone.pow(1.7).mul(float(HERO_H))
+        .add(exp(dot(bedBasinV, bedBasinV).negate()).mul(-62.0))
+        .add(bedRelief.mul(bedCone.mul(0.68).add(0.32)));
+    const depth = float(SEA_LEVEL).sub(bedY);
+
+    // Deep water is a SATURATED ocean blue, not a dark void. The first pass used 0.05/0.16/0.34
+    // over a 46u ramp, which turned the basin directly under the camera into a black bruise.
+    const shallowCol = vec3(0.34, 0.70, 0.71);
+    const midCol = vec3(0.12, 0.42, 0.62);
+    const deepCol = vec3(0.05, 0.22, 0.44);
+    const dShallow = clamp(depth.div(18.0), 0.0, 1.0);
+    const dDeep = clamp(depth.sub(18.0).div(85.0), 0.0, 1.0);
+    const waterBody = mix(mix(shallowCol, midCol, dShallow), deepCol, dDeep);
+
+    // Fresnel toward the sky the sky itself draws, plus a sun specular.
+    const waterN = normalize(vec3(swell.mul(-0.05), 1.0, swell.mul(0.04)));
+    const viewDir = normalize(cameraPosition.sub(positionWorld));
+    // pow(180) for the sun specular cost ~0.4 ms of the water's 1.38 ms on its own: a
+    // transcendental per water pixel, and RDNA runs those at a quarter rate. A smoothstep over
+    // the same narrow band is visually indistinguishable on a moving sea and is 2 mul + 1 sub.
+    const fresBase = float(1.0).sub(max(dot(waterN, viewDir), 0.0));
+    const fres = fresBase.mul(fresBase).mul(fresBase).mul(fresBase).mul(0.62);
+    const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), waterN)).mul(0.9);
+
+    let waterLit = mix(waterBody, skyColourFor(float(0.22)), fres);
+    waterLit = waterLit.add(vec3(1.0, 0.96, 0.88).mul(spec));
+    // Foam where the sea shoals onto the shore.
+    const foam = smoothstep(float(2.6), float(0.15), depth)
+        .mul(smoothstep(float(-0.4), float(0.5), depth));
+    waterLit = waterLit.add(vec3(0.92, 0.97, 0.99).mul(foam.mul(0.55)));
+
+    waterMat.colorNode = applyAerial(waterLit, positionWorld);
+    // The shoreline: the sea simply stops where the bed rises through it. A band far wider
+    // than the swell that perturbs it, or the waterline snaps instead of feathering.
+    waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0.0, 1.0);
+    waterMat.transparent = true;
+    waterMat.depthWrite = false;
+    // The sheet spans the whole clipmap, but most of it is over land where alpha is 0. Without
+    // alphaTest those fragments still run the full shade AND a blend; discarding them early is
+    // free and removes the largest wasted-fill term in the frame.
+    waterMat.alphaTest = 0.004;
+    waterMat.side = THREE.FrontSide;
+
+    const waterMesh = new THREE.Mesh(water.geometry, waterMat);
+    waterMesh.frustumCulled = false;
+    waterMesh.matrixAutoUpdate = false;
+    waterMesh.updateMatrix();
+    waterMesh.renderOrder = 1;
+    waterMesh.name = 'odyssey-one-world-water';
+    scene.add(waterMesh);
 
     // Expose the spike's own numbers for the capture harness.
     const stats = {
@@ -442,7 +581,8 @@ export function create({ scene, camera, renderer }) {
         morphEnd: MORPH_END,
         morphEndCeiling: MORPH_END_CEILING,
         reliefRes: RELIEF_RES,
-        drawCallsExpected: 2,
+        drawCallsExpected: 3, // ground + water + sky
+        waterTriangles: water.triangles,
     };
     if (typeof window !== 'undefined') window.__ODYSSEY_CLIPMAP__ = stats;
     // eslint-disable-next-line no-console
@@ -451,6 +591,7 @@ export function create({ scene, camera, renderer }) {
     return {
         cameraRadius: 2400,
         update(time) {
+            uTime.value = time;
             // The LOD centre follows the GROUND TRACK - never the camera eye (plan 3.1 point
             // 4). Centring on the camera makes the ground change shape when only the camera
             // moves, which is exactly what would break the hero framing.
@@ -462,14 +603,18 @@ export function create({ scene, camera, renderer }) {
             const t = time * 0.06;
             const cx = Math.sin(t) * 260;
             const cz = 900 - (t * 90);
-            cam.position.set(cx + 220, odysseyHeight(cx, cz) + 230, cz);
-            cam.lookAt(HERO_X, HERO_H * 0.62, HERO_Z);
+            const groundY = Math.max(odysseyHeight(cx, cz), SEA_LEVEL);
+            cam.position.set(cx + 220, groundY + 210, cz);
+            cam.lookAt(HERO_X, HERO_H * 0.52, HERO_Z);
         },
         resize() {},
         dispose() {
             scene.remove(mesh);
             scene.remove(skyMesh);
+            scene.remove(waterMesh);
+            waterMat.dispose();
             geometry.dispose();
+            water.geometry.dispose();
             material.dispose();
             skyGeo.dispose();
             skyMat.dispose();
