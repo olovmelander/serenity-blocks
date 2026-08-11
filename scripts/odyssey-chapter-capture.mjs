@@ -122,6 +122,15 @@ function makeUrl() {
         captureBust: String(Date.now()),
     });
     if (FORCE_WEBGL) params.set('forceWebGL', '1');
+    // Pass arbitrary extra flags through: --url-flag odysseyOneWorld=1
+    []
+        .concat(args['url-flag'] || args.urlFlag || [])
+        .forEach((entry) => {
+            String(entry).split(',').forEach((pair) => {
+                const [k, v = '1'] = pair.split('=');
+                if (k) params.set(k, v);
+            });
+        });
     return `${BASE_URL}/?${params.toString()}`;
 }
 

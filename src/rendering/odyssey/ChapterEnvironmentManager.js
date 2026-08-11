@@ -424,6 +424,13 @@ export class ChapterEnvironmentManager {
         // anyway. Set BELOW the 0.26 maxScrollVelocity cap (~0.0043/frame at 60fps) so it still
         // fires within the (now lower 0.15) cap range. Tunable.
         this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.0015;
+        // ONE WORLD (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md): chapters whose environment is
+        // being provided by something else — the continuous Act II world — and which must
+        // therefore never be created, shown or faded here. Empty by default, so the shipped
+        // path is untouched.
+        this.suppressedChapters = new Set(
+            Array.isArray(options.suppressedChapters) ? options.suppressedChapters : [],
+        );
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -696,6 +703,11 @@ export class ChapterEnvironmentManager {
         if (this.environments.has(chapterId)) {
             return this.environments.get(chapterId).group;
         }
+
+        // A suppressed chapter's ground is drawn by the continuous world instead. Returning
+        // null here is what keeps its ~18 materials off the startup compile path, which is the
+        // largest single startup win in the rebuild.
+        if (this.suppressedChapters.has(chapterId)) return null;
 
         const def = await loadChapterModule(chapterId);
 
