@@ -651,7 +651,11 @@ the One World convention — and the plan shipped without it.)
   (approach luma 61.4 → 24.6, bright share → 0.001 — the reveal holds back); god-ray tint
   pre-seed warm→cool on the seam's clock, zero new draws. Vault-mouth opening + Heart
   farewell deferred to 3b/polish, named in the outcome.
-- [ ] **Wave 7** — Close the books (both lanes, budget cells, index)
+- [x] **Wave 7** — Close the books — **DONE 2026-08-12.** Four cells written (one real
+  baseline — underwater Lane B 5.96 ms, 1.7 under its start — and three ADR-0016 nulls with
+  published reasons); ADR-0017 filed; the ch1 92↔93 draw flicker found by the void guard and
+  named as 3b's prerequisite; the fill-bound-not-draw-bound finding recorded where 3b will
+  read it.
 
 ### Wave 0 — Instrument truth (blocking; nothing visual until these answer)
 
@@ -1239,6 +1243,40 @@ forest-prewarm timeout.
 - **Acceptance:** `perf-budgets.json` cells resolved (baseline or explicit re-budget
   decision recorded); ADR-0017 committed; this document's §0 numbers annotated where
   superseded — the One World plan's closure style, applied from birth.
+
+#### Wave 7 OUTCOME — DONE 2026-08-12. Books closed on what was measured; one flicker keeps two cells null.
+
+**The four station×lane measurements on the finished-so-far build:**
+
+| station | lane | pre-plan | now | status |
+|---|---|---:|---:|---|
+| underwater p=0.16 | A | 0.262 ms | **0.197 ms, drift 0.000** | real baseline |
+| underwater p=0.16 | B | 7.73 ms | **5.96 ms, drift one tick, 45 draws matched** | real baseline → §8 cell |
+| ch1 p=0.051 | A | 2.10 ms | 2.29–2.49 across a **VOIDED** pair | null, with reason |
+| ch1 p=0.051 | B | 57.21 ms | 56.3–59.3 across a **VOIDED** pair | null, with reason |
+
+**The void is a finding, twice over.** Both ch1 pairs failed the content-match guard the same
+way: draw calls flicker **92 ↔ 93** at the pinned station on a time-driven cadence, so a
+content-matched pair cannot exist there until the toggling drawable is found (candidates: the
+lava-fall revealables or another time-gated `visible` write; it survives the pinned seek, so
+it is clock-driven, not travel-driven). ADR-0016 worked exactly as written — two plausible
+numbers were refused, with the reason published in the report.
+
+**And the range that was refused still taught the plan something:** ch1's draws fell
+**131 → 92** (decal merge) while Lane B stayed ~57 ms — **the chapter's iGPU cost is
+fill/ALU-bound, not draw-bound.** Wave 3b's remaining consolidation must shrink emissive
+SURFACE AREA (the same surfaces 3a identified as the mid-band), not just submissions. Recorded
+in the cell notes so 3b aims at the right thing.
+
+**Also closed:** `perf-budgets.json` carries the four `odysseyAct1*` cells (one real baseline,
+three deliberate nulls with reasons); **ADR-0017 filed** (`docs/adr/0017-act-i-stays-a-diorama-
+the-ocean-deepens-in-world.md`) recording the §4 decision with its evidence; the §0.2 evidence
+table stands as the pre-plan record with this table as its successor.
+
+**Carried forward, named:** Wave 3b (the one unchecked wave — sprite migration + world-anchored
+rock shading + the ≤35 gate, now correctly aimed at fill); the ch1 draw-flicker hunt; kelp,
+orb drift, vault-mouth, Heart farewell, pale-grade + crest-rim taste notes (the polish list);
+the birth-station value question (§3a outcome).
 
 ---
 
