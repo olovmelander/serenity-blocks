@@ -15,13 +15,12 @@
  */
 
 export const SEAM_34_COLOUR_HALF_WIDTH = 0.055;
-export const SEAM_34_ALPINE_BRIDGE = Object.freeze({
-    skyColor: 0x527da2,
-    fogColor: 0x638699,
-    ambientLight: 0xd8ded0,
-    ambientIntensity: 0.56,
-    fogDensity: 0.0024,
-});
+// SEAM_34_ALPINE_BRIDGE is DELETED (Wave 0.3). It forced the atmosphere through 0x638699 at
+// density 0.0024 at the exact 3->4 boundary and then undid it — a 3.0x luminance dip
+// (rel-lum 0.659 -> 0.220 -> 0.659) and a 2.18x density spike across 196 world units, between
+// two endpoints that were already the same colour. A bridge to nowhere. Its last consumer went
+// in 4baac9c1; the export outlived it by a commit. Do not reintroduce a midpoint between
+// identical endpoints — if a seam reads badly, the endpoints disagree and that is the bug.
 
 // SEAM 4→5 bright-sky bridge (2026-08, Wave D): the day→sky handoff had NO colour bridge (only 3→4
 // alpine + 5→6 aurora existed). A pale-cyan high-key midpoint so Ch4's bright azure eases into Ch5's
