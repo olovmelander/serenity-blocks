@@ -639,7 +639,10 @@ the One World convention — and the plan shipped without it.)
   inside the quench window). Three instrument repairs were needed first. Contract untouched.
 - [ ] **Wave 3b** — Earth Core CONSOLIDATED to ≤35 draws (needs an explicit
   `earth-core-environment.test.js` contract migration — see the Wave 3 split note)
-- [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
+- [x] **Wave 4** — The ocean becomes luminous — **DONE 2026-08-12.** Bands + SSS ceiling +
+  640 size-capped motes + the two water keyframes; gradient inversion fixed and measured
+  (83.7 → 170.6 luma toward the surface); Lane B **7.73 → 5.96 ms p50** (drift 0.00) — the
+  fill fix paid for the motes with 1.77 ms to spare.
 - [ ] **Wave 5** — Life (fish, kelp, the accompanied ascent)
 - [ ] **Wave 6** — The crack climax (the last fifth of ch1, into the shipped quench)
 - [ ] **Wave 7** — Close the books (both lanes, budget cells, index)
@@ -1076,7 +1079,29 @@ cell is 3b's gate, not 3a's.
   delta vs. this plan's §0.2 Lane B underwater baseline **≤ +0.8 ms p50 (ESTIMATE — the
   gate cell in §8 holds the truth and a miss re-scopes the mote budget, not the plan)**.
 
-#### Wave 4 STATUS — IMPLEMENTED, PARTIALLY VERIFIED, **left unchecked** (2026-08-12)
+#### Wave 4 OUTCOME — DONE 2026-08-12 (second pass; the first is preserved below)
+
+**All three acceptance criteria are now met, each on the fixed instrument:**
+
+1. **The gradient brightens toward the light.** At the two stations that are BOTH submerged
+   and outside the quench window (p=0.156 / p=0.172, `--time 9`): mean luma **83.7 → 170.6**
+   — the shallower frame is 2× brighter. The original stations could never have shown this
+   (one was air, one was quench), which the first-pass note below explains.
+2. **The motes are in.** One instanced additive system (640 quads, size-capped 0.5–1.1 u,
+   transmitted-light brightness ∝ depth, constant-velocity drift), ONE new material carrying
+   its own `fog = false`; drawn only while submerged via the same CPU `visible` gate as the
+   god rays; world tests + both fog lints green (51 tests).
+3. **The Lane B delta is measured, and it is a SAVING: 7.73 → 5.96 ms p50** (drift exactly
+   0.00, content-matched at 44 draws, quiet machine). The whole Wave 4 package — bands, SSS
+   ceiling, motes, and Wave 0's clouds-not-submitted-underwater fix — lands **−1.77 ms**
+   against a ≤+0.8 budget, because the fill fix more than pays for the motes. The wild p99
+   tail (24.6 ms in the Phase 0 run) is gone: p99 now 6.23 ms.
+
+Taste notes carried, not chased: the near-surface frame reads pale under the in-game grade,
+and the water sheet's far rim shows jagged crest triangles at the horizon — both are Wave 7
+polish candidates, neither blocks the wave's criteria.
+
+#### Wave 4 first-pass status (superseded, kept as the record)
 
 Landed and green: the **banded depth ramp** (three script-driven plates replacing the single
 exponential), the **crest-SSS luminous ceiling** (~5 ALU on the existing water material, zero
