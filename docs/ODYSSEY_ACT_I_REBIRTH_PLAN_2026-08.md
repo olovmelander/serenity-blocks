@@ -647,7 +647,10 @@ the One World convention — and the plan shipped without it.)
   swim, silhouettes against the light; measures ≤1 timer tick on Lane B (5.96/6.03, drift one
   tick). One shape iteration (kites → 3.5:1 fish). Kelp + orb drift deferred to Wave 7 polish,
   recorded in the outcome.
-- [ ] **Wave 6** — The crack climax (the last fifth of ch1, into the shipped quench)
+- [x] **Wave 6** — The crack climax — **DONE 2026-08-12.** Asymmetric quench curve measured
+  (approach luma 61.4 → 24.6, bright share → 0.001 — the reveal holds back); god-ray tint
+  pre-seed warm→cool on the seam's clock, zero new draws. Vault-mouth opening + Heart
+  farewell deferred to 3b/polish, named in the outcome.
 - [ ] **Wave 7** — Close the books (both lanes, budget cells, index)
 
 ### Wave 0 — Instrument truth (blocking; nothing visual until these answer)
@@ -1196,6 +1199,34 @@ list.
   shafts, quench closing later on approach than today, no hue cut outside the veil;
   colour-script tests still green (the pre-seed lives inside the cathedral→crack keyframes,
   not ad-hoc constants).
+
+#### Wave 6 OUTCOME — DONE 2026-08-12 (two of four scope items landed and measured; two deferred, named)
+
+**1. The asymmetric density curve — the One World closure's one open quench note — is in and
+measured.** Approach side now `tri^1.4` against the exit's `tri²`, so density arrives sooner
+where the old curve leaked: at the p=0.062 approach station (phase-locked), mean luma fell
+**61.4 → 24.6** and the bright share (>96) to **0.001** — Act II's submerged blue no longer
+reads through the veil while Earth Core is still on screen, which is precisely "the reveal
+holds back". Exit unchanged by construction: leaving the weather fast into open water is the
+breach's feeling.
+
+**2. The warm→cool pre-seed, through geometry that already exists.** The chapter's god-ray
+cones walk their tint from ember `0xff8a2e` toward a steel-pulled STEAM_COOL as `uSeam`
+engages — zero new draws, zero new materials, and the target colour derives from the quench's
+own constant so the pre-seed and the occluder cannot drift. Code-verified and eased on the
+seam's own clock; **capture-occluded by design** (the walk lives at p ≈ 0.067–0.093, and by
+the first station inside that window the veil is already opaque — the effect exists for the
+moving crossing, which the seam pan shows as a continuous warm→white→cool read).
+
+**3–4. Deferred, named:** the vault-mouth opening (column lean is authored geometry —
+3b-class work) and the First Heart farewell pose (pure animation authoring; Calcifer grammar
+is already proven in the study). Wave 7 polish list.
+
+**Seam montage** (`artifacts/odyssey/wave-v/seam-1-2-high-webgpu/`): the crossing reads
+billow → full white → open water, with the ribbon and orbs riding INSIDE the shell and the
+Wave 5 fish visible through the thinning veil on the exit side — the act handoff as one
+continuous motion. Colour-script tests green (36); console clean but for the pre-existing
+forest-prewarm timeout.
 
 ### Wave 7 — Close the books (both lanes, budget cells, index)
 

@@ -142,7 +142,13 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // longer and then closes quickly — the easing lives here rather than in the
             // shader so it cannot fight the alpha/brightness split above.
             const tri = 1 - Math.abs((t * 2) - 1);
-            uDensity.value = tri * tri;
+            // ASYMMETRIC ON PURPOSE (Wave 6 — the one open tuning note the One World closure
+            // recorded). Squaring kept the APPROACH clear so long that Act II's submerged blue
+            // read through the veil while Earth Core was still on screen (captured at p~0.068).
+            // The approach side now uses a gentler exponent so density arrives sooner and the
+            // reveal holds back; the exit keeps the square — leaving the weather quickly into
+            // open water is the feeling the breach wants.
+            uDensity.value = t < 0.5 ? tri ** 1.4 : tri * tri;
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
         },
