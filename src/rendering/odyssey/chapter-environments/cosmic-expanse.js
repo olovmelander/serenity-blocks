@@ -592,6 +592,29 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.position.y = chapterCenterY;
     }
 
+    // WAVE 5 — FOG OFF for the WHOLE chapter, not just the planet.
+    //
+    // The summit-earth fix (see createHeroPlanetNebulaAnchor) disabled fog on the planet
+    // anchor and stopped there, so everything else in Space kept scene fog switched on. The
+    // board rewrites scene.fog every frame from the chapter profile and FogExp2 is
+    // 1 - exp(-(d*z)^2), so at Space's own density 0.0006 the accretion disk and lensing
+    // shell — 2020 u out, and the chapter's HERO — were rendering 77% in fog colour. During
+    // the 5->6 handover it is worse: the early-ignite path above deliberately makes this whole
+    // chapter drawable across the Ch5 summit, where density 0.0022 saturates that distance to
+    // 100%. Nothing in Space is meant to be atmospheric; it is a vacuum.
+    //
+    // This never showed up in the playground because the playground has no scene.fog at all,
+    // which is the exact "right in isolation, washed in-game" signature this trap always has.
+    // Guarded by tests/unit/odyssey-chapter-fog-optout.test.js, which walks the built
+    // environment rather than the source — a traverse only covers what is parented when it
+    // runs, so pinning the call site would not have caught this.
+    group.traverse((child) => {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+            if (material) material.fog = false;
+        });
+    });
+
     return group;
 }
 
