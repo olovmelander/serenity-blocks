@@ -632,6 +632,36 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     // Backdrop discipline: this is still the backstop — capped below every set piece.
     color = min(color, vec3(0.3, 0.1, 0.06));
 
+    // WAVE 3b — THE CANOPY LIVES HERE NOW. It was a SECOND full-coverage BackSide shell
+    // composited over this one with normal blending and depthTest:false — i.e. a whole extra
+    // screen of transparent fill on the lane measured fill-bound, for a result this shader
+    // can produce in-line: compositing over the background is `mix(bg, canopy, alpha)` when
+    // the background is the only thing behind it, which is exactly what renderOrder made
+    // true. One draw, one material and a full frame of blending disappear; the pixels do not.
+    const canopyPos = dir.mul(3.0);
+    const canopyMotion = vec3(uTime.mul(0.018), uTime.mul(0.012), uTime.mul(0.009));
+    const cCloud1 = fbm3(canopyPos.add(canopyMotion), 3);
+    const cCloud2 = fbm3(canopyPos.mul(2.05).sub(canopyMotion.mul(0.62)), 3);
+    const cCloud3 = fbm3(canopyPos.mul(0.55).add(canopyMotion.mul(0.38)), 3);
+    const cDensityRaw = cCloud1.mul(0.52).add(cCloud2.mul(0.32)).add(cCloud3.mul(0.24));
+    const cCeiling = smoothstep(-0.32, 0.46, dir.y)
+        .mul(oneMinus(smoothstep(0.88, 1.0, dir.y).mul(0.32)));
+    const cDensity = smoothstep(-0.16, 0.48, cDensityRaw).mul(cCeiling);
+    const cGlowNoise = fbm3(canopyPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)), 3)
+        .add(0.5);
+    const cInternalGlow = smoothstep(0.42, 0.86, cGlowNoise);
+    const cUnderLight = oneMinus(smoothstep(0.12, 0.78, dir.y)).mul(cDensity);
+    const cPulse = sin(uTime.mul(0.55)).mul(0.15).add(0.85);
+    let canopyColor = vec3(0.014, 0.010, 0.026)
+        .add(vec3(0.070, 0.018, 0.012).mul(cDensity));
+    canopyColor = canopyColor.add(vec3(0.26, 0.062, 0.016).mul(cInternalGlow).mul(cUnderLight)
+        .mul(cPulse)
+        .mul(0.58));
+    canopyColor = canopyColor.add(vec3(0.09, 0.020, 0.008).mul(uPulseIntensity).mul(cUnderLight));
+    canopyColor = min(canopyColor, vec3(0.22, 0.10, 0.055));
+    const canopyAlpha = cDensity.mul(0.62).mul(smoothstep(-0.22, 0.28, dir.y).add(0.18));
+    color = mix(color, canopyColor, clamp(canopyAlpha, 0.0, 1.0));
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.side = THREE.BackSide;

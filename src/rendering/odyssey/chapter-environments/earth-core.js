@@ -41,7 +41,6 @@ import {
     createLavaFallTSL,
     createGodRayConeTSL,
     createVolcanoBackgroundTSL,
-    createMagmaCloudCanopyTSL,
     createRockClusterMaterialTSL,
     createObsidianColumnTSL,
     createMagmaHorizonTSL,
@@ -815,13 +814,11 @@ export function createEarthCoreEnvironment(options = {}) {
     // 1. Create background sphere (enhanced with lava glow)
     const background = createVolcanoBackground(uniforms);
     group.add(background);
-    const magmaCloudCanopy = createMagmaCloudCanopyTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        { uOpacity: uniforms.uOpacity },
-    );
-    group.add(magmaCloudCanopy.mesh);
-    group.userData.magmaCloudCanopy = magmaCloudCanopy.mesh;
+    // WAVE 3b — the canopy shell is DELETED as a drawable: its colour terms now live inside
+    // the volcano background's shader (see createVolcanoBackgroundTSL), which removes a full
+    // screen of transparent fill and one material on the fill-bound lane with the same pixels.
+    // userData keeps pointing at the surface that carries the canopy so nothing dangles.
+    group.userData.magmaCloudCanopy = background;
 
     // 2. Create animated lava floor - THE MAIN FEATURE. The molten BASINS (plan:
     // legacy-floor revival) are sampled from the path so the "lava surf" beats sit
