@@ -914,6 +914,23 @@ So the wave splits, and the split is recorded rather than quietly performed:
   yields matched pairs twice), so 3b can A/B with `--flags odysseyHideLevelNodes=1` on both
   sides until the orb-side toggle is found.
 
+  **3b ACCEPTANCE AS RESCOPED — pre-registered 2026-08-12 BEFORE the work it gates, so the
+  bar cannot drift to meet the result:**
+
+  1. **Fill:** a measured Lane B reduction at the ch1 station on content-matched pairs
+     (`--flags odysseyHideLevelNodes=1` both sides, quiet), **≥ 5 ms p50** against the 58.20/
+     58.46 ms sans-orbs baseline, achieved by shrinking emissive SURFACE AREA (overhead
+     layers, duplicated horizon bands, haze) — the measured cost axis.
+  2. **Value gates hold:** in-game `midWash ≤ 0.25` at the cathedral station (p=0.031) after
+     the surface cuts, phase-locked, per-chapter session — a fill cut that un-does 3a's look
+     does not count.
+  3. **Draw/structural:** any deleted or migrated structure gets
+     `earth-core-environment.test.js` changed IN THE OPEN in the same commit with its own
+     justification, and the drawable ratchet LOWERED to the new count. The ≤35 target remains
+     tracked by §8's `odysseyAct1Ch1DrawCalls` cell (null until earned) — it is a
+     compile/startup goal now, not this wave's exit bar, per the measured rescope above.
+  4. **Suite + lint green; captures attached.**
+
 > ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
 > 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
 > the playground. Measured against the SHIPPED chapter under the real ACES grade, it is
