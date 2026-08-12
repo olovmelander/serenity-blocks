@@ -892,6 +892,52 @@ So the wave splits, and the split is recorded rather than quietly performed:
 > same discovery: Wave 4's real target is 0.988 → structured, and "the near-surface frame is
 > brightest" was always a proxy for it.
 
+#### Wave 3a STATUS — 4 measured attempts, acceptance NOT met, **left unchecked** (2026-08-12)
+
+Landed (tests green throughout, contract untouched): the backdrop's ember belt is
+darkness-gated and contrast-shaped; the molten haze is halved; the lava lake carries the Wave
+1 study's composition (crust as the minority, a rare pale stop via `pow`, quantised glitter);
+the magma cloud canopy is halved and its ceiling dropped.
+
+**Acceptance is `midWash ≤ 0.25` in-game. Best station measured 0.42; most sit at 0.65+.**
+Not met. Four attempts, each measured rather than argued:
+
+| # | lever | result |
+|---|---|---|
+| 1 | backdrop ember belt darkness-gated | inconclusive — see the instrument note below |
+| 2 | rock bounce gated by height above the lake | **marginal** (0.439 → 0.425 at p=0, but 0.550 → 0.651 at p=0.062) |
+| 3 | lake ported from the Wave 1 study | no mid-wash gain (0.425 → 0.494 at p=0) |
+| 4 | magma cloud canopy halved | no gain (0.494 → 0.436 at p=0, others flat) |
+
+**THE INSTRUMENT WAS THE FIRST BLOCKER, AND IT INVALIDATED AN EARLIER CLAIM.** Attempt 1 was
+written up as "mid-wash 0.460 → 0.289, a real improvement". It was noise: two runs of
+**functionally identical code** through `odyssey-chapter-capture.mjs` produced **0.289 / 0.466
+/ 0.233** and **0.435 / 0.698 / 0.793** at the same stations. Every animated uniform rides
+`boardController.time`, which advances with wall clock, so each run samples a different frame
+of lava, ember and haze animation — a run-to-run spread of up to **0.56**, larger than any
+art change being evaluated. Fixed: the harness now takes **`--time <seconds>`**, freezing the
+clock exactly as the playground's `?t=` does, and records `fixedTime` in the manifest. Every
+number in the table above is phase-locked; the pre-fix ones are struck.
+
+**THE REAL BLOCKER, identified from the captures:** the wash is not the backdrop, the lake or
+the canopy — it is `moltenRockField`, the shared rock shading applied to **every wall, column
+and boulder in the chapter**. In-game it renders as saturated mid-red across the entire
+silhouette with no charred anchor, and the Wave 1 study got its structure from the opposite
+choice: a near-black charred base with warmth admitted ONLY as a rim from below. Changing that
+field is not a constant tweak — it is the chapter's rock identity, it feeds the geode/colonnade
+/boulder families, and it deserves its own wave with its own captures.
+
+**Next step, precisely:** re-author `moltenRockField`'s base toward near-black and re-admit
+warmth through the existing `bakedWarm` bounce (now height-gated) plus the fresnel rim, then
+re-measure at `--time 9`. Expect the mid-wash to fall from ~0.65 toward the study's 0.147 in
+one move, because this is the surface that owns the pixels.
+
+**A note the plan owes the reader:** Wave 1's model — the vault, tapered columns, teardrop
+Heart — lives in the PLAYGROUND only. Chapter 1 in-game still has its shipped geometry by
+design (the §3 split keeps the contract-pinned structure), so anyone comparing the two will
+correctly see "the same chapter, re-lit" rather than the study. Porting the study's GEOMETRY
+is Wave 3b, and it is the larger half of the work.
+
 **Sequencing rationale:** 3a is what makes the act beautiful and is capture-verifiable today;
 3b is what makes it cheap and needs a contract negotiation first. The measured Lane B cost
 (⚠️ see §0.2 — ch1 is the journey's worst frame) belongs to 3b, and §8's `odysseyAct1Ch1DrawCalls`
