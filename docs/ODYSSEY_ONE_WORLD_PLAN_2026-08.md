@@ -772,7 +772,22 @@ this document's own prose — several waves this file described as done were not
     rows and read nowhere (the live value is a hardcoded 0.32), and `bloomScale` was read as
     `qualityPreset.bloomScale ?? 0.25` while no row ever defined it. Re-tuning either per tier
     is a VISUAL change owing a capture (ADR-0007), so they were deleted, not wired.
-  - **Act-gating the world group is NOT the one-liner the audit proposed.** The dome cull is
+  - **ACT-GATE DONE (2026-08-12) — and it was a CORRECTNESS fix, not the perf tidy-up the
+    audit framed it as.** Captured at p=0.051, mid Chapter 1: the authored ember-lit molten
+    cathedral was rendering as magma columns floating in Act II's blue-teal ocean, god-ray
+    shafts included, because the world group's `.visible` was never written and Earth Core's
+    vault backstop (opaque BackSide r=250, `depthWrite = false`, renderOrder -90) paints
+    colour but no depth, so the world's depth-writing geometry overwrote it. Worse in kind:
+    **every** chapter's sky backstop sits at `renderOrder = -100` and so does the world's
+    dome — same order, all BackSide, all depth-write-off — so which sky won in chapters 6/7/8
+    was three's sort tie-break, not authoring. Gated to Act II ± 0.03 (the authored seamWidth
+    of both act edges; NOT the journey's widest 0.06, which reaches 35% into Ch1 and fixes
+    nothing). Verified: warmth R-B +2.0 -> +71.2, matching the no-world reference at +67.5;
+    Act II unchanged at p=0.30; console clean; 128 -> 240 fps at the Ch1 station. The gate is
+    one shared function (`world/odyssey-world-act-gate.js`) used by the board, the new
+    `seam-12-dive` harness and the tests, so the harness cannot drift from the game.
+  - **The ORIGINAL hazard note, kept because the reasoning was right even though the
+    conclusion was too cautious:** act-gating is NOT the one-liner the audit proposed. The dome cull is
     `if (atmosphere && oneWorld) setDomeVisible(false)` with no progress term, so outside
     Act II the world's own dome IS the sky backstop for chapters 1/6/7/8 — hiding the group
     would cull both and black out the sky for half the journey. The safe form gates the
