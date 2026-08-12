@@ -10,8 +10,12 @@ import {
     odysseyWorldMacro,
     smoothMax,
 } from './odyssey-world-height.js';
-import { getCanonicalMountainRangeWorldSpecs } from '../chapter-environments/shared/canonical-mountain-range.js';
-import { getActiveOdysseyChapterPositions, getOdysseyPathPointAt } from '../path-utils.js';
+import { ODYSSEY_PEAK_SPECS, PEAK_CONE_RADIUS_FRAC } from './odyssey-peak-specs.js';
+import {
+    getActiveOdysseyChapterPositions,
+    getChapterPathRange,
+    getOdysseyPathPointAt,
+} from '../path-utils.js';
 
 // Act II's world is one surface. These guards hold it to two things it must not break:
 // the compositions already validated in-game, and the rail the camera actually rides.
@@ -19,26 +23,45 @@ import { getActiveOdysseyChapterPositions, getOdysseyPathPointAt } from '../path
 describe('the canonical peaks survive as terms in the height field', () => {
     // The user has explicitly praised the far-left flank and the Ch4 hero massif silhouette.
     // Moving to a height field must not quietly re-site them.
-    const specs = getCanonicalMountainRangeWorldSpecs({ includeFarRange: true });
+    //
+    // SPEC-AUTHORITY FLIP (2026-08-12): expectations come from the WORLD's own frozen spec
+    // table + the live path, not from the legacy diorama module. This is the test that used
+    // to import chapter-environments — the truth direction it enforced pointed at code Wave
+    // 4 deletes. Now ODYSSEY_MASSIFS (the pinned absolutes the bake needs) is verified
+    // against ODYSSEY_PEAK_SPECS (offsets, the geometry authority) + the real chapter
+    // centres, so a re-sited path or an edited offset fails HERE, world-side.
+    const chapter3Center = getChapterPathRange(3).center;
+    const chapter4Center = getChapterPathRange(4).center;
+    const expected = ODYSSEY_PEAK_SPECS.map((peak) => ({
+        id: peak.id,
+        x: chapter4Center.x + peak.dx,
+        z: chapter4Center.z + peak.dz,
+        footY: chapter3Center.y + peak.footDy,
+        radius: peak.size * PEAK_CONE_RADIUS_FRAC,
+        height: peak.height,
+    }));
 
     it('carries one term per shipped canonical peak', () => {
-        expect(ODYSSEY_MASSIFS).toHaveLength(specs.length);
+        expect(ODYSSEY_MASSIFS).toHaveLength(expected.length);
     });
 
-    it.each(specs.map((s) => [s.id, s]))('%s keeps its world position and crown', (_id, spec) => {
+    it.each(expected.map((s) => [s.id, s]))('%s keeps its world position and crown', (_id, spec) => {
         const term = ODYSSEY_MASSIFS.find(
-            (m) => Math.hypot(m.x - spec.worldPosition.x, m.z - spec.worldPosition.z) < 1,
+            (m) => Math.hypot(m.x - spec.x, m.z - spec.z) < 1,
         );
         expect(term).toBeTruthy();
 
         // Footprint radius must match the SHIPPED displaced extent (size * coneRadiusFrac),
         // not the plane the cone was drawn on — that difference is what made the old rim fade
         // eat 147u of standing mountain per side.
-        expect(term.radius).toBeCloseTo(spec.size * 0.45, 0);
+        expect(term.radius).toBeCloseTo(spec.radius, 0);
+
+        // The transcription's foot datum must agree with the authority's derivation.
+        expect(term.footY).toBeCloseTo(spec.footY, 1);
 
         // And the summit lands where the shipped crown does.
         const summit = odysseyWorldMacro(term.x, term.z);
-        const shippedCrown = spec.worldPosition.y + spec.height;
+        const shippedCrown = spec.footY + spec.height;
         expect(Math.abs(summit - shippedCrown)).toBeLessThan(30);
     });
 

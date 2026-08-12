@@ -7,8 +7,7 @@ import {
 } from './chapter-environments/surface-world.js';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
-import { getCanonicalMountainRangeWorldSpecs } from './chapter-environments/shared/canonical-mountain-range.js';
-import { mountainCpuDisplacement } from './chapter-environments/shared/mountain-language.js';
+import { odysseyWorldHeight } from './world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathCurve,
@@ -55,29 +54,22 @@ describe('odyssey path layout', () => {
         expect(earlyChapter6Point.z).toBeLessThanOrEqual(-590);
     });
 
-    it('keeps the Sky Drift spline above and in front of the canonical summit mass', () => {
+    it('keeps the Sky Drift spline above the summit mass of the world it actually flies over', () => {
+        // SPEC-AUTHORITY FLIP (2026-08-12): this used to measure clearance against the LEGACY
+        // diorama silhouette (canonical specs + mountainCpuDisplacement) — a proxy for ground
+        // the default path no longer renders. It now measures against the One World height
+        // field itself, which is the surface under the camera in the shipped build. Same 60u
+        // contract; measured 112.3u at the tightest point (p=0.500, the summit crossing) when
+        // this was rewritten, so a failure here means the rail or the terrain moved, not noise.
         const positions = getActiveOdysseyChapterPositions();
         const ch5Start = positions[4];
         const ch6Start = positions[5];
-        const heroSpecs = getCanonicalMountainRangeWorldSpecs();
         let minClearance = Infinity;
 
-        for (let i = 0; i <= 80; i += 1) {
-            const t = ch5Start + (ch6Start - ch5Start) * (i / 80);
+        for (let i = 0; i <= 160; i += 1) {
+            const t = ch5Start + ((ch6Start - ch5Start) * (i / 160));
             const point = getOdysseyPathPointAt(t);
-            heroSpecs.forEach((spec) => {
-                const mountainHeight = mountainCpuDisplacement(
-                    point.x - spec.worldPosition.x,
-                    point.z - spec.worldPosition.z,
-                    {
-                        size: spec.size,
-                        height: spec.height,
-                        seed: spec.seed,
-                    },
-                );
-                const peakSurfaceY = spec.worldPosition.y + mountainHeight;
-                minClearance = Math.min(minClearance, point.y - peakSurfaceY);
-            });
+            minClearance = Math.min(minClearance, point.y - odysseyWorldHeight(point.x, point.z));
         }
 
         expect(minClearance).toBeGreaterThan(60);

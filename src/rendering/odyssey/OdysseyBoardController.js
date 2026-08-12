@@ -11,6 +11,7 @@ import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -657,6 +658,14 @@ export class OdysseyBoardController {
                 this.oneWorld = null;
                 this.oneWorldEnabled = false;
                 this.environmentManager.suppressedChapters = new Set();
+                // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
+                // player-visible banner + a persisted localStorage log. Silent recovery is
+                // how we would have retired the fallback while some machine quietly needed
+                // it — and how a future world-only build would degrade to a void nobody
+                // reports. Reporting must never break the recovery, hence its own guard.
+                try {
+                    reportWorldBuildFailure(error);
+                } catch { /* diagnostic only — never let reporting hurt the fallback */ }
             }
         }
         const compilePool = [];

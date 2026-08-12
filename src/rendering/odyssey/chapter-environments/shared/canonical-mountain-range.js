@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { getChapterPathRange } from '../../path-utils.js';
+import { ODYSSEY_PEAK_SPECS } from '../../world/odyssey-peak-specs.js';
 import { createFBMMountainTSL } from '../mountain-peaks.tsl.js';
 import {
     MOUNTAIN_SHADING,
@@ -9,11 +10,10 @@ import {
 } from './mountain-language.js';
 
 export const CANONICAL_MOUNTAIN_RANGE_VERSION = 'chapter-04-hero-chain-v2';
-export const CANONICAL_HERO_MOUNTAIN_SPEC_IDS = Object.freeze([
-    'ch4-left-main',
-    'ch4-right-main',
-    'ch4-center-hero',
-]);
+// Derived from the world's authority table rather than restated, so it cannot drift from it.
+export const CANONICAL_HERO_MOUNTAIN_SPEC_IDS = Object.freeze(
+    ODYSSEY_PEAK_SPECS.filter((peak) => peak.role !== 'far-range').map((peak) => peak.id),
+);
 
 // Hero peaks get their own, LIGHTER haze destination. The shared cool pole (0x33506e) is a
 // dark navy left over from the dropped day→night beat: under a bright daylight sky (Ch3
@@ -71,109 +71,44 @@ function toLocalPosition(worldPosition, hostCenter) {
 export function getCanonicalMountainRangeWorldSpecs({
     includeFarRange = false,
 } = {}) {
+    // SPEC-AUTHORITY FLIP (2026-08-12): the geometry — sizes, heights, seeds, offsets — now
+    // lives in the WORLD's own frozen table (world/odyssey-peak-specs.js) and this builder
+    // DERIVES from it, instead of the other way round. The values are byte-identical to the
+    // ones that were authored here; only the ownership moved, so that the shipped height
+    // field no longer takes its truth from a module scheduled for deletion. The derivation
+    // itself is unchanged and worth restating:
+    //
+    // ONE MASSIF, not three mountains (2026-08). The three "hero chain" peaks share ONE base
+    // datum (footDy −30 off the Ch3 centre = the Ch4 snow-floor datum, ~world 302) so the
+    // chain meets the ground on a single continuous foot line, and a TIGHT depth stagger
+    // (80u) with the tall centre hero deepest, so the mains read as its forward shoulders.
+    //
+    // The far-left flank (role 'far-range') sits at dx −1710 — NOT the intuitive −780 — so
+    // it lands in the empty left third of the frame instead of hiding behind the hero mass,
+    // and 50u lower so its feet rise out of the open sea haze. Its mirror 'ch4-far-right'
+    // was REMOVED on in-game feedback (it painted a second ridgeline behind the hero's
+    // right shoulder); the composition wants the open sky there. Look (treatments/bases) is
+    // applied HERE by role — look belongs to the renderer, geometry to the world.
     const chapter3Center = resolveCenter(3);
-    const chapter4Range = resolveChapterRange(4);
-    const chapter4Center = chapter4Range.center;
-    // ONE MASSIF, not three mountains (2026-08). The three "hero chain" peaks used to sit on
-    // three DIFFERENT ground levels (chapter3Center.y −10 / −20 / −30 = a 20u spread) at three
-    // different depths (a 140u z spread), so each had its own visible foot line and its own
-    // haze/parallax layer — they read as three separate models standing near each other rather
-    // than one massif with shoulders. They now share:
-    //   • ONE base datum (centerMountainY), which is also the Ch4 snow-floor datum (~world 302),
-    //     so the whole chain meets the ground on a single continuous foot line; and
-    //   • a TIGHT depth stagger (80u instead of 140u) with the tall centre hero deepest, so the
-    //     two mains read as its forward shoulders instead of as separate peaks in front of it.
-    // Their footprints already overlap heavily (radii 460/450/670 across a 460u x-spread), so a
-    // shared base + tight depth is what fuses them into a single silhouette.
-    const centerMountainY = chapter3Center.y - 30;
-    const specs = [
-        {
-            id: 'ch4-left-main',
-            role: 'main',
-            size: 920,
-            height: 360,
-            worldPosition: new THREE.Vector3(
-                chapter4Center.x - 230,
-                centerMountainY,
-                chapter4Center.z - 600,
-            ),
-            seed: 12.34,
-            treatment: MAIN_PEAK_TREATMENT,
-            base: MAIN_PEAK_BASE,
-            isHero: true,
-        },
-        {
-            id: 'ch4-right-main',
-            role: 'main',
-            size: 900,
-            height: 340,
-            worldPosition: new THREE.Vector3(
-                chapter4Center.x + 230,
-                centerMountainY,
-                chapter4Center.z - 630,
-            ),
-            seed: 45.67,
-            treatment: MAIN_PEAK_TREATMENT,
-            base: MAIN_PEAK_BASE,
-            isHero: true,
-        },
-        {
-            id: 'ch4-center-hero',
-            role: 'hero',
-            size: 1340,
-            height: 720,
-            worldPosition: new THREE.Vector3(
-                chapter4Center.x,
-                centerMountainY,
-                chapter4Center.z - 680,
-            ),
-            seed: 89.12,
-            treatment: MAIN_PEAK_TREATMENT,
-            base: MAIN_PEAK_BASE,
-            isHero: true,
-        },
-    ];
+    const chapter4Center = resolveChapterRange(4).center;
 
-    if (includeFarRange) {
-        // ENABLED 2026-08 ("it feels empty on the left side of the big mountains"): this
-        // silhouette was fully plumbed but never switched on by any host. Retuned from the
-        // original near-centre placement (x −220 — hidden BEHIND the hero) to a genuine
-        // FLANK, pushed well past the left-main's outer edge so a misty receding chain fills
-        // the empty left sky on the whole Ch3 approach. It sits deeper than the hero plane
-        // with the authored far-atmosphere treatment, so it reads as a background
-        // aerial-perspective layer, never a band across the hero (the apron lesson).
-        //
-        // The matching 'ch4-far-right' (x +560, z −1320) was REMOVED 2026-08 on in-game
-        // feedback: sitting only 560u off-centre it projected INSIDE the massif's own span
-        // rather than beyond it, so instead of balancing the composition it painted a second
-        // ridgeline directly behind the hero's right shoulder — which is precisely what was
-        // reading through the (then semi-transparent) flank as "mountains behind the hero".
-        // The left flank works because −1710 clears the massif angularly; there is no
-        // symmetric room on the right, and the composition wants the open sky there.
-        specs.push({
-            id: 'ch4-far-left',
-            role: 'far-range',
-            size: 1500,
-            height: 430,
-            // x −1710 (not the intuitive −780): at ~1700u the same lateral offset
-            // subtends HALF the angle it does at the massif's ~850u, so −780 hid the
-            // whole chain BEHIND the hero mass (projected centre ndc −0.09 vs the
-            // massif spanning −0.45..+0.55). −1710 lands the chain in the empty left
-            // third (ndc ≈ −1.0..−0.2 at the rail view), its feet rising out of the
-            // open sea haze.
+    return ODYSSEY_PEAK_SPECS
+        .filter((peak) => includeFarRange || peak.role !== 'far-range')
+        .map((peak) => ({
+            id: peak.id,
+            role: peak.role,
+            size: peak.size,
+            height: peak.height,
             worldPosition: new THREE.Vector3(
-                chapter4Center.x - 1710,
-                centerMountainY - 50,
-                chapter4Center.z - 1260,
+                chapter4Center.x + peak.dx,
+                chapter3Center.y + peak.footDy,
+                chapter4Center.z + peak.dz,
             ),
-            seed: 7.77,
-            treatment: FAR_RANGE_TREATMENT,
-            base: FAR_RANGE_BASE,
-            isHero: false,
-        });
-    }
-
-    return specs;
+            seed: peak.seed,
+            treatment: peak.role === 'far-range' ? FAR_RANGE_TREATMENT : MAIN_PEAK_TREATMENT,
+            base: peak.role === 'far-range' ? FAR_RANGE_BASE : MAIN_PEAK_BASE,
+            isHero: peak.role !== 'far-range',
+        }));
 }
 
 export function createCanonicalMountainRangeTSL({
