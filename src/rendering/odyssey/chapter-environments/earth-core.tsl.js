@@ -41,6 +41,7 @@ import {
     normalize,
     normalLocal,
     normalView,
+    normalWorld,
     oneMinus,
     pow,
     positionLocal,
@@ -166,8 +167,8 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
     // So the CRUST goes charred (it is rock that has cooled, not rock that is glowing) and the
     // cooling-molten river darkens. The bright river stop is untouched: the fire must stay
     // fire, or emptying the mid band just makes a grey cave.
-    const uCrust = vec3(0.022, 0.010, 0.006); // charred rock — dark, still warm-hued
-    const uRiverDark = vec3(0.16, 0.028, 0.008); // cooling molten (deep ember)
+    const uCrust = vec3(0.013, 0.006, 0.004); // charred rock — dark, still warm-hued
+    const uRiverDark = vec3(0.105, 0.019, 0.006); // cooling molten (deep ember)
     const uRiverBright = vec3(0.92, 0.28, 0.035); // hot flowing magma, below yellow-white
     const uVein = vec3(0.95, 0.32, 0.04); // hottest crack core (warm-orange instead of gold-white)
 
@@ -545,7 +546,15 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
 
     const intensity = clamp(vertical.mul(shimmer), 0.0, 1.0);
     const color = uTint.mul(uPulseIntensity.mul(0.15).add(1.0));
-    const alpha = intensity.mul(nearFade).mul(0.06).mul(uOpacity); // plan: ~0.06 low-opacity cones
+    // FACING FADE — the lesson Act II already paid for on its own god rays, applied here.
+    // A cone is a SHELL standing in for a volume, so without dimming where it is seen
+    // edge-on it draws its own silhouette: the in-game captures show hard pale WEDGES rather
+    // than columns of light, which is both the least Ghibli thing in the chapter and a
+    // sizeable slice of its mid-band. The grazing angle IS the boundary, so fading there
+    // means the shape has no visible edge at all.
+    const rayView = normalize(cameraPosition.sub(positionWorld));
+    const facingFade = pow(abs(dot(normalWorld, rayView)), 0.85);
+    const alpha = intensity.mul(nearFade).mul(facingFade).mul(0.06).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = min(color, vec3(0.9, 0.82, 0.7));
