@@ -633,7 +633,9 @@ the One World convention — and the plan shipped without it.)
   invariants mutation-verified; the first hue-rate guard was INERT and was strengthened until
   it failed for the right reason. Chroma floor calibrated 0.05 → 0.02 against the measured
   palette.
-- [ ] **Wave 3** — Earth Core reborn (the port, behind a dev flag until captured)
+- [ ] **Wave 3a** — Earth Core RE-LIT (script-driven, Wave 1's device, structure kept)
+- [ ] **Wave 3b** — Earth Core CONSOLIDATED to ≤35 draws (needs an explicit
+  `earth-core-environment.test.js` contract migration — see the Wave 3 split note)
 - [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
 - [ ] **Wave 5** — Life (fish, kelp, the accompanied ascent)
 - [ ] **Wave 6** — The crack climax (the last fifth of ch1, into the shipped quench)
@@ -838,6 +840,40 @@ have, which is itself the reason mutations get re-run until they fail for the RI
   metrics); `earth-core-environment.test.js` green throughout; the 1→2 seam re-captured
   (quench still occludes; ribbon-inside-shell behaviour intact).
 
+#### Wave 3 SPLIT — 3a / 3b, decided 2026-08-12 BEFORE execution (premise check, not a retreat)
+
+The wave as written asks for two things that cannot both be honoured: **"≤35 draws"** and
+**"`earth-core-environment.test.js` green throughout"**. The contract test pins, by name, a
+structure the shipped chapter spends its 131 draws on:
+
+`firstHeart` ('first-heart') · `colonnade` ('basalt-colonnade-walls') · `seleniteChamber`
+('selenite-geode-chamber') · `visibilityTargets.{firstHeart, lavaFall, seleniteChapel}` ·
+`lavaFloor.userData.glows` **exactly 5** · `elements.rockClusters` non-empty · **≥6 geode
+clusters** projected into the camera corridor · staged **seam boulders** that sink · the
+`uSeam` choreography · a `uOpacity` bridge on **every** `opacityNode` material.
+
+A ≤35-draw rebuild deletes most of that. Deleting it means rewriting those assertions in the
+same commit that makes them fail — which is the one thing this plan's discipline forbids
+("never weaken a test to make a wave pass"), and it would also discard authored beats
+(the selenite chapel, the geode corridor) that no capture has yet judged worth losing.
+
+So the wave splits, and the split is recorded rather than quietly performed:
+
+- **Wave 3a — RE-LIGHT (this wave's real deliverable).** Keep every named structure and the
+  whole `uSeam` choreography; replace the LIGHTING and PALETTE with the Wave 1 device:
+  script-driven via `sampleAct1ColourScript`, one warm key below, darkness-gated response,
+  the starved cyan seed, the low-frequency crust. Draw count is untouched, so no test moves.
+  Acceptance keeps the in-game captures, the value-share gate under ACES, and the 1→2 seam.
+- **Wave 3b — CONSOLIDATE (new, unchecked).** Take 131 draws toward ≤35 by folding the
+  particle systems into one atlas and the rock families into instanced sets, WITH a deliberate
+  migration of `earth-core-environment.test.js` to the surviving contract — a test change made
+  in the open, reviewed on its own merits, not smuggled in beside a look change.
+
+**Sequencing rationale:** 3a is what makes the act beautiful and is capture-verifiable today;
+3b is what makes it cheap and needs a contract negotiation first. The measured Lane B cost
+(⚠️ see §0.2 — ch1 is the journey's worst frame) belongs to 3b, and §8's `odysseyAct1Ch1DrawCalls`
+cell is 3b's gate, not 3a's.
+
 ### Wave 4 — The ocean becomes luminous (bands, ceiling, motes)
 
 > **/goal hook:** "Act I Wave 4: banded depth ramp + SSS ceiling + capped particulate in
@@ -852,6 +888,47 @@ have, which is itself the reason mutations get re-run until they fail for the RI
   (inverting §0.3's finding); Lane B gpu-split at the p=0.16 station, content-matched,
   delta vs. this plan's §0.2 Lane B underwater baseline **≤ +0.8 ms p50 (ESTIMATE — the
   gate cell in §8 holds the truth and a miss re-scopes the mote budget, not the plan)**.
+
+#### Wave 4 STATUS — IMPLEMENTED, PARTIALLY VERIFIED, **left unchecked** (2026-08-12)
+
+Landed and green: the **banded depth ramp** (three script-driven plates replacing the single
+exponential), the **crest-SSS luminous ceiling** (~5 ALU on the existing water material, zero
+new draws), the two **water keyframes** Wave 2 deferred here (`luminous-mid-water` p=0.06,
+`shallows` p=0.12 — both inside Act II's existing span, both passing every script invariant),
+and **Wave 0's measured fill defect**.
+
+**The fill fix is MEASURED, and it is the wave's one fully-verified claim.** In-game capture
+metrics, before → after, same stations:
+
+| station | `submerged` | clouds submitted | god-rays submitted | draws |
+|---|---|---|---|---|
+| p=0.160 | 1.00 | **true → false** | true | **44 → 42** |
+| p=0.182 | 0.00 | true | **true → false** | **44 → 42** |
+
+Two `mesh.visible` writes, two draws and a sky-covering sheet of zero-alpha fragments off the
+weak lane at every submerged station.
+
+**Why it is NOT checked off.** The acceptance asks that "the p=0.185 frame is now the
+BRIGHTEST of the three". Measured mean luma at the three captured depths: **170.4 (p=0.137),
+100.5 (p=0.160), 78.8 (p=0.182)** — still darkening upward. But the criterion cannot be
+judged from these stations, and Wave 0 already explained why:
+
+- **p=0.182 is not underwater.** It measures `submerged = 0.00`, script keyframe `breach` —
+  the eye crosses the waterline at p≈0.181, so that frame is AIR and the water treatment
+  (bands, god-rays) is correctly switched off in it.
+- **p=0.137 is inside the steam quench** (window 0.033–0.153), so its 170.4 is billow, not
+  water.
+
+The two remaining stations do not bracket the band progression. **Next step, precisely:**
+re-capture at **p = 0.150 / 0.165 / 0.178** — all submerged, all outside the quench — and
+compare. If the ramp still darkens upward there, the band thresholds (`0.10/0.42` and
+`0.45/0.92` on a 160 u normaliser) are the lever, not the palette. Also still owed:
+the **motes** (§3.4.3) and the **Lane B delta** against the 7.73 ms baseline, which per
+ADR-0016 must be a cooled, quiet, content-matched run — not one taken while a capture
+harness and a dev server are competing for the same GPU, as they were this session.
+
+**Gates on what landed:** `npx vitest run` 332 files / **3294 tests green**; `npx eslint`
+clean on both changed files; in-game capture taken under the real ACES grade.
 
 ### Wave 5 — Life (fish, kelp, the accompanied ascent)
 
