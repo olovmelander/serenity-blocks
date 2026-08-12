@@ -155,6 +155,7 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
             lavaFall,
             seleniteChapel,
             geodeClusters,
+            lavaLake,
         } = group.userData.visibilityTargets;
 
         expect(firstHeart).toBeTruthy();
@@ -162,9 +163,23 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
         expect(seleniteChapel).toBeTruthy();
         expect(geodeClusters.length).toBeGreaterThanOrEqual(6);
 
-        [1, 8, 16].forEach((frame) => {
+        // THE OPENING FRAME'S SUBJECT CHANGED, BY DIRECTION (2026-08-12): the chapter now
+        // opens looking across the lava it is born from - "an angle so that you see the first
+        // level orb as well as the lava floor at the start position". A level opening cannot
+        // also contain the First Heart, which sits ~62 degrees above the eye at the top of the
+        // shaft, so its frame-1 assertion is REPLACED (not dropped) by a pin on the new
+        // subject below. The Heart is still required at frames 8 and 16, where the ascent has
+        // pitched the camera up and the Heart is genuinely the hero beat.
+        [8, 16].forEach((frame) => {
             expectVisible(group, firstHeart, captureProgress(frame), `First Heart frame ${frame}`);
         });
+
+        // Frame 1 pins the authored opening: the lava floor must be in shot, and it must be
+        // read as a FLOOR - i.e. below the frame's centre line, not a sliver on the edge.
+        expect(lavaLake, 'lava lake exposed as a visibility target').toBeTruthy();
+        expectVisible(group, lavaLake, captureProgress(1), 'Lava floor frame 1');
+        const lavaNdc = projectTarget(group, lavaLake, captureProgress(1));
+        expect(lavaNdc.y, 'lava floor sits below the frame centre at the start').toBeLessThan(0);
 
         [8, 9, 10, 11].forEach((frame) => {
             expectVisible(group, seleniteChapel, captureProgress(frame), `Selenite chapel frame ${frame}`);

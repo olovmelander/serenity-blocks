@@ -1233,6 +1233,9 @@ export function createEarthCoreEnvironment(options = {}) {
         seleniteChapel: group.userData.seleniteChamber,
         geodeClusters: elements.rockClusters,
         seamBoulders: elements.seamBoulders,
+        // The lava lake surface: the opening frame's floor. Exposed so the framing test can
+        // pin the composition the opening was authored for (orb + floor both in frame).
+        lavaLake: group.userData.lavaFloor?.userData?.surface ?? null,
     };
 
     // Position the environment: X/Z stay centered on the chapter, but Y is anchored to
