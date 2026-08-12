@@ -1654,7 +1654,30 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // p=0.235 and 40% at p=0.250 while the range above it was already fully solid: the massif
     // read as floating over a haze band instead of sitting on rising ground. It now shares the
     // chain's breach reveal, so the alpine world arrives as one solid piece.
-    const alpineOpacity = surfaceOpacity * alpineBreachReveal;
+    //
+    // CHAPTER-WEIGHT FOLD (r181 dead-write fix). The manager crossfades Ch3 by writing
+    // group.userData.chapterOpacity and calling setGroupOpacity, which can only reach a material
+    // through `material.uniforms.uOpacity` (ChapterEnvironmentManager.js:581) or through
+    // `material.opacity` (ibid.:1329). The skirt has NO `material.uniforms` bridge and DOES author
+    // `material.opacityNode` (surface-world.tsl.js:1280) — and three r181 picks
+    // `this.opacityNode ? float(this.opacityNode) : materialOpacity` (NodeMaterial.js:872), so
+    // `material.opacity` is a DEAD WRITE and the manager could never dim this mesh. It therefore
+    // held full presence right up to the binary `group.visible = opacity > 0` flip (~p 0.386):
+    // the skirt did not fade out, it vanished. Fold the weight into the alpha expression instead —
+    // the same mechanism, and the same fix, Ch4 already applies (mountain-peaks.js:927).
+    //
+    // ONE-SIDED, on purpose. The weight is folded only on the chapter's EXIT half. On the 2->3
+    // ecotone the weight is still climbing (0.34 at p=0.200, 0.54 at 0.205, 0.90 at 0.215) LONG
+    // after alpineBreachReveal has reached 0.999 (p ~= 0.200, path probeY 294.2 vs waterline
+    // 287.3), so folding it there would drop the skirt back to half opacity the instant the camera
+    // surfaces — the exact "massif floating over a haze band" regression the paragraph above fixed.
+    // The weight is a flat 1.0 across [0.222, 0.320], which contains the chapter midpoint, so the
+    // hand-over at seasonValue 0.5 is a no-op: nothing steps.
+    const chapterWeight = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    // seasonValue is the chapter-local 0->1 progress resolved above; it stays 0 with no progress
+    // info (pilot / standalone harness), which keeps the gate off and the chapter fully solid.
+    const alpineChapterFade = seasonValue >= 0.5 ? chapterWeight : 1;
+    const alpineOpacity = surfaceOpacity * alpineBreachReveal * alpineChapterFade;
     // L5 HAND-OFF (in-game "transparent / switching mountain" fix): do NOT recede the distant range
     // at the 3→4 seam. The L5 authority pass draws only ONE copy of the shared canonical chain
     // through the boundary, so the drawn copy must hold CONSTANT opacity — receding it to 0 by the

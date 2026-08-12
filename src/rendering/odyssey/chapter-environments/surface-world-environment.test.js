@@ -221,6 +221,36 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         expect(resolveSurfaceWorldEntryRampState(null).entryOpacity).toBe(1);
     });
 
+    it('folds the manager chapter weight into the alpine skirt alpha on the way out only', () => {
+        stubCanvasDocument();
+
+        const group = createSurfaceWorldEnvironment();
+        const positions = getActiveOdysseyChapterPositions();
+        const ch3Start = positions[2];
+        const ch4Start = positions[3];
+        // The skirt's alpha rides this TSL node inside its authored opacityNode
+        // (surface-world.tsl.js: `material.opacityNode = uOpacity.mul(seamFade)...`), which is why
+        // the manager's material.opacity crossfade is a dead write in r181 and this fold exists.
+        const skirtAlpha = group.userData.foothillBridge.userData.odysseyUniforms.uOpacity;
+
+        // Mid-chapter the manager weight is 1 — the skirt stays fully solid.
+        group.userData.chapterOpacity = 1;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch3Start + (ch4Start - ch3Start) * 0.5);
+        expect(skirtAlpha.value).toBeCloseTo(1, 3);
+
+        // 3->4 crossfade: the skirt now DIMS with the chapter instead of surviving at full
+        // presence until the manager's binary group.visible flip.
+        group.userData.chapterOpacity = 0.35;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch4Start);
+        expect(skirtAlpha.value).toBeCloseTo(0.35, 3);
+
+        // 2->3 breach: the weight is still climbing while the breach reveal is already 1.0, so it
+        // must NOT dim the arriving skirt (the "floating massif" regression).
+        group.userData.chapterOpacity = 0.34;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch3Start + 0.001);
+        expect(skirtAlpha.value).toBeCloseTo(1, 3);
+    });
+
     it('holds the water through the valley and only releases it into the mountains seam', () => {
         const positions = getActiveOdysseyChapterPositions();
         const ch3Start = positions[2];
