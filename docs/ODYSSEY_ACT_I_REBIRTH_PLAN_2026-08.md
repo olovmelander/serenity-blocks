@@ -936,6 +936,33 @@ Attempt 6 re-based the chapter's fog (§3.3's "red soup": density 0.014 → 0.00
 script's vault base) and measured **worse** — 0.508 → 0.647 at the same station — because
 thinning the fog UNCOVERS the bright emissive geometry it was hiding. Reverted.
 
+> 🔴 **A THIRD, WORSE INSTRUMENT DEFECT — found 2026-08-12 after the above, and it
+> invalidates every per-station number in this wave.** `win.webContents.capturePage()` returns
+> the last COMPOSITED frame, not the current one. The harness settled a station, changed the
+> DOM, and photographed — getting a frame from BEFORE the settle. Station 1 therefore showed
+> the main menu (the pre-board state) and every later station showed its PREDECESSOR's view,
+> which is why hiding `#start-modal` three different ways never worked: the modal was already
+> gone from the page and still present in the photograph.
+>
+> Fixed by waiting two `requestAnimationFrame`s plus a 120 ms settle between the DOM sweep and
+> the shutter. Verified: station 1 now shows the cavern (no menu), and station 4 — the quench
+> peak — finally reads meanLuma **210** (white vapour), which is what that station has always
+> been and never once photographed.
+>
+> **Consequence, stated plainly: the six Wave 3a A/B comparisons above were made on
+> mis-aligned frames and cannot be trusted to say which lever worked.** They are kept as the
+> record of how the defect was found, not as evidence about the art. The re-baseline on the
+> fixed instrument, current code, `--time 9`:
+>
+> | station | p | midWash | trueBlack | meanLuma |
+> |---|---|---:|---:|---:|
+> | 1 | 0.000 | 0.684 | 0.119 | 69.2 |
+> | 2 | 0.031 | 0.631 | 0.367 | 35.0 |
+> | 3 | 0.062 | 0.391 | 0.302 | 65.7 |
+> | 4 | 0.093 | 0.001 | 0.000 | 210.1 (quench peak — correct) |
+>
+> Every future Act I measurement starts here.
+
 **Two instrument defects contaminated this whole wave, and both are now known:**
 
 1. **Station 1 is unusable.** Its capture repeatedly catches the MENU OVERLAY before

@@ -298,6 +298,43 @@ const HIDE_OVERLAYS = `
             if (rect.width <= 0 || rect.height <= 0) return;
             hideElement(element);
         });
+        // SELECTOR LISTS GO STALE; GEOMETRY DOES NOT. The named list above missed whatever
+        // shows the mode cards at journey position 0, so EVERY run's first station captured
+        // the main menu over the board — and its value metrics were mostly UI, which silently
+        // polluted six phase-locked A/Bs before anyone looked at the image. Sweep by geometry
+        // instead: anything positioned, outside the board container, that covers a meaningful
+        // slice of the viewport is chrome by definition in a capture.
+        // THE DECISIVE SWEEP: hide every top-level subtree that does NOT contain the board.
+        // Selector lists and position-based heuristics both missed the mode-card menu (it is
+        // laid out in normal flow inside a full-page wrapper), so six A/B runs measured UI.
+        // Containment is the only property that cannot go stale: exactly one subtree holds the
+        // canvas we came to photograph; everything else is chrome.
+        const boardEl = document.querySelector('#odyssey-board-3d')
+            || document.querySelector('canvas#odyssey-board-canvas')
+            || document.querySelector('#odyssey-board-3d canvas');
+        if (boardEl) {
+            Array.from(document.body.children).forEach((child) => {
+                if (child.contains(boardEl)) return;
+                if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') return;
+                hideElement(child);
+            });
+        }
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        document.querySelectorAll('body *').forEach((element) => {
+            if (element.closest('#odyssey-board-3d')) return;
+            if (element.tagName === 'CANVAS') return;
+            const computed = window.getComputedStyle(element);
+            if (computed.position !== 'fixed' && computed.position !== 'absolute') return;
+            if (computed.display === 'none' || computed.visibility === 'hidden') return;
+            const rect = element.getBoundingClientRect();
+            if (rect.width < 40 || rect.height < 40) return;
+            const covered = (Math.min(rect.right, vw) - Math.max(rect.left, 0))
+                * (Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
+            if (covered <= 0) return;
+            if (covered / (vw * vh) < 0.01) return;
+            hideElement(element);
+        });
         document.body.classList.remove('startup-shell-active', 'start-modal-open', 'serenity-hub-open');
         return true;
     })();
@@ -412,6 +449,19 @@ async function settleAtPosition(win, position, options = {}) {
 }
 
 async function capturePng(win, filename, metrics = {}) {
+    // HIDE IMMEDIATELY BEFORE THE SHUTTER. Sweeping during `settleAtPosition` is not enough:
+    // `#start-modal` re-shows itself asynchronously while the mode finishes activating, which
+    // is after the settle sweep and before the first frame is photographed. That is why
+    // station 1 — and ONLY station 1 — carried the main menu in every run, quietly turning its
+    // value metrics into a measurement of UI.
+    await execute(win, HIDE_OVERLAYS).catch(() => {});
+    // AND GIVE THE COMPOSITOR TIME TO ACT ON IT. `capturePage()` returns the last composited
+    // frame, so a DOM change made microseconds earlier is not in it — which is why hiding the
+    // modal at the shutter still photographed the modal. Two rAFs plus a short settle is the
+    // difference between changing the page and photographing the changed page.
+    await execute(win, `new Promise((r) => requestAnimationFrame(
+        () => requestAnimationFrame(() => setTimeout(r, 120)),
+    ))`).catch(() => {});
     const image = await win.webContents.capturePage();
     await writeFile(path.join(ARTIFACT_DIR, filename), image.toPNG());
     await writeFile(
