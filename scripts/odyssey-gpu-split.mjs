@@ -103,6 +103,12 @@ function urlFor(flags) {
         odysseyPixelRatio: '1',
         odysseyDisableAdaptiveQuality: '1',
         odysseyDisableBackgroundLoading: '1',
+        // Load only the Act II window. Without this the board creates and warms all EIGHT
+        // chapters before isActive flips, which on a cold shader cache runs past the readiness
+        // wait — and it was One World, the heaviest boot, that always lost that race and
+        // recorded null. Applied to EVERY configuration so they stay comparable, and it also
+        // makes the measured frame the Act II frame, which is the one One World changes.
+        odysseyCaptureChapters: '3,4,5',
         // Chromium's switch alone is not enough: the board asks the renderer for
         // 'high-performance', which hands back the discrete part regardless.
         ...(LOW_POWER ? { odysseyLowPowerGpu: '1' } : {}),
@@ -143,7 +149,7 @@ async function runConfiguration(config) {
         // Loading the page is not entering the mode: without this the harness would settle,
         // sample, and publish a confident GPU-time split of the main menu.
         await win.webContents.executeJavaScript(`(async () => {
-            const waitFor = async (fn, ms = 120000) => {
+            const waitFor = async (fn, ms = 240000) => {
                 const until = Date.now() + ms;
                 while (Date.now() < until) {
                     try { if (await fn()) return true; } catch (e) { /* still booting */ }
@@ -243,7 +249,7 @@ app.whenReady().then(async () => {
             // all. Record it as a null row and carry on — an absent number is information.
             const result = await Promise.race([
                 runConfiguration(config),
-                wait(150000).then(() => ({ ...config, summary: null, timedOut: true })),
+                wait(320000).then(() => ({ ...config, summary: null, timedOut: true })),
             ]);
             const s = result.summary;
             process.stdout.write(
