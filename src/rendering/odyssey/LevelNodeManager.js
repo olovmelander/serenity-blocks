@@ -1440,6 +1440,29 @@ export class LevelNodeManager {
     /**
      * Dispose resources
      */
+    /**
+     * Hide or show everything this manager draws, without disposing it.
+     *
+     * Wave -1 of docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md calls the level-node group "the most
+     * likely 610M bottleneck and has never been measured": 55 nodes x 3 nested transparent
+     * depthWrite:false shells is a fill-rate shape that a 4-ROP part hates. An A/B needs to
+     * remove it from the frame WITHOUT changing anything else, so this toggles visibility
+     * rather than tearing the manager down — the update path, the CPU work and the transforms
+     * all keep running, and the difference measured is the rasterisation alone.
+     * @param {boolean} visible
+     */
+    setAllVisible(visible) {
+        const on = visible !== false;
+        [
+            this.glassInstancedMesh,
+            this.glowInstancedMesh,
+            this.lockInstancedMesh,
+            this.starInstancedMesh,
+            this.particleSystem,
+        ].forEach((mesh) => { if (mesh) mesh.visible = on; });
+        this.nodes.forEach((node) => { if (node?.group) node.group.visible = on; });
+    }
+
     dispose() {
         this.nodes.forEach((node) => {
             if (node.coreMaterial) node.coreMaterial.dispose();

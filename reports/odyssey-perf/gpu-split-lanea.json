@@ -1,0 +1,92 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-12T00:10:53.100Z",
+  "lane": "A",
+  "configurationsRun": "full",
+  "quality": "High",
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "blackwell",
+    "device": "",
+    "description": ""
+  },
+  "resolution": "1920x1080",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 600,
+      "p50": 2.883584,
+      "p95": 4.063232,
+      "p99": 4.58752,
+      "min": 1.572864,
+      "max": 4.849664,
+      "drawCalls": 140,
+      "triangles": 245071,
+      "oneWorld": false,
+      "levelNodesHidden": false,
+      "quality": "High"
+    },
+    {
+      "id": "no-bloom",
+      "note": "bloom node detached from the post graph",
+      "samples": 600,
+      "p50": 2.097152,
+      "p95": 2.555904,
+      "p99": 2.883584,
+      "min": 1.703936,
+      "max": 3.7355519999999998,
+      "drawCalls": 132,
+      "triangles": 245127,
+      "oneWorld": false,
+      "levelNodesHidden": false,
+      "quality": "High"
+    },
+    {
+      "id": "no-level-nodes",
+      "note": "55 nodes x 3 nested transparent shells hidden",
+      "samples": 600,
+      "p50": 2.162688,
+      "p95": 2.8835839999999995,
+      "p99": 3.2767999999999997,
+      "min": 1.769472,
+      "max": 4.9152,
+      "drawCalls": 132,
+      "triangles": 104059,
+      "oneWorld": false,
+      "levelNodesHidden": true,
+      "quality": "High"
+    },
+    {
+      "id": "one-world",
+      "note": "chapters 2-5 replaced by the continuous world"
+    },
+    {
+      "id": "one-world-no-level-nodes",
+      "note": "both"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 600,
+      "p50": 2.9491199999999997,
+      "p95": 3.2767999999999997,
+      "p99": 3.6044799999999997,
+      "min": 2.097152,
+      "max": 3.866624,
+      "drawCalls": 126,
+      "triangles": 244235,
+      "oneWorld": false,
+      "levelNodesHidden": false,
+      "quality": "High"
+    }
+  ],
+  "split": {
+    "bloomMs": 0.786,
+    "levelNodesMs": 0.721,
+    "oneWorldDeltaMs": null,
+    "baselineDriftMs": -0.066,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal."
+  }
+}
