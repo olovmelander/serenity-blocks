@@ -114,12 +114,24 @@ for (let y = cropTop; y < height; y += 1) {
     }
 }
 
+// MID-WASH is the metric that actually discriminates this act's defect, and it was found by
+// measuring rather than by assuming. `darkShare` alone is nearly vacuous for Earth Core: the
+// shipped chapter already scores 0.751 against the plan's >=0.50 gate, because a magma cavern
+// has plenty of dark pixels — its problem was never "too bright", it was that everything
+// between the black and the fire sits in one undifferentiated mid band. Measured 2026-08-12:
+// shipped Earth Core 0.460, the Wave 1 playground study 0.147, and the shipped ocean a
+// catastrophic 0.988 (not one pixel below luma 64). Lower is a frame with structure.
+const midWash = (histogram[1] + histogram[2]) / count;
+const trueBlack = histogram[0] / count;
+
 const result = {
     file,
     size: `${width}x${height}`,
     measuredRows: `${cropTop}..${height}`,
     threshold,
     darkShare: +(dark / count).toFixed(4),
+    trueBlack: +trueBlack.toFixed(4),
+    midWash: +midWash.toFixed(4),
     meanLuma: +(sum / count).toFixed(1),
     histogram: histogram.map((h) => +(h / count).toFixed(3)),
 };

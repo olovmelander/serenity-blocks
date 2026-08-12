@@ -869,6 +869,29 @@ So the wave splits, and the split is recorded rather than quietly performed:
   migration of `earth-core-environment.test.js` to the surviving contract — a test change made
   in the open, reviewed on its own merits, not smuggled in beside a look change.
 
+> ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
+> 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
+> the playground. Measured against the SHIPPED chapter under the real ACES grade, it is
+> already met: **darkShare 0.751** at the p=0 station (0.587 at the seam). Wave 3a could
+> therefore have been "passed" by changing nothing, which is precisely the kind of gate this
+> plan exists not to ship.
+>
+> The histogram says why, and hands over the metric that does discriminate. A magma cavern has
+> no shortage of dark pixels — Earth Core is **42 % true-black** already. Its defect is that
+> everything between the black and the fire sits in ONE undifferentiated mid band:
+>
+> | frame | true-black (<32) | **mid-wash (32–96)** | verdict |
+> |---|---:|---:|---|
+> | shipped Earth Core, p=0, in-game ACES | 0.420 | **0.460** | the "~90 % mid-red" read, quantified |
+> | Wave 1 playground study | 0.832 | **0.147** | the target structure |
+> | shipped ocean, p=0.160, in-game | 0.000 | **0.988** | worse — not one pixel below luma 64 |
+>
+> **Wave 3a's acceptance is therefore restated: `midWash ≤ 0.25` in-game at the cathedral
+> station**, with `darkShare` kept only as a floor. `scripts/act1-value-gate.mjs` now reports
+> `trueBlack` and `midWash` alongside it. The ocean row is recorded here because it is the
+> same discovery: Wave 4's real target is 0.988 → structured, and "the near-surface frame is
+> brightest" was always a proxy for it.
+
 **Sequencing rationale:** 3a is what makes the act beautiful and is capture-verifiable today;
 3b is what makes it cheap and needs a contract negotiation first. The measured Lane B cost
 (⚠️ see §0.2 — ch1 is the journey's worst frame) belongs to 3b, and §8's `odysseyAct1Ch1DrawCalls`
