@@ -793,7 +793,7 @@ export function createOdysseyWorld({
     // path), tilted to the real ODYSSEY_WORLD_SUN rather than the old chapter's private
     // "light from above" assumption. Visible only while the camera is underwater.
     const sunkPoints = railSamples.filter((pt) => pt && pt.y < ODYSSEY_SEA_LEVEL - 6);
-    const rayCount = Math.min(14, sunkPoints.length);
+    const rayCount = Math.min(22, sunkPoints.length);
     let rayMesh = null;
     let rayMat = null;
     if (rayCount > 2) {
@@ -802,7 +802,17 @@ export function createOdysseyWorld({
         // Brightest where the shaft meets the surface, feathering to nothing as it descends;
         // soft lateral feather so the cone melts into the water instead of reading as a shape.
         const vFade = float(1).sub(rUv.y).pow(1.15);
-        const eFade = float(1).sub(abs(rUv.x.sub(0.5)).mul(2.0).pow(1.6)).pow(1.4);
+        // FACING fade, not a uv.x feather. On a ConeGeometry uv.x runs around the
+        // CIRCUMFERENCE, so the ported `abs(uv.x - 0.5)` lit one side of the cone and left a
+        // hard seam on the other — in-game that read as solid triangular wedges, not light.
+        // A shell standing in for a volume must instead dim where it is seen EDGE-ON, because
+        // the grazing angle IS the silhouette; fading it there means the shape has no visible
+        // boundary at all.
+        const rayView = normalize(cameraPosition.sub(positionWorld));
+        const eFade = abs(dot(normalWorld, rayView)).pow(0.85).toVar();
+        // NEAR fade: the rail passes THROUGH these shafts, and a 220 u cone a few metres from
+        // the eye fills the frame with one flat wedge. Same lesson as the cloud deck.
+        const rayNear = smoothstep(float(14), float(85), length(positionWorld.sub(cameraPosition)));
         const rayShimmer = snoise3(vec3(
             rUv.x.mul(3.0),
             rUv.y.mul(2.0).add(uTime.mul(-0.12)),
@@ -811,7 +821,8 @@ export function createOdysseyWorld({
             .mul(0.55)
             .add(0.45);
         rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
-        rayMat.opacityNode = vFade.mul(eFade).mul(rayShimmer).mul(uSubmerged).mul(0.30)
+        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmer).mul(uSubmerged)
+            .mul(0.55)
             .toVar();
         rayMat.transparent = true;
         rayMat.blending = THREE.AdditiveBlending;
@@ -834,7 +845,7 @@ export function createOdysseyWorld({
         const fullTilt = new THREE.Quaternion()
             .setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDirV);
         const tilt = new THREE.Quaternion().slerp(fullTilt, 0.35);
-        const rayGeo = new THREE.ConeGeometry(12, 220, 12, 1, true);
+        const rayGeo = new THREE.ConeGeometry(7, 240, 14, 1, true);
         rayMesh = new THREE.InstancedMesh(rayGeo, rayMat, rayCount);
         const rm4 = new THREE.Matrix4();
         const rPos = new THREE.Vector3();
