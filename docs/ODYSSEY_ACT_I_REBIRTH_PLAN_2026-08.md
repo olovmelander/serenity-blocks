@@ -1514,6 +1514,23 @@ constant. The +5 draws are frustum-clipped quads (vertex-only, no fill). Downstr
 ch1's content-match draw number becomes ~83 sans orbs; old 78/79-draw reports remain
 comparable on time but not on draw count.
 
+### 10.5 The cells, after this round (MEASURED)
+
+The flicker fix unblocked the two cells whose notes named it as prerequisite:
+
+- `odysseyAct1Ch1GpuP50LaneAMs` — **FILLED GREEN: baseline 0.85 vs max 1.0** (first
+  admissible pair ever: 0.786/0.852 ms with orbs, drift one timer tick, 92 draws
+  `min==max` both windows; pre-rebuild 2.10 ms/131 draws — Lane A ~2.5x faster).
+  Report: `gpu-split-lanea-act1-ch1-full-postbake.json`.
+- `odysseyAct1Ch1GpuP50LaneBMs` — full-frame (with orbs) pair, MEASURED:
+  **31.06/32.44 ms p50**, drift -1.38, 92 draws `min==max` both windows
+  (`gpu-split-laneb-act1-ch1-full-postbake.json`). Orbs cost ~3 ms on this lane.
+  Against the pre-plan 57.21 ms (with orbs), the real ch1 frame is **45 % faster**.
+  Baseline stays null: the cell's max 5.0 still needs the deliberate re-budget
+  decision recorded in its note.
+- `odysseyAct1Ch1DrawCalls` — 83 sans orbs / 92 with orbs, CONSTANT for the first
+  time; stays null against max 35 until the carried sprite->instanced migration.
+
 ### 10.4 Measurement admissibility lesson (instrument scar #4)
 
 The first bake re-measure returned a report with ZERO samples per configuration and
