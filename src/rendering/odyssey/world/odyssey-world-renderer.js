@@ -1021,6 +1021,14 @@ export function createOdysseyWorld({
     // FogExp2 is 1-exp(-(d*z)^2); applyAerial is 1-exp(-K*z). Equal at z = FOG_MATCH_DISTANCE.
     const FOG_MATCH_DISTANCE = 1200;
 
+    // LIVE STATE, for instruments only — never read by the renderer itself.
+    // `uSubmerged` and the active colour-script keyframe are computed every frame and were
+    // unreadable from outside, so a capture could not distinguish "the world believes it is
+    // underwater" from "the world believes it is in air". That is precisely the question an
+    // apparently-wrong submerged frame asks, and answering it by re-deriving the formula in
+    // the harness would let the two copies drift.
+    const state = { submerged: 0, scriptName: '', actT: 0 };
+
     const stats = {
         quality,
         groundTriangles: ground.triangles,
@@ -1041,6 +1049,7 @@ export function createOdysseyWorld({
     return {
         group,
         stats,
+        state,
         heightAt: relief.sample,
         fog: fogState,
         /**
@@ -1075,6 +1084,11 @@ export function createOdysseyWorld({
                 1,
                 (ODYSSEY_SEA_LEVEL + 4.5 - (railPoint.y + 16)) / 9,
             ));
+            // Publish what this frame decided, for instruments (see `state` above). Written
+            // LAST so a reader can never observe a half-updated frame.
+            state.submerged = uSubmerged.value;
+            state.scriptName = cs.name;
+            state.actT = progress;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 treeMeshes[i].visible = Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;

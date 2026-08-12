@@ -184,14 +184,36 @@ function startDevServer() {
     return proc;
 }
 
+/**
+ * Kill a spawned dev server AND ITS CHILDREN.
+ *
+ * On Windows the server is `cmd.exe /d /s /c npm.cmd run dev ...`, so `proc.kill()` reaps
+ * the cmd wrapper and leaves node/Vite holding the port. The next `--strictPort` run then
+ * dies with "dev server did not start in 90s", which reads as a harness bug rather than as
+ * the leak it is; the 2026-08-12 Act I measurement session lost three runs to exactly this
+ * before the orphans were swept by hand. `taskkill /T` walks the tree.
+ */
+function killProcessTree(proc) {
+    if (!proc || proc.killed || !proc.pid) return;
+    if (process.platform === 'win32') {
+        try {
+            spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+        } catch {
+            proc.kill('SIGKILL');
+        }
+        return;
+    }
+    proc.kill('SIGTERM');
+}
+
 async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
     if (!proc.killed) {
-        proc.kill('SIGTERM');
+        killProcessTree(proc);
         await delay(800);
-        if (!proc.killed) proc.kill('SIGKILL');
+        if (!proc.killed && process.platform !== 'win32') proc.kill('SIGKILL');
     }
 }
 
@@ -408,6 +430,33 @@ async function collectMetrics(win, extra = {}) {
                 seamProgress: director?.seamProgress ?? null,
                 loadedChapters: [...(bc?.environmentManager?.environments?.keys?.() || [])].sort((a, b) => a - b),
                 debugOverlayPresent: !!document.getElementById('odyssey-aaa-debug-overlay'),
+                // WHAT IS ACTUALLY ON SCREEN. A capture that shows an unexpected surface
+                // used to leave only speculation about which object drew it — the Act I
+                // plan's Phase 0 logged a "cloud deck renders underwater" defect that was
+                // really the steam quench doing its job. These three blocks make the frame
+                // self-describing: what the world believes, which act-edge volume is live,
+                // and the visible-mesh roster (traverseVisible already honours the whole
+                // parent chain, so this is the drawn set, not the authored set).
+                world: {
+                    present: !!bc?.oneWorld,
+                    groupVisible: bc?.oneWorld?.group?.visible ?? null,
+                    submerged: bc?.oneWorld?.state?.submerged ?? null,
+                    scriptName: bc?.oneWorld?.state?.scriptName ?? null,
+                    actT: bc?.oneWorld?.state?.actT ?? null,
+                },
+                occluders: {
+                    steamQuenchVisible: bc?.steamQuench?.mesh?.visible ?? null,
+                    cloudBankVisible: bc?.cloudBank?.mesh?.visible ?? null,
+                },
+                visibleMeshes: (() => {
+                    const names = [];
+                    bc?.scene?.traverseVisible?.((o) => {
+                        if ((o.isMesh || o.isInstancedMesh || o.isSprite) && o.name) names.push(o.name);
+                    });
+                    const counts = {};
+                    names.forEach((n) => { counts[n] = (counts[n] || 0) + 1; });
+                    return counts;
+                })(),
                 render: {
                     drawCalls: info.render?.drawCalls ?? null,
                     calls: info.render?.calls ?? null,

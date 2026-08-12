@@ -106,6 +106,27 @@ What the numbers say:
   (MEASURED once — startup-trace console line, Low quality, warm Dawn cache; re-measure cold
   in Wave 0 before quoting further).
 
+  > ✅ **RE-MEASURED COLD (Wave 0, 2026-08-12). The original figure understated it by 41 %,
+  > and the ratio is the durable part.**
+  >
+  > | run | ch1 compile | One World | ratio |
+  > |---|---:|---:|---:|
+  > | **TRUE COLD** — `DawnWebGPUCache` + `DawnGraphiteCache` + `GPUCache` all deleted, High | **3,948 ms** | 68 ms | **58×** |
+  > | warm, High, chapter window 1–2 | 2,740 ms | 91 ms | 30× |
+  > | warm, High, window 1–3 | 1,898 ms | 59 ms | 32× |
+  > | warm, Low (the plan's original single sample) | 2,336 ms | 128 ms | 18× |
+  >
+  > Two things the single sample could not say. **(1) Cold is ~2× warm**: 3.9 s against a
+  > 1.9–2.7 s warm band, so the number a first-ever player pays is nearly double the one this
+  > plan first quoted as if exact. **(2) The ratio survives every condition** — quality tier,
+  > chapter window, cache state — at **18–58× the whole continuous world's compile**. Quote
+  > "Earth Core is ~4 s of a cold start and tens of times One World's compile"; never a
+  > single millisecond figure. The ≤10-material budget in §3.5 is aimed squarely at this.
+  >
+  > *Method note for whoever repeats it:* clearing `GPUCache` alone is NOT cold on this
+  > Electron — WebGPU pipelines live in `DawnWebGPUCache`/`DawnGraphiteCache`, and a
+  > GPUCache-only clear reproduced a warm 1,894 ms. All three must go.
+
 ### 0.3 What Act I looks like today (captured, 6 stations per chapter, 2026-08-12)
 
 Artifacts: `artifacts/odyssey/wave-v/chapter-01-high-webgpu/` and `chapter-02-high-webgpu/`.
@@ -123,7 +144,18 @@ single glow carry it).
 **The underwater stretch** (`chapter-02-03/04/05`): a flat royal-blue void. No vertical light
 gradient — the near-surface frame (p=0.182, 13 u down) is *darker and emptier* than the
 mid-depth frame, when the physics and every reference say the water column must brighten
-toward the light. No particulate, no life, no scale cues; the god rays read as faint streaks;
+toward the light.
+
+> ✏️ **AMENDED by Wave 0's instrumentation — the mechanism is now known, and it changes the
+> fix.** At p=0.182 the world has already switched to **air** (`uSubmerged = 0.000`, script
+> keyframe `breach`), because the submerged blend is driven by the EYE (`railPoint.y + 16`),
+> not the rail. The eye crosses the waterline at **p ≈ 0.181**, so §0.1's "breach at p≈0.190"
+> is the RAIL's crossing and the *visual* breach is ~9 progress-thousandths earlier. The
+> near-surface frame is therefore not "underwater but wrongly dark" — it is **already
+> rendering as air**, with the god rays alpha-gated off, while the composition still reads as
+> submerged. The Wave 4 band ramp must own the last few metres below the surface explicitly
+> (and the SSS ceiling is what sells them), rather than assuming the water treatment is still
+> active there. No particulate, no life, no scale cues; the god rays read as faint streaks;
 the level orbs and ribbon are the only content. "Magical luminous ocean" does not exist yet —
 which is also the opportunity: the canvas is clean and cheap.
 
@@ -135,6 +167,43 @@ which is also the opportunity: the canvas is clean and cheap.
    or the gate fails in-game too (live regression). The One World closure notes say the
    in-game underwater body "reads correctly", so the instrument is the prime suspect — but
    per ADR-0016 this is *decided by an instrumented repro, not by which explanation is
+   comfortable*: Wave 0 adds `uSubmerged` to the capture metrics JSON and re-shoots one
+   station.
+
+   > ⚠️ **REFUTED (Wave 0, 2026-08-12) — and the instrumented answer is better than the
+   > guess.** The claim above is wrong twice over; the original is preserved because the way
+   > it was wrong is the reusable part.
+   >
+   > **1. The "cumulus" is the STEAM QUENCH, doing its job.** The 1→2 occlusion window is
+   > `0.093 ± 0.06 = [0.033, 0.153]`, and the new `visibleMeshes` roster shows
+   > `odyssey-steam-quench` drawn at **exactly** p=0.093 / 0.115 / 0.137 and absent at
+   > 0.160 / 0.182 / 0.204 — the three cited "cumulus" stations are the three quench
+   > stations, at billow densities 1.00 / 0.40 / 0.07. Mottled white vapour filling a
+   > submerged frame is the shipped act-edge volume, not a leak.
+   >
+   > **2. The gate WORKS.** Measured `uSubmerged`: **1.000** at p=0.093–0.160, 0.000 at
+   > 0.182+. Cloud alpha is `×(1 − uSubmerged)`, so it is exactly zero everywhere the frame
+   > is underwater. Neither hypothesis in the original claim survives.
+   >
+   > **3. The instrument lied first, and the lie was MINE.** The first re-shoot reported
+   > `submerged = 0.00` and an empty script name at every station — which would have
+   > "confirmed" the instrument-gap hypothesis. The cause was that the exposure patch
+   > declared the `state` object and returned it but never assigned to it, so the capture was
+   > reading initial values. Fixed, re-shot, and recorded here because a plan that trusts its
+   > first instrument reading is the failure mode this whole document is organised against
+   > (ADR-0016 §1: *the instrument is verified*). One capture round bought the correction.
+   >
+   > **4. What IS real, found by the same roster:** `odyssey-world-clouds` is **submitted and
+   > rasterised at every fully-submerged station** — provably invisible (alpha 0) yet paying
+   > full fragment cost: three texture fetches per covered pixel across a sky-covering sheet,
+   > on the lane measured at 7.73 ms. `odyssey-world-godrays` is the same bug with the
+   > opposite polarity (submitted at p=0.182/0.204 where `uSubmerged = 0` zeroes its alpha).
+   > **Fix: two `mesh.visible` writes in the world's `update()`, Wave 4** — a fill saving on
+   > the weak lane for one line each, and the honest version of the defect this entry was
+   > reaching for.
+   >
+   > *(Original claim continues below, unedited.)*
+   > per ADR-0016 this is *decided by an instrumented repro, not by which explanation is
    comfortable*: Wave 0 adds `uSubmerged` to the capture metrics JSON and re-shoots one
    station.
 2. **A WebGPU validation storm on the Act I boot path** (observed live in a dev session this
@@ -527,7 +596,11 @@ wave's acceptance criteria pass; `grep -c '^- \[ \]'` over this file is the rema
 count. (Added 2026-08-12: the session-spanning /goal hook greps for exactly this format —
 the One World convention — and the plan shipped without it.)
 
-- [ ] **Wave 0** — Instrument truth (blocking; nothing visual until these answer)
+- [x] **Wave 0** — Instrument truth — **DONE 2026-08-12.** Refuted its own premise (the
+  "cumulus underwater" was the steam quench; the gate works), caught a lying instrument that
+  was our own omission, found the real defect instead (clouds + god rays submitted while
+  provably invisible → Wave 4), corrected the breach to p≈0.181, measured cold compile at
+  3,948 ms (58× One World), and fixed the harness Vite-orphan leak.
 - [ ] **Wave 1** — The playground value study (the look is proven before any port)
 - [ ] **Wave 2** — The script grows its Act I limb (data + tests before pixels)
 - [ ] **Wave 3** — Earth Core reborn (the port, behind a dev flag until captured)
@@ -553,6 +626,50 @@ the One World convention — and the plan shipped without it.)
   §0.3 (owner: the post/prewarm pipeline, outside this plan's waves).
 - **Acceptance:** metrics field present in a fresh capture JSON; one-line verdict on the
   cumulus defect recorded in this file; compile number replaces the caveated one in §0.2.
+
+#### Wave 0 OUTCOME — DONE 2026-08-12. The wave paid for itself by refuting its own premise.
+
+**1. The cumulus defect does not exist; the quench does.** Verdict recorded at the claim
+(§0.3 defect 1, original preserved): `odyssey-steam-quench` is drawn at exactly the three
+cited stations (p=0.093/0.115/0.137, densities 1.00/0.40/0.07) and nowhere else, and
+`uSubmerged` measures **1.000** across every submerged station — the gate works, and the
+"cumulus" was the shipped act-edge volume doing its job.
+
+**2. The instrument lied first, and the lie was ours.** The first re-shoot read
+`submerged = 0.00` / empty script name at every station — a result that would have
+*confirmed* the plan's instrument-gap hypothesis. Cause: the exposure patch declared and
+returned the `state` object but never assigned to it. Fixed, re-shot, and written up in
+place, because "the plausible reading confirmed the guess" is precisely how the four false
+numbers in the One World plan survived review (ADR-0016 §1).
+
+**3. One real defect found, of a different shape than the one hunted.**
+`odyssey-world-clouds` is submitted and rasterised at every fully-submerged station while
+its alpha is provably zero (three texture fetches per covered pixel of a sky-covering sheet,
+on the lane that measures 7.73 ms); `odyssey-world-godrays` is the same bug inverted at
+p≥0.182. **Two `mesh.visible` writes in the world's `update()` — assigned to Wave 4.**
+
+**4. The near-surface frame is already AIR, not dark water.** `uSubmerged` is eye-driven
+(`railPoint.y + 16`), so the visual breach lands at **p ≈ 0.181**, not the rail's 0.190.
+§0.3's "darker and emptier near the surface" is the water treatment switching off early, not
+a gradient bug — amended at the claim; it changes what Wave 4 must build.
+
+**5. Cold compile re-measured: ch1 = 3,948 ms cold (58× One World), ~2× the warm band.**
+Method note recorded: `GPUCache` alone is not cold on this Electron.
+
+**6. Harness leak fixed** (the §0.3 defect-4 item): both `odyssey-gpu-split.mjs` and
+`odyssey-chapter-capture.mjs` now kill the dev-server **process tree** on Windows, so a run
+can no longer orphan Vite and fail the next `--strictPort` boot. This session lost three
+measurement runs to that leak before it was understood.
+
+**7. Validation-storm repro: filed in-plan** (§0.3 defect 2) with its exact console
+signature and trigger — it needs the full background chapter prewarm (ch6+), which the
+Act I capture windows exclude, which is why both Phase-0 capture consoles are clean. Owner
+is the post/prewarm pipeline, outside this plan's waves.
+
+**Gates:** `npx vitest run` **331 files / 3281 tests green**; `npx eslint` clean on all three
+changed files (the repo-wide lint carries a large pre-existing debt in untouched files —
+unchanged by this wave, and not weakened to pass it). Instrument changes are diagnostics-only;
+no visual surface was modified, so no ADR-0007 capture debt is incurred.
 
 ### Wave 1 — The playground value study (the look is proven before any port)
 

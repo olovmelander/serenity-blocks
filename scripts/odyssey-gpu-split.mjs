@@ -44,6 +44,14 @@ const HEIGHT = Math.max(240, Number(args.height || (LANE === 'B' ? 720 : 1080)))
 // Journey progress to measure at. 0.42 sits inside chapter 4 — mid Act II, the frame One
 // World actually changes — rather than at the journey start where the board parks.
 const SEEK = Number.isFinite(Number.parseFloat(args.seek)) ? Number.parseFloat(args.seek) : 0.42;
+// Which chapter environments the board is allowed to create. Defaults to the Act II window
+// this harness was built for; Act I measurements pass --chapters 1,2,3 (chapter 1 is never
+// created under the default window, so a --seek into it would measure an empty frame).
+const CHAPTERS = args.chapters ? String(args.chapters) : '3,4,5';
+// Output filename. Defaults to the canonical lane report; anything measuring a DIFFERENT
+// station/window must pass --out so it cannot clobber the Act II baselines behind the
+// perf-budgets.json cells.
+const OUT_FILE = args.out ? String(args.out) : null;
 const OUT_DIR = path.join(ROOT, 'reports', 'odyssey-perf');
 
 // Each configuration removes ONE system. baseline must run first and last: a drifting
@@ -80,6 +88,28 @@ const CONFIGURATIONS = [
 const ONLY = args.only ? String(args.only).split(',').map((t) => t.trim()) : null;
 
 let devServer = null;
+
+/**
+ * Kill the dev server AND ITS CHILDREN.
+ *
+ * The server is spawned with `shell: true` on Windows, so `devServer.kill()` reaps the shell
+ * and leaves node/Vite listening. Because every run uses `--strictPort`, the NEXT invocation
+ * then fails with "dev server did not start in 90s" — a leak that presents as a harness bug.
+ * The 2026-08-12 Act I session lost three measurement runs to it (and wedged one half-run
+ * holding the port) before the orphans were swept by hand. Kill the tree instead.
+ */
+function killDevServerTree() {
+    const proc = devServer;
+    devServer = null;
+    if (!proc || proc.killed || !proc.pid) return;
+    if (process.platform === 'win32') {
+        try {
+            spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+            return;
+        } catch { /* fall through to the POSIX path */ }
+    }
+    proc.kill();
+}
 
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const fmt = (v) => (Number.isFinite(v) ? `${v.toFixed(2)}ms` : '—');
@@ -123,7 +153,7 @@ function urlFor(flags) {
         // wait — and it was One World, the heaviest boot, that always lost that race and
         // recorded null. Applied to EVERY configuration so they stay comparable, and it also
         // makes the measured frame the Act II frame, which is the one One World changes.
-        odysseyCaptureChapters: '3,4,5',
+        odysseyCaptureChapters: CHAPTERS,
         // Chromium's switch alone is not enough: the board asks the renderer for
         // 'high-performance', which hands back the discrete part regardless.
         ...(LOW_POWER ? { odysseyLowPowerGpu: '1' } : {}),
@@ -360,12 +390,13 @@ app.whenReady().then(async () => {
             adapter,
             resolution: `${WIDTH}x${HEIGHT}`,
             seekProgress: SEEK,
+            captureChapters: CHAPTERS,
             discipline: 'p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere',
             configurations: results.map((r) => ({ id: r.id, note: r.note, ...r.summary })),
             split: buildSplit(results),
         };
         await mkdir(OUT_DIR, { recursive: true });
-        const file = path.join(OUT_DIR, `gpu-split-lane${LANE.toLowerCase()}.json`);
+        const file = path.join(OUT_DIR, OUT_FILE || `gpu-split-lane${LANE.toLowerCase()}.json`);
         await writeFile(file, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
         process.stdout.write(`[gpu-split] wrote ${path.relative(ROOT, file)}\n`);
         process.stdout.write(`[gpu-split] split: ${JSON.stringify(report.split)}\n`);
@@ -373,7 +404,7 @@ app.whenReady().then(async () => {
         process.stderr.write(`[gpu-split] FAILED: ${error?.stack || error}\n`);
         process.exitCode = 1;
     } finally {
-        devServer?.kill();
+        killDevServerTree();
         app.quit();
     }
 });
