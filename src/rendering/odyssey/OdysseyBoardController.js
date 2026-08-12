@@ -1447,7 +1447,17 @@ export class OdysseyBoardController {
     // no board state). These stay as thin wrappers so every internal caller is unchanged.
     /** @private */
     _beginPostTargetCompile() {
-        return beginPostTargetCompile(this.renderer, this.postProcessingStack);
+        return beginPostTargetCompile(this.renderer, this.postProcessingStack, this._renderLoopActive());
+    }
+
+    /**
+     * Is the rAF loop live? Binding the post scene-pass target for a compileAsync while it is
+     * hands WebGPU the same texture as both a sampled binding and a render attachment inside one
+     * encoder, which kills the device permanently (see warmup/post-target-compile.js).
+     * @private
+     */
+    _renderLoopActive() {
+        return this.animationFrameId !== null && this.animationFrameId !== undefined;
     }
 
     /** @private */
@@ -1457,7 +1467,14 @@ export class OdysseyBoardController {
 
     /** @private */
     _compileGroupThroughPost(group) {
-        return compileGroupThroughPost(this.renderer, this.postProcessingStack, this.scene, this.camera, group);
+        return compileGroupThroughPost(
+            this.renderer,
+            this.postProcessingStack,
+            this.scene,
+            this.camera,
+            group,
+            this._renderLoopActive(),
+        );
     }
 
     /**
