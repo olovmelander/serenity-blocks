@@ -1,0 +1,61 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-12T20:27:12.463Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "rdna-2",
+    "device": "",
+    "description": ""
+  },
+  "resolution": "1280x720",
+  "seekProgress": 0.051,
+  "captureChapters": "1,2",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 77,
+      "p50": 22.216704000000004,
+      "p95": 31.064064000000002,
+      "p99": 31.653888000000002,
+      "min": 21.561344000000002,
+      "max": 31.653888000000002,
+      "drawCalls": 83,
+      "drawCallsMin": 83,
+      "drawCallsMax": 83,
+      "triangles": 40915,
+      "oneWorld": true,
+      "levelNodesHidden": true,
+      "quality": "Medium"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 73,
+      "p50": 22.609920000000002,
+      "p95": 30.932992000000006,
+      "p99": 31.981568000000003,
+      "min": 21.168128,
+      "max": 31.981568000000003,
+      "drawCalls": 83,
+      "drawCallsMin": 83,
+      "drawCallsMax": 83,
+      "triangles": 40863,
+      "oneWorld": true,
+      "levelNodesHidden": true,
+      "quality": "Medium"
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": null,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": -0.393,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}
