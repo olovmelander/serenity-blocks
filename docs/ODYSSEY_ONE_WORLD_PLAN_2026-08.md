@@ -732,9 +732,25 @@ along with everything else — nothing in the elimination table was ever going t
 because every row was measured on progressively more degraded hardware. The false-negative
 risk cut the other way too: the "breaking window" correlation was TIME, not commits.
 
-**Next session, in order: (1) REBOOT the machine; (2) run the validation command below — it
-should boot in ~2–3 min; (3) only if it still stalls does code investigation resume, starting
-from a fresh elimination table, because tonight's is contaminated.**
+**CORRECTED (2026-08-12, 08:45) — the machine HAD already rebooted (07:50), so the
+degradation story was wrong too. The real mechanism, finally measured with an adapter probe:**
+
+- **Without `force_high_performance_gpu`, WebGPU on this machine selects the Radeon 610M —
+  and the page-level `powerPreference: 'high-performance'` hint is IGNORED on Windows
+  (crbug 369219127), returning the SAME amd/rdna-2 adapter.** With the switch: nvidia
+  blackwell. A plain browser tab therefore runs the playground on the 67 ms/frame iGPU with
+  no way for the page to opt out — the fix is user-side, one-time: Windows Settings →
+  Display → Graphics → add the browser → High performance.
+- **The harness "stalls" were cold Dawn shader-cache marathons**: the DawnWebGPUCache was
+  deleted mid-debugging (~08:30), after which every boot had to recompile every pipeline from
+  scratch — the legacy control crawled to 7 minutes and One World, the heaviest boot, blew
+  past every readiness timeout. Force-killing runs mid-compile kept the cache from ever
+  completing, which made "still stalls" self-sustaining. Recovery: let ONE boot run to
+  completion, uninterrupted, so the cache rebuilds; subsequent boots are fast.
+
+The playground HUD now shows the physical adapter (`WebGPU · nvidia blackwell` vs
+`· amd rdna-2`) and logs the Windows instruction when it lands on the iGPU, so this is
+answered by reading the header, never by another elimination table.**
 
 ```
 node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs --chapter 4 --url-flag odysseyOneWorld=1 --frames 4
