@@ -305,7 +305,11 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))), 3);
     // High-freq crust map: dark charred islands floating in the molten (pyrestorm).
     const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3).add(0.5);
-    const crustFactor = smoothstep(0.46, 0.86, crustMap);
+    // WAVE 3a — THE STUDY'S CRUST WINDOW, ported. Wave 1 measured this exact trade three
+    // times: at a wide window the lake is a dark floor with smears and stops being a key at
+    // all; when the pale stop wins it becomes a cream beach. Crust is the MINORITY on a lake
+    // that has to light a cathedral, so the window is narrowed and pushed up.
+    const crustFactor = smoothstep(0.60, 0.90, crustMap);
 
     // Lower base + wider contrast so most of the lake falls into the dark charred
     // crust band (the molten reads as glowing rivers/cracks across dark rock). Inside
@@ -319,7 +323,9 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         1.0,
     );
 
-    const hotMix = mix(uColorMid, uColorHot, temp.sub(0.7).div(0.3));
+    // The pale hot stop is reached only in the thinnest seams — `pow(...,3)` instead of a
+    // linear ramp — so the lake body stays molten orange that still reads as melted ROCK.
+    const hotMix = mix(uColorMid, uColorHot, pow(clamp(temp.sub(0.7).div(0.3), 0.0, 1.0), 3.0));
     const midMix = mix(uColorCool, uColorMid, temp.sub(0.4).div(0.3));
     const coolMix = uColorCool.mul(temp.div(0.4));
     const lowColor = mix(coolMix, midMix, step(0.4, temp));
@@ -327,6 +333,11 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
 
     // Float dark charred crust islands over the molten (kills the amber-soup look).
     color = mix(color, uColorCool, crustFactor.mul(0.6));
+    // QUANTISED GLITTER (plan §2.3): a hard smoothstep window makes discrete winking glints
+    // on the melt seams instead of a smooth specular sheen. It is the cheapest thing in this
+    // act that reads as "expensive", and it costs one smoothstep on a field already computed.
+    const glint = smoothstep(0.62, 0.70, cracks).mul(oneMinus(crustFactor));
+    color = color.add(uColorHot.mul(glint).mul(0.55));
 
     // Narrow bright molten veins/cracks (threads of glow across dark crust); brighter
     // where the crust has cracked open (no crust chunk on top). Inside the basins the
@@ -582,8 +593,19 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     );
     // Convection belt strongest in the lower/mid vault (the band frames 09–13 missed).
     const beltMask = smoothstep(-0.78, -0.2, dir.y).mul(oneMinus(smoothstep(0.02, 0.5, dir.y)));
+    // WAVE 3a — THE MID-WASH LIVES HERE. Measured in-game: the shipped chapter puts 46 % of
+    // its pixels in the luma 32-96 band, and this belt is the largest single contributor —
+    // a broad ember field at linear 0.23-0.37 painted across the whole vault, which is why
+    // Phase 0 read the frame as "~90 % mid-red" while its BLACKS were fine.
+    //
+    // The fix is the Wave 1 device, not a brightness cut: the wash is DARKNESS-GATED and
+    // CONTRAST-SHAPED, so ember survives as filaments where the lake's key does not reach and
+    // vanishes where it does. `conv` is already ridged; squaring it turns a field into veins.
     const emberWash = mix(vec3(0.227, 0.051, 0.016), vec3(0.369, 0.039, 0.012), conv);
-    color = color.add(emberWash.mul(conv).mul(beltMask).mul(0.55));
+    const convVeins = conv.mul(conv);
+    const keyReachBackdrop = pow(clamp(oneMinus(dir.y.mul(0.5).add(0.5)), 0.0, 1.0), 3.2);
+    const darknessGate = oneMinus(keyReachBackdrop);
+    color = color.add(emberWash.mul(convVeins).mul(beltMask).mul(darknessGate).mul(0.30));
     // Faint mottle on the ceiling so the upper vault reads as rock, not a flat void.
     color = color.add(vec3(0.05, 0.016, 0.01).mul(conv).mul(smoothstep(0.05, 0.7, dir.y)).mul(0.45));
     // Backdrop discipline: this is still the backstop — capped below every set piece.
@@ -646,10 +668,18 @@ export function createMagmaCloudCanopyTSL(uTime, uPulseIntensity = uniform(0), o
 
     let color = vec3(0.014, 0.010, 0.026)
         .add(vec3(0.070, 0.018, 0.012).mul(density));
-    color = color.add(vec3(0.58, 0.14, 0.032).mul(internalGlow).mul(underLight).mul(pulse)
+    // WAVE 3a — THIS CEILING IS THE ACT'S BIGGEST SURFACE AND ITS BIGGEST WASH. The in-game
+    // capture is unambiguous: the canopy fills the entire upper half of the frame as one
+    // saturated red mass, which is what makes the chapter read as "all mid-red" no matter what
+    // the rock and the lake do. (Two earlier attempts moved the backdrop sphere and the rock
+    // bounce instead, and neither is what the camera is actually looking at.)
+    //
+    // Halved toward the vault's charred base, and the ceiling ceiling is dropped: a cloud lit
+    // from below by a lake should be a dark vault with fire UNDER it, not a red sky.
+    color = color.add(vec3(0.26, 0.062, 0.016).mul(internalGlow).mul(underLight).mul(pulse)
         .mul(0.58));
-    color = color.add(vec3(0.20, 0.045, 0.018).mul(uPulseIntensity).mul(underLight));
-    color = min(color, vec3(0.48, 0.22, 0.12));
+    color = color.add(vec3(0.09, 0.020, 0.008).mul(uPulseIntensity).mul(underLight));
+    color = min(color, vec3(0.22, 0.10, 0.055));
 
     const alpha = density.mul(0.62).mul(smoothstep(-0.22, 0.28, dir.y).add(0.18)).mul(uOpacity);
 
@@ -722,8 +752,16 @@ export function createRockClusterMaterialTSL(
     // §5.2 Lake-distance grounding gradient: near the lake the boulder picks up a warm
     // baked bounce; far away it goes charred. Capped low (holds the ~70% dark).
     const lakeFalloff = oneMinus(clamp(vLakeDist.div(140.0), 0.0, 1.0)); // 1 near → 0 far
+    // WAVE 3a — THE KEY COMES FROM BELOW, SO THE BOUNCE MUST TOO. This term reached the whole
+    // cluster at `lakeFalloff*0.8 + 0.2` — a floor of 0.2 everywhere, including crowns metres
+    // above the lake — which is why the rock glowed red base to crown with no charred anchor.
+    // Gating by HEIGHT ABOVE THE LAKE turns an ambient wash back into a bounce, and deleting
+    // the floor is the point: a floor is what made it ambient.
+    const aboveLake = clamp(vWorldY.sub(float(LAVA_LAKE_Y)).div(46.0), 0.0, 1.0);
+    const bounceReach = pow(oneMinus(aboveLake), 2.0);
     const bakedWarm = vec3(0.14, 0.045, 0.012)
-        .mul(lakeFalloff.mul(0.8).add(0.2))
+        .mul(lakeFalloff.mul(0.85).add(0.05))
+        .mul(bounceReach)
         .mul(uBakedBounce);
     color = color.add(bakedWarm);
 
@@ -881,8 +919,11 @@ export function createMoltenHazeMaterialTSL(uTime, uPulseIntensity = uniform(0),
     // puffs read as depth-stacked atmosphere (the cheap atmospheric-perspective win).
     const camDist = length(center.sub(cameraPosition));
     const depthT = smoothstep(40.0, 220.0, camDist); // 0 near → 1 far
-    const nearTint = mix(vec3(0.22, 0.055, 0.025), vec3(0.55, 0.18, 0.045), aSeed);
-    const farTint = vec3(0.34, 0.10, 0.055); // warm smoke, not full orange fog
+    // Darkened with the backdrop (Wave 3a): haze is the SECOND broad wash, and it sits in
+    // front of everything, so its mid-band contribution is paid at full screen coverage. Warm
+    // smoke should be the thing you see the cavern THROUGH, not a layer of its own.
+    const nearTint = mix(vec3(0.13, 0.032, 0.015), vec3(0.32, 0.10, 0.026), aSeed);
+    const farTint = vec3(0.19, 0.055, 0.030); // warm smoke, not full orange fog
     const tint = mix(nearTint, farTint, depthT);
 
     material.colorNode = tint.mul(flick).mul(uPulseIntensity.mul(0.15).add(1.0));

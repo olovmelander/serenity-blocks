@@ -44,6 +44,15 @@ const HEIGHT = Math.max(240, Number.parseInt(args.height || process.env.ODYSSEY_
 const SHOW_WINDOW = args.show || process.env.ODYSSEY_CAPTURE_SHOW === '1';
 const KEEP_EXISTING = args.keep || process.env.ODYSSEY_CAPTURE_KEEP === '1';
 const FORCE_WEBGL = args.forceWebgl || args['force-webgl'] || process.env.ODYSSEY_CAPTURE_FORCE_WEBGL === '1';
+// PHASE LOCK. Without it this harness is not comparable run to run: every animated uniform
+// rides `boardController.time`, which advances with wall clock, so the same station sampled
+// twice shows a different frame of lava, ember and haze animation. Measured 2026-08-12 with
+// functionally identical code, the value-structure metric moved 0.233 -> 0.793 at one station
+// between runs — larger than any art change being evaluated. `--time 9` freezes the clock the
+// way the playground's `?t=` does, which is what makes an A/B mean anything.
+const FIXED_TIME = Number.isFinite(Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME))
+    ? Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME)
+    : null;
 const SEAM = parseSeam(args.seam || process.env.ODYSSEY_CAPTURE_SEAM || '');
 const CHAPTER = SEAM ? null : parseChapter(args.chapter || args.ch || process.env.ODYSSEY_CAPTURE_CHAPTER || '');
 const MODE = SEAM ? 'seam' : 'chapter';
@@ -385,7 +394,15 @@ async function settleAtPosition(win, position, options = {}) {
             bc.environmentManager?.update(1 / 60, bc.camera, pos, directorState);
             bc.pathRenderer?.update?.(1 / 60, directorState);
             bc.thresholdDirector?.update?.(1 / 60, bc.camera, directorState);
-            bc.renderOnce?.(1 / 60);
+            // Freeze the animation clock BEFORE the render so every uniform driven off
+            // bc.time resolves to the same phase on every run; delta 0 keeps it frozen.
+            const fixedTime = ${FIXED_TIME === null ? 'null' : FIXED_TIME};
+            if (fixedTime !== null) {
+                bc.time = fixedTime;
+                bc.renderOnce?.(0);
+            } else {
+                bc.renderOnce?.(1 / 60);
+            }
             return true;
         })();
     `);
@@ -682,6 +699,7 @@ async function run() {
             seam: SEAM ? `${SEAM.source}-${SEAM.target}` : null,
             targetChapters: TARGET_CHAPTERS,
             quality: QUALITY,
+            fixedTime: FIXED_TIME,
             backend: BACKEND_LABEL,
             frameCount: FRAME_COUNT,
             viewport: { width: WIDTH, height: HEIGHT },
