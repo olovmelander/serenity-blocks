@@ -1,6 +1,13 @@
 # Odyssey — One World Plan (2026-08)
 
-**Status:** Proposed — **revision 2**, after a second research round (snowflow source read
+**Status: CLOSED — this is a RECORD, not a proposal (closed 2026-08-12).** One World shipped
+and is the default path; Waves 0-6 are done or closed-as-rescoped and Wave 7's headline
+question is answered. Two follow-ups outlived it and are tracked in §7; neither is wave work.
+**Read §0 for what actually happened.** Everything below §1 is preserved as written, including
+the claims that measurement later refuted — those corrections are annotated in place, and they
+are the most reusable content in the document.
+
+*Originally:* Proposed — **revision 2**, after a second research round (snowflow source read
 end to end, the three.js r181 WebGPU/TSL ecosystem surveyed against `node_modules`, art
 direction from nine shipped games, and an adversarial performance review). Revision 2 demoted
 the raymarched far range, added band-limiting, shadows, a colour script and a two-lane budget,
@@ -24,19 +31,67 @@ the user-nominated visual and architectural target.
 
 ## 0. Verdict
 
-Odyssey does not have a world. It has **eight independently-authored dioramas**, each
-built in its own local coordinate frame at its own origin, each owning its own ground, its
-own sky, its own atmosphere and its own sun — and the "journey" is an **alpha crossfade
-between two dioramas at a time**.
+### 0.1 The original diagnosis (which held)
 
-That is the whole problem. A crossfade of two dioramas can never read as one landscape,
+Odyssey did not have a world. It had **eight independently-authored dioramas**, each built in
+its own local coordinate frame at its own origin, each owning its own ground, its own sky, its
+own atmosphere and its own sun — and the "journey" was an **alpha crossfade between two
+dioramas at a time**.
+
+That was the whole problem. A crossfade of two dioramas can never read as one landscape,
 because at the midpoint you are literally looking at two worlds at 50% each. Every symptom
-reported in-game — see-through hill bases, hills that change identity, ground that pops out
-of view, rectangles hanging in the air — is a *consequence* of that, not an independent bug.
-Eight rounds of local fixes have not converged because the thing being patched is the
-symptom surface, not the cause.
+reported in-game — see-through hill bases, hills that change identity, ground that pops out of
+view, rectangles hanging in the air — was a *consequence* of that, not an independent bug.
+Eight rounds of local fixes had not converged because the thing being patched was the symptom
+surface, not the cause.
 
-The fix is to stop crossfading worlds and start having one.
+This diagnosis was correct and the rebuild followed from it.
+
+### 0.2 What shipped
+
+**Act II (chapters 2-5) is one continuous world, and it is the default path.** Chapters 2-5
+are suppressed; the world owns their ground, water, sky, trees and atmosphere. The
+`?odysseyOneWorld=0` escape hatch survives deliberately (ADR-0015) and doubles as a flagless
+crash-recovery path that now reports itself loudly instead of recovering in silence.
+
+Measured, on a content-matched run with the station pinned and zero drift:
+
+| | One World | Legacy dioramas |
+|---|---:|---:|
+| Lane A GPU p50 (RTX 5080, 1080p, High) | **0.393 ms** | 1.966 ms |
+| Lane A draw calls | **50-53** | 132 |
+| Lane B GPU p50 (Radeon 610M, 720p, Medium) | ~4-10 ms | 39.5 ms |
+
+Lane B's *saving* is solid (~30-35 ms, the difference between ~25 fps and unplayable); its
+*absolute* is not established and needs a cooled machine — see §7.
+
+### 0.3 What the plan got wrong, which is the more useful half
+
+Four of this document's load-bearing numbers were false, and each survived because it was
+plausible and nobody measured it. They are annotated where they appear; collected here because
+the pattern matters more than any one of them:
+
+1. **"69 % of every drawn frame is rail furniture"** (§1) rested on a 66,560-triangle ribbon.
+   The live ribbon is **15,360** — the figure came from an un-capped spec constant that
+   `PATH_LOD` caps twice over. The orb group is ~25 % of Lane A triangles, and costs
+   **0.000 ms** measurably.
+2. **"55 orbs x 3 nested transparent shells"** is two transparent shells and one *opaque*
+   depth-writing core. Measured blended coverage: **0.86 % of the frame**. The orbs were never
+   a fill problem.
+3. **"Waves 4 and 6 delete code only the fallback reaches."** Eight adversarial verification
+   passes refuted it: a shipped theme, the production bundle and 34 live bridges all depend on
+   the "dead" code. Both waves closed as rescoped (ADR-0015).
+4. **The instrument itself was lying.** `Info.reset()` leaves `render.timestamp` sticky, so
+   per-frame sampling recorded one resolved value repeated — dwell-weighted, and biased hardest
+   on the slow lane being judged. Fixed; see ADR-0016.
+
+And one defect the plan never suspected, found while designing the ch1 transition: the world
+group's `.visible` was never written, so **Act II's ocean was painting over Chapter 1's magma
+cathedral** in the shipped build. Act-gated and capture-verified.
+
+**The transferable lesson: this plan's scoping was reliable about STRUCTURE and unreliable
+about COST. Every architectural claim held. Every quantitative claim that had not been
+measured against a verified instrument was wrong.**
 
 ---
 
@@ -205,6 +260,20 @@ Three more facts that shape the plan:
   material *object*; measured ≈ **40–45 ms of cold pipeline compile per material** on the
   RTX. 173 materials is the startup budget.
 - **69 % of every drawn frame is rail furniture** — 55 level-node orbs (190,740 tris) plus
+
+  > ⚠️ **THIS CLAIM IS FALSE. Corrected 2026-08-12 by measurement; left in place because it
+  > shaped the whole of Wave 7.** The path tube trio is **15,360** triangles, not 66,560 — that
+  > figure is the un-capped `ODYSSEY_PATH_CROSS_SECTION` spec, while the live builder caps
+  > radial at 8 and tubular at 256 via `PATH_LOD`. Real total is ~206,100 tris, and the orb
+  > group is **25.2 %** of Lane A's 758,151 (36.4 % on Lane B) — not 69 %.
+  > Worse for the conclusion drawn from it: hiding the orb group removes 9 draws and 201,740
+  > triangles and changes GPU p50 by **0.000 ms** on Lane A (0.393216 both, content-matched,
+  > zero drift). "3 nested transparent shells" is also wrong — two transparent shells and one
+  > *opaque* depth-writing core, with measured blended coverage of **0.86 % of the frame**, so
+  > the fill hypothesis this line motivated was never the right shape. Lane B is still unmeasured
+  > and is the only place the hypothesis could survive.
+
+
   the path tube trio (66,560 tris) = 257,300 tris in 9 draws, entirely independent of any
   chapter rebuild. *Rebuilding the world does not by itself reduce triangles.*
 - **Quality tiers are inert.** Identical material and draw counts at Minimal and Extreme for
@@ -1184,7 +1253,7 @@ gpu-split harness has `--seek` but no frame capture). Ch2's 13 bridges deferred 
 theme), the 34 live ch1/ch7/ch8 bridges and their contract tests, `SEAM_56_AURORA_BRIDGE`,
 the ecotone resolver/apply machinery, and the director colour lerps for 1-2/5-6/6-7/7-8.
 
-### Wave 7 — Perf, tiers, residency; re-budget the rail furniture (69 % of triangles)
+### Wave 7 — Perf, tiers, residency; re-budget the rail furniture (~25 % of triangles, and 0.000 ms on Lane A)
 
 ---
 
@@ -1235,13 +1304,56 @@ uses**.
 
 ---
 
-## 7. Decisions needed
+## 7. What is still open (2026-08-12)
 
-1. **Scope** — confirm the three-act split (§3.0.1).
-2. **Appetite** — Wave −1 + Wave 0 is roughly a week and removes the measured
-   discontinuities. Waves 1–7 are a genuine rebuild of the ascent.
-3. **Re-authoring** — willing to lose the current Ch3 lake/meadow dressing and re-author it?
-4. ~~TAA or MSAA~~ — resolved: both, per lane (§6).
+The original §7 asked for scope confirmation, appetite for "roughly a week", and whether the
+Ch3 lake dressing could be re-authored. All three were answered by shipping. What replaced
+them are **two items that outlived the plan, neither of which is wave work, and both of which
+are blocked on the owner rather than on implementation.**
+
+### 7.1 Lane B needs the Radeon machine — BLOCKED ON HARDWARE
+
+Everything left in Wave 7 is gated on one measurement that cannot be taken on the RTX. Lane A
+is answered and healthy: 0.393 ms p50 against a 1.5 ms gate, with 1.1 ms of headroom and the
+single biggest suspected cost (the orb group) measuring **0.000 ms**. There is nothing worth
+optimising on a lane with that much slack.
+
+Lane B is the lane with a budget problem, and its absolute is still unestablished — "between 4
+and 10 ms against a 7.0 ms budget". `perf-budgets.json` already carries
+`odysseyWorldGpuP50LaneBMs` with a **deliberately null baseline** for exactly this reason.
+
+The instrument is now trustworthy enough for the run to mean something: sampling is
+once-per-resolved-query, the station is pinned, and a differential whose two baselines
+disagree on draw calls is **voided with a reason** rather than published. Run
+`node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power --only
+baseline,no-level-nodes,baseline-repeat` on a cooled machine with no browser open (see
+ADR-0016 — a stray WebGPU tab cost this plan a false 3x finding). Then, and only then, the
+per-tier prohibitions and the tier-table expansion are decidable.
+
+### 7.2 The ch5 -> ch6 cloud bank needs a look call — BLOCKED ON TASTE
+
+The ch1 -> Act II occlusion moment shipped (§5, the steam quench). The summit -> cosmos edge
+is the harder one and the last piece of the rebuild's original intent.
+
+It is not blocked technically. It is blocked because `SEAM_56_AURORA_BRIDGE` is doing visibly
+load-bearing work there **today** — the world's fog handoff ramps to zero exactly at that act
+edge, so the bridged colour is what the player actually sees — and the replacement therefore
+has to be at least as good from its first frame. It is also the journey's largest transition.
+
+The steam quench took four capture iterations, three of which were corrections to taste calls.
+That loop is fine for a transition nobody has strong feelings about. For this one, a sentence
+of direction ("warmer/colder", "more veiled/more open") or a reference image dropped on
+`?effect=seam-12-dive` is worth more than four more iterations. **Build the cloud bank before
+removing anything** — deleting the bridge first leaves the seam with nothing.
+
+### 7.3 Decided, recorded, not to be re-litigated
+
+- **The escape hatch stays** — ADR-0015. It is also a flagless crash-recovery path.
+- **8x MSAA is undeliverable** on this backend (r181 caps the pipeline at 4 while passing the
+  raw value to the attachment). §8's `8x MSAA ROP + resolve` line is unspendable.
+- **Ribbon streaming is de-scoped** — 15,360 triangles is not where a frame goes.
+- **Act II is chapters 2-5, not 2-6** — §3.0.1's table says ch2-ch6; the implementation
+  deliberately narrowed it because the world's height field does not describe space.
 
 ---
 
