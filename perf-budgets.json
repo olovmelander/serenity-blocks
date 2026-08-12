@@ -91,14 +91,14 @@
             "note": "music currently rides inside app.asar; Phase 8.2 asarUnpack"
         },
         "odysseyAct1Ch1GpuP50LaneAMs": {
-            "baseline": null,
+            "baseline": 0.85,
             "max": 1.0,
-            "note": "Rebuilt Earth Core at p=0.051, High/1080p. BASELINE NULL PER ADR-0016: both Wave 7 pairs were VOIDED by the content-match guard (draw calls flickered 92<->93). 2026-08-12 LATER: the flicker was found and killed (lava-floor corona sprites were the chapter's only frustum-culled drawables; camera idle breathing walked the frustum edge across one \u2014 plan \u00a710.3), and the profile now reports drawCallsMin/Max so a pair can prove its own constancy. The prerequisite this note named is MET; the cell can be filled by the next Lane A pair. Pre-rebuild measured 2.10 (drift 0.00)."
+            "note": "Rebuilt Earth Core at p=0.051, High/1080p, WITH orbs (the real frame). FILLED 2026-08-12 by the first admissible pair: 0.786/0.852 ms p50, drift -0.066 (one 65.536us timer tick), 92 draws with drawCallsMin==drawCallsMax in both windows \u2014 possible only after the corona-sprite flicker fix (plan \u00a710.3) ended the 92<->93 voids. Baseline is the worse of the pair. Pre-rebuild: 2.10 ms / 131 draws \u2014 the rebuild also made Lane A ~2.5x faster. Report: gpu-split-lanea-act1-ch1-full-postbake.json."
         },
         "odysseyAct1Ch1GpuP50LaneBMs": {
             "baseline": null,
             "max": 5.0,
-            "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33). Post 3b canopy fold: 40.24/41.48 sans orbs. 2026-08-12 BACKDROP BAKE (plan \u00a710.2): the dome (priced 15-19 ms by lever differential) now reads baked 3D noise instead of 24 analytic octaves/px \u2014 27.98/29.10 ms p50 sans orbs, drift 1.11, content-matched 83 draws with drawCallsMin==drawCallsMax (flicker dead, \u00a710.3). Baseline stays null: committing ~28 against max 5.0 reds the gate; max needs a deliberate re-budget decision (the 5.0 was written as an aspiration before the lane was priced)."
+            "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33) WITH orbs. 2026-08-12 post backdrop-bake (plan \u00a710.2): sans orbs 27.98/29.10 ms p50 (drift 1.11, 83 draws min==max); FULL FRAME with orbs 31.06/32.44 ms p50 (drift -1.38, 92 draws min==max) \u2014 the real frame is 45% faster than pre-plan, every pair content-matched. Baseline stays null: committing ~31 against max 5.0 reds the gate; the 5.0 was an aspiration written before the lane was priced and needs a deliberate re-budget decision."
         },
         "odysseyAct1Ch1DrawCalls": {
             "baseline": null,
