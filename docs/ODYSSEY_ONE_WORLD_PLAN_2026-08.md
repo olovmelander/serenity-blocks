@@ -715,6 +715,58 @@ this document's own prose — several waves this file described as done were not
   - **§8 IS NOW IN THE GATE (2026-08-12).** `perf-budgets.json` carries three world cells and `perf-budgets-gate` exits 0 on them: `odysseyWorldGpuP50LaneAMs` (baseline 0.39, max 1.5 — a real baseline because Lane A drifted 0.00 ms, and a max set BELOW the dioramas' 1.97 ms at the same station so the gate also fails if the rebuild is ever reverted by accident), `odysseyWorldDrawCallsLaneA` (53 against the dioramas' 124 — the structural claim of the rebuild, which regresses in exactly one way: chapter environments creeping back into Act II), and `odysseyWorldGpuP50LaneBMs` with a **deliberately null baseline** and max 7.0, because a 4.19 pinned from a run that then measured 9.63 would be exactly the false precision this file exists to prevent. The lint was mutation-checked: a `"TBD"` in any budget cell fails it.
   - Still owed for the wave proper: ribbon streaming, the rail-furniture re-budget (55 orbs x 3 nested transparent shells), real quality tiers for the shipped chapters, per-tier Lane B prohibitions, and MSAA per lane.
 
+  - **THE RAIL-FURNITURE QUESTION IS ANSWERED ON LANE A, AND THE ANSWER IS "FREE" (2026-08-12).**
+    Content-matched run, zero drift, station pinned: hiding the level nodes removes **9 draw
+    calls and 201,740 triangles** (50 -> 41 draws, 756,005 -> 554,265 tris) and changes GPU
+    p50 by **0.000 ms** — 0.393216 in both, p95 0.524288 in both. The group costs less than
+    one 65.536 us timer tick on this lane. The wave's premise that it is the dominant term is
+    refuted for Lane A; Lane B has not answered yet and is where the fill hypothesis could
+    still survive.
+  - **The A/B had never actually run, twice over.** `setAllVisible` omitted `innerCoreMesh`
+    (60,720 of 190,740 triangles, and the only opaque depth-writing part), and
+    `?odysseyHideLevelNodes=1` was consumed only inside `_sampleGpuProfile` — so without
+    `?odysseyGpuProfile=1` it did nothing at all. Both fixed; the 201,740-triangle delta above
+    is the proof it now bites.
+  - **Three premises this wave inherited are measurably WRONG** (13-agent read-only audit,
+    every conclusion adversarially challenged):
+    - "69 % of every drawn frame is rail furniture" rests on a ribbon of 66,560 triangles. The
+      live ribbon is **15,360** — the figure came from the un-capped `ODYSSEY_PATH_CROSS_SECTION`
+      spec while `PATH_LOD` caps radial to 8 and tubular to 256. **De-scope ribbon streaming.**
+    - "55 orbs x 3 nested transparent shells" is **2 transparent shells and 1 opaque
+      depth-writing core**; measured blended coverage is **0.86 % of the frame**. The orbs were
+      never a fill problem — the cost shape is micro-triangles (~0.33 px per triangle).
+    - **8x MSAA cannot be built on this backend.** r181 caps the pipeline at 4
+      (`WebGPUUtils.js:189-193`) but passes the raw value to the attachment, so `samples: 8`
+      makes an 8-sample texture against a 4-sample pipeline — a validation error. §8's
+      `8x MSAA ROP + resolve` budget line is unspendable. 4x on Lane B would *add* cost to a
+      lane already 2.6-3.2 ms over budget.
+  - **The instrument was lying, and is now fixed.** `Info.reset()` clears drawCalls/triangles
+    but not `render.timestamp` (only `dispose()` does), so the board's per-FRAME push recorded
+    one resolved value repeated for however many frames it dwelled — dwell-weighted, and
+    biased hardest on the slow lane. Sampling now happens once per RESOLVED query with
+    in-flight and epoch guards (the pattern `src/playground/main.js` already had). Also: the
+    seeked station did not hold (the travel model overrode it next frame), and `buildSplit`
+    published the resulting scene difference as `baselineDriftMs`. The seek is now pinned
+    (velocity/inputVelocity/autoDriftScale zeroed, achieved position returned) and the drift
+    figure is **voided with a reason** when the two baselines disagree on draw calls or by
+    >2 % on triangles.
+  - **CORRECTION, recorded because it was nearly published as fact.** An intermediate run of
+    this work measured the same scene at 1.179648 ms and it was written up as "the Lane A
+    baseline is 3x what we published". A clean re-run refutes that: **0.393216 ms stands**.
+    The 3x was GPU contention from a Chrome playground window left rendering at 240 fps on the
+    same adapter (p95 1.96608 contended vs 0.524288 clean — 3.75x). The lesson is the harness's
+    own: a measurement with nothing else on the GPU, or no measurement.
+  - Two dead levers removed from `QUALITY_PRESETS`: `bloomStrength` was declared on all six
+    rows and read nowhere (the live value is a hardcoded 0.32), and `bloomScale` was read as
+    `qualityPreset.bloomScale ?? 0.25` while no row ever defined it. Re-tuning either per tier
+    is a VISUAL change owing a capture (ADR-0007), so they were deleted, not wired.
+  - **Act-gating the world group is NOT the one-liner the audit proposed.** The dome cull is
+    `if (atmosphere && oneWorld) setDomeVisible(false)` with no progress term, so outside
+    Act II the world's own dome IS the sky backstop for chapters 1/6/7/8 — hiding the group
+    would cull both and black out the sky for half the journey. The safe form gates the
+    terrain meshes (ground/water/trees/cloud/god-rays) and leaves the dome, and it owes a
+    capture at each act edge.
+
 
 ### Wave −1 — Measure first (blocking; nothing else is trustworthy without it)
 

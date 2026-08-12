@@ -112,3 +112,34 @@ describe('the level-node A/B actually hides the level nodes', () => {
         expect(after).toMatch(/if \(this\.hideLevelNodes\) this\.nodeManager\.setAllVisible\(false\)/);
     });
 });
+
+describe('the quality-preset table declares only levers it actually reads', () => {
+    it('carries no bloomStrength — it was six rows the pipeline never consulted', () => {
+        const table = BOARD.slice(
+            BOARD.indexOf('const QUALITY_PRESETS = {'),
+            BOARD.indexOf('const ODYSSEY_BLOOM_SCALE'),
+        );
+        expect(table).not.toMatch(/bloomStrength:/);
+        // ...and the value the pipeline DOES use is still explicit at its construction.
+        expect(BOARD).toMatch(/bloomStrength: 0\.32,/);
+    });
+
+    it('reads bloom scale from a named constant, not an unreachable preset fallback', () => {
+        expect(BOARD).toMatch(/const ODYSSEY_BLOOM_SCALE = 0\.25;/);
+        // `this.` distinguishes the dead CODE expression from the comment above the
+        // table that documents why it went.
+        expect(BOARD).not.toMatch(/this\.qualityPreset\.bloomScale/);
+    });
+
+    it('still exposes the two levers that are real', () => {
+        const table = BOARD.slice(
+            BOARD.indexOf('const QUALITY_PRESETS = {'),
+            BOARD.indexOf('const ODYSSEY_BLOOM_SCALE'),
+        );
+        ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].forEach((tier) => {
+            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*enableBloom`));
+            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*particleCount`));
+            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*starCount`));
+        });
+    });
+});
