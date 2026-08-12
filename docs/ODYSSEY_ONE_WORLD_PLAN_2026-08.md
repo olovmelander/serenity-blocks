@@ -695,11 +695,25 @@ valuable unknown in the plan**, and the harness cannot currently measure it (bel
 
 #### Known harness limitation
 
-Both One World configurations time out waiting for `boardController.isActive` and record `null`
-rather than a number, on every attempt, on both lanes. The world boots fine under
-`odyssey-chapter-capture.mjs`, so this is a readiness-predicate bug in the split harness, not a
-boot failure — but it means **One World has no GPU-time measurement yet on either lane**. The
-720p run's −0.13 ms sat inside a 0.066 ms noise floor and must not be quoted as a result.
+**One World still has no GPU-time measurement on either lane, and the harness — not the world —
+is why.** Two hypotheses were tried and both were wrong in an instructive way:
+
+1. *Readiness window too short.* Without `odysseyCaptureChapters` the board creates and warms
+   all EIGHT chapters before `isActive` flips, and One World is the heaviest boot, so it was
+   plausibly losing that race against a cold shader cache. Fixed: every configuration now loads
+   only the Act II window (3,4,5) and waits 240 s. The baseline got faster and still measures
+   (p50 1.11 ms, 131 draws). **One World still never reports.**
+2. *It just needs longer.* No. With a 320 s per-configuration `Promise.race` guard in place, the
+   run blew through that too without printing the timeout row — so the Electron MAIN process is
+   blocking, not merely the page. Most likely the abandoned `executeJavaScript` from the losing
+   promise keeps the window alive and wedges the loop. Electron stays alive burning ~140 s of
+   CPU throughout, so the renderer is grinding rather than crashed.
+
+The world boots fine under `odyssey-chapter-capture.mjs`, which is the evidence that this is a
+harness defect. **Next attempt should drive the measurement from the capture harness** (which
+already knows how to bring One World up) rather than adding a fourth timeout to this one.
+
+The 720p run's −0.13 ms sat inside a 0.066 ms noise floor and must not be quoted as a result.
 
 ### Wave 0 — Stop the bleeding (ship first, unconditionally)
 
@@ -713,6 +727,33 @@ boot failure — but it means **One World has no GPU-time measurement yet on eit
 
 > 0.4 amended: `DoubleSide` on the whole plate doubles rasterised fragments on a 4-ROP GPU,
 > on a surface Wave 3 deletes. `depthWrite: true` is free and is most of the fix.
+
+**0.4 DONE (2026-08-12) — and the symptom it was written for has a different cause.**
+
+Applied: the Ch3 meadow plate (`surface-world.tsl.js`) and the Ch4 snow-floor apron
+(`mountain-peaks.tsl.js`) now write depth, each paired with `alphaTest = 0.04`; and the Ch3
+foothill skirt's per-frame `depthWrite = false` override (`surface-world.js`) is gone — it was
+switched off whenever `surfaceOpacity < 0.98`, and that expression is
+`smoothstep(probeY, waterSurfaceY − 12, waterSurfaceY + 2)`, i.e. off for exactly the window
+in which the camera rises through the waterline. The one surface carrying the eye out of the
+lake stopped occluding at precisely the moment the report describes.
+
+The `alphaTest` is not decoration. `opacityNode` is exactly zero across the whole submerged
+shelf and the outer rim melt, so a depth-writing plate without a discard would stamp an
+unseeable depth mask over the lake bed and cull the shoreline props behind it.
+
+**The `DoubleSide` half was rejected with evidence, not skipped.** After the `alphaTest`, it
+is a strict no-op: the only camera-facing terrain backface is the submerged shelf underside,
+where every fragment is already discarded, and a heightfield has no overhangs.
+
+**And the honest part: none of this restores the hill bottoms.** They are deleted on purpose by
+`landAlpha` — `smoothstep(waterShelfFadeMin = −2.6, waterShelfFadeMax = 0.9, worldY − waterLevel)`
+(`surface-world.tsl.js`, constants ~:213-215). Every terrain fragment more than 2.6 u below the
+waterline is alpha ZERO. No depth or face-culling change can bring back geometry that the
+shader is discarding. If "the hills no longer end at the waterline" is the acceptance criterion,
+the lever is `waterShelfFadeMin/Max`; the only test on them pins their SIGNS
+(`surface-world-environment.test.js:127-128`), so e.g. −6.0/−1.5 is free — but it is a visual
+change and needs a capture, so it is its own line rather than smuggled in here.
 
 ### Wave 1 — The spike (playground; zero repo risk; falsifies the budget)
 

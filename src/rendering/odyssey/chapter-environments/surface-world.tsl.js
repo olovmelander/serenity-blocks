@@ -1062,7 +1062,18 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const farMelt = oneMinus(smoothstep(172.0, 250.0, rimDist.add(edgeNoise)));
     material.opacityNode = uOpacity.mul(landAlpha).mul(farMelt);
     material.transparent = true;
-    material.depthWrite = false;
+    // GROUND PLATE WRITES DEPTH. The meadow is opaque ground wherever it is above the
+    // waterline, so it must OCCLUDE later same-bucket transparent draws instead of letting
+    // them paint through it — the identical defect the hero peaks fixed (see
+    // mountain-peaks.tsl.js, "SOLIDITY FIX": depthWrite:true + alphaTest).
+    //
+    // alphaTest is MANDATORY here, not decorative: opacityNode is EXACTLY ZERO over the whole
+    // submerged shelf (landAlpha, every fragment below waterline-2.6) and over the outer rim
+    // melt (farMelt, rimDist 172->250). Without a discard those invisible fragments would
+    // write a depth mask — an unseeable plane covering the entire lake bed and the far rim —
+    // that culls the shoreline props and the Ch3->Ch4 seam tree-line standing behind them.
+    material.depthWrite = true;
+    material.alphaTest = 0.04;
     material.userData.waterShelfFade = {
         min: CH3_WATER_READABILITY_SETTINGS.waterShelfFadeMin,
         max: CH3_WATER_READABILITY_SETTINGS.waterShelfFadeMax,
