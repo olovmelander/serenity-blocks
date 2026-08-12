@@ -714,7 +714,10 @@ commit, which is why the "last known-good commit" also stalled and every environ
 half-fit. The elimination table below is kept as a record of how three wrong theories were
 each falsified by measurement.
 
-**First post-fix Act II sweep (in-game, One World on):** Ch4 verified good. Ch5 boots (the
+**First post-fix Act II sweep (in-game, One World on): ALL FOUR CHAPTERS BOOT.** Ch4 verified
+good. Ch2 boots — the underwater body reads correctly and the breach-to-shore frame (beach,
+forest, massif in mist) is the continuity payoff in one image; the water volume is sparse
+until the god-ray/caustic port the prop inventory scoped. Ch3 verified this morning. Ch5 boots (the
 first time ever) and the continuity payoff is visible — valley, shore and forest far below the
 climb — but the **cloud deck is broken at eye height in-game**: ragged navy shards instead of
 white strata (sky luma 178.8 vs 129.4 target). The rail crosses the deck's altitude through
