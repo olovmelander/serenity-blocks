@@ -1036,17 +1036,43 @@ tests and two harnesses are reworked in one commit. Also lost with the hatch: th
 `legacy-dioramas` configurations in `scripts/odyssey-gpu-split.mjs:60-74`, which make the
 1.97 ms / 39.52 ms diorama baselines behind three `perf-budgets.json` cells reproducible.
 
-**Tranche 1 — safe now, no owner decision (~90 lines):** `rangeAuthority` (manager block
-:1225-1263 + the narrow token edit at `surface-world.js:1812` only), the dead `ECOTONE_*`
-tuning + `resolveEcotoneHalfWidth` clamp arithmetic, ch2's 13 bridges + test block, and the
-3-4/4-5 colour windows (one capture required — they still write `scene.fog`).
+**Tranche 1 — DONE (2026-08-12, commit `77d19fba`).** `rangeAuthority` deleted (manager
+block + the narrow token edit only — the surrounding visibility write stays, the
+`ch3-ch4-seam` playground effect drives it every frame). The `ECOTONE_*` tuning deleted
+after verifying against the LIVE registry layout that its span-derived half-width loses to
+the `seamWidth` floor at all seven boundaries (computed 0.00616–0.01628 vs seams
+0.018–0.06) — the window has always been exactly the seam, so the function now says so.
+The 3-4/4-5 colour windows deleted from the MANAGER only, where every write is a proven
+dead store (fog overwritten the same frame by the One World drive at mid-act weight 1;
+sky/ambient skipped wholesale by the `atmosphereOwned` early-return, and nothing in `src/`
+passes `cinematicJourneyActive:false`). **Scope divergence, recorded not papered over:**
+the DIRECTOR's copies were KEPT — the audit's own table marks the director LIVE (it feeds
+the OdysseyAtmosphere rig), and the capture the manifest asked for does not exist yet (the
+gpu-split harness has `--seek` but no frame capture). Ch2's 13 bridges deferred with them.
 
-**Tranche 2 — prerequisites that make the hatch retirement decidable:**
-1. Replace the silent catch with LOUD failure (rethrow into the boot-stage coordinator or a
-   visible diagnostic state). A void two thirds of the journey long must not be quiet.
-2. Flip the spec authority: the 4 canonical peak specs move into `world/` as the world's own
-   frozen table; `odyssey-world-height.test.js` and the rail-clearance guard rewrite against
-   it. (Today the LIVE world's tests derive truth from the module being deleted.)
+**Tranche 2.1 + 2.2 — DONE (2026-08-12, commit `9ffbe9bd`).**
+
+1. ~~LOUD failure~~ **DONE** — `world/world-build-failure-report.js`: a dismissible
+   player-facing banner plus a capped `localStorage` ring, fired from the catch AFTER the
+   fallback is arranged and inside its own try, so reporting can never prevent the recovery
+   it reports on (pinned by a source test, since ordering is what a refactor loses). Chosen
+   over rethrowing: a rethrow would destroy the working diorama recovery, and the point is
+   to make the failure *visible*, not fatal. Browser-verified, which caught two things the
+   DOM double could not — a 695px banner against its own 640px cap (content-box), and a
+   dismiss handler never exercised because the double stubbed `addEventListener`.
+2. ~~Flip the spec authority~~ **DONE** — `world/odyssey-peak-specs.js` owns the four peak
+   geometries as frozen offsets; `canonical-mountain-range.js` derives from it; both live
+   tests rewritten against the world (rail clearance now measures `odysseyWorldHeight`, the
+   surface actually under the camera — 60u contract kept, measured 112.3u at the tightest
+   point). **A review agent clobbered this mid-flight and thereby exposed a weak test:** it
+   reverted the module, re-injected a duplicate spec table, and changed the hero's FBM seed
+   from the shipped 89.12 to 100.9 — and every value-agreement assertion still passed,
+   because the flip was value-identical by construction. Agreement cannot distinguish
+   "derives from" from "happens to match". A source assertion now pins the direction and is
+   verified to be the only test that fails on a pre-flip revert; all four peaks were
+   re-audited field by field against git HEAD.
+
+**Tranche 2 — what still blocks the hatch decision:**
 3. Owner decides the playground effects' fate — `seam-34-landscape`, `ch3-*`,
    `ch4-mountain-peaks`, `ch5-sky-drift` execute the real chapter builders, so this decision
    alone determines whether the chapter modules can ever shrink to stubs.
