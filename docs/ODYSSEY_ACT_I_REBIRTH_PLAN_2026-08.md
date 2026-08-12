@@ -1526,8 +1526,10 @@ The flicker fix unblocked the two cells whose notes named it as prerequisite:
   **31.06/32.44 ms p50**, drift -1.38, 92 draws `min==max` both windows
   (`gpu-split-laneb-act1-ch1-full-postbake.json`). Orbs cost ~3 ms on this lane.
   Against the pre-plan 57.21 ms (with orbs), the real ch1 frame is **45 % faster**.
-  Baseline stays null: the cell's max 5.0 still needs the deliberate re-budget
-  decision recorded in its note.
+  RE-BUDGETED (user-approved): **baseline 32.44 / max 35.0** — a hold-the-line
+  ratchet ~8 % above the worse of the pair, to be TIGHTENED as the carried levers
+  land (haze trim, sprite->instanced migration). The 5.0 aspiration predated any
+  pricing of the lane and is retired.
 - `odysseyAct1Ch1DrawCalls` — 83 sans orbs / 92 with orbs, CONSTANT for the first
   time; stays null against max 35 until the carried sprite->instanced migration.
 
