@@ -12,6 +12,7 @@ import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -146,14 +147,6 @@ const ONE_WORLD_OUTPUT_SCALE = 0.82;
 const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
-// How far outside Act II the world keeps drawing, in progress units. It is the authored
-// seamWidth of BOTH act-edge boundaries — ch1->ch2 and ch5->ch6 are each 0.03 in
-// chapter-profile.js, and ChapterEnvironmentManager uses seamWidth as the ecotone half-width
-// — so the world is present for exactly the window in which the neighbouring chapter is
-// co-present, and no wider. Do NOT raise this to the journey's widest seam (Ch4's 0.06):
-// that reaches 0.033, which is only 35% into Chapter 1 and leaves the very defect this gate
-// exists to fix (Act II's ocean over the magma cathedral, captured at p=0.051) in place.
-const ONE_WORLD_ACT_MARGIN = 0.03;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -2490,8 +2483,7 @@ export class OdysseyBoardController {
                 //
                 // The margin keeps the world present across the act-edge seams, where the fog
                 // handoff ramps and the neighbouring chapter is still co-present.
-                const worldVisible = cameraProgress > (actStart - ONE_WORLD_ACT_MARGIN)
-                    && cameraProgress < (actEnd + ONE_WORLD_ACT_MARGIN);
+                const worldVisible = isWorldVisibleAtProgress(cameraProgress, actStart, actEnd);
                 this.oneWorld.group.visible = worldVisible;
                 this._oneWorldVisible = worldVisible;
 
