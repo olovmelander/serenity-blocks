@@ -65,7 +65,12 @@ function unpinnedTextureCalls(text) {
             else if (text[i] === ')') depth -= 1;
             i += 1;
         }
-        const tail = text.slice(i, i + 12).replace(/\s+/g, '');
+        // The window must be wide enough to span a LINE BREAK plus indentation: max-len
+        // regularly pushes `.level(0)` onto the next line, where a 12-char window held only
+        // the newline, eight spaces and three characters -- a false positive on correctly
+        // pinned code. Whitespace is stripped before the check, so a wider window still
+        // means "the very next token".
+        const tail = text.slice(i, i + 40).replace(/\s+/g, '');
         if (!tail.startsWith('.level(')) offenders.push(text.slice(m.index, i).slice(0, 90));
         m = re.exec(text);
     }

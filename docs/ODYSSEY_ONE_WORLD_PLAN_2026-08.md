@@ -740,11 +740,21 @@ wants on screen), a 60–240 u eye-distance near fade (underfoot the deck now re
 the valley through gaps), and a 40–200 u altitude-band fade (a horizontal corridor through the
 layer while floors above/below stay solid). Sky luma 178.8 → 98.7 against the 129.4 target.
 
-Remaining, scoped: the coverage holes still have cliff-hard silhouettes at range because the
-±165 u billow runs full-strength up to the alpha boundary. Two levers, in order: (1) multiply
-billow by smoothed coverage so hole edges sink toward the flat plane instead of tearing;
-(2) widen the puff edge (currently 0.06) with footprint at range. Polish, not a blocker —
-Ch5 boots and the deck reads as strata in most flight frames.
+Both remaining levers landed: the billow is now multiplied by a vertex-stage estimate of the
+same coarse density that decides where the holes are, so the surface sinks back to the flat
+deck plane exactly where it is about to go transparent (edges dissolve instead of tearing);
+and the alpha edge is footprint-widened — but only a LITTLE. The first attempt lifted the band
+to 0.22 at range, which stopped anti-aliasing the edge and started *making* it: partial
+coverage everywhere turned distant broken cumulus into a translucent overcast veil across the
+whole sky. 0.06 + up to 0.05 keeps the cumulus discrete.
+
+**NaN TRAP, third occurrence in this repo:** the ported Ch2 caustic used `pow(x, 4.0)` where
+`x = (noiseA + noiseB) * 0.5 + 0.5` — two summed gradient noises CAN dip below −0.5, and
+`pow()` with a negative base and non-integer exponent is UNDEFINED in WGSL. The result was
+black blobs scattered across the terrain, including ABOVE the waterline where the term is
+gated off, because `NaN × 0` is still NaN. Clamped before the pow, and the same guard applied
+to the god-ray shimmer, which had the identical shape. Watch for this in every ported noise
+term.
 
 **LESSON, plan-wide:** CPU-expressible terrain math goes in BAKES, not TSL graphs. A TSL
 expression with high fan-out referenced through varyings is a build-time bomb in r181, and
