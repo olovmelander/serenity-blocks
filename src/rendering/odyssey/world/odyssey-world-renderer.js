@@ -1303,12 +1303,30 @@ export function createOdysseyWorld({
             // multiply by a zero uniform is NOT dead-code-eliminated — the repo has that
             // lesson logged — so the gate has to be a `visible` write on the CPU.
             if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
+            // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
+            // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
+            // seaLevel + 3, and the lowest trunk seats at y=290.3 against sea level 287.31, so
+            // none of this geometry is ever underwater. But while the eye is submerged every one
+            // of them is occluded: tracing eye->treetop rays to their y = SEA_LEVEL crossing and
+            // evaluating the water's own opacity there gives, at p=0.174, 2,057 hidden by opaque
+            // water and 13,355 by terrain with ZERO potentially visible; at p=0.16, 841 / 14,569
+            // and 2, both of which still sit behind water at 0.75 opacity a kilometre out. It
+            // cannot be otherwise: for an eye D below the surface and a treetop T above it at
+            // range X, the ray meets the water plane at X*D/(D+T) < X, always.
+            // Meanwhile 5-13 chunks pass the frustum, submitting 1,537-4,697 tree instances and
+            // 46k-141k triangles to be shaded and painted over -- 11 of the 45 draws measured at
+            // p=0.16 are forest. A CPU visible gate is required: multiplying by a zero uniform
+            // would not remove the draw.
+            // NOTE the draw count changes, so the p=0.16 cell must be RE-BASELINED; a pair
+            // across this change is not content-matched and cannot be compared.
             if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001;
             if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001;
             if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001;
+            const forestDrawable = uSubmerged.value < 0.999;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
-                treeMeshes[i].visible = Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
+                treeMeshes[i].visible = forestDrawable
+                    && Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
             }
         },
         dispose() {
