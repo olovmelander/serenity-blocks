@@ -718,13 +718,27 @@ that "proved" the cloud fix had actually booted the LEGACY path (the tell: the m
 urlFlags and a "Prewarmed chapter 4 shaders" line for a suppressed chapter). parseArgs now
 accumulates; always check the manifest's urlFlags before believing a bisect.
 
-**What survives:** the stall reproduces with the flag ON regardless of every board-side
-subsystem, which pins it inside the world module's changes from the breaking window that run
-even with clouds withheld — the detailTex RG→RGBA widen and the curvature bake/consumption —
-or in their interaction with the in-game compile (4× MSAA post pass; the playground has no
-MSAA and no post). Next session, in order: (1) temp-revert those two renderer hunks — one run
-each; (2) if neither, diff the in-game pipeline compile against the playground's (MSAA off via
-`odysseyPerfPostQuality`) rather than reading more source.
+**RESOLVED AS AN AXIS (2026-08-12, late): the regression is NOT in the commits.** The decisive
+run: a git worktree pinned to the last-known-good commit (`614f77a5`), junctioned node_modules,
+the exact window and flags that succeeded at 00:26 — **and it stalls identically.** Same code,
+same configuration, different outcome; the variable that changed is the MACHINE. This session
+ran 40+ heavy WebGPU Electron boots with force-kills, the legacy control's boot time grew from
+~2 minutes to ~7, and the project memory documents exactly this accumulated GPU
+reload-degradation state (the "1 fps after heavy reloads" entry; recovery = reboot). One World,
+whose boot is the heaviest, is simply the first thing to fall over the readiness horizon.
+
+Standing down the code hunt: the two renderer hunks (detailTex RGBA, curvature) are exonerated
+along with everything else — nothing in the elimination table was ever going to converge,
+because every row was measured on progressively more degraded hardware. The false-negative
+risk cut the other way too: the "breaking window" correlation was TIME, not commits.
+
+**Next session, in order: (1) REBOOT the machine; (2) run the validation command below — it
+should boot in ~2–3 min; (3) only if it still stalls does code investigation resume, starting
+from a fresh elimination table, because tonight's is contaminated.**
+
+```
+node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs --chapter 4 --url-flag odysseyOneWorld=1 --frames 4
+```
 
 Shipped as instruments, kept: `clouds` lever on `createOdysseyWorld` (+`?odysseyWorldNoClouds`),
 the accumulating `--url-flag` parser, and the probe's `PROBE_FLAGS` env passthrough
