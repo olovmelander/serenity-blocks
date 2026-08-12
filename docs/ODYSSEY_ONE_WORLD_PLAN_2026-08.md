@@ -294,7 +294,7 @@ land is green low and snowy high.
 | Act | Chapters | Treatment |
 |---|---|---|
 | **I — Earth Core** | ch1 | Separate place. Stays a diorama. |
-| **II — The Ascent** | **ch2–ch6** | **ONE WORLD.** One mountain rising out of one ocean into one sky. |
+| **II — The Ascent** | **ch2–ch6** | **ONE WORLD.** One mountain rising out of one ocean into one sky. *(Shipped as ch2–ch5: `ONE_WORLD_CHAPTERS = [2,3,4,5]` — ch6 Space keeps its own environment because the world's height field does not describe it, per the Wave 3 policy test. This table records the original intent; the implementation deliberately narrowed it. Do not "fix" suppression toward this row.)* |
 | **III — Beyond** | ch7–ch8 | Separate places. Stay dioramas. |
 
 That leaves exactly **two** act boundaries needing a real transition, and both should be
@@ -662,7 +662,12 @@ this document's own prose — several waves this file described as done were not
     configuration was comparing the default against ITSELF — a guaranteed zero that would have
     read as "the rebuild is free". The comparison is now against `?odysseyOneWorld=0`.
   - CARRIED FORWARD, not silently dropped: region-based camera-distance streaming is still the single hard-coded 1,450 u forest gate, and **One World has no GPU-time number**. The gpu-split harness now boots it, but it measures the board where it PARKS — journey start, 40 draws, 0.13 ms, Act II off-screen — so the delta would be measuring nothing. Seeking the camera to Act II progress before sampling is the prerequisite, and it belongs to Wave 7.
-- [ ] **Wave 4** — Delete the canonical chain and `rangeAuthority` — **BLOCKED ON RETIRING THE ESCAPE HATCH, not on the flip (2026-08-12).** Wave 3 flipped the default, but all three `createCanonicalMountainRangeTSL` call sites live in surface-world (ch3), mountain-peaks (ch4) and sky-drift (ch5) — suppressed by default, and therefore dead in the shipped path, but ALIVE whenever `?odysseyOneWorld=0` restores the dioramas. Deleting them makes that hatch a lie. The prerequisite is a deliberate decision to retire the fallback after the flip has soaked; that is an owner call, not a refactor. Same dependency applies to **Wave 6** (46 ecotone crossfade bridges) — both are pure deletions of code only the fallback still reaches.
+- [ ] **Wave 4** — Delete the canonical chain and `rangeAuthority` — **RESCOPED BY AUDIT (2026-08-12): the premise was FALSE.** A 13-agent audit (4 inventories, 8 adversarial verifiers, 1 synthesis) tested this wave's core claim — "code only the `?odysseyOneWorld=0` fallback reaches" — and **all eight verification passes refuted it.** See §"Wave 4/6 deletion manifest (audited)" below for the full accounting. The headline corrections:
+  - `shared/mountain-language.js` (575 LOC) is consumed by the SHIPPED **winter theme** (`winter-theme.js:70-74` imports `mountainCpuDisplacement`/`mountainColorNode`/`resolveMountainTreatment`, called at :174/:181/:195) plus three live playground effects and the one-sun invariant test. **Permanently out of scope**, independent of any hatch decision.
+  - `shared/canonical-mountain-range.js` (273 LOC) is in the **production bundle** (`vite.config.js:131` registers `playground.html` as a rollup input; `dist/` contains `ch4-center-hero`). Five live playground effects reach it — `ch3-ch4-seam`, `ch4-mountain-peaks`, `ch5-sky-drift` EXECUTE the real chapter builders (so the "suppressed" chapter call sites at `surface-world.js:1502` / `mountain-peaks.js:303` / `sky-drift.js:335` are live after all), and `seam-34-landscape` / `ch3-surface-world` import it directly. The LIVE world's own guards depend on it too: `odyssey-world-height.test.js:13,22` derives the `ODYSSEY_MASSIFS` expectations from `getCanonicalMountainRangeWorldSpecs` (the only executable link between the shipped silhouette and the height field), and `odyssey-path-layout.test.js:58-84` is the repo's only rail-clearance guard. Deleting the module as scoped **breaks `vite build`**.
+  - `rangeAuthority` is the one part that IS safe: sole writer `ChapterEnvironmentManager.js:1225-1263` (39 lines), sole read `surface-world.js:1812` — but only the narrow token removal there (`&& element.userData.rangeAuthority !== false`); the 13-line block :1803-1815 must stay because `ch3-ch4-seam.effect.js:124` needs the visibility write.
+  - Real totals: as-planned engine code **495 lines**; with the playground/test churn the plan omitted, **681 lines across 13 files** — of which only ~44 are deletable today.
+  - Path forward (Tranche 2 of the manifest): flip the spec authority — move the 4 canonical peak specs into `world/` as the world's own frozen table, rewrite the two live tests against it, THEN the TSL builder half of the module is deletable once the playground effects' fate is decided (owner call).
 - [x] **Wave 5** — One atmosphere + one sky — **DONE (2026-08-12)**, and the remaining item turned out to be hiding a LIVE bug. (~50 % before: fog ownership and the one sky landed early; **the fog lint now exists** — `odyssey-world-lints.test.js` pins the opt-out list to the material constructor list, mutation-verified, so a sixth world material cannot ship half-fogged. Remaining: migrate the 12 legacy chapter fog opt-outs to the one-atmosphere scheme — blocked on captures, i.e. on the reboot.)
 
   **Closed by extending the lint instead of doing the migration — because the migration's
@@ -698,7 +703,13 @@ this document's own prose — several waves this file described as done were not
 
   Residual: the ad-hoc opt-outs inside the suppressed ch2-5 modules stay as they are, tied to
   the same hatch-retirement decision as Waves 4 and 6.
-- [ ] **Wave 6** — Transitions become occlusion (5 %: the ecotone machinery is fully live — 46 crossfade bridges). **Same blocker as Wave 4:** the machinery is only reached by the `?odysseyOneWorld=0` fallback now, so deleting it retires the hatch by implication. Sequence it with Wave 4 once the fallback is formally dropped.
+- [ ] **Wave 6** — Transitions become occlusion — **RESCOPED BY AUDIT (2026-08-12): "delete the ecotone machinery" would break three LIVE chapters.** Same 13-agent audit as Wave 4; both verification lenses refuted the "fallback-only" claim. The corrections:
+  - **The count was counting the wrong thing.** "46" is the occurrence count of the *comment string* "ecotone crossfade bridge" (two are prose, four real bridges are uncommented). The actual construct — `material.uniforms = { uOpacity }` — appears **48 times in 8 files, and 34 of the 48 (71 %) are in chapters that still draw**: ch1 earth-core ×17, ch7 black-hole ×7, ch8 urban-dreams ×10. Only ch2 deep-ocean's 13 (+1 shared-water, which the live `odyssey-unified-water` effect drives itself) are fallback-only.
+  - Deleting the live bridges would make ch1/ch7/ch8 **snap on and off** at the 1-2, 6-7 and 7-8 boundaries — r181 makes `material.opacity` a dead write on any material with an authored `opacityNode` (this repo's 4×-recurring trap); the bridge IS the crossfade. Guarded by `earth-core-environment.test.js:100-119` and `urban-dreams-environment.test.js:20-21`, which stay.
+  - The consumer machinery is live **every frame**, not fallback code: `_collectOpacityTargets` (`ChapterEnvironmentManager.js:581`), `setGroupOpacity` (:1307), the ecotone apply block :1112-1144 with its ch6 fade-in special case (`boundaryId === '5-6'`), and the director-side colour lerps — the director is unconditional (`OdysseyBoardController.js:864/:1750`; `?odysseyAAA=1` gates only diagnostics).
+  - `SEAM_56_AURORA_BRIDGE` (`seam-bridges.js:37-43`) is live **and visible**: the One World fog handoff weight is zero at the act edges (`OdysseyBoardController.js:2434-2437`), so at 5→6 the bridged fog/clear colour is exactly what the player sees. The 3-4 and 4-5 colour windows are the genuinely stale part (overridden mid-act where the world's fog weight is 1) and can go alone — with one capture at those progress bands, since they still write `scene.fog`.
+  - Deletable today without any owner decision: **~50 lines** (ch2's 13 bridges, the dead `ECOTONE_*` tuning constants + `resolveEcotoneHalfWidth` clamp arithmetic — computed half-widths 0.00616–0.01628 all lose to `seamWidth` at :201 at all seven boundaries — and the ch2 test block). The other ~585 inventoried lines belong to chapters One World never replaced and are **permanently out of scope**.
+  - The constructive half (the occlusion moments: the ch1→ch2 dive, the ch5→ch6 cloud bank) remains unbuilt; deleting bridges before building them would leave the two real act boundaries with nothing.
 - [ ] **Wave 7** — Perf, tiers, residency, rail furniture — **20 %, and the headline question is ANSWERED (2026-08-12).** Lane A: One World 0.39 ms vs dioramas 1.97 ms at **zero drift** — 5x cheaper, 23 % of the frame budget returned. Lane B (Radeon 610M, 1280x720, Medium, ch4 station): **One World 4.19 ms p50 vs the dioramas 39.52 ms** — the rebuild is worth roughly **30–35 ms on the iGPU**, which is the difference between ~25 fps and unplayable.
   - **READ THE DRIFT BEFORE CELEBRATING.** Lane B's bracketing baselines disagree by **5.44 ms** (4.19 -> 9.63 for the identical configuration), so the iGPU is thermally unstable across a 3-configuration run. The SAVING survives that easily — 35 ms of signal against 5 ms of drift — but the absolute figure does not: **it is NOT established that One World is inside §8's 7.0 ms p95 budget.** The second baseline's p95 was 9.83 ms, above it. The honest claim is "between 4 and 10 ms p50, versus 40 ms before", and pinning it down needs a cooled machine and repeats.
   - **§8 IS NOW IN THE GATE (2026-08-12).** `perf-budgets.json` carries three world cells and `perf-budgets-gate` exits 0 on them: `odysseyWorldGpuP50LaneAMs` (baseline 0.39, max 1.5 — a real baseline because Lane A drifted 0.00 ms, and a max set BELOW the dioramas' 1.97 ms at the same station so the gate also fails if the rebuild is ever reverted by accident), `odysseyWorldDrawCallsLaneA` (53 against the dioramas' 124 — the structural claim of the rebuild, which regresses in exactly one way: chapter environments creeping back into Act II), and `odysseyWorldGpuP50LaneBMs` with a **deliberately null baseline** and max 7.0, because a 4.19 pinned from a run that then measured 9.63 would be exactly the false precision this file exists to prevent. The lint was mutation-checked: a `"TBD"` in any budget cell fails it.
@@ -990,6 +1001,62 @@ summit earth, and now this), which is what the planned lint is for: a material d
 ~1 km in the Odyssey scene that has not opted out of scene fog is almost always a bug.
 
 ### Wave 6 — Transitions become occlusion; delete the ecotone machinery
+
+### Wave 4/6 deletion manifest (audited 2026-08-12)
+
+A 13-agent audit (4 parallel inventories → 8 adversarial verifiers, two independent lenses
+per target, instructed to REFUTE → 1 synthesis) established what these waves would actually
+delete. **All eight verification passes returned `refuted`**: every target has consumers on
+the default path. The tracker entries above carry the per-wave corrections; this section
+records the combined accounting and the decision structure.
+
+**Combined as-planned cost** (hatch retirement + both waves, de-duplicated): **12 files
+deleted, 42 edited, ≈2,994 lines** — of which the engine-code core is exact (Wave 4 = 495,
+Wave 6 = 635, together 1,130) and the ~547 doc/report lines are reference-hit counts, not
+measured removals.
+
+**The safety finding that changes the decision.** The fallback has TWO entrances, and the
+plan only ever knew about one. Besides `?odysseyOneWorld=0` there is a **flagless runtime
+crash-catch** (`OdysseyBoardController.js:655-660`): if `createOdysseyWorld()` throws — a
+TSL compile failure on some driver, a bad asset — the catch clears `suppressedChapters`
+BEFORE the chapter-creation loop at :714-716, so a completely default boot still gets a full
+world via the dioramas. The ordering was verified, and `createOdysseyWorld` is synchronous so
+the throw is genuinely caught. After retirement + deletion, that failure becomes a **silent,
+self-consistent void**: `this.oneWorld` stays null, every consumer is null-guarded
+(:796/:1787/:2345/:2410/:2434), boot completes, the ribbon/orbs/traveller/atmosphere-dome
+still draw — and chapters 2–5 have no ground and no sky for two thirds of the journey. Orbs
+revert to raw spline positions, so nothing even looks broken in a smoke test. (The catch is
+also narrower than its comment claims: deferred work — asset loads, `compileAsync` — already
+escapes it.)
+
+**Hard contract blocker:** `chapter-registry-consistency.test.js:29,33,48,60-63` +
+`odyssey-gpu-gate-coverage.test.js:39-49` chain the registry → `odyssey-webgpu-validation.mjs`
+→ the pilot. The four diorama modules must survive at least as export-shaped stubs, or four
+tests and two harnesses are reworked in one commit. Also lost with the hatch: the
+`legacy-dioramas` configurations in `scripts/odyssey-gpu-split.mjs:60-74`, which make the
+1.97 ms / 39.52 ms diorama baselines behind three `perf-budgets.json` cells reproducible.
+
+**Tranche 1 — safe now, no owner decision (~90 lines):** `rangeAuthority` (manager block
+:1225-1263 + the narrow token edit at `surface-world.js:1812` only), the dead `ECOTONE_*`
+tuning + `resolveEcotoneHalfWidth` clamp arithmetic, ch2's 13 bridges + test block, and the
+3-4/4-5 colour windows (one capture required — they still write `scene.fog`).
+
+**Tranche 2 — prerequisites that make the hatch retirement decidable:**
+1. Replace the silent catch with LOUD failure (rethrow into the boot-stage coordinator or a
+   visible diagnostic state). A void two thirds of the journey long must not be quiet.
+2. Flip the spec authority: the 4 canonical peak specs move into `world/` as the world's own
+   frozen table; `odyssey-world-height.test.js` and the rail-clearance guard rewrite against
+   it. (Today the LIVE world's tests derive truth from the module being deleted.)
+3. Owner decides the playground effects' fate — `seam-34-landscape`, `ch3-*`,
+   `ch4-mountain-peaks`, `ch5-sky-drift` execute the real chapter builders, so this decision
+   alone determines whether the chapter modules can ever shrink to stubs.
+4. Rework the registry/pilot/validation contract in one commit.
+5. Record the retirement as an ADR (`docs/adr/` currently has nothing on the hatch).
+
+**Out of scope permanently, regardless of the hatch:** `shared/mountain-language.js` (winter
+theme), the 34 live ch1/ch7/ch8 bridges and their contract tests, `SEAM_56_AURORA_BRIDGE`,
+the ecotone resolver/apply machinery, and the director colour lerps for 1-2/5-6/6-7/7-8.
+
 ### Wave 7 — Perf, tiers, residency; re-budget the rail furniture (69 % of triangles)
 
 ---
