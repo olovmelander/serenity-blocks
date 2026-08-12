@@ -727,11 +727,34 @@ export function createOdysseyWorld({
     // passes light and glows, a thick core does not. That single term is what separates a
     // cumulus from a grey disc, seen from either side.
     const cloudTop = uSunColour.mul(1.06).add(uSkyZenith.mul(0.10));
-    const cloudBase = mix(uShadowTint.mul(1.35).add(uSkyHorizon.mul(0.42)), cloudTop, puff.oneMinus().mul(0.85));
+    // The base tone leans on the HORIZON colour, not the shadow tint. The first version was
+    // shadow-tint-dominated, which the playground (no post stack) rendered as soft grey — and
+    // the in-game grade (outputScale 0.82, ACES, chapter saturation 1.10) crushed into ragged
+    // NAVY shards across Ch5's sky. Same lesson as the ground palette: the world hands the
+    // grade a brighter, flatter colour than it wants on screen, because the grade adds the
+    // punch. Capture-diagnosed at Ch5 eye height, 2026-08-12.
+    const cloudBase = mix(
+        uSkyHorizon.mul(0.88).add(uShadowTint.mul(0.30)),
+        cloudTop,
+        puff.oneMinus().mul(0.85),
+    );
     const fromAbove = smoothstep(float(-60), float(90), cameraPosition.y.sub(float(CLOUD_DECK_Y)));
     const cloudCol = mix(cloudBase, cloudTop, fromAbove);
     cloudMat.colorNode = toOutput(applyAerial(cloudCol, positionWorld));
-    cloudMat.opacityNode = puff.mul(rim).mul(float(1).sub(uSubmerged)).mul(0.94);
+    // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
+    // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
+    // distance to the EYE (not by altitude band) keeps the deck solid at range in every
+    // direction while the 60..240 u shell around the camera reads as passing through mist.
+    const nearFade = smoothstep(float(60), float(240), length(positionWorld.sub(cameraPosition)));
+    // ALTITUDE-BAND FADE. The near fade alone is not enough: with the camera INSIDE the
+    // deck's billow band, the sheet at the camera's own altitude forms hard torn silhouettes
+    // at EVERY distance — the ragged-shards frame the first Ch5 capture produced. Fading
+    // fragments within ~200 u of the camera's altitude opens a horizontal corridor through
+    // the layer while the deck above and below stays solid, which reads as flying between
+    // cloud floors — exactly the "strata at eye height" the chapter wants.
+    const bandFade = smoothstep(float(40), float(200), abs(positionWorld.y.sub(cameraPosition.y)));
+    cloudMat.opacityNode = puff.mul(rim).mul(nearFade).mul(bandFade)
+        .mul(float(1).sub(uSubmerged)).mul(0.94);
     cloudMat.transparent = true;
     cloudMat.depthWrite = false;
     cloudMat.side = THREE.DoubleSide;
