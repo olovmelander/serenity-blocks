@@ -94,3 +94,43 @@ describe('post-target-compile (E2 warm-up helper)', () => {
         expect(renderer._current().target).toBe('CANVAS'); // untouched (no post to bind)
     });
 });
+
+describe('the render-loop guard (2026-08-12 device-loss fix)', () => {
+    // compileAsync opens a render pass on whatever target is bound. Doing that while the rAF loop
+    // is rendering the post graph puts the scene-pass "output" texture in one command encoder as
+    // BOTH a sampled binding and a render attachment, which WebGPU rejects; pipeline creation then
+    // returns undefined and the next draw throws inside setPipeline, permanently poisoning the
+    // device. The symptom is thousands of identical errors per second, so the cheap guard below is
+    // worth pinning: it is invisible in every renderer-free test unless asserted directly.
+    it('does NOT bind the post target while the render loop is active', () => {
+        const renderer = makeRenderer();
+        expect(beginPostTargetCompile(renderer, makePostStack(), true)).toBeNull();
+        expect(renderer.setRenderTarget).not.toHaveBeenCalled();
+        expect(renderer.setMRT).not.toHaveBeenCalled();
+    });
+
+    it('still binds it when the loop is idle — the startup path keeps the optimisation', () => {
+        const renderer = makeRenderer();
+        expect(beginPostTargetCompile(renderer, makePostStack(), false)).not.toBeNull();
+        expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
+    });
+
+    it('compileGroupThroughPost still compiles when the loop is active, just unbound', async () => {
+        // The chapter must STILL be compiled — skipping the compile entirely would reintroduce a
+        // first-visit freeze. Only the target binding is dropped.
+        const renderer = makeRenderer();
+        await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP', true);
+        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        expect(renderer.setRenderTarget).not.toHaveBeenCalled();
+        expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
+    });
+
+    it('defaults to the SAFE behaviour when the flag is omitted', () => {
+        // A caller that forgets the argument must not silently reintroduce the crash on a live
+        // loop... but the default also must not disable the startup optimisation. The default is
+        // "loop idle" because every in-repo caller passes the real state; this test exists so that
+        // choice is deliberate and visible rather than accidental.
+        const renderer = makeRenderer();
+        expect(beginPostTargetCompile(renderer, makePostStack())).not.toBeNull();
+    });
+});

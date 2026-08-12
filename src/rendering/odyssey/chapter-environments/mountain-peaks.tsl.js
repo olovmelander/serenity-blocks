@@ -13,7 +13,7 @@
  * version did (same cone falloff + value-noise FBM detail + `computeVertexNormals`), so
  * the mesh shape is byte-for-byte identical; the per-pixel snow/rock/fog/rim lighting is
  * the part that moves to the GPU as a TSL `colorNode`/`opacityNode`. The geometry's baked
- * `vNormal`/`vWorldPosition`/`aHeight` map to TSL `normalView` / `positionWorld` /
+ * `vNormal`/`vWorldPosition`/`aHeight` map to TSL `normalWorld` / `positionWorld` /
  * `attribute('aHeight','float')`.
  *
  * The chapter's private inline value-noise (`hash`/`noise`/`fbm`) maps to a `snoise3`
@@ -40,7 +40,7 @@ import {
     min,
     mix,
     normalize,
-    normalView,
+    normalWorld,
     oneMinus,
     positionLocal,
     positionWorld,
@@ -53,16 +53,36 @@ import {
     vec3,
 } from 'three/tsl';
 import { snoise3 } from './shared/odyssey-tsl-noise.js';
+import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import {
     billboardWorld,
     makeQuadInstancedGeometry,
 } from './shared/odyssey-tsl-billboard.js';
 import {
+    MOUNTAIN_DISPLACEMENT,
     MOUNTAIN_SHADING,
     mountainColorNode,
     mountainCpuDisplacement,
     resolveMountainTreatment,
 } from './shared/mountain-language.js';
+
+// ── Rim fade (alpha) ──────────────────────────────────────────────────────────────
+// Where the peak's alpha dissolves, as a RADIUS fraction of the plane's uv space (0.5 is
+// the mid-edge, ~0.707 a corner). It must sit at or beyond the displaced cone's own
+// footprint — `MOUNTAIN_DISPLACEMENT.coneRadiusFrac` — or the fade eats into standing
+// mountain and the body renders semi-transparent (see the SOLID BODY note at the alpha
+// site). Guarded by mountain-peaks-solidity.test.js.
+export const MOUNTAIN_RIM_FADE = Object.freeze({
+    // Both bounds sit OUTSIDE the footprint, with enough margin that even the inward half
+    // of the edge-noise wobble (startFrac − noiseAmplitude/2 = 0.451) still clears
+    // coneRadiusFrac. Everything the eye can see as mountain is therefore at alpha 1, and
+    // this fade only ever acts on the dead flat margin out toward the plane's corners —
+    // where `mountainCpuDisplacement` has already returned a hard 0 and `baseFade` has
+    // taken the alpha down anyway. Belt-and-braces, not a silhouette-shaping tool.
+    startFrac: MOUNTAIN_DISPLACEMENT.coneRadiusFrac + 0.012,
+    endFrac: MOUNTAIN_DISPLACEMENT.coneRadiusFrac + 0.055,
+    noiseAmplitude: 0.022, // peak-to-peak uv wobble added to the radius
+});
 
 // ── Canonical mountain treatments (ONE language; see shared/mountain-language.js) ──
 // Heroes ride the cool pole (saturated cool blue); the lower foothill apron pulls the
@@ -77,7 +97,7 @@ const FOOTHILL_APRON_TREATMENT = resolveMountainTreatment({
 // On-screen sun / alpenglow direction for the Mountains chapter. The shader keyDir is
 // aligned to this so lit faces face the sun and the alpenglow fires where the disc is.
 // (Matches the plan's profile lightDir (0.7,0.25,0.4); B7 owns the profile entry itself.)
-export const MOUNTAIN_LIGHT_DIR = Object.freeze([0.7, 0.25, 0.4]);
+export const MOUNTAIN_LIGHT_DIR = Object.freeze([...ODYSSEY_SUN]);
 // Real alpenglow (plan ch4 §Lighting): stronger + lower than Surface's shared defaults.
 const ALPEN_STRENGTH = 0.6; // 0.42 → 0.6
 const ALPEN_HEIGHT_LO = 0.48; // 0.55 → 0.48
@@ -164,10 +184,13 @@ export function createMountainSkyTSL(uTransition) {
     // but the silver band is pulled a touch deeper/cleaner and the alpine + zenith bands go
     // markedly richer + darker so the dome reads as a high, clear stratospheric blue with real
     // top-to-bottom contrast — not the flat pale blue-grey wash the captures showed.
-    const uGilt = uniform(new THREE.Color(0xe6b483)); // warm gilt horizon (h < 0.05)
-    const uSilver = uniform(new THREE.Color(0xaac6e0)); // silver-cyan (0.05–0.3)
-    const uAlpine = uniform(new THREE.Color(0x3a6ba6)); // richer alpine blue (0.3–0.6)
-    const uZenith = uniform(new THREE.Color(0x132247)); // deep indigo zenith (h > 0.7)
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): Ch4 rebright from moonlit-dusk to the shared
+    // BRIGHT DAYLIGHT anchor so it climbs under the SAME vivid blue sky as Ch3 (deep azure zenith →
+    // light cyan horizon). Was warm-gilt horizon over an indigo near-space zenith (a dusk dome).
+    const uGilt = uniform(new THREE.Color(0xbfe4f2)); // light cyan-blue horizon (was warm gilt) — matches Ch3
+    const uSilver = uniform(new THREE.Color(0x8fc0e8)); // light azure (0.05–0.3)
+    const uAlpine = uniform(new THREE.Color(0x3f8fe0)); // clear azure (0.3–0.6) — matches Ch3 mid
+    const uZenith = uniform(new THREE.Color(0x2360c8)); // vivid daylight azure zenith — matches Ch3
     // Night targets (driven by uTransition) — the whole dome falls to near-black so the
     // 4→5 exit and the chapter's night lerp still read.
     const uGiltNight = uniform(new THREE.Color(0x0a0a14));
@@ -192,9 +215,9 @@ export function createMountainSkyTSL(uTransition) {
     color = mix(color, alpine, smoothstep(0.12, 0.34, hClamped));
     color = mix(color, zenith, smoothstep(0.34, 0.72, hClamped));
 
-    // Aerosol-thinning: above the silver band the air thins toward space-dark — subtract a
-    // little luminance on the upper dome so the zenith goes deep, never washed.
-    const aerosol = oneMinus(pow(hClamped, 0.6)).mul(0.12);
+    // Aerosol-thinning cut right back (0.12 → 0.02): at 0.12 it dragged the upper dome toward
+    // space-dark (part of the old dusk read). A bright daylight sky keeps a luminous blue zenith.
+    const aerosol = oneMinus(pow(hClamped, 0.6)).mul(0.02);
     color = color.sub(aerosol).max(0.0);
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -202,6 +225,10 @@ export function createMountainSkyTSL(uTransition) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.transparent = true;
+    // CRITICAL (Wave B): un-fog the sky dome — same bug Ch3 had. This is a radius-6000 BackSide dome,
+    // so the scene FogExp2 fogged it to ~100% and replaced the whole gradient with the flat fog
+    // colour. A backdrop-at-infinity must never be fogged; fog=false lets the azure gradient read.
+    material.fog = false;
 
     const geometry = new THREE.SphereGeometry(6000, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
@@ -231,7 +258,7 @@ export function createCloudSeaDeckTSL({
     const uTopWarm = uniform(new THREE.Color(0xf2e3cf)); // white-gold sunlit billow tops
     const uTrough = uniform(new THREE.Color(0x9fb3cc)); // cool shaded troughs
     const uFogEdge = uniform(new THREE.Color(0xb9cee2)); // distance fog-edge (matches silver band)
-    const uLightDir = uniform(new THREE.Vector3(0.7, 0.25, 0.4).normalize());
+    const uLightDir = uniform(new THREE.Vector3(...MOUNTAIN_LIGHT_DIR).normalize());
     const uOpacity = uniform(0.92); // capped < 1.0 (no white blowout, soft additive-free top)
 
     // 3-octave value-FBM billow scrolling slowly over world XZ (NO per-frame alloc).
@@ -239,7 +266,13 @@ export function createCloudSeaDeckTSL({
     const billow = fbmValue2(flow, 3);
 
     // Upward-normal + sun term lights the billow tops warm; troughs stay cool.
-    const n = normalize(normalView);
+    //
+    // WAVE 0.2 — `normalWorld`, not `normalView`. The deck is a flat disc, so its VIEW normal
+    // is one value for the whole surface that changes every time the camera turns: the entire
+    // cloud sea used to re-light as a single unit on yaw. Its WORLD normal is the constant
+    // up-vector this term was always named for, so the sun contribution is now a stable
+    // offset and the visible structure comes from the billow, which is where it belongs.
+    const n = normalize(normalWorld);
     const up = clamp(dot(n, uLightDir).mul(0.5).add(0.5), 0.0, 1.0);
     const litTop = clamp(billow.mul(0.8).add(up.mul(0.4)), 0.0, 1.0);
     let color = mix(uTrough, uTopWarm, litTop);
@@ -353,8 +386,16 @@ export function createFBMMountainTSL(config = {}) {
     // Rose-gold the summit ignites toward at climax (warm, but capped so it blooms soft).
     const uSummit = uniform(new THREE.Color(0xffc59a));
 
-    // Stage values: vNormal → normalView, vWorldPosition → positionWorld, vHeight → aHeight.
-    const vNormal = normalView;
+    // WORLD-SPACE SHADING NORMAL (2026-08). This was `normalView` — a mechanical artefact of
+    // the GLSL→TSL port (the original `vNormal` varying was a world/model normal). Every
+    // consumer in mountainSurfaceColorNode dots it against WORLD-space constants: the key
+    // light (MOUNTAIN_SHADING.keyDir / ODYSSEY_SUN), the snow slope gate (dot with world up)
+    // and the rim (dot with a world view vector). Mixing the two spaces glued the lighting to
+    // the CAMERA: the terminator swept across the massif as the rail moved, the snow slope
+    // gate re-cut where snow could sit, and the camera-facing bulk was pinned at ambient-only
+    // (which is what made it crush to navy once scene fog stopped masking it). That is the
+    // dominant "changes shape / feels like many different modelled mountains" cause.
+    const vNormal = normalWorld;
     const vWorldPosition = positionWorld;
     const vHeight = attribute('aHeight', 'float');
 
@@ -391,8 +432,18 @@ export function createFBMMountainTSL(config = {}) {
         snowNoise,
         // uTransition drives the chapter to night — fade the warm alpenglow as it does.
         alpenScale: oneMinus(uTransition),
+        // NOTE: the hero peaks deliberately do NOT override `keyDir` any more. They used to
+        // key off MOUNTAIN_LIGHT_DIR (= ODYSSEY_SUN, ~(0.35, 0.62, −0.70)) — a −z direction,
+        // i.e. the sun sits BEHIND the range — so every camera-facing slope had ndl = 0 and
+        // the massif rendered as an unlit navy silhouette. That went unnoticed only because
+        // the shading normal was in view space (see createFBMMountainTSL), which scrambled
+        // the dot product into something incidentally brighter; fixing the normal exposed the
+        // real back-lighting. The heroes now share MOUNTAIN_SHADING.keyDir with every other
+        // alpine surface — including the far-range flank, whose front-lit read is the one the
+        // look was validated against — which is what "ONE mountain language" is supposed to
+        // mean. The summit ignite below still keys off MOUNTAIN_LIGHT_DIR so the crown fires
+        // toward the actual sun disc.
         ...(isHero ? {
-            keyDir: MOUNTAIN_LIGHT_DIR,
             alpenStrength: ALPEN_STRENGTH,
             alpenHeightLo: ALPEN_HEIGHT_LO,
             snowSparkle,
@@ -418,26 +469,52 @@ export function createFBMMountainTSL(config = {}) {
     const dist = length(vWorldPosition.sub(cameraPosition));
     const fogFactor = smoothstep(MOUNTAIN_SHADING.fogNear, MOUNTAIN_SHADING.fogFar, dist)
         .mul(MOUNTAIN_SHADING.fogMax);
-    const baseMist = smoothstep(0.15, 0.0, vHeight).mul(uBaseMistStrength);
+    // Band tightened 0.15 → 0.07 (2026-08): at 0.15 of the hero's 720u height the fog
+    // shelf reached world y ≈ 410 — well above rail eye height — washing a horizontal mist
+    // band across the mountain's middle for the whole Ch3→4 approach. 0.07 caps it ~352,
+    // below the rail, so the mist hugs the feet where it belongs.
+    const baseMist = smoothstep(0.07, 0.0, vHeight).mul(uBaseMistStrength);
     color = mix(color, uFog, max(baseMist.sub(fogFactor), 0.0));
 
     // Base fade — hide the hard plane edge at low heights.
     const baseFade = smoothstep(uBaseFadeStart, uBaseFadeEnd, vHeight);
+    // ── SOLID BODY (2026-08, in-game: "why can I see straight through the hero mountain?") ──
+    // The rim fade used to be RECTANGULAR — a per-axis ramp over uv 0→0.16 and 0.84→1.0. On the
+    // 1340u hero plane that is 214u of fade per edge, but the displaced cone only reaches
+    // size * coneRadiusFrac = 603u from centre — so 147u of genuine, standing mountain BODY sat
+    // inside the fade band on every side. Measured on the hero flank: at 500u out (a face still
+    // 227u tall) alpha was 0.89, at 550u (121u tall) it was 0.59. Those fragments pass alphaTest
+    // and write depth, but they still BLEND with everything drawn before them — the far-range
+    // flanks at renderOrder -3, the apron at -2 — so background ridges showed straight through
+    // the massif's shoulders. Nothing to do with the chapter crossfade: uOpacity is a hard 1 for
+    // the whole of Ch4 (resolveMountainPeaksEntryState saturates at ch4Start).
+    //
+    // The fade is now RADIAL and keyed to the cone's own footprint, so it only ever covers the
+    // dead flat margin between the circular mountain and the square plane's corners. The body is
+    // opaque, period. Band 0.055 wide vs a ±0.011 noise swing — wider than the swing, so the
+    // edge still dissolves organically instead of snapping (the dissolve-band rule).
     const mountainUv = uv();
-    const uvEdgeNoise = fbmValue2(vWorldPosition.xz.mul(0.013), 3).sub(0.5).mul(0.035);
-    const noisyUvX = mountainUv.x.add(uvEdgeNoise);
-    const noisyUvY = mountainUv.y.add(uvEdgeNoise.mul(0.55));
-    const sideFade = smoothstep(0.0, 0.16, noisyUvX)
-        .mul(oneMinus(smoothstep(0.84, 1.0, noisyUvX)))
-        .mul(smoothstep(0.0, 0.1, noisyUvY))
-        .mul(oneMinus(smoothstep(0.9, 1.0, noisyUvY)));
+    const uvEdgeNoise = fbmValue2(vWorldPosition.xz.mul(0.013), 3).sub(0.5).mul(0.022);
+    const uvRadius = mountainUv.sub(0.5).length().add(uvEdgeNoise);
+    const sideFade = oneMinus(smoothstep(
+        MOUNTAIN_RIM_FADE.startFrac,
+        MOUNTAIN_RIM_FADE.endFrac,
+        uvRadius,
+    ));
     const alpha = uOpacity.mul(baseFade).mul(sideFade);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = alpha;
     material.transparent = true;
-    material.depthWrite = false;
+    // SOLIDITY FIX (in-game feedback): write depth so the peak OCCLUDES the clouds/sky behind it.
+    // With depthWrite:false a same/later-bucket transparent cloud (e.g. sky-drift dark-wisps at
+    // renderOrder 0) that sits BEHIND the peak paints over it → the peak read see-through even at
+    // alpha 1. Safe now because the L5 dedup draws only ONE coplanar copy (no coplanar z-fight) and
+    // the geometry is byte-identical across chapters. alphaTest discards the invisible base/side
+    // fringe so it doesn't write a depth HALO cutting an oversized silhouette out of the sky.
+    material.depthWrite = true;
+    material.alphaTest = 0.04;
     // Stash the live uniforms so a shared-material reuse (remake plan #4, providedMaterial path
     // above) can hand the same uniform set back to the caller's collectors.
     const uniforms = {
@@ -457,6 +534,25 @@ export function createFBMMountainTSL(config = {}) {
 // Radial snow-floor apron (FrontSide; must NOT bloom)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// SNOW-FLOOR RELIEF — the single source of truth for the floor's height, exported so
+// anything SEATED on the floor samples exactly the surface that is drawn instead of
+// guessing a constant. (Wave 0.5: the Ch4 seam conifer belt was planted at a flat
+// floorY + 1 with no heightfield sample at all, leaving a measured mean error of -4.5u
+// against the surface — 37.7% of cells buried a 6-17u tree by more than 8u and 18.0%
+// floated it by more than 4u.) Coordinates are GEOMETRY-LOCAL, i.e. relative to the
+// snow-floor mesh's own centre, which sits at massif-local (0, snowFloorY, -900).
+//
+// This is the CPU-mirror principle from the One World plan in miniature: the drawn
+// surface and the prop placement must come from one function, never two.
+export function snowFloorRelief(x, z) {
+    const noise = (nx, nz, scale) => Math.sin(nx * scale) * Math.cos(nz * scale * 0.8) * 0.5
+        + Math.sin(nx * scale * 2.3) * Math.cos(nz * scale * 1.7) * 0.25;
+    return noise(x, z, 0.01) * 8 + noise(x, z, 0.025) * 3;
+}
+
+/** Massif-local Z of the snow-floor mesh centre (mesh.position.set(0, offsetY, -900)). */
+export const SNOW_FLOOR_LOCAL_Z = -900;
+
 function buildSnowFloorGeometry() {
     const radius = 3000;
     // LOD (perf §3b): the floor's low-amplitude sine displacement (±~11 units over a
@@ -467,14 +563,8 @@ function buildSnowFloorGeometry() {
     geometry.rotateX(-Math.PI / 2);
 
     const positionAttr = geometry.attributes.position;
-    const noise = (x, z, scale) => Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5
-        + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
-
     for (let i = 0; i < positionAttr.count; i += 1) {
-        const x = positionAttr.getX(i);
-        const z = positionAttr.getZ(i);
-        const height = noise(x, z, 0.01) * 8 + noise(x, z, 0.025) * 3;
-        positionAttr.setY(i, height);
+        positionAttr.setY(i, snowFloorRelief(positionAttr.getX(i), positionAttr.getZ(i)));
     }
     geometry.computeVertexNormals();
     return geometry;
@@ -485,13 +575,15 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     // as crisp snow rather than a flat grey sheet.
     const uSnowColor = uniform(new THREE.Color(0xe6edf3));
     const uShadowColor = uniform(new THREE.Color(0x5f7184));
-    const uLightDir = uniform(new THREE.Vector3(0.3, 0.8, 0.5).normalize());
+    const uLightDir = uniform(new THREE.Vector3(...MOUNTAIN_LIGHT_DIR).normalize());
     const uOpacity = uniform(1);
     const time = uTime ?? uniform(0);
 
     // vPosition = local position (model space) in the GLSL twin.
     const vPosition = positionLocal;
-    const vNormal = normalView;
+    // World-space normal: lit below against MOUNTAIN_LIGHT_DIR, a WORLD vector (same
+    // mixed-space port bug as the peaks — see createFBMMountainTSL).
+    const vNormal = normalWorld;
 
     // Soft lighting with ambient lift.
     const NdotL = dot(vNormal, uLightDir);
@@ -525,7 +617,15 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     material.colorNode = color;
     material.opacityNode = alpha;
     material.side = THREE.FrontSide;
-    material.depthWrite = false;
+    // GROUND PLATE WRITES DEPTH. The snow floor is opaque ground and sits at renderOrder -1,
+    // i.e. it is drawn BEFORE every renderOrder-0 transparent in Ch4 (the hero peaks, the seam
+    // conifer belt, the sky-drift dark wisps). With depthWrite off, anything behind it in the
+    // world but later in the bucket painted over it. Exactly the "SOLIDITY FIX" reasoning
+    // applied to the peaks above, and the same remedy: write depth, and alphaTest away the
+    // invisible outer ring (the 2000->2800 radial fade plus its +-400u edge-noise warp) so the
+    // apron does not stamp an oversized depth disc into the sky it should be dissolving into.
+    material.depthWrite = true;
+    material.alphaTest = 0.04;
     material.depthTest = true;
     material.transparent = true;
 
@@ -539,7 +639,7 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     group.add(mesh);
 
     return {
-        group, mesh, material, geometry, uniforms: { uTime: time },
+        group, mesh, material, geometry, uniforms: { uTime: time, uOpacity },
     };
 }
 

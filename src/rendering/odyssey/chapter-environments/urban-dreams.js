@@ -573,6 +573,19 @@ export function createUrbanDreamsEnvironment() {
     } else {
         group.position.y = chapterCenterY;
     }
+
+    // FogExp2 WASHOUT fix (backlog #3): this is a neon NIGHT-CITY set-piece, not a foggy
+    // scene — the profile runs a violet FogExp2 at density 0.012, which at the spire/sun
+    // depth (z≈−600..−690) reaches ~100% and flattens every additive neon surface into a
+    // uniform violet blob. The city's depth comes from its own sky dome, ground haze pools
+    // and additive falloff, not scene fog. Disable fog on every material so the neon reads
+    // at full saturation (mirrors the Ch7 space-scene fix + deep-ocean's distant creatures).
+    group.traverse((child) => {
+        if (!child.material) return;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => { m.fog = false; });
+    });
+
     return group;
 }
 

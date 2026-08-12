@@ -137,6 +137,7 @@ export function createSkyGradientTSL(uTime, uEnergy) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = uOpacity;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge (manager reads material.uniforms)
     material.side = THREE.BackSide;
     material.transparent = true;
     material.depthWrite = false;
@@ -270,10 +271,12 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
         CH8_RETROSUN_SHADER_SETTINGS.alphaCap,
     );
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = color;
-    material.opacityNode = alpha;
+    material.opacityNode = alpha.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -631,9 +634,11 @@ export function createCurtainWallTSL(uTime, uEnergy) {
             wtint.mul(pane).mul(on).mul(flick).mul(uEnergyNode.mul(0.22).add(0.34)),
         );
 
+        const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
         const material = new THREE.MeshBasicNodeMaterial();
         material.colorNode = color;
-        material.opacityNode = uniform(1.0);
+        material.opacityNode = uOpacity;
+        material.uniforms = { uOpacity }; // ecotone crossfade bridge
         material.side = THREE.FrontSide;
         // No emitsBloom — the curtain is a backdrop, not a bloom source.
 
@@ -687,10 +692,12 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
     const coreColor = mix(color, vec3(1.0, 1.0, 1.0), surge.mul(0.8));
     const litGlow = glow.add(surge.mul(0.9));
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = coreColor.mul(litGlow);
     // Cap below 1.0 (soft-feathered, ACES + threshold bloom downstream) — no white blowout.
-    material.opacityNode = clamp(litGlow, 0.0, 0.92);
+    material.opacityNode = clamp(litGlow, 0.0, 0.92).mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = true;
     material.blending = THREE.AdditiveBlending;
@@ -841,9 +848,11 @@ function createSignMaterial(uTime, uEnergy, { color } = {}) {
         .mul(smoothstep(1.0, 0.88, vUv.y));
     const a = body.mul(edge).mul(uEnergy.mul(0.4).add(0.45));
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = uColor.mul(body.add(0.8));
-    material.opacityNode = a;
+    material.opacityNode = a.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -953,9 +962,11 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
         0.62,
     );
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(uEnergyNode.mul(0.25).add(0.82));
-    material.opacityNode = alpha;
+    material.opacityNode = alpha.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -981,9 +992,11 @@ function createHazeMaterial(uTime, uEnergy) {
     const color = mix(vec3(0.0, 0.34, 0.48), vec3(0.48, 0.08, 0.34), vUv.x);
     const a = radial.mul(fog.mul(0.14).add(0.12)).mul(uEnergy.mul(0.34).add(0.48));
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = a;
+    material.opacityNode = a.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1104,10 +1117,12 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
         0.26,
     );
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = hazeColor;
-    material.opacityNode = alpha;
+    material.opacityNode = alpha.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1117,7 +1132,9 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     mesh.name = 'neon-haze-stack-tsl';
     mesh.frustumCulled = false;
     mesh.renderOrder = -70;
-    return { mesh, material, geometry };
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
 }
 
 /**

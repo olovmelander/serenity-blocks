@@ -46,7 +46,6 @@ import {
     createFoothillBridgeTSL,
     createFluffyGrassTSL,
     createWildflowersTSL,
-    createSunRaysTSL,
     createCloudsTSL,
     createTreesTSL,
     createReedsTSL,
@@ -759,8 +758,16 @@ const SURFACE_SEAM_SURFACE_EXIT_BAND = 0.06; // fraction of Ch3 span per side of
 // The canonical Ch4 chain is already atmospheric through its base/edge alpha; keeping the
 // preview nearly opaque prevents the live board from reading as see-through ghost peaks.
 const SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY = 1.0;
-const SURFACE_WATER_CROSSING_FADE_START = 0.28;
-const SURFACE_WATER_CROSSING_FADE_END = 0.52;
+// ONE CONNECTED WORLD (in-game: "we first see water and then it swaps to grass, like the grass is
+// where the water was placed"). The water and the meadow are CO-LOCATED — the terrain is a
+// heightfield sitting +7 above a flat sea plane, dipping into it to form the basins. So fading the
+// whole sea out mid-chapter did not "cross" the water, it DELETED it, and the grass that was always
+// underneath became the ground: a surface swap in place. The sea now holds full presence for
+// essentially the whole chapter and only releases into the Ch3→Ch4 seam (where the foothill bridge
+// and the range have already taken the frame), so the shoreline stays the only water edge the eye
+// ever reads and the valley remains one continuous world.
+const SURFACE_WATER_CROSSING_FADE_START = 0.82;
+const SURFACE_WATER_CROSSING_FADE_END = 0.99;
 
 /**
  * ENTRY RAMP (creative plan Transition In): the landscape slab popped into frame 01–02
@@ -877,9 +884,31 @@ function readCh3HeroMirrorFlag() {
         const q = new URLSearchParams(window.location.search).get('ch3HeroMirror');
         if (q === '1' || q === 'true') return true;
         if (q === '0' || q === 'false') return false;
-        return window.localStorage?.getItem('odyssey.ch3HeroMirror') === '1';
+        const stored = window.localStorage?.getItem('odyssey.ch3HeroMirror');
+        if (stored === '1') return true;
+        if (stored === '0') return false;
+        // Default ON for capable tiers (the reflector RTT is a real 2nd-pass cost): High/Ultra/
+        // Extreme mirror the real blue sky + white cumulus onto the lake; Medium and below keep the
+        // cheaper analytic sky reflection.
+        const tier = String(window.settings?.effectQuality || 'High').toLowerCase();
+        return tier === 'high' || tier === 'ultra' || tier === 'extreme';
     } catch {
         return false;
+    }
+}
+
+// Foreground-lushness instance budget, quality-tier scaled (the flower + grass instancers are the
+// chapter's densest meshes). Full density on High+, trimmed on Medium and below. Headless → full.
+function readCh3DensityScale() {
+    try {
+        if (typeof window === 'undefined') return 1;
+        const tier = String(window.settings?.effectQuality || 'High').toLowerCase();
+        if (tier === 'minimal') return 0.3;
+        if (tier === 'low') return 0.45;
+        if (tier === 'medium') return 0.7;
+        return 1;
+    } catch {
+        return 1;
     }
 }
 
@@ -976,10 +1005,15 @@ export function createSurfaceWorldEnvironment() {
     group.add(sun);
     group.userData.sun = sun;
 
-    // 5. Volumetric Sun Rays - only visible above water
-    const rays = createSunRays(uniforms);
-    rays.name = 'sun-rays';
-    group.add(rays);
+    // 5. Volumetric Sun Rays — CUT from the live scene (in-game: "some light yellow sun rays
+    // that I want to remove, they feel cluttery"). Seven additive gold beams (1.0, 0.86, 0.56)
+    // leaning toward the sun, bloom-tagged, drawn in front of the massif — they read as pale
+    // streaky veiling over the mountain rather than as atmosphere. The builder stays exported
+    // for the playground probes (ch3-surface-world / ch3-hero-sun effects); only the live
+    // chapter stops adding it. The sun DISC above is kept — that is the actual light source.
+    // const rays = createSunRays(uniforms);
+    // rays.name = 'sun-rays';
+    // group.add(rays);
 
     // 6. Soft Procedural Clouds - only visible above water
     const clouds = createClouds(uniforms);
@@ -993,11 +1027,12 @@ export function createSurfaceWorldEnvironment() {
     // 9. Living Landscapes vegetation — real 3D wildflowers, trees and reeds, anchored to
     // getTerrainHeight(). BotW re-composition: grass tufts removed; vegetation kept sparse +
     // zoned (deliberate clumps + open negative space), not a scattered carpet.
-    // CLEAN LANDSCAPE (user: "remove trees and grass and flowers"): the scattered wildflower
-    // carpet is stripped to zero. The Ch3 hero is now the rolling grass hills + the single hero
-    // tree + the water — not a flower meadow. Kept as a count-0 group (SURFACE_FLOWER_PATCHES infra
-    // intact) so one saturated drift can be re-added as an accent if the meadow reads too bare.
-    const meadowFlowers = createWildflowers(uniforms, 0);
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): the meadow flowers are RESTORED. The user's new
+    // reference (a bright Ghibli/Genshin lakeside meadow) wants a lush flower carpet — buttercup-
+    // yellow, daisy-white, lupine-purple, cornflower-blue, poppy — which is exactly the species
+    // palette createWildflowersTSL already carries, placed banks-dense / corridor-clear by the shared
+    // composition grammar. (Trees stay out — the reference is a flower meadow, not a forest.)
+    const meadowFlowers = createWildflowers(uniforms, Math.round(2400 * readCh3DensityScale()));
     meadowFlowers.name = 'meadow-flowers';
     meadowFlowers.position.y = terrainOffsetY;
     group.add(meadowFlowers);
@@ -1180,7 +1215,6 @@ export function createSurfaceWorldEnvironment() {
         ocean,
         landscape,
         sun,
-        rays,
         clouds,
         meadowFlowers,
         trees,
@@ -1212,7 +1246,6 @@ export function createSurfaceWorldEnvironment() {
             ocean,
             landscape,
             sun,
-            rays,
             clouds,
             foregroundLayer,
             snowMotes,
@@ -1253,6 +1286,17 @@ export function createSurfaceWorldEnvironment() {
         group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
     } else {
         group.position.y = chapterCenterY;
+    }
+
+    // SHORE BLEND ALIGNMENT: the water's baked terrain heightfield samples by WORLD XZ, so
+    // hand it the terrain plate's world placement (group world + terrainOffsetY). Set here
+    // once the group is anchored; update() refreshes it in case the group ever moves (the
+    // layout editor can re-anchor chapters live).
+    group.userData.terrainOffsetY = terrainOffsetY;
+    const shoreUniforms = ocean.userData.odysseyUniforms;
+    if (shoreUniforms?.uShoreOriginXZ && shoreUniforms?.uShoreBaseY) {
+        shoreUniforms.uShoreOriginXZ.value.set(group.position.x, group.position.z);
+        shoreUniforms.uShoreBaseY.value = group.position.y + terrainOffsetY;
     }
 
     // HERO MIRROR (flag ch3HeroMirror): tag the far-silhouette meshes onto the reflection layer so
@@ -1440,16 +1484,6 @@ function createSunDisc(uniforms) {
     return tagUniforms(group, builderUniforms);
 }
 
-// WebGPU/TSL: additive golden volumetric sun-rays delegated to createSunRaysTSL (its
-// builder owns the 5-beam group + bloom-eligible additive material). Returns the group;
-// uOpacity tagged on the group for the fade collectors.
-function createSunRays(uniforms) {
-    const { group, uniforms: builderUniforms } = createSunRaysTSL(uniforms.uTime, {
-        uSeason: uniforms.uSeason,
-    });
-    return tagUniforms(group, builderUniforms);
-}
-
 // WebGPU/TSL: soft procedural clouds delegated to createCloudsTSL (its builder owns the
 // 6-puff group + NormalBlending transparent material). Returns the group; uOpacity tagged
 // on the group for the fade collectors.
@@ -1458,17 +1492,28 @@ function createClouds(uniforms) {
     return tagUniforms(group, builderUniforms);
 }
 
-// WebGPU/TSL: 3 distant peaks + base valley mist delegated to createDistantMountainsTSL
-// (its builder owns the byte-identical per-mountain cone/FBM bakes, the GPU snow/rock/fog
-// shading, and the 4-plane mist). Each peak mesh + the mist meshes are tagged with their
-// uSnowBlend/uOpacity nodes so the collectors drive snow + surface fade. The mist group is
-// exposed on userData.foothillMist for parity with the live API.
+// WebGPU/TSL: Ch3 renders CHAPTER 4's canonical hero chain (+ the far-range flanks) at the
+// same world coordinates via the shared canonical-mountain-range builder, so the mountains are
+// visible from Ch3 and never swap silhouettes at the seam. (This used to delegate to
+// surface-world.tsl.js's own createDistantMountainsTSL; that builder now serves the WebGPU
+// pilot only — see createSurfaceWorldPilotTSL.) Each peak mesh is tagged with its
+// uSnowBlend/uOpacity nodes so the collectors drive snow + surface fade.
 function createDistantMountains(uniforms, hostCenter = null) {
     const { group, parts } = createCanonicalMountainRangeTSL({
         hostCenter,
         hostChapterId: 3,
         name: 'canonical-distant-mountains',
-        uTransition: uniforms.uSeason,
+        // PEAK-LIGHTING MATCH (Fix D, "disconnected from the winter mountains"): these ARE Ch4's
+        // canonical peaks seen from Ch3, so they must be lit the SAME on both sides of the seam.
+        // Feeding uSeason drove alpenScale=oneMinus(uSeason)→0 at the seam (no alpenglow, cold),
+        // while Ch4 gives them full alpenglow — so the peaks flipped warm→cold as you crossed. Left
+        // null → constant full alpenglow, matching Ch4's warm-lit peaks. The valley still winters
+        // (grass/fog via uSeason) and the peaks still whiten via uSnowBlend, but the distant
+        // destination mountains glow warm continuously across the boundary.
+        uTransition: null,
+        // Flank chains (2026-08): all three L5 hosts must agree on includeFarRange or the
+        // silhouettes would pop in/out at each authority hand-off.
+        includeFarRange: true,
         baseOpacity: 1,
     });
     group.name = 'distant-mountains';
@@ -1493,6 +1538,14 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // Keep the water's shore heightfield aligned to the terrain plate (cheap scalar writes;
+    // matters only if the group is re-anchored live, e.g. by the layout editor).
+    const shoreUniforms = group.userData.ocean?.userData?.odysseyUniforms;
+    if (shoreUniforms?.uShoreOriginXZ && shoreUniforms?.uShoreBaseY) {
+        shoreUniforms.uShoreOriginXZ.value.set(group.position.x, group.position.z);
+        shoreUniforms.uShoreBaseY.value = group.position.y + (group.userData.terrainOffsetY ?? 0);
     }
 
     // HERO MIRROR (flag ch3HeroMirror): wire the reflector's virtual camera to render ONLY the
@@ -1561,12 +1614,15 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
         surfaceOpacity,
     } = visibilityState;
     const auroraPreviewState = resolveSurfaceWorldAuroraPreviewState(cameraProgress);
-    const alpineRampState = resolveSurfaceWorldAlpineRampState(cameraProgress);
-    // SEAM 3->4 recede: 1->0 across the final stretch of Ch3 into the Surface→Mountains seam
-    // so the waterfall + distant range fade BEFORE the group hides (no pop), and the distant
-    // range cross-dissolves with the rising Mountains peaks rather than swapping shape hard.
-    const seamRecedeState = resolveSurfaceWorldSeamRecedeState(cameraProgress);
-    const { recedeOpacity } = seamRecedeState;
+    // resolveSurfaceWorldAlpineRampState is kept + exported (its unit test pins the ramp, and it
+    // documents the original "no alpine pieces during Deep Ocean" contract) but is no longer
+    // consumed here: alpineBreachReveal below enforces the same contract off the probe height
+    // while letting the alpine world arrive SOLID the moment the camera surfaces.
+    // SEAM 3->4: the distant range + foothill bridge no longer recede here — under the L5 peak
+    // dedup only ONE copy of the shared canonical chain draws through the boundary, so the drawn
+    // copy holds constant opacity and the manager hides the whole group past the seam (see the
+    // distantMountainOpacity + alpineOpacity comments below). resolveSurfaceWorldSeamRecedeState is
+    // kept (its unit test pins the ramp) but no longer consumed by the live env.
     const { surfaceExitOpacity } = resolveSurfaceWorldSurfaceExitState(cameraProgress);
     const waterCrossingState = resolveSurfaceWorldWaterCrossingState(cameraProgress);
     // ENTRY RAMP (frames 01–02 slab pop + petal leak fix): every surface element rises
@@ -1574,12 +1630,78 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     const { entryOpacity } = resolveSurfaceWorldEntryRampState(cameraProgress);
     const surfaceGate = surfaceOpacity * entryOpacity;
     const surfaceElementOpacity = surfaceGate * surfaceExitOpacity;
-    // The alpine pieces are gated by BOTH the underwater surface fade AND the
-    // Surface→Mountains ramp, then receded across the seam so they cross-dissolve out.
-    const alpineOpacity = surfaceGate * alpineRampState.rampOpacity * recedeOpacity;
-    const distantMountainOpacity = surfaceGate
-        * Math.max(SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY, alpineRampState.rampOpacity)
-        * recedeOpacity;
+    // BREACH REVEAL — shared by BOTH alpine pieces (the canonical chain and the foothill
+    // skirt). They are the "world beyond the water": a world-locked landmark and the ground
+    // ramp running to it, so they are revealed by the camera clearing the surface, not by a
+    // ramp measured in chapter progress. Keyed to the path probe's height above the waterline:
+    // 0 while the 2→3 ecotone opens (p ≈ 0.192, so nothing can pop in when the manager first
+    // shows the group), ~1.0 by p ≈ 0.200 — before Ch3 nominally starts — and still 0 through
+    // deep Chapter 2, which is what the old alpine ramp existed to guarantee.
+    const alpineBreachReveal = THREE.MathUtils.smoothstep(
+        surfaceProbeY,
+        waterSurfaceY + 1,
+        waterSurfaceY + 7,
+    );
+    // L3 BRIDGE-CONNECT (2026-08, Wave D): the foothill bridge (the only alpineElement) is gated by
+    // the underwater surface fade AND the Surface→Mountains ramp, but is NO LONGER receded across the
+    // seam — it must persist as a SOLID ramp through the 3→4 crossfade so the ground physically hands
+    // off to Ch4's raised snow floor (world ~302) instead of dissolving into a 65u cliff. The manager
+    // hides the whole Ch3 group (group.visible = opacity>0) once the ecotone weight reaches 0, so the
+    // bridge cannot leak into deep Ch4. recedeOpacity is retained below for the distant range, which
+    // SHOULD cross-dissolve with the rising Ch4 peaks.
+    // Was `surfaceGate * alpineRampState.rampOpacity` — the entry ramp (0.126 at the chapter
+    // start) TIMES a ramp that only completed 52% into Ch3, so the skirt sat at 17% opacity at
+    // p=0.235 and 40% at p=0.250 while the range above it was already fully solid: the massif
+    // read as floating over a haze band instead of sitting on rising ground. It now shares the
+    // chain's breach reveal, so the alpine world arrives as one solid piece.
+    //
+    // CHAPTER-WEIGHT FOLD (r181 dead-write fix). The manager crossfades Ch3 by writing
+    // group.userData.chapterOpacity and calling setGroupOpacity, which can only reach a material
+    // through `material.uniforms.uOpacity` (ChapterEnvironmentManager.js:581) or through
+    // `material.opacity` (ibid.:1329). The skirt has NO `material.uniforms` bridge and DOES author
+    // `material.opacityNode` (surface-world.tsl.js:1280) — and three r181 picks
+    // `this.opacityNode ? float(this.opacityNode) : materialOpacity` (NodeMaterial.js:872), so
+    // `material.opacity` is a DEAD WRITE and the manager could never dim this mesh. It therefore
+    // held full presence right up to the binary `group.visible = opacity > 0` flip (~p 0.386):
+    // the skirt did not fade out, it vanished. Fold the weight into the alpha expression instead —
+    // the same mechanism, and the same fix, Ch4 already applies (mountain-peaks.js:927).
+    //
+    // ONE-SIDED, on purpose. The weight is folded only on the chapter's EXIT half. On the 2->3
+    // ecotone the weight is still climbing (0.34 at p=0.200, 0.54 at 0.205, 0.90 at 0.215) LONG
+    // after alpineBreachReveal has reached 0.999 (p ~= 0.200, path probeY 294.2 vs waterline
+    // 287.3), so folding it there would drop the skirt back to half opacity the instant the camera
+    // surfaces — the exact "massif floating over a haze band" regression the paragraph above fixed.
+    // The weight is a flat 1.0 across [0.222, 0.320], which contains the chapter midpoint, so the
+    // hand-over at seasonValue 0.5 is a no-op: nothing steps.
+    const chapterWeight = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    // seasonValue is the chapter-local 0->1 progress resolved above; it stays 0 with no progress
+    // info (pilot / standalone harness), which keeps the gate off and the chapter fully solid.
+    const alpineChapterFade = seasonValue >= 0.5 ? chapterWeight : 1;
+    const alpineOpacity = surfaceOpacity * alpineBreachReveal * alpineChapterFade;
+    // L5 HAND-OFF (in-game "transparent / switching mountain" fix): do NOT recede the distant range
+    // at the 3→4 seam. The L5 authority pass draws only ONE copy of the shared canonical chain
+    // through the boundary, so the drawn copy must hold CONSTANT opacity — receding it to 0 by the
+    // boundary faded the silhouette to see-through and then Ch4's main-peaks popped in at the flip.
+    // recedeOpacity is retained above for other seam elements; the manager hides the whole Ch3 group
+    // once the ecotone weight reaches 0, so the range can't leak into deep Ch4.
+    // BREACH REVEAL (in-game: "the mountains are transparent when we come up and become solid
+    // after a short while — I want them solid directly"). The chain used to ride `surfaceGate`
+    // = surfaceOpacity × entryOpacity. surfaceOpacity was never the problem (it is already 1.0
+    // at path y ≈ 289, i.e. BEFORE Ch3 starts); `entryOpacity` was — it is a progress ramp that
+    // is only 0.126 at the chapter start and does not reach 1 until ~7% into Ch3, so the massif
+    // sat see-through for the whole first stretch of the walk.
+    //
+    // That ramp was authored for the NEAR surface elements — the landscape slab and the petals
+    // that popped/leaked at the breach — and it is right for them. The canonical chain is not one
+    // of those: it is a world-locked landmark already sitting on the horizon, so it should be
+    // revealed by the camera clearing the water, not by an alpha ramp measured in chapter
+    // progress. It gets its own short probe-height reveal instead, which finishes BEFORE the
+    // chapter nominally begins — so the mountains are already fully solid the moment the player
+    // comes up. The band still starts below the waterline, so it cannot pop in when the manager
+    // first makes the Ch3 group visible (the 2→3 ecotone opens at p ≈ 0.192), and it is still 0
+    // through deep Chapter 2 — the "alpine peaks during Deep Ocean" leak stays fixed.
+    const distantMountainOpacity = surfaceOpacity * alpineBreachReveal
+        * SURFACE_DISTANT_MOUNTAIN_PREVIEW_OPACITY;
 
     const { snowTransition } = group.userData;
     const heightSnowBlend = snowTransition
@@ -1592,7 +1714,17 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     // The Ch3->Ch4 terrain-edge dissolve is authored as part of the season story, not only
     // altitude. Near the seam the chapter can be visually winter while the camera-height
     // snow ramp still lags, so let late-season progress pull the same snow/edge uniform up.
-    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.58, 0.86);
+    // Fix D + "green→winter POP" (2026-08): the frost band was too NARROW and completed too EARLY.
+    // [0.5,0.72] in seasonValue maps to global progress [0.278,0.311] — the meadow flipped green→
+    // full-snow over just ~0.033 of progress and then sat white for ~0.04 BEFORE Ch4 even begins
+    // fading in (entry [0.322,0.352]) or the manager's ecotone crossfade ([0.322,0.382]). Two
+    // separated beats (early whitening, then the biome swap) read as a pop. Widen the END to 0.98
+    // so the whitening spans the whole approach and COMPLETES right at the seam (seasonValue 0.98 ≈
+    // progress 0.349 ≈ ch4Start 0.352 / the crossfade midpoint), turning it into one continuous
+    // green→frost→snow gradient. Start stays 0.5 so the green hero valley still holds through the
+    // first ~half (emergence + lake beats). heightSnowBlend still Math.max-tops it to a hard 1 by
+    // the exact boundary, so full snow is guaranteed at the handoff with no seam.
+    const seasonSnowBlend = THREE.MathUtils.smoothstep(seasonValue, 0.5, 0.98);
     const snowBlend = Math.max(heightSnowBlend, seasonSnowBlend);
 
     const snowBlendUniformTargets = group.userData.snowBlendUniformTargets || [];
@@ -1672,6 +1804,11 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (distantMountainElements) {
         distantMountainElements.forEach((element) => {
             if (element) {
+                // Visibility follows opacity so a fully-faded chain stops drawing. This write
+                // runs every frame and the ch3-ch4-seam playground effect depends on it; only
+                // the rangeAuthority term was removed (2026-08-12) with its manager-side
+                // writer — the dedup it implemented has no second copy to fight since the
+                // One World flip suppressed ch4/ch5.
                 element.visible = distantMountainOpacity > 0;
             }
         });
@@ -1700,15 +1837,17 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
 
     const bridge = group.userData.foothillBridge;
     const bridgeMaterial = bridge?.material;
-    // WebGPU/TSL: the bridge's uOpacity is a TSL uniform node tagged on userData.odysseyUniforms.
-    const bridgeOpacityNode = bridge?.userData?.odysseyUniforms?.uOpacity;
-    if (bridgeMaterial && bridgeOpacityNode) {
-        const bridgeOpacity = bridgeOpacityNode.value;
-        const shouldWriteDepth = bridgeOpacity >= 0.98 && surfaceOpacity >= 0.98;
-        if (bridgeMaterial.depthWrite !== shouldWriteDepth) {
-            bridgeMaterial.depthWrite = shouldWriteDepth;
-            bridgeMaterial.needsUpdate = true;
-        }
+    // GROUND PLATES WRITE DEPTH UNCONDITIONALLY. This used to drop the skirt's depthWrite
+    // whenever `surfaceOpacity < 0.98` — and surfaceOpacity is
+    // smoothstep(probeY, waterSurfaceY - 12, waterSurfaceY + 2), i.e. it is below 0.98 for the
+    // ENTIRE time the camera is rising through the waterline. So the one ground surface that
+    // carries the eye out of the lake and up into the range stopped occluding at precisely the
+    // moment the player reports seeing through it. The builder ships depthWrite:true
+    // (createFoothillBridgeTSL in surface-world.tsl.js) and it now stays true: the skirt is
+    // opaque ground, not a veil, and a rim melt is a fade, not a reason to stop writing depth.
+    if (bridgeMaterial && bridgeMaterial.depthWrite !== true) {
+        bridgeMaterial.depthWrite = true;
+        bridgeMaterial.needsUpdate = true;
     }
 
     // Sky visibility (hide sky sphere when underwater for ocean fade)

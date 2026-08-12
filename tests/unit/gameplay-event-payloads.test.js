@@ -163,11 +163,14 @@ describe('one emit site per event (tripwire)', () => {
         // _getPhysicsCallbacks object literal — the later key silently shadowed
         // the first, muting perfect-clear SFX in both modes for months. Pin:
         // at most one occurrence inside the physics-callbacks method body.
+        // LocalMultiplayerMode is intentionally absent: its own builder was DEAD
+        // CODE (shadowed by the main.js injection) and has been deleted — this
+        // very tripwire had been scanning it while the live builder sat in
+        // main.js. The live MP builder is scanned separately below.
         const modes = [
             'SinglePlayerMode',
             'InfinityMode',
             'OdysseyMode',
-            'LocalMultiplayerMode',
         ];
         for (const mode of modes) {
             const src = readFileSync(
@@ -184,12 +187,25 @@ describe('one emit site per event (tripwire)', () => {
                 + `${count}× — a duplicate key shadows the first`;
             expect(count, message).toBeLessThanOrEqual(1);
         }
+
+        // The LIVE local-MP builder: same duplicate-key bug class, real wiring.
+        const mainSrc = readFileSync(path.join(repoRoot, 'src', 'main.js'), 'utf8');
+        const mpStart = mainSrc.search(/getMultiplayerPhysicsCallbacks\(playerNum[^)]*\)\s*{/);
+        expect(mpStart, 'main.js: getMultiplayerPhysicsCallbacks not found').toBeGreaterThan(-1);
+        const mpEnd = mainSrc.indexOf('\n    }', mpStart);
+        const mpBody = mainSrc.slice(mpStart, mpEnd === -1 ? undefined : mpEnd);
+        ['onPieceLock:', 'triggerCombo:', 'triggerFlash:', 'onLineClearImpact:'].forEach((key) => {
+            const count = (mpBody.match(new RegExp(key, 'g')) || []).length;
+            expect(count, `main.js MP builder defines ${key} ${count}×`).toBeLessThanOrEqual(1);
+        });
     });
 
     it('routes hard drop and level up through the intended production adapters', () => {
         const read = (file) => readFileSync(path.join(repoRoot, file), 'utf8');
         const single = read('src/core/game-modes/SinglePlayerMode.js');
-        const local = read('src/core/game-modes/LocalMultiplayerMode.js');
+        // Local MP's live builder is the main.js injection — the mode's own
+        // builder was dead code (this pin used to validate an emit that never ran).
+        const local = read('src/main.js');
         const infinity = read('src/core/game-modes/InfinityMode.js');
         const odyssey = read('src/core/game-modes/odyssey-physics-callbacks.js');
         const online = read('src/core/game-modes/OnlineMultiplayerMode.js');

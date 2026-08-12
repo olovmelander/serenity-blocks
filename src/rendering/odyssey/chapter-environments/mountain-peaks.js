@@ -51,6 +51,8 @@ import {
     createMountainSkyTSL,
     createFBMMountainTSL,
     createSnowFloorTSL,
+    snowFloorRelief,
+    SNOW_FLOOR_LOCAL_Z,
     createCloudSeaDeckTSL,
     createMountainSunTSL,
     buildMountainGeometry,
@@ -79,17 +81,26 @@ function buildCh4SeamConiferPlacements(floorY) {
     while (placed < 80 && guard < 80 * 16) {
         guard += 1;
         const x = (Math.random() - 0.5) * 720;
-        const z = -100 - Math.random() * 560; // near the seam (-100) → toward the peaks (-660)
+        // Reach clamped 560 → 320 (composition fix): the far half of the row (world z ≈
+        // -750..-930) stood directly in front of the hero chain's alpha-faded feet — a line
+        // of floating miniature trees across the mountain's middle. 320 ends the belt ~120u
+        // before the nearest main-peak foot, on visibly-grounded snow.
+        const z = -100 - Math.random() * 320; // near the seam (-100) → toward the peaks (-420)
         if (Math.abs(x) < 60) continue; // clear central corridor for the path
-        const climb = Math.min(1, Math.max(0, (-z - 100) / 560)); // 0 near seam → 1 toward peaks
+        const climb = Math.min(1, Math.max(0, (-z - 100) / 320)); // 0 near seam → 1 toward peaks
         if (climb > 0.72) continue; // tree line ends → bare snow toward the peaks
         if (Math.random() > (1 - climb * 0.8)) continue; // thin toward the line
         let species = 'fir';
         if (climb < 0.4) species = 'spruce';
         else if (climb < 0.65) species = 'pine';
         const scale = (0.7 + Math.random() * 0.6) * (1 - climb * 0.35);
+        // WAVE 0.5: seat on the drawn surface, not on a flat plane. The snow floor carries
+        // +/-11u of baked relief; planting at a constant floorY + 1 put trees a measured mean
+        // -4.5u out (range -26.3 .. +15.7). Sample in the floor mesh's own frame: it sits at
+        // massif-local (0, floorY, SNOW_FLOOR_LOCAL_Z), so geometry-local z is z - that offset.
+        const groundY = floorY + snowFloorRelief(x, z - SNOW_FLOOR_LOCAL_Z);
         out[species].push({
-            x, y: floorY + 1, z, scale, rotationY: Math.random() * Math.PI * 2,
+            x, y: groundY, z, scale, rotationY: Math.random() * Math.PI * 2,
         });
         placed += 1;
     }
@@ -114,8 +125,14 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     },
 };
 
-const MOUNTAIN_TRANSITION_START = 0.08;
-const MOUNTAIN_TRANSITION_END = 0.28;
+// PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): the day→NIGHT beat is DROPPED. The "one bright
+// ascent" reads as one afternoon where you simply climb higher, and Ch5 is now a sunlit cloud-sea
+// (not a night sky), so falling to night at the 4→5 hand-off contradicts the whole arc. Pushing
+// START/END past 1.0 pins uTransition ≈ 0 for the entire chapter → the dome stays bright daylight
+// and the summit-ignite / sun disc / ray fan / alpenglow (all gated by oneMinus(uTransition)) fire
+// fully, so the summit crests into MORE light as the bright climax. (Was 0.72/0.98.)
+const MOUNTAIN_TRANSITION_START = 1.5;
+const MOUNTAIN_TRANSITION_END = 2.0;
 // SEAM 4->5: the Chapter 4 hero mountain chain is a locked world landmark and Chapter 5
 // inherits the exact same chain. Only auxiliary Ch4 summit props fade across the exit.
 const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 local progress for prop/atmosphere fade
@@ -235,9 +252,17 @@ export function createMountainPeaksEnvironment(options = {}) {
         uTime: uTimeNode,
         uTransition,
         y: foothillBaseY + 20,
+        // 3→4 ENTRY (2026-08): the deck's purpose-built reveal hook was never wired, so the
+        // 2600-radius disc drew a silver shelf across the hero's foot from the moment the
+        // ecotone opened — while the camera was still at Ch3 altitude, where it reads as fog
+        // mid-mountain rather than a sea below. Start sunk; update() surfaces it as the
+        // camera climbs into Ch4 proper.
+        uReveal: uniform(0),
     });
     massif.add(cloudSea.mesh);
     group.userData.cloudSea = cloudSea.mesh;
+    group.userData.cloudSeaOpacityUniform = cloudSea.uniforms.uOpacity; // base 0.92; chapter crossfade
+    group.userData.cloudSeaRevealUniform = cloudSea.uniforms.uReveal;
 
     const foothillApron = createFoothillApron(uTransition, foothillBaseY, opacityTargets);
     massif.add(foothillApron);
@@ -248,10 +273,16 @@ export function createMountainPeaksEnvironment(options = {}) {
     // snow instead of the cloud-sea rim + bare FBM plane edges. This builder was authored +
     // validated in the pilot but was never added to the LIVE scene — the "square baseplate /
     // not smooth at the bottom" the user reported. Shares the ticked uTimeNode for its sparkle.
-    const snowFloorY = foothillBaseY - 45;
+    // L2 FLOOR-DATUM COLLAPSE (2026-08, Wave D): raise the snow-floor disc from world Y ~247 to
+    // ~302 (foothillBaseY+10), onto the hero-center peak foot (~302) and Ch3's corridor-back ground,
+    // ~10u below the cloud-sea deck (foothillBaseY+20). The two Ch4 grounds that were 65u apart
+    // become one ~290-312 band aligned with Ch3 — no more double-floor / lower-disc undercut. (The
+    // seam conifer belt seats on the floor's own relief — see snowFloorRelief.)
+    const snowFloorY = foothillBaseY + 10;
     const snowFloor = createSnowFloorTSL(uTimeNode, snowFloorY);
     massif.add(snowFloor.group);
     group.userData.snowFloor = snowFloor.mesh;
+    group.userData.snowFloorOpacityUniform = snowFloor.uniforms.uOpacity; // 3→4 snow-floor crossfade
 
     // Ch4 tree-line continuity across the 3→4 seam (see buildCh4SeamConiferPlacements above):
     // a low winter conifer belt on the near snow-floor slopes so the Ch3 forest carries into
@@ -273,8 +304,17 @@ export function createMountainPeaksEnvironment(options = {}) {
         hostCenter: chapterRange?.center,
         hostChapterId: 4,
         name: 'main-peaks',
-        uTransition,
-        summitGlow: uSummitGlow,
+        // L5 CONTINUITY (in-game "several different mountains switching" fix): the shared hero chain
+        // must look IDENTICAL in Ch3/Ch4/Ch5 so the L5 authority hand-off is invisible. Ch3 + Ch5
+        // already pass uTransition:null + no summitGlow (constant daylight, full alpenglow, no crown
+        // ignite). Driving a crown ignite on ONLY the Ch4 copy is what made the peak POP tone at the
+        // 4→5 authority flip. The summit-ignite RING + sun disc + banner plume still carry the
+        // climax, so nothing cinematic is lost on the peak surface itself.
+        uTransition: null,
+        summitGlow: null,
+        // Flank chains (2026-08): must match Ch3's preview + Ch5's ring (L5 dedup swaps
+        // whole byte-identical copies).
+        includeFarRange: true,
         opacityTargets: mainPeakOpacityTargets,
     });
     // SNOW PARITY (3→4 seam): this is the SAME canonical chain the Ch3 distant preview shows,
@@ -285,7 +325,6 @@ export function createMountainPeaksEnvironment(options = {}) {
     mainPeakParts.forEach((part) => {
         if (part.uniforms?.uSnowBlend) part.uniforms.uSnowBlend.value = 1;
     });
-    group.userData.foregroundRidge = null;
 
     massif.add(mountains);
 
@@ -350,17 +389,19 @@ export function createMountainPeaksEnvironment(options = {}) {
     // Snow drift is now uTime-driven in the TSL material (perf §5.3); the update loop ticks
     // this node instead of rewriting + re-uploading the InstancedBufferAttribute each frame.
     group.userData.snowTimeUniform = snow.userData.snowTimeUniform;
+    group.userData.snowOpacityUniform = snow.userData.snowOpacityUniform;
 
     // (Stars REMOVED per the creative plan: Chapter 4 is a banded stratospheric dusk and
     // Chapter 5 opens starless — stars are Chapter 6's identity. The old 1000-star shell
     // was part of the washed lilac read and leaked "space" into the alpine act.)
 
-    // Lighting — lower, cooler ambient so shadowed faces stay deep blue (more contrast),
-    // and a brighter, crisper moon key so snow caps pop as bright silhouettes.
-    const ambient = new THREE.AmbientLight(0x2b3a52, 0.3);
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): bright DAYLIGHT rig (was cold ambient + a moon
+    // key). Neutral-cool bright ambient fills the snow luminously, and the former "moon" is now a
+    // warm-white SUN matching Ch3's key so the alpine climb reads as the same bright afternoon.
+    const ambient = new THREE.AmbientLight(0xbfd4e8, 0.6);
     group.add(ambient);
 
-    const moonLight = new THREE.DirectionalLight(0xcfe6ff, 0.72);
+    const moonLight = new THREE.DirectionalLight(0xfff4e0, 0.95); // warm-white daylight sun (was moon 0xcfe6ff)
     moonLight.position.set(50, 100, 50);
     group.add(moonLight);
 
@@ -719,10 +760,17 @@ function createFoothillApron(uTransition, baseY, opacityTargets) {
     // own), collapsing 3 foothill pipelines toward 2. The center (size 1250) foothill is
     // kept as its own material so the chapter keeps a second, independent foothill opacity
     // target (the seam-fade invariant the environment test guards).
+    // COMPOSITION (2026-08 "second environment" fix): the three grey-blue apron hills used
+    // to sit at z -600/-710/-860 — IN FRONT of / level with the canonical hero plane (world
+    // z ≈ -967..-1107) with crests at rail eye height, wearing the same cool far-atmosphere
+    // treatment as a true far range. Read from the Ch3 approach, they formed a distant
+    // mountain chain cutting horizontally across the hero's lower-middle third. Pushed past
+    // the hero plane's back edge and dropped so their crests stay below the chain's opaque
+    // line — background fill on the flanks, never a band across the hero.
     const sharedFoothillConfig = {
         size: 1100,
         height: 72,
-        position: new THREE.Vector3(-330, baseY - 12, -600),
+        position: new THREE.Vector3(-330, baseY - 40, -1350),
         seed: 21.17,
     };
     const { mesh: sharedFoothill, uniforms: sharedFoothillUniforms } = createFBMMountainTSL({
@@ -741,7 +789,7 @@ function createFoothillApron(uTransition, baseY, opacityTargets) {
     // own distinct CPU-baked geometry + transform. No new pipeline, no new opacity target.
     const siblingGeometry = buildMountainGeometry({ size: 1100, height: 78, seed: 58.42 });
     const siblingFoothill = new THREE.Mesh(siblingGeometry, sharedFoothill.material);
-    siblingFoothill.position.set(330, baseY - 10, -710);
+    siblingFoothill.position.set(330, baseY - 38, -1450);
     siblingFoothill.renderOrder = -2;
     group.add(siblingFoothill);
 
@@ -749,7 +797,7 @@ function createFoothillApron(uTransition, baseY, opacityTargets) {
     const centerFoothill = createFBMMountain(uTransition, {
         size: 1250,
         height: 92,
-        position: new THREE.Vector3(30, baseY - 20, -860),
+        position: new THREE.Vector3(30, baseY - 48, -1600),
         seed: 33.71,
         treatment: FOOTHILL_APRON_TREATMENT,
         base: FOOTHILL_APRON_BASE,
@@ -852,14 +900,17 @@ function createSnow(uniforms, count) {
 
     // Cool spindrift crystals (sun-tinted would fight the dusk key; kept cool-bright).
     material.colorNode = vec3(0.87, 0.91, 0.95);
-    material.opacityNode = streak.mul(0.55);
+    // 3→4 fade: authored opacityNode blocks the manager's material.opacity crossfade, so
+    // without this factor the whole 700-streak field popped in with group.visible.
+    const uFieldOpacity = uniform(1);
+    material.opacityNode = streak.mul(0.55).mul(uFieldOpacity);
 
     const snow = new THREE.Mesh(geometry, material);
     snow.name = 'mountain-snow';
     snow.frustumCulled = false;
     // Expose the TSL time uniform so the update loop ticks it (mirrors cloudSeaTimeUniform);
     // no per-frame attribute mutation/re-upload remains.
-    snow.userData = { snowTimeUniform: uTime };
+    snow.userData = { snowTimeUniform: uTime, snowOpacityUniform: uFieldOpacity };
 
     return snow;
 }
@@ -868,6 +919,35 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // The Ch4 background ground planes (snow-floor disc + cloud-sea deck) use opacityNode, so the
+    // manager's material.opacity crossfade can't reach them — they popped in at group.visible. Fade
+    // them with the chapter weight so they RISE across the 3→4 ecotone instead of snapping on.
+    const mpChapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    if (group.userData.cloudSeaOpacityUniform) {
+        group.userData.cloudSeaOpacityUniform.value = 0.92 * mpChapterOpacity;
+    }
+    if (group.userData.snowFloorOpacityUniform) {
+        group.userData.snowFloorOpacityUniform.value = mpChapterOpacity;
+    }
+    // Same mechanism for the async-loaded conifer belt and the spindrift field — both had
+    // NO reachable alpha path (belt: material minted after _collectOpacityTargets; snow:
+    // authored opacityNode) and popped in at full presence when the ecotone opened.
+    const beltOpacityUniform = group.userData.ch4Conifers?.userData?.uOpacity;
+    if (beltOpacityUniform) {
+        beltOpacityUniform.value = mpChapterOpacity;
+        // depthWrite off only while actually fading (the Quaternius-prop pattern) — keeps
+        // opaque-state depth sorting exact, avoids transparent-sort artifacts mid-fade.
+        const beltDepthWrite = mpChapterOpacity >= 0.98;
+        for (const beltMesh of group.userData.ch4Conifers.children) {
+            if (beltMesh.material && beltMesh.material.depthWrite !== beltDepthWrite) {
+                beltMesh.material.depthWrite = beltDepthWrite;
+            }
+        }
+    }
+    if (group.userData.snowOpacityUniform) {
+        group.userData.snowOpacityUniform.value = mpChapterOpacity;
     }
 
     const cameraY = camera?.position?.y ?? group.position.y;
@@ -941,8 +1021,20 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
         const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'
             ? uniform2.__odysseyBaseOpacity
             : uniform2.value;
-        uniform2.value = baseOpacity * seamFade;
+        // × mpChapterOpacity (2026-08 pop-in fix): these targets (foothill apron, banner
+        // plume, prayer flags, cairns) only carried the 4→5 exit seamFade — which is 1 at
+        // ENTRY — and their authored opacityNode blocks the manager's material.opacity
+        // crossfade, so the whole kit snapped to full presence when the 3→4 ecotone opened.
+        // mpChapterOpacity is 1 mid-chapter, so the 4→5 exit behaviour is unchanged.
+        uniform2.value = baseOpacity * seamFade * mpChapterOpacity;
     });
+
+    // Cloud-sea deck reveal: surface the silver sea only once the camera is inside Ch4 and
+    // climbing above it (by local 0.25 the rail is ~90u above the deck — it reads as ground
+    // below, not a fog band across the hero seen from Ch3 altitude).
+    if (group.userData.cloudSeaRevealUniform) {
+        group.userData.cloudSeaRevealUniform.value = THREE.MathUtils.smoothstep(progress, 0.0, 0.25);
+    }
 
     const auroraFadeUniformTargets = group.userData.auroraFadeUniformTargets || [];
     auroraFadeUniformTargets.forEach((uniform2) => {

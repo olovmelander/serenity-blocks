@@ -122,24 +122,25 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [0.86, 0.98, 1.10], contrast: 1.12, vignette: 1.28, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
     },
-    // 3 Surface World — Midsommar golden-hour meadow. Re-aimed WARM from the old cool-green cast:
-    // the previous tint [0.97,1.04,0.95] pulled R+B DOWN and G UP (cool/green), fighting the
-    // golden-hour intent on TOP of the shared ACES muting; now warm (R up, B down) with more
-    // saturation + contrast + a lighter vignette so the meadow reads vivid + sunlit. (Tint
-    // renormalises to origLuma → hue-only shift, safe against ACES; A/B in-game.)
+    // 3 Surface World — PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): flipped from the warm
+    // golden-hour tint [1.04,1.01,0.92] to a bright, slightly-cool DAYLIGHT stock (raise B, drop the
+    // warm R lift) so the meadow reads as a vivid blue-sky afternoon; vignette opened 0.75→0.55 for
+    // the airy high-key look; saturation held high (1.12) so the flowers/water pop. This is the
+    // start of the shared near-neutral daylight grade Ch3/4/5 converge on (Wave D).
     {
-        tint: [1.04, 1.01, 0.92], contrast: 1.05, vignette: 0.75, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.56, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
-    // 4 Mountains — open, airy, light vignette (REFERENCE stock).
+    // 4 Mountains — PAINTERLY-ASCENT (Wave B): neutralized the cool-blue cast ([1.02,1.00,1.06] →
+    // [1.01,1.00,1.01]) so the bright daylight snow reads clean-white, not cold; sat lifted 1.06 →
+    // 1.10 to match Ch3's vivid daylight. Part of the shared near-neutral stock (Wave D).
     {
-        tint: [1.02, 1.00, 1.06], contrast: 1.03, vignette: 0.74, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.58, chroma: 1.0, sat: 1.10, shoulderKnee: 0.86,
     },
-    // 5 Sky & Drift — warm violet haze, open frame.
-    // READY (unverified) FIX pending a capture pass: contrast 0.98→1.04 + sat 1.06→1.11 to give the
-    // weakest/flattest chapter (3/5, reads washed — contrast is BELOW neutral) depth. Reverted for
-    // now because it couldn't be visually confirmed headless; re-apply once ch5 can be eyeballed.
+    // 5 Sky & Drift — PAINTERLY-ASCENT (Wave C): magenta-violet twilight tint [1.05,0.96,1.07] →
+    // cool-sky daylight [0.99,1.01,1.05]; contrast 0.98 (sub-neutral, flattened the sky) → 1.05; sat
+    // 1.06 → 1.12 so the bright blue + white cloud-sea pop. The brightest chapter of the ascent.
     {
-        tint: [1.05, 0.96, 1.07], contrast: 0.98, vignette: 0.70, chroma: 1.0, sat: 1.06, shoulderKnee: 0.86,
+        tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.58, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
     // 6 Space — cool indigo, slightly closer frame (REFERENCE stock).
     {
@@ -235,7 +236,13 @@ export class OdysseyTslPipeline {
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
         this.postProcessing = new THREE.PostProcessing(renderer);
-        const scenePass = pass(scene, camera);
+        // MEADOW-ALIASING FIX (2026-08): QW1 dropped renderer-level MSAA (antialias:false)
+        // and let the post grain soften edges — but the Ch3 wildflower carpet is thousands
+        // of 1-3px vertex-coloured petals, and with zero scene-pass samples they alias into
+        // raw pixel confetti (worst under DRS upscaling). r181's PassNode takes per-pass
+        // samples independent of the renderer flag, so the SCENE pass alone gets MSAA on
+        // tiers that opted in (post passes stay single-sampled). Default 0 = QW1 unchanged.
+        const scenePass = pass(scene, camera, { samples: params.sceneSamples ?? 0 });
         this.scenePass = scenePass;
 
         const sceneColor = scenePass.getTextureNode('output');

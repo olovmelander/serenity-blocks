@@ -56,6 +56,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md](ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CHAPTER_MASTERPIECE_PLAN.md](ODYSSEY_CHAPTER_MASTERPIECE_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CHAPTER_PERF_PLAN.md](ODYSSEY_CHAPTER_PERF_PLAN.md) | Reference | Odyssey performance context. |
+| [ODYSSEY_ONE_WORLD_PLAN_2026-08.md](ODYSSEY_ONE_WORLD_PLAN_2026-08.md) | Reference | **CLOSED 2026-08-12 — a record, not a backlog.** Odyssey Act II world-cohesion rebuild: SHIPPED and default (chapters 2–5 are one continuous world; Lane A 0.393 ms vs the dioramas' 1.966 ms, 50 draws vs 132). Waves 0–6 done or closed-as-rescoped; Wave 7's headline answered. Read §0 for the outcome and §0.3 for the four load-bearing numbers measurement refuted — that half is the reusable part. Two follow-ups outlived it (§7): a Lane B measurement needing the Radeon machine, and the ch5→ch6 cloud bank needing a look call. Decisions that escaped into governance: ADR-0015 (keep the escape hatch), ADR-0016 (perf claims need a verified instrument). |
 | [ODYSSEY_CINEMATIC_JOURNEY_PLAN.md](ODYSSEY_CINEMATIC_JOURNEY_PLAN.md) | Reference | Odyssey source plan. |
 | [ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md](ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md) | Reference | Prompt/source material. |
 | [ODYSSEY_DEEP_OCEAN_VIBRANCY_PLAN.md](ODYSSEY_DEEP_OCEAN_VIBRANCY_PLAN.md) | Reference | Odyssey chapter/theme plan. |

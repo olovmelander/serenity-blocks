@@ -39,12 +39,13 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         const group = createSkyDriftEnvironment({ particleCount: 120 });
 
         expect(group.userData.summitRing?.name).toBe('receding-summit-ring');
-        expect(group.userData.summitRing.children.length).toBe(3);
+        // 3 hero peaks + 2 far-range flank silhouettes (enabled 2026-08 in all L5 hosts).
+        expect(group.userData.summitRing.children.length).toBe(4);
         expect(group.userData.summitRing.userData.canonicalMountainRange.sourceChapter)
             .toBe(4);
         expect(group.userData.summitRing.userData.specIds)
-            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS]);
-        expect(group.userData.summitRing.userData.isSingleHeroChain)
+            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS, 'ch4-far-left']);
+        expect(group.userData.summitRing.userData.canonicalMountainRange.includesFarRange)
             .toBe(true);
         group.userData.summitRingOpacityUniforms.forEach((target) => {
             expect(target.__odysseyBaseOpacity).toBe(1);
@@ -52,10 +53,14 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         expect(group.userData.lenticular?.name).toBe('lenticular-landmark');
         expect(group.userData.noctilucent?.name).toBe('noctilucent-veil');
         expect(group.userData.iceCrystals?.name).toBe('sky-drift-ice-crystals');
-        expect(group.userData.darkWisps?.name).toBe('sky-drift-dark-wisps');
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): the near-black DARK WISPS are removed (a
+        // night motif), and Ch5 now mounts the shared CLOUD-SEA DECK (landscape lever L1) so the
+        // sunlit sea persists below across the 4→5 handoff instead of the floor vanishing.
+        expect(group.userData.darkWisps).toBeUndefined();
+        expect(group.userData.cloudSea).toBeTruthy();
     });
 
-    it('drives the dusk script while keeping the summit ring visible until it is passed', () => {
+    it('stays bright daylight (dusk script removed) while keeping the summit ring visible until passed', () => {
         stubCanvasDocument();
 
         const group = createSkyDriftEnvironment({ particleCount: 120 });
@@ -71,16 +76,17 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
         expect(entrySunIntensity).toBeGreaterThan(0.3);
         const ringBaseY = group.userData.summitRing.userData.baseY;
 
-        // Late chapter: dusk ≈ 1 — the sun key is dead, the ring sank and faded, and
-        // the point glows have shifted toward aurora green (g channel dominates).
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): the dusk→night script is REMOVED — Ch5 is now
+        // the bright daylight cloud-sea payoff. uDusk is CAPPED low, the warm sun key stays ALIVE the
+        // whole chapter, and the glows no longer shift aurora-green. The summit ring is still
+        // camera-pass gated (visible until passed), which is what this test now guards.
         updateSkyDriftEnvironment(group, 0.016, 2.0, null, tEnd, null);
-        expect(uniforms.uDusk.value).toBeCloseTo(1, 5);
-        expect(group.userData.sunKey.intensity).toBeCloseTo(0, 5);
+        expect(uniforms.uDusk.value).toBeLessThanOrEqual(0.12); // capped daylight, never a full dusk
+        expect(group.userData.sunKey.intensity).toBeGreaterThan(0.3); // sun stays alive
         expect(group.userData.summitRing.position.y).toBe(ringBaseY);
         (group.userData.summitRingOpacityUniforms || []).forEach((target) => {
             expect(target.value).toBeCloseTo(target.__odysseyBaseOpacity ?? 0.9, 5);
         });
-        expect(group.userData.purpleGlow.color.g).toBeGreaterThan(group.userData.purpleGlow.color.b);
 
         // Even after the Sky->Space boundary, a not-yet-passed summit must remain fully
         // readable. Aurora recedes here, but the mountain ring is camera-pass gated only.

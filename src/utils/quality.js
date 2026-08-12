@@ -1,3 +1,19 @@
+/**
+ * Quality tiers.
+ *
+ * CONSUMER STATUS — this table has historically declared more than it enforced,
+ * so keep this note accurate when wiring anything up:
+ *
+ *   LIVE   renderFrameSkip, renderScale, shakeMultiplier, particles,
+ *          particleUpdateInterval, effectsEnabled.ripples
+ *   UNREAD particleBudget.*  — SharedEffects checks only the `particles` boolean,
+ *          so these per-effect caps do not limit anything today. Enforcing them
+ *          would visibly cut effects at High and above; decide whether the
+ *          numbers are a real budget before wiring them.
+ *   UNREAD effectsEnabled.bloom / trails / comboPopups / backgroundEffects
+ *
+ * A declared-but-unread flag is worse than no flag: it reads as a guarantee.
+ */
 const QUALITY_CONFIG = {
     Extreme: {
         id: 'Extreme',

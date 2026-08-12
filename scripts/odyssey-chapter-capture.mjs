@@ -64,6 +64,14 @@ const delay = (ms) => new Promise((resolve) => {
 
 function parseArgs(argv) {
     const result = {};
+    // Repeated options ACCUMULATE into an array instead of last-one-wins. This bug produced a
+    // silently wrong measurement: `--url-flag odysseyOneWorld=1 --url-flag odysseyWorldNoClouds=1`
+    // dropped the first flag, the capture booted the LEGACY path, and its success was read as a
+    // clean bisect of the One World boot stall — the manifest's urlFlags list was the only tell.
+    const store = (key, value) => {
+        if (result[key] === undefined) result[key] = value;
+        else result[key] = [].concat(result[key], value);
+    };
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         if (!token.startsWith('--')) continue;
@@ -72,12 +80,12 @@ function parseArgs(argv) {
         const normalized = key.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
         const next = argv[index + 1];
         if (inlineValue !== undefined) {
-            result[normalized] = inlineValue;
+            store(normalized, inlineValue);
         } else if (next && !next.startsWith('--')) {
-            result[normalized] = next;
+            store(normalized, next);
             index += 1;
         } else {
-            result[normalized] = true;
+            store(normalized, true);
         }
     }
     return result;
@@ -122,6 +130,15 @@ function makeUrl() {
         captureBust: String(Date.now()),
     });
     if (FORCE_WEBGL) params.set('forceWebGL', '1');
+    // Pass arbitrary extra flags through: --url-flag odysseyOneWorld=1
+    []
+        .concat(args['url-flag'] || args.urlFlag || [])
+        .forEach((entry) => {
+            String(entry).split(',').forEach((pair) => {
+                const [k, v = '1'] = pair.split('=');
+                if (k) params.set(k, v);
+            });
+        });
     return `${BASE_URL}/?${params.toString()}`;
 }
 
@@ -154,7 +171,13 @@ function startDevServer() {
     const proc = spawn(
         command,
         commandArgs,
-        { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FORCE_COLOR: '0' } },
+        {
+            cwd: ROOT,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            // Isolated dep cache — see vite.config.js cacheDir: a harness server sharing
+            // node_modules/.vite with an interactive one corrupts the optimizer for both.
+            env: { ...process.env, FORCE_COLOR: '0', VITE_CACHE_DIR: `node_modules/.vite-harness-${PORT}` },
+        },
     );
     proc.stdout.on('data', (chunk) => consoleLines.push(String(chunk)));
     proc.stderr.on('data', (chunk) => consoleLines.push(String(chunk)));
@@ -286,7 +309,15 @@ async function bootstrapOdyssey(win) {
                 const bc = window.odysseyMode?.boardController;
                 if (!bc?.isActive || !bc.cameraController || !bc.environmentManager) return false;
                 const envs = bc.environmentManager.environments;
-                return required.every((chapterId) => envs?.has(chapterId))
+                // A chapter whose ground comes from the continuous Act II world is never
+                // created as an environment, so requiring an entry for it here can never
+                // become true. This predicate predates the idea that a chapter's ground might
+                // live somewhere other than its own diorama; without this it simply waits out
+                // its 140s timeout and reports a boot failure that never happened.
+                const suppressed = bc.environmentManager.suppressedChapters;
+                const satisfied = (chapterId) => envs?.has(chapterId)
+                    || (!!bc.oneWorld && !!suppressed?.has?.(chapterId));
+                return required.every(satisfied)
                     && (bc.pendingChapterLoads?.size || 0) === 0;
             });
             if (!ready) return { ok: false, reason: 'required chapter environments not ready' };
@@ -621,6 +652,10 @@ async function run() {
     win.destroy();
 }
 
+// Force the discrete GPU (RTX 5080) like electron/main.js:46 — this capture script is its own
+// Electron main, so it must set the switch itself. Without it a heavy 2-chapter seam capture can
+// fall back to the iGPU and TDR-bluescreen the machine.
+app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');

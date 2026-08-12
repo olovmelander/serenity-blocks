@@ -1,6 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
-import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
+import { ComboTracker } from '../combo-tracker.js';
+import { createBoardEffectHandlers } from './board-effect-callbacks.js';
 import {
     GameState,
     spawnPiece,
@@ -18,11 +19,7 @@ import {
     ROWS,
     BLOCK_SIZE,
 } from '../constants.js';
-import {
-    updateStats,
-    triggerLineClearFlash as triggerLineClearFlashCanvas,
-    triggerBackgroundPulse as triggerBackgroundPulseCanvas,
-} from '../../rendering/draw.js';
+import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
@@ -350,8 +347,10 @@ export class SinglePlayerMode extends BaseGameMode {
                     onStart: () => { },
                     replayTimingCallbacks: {
                         onHardDrop: () => this._applyHardDropTiming(),
-                        onLineClearImpact: (lineCount, cascadeCount) => (
-                            this._applyLineClearImpactTiming(lineCount, cascadeCount)
+                        // NOTE: second parameter is the gameState, not cascadeCount —
+                        // passing cascadeCount here silently skipped replay hit-stop.
+                        onLineClearImpact: (lineCount) => (
+                            this._applyLineClearImpactTiming(lineCount)
                         ),
                         onPerfectClear: () => this._applyPerfectClearTiming(),
                     },
@@ -815,20 +814,20 @@ export class SinglePlayerMode extends BaseGameMode {
 
         let accepted = false;
 
+        // Juice tuned to LOCAL MP's values — the leaner, smoother read players
+        // prefer. SP's old tuning was 3x heavier (move nudge 1.5 + tilt 0.4,
+        // plus a wall-tap nudge on rejected moves) and made the canvas wiggle
+        // constantly under held keys.
         if (type === 'move') {
             accepted = coreMove(this.gameState, value, moveSound, addTrailCallback);
-            if (this.boardJuice && !muted) {
-                if (accepted) {
-                    this.boardJuice.nudge(value * 1.5, 0);
-                    this.boardJuice.tilt(value * 0.4);
-                } else {
-                    this.boardJuice.nudge(value * 0.8, 0);
-                }
+            if (accepted && this.boardJuice && !muted) {
+                this.boardJuice.nudge(value * 0.5, 0);
             }
         } else if (type === 'rotate') {
             accepted = coreRotate(this.gameState, value, rotateSound, addTrailCallback);
             if (accepted && this.boardJuice && !muted) {
-                this.boardJuice.tilt(value === 'left' ? -0.3 : 0.3);
+                this.boardJuice.tilt(value === 'left' ? -1.5 : 1.5);
+                this.boardJuice.nudge(0, -0.5);
             }
         } else if (type === 'hardDrop') {
             accepted = options.fixedTick === true
@@ -840,7 +839,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 )
                 : coreHardDrop(this.gameState, playDropCallback, physicsCallbacks);
             if (accepted && this.boardJuice && !muted) {
-                this.boardJuice.dip(3);
+                this.boardJuice.dip(4); // MP's hard-drop weight
                 this.boardJuice.bounce();
             }
         } else if (type === 'softDrop') {
@@ -1149,6 +1148,19 @@ export class SinglePlayerMode extends BaseGameMode {
         const sessionGeneration = callbackSession?.generation;
         const timingState = callbackSession?.gameState || this.gameState;
         const usesFixedTiming = callbackSession?.simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
+
+        // Shared four-beat visual wiring — identical to local MP's, so the two
+        // paths cannot drift apart again. The session tracker is injected so
+        // tint state resets with each run.
+        if (!this._boardEffectHandlers) {
+            this._boardEffectHandlers = createBoardEffectHandlers({
+                getScene: () => this._getBoardScene(),
+                getJuice: () => this.boardJuice,
+                comboTracker: this._comboTracker,
+            });
+        }
+        const effectHandlers = this._boardEffectHandlers;
+
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
@@ -1157,15 +1169,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 const cascadeCount = rest[3] ?? 1;
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
 
-                // Advance the real combo BEFORE the clear visuals run: the pinned
-                // schedule puts onLineClear ahead of triggerFlash, so the particle
-                // tint/intensity read the value that includes this clear.
-                announceCombo(this._comboTracker, this._getBoardScene(), {
-                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
-                });
-
                 // Emit event for theme reactions
-                console.log('[SinglePlayer] Emitting LINE_CLEAR event, count:', lineCount);
                 emitLineClear({ lineCount, clearedRows, cascadeCount });
             },
             onTSpin: (lineCount) => {
@@ -1187,6 +1191,7 @@ export class SinglePlayerMode extends BaseGameMode {
             onLevelUp: (level) => {
                 emitLevelUp({ level });
                 this.deps.soundManager.sfxPlayer.playLevelUp();
+                this._getBoardScene()?.sharedEffects?.playLevelUp?.(level);
             },
             onHardDrop: (dropData) => {
                 emitHardDrop(dropData);
@@ -1202,57 +1207,33 @@ export class SinglePlayerMode extends BaseGameMode {
             // have keyed off it since launch, so it keeps emitting unchanged.
             // The board popup is driven from onLineClear instead; the cascade's
             // own board feedback is triggerCascadeWave below.
+            // Combo popup, local-MP semantics: the number is CASCADE DEPTH,
+            // fired per cascade wave — the frequent feedback players prefer.
+            // Themes keep receiving the same payload they always have.
             triggerCombo: (comboCount) => {
-                // Emit event for theme reactions
-                console.log('[SinglePlayer] Emitting COMBO event, cascadeDepth:', comboCount);
+                effectHandlers.comboBeat(comboCount);
                 emitCombo({ comboCount });
             },
-            // Trigger cascade wave visual effect
+            // No settle visual — local MP never had one and reads better for it.
+            // Key kept so the pinned callback shape is stable.
+            onCascadeComplete: () => {},
+            // Mega-only inside SharedEffects; silent below 10.
             triggerCascadeWave: (cascadeCount) => {
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.sharedEffects) {
-                    boardScene.sharedEffects.showCascadeWave(cascadeCount);
-                    console.log(`[SinglePlayer] Cascade wave ${cascadeCount} triggered`);
-                }
+                effectHandlers.cascadeWaveBeat(cascadeCount);
             },
-            // Line clear flash effect. The lineClearEffects toggle is enforced
-            // inside SharedEffects (so every caller honours it, and this callback
-            // stays free of live settings reads for fixed-tick determinism); the
-            // legacy canvas fallback has no such layer, so it gates here.
             triggerFlash: (fullLines) => {
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.triggerLineClearFlash) {
-                    boardScene.triggerLineClearFlash(fullLines);
-                } else if (this.deps.settingsManager.get().lineClearEffects) {
-                    triggerLineClearFlashCanvas(fullLines);
-                }
+                effectHandlers.clearFlashBeat(fullLines);
             },
             // Camera shake + particle impact
-            onLineClearImpact: (lineCount, cascadeCount) => {
-                // Timing (hit-stop) is sim state, not decoration — it stays outside
-                // the visual toggle so gameplay feel is identical either way.
+            onLineClearImpact: (lineCount) => {
+                // Timing (hit-stop) is sim state, not decoration — it stays at the
+                // call site, outside the shared visual wiring.
                 this._applyLineClearImpactTiming(lineCount, timingState, usesFixedTiming);
-
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.playLineClearImpact) {
-                    boardScene.playLineClearImpact(lineCount, cascadeCount);
-                }
-
-                // Board juice: pulse on line clear, scaled by count
-                if (this.boardJuice) {
-                    const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
-                    this.boardJuice.pulse(intensity);
-                }
+                effectHandlers.clearImpactBeat(lineCount);
             },
-            // Background pulse / ambience
-            triggerBackgroundPulse: (lineCount) => {
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.triggerBackgroundPulse) {
-                    boardScene.triggerBackgroundPulse(lineCount);
-                } else {
-                    triggerBackgroundPulseCanvas(lineCount);
-                }
-            },
+            // Full-viewport DOM pulse on every clear was single-player-only noise;
+            // local MP's is an explicit no-op and reads better. Key kept for shape.
+            triggerBackgroundPulse: () => {},
             // Perfect clear / all-clear celebration (flagship moment)
             onPerfectClear: (depth, perfectClearBonus) => {
                 this._applyPerfectClearTiming(timingState, usesFixedTiming);
@@ -1271,25 +1252,11 @@ export class SinglePlayerMode extends BaseGameMode {
                     this.boardJuice.bounce();
                 }
             },
-            // Piece lock ripple effect
+            // Piece lock: ripple + stamp + tracker bookkeeping + gentle juice,
+            // all via the shared beat.
             onPieceLock: (piece) => {
-                // Emit event for theme reactions
                 emitPieceLock({ piece });
-
-                // Combo bookkeeping runs on every lock, independent of any visual
-                // toggle — a lock that clears nothing is what breaks a chain.
-                noteLockForCombo(this._comboTracker, this._getBoardScene());
-
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.createPieceLockRipple) {
-                    boardScene.createPieceLockRipple(piece);
-                }
-
-                // Board juice: gentle dip + pulse on piece lock
-                if (this.boardJuice) {
-                    this.boardJuice.dip(1);
-                    this.boardJuice.pulse(1.005);
-                }
+                effectHandlers.lockBeat(piece);
             },
             // CRITICAL: Spawn next piece after physics completes (after piece lock)
             spawnPiece: () => {
@@ -1343,6 +1310,13 @@ export class SinglePlayerMode extends BaseGameMode {
         // Prevent re-entry if already processing
         if (this.isProcessingGameOver) return;
         this.isProcessingGameOver = true;
+
+        // The board dies before the results modal arrives over it. After the
+        // re-entry guard so a doubled game-over cannot stack two veils, and
+        // skipped while seeking a demo (no animation during a seek).
+        if (!this.gameState?.isSeeking) {
+            this._getBoardScene()?.sharedEffects?.playGameOver?.();
+        }
 
         // Special handling for demo playback
         if (this.isPlayingDemo) {

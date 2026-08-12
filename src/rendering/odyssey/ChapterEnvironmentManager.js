@@ -21,8 +21,6 @@ import {
 } from './chapter-environments/shared/chapter-profile.js';
 import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-environments/registry.js';
 import {
-    SEAM_34_COLOUR_HALF_WIDTH,
-    SEAM_34_ALPINE_BRIDGE,
     SEAM_56_COLOUR_HALF_WIDTH,
     SEAM_56_AURORA_BRIDGE,
 } from './chapter-environments/shared/seam-bridges.js';
@@ -71,23 +69,17 @@ async function loadChapterModule(chapterId) {
 
 const OPACITY_APPLY_EPSILON = 0.01;
 
-// ── Ecotone (overlap-band) transition tuning ────────────────────────────────────
-// A6: replace the hard portal cut (chapter fades out → black/fogged void → next
-// chapter fades in) with a real OVERLAP WINDOW where adjacent biomes are co-present.
-// The window is derived per-boundary from the ADJACENT chapter spans so it scales
-// with the layout (short chapters get a proportionally short overlap). ECOTONE_SPAN_
-// FRACTION is the fraction of the *smaller* adjacent chapter span that the overlap
-// reaches across on EACH side of the boundary (≈ the "last ~12% of N co-present with
-// first ~12% of N+1" target). The window is clamped so neighbouring ecotones never
-// collide and is always a strict superset of the narrow fog seamWidth.
-// PERF (transition lag): the overlap window is the stretch where BOTH chapters +
-// both corridor fields + the breach all render at once (the dominant per-seam cost,
-// amplified by the always-on light rig). Tightened from 0.18/0.085 → 0.11/0.055 so the
-// double-render stretch is ~35% shorter; the fog colour/density lerp + the per-seam
-// carried-element ramps still bridge the boundary so it reads as a blend, not a cut.
-const ECOTONE_SPAN_FRACTION = 0.11; // fraction of the smaller adjacent chapter span, per side
-const ECOTONE_MAX_HALF_WIDTH = 0.055; // absolute arc-length cap per side (safety)
-const ECOTONE_NEIGHBOUR_CLEARANCE = 0.45; // never reach past ~half-way to the next boundary
+// ── Ecotone (overlap-band) transition window ────────────────────────────────────
+// A6: replace the hard portal cut with an OVERLAP WINDOW where adjacent biomes are
+// co-present. The window IS the per-boundary fog seamWidth. It used to be derived from
+// the adjacent chapter spans (span-fraction 0.11, cap 0.055, neighbour clearance 0.45,
+// then floored by seamWidth) — but with the shipped layout the span-derived value lost
+// to that floor at EVERY one of the seven boundaries (computed 0.00616-0.01628 vs seams
+// 0.018-0.06; verified against the live registry layout before deletion, 2026-08-12).
+// The scaling arithmetic had never once produced the window, so it was deleted rather
+// than left to imply a tunability that did not exist. Widening a boundary's ecotone is
+// done where it was always actually done: that chapter's `transition.seamWidth` in
+// chapter-profile.js.
 
 // ── B7 SEAM ACT-ARCS — per-boundary "carried element" + early-ignite ramps ──────────
 // These complement the ecotone opacity crossfade (above) and the fog colour/density lerp
@@ -124,6 +116,25 @@ const JOURNEY_END_BAND = 0.18;
 const SEAM_56_CARRY_HOLD_BAND = 0.4; // fraction of Space span the Ch5 env stays fully present
 const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the Ch5 env has faded out
 
+// 5→6 EARTH-AT-SUMMIT ignite: Chapter 6 owns the hero gas giant the player sees from the
+// mountain top, but the chapter used to be hard-zero until the boundary — by which point
+// the bright sky was already gone, so the "earth" could only ever appear against black.
+// Ignite ch6 across the last ~43% of Ch5 so its group is present (and its update() runs)
+// while the sky is still daylight. This ONLY grants presence: cosmic-expanse.js gates
+// every element except the gas giant behind its own post-boundary `spaceReveal`, so this
+// does NOT re-wash Space bright or pull stars/nebula/black hole into the Ch5 frame.
+// The ignite SATURATES before the boundary (unlike the generic `ramp` helper, which only
+// reaches 1 at the boundary) so the chapter is already fully weighted by the time the
+// earth's own reveal fades up — otherwise the two ramps compound and the earth would only
+// reach full opacity at the boundary, i.e. exactly when the sky starts going dark.
+const SEAM_56_EARTH_IGNITE_START = 0.45; // fraction of the Ch5 span before the boundary
+const SEAM_56_EARTH_IGNITE_END = 0.32; // ...and where it reaches full weight
+// Hold full presence just past the boundary until the normal ecotone crossfade has
+// caught up (it completes within ~6% of the Space span), so releasing the boost is a
+// no-op rather than a dip. Without a release the boost would pin ch6 visible through
+// chapters 7 and 8.
+const SEAM_56_EARTH_HOLD_BAND = 0.10; // fraction of the Space span
+
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
     return t * t * t * (t * (t * 6 - 15) + 10);
@@ -142,43 +153,6 @@ function lerpColorViaBridge(out, startColor, bridgeHex, endColor, t, scratch) {
     }
     const spaceT = smootherstep01((clamped - 0.5) * 2);
     return out.set(bridgeHex).lerp(scratch.set(endColor), spaceT);
-}
-
-function lerpNumberViaBridge(start, bridge, end, t) {
-    const clamped = THREE.MathUtils.clamp(t, 0, 1);
-    if (clamped < 0.5) {
-        return THREE.MathUtils.lerp(start, bridge, smootherstep01(clamped * 2));
-    }
-    return THREE.MathUtils.lerp(bridge, end, smootherstep01((clamped - 0.5) * 2));
-}
-
-/**
- * Resolve the half-width (arc-length, per side) of the ecotone overlap band centred on
- * the boundary between `chapterId` and `chapterId + 1`. Scales with the smaller adjacent
- * chapter span, is capped, kept clear of neighbouring boundaries, and is never narrower
- * than the configured fog seamWidth (so the content crossfade is a strict superset).
- */
-function resolveEcotoneHalfWidth(chapterId, chapterPositions, seamWidth) {
-    const boundaryPosition = chapterPositions[chapterId];
-    const prevBoundary = chapterPositions[chapterId - 1] ?? 0;
-    const nextBoundary = chapterPositions[chapterId + 1] ?? 1;
-    if (!Number.isFinite(boundaryPosition)) return Math.max(0.001, seamWidth || 0.001);
-
-    const spanBefore = boundaryPosition - prevBoundary;
-    const spanAfter = nextBoundary - boundaryPosition;
-    const smallerSpan = Math.max(0.001, Math.min(spanBefore, spanAfter));
-
-    let halfWidth = smallerSpan * ECOTONE_SPAN_FRACTION;
-    halfWidth = Math.min(halfWidth, ECOTONE_MAX_HALF_WIDTH);
-    // Keep clear of the previous/next boundary so adjacent ecotones never overlap.
-    halfWidth = Math.min(
-        halfWidth,
-        spanBefore * ECOTONE_NEIGHBOUR_CLEARANCE,
-        spanAfter * ECOTONE_NEIGHBOUR_CLEARANCE,
-    );
-    // Always a superset of the fog seam so both biomes are co-present at least as wide
-    // as the colour lerp.
-    return Math.max(halfWidth, seamWidth || 0.001);
 }
 
 // QW7: per-chapter board transitions are static-per-chapterId (two object spreads each
@@ -230,8 +204,9 @@ function resolveEcotoneOverlap(
         if (!Number.isFinite(boundaryPosition)) continue;
 
         const transition = getChapterBoardTransition(chapterId);
-        const seamWidth = Math.max(0.001, transition.seamWidth || DEFAULT_BOARD_TRANSITION.seamWidth);
-        const halfWidth = resolveEcotoneHalfWidth(chapterId, chapterPositions, seamWidth);
+        // The ecotone half-width IS the fog seamWidth — see the window comment up top for
+        // why the span-derived scaling was deleted (it lost to this floor at every boundary).
+        const halfWidth = Math.max(0.001, transition.seamWidth || DEFAULT_BOARD_TRANSITION.seamWidth);
         const start = boundaryPosition - halfWidth;
         const end = boundaryPosition + halfWidth;
 
@@ -404,6 +379,13 @@ export class ChapterEnvironmentManager {
         // anyway. Set BELOW the 0.26 maxScrollVelocity cap (~0.0043/frame at 60fps) so it still
         // fires within the (now lower 0.15) cap range. Tunable.
         this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.0015;
+        // ONE WORLD (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md): chapters whose environment is
+        // being provided by something else — the continuous Act II world — and which must
+        // therefore never be created, shown or faded here. Empty by default, so the shipped
+        // path is untouched.
+        this.suppressedChapters = new Set(
+            Array.isArray(options.suppressedChapters) ? options.suppressedChapters : [],
+        );
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -676,6 +658,11 @@ export class ChapterEnvironmentManager {
         if (this.environments.has(chapterId)) {
             return this.environments.get(chapterId).group;
         }
+
+        // A suppressed chapter's ground is drawn by the continuous world instead. Returning
+        // null here is what keeps its ~18 materials off the startup compile path, which is the
+        // largest single startup win in the rebuild.
+        if (this.suppressedChapters.has(chapterId)) return null;
 
         const def = await loadChapterModule(chapterId);
 
@@ -975,7 +962,33 @@ export class ChapterEnvironmentManager {
         };
 
         if (chapterId === 8) return ramp(SEAM_78_AFTERGLOW_BAND);
+        if (chapterId === 6) return this._earthIgniteBoost(progress);
         return 0;
+    }
+
+    /**
+     * 5→6 EARTH-AT-SUMMIT ignite (presence only — see SEAM_56_EARTH_IGNITE_START).
+     * @param {number} progress current path progress (0..1)
+     * @returns {number} 0..1 presence boost for chapter 6
+     */
+    _earthIgniteBoost(progress) {
+        const boundary = this.chapterPositions[5];
+        const skyStart = this.chapterPositions[4];
+        const nextBoundary = this.chapterPositions[6] ?? 1;
+        if (!Number.isFinite(boundary) || !Number.isFinite(skyStart) || boundary <= skyStart) {
+            return 0;
+        }
+
+        if (progress >= boundary) {
+            if (!Number.isFinite(nextBoundary) || nextBoundary <= boundary) return 0;
+            const holdEnd = boundary + (nextBoundary - boundary) * SEAM_56_EARTH_HOLD_BAND;
+            return progress <= holdEnd ? 1 : 0;
+        }
+
+        const skySpan = boundary - skyStart;
+        const igniteStart = boundary - skySpan * SEAM_56_EARTH_IGNITE_START;
+        const igniteEnd = boundary - skySpan * SEAM_56_EARTH_IGNITE_END;
+        return smoothstep01((progress - igniteStart) / Math.max(1e-5, igniteEnd - igniteStart));
     }
 
     /**
@@ -1164,6 +1177,13 @@ export class ChapterEnvironmentManager {
             env.lastVisible = isVisible;
         });
 
+        // The L5 canonical-range dedup that used to live here (electing ONE of the three
+        // byte-identical ch3/ch4/ch5 hero-chain copies per frame via userData.rangeAuthority)
+        // was deleted 2026-08-12: with chapters 3-5 suppressed by One World, at most one host
+        // exists at a time, so there is nothing left to deduplicate. Audited before removal —
+        // this was the sole writer of rangeAuthority, and the sole reader (surface-world.js)
+        // dropped its token in the same commit.
+
         // B7 — graceful journey-end ramp on the finale env (held by urban env / post).
         if (mode === 'progress') {
             this._applyJourneyEndDriver(this.cameraProgress);
@@ -1254,7 +1274,14 @@ export class ChapterEnvironmentManager {
      * @param {object|null} directorState - Optional OdysseyDirector state for audio-reactive environments
      */
     update(delta, camera = null, cameraProgress = null, directorState = null) {
-        this.time += delta;
+        // Clamp delta to [0, 1/30s] ONCE here (Wave-0 F): the manager owns `this.time`, which
+        // feeds every chapter's shader uTime and all env.update() integration, plus the
+        // transition timer below. A tab-refocus or GC stall yields a huge raw delta that,
+        // unclamped, jerks every chapter's animation forward in one visible jump. Capping at
+        // 33 ms (a 30 fps floor) turns the spike into a gentle catch-up and guards negative
+        // deltas — one place instead of a clamp in all eight chapter update() loops.
+        const dt = Math.min(Math.max(delta, 0), 1 / 30);
+        this.time += dt;
 
         // Update each visible environment, then QW4-crossfade its rig lights by the SAME
         // opacity the visibility pass applied to the chapter's meshes (env.lastOpacity), so
@@ -1264,7 +1291,7 @@ export class ChapterEnvironmentManager {
         this.environments.forEach((env) => {
             const updated = !!(env.group.visible && env.update);
             if (updated) {
-                env.update(env.group, delta, this.time, camera, cameraProgress, directorState);
+                env.update(env.group, dt, this.time, camera, cameraProgress, directorState);
             }
             if (env.rigLights && env.rigLights.length > 0) {
                 const weight = env.lastOpacity ?? (env.group.visible ? 1 : 0);
@@ -1280,7 +1307,7 @@ export class ChapterEnvironmentManager {
 
         // Handle transition animation
         if (this.isTransitioning) {
-            this.transitionProgress += (delta * 1000) / this.transitionDuration;
+            this.transitionProgress += (dt * 1000) / this.transitionDuration;
 
             if (this.transitionProgress >= 1) {
                 this.transitionProgress = 1;
@@ -1401,60 +1428,19 @@ export class ChapterEnvironmentManager {
             );
         }
 
-        // SEAM 3->4 WIDE COLOUR + DENSITY LERP: bridge the warm living-world sky into
-        // cold alpine air over a wider window than the content ecotone. The midpoint stays
-        // saturated and lower-density, avoiding the pale blue fog wall seen in board shots.
-        const boundary34 = this.chapterPositions[3];
-        if (Number.isFinite(boundary34)) {
-            const colourStart = boundary34 - SEAM_34_COLOUR_HALF_WIDTH;
-            const colourEnd = boundary34 + SEAM_34_COLOUR_HALF_WIDTH;
-            const p = environmentProgress;
-            if (p >= colourStart && p <= colourEnd) {
-                const surface3 = this.chapterEnvironmentById.get(3);
-                const mountains4 = this.chapterEnvironmentById.get(4);
-                if (surface3 && mountains4) {
-                    const colourBlend = smootherstep01(
-                        (p - colourStart) / (colourEnd - colourStart),
-                    );
-                    lerpColorViaBridge(
-                        skyColor,
-                        surface3.skyColor,
-                        SEAM_34_ALPINE_BRIDGE.skyColor,
-                        mountains4.skyColor,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    lerpColorViaBridge(
-                        fogColor,
-                        surface3.fogColor,
-                        SEAM_34_ALPINE_BRIDGE.fogColor,
-                        mountains4.fogColor,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    lerpColorViaBridge(
-                        ambientLight,
-                        surface3.ambientLight,
-                        SEAM_34_ALPINE_BRIDGE.ambientLight,
-                        mountains4.ambientLight,
-                        colourBlend,
-                        this._blendColorScratch,
-                    );
-                    ambientIntensity = lerpNumberViaBridge(
-                        surface3.ambientIntensity,
-                        SEAM_34_ALPINE_BRIDGE.ambientIntensity,
-                        mountains4.ambientIntensity,
-                        colourBlend,
-                    );
-                    fogDensity = lerpNumberViaBridge(
-                        surface3.fogDensity,
-                        SEAM_34_ALPINE_BRIDGE.fogDensity,
-                        mountains4.fogDensity,
-                        colourBlend,
-                    );
-                }
-            }
-        }
+        // The manager-side SEAM 3-4 and 4-5 wide colour windows were deleted 2026-08-12.
+        // On the default path every one of their writes was a verified dead store: fog
+        // colour/density is overwritten the same frame by the One World fog drive
+        // (OdysseyBoardController — mid-act handoff weight is exactly 1 at both bands), and
+        // the sky/ambient writes are skipped wholesale by the `atmosphereOwned` early-return
+        // below (the atmosphere rig owns them whenever the cinematic journey is active, which
+        // is the default and has no live opt-out). Under `?odysseyOneWorld=0` the generic
+        // narrow profile lerp above still bridges both boundaries — and ch3/ch4 carry
+        // byte-identical fog/sky colours since the daylight re-palette, so even there the
+        // difference is band width, not colour. The DIRECTOR's copies of these windows are
+        // NOT dead — they feed the live OdysseyAtmosphere rig — and were deliberately kept.
+        // SEAM 5-6 below is different in kind: it sits at an ACT EDGE, where the world fog
+        // weight ramps to 0, so its output is exactly what the player sees.
 
         // SEAM 5->6 WIDE COLOUR LERP: override the fog/sky/ambient COLOUR with a wider,
         // smootherstep'd Sky(5)->Space(6) ramp centred on the 5-6 boundary so the violet

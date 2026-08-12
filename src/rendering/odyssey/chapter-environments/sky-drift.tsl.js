@@ -72,13 +72,14 @@ import {
     vec3,
 } from 'three/tsl';
 import { fbm2 } from './shared/odyssey-tsl-noise.js';
+import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 // Shared forward-aim sun direction. Ch5 has no on-screen space objects, so the sun is
 // the single on-camera hero/anchor/light source: it reads on the DEFAULT forward aim
 // (B7 adds a CHAPTER_LOOK biasing the aim up-and-right so the disc sits upper-right).
 // Exposed so the gradient, sun-glow sprite and god-ray fans all share ONE direction.
-export const SKY_DRIFT_SUN_DIR = new THREE.Vector3(0.34, 0.30, -0.88).normalize();
+export const SKY_DRIFT_SUN_DIR = new THREE.Vector3(...ODYSSEY_SUN).normalize();
 
 // ── Daytime warm-violet sky dome (-100 backstop; must NOT bloom) ─────────────────
 
@@ -110,15 +111,13 @@ export function createSkyGradientTSL(options = {}) {
     // t in [0,1] from horizon (0) to zenith (1).
     const t = dir.y.mul(0.5).add(0.5);
 
-    // duskProgress-scripted bands: Act I warm-violet dusk → Act III deep indigo.
-    // Composition overhaul: the camera now frames the warm SUN at the horizon (lower
-    // frame) with the aurora arcing across the ZENITH (upper frame), so the upper sky is
-    // deepened to a twilight indigo FROM ENTRY — a dark canvas the additive aurora reads
-    // against the whole journey — while the horizon keeps its warm sun-anchored band.
-    const actT = smoothstep(0.15, 0.85, uDusk);
-    const zenith = mix(vec3(0.14, 0.15, 0.33), vec3(0.04, 0.06, 0.16), actT); // deep twilight → ink
-    const midSky = mix(vec3(0.24, 0.26, 0.47), vec3(0.09, 0.14, 0.38), actT); // dusk periwinkle
-    const horizon = mix(vec3(1.0, 0.8, 0.64), vec3(0.42, 0.44, 0.66), actT); // #FFCCA3 → #6B6FA8
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): Ch5 is now a BRIGHT sunlit cloud-sea payoff, not
+    // a dusk→night aurora canvas. The scripted dusk darkening is removed — the dome stays vivid
+    // daylight azure the whole chapter, matching Ch3/Ch4. (uDusk kept referenced as a no-op below.)
+    const duskRef = uDusk.mul(0.0);
+    const zenith = vec3(0.11, 0.34, 0.72); // vivid daylight azure zenith (matches Ch3/Ch4)
+    const midSky = vec3(0.36, 0.62, 0.90); // clear azure mid
+    const horizon = vec3(0.80, 0.90, 0.97); // light cyan-white horizon
 
     // Two steepened stops (0→0.30, 0.30→1.0) give a crisp horizon band + a real
     // value run from horizon to zenith.
@@ -132,29 +131,24 @@ export function createSkyGradientTSL(options = {}) {
     const domeBreak = fbm2(vec2(dir.x.mul(3.2).add(dir.z.mul(1.7)), dir.y.mul(4.1)), 3);
     color = color.add(vec3(0.035, 0.032, 0.05).mul(domeBreak));
 
-    // Mie sun (the Act I HERO): forward-scatter halo + a soft capped disc + a broad
-    // aureole. The sun is gone by ~55% of the dusk (the aurora inherits the frame).
-    const sunAlive = oneMinus(smoothstep(0.32, 0.55, uDusk));
+    // Mie sun — stays ALIVE the whole chapter (was gone by ~55% dusk); a bright warm-white daylight
+    // disc + halo, matching the Ch3/Ch4 sun.
+    const sunAlive = float(1.0);
     const cosTheta = clamp(dot(dir, uSunDir), -1.0, 1.0);
     const mu = max(cosTheta, 0.0);
-    const halo = pow(mu, float(5.0)).mul(0.7); // broad warm bloom (boosted)
-    const aureole = pow(mu, float(2.0)).mul(0.18); // wide soft aureole around the sun
+    const halo = pow(mu, float(5.0)).mul(0.6); // broad warm bloom
+    const aureole = pow(mu, float(2.0)).mul(0.16); // wide soft aureole
     const disc = smoothstep(0.985, 0.9995, cosTheta).mul(0.9); // bright core (capped)
-    const sunCore = vec3(1.0, 0.82, 0.55); // warm sun core (#FFB866 family)
+    const sunCore = vec3(1.0, 0.93, 0.78); // warm-white daylight sun
     color = color.add(sunCore.mul(halo.add(aureole).add(disc)).mul(sunAlive));
 
-    // Gentle horizon haze lift toward the sun azimuth so the lower frame feels warm
-    // and atmospheric rather than evenly pale (dies with the sun).
-    const horizonLift = smoothstep(0.35, 0.0, abs(dir.y)).mul(mu).mul(0.14).mul(sunAlive);
-    color = color.add(vec3(0.95, 0.78, 0.66).mul(horizonLift));
+    // Gentle warm horizon haze toward the sun azimuth (no longer dies with a setting sun).
+    const horizonLift = smoothstep(0.35, 0.0, abs(dir.y)).mul(mu).mul(0.10);
+    color = color.add(vec3(0.92, 0.90, 0.84).mul(horizonLift));
 
-    // Hard ceiling so the dome alone can never reach white — and the ceiling itself
-    // falls with dusk so Act II/III genuinely DARKEN (the aurora's dark backstop).
-    color = color.min(mix(vec3(0.92, 0.86, 0.90), vec3(0.42, 0.45, 0.6), actT));
-
-    const waveVDarkBackstop = smoothstep(0.04, 0.54, uDusk);
-    color = color.mul(mix(float(1.0), float(0.48), waveVDarkBackstop));
-    color = color.min(mix(vec3(0.82, 0.74, 0.82), vec3(0.22, 0.25, 0.34), waveVDarkBackstop));
+    // Soft bright ceiling so the additive sun never clips to pure white — the dusk-darkening
+    // ceilings + waveVDarkBackstop are GONE (they made the whole dome fall to ink). uDusk no-op.
+    color = color.min(vec3(0.96, 0.97, 1.0)).add(duskRef);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -162,6 +156,9 @@ export function createSkyGradientTSL(options = {}) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.transparent = true;
+    // CRITICAL (Wave C): un-fog the sky dome (same bug Ch3/Ch4 had) — a radius-2500 BackSide dome is
+    // ~100% fogged by the scene FogExp2, replacing the azure gradient with the flat fog colour.
+    material.fog = false;
 
     const geometry = new THREE.SphereGeometry(2500, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
@@ -378,7 +375,7 @@ function sheetBackScatter(rot) {
 // coverage) from constant per-mesh geometry attributes instead of baked-in JS constants, so the 6
 // co-visible sheets compile a SINGLE pipeline instead of 6. All values are preserved exactly, so
 // the strata are byte-identical to the per-sheet build (createCloudSheetTSL, kept for the A/B).
-function createSharedCloudMaterialTSL(uTime, uDusk) {
+function createSharedCloudMaterialTSL(uTime, uDusk, uFade = null) {
     const duskT = smoothstep(0.14, 0.52, uDusk);
     const aTint = attribute('aTint', 'vec3');
     const aLit = attribute('aLit', 'vec3');
@@ -414,11 +411,17 @@ function createSharedCloudMaterialTSL(uTime, uDusk) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = density.mul(edge).mul(mix(float(0.08), float(0.16), duskT));
+    // PAINTERLY-ASCENT REPALETTE (Wave C): opacity up (0.08–0.16 → 0.38–0.5) and NormalBlending
+    // (was Additive) so the whitened strata read as soft solid white cloud wisps occluding the blue
+    // sky, not faint additive violet haze.
+    // .mul(fade): the manager crossfade can't reach a NodeMaterial opacityNode, so without this the
+    // bright white strata POPPED in at the 4→5 seam when group.visible flipped. uFade = chapterOpacity.
+    const fade = uFade ?? uniform(1);
+    material.opacityNode = density.mul(edge).mul(mix(float(0.38), float(0.5), duskT)).mul(fade);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     return material;
 }
 
@@ -453,16 +456,20 @@ export function createCloudStrataTSL(uTime, options = {}) {
     // 6 sheets redistributed across the full z -90..-680 span (was 10); each merges the
     // role of ~1.7 of the old sheets, so coverage/scale are bumped for a richer single
     // layer in place of the thinner pairs it replaces.
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): tints whitened from lavender → soft blue-grey
+    // underside (0xcbdaea) + bright white lit top (0xfafdff) so the strata read as sunlit white
+    // cloud wisps, not violet night veils. (The horizontal cloud-SEA deck below the camera — the
+    // Europa "drift above the sea" floor — is added separately.)
     const strata = [
-        [-150, 84, -210, -0.92, 0.08, 0.18, 0.52, 0xd6d2f0, 0xfff0da, 0.42, 2.0],
-        [150, 56, -330, -0.98, 0.16, -0.14, 0.62, 0xc7cdf2, 0xffe9d2, 0.46, 2.3],
-        [-118, 92, -450, -0.88, -0.10, 0.18, 0.78, 0xe2d4ee, 0xfff3e0, 0.42, 1.8],
-        [136, 70, -570, -0.98, 0.16, -0.16, 0.86, 0xbfc6ee, 0xffead4, 0.48, 2.5],
-        [-126, 74, -700, -0.92, -0.12, 0.16, 0.98, 0xe0d6ee, 0xfff4e2, 0.4, 1.8],
-        [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcfccf1, 0xffead2, 0.44, 2.1],
+        [-150, 84, -210, -0.92, 0.08, 0.18, 0.52, 0xcbdaea, 0xfafdff, 0.42, 2.0],
+        [150, 56, -330, -0.98, 0.16, -0.14, 0.62, 0xcbdaea, 0xfafdff, 0.46, 2.3],
+        [-118, 92, -450, -0.88, -0.10, 0.18, 0.78, 0xcbdaea, 0xfafdff, 0.42, 1.8],
+        [136, 70, -570, -0.98, 0.16, -0.16, 0.86, 0xcbdaea, 0xfafdff, 0.48, 2.5],
+        [-126, 74, -700, -0.92, -0.12, 0.16, 0.98, 0xcbdaea, 0xfafdff, 0.4, 1.8],
+        [112, 104, -840, -0.96, 0.06, -0.10, 1.08, 0xcbdaea, 0xfafdff, 0.44, 2.1],
     ];
     const uDusk = options.uDusk ?? uniform(0);
-    const material = createSharedCloudMaterialTSL(uTime, uDusk);
+    const material = createSharedCloudMaterialTSL(uTime, uDusk, options.uChapterFade);
     const parts = [];
     strata.forEach((cfg, i) => {
         const rot = [cfg[3], cfg[4], cfg[5]];

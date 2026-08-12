@@ -15,6 +15,34 @@
  * blending happens in the director with reusable scratch THREE.Color instances.
  */
 
+/**
+ * The ONE Odyssey daylight sun — high-front, down-corridor (2026-08, Wave D). Shared by the shading
+ * rig (profile lightDir, below) AND every in-shader disc/water/key const so the light never teleports
+ * across Ch3→Ch4→Ch5. Plain array (this module is intentionally THREE-free); consumers wrap it in
+ * THREE.Vector3().normalize() and the director normalizes the profile copy. Points TOWARD the sun
+ * (all Odyssey light dirs use that convention).
+ */
+export const ODYSSEY_SUN = Object.freeze([0.35, 0.62, -0.70]);
+
+/**
+ * The RE-SOLVED journey sun (One World, Wave 0/1). `ODYSSEY_SUN`'s negative Z back-lit the
+ * corridor — the world's sun was re-derived from the actual travel direction, and this is that
+ * answer. It lives here, in the import-free leaf, because a light direction that only one
+ * renderer can see is how the journey ended up with three of them: this used to be declared in
+ * `odyssey-world-renderer.js` and imported by nobody.
+ *
+ * Independent corroboration that this, not `ODYSSEY_SUN`, is the correct canonical direction:
+ * Ch6's hero gas giant was hand-tuned by eye until it looked right, using a VIEW-space light.
+ * Driving the real camera over the real spline and converting that light to world space at each
+ * frame gives a best fit of [-0.279, 0.185, 0.942] — **24.3 degrees from this vector, but 130.1
+ * degrees from `ODYSSEY_SUN`.** The eye had already voted for the world's sun.
+ *
+ * `ODYSSEY_SUN` survives as the LEGACY profile sun, still read by chapters 1/7/8 and the
+ * fallback Act II chapters. Converging the two (115.6 degrees apart) is the open half of Wave
+ * 0.2 and needs those chapters captured first — see the plan.
+ */
+export const ODYSSEY_WORLD_SUN = Object.freeze([-0.46, 0.36, 0.61]);
+
 /** Narrative acts (see plan §3.1). */
 export const ODYSSEY_ACTS = Object.freeze({
     ORIGIN: 'origin', // I — Earth Core, Deep Ocean — close & enclosed
@@ -172,23 +200,26 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // Deepened (capture review): 0x9ec6e8/0xaec8e0 were so pale that FogExp2
             // washed the upper frame near-white. A richer mid sky-blue reads as a real
             // daytime sky and lets the vegetation/clouds register against it.
-            skyColor: 0x4d95cf,
-            // Golden-hour scene fog (was cool 0x4f8fb8): a warm desaturated gold so the whole
-            // distance — meadow hills + the snow range — reads as warm atmospheric scatter
-            // (alpenglow on the peaks) instead of a cool blue veil that buried the warm rig.
-            fogColor: 0xb8a47e,
-            // Creative plan Ch3 item 1 (value restoration): the fog lift was the enemy —
-            // 0.004 → 0.0024 so the dark foreground layer does the luminosity work and
-            // the pastels read luminous instead of washed.
-            fogDensity: 0.0016,
-            ambientLight: 0xfff8e7,
+            skyColor: 0x5aa8e0,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): warm golden-hour fog (0xb8a47e) → the
+            // SHARED bright light-cyan daylight haze anchor (~0xbcd8ec). This is the #1 cohesion
+            // lever — Ch3/4/5 all breathe the same air, so the range/distance reads as one bright
+            // afternoon instead of gold→winter→indigo. Density stays low (0.0016) per the anchor.
+            fogColor: 0xbcd8ec,
+            // Density pulled back (0.0016 → 0.0011) after the Wave-A capture read too milky/washed —
+            // aerial haze should hug the far mountains, not veil the whole mid-ground. Keeps the
+            // reference's crisp saturated depth (deep water, readable peaks) under the bright sky.
+            fogDensity: 0.0011,
+            // Neutral-cool daylight ambient (was warm 0xfff8e7) + high-key exposure so the meadow
+            // reads luminous. lightDir stays until the Wave-D shared-sun pass; colour whitened to
+            // the shared warm-white sun (~0xfff4e0).
+            ambientLight: 0xeaf2ff,
             ambientIntensity: 0.58,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
-            // High warm sun.
-            lightDir: [0.4, 0.8, 0.45],
-            lightColor: 0xfff1d0,
+            lightDir: [...ODYSSEY_SUN],
+            lightColor: 0xfff4e0,
             lightIntensity: 1.15,
-            exposure: 0.98,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.LEY_LINE,
@@ -220,17 +251,21 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.LIVING,
         palette: { primary: 0x88ccff, accent: 0xffd6c0, shadow: 0x1c2a3a },
         atmosphere: {
-            skyColor: 0x3a4f66,
-            fogColor: 0x7d93ad,
-            fogDensity: 0.005,
-            ambientLight: 0xbdc3c7,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): dark-slate/grey-blue dusk atmosphere →
+            // the shared BRIGHT DAYLIGHT anchor. skyColor daylight azure, fog → shared light-cyan
+            // haze (0xbcd8ec) at low density (was 0.005, a 3× spike that closed the world in at the
+            // mountains — now 0.0015, only marginally hazier than Ch3 for airy alpine aerial
+            // perspective). Ambient bright cool-white; sun colour warm-white (matches Ch3).
+            skyColor: 0x5aa8e0,
+            fogColor: 0xbcd8ec,
+            fogDensity: 0.0015,
+            ambientLight: 0xeaf2ff,
             ambientIntensity: 0.6,
             skyFeatures: ['heroSummit', 'aerialHaze', 'snowPlume'],
-            // Low raking sun (drives alpenglow at peak energy).
-            lightDir: [0.7, 0.25, 0.4],
-            lightColor: 0xffe0c0,
+            lightDir: [...ODYSSEY_SUN],
+            lightColor: 0xfff4e0,
             lightIntensity: 1.05,
-            exposure: 1.05,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.CAIRN_RIDGE,
@@ -256,19 +291,21 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.BEYOND,
         palette: { primary: 0xffdd00, accent: 0xaad4ff, shadow: 0x141a2e },
         atmosphere: {
-            // Deepened (capture review): 0xc8b6d6/0xb9a6c8 washed the frame near-white.
-            // A richer warm-violet keeps the bright/hazy daytime identity while letting
-            // the cloud strata, aurora and sun read instead of a flat pale wash.
-            skyColor: 0x4a426a,
-            fogColor: 0x303656,
-            fogDensity: 0.0035,
-            ambientLight: 0x2f3850,
-            ambientIntensity: 0.34,
+            // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): Ch5 flipped from dark warm-violet
+            // twilight to the shared BRIGHT DAYLIGHT anchor — this is the top of the ascent, drifting
+            // above a sunlit cloud-sea, so it should be the BRIGHTEST chapter, not the darkest. Sky
+            // azure, fog → shared light-cyan haze, ambient bright cool-white (was 0x2f3850@0.34, which
+            // lit the sky chapter like night — a ~9× fill collapse), exposure lifted to high-key.
+            skyColor: 0x3f7fd0,
+            fogColor: 0xbcd8ec,
+            fogDensity: 0.0022,
+            ambientLight: 0xeaf2ff,
+            ambientIntensity: 0.6,
             skyFeatures: ['cloudDeck', 'aurora', 'rainVeil'],
-            lightDir: [0.2, 0.7, 0.5],
-            lightColor: 0xcfe0ff,
-            lightIntensity: 0.95,
-            exposure: 0.96,
+            lightDir: [...ODYSSEY_SUN],
+            lightColor: 0xfff4e0,
+            lightIntensity: 1.0,
+            exposure: 1.02,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.JET_STREAM,

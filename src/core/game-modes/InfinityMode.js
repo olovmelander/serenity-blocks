@@ -1,6 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
-import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
+import { ComboTracker } from '../combo-tracker.js';
+import { createBoardEffectHandlers } from './board-effect-callbacks.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -23,11 +24,7 @@ import {
     projectInfinityPresentationCamera,
 } from '../infinity-spawn-policy.js';
 import { maintainInfinitySimulation } from '../infinity-simulation-maintenance.js';
-import {
-    updateStats,
-    triggerLineClearFlash as triggerLineClearFlashCanvas,
-    triggerBackgroundPulse as triggerBackgroundPulseCanvas,
-} from '../../rendering/draw.js';
+import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
@@ -1396,6 +1393,14 @@ export class InfinityMode extends BaseGameMode {
         // One session = one combo chain.
         this._comboTracker.reset();
 
+        // Shared four-beat visual wiring — identical to local MP / SP / Odyssey.
+        // Infinity wraps each beat with its own session guard and camera work.
+        const effectHandlers = createBoardEffectHandlers({
+            getScene: () => this._getBoardScene(),
+            getJuice: () => this.boardJuice,
+            comboTracker: this._comboTracker,
+        });
+
         this.physicsCallbacks = {
             onMove: () => {
                 if (ownsCallbackSession()) {
@@ -1414,15 +1419,9 @@ export class InfinityMode extends BaseGameMode {
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
 
-                // Real consecutive-clear combo, advanced before the clear visuals run.
-                announceCombo(this._comboTracker, this._getBoardScene(), {
-                    popupEnabled: this.deps.settingsManager.get().comboPopupEffect,
-                });
-
                 // Emit event for theme reactions. Pass the ON-SCREEN clear origin so theme
                 // clear effects track the scrolling viewport instead of pinning to the bottom
                 // (clearedRows are absolute rows in Infinity's tall grid).
-                console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
                 emitLineClear({
                     lineCount,
                     clearedRows,
@@ -1503,35 +1502,27 @@ export class InfinityMode extends BaseGameMode {
                     boardScene.playHardDropEffect(dropData);
                 }
 
-                // Board juice: dip + bounce on hard drop
+                // Board juice: dip + bounce on hard drop (MP's weight)
                 if (this.boardJuice) {
-                    this.boardJuice.dip(3);
+                    this.boardJuice.dip(4);
                     this.boardJuice.bounce();
                 }
             },
-            // Trigger combo visual effects
+            // Combo popup, local-MP semantics: the number is cascade depth.
             triggerCombo: (comboCount) => {
                 if (!ownsCallbackSession()) return;
-                // Emit event for theme reactions
-                console.log('[Infinity] Emitting COMBO event, comboCount:', comboCount);
+                effectHandlers.comboBeat(comboCount);
                 emitCombo({ comboCount });
 
-                // Track max combo
+                // Track max combo (Steam best_cascade feeds off this)
                 if (callbackState.infinityStats && comboCount > callbackState.infinityStats.maxCombo) {
                     callbackState.infinityStats.maxCombo = comboCount;
-                    console.log(`[Infinity] New max combo: ${comboCount}`);
                 }
-                // No popup here: the payload is cascade DEPTH. The board popup is
-                // driven from onLineClear; cascades get triggerCascadeWave below.
             },
-            // Trigger cascade wave visual effect
+            // Mega-only visual inside SharedEffects; HUD counter always updates.
             triggerCascadeWave: (cascadeCount) => {
                 if (!ownsCallbackSession()) return;
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.sharedEffects) {
-                    boardScene.sharedEffects.showCascadeWave(cascadeCount);
-                    console.log(`[Infinity] Cascade wave ${cascadeCount} triggered`);
-                }
+                effectHandlers.cascadeWaveBeat(cascadeCount);
 
                 // Update HUD cascade counter
                 if (this.heightHUD && this.heightHUD.updateCascadeCounter) {
@@ -1550,23 +1541,9 @@ export class InfinityMode extends BaseGameMode {
                     const minRow = Math.min(...fullLines);
                     const maxRow = Math.max(...fullLines);
                     this.lastClearedLinesCenter = (minRow + maxRow) / 2;
-
-                    console.log(`[Infinity] Lines cleared at rows ${minRow}-${maxRow}, center: ${this.lastClearedLinesCenter}`);
                 }
 
-                const boardScene = this._getBoardScene();
-                console.log('[Infinity] triggerFlash: boardScene:', !!boardScene, 'triggerLineClearFlash:', !!boardScene?.triggerLineClearFlash);
-
-                // Trigger flash effect with Phaser or Canvas fallback. The
-                // lineClearEffects toggle is enforced inside SharedEffects; only
-                // the legacy canvas fallback needs its own gate.
-                if (boardScene && boardScene.triggerLineClearFlash) {
-                    console.log('[Infinity] Calling boardScene.triggerLineClearFlash');
-                    boardScene.triggerLineClearFlash(fullLines);
-                } else if (this.deps.settingsManager.get().lineClearEffects) {
-                    console.log('[Infinity] Using canvas fallback for line clear flash');
-                    triggerLineClearFlashCanvas(fullLines);
-                }
+                effectHandlers.clearFlashBeat(fullLines);
             },
             // Line clear impact (camera shake and particles)
             onLineClearImpact: (lineCount) => {
@@ -1591,27 +1568,10 @@ export class InfinityMode extends BaseGameMode {
                     }
                 }
 
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.playLineClearImpact) {
-                    boardScene.playLineClearImpact(lineCount);
-                }
-
-                // Board juice: pulse on line clear
-                if (this.boardJuice) {
-                    const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
-                    this.boardJuice.pulse(intensity);
-                }
+                effectHandlers.clearImpactBeat(lineCount);
             },
-            // Background pulse effect
-            triggerBackgroundPulse: (lineCount) => {
-                if (!ownsCallbackSession()) return;
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.triggerBackgroundPulse) {
-                    boardScene.triggerBackgroundPulse(lineCount);
-                } else {
-                    triggerBackgroundPulseCanvas(lineCount);
-                }
-            },
+            // Parity with local MP: no background pulse. Key kept for shape.
+            triggerBackgroundPulse: () => {},
             // Score addition animation
             onScoreAdd: (points) => {
                 if (!ownsCallbackSession()) return;
@@ -1633,20 +1593,7 @@ export class InfinityMode extends BaseGameMode {
                 // absolute row in a board that grows into the hundreds.
                 emitPieceLock({ piece, viewportOrigin: this._pieceLockViewportOrigin(piece) });
 
-                const boardScene = this._getBoardScene();
-                // Ungated bookkeeping: a lock that clears nothing breaks the chain.
-                noteLockForCombo(this._comboTracker, boardScene);
-                if (boardScene && boardScene.createPieceLockRipple) {
-                    boardScene.createPieceLockRipple(piece);
-                } else {
-                    console.warn('[Infinity] BoardScene or createPieceLockRipple not available');
-                }
-
-                // Board juice: gentle dip + pulse on piece lock
-                if (this.boardJuice) {
-                    this.boardJuice.dip(1);
-                    this.boardJuice.pulse(1.005);
-                }
+                effectHandlers.lockBeat(piece);
 
                 // Update infinity stats
                 if (callbackState.infinityStats) {
@@ -1715,7 +1662,8 @@ export class InfinityMode extends BaseGameMode {
                     this.lastCameraUpdateTime = now;
                 }
             },
-            // Update camera after cascade completes
+            // Update camera after cascade completes. No settle visual — parity
+            // with local MP; the non-visual work (camera, stats) stays.
             onCascadeComplete: (cascadeCount) => {
                 if (!ownsCallbackSession()) return;
                 if (cascadeCount > 0) {
@@ -1852,6 +1800,9 @@ export class InfinityMode extends BaseGameMode {
         // same frame. Only the first callback owns this generation's result.
         if (this.isProcessingGameOver) return;
         this.isProcessingGameOver = true;
+
+        // The board dies before the results screen arrives over it.
+        this._getBoardScene()?.sharedEffects?.playGameOver?.();
 
         const resultState = activeSession.gameState;
         console.log('[Infinity] Game over!');

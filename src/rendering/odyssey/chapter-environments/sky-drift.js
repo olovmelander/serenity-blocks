@@ -36,10 +36,10 @@ import {
     createLenticularCloudTSL,
     createNoctilucentVeilTSL,
     createIceCrystalsTSL,
-    createDarkWispsTSL,
     SKY_DRIFT_SUN_DIR,
 } from './sky-drift.tsl.js';
 import { createCanonicalMountainRangeTSL } from './shared/canonical-mountain-range.js';
+import { createCloudSeaDeckTSL } from './mountain-peaks.tsl.js';
 
 /**
  * Sky Drift environment configuration
@@ -158,6 +158,11 @@ function createSkyGradient(uniforms) {
     // (a ch5 CHAPTER_LOOK is deferred); the sun is the single on-camera hero here.
     if (uniforms) {
         uniforms.uSunDir = gradientUniforms.uSunDir;
+        // SEAM 5→6 (in-game "space too bright" fix): expose the bright-daylight dome's alpha so
+        // update() can fade the BACKDROP out past the Space boundary. The manager crossfade can't
+        // reach a NodeMaterial opacityNode, so this uOpacity was stuck at 1.0 and the 5→6 carry
+        // dragged the opaque azure dome into the vacuum, washing Space white.
+        uniforms.uSkyOpacity = gradientUniforms.uOpacity;
     }
     return mesh;
 }
@@ -205,7 +210,10 @@ function createCloudDecks() {
  * (Trimmed 10 → 6 for overdraw; fewer-bigger-richer sheets read the same.)
  */
 function createCloudStrata(uniforms) {
-    const { group } = createCloudStrataTSL(uniforms.uTime, { uDusk: uniforms.uDusk });
+    const { group } = createCloudStrataTSL(uniforms.uTime, {
+        uDusk: uniforms.uDusk,
+        uChapterFade: uniforms.uChapterFade,
+    });
     return group;
 }
 
@@ -267,6 +275,10 @@ export function createSkyDriftEnvironment(options = {}) {
         uTime: uniform(0),
         uEnergy: uniform(0.4),
         uDusk: uniform(0),
+        // Chapter crossfade the manager CANNOT reach (these builders use opacityNode, which ignores
+        // material.opacity). Multiplied into the strata alpha; driven from chapterOpacity in update
+        // so the bright cloud field fades in/out smoothly instead of popping when group.visible flips.
+        uChapterFade: uniform(1),
     };
     group.userData.uniforms = uniforms;
     const chapterPositions = getActiveOdysseyChapterPositions();
@@ -275,7 +287,9 @@ export function createSkyDriftEnvironment(options = {}) {
 
     // Sky background — the structured vertical gradient + the BOOSTED on-camera Mie
     // sun (the hero). createSkyGradient surfaces uniforms.uSunDir for B7.
-    group.add(createSkyGradient(uniforms));
+    const skyGradient = createSkyGradient(uniforms);
+    group.add(skyGradient);
+    group.userData.skyGradient = skyGradient;
 
     const cloudDecks = createCloudDecks();
     group.add(cloudDecks);
@@ -318,19 +332,48 @@ export function createSkyDriftEnvironment(options = {}) {
     // forward view, then fades only after the camera has actually passed it; no separate
     // replacement mountain assets, no silhouette swap.
     const ringOpacityUniforms = [];
-    const { group: summitRing } = createCanonicalMountainRangeTSL({
+    const { group: summitRing, parts: summitRingParts } = createCanonicalMountainRangeTSL({
         hostCenter: chapterRange?.center,
         hostChapterId: 5,
         name: 'receding-summit-ring',
-        uTransition: uniform(0.55),
-        includeFarRange: false,
+        // L5 DEDUP continuity (Wave D): null → constant full alpenglow, matching Ch3's distant
+        // preview and Ch4's main-peaks, so when the manager hands seam authority between the coplanar
+        // copies the silhouette does not pop tone. (Was uniform(0.55) — a partial alpenglow that
+        // differed from Ch4's full-lit copy at the 4→5 hand-off.)
+        uTransition: null,
+        // Flank chains (2026-08, was false): all three L5 hosts must agree or the far
+        // silhouettes would vanish in one frame at the 4→5 authority flip.
+        includeFarRange: true,
         opacityTargets: ringOpacityUniforms,
         baseOpacity: 1,
+    });
+    // Pin the ring to full winter snow like Ch4's main-peaks so the shared silhouette is
+    // byte-identical across the 4→5 hand-off (the manager draws only one copy through the seam).
+    summitRingParts.forEach((part) => {
+        if (part.uniforms?.uSnowBlend) part.uniforms.uSnowBlend.value = 1;
     });
     summitRing.userData.baseY = summitRing.position.y;
     group.add(summitRing);
     group.userData.summitRing = summitRing;
     group.userData.summitRingOpacityUniforms = ringOpacityUniforms;
+
+    // CLOUD-SEA DECK (2026-08, Wave C — landscape lever L1): the sharpest 4→5 geometry break was
+    // that Ch4's cloud-sea deck (the silver sea its peaks rise from) is Ch4-only and FADES OUT at
+    // the seam, so Ch5 had NO floor — you drifted in empty sky instead of ABOVE the sea. Give Ch5
+    // the SAME deck, WORLD-LOCKED at the Ch4 deck's world-Y (≈312), so the sunlit cloud-sea persists
+    // and recedes below as the camera climbs (516→655) — the Europa "above the clouds" read and a
+    // literal ground handoff between the chapters.
+    const ch4Range = getChapterPathRange(4);
+    const cloudSeaWorldY = (ch4Range?.start?.y ?? 366) - 54; // matches mountain-peaks' cloud-sea deck
+    const cloudSea = createCloudSeaDeckTSL({
+        uTime: uniforms.uTime,
+        uTransition: uniform(0), // stay bright — no night cooling
+        y: cloudSeaWorldY - chapterCenterY, // local offset → world-locked at the shared sea altitude
+    });
+    group.add(cloudSea.mesh);
+    group.userData.cloudSea = cloudSea.mesh;
+    group.userData.cloudSeaReveal = cloudSea.uniforms.uReveal; // 5→6 space-backdrop fade
+    group.userData.cloudSeaOpacityUniform = cloudSea.uniforms.uOpacity; // base 0.92; chapter crossfade
 
     // LENTICULAR LANDMARK (creative plan asset 5): the stationary lens-cloud stack
     // mid-right of the path around 45–55% — kills the dead stretch as a scale object.
@@ -347,14 +390,12 @@ export function createSkyDriftEnvironment(options = {}) {
     group.add(noctilucent.mesh);
     group.userData.noctilucent = noctilucent.mesh;
 
-    // ICE SPINDRIFT (creative plan asset 6) + DARK FOREGROUND WISPS (asset 8): the
-    // near-field sparkle and the near-black value anchor the lavender wash never had.
+    // ICE SPINDRIFT (creative plan asset 6): near-field sparkle. The DARK FOREGROUND WISPS (asset 8,
+    // a near-black value anchor for the old lavender-dusk wash) are REMOVED — a night motif that
+    // would speckle black against the bright daylight sky.
     const iceCrystals = createIceCrystalsTSL(uniforms.uTime, 120, { uDusk: uniforms.uDusk });
     group.add(iceCrystals.mesh);
     group.userData.iceCrystals = iceCrystals.mesh;
-    const darkWisps = createDarkWispsTSL(uniforms.uTime, 16);
-    group.add(darkWisps.mesh);
-    group.userData.darkWisps = darkWisps.mesh;
 
     setupSkyLighting(group);
     // Anchor the whole environment to the path's FULL centre (x/y/z), not just Y,
@@ -370,21 +411,24 @@ export function createSkyDriftEnvironment(options = {}) {
 }
 
 function setupSkyLighting(group) {
-    group.add(new THREE.AmbientLight(0x1a1a2e, 0.3));
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): bright cool-white DAYLIGHT ambient (was dark
+    // indigo 0x1a1a2e@0.3, which lit the sky chapter like night); the cosmic purple/cyan glows are
+    // dimmed so they no longer tint the sunlit clouds, and the warm sun key is strengthened.
+    group.add(new THREE.AmbientLight(0x9fc4e8, 0.6));
 
-    const purpleGlow = new THREE.PointLight(0x9933FF, 0.4, 400); // Increased range
+    const purpleGlow = new THREE.PointLight(0x9933FF, 0.12, 400);
     purpleGlow.position.set(-50, 40, -600);
     group.add(purpleGlow);
     group.userData.purpleGlow = purpleGlow;
 
-    const cyanGlow = new THREE.PointLight(0x3399FF, 0.3, 400);
+    const cyanGlow = new THREE.PointLight(0x3399FF, 0.10, 400);
     cyanGlow.position.set(60, 20, -600);
     group.add(cyanGlow);
     group.userData.cyanGlow = cyanGlow;
 
     // Warm sun key — placed toward the on-camera sun azimuth so the clouds catch a
     // warm sun-side rim (matches the baked Mie sun / sun-glow sprite).
-    const sunKey = new THREE.PointLight(0xffcf88, 0.42, 600);
+    const sunKey = new THREE.PointLight(0xffe4b8, 0.6, 600);
     sunKey.position.copy(SKY_DRIFT_SUN_DIR.clone().multiplyScalar(360));
     group.add(sunKey);
     group.userData.sunKey = sunKey;
@@ -415,7 +459,12 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
         const tStart = group.userData.chapterTStart ?? 0.5;
         const tEnd = group.userData.chapterTEnd ?? 0.67;
         const span = Math.max(tEnd - tStart, 1e-4);
-        dusk = THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1);
+        // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): CAP dusk low so the chapter stays bright
+        // daylight. This is the master switch — it un-stages the aurora + noctilucent veil (both
+        // uDusk-gated), stops the strata moonlighting and the sun-death, and keeps the glows from
+        // shifting aurora-green. The whole dusk→night script is neutralized at the source; Ch5 is
+        // now the sunlit cloud-sea payoff, not a night sky.
+        dusk = Math.min(THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1), 0.1);
         uniforms.uDusk.value = dusk;
     }
 
@@ -433,6 +482,37 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
     // instead of popping when group.visible finally flips. Defaults to 1 (pilot/playground,
     // no manager) so standalone use is unchanged.
     const chapterOpacity = THREE.MathUtils.clamp(group.userData.chapterOpacity ?? 1, 0, 1);
+    // Fade the bright cloud strata IN with the chapter weight (4→5 entry) so they don't POP in when
+    // the manager flips group.visible (the manager can't reach their opacityNode).
+    if (uniforms?.uChapterFade) uniforms.uChapterFade.value = chapterOpacity;
+
+    // ── SEAM 5→6: DARK-SPACE BACKDROP HANDOFF (in-game "space too bright" regression fix) ──────
+    // The 5→6 carry keeps the whole Ch5 group present ~85% into Space so the aurora + summit ring
+    // can linger; Wave-C made Ch5's sky-dome bright DAYLIGHT, so the carry now drags that opaque
+    // dome (+ cloud-sea + strata) into the vacuum and washes Space WHITE — additive cosmic glows
+    // vanish and dark bodies read as "black circles". Fade the BACKDROP here, DECOUPLED from the
+    // carry: 1 through Ch5, easing to 0 across the first ~12% of Space past the boundary. The aurora
+    // + summit ring are EXCLUDED (they keep the long carry and now read on the dark vacuum).
+    const skyChapterPositions = getActiveOdysseyChapterPositions();
+    const ch6StartP = skyChapterPositions?.[5];
+    const ch7StartP = skyChapterPositions?.[6];
+    let spaceBackdropFade = 1;
+    if (Number.isFinite(ch6StartP) && Number.isFinite(cameraProgress) && cameraProgress > ch6StartP) {
+        const spaceSpan = (Number.isFinite(ch7StartP) && ch7StartP > ch6StartP)
+            ? ch7StartP - ch6StartP : 0.15;
+        spaceBackdropFade = 1 - smoothstep01(
+            (cameraProgress - ch6StartP) / Math.max(1e-5, spaceSpan * 0.12),
+        );
+    }
+    if (uniforms?.uSkyOpacity) uniforms.uSkyOpacity.value = spaceBackdropFade * chapterOpacity;
+    if (group.userData.cloudSeaReveal) group.userData.cloudSeaReveal.value = spaceBackdropFade;
+    // Cloud strata + additive daytime backdrop have no reachable opacity uniform; gate them off once
+    // the dome fade has effectively completed so no bright residual lingers in the vacuum.
+    const backdropVisible = spaceBackdropFade > 0.02;
+    [group.userData.skyGradient, group.userData.cloudStrata, group.userData.sunGlow,
+        group.userData.lightShaft, group.userData.lenticular, group.userData.noctilucent,
+        group.userData.iceCrystals, group.userData.rainVeils, group.userData.cloudDecks]
+        .forEach((o) => { if (o) o.visible = backdropVisible; });
 
     // RECEDING SUMMIT RING: the same Ch4 hero chain remains visible until the camera has
     // actually passed it. Dusk may change the sky, but it does NOT delete the mountain
@@ -445,7 +525,12 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
             if (target.__odysseyBaseOpacity === undefined) {
                 target.__odysseyBaseOpacity = target.value;
             }
-            target.value = target.__odysseyBaseOpacity * ringFade * chapterOpacity;
+            // 4→5 L5-DEDUP HANDOFF: gate by the 5→6 EXIT opacity, NOT the raw chapterOpacity.
+            // chapterOpacity also ramps 0→1 across the 4→5 ENTRY, so at the L5 authority flip the
+            // shared summit swapped from ungated mainPeaks@1.0 to summitRing@~0.5 = a dip-then-pop.
+            // exit-opacity is 1.0 through the whole 4→5 handoff and only eases at the 5→6 tail.
+            target.value = target.__odysseyBaseOpacity * ringFade
+                * resolveSkyDriftAuroraExitOpacity(cameraProgress);
         });
     }
 

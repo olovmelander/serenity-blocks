@@ -1,0 +1,71 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-12T14:02:20.049Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "rdna-2",
+    "device": "",
+    "description": ""
+  },
+  "resolution": "1280x720",
+  "seekProgress": 0.42,
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 172,
+      "p50": 9.895936,
+      "p95": 10.485759999999999,
+      "p99": 18.939904000000002,
+      "min": 9.633792,
+      "max": 19.857408000000007,
+      "drawCalls": 50,
+      "triangles": 756005,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "no-level-nodes",
+      "note": "55 nodes x 3 nested transparent shells hidden",
+      "samples": 172,
+      "p50": 9.306112,
+      "p95": 9.699328,
+      "p99": 9.895935999999999,
+      "min": 9.109504000000001,
+      "max": 20.250624000000002,
+      "drawCalls": 41,
+      "triangles": 554265,
+      "oneWorld": true,
+      "levelNodesHidden": true,
+      "quality": "Medium"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 153,
+      "p50": 9.895936,
+      "p95": 10.354688,
+      "p99": 10.48576,
+      "min": 9.699328000000001,
+      "max": 10.81344,
+      "drawCalls": 50,
+      "triangles": 756005,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": 0.59,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": 0,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}

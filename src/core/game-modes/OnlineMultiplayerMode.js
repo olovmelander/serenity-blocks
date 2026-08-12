@@ -17,7 +17,7 @@ import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitHardDrop,
 } from '../../events/gameplay-events.js';
-import { OpponentWatchManager } from '../../ui/opponent-watch-manager.js';
+import { OpponentWatchManager, wireSpectatorSpotlight } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
 import { OnlineChat } from '../../ui/online-chat.js';
@@ -1066,51 +1066,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // class) so >4 boards aren't clipped off-screen.
         if (this.ffaGameState?.isSpectator) {
             this.opponentWatchManager.setMaxVisible(8);
-
-            // Wire the main-board spotlight: the watch manager renders the selected player
-            // full-size onto the spotlight canvas and reports name/frags changes here.
-            const spotlightCanvas = document.querySelector('#online-main-board .spectator-spotlight-canvas');
-            if (spotlightCanvas) {
-                const nameEl = document.querySelector('#online-main-board .spectator-spotlight-name');
-                const fragsEl = document.querySelector('#online-main-board .spectator-spotlight-frags');
-                const eyeEl = document.querySelector('#online-main-board .spectator-spotlight-eye');
-                // The player card frames the whole center column. Host/peer tint it to their OWN
-                // colour (_processRenderFrame ~1841); a spectator has no local player so it kept the
-                // default BLUE — the other half of the "purple+blue border" the user reported. Tint
-                // it to the SPOTLIGHTED player's colour to match the host/peer look.
-                const playerCardEl = document.getElementById('online-player-card');
-                // Pending-garbage meter for the spotlight — mirrors the main board's vertical
-                // bar so the watched board reads like a real player board (the watcher missed it).
-                const spotlightGarbage = document.querySelector('#online-main-board .spectator-spotlight-garbage');
-                this.opponentWatchManager.setSpotlight(spotlightCanvas, {
-                    garbage: spotlightGarbage ? {
-                        meter: spotlightGarbage,
-                        fill: spotlightGarbage.querySelector('.garbage-fill'),
-                        segments: spotlightGarbage.querySelector('.garbage-segments'),
-                    } : null,
-                    onChange: (player) => {
-                        if (nameEl) nameEl.textContent = player?.name || 'SPECTATING';
-                        if (fragsEl) fragsEl.textContent = player ? `⚔️ ${player.frags || 0}` : '';
-                        // Tint the spotlight CANVAS to the SELECTED player's colour so the watched
-                        // board's frame reflects who you're watching. The purple #online-board-border
-                        // overlay is hidden under .spectating, so the canvas border+glow is the single
-                        // clean frame around the board (matching the host/peer board).
-                        const color = player?.color || (player?.id && this._getPlayerColor(player.id)) || '#5eead4';
-                        if (nameEl) nameEl.style.color = color;
-                        if (eyeEl) eyeEl.style.color = color;
-                        spotlightCanvas.style.borderColor = color;
-                        spotlightCanvas.style.boxShadow = `0 0 22px ${color}55, inset 0 0 14px ${color}22`;
-                        // Match host/peer card framing (see _processRenderFrame): coloured border +
-                        // glow + faint gradient — so the whole center frame reflects the watched player.
-                        if (playerCardEl) {
-                            playerCardEl.style.borderColor = `${color}cc`;
-                            playerCardEl.style.borderWidth = '3px';
-                            playerCardEl.style.boxShadow = `0 0 30px ${color}66, inset 0 0 20px ${color}1a`;
-                            playerCardEl.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${color}0d)`;
-                        }
-                    },
-                });
-            }
+            // Main-board spotlight DOM wiring (canvas frame, name/frags header,
+            // card tint) lives with the watch manager — see wireSpectatorSpotlight.
+            wireSpectatorSpotlight(this.opponentWatchManager, {
+                getPlayerColor: (id) => this._getPlayerColor(id),
+            });
         }
 
         // Set initial players from game state
@@ -1565,6 +1525,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     return;
                 }
                 this._flashGarbageIndicator('flash', 500);
+                // The HUD indicator alone left the playfield silent about the one
+                // thing that just shoved the whole stack upward.
+                this.mainBoardScene?.sharedEffects?.playGarbageArrival?.(
+                    detail.rows ?? detail.lineCount ?? detail.count ?? 1,
+                );
             },
         );
         this.cleanupHandlers.push(this.garbageInsertedUnsub);

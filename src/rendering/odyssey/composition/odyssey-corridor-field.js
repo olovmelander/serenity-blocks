@@ -169,6 +169,13 @@ export class OdysseyCorridorField {
     constructor(scene, opts = {}) {
         this.scene = scene;
         this.parallaxStrength = Number.isFinite(opts.parallaxStrength) ? opts.parallaxStrength : 1;
+        // ONE WORLD: chapters whose corridor is a real, continuous landscape rather than a
+        // localized set piece with void around it. This system exists to fill that void; where
+        // the world already reaches the horizon its sheets are pure overdraw competing with
+        // the thing they were invented to hide. Not built at all, so the cost is zero, not low.
+        this._suppressedChapters = new Set(
+            Array.isArray(opts.suppressedChapters) ? opts.suppressedChapters : [],
+        );
 
         // Scratch (never reallocated per frame).
         this._scratchTangent = new THREE.Vector3();
@@ -220,6 +227,7 @@ export class OdysseyCorridorField {
     _build() {
         const curve = getOdysseyPathCurve();
         for (let id = 1; id <= CHAPTER_COUNT; id += 1) {
+            if (this._suppressedChapters.has(id)) continue;
             const record = this._buildChapter(id, curve);
             this._chapters.push(record);
             this.group.add(record.group);

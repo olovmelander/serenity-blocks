@@ -82,6 +82,7 @@ import {
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
+import { showRetryVeil, hideRetryVeil, clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
 
 function isOdysseyLayoutEditorEnabled() {
     if (!import.meta.env.DEV || typeof window === 'undefined') {
@@ -251,8 +252,6 @@ export class OdysseyMode extends BaseGameMode {
 
         // In-place retry: fail -> instant restart of the SAME level, reusing the
         // live gameplay surface/theme/board (no journey-return + journey-entry round-trip).
-        this._retryVeil = null;
-        this.RETRY_VEIL_FADE_MS = 260;
         this._levelAttemptNumber = 1;
 
         // Loading optimization Phase 1: keep the board resident (parked) across level
@@ -2229,10 +2228,7 @@ export class OdysseyMode extends BaseGameMode {
         this.entryPhase = 'preparing';
 
         // Fade an opaque veil in over the failure modal so the board reset is unseen.
-        const veil = this._mountRetryVeil();
-        veil.getBoundingClientRect(); // force reflow so the opacity transition actually plays
-        veil.style.opacity = '1';
-        await this._wait(this.RETRY_VEIL_FADE_MS);
+        await showRetryVeil();
 
         // Modal is now hidden beneath the veil — safe to remove without a flash.
         failureModal?.remove?.();
@@ -2241,65 +2237,17 @@ export class OdysseyMode extends BaseGameMode {
         const prepared = await this.prepareLevelStart();
         if (!prepared) {
             console.warn('[Odyssey] Retry failed to prepare level — returning to board');
-            this._clearRetryVeil();
+            clearRetryVeil();
             await this.returnToBoard();
             return;
         }
 
         // Reveal the fresh board.
-        veil.style.opacity = '0';
-        await this._wait(this.RETRY_VEIL_FADE_MS);
-        this._clearRetryVeil();
+        await hideRetryVeil();
 
         // Standard "Ready… Go!" beat, then hand control back to the player.
         await this.showLevelStartCue(this.currentLevelConfig, this.gameState);
         this.beginLevelRun();
-    }
-
-    /**
-     * Mount the dark veil used to mask an in-place retry's board reset.
-     * @private
-     */
-    _mountRetryVeil() {
-        this._clearRetryVeil();
-        const veil = document.createElement('div');
-        veil.id = 'odyssey-retry-veil';
-        veil.dataset.odysseyWheelLock = 'true';
-        veil.style.cssText = `
-            position: fixed;
-            inset: 0;
-            pointer-events: auto;
-            opacity: 0;
-            z-index: 10001;
-            background:
-                radial-gradient(circle at 50% 42%, rgba(255, 150, 120, 0.05), rgba(0, 0, 0, 0) 22%),
-                radial-gradient(circle at 50% 50%, rgba(16, 10, 16, 0.94), rgba(0, 0, 0, 0.99) 72%);
-            transition: opacity ${this.RETRY_VEIL_FADE_MS}ms ease-out;
-        `;
-        document.body.appendChild(veil);
-        this._retryVeil = veil;
-        return veil;
-    }
-
-    /**
-     * Remove the retry veil if present.
-     * @private
-     */
-    _clearRetryVeil() {
-        if (this._retryVeil) {
-            this._retryVeil.remove();
-            this._retryVeil = null;
-        }
-    }
-
-    /**
-     * Resolve after `ms` milliseconds.
-     * @private
-     */
-    _wait(ms) {
-        return new Promise((resolve) => {
-            setTimeout(resolve, Math.max(0, ms));
-        });
     }
 
     /**
@@ -3079,6 +3027,10 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
+        // The board dies before the retry modal arrives over it. Not fired on the
+        // victory-lap path above, where a top-out is a completion, not a defeat.
+        this._getBoardScene?.()?.sharedEffects?.playGameOver?.();
+
         // Top-out fails the level. (E5: the former per-level `failureType` branch was dead — both
         // arms called failLevel('top-out') — so it collapses to this single call. Re-introduce a
         // real branch here if a level ever needs a non-failure top-out.)
@@ -3291,6 +3243,32 @@ export class OdysseyMode extends BaseGameMode {
      * Show board view (level selection)
      * @private
      */
+    /**
+     * Build the node-progress snapshot (furthest unlocked level + per-level completion/stars) from
+     * OdysseyStateManager. Extracted so the warm/parked board can RE-SYNC it on every return: the
+     * board is kept alive across a level entry+return (not rebuilt), and node lock/star state is
+     * snapshotted only at build time — so a level unlocked DURING the session (e.g. level 4 after
+     * finishing level 3) would otherwise stay locked on the stale board and its orb un-clickable
+     * (LevelNodeManager.raycast rejects locked nodes → no hover → no select → no Play).
+     * @returns {{furthestLevel:number, levelProgress:Object}}
+     */
+    _buildOdysseyProgressData() {
+        const levelProgress = {};
+        for (let i = 1; i <= this.levelRegistry.getTotalLevels(); i++) {
+            const completion = this.odysseyState.getLevelCompletion(i);
+            if (completion) {
+                levelProgress[i] = {
+                    completed: true,
+                    stars: completion.stars || 0,
+                };
+            }
+        }
+        return {
+            furthestLevel: Math.max(...Array.from(this.odysseyState.unlockedLevels)),
+            levelProgress,
+        };
+    }
+
     async _showBoardView(options = {}) {
         const {
             focusLevelId = this.selectedLevelId,
@@ -3314,6 +3292,13 @@ export class OdysseyMode extends BaseGameMode {
         this._perfMark(boardInitMark);
         await this._initializeOdysseyBoard();
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
+        // Re-sync node lock/star state from OdysseyStateManager on EVERY board show, not just the
+        // one-time build. The board is warm/parked across a level entry+return (_buildOdysseyBoard
+        // early-returns when boardController already exists), so without this a level unlocked
+        // mid-session — level 4 the moment you finish level 3 — stays locked on the stale board and
+        // its orb can't be clicked. updateProgress re-runs nodeManager.updateFromProgress so the
+        // freshly-unlocked orb becomes hoverable/clickable immediately.
+        this.boardController?.updateProgress?.(this._buildOdysseyProgressData());
         this.closeOdysseyNavigator({ restoreBoardPreview: true });
         this._restoreBoardOverlayAfterLaunchAttempt();
 
@@ -3466,23 +3451,8 @@ export class OdysseyMode extends BaseGameMode {
         const levelData = this.levelRegistry.getAllLevelPresentations();
         const presentationLayout = this.levelRegistry.getPresentationLayout();
 
-        // Get progress data
-        // Build level progress from OdysseyStateManager
-        const levelProgress = {};
-        for (let i = 1; i <= this.levelRegistry.getTotalLevels(); i++) {
-            const completion = this.odysseyState.getLevelCompletion(i);
-            if (completion) {
-                levelProgress[i] = {
-                    completed: true,
-                    stars: completion.stars || 0,
-                };
-            }
-        }
-
-        const progressData = {
-            furthestLevel: Math.max(...Array.from(this.odysseyState.unlockedLevels)),
-            levelProgress,
-        };
+        // Get progress data (shared with the warm-board re-sync in _showBoardView).
+        const progressData = this._buildOdysseyProgressData();
 
         // Initialize the board
         await this.boardController.initialize(levelData, progressData, presentationLayout);
