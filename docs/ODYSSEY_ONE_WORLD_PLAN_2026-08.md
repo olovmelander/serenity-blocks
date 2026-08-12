@@ -693,30 +693,42 @@ whole rebuild is for, plus a genuinely reduced Lane B tier, and it must be re-me
 rather than reasoned about. It also means **One World's own Lane B cost is now the single most
 valuable unknown in the plan**, and the harness cannot currently measure it (below).
 
-#### BLOCKER (2026-08-12, active): One World in-game boot stalls — bisect state
+#### BLOCKER (2026-08-12, active): One World in-game boot stalls — elimination complete on the board side
 
-Every in-game One World boot AFTER commit `1d45d225` (the cloud deck, 01:19) stalls before
-readiness; every one before it succeeded (the graded ch4 captures). The stall is **not** the
-harness and **not** the legacy path:
+Every in-game One World boot after the 01:19 commits stalls before readiness. The legacy path
+is fine, the playground renders the full world (clouds included) perfectly, and the renderer
+main thread is BLOCKED during the stall — the boot probe's `executeJavaScript` never returns,
+so this is synchronous work or a wedged main thread, not a slow GPU.
 
-| run | flag | result |
-|---|---|---|
-| ch4 captures, pre-01:19 | ON | ✓ booted, measured, graded |
-| gpu-split baseline/no-bloom/no-level-nodes (02:00+) | OFF | ✓ booted, measured |
-| ch5 capture control (today) | OFF | ✓ 9 frames, exit 0 |
-| ch5 capture, 3 attempts (today) | ON | ✗ stalls, near-idle CPU, no readiness |
+The elimination table, every row a real run:
 
-Ruled out with evidence: Vite cache wedge (fixed separately, control passes through the same
-harness), Dawn GPU cache corruption (cleared, still stalls), the world prewarm (disabled in an
-experiment — still stalls), `presentationLayout` ordering (assigned at init start). The
-playground renders the cloud deck perfectly (freeze-check capture), so the deck's materials
-compile — the stall is specific to the in-game boot path with the world present.
+| variable isolated | result |
+|---|---|
+| legacy (no flag), same harness, same commits | ✓ boots, 9 frames |
+| Dawn/GPU caches cleared | ✗ still stalls |
+| world prewarm disabled | ✗ still stalls |
+| cloud deck mesh withheld (`?odysseyWorldNoClouds=1`) | ✗ still stalls |
+| corridor suppression disabled | ✗ still stalls |
+| level-orb ground sampler | exonerated statically (empty maps, flag write) |
+| `_chapters` positional indexing | exonerated statically (self-iterating only) |
 
-Prime suspect by elimination: the cloud-deck material inside the game's post-stack compile or
-warm-journey replay (the corridor suppression landed in the same commit and is second).
-Next instrument, not another guess: give `createOdysseyWorld` a `clouds: false` lever and give
-`odyssey-boot-probe.mjs` real `--url-flag` passthrough so a stalled boot can be dumped instead
-of inferred. Until this is fixed, ch2/ch5 captures and the flag flip are blocked.
+One measurement in this table was INVALID and got fixed: the capture harness's `parseArgs` was
+last-one-wins for repeated options, so `--url-flag A --url-flag B` silently dropped A — a run
+that "proved" the cloud fix had actually booted the LEGACY path (the tell: the manifest's
+urlFlags and a "Prewarmed chapter 4 shaders" line for a suppressed chapter). parseArgs now
+accumulates; always check the manifest's urlFlags before believing a bisect.
+
+**What survives:** the stall reproduces with the flag ON regardless of every board-side
+subsystem, which pins it inside the world module's changes from the breaking window that run
+even with clouds withheld — the detailTex RG→RGBA widen and the curvature bake/consumption —
+or in their interaction with the in-game compile (4× MSAA post pass; the playground has no
+MSAA and no post). Next session, in order: (1) temp-revert those two renderer hunks — one run
+each; (2) if neither, diff the in-game pipeline compile against the playground's (MSAA off via
+`odysseyPerfPostQuality`) rather than reading more source.
+
+Shipped as instruments, kept: `clouds` lever on `createOdysseyWorld` (+`?odysseyWorldNoClouds`),
+the accumulating `--url-flag` parser, and the probe's `PROBE_FLAGS` env passthrough
+(`PROBE_PORT=5173 PROBE_FLAGS=odysseyOneWorld=1 node scripts/run-electron.mjs scripts/odyssey-boot-probe.mjs`).
 
 #### Known harness limitation
 

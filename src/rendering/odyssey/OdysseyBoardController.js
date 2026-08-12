@@ -634,6 +634,10 @@ export class OdysseyBoardController {
                     // Inside the board camera's 9,000 far plane, and inside the shipped
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
+                    // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
+                    // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
+                    // in-game compile entirely.
+                    clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
                 });
                 this.scene.add(this.oneWorld.group);
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));

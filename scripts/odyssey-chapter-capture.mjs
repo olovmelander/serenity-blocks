@@ -64,6 +64,14 @@ const delay = (ms) => new Promise((resolve) => {
 
 function parseArgs(argv) {
     const result = {};
+    // Repeated options ACCUMULATE into an array instead of last-one-wins. This bug produced a
+    // silently wrong measurement: `--url-flag odysseyOneWorld=1 --url-flag odysseyWorldNoClouds=1`
+    // dropped the first flag, the capture booted the LEGACY path, and its success was read as a
+    // clean bisect of the One World boot stall — the manifest's urlFlags list was the only tell.
+    const store = (key, value) => {
+        if (result[key] === undefined) result[key] = value;
+        else result[key] = [].concat(result[key], value);
+    };
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         if (!token.startsWith('--')) continue;
@@ -72,12 +80,12 @@ function parseArgs(argv) {
         const normalized = key.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
         const next = argv[index + 1];
         if (inlineValue !== undefined) {
-            result[normalized] = inlineValue;
+            store(normalized, inlineValue);
         } else if (next && !next.startsWith('--')) {
-            result[normalized] = next;
+            store(normalized, next);
             index += 1;
         } else {
-            result[normalized] = true;
+            store(normalized, true);
         }
     }
     return result;

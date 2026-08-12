@@ -366,6 +366,12 @@ export function scatterTrees(heightAt, {
 /**
  * @param {object} [opts]
  * @param {string} [opts.quality] 'high' | 'low'
+ * @param {boolean} [opts.clouds] BISECT LEVER, default true. When false the cloud deck's mesh
+ *   never enters the scene, so its pipeline is never compiled — the material and geometry are
+ *   still constructed (that part is proven safe headless). Exists because every IN-GAME One
+ *   World boot after the deck landed stalls before readiness while the playground renders the
+ *   same deck perfectly; this isolates "is it the deck's in-game compile" to one URL flag
+ *   instead of one source edit per experiment.
  * @param {boolean} [opts.applyExposure] whether the WORLD applies the colour script's
  *   exposure. True standalone (the playground has no post stack). FALSE inside the game,
  *   where odyssey-tsl-pipeline.js owns exposure and applies ACES after it — otherwise
@@ -383,7 +389,7 @@ export function scatterTrees(heightAt, {
  *   linear output is what a tonemapper needs room to work with.
  */
 export function createOdysseyWorld({
-    quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1,
+    quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
     skyRadius = null,
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
@@ -712,7 +718,7 @@ export function createOdysseyWorld({
     cloudMesh.updateMatrix();
     cloudMesh.renderOrder = 6;
     cloudMesh.name = 'odyssey-world-clouds';
-    group.add(cloudMesh);
+    if (clouds) group.add(cloudMesh);
 
     // ── forest ──
     const treeGeo = buildTreeGeometry();
@@ -818,10 +824,11 @@ export function createOdysseyWorld({
         reach: ground.reach,
         trees: trees.length,
         forestChunks: treeMeshes.length,
-        materials: 5,
+        materials: clouds ? 5 : 4,
         applyExposure,
         outputScale,
         outputSaturation,
+        clouds,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
