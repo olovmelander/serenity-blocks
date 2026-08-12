@@ -11,6 +11,7 @@
  */
 
 import { createOdysseyWorld } from '../../rendering/odyssey/world/odyssey-world-renderer.js';
+import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathPointAt,
@@ -79,7 +80,7 @@ export function create({ scene, camera, params }) {
             const tx = pt.x - behind.x;
             const tz = pt.z - behind.z;
             const tl = Math.hypot(tx, pt.y - behind.y, tz) || 1;
-            cam.position.set(pt.x - ((tx / tl) * 30), pt.y + 16, pt.z - ((tz / tl) * 30));
+            cam.position.set(pt.x - ((tx / tl) * 30), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y, pt.z - ((tz / tl) * 30));
 
             // Look ALONG the rail with the pitch CLAMPED. Aiming straight at a point further
             // down the path pitches ~37 degrees up through Ch5's climb and the whole world
