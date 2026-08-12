@@ -60,7 +60,9 @@ import {
     vec3,
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { fbm3, ridged3, snoise3 } from './shared/odyssey-tsl-noise.js';
+import {
+    fbm3, noise3, ridged3, snoise3,
+} from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
 import { buildTileableNoise3D } from './shared/odyssey-baked-noise.js';
 
@@ -137,6 +139,14 @@ function _getBakedNoiseSampler() {
     const invP = 1 / BAKED_NOISE_PERIOD;
     // Match snoise3's ~[-1,1]: sample R, wrap into [0,1), restore range.
     return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(invP))).r.mul(2.0).sub(1.0);
+}
+// [0,1] variant for the shared fbm3/ridged3 (their noise3 source is [0,1]-centred-0.5, and
+// the baked texel is centred Perlin stored the same way — raw .r is distribution-compatible).
+// Coordinate scale is 1/grid (= 0.05), NOT invP: the bake runs 2 features/unit, noise3's
+// lattice ~1/unit, and the dome's unit-sphere domain would read the doubling as a new look.
+function _getBakedNoise01Sampler() {
+    if (!_bakedNoiseTex) _bakedNoiseTex = buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337);
+    return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(0.05))).r;
 }
 
 // ── Shared molten-rock field (adapts pyrestorm's lava-river MOUNTAIN shader) ──────
@@ -601,14 +611,20 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     // red-brown churn (the missing ember-red midtone band #3a0d04→#5e0a00), never a
     // milky banded wash and never >50% void.
     const swirlTime = uTime.mul(0.012);
+    // BACKDROP BAKE (post-3b): the lever differential priced this dome at 15-19 ms of the
+    // chapter's ~41 ms Lane B frame — after the canopy fold it evaluates 24 analytic noise
+    // octaves per pixel, full screen, and the lane pays for ALU. Same fix the rock shipped
+    // with (?earthCoreBakeNoise, default ON): swap the noise source for a baked 3D-texture
+    // fetch. Topology, drift and thresholds unchanged; one texture read per octave.
+    const n3Bg = EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
     const warpField = vec3(
-        fbm3(dir.mul(1.3).add(vec3(swirlTime, 0.0, 0.0)), 3),
-        fbm3(dir.mul(1.3).add(vec3(4.0, swirlTime.mul(0.8), 0.0)), 3),
-        fbm3(dir.mul(1.3).add(vec3(0.0, 9.0, swirlTime.mul(0.6))), 3),
+        fbm3(dir.mul(1.3).add(vec3(swirlTime, 0.0, 0.0)), 3, n3Bg),
+        fbm3(dir.mul(1.3).add(vec3(4.0, swirlTime.mul(0.8), 0.0)), 3, n3Bg),
+        fbm3(dir.mul(1.3).add(vec3(0.0, 9.0, swirlTime.mul(0.6))), 3, n3Bg),
     ).mul(0.55);
     const conv = clamp(
         // ridged3 4->3 octaves (perf): full-screen backstop dome, capped below every set piece.
-        ridged3(dir.mul(2.4).add(warpField).add(vec3(0.0, swirlTime.mul(0.5), 0.0)), 3),
+        ridged3(dir.mul(2.4).add(warpField).add(vec3(0.0, swirlTime.mul(0.5), 0.0)), 3, n3Bg),
         0.0,
         1.0,
     );
@@ -640,14 +656,14 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     // true. One draw, one material and a full frame of blending disappear; the pixels do not.
     const canopyPos = dir.mul(3.0);
     const canopyMotion = vec3(uTime.mul(0.018), uTime.mul(0.012), uTime.mul(0.009));
-    const cCloud1 = fbm3(canopyPos.add(canopyMotion), 3);
-    const cCloud2 = fbm3(canopyPos.mul(2.05).sub(canopyMotion.mul(0.62)), 3);
-    const cCloud3 = fbm3(canopyPos.mul(0.55).add(canopyMotion.mul(0.38)), 3);
+    const cCloud1 = fbm3(canopyPos.add(canopyMotion), 3, n3Bg);
+    const cCloud2 = fbm3(canopyPos.mul(2.05).sub(canopyMotion.mul(0.62)), 3, n3Bg);
+    const cCloud3 = fbm3(canopyPos.mul(0.55).add(canopyMotion.mul(0.38)), 3, n3Bg);
     const cDensityRaw = cCloud1.mul(0.52).add(cCloud2.mul(0.32)).add(cCloud3.mul(0.24));
     const cCeiling = smoothstep(-0.32, 0.46, dir.y)
         .mul(oneMinus(smoothstep(0.88, 1.0, dir.y).mul(0.32)));
     const cDensity = smoothstep(-0.16, 0.48, cDensityRaw).mul(cCeiling);
-    const cGlowNoise = fbm3(canopyPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)), 3)
+    const cGlowNoise = fbm3(canopyPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)), 3, n3Bg)
         .add(0.5);
     const cInternalGlow = smoothstep(0.42, 0.86, cGlowNoise);
     const cUnderLight = oneMinus(smoothstep(0.12, 0.78, dir.y)).mul(cDensity);

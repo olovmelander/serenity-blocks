@@ -1446,6 +1446,84 @@ and re-run rather than quoted — the re-run's two baselines agreed byte-for-byt
 
 ---
 
+## 10. Post-close optimization log (2026-08-12, after all waves checked)
+
+The user asked for the ~41 ms ch1 Lane B frame (sans orbs) to go lower. Discipline
+unchanged: price first, then attack the largest surface; every number a cooled,
+content-matched pair per ADR-0016.
+
+### 10.1 The frame priced by lever differentials (MEASURED)
+
+Three URL levers (`?earthCoreNo{Backdrop,Lake,Haze}=1`) gate `group.add()` in
+`createEarthCoreEnvironment`; each ran as a Lane B pair against the 40.24/41.48 ms
+sans-orbs baseline (reports: `gpu-split-laneb-act1-bisect-*.json`, commit b61baa85):
+
+| Surface removed | p50 pair (ms) | priced cost | drift bound |
+|---|---|---|---|
+| backdrop dome (bg + folded canopy) | 21.82 / 26.08 | **~15-19 ms** | 4.26 |
+| haze sprites | 38.67 / 38.47 | ~1.8-3 ms | 0.20 |
+| lava lake | 40.11 / 41.03 | ~0.5-1 ms | 0.92 |
+
+The dome is ~40 % of the whole frame, and it is ALU: after the 3b canopy fold it
+evaluates 24 analytic noise octaves per pixel, full screen (9 warp + 3 ridged conv +
+9 canopy + 3 glow).
+
+### 10.2 The backdrop bake (the attack)
+
+The chapter already owned the fix: `?earthCoreBakeNoise` (default ON) swaps analytic
+noise for a baked tileable 3D-texture fetch — shipped on `moltenRockField`, in-scene
+A/B'd imperceptible. The dome's `fbm3`/`ridged3` calls bypassed it. Change: the shared
+`fbm3`/`ridged3` take an optional noise source (defaults untouched); the dome passes a
+`[0,1]` RAW-texel sampler — deliberately NOT the rock's `*2-1` remap, because
+`fbm3`/`ridged3` build on `noise3` ([0,1], centred 0.5) and recentring would have
+thinned the canopy density smoothsteps — at coordinate scale 1/grid so baked feature
+frequency matches `noise3`'s ~1/unit lattice (the rock's `invP` scale runs 2/unit,
+which the dome's unit-sphere domain would read as a different pattern).
+
+- Lane B pair (cooled, matched, stable tree, MEASURED 2026-08-12):
+  **27.98 / 29.10 ms p50** vs the 40.24 / 41.48 ms sans-orbs baseline — a saving of
+  **>= 11.1 ms conservative** (best-baseline minus worst-new), drift bound 1.11 ms,
+  content matched at 83 draws / ~40.9k tris both runs, and `drawCallsMin == drawCallsMax
+  == 83` in both windows (the 10.3 flicker fix verified on this lane too).
+  Report: `gpu-split-laneb-act1-ch1-noorbs-bake.json`. Ch1's Lane B journey:
+  57.2 (pre-plan) -> 40.24 (3b canopy fold) -> **27.98 ms**.
+- Cathedral capture `--time 9` + midWash gate (<= 0.25): PENDING-CAPTURE
+
+First re-measure attempt returned an admissibility lesson, recorded in 10.4.
+
+### 10.3 The two-source draw flicker was ONE source, and it is dead (MEASURED)
+
+The 92<->93 (orbs) / 80<->79 (sans orbs) draw flicker that voided matched pairs was
+never two sources, and the earlier attribution "in the level-node group" was an
+offset illusion — with `odysseyCoreInstanced` default ON, every level-node drawable
+is constant-visible and `frustumCulled=false`, so orbs could only ADD a constant.
+
+Found by instrument, not by reading: (a) the GPU profile now records
+`drawCallsMin/Max` since `__ODYSSEY_GPU_RESET__` (one frame's snapshot cannot tell
+per-frame flicker from a one-shot settling event); it classified the flicker
+per-frame — live range [78,79] at the pinned cathedral station, orbs hidden.
+(b) A per-frame frustum-flip logger over all 36 frustum-culled renderables named
+exactly one flipper: a corona `Sprite` under `lava-floor`. The lake's glow sprites
+(ambient + inner + 3 basins) were the chapter's ONLY frustum-culled drawables, and
+the camera's idle breathing walks the frustum edge across whichever sits at the
+view's rim.
+
+Fix: `sprite.frustumCulled = false` on the five coronas (the cavern surrounds the
+camera; culling bought nothing). Verified live: range [83,83] over 10 s — dead
+constant. The +5 draws are frustum-clipped quads (vertex-only, no fill). Downstream:
+ch1's content-match draw number becomes ~83 sans orbs; old 78/79-draw reports remain
+comparable on time but not on draw count.
+
+### 10.4 Measurement admissibility lesson (instrument scar #4)
+
+The first bake re-measure returned a report with ZERO samples per configuration and
+exit 0. Cause: source files were edited while the harness's own Vite dev server was
+serving the sampling Electron page — HMR reloaded the module graph mid-run and tore
+down the mode (`window.odysseyMode` undefined; reproduced deliberately in Chrome).
+The report was discarded as inadmissible. Rule adopted: **no working-tree edits while
+a measurement harness is running** — the harness serves the live tree, so an edit
+anywhere in the module graph invalidates the run silently.
+
 ## Sources
 
 - In-repo, read end-to-end for this plan: `docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md` (method
