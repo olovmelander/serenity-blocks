@@ -638,6 +638,11 @@ export class OdysseyBoardController {
                     // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
                     // in-game compile entirely.
                     clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
+                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
+                    railSamples: Array.from(
+                        { length: 48 },
+                        (_, i) => getOdysseyPathPointAt(i / 47),
+                    ),
                 });
                 this.scene.add(this.oneWorld.group);
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));

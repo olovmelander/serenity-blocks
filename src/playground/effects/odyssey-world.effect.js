@@ -34,7 +34,10 @@ export function create({ scene, camera, params }) {
     }
 
     const quality = params?.get?.('worldQuality') === 'low' ? 'low' : 'high';
-    const world = createOdysseyWorld({ quality });
+    // The world does not know the rail; the caller samples it. 48 points across the journey
+    // seat the underwater god-ray shafts along the real submerged stretch.
+    const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+    const world = createOdysseyWorld({ quality, railSamples });
     scene.add(world.group);
 
     // COMPILE BISECT LEVER — ?worldOnly=ground,sky (comma list; substring match on mesh name).
