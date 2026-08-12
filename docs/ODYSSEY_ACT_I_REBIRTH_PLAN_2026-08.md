@@ -637,8 +637,11 @@ the One World convention — and the plan shipped without it.)
   cathedral station (true-black 0.420 → 0.806). The god-ray facing fade and the charred rock
   re-base did nearly all of it; the acceptance's own stations were corrected (two of three sat
   inside the quench window). Three instrument repairs were needed first. Contract untouched.
-- [ ] **Wave 3b** — Earth Core CONSOLIDATED to ≤35 draws (needs an explicit
-  `earth-core-environment.test.js` contract migration — see the Wave 3 split note)
+- [ ] **Wave 3b** — Earth Core consolidated (fill-first per the measured rescope) — fill
+  pass executed 2026-08-12: horizon dupes deleted, deck 140→56 @ smaller puffs, haze 225→112,
+  ratchet 58→56, gates IMPROVED (0.202) — but the pre-registered ≥5 ms Lane B bar measured
+  ~4.5 ms central against ±1.5–2.2 ms thermal noise after three repair attempts, so the wave
+  stays open on its own terms. Blocker + completion path recorded at the 3b acceptance note.
 - [x] **Wave 4** — The ocean becomes luminous — **DONE 2026-08-12.** Bands + SSS ceiling +
   640 size-capped motes + the two water keyframes; gradient inversion fixed and measured
   (83.7 → 170.6 luma toward the surface); Lane B **7.73 → 5.96 ms p50** (drift 0.00) — the
@@ -930,6 +933,42 @@ So the wave splits, and the split is recorded rather than quietly performed:
      tracked by §8's `odysseyAct1Ch1DrawCalls` cell (null until earned) — it is a
      compile/startup goal now, not this wave's exit bar, per the measured rescope above.
   4. **Suite + lint green; captures attached.**
+
+  **3b FILL PASS EXECUTED — 2026-08-12, second session. Three of four criteria met; the wave
+  stays UNCHECKED on its own pre-registered bar, and here is exactly why.**
+
+  **What landed** (all committed, suite green, no contract-pinned structure touched): the two
+  duplicate horizon planes DELETED (full-width additive fill, zero compile cost — their
+  pipelines were already shared); cloud-deck density 140 → 56 and puff sizes 28–92 u →
+  18–60 u; near-camera haze 225 → 112 billboards with sizes cut ~30 %. Drawable ratchet
+  lowered **58 → 56**.
+
+  | criterion | result |
+  |---|---|
+  | 2. value gates hold | ✅ **cathedral mid-wash 0.202** (≤ 0.25) — the cuts IMPROVED the look (0.193 → 0.145 after the first cut wave; 0.202 with all cuts) |
+  | 3. open contract changes + ratchet | ✅ nothing pinned was touched; ratchet 58 → 56 |
+  | 4. suite + lint + captures | ✅ 333 files / 3295 tests; captures attached |
+  | 1. Lane B ≥ 5 ms on matched pairs | ❌ **NOT decisively met — and not claimed.** |
+
+  **The criterion-1 record, complete:** eight post-cut samples across four sessions (52.17,
+  52.56, 52.95, 53.67, 54.07, 54.92, 55.12, 55.31 — median **53.9**) against the pre-cut pair
+  (58.20, 58.46). **Every post-cut sample beats every pre-cut sample** — the saving is real —
+  but the central estimate is **~4.5 ms**, the conservative bound 2.9, and the run-to-run
+  thermal spread (±1.5–2.2 ms even after cooling pauses) makes a 5 ms bar undecidable at this
+  sample size on this laptop. Three repair attempts were made (deck-size cut: no measurable
+  gain; cooled re-pair: short; haze halving: short); per this plan's own rule the blocker is
+  recorded and the wave left unchecked rather than the bar quietly re-read to fit ~4.5.
+
+  **Also found: the 92↔93 flicker has a SECOND source outside the orb group** — two of the
+  four sans-orbs pairs voided on an 80↔79 mismatch. The content-match guard keeps working;
+  the hunt now has two targets.
+
+  **What completes 3b, in order:** (1) the canopy/background full-screen shell merge — the
+  largest remaining fill surface, a real look change owing its own captures; (2) the sprite →
+  instanced-billboard migration with the open `earth-core-environment.test.js` change; (3)
+  re-measure the ≥5 ms bar with multi-pair cooled sessions once the flicker's second source is
+  found. The Wave 1 study's geometry port (the full rebuild) remains the endpoint the 3a/3b
+  split always pointed at.
 
 > ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
 > 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in

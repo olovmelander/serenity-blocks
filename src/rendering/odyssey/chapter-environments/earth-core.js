@@ -600,7 +600,9 @@ function createMoltenHaze(uniforms, count, yLow, yHigh) {
         bases[i * 3 + 2] = 3 + Math.sin(angle) * radius;
         seeds[i] = Math.random();
         // Larger puffs lower (hugging the lava), smaller higher up the corridor.
-        sizes[i] = (16 + Math.random() * 22) * (1.0 - yT * 0.45);
+        // WAVE 3b: haze puff half-extent cut ~30% — the haze is a near-camera additive
+        // layer whose cost is pure fill; smaller puffs, same count, same motion.
+        sizes[i] = (11 + Math.random() * 16) * (1.0 - yT * 0.45);
     }
 
     const geometry = makeQuadInstancedGeometry(count, {
@@ -650,7 +652,9 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
         bases[i * 3 + 1] = y;
         bases[i * 3 + 2] = z;
         seeds[i] = Math.random();
-        sizes[i] = 28 + Math.random() * 64;
+        // WAVE 3b: deck puffs 28-92u -> 18-60u. After the count cut the deck was still the
+        // largest per-puff fill in the chapter; area scales with the square of this number.
+        sizes[i] = 18 + Math.random() * 42;
 
         const color = coolSmoke.clone().lerp(warmSmoke, Math.random() * 0.8);
         colors[i * 3] = color.r;
@@ -872,7 +876,11 @@ export function createEarthCoreEnvironment(options = {}) {
     //    mid-air. The magma-horizon's bright rim is at uv.y≈0.32 of a 200-unit plane, so
     //    a band whose rim aligns to the lake has centerY = LAVA_LAKE_Y + 36*scaleY. This
     //    turns the bands into a continuous far-shore line under the assets.
-    const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.8) : 140, 140);
+    // WAVE 3b — deck density 140 -> 56: the deck is the second-largest additive fill layer
+    // after the canopy (140 sizeable billboard puffs overhead), and the canopy already owns
+    // the vault reading after 3a. Fewer, unchanged puffs keeps the broken-cloud look; count
+    // is the fill lever that does not change any per-puff appearance.
+    const cloudDeckCount = Math.min(options.particleCount ? Math.floor(options.particleCount * 0.4) : 56, 56);
     const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
     group.add(magmaCloudDeck);
     group.userData.magmaCloudDeck = magmaCloudDeck;
@@ -885,23 +893,20 @@ export function createEarthCoreEnvironment(options = {}) {
     // byte-identical (same uniforms) and only the transform differs, so 3 magma-horizon
     // pipelines collapse to 1 (cold-start compile win, zero visual change — the bands are
     // static, never mutated per-material in update()).
-    const lowHorizon = new THREE.Mesh(farHorizon.geometry, farHorizon.material);
-    const lowHorizonPos = staging.at(0.52, { lateral: -34, forward: 12 });
-    lowHorizon.position.set(lowHorizonPos.x, horizonRimY(0.55), lowHorizonPos.z);
-    lowHorizon.scale.set(0.7, 0.55, 1);
-    group.add(lowHorizon);
-    // A MID-DEPTH magma glow band biased off-centre-left, aligned to the same far-shore
-    // line so it reads as the lake's far edge sweeping behind the columns rather than a
-    // floating wall (shares the horizon material/geometry; one extra draw call).
-    const midHorizon = new THREE.Mesh(farHorizon.geometry, farHorizon.material);
-    const midHorizonPos = staging.at(0.66, { lateral: 32, forward: 16 });
-    midHorizon.position.set(midHorizonPos.x, horizonRimY(0.7), midHorizonPos.z);
-    midHorizon.scale.set(0.85, 0.7, 1);
-    group.add(midHorizon);
-    group.userData.horizons = [farHorizon.mesh, lowHorizon, midHorizon];
+    // WAVE 3b — the low/mid horizon DUPES are deleted, not merged. They were two additional
+    // full-width additive planes stacked in front of the same far-shore line: measured
+    // fill-bound on Lane B (57-58 ms flat across 131->84 draws), full-frame transparent
+    // layers are exactly the spend, and the far shore still reads from the one farHorizon
+    // band. Their pipeline had already been collapsed into farHorizon's material, so the
+    // compile cost was never theirs — only the fill was.
+    group.userData.horizons = [farHorizon.mesh];
 
     // 9. Molten volumetric haze hugging the path along the whole corridor span.
-    const hazeCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 1.8, 255) : 225);
+    // WAVE 3b: haze 225 -> 112. Near-camera additive billboards are the textbook iGPU fill
+    // spend (the Cosmic Noir lesson), and the haze hugs the rail — always at the lens. Half
+    // the count with the already-shrunk puffs keeps the smoke reading; the removed half was
+    // overlapping coverage, not visible structure.
+    const hazeCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 0.9, 128) : 112);
     const haze = createMoltenHaze(uniforms, hazeCount, corridorLow, corridorHigh);
     group.add(haze);
     group.userData.haze = haze;

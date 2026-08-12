@@ -22,7 +22,8 @@ function stubCanvasDocument() {
 // sprites); merging the 20 contact-shadow decals — the largest family, shared-material,
 // static, uv()-only shading — took it to 58 and the in-game station from ~127 to 90 draws.
 // The ceiling below pins that win: adding a drawable family without consolidating an old one
-// fails here, loudly, instead of drifting back toward the 131-draw chapter this plan measured
+// fails here, loudly, instead of drifting back toward the 131-draw chapter this plan measured.
+// Lowered 58 -> 56 when Wave 3b's fill pass deleted the two duplicate horizon planes.
 // on Lane B at 57 ms.
 describe('earth-core drawable budget (Wave 3b ratchet)', () => {
     it('counts drawables by family', () => {
@@ -42,7 +43,7 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
         console.log(`TOTAL drawables: meshes=${meshes} sprites=${sprites} instanced=${instanced} materials=${materials.size}`);
         Object.entries(fam).sort((a, b) => b[1] - a[1])
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
-        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(58);
+        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(56);
         expect(meshes + sprites + instanced).toBeGreaterThan(0);
     });
 });
