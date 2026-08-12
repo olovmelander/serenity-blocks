@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import {
     STEAM_QUENCH_RADIUS,
     createSteamQuench,
 } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
+import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
 /**
  * THE STEAM QUENCH — the ch1 -> Act II occlusion moment.
@@ -75,5 +79,47 @@ describe('steam quench material contract', () => {
         expect(q.mesh.isMesh).toBe(true);
         expect(q.mesh.geometry.parameters.radius).toBe(STEAM_QUENCH_RADIUS);
         expect(() => q.dispose()).not.toThrow();
+    });
+});
+
+describe('steam quench board wiring', () => {
+    const ROOT = path.resolve(
+        path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
+        '../..',
+    );
+    const BOARD = readFileSync(
+        path.join(ROOT, 'src/rendering/odyssey/OdysseyBoardController.js'),
+        'utf8',
+    );
+
+    it('seats the volume on the rail AT the 1->2 boundary', () => {
+        expect(BOARD).toMatch(/const boundary12 = this\.presentationLayout\?\.chapterPositions\?\.\[1\]/);
+        expect(BOARD).toMatch(/this\.steamQuench\.mesh\.position\.set\(at\.x, at\.y, at\.z\)/);
+    });
+
+    it('is WIDER than the crossfade it hides — an occluder that is narrower just frames it', () => {
+        const half = Number(BOARD.match(/const STEAM_QUENCH_HALF_WIDTH = ([\d.]+);/)[1]);
+        const seam = ODYSSEY_CHAPTER_PROFILES.find((c) => c.id === 1)?.transition?.seamWidth;
+        expect(seam).toBeGreaterThan(0);
+        expect(half).toBeGreaterThan(seam);
+    });
+
+    it('is hidden outside its window, so it costs nothing for most of the journey', () => {
+        expect(BOARD).toMatch(/this\.steamQuench\.mesh\.visible = inWindow;/);
+        expect(BOARD).toMatch(/if \(inWindow\) this\.steamQuench\.update\(this\.time,/);
+    });
+
+    it('runs every frame rather than on the throttled position gate', () => {
+        // It billows, so throttling it to ~30Hz would make the vapour stutter exactly while
+        // it fills the frame. The visibility test is cheap; the update is gated on the window.
+        const idx = BOARD.indexOf('this.steamQuench.mesh.visible = inWindow;');
+        const before = BOARD.slice(Math.max(0, idx - 700), idx);
+        // The corridor field's throttled block must have CLOSED before the steam block opens.
+        expect(before).toMatch(/this\.corridorField\?\.update\([^)]*\);\s*\}/);
+    });
+
+    it('cannot take the board down if it fails to build, and is disposed', () => {
+        expect(BOARD).toMatch(/console\.warn\('\[OdysseyBoard\] steam quench unavailable \(non-fatal\)/);
+        expect(BOARD).toMatch(/this\.steamQuench\.dispose\(\);/);
     });
 });
