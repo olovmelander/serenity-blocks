@@ -41,6 +41,9 @@ const SAMPLE_MS = Number(args.sample || 14000);
 // Measure the lane the budget is written against, or the numbers answer a different question.
 const WIDTH = Math.max(320, Number(args.width || (LANE === 'B' ? 1280 : 1920)));
 const HEIGHT = Math.max(240, Number(args.height || (LANE === 'B' ? 720 : 1080)));
+// Journey progress to measure at. 0.42 sits inside chapter 4 — mid Act II, the frame One
+// World actually changes — rather than at the journey start where the board parks.
+const SEEK = Number.isFinite(Number.parseFloat(args.seek)) ? Number.parseFloat(args.seek) : 0.42;
 const OUT_DIR = path.join(ROOT, 'reports', 'odyssey-perf');
 
 // Each configuration removes ONE system. baseline must run first and last: a drifting
@@ -54,15 +57,19 @@ const CONFIGURATIONS = [
         flags: { odysseyHideLevelNodes: '1' },
         note: '55 nodes x 3 nested transparent shells hidden',
     },
+    // One World is the DEFAULT path since Wave 3, so `baseline` IS One World and the old
+    // `one-world` configuration compared it against itself — a guaranteed zero delta that
+    // would have read as "the rebuild costs nothing". The comparison that means something now
+    // is against the LEGACY dioramas, which is what the escape hatch restores.
     {
-        id: 'one-world',
-        flags: { odysseyOneWorld: '1' },
-        note: 'chapters 2-5 replaced by the continuous world',
+        id: 'legacy-dioramas',
+        flags: { odysseyOneWorld: '0' },
+        note: 'chapters 2-5 back to their own environments (the ?odysseyOneWorld=0 fallback)',
     },
     {
-        id: 'one-world-no-level-nodes',
-        flags: { odysseyOneWorld: '1', odysseyHideLevelNodes: '1' },
-        note: 'both',
+        id: 'legacy-no-level-nodes',
+        flags: { odysseyOneWorld: '0', odysseyHideLevelNodes: '1' },
+        note: 'legacy dioramas without the orb group',
     },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
@@ -180,6 +187,28 @@ async function runConfiguration(config) {
             if (!gm.getCurrentMode?.()?.isRunning) await gm.startCurrentMode?.();
             return waitFor(() => window.odysseyMode?.boardController?.isActive === true);
         })()`, true);
+        // SEEK INTO ACT II BEFORE SAMPLING. Without this the harness measures the board where
+        // it PARKS — the journey start — which for an Act II-scoped chapter window is 40 draws
+        // and 0.13 ms of empty frame. Every One World delta measured that way is a delta of
+        // nothing. Mechanism borrowed from odyssey-chapter-capture.mjs's settleAtPosition.
+        await win.webContents.executeJavaScript(`
+            (() => {
+                const bc = window.odysseyMode?.boardController;
+                if (!bc?.cameraController) return false;
+                const pos = ${SEEK};
+                bc.cameraController.setCurrentPosition(pos);
+                bc.cameraController.updateFollowPosition?.({ position: pos, direct: true });
+                const blendState = bc.environmentManager?.getBlendState(pos) || null;
+                bc.environmentManager?.updateVisibility(pos, { mode: 'progress', blendState });
+                bc.environmentManager?.updateGlobalEnvironment(pos, blendState);
+                const directorState = bc.director?.update?.(1 / 60, {
+                    ascentProgress: pos, audio: null, blendState,
+                }) || bc.director?.getState?.() || null;
+                bc.cameraController?.setDirectorState?.(directorState);
+                bc.nodeManager?.setCameraProgress(pos);
+                return true;
+            })()
+        `, true).catch(() => {});
         await wait(SETTLE_MS);
         // Discard everything sampled while pipelines were still compiling — a cold compile is
         // a real cost, but it is a STARTUP cost and averaging it into steady state hides both.
@@ -220,7 +249,8 @@ function buildSplit(results) {
     return {
         bloomMs: delta('baseline', 'no-bloom'),
         levelNodesMs: delta('baseline', 'no-level-nodes'),
-        oneWorldDeltaMs: delta('baseline', 'one-world'),
+        // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
+        oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: delta('baseline', 'baseline-repeat'),
         note: 'Differential, not per-pass: each figure is baseline p50 minus that '
             + 'configuration p50. Overlapping costs are attributed to whichever system is '
@@ -278,6 +308,7 @@ app.whenReady().then(async () => {
             quality: QUALITY,
             adapter,
             resolution: `${WIDTH}x${HEIGHT}`,
+            seekProgress: SEEK,
             discipline: 'p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere',
             configurations: results.map((r) => ({ id: r.id, note: r.note, ...r.summary })),
             split: buildSplit(results),
