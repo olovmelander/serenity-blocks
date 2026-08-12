@@ -569,11 +569,20 @@ export function createOdysseyWorld({
         .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
 
     const wSand = float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL - 2), float(ODYSSEY_SEA_LEVEL + 26), height));
-    const wSnow = smoothstep(float(620), float(790), height)
+    // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
+    // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
+    // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
+    // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
+    // slope; both port directly here, the jitter riding a low-frequency read of the detail
+    // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
+    // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
+    const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
+    const snowHeight = height.add(snowJitter).toVar();
+    const wSnow = smoothstep(float(620), float(730), snowHeight)
         .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
     const wRock = clamp(max(
         smoothstep(float(0.17), float(0.40), slope),
-        smoothstep(float(470), float(640), height).mul(0.75),
+        smoothstep(float(470), float(640), snowHeight).mul(0.75),
     ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
     let albedo = vec3(0.30, 0.44, 0.22);
     albedo = mix(albedo, vec3(0.70, 0.64, 0.47), wSand);
@@ -608,7 +617,13 @@ export function createOdysseyWorld({
     const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
     const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
         .add(uShadowTint.mul(0.36))).mul(cavity)
-        .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5));
+        .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
+        // ALPENGLOW: high snow that faces the sun takes a warm kiss. In mountain-language it
+        // is pow(ndl, 1.6) gated by height; here it rides the same wSnow the albedo uses, so
+        // it can never bleed onto rock or meadow, and it is multiplied by the baked sun
+        // visibility so a shadowed crown stays cold.
+        .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
+            .mul(wSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)));
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
