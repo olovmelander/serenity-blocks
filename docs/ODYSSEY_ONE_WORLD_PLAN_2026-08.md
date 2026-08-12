@@ -717,7 +717,12 @@ each falsified by measurement.
 **First post-fix Act II sweep (in-game, One World on): ALL FOUR CHAPTERS BOOT.** Ch4 verified
 good. Ch2 boots — the underwater body reads correctly and the breach-to-shore frame (beach,
 forest, massif in mist) is the continuity payoff in one image; the water volume is sparse
-until the god-ray/caustic port the prop inventory scoped. Ch3 verified this morning. Ch5 boots (the
+until the god-ray/caustic port the prop inventory scoped. **PORTED and in-game-verified later
+the same day (65124e46):** caustics as a zero-draw term on the submerged shelf, god rays as
+one InstancedMesh seated from caller-supplied railSamples, leaning 23° toward the canonical
+sun's azimuth (full alignment laid them sideways — refraction keeps real shafts steep; no
+private azimuth was invented). Remaining polish: the shaft edges read hard under the in-game
+grade — soften edgeFade/brightness the way the cloud base was re-fitted. Ch3 verified this morning. Ch5 boots (the
 first time ever) and the continuity payoff is visible — valley, shore and forest far below the
 climb — but the **cloud deck is broken at eye height in-game**: ragged navy shards instead of
 white strata (sky luma 178.8 vs 129.4 target). The rail crosses the deck's altitude through
