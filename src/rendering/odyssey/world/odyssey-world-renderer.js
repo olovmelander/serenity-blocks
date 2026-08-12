@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, length, max, mix,
+    abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length, max, mix,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
@@ -13,6 +13,9 @@ import {
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import {
+    billboardWorld, makeQuadInstancedGeometry,
+} from '../chapter-environments/shared/odyssey-tsl-billboard.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { sampleColourScript } from '../odyssey-colour-script.js';
 
@@ -954,6 +957,70 @@ export function createOdysseyWorld({
         group.add(rayMesh);
     }
 
+    // ── motes (Wave 4: the particulate the luminous ocean was missing) ─────────────
+    // Nausicaa's transmitted-light rig, sized for Lane B: the spores are LIGHT SOURCES, so
+    // each mote's brightness scales with how dark the water behind it is (deeper = brighter
+    // relative to its background), and serenity comes from CONSTANT velocity — no easing.
+    // ONE material, ONE instanced draw, and the budget lever is SIZE, not count: additive
+    // overdraw is what killed Cosmic Noir on this lane, and a 0.5–1.1 u quad cannot overdraw
+    // much no matter how many there are.
+    let moteMesh = null;
+    let moteMat = null;
+    if (sunkPoints.length > 2) {
+        const MOTES = 640;
+        const mSeed = new Float32Array(MOTES);
+        const mOrigin = new Float32Array(MOTES * 3);
+        for (let i = 0; i < MOTES; i += 1) {
+            const pt = sunkPoints[Math.floor((i / MOTES) * sunkPoints.length)];
+            const h = (n) => {
+                let v = Math.imul(n ^ 0x27d4eb2f, 2654435761);
+                v = Math.imul(v ^ (v >>> 13), 1274126177);
+                return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+            };
+            mSeed[i] = h(i * 5 + 1);
+            const a = h(i * 5 + 2) * Math.PI * 2;
+            const r = 6 + (h(i * 5 + 3) * 64);
+            mOrigin[i * 3] = pt.x + (Math.cos(a) * r);
+            mOrigin[i * 3 + 1] = Math.min(pt.y + ((h(i * 5 + 4) - 0.35) * 90), ODYSSEY_SEA_LEVEL - 3);
+            mOrigin[i * 3 + 2] = pt.z + (Math.sin(a) * r);
+        }
+        const moteGeo = makeQuadInstancedGeometry(MOTES, {
+            aSeed: { array: mSeed, itemSize: 1 },
+            aOrigin: { array: mOrigin, itemSize: 3 },
+        });
+        moteMat = new THREE.MeshBasicNodeMaterial();
+        const mS = attribute('aSeed', 'float');
+        const mO = attribute('aOrigin', 'vec3');
+        // Constant-velocity drift upward with a slow sine sway; fract recycles each mote.
+        const mRise = fract(uTime.mul(0.014).mul(mS.mul(0.5).add(0.6)).add(mS));
+        const mSway = sin(uTime.mul(0.30).add(mS.mul(41))).mul(2.2);
+        const moteCenter = vec3(
+            mO.x.add(mSway),
+            mO.y.add(mRise.mul(70)),
+            mO.z.add(mSway.mul(0.7)),
+        );
+        const moteSize = mS.mul(0.6).add(0.5); // 0.5–1.1 u — SIZE-capped, per the plan
+        moteMat.positionNode = billboardWorld(moteCenter, moteSize);
+        const mUv = uv();
+        const mRadial = float(1).sub(smoothstep(float(0.0), float(0.5), length(mUv.sub(vec2(0.5)))));
+        // Transmitted light: brightness rises with depth below the surface, because the
+        // background darkens with depth — the same inverse the vault's ember gate uses.
+        const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
+        moteMat.colorNode = mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
+            .mul(mDepth.mul(0.9).add(0.35))
+            .mul(uOutputScale);
+        moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged).mul(0.42);
+        moteMat.transparent = true;
+        moteMat.depthWrite = false;
+        moteMat.blending = THREE.AdditiveBlending;
+        moteMat.fog = false;
+        moteMesh = new THREE.Mesh(moteGeo, moteMat);
+        moteMesh.frustumCulled = false;
+        moteMesh.renderOrder = 4;
+        moteMesh.name = 'odyssey-world-motes';
+        group.add(moteMesh);
+    }
+
     // ── forest ──
     const treeGeo = buildTreeGeometry();
     const trees = scatterTrees(relief.sample, {
@@ -1072,6 +1139,7 @@ export function createOdysseyWorld({
         outputSaturation,
         clouds,
         godRays: rayCount > 2 ? rayCount : 0,
+        motes: moteMesh ? 640 : 0,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
@@ -1133,6 +1201,7 @@ export function createOdysseyWorld({
             // lesson logged — so the gate has to be a `visible` write on the CPU.
             if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
             if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001;
+            if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 treeMeshes[i].visible = Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
@@ -1142,6 +1211,8 @@ export function createOdysseyWorld({
             group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
             [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
+            if (moteMat) moteMat.dispose();
+            if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
             treeGeo.dispose();
