@@ -2194,3 +2194,56 @@ export class OpponentWatchManager {
         }
     }
 }
+
+/**
+ * Wire the spectator's main-board spotlight DOM to a watch manager: the manager
+ * renders the selected player full-size onto the spotlight canvas and reports
+ * name/frags changes back here for the header + card framing.
+ * No-op when the spotlight markup isn't mounted.
+ * @param {OpponentWatchManager} watchManager
+ * @param {{ getPlayerColor?: (id: string) => string|undefined }} [hooks]
+ *   getPlayerColor resolves a roster id to its assigned colour (fallback tint).
+ */
+export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
+    const spotlightCanvas = document.querySelector('#online-main-board .spectator-spotlight-canvas');
+    if (!spotlightCanvas) return;
+    const nameEl = document.querySelector('#online-main-board .spectator-spotlight-name');
+    const fragsEl = document.querySelector('#online-main-board .spectator-spotlight-frags');
+    const eyeEl = document.querySelector('#online-main-board .spectator-spotlight-eye');
+    // The player card frames the whole center column. Host/peer tint it to their OWN
+    // colour (_processRenderFrame ~1841); a spectator has no local player so it kept the
+    // default BLUE — the other half of the "purple+blue border" the user reported. Tint
+    // it to the SPOTLIGHTED player's colour to match the host/peer look.
+    const playerCardEl = document.getElementById('online-player-card');
+    // Pending-garbage meter for the spotlight — mirrors the main board's vertical
+    // bar so the watched board reads like a real player board (the watcher missed it).
+    const spotlightGarbage = document.querySelector('#online-main-board .spectator-spotlight-garbage');
+    watchManager.setSpotlight(spotlightCanvas, {
+        garbage: spotlightGarbage ? {
+            meter: spotlightGarbage,
+            fill: spotlightGarbage.querySelector('.garbage-fill'),
+            segments: spotlightGarbage.querySelector('.garbage-segments'),
+        } : null,
+        onChange: (player) => {
+            if (nameEl) nameEl.textContent = player?.name || 'SPECTATING';
+            if (fragsEl) fragsEl.textContent = player ? `⚔️ ${player.frags || 0}` : '';
+            // Tint the spotlight CANVAS to the SELECTED player's colour so the watched
+            // board's frame reflects who you're watching. The purple #online-board-border
+            // overlay is hidden under .spectating, so the canvas border+glow is the single
+            // clean frame around the board (matching the host/peer board).
+            const color = player?.color || (player?.id && getPlayerColor?.(player.id)) || '#5eead4';
+            if (nameEl) nameEl.style.color = color;
+            if (eyeEl) eyeEl.style.color = color;
+            spotlightCanvas.style.borderColor = color;
+            spotlightCanvas.style.boxShadow = `0 0 22px ${color}55, inset 0 0 14px ${color}22`;
+            // Match host/peer card framing (see _processRenderFrame): coloured border +
+            // glow + faint gradient — so the whole center frame reflects the watched player.
+            if (playerCardEl) {
+                playerCardEl.style.borderColor = `${color}cc`;
+                playerCardEl.style.borderWidth = '3px';
+                playerCardEl.style.boxShadow = `0 0 30px ${color}66, inset 0 0 20px ${color}1a`;
+                playerCardEl.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${color}0d)`;
+            }
+        },
+    });
+}
