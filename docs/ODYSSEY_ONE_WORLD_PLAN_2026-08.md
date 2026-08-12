@@ -1443,7 +1443,33 @@ Ch3 lake dressing could be re-authored. All three were answered by shipping. Wha
 them are **two items that outlived the plan, neither of which is wave work, and both of which
 are blocked on the owner rather than on implementation.**
 
-### 7.1 Lane B needs the Radeon machine — BLOCKED ON HARDWARE
+### 7.1 Lane B — **ANSWERED (2026-08-12): 9.90 ms p50, zero drift — and it is OVER the 7.0 ms budget**
+
+> First, a correction of this section's own premise: the 610M is not another machine — it is
+> THIS laptop's iGPU, forced with `--low-power`. The blocker was never hardware access; it was
+> discipline (cooled, quiet, honest instrument), and the closure pass repeated the plan's
+> favourite failure mode by asserting otherwise without checking.
+
+**The run (cooled, nothing else on the GPU, station pinned):** baseline and repeat
+content-matched at 50 draws / 756,005 tris, p50 **9.895936 ms in BOTH** — `baselineDriftMs`
+exactly 0.00, the first defensible number this lane has ever produced. The earlier "between 4
+and 10" resolves to the top of the range: 4.19 was the sticky-sampler artefact. Against the
+7.0 ms contract the lane is **over by ~2.9 ms (41 %)** — while remaining 4-7x cheaper than
+the dioramas (39.5-67.7 ms), so the rebuild's saving was never in question, only the last
+stretch to an aspirational budget.
+
+**What the same run bought:** the level-node A/B finally priced the orbs on the lane where it
+matters — **0.59 ms p50** for the whole group *including the restored sparkles* (§7.2a), and
+the group owns the TAIL: baseline p99 18.94 vs 9.90 with orbs hidden. The per-frame instance
+writes are the suspect for the spikes.
+
+**The open decision (owner's):** close the 2.9 ms by optimisation (the orb group's 0.59 is
+the largest single lever measured so far; tier-gating on the weak lane is the mechanism Wave
+7 deferred) or re-budget max above 9.9 and let the gate hold the new line. The baseline cell
+in `perf-budgets.json` stays **null until that call** — committing 9.9 against max 7.0 reds
+the gate, which should happen by decision, not by side effect.
+
+*(Original section, superseded above:)* Lane B needs the Radeon machine — BLOCKED ON HARDWARE
 
 Everything left in Wave 7 is gated on one measurement that cannot be taken on the RTX. Lane A
 is answered and healthy: 0.393 ms p50 against a 1.5 ms gate, with 1.1 ms of headroom and the
@@ -1474,8 +1500,23 @@ LOST VISUAL, not just dead cost: the orbs used to glitter. The call is binary �
 attribute loop per dirty frame) or **restore it at ~1.2 world units**, which brings back
 ~1,250 sprites of real additive area and is therefore a Lane B fill question too (§7.1).
 Restoring it is a visual change owing a capture (ADR-0007).
+*(DECIDED AND DONE 2026-08-12: restored at 1.0 world units, in-game capture verified — a warm
+glitter halo per orb under the real ACES grade, sitting well in Earth Core. Restored BEFORE
+the Lane B run so the A/B priced the real thing: the whole orb group incl. visible sparkles
+is 0.59 ms p50 on the 610M. Affordability rides on the §7.1 budget decision.)*
 
-**(b) The ch5 -> ch6 cloud bank** — the harder one:
+**(b) The ch5 -> ch6 cloud bank** — *BUILT AND IN-GAME VERIFIED (2026-08-12).* Same
+architecture as the quench (its four capture iterations paid for the lessons), deliberately
+different look: a Y-squashed stratus lens whose colour ramp runs DOWN — summit daylight
+through the authored `SEAM_56_AURORA_BRIDGE` teal into ch6's void — with an aurora lift on
+the bright billows mid-crossing. Deriving the palette from the bridge BY IMPORT makes the
+moment continuous with the shipped handoff by construction (and a test forbids re-inlining
+the hexes). Captured at the peak (p=0.648: indigo strata fill the frame, the teal aurora band
+reads from inside the weather) and the approach (p=0.615: the world dims toward the crossing;
+ch6's gas giant already reads through the veil — the early-ignite being kind). The bridge
+STAYS, per the build-first rule. Open taste notes, not chased: the approach-side billow is a
+touch blotchy against daylight, and both act-edge volumes share tuning levers if a look pass
+is ever wanted. The original scoping below is kept for the record:
 
 The ch1 -> Act II occlusion moment shipped (§5, the steam quench). The summit -> cosmos edge
 is the harder one and the last piece of the rebuild's original intent.
