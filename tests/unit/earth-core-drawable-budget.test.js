@@ -40,7 +40,10 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
             fam[key] = (fam[key] || 0) + 1;
             if (o.material) [].concat(o.material).forEach((m) => materials.add(m.uuid));
         });
-        console.log(`TOTAL drawables: meshes=${meshes} sprites=${sprites} instanced=${instanced} materials=${materials.size}`);
+        console.log(
+            `TOTAL drawables: meshes=${meshes} sprites=${sprites} `
+            + `instanced=${instanced} materials=${materials.size}`,
+        );
         Object.entries(fam).sort((a, b) => b[1] - a[1])
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
         expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(55);
