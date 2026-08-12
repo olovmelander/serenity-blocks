@@ -14,6 +14,7 @@ import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
 import { createSteamQuench } from './composition/odyssey-steam-quench.js';
+import { createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -148,7 +149,7 @@ const ONE_WORLD_OUTPUT_SCALE = 0.82;
 const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
-// Half-width of the ch1->Act II steam window, in progress units. Deliberately 2x the
+// Half-width of BOTH act-edge occlusion windows, in progress units. Deliberately 2x the
 // authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
 // occluder narrower than the thing it occludes just frames it. Same principle the Ch3 shore
 // work landed on — a dissolve band must be wider than the noise it is dissolving.
@@ -364,6 +365,8 @@ export class OdysseyBoardController {
         this._oneWorldVisible = undefined;
         this.steamQuench = null;
         this._steamBoundary = NaN;
+        this.cloudBank = null;
+        this._cloudBankBoundary = NaN;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
         // enable the debug overlay — and then measured a frame with the overlay in it.
@@ -1823,6 +1826,25 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] steam quench unavailable (non-fatal):', error);
                     this.steamQuench = null;
                 }
+                // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
+                // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
+                // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
+                // handoff by construction; the bridge itself stays and colours the frame
+                // around the bank (build first — see the plan's occlusion item).
+                try {
+                    const boundary56 = this.presentationLayout?.chapterPositions?.[5];
+                    if (Number.isFinite(boundary56)) {
+                        this.cloudBank = createCloudBank();
+                        const at56 = getOdysseyPathPointAt(boundary56);
+                        this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
+                        this.cloudBank.mesh.visible = false; // gated in the update below
+                        this.scene.add(this.cloudBank.mesh);
+                        this._cloudBankBoundary = boundary56;
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] cloud bank unavailable (non-fatal):', error);
+                    this.cloudBank = null;
+                }
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
@@ -2468,6 +2490,13 @@ export class OdysseyBoardController {
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.steamQuench.mesh.visible = inWindow;
             if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
+        }
+        if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
+            const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
+            const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
+            const inWindow = cameraProgress > lo && cameraProgress < hi;
+            this.cloudBank.mesh.visible = inWindow;
+            if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
         }
 
         // Update chapter environments based on camera position
@@ -3225,6 +3254,11 @@ export class OdysseyBoardController {
             this.scene.remove(this.steamQuench.mesh);
             this.steamQuench.dispose();
             this.steamQuench = null;
+        }
+        if (this.cloudBank) {
+            this.scene.remove(this.cloudBank.mesh);
+            this.cloudBank.dispose();
+            this.cloudBank = null;
         }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();
