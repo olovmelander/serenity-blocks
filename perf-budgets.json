@@ -96,9 +96,9 @@
             "note": "Rebuilt Earth Core at p=0.051, High/1080p, WITH orbs (the real frame). FILLED 2026-08-12 by the first admissible pair: 0.786/0.852 ms p50, drift -0.066 (one 65.536us timer tick), 92 draws with drawCallsMin==drawCallsMax in both windows \u2014 possible only after the corona-sprite flicker fix (plan \u00a710.3) ended the 92<->93 voids. Baseline is the worse of the pair. Pre-rebuild: 2.10 ms / 131 draws \u2014 the rebuild also made Lane A ~2.5x faster. Report: gpu-split-lanea-act1-ch1-full-postbake.json."
         },
         "odysseyAct1Ch1GpuP50LaneBMs": {
-            "baseline": null,
-            "max": 5.0,
-            "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33) WITH orbs. 2026-08-12 post backdrop-bake (plan \u00a710.2): sans orbs 27.98/29.10 ms p50 (drift 1.11, 83 draws min==max); FULL FRAME with orbs 31.06/32.44 ms p50 (drift -1.38, 92 draws min==max) \u2014 the real frame is 45% faster than pre-plan, every pair content-matched. Baseline stays null: committing ~31 against max 5.0 reds the gate; the 5.0 was an aspiration written before the lane was priced and needs a deliberate re-budget decision."
+            "baseline": 32.44,
+            "max": 35.0,
+            "note": "Same station, Radeon 610M/720p/Medium, WITH orbs (the real frame). RE-BUDGETED 2026-08-12 with the user's approval (plan \u00a710.5): the old max 5.0 was an aspiration written before the lane was priced; measured full frame after the backdrop bake is 31.06/32.44 ms p50 (drift -1.38, 92 draws min==max). Baseline is the worse of the pair; max 35.0 is a hold-the-line ratchet ~8% above it \u2014 TIGHTEN it as the carried levers land (haze trim, sprite->instanced migration; priced 3-5 ms together). History: pre-rebuild 57.21; post-3b sans orbs 40.24/41.48; post-bake sans orbs 27.98/29.10. Reports: gpu-split-laneb-act1-ch1-{noorbs-bake,full-postbake}.json."
         },
         "odysseyAct1Ch1DrawCalls": {
             "baseline": null,
