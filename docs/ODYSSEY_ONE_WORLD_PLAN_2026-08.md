@@ -862,7 +862,18 @@ this document's own prose — several waves this file described as done were not
 - [ ] **Occlusion moments** (promoted out of Wave 6, 2026-08-12) — **ch1->Act II SHIPPED
   (2026-08-12); ch5->ch6 remains.**
 
-  **THE STEAM QUENCH (ch1 -> Act II) — built, capture-verified, ported into the board.**
+  **THE STEAM QUENCH (ch1 -> Act II) — built, capture-verified, ported into the board,
+  and IN-GAME verified under the real grade (2026-08-12).** The playground runs
+  `NoToneMapping` while the board runs ACES + exposure — the exact "right in playground,
+  washed in-game" family — so the port owed an in-game capture that the first closure pass
+  failed to record as open. Taken at the peak (p=0.093, pinned seek): full occlusion holds,
+  billow structure survives the grade, no mud and no clipping. One design fact only the real
+  frame could show: the rail ribbon and orbs sit INSIDE the 110 u shell, so the player keeps
+  their path while the world changes behind the weather — better than a whiteout. One open
+  tuning note, deliberately not chased: on the approach (p≈0.068) the veil is still thin when
+  Act II's submerged blue already reads through it — narratively right (water ahead), but if
+  the reveal should hold back longer, the fix is an asymmetric density curve (approach side
+  steeper), one constant in `odyssey-steam-quench.js`.
   `composition/odyssey-steam-quench.js`, seated on the rail at the boundary and driven from
   progress over a window 2x the authored seamWidth (an occluder narrower than the crossfade it
   hides just frames it). A BackSide sphere the camera flies THROUGH, because an occlusion
@@ -1451,7 +1462,20 @@ baseline,no-level-nodes,baseline-repeat` on a cooled machine with no browser ope
 ADR-0016 — a stray WebGPU tab cost this plan a false 3x finding). Then, and only then, the
 per-tier prohibitions and the tier-table expansion are decidable.
 
-### 7.2 The ch5 -> ch6 cloud bank needs a look call — BLOCKED ON TASTE
+### 7.2 Two look calls — BLOCKED ON TASTE
+
+**(a) The orb sparkle cloud is invisible, and has been since the WebGPU port.** Found during
+the Wave 7 audit, verified independently, then dropped from every record until 2026-08-12:
+the 5,280-sprite sparkle cloud around the level orbs renders at **0.86 px** — the port's
+size conversion is ~30× too small (`worldSize = aNodeScale * 0.04` in
+`level-node-manager.tsl.js`; the legacy 2.5 px sprite maps to ~1.2 world units). This is a
+LOST VISUAL, not just dead cost: the orbs used to glitter. The call is binary — **delete it**
+(−5,280 instances, −10,560 tris, −21,120 vertex invocations, plus a 5,280-iteration CPU
+attribute loop per dirty frame) or **restore it at ~1.2 world units**, which brings back
+~1,250 sprites of real additive area and is therefore a Lane B fill question too (§7.1).
+Restoring it is a visual change owing a capture (ADR-0007).
+
+**(b) The ch5 -> ch6 cloud bank** — the harder one:
 
 The ch1 -> Act II occlusion moment shipped (§5, the steam quench). The summit -> cosmos edge
 is the harder one and the last piece of the rebuild's original intent.
@@ -1475,6 +1499,13 @@ removing anything** — deleting the bridge first leaves the seam with nothing.
 - **Ribbon streaming is de-scoped** — 15,360 triangles is not where a frame goes.
 - **Act II is chapters 2-5, not 2-6** — §3.0.1's table says ch2-ch6; the implementation
   deliberately narrowed it because the world's height field does not describe space.
+- **Folding the 8 chapter-marker toruses into one InstancedMesh is NOT the "20-minute free
+  win" the Wave 7 audit claimed.** Each marker owns a `MeshStandardMaterial` whose
+  `emissive`/`emissiveIntensity` the seam code animates **per frame, per marker**
+  (`OdysseyPathRenderer.createChapterMarkers` + `updateChapterTransition`), so the merge
+  means re-implementing that animation per-instance. Seven draw calls of upside against a
+  frame measured at 0.393 ms — refuted on cost/benefit, recorded here so it is not
+  rediscovered from the audit transcript and re-attempted.
 
 ---
 
