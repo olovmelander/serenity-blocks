@@ -354,6 +354,40 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 > one is 0.12, i.e. **twelve times wider than the job requires**, and everything it touches outside
 > the crossing is collateral wash.
 
+> **WAVE 1 — TWO OF THREE ITEMS SHIPPED, AND THE THIRD IS NOW THE WHOLE JOB. Still UNCHECKED.**
+>
+> **The quench's EXIT window is narrowed 0.06 → 0.03** (approach untouched at 0.06, which was
+> tuned deliberately). Geometry, independently derived: the spline is 1,767.6 u long, so ±0.06 of
+> progress is **±106 u against a 110 u sphere** — the eye never leaves the BackSide shell, and a
+> BackSide shell you are inside covers 100% of the frame. That is why the veil was still ~18%
+> opaque at p=0.130, painting cumulus 116 u under water. VERIFIED by capture: the quench no longer
+> draws at p=0.130. Note this is **not** the §7.2 decision — the approach and the shape at the
+> crossing are untouched; only the tail that veiled half an act is gone.
+>
+> **The far-shore forest no longer submits while submerged.** The trees are legitimately the shore
+> (`scatterTrees` rejects sites below sea level + 3; lowest trunk y=290.3 vs sea 287.31) but are
+> provably invisible from under water: tracing eye→treetop rays to their sea-level crossing gives
+> at p=0.174 **2,057 hidden by opaque water, 13,355 by terrain, ZERO potentially visible**. It
+> cannot be otherwise — for an eye D below the surface and a treetop T above it at range X the ray
+> meets the plane at X·D/(D+T) < X. Meanwhile 5–13 chunks passed the frustum, submitting
+> 1,537–4,697 instances and 46k–141k triangles to be shaded and painted over. VERIFIED by capture:
+> **16 chunks visible → 0**. The first attempt was placed above the per-chunk range loop and was
+> silently overwritten by it — caught by the capture, not by the tests; the gate now lives inside
+> that loop.
+>
+> **⚠️ THE FRAME GOT FLATTER, AND THAT IS THE HONEST RESULT.** midWash at p=0.130 went
+> **0.283 → 0.975** and meanLuma 116.9 → 73. The steam was supplying *all* the value contrast in
+> that frame; removing it leaves the wash underneath, which is the second, separate defect. The
+> chapter now reads at p=0.130 the way it always read at p=0.167 (midWash 0.891). **So Wave 1's
+> third item — one convergence colour, per-channel extinction, and killing the 0.97 `wT` clamp
+> that collapses everything past ~470 u onto three same-family blues — is no longer a tidy-up. It
+> is the whole remaining job, and the chapter will not look like water until it lands.**
+>
+> **Re-baseline required before any perf claim.** Both changes remove draws, so no pair spans them
+> and `odysseyAct1UnderwaterGpuP50LaneBMs` / `odysseyAct2DeepOceanGpuP50LaneBMs` must be
+> re-measured from scratch. Expected direction is a saving (11 of the 45 draws at p=0.16 were
+> forest) but **no number is claimed here because none was measured.**
+
 ### Wave 2 — The seam (needs an owner decision first, see §7)
 - Give the quench a **plateau** rather than an apex, centred on the boundary.
 - Bind the act gate to the occluder's cover instead of the constant 0.03 margin.
