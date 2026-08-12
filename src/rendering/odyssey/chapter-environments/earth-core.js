@@ -982,6 +982,18 @@ export function createEarthCoreEnvironment(options = {}) {
         return mesh;
     });
     group.userData.godRays = godRays;
+    // WAVE 6 — THE CRACK PRE-SEED, through geometry that already exists. The light-language
+    // flip (warm key below -> cool key above) must START before the quench so the veil is a
+    // flash, not a hue cut. Rather than new shaft cards, the chapter's own god-ray cones walk
+    // their tint from ember toward the quench's cool vapour as the seam engages: zero new
+    // draws, zero new materials, and the colour comes from the shipped STEAM_COOL so the
+    // pre-seed and the occluder cannot drift apart.
+    group.userData.godRayTint = {
+        uniform: sharedGodRay.material.userData.uniforms.uTint,
+        warm: new THREE.Color(0xff8a2e),
+        cool: new THREE.Color(0x9fc4d8), // STEAM_COOL pulled toward steel so it stays a HINT
+        scratch: new THREE.Color(),
+    };
     group.userData.lavaFallRevealables = [lavaFallGroup, fallSplash, godRays[0]];
 
     // 12b. THE FIRST HEART — the chapter's hero / destination landmark (plan item 1):
@@ -1944,6 +1956,12 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         group.userData.localProgress = local;
         group.userData.cameraProgress = cameraProgress;
         uniforms.uDescent.value = local;
+        const tintRig = group.userData.godRayTint;
+        if (tintRig && uniforms.uSeam) {
+            // Ease with the seam's own value so the walk and the quench share one clock.
+            const w = uniforms.uSeam.value;
+            tintRig.uniform.value.copy(tintRig.scratch.copy(tintRig.warm).lerp(tintRig.cool, w));
+        }
         if (uniforms.uSeam) {
             uniforms.uSeam.value = Math.max(
                 THREE.MathUtils.smoothstep(local, 0.70, 0.86),
