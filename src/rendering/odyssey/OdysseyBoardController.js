@@ -344,7 +344,13 @@ export class OdysseyBoardController {
         // environments with a single continuous surface — see
         // docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md. Flagged rather than switched so the shipped
         // journey is bit-identical until it is capture-verified in the real game.
-        this.oneWorldEnabled = options.oneWorld === true || readBooleanUrlFlag('odysseyOneWorld');
+        // ONE WORLD IS NOW THE DEFAULT PATH for chapters 2-5 (Wave 3). `?odysseyOneWorld=0`
+        // forces the legacy dioramas back — a one-URL revert, kept because this replaces the
+        // ground under two thirds of the journey and a single query parameter is a cheaper
+        // escape hatch than a rebuild.
+        const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
+        this.oneWorldEnabled = options.oneWorld === true
+            || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
         this.oneWorld = null;
         this._oneWorldActT = 0;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
