@@ -612,7 +612,15 @@ export function createSnowFloorTSL(uTime, offsetY = -123.75) {
     material.colorNode = color;
     material.opacityNode = alpha;
     material.side = THREE.FrontSide;
-    material.depthWrite = false;
+    // GROUND PLATE WRITES DEPTH. The snow floor is opaque ground and sits at renderOrder -1,
+    // i.e. it is drawn BEFORE every renderOrder-0 transparent in Ch4 (the hero peaks, the seam
+    // conifer belt, the sky-drift dark wisps). With depthWrite off, anything behind it in the
+    // world but later in the bucket painted over it. Exactly the "SOLIDITY FIX" reasoning
+    // applied to the peaks above, and the same remedy: write depth, and alphaTest away the
+    // invisible outer ring (the 2000->2800 radial fade plus its +-400u edge-noise warp) so the
+    // apron does not stamp an oversized depth disc into the sky it should be dissolving into.
+    material.depthWrite = true;
+    material.alphaTest = 0.04;
     material.depthTest = true;
     material.transparent = true;
 

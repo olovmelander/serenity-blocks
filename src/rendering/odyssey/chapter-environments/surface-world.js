@@ -1814,15 +1814,17 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
 
     const bridge = group.userData.foothillBridge;
     const bridgeMaterial = bridge?.material;
-    // WebGPU/TSL: the bridge's uOpacity is a TSL uniform node tagged on userData.odysseyUniforms.
-    const bridgeOpacityNode = bridge?.userData?.odysseyUniforms?.uOpacity;
-    if (bridgeMaterial && bridgeOpacityNode) {
-        const bridgeOpacity = bridgeOpacityNode.value;
-        const shouldWriteDepth = bridgeOpacity >= 0.98 && surfaceOpacity >= 0.98;
-        if (bridgeMaterial.depthWrite !== shouldWriteDepth) {
-            bridgeMaterial.depthWrite = shouldWriteDepth;
-            bridgeMaterial.needsUpdate = true;
-        }
+    // GROUND PLATES WRITE DEPTH UNCONDITIONALLY. This used to drop the skirt's depthWrite
+    // whenever `surfaceOpacity < 0.98` — and surfaceOpacity is
+    // smoothstep(probeY, waterSurfaceY - 12, waterSurfaceY + 2), i.e. it is below 0.98 for the
+    // ENTIRE time the camera is rising through the waterline. So the one ground surface that
+    // carries the eye out of the lake and up into the range stopped occluding at precisely the
+    // moment the player reports seeing through it. The builder ships depthWrite:true
+    // (createFoothillBridgeTSL in surface-world.tsl.js) and it now stays true: the skirt is
+    // opaque ground, not a veil, and a rim melt is a fade, not a reason to stop writing depth.
+    if (bridgeMaterial && bridgeMaterial.depthWrite !== true) {
+        bridgeMaterial.depthWrite = true;
+        bridgeMaterial.needsUpdate = true;
     }
 
     // Sky visibility (hide sky sphere when underwater for ocean fade)
