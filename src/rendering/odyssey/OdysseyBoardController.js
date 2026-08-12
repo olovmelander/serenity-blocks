@@ -775,6 +775,17 @@ export class OdysseyBoardController {
         this.nodeManager.setCamera(this.camera);
         // Node focal hierarchy + per-world shells ride the same always-on spine.
         this.nodeManager.setAAAVisualsEnabled(this.cinematicJourneyActive);
+        // ONE WORLD Wave 3: level orbs consult the CPU mirror of the drawn ground, so a node
+        // can never sit inside a rise the shader displaced above the spline. Act II only —
+        // outside it the chapters own their ground, and Ch1's nodes are UNDER the terrain.
+        if (this.oneWorld) {
+            const cp = this.presentationLayout.chapterPositions;
+            this.nodeManager.setGroundSampler(this.oneWorld.heightAt, {
+                clearance: 7,
+                rangeStart: cp[1],
+                rangeEnd: cp[5],
+            });
+        }
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
         trace.end('nodes');

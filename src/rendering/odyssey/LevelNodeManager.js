@@ -127,6 +127,10 @@ export class LevelNodeManager {
         this.scene = scene;
         this.pathCurve = pathCurve;
         this.nodes = new Map(); // levelId → NodeObject
+        // One World ground seating (see setGroundSampler). Null = pure spline placement.
+        this._groundSampler = null;
+        this._groundClearance = 6;
+        this._groundRange = [0, 1];
         this.selectedNode = null;
         this.hoveredNode = null;
         this.time = 0;
@@ -251,10 +255,39 @@ export class LevelNodeManager {
 
     _getPathPoint(t, target) {
         const clampedT = THREE.MathUtils.clamp(t, 0, 1);
-        if (this.pathEvaluator) {
-            return this.pathEvaluator(clampedT, target);
+        const point = this.pathEvaluator
+            ? this.pathEvaluator(clampedT, target)
+            : this.pathCurve.getPointAt(clampedT, target);
+        // ONE WORLD (plan §3.0 / Wave 3): props consult the CPU mirror of the drawn ground.
+        // The spline was solved against the MACRO terrain, but the drawn surface adds baked
+        // relief on top — a node placed by spline altitude alone can sit inside a rise the
+        // shader displaced above it. Seating is one-way: lift to clear the ground, never pull
+        // down toward it (nodes in the sky are authored to float there).
+        if (this._groundSampler && clampedT >= this._groundRange[0] && clampedT <= this._groundRange[1]) {
+            const ground = this._groundSampler(point.x, point.z);
+            if (Number.isFinite(ground)) {
+                point.y = Math.max(point.y, ground + this._groundClearance);
+            }
         }
-        return this.pathCurve.getPointAt(clampedT, target);
+        return point;
+    }
+
+    /**
+     * Give node placement a ground truth to stand on. `sampler(x, z)` returns the drawn
+     * terrain height (the One World CPU mirror) or a non-finite value to skip. Only path
+     * positions within [rangeStart, rangeEnd] are seated — outside Act II the chapters own
+     * their own ground (Ch1 is UNDER the terrain, so a global lift would be wrong there).
+     * Re-seats every existing node immediately, so wiring order does not matter.
+     * @param {(x:number, z:number) => number} sampler
+     * @param {{clearance?:number, rangeStart?:number, rangeEnd?:number}} [opts]
+     */
+    setGroundSampler(sampler, { clearance = 6, rangeStart = 0, rangeEnd = 1 } = {}) {
+        this._groundSampler = typeof sampler === 'function' ? sampler : null;
+        this._groundClearance = clearance;
+        this._groundRange = [rangeStart, rangeEnd];
+        this.rebuildPositionCache();
+        this.nodes.forEach((node) => this.updateNodePathPlacement(node));
+        this._markUploadDirty();
     }
 
     setCameraProgress(progress) {
