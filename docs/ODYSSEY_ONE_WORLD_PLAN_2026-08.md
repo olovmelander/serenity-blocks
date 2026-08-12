@@ -693,72 +693,30 @@ whole rebuild is for, plus a genuinely reduced Lane B tier, and it must be re-me
 rather than reasoned about. It also means **One World's own Lane B cost is now the single most
 valuable unknown in the plan**, and the harness cannot currently measure it (below).
 
-#### BLOCKER (2026-08-12, active): One World in-game boot stalls — elimination complete on the board side
+#### RESOLVED (2026-08-12, 09:5x): the boot stall was a three r181 codegen bomb in the world's own shaders
 
-Every in-game One World boot after the 01:19 commits stalls before readiness. The legacy path
-is fine, the playground renders the full world (clouds included) perfectly, and the renderer
-main thread is BLOCKED during the stall — the boot probe's `executeJavaScript` never returns,
-so this is synchronous work or a wedged main thread, not a slow GPU.
+The night's three root-cause theories (commit regression, hardware degradation, GPU selection)
+were each disproven by their own experiment; the real mechanism was found by bisecting the
+playground's frozen load per mesh with the new `?worldOnly=` lever: **sky 0.02 s, clouds
+0.03 s, forest 0.02 s, ground 26.8 s, water 129.3 s** — ~156 s of synchronous main-thread
+JavaScript on EVERY load, while the emitted WGSL stayed ~6 KB. three r181's node builder
+re-walks shared subexpressions once per reference, straight through Var and Varying nodes
+(measured: `.toVar()` inside the fold changed nothing), so the massif smooth-max fold
+expressed in TSL and referenced five ways from the water fragment multiplied into minutes.
 
-The elimination table, every row a real run:
+Fix: `bakeMacroTexture()` — [macro, weight, dMacro/dx, dMacro/dz] in one 512² RGBA16F
+texture; the analytic `tslMacro`/`tslWeight` are deleted with a tombstone. Full world:
+**first render 155.5 s → 0.05 s; page to ready 1.1 s.** Captures visually identical.
 
-| variable isolated | result |
-|---|---|
-| legacy (no flag), same harness, same commits | ✓ boots, 9 frames |
-| Dawn/GPU caches cleared | ✗ still stalls |
-| world prewarm disabled | ✗ still stalls |
-| cloud deck mesh withheld (`?odysseyWorldNoClouds=1`) | ✗ still stalls |
-| corridor suppression disabled | ✗ still stalls |
-| level-orb ground sampler | exonerated statically (empty maps, flag write) |
-| `_chapters` positional indexing | exonerated statically (self-iterating only) |
+In-game validation (the command below): **One World boots — `ready`, 7 frames, High/WebGPU.**
+The stall grew past the harness readiness windows as the graph gained references commit by
+commit, which is why the "last known-good commit" also stalled and every environmental theory
+half-fit. The elimination table below is kept as a record of how three wrong theories were
+each falsified by measurement.
 
-One measurement in this table was INVALID and got fixed: the capture harness's `parseArgs` was
-last-one-wins for repeated options, so `--url-flag A --url-flag B` silently dropped A — a run
-that "proved" the cloud fix had actually booted the LEGACY path (the tell: the manifest's
-urlFlags and a "Prewarmed chapter 4 shaders" line for a suppressed chapter). parseArgs now
-accumulates; always check the manifest's urlFlags before believing a bisect.
-
-**RESOLVED AS AN AXIS (2026-08-12, late): the regression is NOT in the commits.** The decisive
-run: a git worktree pinned to the last-known-good commit (`614f77a5`), junctioned node_modules,
-the exact window and flags that succeeded at 00:26 — **and it stalls identically.** Same code,
-same configuration, different outcome; the variable that changed is the MACHINE. This session
-ran 40+ heavy WebGPU Electron boots with force-kills, the legacy control's boot time grew from
-~2 minutes to ~7, and the project memory documents exactly this accumulated GPU
-reload-degradation state (the "1 fps after heavy reloads" entry; recovery = reboot). One World,
-whose boot is the heaviest, is simply the first thing to fall over the readiness horizon.
-
-Standing down the code hunt: the two renderer hunks (detailTex RGBA, curvature) are exonerated
-along with everything else — nothing in the elimination table was ever going to converge,
-because every row was measured on progressively more degraded hardware. The false-negative
-risk cut the other way too: the "breaking window" correlation was TIME, not commits.
-
-**CORRECTED (2026-08-12, 08:45) — the machine HAD already rebooted (07:50), so the
-degradation story was wrong too. The real mechanism, finally measured with an adapter probe:**
-
-- **Without `force_high_performance_gpu`, WebGPU on this machine selects the Radeon 610M —
-  and the page-level `powerPreference: 'high-performance'` hint is IGNORED on Windows
-  (crbug 369219127), returning the SAME amd/rdna-2 adapter.** With the switch: nvidia
-  blackwell. A plain browser tab therefore runs the playground on the 67 ms/frame iGPU with
-  no way for the page to opt out — the fix is user-side, one-time: Windows Settings →
-  Display → Graphics → add the browser → High performance.
-- **The harness "stalls" were cold Dawn shader-cache marathons**: the DawnWebGPUCache was
-  deleted mid-debugging (~08:30), after which every boot had to recompile every pipeline from
-  scratch — the legacy control crawled to 7 minutes and One World, the heaviest boot, blew
-  past every readiness timeout. Force-killing runs mid-compile kept the cache from ever
-  completing, which made "still stalls" self-sustaining. Recovery: let ONE boot run to
-  completion, uninterrupted, so the cache rebuilds; subsequent boots are fast.
-
-The playground HUD now shows the physical adapter (`WebGPU · nvidia blackwell` vs
-`· amd rdna-2`) and logs the Windows instruction when it lands on the iGPU, so this is
-answered by reading the header, never by another elimination table.**
-
-```
-node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs --chapter 4 --url-flag odysseyOneWorld=1 --frames 4
-```
-
-Shipped as instruments, kept: `clouds` lever on `createOdysseyWorld` (+`?odysseyWorldNoClouds`),
-the accumulating `--url-flag` parser, and the probe's `PROBE_FLAGS` env passthrough
-(`PROBE_PORT=5173 PROBE_FLAGS=odysseyOneWorld=1 node scripts/run-electron.mjs scripts/odyssey-boot-probe.mjs`).
+**LESSON, plan-wide:** CPU-expressible terrain math goes in BAKES, not TSL graphs. A TSL
+expression with high fan-out referenced through varyings is a build-time bomb in r181, and
+`.toVar()` does not defuse it.
 
 #### Known harness limitation
 
