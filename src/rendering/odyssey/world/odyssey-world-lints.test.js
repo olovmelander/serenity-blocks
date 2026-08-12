@@ -130,3 +130,23 @@ describe('vertex-stage texture reads pin their LOD (.level)', () => {
         expect(textureCallCount).toBeGreaterThanOrEqual(2);
     });
 });
+
+describe('every world material opts out of scene fog', () => {
+    // The trap that has now cost THREE sessions (painterly-ascent sky, Ch6 summit earth, the
+    // One World sky dome): the board rewrites scene.fog every frame from the chapter profile,
+    // and FogExp2 saturates anything at range to the fog colour — silently, with no error,
+    // looking exactly like a palette bug. The world's materials carry their own aerial
+    // perspective (applyAerial), so every one of them MUST set fog = false. This pins the
+    // opt-out list to the constructor list, so a sixth material cannot ship half-fogged.
+    it('the fog opt-out list names every material the renderer constructs', () => {
+        const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
+        const constructed = [...source.matchAll(/const\s+(\w+)\s*=\s*new\s+THREE\.\w*NodeMaterial\(/g)]
+            .map((m) => m[1]);
+        expect(constructed.length).toBeGreaterThanOrEqual(5);
+
+        const optOut = source.match(/\[([^\]]+)\]\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
+        expect(optOut, 'the fog opt-out forEach must exist').toBeTruthy();
+        const listed = optOut[1].split(',').map((name) => name.trim());
+        expect([...listed].sort()).toEqual([...constructed].sort());
+    });
+});
