@@ -146,6 +146,14 @@ const ONE_WORLD_OUTPUT_SCALE = 0.82;
 const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
+// How far outside Act II the world keeps drawing, in progress units. It is the authored
+// seamWidth of BOTH act-edge boundaries — ch1->ch2 and ch5->ch6 are each 0.03 in
+// chapter-profile.js, and ChapterEnvironmentManager uses seamWidth as the ecotone half-width
+// — so the world is present for exactly the window in which the neighbouring chapter is
+// co-present, and no wider. Do NOT raise this to the journey's widest seam (Ch4's 0.06):
+// that reaches 0.033, which is only 35% into Chapter 1 and leaves the very defect this gate
+// exists to fix (Act II's ocean over the magma cathedral, captured at p=0.051) in place.
+const ONE_WORLD_ACT_MARGIN = 0.03;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -353,6 +361,8 @@ export class OdysseyBoardController {
             || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
         this.oneWorld = null;
         this._oneWorldActT = 0;
+        // undefined until the first update; `!== false` above keeps pre-gate behaviour then.
+        this._oneWorldVisible = undefined;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
         // enable the debug overlay — and then measured a frame with the overlay in it.
@@ -2391,10 +2401,14 @@ export class OdysseyBoardController {
         // at seams + low max-weight so the zenith→horizon gradient never flattens during a
         // crossfade. Set BEFORE atmosphere.update so its gradient-uniform writes are skipped
         // while hidden. Reversible via ?odysseyDomeCullOff=1.
-        if (this.atmosphere && this.oneWorld) {
+        if (this.atmosphere && this.oneWorld && this._oneWorldVisible !== false) {
             // ONE SKY (plan 3.4). The world draws its own full-coverage dome driven by the
             // colour script, so the global backstop is pure full-screen overdraw AND it
             // competes for the same pixels with a different palette.
+            //
+            // Gated on the world actually DRAWING (2026-08-12): this used to cull the global
+            // dome whenever a world existed, which outside Act II handed the sky to a world
+            // that the act-gate above has now hidden. Whoever draws owns the sky.
             this.atmosphere.setDomeVisible(false);
         } else if (this.atmosphere && this._domeCullEnabled) {
             const weightsMap = blendState?.weights;
@@ -2462,7 +2476,29 @@ export class OdysseyBoardController {
                 const actEnd = this.presentationLayout.chapterPositions[5];
                 const span = (actEnd - actStart) || 1;
                 this._oneWorldActT = (cameraProgress - actStart) / span;
-                this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
+
+                // ACT-GATE THE WORLD (2026-08-12). This is a CORRECTNESS fix before it is a
+                // perf one. The world group was added to the scene once and its `.visible`
+                // was never written, so its ground, water, sky dome, cloud deck and god-ray
+                // shafts drew through chapters 1, 6, 7 and 8 as well — chapters that own
+                // their own frame. Earth Core is the proof: its vault backstop is an OPAQUE
+                // BackSide sphere at r=250 with `depthWrite = false` and renderOrder -90, so
+                // the world's opaque geometry (renderOrder 0, depth-writing) passes the depth
+                // test everywhere and paints straight over it. Captured before/after: the
+                // authored ember-lit molten cathedral was rendering as magma columns floating
+                // in Act II's blue-teal ocean, complete with god-ray shafts.
+                //
+                // The margin keeps the world present across the act-edge seams, where the fog
+                // handoff ramps and the neighbouring chapter is still co-present.
+                const worldVisible = cameraProgress > (actStart - ONE_WORLD_ACT_MARGIN)
+                    && cameraProgress < (actEnd + ONE_WORLD_ACT_MARGIN);
+                this.oneWorld.group.visible = worldVisible;
+                this._oneWorldVisible = worldVisible;
+
+                // Only update it while it draws. `heightAt` and `fog` are plain data and stay
+                // readable either way, so the level-orb seating and the fog handover below are
+                // unaffected by the gate.
+                if (worldVisible) this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
             }
 
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
