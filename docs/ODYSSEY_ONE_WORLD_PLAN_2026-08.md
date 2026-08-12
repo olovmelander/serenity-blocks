@@ -693,6 +693,31 @@ whole rebuild is for, plus a genuinely reduced Lane B tier, and it must be re-me
 rather than reasoned about. It also means **One World's own Lane B cost is now the single most
 valuable unknown in the plan**, and the harness cannot currently measure it (below).
 
+#### BLOCKER (2026-08-12, active): One World in-game boot stalls — bisect state
+
+Every in-game One World boot AFTER commit `1d45d225` (the cloud deck, 01:19) stalls before
+readiness; every one before it succeeded (the graded ch4 captures). The stall is **not** the
+harness and **not** the legacy path:
+
+| run | flag | result |
+|---|---|---|
+| ch4 captures, pre-01:19 | ON | ✓ booted, measured, graded |
+| gpu-split baseline/no-bloom/no-level-nodes (02:00+) | OFF | ✓ booted, measured |
+| ch5 capture control (today) | OFF | ✓ 9 frames, exit 0 |
+| ch5 capture, 3 attempts (today) | ON | ✗ stalls, near-idle CPU, no readiness |
+
+Ruled out with evidence: Vite cache wedge (fixed separately, control passes through the same
+harness), Dawn GPU cache corruption (cleared, still stalls), the world prewarm (disabled in an
+experiment — still stalls), `presentationLayout` ordering (assigned at init start). The
+playground renders the cloud deck perfectly (freeze-check capture), so the deck's materials
+compile — the stall is specific to the in-game boot path with the world present.
+
+Prime suspect by elimination: the cloud-deck material inside the game's post-stack compile or
+warm-journey replay (the corridor suppression landed in the same commit and is second).
+Next instrument, not another guess: give `createOdysseyWorld` a `clouds: false` lever and give
+`odyssey-boot-probe.mjs` real `--url-flag` passthrough so a stalled boot can be dumped instead
+of inferred. Until this is fixed, ch2/ch5 captures and the flag flip are blocked.
+
 #### Known harness limitation
 
 **One World still has no GPU-time measurement on either lane, and the harness — not the world —
