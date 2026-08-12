@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
     abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, length, max, mix,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
-    texture, uniform, varying, vec2, vec3, cameraPosition,
+    texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
 
 import {
@@ -12,6 +12,7 @@ import {
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
+import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { sampleColourScript } from '../odyssey-colour-script.js';
 
 /**
@@ -408,6 +409,9 @@ export function scatterTrees(heightAt, {
 /**
  * @param {object} [opts]
  * @param {string} [opts.quality] 'high' | 'low'
+ * @param {Array<{x:number,y:number,z:number}>} [opts.railSamples] points along the journey
+ *   rail, sampled by the CALLER (the world deliberately does not know the path). Used to seat
+ *   the underwater god-ray shafts along the submerged stretch; empty means no shafts.
  * @param {boolean} [opts.clouds] BISECT LEVER, default true. When false the cloud deck's mesh
  *   never enters the scene, so its pipeline is never compiled — the material and geometry are
  *   still constructed (that part is proven safe headless). Exists because every IN-GAME One
@@ -432,7 +436,7 @@ export function scatterTrees(heightAt, {
  */
 export function createOdysseyWorld({
     quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
-    skyRadius = null,
+    skyRadius = null, railSamples = [],
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
@@ -581,13 +585,27 @@ export function createOdysseyWorld({
         .mul(detailGate)
         .add(0.985));
 
+    // CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
+    // causticProjection): two counter-scrolling gradient noises sharpened to bright
+    // veins. World-space UVs, so the port is the term itself, unchanged. Gated to below
+    // the waterline and faded in over the first few metres of depth. A small, LOW-FAN-OUT
+    // graph — the codegen lesson applies: keep it a leaf term, .toVar() the result.
+    const causticUv = positionWorld.xz.mul(0.055);
+    const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
+        .mul(snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
+            .add(snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15))))
+            .mul(0.5).add(0.5)
+            .pow(4.0))
+        .toVar();
+
     const sunVis = texture(sunVisTex, vUv).r;
     const ndl = max(dot(normal, uSunDir), 0);
     // Cavity occlusion: sunVis already knows what the massifs shadow, but it is baked at a
     // resolution that cannot see a gully. This is the small-scale half of the same term.
     const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
     const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
-        .add(uShadowTint.mul(0.36))).mul(cavity);
+        .add(uShadowTint.mul(0.36))).mul(cavity)
+        .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5));
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
@@ -754,7 +772,8 @@ export function createOdysseyWorld({
     // cloud floors — exactly the "strata at eye height" the chapter wants.
     const bandFade = smoothstep(float(40), float(200), abs(positionWorld.y.sub(cameraPosition.y)));
     cloudMat.opacityNode = puff.mul(rim).mul(nearFade).mul(bandFade)
-        .mul(float(1).sub(uSubmerged)).mul(0.94);
+        .mul(float(1).sub(uSubmerged))
+        .mul(0.94);
     cloudMat.transparent = true;
     cloudMat.depthWrite = false;
     cloudMat.side = THREE.DoubleSide;
@@ -766,6 +785,76 @@ export function createOdysseyWorld({
     cloudMesh.renderOrder = 6;
     cloudMesh.name = 'odyssey-world-clouds';
     if (clouds) group.add(cloudMesh);
+
+    // ── god rays (Ch2 port) ─────────────────────────────────────────────────────────
+    // The deep-ocean chapter's declared hero: descending light shafts with caustic shimmer.
+    // Ported as ONE InstancedMesh of open cones seated along the SUBMERGED stretch of the
+    // rail (the caller samples its spline into railSamples — the world does not know the
+    // path), tilted to the real ODYSSEY_WORLD_SUN rather than the old chapter's private
+    // "light from above" assumption. Visible only while the camera is underwater.
+    const sunkPoints = railSamples.filter((pt) => pt && pt.y < ODYSSEY_SEA_LEVEL - 6);
+    const rayCount = Math.min(14, sunkPoints.length);
+    let rayMesh = null;
+    let rayMat = null;
+    if (rayCount > 2) {
+        rayMat = new THREE.MeshBasicNodeMaterial();
+        const rUv = uv();
+        // Brightest where the shaft meets the surface, feathering to nothing as it descends;
+        // soft lateral feather so the cone melts into the water instead of reading as a shape.
+        const vFade = float(1).sub(rUv.y).pow(1.15);
+        const eFade = float(1).sub(abs(rUv.x.sub(0.5)).mul(2.0).pow(1.6)).pow(1.4);
+        const rayShimmer = snoise3(vec3(
+            rUv.x.mul(3.0),
+            rUv.y.mul(2.0).add(uTime.mul(-0.12)),
+            uTime.mul(0.2),
+        )).mul(0.5).add(0.5).pow(1.35)
+            .mul(0.55)
+            .add(0.45);
+        rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
+        rayMat.opacityNode = vFade.mul(eFade).mul(rayShimmer).mul(uSubmerged).mul(0.30)
+            .toVar();
+        rayMat.transparent = true;
+        rayMat.blending = THREE.AdditiveBlending;
+        rayMat.depthWrite = false;
+        rayMat.side = THREE.DoubleSide;
+        rayMat.fog = false;
+
+        const hash01 = (n) => {
+            let h = Math.imul(n ^ 0x9e3779b9, 2654435761);
+            h = Math.imul(h ^ (h >>> 13), 1274126177);
+            return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+        };
+        const sunLen = Math.hypot(...ODYSSEY_WORLD_SUN);
+        const sunDirV = new THREE.Vector3(...ODYSSEY_WORLD_SUN).divideScalar(sunLen);
+        // Lean toward the sun's azimuth but only PART WAY: at 25 degrees of solar elevation a
+        // full alignment lays the cones nearly sideways, and refraction at the surface bends
+        // real underwater shafts steeply toward the vertical (Snell), so a ~23 degree lean
+        // keeps the direction of the light readable without the fallen-over look the first
+        // capture showed. The AZIMUTH still matches the one canonical sun.
+        const fullTilt = new THREE.Quaternion()
+            .setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDirV);
+        const tilt = new THREE.Quaternion().slerp(fullTilt, 0.35);
+        const rayGeo = new THREE.ConeGeometry(12, 220, 12, 1, true);
+        rayMesh = new THREE.InstancedMesh(rayGeo, rayMat, rayCount);
+        const rm4 = new THREE.Matrix4();
+        const rPos = new THREE.Vector3();
+        const rScl = new THREE.Vector3();
+        for (let i = 0; i < rayCount; i += 1) {
+            const pt = sunkPoints[Math.floor((i / rayCount) * sunkPoints.length)];
+            const a = hash01(i * 3 + 1) * Math.PI * 2;
+            const r = 18 + (hash01(i * 3 + 2) * 46);
+            // Base (wide end) at the surface, apex feathering down toward the sea floor.
+            rPos.set(pt.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL - 96, pt.z + (Math.sin(a) * r));
+            const sc = 0.75 + (hash01(i * 3 + 3) * 0.7);
+            rScl.set(sc, 1, sc);
+            rayMesh.setMatrixAt(i, rm4.compose(rPos, tilt, rScl));
+        }
+        rayMesh.instanceMatrix.needsUpdate = true;
+        rayMesh.frustumCulled = false;
+        rayMesh.renderOrder = 3;
+        rayMesh.name = 'odyssey-world-godrays';
+        group.add(rayMesh);
+    }
 
     // ── forest ──
     const treeGeo = buildTreeGeometry();
@@ -876,6 +965,7 @@ export function createOdysseyWorld({
         outputScale,
         outputSaturation,
         clouds,
+        godRays: rayCount > 2 ? rayCount : 0,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
@@ -925,6 +1015,8 @@ export function createOdysseyWorld({
         dispose() {
             group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
             [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => m.dispose());
+            if (rayMat) rayMat.dispose();
+            if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
             treeGeo.dispose();
         },
