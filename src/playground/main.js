@@ -665,10 +665,21 @@ async function init() {
 
     // First frame: compile + render once, then raise the screenshot-ready signal.
     // WebGPURenderer.init() has already settled; r181 deprecates renderAsync().
+    // Boot-phase timestamps: when an effect takes minutes instead of seconds to first frame
+    // (odyssey-world, 2026-08-12: ~165 s), the question "WHICH step" must be answerable from
+    // the console of any browser, not by instrumenting a harness after the fact.
+    const bootT0 = performance.now();
+    const bootMark = (label) => {
+        // eslint-disable-next-line no-console
+        console.log(`[playground:boot] ${label} +${((performance.now() - bootT0) / 1000).toFixed(2)}s`);
+    };
+    bootMark('effect mounted, first applyFrame');
     applyFrame(tick(), simDt);
+    bootMark('first update applied, first render');
     // Effects may own their render (e.g. a post-processing pass); fall back to direct.
     if (current?.renderAsync) await current.renderAsync();
     else renderer.render(scene, camera);
+    bootMark('first render returned');
     // Only raise the screenshot-ready signal if a real effect actually mounted — otherwise a
     // capture agent would screenshot a blank scene believing it succeeded.
     if (mounted && current) markReady();

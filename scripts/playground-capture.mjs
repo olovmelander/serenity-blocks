@@ -11,6 +11,10 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 
 const { app, BrowserWindow } = electron;
+// Without this the capture measures whatever GPU Windows hands a plain window — on this
+// dual-GPU machine that is the Radeon 610M (the HUD's adapter label caught it doing exactly
+// that), which silently invalidates every performance number the capture reports.
+app.commandLine.appendSwitch('force_high_performance_gpu');
 const ROOT = process.cwd();
 const args = parseArgs(process.argv.slice(2));
 const BASE_URL = args.baseUrl || 'http://127.0.0.1:5173';
