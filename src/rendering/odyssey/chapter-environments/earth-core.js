@@ -1043,7 +1043,15 @@ export function createEarthCoreEnvironment(options = {}) {
         uniforms.uDescent,
         { uSeam: uniforms.uSeam, uOpacity: uniforms.uOpacity },
     );
-    heart.mesh.position.copy(staging.at(1.0, { lateral: 0, forward: 86, up: 42 }));
+    // WORLD-SPACE ON PURPOSE. The First Heart is the chapter's vanishing-point landmark and
+    // its framing is pinned by earth-core-environment.test.js. It was authored against the OLD
+    // staging frame, whose horizontal "forward" at the chapter's end happened to be almost
+    // exactly world +Z (0.0073, 0, 1.0000). Making the basis constant (§11.2) redefines
+    // forward, which swung the Heart 160.5 units and threw it off screen (NDC x 4.07, caught
+    // by that test). Stating the offset in world terms keeps the composition the test verifies
+    // and makes it immune to any future change of staging basis.
+    const heartAnchor = staging.sample(1.0);
+    heart.mesh.position.set(heartAnchor.x + 0.63, heartAnchor.y + 42, heartAnchor.z + 86);
     const heartBaseScale = 6;
     heart.mesh.scale.set(heartBaseScale, heartBaseScale, 1);
     group.add(heart.mesh);

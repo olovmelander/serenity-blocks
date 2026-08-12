@@ -377,14 +377,15 @@ export class OdysseyBoardController {
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
             window.__ODYSSEY_GPU_RESET__ = () => {
                 this.gpuProfileRing.reset();
-                // Restart the draw-count range with the measurement window, so the summary's
-                // min/max describe sampled frames only (see _recordPerfCounters).
-                this._drawCallsRange = null;
                 // Bump the epoch so a timestamp resolve still in flight from the SETTLE phase
                 // cannot land in the freshly-reset measurement window. The harness resets
                 // immediately before it starts sampling, so without this exactly one
                 // settle-phase frame — the most atypical kind — can enter the window.
                 this._gpuTimestampEpoch += 1;
+                // Restart the draw-count range with the measurement window (_recordPerfCounters).
+                // NOTE: keep this AFTER the epoch bump — odyssey-gpu-profile-sampling.test.js
+                // reads the first 700 chars of this function to prove the bump is here.
+                this._drawCallsRange = null;
             };
         }
         this._gpuProfileLastSummary = 0;
