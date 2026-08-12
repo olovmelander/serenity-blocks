@@ -598,7 +598,7 @@ Percentages are from the 2026-08-12 per-wave repo audit, which checked the code 
 this document's own prose — several waves this file described as done were not.
 
 - [x] **Wave −1** — Measure first — DONE 2026-08-12. Both lanes published to `reports/odyssey-perf/gpu-split-lane{a,b}.json`; p50/p99-only ring (`src/utils/perf-ring.js`, 12 tests); level-node A/B run on both lanes. Headline: **Lane B is 67.7 ms p50 against a 7.0 ms budget**. Documented caveats: the split is differential rather than per-pass (three r181 exposes one timestamp scope per render type), Lane B's 8.6 ms drift exceeds its own deltas, and One World times out in this harness so it has no number yet.
-- [ ] **Wave 0** — Stop the bleeding (40 %: 0.3 and 0.5 shipped in 4baac9c1; 0.1, 0.2 and 0.4 untouched)
+- [ ] **Wave 0** — Stop the bleeding — **4 of 5 done (2026-08-12)**. 0.1 skirt chapter-weight fold (one-sided, test-covered, verified to fail without the fix), 0.3 alpine bridge + its dead export, 0.4 ground plates write depth (`DoubleSide` half rejected with evidence as a no-op), 0.5 conifer seating verified genuinely shipped. **BLOCKED: 0.2** — fully scoped (14 edits, 3 view-space sites found, `ODYSSEY_WORLD_SUN` imported by nobody so it is a third sun in waiting) but converging moves `ODYSSEY_SUN` **115.6°**, which puts Ch3's sun disc behind the camera and inverts the backlit foliage SSS. Per CLAUDE.md that needs a screenshot, and the capture harness is wedging on Odyssey boots tonight. Do not land it blind; do not give the disc its own azimuth to dodge it.
 - [ ] **Wave 1** — The spike (80 %: gate met on Lane A only; the Lane B measurement the gate literally names was never taken)
 - [ ] **Wave 2** — Height field + aux bake + colour script (85 %: height field, colour script and aux curvature all in; relief res is 1024²/768² not 2048², no fog-LUT id, no `.level(0)` lint)
 - [ ] **Wave 3** — Swap the ground in; re-seat every prop (45 %: ground swapped and booting, but behind a default-OFF flag and `heightAt` still has zero consumers)
@@ -727,6 +727,43 @@ The 720p run's −0.13 ms sat inside a 0.066 ms noise floor and must not be quot
 
 > 0.4 amended: `DoubleSide` on the whole plate doubles rasterised fragments on a 4-ROP GPU,
 > on a surface Wave 3 deletes. `depthWrite: true` is free and is most of the fix.
+
+**0.2 SCOPED, NOT APPLIED (2026-08-12) — blocked on a capture, deliberately.**
+
+Confirmed numerically: `MOUNTAIN_SHADING.keyDir = [0.5, 0.8, 0.5]` and
+`ODYSSEY_SUN = [0.35, 0.62, −0.70]` are **72.48° apart** (elevation 48.5 vs 38.4, azimuth
+45.0 vs 153.4). Every alpine surface keys off the first, everything else off the second.
+
+The 3 view-space sites are identified — a view-space normal dotted against a WORLD light, so
+the lighting swims as the camera yaws: `surface-world.tsl.js` `createLandscapeTSL` (the Ch3
+meadow, largest by screen area), `surface-world.tsl.js` `createCabinTSL`, and
+`mountain-peaks.tsl.js`'s cloud-sea deck (a flat disc, so its view normal is a single
+per-frame value and the whole deck re-lights globally as you turn). Four sibling sites were
+already converted to `normalWorld`; these three were missed. Every other `normalView` use
+under `src/rendering/odyssey/` is view-normal-vs-view-vector Fresnel and is self-consistent.
+
+Also found: `ODYSSEY_WORLD_SUN` is exported and imported by **nobody** — today it is a third
+sun in waiting. Convergence means moving the declaration into the import-free leaf
+`chapter-profile.js` and aliasing `ODYSSEY_SUN` to the same frozen array, so
+`Object.is(ODYSSEY_SUN, ODYSSEY_WORLD_SUN)` becomes a testable one-sun invariant.
+
+**Why it is not applied yet.** Converging moves `ODYSSEY_SUN` by **115.6°**, and that is not a
+shading tweak — it relocates every visible sun artefact. Ch3's sun-disc billboard sits at
+`sunDir * 900` and would move to world (−414, 324, 549): *behind* a camera looking down −Z. The
+sky-dome sun core, the Mountains sun disc and Ch5's sun-glow group all follow it out of frame.
+The backlit foliage SSS inverts (it is `pow(clamp(dot(sunDirN, viewDir)))`, which collapses
+toward 0 with the sun behind the camera), taking the authored golden Midsommar rim with it. The
+alpine key itself drops from 48.5° to 25.2° elevation, so snow darkens and alpenglow weakens.
+
+That is a real trade the spike made consciously — relief that casts beats a visible disc — but
+it must be seen, not reasoned about, and CLAUDE.md is explicit that WebGPU/TSL work is not done
+without a screenshot. Tonight's capture harness is wedging on Odyssey boots, so applying 14
+edits with that blast radius and no verified frame would be exactly the mistake this plan was
+written to stop. **The tempting shortcut — giving the sun disc its own azimuth — is the disease
+coming back.**
+
+One gap worth closing regardless: no test anywhere asserts a sun value. Grepping `tests/` for
+`lightDir`, `ODYSSEY_SUN` or `sunDir` returns nothing, which is why two suns could ship at all.
 
 **0.4 DONE (2026-08-12) — and the symptom it was written for has a different cause.**
 
