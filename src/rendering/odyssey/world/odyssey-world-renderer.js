@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, clamp, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length, max, mix,
+    abs, attribute, clamp, cos, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length, max,
+    mix,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
@@ -1021,6 +1022,107 @@ export function createOdysseyWorld({
         group.add(moteMesh);
     }
 
+    // ── fish (Wave 5: life, as silhouettes between the camera and the light) ──────
+    // ABZU's documented technique, ported to TSL: instanced static meshes animated ENTIRELY
+    // in the vertex stage with cosine waves — no skeletons, no CPU skinning, vertex-ALU only.
+    // The deep-ocean chapter's old creatures failed as "flat dark polygons" because they swam
+    // against the dark; these school ABOVE the rail, so the breach light behind them is what
+    // makes a silhouette read (the same reason the levistone device needs darkness).
+    let fishMesh = null;
+    let fishMat = null;
+    if (sunkPoints.length > 2) {
+        const FISH = 110;
+        // A fish-shaped wedge: elongated diamond cross-section, nose to tail along +Z.
+        const fishGeo = new THREE.BufferGeometry();
+        const fp = [];
+        const push = (...v) => fp.push(...v);
+        // 6 triangles: a flattened rhomb (top/bottom) + tail fin. Body 2.4 long, 0.5 tall.
+        // ASPECT RATIO IS THE SPECIES. The first capture rendered these as tumbling black
+        // kites: a 1.2-long, 0.44-wide wedge reads as paper, not fish. A fish silhouette is
+        // recognised almost entirely by elongation (3.5:1 here) with the widest point a third
+        // back from the nose — the same "silhouette before detail" rule as every device in
+        // this act.
+        push(0, 0, 2.1, 0.16, 0.13, 0.7, 0.16, -0.13, 0.7); // nose upper-right
+        push(0, 0, 2.1, 0.16, -0.13, 0.7, -0.16, -0.13, 0.7); // nose lower
+        push(0, 0, 2.1, -0.16, -0.13, 0.7, -0.16, 0.13, 0.7); // nose left
+        push(0, 0, 2.1, -0.16, 0.13, 0.7, 0.16, 0.13, 0.7); // nose upper
+        push(0.16, 0.13, 0.7, 0, 0.02, -1.6, 0.16, -0.13, 0.7); // body-to-tail right
+        push(-0.16, 0.13, 0.7, -0.16, -0.13, 0.7, 0, 0.02, -1.6); // body-to-tail left
+        push(0, 0.30, -2.1, 0, 0.02, -1.6, 0, -0.26, -2.1); // tail fin (vertical blade)
+        fishGeo.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
+        fishGeo.computeVertexNormals();
+        const fInst = new THREE.InstancedBufferGeometry();
+        fInst.index = fishGeo.index;
+        fInst.setAttribute('position', fishGeo.getAttribute('position'));
+        fInst.setAttribute('normal', fishGeo.getAttribute('normal'));
+        fInst.instanceCount = FISH;
+        const fSeed = new Float32Array(FISH);
+        const fOrigin = new Float32Array(FISH * 3);
+        const fh = (n) => {
+            let v = Math.imul(n ^ 0x51ed270b, 2654435761);
+            v = Math.imul(v ^ (v >>> 13), 1274126177);
+            return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+        };
+        for (let i = 0; i < FISH; i += 1) {
+            fSeed[i] = fh(i * 7 + 1);
+            const pt = sunkPoints[Math.floor((i / FISH) * sunkPoints.length)];
+            const a = fh(i * 7 + 2) * Math.PI * 2;
+            const r = 14 + (fh(i * 7 + 3) * 52);
+            fOrigin[i * 3] = pt.x + (Math.cos(a) * r);
+            // ABOVE the rail, below the surface: the band where a silhouette has light
+            // behind it. Clamped to 8 u under the surface so no fish breaches.
+            fOrigin[i * 3 + 1] = Math.min(pt.y + 14 + (fh(i * 7 + 4) * 46), ODYSSEY_SEA_LEVEL - 8);
+            fOrigin[i * 3 + 2] = pt.z + (Math.sin(a) * r);
+        }
+        fInst.setAttribute('aSeed', new THREE.InstancedBufferAttribute(fSeed, 1));
+        fInst.setAttribute('aOrigin', new THREE.InstancedBufferAttribute(fOrigin, 3));
+
+        fishMat = new THREE.MeshBasicNodeMaterial();
+        const fS = attribute('aSeed', 'float');
+        const fO = attribute('aOrigin', 'vec3');
+        // Slow circular cruise around each fish's own origin — a school drifts, it does not
+        // teleport. Radius and rate vary per seed so the school never phase-locks.
+        const cruiseA = uTime.mul(fS.mul(0.12).add(0.06)).add(fS.mul(40));
+        const cruiseR = fS.mul(9).add(5);
+        const fishCenter = vec3(
+            fO.x.add(cos(cruiseA).mul(cruiseR)),
+            fO.y.add(sin(uTime.mul(0.4).add(fS.mul(17))).mul(1.6)),
+            fO.z.add(sin(cruiseA).mul(cruiseR)),
+        );
+        // ABZU swim: yaw the whole body, pivot the tail harder — both cosine, both in the
+        // vertex stage, keyed on positionGeometry.z (the instancing-safe local axis: r181's
+        // InstanceNode rewrites positionLocal before positionNode runs).
+        const swimPhase = uTime.mul(fS.mul(2.0).add(5.0)).add(fS.mul(60));
+        const tailMask = clamp(positionGeometry.z.negate().mul(0.6).add(0.5), 0, 1);
+        const yaw = sin(swimPhase).mul(0.12).add(sin(swimPhase).mul(tailMask).mul(0.35));
+        // Heading = tangent of the cruise circle, so the fish faces where it swims.
+        const heading = cruiseA.add(float(Math.PI / 2));
+        const ch = cos(heading);
+        const sh = sin(heading);
+        const lx = positionGeometry.x.add(yaw);
+        const lz = positionGeometry.z;
+        const rotated = vec3(
+            lx.mul(ch).sub(lz.mul(sh)),
+            positionGeometry.y,
+            lx.mul(sh).add(lz.mul(ch)),
+        );
+        const fScale = fS.mul(1.6).add(1.2);
+        fishMat.positionNode = fishCenter.add(rotated.mul(fScale));
+        // Silhouette shading: a dark body that takes only the faint down-welling light, so
+        // against the bright ceiling it reads as a SHAPE — never a lit model.
+        const fDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
+        fishMat.colorNode = mix(vec3(0.045, 0.10, 0.13), vec3(0.02, 0.05, 0.08), fDepth)
+            .mul(uOutputScale);
+        fishMat.side = THREE.DoubleSide;
+        fishMat.fog = false;
+        fishMesh = new THREE.Mesh(fInst, fishMat);
+        fishMesh.frustumCulled = false;
+        fishMesh.renderOrder = 2;
+        fishMesh.name = 'odyssey-world-fish';
+        group.add(fishMesh);
+        fishGeo.dispose();
+    }
+
     // ── forest ──
     const treeGeo = buildTreeGeometry();
     const trees = scatterTrees(relief.sample, {
@@ -1140,6 +1242,7 @@ export function createOdysseyWorld({
         clouds,
         godRays: rayCount > 2 ? rayCount : 0,
         motes: moteMesh ? 640 : 0,
+        fish: fishMesh ? 110 : 0,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
     };
@@ -1202,6 +1305,7 @@ export function createOdysseyWorld({
             if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
             if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001;
             if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001;
+            if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 treeMeshes[i].visible = Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;

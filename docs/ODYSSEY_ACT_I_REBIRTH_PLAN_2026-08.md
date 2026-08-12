@@ -643,7 +643,10 @@ the One World convention — and the plan shipped without it.)
   640 size-capped motes + the two water keyframes; gradient inversion fixed and measured
   (83.7 → 170.6 luma toward the surface); Lane B **7.73 → 5.96 ms p50** (drift 0.00) — the
   fill fix paid for the motes with 1.77 ms to spare.
-- [ ] **Wave 5** — Life (fish, kelp, the accompanied ascent)
+- [x] **Wave 5** — Life — **DONE 2026-08-12.** 110-fish school, one InstancedMesh, vertex-only
+  swim, silhouettes against the light; measures ≤1 timer tick on Lane B (5.96/6.03, drift one
+  tick). One shape iteration (kites → 3.5:1 fish). Kelp + orb drift deferred to Wave 7 polish,
+  recorded in the outcome.
 - [ ] **Wave 6** — The crack climax (the last fifth of ch1, into the shipped quench)
 - [ ] **Wave 7** — Close the books (both lanes, budget cells, index)
 
@@ -1153,6 +1156,33 @@ clean on both changed files; in-game capture taken under the real ACES grade.
 - **Acceptance:** captures show at least one readable creature-silhouette moment per depth
   band without hunting for it; Lane B split at p=0.16 again, cumulative Act I underwater
   delta within the §8 cell; no new console warnings.
+
+#### Wave 5 OUTCOME — DONE 2026-08-12 (acceptance met; two scope items deferred, named)
+
+**The school is in, and it costs one timer tick.** 110 fish as ONE InstancedMesh: a hand-built
+3.5:1 wedge (7 triangles), cruise + swim entirely in the vertex stage (cosine yaw with a
+tail-weighted mask on `positionGeometry` — the instancing-safe axis), each fish circling its
+own seeded origin so the school drifts without phase-locking, seated ABOVE the rail so the
+breach light is behind every silhouette. Dark body takes only down-welling light: a SHAPE
+against the luminous ceiling, never a lit model — the inverse of the old deep-ocean
+"flat dark polygons against the dark" failure.
+
+**Acceptance:**
+
+1. ✅ Readable silhouettes without hunting — the p=0.156 capture shows a dozen; fish span the
+   whole submerged band. One shape iteration was needed: the first wedge (1.2 long, 0.44 wide)
+   read as tumbling black KITES; a fish is recognised almost entirely by elongation, so the
+   3.5:1 re-cut with the widest point a third back from the nose is what made them fish.
+2. ✅ Lane B cumulative: **5.96 / 6.03 ms p50, drift −0.066 (one tick), content-matched at 45
+   draws** — the school's cost is below the timer's resolution, and the Wave 4+5 total still
+   sits 1.7 ms UNDER the pre-wave 7.73 baseline (§8 cell max 8.5).
+3. ✅ No new console warnings (the one hit is the pre-existing forest-theme prewarm timeout).
+
+**Deferred, named, not hidden:** kelp (§3.4.4's second half — shelf-zone dressing near the
+breach; nothing blocks it, it simply was not reached) and the orb helical drift (§3.4.5 —
+touches `level-node-manager.tsl.js`, a system with its own recent history; doing it casually
+alongside a fish wave is how regressions ship). Both are small, both stay on Wave 7's polish
+list.
 
 ### Wave 6 — The crack climax (the last fifth of ch1, into the shipped quench)
 
