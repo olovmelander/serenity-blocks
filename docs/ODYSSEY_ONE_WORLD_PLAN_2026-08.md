@@ -663,7 +663,41 @@ this document's own prose — several waves this file described as done were not
     read as "the rebuild is free". The comparison is now against `?odysseyOneWorld=0`.
   - CARRIED FORWARD, not silently dropped: region-based camera-distance streaming is still the single hard-coded 1,450 u forest gate, and **One World has no GPU-time number**. The gpu-split harness now boots it, but it measures the board where it PARKS — journey start, 40 draws, 0.13 ms, Act II off-screen — so the delta would be measuring nothing. Seeking the camera to Act II progress before sampling is the prerequisite, and it belongs to Wave 7.
 - [ ] **Wave 4** — Delete the canonical chain and `rangeAuthority` — **BLOCKED ON RETIRING THE ESCAPE HATCH, not on the flip (2026-08-12).** Wave 3 flipped the default, but all three `createCanonicalMountainRangeTSL` call sites live in surface-world (ch3), mountain-peaks (ch4) and sky-drift (ch5) — suppressed by default, and therefore dead in the shipped path, but ALIVE whenever `?odysseyOneWorld=0` restores the dioramas. Deleting them makes that hatch a lie. The prerequisite is a deliberate decision to retire the fallback after the flip has soaked; that is an owner call, not a refactor. Same dependency applies to **Wave 6** (46 ecotone crossfade bridges) — both are pure deletions of code only the fallback still reaches.
-- [ ] **Wave 5** — One atmosphere + one sky (~50 %: fog ownership and the one sky landed early; **the fog lint now exists** — `odyssey-world-lints.test.js` pins the opt-out list to the material constructor list, mutation-verified, so a sixth world material cannot ship half-fogged. Remaining: migrate the 12 legacy chapter fog opt-outs to the one-atmosphere scheme — blocked on captures, i.e. on the reboot.)
+- [x] **Wave 5** — One atmosphere + one sky — **DONE (2026-08-12)**, and the remaining item turned out to be hiding a LIVE bug. (~50 % before: fog ownership and the one sky landed early; **the fog lint now exists** — `odyssey-world-lints.test.js` pins the opt-out list to the material constructor list, mutation-verified, so a sixth world material cannot ship half-fogged. Remaining: migrate the 12 legacy chapter fog opt-outs to the one-atmosphere scheme — blocked on captures, i.e. on the reboot.)
+
+  **Closed by extending the lint instead of doing the migration — because the migration's
+  premise had gone stale and an audit found a real defect.** The remaining task read "migrate
+  the 12 legacy chapter fog opt-outs to the one-atmosphere scheme". Auditing them first: ch2-5
+  are suppressed (fallback-only, same category as Waves 4/6), ch1 Earth Core is an enclosed
+  magma cavern at fogDensity 0.014 where the fog IS the look, and ch7/ch8 already opt out at
+  environment level. So the migration would have refactored correct or dead code.
+
+  What was actually missing was the guard. `odyssey-world-lints.test.js` pins fog opt-out for
+  the WORLD's five materials by matching the opt-out list to the constructor list; nothing
+  covered the chapters that still draw. Those opt out by bulk `group.traverse`, which is a
+  different failure shape — a traverse only covers what is parented WHEN IT RUNS — so the
+  guard has to walk the built environment, not the source. `tests/unit/odyssey-chapter-fog-optout.test.js`
+  does that for ch6/7/8, plus a non-vacuity check so a broken traversal cannot pass silently.
+
+  **It failed on first run: ch6 Space, 17 far-range surfaces still fogged.** The summit-earth
+  fix had disabled fog on the planet ANCHOR and stopped there. Everything else in the chapter
+  kept scene fog on, including the chapter's hero: the accretion disk and lensing shell sit
+  2020 u out, which FogExp2 saturates **77 % at Space's own density 0.0006** — and the
+  early-ignite path deliberately makes this chapter drawable across the Ch5 summit, where
+  density 0.0022 saturates the same distance to **100 %**. Ch6's fog colour is near-black
+  (0x05060f), so the symptom was a hero rendering at roughly a quarter of its authored
+  brightness rather than a pale wash — which is likely why it survived a capture review, and
+  is consistent with the standing "green aurora carry washes early Ch6" note.
+
+  Verified by reproducing the in-game condition rather than trusting the arithmetic: the
+  playground has no `scene.fog` at all (exactly why this class of bug hides there), so the
+  board's FogExp2 was injected into the live playground scene and the 37 materials toggled.
+  Scene mean luminance **29.08 fogged → 37.96 opted out, +30.6 %**, while p99 moved only
+  +1.8 % — the distance-weighted signature: far nebula, dust, galaxy and void stars were
+  losing a third of their light while the near/additive core was unaffected.
+
+  Residual: the ad-hoc opt-outs inside the suppressed ch2-5 modules stay as they are, tied to
+  the same hatch-retirement decision as Waves 4 and 6.
 - [ ] **Wave 6** — Transitions become occlusion (5 %: the ecotone machinery is fully live — 46 crossfade bridges). **Same blocker as Wave 4:** the machinery is only reached by the `?odysseyOneWorld=0` fallback now, so deleting it retires the hatch by implication. Sequence it with Wave 4 once the fallback is formally dropped.
 - [ ] **Wave 7** — Perf, tiers, residency, rail furniture — **20 %, and the headline question is ANSWERED (2026-08-12).** Lane A: One World 0.39 ms vs dioramas 1.97 ms at **zero drift** — 5x cheaper, 23 % of the frame budget returned. Lane B (Radeon 610M, 1280x720, Medium, ch4 station): **One World 4.19 ms p50 vs the dioramas 39.52 ms** — the rebuild is worth roughly **30–35 ms on the iGPU**, which is the difference between ~25 fps and unplayable.
   - **READ THE DRIFT BEFORE CELEBRATING.** Lane B's bracketing baselines disagree by **5.44 ms** (4.19 -> 9.63 for the identical configuration), so the iGPU is thermally unstable across a 3-configuration run. The SAVING survives that easily — 35 ms of signal against 5 ms of drift — but the absolute figure does not: **it is NOT established that One World is inside §8's 7.0 ms p95 budget.** The second baseline's p95 was 9.83 ms, above it. The honest claim is "between 4 and 10 ms p50, versus 40 ms before", and pinning it down needs a cooled machine and repeats.
