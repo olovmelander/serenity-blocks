@@ -156,8 +156,18 @@ function _getBakedNoiseSampler() {
 function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
     // §4.1 — lift the crust floor so "crust" is dark warm ROCK, never near-black voids
     // (the holey-mesh root cause). 0.045/0.018/0.008 → 0.07/0.03/0.012.
-    const uCrust = vec3(0.07, 0.03, 0.012); // charred warm-rock crust chunk (not a void)
-    const uRiverDark = vec3(0.34, 0.055, 0.012); // cooling molten (deep ember)
+    // WAVE 3a — THIS FIELD OWNS THE CHAPTER'S PIXELS, so it owns its value structure.
+    // Captures at four stations agree: the rock silhouette renders as saturated mid-red from
+    // base to crown, which is what put 65 % of the frame in the luma 32-96 band while the
+    // blacks and the fire were both fine. The Wave 1 study reached its structure the opposite
+    // way — a near-black charred base, warmth re-admitted ONLY as a bounce from below and a
+    // fresnel rim, both of which this material already has downstream.
+    //
+    // So the CRUST goes charred (it is rock that has cooled, not rock that is glowing) and the
+    // cooling-molten river darkens. The bright river stop is untouched: the fire must stay
+    // fire, or emptying the mid band just makes a grey cave.
+    const uCrust = vec3(0.022, 0.010, 0.006); // charred rock — dark, still warm-hued
+    const uRiverDark = vec3(0.16, 0.028, 0.008); // cooling molten (deep ember)
     const uRiverBright = vec3(0.92, 0.28, 0.035); // hot flowing magma, below yellow-white
     const uVein = vec3(0.95, 0.32, 0.04); // hottest crack core (warm-orange instead of gold-white)
 
@@ -223,7 +233,9 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 
     // §4.1 — clamp a minimum luminance floor so the darkest crust is still warm ROCK
     // (above the lit haze), never a see-through near-black hole.
-    color = max(color, vec3(0.05, 0.02, 0.01));
+    // Floor lowered with the crust: the old 0.05 floor was itself a mid-band generator,
+    // holding every shadowed face above true black no matter how little light reached it.
+    color = max(color, vec3(0.012, 0.005, 0.003));
 
     return { color, glow: heatGlow.add(veins.mul(0.6)), crackHeat };
 }

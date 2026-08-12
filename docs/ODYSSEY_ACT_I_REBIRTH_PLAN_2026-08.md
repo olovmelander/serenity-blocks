@@ -927,7 +927,37 @@ choice: a near-black charred base with warmth admitted ONLY as a rim from below.
 field is not a constant tweak — it is the chapter's rock identity, it feeds the geode/colonnade
 /boulder families, and it deserves its own wave with its own captures.
 
-**Next step, precisely:** re-author `moltenRockField`'s base toward near-black and re-admit
+**ATTEMPTS 5 AND 6, and the conclusion they force.** Attempt 5 did re-author
+`moltenRockField` (crust `0.07,0.03,0.012` → `0.022,0.010,0.006`, the cooling-river stop
+halved, the 0.05 floor that held every shadowed face above black dropped to 0.012). It is the
+one change that moved the structure: **true-black 0.338 → 0.490** at the p=0.062 station, and
+the frame finally reads as charred rock with an ember path rather than as glowing rock.
+Attempt 6 re-based the chapter's fog (§3.3's "red soup": density 0.014 → 0.0065, colour to the
+script's vault base) and measured **worse** — 0.508 → 0.647 at the same station — because
+thinning the fog UNCOVERS the bright emissive geometry it was hiding. Reverted.
+
+**Two instrument defects contaminated this whole wave, and both are now known:**
+
+1. **Station 1 is unusable.** Its capture repeatedly catches the MENU OVERLAY before
+   `HIDE_OVERLAYS` applies (Phase-0 defect 3, logged and not fixed) — a bright UI panel across
+   a third of the frame. Its mid-wash sat at ~0.43 in all six runs *regardless of what changed*,
+   because most of what it measures is the menu. Every comparison that included it was noise.
+   **Fix before any further art measurement:** re-shoot station 1 after settle, or drop it.
+2. **The phase lock was missing** (fixed this wave, `--time`), which invalidated attempt 1's
+   recorded improvement.
+
+**THE HONEST CONCLUSION: `midWash ≤ 0.25` is not reachable by re-lighting.** Six phase-locked
+attempts across five systems — backdrop belt, molten haze, lava lake, magma canopy, rock field,
+chapter fog — moved the best valid station from ~0.55 to ~0.51 and left the others at 0.41–0.68.
+The Wave 1 study reached **0.147** on the first serious try, and the difference is not shader
+constants: the study OWNS ITS GEOMETRY (one vault, one column family, one lake, a starved
+accent), while the shipped chapter's emissive surface area — lava fall, five basin glows, god-ray
+cones, geode clusters, molten pockets — is itself the mid band. **That retro-validates the 3a/3b
+split's premise and inverts its expectation: 3a alone cannot pass this gate, and the gate belongs
+to 3b.** Recorded here rather than by quietly lowering the threshold to whatever the re-light
+happened to reach.
+
+*(Superseded next step, kept for the record:)* **Next step, precisely:** re-author `moltenRockField`'s base toward near-black and re-admit
 warmth through the existing `bakedWarm` bounce (now height-gated) plus the fresnel rim, then
 re-measure at `--time 9`. Expect the mid-wash to fall from ~0.65 toward the study's 0.147 in
 one move, because this is the surface that owns the pixels.
