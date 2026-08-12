@@ -362,9 +362,20 @@ export class OdysseyBoardController {
         if (this.gpuProfileRing && typeof window !== 'undefined') {
             // The harness discards everything sampled during startup: a cold pipeline compile
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
-            window.__ODYSSEY_GPU_RESET__ = () => this.gpuProfileRing.reset();
+            window.__ODYSSEY_GPU_RESET__ = () => {
+                this.gpuProfileRing.reset();
+                // Bump the epoch so a timestamp resolve still in flight from the SETTLE phase
+                // cannot land in the freshly-reset measurement window. The harness resets
+                // immediately before it starts sampling, so without this exactly one
+                // settle-phase frame — the most atypical kind — can enter the window.
+                this._gpuTimestampEpoch += 1;
+            };
         }
         this._gpuProfileLastSummary = 0;
+        // One resolve in flight at a time, and one ring push per RESOLVED query. See
+        // _resolveRenderTimestamps for why pushing per FRAME was silently wrong.
+        this._gpuTimestampPending = false;
+        this._gpuTimestampEpoch = 0;
         // A/B lever for the same wave: 55 nodes x 3 nested transparent shells, never measured.
         this.hideLevelNodes = readBooleanUrlFlag('odysseyHideLevelNodes');
         // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
@@ -812,6 +823,12 @@ export class OdysseyBoardController {
         }
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
+        // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
+        // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
+        // no-op unless ?odysseyGpuProfile=1 was also passed — so anyone running the
+        // comparison by hand from the URL measured two identical frames and concluded the
+        // level nodes were free.
+        if (this.hideLevelNodes) this.nodeManager.setAllVisible(false);
         trace.end('nodes');
 
         await this._yieldToMain();
@@ -2132,14 +2149,39 @@ export class OdysseyBoardController {
 
     /**
      * Batch0 — resolve GPU timestamp queries so renderer.info.render.timestamp is populated
-     * for the debug overlay. Fire-and-forget; guarded for backends/builds without the API.
+     * for the debug overlay, AND record one profile sample per resolved query.
+     *
+     * THE SAMPLE MUST BE TAKEN HERE, not per frame (fixed 2026-08-12). `Info.reset()` clears
+     * drawCalls/triangles but deliberately NOT `render.timestamp` — only `dispose()` does — so
+     * the field holds the last RESOLVED value indefinitely. The profiler used to read it every
+     * frame and push unconditionally, which meant a "600 sample" window was really one resolved
+     * value repeated however many frames it happened to dwell for. That is not merely imprecise:
+     * a slower lane resolves less often, so its samples are weighted more heavily, biasing the
+     * p50 in a direction no post-processing can undo. It is the same shape the playground
+     * already got right (src/playground/main.js resolveGpuTimestamp).
+     *
+     * One resolve in flight at a time; the epoch guard drops a resolve that outlived a ring
+     * reset. Guarded for backends/builds without the API.
      * @private
      */
     _resolveRenderTimestamps() {
         const { renderer } = this;
         if (typeof renderer?.resolveTimestampsAsync !== 'function') return;
+        if (this._gpuTimestampPending) return;
         const renderType = THREE.TimestampQuery?.RENDER ?? 'render';
-        renderer.resolveTimestampsAsync(renderType).catch(() => {});
+        const epoch = this._gpuTimestampEpoch;
+        this._gpuTimestampPending = true;
+        renderer.resolveTimestampsAsync(renderType)
+            .then(() => {
+                const ts = renderer.info?.render?.timestamp;
+                // The first resolves land as null/0 while the query pool warms; not frames.
+                if (this.gpuProfileRing && epoch === this._gpuTimestampEpoch
+                    && Number.isFinite(ts) && ts > 0) {
+                    this.gpuProfileRing.push(ts);
+                }
+            })
+            .catch(() => {})
+            .finally(() => { this._gpuTimestampPending = false; });
     }
 
     /**
@@ -2155,16 +2197,15 @@ export class OdysseyBoardController {
      * @private
      */
     _sampleGpuProfile() {
-        const ts = this.renderer?.info?.render?.timestamp;
-        // The first resolves land as null/0 while the query pool warms; those are not frames.
-        if (Number.isFinite(ts) && ts > 0) this.gpuProfileRing.push(ts);
-
+        // NOTE: samples are pushed by _resolveRenderTimestamps, once per RESOLVED query —
+        // not here, once per frame. See that method for why the per-frame push was wrong.
         const now = performance.now();
         if (now - this._gpuProfileLastSummary < 250) return;
         this._gpuProfileLastSummary = now;
-        // Re-assert on the throttled tick rather than once at setup: the instanced shells are
-        // built lazily, so a one-shot call at construction would miss them and the A/B would
-        // silently measure the same frame twice.
+        // Belt-and-braces re-assert. The primary application now happens right after
+        // createNodes (so the flag works without the profiler) and setAllVisible latches
+        // against the per-frame write, so this should be a no-op — it stays only to cover a
+        // mesh built after node creation, which would otherwise silently rejoin the frame.
         if (this.hideLevelNodes) this.nodeManager?.setAllVisible(false);
         const summary = this.gpuProfileRing.summarize();
         summary.drawCalls = this._perfCounters?.calls ?? null;

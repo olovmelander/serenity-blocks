@@ -172,6 +172,9 @@ export class LevelNodeManager {
         // When ON, all 55 inner fluid cores collapse to ONE InstancedMesh + ONE material +
         // ONE pipeline + a shared DataArrayTexture of theme icons (per-instance layer index).
         this.coreInstanced = readOdysseyCoreInstancedFlag();
+        // Set by setAllVisible(false); makes the A/B's hidden state stick against the
+        // per-frame visibility write in update().
+        this._forcedHidden = false;
         this.innerCoreMesh = null;
         this.innerCoreMaterial = null;
         this.coreArrayTexture = null;
@@ -1254,7 +1257,11 @@ export class LevelNodeManager {
 
             // Strict visibility culling
             const isVisible = distance < (UPDATE_PROXIMITY_THRESHOLD * 1.5)
-                && chapterOneQuench < 0.98;
+                && chapterOneQuench < 0.98
+                // Honour the A/B latch: setAllVisible(false) must stay false, or this
+                // per-frame write re-shows the group between the profiler's ~4 Hz ticks
+                // and the measurement silently averages hidden and shown frames.
+                && !this._forcedHidden;
             node.group.visible = isVisible;
 
             if (!isVisible) {
@@ -1492,8 +1499,19 @@ export class LevelNodeManager {
             this.lockInstancedMesh,
             this.starInstancedMesh,
             this.particleSystem,
+            // innerCoreMesh WAS MISSING (fixed 2026-08-12) and it is the one that mattered
+            // most: 60,720 of the group's 190,740 triangles, and the only OPAQUE,
+            // depth-writing part. Because `odysseyCoreInstanced` defaults true, the per-node
+            // inner meshes that `node.group.visible` would have hidden are never built — so
+            // the "hidden" half of the A/B was still drawing 31.8% of the group, and the
+            // docstring's claim that the difference is "the rasterisation alone" was false.
+            this.innerCoreMesh,
         ].forEach((mesh) => { if (mesh) mesh.visible = on; });
         this.nodes.forEach((node) => { if (node?.group) node.group.visible = on; });
+        // Latch it so the per-frame update() cannot re-show what the A/B just hid; update()
+        // rewrites node.group.visible every dirty frame and previously only lost that race
+        // ~4x/second when the throttled profiler tick re-asserted.
+        this._forcedHidden = !on;
     }
 
     dispose() {
