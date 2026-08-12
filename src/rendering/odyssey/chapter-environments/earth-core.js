@@ -811,9 +811,28 @@ export function createEarthCoreEnvironment(options = {}) {
         local: Number((i * 0.005 / Math.max((chapterTEnd ?? 0.125) - (chapterTStart ?? 0), 1e-4)).toFixed(3)),
     }));
 
+    // BISECT LEVERS (dev URL flags, default OFF => everything draws). Wave 3b measured the
+    // chapter FILL/ALU-bound and the canopy fold proved a single full-screen surface can be
+    // worth 12+ ms on Lane B — so before the next optimisation, these flags price each
+    // remaining big surface DIFFERENTIALLY on the real instrument instead of by guess:
+    //   ?earthCoreNoBackdrop=1  — skip the volcano background shell (now carries the canopy)
+    //   ?earthCoreNoLake=1      — skip the lava lake
+    //   ?earthCoreNoHaze=1      — skip the molten haze billboards
+    // Same pattern as ?earthCoreBakeNoise (URL-only here; these are measurement levers, not
+    // player settings). gpu-split passes them via --flags so both baselines stay comparable.
+    const readBisect = (name) => {
+        if (typeof window === 'undefined') return false;
+        try {
+            return new URLSearchParams(window.location.search).get(name) === '1';
+        } catch { return false; }
+    };
+    const noBackdrop = readBisect('earthCoreNoBackdrop');
+    const noLake = readBisect('earthCoreNoLake');
+    const noHaze = readBisect('earthCoreNoHaze');
+
     // 1. Create background sphere (enhanced with lava glow)
     const background = createVolcanoBackground(uniforms);
-    group.add(background);
+    if (!noBackdrop) group.add(background);
     // WAVE 3b — the canopy shell is DELETED as a drawable: its colour terms now live inside
     // the volcano background's shader (see createVolcanoBackgroundTSL), which removes a full
     // screen of transparent fill and one material on the fill-bound lane with the same pixels.
@@ -833,7 +852,7 @@ export function createEarthCoreEnvironment(options = {}) {
         };
     });
     const lavaFloor = createLavaFloor(uniforms, basins);
-    group.add(lavaFloor);
+    if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
     // 3. Create volcanic crater rim - VOLUMETRIC PARTICLE SYSTEM
@@ -905,7 +924,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // overlapping coverage, not visible structure.
     const hazeCount = Math.floor(options.particleCount ? Math.min(options.particleCount * 0.9, 128) : 112);
     const haze = createMoltenHaze(uniforms, hazeCount, corridorLow, corridorHigh);
-    group.add(haze);
+    if (!noHaze) group.add(haze);
     group.userData.haze = haze;
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this

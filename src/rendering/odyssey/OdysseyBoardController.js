@@ -377,6 +377,9 @@ export class OdysseyBoardController {
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
             window.__ODYSSEY_GPU_RESET__ = () => {
                 this.gpuProfileRing.reset();
+                // Restart the draw-count range with the measurement window, so the summary's
+                // min/max describe sampled frames only (see _recordPerfCounters).
+                this._drawCallsRange = null;
                 // Bump the epoch so a timestamp resolve still in flight from the SETTLE phase
                 // cannot land in the freshly-reset measurement window. The harness resets
                 // immediately before it starts sampling, so without this exactly one
@@ -997,6 +1000,17 @@ export class OdysseyBoardController {
 
         const { memory = {}, render = {}, programs } = this.renderer.info;
         this._perfCounters.calls = render.drawCalls ?? render.calls ?? 0;
+        // FLICKER INSTRUMENT: the harness's content-match check compares ONE frame's draw
+        // count per run, which cannot tell a per-frame flicker (frustum edge, timed visibility)
+        // from a one-shot settling event (async build landing inside the window). Track the
+        // range since the last __ODYSSEY_GPU_RESET__; min==max exonerates the steady state.
+        const { calls } = this._perfCounters;
+        if (this._drawCallsRange) {
+            if (calls < this._drawCallsRange.min) this._drawCallsRange.min = calls;
+            if (calls > this._drawCallsRange.max) this._drawCallsRange.max = calls;
+        } else {
+            this._drawCallsRange = { min: calls, max: calls };
+        }
         this._perfCounters.triangles = render.triangles ?? 0;
         this._perfCounters.geometries = memory.geometries ?? 0;
         this._perfCounters.textures = memory.textures ?? 0;
@@ -2260,6 +2274,8 @@ export class OdysseyBoardController {
         if (this.hideLevelNodes) this.nodeManager?.setAllVisible(false);
         const summary = this.gpuProfileRing.summarize();
         summary.drawCalls = this._perfCounters?.calls ?? null;
+        summary.drawCallsMin = this._drawCallsRange?.min ?? null;
+        summary.drawCallsMax = this._drawCallsRange?.max ?? null;
         summary.triangles = this._perfCounters?.triangles ?? null;
         summary.oneWorld = !!this.oneWorld;
         summary.levelNodesHidden = !!this.hideLevelNodes;
