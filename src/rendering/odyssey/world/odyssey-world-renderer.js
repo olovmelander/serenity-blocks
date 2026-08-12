@@ -6,7 +6,6 @@ import {
 } from 'three/tsl';
 
 import {
-    ODYSSEY_MASSIFS,
     ODYSSEY_SEA_LEVEL,
     odysseyWorldDetailWeight,
     odysseyWorldMacro,
@@ -154,6 +153,49 @@ function buildReliefBake(reliefRes) {
         return (((a * (1 - fx)) + (b * fx)) * (1 - fz)) + (((c * (1 - fx)) + (d * fx)) * fz);
     };
     return { tex, sample };
+}
+
+/**
+ * MACRO TEXTURE — [macro height, detail weight, dMacro/dx, dMacro/dz] at 512².
+ *
+ * This bake exists to DELETE the analytic macro from the shaders. The massif smooth-max fold,
+ * expressed in TSL and referenced through varyings, hit a three r181 builder pathology:
+ * build TIME scaled with (fold size × fragment references) — measured at 129 s for the water
+ * material and 27 s for the ground, ~156 s of frozen tab on every load, uncached, while the
+ * emitted WGSL stayed ~6 KB. `.toVar()` inside the fold changed nothing (the builder walks
+ * through Var and Varying nodes), so the durable fix is for the fold to not exist at build
+ * time at all: the CPU already evaluates the same functions for the mirror, the macro is
+ * smooth by construction (512² over 9,000 u = 17.6 u texels under bilinear), and the shader
+ * cost is one fetch it was already paying next door. After this, the world compiles in ~1 s.
+ */
+function bakeMacroTexture(res = 512) {
+    const step = RELIEF_EXTENT / (res - 1);
+    const origin = -RELIEF_EXTENT / 2;
+    const e = 4;
+    const data = new Uint16Array(res * res * 4);
+    for (let j = 0; j < res; j += 1) {
+        const z = origin + (j * step);
+        for (let i = 0; i < res; i += 1) {
+            const x = origin + (i * step);
+            const idx = ((j * res) + i) * 4;
+            data[idx] = THREE.DataUtils.toHalfFloat(odysseyWorldMacro(x, z));
+            data[idx + 1] = THREE.DataUtils.toHalfFloat(odysseyWorldDetailWeight(x, z));
+            data[idx + 2] = THREE.DataUtils.toHalfFloat(
+                (odysseyWorldMacro(x + e, z) - odysseyWorldMacro(x - e, z)) / (2 * e),
+            );
+            data[idx + 3] = THREE.DataUtils.toHalfFloat(
+                (odysseyWorldMacro(x, z + e) - odysseyWorldMacro(x, z - e)) / (2 * e),
+            );
+        }
+    }
+    const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
 }
 
 function bakeSunVisibility(heightAt, shadowRes) {
@@ -398,6 +440,7 @@ export function createOdysseyWorld({
     const relief = buildReliefBake(q.reliefRes);
     const sunVisTex = bakeSunVisibility(relief.sample, q.shadowRes);
     const detailTex = bakeDetailNormal();
+    const macroTex = bakeMacroTexture();
     const heightTex = relief.tex;
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
@@ -461,49 +504,30 @@ export function createOdysseyWorld({
         const morph = clamp(cheb.sub(float(MORPH_START)).div(float(MORPH_END - MORPH_START)), 0, 1);
         const coarse = floor(gridXZ.mul(0.5)).mul(2).mul(spacing);
         return {
-            worldXZ: origin.add(mix(local, coarse, morph)),
-            spacing: spacing.mul(morph.add(1)),
+            // .toVar() is LOAD-BEARING throughout this file, not style. r181's node builder
+            // re-walks a shared subexpression once PER REFERENCE during analysis; expressions
+            // with high fan-out (this worldXZ feeds the macro, the weight, the UVs and the
+            // swell) therefore make build TIME grow multiplicatively even while the emitted
+            // WGSL stays tiny. Measured before/after on the water material: 129 s -> see
+            // plan §Wave 2 addendum. A .toVar() materializes the value once and turns every
+            // downstream reference into a leaf.
+            worldXZ: origin.add(mix(local, coarse, morph)).toVar(),
+            spacing: spacing.mul(morph.add(1)).toVar(),
         };
     };
 
-    const tslMacro = (worldXZ) => {
-        const shelfT = smoothstep(float(60), float(-260), worldXZ.y);
-        const inlandT = smoothstep(float(-300), float(-900), worldXZ.y);
-        const lateralN = worldXZ.x.sub(-220).div(2400);
-        const lateral = max(float(0), float(1).sub(lateralN.mul(lateralN)));
-        const land = float(80).add(shelfT.mul(245).add(inlandT.mul(60)).mul(lateral));
-        const bx = worldXZ.x.sub(-150).div(430);
-        const bz = worldXZ.y.sub(-520).div(330);
-        const groundY = land.add(exp(bx.mul(bx).add(bz.mul(bz)).negate()).mul(-42));
-        let rise = float(0);
-        ODYSSEY_MASSIFS.forEach((m) => {
-            const d = length(worldXZ.sub(vec2(m.x, m.z)));
-            const cone = max(float(0), float(1).sub(d.div(float(m.radius))));
-            const pedestal = smoothstep(float(0), float(0.35), cone)
-                .mul(float(m.footY).sub(groundY));
-            const peak = pedestal.add(cone.pow(float(m.exponent)).mul(float(m.height)));
-            const kEff = max(float(0), max(rise, peak)).min(float(26));
-            const hh = clamp(float(0.5).add(rise.sub(peak).mul(0.5).div(max(kEff, float(1e-6)))), 0, 1);
-            rise = peak.add(rise.sub(peak).mul(hh)).add(kEff.mul(hh).mul(float(1).sub(hh)));
-        });
-        return groundY.add(rise);
-    };
-
-    const tslWeight = (worldXZ) => {
-        let strongest = float(0);
-        ODYSSEY_MASSIFS.forEach((m) => {
-            const d = length(worldXZ.sub(vec2(m.x, m.z)));
-            strongest = max(strongest, max(float(0), float(1).sub(d.div(float(m.radius * 1.25)))));
-        });
-        return strongest.mul(0.84).add(0.16);
-    };
+    // (The analytic tslMacro/tslWeight fold lived here. It is BAKED now — bakeMacroTexture —
+    // because expressing it in TSL froze every first compile for minutes. Do not resurrect it.)
 
     // ── ground ──
     const g = clipmapXZ(q.baseSpacing, q.gridN / 2);
     const reliefUv = g.worldXZ.div(float(RELIEF_EXTENT)).add(0.5);
     const vUv = varying(reliefUv, 'vUv');
-    const gMacro = tslMacro(g.worldXZ);
-    const gWeight = tslWeight(g.worldXZ);
+    // Macro terrain comes from the BAKE, not from analytic TSL — see bakeMacroTexture. The
+    // analytic fold in a shader graph froze the tab for minutes at build time.
+    const gMacroTex = texture(macroTex, reliefUv).level(0);
+    const gMacro = gMacroTex.r;
+    const gWeight = gMacroTex.g;
     const groundMat = new THREE.MeshBasicNodeMaterial();
     groundMat.positionNode = vec3(
         g.worldXZ.x,
@@ -512,9 +536,8 @@ export function createOdysseyWorld({
     );
     const vWeight = varying(gWeight, 'vW');
     const vSpacing = varying(g.spacing, 'vS');
-    const EPS = 6.0;
-    const vMDx = varying(tslMacro(g.worldXZ.add(vec2(EPS, 0))).sub(gMacro).div(EPS), 'vMDx');
-    const vMDz = varying(tslMacro(g.worldXZ.add(vec2(0, EPS))).sub(gMacro).div(EPS), 'vMDz');
+    const vMDx = varying(gMacroTex.b, 'vMDx');
+    const vMDz = varying(gMacroTex.a, 'vMDz');
 
     const aux = texture(heightTex, vUv);
     const baseNormal = normalize(vec3(aux.g.mul(vWeight).add(vMDx).negate(), 1, aux.b.mul(vWeight).add(vMDz).negate()));
@@ -615,10 +638,11 @@ export function createOdysseyWorld({
         .mul(0.55);
     waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
-    const vBedMacro = varying(tslMacro(w.worldXZ), 'vBedMacro');
-    const vBedW = varying(tslWeight(w.worldXZ), 'vBedW');
+    // Bed height from the macro BAKE — the analytic fold in a fragment-referenced varying was
+    // the single largest cause of the minutes-long first compile (see bakeMacroTexture).
+    const bedTex = texture(macroTex, wUv);
     const depth = float(ODYSSEY_SEA_LEVEL)
-        .sub(vBedMacro.add(texture(heightTex, wUv).r.mul(vBedW)));
+        .sub(bedTex.r.add(texture(heightTex, wUv).r.mul(bedTex.g))).toVar();
     const body = mix(
         mix(vec3(0.34, 0.70, 0.71), vec3(0.12, 0.42, 0.62), clamp(depth.div(18), 0, 1)),
         vec3(0.05, 0.22, 0.44),
@@ -878,7 +902,7 @@ export function createOdysseyWorld({
         dispose() {
             group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
             [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => m.dispose());
-            [heightTex, sunVisTex, detailTex].forEach((t) => t.dispose());
+            [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
             treeGeo.dispose();
         },
     };

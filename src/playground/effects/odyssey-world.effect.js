@@ -37,6 +37,19 @@ export function create({ scene, camera, params }) {
     const world = createOdysseyWorld({ quality });
     scene.add(world.group);
 
+    // COMPILE BISECT LEVER — ?worldOnly=ground,sky (comma list; substring match on mesh name).
+    // The first in-game/playground render pays one synchronous pipeline-compile bill for every
+    // visible mesh; when that bill inexplicably runs to minutes (2026-08-12: 155 s), the only
+    // way to attribute it is to compile one material family at a time. An invisible mesh
+    // creates no pipeline, so hiding is exclusion. No param = everything visible = unchanged.
+    const only = params?.get?.('worldOnly');
+    if (only) {
+        const wanted = only.split(',').map((t) => t.trim()).filter(Boolean);
+        world.group.traverse((o) => {
+            if (o.isMesh) o.visible = wanted.some((w) => o.name.includes(w));
+        });
+    }
+
     // eslint-disable-next-line no-console
     console.log('[odyssey-world]', JSON.stringify(world.stats));
     if (typeof window !== 'undefined') window.__ODYSSEY_WORLD__ = world.stats;
