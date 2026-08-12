@@ -1179,6 +1179,43 @@ export function createEarthCoreEnvironment(options = {}) {
         }
     });
 
+    // ── WAVE 3b: MERGE THE CONTACT-SHADOW DECALS — 20 draws → 1, provably safe ──
+    // The Wave 3b inventory counted 20 'contact-shadow' meshes: the single largest drawable
+    // family in the chapter. They already share ONE material (the pipeline collapse above),
+    // every one is parented directly to the group with a static transform, and the material
+    // reads only uv() — no positionLocal-dependent shading — so baking each mesh's transform
+    // into its geometry and merging is pixel-identical by construction. (The columns and
+    // molten pockets are NOT merged for exactly the inverse reason: their shading is driven
+    // by positionLocal, which a bake would redefine.)
+    {
+        const decals = [];
+        group.children.forEach((child) => {
+            if (child.name === 'contact-shadow') decals.push(child);
+        });
+        if (decals.length > 1) {
+            const baked = decals.map((mesh) => {
+                mesh.updateMatrix();
+                const geo = mesh.geometry.clone();
+                geo.applyMatrix4(mesh.matrix);
+                return geo;
+            });
+            const mergedGeo = mergeGeometries(baked, false);
+            baked.forEach((g) => g.dispose());
+            if (mergedGeo) {
+                decals.forEach((mesh) => {
+                    group.remove(mesh);
+                    mesh.geometry.dispose();
+                });
+                const mergedDecals = new THREE.Mesh(mergedGeo, decals[0].material);
+                mergedDecals.name = 'contact-shadow';
+                mergedDecals.renderOrder = 6;
+                group.add(mergedDecals);
+                group.userData.ownedGeometries = group.userData.ownedGeometries || [];
+                group.userData.ownedGeometries.push(mergedGeo);
+            }
+        }
+    }
+
     return group;
 }
 
@@ -1957,7 +1994,7 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         heart.visible = heartQuench < 0.98;
     }
 
-    const lavaFallRevealables = group.userData.lavaFallRevealables;
+    const { lavaFallRevealables } = group.userData;
     if (lavaFallRevealables?.length) {
         const localProgress = group.userData.localProgress ?? 0;
         const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
