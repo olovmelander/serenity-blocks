@@ -1,114 +1,114 @@
 {
-  "note": "Performance budgets (plan \u00a79.2). Nulls = budget declared, baseline pending \u2014 visible and lintable, never silently unfalsifiable. Gate on p95 frame-time, never FPS. Pin adaptive systems (tier + effectScale=1 + fixed pixelRatio) in every capture.",
-  "capturedAt": "2026-07-25",
-  "machine": "AMD Radeon 610M low-power adapter for Stillwater baseline; RTX5080-laptop for discrete/nightly lanes unless noted per report",
-  "budgets": {
-    "timeToMenuReadyMs": {
-      "baseline": null,
-      "max": 4000,
-      "note": "ends at MENU_READY (plan \u00a74.7 KPI decomposition); capture via startup-debug trace"
-    },
-    "introDurationMs": {
-      "baseline": null,
-      "max": null,
-      "note": "product choice, tracked not gated"
-    },
-    "cascadeInputLatencyP95Ms": {
-      "baseline": 300,
-      "max": 17,
-      "note": "Phase 5.2 KPI \u2014 input-to-sim-application during cascades; baseline is the measured 330-400ms class floor"
-    },
-    "frameP95Ms": {
-      "perSurface": {
-        "odyssey": 7,
-        "stillwater": 6,
-        "heavy-theme-worst": null
-      },
-      "maxPerTier": {
-        "60hz": 16.6,
-        "120hz": 8.3,
-        "144hz": 6.9
-      },
-      "split": {
-        "cpuMaxMs": 6,
-        "gpuMaxMs": 9,
-        "note": "60hz split; scale proportionally"
-      },
-      "stillwaterCalibration": "AMD Radeon 610M, WebGPU Medium, 1920x1080 at 60 Hz, render scale 1, AA off. Corrected r181 NodeFrame manual driver; the 6.0 ms idle baseline is rounded from repeated current-source warmed CPU-submit + GPU-timestamp p95 captures (5.83-5.95 ms). Reactions are governed by absolute, split, p99, and incremental gates rather than this idle-regression baseline."
-    },
-    "snapshotDeltaWireBytesP95": {
-      "baseline": 490,
-      "max": 80,
-      "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B; keyframes tracked separately"
-    },
-    "reliableMsgsPerSec": {
-      "baseline": null,
-      "max": null
-    },
-    "busEventsPerSec": {
-      "baseline": null,
-      "max": null,
-      "note": "Phase 4.1 back-pressure metric"
-    },
-    "desyncsPerMatch": {
-      "baseline": null,
-      "max": 0,
-      "note": "gates each Phase 5.0 cutover-ladder stage"
-    },
-    "gpuLossRecoveredRatio": {
-      "baseline": null,
-      "min": null,
-      "note": "Phase 4.2 reliability budget"
-    },
-    "savestateSerializeMs": {
-      "baseline": null,
-      "max": 0.5,
-      "note": "Phase 5.9 compact binary savestate at 60Hz"
-    },
-    "odysseyWorldGpuP50LaneAMs": {
-      "baseline": 0.39,
-      "max": 1.5,
-      "note": "Act II One World GPU time, RTX 5080 / 1920x1080 / High, camera seeked to journey 0.42 (chapter 4). Measured 2026-08-12 by scripts/odyssey-gpu-split.mjs into reports/odyssey-perf/gpu-split-lanea.json with baselineDrift EXACTLY 0.00 ms, which is why this cell gets a real baseline. The legacy dioramas measured 1.97 ms at the same station, so max 1.5 also fails if the rebuild is ever reverted by accident."
-    },
-    "odysseyWorldGpuP50LaneBMs": {
-      "baseline": null,
-      "max": 7.0,
-      "note": "Same measurement on the Radeon 610M / 1280x720 / Medium \u2014 the iGPU of this laptop, forced via --low-power. MEASURED AND DEFENSIBLE 2026-08-12: 9.895936 ms p50 (p95 10.49), cooled machine, nothing else on the GPU, station pinned, both baselines content-matched at 50 draws / 756,005 tris, baselineDrift EXACTLY 0.00 ms. The earlier 4.19 was the sticky-sampler artefact (ADR-0016). BASELINE STAYS NULL ON PURPOSE: committing 9.9 against max 7.0 reds the gate, and whether to close the 2.9 ms gap by optimisation or to re-budget the lane is the owner's decision \u2014 see the plan's section 7.1. Inputs for that decision: hiding the level-node group (with restored sparkles) saves 0.59 ms p50 and removes the tail (p99 18.9 -> 9.9), and the legacy dioramas measured 39.5-67.7 ms, so the rebuild's saving is not in question \u2014 only the last 2.9 ms against an aspirational budget."
-    },
-    "odysseyWorldDrawCallsLaneA": {
-      "baseline": 53,
-      "max": 90,
-      "note": "Draw calls at the same station: 53 with One World, 124 with the dioramas. The count is the structural claim of the rebuild (one continuous surface, not four), so a regression here means chapter environments have crept back into Act II."
-    },
-    "installerBytes": {
-      "baseline": 625923068,
-      "max": 450000000,
-      "note": "baseline = 2026-07-01 installer; Phase 8.2 media diet"
-    },
-    "appAsarBytes": {
-      "baseline": 677591834,
-      "max": 262144000,
-      "note": "music currently rides inside app.asar; Phase 8.2 asarUnpack"
-    },
-    "odysseyAct1Ch1GpuP50LaneAMs": {
-      "baseline": null,
-      "max": 1.0,
-      "note": "Rebuilt Earth Core at p=0.051, High/1080p. BASELINE NULL PER ADR-0016: both Wave 7 pairs were VOIDED by the content-match guard (draw calls flicker 92<->93 at this station on a time-driven cadence; single-run p50s 2.29-2.49). Pre-rebuild measured 2.10 (drift 0.00). Finding the flicker source is the prerequisite for ever filling this cell."
-    },
-    "odysseyAct1Ch1GpuP50LaneBMs": {
-      "baseline": null,
-      "max": 5.0,
-      "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33). Post 3a+decal-merge: 56.3-59.3 across a VOIDED pair (same 92<->93 flicker). THE FINDING THAT MATTERS: draws fell 131->92 and Lane B did not move \u2014 ch1's iGPU cost is FILL/ALU-bound (the emissive surface area), not draw-bound, so Wave 3b's consolidation must target surfaces, not submissions. Baseline stays null until the flicker is fixed and a content-matched pair exists."
-    },
-    "odysseyAct1Ch1DrawCalls": {
-      "baseline": null,
-      "max": 35,
-      "note": "131 pre-rebuild; 92-93 after the Wave 3b decal merge (20 decals -> 1, pixel-identical). Baseline stays null: committing 92 against max 35 reds the gate, and closing that gap is 3b's remaining contract-migration work (sprites, positionLocal-shaded rock families). The <=58 drawable ratchet in earth-core-drawable-budget.test.js holds the win meanwhile."
-    },
-    "odysseyAct1UnderwaterGpuP50LaneBMs": {
-      "baseline": 5.96,
-      "max": 8.5,
-      "note": "p=0.16, Radeon 610M/720p/Medium, drift -0.066 (one tick), content-matched at 45 draws \u2014 a REAL baseline. Pre-Wave-4 measured 7.73: the whole luminous-ocean package (bands, SSS ceiling, 640 motes, 110 fish, clouds-not-submitted-underwater fix) lands 1.7 ms UNDER where it started, and the old 24.6 ms p99 tail is gone (6.2). Lane A same station: 0.197 ms, drift exactly 0."
+    "note": "Performance budgets (plan \u00a79.2). Nulls = budget declared, baseline pending \u2014 visible and lintable, never silently unfalsifiable. Gate on p95 frame-time, never FPS. Pin adaptive systems (tier + effectScale=1 + fixed pixelRatio) in every capture.",
+    "capturedAt": "2026-07-25",
+    "machine": "AMD Radeon 610M low-power adapter for Stillwater baseline; RTX5080-laptop for discrete/nightly lanes unless noted per report",
+    "budgets": {
+        "timeToMenuReadyMs": {
+            "baseline": null,
+            "max": 4000,
+            "note": "ends at MENU_READY (plan \u00a74.7 KPI decomposition); capture via startup-debug trace"
+        },
+        "introDurationMs": {
+            "baseline": null,
+            "max": null,
+            "note": "product choice, tracked not gated"
+        },
+        "cascadeInputLatencyP95Ms": {
+            "baseline": 300,
+            "max": 17,
+            "note": "Phase 5.2 KPI \u2014 input-to-sim-application during cascades; baseline is the measured 330-400ms class floor"
+        },
+        "frameP95Ms": {
+            "perSurface": {
+                "odyssey": 7,
+                "stillwater": 6,
+                "heavy-theme-worst": null
+            },
+            "maxPerTier": {
+                "60hz": 16.6,
+                "120hz": 8.3,
+                "144hz": 6.9
+            },
+            "split": {
+                "cpuMaxMs": 6,
+                "gpuMaxMs": 9,
+                "note": "60hz split; scale proportionally"
+            },
+            "stillwaterCalibration": "AMD Radeon 610M, WebGPU Medium, 1920x1080 at 60 Hz, render scale 1, AA off. Corrected r181 NodeFrame manual driver; the 6.0 ms idle baseline is rounded from repeated current-source warmed CPU-submit + GPU-timestamp p95 captures (5.83-5.95 ms). Reactions are governed by absolute, split, p99, and incremental gates rather than this idle-regression baseline."
+        },
+        "snapshotDeltaWireBytesP95": {
+            "baseline": 490,
+            "max": 80,
+            "note": "dominant 30Hz delta packet incl. envelope; Phase 6A.4 target ~60B; keyframes tracked separately"
+        },
+        "reliableMsgsPerSec": {
+            "baseline": null,
+            "max": null
+        },
+        "busEventsPerSec": {
+            "baseline": null,
+            "max": null,
+            "note": "Phase 4.1 back-pressure metric"
+        },
+        "desyncsPerMatch": {
+            "baseline": null,
+            "max": 0,
+            "note": "gates each Phase 5.0 cutover-ladder stage"
+        },
+        "gpuLossRecoveredRatio": {
+            "baseline": null,
+            "min": null,
+            "note": "Phase 4.2 reliability budget"
+        },
+        "savestateSerializeMs": {
+            "baseline": null,
+            "max": 0.5,
+            "note": "Phase 5.9 compact binary savestate at 60Hz"
+        },
+        "odysseyWorldGpuP50LaneAMs": {
+            "baseline": 0.39,
+            "max": 1.5,
+            "note": "Act II One World GPU time, RTX 5080 / 1920x1080 / High, camera seeked to journey 0.42 (chapter 4). Measured 2026-08-12 by scripts/odyssey-gpu-split.mjs into reports/odyssey-perf/gpu-split-lanea.json with baselineDrift EXACTLY 0.00 ms, which is why this cell gets a real baseline. The legacy dioramas measured 1.97 ms at the same station, so max 1.5 also fails if the rebuild is ever reverted by accident."
+        },
+        "odysseyWorldGpuP50LaneBMs": {
+            "baseline": null,
+            "max": 7.0,
+            "note": "Same measurement on the Radeon 610M / 1280x720 / Medium \u2014 the iGPU of this laptop, forced via --low-power. MEASURED AND DEFENSIBLE 2026-08-12: 9.895936 ms p50 (p95 10.49), cooled machine, nothing else on the GPU, station pinned, both baselines content-matched at 50 draws / 756,005 tris, baselineDrift EXACTLY 0.00 ms. The earlier 4.19 was the sticky-sampler artefact (ADR-0016). BASELINE STAYS NULL ON PURPOSE: committing 9.9 against max 7.0 reds the gate, and whether to close the 2.9 ms gap by optimisation or to re-budget the lane is the owner's decision \u2014 see the plan's section 7.1. Inputs for that decision: hiding the level-node group (with restored sparkles) saves 0.59 ms p50 and removes the tail (p99 18.9 -> 9.9), and the legacy dioramas measured 39.5-67.7 ms, so the rebuild's saving is not in question \u2014 only the last 2.9 ms against an aspirational budget."
+        },
+        "odysseyWorldDrawCallsLaneA": {
+            "baseline": 53,
+            "max": 90,
+            "note": "Draw calls at the same station: 53 with One World, 124 with the dioramas. The count is the structural claim of the rebuild (one continuous surface, not four), so a regression here means chapter environments have crept back into Act II."
+        },
+        "installerBytes": {
+            "baseline": 625923068,
+            "max": 450000000,
+            "note": "baseline = 2026-07-01 installer; Phase 8.2 media diet"
+        },
+        "appAsarBytes": {
+            "baseline": 677591834,
+            "max": 262144000,
+            "note": "music currently rides inside app.asar; Phase 8.2 asarUnpack"
+        },
+        "odysseyAct1Ch1GpuP50LaneAMs": {
+            "baseline": null,
+            "max": 1.0,
+            "note": "Rebuilt Earth Core at p=0.051, High/1080p. BASELINE NULL PER ADR-0016: both Wave 7 pairs were VOIDED by the content-match guard (draw calls flickered 92<->93). 2026-08-12 LATER: the flicker was found and killed (lava-floor corona sprites were the chapter's only frustum-culled drawables; camera idle breathing walked the frustum edge across one \u2014 plan \u00a710.3), and the profile now reports drawCallsMin/Max so a pair can prove its own constancy. The prerequisite this note named is MET; the cell can be filled by the next Lane A pair. Pre-rebuild measured 2.10 (drift 0.00)."
+        },
+        "odysseyAct1Ch1GpuP50LaneBMs": {
+            "baseline": null,
+            "max": 5.0,
+            "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33). Post 3b canopy fold: 40.24/41.48 sans orbs. 2026-08-12 BACKDROP BAKE (plan \u00a710.2): the dome (priced 15-19 ms by lever differential) now reads baked 3D noise instead of 24 analytic octaves/px \u2014 27.98/29.10 ms p50 sans orbs, drift 1.11, content-matched 83 draws with drawCallsMin==drawCallsMax (flicker dead, \u00a710.3). Baseline stays null: committing ~28 against max 5.0 reds the gate; max needs a deliberate re-budget decision (the 5.0 was written as an aspiration before the lane was priced)."
+        },
+        "odysseyAct1Ch1DrawCalls": {
+            "baseline": null,
+            "max": 35,
+            "note": "131 pre-rebuild; 92-93 after the Wave 3b decal merge. 2026-08-12: 83 sans orbs, and CONSTANT for the first time \u2014 the +-1 flicker was the lava-floor corona sprites (frustum-culled, camera breathing; plan \u00a710.3); the fix unculls the five coronas, +5 always-on draws that are frustum-clipped (vertex-only). Baseline stays null: 83 against max 35 reds the gate; closing that gap is the carried sprite->instanced migration."
+        },
+        "odysseyAct1UnderwaterGpuP50LaneBMs": {
+            "baseline": 5.96,
+            "max": 8.5,
+            "note": "p=0.16, Radeon 610M/720p/Medium, drift -0.066 (one tick), content-matched at 45 draws \u2014 a REAL baseline. Pre-Wave-4 measured 7.73: the whole luminous-ocean package (bands, SSS ceiling, 640 motes, 110 fish, clouds-not-submitted-underwater fix) lands 1.7 ms UNDER where it started, and the old 24.6 ms p99 tail is gone (6.2). Lane A same station: 0.197 ms, drift exactly 0."
+        }
     }
-  }
 }

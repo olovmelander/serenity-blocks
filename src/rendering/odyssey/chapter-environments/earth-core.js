@@ -1308,6 +1308,13 @@ function createLavaFloor(uniforms, basins = []) {
 
     glows.forEach((sprite) => {
         sprite.scale.set(sprite.userData.baseScale, sprite.userData.baseScale, 1);
+        // THE 78<->79 DRAW FLICKER LIVED HERE (found by per-frame frustum-flip logging,
+        // 2026-08-12): these were the chapter's only frustum-culled drawables, and the
+        // camera's idle breathing walks the frustum edge across whichever corona sits at
+        // the view's rim — a +-1 draw sine that voided the gpu-split harness's
+        // content-matched pairs (with orbs shown it read as 92<->93; same single source).
+        // The cavern surrounds the camera, so culling these bought nothing.
+        sprite.frustumCulled = false;
     });
 
     group.userData.glows = glows;
