@@ -95,7 +95,9 @@ const EMBER_COLORS = [
 
 const TAU = Math.PI * 2;
 const EARTH_CORE_WORLD_UP = new THREE.Vector3(0, 1, 0);
-const EARTH_CORE_FALLBACK_FORWARD = new THREE.Vector3(0, 0, 1);
+// Screen-up in world XZ (perp to the camera's screen-right (-0.736, 0, 0.677)). This is
+// the chapter's staging heading — see the note in createEarthCoreStaging.frame().
+const EARTH_CORE_STAGE_FORWARD = new THREE.Vector3(-0.677, 0, -0.736).normalize();
 
 function createEarthCoreStaging(groupCenter, localT) {
     const sample = (ft) => {
@@ -112,12 +114,26 @@ function createEarthCoreStaging(groupCenter, localT) {
         const ahead = sample(Math.min(1, ft + 0.06));
         const behind = sample(Math.max(0, ft - 0.06));
         const tangent = ahead.clone().sub(behind).normalize();
-        const forward = new THREE.Vector3(tangent.x, 0, tangent.z);
-        if (forward.lengthSq() < 1e-4) {
-            forward.copy(EARTH_CORE_FALLBACK_FORWARD);
-        } else {
-            forward.normalize();
-        }
+        // THE STAGING FRAME WAS DEGENERATE, AND IT IS WHY THE SCENE LOOKED SCATTERED (user
+        // report "can we align the pillars perfectly", 2026-08-12).
+        //
+        // This derived the horizontal basis from the path tangent — but chapter 1 is a
+        // VERTICAL SHAFT, so the tangent is almost pure +Y and its XZ part is noise:
+        // measured |tangent.xz| = 0.24 at ft 0.15, 0.016 at ft 0.20, and 0.000-0.044 for
+        // ft >= 0.30. The 1e-4 guard only catches the fully-degenerate case, so ft=0.14 got
+        // a "valid" heading 78 degrees away from every later station. The column pair meant
+        // to bracket the frame there straddled the rail along Z (z = -16 vs +30) while the
+        // other three straddled along X — one gate rotated three-quarters of a right angle
+        // out of the colonnade.
+        //
+        // A vertical shaft has no meaningful path-relative horizontal frame, so use the one
+        // basis that IS stable here: the camera's. OdysseyCameraController's
+        // parallel-transport frame puts screen-right at (-0.736, 0, 0.677) in world XZ,
+        // steady within +-2.5 degrees across the whole chapter. Making it a CONSTANT chapter
+        // basis gives `lateral` = screen-right and `forward` = screen-up for EVERY set piece
+        // — columns, colonnade walls, ceiling slabs, seats, geode clusters — so the whole
+        // room stays mutually aligned instead of the columns alone.
+        const forward = EARTH_CORE_STAGE_FORWARD.clone();
         const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
         return {
             center,
@@ -1040,12 +1056,17 @@ export function createEarthCoreEnvironment(options = {}) {
     // (moltenRockField, ~28 snoise3/frag) compiles ONCE at boot instead of once per site. Those
     // duplicate cold pipeline compiles (~2.7s each) were a root of the boot-warp BeginFrame-
     // starvation freeze. Same pattern the chapter already uses for the decal/god-ray/horizon mats.
+    // uLakeY: the lake plane in WORLD space. The material reads positionWorld, so handing it
+    // the chapter-LOCAL LAVA_LAKE_Y put its contact gradient 30 units off (see the space-bug
+    // note in createMoltenPocketMaterialTSL). groupCenter is this group's world origin.
+    const uLakeWorldY = uniform(groupCenter.y + LAVA_LAKE_Y);
     const sharedColumnMaterial = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uBakedBounce,
-        true,
+        { isColumn: true, uLakeY: uLakeWorldY },
     ).material;
+    group.userData.uLakeWorldY = uLakeWorldY;
 
     // 12c. Basalt colonnade WALLS (plan asset 3): 6–8 clustered hex-column groups per
     // side, 55–90 units off-path, size-graded 60→160, continuous along the corridor —
@@ -1069,34 +1090,49 @@ export function createEarthCoreEnvironment(options = {}) {
     //     haze (oppressive scale/implied height) among 70-tall framing pillars. Every
     //     column base rests AT the lake surface (base seated, not centred through it) and
     //     gets a contact-shadow AO decal (§5.1) so it grounds into the lake.
+    // ALIGNMENT (user report "can we align the pillars perfectly", 2026-08-12). The old
+    // placement asked `staging.lakeAt` for a path-relative frame, but chapter 1 is a VERTICAL
+    // SHAFT: the path tangent is almost pure +Y, so the frame's horizontal basis
+    // (forward = tangent.xz, right = perp) is degenerate and its direction swings wildly —
+    // and at some stations falls back to EARTH_CORE_FALLBACK_FORWARD entirely. Measured
+    // in-game, the ft=0.14 pair landed at z = -16 and z = +30: a 46-unit split where the
+    // intent was a matched bracket. The lateral offsets also grew per station (22/25.5/29/32.5
+    // vs 24/28/32/36), so the aisle fanned out instead of running parallel.
+    //
+    // Fix: for a vertical shaft the only stable basis is the WORLD one. Columns take the path
+    // centre for their station and a FIXED world-axis offset, so left and right are exact
+    // mirrors at a constant half-width and every station shares one aisle axis. The framing
+    // intent from the original comment is preserved — a pillar brackets each frame edge across
+    // the descent, heights still vary, two giants still tower into the ceiling haze.
     const columnSpecs = [];
     const columnStations = [0.14, 0.42, 0.70, 0.86];
+    // With the frame constant (above), `lateral` is screen-right and `forward` is screen-up,
+    // so a constant half-width gives parallel aisle walls and an exact left/right mirror at
+    // every station. The old spec fanned the aisle open (22/25.5/29/32.5 left vs 24/28/32/36
+    // right, 46 -> 69 units across) and alternated `forward` by parity, which tilted each
+    // gate a few degrees the other way. Heights, radii and the two giants are unchanged, so
+    // the framing intent above survives verbatim.
+    const AISLE_HALF_WIDTH = 30; // posts land near the frame edges at this chapter's FOV
+    const AISLE_FORWARD = 5; // same screen-up nudge for both sides: they sit exactly opposite
     columnStations.forEach((ftLocal, bi) => {
-        const left = staging.lakeAt(ftLocal, {
-            lateral: -(22 + bi * 3.5),
-            forward: bi % 2 === 0 ? 2 : 7,
-        });
-        const right = staging.lakeAt(ftLocal, {
-            lateral: 24 + bi * 4,
-            forward: bi % 2 === 0 ? 8 : 1,
-        });
-        columnSpecs.push({
-            x: left.x,
-            z: left.z,
-            r: 6.8 + bi * 0.7,
-            h: bi === 1 ? 142 : 96 + bi * 8,
-            giant: bi === 1,
-        });
-        columnSpecs.push({
-            x: right.x,
-            z: right.z,
-            r: 7.2 + bi * 0.65,
-            h: bi === 0 ? 132 : 98 + bi * 6,
-            giant: bi === 0,
-        });
+        const push = (sign, r, h, giant) => {
+            const p = staging.lakeAt(ftLocal, {
+                lateral: sign * AISLE_HALF_WIDTH,
+                forward: AISLE_FORWARD,
+            });
+            columnSpecs.push({
+                x: p.x, z: p.z, r, h, giant,
+            });
+        };
+        push(-1, 6.8 + bi * 0.7, bi === 1 ? 142 : 96 + bi * 8, bi === 1);
+        push(1, 7.2 + bi * 0.65, bi === 0 ? 132 : 98 + bi * 6, bi === 0);
     });
-    // One far filler only: depth cue without re-cluttering the middle of the screen.
-    const fillerColumn = staging.lakeAt(0.78, { lateral: -34, forward: 16 });
+    // One far filler only: depth cue without re-cluttering the middle of the screen. Set
+    // OUTSIDE the aisle so it reads as depth rather than breaking the colonnade's rhythm.
+    const fillerColumn = staging.lakeAt(0.78, {
+        lateral: -(AISLE_HALF_WIDTH + 14),
+        forward: AISLE_FORWARD + 16,
+    });
     columnSpecs.push({
         x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 112, giant: false,
     });
@@ -1104,7 +1140,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // Columns + ceiling slabs reuse the hoisted sharedColumnMaterial (built above so the colonnade
     // + selenite shell share it too) — the isColumn=true graph compiles once for the whole chapter.
 
-    const columns = columnSpecs.map((spec) => {
+    const columns = columnSpecs.map((spec, ci) => {
         const col = createObsidianColumnTSL(
             uniforms.uTime,
             uniforms.uPulseIntensity,
@@ -1112,6 +1148,7 @@ export function createEarthCoreEnvironment(options = {}) {
             spec.h,
             uniforms.uBakedBounce,
             sharedColumnMaterial,
+            ci + 1, // seed: the jitter is deterministic now, so vary it per column explicitly
         );
         // Seat the BASE at the lake surface (center = lake + h/2) so the column rises out
         // of the lake instead of passing half through it.
