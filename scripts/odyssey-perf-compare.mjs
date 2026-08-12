@@ -97,8 +97,12 @@ const METRIC_DEFS = [
     { name: 'frame.max', flat: ['browser', 'perf', 'frameTimeSummary', 'max'] },
     { name: 'overBudget', flat: ['browser', 'perf', 'frameTimeSummary', 'overBudget'] },
     { name: 'spikes', flat: ['browser', 'perf', 'spikes', 'length'] },
-    { name: 'drawCalls.avg', flat: ['browser', 'perf', 'counters', 'callsAvg'] },
-    { name: 'triangles.avg', flat: ['browser', 'perf', 'counters', 'trianglesAvg'] },
+    // Percentiles, not means — Wave -1's measurement discipline. The comparison has to speak
+    // the same language as the session report or every drawCalls row reads SKIPPED.
+    { name: 'drawCalls.p50', flat: ['browser', 'perf', 'counters', 'callsP50'] },
+    { name: 'drawCalls.max', flat: ['browser', 'perf', 'counters', 'callsMax'] },
+    { name: 'triangles.p50', flat: ['browser', 'perf', 'counters', 'trianglesP50'] },
+    { name: 'triangles.max', flat: ['browser', 'perf', 'counters', 'trianglesMax'] },
     { name: 'longTasks.count', flat: ['browser', 'perf', 'longTasks', 'count'] },
     { name: 'longTasks.totalMs', flat: ['browser', 'perf', 'longTasks', 'totalMs'] },
     { name: 'memory.usedJSHeapSizeMB', flat: [] },

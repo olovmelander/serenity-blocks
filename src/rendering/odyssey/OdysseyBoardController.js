@@ -8,6 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
+import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
@@ -346,6 +347,19 @@ export class OdysseyBoardController {
         this.oneWorldEnabled = options.oneWorld === true || readBooleanUrlFlag('odysseyOneWorld');
         this.oneWorld = null;
         this._oneWorldActT = 0;
+        // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
+        // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
+        // enable the debug overlay — and then measured a frame with the overlay in it.
+        this.gpuProfileEnabled = readBooleanUrlFlag('odysseyGpuProfile');
+        this.gpuProfileRing = this.gpuProfileEnabled ? new PerfRing(600) : null;
+        if (this.gpuProfileRing && typeof window !== 'undefined') {
+            // The harness discards everything sampled during startup: a cold pipeline compile
+            // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
+            window.__ODYSSEY_GPU_RESET__ = () => this.gpuProfileRing.reset();
+        }
+        this._gpuProfileLastSummary = 0;
+        // A/B lever for the same wave: 55 nodes x 3 nested transparent shells, never measured.
+        this.hideLevelNodes = readBooleanUrlFlag('odysseyHideLevelNodes');
         // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
         // chapters shed their heaviest sublayers (Ch3's reflector 2nd render, big additive particle
         // clouds) via a detailLevel signal their update() reads — no teardown, no recompile. Stage 1
@@ -1533,12 +1547,16 @@ export class OdysseyBoardController {
             antialias: false,
             alpha: true,
             forceWebGL,
-            powerPreference: 'high-performance',
+            // Lane B of the §8 budget is the Radeon 610M iGPU, and a run that asks for
+            // 'high-performance' gets handed the discrete part no matter what Chromium's
+            // force_low_power_gpu switch says — the measurement would silently be Lane A
+            // again, at Lane B's resolution, and nobody would be able to tell from the file.
+            powerPreference: readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance',
             // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
             // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
             // active — otherwise the query pool fills and overflows (the renderer tracks queries
             // that nothing resolves once the per-frame resolve is gated to the overlay too).
-            trackTimestamp: isOdysseyAAADebugEnabled(),
+            trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile'),
         });
         await this.renderer.init();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
@@ -2072,6 +2090,39 @@ export class OdysseyBoardController {
         renderer.resolveTimestampsAsync(renderType).catch(() => {});
     }
 
+    /**
+     * WAVE -1 — record this frame's GPU time and publish a throttled percentile summary.
+     *
+     * `renderer.info.render.timestamp` is one aggregate number per frame, and WebGPU exposes
+     * no per-pass scope through three's API, so the "split" the wave asks for is obtained as
+     * an A/B MATRIX across runs (bloom off, post off, level nodes hidden, ...) rather than as
+     * nested timestamp scopes. Each configuration is one run; the differences are the split.
+     *
+     * Sampling is per-frame and allocation-free; the O(n log n) summary is throttled to ~4 Hz
+     * and parked on window for the harness to read.
+     * @private
+     */
+    _sampleGpuProfile() {
+        const ts = this.renderer?.info?.render?.timestamp;
+        // The first resolves land as null/0 while the query pool warms; those are not frames.
+        if (Number.isFinite(ts) && ts > 0) this.gpuProfileRing.push(ts);
+
+        const now = performance.now();
+        if (now - this._gpuProfileLastSummary < 250) return;
+        this._gpuProfileLastSummary = now;
+        // Re-assert on the throttled tick rather than once at setup: the instanced shells are
+        // built lazily, so a one-shot call at construction would miss them and the A/B would
+        // silently measure the same frame twice.
+        if (this.hideLevelNodes) this.nodeManager?.setAllVisible(false);
+        const summary = this.gpuProfileRing.summarize();
+        summary.drawCalls = this._perfCounters?.calls ?? null;
+        summary.triangles = this._perfCounters?.triangles ?? null;
+        summary.oneWorld = !!this.oneWorld;
+        summary.levelNodesHidden = !!this.hideLevelNodes;
+        summary.quality = this.qualityName ?? null;
+        if (typeof window !== 'undefined') window.__ODYSSEY_GPU_PROFILE__ = summary;
+    }
+
     checkHover() {
         if (!this.nodeManager) return;
 
@@ -2401,9 +2452,10 @@ export class OdysseyBoardController {
         // ONLY when the overlay is active (?odysseyAAA=1) — otherwise this scheduled an async GPU
         // timestamp readback + allocated a Promise + a .catch closure EVERY frame for data that
         // nothing reads (per-frame GC the board never needed in normal play). Zero visual effect.
-        if (this.debugOverlayActive) {
+        if (this.debugOverlayActive || this.gpuProfileEnabled) {
             this._resolveRenderTimestamps();
         }
+        if (this.gpuProfileRing) this._sampleGpuProfile();
 
         // Wave 2: feed this frame's wall-clock time into the adaptive-quality controller. It
         // records every frame and self-throttles its evaluation to ~1Hz; the resolution policy's

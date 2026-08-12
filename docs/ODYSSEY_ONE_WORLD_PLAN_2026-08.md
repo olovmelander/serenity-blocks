@@ -590,6 +590,24 @@ From the games research, as checkable rules:
 
 ## 5. Waves
 
+### 5.0 Wave tracker (authoritative)
+
+Checked means: every item in the wave's section is verifiably in the code, `npx vitest run`
+and `npx eslint` both pass, and where the wave makes a visual claim it is capture-verified.
+Percentages are from the 2026-08-12 per-wave repo audit, which checked the code rather than
+this document's own prose — several waves this file described as done were not.
+
+- [x] **Wave −1** — Measure first — DONE 2026-08-12. Both lanes published to `reports/odyssey-perf/gpu-split-lane{a,b}.json`; p50/p99-only ring (`src/utils/perf-ring.js`, 12 tests); level-node A/B run on both lanes. Headline: **Lane B is 67.7 ms p50 against a 7.0 ms budget**. Documented caveats: the split is differential rather than per-pass (three r181 exposes one timestamp scope per render type), Lane B's 8.6 ms drift exceeds its own deltas, and One World times out in this harness so it has no number yet.
+- [ ] **Wave 0** — Stop the bleeding (40 %: 0.3 and 0.5 shipped in 4baac9c1; 0.1, 0.2 and 0.4 untouched)
+- [ ] **Wave 1** — The spike (80 %: gate met on Lane A only; the Lane B measurement the gate literally names was never taken)
+- [ ] **Wave 2** — Height field + aux bake + colour script (85 %: height field, colour script and aux curvature all in; relief res is 1024²/768² not 2048², no fog-LUT id, no `.level(0)` lint)
+- [ ] **Wave 3** — Swap the ground in; re-seat every prop (45 %: ground swapped and booting, but behind a default-OFF flag and `heightAt` still has zero consumers)
+- [ ] **Wave 4** — Delete the canonical chain and `rangeAuthority` (15 %: the baked-LUT clause was superseded by measurement; the deletions are blocked on Wave 3 flipping the flag)
+- [ ] **Wave 5** — One atmosphere + one sky (35 %: fog ownership and the one sky landed early; the 12 legacy fog opt-outs and the lint are at zero)
+- [ ] **Wave 6** — Transitions become occlusion (5 %: the ecotone machinery is fully live — 46 crossfade bridges)
+- [ ] **Wave 7** — Perf, tiers, residency, rail furniture (10 %: not started; blocked on Wave −1 for falsifiability)
+
+
 ### Wave −1 — Measure first (blocking; nothing else is trustworthy without it)
 
 Instrument the **current** scene with `renderer.trackTimestamp = true` and
@@ -601,6 +619,87 @@ bottleneck and has never been measured.
 Measurement discipline as an exit criterion: **median and p99 only, never mean**; fixed-size
 ring buffer, recompute throttled to ~4 Hz, zero allocation in the render loop; draw calls
 latched once per frame from `renderer.info.render.drawCalls`.
+
+#### What Wave −1 actually found (2026-08-12, Lane A)
+
+The instrument: `src/utils/perf-ring.js` (fixed ring, p50/p95/p99, **no mean**, 12 tests),
+`?odysseyGpuProfile=1` on the board so a measurement run no longer has to enable the debug
+overlay and then measure a frame with the overlay in it, `?odysseyHideLevelNodes=1` +
+`LevelNodeManager.setAllVisible()` for the A/B, and `scripts/odyssey-gpu-split.mjs` publishing
+into `reports/odyssey-perf/`. The perf session and its comparison now report
+`drawCalls.p50/max` instead of `drawCalls.avg`, and `summarizeValues` gained p99.
+
+**The split is differential, not per-pass, and the plan should stop asking for per-pass.**
+three r181's WebGPU backend exposes one timestamp scope per render type and `PostProcessing`
+renders its whole graph in a single call, so there is nowhere to hang a scene/shadow/post/bloom
+query without forking the renderer. Each configuration removes one system instead.
+
+**Measure the lane the budget is written against.** The first runs used 1280×720 and every
+configuration's p50 landed within one tick of each other — because the GPU timer quantises to
+**65.536 µs** and the whole scene was ~1.0 ms, so the entire split sat inside the noise floor
+and `baselineDriftMs` equalled every "finding". At the specified 1920×1080 the same
+measurements separate cleanly.
+
+| configuration | p50 | p99 | draws |
+|---|---|---|---|
+| baseline | 2.88 ms | 4.59 ms | 140 |
+| no-bloom | 2.10 ms | 2.88 ms | 132 |
+| no-level-nodes | 2.16 ms | 3.28 ms | 132 |
+| baseline-repeat | 2.95 ms | 3.60 ms | 126 |
+
+`baselineDriftMs` is **−0.066 ms — exactly one timer tick**, so this run's deltas are signal:
+
+- **bloom ≈ 0.79 ms (27 % of frame GPU time)**
+- **level-node group ≈ 0.72 ms (25 %)** — the plan's "most likely 610M bottleneck", measured
+  at last, and on Lane A it is the second-largest single item in the frame.
+
+An earlier 1080p run put both at ~1.70 ms and showed them as *identical*, which suggested the
+orbs were simply what bloom was working on. This cleaner run does not support that: 0.786 and
+0.721 are close but distinct, and that run's `no-bloom` p99 had risen *above* baseline, which a
+shed pass should never do. The tidier hypothesis was an artefact of a bad run; two systems,
+two costs.
+
+Not measured: the two One World configurations timed out waiting for `boardController.isActive`
+in this harness, on every attempt. The world boots fine under the chapter-capture harness, so
+this is a harness readiness bug rather than a boot failure, and it means **One World has no
+GPU-time number yet** — the earlier 720p run's −0.13 ms was inside the noise floor and should
+not be quoted.
+
+Still owed: the Radeon 610M lane. #### Lane B (AMD Radeon 610M, rdna-2, 1280×720, Medium) — the number that changes the plan
+
+| configuration | p50 | p99 | draws |
+|---|---|---|---|
+| baseline | 67.70 ms | 88.21 ms | 122 |
+| no-level-nodes | 71.70 ms | 83.49 ms | 114 |
+| baseline-repeat | 76.28 ms | 87.16 ms | 122 |
+
+**§8's Lane B frame budget is 7.0 ms p95. The measured baseline is 67.7 ms p50 — an order of
+magnitude over, at ~14 fps.** The entire Lane B column of §8 was datasheet arithmetic; the plan
+called it "a hypothesis to falsify in Wave 1". It is now falsified, and not marginally.
+
+Two disciplines this run enforces on itself:
+
+- **No per-system attribution is possible from it.** `baselineDriftMs` is 8.6 ms — baseline
+  drifted from 67.7 to 76.3 across the run — which is *larger* than the level-node delta
+  (−4.0 ms, itself negative). On this part, under this load, nothing smaller than ~9 ms can be
+  told from thermal drift. The level-node A/B is therefore conclusive on Lane A (0.72 ms, 25 %
+  of frame) and **inconclusive on Lane B**, which is the lane the question was asked about.
+- Only three configurations were run, and deliberately: CLAUDE.md records that long WebGPU
+  sessions have TDR-crashed this machine's iGPU, so `--only` bounds the exposure.
+
+What this means for the waves after it: Wave 7 cannot be a tuning pass. A 10× gap is not closed
+by shedding a cascade or an octave — it is closed by the Act II draw/material collapse this
+whole rebuild is for, plus a genuinely reduced Lane B tier, and it must be re-measured here
+rather than reasoned about. It also means **One World's own Lane B cost is now the single most
+valuable unknown in the plan**, and the harness cannot currently measure it (below).
+
+#### Known harness limitation
+
+Both One World configurations time out waiting for `boardController.isActive` and record `null`
+rather than a number, on every attempt, on both lanes. The world boots fine under
+`odyssey-chapter-capture.mjs`, so this is a readiness-predicate bug in the split harness, not a
+boot failure — but it means **One World has no GPU-time measurement yet on either lane**. The
+720p run's −0.13 ms sat inside a 0.066 ms noise floor and must not be quoted as a result.
 
 ### Wave 0 — Stop the bleeding (ship first, unconditionally)
 

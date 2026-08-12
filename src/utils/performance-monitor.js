@@ -77,6 +77,29 @@ function escapeAttribute(value = '') {
 /**
  * Performance Monitor - tracks game performance metrics in real-time
  */
+/**
+ * Median / max of a small rolling sample window. Kept module-scope and copy-then-sort rather
+ * than sorting in place: `_counterSamples` is a live rolling window and reordering it would
+ * corrupt the shift()-based eviction that keeps it bounded.
+ * @param {number[]} values
+ * @returns {number}
+ */
+function medianOf(values) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor((sorted.length - 1) / 2)];
+}
+
+/**
+ * @param {number[]} values
+ * @returns {number}
+ */
+function maxOf(values) {
+    let out = 0;
+    for (let i = 0; i < values.length; i += 1) if (values[i] > out) out = values[i];
+    return out;
+}
+
 export class PerformanceMonitor {
     constructor() {
         this.enabled = false;
@@ -968,6 +991,15 @@ export class PerformanceMonitor {
         if (samples.triangles.length > SAMPLE_SIZE) samples.triangles.shift();
         this.renderCounters.callsAvg = this.calculateAverage(samples.calls);
         this.renderCounters.trianglesAvg = this.calculateAverage(samples.triangles);
+        // Wave -1 of docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md makes "median and p99, never mean"
+        // an exit criterion for anything a decision is measured against. The rolling averages
+        // above stay for the live overlay and the themes that read them; these are what the
+        // COMMITTED perf report consumes, because a mean draw count over a journey that swings
+        // between 40 and 260 draws describes no frame the game ever rendered.
+        this.renderCounters.callsP50 = medianOf(samples.calls);
+        this.renderCounters.callsMax = maxOf(samples.calls);
+        this.renderCounters.trianglesP50 = medianOf(samples.triangles);
+        this.renderCounters.trianglesMax = maxOf(samples.triangles);
     }
 
     /**
