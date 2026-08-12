@@ -18,6 +18,7 @@
 //   p=<0..1>       absolute Odyssey progress override
 //   only=core|world   isolate one side (the other is not built at all)
 //   gate=0            disable the act-gate, reproducing the pre-fix overdraw defect
+//   steam=0           drop the steam-quench occlusion volume (the crossfade-only baseline)
 // Live sweep without reload: window.__SEAM12__.setSeamT(0..1) / setProgress(0..1).
 import * as THREE from 'three/webgpu';
 import {
@@ -31,6 +32,7 @@ import {
 } from '../../rendering/odyssey/path-utils.js';
 import { resolveChapterBlendState } from '../../rendering/odyssey/ChapterEnvironmentManager.js';
 import { isWorldVisibleAtProgress } from '../../rendering/odyssey/world/odyssey-world-act-gate.js';
+import { createSteamQuench } from '../../rendering/odyssey/composition/odyssey-steam-quench.js';
 
 export const meta = {
     id: 'seam-12-dive',
@@ -88,6 +90,16 @@ export function create({ scene, camera, params }) {
     const actEnd = chapterPositions[5];
     const actSpan = (actEnd - actStart) || 1;
 
+    // THE OCCLUSION MOMENT. Seated on the rail AT the boundary, sized to envelop the corridor,
+    // so the camera flies through it rather than watching it from outside.
+    let steam = null;
+    if (params?.get?.('steam') !== '0') {
+        steam = createSteamQuench();
+        const at = getOdysseyPathPointAt(boundary);
+        steam.mesh.position.set(at.x, at.y, at.z);
+        scene.add(steam.mesh);
+    }
+
     /** Drive both sides from ONE progress, exactly as the board does. */
     function applyProgress(p, time, delta) {
         const blendState = resolveChapterBlendState(p, chapterPositions);
@@ -100,6 +112,11 @@ export function create({ scene, camera, params }) {
             core.userData.chapterOpacity = coreOpacity;
             core.visible = coreOpacity > 0.002;
             updateEarthCoreEnvironment(core, delta, time, camera, p, null);
+        }
+        if (steam) {
+            // Map absolute progress onto the seam window: 0 approaching, 0.5 at the boundary,
+            // 1 leaving. Outside the window the volume is transparent and costs one draw.
+            steam.update(time, (p - seamLo) / ((seamHi - seamLo) || 1));
         }
         if (world) {
             // The SAME gate the board applies (shared module, deliberately not re-derived):
@@ -145,6 +162,7 @@ export function create({ scene, camera, params }) {
         },
         resize() {},
         dispose() {
+            if (steam) { scene.remove(steam.mesh); steam.dispose(); }
             if (core) scene.remove(core);
             if (world) { scene.remove(world.group); world.dispose(); }
             if (typeof window !== 'undefined') delete window.__SEAM12__;
