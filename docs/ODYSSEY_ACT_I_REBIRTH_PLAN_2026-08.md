@@ -379,6 +379,30 @@ Wave 1 calibrates them against the refs before anything ships):
 | +0.12 (new) | **shallows** | water | powder `#4a8ab0` body, ceiling glow `#80c0e0`, dawn-gold kiss `#e0c080` in the crest SSS only | Heron dawn-sea; gold stays in the SSS mask so the air keyframes' horizon anchor is untouched |
 | 0.18 | **breach** (existing) | air | unchanged | Act II's script takes over; continuity by construction |
 
+> ⚠️ **RESCOPED (Wave 2, 2026-08-12) — the negative-`p` column above is not implementable, and
+> two of the rows belong to a different wave.** Original table preserved; the corrections:
+>
+> **1. There is no room below zero.** `sampleColourScript` clamps its argument to `[0, 1]`
+> (`odyssey-colour-script.js`), and a shipped test asserts the script "is ordered, spans
+> 0..1". Keyframes at `p = −0.10 / −0.06 / −0.02` could never be sampled, and re-basing the
+> existing array to make room would move every Act II keyframe — a visual change to a shipped,
+> capture-verified act, which this plan has no mandate to make. **Act I gets its OWN array and
+> sampler** (`ODYSSEY_ACT1_COLOUR_SCRIPT` / `sampleAct1ColourScript(t)`, `t` = chapter-1 local
+> progress) sharing the same Oklab machinery and the same invariants. The act handoff is then
+> enforced by a TEST rather than by array adjacency, which is strictly stronger.
+>
+> **2. The two water keyframes are not Act I's to add — and not this wave's.** `+0.06`
+> (luminous mid-water) and `+0.12` (shallows) sit INSIDE Act II's existing `0.00 abyss →
+> 0.18 breach` span, so they are legal additions to the shipped array — but the world samples
+> that array every frame, so adding them CHANGES the shipped underwater look the moment they
+> land. That is exactly Wave 4's work and exactly what Wave 4's captures verify. **Moved to
+> Wave 4**, so Wave 2 can keep its "data + tests only, no visual change" contract honestly.
+>
+> **3. `seamAfter` moves from `crack` to `cathedral`.** The invariant walks consecutive pairs
+> and exempts the pair FOLLOWING a keyframe that declares it. The violent hue swing is
+> cathedral → crack (ember to quench-cool), so the declaration has to sit on `cathedral` or
+> the rate limit fires on the one transition the quench exists to hide.
+
 Invariants, extended not replaced:
 
 - The existing two (horizon convergence for `air` keyframes; hue rate ≤ 12°/0.05p except
@@ -604,7 +628,11 @@ the One World convention — and the plan shipped without it.)
 - [x] **Wave 1** — The playground value study — **DONE 2026-08-12.** 6 materials, 3
   phase-locked angles, value gate 0.905–0.973 (needs ≥0.50), console clean. Five capture-
   forced corrections recorded, including two that only a SECOND phase revealed.
-- [ ] **Wave 2** — The script grows its Act I limb (data + tests before pixels)
+- [x] **Wave 2** — The script grows its Act I limb — **DONE 2026-08-12.** Rescoped first
+  (negative `p` is unsamplable — Act I got its own array + sampler). 13 tests, both new
+  invariants mutation-verified; the first hue-rate guard was INERT and was strengthened until
+  it failed for the right reason. Chroma floor calibrated 0.05 → 0.02 against the measured
+  palette.
 - [ ] **Wave 3** — Earth Core reborn (the port, behind a dev flag until captured)
 - [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
 - [ ] **Wave 5** — Life (fish, kelp, the accompanied ascent)
@@ -754,6 +782,45 @@ verification is Wave 3's, as the plan sequences it.
   slot in a water keyframe must FAIL before it is trusted).
 - **Acceptance:** tests green with at least one new case demonstrated failing-first; no
   visual change shipped yet (data + tests only).
+
+#### Wave 2 OUTCOME — DONE 2026-08-12. Rescoped before execution; both new guards mutation-verified.
+
+`ODYSSEY_ACT1_COLOUR_SCRIPT` + `sampleAct1ColourScript(t)` + `classifyTemperature()` in
+`odyssey-colour-script.js`; 13 tests in `odyssey-act1-colour-script.test.js`. **Nothing
+renders it yet** — Wave 3 wires it — so the "no visual change" half of the contract is
+literal: `git diff` touches one source file and adds one test file.
+
+**The premise was refuted before a line was written** (correction annotated at §3.1): the
+plan's negative-`p` keyframes are unsamplable, because `sampleColourScript` clamps to [0,1]
+and a shipped test pins that span. Act I therefore got its own array on its own parameter,
+and the act handoff is asserted by test rather than by array adjacency. The two water
+keyframes moved to Wave 4, where their captures live.
+
+**Both new guards were mutation-verified, and the first attempt at one of them was INERT:**
+
+| mutation | expected | result |
+|---|---|---|
+| delete `crack.warmCoolCollision` | invariant 3 fails | ✅ 3 tests fail |
+| delete `cathedral.seamAfter` (v1 guard, `skyZenith` only) | hue-rate fails | ❌ **PASSED — the guard was inert** |
+| delete `cathedral.seamAfter` (v2 guard, both slots) | hue-rate fails | ✅ fails at **16.9°/step vs the 12° cap** |
+
+The inert version is the finding worth keeping. Act II's hue-rate test watches `skyZenith`,
+so mirroring it looked correct — but in a CAVERN the crown barely moves (5.96°/step) while
+the low band swings ember-to-vapour (23.1°/step). A guard whose exemption can be deleted
+without anything failing is decoration. The Act I test now checks both atmospheric slots.
+
+**A third calibration came from measurement, not taste.** The warm/cool chroma floor was
+authored at 0.05 and classified the entire quench palette as neutral — `#cfe6ff` measures
+Oklab chroma 0.042, `#1a2630` 0.025, `#8fa6b4` 0.033 — so the `crack` keyframe read as "all
+warm" and could not earn the exemption it needs. This act's cool tones are PALE by design
+(the Ghibli research is explicit about it), so a floor tuned for saturated colour is blind
+exactly where the rule matters. Calibrated to **0.02**, which still excludes the near-neutral
+charcoals at 0.015. Recorded at the constant.
+
+**Gates:** `npx vitest run` **332 files / 3294 tests green** (up 13); `npx eslint` clean on
+both changed files. One mutation was run against Act II's array by accident first (a
+first-match string replace) — caught because the Act I suite stayed green when it should not
+have, which is itself the reason mutations get re-run until they fail for the RIGHT reason.
 
 ### Wave 3 — Earth Core reborn (the port, behind a dev flag until captured)
 
