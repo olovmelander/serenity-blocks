@@ -73,26 +73,25 @@ const DRS_TARGET_FRAME_RATE = 60;
 /**
  * Quality presets for the Odyssey Board
  */
+// WHAT THESE ACTUALLY CONTROL — the table used to advertise two knobs it did not have.
+// `bloomStrength` was declared on all six rows and read NOWHERE (the live value is the
+// hardcoded 0.32 at the OdysseyTslPipeline construction below), and `bloomScale` was read as
+// `qualityPreset.bloomScale ?? ODYSSEY_BLOOM_SCALE` while no row ever defined it, so the
+// fallback always won. Both are removed rather than wired: quality.js's own header says a
+// declared-but-unread flag is worse than no flag, and re-tuning bloom per tier is a VISUAL
+// change that owes a capture (ADR-0007) — not something to smuggle in as a cleanup.
+// So: two real levers per tier, and every value here is read.
 const QUALITY_PRESETS = {
-    Minimal: {
-        enableBloom: false, bloomStrength: 0.3, particleCount: 100, starCount: 300,
-    },
-    Low: {
-        enableBloom: true, bloomStrength: 0.4, particleCount: 200, starCount: 500,
-    },
-    Medium: {
-        enableBloom: true, bloomStrength: 0.5, particleCount: 400, starCount: 800,
-    },
-    High: {
-        enableBloom: true, bloomStrength: 0.6, particleCount: 600, starCount: 1200,
-    },
-    Ultra: {
-        enableBloom: true, bloomStrength: 0.7, particleCount: 900, starCount: 1800,
-    },
-    Extreme: {
-        enableBloom: true, bloomStrength: 0.8, particleCount: 1200, starCount: 2500,
-    },
+    Minimal: { enableBloom: false, particleCount: 100, starCount: 300 },
+    Low: { enableBloom: true, particleCount: 200, starCount: 500 },
+    Medium: { enableBloom: true, particleCount: 400, starCount: 800 },
+    High: { enableBloom: true, particleCount: 600, starCount: 1200 },
+    Ultra: { enableBloom: true, particleCount: 900, starCount: 1800 },
+    Extreme: { enableBloom: true, particleCount: 1200, starCount: 2500 },
 };
+
+/** The bloom downsample every tier actually runs. Was an unreachable `?? 0.25` fallback. */
+const ODYSSEY_BLOOM_SCALE = 0.25;
 
 const ODYSSEY_WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 const ODYSSEY_WHEEL_CAPTURE_OPTIONS = { capture: true, passive: false };
@@ -1688,7 +1687,7 @@ export class OdysseyBoardController {
             const postQualityOverride = Number.parseFloat(readUrlValue('odysseyPerfPostQuality'));
             const bloomScale = Number.isFinite(bloomScaleOverride)
                 ? Math.min(1, Math.max(0.1, bloomScaleOverride))
-                : (this.qualityPreset.bloomScale ?? 0.25);
+                : ODYSSEY_BLOOM_SCALE;
             // WebGPU TSL post graph: bloom + ACES + per-chapter grade + CA + vignette + grain.
             // API-compatible with the old PostProcessingStack (update/render/resize/seam/dispose).
             this.postProcessingStack = new OdysseyTslPipeline(this.renderer, this.scene, this.camera, {
