@@ -82,7 +82,15 @@ async function startDevServer() {
         devServer = spawn(
             process.platform === 'win32' ? 'npx.cmd' : 'npx',
             ['vite', '--port', String(PORT), '--strictPort'],
-            { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
+            {
+                cwd: ROOT,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                shell: process.platform === 'win32',
+                // Isolated dep cache: sharing node_modules/.vite with an interactive dev
+                // server corrupts the optimizer and wedges BOTH servers (the "everything
+                // freezes" bug). Port-scoped so concurrent harnesses cannot collide either.
+                env: { ...process.env, VITE_CACHE_DIR: `node_modules/.vite-harness-${PORT}` },
+            },
         );
         const timer = setTimeout(() => reject(new Error('dev server did not start in 90s')), 90000);
         devServer.stdout.on('data', (chunk) => {

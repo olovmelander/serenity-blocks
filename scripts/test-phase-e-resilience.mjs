@@ -33,7 +33,9 @@ function startDevServer() {
     const proc = spawn(command, args, {
         cwd: ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: '0' },
+        // Isolated dep cache — see vite.config.js cacheDir. Sharing node_modules/.vite with
+        // an interactive dev server corrupts the optimizer cache and wedges both servers.
+        env: { ...process.env, FORCE_COLOR: '0', VITE_CACHE_DIR: `node_modules/.vite-harness-${DEV_SERVER_PORT}` },
         shell: isWindows,
     });
     return proc;
