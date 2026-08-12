@@ -82,6 +82,12 @@ const RELIEF_EXTENT = 9000;
  */
 const CLOUD_DECK_Y = 660;
 
+// The two fixed ends of the water banding, read ONCE from the colour script so the plates
+// and the keyframes can never drift. Sampling the script for them per frame would be three
+// more Oklab walks for values that do not change.
+const SHALLOWS_BODY = sampleColourScript(0.12).skyHorizon;
+const ABYSS_BODY = sampleColourScript(0.0).skyHorizon;
+
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
 function buildReliefBake(reliefRes) {
@@ -487,6 +493,13 @@ export function createOdysseyWorld({
     const uOutputScale = uniform(outputScale);
     const uOutputSat = uniform(outputSaturation);
     const uSubmerged = uniform(0);
+    // The three water plates. Driven from the colour script's water keyframes so the ocean's
+    // depth banding and the journey's palette can never drift apart (they are the same data).
+    const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
+    const uWaterMid = uniform(new THREE.Color(0.10, 0.29, 0.42));
+    const uWaterDeep = uniform(new THREE.Color(0.020, 0.105, 0.165));
+    /** The dawn-gold kiss the crest SSS transmits — kept OUT of the air palette on purpose. */
+    const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
 
     const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
     const DEEP_WATER = vec3(0.020, 0.105, 0.165);
@@ -497,7 +510,16 @@ export function createOdysseyWorld({
         const air = mix(lit, skyColourFor(dirY), clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82));
         const wT = clamp(float(1).sub(exp(d.mul(-0.0075))), 0, 0.97);
         const surfaceGlow = smoothstep(float(-0.15), float(0.75), dirY).mul(0.5);
-        const waterTarget = mix(DEEP_WATER, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
+        // BANDED DEPTH, not one exponential (plan §3.4.1 — Ponyo's stacked plates). Depth is
+        // shown as discrete hue steps within one temperature family, which is how every
+        // adopted reference does it and why none of them need grey scattering. The band index
+        // comes from the fragment's own depth below the surface, so the column brightens
+        // TOWARD the light instead of away from it — Phase 0 measured the shipped gradient
+        // reading darker near the surface than at mid-depth.
+        const depthBelow = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(160), 0, 1);
+        const bandShallow = mix(uWaterShallow, uWaterMid, smoothstep(float(0.10), float(0.42), depthBelow));
+        const banded = mix(bandShallow, uWaterDeep, smoothstep(float(0.45), float(0.92), depthBelow));
+        const waterTarget = mix(banded, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
         const submergedCol = mix(lit.mul(vec3(0.42, 0.86, 1.0)), waterTarget, wT);
         return mix(air, submergedCol, uSubmerged);
     };
@@ -702,8 +724,16 @@ export function createOdysseyWorld({
     ));
     // From BELOW the surface is a bright ceiling, not a body of water. FrontSide culled it and
     // the camera looked straight through the sea into the sky.
+    // THE LUMINOUS CEILING (plan §3.4.2 — Sea of Thieves' wave-SSS approximation). From
+    // below, a crest transmits light: mask = crest height x sun-facing x grazing. We have no
+    // FFT, so the crest mask comes from the swell term already computed above — ~5 ALU, zero
+    // new draws, and it is what makes the breach pay off instead of merely happening.
+    const crestMask = clamp(swell.mul(1.6).add(0.35), 0, 1);
+    const grazing = float(1).sub(clamp(abs(dot(wN, viewDir)), 0, 1));
+    const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
     const underside = skyColourFor(float(0.65)).mul(0.85)
-        .add(vec3(1, 0.96, 0.88).mul(spec.mul(0.6)));
+        .add(vec3(1, 0.96, 0.88).mul(spec.mul(0.6)))
+        .add(uWaterGlow.mul(sss).mul(0.55));
     waterMat.colorNode = toOutput(applyAerial(mix(wl, underside, uSubmerged), positionWorld));
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
     waterMat.transparent = true;
@@ -1068,6 +1098,12 @@ export function createOdysseyWorld({
             uSunColour.value.setRGB(...cs.sun);
             uShadowTint.value.setRGB(...cs.groundShadow);
             uAerialK.value = cs.fogDensity;
+            // The depth plates come from the SCRIPT, not from constants beside it: shallow is
+            // the shallows keyframe's body, mid is this sample's own body, deep is the abyss.
+            // One table owns the ocean's colour, so a palette edit cannot desync the banding.
+            uWaterShallow.value.setRGB(...SHALLOWS_BODY);
+            uWaterMid.value.setRGB(...cs.skyHorizon);
+            uWaterDeep.value.setRGB(...ABYSS_BODY);
             uExposure.value = cs.exposure;
             const fogScale = (applyExposure ? cs.exposure : 1) * outputScale;
             const fogR = cs.skyHorizon[0] * fogScale;
@@ -1089,6 +1125,14 @@ export function createOdysseyWorld({
             state.submerged = uSubmerged.value;
             state.scriptName = cs.name;
             state.actT = progress;
+            // WAVE 0's MEASURED DEFECT. `odyssey-world-clouds` was submitted and rasterised
+            // at every fully-submerged station with its alpha provably zero (three texture
+            // fetches per covered pixel of a sky-covering sheet, on the lane that measures
+            // 7.73 ms), and the god-rays are the same bug inverted above the waterline. A
+            // multiply by a zero uniform is NOT dead-code-eliminated — the repo has that
+            // lesson logged — so the gate has to be a `visible` write on the CPU.
+            if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
+            if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 treeMeshes[i].visible = Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
