@@ -13,6 +13,7 @@ import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
+import { createSteamQuench } from './composition/odyssey-steam-quench.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -147,6 +148,11 @@ const ONE_WORLD_OUTPUT_SCALE = 0.82;
 const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
+// Half-width of the ch1->Act II steam window, in progress units. Deliberately 2x the
+// authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
+// occluder narrower than the thing it occludes just frames it. Same principle the Ch3 shore
+// work landed on — a dissolve band must be wider than the noise it is dissolving.
+const STEAM_QUENCH_HALF_WIDTH = 0.06;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -356,6 +362,8 @@ export class OdysseyBoardController {
         this._oneWorldActT = 0;
         // undefined until the first update; `!== false` above keeps pre-gate behaviour then.
         this._oneWorldVisible = undefined;
+        this.steamQuench = null;
+        this._steamBoundary = NaN;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
         // enable the debug overlay — and then measured a frame with the overlay in it.
@@ -1796,6 +1804,25 @@ export class OdysseyBoardController {
                     // it — its parallax sheets would be overdraw in front of a real horizon.
                     suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
                 });
+                // THE STEAM QUENCH — the ch1 -> Act II occlusion moment (playground-proven in
+                // ?effect=seam-12-dive). Earth Core is a molten cavern and the rail enters Act
+                // II ~160u below sea level, so the handoff is fire meeting water; the profile
+                // already authors it as `stinger: 'steam-quench'`. Seated on the rail AT the
+                // boundary so the camera flies through it rather than watching it pass.
+                try {
+                    const boundary12 = this.presentationLayout?.chapterPositions?.[1];
+                    if (Number.isFinite(boundary12)) {
+                        this.steamQuench = createSteamQuench();
+                        const at = getOdysseyPathPointAt(boundary12);
+                        this.steamQuench.mesh.position.set(at.x, at.y, at.z);
+                        this.steamQuench.mesh.visible = false; // gated in the update below
+                        this.scene.add(this.steamQuench.mesh);
+                        this._steamBoundary = boundary12;
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] steam quench unavailable (non-fatal):', error);
+                    this.steamQuench = null;
+                }
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
@@ -2431,6 +2458,16 @@ export class OdysseyBoardController {
             this.lastPositionWorkAtMs = nowMs;
             // Parallax corridor depth: cross-fade by active progress, drift, follow camera.
             this.corridorField?.update(this.camera, cameraProgress, delta);
+        }
+
+        // Steam quench: time-driven (it billows) so it runs every frame, not on the throttled
+        // position gate. Hidden outside its window so it costs nothing for 94% of the journey.
+        if (this.steamQuench && Number.isFinite(this._steamBoundary)) {
+            const lo = this._steamBoundary - STEAM_QUENCH_HALF_WIDTH;
+            const hi = this._steamBoundary + STEAM_QUENCH_HALF_WIDTH;
+            const inWindow = cameraProgress > lo && cameraProgress < hi;
+            this.steamQuench.mesh.visible = inWindow;
+            if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
         }
 
         // Update chapter environments based on camera position
@@ -3184,6 +3221,11 @@ export class OdysseyBoardController {
         this.atmosphere?.dispose?.();
         this.atmosphere = null;
         this.corridorField?.dispose?.();
+        if (this.steamQuench) {
+            this.scene.remove(this.steamQuench.mesh);
+            this.steamQuench.dispose();
+            this.steamQuench = null;
+        }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();
         this.thresholdDirector = null;

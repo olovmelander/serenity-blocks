@@ -710,7 +710,29 @@ this document's own prose — several waves this file described as done were not
   - `SEAM_56_AURORA_BRIDGE` (`seam-bridges.js:37-43`) is live **and visible**: the One World fog handoff weight is zero at the act edges (`OdysseyBoardController.js:2434-2437`), so at 5→6 the bridged fog/clear colour is exactly what the player sees. The 3-4 and 4-5 colour windows are the genuinely stale part (overridden mid-act where the world's fog weight is 1) and can go alone — with one capture at those progress bands, since they still write `scene.fog`.
   - Deletable today without any owner decision: **~50 lines** (ch2's 13 bridges, the dead `ECOTONE_*` tuning constants + `resolveEcotoneHalfWidth` clamp arithmetic — computed half-widths 0.00616–0.01628 all lose to `seamWidth` at :201 at all seven boundaries — and the ch2 test block). The other ~585 inventoried lines belong to chapters One World never replaced and are **permanently out of scope**.
   - The constructive half (the occlusion moments: the ch1→ch2 dive, the ch5→ch6 cloud bank) remains unbuilt; deleting bridges before building them would leave the two real act boundaries with nothing.
-- [ ] **Occlusion moments** (promoted out of Wave 6, 2026-08-12) — the one piece of remaining
+- [ ] **Occlusion moments** (promoted out of Wave 6, 2026-08-12) — **ch1->Act II SHIPPED
+  (2026-08-12); ch5->ch6 remains.**
+
+  **THE STEAM QUENCH (ch1 -> Act II) — built, capture-verified, ported into the board.**
+  `composition/odyssey-steam-quench.js`, seated on the rail at the boundary and driven from
+  progress over a window 2x the authored seamWidth (an occluder narrower than the crossfade it
+  hides just frames it). A BackSide sphere the camera flies THROUGH, because an occlusion
+  moment has to actually occlude — a camera-facing billboard cannot, you always see past its
+  edges. One draw, no depth prepass, no post pass, hidden outside its window. Diegetic rather
+  than a wipe: Earth Core is a molten cavern, the rail enters Act II ~160u below sea level, and
+  the profile already authored the transition as `stinger: 'steam-quench'` with a deliberately
+  widened seam "so the ember->steam veils and the orange->cyan transformation play across
+  multiple frames instead of popping".
+  Four look iterations, three of them corrections worth keeping: (1) a straight warm->cool lerp
+  puts desaturated MUD on screen exactly when the volume fills the frame — route through BRIGHT
+  WHITE, which is also what a quench physically does; (2) driving alpha from the billow punches
+  HOLES that the ocean shows through — decouple, alpha goes opaque as density rises and all
+  structure moves to colour; (3) noise frequency is set by the RADIUS (0.028 at r=110 is three
+  cells across the sphere, i.e. flat blur); (4) a linear density ramp is opaque a fifth of the
+  way in — square it, or it reads as a wall rather than weather.
+
+  **STILL TO DO — the ch5->ch6 cloud bank**, and it is the harder of the two: the one piece of
+  remaining
   work that makes the journey BETTER rather than cheaper, and the only part of Wave 6 that was
   ever constructive. One World collapsed seven alpha-crossfaded chapter boundaries into **two**
   real act edges: **ch1 -> ch2** (the dive) and **ch5 -> ch6** (the cloud bank the plan already
