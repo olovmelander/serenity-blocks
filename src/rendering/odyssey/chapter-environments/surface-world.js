@@ -1804,12 +1804,12 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera, camera
     if (distantMountainElements) {
         distantMountainElements.forEach((element) => {
             if (element) {
-                // Honour the manager's L5 canonical-range dedup verdict: this write runs
-                // every frame while the manager's dedup runs on throttled visibility frames,
-                // so an unconditional re-show here co-drew both coplanar hero-chain copies
-                // (z-fight) from the 3→4 authority flip until Ch3's group hid (~p 0.419).
-                element.visible = distantMountainOpacity > 0
-                    && element.userData.rangeAuthority !== false;
+                // Visibility follows opacity so a fully-faded chain stops drawing. This write
+                // runs every frame and the ch3-ch4-seam playground effect depends on it; only
+                // the rangeAuthority term was removed (2026-08-12) with its manager-side
+                // writer — the dedup it implemented has no second copy to fight since the
+                // One World flip suppressed ch4/ch5.
+                element.visible = distantMountainOpacity > 0;
             }
         });
     }
