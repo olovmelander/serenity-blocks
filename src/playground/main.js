@@ -108,8 +108,38 @@ function showError(msg) {
     }
 }
 
+// Which PHYSICAL GPU WebGPU actually picked — shown in the HUD because on this dual-GPU
+// machine the answer decides whether the page runs at 240 fps or 14. Chromium IGNORES the
+// page-level powerPreference hint on Windows (crbug 369219127), so a plain browser tab lands
+// on whatever Windows assigns it — measured here: the Radeon 610M, ~10x slower than the RTX
+// for the Odyssey world — and nothing on the page can override that. The fix is one-time and
+// user-side: Windows Settings → System → Display → Graphics → add the browser → High
+// performance. This label exists so "why is it suddenly slow" is answered by reading the HUD
+// instead of by a debugging session.
+let adapterSuffix = '';
+async function resolveAdapterLabel() {
+    try {
+        const info = renderer?.backend?.device?.adapterInfo
+            ?? (await navigator.gpu?.requestAdapter?.())?.info;
+        if (!info) return;
+        const vendor = info.vendor || '';
+        const arch = info.architecture || '';
+        if (vendor) adapterSuffix = ` · ${vendor}${arch ? ` ${arch}` : ''}`;
+        const integrated = /amd|intel/i.test(vendor) && !/nvidia/i.test(vendor);
+        if (integrated && navigator.platform?.startsWith('Win')) {
+            // eslint-disable-next-line no-console
+            console.warn(
+                `[playground] WebGPU is running on the INTEGRATED GPU (${vendor} ${arch}). `
+                + 'Windows ignores the powerPreference hint (crbug 369219127); to use the '
+                + 'discrete GPU: Windows Settings → Display → Graphics → add this browser → '
+                + 'High performance, then restart the browser.',
+            );
+        }
+    } catch { /* adapter identity is best-effort; the label just stays plain */ }
+}
+
 function backendName() {
-    if (renderer?.backend?.isWebGPUBackend) return 'WebGPU';
+    if (renderer?.backend?.isWebGPUBackend) return `WebGPU${adapterSuffix}`;
     if (renderer?.backend?.isWebGLBackend) return 'WebGL2';
     return '—';
 }
@@ -576,6 +606,8 @@ async function init() {
     const forceWebGL = params.get('forceWebGL') === '1';
     renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL, trackTimestamp });
     await renderer.init();
+    // Fire-and-forget: the HUD updates itself every frame, so the label appears once resolved.
+    resolveAdapterLabel();
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(pixelRatio());
     renderer.toneMapping = THREE.NoToneMapping;
