@@ -601,7 +601,9 @@ the One World convention — and the plan shipped without it.)
   was our own omission, found the real defect instead (clouds + god rays submitted while
   provably invisible → Wave 4), corrected the breach to p≈0.181, measured cold compile at
   3,948 ms (58× One World), and fixed the harness Vite-orphan leak.
-- [ ] **Wave 1** — The playground value study (the look is proven before any port)
+- [x] **Wave 1** — The playground value study — **DONE 2026-08-12.** 6 materials, 3
+  phase-locked angles, value gate 0.905–0.973 (needs ≥0.50), console clean. Five capture-
+  forced corrections recorded, including two that only a SECOND phase revealed.
 - [ ] **Wave 2** — The script grows its Act I limb (data + tests before pixels)
 - [ ] **Wave 3** — Earth Core reborn (the port, behind a dev flag until captured)
 - [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
@@ -685,6 +687,58 @@ no visual surface was modified, so no ADR-0007 capture debt is incurred.
   checked on the playground capture AND re-checked in-game in Wave 3.
 - **Acceptance:** phase-locked `?t=` screenshots at 2–3 angles; console clean; material
   count ≤10 printed by the effect's own stats line; value-share gate met on the capture.
+
+#### Wave 1 OUTCOME — DONE 2026-08-12. The device works; five iterations were needed to prove it.
+
+`src/playground/effects/act1-earth-core.effect.js` (drop-in, auto-registers) plus
+`scripts/act1-value-gate.mjs`, which turns the §3.1 value gate into a number anyone can
+re-run. Captures: `artifacts/odyssey/act1-wave1/earth-core-0{1,2,3}-*.png` at phase-locked
+`?t=9/32/63`.
+
+**Acceptance, all met:**
+
+| criterion | result |
+|---|---|
+| 2–3 phase-locked angles | 3 (`t=9` across-lake, `t=32` orbit, `t=63` far) |
+| console clean | yes — only the three `[playground:boot]` marks |
+| ≤10 material objects, printed by the effect | **6** (`materials=6 (budget ≤10)`) |
+| value-share gate ≥50 % under luma 60 | **0.913 / 0.973 / 0.905** — mean luma 24.4 / 19.5 / 25.4 |
+
+**The five corrections the captures forced** (each is a rule the Wave 3 port inherits):
+
+1. **The cool accent inverted the act.** At the authored strength the crack seed painted the
+   whole upper hemisphere teal and four additive shaft cards stood metres from the lens: a
+   COOL cave with warm decorations, the exact opposite of the brief. Narrowed on both axes,
+   dimmed to 0.14, and the shafts moved out to radius 165 at 0.05 opacity. ≤2 % of frame is
+   not a description, it is a constraint that has to be enforced twice — once in the shell
+   term and once in the geometry.
+2. **Frequency is set by the radius — again.** Vein noise at 2.1 over a 240 u shell made
+   filaments tens of metres wide, which read as orange NEBULA. 11.0 restores "cracks in
+   rock". This is the third time this repo has paid for the same lesson (quench, cloud bank,
+   now the vault); it belongs in §5 as a rule, not a war story.
+3. **The key has to be ON SCREEN and it has to be the brightest thing.** First framing aimed
+   above the lake and lost it entirely; then the crust window (0.46/0.60) made the lake a
+   dark floor with smears; then the hot stop won and it became a cream beach. Final: crust is
+   the minority (0.60/0.78) and the pale stop is reached only via `pow(heat, 5)`.
+4. **A camera that orbits at radius 132 flies through the column ring (62–140).** One capture
+   was 80 % dark cylinder. The rail flies up the MIDDLE of the cathedral, so the study camera
+   belongs near the axis looking across — which is also the truer framing.
+5. **A `floor()`-selected star must be shaded WITHIN its cell.** Lighting the whole cell drew
+   each twinkle as a hard square that the sphere's curvature skewed into a diamond — a sky of
+   orange parallelograms, invisible at `t=9` because the twinkle phase was dim and obvious at
+   `t=32`. `fract` + radial falloff fixes it. **Capture more than one phase**: a single
+   phase-locked shot can hide a defect completely.
+
+**Also recorded:** the playground's mount failure reports only `"did not mount"`, and the
+underlying `create()` error is overwritten by that message — the real cause (a raw
+`THREE.Color` has no `.mul`, so the palette must be `color()` NODES) was recoverable only by
+re-running `create()` by hand through Vite's `/@id/` specifier. And a WebGPU canvas reads
+back BLACK through `drawImage`, so the gate decodes the saved PNG instead; an in-page
+measurement would have reported a flattering, meaningless 100 % dark.
+
+**Gates:** `npx vitest run` 331 files / 3281 tests green; `npx eslint` clean on both new
+files. No production surface touched — this wave is playground-only, so the in-game ACES
+verification is Wave 3's, as the plan sequences it.
 
 ### Wave 2 — The script grows its Act I limb (data + tests before pixels)
 
