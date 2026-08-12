@@ -52,6 +52,18 @@ const CHAPTERS = args.chapters ? String(args.chapters) : '3,4,5';
 // station/window must pass --out so it cannot clobber the Act II baselines behind the
 // perf-budgets.json cells.
 const OUT_FILE = args.out ? String(args.out) : null;
+// Extra URL flags applied to EVERY configuration (comma-separated k=v). Exists because the
+// ch1 station has a drawable that flickers 92<->93 on a time-driven cadence, which voids
+// every baseline/repeat pair via the content-match guard. Applying a flag to BOTH sides
+// (e.g. --flags odysseyHideLevelNodes=1) keeps the pair comparable by construction and lets
+// the flicker be bisected by subsystem instead of guessed at.
+const EXTRA_FLAGS = {};
+if (args.flags) {
+    String(args.flags).split(',').forEach((pair) => {
+        const [k, v = '1'] = pair.split('=');
+        if (k) EXTRA_FLAGS[k.trim()] = v.trim();
+    });
+}
 const OUT_DIR = path.join(ROOT, 'reports', 'odyssey-perf');
 
 // Each configuration removes ONE system. baseline must run first and last: a drifting
@@ -159,6 +171,7 @@ function urlFor(flags) {
         ...(LOW_POWER ? { odysseyLowPowerGpu: '1' } : {}),
         quality: QUALITY,
         bust: String(Date.now()),
+        ...EXTRA_FLAGS,
         ...flags,
     });
     return `${BASE_URL}/?${params.toString()}`;
