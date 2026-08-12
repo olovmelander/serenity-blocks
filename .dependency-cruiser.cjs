@@ -70,9 +70,14 @@ module.exports = {
         {
             name: 'no-electron-in-renderer-src',
             comment: 'src/ (the renderer bundle) must never import electron or node built-ins — '
-                + 'those belong in the electron/ main process. Plan §3d / platform boundary.',
+                + 'those belong in the electron/ main process. Plan §3d / platform boundary. '
+                + 'Vitest files are exempt: they run in Node, never ship in the bundle, and the '
+                + 'source-lint tests read src files off disk by design.',
             severity: 'error',
-            from: { path: '^src/' },
+            from: {
+                path: '^src/',
+                pathNot: '\\.test\\.js$',
+            },
             to: { path: '^(electron|node:.*|fs|path|child_process|os|net)$' },
         },
         {
