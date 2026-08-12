@@ -198,6 +198,20 @@ async function runConfiguration(config) {
                 const pos = ${SEEK};
                 bc.cameraController.setCurrentPosition(pos);
                 bc.cameraController.updateFollowPosition?.({ position: pos, direct: true });
+                // PIN THE STATION. Seeking alone does not hold: the controller keeps an
+                // in-flight travel/drift model that overrides the seeked position on the very
+                // next frame, so a long sample window slowly walks off the station. The
+                // 2026-08-12 Lane A run is the evidence — baseline sampled 53 draws /
+                // 758,151 tris and baseline-repeat 39 / 535,543, i.e. a different scene, and
+                // the difference was published as thermal drift. Same hardening as
+                // scripts/odyssey-perf-session.mjs, which already got this right.
+                if (bc.cameraController.travelModel) {
+                    bc.cameraController.travelModel.velocity = 0;
+                    bc.cameraController.travelModel.inputVelocity = 0;
+                }
+                if (bc.cameraController.config) {
+                    bc.cameraController.config.autoDriftScale = 0;
+                }
                 const blendState = bc.environmentManager?.getBlendState(pos) || null;
                 bc.environmentManager?.updateVisibility(pos, { mode: 'progress', blendState });
                 bc.environmentManager?.updateGlobalEnvironment(pos, blendState);
@@ -206,7 +220,7 @@ async function runConfiguration(config) {
                 }) || bc.director?.getState?.() || null;
                 bc.cameraController?.setDirectorState?.(directorState);
                 bc.nodeManager?.setCameraProgress(pos);
-                return true;
+                return bc.cameraController.getCurrentPosition?.() ?? true;
             })()
         `, true).catch(() => {});
         await wait(SETTLE_MS);
@@ -239,6 +253,38 @@ function parseArgs(argv) {
     return out;
 }
 
+/**
+ * CONTENT MATCH — did two configurations actually render comparable scenes?
+ *
+ * A differential is only meaningful if everything except the toggled system was equal. The
+ * 2026-08-12 Lane A run is the cautionary case: `baseline` recorded 53 draws / 758,151 tris
+ * and `baseline-repeat` recorded 39 / 535,543 — the camera had drifted off the seeked
+ * station (an in-flight path animation silently overrides `seekProgress`), so the pair
+ * measured different scenes and the published `baselineDriftMs: 0.786` was scene difference
+ * reported as thermal drift. Nothing in the harness noticed.
+ *
+ * Draw calls are the sharper signal (integer, and insensitive to LOD wobble), so a mismatch
+ * there voids the figure outright; triangles get a small tolerance for per-frame instance
+ * culling. A voided delta is reported as null WITH a reason rather than silently omitted —
+ * a missing number invites a re-run, a wrong number gets quoted in a plan for weeks.
+ */
+function contentMismatch(a, b, results) {
+    const byId = Object.fromEntries(results.map((r) => [r.id, r.summary ?? null]));
+    const A = byId[a];
+    const B = byId[b];
+    if (!A || !B) return null;
+    if (!Number.isFinite(A.drawCalls) || !Number.isFinite(B.drawCalls)) return null;
+    if (A.drawCalls !== B.drawCalls) {
+        return `draw calls differ (${a}=${A.drawCalls}, ${b}=${B.drawCalls})`;
+    }
+    const ta = A.triangles;
+    const tb = B.triangles;
+    if (Number.isFinite(ta) && Number.isFinite(tb) && Math.abs(ta - tb) > Math.max(ta, tb) * 0.02) {
+        return `triangles differ >2% (${a}=${ta}, ${b}=${tb})`;
+    }
+    return null;
+}
+
 function buildSplit(results) {
     const byId = Object.fromEntries(results.map((r) => [r.id, r.summary?.p50 ?? null]));
     const delta = (from, to) => (
@@ -246,16 +292,21 @@ function buildSplit(results) {
             ? +(byId[from] - byId[to]).toFixed(3)
             : null
     );
+    // The two baselines are the ONLY pair that must render identically; every other pair
+    // differs by exactly the system under test, so their draw-call delta is the signal.
+    const driftMismatch = contentMismatch('baseline', 'baseline-repeat', results);
     return {
         bloomMs: delta('baseline', 'no-bloom'),
         levelNodesMs: delta('baseline', 'no-level-nodes'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
-        baselineDriftMs: delta('baseline', 'baseline-repeat'),
+        baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),
+        baselineDriftVoidReason: driftMismatch,
         note: 'Differential, not per-pass: each figure is baseline p50 minus that '
             + 'configuration p50. Overlapping costs are attributed to whichever system is '
             + 'removed first, and baselineDriftMs bounds how much of any figure could be '
-            + 'drift rather than signal.',
+            + 'drift rather than signal. baselineDriftMs is null when the two baselines did '
+            + 'not render comparable scenes — see baselineDriftVoidReason.',
     };
 }
 
