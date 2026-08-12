@@ -12,6 +12,26 @@
  * makes compileAsync build the pipelines the chapter ACTUALLY uses live; without it, canvas-format
  * pipelines were built that the post path never used, so the REAL pipelines compiled synchronously
  * inside the warm-up renders — the loading-screen freeze.
+ *
+ * ...AND WHY IT IS ONLY SAFE BEFORE THE RENDER LOOP STARTS (2026-08-12, crash fix).
+ * `compileAsync` opens its own render pass on whatever target is bound. Do that while the rAF loop
+ * is also rendering the post graph and both touch the SAME scene-pass target inside one command
+ * encoder — the graph SAMPLES `output` while the compile pass has it attached for writing:
+ *
+ *   [Texture "output"] usage (TextureBinding|RenderAttachment) includes writable usage and
+ *   another usage in the same synchronization scope
+ *
+ * WebGPU then refuses to create the pipeline, `getForRender` hands back undefined, and the very
+ * next draw throws `setPipeline: parameter 1 is not of type 'GPURenderPipeline'`. From there the
+ * device is poisoned: every subsequent frame re-emits the usage error plus an invalid-CommandBuffer
+ * error, forever. It reproduces as soon as chapters are prewarmed in the BACKGROUND (after the loop
+ * is live) rather than during startup.
+ *
+ * So the target binding is now conditional on the loop being idle. Background compiles fall back to
+ * a plain compileAsync: they build canvas-format pipelines, so those chapters may still pay a small
+ * first-visit compile — a hitch, which is what this optimisation existed to remove, but a hitch is
+ * strictly better than a dead device, and the startup path (where the freeze actually hurt) keeps
+ * the optimisation in full.
  */
 
 /**
@@ -20,9 +40,11 @@
  * post is inactive (direct-to-canvas rendering — the plain compile is correct as-is).
  * @param {object} renderer the WebGPU/WebGL renderer
  * @param {?object} postProcessingStack the post stack (or null when post is inactive)
+ * @param {boolean} [renderLoopActive] when true the binding is SKIPPED — see the file header.
  * @returns {?{previousTarget: *, previousMRT: *}} saved state, or null when post is inactive
  */
-export function beginPostTargetCompile(renderer, postProcessingStack) {
+export function beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive = false) {
+    if (renderLoopActive) return null;
     const scenePass = postProcessingStack?.scenePass;
     if (!scenePass?.renderTarget
         || typeof renderer?.getMRT !== 'function'
@@ -56,10 +78,18 @@ export function endPostTargetCompile(renderer, saved) {
  * @param {object} scene the scene
  * @param {object} camera the camera
  * @param {object} group the chapter group to compile
+ * @param {boolean} [renderLoopActive] when true the post target is not bound — see the file header.
  * @returns {Promise<void>} resolves when the group's pipelines are compiled
  */
-export function compileGroupThroughPost(renderer, postProcessingStack, scene, camera, group) {
-    const saved = beginPostTargetCompile(renderer, postProcessingStack);
+export function compileGroupThroughPost(
+    renderer,
+    postProcessingStack,
+    scene,
+    camera,
+    group,
+    renderLoopActive = false,
+) {
+    const saved = beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive);
     try {
         if (typeof renderer.compileAsync === 'function') {
             return renderer.compileAsync(scene, camera, group);
