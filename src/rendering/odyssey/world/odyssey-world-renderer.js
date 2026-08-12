@@ -592,10 +592,13 @@ export function createOdysseyWorld({
     // graph — the codegen lesson applies: keep it a leaf term, .toVar() the result.
     const causticUv = positionWorld.xz.mul(0.055);
     const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
-        .mul(snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
-            .add(snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15))))
-            .mul(0.5).add(0.5)
-            .pow(4.0))
+        .mul(clamp(
+            snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
+                .add(snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15))))
+                .mul(0.5).add(0.5),
+            0,
+            1,
+        ).pow(4.0))
         .toVar();
 
     const sunVis = texture(sunVisTex, vUv).r;
@@ -709,8 +712,31 @@ export function createOdysseyWorld({
 
     // Billow, so the deck is a weather system and not a pane of glass. Cheap: two sines
     // against a texture lookup, all in the vertex stage.
-    const billow = texture(detailTex, cl.worldXZ.mul(0.00042)).level(0).b.sub(0.5).mul(165)
-        .add(cl.worldXZ.x.mul(0.0016).add(uTime.mul(0.02)).sin().mul(34));
+    //
+    // GATED BY COVERAGE. Run at full amplitude the billow displaces geometry that the
+    // fragment stage then cuts a hole through, so every hole edge was a torn cliff a hundred
+    // metres tall seen against the sky. Estimating the same coarse density here — the 0.52
+    // weighted octave, the term that decides where the holes ARE — lets the surface sink back
+    // to the flat deck plane exactly where it is about to become transparent. Edges dissolve
+    // instead of tearing. `.level(0)` is mandatory (WGSL forbids implicit LOD in a vertex
+    // stage) and the lint in odyssey-world-lints.test.js enforces it.
+    const cloudDrift = uTime.mul(0.0016);
+    const vertDensity = texture(detailTex, cl.worldXZ.mul(0.00205).add(vec2(cloudDrift, 0)))
+        .level(0).a.toVar();
+    const vertThreshold = mix(
+        float(0.63),
+        float(0.40),
+        smoothstep(float(-150), float(-760), cl.worldXZ.y),
+    ).toVar();
+    const billowGate = smoothstep(
+        vertThreshold.sub(0.16),
+        vertThreshold.add(0.06),
+        vertDensity,
+    ).toVar();
+    const billow = texture(detailTex, cl.worldXZ.mul(0.00042)).level(0).b.sub(0.5)
+        .mul(165)
+        .add(cl.worldXZ.x.mul(0.0016).add(uTime.mul(0.02)).sin().mul(34))
+        .mul(billowGate);
     cloudMat.positionNode = vec3(cl.worldXZ.x, float(CLOUD_DECK_Y).add(billow), cl.worldXZ.y);
 
     // Coverage is a property of the MAP, not of a chapter index. The rail runs inland and
@@ -739,7 +765,15 @@ export function createOdysseyWorld({
     // line across the sky — the same failure mode as a uv feather that never reaches 1.
     const cloudDist = length(cl.worldXZ.sub(uLodCenter));
     const rim = float(1).sub(smoothstep(float(cloudReach * 0.62), float(cloudReach * 0.95), cloudDist));
-    const puff = smoothstep(vThresh, vThresh.add(0.06), density);
+    // Widen the alpha edge with FOOTPRINT: a 0.06 band is a crisp cumulus edge up close and a
+    // pixel-wide razor cut at 10 km, which aliases into hard confetti. Band-limiting the edge
+    // is the same principle the ground's detail gate already uses.
+    const cloudFootprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
+    // A LITTLE band-limiting, not a lot: the first attempt lifted the edge to 0.22 at range,
+    // which stopped anti-aliasing the edge and started making it — partial coverage everywhere
+    // turned the distant broken cumulus into a translucent overcast veil across the whole sky.
+    const puffBand = smoothstep(float(8), float(90), cloudFootprint).mul(0.05).add(0.06);
+    const puff = smoothstep(vThresh, vThresh.add(puffBand), density);
 
     // Lit from above, shaded beneath, and the transition is the density itself: a thin edge
     // passes light and glows, a thick core does not. That single term is what separates a
@@ -817,11 +851,15 @@ export function createOdysseyWorld({
             rUv.x.mul(3.0),
             rUv.y.mul(2.0).add(uTime.mul(-0.12)),
             uTime.mul(0.2),
-        )).mul(0.5).add(0.5).pow(1.35)
+        ));
+        // Same NaN guard as the caustic below: pow() with a negative base and a non-integer
+        // exponent is UNDEFINED in WGSL, and two summed noises can dip below the -0.5 that
+        // .add(0.5) assumes. Clamp first.
+        const rayShimmerSafe = clamp(rayShimmer.mul(0.5).add(0.5), 0, 1).pow(1.35)
             .mul(0.55)
             .add(0.45);
         rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
-        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmer).mul(uSubmerged)
+        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmerSafe).mul(uSubmerged)
             .mul(0.55)
             .toVar();
         rayMat.transparent = true;
