@@ -1579,6 +1579,113 @@ skip the occluded fragments.~~
 
 - Lane B pair: **struck** — measured a scene that was not the scene.
 
+## 11. Pillar defects - three user reports, three root causes (2026-08-12)
+
+User report, verbatim: *"looks quite dark on the sides of the pillars now and around in the
+environment? And can we align the pillars perfectly in the scene? And they do not feel solid,
+like the bottom is not attached to the pillar and the pillars are not full circle attached
+around, you can see inside them at some angles."*
+
+Diagnosed by three parallel investigations plus adversarial verification (the solidity
+diagnosis survived a refutation pass unrefuted). Every root cause below is MEASURED.
+
+### 11.1 "Not solid / see inside / bottom not attached" - an open hull (PROVEN)
+
+`createObsidianColumnTSL` roughened its cylinder with an INDEPENDENT `Math.random()` per
+vertex. CylinderGeometry duplicates coincident vertices in two places - the radial UV seam,
+and both cap rims (the cap fan's rim vertices are separate from the side-wall ring at the
+same positions). Independent jitter pulls each copy to a different radius.
+
+Measured on the shipped geometry (live, in-game): 188 vertices for 110 unique positions;
+**42 duplicate groups covering 120 of 188 vertices (64%), 40 of them torn open**; worst
+radial split **0.78 units = 11.5% of the radius**, matching the +-6% jitter band's 12% worst
+case. An independent build script counted **86 boundary edges on a hull that should have
+none** (open perimeter 290.9). Because the material is FrontSide, back faces are culled, so
+each tear showed the BACKGROUND through the pillar - exactly "you can see inside them" - and
+the unwelded bottom cap is "the bottom is not attached".
+
+**The same bug, worse, in `createMoltenPocketTSL`**: IcosahedronGeometry is NON-INDEXED, so
+all 540 vertices are duplicates of 92 unique positions - 100% torn. The molten shelves were
+180 disconnected triangles, not ledges.
+
+Fix: `weldedJitter()` - one deterministic jitter per UNIQUE quantised position, applied to
+every copy. Same +-6% silhouette irregularity, closed shell, and seeded so captures are
+reproducible (the old `Math.random()` denied every A/B this chapter ever ran).
+**Verified in-game: worst seam gap 0.000000 across all 9 columns / 360 coincident classes.**
+
+An angle-bucket key was tried first and is WRONG: three.js lays these rings out as sin/cos of
+theta, so every vertex angle sits exactly on a half-segment boundary and float noise
+(sin(2*PI) = -2.4e-16, not 0) tips `Math.round` the other way. It closed gaps from 0.78 to
+0.33 - not to zero. The position is the reliable identity.
+
+`weldCoincidentNormals()` then averages normals across welded positions behind a 60-degree
+smoothing guard, so the seam has no lighting crease while the cap/wall rim stays a hard edge.
+**Verified: smooth-pair divergence 0.000000, 342 hard-edge pairs preserved.** The first
+implementation averaged IN PLACE and so never converged (0.29 residual, ~44 degrees); the fix
+is two-pass.
+
+### 11.2 "Align the pillars perfectly" - a degenerate staging frame (PROVEN)
+
+Not the placement literals: `createEarthCoreStaging.frame()` derived its horizontal basis
+from the path tangent, and chapter 1 is a VERTICAL SHAFT. Measured |tangent.xz| = 0.24 at
+ft 0.15, 0.016 at ft 0.20, and 0.000-0.044 for ft >= 0.30 - and the `1e-4` guard only catches
+full degeneracy, so **station ft=0.14 got a "valid" heading 78 degrees off every later
+station**. Its bracketing pair straddled the rail along Z (z = -16 vs +30) while the other
+three straddled along X. The lateral drift also fanned the aisle 46 -> 69 units (+48%).
+
+Fix: a vertical shaft has no meaningful path-relative horizontal frame, so the frame is now
+the CONSTANT camera basis - screen-right (-0.736, 0, 0.677) in world XZ, steady within
++-2.5 degrees across the chapter. `lateral` now means screen-right and `forward` screen-up
+for EVERY set piece (columns, colonnade walls, ceiling slabs, seats, geode clusters), so the
+whole room stays mutually aligned; rotating only the columns would have put the aisle 43
+degrees off its own back wall. Aisle half-width is constant (30) with a shared forward nudge,
+so left and right are exact mirrors. Heights, radii and both giants are unchanged.
+**Verified: the cathedral station now reads as a symmetric colonnade to the vanishing point.**
+
+### 11.3 "Dark on the sides and around" - a value floor of literal zero
+
+Wave 3a emptied the luma 32-96 band to kill a red mid-wash, and overshot: a pillar face
+turned away from the lake fell to pure black, and the lake's own crust colour was `0x050206`
+multiplied by a temperature ramp reaching zero - so the floor the pillars stand on was
+literally void, which is the other half of why they read as unattached.
+
+Fixes, all structure rather than brightness (the plan's own device):
+
+- a two-tone HEMISPHERE ambient fill on the rock (warm magma bounce from below, cool charred
+  vault from above) so side faces gain FORM as they turn, never a flat lift;
+- crust `0x050206` -> `0x1a0b06` (dark warm rock, still the darkest value on the lake ladder)
+  plus a 0.34 floor under the cool ramp, so the lake reads as a surface at its cold end;
+- **a real space bug fixed**: the material reads `positionWorld` but compared against
+  `LAVA_LAKE_Y`, a chapter-LOCAL constant (-10), while the group sits at world y -30. The
+  "lava licks the base" gradient was landing 30 units UP the shaft as a flat wash across the
+  whole lower third. Callers now pass the world lake height as `uLakeY`; the gradient is
+  tightened to 9 units and strengthened, so it reads as contact.
+
+### 11.4 Capture results, and what is NOT fixed
+
+`--time 9`, four stations, before -> after:
+
+| station | midWash | trueBlack | meanLuma |
+|---|---|---|---|
+| 1 (p 0.000) | 0.452 -> **0.179** | 0.461 -> 0.146 | 37.3 -> 108.7 |
+| 2 (cathedral, p 0.031) | 0.139 -> **0.173** | 0.859 -> 0.825 | 20.2 -> 21.7 |
+| 3 (p 0.062) | 0.281 -> 0.298 | 0.290 -> 0.280 | 82.5 -> 82.0 |
+| 4 (quench peak) | 0.001 -> 0.001 | 0.005 -> 0.005 | 209.5 unchanged |
+
+Cathedral mid-wash **0.173, inside the <= 0.25 gate**. Station 1 got much brighter, and an
+attribution run proves why: with the lake lift temporarily reverted the numbers were
+identical (meanLuma 109.8 both ways), so it is not the re-lighting - the re-aligned columns
+no longer block that frame, exposing the open lake.
+
+**Open, recorded honestly:**
+
+- **Station 1 now reads as a flat orange lava wash.** Brighter is what the user asked for,
+  but a featureless orange sheet is not a composition; it needs an art pass (a column or
+  ledge back at that frame edge, or lake structure at grazing angles).
+- **Station 3's cream-white vault is PRE-EXISTING** (meanLuma 82.5 before these fixes, 82.0
+  after) and looks wrong for a magma cavern. Outside this report; not touched.
+- The rock still reads as high-frequency crackle at close range rather than as stone.
+
 ## Sources
 
 - In-repo, read end-to-end for this plan: `docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md` (method

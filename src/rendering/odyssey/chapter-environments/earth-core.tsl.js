@@ -265,7 +265,11 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent = uniform(0), options = {}) {
     const uColorHot = uniform(new THREE.Color(0xff8a24)); // Warm molten orange (hottest veins)
     const uColorMid = uniform(new THREE.Color(0xb83208)); // Deep molten orange
-    const uColorCool = uniform(new THREE.Color(0x050206)); // Near-black charred crust
+    // Charred crust. Was 0x050206 — so near-black that the lake read as a VOID everywhere
+    // outside the molten basins, which is what made the pillars look unattached: their bases
+    // met no visible floor (user report 2026-08-12). Now dark warm ROCK with heat under it:
+    // still the darkest value on the lake ladder, still far below the molten, but a surface.
+    const uColorCool = uniform(new THREE.Color(0x1a0b06));
     const uColorReflect = uniform(new THREE.Color(0x091022)); // Complementary cool obsidian sheen (<10%)
     const uLegacyHot = uniform(new THREE.Color(0xffffaa)); // Legacy-floor yellow-white vein cores
     const uQuenchSilver = uniform(new THREE.Color(0x9fc2d4)); // silvery-blue pahoehoe sheen (seam)
@@ -350,7 +354,9 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // linear ramp — so the lake body stays molten orange that still reads as melted ROCK.
     const hotMix = mix(uColorMid, uColorHot, pow(clamp(temp.sub(0.7).div(0.3), 0.0, 1.0), 3.0));
     const midMix = mix(uColorCool, uColorMid, temp.sub(0.4).div(0.3));
-    const coolMix = uColorCool.mul(temp.div(0.4));
+    // Floor the cool ramp: multiplying a near-black crust by a temperature that goes to zero
+    // produced pure black, so the lake had no readable surface at its cold end.
+    const coolMix = uColorCool.mul(clamp(temp.div(0.4), 0.34, 1.0));
     const lowColor = mix(coolMix, midMix, step(0.4, temp));
     let color = mix(lowColor, hotMix, step(0.7, temp));
 
@@ -1067,6 +1073,13 @@ export function createMoltenPocketMaterialTSL(
         : Boolean(options.isColumn);
     const uOpacity = options.uOpacity ?? uniform(1);
     const uSeam = options.uSeam ?? uniform(0);
+    // SPACE BUG (user report "the bottom is not attached", 2026-08-12): every term below
+    // reads positionWorld but compared against LAVA_LAKE_Y, which is a CHAPTER-LOCAL
+    // constant (-10). The chapter group sits at world y -30, so the lake plane is at world
+    // y -40 and the comparison was off by the group's offset — the "lava licks the base"
+    // gradient landed 30 units UP the shaft, as a flat wash over the whole lower third
+    // instead of a contact gradient at the waterline. Callers pass the WORLD lake height.
+    const uLakeY = options.uLakeY ?? uniform(LAVA_LAKE_Y);
     const uRock = uniform(new THREE.Color(0x0d0604)); // darker charred obsidian
     const uCrack = uniform(new THREE.Color(0xff5a14)); // molten crack glow
     const uHot = uniform(new THREE.Color(isColumn ? 0xcc4400 : 0xffc066)); // dimmer/warmer for columns
@@ -1116,8 +1129,10 @@ export function createMoltenPocketMaterialTSL(
 
     // §5.1 Emissive BLEED on the base near the lake line: the lava licks the lowest
     // band so the column/shelf base glows as if it sits IN the lake.
-    const baseBleed = oneMinus(smoothstep(LAVA_LAKE_Y, LAVA_LAKE_Y + 12.0, vWorldY));
-    color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.14 : 0.08));
+    // Tight now that the plane is correct (12 -> 9 units): a real contact gradient, brightest
+    // exactly where the rock enters the lava, which is what welds a pillar to a floor.
+    const baseBleed = pow(oneMinus(smoothstep(uLakeY, uLakeY.add(9.0), vWorldY)), 1.6);
+    color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.30 : 0.10));
 
     color = color.mul(uPulseIntensity.mul(0.12).add(1.0));
 
@@ -1135,6 +1150,23 @@ export function createMoltenPocketMaterialTSL(
         .mul(uBakedBounce);
     color = color.add(bakedWarm);
 
+    // AMBIENT FLOOR (user report "quite dark on the sides of the pillars and around"):
+    // Wave 3a emptied the luma 32-96 band to kill a red mid-wash, and overshot — a pillar
+    // face turned away from the lake fell to pure black, which reads as a hole, not as rock.
+    // This is deliberately NOT a brightness multiplier (that would restore the wash). It is a
+    // two-tone HEMISPHERE fill: a cool vault bounce from above, a warm magma bounce from
+    // below, so the side faces gain FORM (they change value as they turn) while the palette
+    // stays split. Kept low: the body still sits far under the fire.
+    const hemi = clamp(vNormal.y.mul(0.5).add(0.5), 0.0, 1.0);
+    const ambientFill = mix(
+        vec3(0.052, 0.019, 0.010), // magma bounce from the lake below
+        vec3(0.020, 0.017, 0.029), // cool charred vault from above
+        hemi,
+    );
+    // Lit strongest near the lake, but never zero: the far strata keep a floor so nothing in
+    // the cavern is an untextured black silhouette (the chapter's own §4 acceptance rule).
+    color = color.add(ambientFill.mul(lakeFalloff.mul(0.55).add(0.45)));
+
     const material = new THREE.MeshStandardNodeMaterial();
     material.colorNode = color;
     material.emissiveNode = uCrack.mul(glow).mul(isColumn ? 0.10 : 0.38)
@@ -1146,7 +1178,7 @@ export function createMoltenPocketMaterialTSL(
         // up/side faces so the rock glows softly as if lit by the removed PointLights.
         .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025))
         // §5.1 emissive BLEED — the base glows where the lava licks it (lake line).
-        .add(uHot.mul(baseBleed).mul(isColumn ? 0.11 : 0.07));
+        .add(uHot.mul(baseBleed).mul(isColumn ? 0.24 : 0.09));
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
     material.depthWrite = isColumn;
@@ -1155,7 +1187,7 @@ export function createMoltenPocketMaterialTSL(
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity };
     material.userData.uniforms = {
-        uRock, uCrack, uHot, uBakedBounce, uOpacity, uSeam,
+        uRock, uCrack, uHot, uBakedBounce, uOpacity, uSeam, uLakeY,
     };
 
     return { material };
@@ -1183,17 +1215,19 @@ export function createMoltenPocketTSL(
     ).material;
     const geometry = new THREE.IcosahedronGeometry(size, 2);
     const pos = geometry.attributes.position;
+    // WORSE HERE THAN ON THE COLUMNS: IcosahedronGeometry is NON-INDEXED, so all 540 vertices
+    // are duplicates of 92 unique positions and an independent per-vertex jitter pulled EVERY
+    // shared corner apart — the shelf was 180 disconnected triangles, not a solid ledge.
+    const jitterAt = weldedJitter(geometry, (options.seed ?? 0) + 7, 0.92, 0.16);
     for (let i = 0; i < pos.count; i += 1) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        const z = pos.getZ(i);
-        const jitter = 0.92 + Math.random() * 0.16; // tighter: a rounded shelf, not spiky shards
-        pos.setX(i, x * jitter);
-        pos.setY(i, y * 0.2); // flatten HARD into a low ledge (was a tall jittered ball)
-        pos.setZ(i, z * jitter);
+        const jitter = jitterAt(i); // tighter band: a rounded shelf, not spiky shards
+        pos.setX(i, pos.getX(i) * jitter);
+        pos.setY(i, pos.getY(i) * 0.2); // flatten HARD into a low ledge
+        pos.setZ(i, pos.getZ(i) * jitter);
     }
     pos.needsUpdate = true;
     geometry.computeVertexNormals();
+    weldCoincidentNormals(geometry);
     const mesh = new THREE.Mesh(geometry, material);
     return { mesh, material, geometry };
 }
@@ -1203,6 +1237,90 @@ export function createMoltenPocketTSL(
  * the same dark-rock-with-cracks material. Vertically stretched + jittered so it
  * reads as a charred pillar/stalactite at a corridor corner.
  */
+/**
+ * One jitter per UNIQUE position, applied to every copy of it.
+ *
+ * Both of this chapter's rock builders roughened their geometry with an independent
+ * `Math.random()` per vertex, which is only safe when no two vertices share a position —
+ * and both of them do. CylinderGeometry duplicates its UV seam and both cap rims (120 of
+ * 188 vertices, 64%); IcosahedronGeometry is NON-INDEXED, so *every* vertex is a duplicate
+ * (540 vertices for 92 unique positions). Independent jitter therefore pulled the copies
+ * apart: measured on the shipped column, 86 boundary edges opened along a hull that should
+ * have none, and because the material is FrontSide the tears showed the BACKGROUND through
+ * the pillar. That is the user's "you can see inside them" and "the bottom is not attached".
+ *
+ * Keying on the quantised position (not an angle bucket — three.js lays these rings out as
+ * sin/cos of theta, so every angle sits exactly on a half-segment boundary and float noise
+ * tips the rounding) gives every copy the same displacement, so the shell stays closed while
+ * the silhouette keeps the same irregularity. Seeded, so captures are reproducible — which
+ * the old `Math.random()` denied every A/B this chapter has ever run.
+ *
+ * @returns {(index: number) => number} jitter lookup by vertex index
+ */
+function weldedJitter(geometry, seed, lo, span) {
+    const pos = geometry.attributes.position;
+    const keyAt = (i) => `${Math.round(pos.getX(i) * 1e4) + 0}|`
+        + `${Math.round(pos.getY(i) * 1e4) + 0}|${Math.round(pos.getZ(i) * 1e4) + 0}`;
+    const table = new Map();
+    for (let i = 0; i < pos.count; i += 1) {
+        const key = keyAt(i);
+        if (table.has(key)) continue;
+        let h = seed * 374761393;
+        for (let c = 0; c < key.length; c += 1) h = ((h << 5) - h + key.charCodeAt(c)) | 0;
+        table.set(key, lo + (((h >>> 0) % 100000) / 100000) * span);
+    }
+    const perIndex = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i += 1) perIndex[i] = table.get(keyAt(i));
+    return (i) => perIndex[i];
+}
+
+/**
+ * Average vertex normals across vertices that share a position, but only where the normals
+ * are already within ~60 degrees. Closing the jitter seam (above) welds the POSITIONS, but
+ * computeVertexNormals() still gives each duplicate only the faces on its own side, so the
+ * seam would keep a visible lighting crease down the pillar. The 60-degree guard keeps
+ * genuine hard edges — the cap/wall rim — hard, so the top still reads as a cut face.
+ */
+function weldCoincidentNormals(geometry) {
+    const pos = geometry.attributes.position;
+    const nrm = geometry.attributes.normal;
+    const groups = new Map();
+    for (let i = 0; i < pos.count; i += 1) {
+        const key = `${pos.getX(i).toFixed(3)}|${pos.getY(i).toFixed(3)}|${pos.getZ(i).toFixed(3)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(i);
+    }
+    // Two passes. Averaging in place would make the result order-dependent — the first
+    // vertex of a pair gets the mean, then the second averages against that already-moved
+    // value and lands somewhere else, so the pair never actually converges and the crease
+    // survives (measured: 0.29 divergence, ~44 degrees, after an in-place first attempt).
+    const out = new Map();
+    groups.forEach((idx) => {
+        if (idx.length < 2) return;
+        idx.forEach((vi) => {
+            let nx = nrm.getX(vi);
+            let ny = nrm.getY(vi);
+            let nz = nrm.getZ(vi);
+            let count = 1;
+            idx.forEach((vj) => {
+                if (vj === vi) return;
+                const bx = nrm.getX(vj);
+                const by = nrm.getY(vj);
+                const bz = nrm.getZ(vj);
+                // cos(60 deg) = 0.5 — the standard smoothing-angle guard, so the cap/wall
+                // rim stays a hard edge and the top still reads as a cut face.
+                if (nrm.getX(vi) * bx + nrm.getY(vi) * by + nrm.getZ(vi) * bz < 0.5) return;
+                nx += bx; ny += by; nz += bz; count += 1;
+            });
+            if (count < 2) return;
+            const len = Math.hypot(nx, ny, nz) || 1;
+            out.set(vi, [nx / len, ny / len, nz / len]);
+        });
+    });
+    out.forEach(([nx, ny, nz], vi) => nrm.setXYZ(vi, nx, ny, nz));
+    nrm.needsUpdate = true;
+}
+
 export function createObsidianColumnTSL(
     uTime,
     uPulseIntensity = uniform(0),
@@ -1210,6 +1328,7 @@ export function createObsidianColumnTSL(
     height = 70,
     uBakedBounce = uniform(1),
     sharedMaterial = null,
+    seed = 0,
 ) {
     // The column graph is byte-identical for every column/slab (isColumn=true; only geometry
     // + transform vary), so callers can pass ONE pre-built material to share across all of
@@ -1218,17 +1337,38 @@ export function createObsidianColumnTSL(
     const { material } = sharedMaterial
         ? { material: sharedMaterial }
         : createMoltenPocketMaterialTSL(uTime, uPulseIntensity, uBakedBounce, true);
-    const geometry = new THREE.CylinderGeometry(radius * 0.72, radius, height, 18, 5);
+    const RADIAL = 18;
+    const geometry = new THREE.CylinderGeometry(radius * 0.72, radius, height, RADIAL, 5);
     const pos = geometry.attributes.position;
+    // THE PILLARS WERE NOT SOLID, AND THIS LOOP WAS WHY (user report, 2026-08-12: "you can
+    // see inside them at some angles", "the bottom is not attached").
+    //
+    // CylinderGeometry emits COINCIDENT DUPLICATE vertices in two places: the radial UV seam
+    // (RADIAL+1 columns of vertices, first and last at the same position) and the cap rims
+    // (each cap's rim vertices are separate from the side-wall ring at the same positions).
+    // The old loop drew an INDEPENDENT `Math.random()` per vertex, so every duplicate pair
+    // was pushed to a different radius: measured on the live r=6.8 column, all 45 duplicate
+    // groups diverged, up to 0.78 units — 11.5% of the radius, matching the +-6% jitter
+    // band's 12% worst case. That tears a full-height slit along the seam (you see into the
+    // hollow interior) and unwelds both caps from the wall (the base "floats").
+    //
+    // Fix: the jitter is now a DETERMINISTIC hash of (radial segment, ring height), so every
+    // copy of a coincident vertex receives an IDENTICAL displacement and the shell stays
+    // closed. Silhouette irregularity is preserved — it is the same +-6% band, just welded.
+    // Being seeded also makes the geometry reproducible run to run, which the old
+    // Math.random() denied every capture comparison.
+    const jitterAt = weldedJitter(geometry, seed + 1, 0.94, 0.12);
     for (let i = 0; i < pos.count; i += 1) {
         const x = pos.getX(i);
         const z = pos.getZ(i);
-        const jitter = 0.94 + Math.random() * 0.12;
+        if (Math.hypot(x, z) < 1e-4) continue; // cap centre is on the axis; scaling is a no-op
+        const jitter = jitterAt(i);
         pos.setX(i, x * jitter);
         pos.setZ(i, z * jitter);
     }
     pos.needsUpdate = true;
     geometry.computeVertexNormals();
+    weldCoincidentNormals(geometry);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'obsidian-column';
     return { mesh, material, geometry };
