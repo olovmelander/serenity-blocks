@@ -1543,6 +1543,42 @@ The report was discarded as inadmissible. Rule adopted: **no working-tree edits 
 a measurement harness is running** — the harness serves the live tree, so an edit
 anywhere in the module graph invalidates the run silently.
 
+### 10.6 Post-bake re-pricing, and the sky-last dome (round 2 of "lower")
+
+Re-priced against the 27.98/29.10 sans-orbs baseline
+(`gpu-split-laneb-act1-postbake-*.json`):
+
+- **Dome residual: 7.6-9.3 ms** (19.79/20.38 without it, drift 0.59) — the baked
+  fetches, the colour chain, and full-screen rasterization.
+- **Haze: pair INADMISSIBLE** (27.72 vs 22.28 — the runs disagree by 5.4 ms; thermal
+  ramp after only 60 s of cooling behind the noBackdrop run). Voided, not averaged.
+  The clean pre-bake price (1.8-3 ms, drift 0.20) stands — fill cost is
+  bake-independent.
+
+~~The dome attack with zero look-change risk: `volcano-background` shipped at
+renderOrder -90 — sky-last (renderOrder 50) is pixel-identical and lets early-z
+skip the occluded fragments.~~
+
+> 🔴 **TRIED, MEASURED A FALSE WIN, REVERTED — the capture gate earned its keep.**
+> Sky-last measured beautifully: 22.22/22.61 ms p50, drift -0.39 (after one noisy
+> pair was re-run cooled), 83 draws constant. But the `--time 9` captures came back
+> DARKER (station 3 trueBlack 0.297 -> 0.892), and a live renderOrder toggle showed
+> the vault rendering BLACK at 50: the "pixel-identical" premise required the dome
+> to be in the OPAQUE pass, and it is not — the chapter fade system flips these
+> materials `transparent = true` post-creation, so renderOrder moved the dome
+> within the TRANSPARENT pass, where drawn late it is depth-killed. The 5.4-6.9 ms
+> "saving" was the price of not drawing the dome at all — it matches the
+> `?earthCoreNoBackdrop` differential, which is exactly what it accidentally was.
+> Reverted to -90 with a DO-NOT comment at the site; restoration capture-verified
+> (all four stations back to the 10.2 values within phase noise). The report
+> `gpu-split-laneb-act1-ch1-noorbs-skylast.json` is retained as the record of what
+> a depth-killed dome costs, i.e. a second, independent confirmation of the dome's
+> residual price. FUTURE LEVER, properly scoped: make the dome genuinely opaque
+> outside fade windows (drive `transparent` from the fade state), THEN sky-last
+> becomes available — expected ~5-7 ms, gated on transition captures.
+
+- Lane B pair: **struck** — measured a scene that was not the scene.
+
 ## Sources
 
 - In-repo, read end-to-end for this plan: `docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md` (method

@@ -686,6 +686,14 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) 
     const geometry = new THREE.SphereGeometry(250, 32, 24);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'volcano-background';
+    // DO NOT "sky-last" this dome (tried 2026-08-12, plan §10.6, reverted): the classic
+    // draw-the-backdrop-last-for-early-z trick assumes the dome lives in the OPAQUE pass,
+    // but the chapter fade system flips these materials transparent post-creation, so
+    // renderOrder moves it within the TRANSPARENT pass instead — drawn late there it is
+    // depth-killed and the whole vault renders BLACK. The measured "saving" (28.0 ->
+    // 22.2 ms Lane B) was the cost of not drawing the dome at all; it matched the
+    // ?earthCoreNoBackdrop differential, and only the capture gate caught it. -90 keeps
+    // the dome first among transparents: the backdrop every other layer blends over.
     mesh.renderOrder = -90;
     return { mesh, material, geometry };
 }
