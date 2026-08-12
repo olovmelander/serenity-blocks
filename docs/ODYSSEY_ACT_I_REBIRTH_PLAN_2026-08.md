@@ -872,6 +872,22 @@ So the wave splits, and the split is recorded rather than quietly performed:
   migration of `earth-core-environment.test.js` to the surviving contract — a test change made
   in the open, reviewed on its own merits, not smuggled in beside a look change.
 
+  **3b PROGRESS (2026-08-12): 131 → 90 draws measured; ratchet installed; ≤35 still open.**
+  A headless inventory test walked the built environment and found **77 drawables / 27
+  materials**, with the top families: 20 contact-shadow decals, 10 geode clusters, 12 sprites,
+  9 obsidian columns, 6 molten pockets. The decals were the one family merge-safe BY PROOF
+  (one shared material, all parented statically to the group, shading reads only `uv()` — no
+  `positionLocal` dependence a bake would redefine), and merging them took the in-game
+  cathedral station from ~127 to **90 draws** at unchanged triangles (~245 k, the
+  pixel-identity check). `tests/unit/earth-core-drawable-budget.test.js` now pins a **≤58
+  drawable ceiling** so the win cannot silently erode. What remains for ≤35, in order of
+  yield and rising contract risk: the 12 sprites (5 are contract-pinned `lavaFloor` glows
+  with per-sprite scale animation → needs an instanced-billboard migration done in the open),
+  the 10 geode clusters and 9 columns (local-space shading → shader must move to
+  world-anchored coordinates first, a visual change owing captures), and the 6 molten
+  pockets (same). Each is exactly the "deliberate contract migration" this wave was split
+  out to negotiate.
+
 > ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
 > 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
 > the playground. Measured against the SHIPPED chapter under the real ACES grade, it is
