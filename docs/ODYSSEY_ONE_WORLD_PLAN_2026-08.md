@@ -16,9 +16,10 @@ the per-chapter cohesion patching in
 [ODYSSEY_CH3_CH4_POLISH_2026-08.md](ODYSSEY_CH3_CH4_POLISH_2026-08.md) (rounds 1–8), which
 should be read as the evidence log that motivated this document.
 
-**Scope:** Act II — chapters 2–6 (ocean floor → ocean → shore → hills → alpine → sky →
-edge of space). Chapters 1, 7 and 8 (Earth Core, Black Hole, Urban Dreams) are genuinely
-*different places* and are explicitly out of scope — see §3.0.1.
+**Scope (as shipped):** Act II — **chapters 2–5** (ocean floor → ocean → shore → hills →
+alpine). *Proposed as 2–6, but ch6 Space keeps its own environment — the world's height field
+does not describe space; see §3.0.1's table note and §7.3.* Chapters 1, 6, 7 and 8 (Earth
+Core, Space, Black Hole, Urban Dreams) own their own frames and are out of scope.
 
 **Core idea (§3.0):** the environment stops being divided into chapters. There is one world;
 the *path* is divided into chapters. Chapters own levels, board themes and colour-script
@@ -98,6 +99,13 @@ measured against a verified instrument was wrong.**
 ## 1. Evidence
 
 Everything in this section is measured against the current working tree, not inferred.
+
+> ⚠️ **"Current" means the tree of 2026-08-11, BEFORE the rebuild (annotated at closure).**
+> This section is the diagnosis snapshot, not today's build: chapters 2–5 described below are
+> now suppressed and drawn by the world; the `ECOTONE_*` constants, `SEAM_34_ALPINE_BRIDGE`
+> and the `rangeAuthority` machinery are deleted; the sun split and the view-space-normal
+> sites are fixed; and §1.6's counts are superseded by §0.2's measured 50–53 draws / 0.393 ms.
+> §0.3 lists which of this section's numbers were never measurements at all.
 
 ### 1.1 The world is eight local frames
 
@@ -233,6 +241,10 @@ The view-space-normal bug that was fixed on the mountains is still live on the C
 (`mountain-peaks.tsl.js:270`) — so the meadow's terminator swings with the camera while the
 skirt it merges into is world-locked.
 
+> ✅ **CLOSED (Wave 0.2, commit `57c9e18f`).** All three sites converted to `normalWorld` —
+> plus two mixed-space tree rims the audit had misfiled as safe Fresnel. `normalView` is now
+> entirely unimported in both files; its only surviving occurrences are the fix comments.
+
 `SEAM_34_ALPINE_BRIDGE` is now pure damage: Ch3 and Ch4 have **identical** fog and sky
 colours, yet the bridge forces the fog through a **3.0× luminance dip** at **2.18× density**
 over 196 u at the exact boundary, then undoes it. Left over from a dusk look that no longer
@@ -281,9 +293,19 @@ Three more facts that shape the plan:
   take no arguments. The per-chapter LOD path is dead code (it only sheds `THREE.Points`, and
   there are zero Points objects in any chapter).
 
+  > ⚠️ **No longer true for Act II (annotated at closure).** The world branches on
+  > `ODYSSEY_WORLD_QUALITY` (`odyssey-world-renderer.js:48-73`) — grid size, ring count,
+  > relief/shadow bake resolution, tree spacing and detail scales all change between high and
+  > low. The claim survives only for the legacy chapters (1/6/7/8), where per-tier decisions
+  > wait on the Lane B measurement (§7.1).
+
 ---
 
 ## 2. Symptom → cause
+
+*(Annotated at closure: rows 1–3 are **FIXED on the default path** — Act II is one continuous
+world (Wave 3) and the alpine key light joined the sun (Wave 0.2, so the "72.5° away" in row 2
+is closed even on the fallback). They survive only under `?odysseyOneWorld=0`.)*
 
 | Reported symptom | Root cause | Structural? |
 |---|---|---|
@@ -322,6 +344,12 @@ Wave −1.
 The most likely 610M bottleneck has never been measured at all: **55 level-node orbs × 3
 nested transparent `depthWrite:false` spheres**, which on a 4-ROP part is a large amount of
 blended overdraw sitting in front of everything.
+
+> ⚠️ **REFUTED (2026-08-12) — same claim as §1's corrected block, annotated here too.** It is
+> two transparent shells plus one *opaque, depth-writing* core; measured blended coverage is
+> **0.86 % of the frame**; and it HAS now been measured on Lane A: hiding the whole group
+> (9 draws, 201,740 tris) changes GPU p50 by **0.000 ms**, content-matched, zero drift. The
+> hypothesis survives only for Lane B, whose absolute is still open — §7.1 / ADR-0016.
 
 ---
 
@@ -388,6 +416,11 @@ gain**):
 | RTX | 128 | 7 | 1.5 u | 3 | 189,008 | 6,144 u |
 | 610M | 96 | 7 | 1.5 u | 2 | 107,856 | 4,608 u |
 
+> ⚠️ **SUPERSEDED — shipped values differ in every column but GRID_N** (annotated at
+> closure). `ODYSSEY_WORLD_QUALITY` ships high = 128 / **9** / **1.6 u** / 3 → ≈241 k tris,
+> reach **26,214 u**; low = 96 / **8** / **2.2 u** / 2 → ≈120 k tris, reach **13,517 u**.
+> §3.3 explains why LEVELS went up for free; measured whole-frame cost is §0.2's 0.393 ms.
+
 Both exceed the first draft's stated 2,500–3,000 u radius at 30–50 % of its triangle budget.
 
 The vertex function, adopted verbatim from the reference:
@@ -434,6 +467,14 @@ pipeline may already have rewritten (same trap class as the r181 `InstanceNode` 
 **Amended.** Do **not** bake absolute world height. Half-float epsilon at 2,000 u is ~1.0 u —
 unusable for a surface geometry displaces to.
 
+> ⚠️ **REVERSED IN SHIP for the MACRO (annotated at closure).** `bakeMacroTexture()` bakes the
+> absolute macro height — ocean floor through summit — into a 512² RGBA16F half-float texture,
+> and the analytic macro was deleted from the shaders with a tombstone. The r181 codegen bomb
+> (§5, Wave −1: 129 s + 27 s of build time) outranked the epsilon argument, and half float is
+> adequate there because the macro is smooth by construction. The DISPLACEMENT half of this
+> amendment survives: geometry displaces from the separate ±150 u relief bake, where the
+> precision argument was always about.
+
 - Bake only **local relief (±150 u)**, where RG16F epsilon is 0.06 u, into an **RG16F 2048²**
   texture.
 - Add the large-scale ascent **analytically** as a smooth function of spline arc length.
@@ -451,6 +492,13 @@ the vertex shader displaces to, and structurally kills the "phantom shading seam
 already logged against Ch3/Ch4. Three lines of TSL for the highest value-per-line in the
 entire reference. A wide-stencil (6-texel) Laplacian in the A channel becomes a free
 curvature-derived biome selector feeding §3.6.
+
+> ⚠️ **AMENDED IN SHIP (annotated at closure).** Relief and aux merged into **one** RGBA16F
+> texture at 1024² (high) / 768² (low) carrying `(relief, dH/dx, dH/dz, curvature)` —
+> `buildReliefBake`. There is no RG16F texture, no 2048² bake (rejected against §8's 400 ms
+> bake budget), and no biome-mask channel: biome is derived in-shader from height, slope and
+> the baked curvature. The load-bearing rule — normals from the baked texture, never the
+> analytic derivative — shipped as specified.
 
 A CPU mirror of the height makes props seat **exactly** on the drawn surface — killing the
 floating/buried conifers (§1.3) permanently.
@@ -512,10 +560,22 @@ alpha-rim-fade bug class — the architectural win survives intact.
 
 Delete `MOUNTAIN_SHADING.keyDir`. **`ODYSSEY_SUN` becomes a lint rule, not a convention.**
 
+> ⚠️ **Shipped as UNIFICATION, not deletion (Wave 0.2).** `MOUNTAIN_SHADING.keyDir` still
+> exists and now IS `ODYSSEY_SUN` by object identity, pinned by
+> `tests/unit/odyssey-one-sun-invariant.test.js` — which *requires* the symbol to exist.
+> Deleting it would break a passing test and the winter theme (mountain-language.js is live
+> outside Odyssey, per the Wave 4 rescope). The lint-rule half shipped as written.
+
 > **Trap already paid for once this session:** `ODYSSEY_SUN` has negative Z, so keying the
 > massif off it makes its camera-facing flank back-lit (measured ndl 0.00 vs 0.67). Unifying
 > is right, but the sun's *direction* must be re-solved against the hero composition, not
 > adopted blind. This is an art solve with a measurable constraint, not a find-and-replace.
+
+> ⚠️ **UNBUILT (annotated at closure).** The shipped sky is a gradient dome mesh — BackSide
+> sphere, two-stop zenith/horizon gradient driven by the colour script, plus a sun disc
+> (`odyssey-world-renderer.js:644-671`). No scattering LUT, no SH irradiance, no mip specular,
+> and `scene.backgroundNode` is not used. The paragraphs below record the intent, not the
+> system; the one-slider property they argue for is delivered by the colour script instead.
 
 Analytic sky (Nishita/Hillaire-style single scattering plus a multiple-scattering
 approximation) baked to an equirect LUT + SH irradiance + mip-based specular, re-baked only
@@ -538,6 +598,12 @@ air↔water on camera Y vs sea level, with separate extinction coefficients and 
 inscatter source below the waterline. An air-only model cannot serve Ch2 and would re-fork at
 the very first seam.
 
+> ⚠️ **UNBUILT (annotated at closure).** There is no sky LUT and no 1D fog-gradient LUT —
+> zero texture samples in the shipped fog path. The shipped aerial is `applyAerial(lit, wp)`,
+> an exponential mix toward the colour-script sky gradient, with a global `uSubmerged`
+> uniform instead of a per-call `medium` argument. The API *principle* (one atmosphere
+> authority, no per-material sky guesses) shipped; the LUT machinery did not.
+
 **API rule, adopted verbatim:** pass the **sky LUT into the node**, never a pre-sampled
 colour. The correct inscatter colour depends on the extinction the function itself computes —
 and the old signature is precisely what let seven materials each decide what "the sky here"
@@ -553,6 +619,14 @@ the near-field lookup must be tilted **up** (`viewDir + (0, 0.42, 0)`) and read 
 must converge on the **exact mip-0 sky sample the sky itself draws**, or the clipmap's far
 edge draws as a hard silhouette at a fixed radius; and the Mie forward lobe must be **inside**
 the crossfade, not added on top, or the horizon becomes a hard-topped white wall.
+
+> ⚠️ **REVERSED BY MEASUREMENT (Wave 5) — do NOT execute this migration.** The shipped policy
+> is the exact opposite: every world material sets `fog = false` and carries its own aerial,
+> a lint PINS the opt-out list against the constructor list (`odyssey-world-lints.test.js`), a
+> second lint requires far-range chapter meshes to opt out too
+> (`odyssey-chapter-fog-optout.test.js`), and `FogExp2` stays — now DRIVEN by the world for
+> everything it does not draw. Flipping world materials to `fog: true` re-opens the 4×
+> recurring scene-fog trap.
 
 **Migration task:** the 12 `material.fog = false` opt-outs must flip to `fog: true` with an
 aerial node that is *identity at their depth* — not stay opted out. `NodeMaterial.setupFog()`
@@ -587,6 +661,12 @@ Carry a second **narrow-axis** footprint (min of the two axis lengths) for anyth
 not change appearance when the camera merely tilts.
 
 ### 3.8 Shadows (absent from the first draft entirely)
+
+> ⚠️ **CUT — zero cascades shipped (annotated at closure).** One sun plus a fixed rail makes
+> self-shadowing static, so shadows ship as a baked sun-visibility texture
+> (`bakeSunVisibility`, 512²/384² R16F) plus curvature AO from the relief bake. There is no
+> shadow pass, no `castShadow` anywhere in `world/`, and no cascade budget line to spend —
+> §8's shadow rows are unspent and §6's "cut three cascades" *understates* the cut.
 
 | Lane | Budget |
 |---|---|
@@ -716,7 +796,7 @@ this document's own prose — several waves this file described as done were not
   (tumbling debris: "always shows form" beats "anchored"); that is now documented at the site
   as an exception rather than the house style, since its comment used to cite the hero planet
   as precedent and the hero has moved.
-- [x] **Wave 1** — The spike — DONE 2026-08-12. Gate items: ≤4 draws (measured 1 draw for the ground, 3 for ground+water+sky, commit 59267c08); clean console + screenshot-verified (same commit); and the **GPU-time split on both lanes** now exists (`reports/odyssey-perf/gpu-split-lane{a,b}.json`, Wave −1) and it did what the gate asked: it **killed the §8 Lane B budget** (67.7 ms p50 vs 7.0 ms — the budget was a hypothesis and it is falsified, decisively). The in-game measurement supersedes a playground-spike split — it answers the same question about a strictly more real frame.
+- [x] **Wave 1** — The spike — DONE 2026-08-12. Gate items: ≤4 draws (measured 1 draw for the ground, 3 for ground+water+sky, commit 59267c08); clean console + screenshot-verified (same commit); and the **GPU-time split on both lanes** now exists (`reports/odyssey-perf/gpu-split-lane{a,b}.json`, Wave −1) and it did what the gate asked: it **killed the §8 Lane B budget** *as a description of the diorama path* (67.7 ms p50 vs 7.0 ms — that hypothesis is falsified, decisively; the 7.0 ms *target* survived and is now the gate cell `odysseyWorldGpuP50LaneBMs` that One World itself is measured against). The in-game measurement supersedes a playground-spike split — it answers the same question about a strictly more real frame.
 - [x] **Wave 2** — Height field + aux bake + colour script — DONE 2026-08-12. Height field (48 tests), Oklab colour script (23 tests, both invariants biting), aux bake with curvature in the A channel (capture-verified). The `.level(0)` lint now exists (`odyssey-world-lints.test.js`): a source-scan with one-hop dataflow through same-file `const`s — needed because the cloud billow's vertex-stage read feeds `positionNode` through an intermediate — mutation-verified to FAIL when a `.level(0)` is removed. Two spec items amended by measurement, not skipped: **relief stays 1024²/768²** because the bakes already measure ~400–416 ms against the §8 400 ms budget and 2048² quadruples exactly that work for detail the footprint gate would fade at range anyway; **the fog-LUT id is void** because Wave 4's LUT pillar was itself deleted by measurement — there is no fog LUT to identify.
 - [x] **Wave 3** — Swap the ground in; re-seat every prop — **DONE 2026-08-12**. One World is the DEFAULT path for chapters 2-5; `?odysseyOneWorld=0` (or `options.oneWorld === false`) reverts to the dioramas, and the build stays inside a try/catch that undoes suppression if the world throws. Verified in-game with NO flag: ch4 boots, 7 frames. Act II capture-verified chapter by chapter (2, 3, 4, 5) plus the 5->6 seam handing off into Ch6's cosmos. Props: level orbs seated on `heightAt` (measured: zero lifts needed, the seat is a safety net), Ch2's caustics and god rays ported, cumulus/strata/cloud-sea replaced by the one deck, alpine surface language ported (snow-line FBM jitter + slope gate + alpenglow). Corridor field suppressed for Act II, world in the prewarm pool, 4 policy tests pin the default and its escape hatch.
   - **MEASURED AT LAST (2026-08-12, Lane A, 1920x1080, chapter 4 station):** One World
@@ -730,7 +810,7 @@ this document's own prose — several waves this file described as done were not
     to `--seek 0.42`; and once Wave 3 made One World the default, the old `one-world`
     configuration was comparing the default against ITSELF — a guaranteed zero that would have
     read as "the rebuild is free". The comparison is now against `?odysseyOneWorld=0`.
-  - CARRIED FORWARD, not silently dropped: region-based camera-distance streaming is still the single hard-coded 1,450 u forest gate, and **One World has no GPU-time number**. The gpu-split harness now boots it, but it measures the board where it PARKS — journey start, 40 draws, 0.13 ms, Act II off-screen — so the delta would be measuring nothing. Seeking the camera to Act II progress before sampling is the prerequisite, and it belongs to Wave 7.
+  - CARRIED FORWARD, not silently dropped: region-based camera-distance streaming is still the single hard-coded 1,450 u forest gate, ~~and **One World has no GPU-time number**. The gpu-split harness now boots it, but it measures the board where it PARKS — journey start, 40 draws, 0.13 ms, Act II off-screen — so the delta would be measuring nothing. Seeking the camera to Act II progress before sampling is the prerequisite, and it belongs to Wave 7.~~ *(struck half closed 2026-08-12: the seek landed — `--seek`, default 0.42, station PINNED — and One World's number exists: 0.393 ms p50 / 50-53 draws on Lane A, content-matched. §7.1 carries the one number still open.)*
 - [x] **Wave 4** — Delete the canonical chain and `rangeAuthority` — **CLOSED AS RESCOPED (2026-08-12). Its real purpose is achieved; the rest is permanently blocked, not deferred.** The wave existed to end the DUPLICATE AUTHORITY over the mountain silhouette, and that is done: the four peak geometries now live in `world/odyssey-peak-specs.js` and the legacy builder derives from them, so the shipped height field no longer takes its truth from the module scheduled for deletion. `rangeAuthority` is deleted outright. The module deletion itself will never happen — see ADR-0015 and the invariants test — so the checkbox reflects the achievable goal rather than the original wording. **The premise was FALSE:** A 13-agent audit (4 inventories, 8 adversarial verifiers, 1 synthesis) tested this wave's core claim — "code only the `?odysseyOneWorld=0` fallback reaches" — and **all eight verification passes refuted it.** See §"Wave 4/6 deletion manifest (audited)" below for the full accounting. The headline corrections:
   - `shared/mountain-language.js` (575 LOC) is consumed by the SHIPPED **winter theme** (`winter-theme.js:70-74` imports `mountainCpuDisplacement`/`mountainColorNode`/`resolveMountainTreatment`, called at :174/:181/:195) plus three live playground effects and the one-sun invariant test. **Permanently out of scope**, independent of any hatch decision.
   - `shared/canonical-mountain-range.js` (273 LOC) is in the **production bundle** (`vite.config.js:131` registers `playground.html` as a rollup input; `dist/` contains `ch4-center-hero`). Five live playground effects reach it — `ch3-ch4-seam`, `ch4-mountain-peaks`, `ch5-sky-drift` EXECUTE the real chapter builders (so the "suppressed" chapter call sites at `surface-world.js:1502` / `mountain-peaks.js:303` / `sky-drift.js:335` are live after all), and `seam-34-landscape` / `ch3-surface-world` import it directly. The LIVE world's own guards depend on it too: `odyssey-world-height.test.js:13,22` derives the `ODYSSEY_MASSIFS` expectations from `getCanonicalMountainRangeWorldSpecs` (the only executable link between the shipped silhouette and the height field), and `odyssey-path-layout.test.js:58-84` is the repo's only rail-clearance guard. Deleting the module as scoped **breaks `vite build`**.
@@ -970,6 +1050,9 @@ by shedding a cascade or an octave — it is closed by the Act II draw/material 
 whole rebuild is for, plus a genuinely reduced Lane B tier, and it must be re-measured here
 rather than reasoned about. It also means **One World's own Lane B cost is now the single most
 valuable unknown in the plan**, and the harness cannot currently measure it (below).
+*(Closed 2026-08-12: it CAN and DID — 4.19 ms p50 vs the dioramas' 39.52 — but with 5.44 ms of
+thermal drift between bracketing baselines, so the ~35 ms saving is established and the
+absolute against the 7.0 ms budget is not. That residual is §7.1, awaiting a cooled machine.)*
 
 #### RESOLVED (2026-08-12, 09:5x): the boot stall was a three r181 codegen bomb in the world's own shaders
 
@@ -1040,6 +1123,15 @@ expression with high fan-out referenced through varyings is a build-time bomb in
 
 #### Known harness limitation
 
+> ✅ **RESOLVED (2026-08-12).** Both lanes were subsequently measured through this same
+> harness once three instrument defects fell: the seeked station is now PINNED (the travel
+> model used to override it next frame), sampling is once-per-RESOLVED-query (the per-frame
+> read recorded a sticky value, dwell-weighted), and a differential whose baselines disagree
+> on draw calls is VOIDED with a reason. Lane A: 0.393 ms p50 / 50-53 draws. Lane B: 4.19 ms
+> p50 (absolute still drift-limited — §7.1). The subsection below is the debugging log of the
+> two wrong hypotheses, kept because both were wrong instructively; its closing "next attempt"
+> advice is superseded. ADR-0016 binds the lessons.
+
 **One World still has no GPU-time measurement on either lane, and the harness — not the world —
 is why.** Two hypotheses were tried and both were wrong in an instructive way:
 
@@ -1074,6 +1166,10 @@ The 720p run's −0.13 ms sat inside a 0.066 ms noise floor and must not be quot
 > on a surface Wave 3 deletes. `depthWrite: true` is free and is most of the fix.
 
 **0.2 SCOPED, NOT APPLIED (2026-08-12) — blocked on a capture, deliberately.**
+*(Historical scoping — SUPERSEDED the same day by "0.2 PART 1/2 LANDED" in the tracker above:
+captures came back, the durable half landed capture-verified, and the 115.6° convergence was
+then deliberately REFUSED as the residual. Read this block as the reasoning that re-sequenced
+the work, not as pending work.)*
 
 Confirmed numerically: `MOUNTAIN_SHADING.keyDir = [0.5, 0.8, 0.5]` and
 `ODYSSEY_SUN = [0.35, 0.62, −0.70]` are **72.48° apart** (elevation 48.5 vs 38.4, azimuth
@@ -1087,10 +1183,14 @@ per-frame value and the whole deck re-lights globally as you turn). Four sibling
 already converted to `normalWorld`; these three were missed. Every other `normalView` use
 under `src/rendering/odyssey/` is view-normal-vs-view-vector Fresnel and is self-consistent.
 
-Also found: `ODYSSEY_WORLD_SUN` is exported and imported by **nobody** — today it is a third
-sun in waiting. Convergence means moving the declaration into the import-free leaf
+Also found: `ODYSSEY_WORLD_SUN` was exported and imported by **nobody** — a third sun in
+waiting. Convergence would mean moving the declaration into the import-free leaf
 `chapter-profile.js` and aliasing `ODYSSEY_SUN` to the same frozen array, so
 `Object.is(ODYSSEY_SUN, ODYSSEY_WORLD_SUN)` becomes a testable one-sun invariant.
+*(Outcome: the declaration DID move to `chapter-profile.js` — now imported by the ch6 hero
+planet and the world renderer — but the `Object.is` aliasing was REFUSED on purpose: the
+115.6° gap stays, per the "RESIDUAL, deliberately not converged" note in the tracker. On the
+default path the two suns never share a sky.)*
 
 **Why it is not applied yet.** Converging moves `ODYSSEY_SUN` by **115.6°**, and that is not a
 shading tweak — it relocates every visible sun artefact. Ch3's sun-disc billboard sits at
@@ -1109,6 +1209,9 @@ coming back.**
 
 One gap worth closing regardless: no test anywhere asserts a sun value. Grepping `tests/` for
 `lightDir`, `ODYSSEY_SUN` or `sunDir` returns nothing, which is why two suns could ship at all.
+*(Closed: `tests/unit/odyssey-one-sun-invariant.test.js` now pins the identity, the freeze,
+the closed 72.5° split and `ODYSSEY_WORLD_SUN`'s single declaration — verified to fail against
+the old literal before it was trusted.)*
 
 **0.4 DONE (2026-08-12) — and the symptom it was written for has a different cause.**
 
@@ -1145,8 +1248,8 @@ both lanes** that either confirms or kills the §8 budget.
 
 ### Wave 2 — Height field + aux bake + **2a: the colour script**
 ### Wave 3 — Swap the ground in; re-seat every prop on the CPU mirror
-### Wave 4 — Baked range LUTs; delete the canonical chain and `rangeAuthority`
-### Wave 5 — One atmosphere + one sky; migrate the 12 fog opt-outs; add the lint
+### Wave 4 — Baked range LUTs; delete the canonical chain and `rangeAuthority` — *CLOSED AS RESCOPED: the LUT pillar was deleted by measurement, `rangeAuthority` is gone, and the module deletion is permanently refused (ADR-0015)*
+### Wave 5 — One atmosphere + one sky; add the lint — *the fog-opt-out migration was REJECTED on audit (it would have refactored correct or dead code); the lint shipped and immediately caught live bug #4*
 
 **Landed early, because nothing downstream could be judged without it.** The world looked
 right in the playground and pale-grey in-game, and the cause was not the palette, the
@@ -1242,12 +1345,17 @@ gpu-split harness has `--seek` but no frame capture). Ch2's 13 bridges deferred 
    verified to be the only test that fails on a pre-flip revert; all four peaks were
    re-audited field by field against git HEAD.
 
-**Tranche 2 — what still blocks the hatch decision:**
-3. Owner decides the playground effects' fate — `seam-34-landscape`, `ch3-*`,
-   `ch4-mountain-peaks`, `ch5-sky-drift` execute the real chapter builders, so this decision
-   alone determines whether the chapter modules can ever shrink to stubs.
-4. Rework the registry/pilot/validation contract in one commit.
-5. Record the retirement as an ADR (`docs/adr/` currently has nothing on the hatch).
+**Tranche 2 — what still blocked the hatch decision** *(closed by ADR-0015: the decision was
+made, and it is KEEP — so items 3-5 below are moot, not pending; they were prerequisites for
+a retirement the project declined; §7 carries no successor to any of them)*:
+3. ~~Owner decides the playground effects' fate~~ — moot; the chapter modules stay, so
+   `seam-34-landscape`, `ch3-*`, `ch4-mountain-peaks`, `ch5-sky-drift` keep their hosts.
+4. ~~Rework the registry/pilot/validation contract in one commit~~ — moot; nothing shrinks
+   to stubs.
+5. ~~Record the retirement as an ADR~~ — **DONE, inverted**: ADR-0015 records the decision
+   and it is to *keep* the hatch. (This line originally said `docs/adr/` had nothing on the
+   hatch — true when scoped, false by the time the document closed, and left here as a
+   specimen of exactly the staleness §0.3 warns about.)
 
 **Out of scope permanently, regardless of the hatch:** `shared/mountain-language.js` (winter
 theme), the 34 live ch1/ch7/ch8 bridges and their contract tests, `SEAM_56_AURORA_BRIDGE`,
@@ -1271,6 +1379,12 @@ buffer (33.5 MB of VRAM, and nothing in Odyssey carves the ground).
 eight transcendentals per noise evaluation at RDNA2's ¼ transcendental rate is ~40 % of every
 noise call; the hash form is ~4× cheaper and visually indistinguishable on a landform.
 
+> ⚠️ **N/A AS SHIPPED (annotated at closure).** All three bakes — relief, macro and
+> sun-visibility — ship as synchronous CPU `DataTexture` fills; there is no compute
+> dispatch anywhere in `world/`, so there is nothing to tile and the TDR envelope never
+> applied. The real load-time hazard turned out to be r181 shader CODEGEN (§5, Wave −1:
+> 155.5 s), not sustained ALU. §8's two "dispatch" startup rows are likewise unspent.
+
 **TDR mitigation (absent from the first draft, despite two prior bluescreens):** tile **every**
 bake into ≤ 16 dispatches with a rAF yield between them; assert no single dispatch exceeds
 ~100 ms. Windows TDR fires at 2 s per GPU command and these are exactly the sustained-ALU
@@ -1289,6 +1403,13 @@ both.
   bypasses the renderer-level cap; `Renderer.js:264`'s
   `samples || (antialias === true) ? 4 : 0` precedence bug hard-caps `renderer.samples` at 4
   with getter-only access.
+
+  > ⚠️ **REFUTED BY IMPLEMENTATION (2026-08-12).** `PassNode` does NOT bypass the cap — r181
+  > clamps the PIPELINE at 4 samples (`WebGPUUtils.js:189-193`) while passing the raw value to
+  > the ATTACHMENT, so `samples: 8` creates an 8-sample texture against a 4-sample pipeline: a
+  > validation error, not a win. WebGPU core supports only 1 and 4. Lane A ships 4× on
+  > High/Ultra/Extreme; §8's 8× budget line is unspendable. Third home of this claim — the
+  > other two carry the same correction (§0.3, Wave 7 tracker).
 - 610M: 4× MSAA + band-limiting, nothing else. **Reject TRAA** (~1.3–1.5 ms = 19–21 % of
   budget). Clipmap-specific TRAA hazard even on RTX: the ring origin snaps by 2× spacing and
   that motion is **not in the model matrix**, so velocity is wrong at every snap.
@@ -1357,7 +1478,22 @@ removing anything** — deleting the bridge first leaves the seam with nothing.
 
 ---
 
-## 8. Budget (the contract the implementation is held to)
+## 8. Budget (as proposed — SUPERSEDED by `perf-budgets.json`)
+
+> ⚠️ **THIS IS NOT THE CONTRACT THE BUILD IS HELD TO (annotated at closure).** The contract
+> that actually gates the build is `perf-budgets.json`'s three Odyssey cells:
+> `odysseyWorldGpuP50LaneAMs` (baseline 0.39, **max 1.5** — 2.7× tighter than this table's
+> 4.00), `odysseyWorldDrawCallsLaneA` (53 / max 90), and `odysseyWorldGpuP50LaneBMs`
+> (baseline deliberately **null**, max 7.0). Measured whole-scene Lane A is **0.393 ms p50**
+> — an eighth of this table's target — so a reader benchmarking against these rows would
+> conclude the world has 8× headroom it does not claim.
+>
+> The measurement contract below is also wrong in both halves: shipped gates are **p50**, not
+> p95 (see the perf-ring discipline — median and p99, never mean), and per-system rows were
+> never measurable as specified — r181 exposes ONE timestamp scope per render type and
+> `PostProcessing` renders its whole graph in one call (§5, Wave −1), so the split that
+> shipped is DIFFERENTIAL: one system removed per harness configuration. The tables are kept
+> for their reasoning; several rows price subsystems that never shipped (marked below).
 
 All figures are **GPU time** from `resolveTimestampsAsync('render')`, p95 over a 512-frame
 ring buffer. "Cap" fails the build.
@@ -1366,13 +1502,13 @@ ring buffer. "Cap" fails the build.
 
 | System | target | cap |
 |---|---|---|
-| Clipmap ground vertex + setup (189 k tris) | 0.10 | 0.20 |
+| Clipmap ground vertex + setup (189 k tris) *(shipped ≈241 k — gridN 128 / LEVELS 9, §3.1 note)* | 0.10 | 0.20 |
 | Terrain fragment (3 detail scales, gated) | 0.55 | 0.80 |
 | Water sheet (2nd draw) | 0.25 | 0.40 |
 | Sky (backgroundNode + LUT) | 0.05 | 0.10 |
-| Far range (2 baked LUT taps) | 0.02 | 0.05 |
+| Far range (2 baked LUT taps) *(CUT — no LUT pipeline exists; reach comes from clipmap ring levels, §3.3)* | ~~0.02~~ | ~~0.05~~ |
 | Aerial node, amortised | 0.10 | 0.20 |
-| Shadows (2 × 2048²) | 0.35 | 0.55 |
+| Shadows (2 × 2048²) *(UNSPENT — zero cascades shipped; sun visibility is a baked 512² R16F texture, §3.8 note)* | ~~0.35~~ | ~~0.55~~ |
 | Vegetation + props | 0.40 | 0.65 |
 | Rail furniture | 0.45 | 0.70 |
 | Post | 0.55 | 0.80 |
@@ -1380,20 +1516,23 @@ ring buffer. "Cap" fails the build.
 | **GPU total** | **3.32** | **4.00** |
 
 ### Lane B — Radeon 610M, 1280×720, 4× MSAA. Frame budget 7.0 ms p95.
+*(Shipped: **no MSAA on this lane** — the measured tier is Medium, and `sceneSamples: 4` is
+granted only to High/Ultra/Extreme, deliberately. The 7.0 ms figure survives as the p50 max
+of `odysseyWorldGpuP50LaneBMs`.)*
 
 | System | target | cap |
 |---|---|---|
-| Clipmap ground vertex + setup (108 k tris) | 0.15 | 0.25 |
+| Clipmap ground vertex + setup (108 k tris) *(shipped ≈120 k — gridN 96 / LEVELS 8)* | 0.15 | 0.25 |
 | Terrain fragment (1 detail scale, gated, hash-gradient noise) | 0.80 | 1.10 |
 | Water sheet | 0.35 | 0.50 |
 | Sky | 0.05 | 0.10 |
-| Far range (2 baked LUT taps) | 0.02 | 0.05 |
+| Far range (2 baked LUT taps) *(CUT — no LUT pipeline exists; reach comes from clipmap ring levels, §3.3)* | ~~0.02~~ | ~~0.05~~ |
 | Aerial node, amortised | 0.20 | 0.30 |
-| Shadows (1 × 1024², near rings) | 0.15 | 0.25 |
+| Shadows (1 × 1024², near rings) *(UNSPENT — zero cascades shipped; baked 384² on this lane)* | ~~0.15~~ | ~~0.25~~ |
 | Vegetation + props | 0.45 | 0.70 |
 | Rail furniture — **UNMEASURED** | 0.60 | 0.90 |
 | Post (CA off, bloom @0.25, tonemap + grade fused) | 0.70 | 1.00 |
-| 4× MSAA ROP + resolve | 0.45 | 0.60 |
+| 4× MSAA ROP + resolve *(NOT SHIPPED — Medium runs `sceneSamples: 0`)* | ~~0.45~~ | ~~0.60~~ |
 | **GPU total** | **3.92** | **5.75** |
 
 Headroom at target is 2.5 ms, and it exists **only** because the raymarch is baked (would add
@@ -1419,16 +1558,36 @@ The material-object budget is **the largest concrete win in the plan and was uns
 first draft**: removing ~91 objects at ~42 ms each is ~3.8 s of cold compile. Count the four
 bake materials explicitly — the plan puts them on the critical path.
 
+> ⚠️ **Superseded by measurement (§5, Wave −1).** The world's cold build was **155.5 s**, not
+> ~4.8 s — an r181 codegen pathology (shared subexpressions re-walked per reference), fixed to
+> ~0.05 s by baking the macro to a texture. The per-material model held directionally (the
+> world ships 6 node materials, well under 24) but was never the mechanism. The two "dispatch"
+> rows above are N/A — all bakes ship as CPU `DataTexture` fills (§6 note). Still ungated,
+> deliberately: §7 does not carry a startup gate.
+
 ### VRAM (the 610M shares system DDR5 — halve every texture versus the reference)
 
 Height RG16F 2048² 16.8 MB · aux RGBA16F 1024² 8.4 MB · CPU mirror 4.2 MB · sky LUT 0.5 MB ·
 12 range LUTs 6.0 MB · clipmap VB+IB 2.1 MB · 1 shadow cascade 4.2 MB · 4× MSAA colour+depth
 ~44 MB → **~86 MB** (vs the reference's ~350 MB).
 
+> ⚠️ **Not the shipped footprint (annotated at closure).** Shipped bakes: ONE combined RGBA16F
+> relief+aux texture at 1024²/768² (height, dH/dx, dH/dz, curvature), a 512² RGBA16F macro,
+> and a 512²/384² R16F sun-visibility — plus a CPU mirror at the relief resolution. There is
+> no separate 2048² height, no sky LUT, no range LUTs, no shadow cascade, and no Lane B MSAA
+> target (over half the quoted ~86 MB priced things that do not exist).
+
 **Gate:** wire all of the above into `perf-budgets.json` and fail `perf:budgets:gate` on any
 cap breach. **Add the 610M baseline first** — nothing in this budget is measured on that lane
 yet. It is arithmetic on datasheets and must be treated as a hypothesis to falsify in Wave 1,
 not as a result.
+
+> ✅ **Outcome (annotated at closure): treated exactly as instructed — and falsified.** The
+> Lane B datasheet arithmetic died in Wave −1 (diorama baseline measured **67.70 ms p50**
+> against this budget's 7.0). The budget was never wired per-system and is not the gate; what
+> shipped instead are the three `perf-budgets.json` cells in the banner at the top of §8, plus
+> ADR-0016 governing how any future number becomes admissible. The only open measurement is
+> §7.1 (One World's own Lane B absolute, on a cooled machine).
 
 ---
 
