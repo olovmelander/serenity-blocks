@@ -42,7 +42,6 @@ import {
     max,
     mix,
     normalize,
-    normalView,
     normalWorld,
     oneMinus,
     positionGeometry,
@@ -907,9 +906,16 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // pilot/harness uniformity and is referenced as a no-op so the look is unchanged.
     const t0 = uTime.mul(0.0);
 
-    // vNormal → normalView, vPosition/vWorldPosition → positionWorld (model==world here
+    // vNormal → normalWorld, vPosition/vWorldPosition → positionWorld (model==world here
     // for shading purposes; the live shader used the model-space transformed position).
-    const vNormal = normalView;
+    //
+    // WAVE 0.2 — this was `normalView`, which is the largest of the three missed sites by
+    // screen area. Both consumers below dot it against WORLD-space vectors — the raking key
+    // (SURFACE_SUN_DIR) and the world view vector (cameraPosition - vPosition) — so mixing in
+    // a view-space normal made the meadow's light and rim SWIM as the camera yawed. Four
+    // sibling sites were converted when this class of bug was first found; this one was
+    // missed, and being the ground plane it was the one you could actually see doing it.
+    const vNormal = normalWorld;
     const vPosition = positionWorld;
 
     // Height based gradient — relative to water level.
@@ -1941,7 +1947,12 @@ export function createSpruceTreesTSL(uTime = uniform(0), count = 22, options = {
     const uSnowBlend = options.uSnowBlend ?? uniform(0);
     const snowCap = smoothstep(4.5, 18.0, positionLocal.y).mul(uSnowBlend).mul(oneMinus(isTrunk));
     const colorNode = mix(mix(spruceGreen, bark, isTrunk), vec3(0.93, 0.96, 1.0), snowCap.mul(0.7));
-    const rim = pow(oneMinus(max(dot(normalView, normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    // WAVE 0.2 — world normal against a world view vector. The 0.2 audit filed the remaining
+    // `normalView` uses as self-consistent view-normal-vs-view-vector Fresnel; these two are
+    // not, because the view vector is built explicitly in WORLD space from cameraPosition.
+    // Mixing the spaces made the tree rim strengthen and weaken with camera yaw rather than
+    // with the geometry, which on a forest reads as the whole stand shimmering.
+    const rim = pow(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
 
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.25);
@@ -2084,7 +2095,12 @@ export function createGreatTreeTSL(uTime = uniform(0)) {
     const colorNode = mix(foliage, bark, isTrunk);
     // Warm golden-hour rim on the grazing canopy edge (capped, never white) — emissive accent
     // over the lit canopy so the hero crown gets a glowing sun-side edge.
-    const rim = pow(oneMinus(max(dot(normalView, normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    // WAVE 0.2 — world normal against a world view vector. The 0.2 audit filed the remaining
+    // `normalView` uses as self-consistent view-normal-vs-view-vector Fresnel; these two are
+    // not, because the view vector is built explicitly in WORLD space from cameraPosition.
+    // Mixing the spaces made the tree rim strengthen and weaken with camera yaw rather than
+    // with the geometry, which on a forest reads as the whole stand shimmering.
+    const rim = pow(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
 
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.22); // slow, heavy whole-tree sway
@@ -3079,7 +3095,10 @@ export function createCabinTSL(uTime = uniform(0)) {
     color = mix(color, trim, trimBand);
     // The same raking key the landscape uses, so the cabin sits in the scene's light.
     const lightDir = normalize(vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z));
-    const diff = max(dot(normalView, lightDir), 0.0);
+    // WAVE 0.2 — world normal against a world key. `normalView` here meant the cabin's walls
+    // re-lit as you walked around it, which the comment above ("sits in the scene's light")
+    // was precisely claiming they did not.
+    const diff = max(dot(normalize(normalWorld), lightDir), 0.0);
     color = color.mul(diff.mul(0.5).add(vec3(0.62, 0.68, 0.74).mul(0.5)));
 
     const bodyMaterial = new THREE.MeshBasicNodeMaterial();

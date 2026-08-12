@@ -598,7 +598,7 @@ Percentages are from the 2026-08-12 per-wave repo audit, which checked the code 
 this document's own prose — several waves this file described as done were not.
 
 - [x] **Wave −1** — Measure first — DONE 2026-08-12. Both lanes published to `reports/odyssey-perf/gpu-split-lane{a,b}.json`; p50/p99-only ring (`src/utils/perf-ring.js`, 12 tests); level-node A/B run on both lanes. Headline: **Lane B is 67.7 ms p50 against a 7.0 ms budget**. Documented caveats: the split is differential rather than per-pass (three r181 exposes one timestamp scope per render type), Lane B's 8.6 ms drift exceeds its own deltas, and One World times out in this harness so it has no number yet.
-- [ ] **Wave 0** — Stop the bleeding — **4 of 5 done (2026-08-12)**. 0.1 skirt chapter-weight fold (one-sided, test-covered, verified to fail without the fix), 0.3 alpine bridge + its dead export, 0.4 ground plates write depth (`DoubleSide` half rejected with evidence as a no-op), 0.5 conifer seating verified genuinely shipped. **BLOCKED: 0.2** — fully scoped (14 edits, 3 view-space sites found, `ODYSSEY_WORLD_SUN` imported by nobody so it is a third sun in waiting) but converging moves `ODYSSEY_SUN` **115.6°**, which puts Ch3's sun disc behind the camera and inverts the backlit foliage SSS. Per CLAUDE.md that needs a screenshot. Do not land it blind; do not give the disc its own azimuth to dodge it. **RE-SEQUENCED (post-boot-fix): captures work again, but 8 of the 14 scoped edits sit in surface-world.tsl.js / mountain-peaks.tsl.js — surfaces Waves 4/6 delete after the flag flip. 0.2 moves to AFTER the flip, when the surviving edit set is exactly its durable half: one canonical sun in chapter-profile.js, the Object.is one-sun invariant test, and ch6's sites.**
+- [x] **Wave 0** — Stop the bleeding — **DONE (2026-08-12)**. All five sub-items landed; 0.2 closed in two parts (see below), with the residual 115.6 deg gap recorded as a deliberate non-convergence rather than an omission. 0.1 skirt chapter-weight fold (one-sided, test-covered, verified to fail without the fix), 0.3 alpine bridge + its dead export, 0.4 ground plates write depth (`DoubleSide` half rejected with evidence as a no-op), 0.5 conifer seating verified genuinely shipped. **BLOCKED: 0.2** — fully scoped (14 edits, 3 view-space sites found, `ODYSSEY_WORLD_SUN` imported by nobody so it is a third sun in waiting) but converging moves `ODYSSEY_SUN` **115.6°**, which puts Ch3's sun disc behind the camera and inverts the backlit foliage SSS. Per CLAUDE.md that needs a screenshot. Do not land it blind; do not give the disc its own azimuth to dodge it. **RE-SEQUENCED (post-boot-fix): captures work again, but 8 of the 14 scoped edits sit in surface-world.tsl.js / mountain-peaks.tsl.js — surfaces Waves 4/6 delete after the flag flip. 0.2 moves to AFTER the flip, when the surviving edit set is exactly its durable half: one canonical sun in chapter-profile.js, the Object.is one-sun invariant test, and ch6's sites.**
 
   **0.2 PART 1 LANDED (2026-08-12) — the 72.5° split is closed.** The flip re-scoped this
   item more than any edit did: `MOUNTAIN_SHADING.keyDir`'s only Odyssey consumers are
@@ -611,14 +611,42 @@ this document's own prose — several waves this file described as done were not
   Pinned by `tests/unit/odyssey-one-sun-invariant.test.js` (4 tests; 3 verified to fail with the
   old literal, the freeze test correctly stays green as it pins a different property).
 
-  **STILL OPEN — the 115.6° gap.** `ODYSSEY_SUN` [0.35, 0.62, **-0.70**] vs `ODYSSEY_WORLD_SUN`.
-  The world's sun is the *re-solved* one (the negative Z was the back-lighting bug), so the
-  correct convergence is `ODYSSEY_SUN := ODYSSEY_WORLD_SUN`, not the reverse. Blast radius is
-  now exactly chapters 1/6/7/8 — the four that still draw their own environments. Also found
-  while scoping: `cosmic-expanse.tsl.js:398` dots a **view-space** normal against a hand-tuned
-  constant `(0.72, 0.34, 0.6)`, so the earth's day/night terminator **swims with the camera**
-  instead of staying fixed in the world. That is a real defect, but the ch6 earth is
-  capture-verified, so it gets evidence before it gets an edit — not a blind fix.
+  **0.2 PART 2 LANDED (2026-08-12) — all three named sub-items done, capture-verified.**
+
+  *Re-solve one sun against the hero composition.* Done, and the measurement settled the
+  question the plan could not. Driving the REAL controller over the REAL spline at 21 points
+  across ch6 and converting the hero planet's fixed VIEW-space light to world space at each
+  frame: the direction it actually represents rotates **11.2° end-to-end** (the terminator
+  *swam* as you flew past), and its best fit `[-0.279, 0.185, 0.942]` sits **24.3° from
+  `ODYSSEY_WORLD_SUN` but 130.1° from `ODYSSEY_SUN``**. The hero was hand-tuned by eye until it
+  looked right — so **the eye had already voted for the world's sun**, independently of the
+  spike. That is the corroboration the 115.6° convergence was missing. `ODYSSEY_WORLD_SUN`'s
+  declaration moved into the import-free leaf `chapter-profile.js` (it was in
+  `odyssey-world-renderer.js`, imported by nobody), the hero now reads it in **world** space,
+  and playground capture measured the lit side rotating as predicted while mean luminance held
+  at 139.9 → 139.7 — i.e. it joined the canonical sun without darkening the hero.
+
+  *Fix the 3 view-space-normal sites.* Done — plus **two the audit misfiled**. The Ch3 meadow
+  (`createLandscapeTSL`), the cabin, and the cloud-sea deck are converted. The audit's claim
+  that "every other `normalView` use is view-normal-vs-view-vector Fresnel and is
+  self-consistent" was wrong for the spruce and great-tree rims, which dot a view normal
+  against a view vector built explicitly in WORLD space from `cameraPosition`. `normalView` is
+  now entirely unimported in both files. The cloud deck was the one with a predictable
+  consequence — a flat disc's world normal is a constant, so its "upward-normal × sun" term
+  becomes the stable offset its name always implied — and a stashed before/after measured the
+  deck at mean +0.29 / stdev −0.26 out of ~43: **structure fully retained**, camera-dependence
+  gone. Ch3 and Ch4 captured clean; the one console warning (`Vertex attribute "normal" not
+  found`, ×5) was verified **pre-existing** by re-capturing against a stash.
+
+  **RESIDUAL, deliberately not converged.** `ODYSSEY_SUN` and `ODYSSEY_WORLD_SUN` remain 115.6°
+  apart. On the DEFAULT path this no longer puts two lights in one composition: Act II (ch2-5)
+  is the world, and everything still reading `ODYSSEY_SUN` — ch1 earth core (underground), ch7
+  black hole, ch8 urban — shares no sky with it. Converging further would relocate visible sun
+  discs in the *fallback* chapters for no default-path gain, which is the blast radius that
+  blocked this item originally. Ch6's asteroid garland keeps its view-space key **on purpose**
+  (tumbling debris: "always shows form" beats "anchored"); that is now documented at the site
+  as an exception rather than the house style, since its comment used to cite the hero planet
+  as precedent and the hero has moved.
 - [x] **Wave 1** — The spike — DONE 2026-08-12. Gate items: ≤4 draws (measured 1 draw for the ground, 3 for ground+water+sky, commit 59267c08); clean console + screenshot-verified (same commit); and the **GPU-time split on both lanes** now exists (`reports/odyssey-perf/gpu-split-lane{a,b}.json`, Wave −1) and it did what the gate asked: it **killed the §8 Lane B budget** (67.7 ms p50 vs 7.0 ms — the budget was a hypothesis and it is falsified, decisively). The in-game measurement supersedes a playground-spike split — it answers the same question about a strictly more real frame.
 - [x] **Wave 2** — Height field + aux bake + colour script — DONE 2026-08-12. Height field (48 tests), Oklab colour script (23 tests, both invariants biting), aux bake with curvature in the A channel (capture-verified). The `.level(0)` lint now exists (`odyssey-world-lints.test.js`): a source-scan with one-hop dataflow through same-file `const`s — needed because the cloud billow's vertex-stage read feeds `positionNode` through an intermediate — mutation-verified to FAIL when a `.level(0)` is removed. Two spec items amended by measurement, not skipped: **relief stays 1024²/768²** because the bakes already measure ~400–416 ms against the §8 400 ms budget and 2048² quadruples exactly that work for detail the footprint gate would fade at range anyway; **the fog-LUT id is void** because Wave 4's LUT pillar was itself deleted by measurement — there is no fog LUT to identify.
 - [x] **Wave 3** — Swap the ground in; re-seat every prop — **DONE 2026-08-12**. One World is the DEFAULT path for chapters 2-5; `?odysseyOneWorld=0` (or `options.oneWorld === false`) reverts to the dioramas, and the build stays inside a try/catch that undoes suppression if the world throws. Verified in-game with NO flag: ch4 boots, 7 frames. Act II capture-verified chapter by chapter (2, 3, 4, 5) plus the 5->6 seam handing off into Ch6's cosmos. Props: level orbs seated on `heightAt` (measured: zero lifts needed, the seat is a safety net), Ch2's caustics and god rays ported, cumulus/strata/cloud-sea replaced by the one deck, alpine surface language ported (snow-line FBM jitter + slope gate + alpenglow). Corridor field suppressed for Act II, world in the prewarm pool, 4 policy tests pin the default and its escape hatch.

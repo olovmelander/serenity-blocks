@@ -13,7 +13,7 @@
  * version did (same cone falloff + value-noise FBM detail + `computeVertexNormals`), so
  * the mesh shape is byte-for-byte identical; the per-pixel snow/rock/fog/rim lighting is
  * the part that moves to the GPU as a TSL `colorNode`/`opacityNode`. The geometry's baked
- * `vNormal`/`vWorldPosition`/`aHeight` map to TSL `normalView` / `positionWorld` /
+ * `vNormal`/`vWorldPosition`/`aHeight` map to TSL `normalWorld` / `positionWorld` /
  * `attribute('aHeight','float')`.
  *
  * The chapter's private inline value-noise (`hash`/`noise`/`fbm`) maps to a `snoise3`
@@ -40,7 +40,6 @@ import {
     min,
     mix,
     normalize,
-    normalView,
     normalWorld,
     oneMinus,
     positionLocal,
@@ -267,7 +266,13 @@ export function createCloudSeaDeckTSL({
     const billow = fbmValue2(flow, 3);
 
     // Upward-normal + sun term lights the billow tops warm; troughs stay cool.
-    const n = normalize(normalView);
+    //
+    // WAVE 0.2 — `normalWorld`, not `normalView`. The deck is a flat disc, so its VIEW normal
+    // is one value for the whole surface that changes every time the camera turns: the entire
+    // cloud sea used to re-light as a single unit on yaw. Its WORLD normal is the constant
+    // up-vector this term was always named for, so the sun contribution is now a stable
+    // offset and the visible structure comes from the billow, which is where it belongs.
+    const n = normalize(normalWorld);
     const up = clamp(dot(n, uLightDir).mul(0.5).add(0.5), 0.0, 1.0);
     const litTop = clamp(billow.mul(0.8).add(up.mul(0.4)), 0.0, 1.0);
     let color = mix(uTrough, uTopWarm, litTop);
