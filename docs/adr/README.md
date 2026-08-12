@@ -25,6 +25,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0013](0013-session-global-v2-snapshot-codec.md) | Session-global protocol-v2 snapshot codec | accepted |
 | [0014](0014-versioned-reliable-resync-sidecar.md) | Versioned reliable resync sidecar | accepted |
 | [0015](0015-keep-the-odyssey-one-world-escape-hatch.md) | Keep the Odyssey One World escape hatch | accepted |
+| [0016](0016-perf-claims-require-a-verified-instrument.md) | Performance claims require a content-matched measurement from a verified instrument | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.
