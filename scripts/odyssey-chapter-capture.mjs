@@ -163,7 +163,13 @@ function startDevServer() {
     const proc = spawn(
         command,
         commandArgs,
-        { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FORCE_COLOR: '0' } },
+        {
+            cwd: ROOT,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            // Isolated dep cache — see vite.config.js cacheDir: a harness server sharing
+            // node_modules/.vite with an interactive one corrupts the optimizer for both.
+            env: { ...process.env, FORCE_COLOR: '0', VITE_CACHE_DIR: `node_modules/.vite-harness-${PORT}` },
+        },
     );
     proc.stdout.on('data', (chunk) => consoleLines.push(String(chunk)));
     proc.stderr.on('data', (chunk) => consoleLines.push(String(chunk)));
