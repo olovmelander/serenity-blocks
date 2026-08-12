@@ -49,6 +49,7 @@ import {
     smoothstep,
     vec3,
 } from 'three/tsl';
+import { ODYSSEY_SUN } from './chapter-profile.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. THE CANONICAL PALETTE (plain hex — THREE-free, unit-testable)
@@ -163,7 +164,14 @@ export const MOUNTAIN_SHADING = Object.freeze({
     slopeSnowMin: 0.42, // slopes shallower than this hold snow
     slopeSnowMax: 0.78, // slopes steeper than this are bare rock (widened so steep upper
     // crags show dark rock streaks through the snow = alpine relief, not a smooth dome)
-    keyDir: [0.5, 0.8, 0.5], // shared key-light direction
+    // WAVE 0.2 — the alpine key light IS the journey's sun, not a third direction.
+    // This was a hand-tuned [0.5, 0.8, 0.5], which sat 72.5 degrees off ODYSSEY_SUN: alpine
+    // surfaces were lit from one place and everything sharing a frame with them from another.
+    // Aliasing rather than copying is deliberate — a copied literal drifts the moment either
+    // side is retuned, and drift is exactly how the split appeared in the first place. The
+    // one-sun invariant test pins the identity so a future "just nudge the mountains" edit
+    // has to break a test rather than silently reopen the gap.
+    keyDir: ODYSSEY_SUN,
     keyDiffuse: 0.86, // diffuse weight ... (stronger key → more sun/shade contrast, de-wash)
     keyAmbient: 0.18, // ... + ambient floor (lower floor so shadowed faces stay deep)
     shadowAmount: 0.6, // how far shadowed faces lerp toward the cool shadow bounce (deeper
