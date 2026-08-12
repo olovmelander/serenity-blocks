@@ -8,7 +8,13 @@
 import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
+import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
+import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
+import { createSteamQuench } from './composition/odyssey-steam-quench.js';
+import { createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -21,7 +27,7 @@ import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js'
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
-import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
+import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
 import { buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples } from './odyssey-warmup-plan.js';
 import {
@@ -70,26 +76,25 @@ const DRS_TARGET_FRAME_RATE = 60;
 /**
  * Quality presets for the Odyssey Board
  */
+// WHAT THESE ACTUALLY CONTROL — the table used to advertise two knobs it did not have.
+// `bloomStrength` was declared on all six rows and read NOWHERE (the live value is the
+// hardcoded 0.32 at the OdysseyTslPipeline construction below), and `bloomScale` was read as
+// `qualityPreset.bloomScale ?? ODYSSEY_BLOOM_SCALE` while no row ever defined it, so the
+// fallback always won. Both are removed rather than wired: quality.js's own header says a
+// declared-but-unread flag is worse than no flag, and re-tuning bloom per tier is a VISUAL
+// change that owes a capture (ADR-0007) — not something to smuggle in as a cleanup.
+// So: two real levers per tier, and every value here is read.
 const QUALITY_PRESETS = {
-    Minimal: {
-        enableBloom: false, bloomStrength: 0.3, particleCount: 100, starCount: 300,
-    },
-    Low: {
-        enableBloom: true, bloomStrength: 0.4, particleCount: 200, starCount: 500,
-    },
-    Medium: {
-        enableBloom: true, bloomStrength: 0.5, particleCount: 400, starCount: 800,
-    },
-    High: {
-        enableBloom: true, bloomStrength: 0.6, particleCount: 600, starCount: 1200,
-    },
-    Ultra: {
-        enableBloom: true, bloomStrength: 0.7, particleCount: 900, starCount: 1800,
-    },
-    Extreme: {
-        enableBloom: true, bloomStrength: 0.8, particleCount: 1200, starCount: 2500,
-    },
+    Minimal: { enableBloom: false, particleCount: 100, starCount: 300 },
+    Low: { enableBloom: true, particleCount: 200, starCount: 500 },
+    Medium: { enableBloom: true, particleCount: 400, starCount: 800 },
+    High: { enableBloom: true, particleCount: 600, starCount: 1200 },
+    Ultra: { enableBloom: true, particleCount: 900, starCount: 1800 },
+    Extreme: { enableBloom: true, particleCount: 1200, starCount: 2500 },
 };
+
+/** The bloom downsample every tier actually runs. Was an unreachable `?? 0.25` fallback. */
+const ODYSSEY_BLOOM_SCALE = 0.25;
 
 const ODYSSEY_WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 const ODYSSEY_WHEEL_CAPTURE_OPTIONS = { capture: true, passive: false };
@@ -124,6 +129,31 @@ function readPixelRatioOverrideFromUrl() {
     if (!Number.isFinite(value) || value <= 0) return null;
     return Math.min(2, Math.max(0.5, value));
 }
+
+/** Chapters whose ground the continuous Act II world replaces. */
+const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
+/**
+ * Scene-linear scale for the world's HDR output before the post stack. 1.0 leaves an ACES
+ * curve no headroom and blooms the sky over everything. 0.55 was fitted while the scene fog
+ * still washed the world to pastel; with the world's materials opted out of that fog the
+ * whole frame came back ~40 % too dark, hence 0.82.
+ */
+const ONE_WORLD_OUTPUT_SCALE = 0.82;
+/**
+ * ...and the world hands that stack a FLATTER image than it wants on screen, because the
+ * stack is not neutral: master grade lifts saturation 1.15x, chapter 4 lifts a further 1.10x,
+ * and a 0.018 black crush plus a 1.07 S-curve sits underneath both. Fed the palette as
+ * authored, the sky's low red channel came out CLAMPED AT ZERO — a pure ultramarine no
+ * daylight sky has. The grade supplies the vividness; the world supplies the hue.
+ */
+const ONE_WORLD_OUTPUT_SATURATION = 0.72;
+/** Sky dome radius for the board camera (near 0.1 / far 9000). */
+const ONE_WORLD_SKY_RADIUS = 3600;
+// Half-width of BOTH act-edge occlusion windows, in progress units. Deliberately 2x the
+// authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
+// occluder narrower than the thing it occludes just frames it. Same principle the Ch3 shore
+// work landed on — a dissolve band must be wider than the noise it is dissolving.
+const STEAM_QUENCH_HALF_WIDTH = 0.06;
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -318,6 +348,49 @@ export class OdysseyBoardController {
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
         this.chapterEvictionWindow = Number.parseInt(readUrlValue('odysseyChapterEvictWindow'), 10) || 2;
+        // ONE WORLD (default OFF; opt-in ?odysseyOneWorld=1). Replaces the chapter-2..5 diorama
+        // environments with a single continuous surface — see
+        // docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md. Flagged rather than switched so the shipped
+        // journey is bit-identical until it is capture-verified in the real game.
+        // ONE WORLD IS NOW THE DEFAULT PATH for chapters 2-5 (Wave 3). `?odysseyOneWorld=0`
+        // forces the legacy dioramas back — a one-URL revert, kept because this replaces the
+        // ground under two thirds of the journey and a single query parameter is a cheaper
+        // escape hatch than a rebuild.
+        const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
+        this.oneWorldEnabled = options.oneWorld === true
+            || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
+        this.oneWorld = null;
+        this._oneWorldActT = 0;
+        // undefined until the first update; `!== false` above keeps pre-gate behaviour then.
+        this._oneWorldVisible = undefined;
+        this.steamQuench = null;
+        this._steamBoundary = NaN;
+        this.cloudBank = null;
+        this._cloudBankBoundary = NaN;
+        // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
+        // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
+        // enable the debug overlay — and then measured a frame with the overlay in it.
+        this.gpuProfileEnabled = readBooleanUrlFlag('odysseyGpuProfile');
+        this.gpuProfileRing = this.gpuProfileEnabled ? new PerfRing(600) : null;
+        if (this.gpuProfileRing && typeof window !== 'undefined') {
+            // The harness discards everything sampled during startup: a cold pipeline compile
+            // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
+            window.__ODYSSEY_GPU_RESET__ = () => {
+                this.gpuProfileRing.reset();
+                // Bump the epoch so a timestamp resolve still in flight from the SETTLE phase
+                // cannot land in the freshly-reset measurement window. The harness resets
+                // immediately before it starts sampling, so without this exactly one
+                // settle-phase frame — the most atypical kind — can enter the window.
+                this._gpuTimestampEpoch += 1;
+            };
+        }
+        this._gpuProfileLastSummary = 0;
+        // One resolve in flight at a time, and one ring push per RESOLVED query. See
+        // _resolveRenderTimestamps for why pushing per FRAME was silently wrong.
+        this._gpuTimestampPending = false;
+        this._gpuTimestampEpoch = 0;
+        // A/B lever for the same wave: 55 nodes x 3 nested transparent shells, never measured.
+        this.hideLevelNodes = readBooleanUrlFlag('odysseyHideLevelNodes');
         // LEVER — per-chapter detail LOD (default OFF; opt-in ?odysseyChapterLOD=1). Off-center
         // chapters shed their heaviest sublayers (Ch3's reflector 2nd render, big additive particle
         // clouds) via a detailLevel signal their update() reads — no teardown, no recompile. Stage 1
@@ -571,7 +644,54 @@ export class OdysseyBoardController {
             // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.0015
             // (must stay below the ~0.0025/frame reachable at the 0.15 maxScrollVelocity cap).
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
+            suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
+
+        if (this.oneWorldEnabled) {
+            // A feature flag must never be able to brick boot. If the world fails to build we
+            // log it and fall back to the shipped chapter environments rather than leaving the
+            // journey with no ground at all — the failure mode that cost a capture cycle here
+            // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
+            try {
+                const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+                this.oneWorld = createOdysseyWorld({
+                    quality: weakLane ? 'low' : 'high',
+                    // The post stack owns exposure and applies ACES after it, so the world
+                    // must not apply exposure a second time, and must hand over scene-linear
+                    // values rather than the display-referred palette the playground wants.
+                    applyExposure: false,
+                    outputScale: ONE_WORLD_OUTPUT_SCALE,
+                    outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
+                    // Inside the board camera's 9,000 far plane, and inside the shipped
+                    // r=4000 atmosphere backstop so the world's sky paints in front of it.
+                    skyRadius: ONE_WORLD_SKY_RADIUS,
+                    // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
+                    // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
+                    // in-game compile entirely.
+                    clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
+                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
+                    railSamples: Array.from(
+                        { length: 48 },
+                        (_, i) => getOdysseyPathPointAt(i / 47),
+                    ),
+                });
+                this.scene.add(this.oneWorld.group);
+                console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
+            } catch (error) {
+                console.error('[OdysseyBoard] One World failed to build; falling back', error);
+                this.oneWorld = null;
+                this.oneWorldEnabled = false;
+                this.environmentManager.suppressedChapters = new Set();
+                // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
+                // player-visible banner + a persisted localStorage log. Silent recovery is
+                // how we would have retired the fallback while some machine quietly needed
+                // it — and how a future world-only build would degrade to a void nobody
+                // reports. Reporting must never break the recovery, hence its own guard.
+                try {
+                    reportWorldBuildFailure(error);
+                } catch { /* diagnostic only — never let reporting hurt the fallback */ }
+            }
+        }
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
         this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
@@ -703,8 +823,25 @@ export class OdysseyBoardController {
         this.nodeManager.setCamera(this.camera);
         // Node focal hierarchy + per-world shells ride the same always-on spine.
         this.nodeManager.setAAAVisualsEnabled(this.cinematicJourneyActive);
+        // ONE WORLD Wave 3: level orbs consult the CPU mirror of the drawn ground, so a node
+        // can never sit inside a rise the shader displaced above the spline. Act II only —
+        // outside it the chapters own their ground, and Ch1's nodes are UNDER the terrain.
+        if (this.oneWorld) {
+            const cp = this.presentationLayout.chapterPositions;
+            this.nodeManager.setGroundSampler(this.oneWorld.heightAt, {
+                clearance: 7,
+                rangeStart: cp[1],
+                rangeEnd: cp[5],
+            });
+        }
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
+        // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
+        // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
+        // no-op unless ?odysseyGpuProfile=1 was also passed — so anyone running the
+        // comparison by hand from the URL measured two identical frames and concluded the
+        // level nodes were free.
+        if (this.hideLevelNodes) this.nodeManager.setAllVisible(false);
         trace.end('nodes');
 
         await this._yieldToMain();
@@ -1349,7 +1486,17 @@ export class OdysseyBoardController {
     // no board state). These stay as thin wrappers so every internal caller is unchanged.
     /** @private */
     _beginPostTargetCompile() {
-        return beginPostTargetCompile(this.renderer, this.postProcessingStack);
+        return beginPostTargetCompile(this.renderer, this.postProcessingStack, this._renderLoopActive());
+    }
+
+    /**
+     * Is the rAF loop live? Binding the post scene-pass target for a compileAsync while it is
+     * hands WebGPU the same texture as both a sampled binding and a render attachment inside one
+     * encoder, which kills the device permanently (see warmup/post-target-compile.js).
+     * @private
+     */
+    _renderLoopActive() {
+        return this.animationFrameId !== null && this.animationFrameId !== undefined;
     }
 
     /** @private */
@@ -1359,7 +1506,14 @@ export class OdysseyBoardController {
 
     /** @private */
     _compileGroupThroughPost(group) {
-        return compileGroupThroughPost(this.renderer, this.postProcessingStack, this.scene, this.camera, group);
+        return compileGroupThroughPost(
+            this.renderer,
+            this.postProcessingStack,
+            this.scene,
+            this.camera,
+            group,
+            this._renderLoopActive(),
+        );
     }
 
     /**
@@ -1475,12 +1629,16 @@ export class OdysseyBoardController {
             antialias: false,
             alpha: true,
             forceWebGL,
-            powerPreference: 'high-performance',
+            // Lane B of the §8 budget is the Radeon 610M iGPU, and a run that asks for
+            // 'high-performance' gets handed the discrete part no matter what Chromium's
+            // force_low_power_gpu switch says — the measurement would silently be Lane A
+            // again, at Lane B's resolution, and nobody would be able to tell from the file.
+            powerPreference: readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance',
             // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
             // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
             // active — otherwise the query pool fills and overflows (the renderer tracks queries
             // that nothing resolves once the per-frame resolve is gated to the overlay too).
-            trackTimestamp: isOdysseyAAADebugEnabled(),
+            trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile'),
         });
         await this.renderer.init();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
@@ -1543,7 +1701,7 @@ export class OdysseyBoardController {
             const postQualityOverride = Number.parseFloat(readUrlValue('odysseyPerfPostQuality'));
             const bloomScale = Number.isFinite(bloomScaleOverride)
                 ? Math.min(1, Math.max(0.1, bloomScaleOverride))
-                : (this.qualityPreset.bloomScale ?? 0.25);
+                : ODYSSEY_BLOOM_SCALE;
             // WebGPU TSL post graph: bloom + ACES + per-chapter grade + CA + vignette + grain.
             // API-compatible with the old PostProcessingStack (update/render/resize/seam/dispose).
             this.postProcessingStack = new OdysseyTslPipeline(this.renderer, this.scene, this.camera, {
@@ -1556,6 +1714,10 @@ export class OdysseyBoardController {
                 bloomStrength: 0.32,
                 bloomThreshold: 0.85,
                 bloomRadius: 0.7,
+                // Scene-pass MSAA (meadow petal aliasing fix), High tier and above only —
+                // the sub-pixel wildflower geometry needs real sample coverage; lower tiers
+                // keep QW1's zero-sample pass (the iGPU budget that motivated it).
+                sceneSamples: ['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0,
             });
             if (Number.isFinite(postQualityOverride)) {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
@@ -1640,7 +1802,49 @@ export class OdysseyBoardController {
                 }
                 // Parallax mid/far depth filler so the corridor between chapter set pieces
                 // is never empty void (reads chapter-profile + path-utils; one cohesive rig).
-                this.corridorField = new OdysseyCorridorField(this.scene);
+                this.corridorField = new OdysseyCorridorField(this.scene, {
+                    // Act II is a continuous landscape now, not a set piece with void around
+                    // it — its parallax sheets would be overdraw in front of a real horizon.
+                    suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
+                });
+                // THE STEAM QUENCH — the ch1 -> Act II occlusion moment (playground-proven in
+                // ?effect=seam-12-dive). Earth Core is a molten cavern and the rail enters Act
+                // II ~160u below sea level, so the handoff is fire meeting water; the profile
+                // already authors it as `stinger: 'steam-quench'`. Seated on the rail AT the
+                // boundary so the camera flies through it rather than watching it pass.
+                try {
+                    const boundary12 = this.presentationLayout?.chapterPositions?.[1];
+                    if (Number.isFinite(boundary12)) {
+                        this.steamQuench = createSteamQuench();
+                        const at = getOdysseyPathPointAt(boundary12);
+                        this.steamQuench.mesh.position.set(at.x, at.y, at.z);
+                        this.steamQuench.mesh.visible = false; // gated in the update below
+                        this.scene.add(this.steamQuench.mesh);
+                        this._steamBoundary = boundary12;
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] steam quench unavailable (non-fatal):', error);
+                    this.steamQuench = null;
+                }
+                // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
+                // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
+                // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
+                // handoff by construction; the bridge itself stays and colours the frame
+                // around the bank (build first — see the plan's occlusion item).
+                try {
+                    const boundary56 = this.presentationLayout?.chapterPositions?.[5];
+                    if (Number.isFinite(boundary56)) {
+                        this.cloudBank = createCloudBank();
+                        const at56 = getOdysseyPathPointAt(boundary56);
+                        this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
+                        this.cloudBank.mesh.visible = false; // gated in the update below
+                        this.scene.add(this.cloudBank.mesh);
+                        this._cloudBankBoundary = boundary56;
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] cloud bank unavailable (non-fatal):', error);
+                    this.cloudBank = null;
+                }
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
@@ -1654,14 +1858,20 @@ export class OdysseyBoardController {
                 // pool barrier in initialize() awaits them before the warm-up replay).
                 const corridorWarm = this._prewarmGroup(this.corridorField?.group, 'corridor field');
                 const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
+                // The world is not a chapter env group either, so it misses the same prewarm
+                // and would compile four materials on the first Act II frame — the whole point
+                // of collapsing 66 materials into 4 is lost if they land as a cold stall.
+                const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
                 if (this._compilePool) {
                     this._compilePool.push(
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
+                        this._timedCompile('one-world', worldWarm),
                     );
                 } else {
                     await corridorWarm;
                     await breachWarm;
+                    await worldWarm;
                 }
             }
 
@@ -1927,11 +2137,16 @@ export class OdysseyBoardController {
      */
     _applyRenderScale(renderScale) {
         if (!this.renderer) return;
-        this._drs.renderScale = renderScale;
+        // Odyssey legibility floor (2026-08): the adaptive controller may ride the global
+        // policy floor (0.5), but below ~0.65 the browser upscale turns the Ch3 meadow's
+        // fine detail into visible pixel blocks. Clamp Odyssey only; when pinned here the
+        // adaptive tier ladder escalates to its bloom-shed / post-soften rungs instead.
+        const clampedRenderScale = Math.max(renderScale, 0.65);
+        this._drs.renderScale = clampedRenderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;
         const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
-            renderScale,
+            renderScale: clampedRenderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
@@ -1985,14 +2200,71 @@ export class OdysseyBoardController {
 
     /**
      * Batch0 — resolve GPU timestamp queries so renderer.info.render.timestamp is populated
-     * for the debug overlay. Fire-and-forget; guarded for backends/builds without the API.
+     * for the debug overlay, AND record one profile sample per resolved query.
+     *
+     * THE SAMPLE MUST BE TAKEN HERE, not per frame (fixed 2026-08-12). `Info.reset()` clears
+     * drawCalls/triangles but deliberately NOT `render.timestamp` — only `dispose()` does — so
+     * the field holds the last RESOLVED value indefinitely. The profiler used to read it every
+     * frame and push unconditionally, which meant a "600 sample" window was really one resolved
+     * value repeated however many frames it happened to dwell for. That is not merely imprecise:
+     * a slower lane resolves less often, so its samples are weighted more heavily, biasing the
+     * p50 in a direction no post-processing can undo. It is the same shape the playground
+     * already got right (src/playground/main.js resolveGpuTimestamp).
+     *
+     * One resolve in flight at a time; the epoch guard drops a resolve that outlived a ring
+     * reset. Guarded for backends/builds without the API.
      * @private
      */
     _resolveRenderTimestamps() {
         const { renderer } = this;
         if (typeof renderer?.resolveTimestampsAsync !== 'function') return;
+        if (this._gpuTimestampPending) return;
         const renderType = THREE.TimestampQuery?.RENDER ?? 'render';
-        renderer.resolveTimestampsAsync(renderType).catch(() => {});
+        const epoch = this._gpuTimestampEpoch;
+        this._gpuTimestampPending = true;
+        renderer.resolveTimestampsAsync(renderType)
+            .then(() => {
+                const ts = renderer.info?.render?.timestamp;
+                // The first resolves land as null/0 while the query pool warms; not frames.
+                if (this.gpuProfileRing && epoch === this._gpuTimestampEpoch
+                    && Number.isFinite(ts) && ts > 0) {
+                    this.gpuProfileRing.push(ts);
+                }
+            })
+            .catch(() => {})
+            .finally(() => { this._gpuTimestampPending = false; });
+    }
+
+    /**
+     * WAVE -1 — record this frame's GPU time and publish a throttled percentile summary.
+     *
+     * `renderer.info.render.timestamp` is one aggregate number per frame, and WebGPU exposes
+     * no per-pass scope through three's API, so the "split" the wave asks for is obtained as
+     * an A/B MATRIX across runs (bloom off, post off, level nodes hidden, ...) rather than as
+     * nested timestamp scopes. Each configuration is one run; the differences are the split.
+     *
+     * Sampling is per-frame and allocation-free; the O(n log n) summary is throttled to ~4 Hz
+     * and parked on window for the harness to read.
+     * @private
+     */
+    _sampleGpuProfile() {
+        // NOTE: samples are pushed by _resolveRenderTimestamps, once per RESOLVED query —
+        // not here, once per frame. See that method for why the per-frame push was wrong.
+        const now = performance.now();
+        if (now - this._gpuProfileLastSummary < 250) return;
+        this._gpuProfileLastSummary = now;
+        // Belt-and-braces re-assert. The primary application now happens right after
+        // createNodes (so the flag works without the profiler) and setAllVisible latches
+        // against the per-frame write, so this should be a no-op — it stays only to cover a
+        // mesh built after node creation, which would otherwise silently rejoin the frame.
+        if (this.hideLevelNodes) this.nodeManager?.setAllVisible(false);
+        const summary = this.gpuProfileRing.summarize();
+        summary.drawCalls = this._perfCounters?.calls ?? null;
+        summary.triangles = this._perfCounters?.triangles ?? null;
+        summary.oneWorld = !!this.oneWorld;
+        summary.levelNodesHidden = !!this.hideLevelNodes;
+        summary.quality = this.qualityName ?? null;
+        if (typeof window !== 'undefined') window.__ODYSSEY_GPU_PROFILE__ = summary;
     }
 
     checkHover() {
@@ -2171,7 +2443,16 @@ export class OdysseyBoardController {
         // at seams + low max-weight so the zenith→horizon gradient never flattens during a
         // crossfade. Set BEFORE atmosphere.update so its gradient-uniform writes are skipped
         // while hidden. Reversible via ?odysseyDomeCullOff=1.
-        if (this.atmosphere && this._domeCullEnabled) {
+        if (this.atmosphere && this.oneWorld && this._oneWorldVisible !== false) {
+            // ONE SKY (plan 3.4). The world draws its own full-coverage dome driven by the
+            // colour script, so the global backstop is pure full-screen overdraw AND it
+            // competes for the same pixels with a different palette.
+            //
+            // Gated on the world actually DRAWING (2026-08-12): this used to cull the global
+            // dome whenever a world existed, which outside Act II handed the sky to a world
+            // that the act-gate above has now hidden. Whoever draws owns the sky.
+            this.atmosphere.setDomeVisible(false);
+        } else if (this.atmosphere && this._domeCullEnabled) {
             const weightsMap = blendState?.weights;
             const maxWeight = weightsMap ? Math.max(0, ...Object.values(weightsMap)) : 0;
             const domeInSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
@@ -2201,6 +2482,23 @@ export class OdysseyBoardController {
             this.corridorField?.update(this.camera, cameraProgress, delta);
         }
 
+        // Steam quench: time-driven (it billows) so it runs every frame, not on the throttled
+        // position gate. Hidden outside its window so it costs nothing for 94% of the journey.
+        if (this.steamQuench && Number.isFinite(this._steamBoundary)) {
+            const lo = this._steamBoundary - STEAM_QUENCH_HALF_WIDTH;
+            const hi = this._steamBoundary + STEAM_QUENCH_HALF_WIDTH;
+            const inWindow = cameraProgress > lo && cameraProgress < hi;
+            this.steamQuench.mesh.visible = inWindow;
+            if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
+        }
+        if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
+            const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
+            const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
+            const inWindow = cameraProgress > lo && cameraProgress < hi;
+            this.cloudBank.mesh.visible = inWindow;
+            if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
+        }
+
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
             if (runPositionWork) {
@@ -2228,6 +2526,39 @@ export class OdysseyBoardController {
                 }
             }
 
+            // ONE WORLD: the continuous Act II surface is driven from the GROUND-TRACK point,
+            // never the camera eye — centring the clipmap on the eye makes the ground change
+            // shape when only the camera moves, which would break the hero framing.
+            if (this.oneWorld) {
+                const railPoint = getOdysseyPathPointAt(cameraProgress);
+                const actStart = this.presentationLayout.chapterPositions[1];
+                const actEnd = this.presentationLayout.chapterPositions[5];
+                const span = (actEnd - actStart) || 1;
+                this._oneWorldActT = (cameraProgress - actStart) / span;
+
+                // ACT-GATE THE WORLD (2026-08-12). This is a CORRECTNESS fix before it is a
+                // perf one. The world group was added to the scene once and its `.visible`
+                // was never written, so its ground, water, sky dome, cloud deck and god-ray
+                // shafts drew through chapters 1, 6, 7 and 8 as well — chapters that own
+                // their own frame. Earth Core is the proof: its vault backstop is an OPAQUE
+                // BackSide sphere at r=250 with `depthWrite = false` and renderOrder -90, so
+                // the world's opaque geometry (renderOrder 0, depth-writing) passes the depth
+                // test everywhere and paints straight over it. Captured before/after: the
+                // authored ember-lit molten cathedral was rendering as magma columns floating
+                // in Act II's blue-teal ocean, complete with god-ray shafts.
+                //
+                // The margin keeps the world present across the act-edge seams, where the fog
+                // handoff ramps and the neighbouring chapter is still co-present.
+                const worldVisible = isWorldVisibleAtProgress(cameraProgress, actStart, actEnd);
+                this.oneWorld.group.visible = worldVisible;
+                this._oneWorldVisible = worldVisible;
+
+                // Only update it while it draws. `heightAt` and `fog` are plain data and stay
+                // readable either way, so the level-orb seating and the fog handover below are
+                // unaffected by the gate.
+                if (worldVisible) this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
+            }
+
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
             this.environmentManager.update(
                 delta,
@@ -2235,6 +2566,29 @@ export class OdysseyBoardController {
                 cameraProgress,
                 this.cinematicJourneyActive ? directorState : null,
             );
+
+            // ONE WORLD owns the air. The manager above is still cross-fading scene fog and the
+            // clear colour from the profiles of chapters 2-5 — chapters that no longer draw
+            // anything — which is a second, contradictory atmosphere laid over the world's own.
+            // Hand both to the colour script, ramped at the act edges so chapters 1 and 6 still
+            // hand over without a step. The world's own materials opt out of scene fog entirely
+            // (they carry applyAerial); this is for everything else in the frame: the path
+            // ribbon, the level orbs, the traveller.
+            if (this.oneWorld) {
+                const t = this._oneWorldActT;
+                const e = Math.max(0, Math.min(1, Math.min(t / 0.06, (1 - t) / 0.06)));
+                const w = e * e * (3 - (2 * e));
+                if (w > 0) {
+                    const worldFog = this.oneWorld.fog;
+                    if (this.scene.fog) {
+                        this.scene.fog.color.lerp(worldFog.color, w);
+                        this.scene.fog.density += (worldFog.density - this.scene.fog.density) * w;
+                        this.renderer.setClearColor(this.scene.fog.color, 1);
+                    } else {
+                        this.renderer.setClearColor(worldFog.color, 1);
+                    }
+                }
+            }
         }
 
         // Track the active chapter (used to gate ch7-only Black Hole per-frame work below).
@@ -2284,9 +2638,10 @@ export class OdysseyBoardController {
         // ONLY when the overlay is active (?odysseyAAA=1) — otherwise this scheduled an async GPU
         // timestamp readback + allocated a Promise + a .catch closure EVERY frame for data that
         // nothing reads (per-frame GC the board never needed in normal play). Zero visual effect.
-        if (this.debugOverlayActive) {
+        if (this.debugOverlayActive || this.gpuProfileEnabled) {
             this._resolveRenderTimestamps();
         }
+        if (this.gpuProfileRing) this._sampleGpuProfile();
 
         // Wave 2: feed this frame's wall-clock time into the adaptive-quality controller. It
         // records every frame and self-throttles its evaluation to ~1Hz; the resolution policy's
@@ -2895,6 +3250,16 @@ export class OdysseyBoardController {
         this.atmosphere?.dispose?.();
         this.atmosphere = null;
         this.corridorField?.dispose?.();
+        if (this.steamQuench) {
+            this.scene.remove(this.steamQuench.mesh);
+            this.steamQuench.dispose();
+            this.steamQuench = null;
+        }
+        if (this.cloudBank) {
+            this.scene.remove(this.cloudBank.mesh);
+            this.cloudBank.dispose();
+            this.cloudBank = null;
+        }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();
         this.thresholdDirector = null;

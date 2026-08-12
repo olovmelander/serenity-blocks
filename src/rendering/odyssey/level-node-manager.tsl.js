@@ -548,9 +548,18 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
 
     const vOpacity = varying(sin(t.mul(1.5)).mul(0.12).add(0.26));
 
-    // World-space billboard size (replaces gl_PointSize; perspective is automatic):
-    // old (2.5 * aNodeScale) px * (300/-viewZ) maps to ~0.04 * aNodeScale world units.
-    const worldSize = aNodeScale.mul(0.04);
+    // World-space billboard size (replaces gl_PointSize; perspective is automatic).
+    //
+    // RESTORED 2026-08-12: the port's conversion was ~30x too small. The legacy sprite was
+    // `2.5 * aNodeScale` px scaled by `300 / -viewZ`, i.e. ~26 px at the nearest orb (28.9 u)
+    // — but 0.04 world units renders at 0.86 px there, which is INVISIBLE. The orbs stopped
+    // glittering the day of the WebGPU port and nobody noticed, because a sparkle you cannot
+    // see produces no bug report, only a bill (5,280 instances per frame). The correct
+    // px-matched size is resolution-dependent (1.20 at 720p, 0.80 at 1080p, same arithmetic);
+    // a world-space billboard cannot match both, so 1.0 splits the difference. Lane B's fill
+    // cost for the restored glitter rides on the §7.1 measurement (the no-level-nodes A/B
+    // now prices the orbs WITH visible sparkles, which is the question that matters).
+    const worldSize = aNodeScale.mul(1.0);
     const positionNode = billboardWorld(center, worldSize);
 
     // gl_PointCoord → uv(); round mask via the quad uv (soft falloff under additive).

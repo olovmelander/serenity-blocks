@@ -7,8 +7,7 @@ import {
 } from './chapter-environments/surface-world.js';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
-import { getCanonicalMountainRangeWorldSpecs } from './chapter-environments/shared/canonical-mountain-range.js';
-import { mountainCpuDisplacement } from './chapter-environments/shared/mountain-language.js';
+import { odysseyWorldHeight } from './world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathCurve,
@@ -55,32 +54,69 @@ describe('odyssey path layout', () => {
         expect(earlyChapter6Point.z).toBeLessThanOrEqual(-590);
     });
 
-    it('keeps the Sky Drift spline above and in front of the canonical summit mass', () => {
+    it('keeps the Sky Drift spline above the summit mass of the world it actually flies over', () => {
+        // SPEC-AUTHORITY FLIP (2026-08-12): this used to measure clearance against the LEGACY
+        // diorama silhouette (canonical specs + mountainCpuDisplacement) — a proxy for ground
+        // the default path no longer renders. It now measures against the One World height
+        // field itself, which is the surface under the camera in the shipped build. Same 60u
+        // contract; measured 112.3u at the tightest point (p=0.500, the summit crossing) when
+        // this was rewritten, so a failure here means the rail or the terrain moved, not noise.
         const positions = getActiveOdysseyChapterPositions();
         const ch5Start = positions[4];
         const ch6Start = positions[5];
-        const heroSpecs = getCanonicalMountainRangeWorldSpecs();
         let minClearance = Infinity;
 
-        for (let i = 0; i <= 80; i += 1) {
-            const t = ch5Start + (ch6Start - ch5Start) * (i / 80);
+        for (let i = 0; i <= 160; i += 1) {
+            const t = ch5Start + ((ch6Start - ch5Start) * (i / 160));
             const point = getOdysseyPathPointAt(t);
-            heroSpecs.forEach((spec) => {
-                const mountainHeight = mountainCpuDisplacement(
-                    point.x - spec.worldPosition.x,
-                    point.z - spec.worldPosition.z,
-                    {
-                        size: spec.size,
-                        height: spec.height,
-                        seed: spec.seed,
-                    },
-                );
-                const peakSurfaceY = spec.worldPosition.y + mountainHeight;
-                minClearance = Math.min(minClearance, point.y - peakSurfaceY);
-            });
+            minClearance = Math.min(minClearance, point.y - odysseyWorldHeight(point.x, point.z));
         }
 
         expect(minClearance).toBeGreaterThan(60);
+    });
+
+    it('runs the chapter 6 space corridor as one smooth banking climb', () => {
+        // The shipped Ch6 control points zigzagged (cp17 stalled in z, cp18/19 overshot to
+        // x=+61 before snapping back to cp20's x=0). Replaying the camera showed the aim
+        // lurching and even pitching below the horizon mid-ascent, which is why no fixed
+        // asset placement could stay framed. Guard the smoothness directly off the curve:
+        // sample the tangent across the chapter and bound how fast it may turn.
+        const positions = getActiveOdysseyChapterPositions();
+        const ch6Start = positions[5];
+        const ch6End = positions[6];
+        const curve = getOdysseyPathCurve();
+
+        const step = 0.003;
+        let previous = null;
+        let maxTurn = 0;
+        let totalTurn = 0;
+        let minTangentY = Infinity;
+        for (let t = ch6Start; t <= ch6End + 1e-9; t += step) {
+            const tangent = curve.getTangentAt(Math.min(t, 1)).normalize();
+            minTangentY = Math.min(minTangentY, tangent.y);
+            if (previous) {
+                const turn = THREE.MathUtils.radToDeg(tangent.angleTo(previous));
+                maxTurn = Math.max(maxTurn, turn);
+                totalTurn += turn;
+            }
+            previous = tangent;
+        }
+
+        // Shipped zigzag measured ~13 deg per 0.3% of progress and ~127 deg of total turn.
+        expect(maxTurn).toBeLessThan(3);
+        expect(totalTurn).toBeLessThan(45);
+        // The ascent never stops climbing — the old curve levelled out and the aim dipped
+        // below the horizon around p=0.77.
+        expect(minTangentY).toBeGreaterThan(0.1);
+    });
+
+    it('preserves total arc length so re-authoring Ch6 cannot shift other chapters', () => {
+        // Path positions are arc-length parameterised over the WHOLE curve, so the total
+        // length is a global invariant: change it and every chapter's p -> world mapping
+        // moves with it. An early draft of the Ch6 re-author shortened the curve by 74u
+        // and slid chapters 1-5 by up to 54u, silently breaking the Ch4 hero-peak
+        // clearance guarded above. Pin the length so that regression cannot recur quietly.
+        expect(getOdysseyPathCurve().getLength()).toBeCloseTo(1767.6, 0);
     });
 
     it('uses the same sampled curve in the path renderer and shared path helpers', async () => {

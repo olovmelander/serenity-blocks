@@ -127,6 +127,10 @@ export class LevelNodeManager {
         this.scene = scene;
         this.pathCurve = pathCurve;
         this.nodes = new Map(); // levelId → NodeObject
+        // One World ground seating (see setGroundSampler). Null = pure spline placement.
+        this._groundSampler = null;
+        this._groundClearance = 6;
+        this._groundRange = [0, 1];
         this.selectedNode = null;
         this.hoveredNode = null;
         this.time = 0;
@@ -168,6 +172,9 @@ export class LevelNodeManager {
         // When ON, all 55 inner fluid cores collapse to ONE InstancedMesh + ONE material +
         // ONE pipeline + a shared DataArrayTexture of theme icons (per-instance layer index).
         this.coreInstanced = readOdysseyCoreInstancedFlag();
+        // Set by setAllVisible(false); makes the A/B's hidden state stick against the
+        // per-frame visibility write in update().
+        this._forcedHidden = false;
         this.innerCoreMesh = null;
         this.innerCoreMaterial = null;
         this.coreArrayTexture = null;
@@ -251,10 +258,39 @@ export class LevelNodeManager {
 
     _getPathPoint(t, target) {
         const clampedT = THREE.MathUtils.clamp(t, 0, 1);
-        if (this.pathEvaluator) {
-            return this.pathEvaluator(clampedT, target);
+        const point = this.pathEvaluator
+            ? this.pathEvaluator(clampedT, target)
+            : this.pathCurve.getPointAt(clampedT, target);
+        // ONE WORLD (plan §3.0 / Wave 3): props consult the CPU mirror of the drawn ground.
+        // The spline was solved against the MACRO terrain, but the drawn surface adds baked
+        // relief on top — a node placed by spline altitude alone can sit inside a rise the
+        // shader displaced above it. Seating is one-way: lift to clear the ground, never pull
+        // down toward it (nodes in the sky are authored to float there).
+        if (this._groundSampler && clampedT >= this._groundRange[0] && clampedT <= this._groundRange[1]) {
+            const ground = this._groundSampler(point.x, point.z);
+            if (Number.isFinite(ground)) {
+                point.y = Math.max(point.y, ground + this._groundClearance);
+            }
         }
-        return this.pathCurve.getPointAt(clampedT, target);
+        return point;
+    }
+
+    /**
+     * Give node placement a ground truth to stand on. `sampler(x, z)` returns the drawn
+     * terrain height (the One World CPU mirror) or a non-finite value to skip. Only path
+     * positions within [rangeStart, rangeEnd] are seated — outside Act II the chapters own
+     * their own ground (Ch1 is UNDER the terrain, so a global lift would be wrong there).
+     * Re-seats every existing node immediately, so wiring order does not matter.
+     * @param {(x:number, z:number) => number} sampler
+     * @param {{clearance?:number, rangeStart?:number, rangeEnd?:number}} [opts]
+     */
+    setGroundSampler(sampler, { clearance = 6, rangeStart = 0, rangeEnd = 1 } = {}) {
+        this._groundSampler = typeof sampler === 'function' ? sampler : null;
+        this._groundClearance = clearance;
+        this._groundRange = [rangeStart, rangeEnd];
+        this.rebuildPositionCache();
+        this.nodes.forEach((node) => this.updateNodePathPlacement(node));
+        this._markUploadDirty();
     }
 
     setCameraProgress(progress) {
@@ -270,10 +306,23 @@ export class LevelNodeManager {
         const end = chapterPositions[1] ?? 0.093;
         const span = Math.max(end - start, 1e-4);
         const local = THREE.MathUtils.clamp((this.cameraProgress - start) / span, 0, 1);
-        return Math.max(
+        const rawQuench = Math.max(
             THREE.MathUtils.smoothstep(local, CHAPTER_1_NODE_QUENCH_START, CHAPTER_1_NODE_QUENCH_END),
             THREE.MathUtils.smoothstep(this.cameraProgress, 0.078, 0.083),
         );
+        // The quench retires chapter-1 orbs the camera has CLIMBED PAST (so the molten chapter's
+        // nodes don't linger as you ascend). But it was driven purely by GLOBAL progress, so it
+        // also shrank orbs still AHEAD of the camera — levels 4 & 5 (pathPos 0.056/0.074) collapsed
+        // to CHAPTER_1_NODE_MIN_SCALE (0) as you dollied toward them, and the isVisible gate then
+        // culled them entirely (the user's "orbs after level 3 shrink to super small on approach").
+        // Gate the quench behind a per-node "passed" factor so an orb only starts to quench once
+        // the camera has actually gone beyond its own pathPosition; approaching orbs stay full size.
+        const passed = THREE.MathUtils.smoothstep(
+            this.cameraProgress,
+            node.pathPosition,
+            node.pathPosition + 0.006,
+        );
+        return rawQuench * passed;
     }
 
     _createSharedLockTextures() {
@@ -490,6 +539,15 @@ export class LevelNodeManager {
         this.lockInstancedMesh = new THREE.InstancedMesh(lockGeo, lockMat, count);
         this.lockInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.lockInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
+        // Disable whole-mesh frustum culling: this InstancedMesh is repositioned in world space
+        // every frame (only the ~proximity window gets real matrices; the rest stay scale-0), but
+        // three.js computes its bounding sphere LAZILY from the matrices present at first render —
+        // which are confined to the path start — and caches it forever. Once the camera climbs
+        // past the start, that stale start-region sphere leaves the frustum and the ENTIRE lock
+        // mesh is culled, so every later orb's lock vanished. Per-instance scale-0 already hides
+        // off-window locks, so this only stops the bogus whole-mesh cull. (Matches particleSystem +
+        // innerCoreMesh, which are repositioned the same way and already set frustumCulled=false.)
+        this.lockInstancedMesh.frustumCulled = false;
         this.scene.add(this.lockInstancedMesh);
 
         // 4. Star Instanced Mesh (Plane Mesh) - 3 stars per level
@@ -508,6 +566,10 @@ export class LevelNodeManager {
         this.starInstancedMesh = new THREE.InstancedMesh(starGeo, starMat, count * 3);
         this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.starInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
+        // Same stale-cached-bounding-sphere fix as the lock mesh above: without this the whole star
+        // InstancedMesh gets frustum-culled once the camera leaves the path-start region, so every
+        // later orb's star rating disappeared. Per-instance scale-0 still hides off-window stars.
+        this.starInstancedMesh.frustumCulled = false;
         this.scene.add(this.starInstancedMesh);
 
         // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
@@ -1195,7 +1257,11 @@ export class LevelNodeManager {
 
             // Strict visibility culling
             const isVisible = distance < (UPDATE_PROXIMITY_THRESHOLD * 1.5)
-                && chapterOneQuench < 0.98;
+                && chapterOneQuench < 0.98
+                // Honour the A/B latch: setAllVisible(false) must stay false, or this
+                // per-frame write re-shows the group between the profiler's ~4 Hz ticks
+                // and the measurement silently averages hidden and shown frames.
+                && !this._forcedHidden;
             node.group.visible = isVisible;
 
             if (!isVisible) {
@@ -1414,6 +1480,40 @@ export class LevelNodeManager {
     /**
      * Dispose resources
      */
+    /**
+     * Hide or show everything this manager draws, without disposing it.
+     *
+     * Wave -1 of docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md calls the level-node group "the most
+     * likely 610M bottleneck and has never been measured": 55 nodes x 3 nested transparent
+     * depthWrite:false shells is a fill-rate shape that a 4-ROP part hates. An A/B needs to
+     * remove it from the frame WITHOUT changing anything else, so this toggles visibility
+     * rather than tearing the manager down — the update path, the CPU work and the transforms
+     * all keep running, and the difference measured is the rasterisation alone.
+     * @param {boolean} visible
+     */
+    setAllVisible(visible) {
+        const on = visible !== false;
+        [
+            this.glassInstancedMesh,
+            this.glowInstancedMesh,
+            this.lockInstancedMesh,
+            this.starInstancedMesh,
+            this.particleSystem,
+            // innerCoreMesh WAS MISSING (fixed 2026-08-12) and it is the one that mattered
+            // most: 60,720 of the group's 190,740 triangles, and the only OPAQUE,
+            // depth-writing part. Because `odysseyCoreInstanced` defaults true, the per-node
+            // inner meshes that `node.group.visible` would have hidden are never built — so
+            // the "hidden" half of the A/B was still drawing 31.8% of the group, and the
+            // docstring's claim that the difference is "the rasterisation alone" was false.
+            this.innerCoreMesh,
+        ].forEach((mesh) => { if (mesh) mesh.visible = on; });
+        this.nodes.forEach((node) => { if (node?.group) node.group.visible = on; });
+        // Latch it so the per-frame update() cannot re-show what the A/B just hid; update()
+        // rewrites node.group.visible every dirty frame and previously only lost that race
+        // ~4x/second when the throttled profiler tick re-asserted.
+        this._forcedHidden = !on;
+    }
+
     dispose() {
         this.nodes.forEach((node) => {
             if (node.coreMaterial) node.coreMaterial.dispose();

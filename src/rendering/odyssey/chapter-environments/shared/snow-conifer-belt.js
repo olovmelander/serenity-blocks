@@ -28,7 +28,7 @@ import { getOdysseyConiferAssetRecords } from './odyssey-conifer-assets.js';
 // uniform object so each chapter (Ch3, Ch4) keeps its own material (their snow lines differ).
 const _sharedConiferMaterials = new WeakMap();
 
-function createConiferMaterial(uSnowBlend) {
+function createConiferMaterial(uSnowBlend, uOpacity) {
     const material = new THREE.MeshLambertNodeMaterial();
     // Albedo = the GLB's baked vertex colours (snow/foliage/bark). They ship muted, so under
     // the warm key + golden fog they wash to pale grey blobs — boost saturation + deepen so
@@ -45,14 +45,24 @@ function createConiferMaterial(uSnowBlend) {
     const topFrac = positionLocal.y.div(aMaxY);
     const snowCap = smoothstep(0.4, 0.92, topFrac).mul(uSnowBlend).mul(0.7);
     material.colorNode = mix(vColor, vec3(0.93, 0.96, 1.0), snowCap);
+    // 3→4 SEAM FADE: the belt loads async, AFTER the manager's _collectOpacityTargets ran,
+    // and MeshLambertNodeMaterial had no alpha path — so all 80 Ch4 seam trees popped in at
+    // FULL opacity the frame the ecotone opened (~p 0.371). An authored uOpacity lets the
+    // owning chapter's update() drive the belt with its chapterOpacity weight so the trees
+    // rise with the crossfade. (Cache note: the material is cached per uSnowBlend, so belts
+    // sharing a snow-blend uniform share this fade too — true only for Ch3's empty belts.)
+    if (uOpacity) {
+        material.opacityNode = uOpacity;
+        material.transparent = true;
+    }
     material.side = THREE.DoubleSide;
     return material;
 }
 
-function getSharedConiferMaterial(uSnowBlend) {
+function getSharedConiferMaterial(uSnowBlend, uOpacity) {
     let mat = _sharedConiferMaterials.get(uSnowBlend);
     if (!mat) {
-        mat = createConiferMaterial(uSnowBlend);
+        mat = createConiferMaterial(uSnowBlend, uOpacity);
         _sharedConiferMaterials.set(uSnowBlend, mat);
     }
     return mat;
@@ -68,7 +78,9 @@ export function createSnowConiferBelt({ placementsBySpecies = {}, uSnowBlend } =
     const group = new THREE.Group();
     group.name = 'snow-conifer-belt';
     const uSnow = uSnowBlend ?? uniform(0);
+    const uOpacity = uniform(1);
     group.userData.uSnowBlend = uSnow;
+    group.userData.uOpacity = uOpacity; // 3→4 seam fade — driven by the owning chapter
     group.userData.assetStatus = 'pending';
 
     if (typeof window === 'undefined') {
@@ -96,7 +108,7 @@ export function createSnowConiferBelt({ placementsBySpecies = {}, uSnowBlend } =
             geo.computeBoundingBox();
             const maxY = geo.boundingBox.max.y;
 
-            const material = getSharedConiferMaterial(uSnow);
+            const material = getSharedConiferMaterial(uSnow, uOpacity);
             // Per-instance species height for the shared material's snow-cap gradient (uniform
             // across this species' instances). Lets the one material serve fir/pine/spruce.
             const aMaxY = new Float32Array(placements.length).fill(Math.max(0.001, maxY));

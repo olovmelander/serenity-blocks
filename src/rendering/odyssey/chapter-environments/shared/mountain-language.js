@@ -49,6 +49,7 @@ import {
     smoothstep,
     vec3,
 } from 'three/tsl';
+import { ODYSSEY_SUN } from './chapter-profile.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. THE CANONICAL PALETTE (plain hex — THREE-free, unit-testable)
@@ -83,12 +84,32 @@ export const MOUNTAIN_PALETTE = Object.freeze({
     // pole leans steel-blue; the neutral pole keeps a touch of warm schist so distant rock
     // doesn't go monochrome.
     rockNeutral: 0x39424d,
-    rockCool: 0x202f40,
-    // Shadowed-face bounce — deep cold blue, colder + darker as coolTemp climbs (more
-    // contrast on the unlit faces, less wash).
-    shadowNeutral: 0x1f2a39,
-    shadowCool: 0x0e1c30,
-    // Atmospheric fog body — neutral sky-blue haze -> denser deep cool blue.
+    // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B/C): the cool rock pole lightened 0x202f40 →
+    // 0x3b4d63 so exposed rock reads as grey alpine stone (the reference), not near-black slate that
+    // blobs navy against the bright daylight sky.
+    rockCool: 0x3b4d63,
+    // Shadowed-face bounce — the SKY LIGHT falling on faces turned from the key.
+    // (Briefly lifted to 0x6a7f96/0x5e758d to stop unlit faces crushing to navy; reverted
+    // once the real cause was found — the shading normal was in VIEW space, so the massif's
+    // camera-facing bulk was pinned at ambient-only no matter where the sun was. With the
+    // world-space fix below, faces are lit by their true orientation and these authored
+    // values are correct again.)
+    // Lifted modestly 2026-08 (was 0x3c506c/0x33547a): with the key light now correct, this
+    // term is the ONLY thing lighting faces genuinely turned from the sun, and at the authored
+    // values a large shaded flank (Ch4's interior view) crushed to a flat dark mass with no
+    // readable ridge structure. A bright daylight sky bounces more than that into alpine shade.
+    // Deliberately small — the goal is to keep FORM in shadow, not to re-wash it.
+    shadowNeutral: 0x4a5c74,
+    shadowCool: 0x435f80,
+    // Atmospheric fog body — the colour distance recedes INTO (mountainSurfaceColorNode:
+    // `color = mix(color, uFog, fogFactor)`).
+    //
+    // DELIBERATELY NOT LIGHTENED. A first pass raised these to 0xb2d4ea/0x9dc3e0 to stop the
+    // hero inverting (darker with distance) — but this pole is ~58% of the FAR-RANGE flank's
+    // final colour, and the flank is the reference the look was validated against; lightening
+    // it pushed flank rock from sRGB (64,91,120) to (131,162,186), i.e. washed out the one
+    // asset that already read correctly. The hero gets its own lighter fog pole instead
+    // (MAIN_PEAK_TREATMENT in canonical-mountain-range.js), leaving the flank untouched.
     fogNeutral: 0x7fa4cf,
     fogCool: 0x33506e,
     // Warm alpenglow rose grazing the highest sunlit snow (shared, not temperature-lerped).
@@ -123,6 +144,7 @@ export const MOUNTAIN_DISPLACEMENT = Object.freeze({
     ridgeFreq: 0.0075, // ridge cell frequency (lower = fewer, broader spurs — fits the mesh res)
     ridgeAmplitude: 0.42, // crest height as a fraction of `height`
     ridgeFeatherStart: 0.82, // keep ridge energy until this normDist, then taper to the rim
+    detailFeatherStart: 0.86, // fine detail tapers to the rim too, so the footprint CLOSES
     warpFreq: 0.006, // domain-warp frequency (meandering, non-radial ridgelines)
     warpStrength: 0.75, // domain-warp magnitude (in FBM cells) — asymmetric shoulders
 });
@@ -142,7 +164,14 @@ export const MOUNTAIN_SHADING = Object.freeze({
     slopeSnowMin: 0.42, // slopes shallower than this hold snow
     slopeSnowMax: 0.78, // slopes steeper than this are bare rock (widened so steep upper
     // crags show dark rock streaks through the snow = alpine relief, not a smooth dome)
-    keyDir: [0.5, 0.8, 0.5], // shared key-light direction
+    // WAVE 0.2 — the alpine key light IS the journey's sun, not a third direction.
+    // This was a hand-tuned [0.5, 0.8, 0.5], which sat 72.5 degrees off ODYSSEY_SUN: alpine
+    // surfaces were lit from one place and everything sharing a frame with them from another.
+    // Aliasing rather than copying is deliberate — a copied literal drifts the moment either
+    // side is retuned, and drift is exactly how the split appeared in the first place. The
+    // one-sun invariant test pins the identity so a future "just nudge the mountains" edit
+    // has to break a test rather than silently reopen the gap.
+    keyDir: ODYSSEY_SUN,
     keyDiffuse: 0.86, // diffuse weight ... (stronger key → more sun/shade contrast, de-wash)
     keyAmbient: 0.18, // ... + ambient floor (lower floor so shadowed faces stay deep)
     shadowAmount: 0.6, // how far shadowed faces lerp toward the cool shadow bounce (deeper
@@ -152,15 +181,29 @@ export const MOUNTAIN_SHADING = Object.freeze({
     alpenStrength: 0.42, // alpenglow intensity
     rimPower: 4.2,
     rimStrength: 0.14,
-    fogNear: 620, // distance fog onset pushed OUT (was 420) so near/mid peaks keep full
-    // contrast instead of hazing toward the pale fog body — the main wash culprit.
-    fogFar: 1500, // distance fog saturation
-    fogMax: 0.58, // cap lowered (was 0.7) so even far peaks keep a crisp, contrasty silhouette
+    // Aerial-perspective window. Widened 2026-08 (620/1500/0.58 → 260/2600/0.62): the old
+    // knee at 620 sat INSIDE the hero massif's own 1206u body, so the haze ramp ran steeply
+    // across the mountain and SLID along it as the camera approached — re-sculpting its
+    // internal tonal structure frame to frame (a major "changes shape" contributor). Moving
+    // the knee in front of the massif and the saturation point far behind it makes the haze
+    // near-uniform across the body (0.056–0.097 over the whole approach) so it reads as ONE
+    // solid object, while the far-range flank is numerically unchanged (0.573–0.599 vs 0.58).
+    fogNear: 260,
+    fogFar: 2600,
+    fogMax: 0.62,
 });
 
 // ── Foothill SKIRT (the Surface→Mountains ramp): meadow base -> rock top ─────────
-/** Surface meadow green the skirt blends UP FROM at its base (matches landscape grass). */
-export const MOUNTAIN_SKIRT_MEADOW = 0x3f7a33;
+/**
+ * Surface meadow green the skirt blends UP FROM at its base — must equal the LANDSCAPE
+ * MEADOW AS LIT, not as authored. 0x3f7a33 predated the Wave-A repalette (landscape
+ * grassColorLow brightened to 0.26,0.58,0.17) and, after the skirt's own diffuse
+ * (≈×0.714 flat), landed 2.7–4.6× darker per channel than the meadow it seats onto — the
+ * dominant "grass patches pasted on the hills" mismatch at the end of Ch3. 0x83c26e is
+ * the landscape's flat-lit product (0.161, 0.383, 0.111 linear) divided back out by the
+ * skirt's flat diffuse, so skirt-base-after-lighting == meadow-after-lighting.
+ */
+export const MOUNTAIN_SKIRT_MEADOW = 0x83c26e;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 3. PER-INSTANCE TREATMENT RESOLVER (THREE-free — returns hex + numbers)
@@ -330,7 +373,15 @@ export function mountainCpuDisplacement(x, z, { size, height, seed = 0 }) {
         z * MOUNTAIN_DISPLACEMENT.detailFreq,
         seed + 10.0,
     );
-    const detail = n2 * height * MOUNTAIN_DISPLACEMENT.detailAmplitude * (1.0 - (normDist * 0.6));
+    // Feathered to the rim exactly like the cone and the crest above. Without this the detail
+    // term still carried ~0.08 * height right up to normDist 1.0 and then dropped to EXACTLY 0
+    // outside the footprint (the early-out at the top) — a hard circular scarp, 58u tall on the
+    // Ch4 hero, ringing the mountain's foot. It went unnoticed because the alpha rim fade used
+    // to be wide enough to swallow it; now that the body is opaque all the way out to the
+    // footprint, the geometry has to close on its own.
+    const detailFeather = 1.0 - smoothstepCpu(MOUNTAIN_DISPLACEMENT.detailFeatherStart, 1.0, normDist);
+    const detail = n2 * height * MOUNTAIN_DISPLACEMENT.detailAmplitude
+        * (1.0 - (normDist * 0.6)) * detailFeather;
 
     return cone + crest + detail;
 }

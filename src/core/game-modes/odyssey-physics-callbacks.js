@@ -16,7 +16,8 @@ import {
     applyFixedPerfectClearHitStop,
 } from '../fixed-hit-stop-policy.js';
 import { fenceOdysseyPhysicsCallbacks } from '../odyssey/odyssey-level-session.js';
-import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
+import { ComboTracker } from '../combo-tracker.js';
+import { createBoardEffectHandlers } from './board-effect-callbacks.js';
 
 export function prefersOdysseyReducedMotion(
     mode,
@@ -32,10 +33,16 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         gameState, hybridEngine, levelId, simulationClock,
     } = session;
     const usesFixedTiming = simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
-    // One attempt = one combo chain. Physics' triggerCombo carries cascade depth
-    // (ADR-0011 pins that payload), so the real combo is tracked here.
-    const comboTracker = new ComboTracker();
-    const settingsOf = () => mode.deps.settingsManager?.get() || {};
+    // Shared four-beat visual wiring — identical to local MP's and single
+    // player's, injected INSIDE baseCallbacks so the session fence and the
+    // hybrid engine's victory-metric wrappers still apply. One attempt = one
+    // combo chain: the per-session tracker keeps tint state honest. The factory
+    // reads no settings, which preserves the fixed-tick determinism guard.
+    const effectHandlers = createBoardEffectHandlers({
+        getScene: () => mode._getBoardScene?.(),
+        getJuice: () => mode.boardJuice,
+        comboTracker: new ComboTracker(),
+    });
     const baseCallbacks = {
         onMove: () => mode.deps.soundManager?.sfxPlayer?.playMove(),
         onRotate: () => mode.deps.soundManager?.sfxPlayer?.playRotate(),
@@ -43,11 +50,6 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
             const cascadeCount = rest[3] ?? 1;
             mode.deps.soundManager?.sfxPlayer?.playLineClear(cascadeCount);
-            // Before triggerFlash in the pinned schedule, so the clear visuals
-            // read a combo value that already includes this clear.
-            announceCombo(comboTracker, mode._getBoardScene?.(), {
-                popupEnabled: settingsOf().comboPopupEffect,
-            });
             emitLineClear({
                 lineCount,
                 clearedRows,
@@ -69,6 +71,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         onLevelUp: (level) => {
             emitLevelUp({ level, source: 'odyssey', levelId });
             mode.deps.soundManager?.sfxPlayer?.playLevelUp();
+            mode._getBoardScene?.()?.sharedEffects?.playLevelUp?.(level);
         },
         onHardDrop: (dropData) => {
             emitHardDrop({
@@ -91,41 +94,36 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         // Cascade signal — the payload is cascade DEPTH, kept as-is for themes.
         // The board popup is driven from onLineClear; the cascade's own board
         // feedback is triggerCascadeWave below.
+        // Combo popup, local-MP semantics: the number is cascade depth, per wave.
         triggerCombo: (comboCount) => {
+            effectHandlers.comboBeat(comboCount);
             emitCombo({ comboCount, source: 'odyssey', levelId });
         },
+        // Mega-only inside SharedEffects; silent below 10.
         triggerCascadeWave: (cascadeCount) => {
-            mode._getBoardScene()?.sharedEffects?.showCascadeWave?.(cascadeCount);
+            effectHandlers.cascadeWaveBeat(cascadeCount);
         },
-        // Effect toggles (lineClearEffects / pieceLockRipple) are enforced inside
-        // SharedEffects so this stays free of live settings reads — the fixed-tick
-        // determinism guards assert the timing path consults no settings.
+        // No settle visual — parity with local MP. Key kept for callback shape.
+        onCascadeComplete: () => {},
         triggerFlash: (fullLines) => {
-            mode._getBoardScene()?.triggerLineClearFlash?.(fullLines);
+            effectHandlers.clearFlashBeat(fullLines);
         },
-        onLineClearImpact: (lineCount, cascadeCount) => {
-            const boardScene = mode._getBoardScene();
+        onLineClearImpact: (lineCount) => {
+            // Timing stays at the call site (fixed-tick lane reads no settings).
             if (usesFixedTiming) {
                 applyFixedLineImpactHitStop(gameState, lineCount);
             } else if (!prefersOdysseyReducedMotion(mode)) {
-                const tier = boardScene?.sharedEffects?.getClearTier?.(lineCount);
+                const tier = mode._getBoardScene()?.sharedEffects?.getClearTier?.(lineCount);
                 const hitStop = tier?.hitStop || (lineCount >= 4 ? 70 : 0);
                 if (hitStop > 0) gameState.hitStopRemaining = hitStop;
             }
-            boardScene?.playLineClearImpact?.(lineCount, cascadeCount);
-            mode.boardJuice?.pulse(1 + (Math.min(lineCount, 4) * 0.004));
+            effectHandlers.clearImpactBeat(lineCount);
         },
-        triggerBackgroundPulse: (lineCount) => {
-            mode._getBoardScene()?.triggerBackgroundPulse?.(lineCount);
-        },
+        // Parity with local MP: no background pulse.
+        triggerBackgroundPulse: () => {},
         onPieceLock: (piece) => {
             emitPieceLock({ piece });
-            // Bookkeeping first, and ungated: a lock that clears nothing is what
-            // breaks a chain, whether or not the ripple is switched on.
-            noteLockForCombo(comboTracker, mode._getBoardScene?.());
-            mode._getBoardScene()?.createPieceLockRipple?.(piece);
-            mode.boardJuice?.dip(1);
-            mode.boardJuice?.pulse(1.005);
+            effectHandlers.lockBeat(piece);
         },
         onPerfectClear: (depth, perfectClearBonus) => {
             if (usesFixedTiming) {

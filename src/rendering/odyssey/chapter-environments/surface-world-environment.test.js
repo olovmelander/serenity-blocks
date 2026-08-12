@@ -74,8 +74,8 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         expect(group.userData.distantMountains.userData.canonicalMountainRange.sourceChapter)
             .toBe(4);
         expect(group.userData.distantMountains.userData.specIds)
-            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS]);
-        expect(group.userData.distantMountains.userData.isSingleHeroChain)
+            .toEqual([...CANONICAL_HERO_MOUNTAIN_SPEC_IDS, 'ch4-far-left']);
+        expect(group.userData.distantMountains.userData.canonicalMountainRange.includesFarRange)
             .toBe(true);
         expect(group.userData.quaterniusNatureLayer.userData.assetRecords.length)
             .toBeGreaterThanOrEqual(12);
@@ -95,7 +95,15 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
 
         const profile = ODYSSEY_CHAPTER_PROFILES.find((chapter) => chapter.id === 3);
         expect(profile.atmosphere.ambientIntensity).toBeLessThan(0.7);
-        expect(profile.atmosphere.exposure).toBeLessThanOrEqual(1);
+        // PAINTERLY-ASCENT REPALETTE (2026-08): Ch3 is now bright high-key COOL daylight, so exposure
+        // is deliberately >1; the "washed beige" read is now prevented by the COOL fog/ambient (blue-
+        // dominant), not by holding exposure below 1. A loose ceiling still guards a runaway blowout.
+        expect(profile.atmosphere.exposure).toBeGreaterThan(1);
+        expect(profile.atmosphere.exposure).toBeLessThanOrEqual(1.15);
+        const ch3Fog = colorChannels(profile.atmosphere.fogColor);
+        expect(ch3Fog.b).toBeGreaterThan(ch3Fog.r); // cool cyan haze, never warm beige
+        const ch3Ambient = colorChannels(profile.atmosphere.ambientLight);
+        expect(ch3Ambient.b).toBeGreaterThanOrEqual(ch3Ambient.r); // neutral-cool ambient
         // Masterplan D2 dim (0x96a842 → 0x687d31): live capture showed the ch3 path was the
         // journey's worst figure-ground offender — the pin follows chapter-profile.js.
         expect(profile.path.emissiveColor).toBe(0x687d31);
@@ -213,23 +221,65 @@ describe('Surface World chapter environment (creative plan ch3)', () => {
         expect(resolveSurfaceWorldEntryRampState(null).entryOpacity).toBe(1);
     });
 
-    it('keeps Chapter 2 water as an early crossing and gives the horizon to mountains', () => {
+    it('folds the manager chapter weight into the alpine skirt alpha on the way out only', () => {
+        stubCanvasDocument();
+
+        const group = createSurfaceWorldEnvironment();
+        const positions = getActiveOdysseyChapterPositions();
+        const ch3Start = positions[2];
+        const ch4Start = positions[3];
+        // The skirt's alpha rides this TSL node inside its authored opacityNode
+        // (surface-world.tsl.js: `material.opacityNode = uOpacity.mul(seamFade)...`), which is why
+        // the manager's material.opacity crossfade is a dead write in r181 and this fold exists.
+        const skirtAlpha = group.userData.foothillBridge.userData.odysseyUniforms.uOpacity;
+
+        // Mid-chapter the manager weight is 1 — the skirt stays fully solid.
+        group.userData.chapterOpacity = 1;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch3Start + (ch4Start - ch3Start) * 0.5);
+        expect(skirtAlpha.value).toBeCloseTo(1, 3);
+
+        // 3->4 crossfade: the skirt now DIMS with the chapter instead of surviving at full
+        // presence until the manager's binary group.visible flip.
+        group.userData.chapterOpacity = 0.35;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch4Start);
+        expect(skirtAlpha.value).toBeCloseTo(0.35, 3);
+
+        // 2->3 breach: the weight is still climbing while the breach reveal is already 1.0, so it
+        // must NOT dim the arriving skirt (the "floating massif" regression).
+        group.userData.chapterOpacity = 0.34;
+        updateSurfaceWorldEnvironment(group, 0.016, 1, null, ch3Start + 0.001);
+        expect(skirtAlpha.value).toBeCloseTo(1, 3);
+    });
+
+    it('holds the water through the valley and only releases it into the mountains seam', () => {
         const positions = getActiveOdysseyChapterPositions();
         const ch3Start = positions[2];
         const ch4Start = positions[3];
         const span = ch4Start - ch3Start;
 
+        // ONE CONNECTED WORLD: water and meadow are co-located, so fading the sea out mid-chapter
+        // read as the ground SWAPPING from water to grass in place. The sea must stay fully present
+        // across the whole valley traverse — the only water edge is the organic grass shoreline.
         const early = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.2, positions);
         expect(early.waterCrossingOpacity).toBe(1);
         expect(early.waterCrossingVisible).toBe(true);
 
-        const fading = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.4, positions);
-        expect(fading.waterCrossingOpacity).toBeGreaterThan(0);
-        expect(fading.waterCrossingOpacity).toBeLessThan(1);
+        const mid = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.5, positions);
+        expect(mid.waterCrossingOpacity).toBe(1);
+        expect(mid.waterCrossingVisible).toBe(true);
 
-        const late = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.65, positions);
-        expect(late.waterCrossingOpacity).toBe(0);
-        expect(late.waterCrossingVisible).toBe(false);
+        const lateValley = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.65, positions);
+        expect(lateValley.waterCrossingOpacity).toBe(1);
+        expect(lateValley.waterCrossingVisible).toBe(true);
+
+        // It only releases into the Ch3→Ch4 seam, where the bridge + range already hold the frame.
+        const seam = resolveSurfaceWorldWaterCrossingState(ch3Start + span * 0.9, positions);
+        expect(seam.waterCrossingOpacity).toBeGreaterThan(0);
+        expect(seam.waterCrossingOpacity).toBeLessThan(1);
+
+        const handedOff = resolveSurfaceWorldWaterCrossingState(ch4Start, positions);
+        expect(handedOff.waterCrossingOpacity).toBe(0);
+        expect(handedOff.waterCrossingVisible).toBe(false);
 
         const mountainReveal = resolveSurfaceWorldAlpineRampState(ch3Start + span * 0.1, positions);
         expect(mountainReveal.rampOpacity).toBeGreaterThan(0);

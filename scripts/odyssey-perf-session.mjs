@@ -605,8 +605,14 @@ function extractRunMetrics(run) {
         'frame.max': finiteOrNull(frames.max),
         overBudget: finiteOrNull(frames.overBudget),
         spikes: Array.isArray(perf.spikes) ? perf.spikes.length : null,
-        'drawCalls.avg': finiteOrNull(perf.counters?.callsAvg),
-        'triangles.avg': finiteOrNull(perf.counters?.trianglesAvg),
+        // Wave -1 exit criterion: the committed report carries percentiles, never a mean. A
+        // mean draw count across a journey that swings between tens and hundreds of draws
+        // describes no frame the game ever rendered. callsAvg/trianglesAvg remain available
+        // to the live overlay; they are simply not what a decision gets measured against.
+        'drawCalls.p50': finiteOrNull(perf.counters?.callsP50),
+        'drawCalls.max': finiteOrNull(perf.counters?.callsMax),
+        'triangles.p50': finiteOrNull(perf.counters?.trianglesP50),
+        'triangles.max': finiteOrNull(perf.counters?.trianglesMax),
         'longTasks.count': finiteOrNull(perf.longTasks?.count),
         'longTasks.totalMs': finiteOrNull(perf.longTasks?.totalMs),
         'longTasks.maxMs': finiteOrNull(perf.longTasks?.maxMs),
@@ -627,13 +633,15 @@ function summarizeValues(values) {
         count: sorted.length,
         median: percentile(0.5),
         p95: percentile(0.95),
+        p99: percentile(0.99),
         min: sorted[0],
         max: sorted[sorted.length - 1],
         values: sorted,
     };
 }
 
-/** Aggregate block: per-metric median/p95/min/max across runs. --runs 1
+/** Aggregate block: per-metric median/p95/p99/min/max across runs — no mean, per Wave -1.
+ * --runs 1
  * produces the same shape (an aggregate of one) so consumers handle both. */
 function buildAggregate(runs) {
     const perRun = runs.map((run) => extractRunMetrics(run));

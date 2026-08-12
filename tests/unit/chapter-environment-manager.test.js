@@ -123,15 +123,22 @@ describe('Chapter 3 to 4 ground continuity', () => {
         // Depth-insensitive to insertion order: the material-sharing perf refactor builds the
         // sibling foothill right after the shared one, so child order is an implementation
         // detail — the contract is the three apron depths.
-        expect([...apronZ].sort((a, b) => b - a)).toEqual([-600, -710, -860]);
+        // 2026-08 recomposition: the apron moved from -600/-710/-860 (IN FRONT of / level
+        // with the canonical hero plane at world z ≈ -967..-1107, where its cool-treated
+        // crests cut a "second environment" band across the hero's middle) to BEHIND the
+        // plane's back edge — background fill on the flanks. The contract stays: all three
+        // depths sit BEHIND the hero plane and stay mutually staggered.
+        expect([...apronZ].sort((a, b) => b - a)).toEqual([-1350, -1450, -1600]);
         expect(fullAnchors.length).toBe(3);
-        // Hero peaks ride the cool pole; the apron pulls toward neutral grey-blue (its rock is
-        // warmer/greyer — higher red channel — than the saturated cool hero rock).
+        // Hero peaks ride the cool pole; the apron pulls toward neutral grey. After the Wave-C rock
+        // repalette (rockCool 0x202f40 → 0x3b4d63, lifted off near-black to stop the navy blob), the
+        // cool hero rock is a lighter BLUE-grey, so the cool-vs-neutral distinction now reads in the
+        // BLUE channel: the hero (cool pole) rock is BLUER than the apron (neutral) rock.
         expect(heroTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLine);
         expect(apronTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLineFoothill);
         expect(apronTreatment.snowLine).toBeGreaterThan(heroTreatment.snowLine);
-        expect(Math.floor(apronTreatment.rock / 65536) % 256)
-            .toBeGreaterThan(Math.floor(heroTreatment.rock / 65536) % 256);
+        expect(heroTreatment.rock % 256)
+            .toBeGreaterThan(apronTreatment.rock % 256);
         // Each peak/apron mesh exposes the live drivers (transition + opacity + snow blend).
         expect(mainPeakUniforms.uTransition).toBeTruthy();
         expect(mainPeakUniforms.uOpacity).toBeTruthy();
@@ -156,10 +163,13 @@ describe('Chapter 3 to 4 ground continuity', () => {
 
         expect(earlyTransition).toBeLessThan(0.01);
         expect(earlyAurora).toBeGreaterThan(0.99);
-        expect(midTransition).toBeGreaterThan(0.5);
-        expect(midTransition).toBeLessThan(0.9);
+        // PAINTERLY-ASCENT REPALETTE (Wave B): the day→NIGHT transition is DROPPED
+        // (MOUNTAIN_TRANSITION_START/END pushed past 1.0), so uTransition now stays ≈0 the whole
+        // chapter — Ch4 is a bright daylight climb and the summit crests into MORE light. Was
+        // mid>0.5 / late>0.99 back when the chapter ramped to night.
+        expect(midTransition).toBeLessThan(0.05);
+        expect(lateTransition).toBeLessThan(0.05);
         expect(midAurora).toBeGreaterThan(0.99);
-        expect(lateTransition).toBeGreaterThan(0.99);
         expect(lateAurora).toBeGreaterThan(0.99);
         expect(environment.userData.mountains.scale.x).toBeCloseTo(1, 6);
         expect(environment.userData.mountains.position.y).toBeCloseTo(0, 6);

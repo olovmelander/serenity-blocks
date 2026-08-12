@@ -6,6 +6,34 @@ wrote only to the gitignored `artifacts/`, so **no committed baseline ever
 existed**). `artifacts/` remains gitignored scratch for exploratory runs; a
 result that a future decision will be measured against belongs **here**, in git.
 
+## GPU-time splits (Wave −1)
+
+Frame-time from `rAF` presentation deltas — what a *baseline* records — is **not GPU time**.
+§2.5 of `docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md` says so explicitly, and the existing
+`baseline-rtx5080-*` files are exactly that metric. Wave −1 exists to add the missing one.
+
+```sh
+node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane A
+node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power
+#   → reports/odyssey-perf/gpu-split-lane{a,b}.json
+```
+
+Two things to know before reading one of these files:
+
+**It is differential, not per-pass.** three r181's WebGPU backend exposes one timestamp scope
+per render type, and `PostProcessing` renders its whole graph inside a single call, so there is
+nowhere to hang a per-pass query without forking the renderer. Each configuration instead
+removes one system and the delta against baseline is attributed to it. Overlapping cost lands
+on whichever system is removed first, so the figures do not have to sum to the baseline.
+
+**Read `baselineDriftMs` first.** Baseline runs first and last. Any delta smaller than the
+drift between them is noise, not a measurement — thermal throttling on a laptop is easily
+worth more than a whole system's cost.
+
+Discipline, enforced in `src/utils/perf-ring.js` and covered by tests: p50/p95/p99 from a
+fixed-size ring, **no mean is recorded anywhere**, and startup samples are discarded before the
+sampling window opens so a cold pipeline compile cannot be laundered into steady state.
+
 ## What a baseline is
 
 A baseline is one session JSON produced by `scripts/odyssey-perf-session.mjs`

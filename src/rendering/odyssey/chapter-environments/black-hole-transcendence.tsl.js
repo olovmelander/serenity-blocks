@@ -114,6 +114,7 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = uOpacity;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge (manager reads material.uniforms)
     material.side = THREE.BackSide;
     material.transparent = true;
     material.depthWrite = false;
@@ -222,10 +223,16 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     // uFade so the .js update() can ramp it OUT by ~25% chapter progress, handing off to
     // the camera-locked hero with no popping.
     const uFade = options.uFade ?? uniform(1);
+    // Cross-chapter ecotone crossfade (manager-driven, orthogonal to the within-chapter
+    // uFade entry→hero handoff). Without this the authored opacityNode replaces
+    // material.opacity in r181, so the manager crossfade is a no-op and the hero hard-pops
+    // at the Ch6→7 / 7→8 seams (backlog #4).
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(intensity).add(atmo);
-    material.opacityNode = clamp(intensity.add(rimGlow.mul(0.18)), 0.0, 1.0).mul(uFade);
+    material.opacityNode = clamp(intensity.add(rimGlow.mul(0.18)), 0.0, 1.0).mul(uFade).mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -236,7 +243,12 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'accretion-disk-tsl';
     return {
-        mesh, material, geometry, uniforms: { uInner, uOuter, uFade },
+        mesh,
+        material,
+        geometry,
+        uniforms: {
+            uInner, uOuter, uFade, uOpacity,
+        },
     };
 }
 
@@ -255,6 +267,8 @@ export function createLensingShellTSL(uTime = uniform(0), uEnergy = uniform(0.4)
     // Optional fade multiplier (default 1) so the close ENTRY shell can ramp out with the
     // rest of the entry horizon (see createAccretionDiskTSL uFade).
     const uFade = options.uFade ?? uniform(1);
+    // Cross-chapter ecotone crossfade (see createAccretionDiskTSL — backlog #4).
+    const uOpacity = options.uOpacity ?? uniform(1);
 
     const vNormal = normalView;
     const vView = positionViewDirection;
@@ -266,11 +280,12 @@ export function createLensingShellTSL(uTime = uniform(0), uEnergy = uniform(0.4)
     // into the haze with no hard inner cutoff. Additive + low, never a white edge.
     const atmo = smoothstep(0.04, 0.3, fres).mul(oneMinus(smoothstep(0.3, 0.5, fres)));
     const color = mix(uColorA, uColorB, fres).mul(band).mul(shimmer).add(uColorA.mul(atmo.mul(0.22)));
-    const alpha = band.mul(uEnergy.mul(0.4).add(0.55)).add(atmo.mul(0.12)).mul(uFade);
+    const alpha = band.mul(uEnergy.mul(0.4).add(0.55)).add(atmo.mul(0.12)).mul(uFade).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = alpha;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -281,7 +296,7 @@ export function createLensingShellTSL(uTime = uniform(0), uEnergy = uniform(0.4)
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'lensing-shell-tsl';
     return {
-        mesh, material, geometry, uniforms: { uFade },
+        mesh, material, geometry, uniforms: { uFade, uOpacity },
     };
 }
 
@@ -359,13 +374,21 @@ export function createSharedMotifMaterialsTSL(uTime = uniform(0), uEnergy = unif
 
 // ── Deep-violet ambient wash (additive, camera-enveloping; must NOT blow white) ──
 
+// Post-fog-removal retune (backlog #3 follow-up): these floors/gains were "raised HARD
+// (B2 stop-the-crush)" back when the profile FogExp2 (density 0.012) was washing every
+// surface toward violet — the wash had to shout just to keep the frame off RGB-black.
+// Now that material.fog=false lets the void-dome backstop + heroes read on their own, the
+// camera-enveloping fresnel wash was the dominant OVER-bright element: a rim-bright
+// additive BackSide sphere reads as a giant white halo ringing the view and blowing the
+// frame edges out. Dialed back to its intended SUBTLE backstop role — the void dome (raised
+// violet floors) still prevents black, but the wash no longer dominates the finale.
 export const CH7_AMBIENT_WASH_SETTINGS = Object.freeze({
-    centerFloor: 0.86,
-    rimGain: 0.78,
-    opacityFloor: 0.42,
-    opacityCap: 0.72,
+    centerFloor: 0.56,
+    rimGain: 0.42,
+    opacityFloor: 0.20,
+    opacityCap: 0.44,
     sphereRadius: 360,
-    floorColor: [0.17, 0.095, 0.31],
+    floorColor: [0.14, 0.078, 0.26],
 });
 
 /**
@@ -425,6 +448,7 @@ export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4))
         0.0,
         CH7_AMBIENT_WASH_SETTINGS.opacityCap,
     ).mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.depthTest = false;
@@ -550,6 +574,7 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
         .mul(CH7_CORRIDOR_DUST_SETTINGS.breatheSwing)
         .add(CH7_CORRIDOR_DUST_SETTINGS.breatheBase);
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = aColor.mul(CH7_CORRIDOR_DUST_SETTINGS.colorGain);
@@ -557,7 +582,8 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
         glow.mul(breathe),
         0.0,
         CH7_CORRIDOR_DUST_SETTINGS.opacityCap,
-    );
+    ).mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -568,7 +594,9 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     mesh.name = 'corridor-violet-dust-tsl';
     mesh.frustumCulled = false;
     mesh.userData.readability = CH7_CORRIDOR_DUST_SETTINGS;
-    return { mesh, material, geometry };
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
 }
 
 // ── Infall ember / dust field around the lensed hero (instanced, capped, parallax) ─
@@ -682,11 +710,13 @@ export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
     const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 1.9);
     const twinkle = sin(uTime.mul(1.6).add(aPhase.mul(1.7))).mul(0.18).add(0.42);
 
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = aColor;
     // Capped well below a haze wall — additive, ACES + threshold bloom downstream.
-    material.opacityNode = clamp(glow.mul(twinkle), 0.0, 0.6);
+    material.opacityNode = clamp(glow.mul(twinkle), 0.0, 0.6).mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -698,7 +728,9 @@ export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'infall-ember-field-tsl';
     mesh.frustumCulled = false;
-    return { mesh, material, geometry };
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
 }
 
 // ── Twinkling point material (shared by shards + lensed starfield) ───────────────
@@ -755,12 +787,14 @@ function createTwinkleMaterialTSL(uTime, options = {}) {
     // under additive blending without a hard discard.
     const d = length(uv().sub(0.5));
     const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 1.6);
-    const alpha = glow.mul(tw);
+    const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
+    const alpha = glow.mul(tw).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = aColor;
     material.opacityNode = alpha;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;

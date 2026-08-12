@@ -68,6 +68,12 @@ function createCopyLegalNoticesPlugin() {
 export default defineConfig({
   // Force a canonical-cased root so dev-server module resolution is launch-cwd agnostic.
   root: projectRoot,
+  // Harness isolation. The capture/perf harnesses spawn their OWN Vite servers, and two Vite
+  // instances sharing node_modules/.vite corrupt the dep-optimizer cache — the interactive
+  // playground then hangs forever on 504s with no error in sight. This has cost three
+  // debugging sessions ("everything freezes and stops"). Harnesses set VITE_CACHE_DIR to a
+  // port-scoped directory; a plain `npm run dev` keeps the default and is never touched.
+  cacheDir: process.env.VITE_CACHE_DIR || undefined,
   // Base public path for assets
   base: './',
   // Ensure Phaser renderer flags are set correctly during dev and build
