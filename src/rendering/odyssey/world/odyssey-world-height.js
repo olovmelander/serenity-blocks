@@ -26,6 +26,69 @@
 /** Sea level. Ch2's ceiling and Ch3's water surface are the same world plane in the shipped build. */
 export const ODYSSEY_SEA_LEVEL = 287.31;
 
+/**
+ * THE WORLD'S UNIT SCALE. **1 world unit = 1 metre.**
+ *
+ * Nobody had ever written this down (Act II plan §7.3), and four separate proposals had already
+ * been authored against four different assumptions — absorption coefficients in metres, creature
+ * sizes in metres, e-folds in units. Publishing it is not a preference, it is a precondition:
+ * every physical coefficient in the water column is meaningless without it.
+ *
+ * It is fixed at 1 m/u by the geometry that already shipped and is pinned by tests: the open
+ * ocean floor sits ODYSSEY_ABYSS_DEPTH = 207 u below the surface, which is an ocean-shelf depth
+ * at 1 m/u and an implausible 52 m at 0.25 m/u; and the massifs stand ~500 u above their foot
+ * datum, i.e. 500 m peaks.
+ *
+ * CONSEQUENCE, recorded because it is a real defect and not a rounding error: the Deep Ocean
+ * fish are 5.0-11.8 u long, so at this scale **every fish in the chapter is 5-12 m — whale-shark
+ * scale**. That is a Wave 3 sizing fix, not a licence to redefine the unit.
+ */
+export const ODYSSEY_METRES_PER_UNIT = 1;
+
+/**
+ * How far the eye sits above the rail point it is following.
+ *
+ * THE ONE CONTRACT. There were four different answers in the tree (Act II plan Wave 0): the world
+ * renderer's `railPoint.y + 16` behind `uSubmerged`, `+16` in the world playground effect, `+8`
+ * in the seam-dive playground effect, and the real camera — which does not sit above the rail at
+ * all. `computeFollowFrame` pulls the eye BACKWARDS along the tangent by `followDistance`, so on
+ * a climbing rail the eye trails BELOW its rail point; measured in chapter 1 the offset is about
+ * -11 to -13 u, not +16. Every playground capture taken against the old numbers was therefore a
+ * capture of a different scene from the game.
+ *
+ * This constant is the playgrounds' stand-in for that real offset, so all three agree. MEASURED
+ * across the submerged ascent (2026-08-13): the offset is not constant — it runs -22.6 u at
+ * p=0.15, -15.6 at p=0.17, -11.5 at p=0.19 and -7.2 at p=0.20, tightening as the rail flattens
+ * toward the surface. -16 is the mid of that span, which is why this is a STAND-IN and not a
+ * definition. The renderer's own use of it — deciding whether the camera is under water — is
+ * corrected in Wave 1 to read the actual eye, which is the only fully correct answer.
+ */
+export const ODYSSEY_EYE_RAIL_OFFSET_Y = -16;
+
+/**
+ * THE BREACH. **The one progress value at which the journey leaves the water.**
+ *
+ * Three different "the surface" lived in the tree and every one of them was used as if it were
+ * the breach. Recomputed from the shipped spline and the real `computeFollowFrame` eye
+ * (MEASURED 2026-08-13, bisection to 1e-5, script archived in the Act II plan's provenance):
+ *
+ * | event                              | p        |
+ * |------------------------------------|----------|
+ * | the RAIL crosses sea level         | 0.19182  |
+ * | **the EYE crosses sea level**      | **0.20023** |
+ * | `uSubmerged` (rail + 16) reaches 0 | 0.18141  |
+ *
+ * The eye is what the player is, so the eye is the breach. The gap between the last two is the
+ * defect Wave 1 fixes: the world declares AIR at 0.18141 while the camera stays under until
+ * 0.20023 — **0.0188 of progress, 17% of chapter 2 (0.093-0.204), the entire final ascent** —
+ * during which it renders an air sky, air aerial perspective, the cloud deck, and switches the
+ * rays, motes and fish off while the viewer is still looking through water.
+ *
+ * Anything staged on the breach — audio release, Snell's window, the meniscus, the colour script
+ * handoff — hangs off THIS constant and nothing else.
+ */
+export const ODYSSEY_BREACH_P = 0.20023;
+
 /** The datum the canonical peaks' feet sit on. */
 export const ODYSSEY_MASSIF_FOOT_Y = 297.5;
 

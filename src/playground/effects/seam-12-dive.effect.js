@@ -26,6 +26,7 @@ import {
     updateEarthCoreEnvironment,
 } from '../../rendering/odyssey/chapter-environments/earth-core.js';
 import { createOdysseyWorld } from '../../rendering/odyssey/world/odyssey-world-renderer.js';
+import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathPointAt,
@@ -157,7 +158,7 @@ export function create({ scene, camera, params }) {
             const tx = pt.x - behind.x;
             const tz = pt.z - behind.z;
             const tl = Math.hypot(tx, pt.y - behind.y, tz) || 1;
-            cam.position.set(pt.x - ((tx / tl) * 26), pt.y + 8, pt.z - ((tz / tl) * 26));
+            cam.position.set(pt.x - ((tx / tl) * 26), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y, pt.z - ((tz / tl) * 26));
             cam.lookAt(ahead.x, ahead.y + 4, ahead.z);
         },
         resize() {},

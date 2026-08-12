@@ -669,33 +669,61 @@ async function captureSeam(win, boot) {
         800,
         Number.parseInt(args.duration || process.env.ODYSSEY_CAPTURE_SEAM_DURATION || '3000', 10),
     );
-    const defaultOffsets = '0,300,600,850,1200,1800,2600,3200';
-    const offsets = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || defaultOffsets)
+    // ── SEAM SAMPLING IS BY POSITION, NOT BY WALL CLOCK ──────────────────────────
+    //
+    // THE OLD SCHEME NEVER SAMPLED THE SEAM (measured 2026-08-13, and it invalidates
+    // every prior seam assessment). It started a `panToPosition(end, 3000)` and then
+    // shuttered at wall-clock offsets 0,300,600,…  But one shutter — HIDE_OVERLAYS +
+    // collectMetrics + capturePage over IPC — costs far more than the ~300 ms between
+    // those offsets, so the schedule slipped past the whole 3 s pan: the recorded
+    // `currentPosition` went 0.05301 at the first shutter and **0.13249 at the second**,
+    // i.e. the camera had already teleported past the p=0.093 boundary, and every later
+    // frame re-shot the far side. `inSeam` was false in all eight samples. The pan logic
+    // itself is fine — it animates correctly in a live browser; it is the *shutter
+    // schedule* that cannot keep a deadline.
+    //
+    // So the seam is now sampled the way chapter stations already are, and those work:
+    // pin an explicit position, settle it, shoot it. Deterministic, reproducible, and
+    // independent of how slow a capture round-trip happens to be. Offsets are expressed
+    // as PROGRESS values; `--offsets` still overrides them, now in p.
+    const defaultStations = [
+        boundary - 0.030, // the act gate opens here today (margin 0.03) — the leak point
+        boundary - 0.020,
+        boundary - 0.010,
+        boundary - 0.006, // quench plateau opens (~p 0.0874 for the 1→2 seam)
+        boundary,
+        boundary + 0.004, // quench plateau closes (~p 0.0970)
+        boundary + 0.010,
+        boundary + 0.020,
+        boundary + 0.030, // Earth Core's dissolve is still running out here
+    ];
+    const stations = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || '')
         .split(',')
-        .map((entry) => Number.parseInt(entry.trim(), 10))
-        .filter((entry) => Number.isFinite(entry) && entry >= 0)
+        .map((entry) => Number.parseFloat(entry.trim()))
+        .filter((entry) => Number.isFinite(entry) && entry >= 0 && entry <= 1);
+    const seamStations = (stations.length ? stations : defaultStations)
+        .map((entry) => Math.min(1, Math.max(0, entry)))
         .sort((left, right) => left - right);
 
-    await startFrameSamplerAndPan(win, start, end, durationMs);
-    const startedAt = Date.now();
-    for (const offset of offsets) {
-        const waitMs = Math.max(0, startedAt + offset - Date.now());
-        if (waitMs > 0) await delay(waitMs);
-        await execute(win, HIDE_OVERLAYS);
+    for (const stationPosition of seamStations) {
+        await settleAtPosition(win, stationPosition, { settleMs: 260 });
         const metrics = await collectMetrics(win, {
             mode: 'seam',
             seam: `${SEAM.source}-${SEAM.target}`,
-            atMs: offset,
+            stationPosition,
             boundaryPosition: boundary,
             startPosition: start,
             endPosition: end,
-            durationMs,
         });
-        const filename = `seam-${SEAM.source}-${SEAM.target}-${String(offset).padStart(4, '0')}ms.png`;
+        const tag = stationPosition.toFixed(4).replace('.', 'p');
+        const filename = `seam-${SEAM.source}-${SEAM.target}-${tag}.png`;
         await capturePng(win, filename, metrics);
     }
 
-    await delay(Math.max(0, durationMs + 300 - (Date.now() - startedAt)));
+    // The frame-time sample still wants a real moving camera, so it keeps the pan — but
+    // it runs AFTER the stills, on its own, where a slipped schedule costs nothing.
+    await startFrameSamplerAndPan(win, start, end, durationMs);
+    await delay(durationMs + 300);
     const seamMetrics = await stopFrameSampler(win);
     await writeFile(
         path.join(ARTIFACT_DIR, `seam-${SEAM.source}-${SEAM.target}-frame-metrics.json`),

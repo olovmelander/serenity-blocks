@@ -109,6 +109,16 @@
             "baseline": 5.96,
             "max": 8.5,
             "note": "p=0.16, Radeon 610M/720p/Medium, drift -0.066 (one tick), content-matched at 45 draws \u2014 a REAL baseline. Pre-Wave-4 measured 7.73: the whole luminous-ocean package (bands, SSS ceiling, 640 motes, 110 fish, clouds-not-submitted-underwater fix) lands 1.7 ms UNDER where it started, and the old 24.6 ms p99 tail is gone (6.2). Lane A same station: 0.197 ms, drift exactly 0."
+        },
+        "odysseyAct2SeamGpuP50LaneBMs": {
+            "baseline": 15.4,
+            "max": 17.0,
+            "note": "p=0.105 (just past the 1->2 boundary), Radeon 610M/720p/Medium. FILLED 2026-08-13 by the first admissible pair ever taken at this station: 15.401/15.073 ms p50, drift 0.328, 82 draws with drawCallsMin==drawCallsMax in both windows, 563,529 tris. Baseline is the worse of the pair. THE SEAM HAD NO STATION AT ALL before this, which is why nobody noticed it is the second-most-expensive frame in the journey after ch1 - 2.6x the p=0.16 underwater cell - because BOTH worlds draw here at once (Earth Core alpha-dissolves to p=0.123 while the Act II ocean has been on since p=0.063). max 17.0 is a hold-the-line ratchet ~10% above baseline; Wave 2 is expected to LOWER the baseline, not spend against it. Report: gpu-split-laneb-act2-seam-p105.json."
+        },
+        "odysseyAct2DeepOceanGpuP50LaneBMs": {
+            "baseline": 14.48,
+            "max": 16.0,
+            "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. FILLED 2026-08-13: 14.483/14.090 ms p50, drift 0.393, 80 draws min==max both windows, 563,457 tris. THIS CELL EXISTS BECAUSE THE OLD ONE DID NOT GOVERN THE WORK: the only shipped underwater cell is measured at p=0.16 in `shallows` near the top of the ascent and reads 5.96 ms, but the deep half where most Act II work lands measures 14.48 - 2.4x as expensive. Any 'headroom' computed against 5.96 was computed against the cheapest frame in the chapter. max 16.0 is a hold-the-line ratchet ~10% above baseline. Report: gpu-split-laneb-act2-deep-p115.json."
         }
     }
 }

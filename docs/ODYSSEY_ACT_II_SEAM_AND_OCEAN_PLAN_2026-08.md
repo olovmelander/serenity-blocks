@@ -113,8 +113,10 @@ random angles. **The hull rebuild is visible work, not invisible work.**
 
 ### 1.6 A fifth of the chapter renders as air (VERIFIED)
 
-`uSubmerged` is computed from `railPoint.y + 16` while the eye sits 23–39 u lower, so across
-roughly **p 0.180 → 0.203 — the entire final ascent to the breach — the camera is under water
+`uSubmerged` is computed from `railPoint.y + 16` while the eye sits below the rail, so across
+~~p 0.180 → 0.203 (21% of chapter 2)~~ **[CORRECTED Wave 0, MEASURED: p 0.18141 → 0.20023, 0.0188
+of progress = 17% of chapter 2; the eye/rail offset is −22.6 u at p=0.15 easing to −7.2 at p=0.20,
+not a flat 23–39]** — **the entire final ascent to the breach — the camera is under water
 while the world renders air**: air sky dome, air aerial perspective, rays/motes/fish switched off,
 cloud deck on, water plane showing its topside from below.
 
@@ -189,6 +191,11 @@ arbitrate**; most single features will measure 0.000 on Lane A.
 
 Three hard rules follow:
 
+0. **[CORRECTED Wave 0, MEASURED] The envelope above is measured at the wrong station.** The
+   p=0.16 cell reads 5.96 ms because it is the *cheapest* frame in the chapter. The deep half
+   (p=0.115) measures **14.48 ms** and the seam (p=0.105) **15.40 ms**, both admissible pairs. Work
+   landing at p 0.10–0.15 must be budgeted against those, not against 5.96. The original ~~"2.54 ms
+   Lane B envelope"~~ stands only for the shallows.
 1. **No ESTIMATE may fund another ESTIMATE.** The pass tried to pay for the whole package with an
    unmeasured −0.4 to −0.9 ms from deleting two noise calls, on a surface **whose screen coverage
    nobody measured**. At p=0.16 the eye is ~130 u above the seabed climbing near-vertically; if the
@@ -240,6 +247,73 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 - Add gpu-split stations at **p≈0.105 (seam)** and **p≈0.115 (deep)**; take Lane B baselines.
 - **Acceptance:** a seam capture that actually contains the seam; two new admissible baselines.
 
+> **OUTCOME — Wave 0, DONE 2026-08-13.**
+>
+> **The seam harness now samples the seam (MEASURED).** Root cause: the old scheme started a
+> `panToPosition(end, 3000)` and shuttered at wall-clock offsets `0,300,600,…`, but one shutter
+> (HIDE_OVERLAYS + collectMetrics + capturePage over IPC) costs far more than the ~300 ms between
+> offsets, so the schedule slipped past the entire pan. The pan itself is innocent — instrumented
+> live in a browser it eases correctly (progress 0 → 0.183 over 1.1 s). Fixed by sampling the seam
+> **by position, the way chapter stations already work**: pin, settle, shoot. Nine stations now
+> land exactly on request (`actual == requested` to 4 dp) across p 0.063 → 0.123, crossing the
+> boundary. `--offsets` still overrides, now in progress units rather than milliseconds.
+>
+> **And the first frames of this seam ever taken immediately convicted it.** At p=0.063 — a full
+> 0.030 *before* the boundary, inside Act I — the capture shows the magma cathedral with **a blue
+> sky and white clouds behind its columns and black fish swimming through it**. The metrics agree
+> at every station from 0.063 on: `worldVisible: true`, `submerged: 1`, and all five Act II mesh
+> groups (sky, water, fish, motes, god-rays) drawing. The plan's §1.2 leak is no longer an
+> inference from code; it is a photograph.
+>
+> **One breach constant, computed not asserted (MEASURED).** Bisected against the shipped spline
+> and the real `computeFollowFrame` eye: the RAIL crosses sea level at p=0.19182, the **EYE at
+> p=0.20023**, and `uSubmerged` (rail + 16) reaches zero at p=0.18141. `ODYSSEY_BREACH_P = 0.20023`
+> is now published as the single authority, with the other two recorded beside it. The gap between
+> the last two is the Wave 1 defect, and it is **0.0188 of progress = 17% of chapter 2**, not the
+> 21% §1.6 estimated from source arithmetic — corrected in place below.
+>
+> **The eye/rail offset is a range, not a number.** MEASURED across the ascent: −22.6 u at p=0.15,
+> −15.6 at p=0.17, −11.5 at p=0.19, −7.2 at p=0.20. So the three playground contracts (+16, +16,
+> +8) were not merely inconsistent with each other, they had the **wrong sign** — the eye trails
+> *below* its rail point, because `computeFollowFrame` pulls it backwards along a climbing tangent.
+> All three now import one `ODYSSEY_EYE_RAIL_OFFSET_Y = -16` (documented as a mid-span stand-in,
+> not a definition; Wave 1 replaces the renderer's use of it with the real eye).
+>
+> **The world's unit scale is now written down: 1 world unit = 1 metre** (`ODYSSEY_METRES_PER_UNIT`),
+> fixed by geometry that already ships and is test-pinned — the abyss at 207 u below the surface is
+> a shelf depth at 1 m/u and an implausible 52 m at 0.25. Consequence recorded rather than hidden:
+> the Deep Ocean fish are 5.0–11.8 u, so **every fish in the chapter is currently 5–12 m long**.
+> That is a Wave 3 sizing fix.
+>
+> **Two measurement stations added** (`odysseyAct2SeamGpuP50LaneBMs` at p=0.105,
+> `odysseyAct2DeepOceanGpuP50LaneBMs` at p=0.115), both baseline-null with provisional maxima until
+> their first admissible cooled pair, because the only shipped underwater cell is measured at p=0.16
+> in `shallows` — near the top of the ascent, and not the frames this work changes.
+>
+> **Two stations measured, and the second one corrects this plan's budget section.**
+> `odysseyAct2SeamGpuP50LaneBMs` = **15.401/15.073 ms** p50 (drift 0.328, 82 draws matched) and
+> `odysseyAct2DeepOceanGpuP50LaneBMs` = **14.483/14.090 ms** p50 (drift 0.393, 80 draws matched),
+> both admissible. The deep half of chapter 2 is therefore **2.4x the cost of the p=0.16 cell that
+> was supposed to govern it**, and the seam is 2.6x - the second-worst frame in the journey after
+> Earth Core. §4's "2.54 ms envelope" was computed against the cheapest frame in the chapter and is
+> corrected in place below.
+>
+> **A mechanism found in the images that the code read had missed.** At the boundary (p=0.093) the
+> curtain DOES cover Earth Core - the plateau exists - yet the fish are drawn over it in force. The
+> reason is not render order: the fish are **opaque and depth-writing** and are seeded INSIDE the
+> quench's 110-radius shell, so they write depth in front of it and the curtain's own fragments
+> then fail the depth test. They punch holes through the veil. This means Wave 2's reseeding is not
+> cosmetic tidying - it is the fix for the leak, and it works even before the gate is retimed.
+>
+> **A hypothesis for Wave 1, not yet a finding.** The mottled "cumulus" that makes the deep ocean
+> read as sky appears at every station inside the quench's window (p 0.033-0.153: cream at 0.086,
+> grey at 0.093, blue-white at 0.123 and 0.130) and is **absent at p=0.167, exactly where that
+> window ends**. The prime suspect for "the atmosphere under water is not great" is therefore the
+> steam quench itself, washing 0.12 of the journey at 18-47% opacity - and the same veil is the
+> likely author of Earth Core's long-noted "cream vault" at p=0.062. **Not asserted: Wave 1 settles
+> it with a hide-the-quench capture A/B.**
+
+
 ### Wave 1 — Coherence (zero-to-negative GPU, biggest look-per-ms)
 - `uSubmerged` from the real eye, and widen the 9-unit ramp.
 - Stop drawing an air sky and 16 forest chunks underwater.
@@ -284,7 +358,7 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 Check a wave off ONLY when its acceptance criteria are met and its OUTCOME block is written into
 this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.md` is the remaining count.
 
-- [ ] **Wave 0** — Make it falsifiable (seam harness, eye-height contracts, one breach constant, unit scale, two new stations)
+- [x] **Wave 0** — Make it falsifiable (seam harness, eye-height contracts, one breach constant, unit scale, two new stations)
 - [ ] **Wave 1** — Coherence (eye-driven uSubmerged, no air sky / forest underwater, one convergence colour)
 - [ ] **Wave 2** — The seam (quench plateau, cover-bound act gate, reseeded population, occlusion not dissolve) — BLOCKED on the §7.1 owner decision
 - [ ] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
