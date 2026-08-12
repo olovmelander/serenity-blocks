@@ -1,6 +1,6 @@
 {
   "wave": -1,
-  "generatedAt": "2026-08-12T18:40:36.279Z",
+  "generatedAt": "2026-08-12T18:47:04.442Z",
   "lane": "B",
   "configurationsRun": "restricted",
   "quality": "Medium",
@@ -18,14 +18,14 @@
     {
       "id": "baseline",
       "note": "everything on",
-      "samples": 41,
-      "p50": 54.0672,
-      "p95": 56.229888,
-      "p99": 57.344,
-      "min": 47.710208,
-      "max": 57.344,
-      "drawCalls": 80,
-      "triangles": 43083,
+      "samples": 54,
+      "p50": 40.239104000000005,
+      "p95": 42.401792,
+      "p99": 44.56448,
+      "min": 35.913728,
+      "max": 44.56448,
+      "drawCalls": 79,
+      "triangles": 40899,
       "oneWorld": true,
       "levelNodesHidden": true,
       "quality": "Medium"
@@ -33,14 +33,14 @@
     {
       "id": "baseline-repeat",
       "note": "drift check against the first baseline",
-      "samples": 41,
-      "p50": 52.559872,
-      "p95": 56.295424,
-      "p99": 62.06259200000001,
-      "min": 46.268416,
-      "max": 62.06259200000001,
+      "samples": 56,
+      "p50": 41.484288,
+      "p95": 43.122688000000004,
+      "p99": 45.481984,
+      "min": 35.127295999999994,
+      "max": 45.481984,
       "drawCalls": 79,
-      "triangles": 43101,
+      "triangles": 40863,
       "oneWorld": true,
       "levelNodesHidden": true,
       "quality": "Medium"
@@ -50,8 +50,8 @@
     "bloomMs": null,
     "levelNodesMs": null,
     "oneWorldSavingMs": null,
-    "baselineDriftMs": null,
-    "baselineDriftVoidReason": "draw calls differ (baseline=80, baseline-repeat=79)",
+    "baselineDriftMs": -1.245,
+    "baselineDriftVoidReason": null,
     "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
   }
 }

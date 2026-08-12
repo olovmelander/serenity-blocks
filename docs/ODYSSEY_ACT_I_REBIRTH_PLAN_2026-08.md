@@ -637,11 +637,12 @@ the One World convention — and the plan shipped without it.)
   cathedral station (true-black 0.420 → 0.806). The god-ray facing fade and the charred rock
   re-base did nearly all of it; the acceptance's own stations were corrected (two of three sat
   inside the quench window). Three instrument repairs were needed first. Contract untouched.
-- [ ] **Wave 3b** — Earth Core consolidated (fill-first per the measured rescope) — fill
-  pass executed 2026-08-12: horizon dupes deleted, deck 140→56 @ smaller puffs, haze 225→112,
-  ratchet 58→56, gates IMPROVED (0.202) — but the pre-registered ≥5 ms Lane B bar measured
-  ~4.5 ms central against ±1.5–2.2 ms thermal noise after three repair attempts, so the wave
-  stays open on its own terms. Blocker + completion path recorded at the 3b acceptance note.
+- [x] **Wave 3b** — Earth Core consolidated (fill-first per the measured rescope) — **DONE
+  2026-08-12.** The canopy shell folded into the background shader closed it decisively:
+  **58.3 → 40.9 ms Lane B** on a cooled matched pair (conservative −16.7 ms vs a ≥5 bar),
+  cathedral mid-wash **0.134** (best of the plan), ratchet 58→56→55, materials 27→26, no
+  contract-pinned structure touched. Sprite migration + ≤35 draws carried under the
+  null-gated §8 cell as the compile goal, per the rescope.
 - [x] **Wave 4** — The ocean becomes luminous — **DONE 2026-08-12.** Bands + SSS ceiling +
   640 size-capped motes + the two water keyframes; gradient inversion fixed and measured
   (83.7 → 170.6 luma toward the surface); Lane B **7.73 → 5.96 ms p50** (drift 0.00) — the
@@ -969,6 +970,31 @@ So the wave splits, and the split is recorded rather than quietly performed:
   re-measure the ≥5 ms bar with multi-pair cooled sessions once the flicker's second source is
   found. The Wave 1 study's geometry port (the full rebuild) remains the endpoint the 3a/3b
   split always pointed at.
+
+  **3b COMPLETED — 2026-08-12, third session. The canopy fold was the lever, and it was worth
+  three times the bar.**
+
+  The named next step was executed: `createMagmaCloudCanopyTSL`'s colour terms moved INSIDE
+  `createVolcanoBackgroundTSL` (compositing over the background is `mix(bg, canopy, alpha)`
+  when the background is the only thing behind it — which renderOrder made true), and the
+  canopy SHELL was deleted as a drawable: one full screen of `depthTest:false` transparent
+  fill and one material, gone, same pixels by construction.
+
+  **Criterion 1, decisively:** cooled, content-matched pair at 79 draws — **40.24 / 41.48 ms
+  p50** against the 58.20/58.46 pre-cut baseline: a **16.7 ms saving at the conservative
+  bound**, 3.3× the pre-registered ≥5 ms bar. No reading of the bar fails. Chapter 1's Lane B
+  story across the whole plan: 57.2 ms (pre-plan, with orbs) → **~40.9 ms sans-orbs** after
+  3a's re-light and 3b's fill pass — roughly **17 ms returned to the journey's worst lane**.
+
+  **Criterion 2:** the fold's capture is the plan's best frame yet — cathedral **mid-wash
+  0.134 / true-black 0.865** (gate ≤ 0.25), console clean (0 WebGPU errors). **Criterion 3:**
+  no contract-pinned structure touched; ratchet lowered again **56 → 55**; materials 27 → 26.
+  **Criterion 4:** full suite 333 files / 3295 tests green; captures attached.
+
+  **Carried out of the wave, tracked where they were always tracked:** the sprite → instanced
+  migration and the ≤35 draw target live under §8's null-gated `odysseyAct1Ch1DrawCalls` cell
+  as the compile/startup goal (per the measured rescope); the flicker hunt (two sources, both
+  outside this wave's changes) and the full geometry port remain on the §7 carried list.
 
 > ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
 > 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
