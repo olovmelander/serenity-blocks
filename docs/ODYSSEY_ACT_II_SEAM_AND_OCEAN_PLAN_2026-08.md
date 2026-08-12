@@ -322,6 +322,38 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 - **Acceptance:** at p 0.115/0.130/0.167 no cloud reads as cloud; midWash at p=0.167 falls from
   **0.894** toward a structured frame; Lane B not worse than 5.96 (expect better — this removes draws).
 
+> **WAVE 1 — ROOT CAUSE FOUND, FIX BLOCKED (MEASURED 2026-08-13). Wave 1 stays UNCHECKED.**
+>
+> **The "air sky with cumulus" underwater is the STEAM QUENCH.** Force-hidden at p=0.130 the
+> mottled cloud field disappears completely and the frame becomes what it should be: a clean blue
+> water column with legible god-ray shafts and mote specks. Nothing else accounts for it - the One
+> World group, the whole Earth Core chapter, the r=4000 atmosphere backstop, the point cloud and
+> the chapter-1 corridor were each force-hidden in turn and the clouds survived all of them.
+>
+> The mechanism is the window, not the shader: the quench spans **p 0.033 → 0.153**, so its billowy
+> veil is still ~18% opaque at p=0.130 and paints a cumulus wash over **a fifth of two chapters**.
+> It is the same veil that produces Earth Core's long-noted "cream vault" at p=0.062, and it is why
+> the value gate reads midWash 0.283 there - the frame is a low-contrast wash, exactly as reported.
+>
+> **INSTRUMENT SCAR (recorded because it nearly produced a false finding).** The first four A/Bs of
+> this hunt were INVALID and one of them refuted the correct answer. Setting `mesh.visible = false`
+> does not hold: the board's live rAF loop rewrites visibility every frame from the environment
+> manager, so the hide was reverted before the shutter. Every "still there" result up to that point
+> was an artefact. The working method is to pin the flag against all writers -
+> `Object.defineProperty(obj, 'visible', {get: () => false, set: () => {}})` - and only then shoot.
+> Any future mesh-attribution A/B in this project must use it.
+>
+> **Why Wave 1 cannot close here.** The fix is to narrow the quench's window, which is a re-timing
+> of the quench curve - and that is Wave 2's `§7.2` decision (plateau vs three beats), which is
+> **blocked on the owner**. Doing it now would pre-empt a decision the plan reserves. The remaining
+> Wave 1 items (eye-driven `uSubmerged`, the 16 forest chunks drawn underwater, one convergence
+> colour) are independent of it and stay open.
+>
+> **Consequence for §7.2: the decision is now better informed.** Whatever shape is chosen, the
+> window must be narrow. A veil wide enough to cover the act swap is ~0.01 of progress; the shipped
+> one is 0.12, i.e. **twelve times wider than the job requires**, and everything it touches outside
+> the crossing is collateral wash.
+
 ### Wave 2 — The seam (needs an owner decision first, see §7)
 - Give the quench a **plateau** rather than an apex, centred on the boundary.
 - Bind the act gate to the occluder's cover instead of the constant 0.03 margin.
