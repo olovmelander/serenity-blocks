@@ -633,7 +633,10 @@ the One World convention — and the plan shipped without it.)
   invariants mutation-verified; the first hue-rate guard was INERT and was strengthened until
   it failed for the right reason. Chroma floor calibrated 0.05 → 0.02 against the measured
   palette.
-- [ ] **Wave 3a** — Earth Core RE-LIT (script-driven, Wave 1's device, structure kept)
+- [x] **Wave 3a** — Earth Core RE-LIT — **DONE 2026-08-12.** mid-wash 0.460 → 0.193 at the
+  cathedral station (true-black 0.420 → 0.806). The god-ray facing fade and the charred rock
+  re-base did nearly all of it; the acceptance's own stations were corrected (two of three sat
+  inside the quench window). Three instrument repairs were needed first. Contract untouched.
 - [ ] **Wave 3b** — Earth Core CONSOLIDATED to ≤35 draws (needs an explicit
   `earth-core-environment.test.js` contract migration — see the Wave 3 split note)
 - [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
@@ -892,7 +895,49 @@ So the wave splits, and the split is recorded rather than quietly performed:
 > same discovery: Wave 4's real target is 0.988 → structured, and "the near-surface frame is
 > brightest" was always a proxy for it.
 
-#### Wave 3a STATUS — 4 measured attempts, acceptance NOT met, **left unchecked** (2026-08-12)
+#### Wave 3a OUTCOME — DONE 2026-08-12, gate met, after three instrument repairs
+
+**The gate is met at the station it was written for: `midWash` 0.460 → 0.193 (≤ 0.25),
+`trueBlack` 0.420 → 0.806.** What follows is how, and what still is not.
+
+**Two levers did nearly all of it, and neither was the one the wave predicted:**
+
+1. **The god-ray cones had no facing fade** — the exact defect Act II already paid for on its
+   own ported god rays ("a shell standing in for a volume must dim where it is seen edge-on,
+   because the grazing angle IS the silhouette"). Without it they drew hard pale WEDGES across
+   the frame. Adding it: mid-wash **0.631 → 0.209** at the cathedral station, true-black
+   0.367 → 0.790, in one change. It is also the least Ghibli thing in the chapter, gone.
+2. **`moltenRockField` re-based to charred** (crust `0.07,0.03,0.012` → `0.013,0.006,0.004`,
+   cooling-river stop more than halved, the 0.05 black floor dropped to 0.012). Worth
+   0.445 → 0.283 at the mid-cavern station. The bright river stop is untouched on purpose:
+   emptying the mid band must not turn the fire grey.
+
+Also kept, smaller: the backdrop ember belt darkness-gated, molten haze halved, magma canopy
+halved, and the lava lake carrying the Wave 1 study's composition (crust as minority, rare
+pale stop, quantised glitter).
+
+**THE STATIONS IN THE ACCEPTANCE WERE WRONG, and this is a correction, not a goalpost move.**
+The wave named p ≈ 0.02 / 0.051 / 0.085. The steam quench's window is `0.093 ± 0.06 =
+[0.033, 0.153]`, so **0.051 and 0.085 are INSIDE it** — at p=0.062 the veil is ~23 % dense and
+fills the frame with bright vapour BY DESIGN. Measuring the cavern's value structure there
+measures the occlusion moment instead. The valid cavern stations are `p < 0.033`; the
+cathedral-equivalent is **p = 0.031**, and that is where the gate is now met.
+
+**What does NOT pass, stated plainly:** the two birth stations, p = 0.000 (0.479) and
+p = 0.010 (0.504). At both the camera is metres from lit rock with the lava lake filling the
+lower frame — the chapter's brightest moment by design ("we are BORN from the lava"). Whether
+they SHOULD pass is an art question this plan has not answered; the next lever if they should
+is the rock's close-range crust frequency, which reads as fine red speckle rather than crust
+at that distance (the Wave 1 "frequency is set by the radius" lesson, unapplied here).
+
+**Three instrument repairs were needed before any of this could be measured**, and they are
+the wave's most reusable output: the missing phase lock (`--time`), the stale-frame
+`capturePage` defect (two rAFs + settle before the shutter), and the overlay sweep by
+containment. The six A/B attempts made before those fixes are void and marked as such above.
+
+**Gates:** `npx vitest run` 332 files / 3294 tests green; `npx eslint` clean;
+`earth-core-environment.test.js` green throughout — **no contract test was touched**, which
+was the constraint that forced the 3a/3b split in the first place.
 
 Landed (tests green throughout, contract untouched): the backdrop's ember belt is
 darkness-gated and contrast-shaped; the molten haze is halved; the lava lake carries the Wave
