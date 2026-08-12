@@ -89,6 +89,26 @@
       "baseline": 677591834,
       "max": 262144000,
       "note": "music currently rides inside app.asar; Phase 8.2 asarUnpack"
+    },
+    "odysseyAct1Ch1GpuP50LaneAMs": {
+      "baseline": null,
+      "max": 1.0,
+      "note": "Rebuilt Earth Core at p=0.051, High/1080p. BASELINE NULL PER ADR-0016: both Wave 7 pairs were VOIDED by the content-match guard (draw calls flicker 92<->93 at this station on a time-driven cadence; single-run p50s 2.29-2.49). Pre-rebuild measured 2.10 (drift 0.00). Finding the flicker source is the prerequisite for ever filling this cell."
+    },
+    "odysseyAct1Ch1GpuP50LaneBMs": {
+      "baseline": null,
+      "max": 5.0,
+      "note": "Same station, Radeon 610M/720p/Medium. Pre-rebuild: 57.21 (drift 0.33). Post 3a+decal-merge: 56.3-59.3 across a VOIDED pair (same 92<->93 flicker). THE FINDING THAT MATTERS: draws fell 131->92 and Lane B did not move \u2014 ch1's iGPU cost is FILL/ALU-bound (the emissive surface area), not draw-bound, so Wave 3b's consolidation must target surfaces, not submissions. Baseline stays null until the flicker is fixed and a content-matched pair exists."
+    },
+    "odysseyAct1Ch1DrawCalls": {
+      "baseline": null,
+      "max": 35,
+      "note": "131 pre-rebuild; 92-93 after the Wave 3b decal merge (20 decals -> 1, pixel-identical). Baseline stays null: committing 92 against max 35 reds the gate, and closing that gap is 3b's remaining contract-migration work (sprites, positionLocal-shaded rock families). The <=58 drawable ratchet in earth-core-drawable-budget.test.js holds the win meanwhile."
+    },
+    "odysseyAct1UnderwaterGpuP50LaneBMs": {
+      "baseline": 5.96,
+      "max": 8.5,
+      "note": "p=0.16, Radeon 610M/720p/Medium, drift -0.066 (one tick), content-matched at 45 draws \u2014 a REAL baseline. Pre-Wave-4 measured 7.73: the whole luminous-ocean package (bands, SSS ceiling, 640 motes, 110 fish, clouds-not-submitted-underwater fix) lands 1.7 ms UNDER where it started, and the old 24.6 ms p99 tail is gone (6.2). Lane A same station: 0.197 ms, drift exactly 0."
     }
   }
 }
