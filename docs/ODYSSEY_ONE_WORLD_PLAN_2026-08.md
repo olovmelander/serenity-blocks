@@ -714,6 +714,16 @@ commit, which is why the "last known-good commit" also stalled and every environ
 half-fit. The elimination table below is kept as a record of how three wrong theories were
 each falsified by measurement.
 
+**First post-fix Act II sweep (in-game, One World on):** Ch4 verified good. Ch5 boots (the
+first time ever) and the continuity payoff is visible — valley, shore and forest far below the
+climb — but the **cloud deck is broken at eye height in-game**: ragged navy shards instead of
+white strata (sky luma 178.8 vs 129.4 target). The rail crosses the deck's altitude through
+Ch5, so the camera sees paper-thin billowed geometry edge-on, and the in-game grade drives the
+deck's base colour toward saturated navy that the playground (no post stack) never showed.
+Next Wave 3 item: tune the deck for the eye-height crossing (fade the deck out within ~40 u of
+the camera's altitude band, and re-check cloudBase under the in-game grade the way the ground
+palette was re-fitted — outputScale/outputSaturation apply to it too).
+
 **LESSON, plan-wide:** CPU-expressible terrain math goes in BAKES, not TSL graphs. A TSL
 expression with high fan-out referenced through varyings is a build-time bomb in r181, and
 `.toVar()` does not defuse it.
