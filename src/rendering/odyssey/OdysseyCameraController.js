@@ -193,7 +193,16 @@ function resolveChapterFraming(chapterId) {
 const CHAPTER_1_BASE = CHAPTER_FRAMING_OVERRIDES[1];
 const CHAPTER_1_START_FRAMING = Object.freeze({
     ...DEFAULT_CHAPTER_FRAMING,
-    downLookScale: 1.05,
+    // 1.05 -> 1.40: THE OPENING SHOT NOW SHOWS THE FLOOR IT IS BORN FROM (user request
+    // 2026-08-12: "an angle so that you see the first level orb as well as the lava floor").
+    // With the eye floored above the lava the view still pitched 23.7 degrees UP, which put
+    // the lake behind the bottom edge entirely (the nearest floor sample projected to NDC y
+    // -1.75). Deepening the start-only down-look levels the opening to ~0 degrees: measured
+    // NDC, the first orb sits at (-0.21, +0.29) and the lava reads across the lower half
+    // (-0.70 at 15 units out, -0.35 at 30, -0.14 at 80). This value is start-only — the
+    // framing lerps to the chapter base (0.65) over in-chapter progress 0.12 -> 0.34, so the
+    // ascent is untouched.
+    downLookScale: 1.4,
     lookForward: 1.8,
     lookUp: -2.8,
     camUp: 4.8,
