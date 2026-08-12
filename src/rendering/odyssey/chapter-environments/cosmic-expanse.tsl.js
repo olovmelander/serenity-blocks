@@ -39,6 +39,7 @@ import {
     mix,
     normalize,
     normalView,
+    normalWorld,
     oneMinus,
     positionLocal,
     positionViewDirection,
@@ -51,6 +52,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -366,7 +368,16 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     const uTrough = uniform(new THREE.Color(0x3f5fb0)); // cool cobalt band trough
     const uShadow = uniform(new THREE.Color(0x0c1226)); // deep shadowed band
     const uStorm = uniform(new THREE.Color(0xff6a3a)); // great-red-spot storm
-    const uLightDir = uniform(new THREE.Vector3(0.72, 0.34, 0.6).normalize());
+    // WAVE 0.2 — the hero is lit by the journey's sun, in WORLD space.
+    // This was a hand-tuned (0.72, 0.34, 0.6) dotted against `normalView`, which welds the
+    // light to the camera: driving the real controller over the real spline and converting
+    // that view-space light to world space at 21 points across the chapter, the direction it
+    // actually represents rotates 11.2 degrees end-to-end. The terminator SWAM as you flew
+    // past — a planet whose day/night line follows the viewer.
+    // The eye-tuned best fit ([-0.279, 0.185, 0.942]) turned out to sit 24.3 degrees from
+    // ODYSSEY_WORLD_SUN and 130.1 from ODYSSEY_SUN, so joining the canonical sun costs about
+    // as much as the swim it removes, and buys a terminator fixed in the world.
+    const uLightDir = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
 
     const n = normalize(positionLocal);
 
@@ -394,8 +405,11 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     const spotSwirl = ridged3(n.mul(9.0).add(time.mul(0.12))).mul(0.6).add(0.4);
     color = mix(color, uStorm.mul(spotSwirl), spotMask.mul(0.85));
 
-    // Day / night terminator (view-space normal vs. light dir).
-    const diffuse = max(0.0, dot(normalView, normalize(uLightDir)));
+    // Day / night terminator — WORLD-space normal vs. the world-space sun, so the lit side is
+    // a property of the planet rather than of where you happen to be standing. On a sphere
+    // `normalWorld` is radial, hence spin-invariant: the belts rotate underneath a terminator
+    // that stays put, which is what a planet actually does.
+    const diffuse = max(0.0, dot(normalize(normalWorld), normalize(uLightDir)));
     color = color.mul(diffuse.mul(0.9).add(0.10)); // darker night side (in-game: earth moodier but still lit)
 
     // Hot rim/limb light — a tight tangerine sunlit limb on the lit side so the
@@ -424,12 +438,20 @@ export function createHeroPlanetSurfaceTSL(uTime) {
 // shading, and the one DirectionalLight in the rig does not reach the garland once the
 // manager has reparented the chapter's lights — capture showed the rocks rendering as
 // PURE BLACK discs punched through the carried aurora, at every albedo/emissive/intensity
-// combination tried. So the rocks shade themselves, exactly like the hero planet does.
+// combination tried. So the rocks shade themselves, as the hero planet also does.
 //
 // Shading runs in VIEW space (normalView against a fixed view-space key). That is not
 // physically anchored to the world, but it is immune to instanced-normal handling and it
 // guarantees every rock shows a lit face, a terminator and a dark side — i.e. form — from
 // any angle. For tumbling background debris that reads correctly and never degenerates.
+//
+// WAVE 0.2 — this is now a DELIBERATE exception rather than the house style, and the
+// difference is what the surface is for. The hero planet moved to a world-space terminator
+// because a hero's lit side is something you read as a fact about the planet; when it was
+// view-space its day/night line rotated 11.2 degrees as you flew the chapter. These rocks
+// are tumbling debris a few pixels across, where "always shows form" beats "anchored", and
+// nobody can perceive a terminator that follows the camera on an object that is itself
+// tumbling. Do not "fix" these to match the hero — the trade was made knowingly.
 export function createAsteroidRockTSL() {
     const uKey = uniform(new THREE.Vector3(0.48, 0.62, 0.62).normalize());
     const uLit = uniform(new THREE.Color(0x4c4658)); // cool violet key (the void)

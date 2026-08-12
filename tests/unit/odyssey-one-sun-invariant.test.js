@@ -50,6 +50,34 @@ describe('Odyssey has one sun', () => {
         expect(angleBetween(MOUNTAIN_SHADING.keyDir, ODYSSEY_SUN)).toBe(0);
     });
 
+    it('keeps ONE declaration of the re-solved world sun, in the import-free leaf', () => {
+        // It used to be declared in odyssey-world-renderer.js and imported by nobody — a third
+        // sun in waiting. A chapter cannot reasonably import the whole world renderer to find
+        // out where the light is, so the declaration belongs in chapter-profile.js and the
+        // renderer re-exports it for its own modules.
+        const world = readFileSync(
+            path.join(ROOT, 'src/rendering/odyssey/world/odyssey-world-renderer.js'),
+            'utf8',
+        );
+        expect(world).not.toMatch(/const ODYSSEY_WORLD_SUN\s*=\s*\[/);
+        expect(world).toMatch(/import \{ ODYSSEY_WORLD_SUN \}/);
+    });
+
+    it('lights Ch6 hero planet in WORLD space, so the terminator cannot follow the camera', () => {
+        // The defect: `dot(normalView, uLightDir)` welds the light to the camera, so the
+        // planet's day/night line rotated 11.2 deg end-to-end across the chapter as you flew
+        // past it. normalWorld on a sphere is radial and therefore spin-invariant — the belts
+        // rotate underneath a terminator that stays put.
+        const src = readFileSync(
+            path.join(ROOT, 'src/rendering/odyssey/chapter-environments/cosmic-expanse.tsl.js'),
+            'utf8',
+        );
+        expect(src).not.toMatch(/dot\(\s*normalView\s*,\s*normalize\(uLightDir\)\s*\)/);
+        expect(src).toMatch(/dot\(\s*normalize\(normalWorld\)\s*,\s*normalize\(uLightDir\)\s*\)/);
+        // ...and it is the journey's sun, not another hand-tuned triple.
+        expect(src).toMatch(/uniform\(new THREE\.Vector3\(\.\.\.ODYSSEY_WORLD_SUN\)/);
+    });
+
     it('leaves no second hard-coded key-light direction in the shared alpine language', () => {
         // The override PARAMETER stays — Mountains legitimately aligns the key to its on-screen
         // sun disc, and the winter theme drives it from its own storm state. What must not come

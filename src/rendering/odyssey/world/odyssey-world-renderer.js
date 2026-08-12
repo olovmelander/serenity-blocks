@@ -13,6 +13,7 @@ import {
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { sampleColourScript } from '../odyssey-colour-script.js';
 
 /**
@@ -39,7 +40,10 @@ import { sampleColourScript } from '../odyssey-colour-script.js';
  *    while a local-space mask must read `positionGeometry`.
  */
 
-export const ODYSSEY_WORLD_SUN = [-0.46, 0.36, 0.61];
+// Imported, not owned: the canonical value now lives in chapter-profile.js so chapters can read
+// the journey's sun without importing the whole world renderer. Re-exported under the same name
+// because the world's own modules and tests already reference it from here.
+export { ODYSSEY_WORLD_SUN };
 
 export const ODYSSEY_WORLD_QUALITY = Object.freeze({
     high: {

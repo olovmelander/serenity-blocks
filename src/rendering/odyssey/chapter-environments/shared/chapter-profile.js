@@ -24,6 +24,25 @@
  */
 export const ODYSSEY_SUN = Object.freeze([0.35, 0.62, -0.70]);
 
+/**
+ * The RE-SOLVED journey sun (One World, Wave 0/1). `ODYSSEY_SUN`'s negative Z back-lit the
+ * corridor — the world's sun was re-derived from the actual travel direction, and this is that
+ * answer. It lives here, in the import-free leaf, because a light direction that only one
+ * renderer can see is how the journey ended up with three of them: this used to be declared in
+ * `odyssey-world-renderer.js` and imported by nobody.
+ *
+ * Independent corroboration that this, not `ODYSSEY_SUN`, is the correct canonical direction:
+ * Ch6's hero gas giant was hand-tuned by eye until it looked right, using a VIEW-space light.
+ * Driving the real camera over the real spline and converting that light to world space at each
+ * frame gives a best fit of [-0.279, 0.185, 0.942] — **24.3 degrees from this vector, but 130.1
+ * degrees from `ODYSSEY_SUN`.** The eye had already voted for the world's sun.
+ *
+ * `ODYSSEY_SUN` survives as the LEGACY profile sun, still read by chapters 1/7/8 and the
+ * fallback Act II chapters. Converging the two (115.6 degrees apart) is the open half of Wave
+ * 0.2 and needs those chapters captured first — see the plan.
+ */
+export const ODYSSEY_WORLD_SUN = Object.freeze([-0.46, 0.36, 0.61]);
+
 /** Narrative acts (see plan §3.1). */
 export const ODYSSEY_ACTS = Object.freeze({
     ORIGIN: 'origin', // I — Earth Core, Deep Ocean — close & enclosed
