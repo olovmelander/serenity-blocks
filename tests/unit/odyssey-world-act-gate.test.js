@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import {
+    ONE_WORLD_ACT_MARGIN,
+    isWorldVisibleAtProgress,
+} from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
+import {
     DEFAULT_ODYSSEY_TRANSITION,
     ODYSSEY_CHAPTER_PROFILES,
 } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
@@ -30,7 +34,9 @@ const BOARD = readFileSync(
     path.join(ROOT, 'src/rendering/odyssey/OdysseyBoardController.js'),
     'utf8',
 );
-const MARGIN = Number(BOARD.match(/const ONE_WORLD_ACT_MARGIN = ([\d.]+);/)[1]);
+// Import the REAL gate rather than re-deriving it: a test that reimplements the predicate
+// passes happily while the game does something else.
+const MARGIN = ONE_WORLD_ACT_MARGIN;
 
 const seamWidthOf = (chapterId) => {
     const p = ODYSSEY_CHAPTER_PROFILES.find((c) => c.id === chapterId);
@@ -41,7 +47,7 @@ describe('the world is gated to Act II', () => {
     const cp = getActiveOdysseyChapterPositions();
     const actStart = cp[1];
     const actEnd = cp[5];
-    const visibleAt = (p) => p > (actStart - MARGIN) && p < (actEnd + MARGIN);
+    const visibleAt = (p) => isWorldVisibleAtProgress(p, actStart, actEnd);
 
     it('the margin is the authored seamWidth of BOTH act edges, not the widest in the journey', () => {
         expect(seamWidthOf(1)).toBe(MARGIN);
@@ -70,6 +76,15 @@ describe('the world is gated to Act II', () => {
     it('hides the world deep in the chapters that own their own frame', () => {
         expect(visibleAt(0.0), 'journey start, Earth Core').toBe(false);
         expect(visibleAt(1.0), 'journey end, Urban Dreams').toBe(false);
+    });
+
+    it('the board asks the shared gate rather than reimplementing it', () => {
+        expect(BOARD).toMatch(/isWorldVisibleAtProgress\(cameraProgress, actStart, actEnd\)/);
+    });
+
+    it('degrades to VISIBLE on an unreadable layout, rather than blanking Act II', () => {
+        expect(isWorldVisibleAtProgress(NaN, actStart, actEnd)).toBe(true);
+        expect(isWorldVisibleAtProgress(0.3, undefined, actEnd)).toBe(true);
     });
 
     it('hands the sky back: the dome cull follows visibility, not merely existence', () => {

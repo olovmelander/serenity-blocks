@@ -17,6 +17,7 @@
 //   seamT=<0..1>   sweep across the boundary: 0 = late Ch1, ~0.5 = the seam, 1 = early Act II
 //   p=<0..1>       absolute Odyssey progress override
 //   only=core|world   isolate one side (the other is not built at all)
+//   gate=0            disable the act-gate, reproducing the pre-fix overdraw defect
 // Live sweep without reload: window.__SEAM12__.setSeamT(0..1) / setProgress(0..1).
 import * as THREE from 'three/webgpu';
 import {
@@ -29,6 +30,7 @@ import {
     getOdysseyPathPointAt,
 } from '../../rendering/odyssey/path-utils.js';
 import { resolveChapterBlendState } from '../../rendering/odyssey/ChapterEnvironmentManager.js';
+import { isWorldVisibleAtProgress } from '../../rendering/odyssey/world/odyssey-world-act-gate.js';
 
 export const meta = {
     id: 'seam-12-dive',
@@ -100,8 +102,16 @@ export function create({ scene, camera, params }) {
             updateEarthCoreEnvironment(core, delta, time, camera, p, null);
         }
         if (world) {
-            const railPoint = getOdysseyPathPointAt(p);
-            world.update(time, railPoint, (p - actStart) / actSpan);
+            // The SAME gate the board applies (shared module, deliberately not re-derived):
+            // outside Act II the world must not draw, or it paints over the chapter that owns
+            // the frame. `gate=0` disables it to reproduce the pre-fix defect for comparison.
+            const gated = params?.get?.('gate') !== '0';
+            const worldVisible = !gated || isWorldVisibleAtProgress(p, actStart, actEnd);
+            world.group.visible = worldVisible;
+            if (worldVisible) {
+                const railPoint = getOdysseyPathPointAt(p);
+                world.update(time, railPoint, (p - actStart) / actSpan);
+            }
         }
     }
 
