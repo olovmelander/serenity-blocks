@@ -721,8 +721,13 @@ until the god-ray/caustic port the prop inventory scoped. **PORTED and in-game-v
 the same day (65124e46):** caustics as a zero-draw term on the submerged shelf, god rays as
 one InstancedMesh seated from caller-supplied railSamples, leaning 23° toward the canonical
 sun's azimuth (full alignment laid them sideways — refraction keeps real shafts steep; no
-private azimuth was invented). Remaining polish: the shaft edges read hard under the in-game
-grade — soften edgeFade/brightness the way the cloud base was re-fitted. Ch3 verified this morning. Ch5 boots (the
+private azimuth was invented). The hard shaft edges the first in-game run showed are FIXED and
+re-verified: the ported `abs(uv.x - 0.5)` feather was on the wrong axis — a cone's `uv.x` runs
+around the CIRCUMFERENCE, so it lit one side and left a seam, which the grade turned into solid
+triangular wedges. Replaced with a FACING fade (a shell standing in for a volume must dim where
+it is seen edge-on, because the grazing angle *is* the silhouette) plus a 14–85 u near fade,
+and slimmer/more numerous cones. Now soft columns with caustic shimmer, in both playground and
+in-game captures. Ch3 verified this morning. Ch5 boots (the
 first time ever) and the continuity payoff is visible — valley, shore and forest far below the
 climb — but the **cloud deck is broken at eye height in-game**: ragged navy shards instead of
 white strata (sky luma 178.8 vs 129.4 target). The rail crosses the deck's altitude through
