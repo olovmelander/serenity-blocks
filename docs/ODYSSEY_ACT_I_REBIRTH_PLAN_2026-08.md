@@ -901,6 +901,19 @@ So the wave splits, and the split is recorded rather than quietly performed:
   pockets (same). Each is exactly the "deliberate contract migration" this wave was split
   out to negotiate.
 
+  **3b RESCOPED BY MEASUREMENT (Wave 7's finding, annotated here where 3b will read it):
+  the wave's premise — that draw consolidation is ch1's Lane B lever — is FALSE.** Draws
+  fell 131 → 92 (decal merge) and Lane B stayed ~57–58 ms; hiding the orb group too
+  (84 draws, content-matched pair via the new `--flags` passthrough) still measures
+  **58.20 / 58.46 ms**. The chapter's iGPU cost is **fill/ALU** — the stacked full-coverage
+  emissive layers (canopy + backdrop + haze + horizon) and the molten-rock field — the SAME
+  surfaces §3a identified as the value-structure problem. 3b's consolidation therefore aims
+  at **surface area and shader cost first**, with the ≤35 draw target kept as a
+  compile/startup goal, not a Lane B claim. **The measurement prerequisite is solved:** the
+  92↔93 flicker that voided every ch1 pair is IN the level-node group (proven — hiding it
+  yields matched pairs twice), so 3b can A/B with `--flags odysseyHideLevelNodes=1` on both
+  sides until the orb-side toggle is found.
+
 > ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
 > 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
 > the playground. Measured against the SHIPPED chapter under the real ACES grade, it is
