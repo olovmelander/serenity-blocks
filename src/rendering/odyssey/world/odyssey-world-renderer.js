@@ -421,21 +421,30 @@ function bakeCloudSilhouette(res, vn) {
     // contour does, and that is exactly what a union of discs produces.
     const discs = [];
     const push = (x, y, r) => discs.push({ x: x * res, y: y * res, r: r * res });
-    const CLUSTERS = 3;
+    // SCALE, set against the owner's Witness reference. That sky is a FEW BIG clouds in
+    // generous blue, and each one is big enough that you can count its lobes; the first cut
+    // gave many small puffs — a mackerel sky, right grammar at the wrong size. So: 2 clusters
+    // per tile instead of 3, primaries roughly doubled (0.070-0.115 -> 0.125-0.190 of the
+    // tile), and the satellites scaled with them so the lobe HIERARCHY is preserved — a
+    // cloud must still read as primaries carrying secondaries carrying scallops, just larger.
+    // Cluster spreads grow with the lobes for the same reason.
+    // In world terms at the coarsest octave (tile ~488 u) a primary lobe is now ~120-185 u
+    // across rather than ~68-112, and there are fewer of them.
+    const CLUSTERS = 2;
     for (let c = 0; c < CLUSTERS; c += 1) {
         const cx = rnd();
         const cy = rnd();
         const primaries = 2 + Math.floor(rnd() * 3); // 2-4 lobes carry the read
         for (let i = 0; i < primaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.16), cy + ((rnd() - 0.5) * 0.16), 0.070 + (rnd() * 0.045));
+            push(cx + ((rnd() - 0.5) * 0.26), cy + ((rnd() - 0.5) * 0.26), 0.125 + (rnd() * 0.065));
         }
-        const secondaries = 4 + Math.floor(rnd() * 4);
+        const secondaries = 5 + Math.floor(rnd() * 4);
         for (let i = 0; i < secondaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.24), cy + ((rnd() - 0.5) * 0.24), 0.032 + (rnd() * 0.030));
+            push(cx + ((rnd() - 0.5) * 0.40), cy + ((rnd() - 0.5) * 0.40), 0.058 + (rnd() * 0.048));
         }
-        const tertiaries = 8 + Math.floor(rnd() * 6);
+        const tertiaries = 10 + Math.floor(rnd() * 7);
         for (let i = 0; i < tertiaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.30), cy + ((rnd() - 0.5) * 0.30), 0.013 + (rnd() * 0.016));
+            push(cx + ((rnd() - 0.5) * 0.50), cy + ((rnd() - 0.5) * 0.50), 0.024 + (rnd() * 0.026));
         }
     }
     const out = new Float32Array(res * res);
