@@ -544,7 +544,18 @@ async function collectMetrics(win, extra = {}) {
                 visibleMeshes: (() => {
                     const names = [];
                     bc?.scene?.traverseVisible?.((o) => {
-                        if ((o.isMesh || o.isInstancedMesh || o.isSprite) && o.name) names.push(o.name);
+                        if (!(o.isMesh || o.isInstancedMesh || o.isSprite)) return;
+                        // UNNAMED MESHES ARE NOT INVISIBLE, they are just invisible to THIS.
+                        // The ch6 void-sky backstop paints the entire frame during the 5->6
+                        // summit ignite and never appeared in this roster, so a capture that
+                        // asked "what is drawing my sky" got an answer with the culprit
+                        // missing. Fall back to a geometry+material description so an unnamed
+                        // mesh is still accounted for rather than silently dropped.
+                        // NOTE the concatenation: this whole block is injected through a
+                        // template literal, so a nested backtick template here terminates the
+                        // OUTER one and the page silently receives a syntax error.
+                        names.push(o.name || ('<unnamed ' + (o.geometry?.type || '?') + ' '
+                            + (o.material?.type || '?') + '>'));
                     });
                     const counts = {};
                     names.forEach((n) => { counts[n] = (counts[n] || 0) + 1; });

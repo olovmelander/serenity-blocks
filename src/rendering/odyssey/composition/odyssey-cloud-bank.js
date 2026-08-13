@@ -43,6 +43,12 @@ import { SEAM_56_AURORA_BRIDGE } from '../chapter-environments/shared/seam-bridg
 export const CLOUD_BANK_RADIUS = 150;
 /** Vertical squash — a stratus lens, not a sphere. */
 export const CLOUD_BANK_Y_SCALE = 0.35;
+/**
+ * Fraction of the window's triangular ramp that the bank spends at ZERO density before it
+ * begins to appear. See `update` — without it the bank is faintly present across its whole
+ * window and paints noise over a clean sky long before it reads as anything.
+ */
+export const BANK_APPROACH_DEAD_BAND = 0.30;
 
 /** Entry side: Ch5's bright cloud-cathedral daylight. */
 const BANK_DAYLIT = new THREE.Color(0xdfeaf6);
@@ -93,9 +99,16 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS } = {}) {
     // Aurora on the bright billows, strongest mid-crossing where the bank is densest — the
     // aurora seen from inside the weather rather than painted on a dome behind it.
     const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(smoothstep(1.0, 0.6, a))).mul(0.55);
-    const colour = mix(base, uAurora, auroraAmt)
-        // Interior form in the colour term, never the alpha (the torn-curtain lesson).
-        .mul(float(0.42).add(billow.mul(0.72)));
+    // INTERIOR FORM IN THE COLOUR TERM, never the alpha (the torn-curtain lesson) — but
+    // QUANTISED, so the bank speaks the deck's language. The deck is now poster cumulus with
+    // two flat value bands and a drawn edge (cloud plan Waves 1-2); a smooth `0.42 + 0.72 *
+    // billow` next to it reads as the FBM haze it is, which is exactly the "last cloud of the
+    // act, and the only one left in the old idiom" this plan's Wave 3 exists to fix. Two flat
+    // stops with a narrow transition, then a small smooth residue so the volume still has
+    // depth when the camera is INSIDE it and the bands would otherwise be a flat wall.
+    const bandLit = smoothstep(0.46, 0.54, billow);
+    const posterised = float(0.44).add(bandLit.mul(0.46)).add(billow.mul(0.16));
+    const colour = mix(base, uAurora, auroraAmt).mul(posterised);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;
@@ -121,8 +134,18 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS } = {}) {
             uTime.value = time;
             const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
             const tri = 1 - Math.abs((t * 2) - 1);
-            // Squared, as the quench: the approach stays open, then the bank closes.
-            uDensity.value = tri * tri;
+            // THE APPROACH MUST BE EMPTY, NOT FAINT. `tri * tri` is nonzero from the first
+            // frame of the window, and this mesh is a 300 u lens the camera is already close
+            // to, so at seamT 0.10 a 4 % density painted a full-screen FBM mottle across an
+            // otherwise clean ch5 sky — capture-diagnosed at p=0.60, where it read as noise on
+            // the sky rather than as weather ahead. Worse, it is the reason a 2026-08-13 bisect
+            // mistook this bank for chapter SIX bleeding in: the sky went mottled at exactly the
+            // progress where ch6's summit ignite also fires, and the bank had no off switch to
+            // separate them (it has one now: ?odysseyNoCloudBank=1).
+            // A dead band holds the bank at zero until it is close enough to read as a mass;
+            // the closure at the boundary is unchanged, because tri = 1 there either way.
+            const shaped = Math.max(0, (tri - BANK_APPROACH_DEAD_BAND) / (1 - BANK_APPROACH_DEAD_BAND));
+            uDensity.value = shaped * shaped;
             uAltitude.value = t;
         },
         dispose() {
