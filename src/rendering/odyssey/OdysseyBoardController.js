@@ -11,6 +11,7 @@ import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
 import {
@@ -557,6 +558,9 @@ export class OdysseyBoardController {
         this.selectionSequence = 0;
         this.activeSeamBoundaryId = null;
         this.seamMusicBoundaryId = null;
+        // WAVE 5: the 2->3 stinger is deferred from ecotone entry and released the frame the
+        // eye breaks the surface (ODYSSEY_BREACH_P). Null when nothing is pending.
+        this._pendingBreachStinger = null;
         this.lastCameraProgress = 0;
         this.levelData = [];
         this.progressData = null;
@@ -2519,6 +2523,14 @@ export class OdysseyBoardController {
             if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
         }
 
+        // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
+        // breaks the surface, not the frame the ecotone begins (see _handleChapterSeam).
+        if (this._pendingBreachStinger && cameraProgress >= ODYSSEY_BREACH_P) {
+            const { seamIntensity, transition } = this._pendingBreachStinger;
+            this._pendingBreachStinger = null;
+            this._playThresholdStinger('2-3', seamIntensity, transition);
+        }
+
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
             if (runPositionWork) {
@@ -3042,7 +3054,17 @@ export class OdysseyBoardController {
                 direction,
                 intensity: seamIntensity,
             });
-            this._playThresholdStinger(boundaryId, seamIntensity, transition);
+            // WAVE 5: THE BREACH IS AN AUDIO MOMENT, NOT AN ECOTONE ONE. The 2->3 stinger is
+            // the surface-break, and it must land the frame the EYE breaks the surface —
+            // ODYSSEY_BREACH_P, bisected in Wave 0 — not when the camera enters the ecotone
+            // ~0.03 of progress (tens of metres of water) earlier. Deferred here, released in
+            // the update loop on the constant; travelling backwards (a re-dive) keeps the
+            // immediate stinger, because there is no breach on the way down.
+            if (boundaryId === '2-3' && direction > 0) {
+                this._pendingBreachStinger = { seamIntensity, transition };
+            } else {
+                this._playThresholdStinger(boundaryId, seamIntensity, transition);
+            }
             this._startChapterMusicBridge(resolvedBlendState.targetChapter, transition, boundaryId);
             this.pathRenderer?.triggerChapterTransition({
                 fromChapter: resolvedBlendState.sourceChapter,
@@ -3096,6 +3118,11 @@ export class OdysseyBoardController {
         } else {
             this.activeSeamBoundaryId = null;
             this.seamMusicBoundaryId = null;
+            // Left the seam without crossing the surface (scrubbed back out): the deferred
+            // breach stinger must not fire later from stale state.
+            if (this._pendingBreachStinger && cameraProgress < ODYSSEY_BREACH_P) {
+                this._pendingBreachStinger = null;
+            }
             this.cameraController?.clearSeamPhase?.();
             this.pathRenderer?.clearSeamPhase?.();
             this.thresholdDirector?.clearSeamPhase?.();

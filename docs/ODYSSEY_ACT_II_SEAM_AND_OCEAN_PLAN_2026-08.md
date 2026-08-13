@@ -583,6 +583,57 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 - Snell's window + TIR on the underside; meniscus line; audio released on the same constant.
 - **Acceptance:** the window is legible from p≈0.181 and the breach lands as one event.
 
+> **OUTCOME — Wave 5, DONE 2026-08-13.**
+>
+> **Snell's window + TIR, on the surface the pixels actually come from.** The water
+> underside was one uniform bright ceiling (`skyColourFor(0.65)·0.85 + spec + SSS`) — which
+> is why the breach "merely happened": there was no circle of sky to rise toward. Now rays
+> within the critical angle (`smoothstep(0.60, 0.72, cosθ)` around cos θc ≈ 0.661 —
+> smoothstep, not step, per the plan's own 720p aliasing note) transmit a brightened sky
+> with the sun's glitter concentrated inside; everything outside mirrors the water body
+> (`mix(uWaterMid, uWaterDeep, uEyeDepth)`), so the ceiling darkens with the traveller's own
+> depth. The swell-perturbed normal makes the window's rim ripple live. **Capture-verified
+> at p=0.185: the circle is legible overhead against a darker TIR ceiling — the acceptance
+> image.** The crest SSS glow rides both regimes unchanged.
+>
+> **Meniscus.** A `uBreachNear` uniform (1 within ~3 u of the plane, off elsewhere) lights
+> the extreme-grazing sliver of the surface (`smoothstep(0.93, 0.995, grazing)`) as a thin
+> bright line — the waterline itself — only while the eye crosses it. Zero cost elsewhere:
+> the term multiplies to nothing whenever `uBreachNear` is 0.
+>
+> **Audio released on the constant.** The 2→3 stinger — the surface-break — used to fire on
+> ecotone ENTRY (~0.03 of progress, tens of metres of water, before the surface). It is now
+> deferred at seam entry for the forward crossing and released the frame `cameraProgress`
+> reaches `ODYSSEY_BREACH_P`; scrubbing back out of the seam without breaching cancels it,
+> and a backward re-dive keeps the immediate stinger (there is no breach on the way down).
+>
+> **An instrument caveat found while verifying (recorded, not hidden):** at a PINNED
+> p=0.198 the harness reports `submerged 0.0043` — the eye essentially at the surface —
+> though the moving-camera bisection puts the eye crossing at 0.20023. The pin zeroes
+> travel velocity, and `computeFollowFrame`'s backward pull shrinks with it, so a pinned
+> camera sits HIGHER than the travelling one. The constant is bisected against the moving
+> camera and stands; pinned captures near the crossing are the artefact. Live behaviour
+> verified by the ramp itself: submerged 1 → 0.004 → 0 across 0.185/0.198/0.201.
+>
+> **Value-gate note (a metric honesty item):** after the underside change, midWash at
+> p=0.130 reads 0.1233 — but the frame is the same composition ~10 luma brighter, and the
+> field crossed the gate's fixed 95-luma band boundary. That drop is quantisation, NOT new
+> structure, and is not claimed as improvement. The claimed midWash trajectory for this
+> plan ends at Wave 4's 0.5986 (from 0.9753 pre-Wave-1).
+>
+> **Lane B (MEASURED — after one voided attempt, recorded because it is the trap this plan
+> exists for):** the first w5 pair read 22.5 ms p50 with a 224 ms p99 and half the sample
+> count — a Chrome GPU process at 63% was co-tenanting the adapter, and the pair-drift check
+> alone would NOT have caught it (both windows equally contaminated, drift 0.066). The
+> report was deleted unpublished; the GPU counters were re-verified quiet; the pair was
+> retaken. Clean numbers: deep p=0.115 **13.106/12.845 ms p50** (drift 0.262, 75 draws
+> min==max, full sample counts, p99 13.6) — the window/TIR ALU costs ~2–3 timer ticks over
+> Wave 4; shallows p=0.16 **6.161/6.161** (drift 0.000, 34 draws), one tick over Wave 4.
+> Both inside their maxima. The plan's full Lane B ledger at its two governing stations:
+> deep 14.48 (pre-Wave-1) → **13.11** (−1.37 ms across Waves 1+3+4+5); shallows 5.96 →
+> **6.16** (+0.20 ms, with the god rays' bright bases now honestly near the surface camera).
+> Reports: `gpu-split-laneb-act2-deep-p115-w5.json`, `gpu-split-laneb-act1-underwater-w5.json`.
+
 ---
 
 ## 6b. Wave tracker (the /goal hook loops on this)
@@ -595,7 +646,7 @@ this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.m
 - [ ] **Wave 2** — The seam (quench plateau, cover-bound act gate, reseeded population, occlusion not dissolve) — BLOCKED on the §7.1 owner decision
 - [x] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
 - [x] **Wave 4** — The water (per-channel extinction, god rays upright and counted 9, caustics min+up-face)
-- [ ] **Wave 5** — The breach (Snell's window + TIR, meniscus, audio on the same constant)
+- [x] **Wave 5** — The breach (Snell's window + TIR, meniscus, audio on the same constant)
 
 ## 7. Decisions needed from the owner
 

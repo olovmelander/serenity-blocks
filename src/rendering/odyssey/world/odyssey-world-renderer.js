@@ -511,6 +511,8 @@ export function createOdysseyWorld({
     // MID plate — capture-measured at p=0.185, a fixed deep-plate convergence rendered the
     // near-surface ascent as abyss-dark water.
     const uEyeDepth = uniform(1);
+    // 1 while the eye is AT the surface (within ~3 u), 0 elsewhere — the meniscus window.
+    const uBreachNear = uniform(0);
     // The three water plates. Driven from the colour script's water keyframes so the ocean's
     // depth banding and the journey's palette can never drift apart (they are the same data).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
@@ -785,10 +787,28 @@ export function createOdysseyWorld({
     const crestMask = clamp(swell.mul(1.6).add(0.35), 0, 1);
     const grazing = float(1).sub(clamp(abs(dot(wN, viewDir)), 0, 1));
     const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
-    const underside = skyColourFor(float(0.65)).mul(0.85)
-        .add(vec3(1, 0.96, 0.88).mul(spec.mul(0.6)))
+    // WAVE 5 — SNELL'S WINDOW + TIR (the research pass's strongest converged finding, four
+    // independent sources). From below, rays within the critical angle (cos θc ≈ 0.661 at
+    // n = 1.33) TRANSMIT the sky — the bright circle overhead — and everything outside it
+    // is total internal reflection: the underside mirrors the water body and goes dark.
+    // smoothstep, not step (a hard edge aliases at 720p), and the swell-perturbed normal
+    // makes the window's rim ripple live. The old underside was one uniform bright ceiling,
+    // which is why the breach "merely happened": there was no circle of sky to rise toward.
+    const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
+    const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
+    const windowSky = skyColourFor(float(0.9)).mul(1.30)
+        .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2));
+    const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
+    const underside = mix(tirBody, windowSky, snellWindow)
         .add(uWaterGlow.mul(sss).mul(0.55));
-    waterMat.colorNode = toOutput(applyAerial(mix(wl, underside, uSubmerged), positionWorld));
+    // WAVE 5 — the MENISCUS: while the eye is within ~3 u of the plane, the extreme-grazing
+    // sliver of the surface lights as a thin bright line — the crossing cue that makes the
+    // breach one event instead of a fade. Rides `grazing`, so it IS the waterline.
+    const meniscus = smoothstep(float(0.93), float(0.995), grazing).mul(uBreachNear).mul(0.9);
+    waterMat.colorNode = toOutput(applyAerial(
+        mix(wl, underside, uSubmerged).add(vec3(0.95, 0.99, 1.0).mul(meniscus)),
+        positionWorld,
+    ));
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
@@ -1443,6 +1463,7 @@ export function createOdysseyWorld({
                 (ODYSSEY_SEA_LEVEL + 2.0 - submergedRefY) / 14,
             ));
             uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
+            uBreachNear.value = Math.max(0, 1 - (Math.abs(ODYSSEY_SEA_LEVEL - submergedRefY) / 3));
             // Publish what this frame decided, for instruments (see `state` above). Written
             // LAST so a reader can never observe a half-updated frame.
             state.submerged = uSubmerged.value;
