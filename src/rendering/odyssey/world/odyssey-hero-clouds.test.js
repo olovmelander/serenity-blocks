@@ -11,11 +11,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildHeroCloudGeometry, validateHeroCloudPlacements } from './odyssey-hero-clouds.js';
-import {
-    HERO_CLOUD_RULES,
-    ODYSSEY_HERO_CLOUD_SPECS,
-    ODYSSEY_HERO_CLOUD_SPECS_SLICE2,
-} from './odyssey-hero-cloud-specs.js';
+import { HERO_CLOUD_RULES, ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { getOdysseyPathPointAt } from '../path-utils.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -29,8 +25,8 @@ describe('hero cloud placements', () => {
         expect(validateHeroCloudPlacements(ODYSSEY_HERO_CLOUD_SPECS, RAIL)).toEqual([]);
     });
 
-    it('keeps the slice-2 heroes legal too, so enabling them cannot ship a defect', () => {
-        expect(validateHeroCloudPlacements(ODYSSEY_HERO_CLOUD_SPECS_SLICE2, RAIL)).toEqual([]);
+    it('ships all six authored heroes', () => {
+        expect(ODYSSEY_HERO_CLOUD_SPECS).toHaveLength(6);
     });
 
     it('clears the deck billow ceiling and the highest eye', () => {
