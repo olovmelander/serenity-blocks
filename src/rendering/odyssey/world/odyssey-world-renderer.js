@@ -1293,6 +1293,9 @@ export function createOdysseyWorld({
         .add(cl.worldXZ.x.mul(0.0016).add(uTime.mul(0.02)).sin().mul(34))
         .mul(billowGate);
     cloudMat.positionNode = vec3(cl.worldXZ.x, float(CLOUD_DECK_Y).add(billow), cl.worldXZ.y);
+    // The fragment stage needs the DISPLACED height, not the deck plane, for its above/below
+    // decision (see `fromAboveF`). One varying, no extra fetch.
+    const vCloudY = varying(float(CLOUD_DECK_Y).add(billow), 'vCloudY');
 
     // Coverage is a property of the MAP, not of a chapter index. The rail runs inland and
     // upward as it climbs (z falls from the shore at +60 to the ascent at -700), so a deck
@@ -1343,11 +1346,36 @@ export function createOdysseyWorld({
     // which stopped anti-aliasing the edge and started making it — partial coverage everywhere
     // turned the distant broken cumulus into a translucent overcast veil across the whole sky.
     const puffBand = smoothstep(float(8), float(90), cloudFootprint).mul(0.05).add(0.06);
-    const puff = smoothstep(vThresh, vThresh.add(puffBand), density);
+    // The anti-aliased edge width, hoisted: BOTH the colour block (the underside's shadow-patch
+    // step) and the opacity block (the drawn edge + opaque core) key off it, so it has to be
+    // declared before either reads it.
+    const aaW = puffBand.toVar();
 
-    // Lit from above, shaded beneath, and the transition is the density itself: a thin edge
-    // passes light and glows, a thick core does not. That single term is what separates a
-    // cumulus from a grey disc, seen from either side.
+    // ── TWO-BAND SUN SHADING (cloud plan Wave 2) ─────────────────────────────────────
+    // The deck never read `uSunDir` at all: light had no direction, so every mass was the
+    // same tone whichever way it faced, and the only variation came from DENSITY modulating
+    // colour — which reads inverted, thin edges glowing and thick cores going dark (the
+    // distillation's mistake #4: frequency belongs in the silhouette, the interior stays
+    // flat). Now the silhouette field doubles as a height field: two extra taps give its
+    // gradient, the gradient gives a pseudo-normal, and ONE dot against the sun through ONE
+    // narrow smoothstep gives a hard quantised terminator. Because the normal comes from the
+    // SAME field that cuts the silhouette, the terminator's edge scallops in step with the
+    // outline — which is the "flat yet volumetric" trick the whole reference set turns on.
+    const cTexel = float(1 / 256);
+    const cSample = (uvOff) => texture(detailTex, cUvA.add(vec2(drift, 0)).add(uvOff)).a;
+    const cCentre = cSample(vec2(0, 0)).toVar();
+    const cGx = cSample(vec2(cTexel, 0)).sub(cCentre);
+    const cGz = cSample(vec2(0, cTexel)).sub(cCentre);
+    // GUARDED normalize: a zero-length vector const-folds into a WGSL compile failure on this
+    // stack (the winter theme's logged trap), and the gradient IS zero wherever the field is
+    // locally flat — which is most of a cloud's interior.
+    const cNraw = vec3(cGx.mul(-9.0), 1, cGz.mul(-9.0));
+    const cN = cNraw.div(max(length(cNraw), float(1e-5))).toVar();
+    const cSun = clamp(dot(cN, uSunDir).mul(0.5).add(0.5), 0, 1);
+    // Lit band owns ~65 % of the face (terminator biased toward the shadow side, rule 4), and
+    // the transition is 8 % wide — a drawn line, not a gradient. Edges must never be equal:
+    // `smoothstep(a, a, x)` is a hard WGSL compile error.
+    const cBand = smoothstep(float(0.44), float(0.52), cSun).toVar();
     const cloudTop = uSunColour.mul(1.06).add(uSkyZenith.mul(0.10));
     // The base tone leans on the HORIZON colour, not the shadow tint. The first version was
     // shadow-tint-dominated, which the playground (no post stack) rendered as soft grey — and
@@ -1355,13 +1383,43 @@ export function createOdysseyWorld({
     // NAVY shards across Ch5's sky. Same lesson as the ground palette: the world hands the
     // grade a brighter, flatter colour than it wants on screen, because the grade adds the
     // punch. Capture-diagnosed at Ch5 eye height, 2026-08-12.
-    const cloudBase = mix(
-        uSkyHorizon.mul(0.88).add(uShadowTint.mul(0.30)),
-        cloudTop,
-        puff.oneMinus().mul(0.85),
-    );
-    const fromAbove = smoothstep(float(-60), float(90), cameraPosition.y.sub(float(CLOUD_DECK_Y)));
-    const cloudCol = mix(cloudBase, cloudTop, fromAbove);
+    // THE SHADOW BAND IS A HUE SHIFT, NOT A DARKENING (rule 2). Mixing toward the horizon
+    // colour and leaning violet keeps the value gap small (~85 % of lit) while the temperature
+    // gap does the work; darkening instead reads muddy and grey. Everything here is authored
+    // BRIGHT because the world hands the post stack a deliberately flattened image
+    // (outputSaturation 0.72) and the grade supplies the vividness.
+    const cloudShade = mix(cloudTop, uSkyHorizon, float(0.42)).mul(vec3(0.99, 0.995, 1.06));
+    // THE UNDERSIDE IS WHERE THIS DECK ACTUALLY LIVES, so it gets two bands of its own.
+    // MEASURED while building this wave: the rail's eye tops out around y=634 at the end of
+    // ch5 (`?p=0.643` reports eyeY 634.1) against a deck plane at 660 — the camera never
+    // climbs above the deck in Act II, it only reaches INSIDE the billow band. So the sun
+    // terminator above is a late-ch5 detail, and a single flat underside tone would have made
+    // this wave invisible for most of the journey.
+    // The references do not paint undersides flat either: volume is read from the SHAPE of
+    // flat shadow patches (the fish-scale stack), not from smooth shading. So the underside
+    // takes ONE quantised step — thick core a touch cooler and darker, thin shoulder brighter
+    // — with the step following the density contour, which makes each patch lobe-shaped for
+    // free. NOTE THE SIGN: the old term did `mix(base, top, puff.oneMinus())`, i.e. LOW
+    // density got the bright tone, so thin edges glowed and thick cores went dark — the
+    // inverted read the critique flagged. This is that term, the right way round and
+    // quantised instead of smooth. Both tones stay LIGHTER than the sky behind them (rule 3),
+    // which is the anti-"navy shards" rule this deck has been burnt by before.
+    const cloudUnderLit = uSkyHorizon.mul(1.10).add(uShadowTint.mul(0.12));
+    // ~0.86 of the lit band's luminance with a strong violet lean. The first pass used 0.96 and
+    // the patches were invisible once the grade had flattened them (outputSaturation 0.72 into
+    // an ACES curve) — the repo's standing playground rule is that colour must OVERSHOOT here,
+    // and a two-band read that survives the grade needs a bigger gap than it needs on the page.
+    const cloudUnderShade = uSkyHorizon.mul(0.86).add(uShadowTint.mul(0.36)).mul(vec3(0.96, 0.98, 1.09));
+    // The step also starts closer to the silhouette edge, so the shadow patch covers a real
+    // area of each lobe instead of only its densest core.
+    const underStep = smoothstep(vThresh.add(aaW).add(0.012), vThresh.add(aaW).add(0.042), density);
+    const cloudUnder = mix(cloudUnderLit, cloudUnderShade, underStep);
+    // PER-FRAGMENT above/below, against the fragment's OWN displaced height. The old term read
+    // the camera against the flat deck plane, so the entire sky swapped tone at once as the
+    // rail climbed through y=660; now billow crests flip to their sunlit read before the
+    // troughs do, which is a parallax reveal instead of a global colour swim.
+    const fromAboveF = smoothstep(float(-60), float(90), cameraPosition.y.sub(vCloudY));
+    const cloudCol = mix(cloudUnder, mix(cloudShade, cloudTop, cBand), fromAboveF);
     cloudMat.colorNode = toOutput(applyAerial(cloudCol, positionWorld));
     // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
     // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
@@ -1386,7 +1444,6 @@ export function createOdysseyWorld({
     // and stops at 0.72, so the silhouette has a visible rim rather than fading in. `coreA`
     // then takes the interior to FULLY opaque a little further in. `max` of the two is a
     // hard edge followed by poster paint, which is exactly the Witness cloud profile.
-    const aaW = puffBand.toVar();
     const edgeA = smoothstep(vThresh, vThresh.add(aaW), density).mul(0.72);
     const coreA = smoothstep(vThresh.add(aaW).add(0.035), vThresh.add(aaW).add(0.085), density);
     cloudMat.opacityNode = max(edgeA, coreA).mul(rim).mul(nearFade).mul(bandFade)

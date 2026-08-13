@@ -288,15 +288,15 @@ From the Ghibli/Witness distillation — the implementable core:
 > re-measure, before Wave 2's exit gate is evaluated.
 
 ### Wave 2 — two-band sun shading (the paint)
-- [ ] Gradient pseudo-normal from octave A (+2 taps, forward differences; guarded
+- [x] Gradient pseudo-normal from octave A (+2 taps, forward differences; guarded
       normalize — zero-vec const-fold kills WGSL compile), `dot(N, uSunDir)` through ONE
       narrow smoothstep band (never equal edges) → quantised scalloped terminator.
-- [ ] Palette per §3: `cloudLit` warm off-white / `cloudShade` cool violet-leaning hue
+- [x] Palette per §3: `cloudLit` warm off-white / `cloudShade` cool violet-leaning hue
       shift / `underCool` ONE flat underside tone, all overshot for the grade; density no
       longer appears in colour (interiors flat; kills the inverted glow-edge read).
-- [ ] **Per-fragment fromAbove** against displaced fragment height (varying of 660+billow)
+- [x] **Per-fragment fromAbove** against displaced fragment height (varying of 660+billow)
       — crest-first reveal when climbing through the deck, no global colour swim.
-- [ ] **Root-pin law**: every node shared between colorNode and opacityNode (density, N,
+- [x] **Root-pin law** (no `If` branch exists in this material, so the trap cannot fire here; `aaW` was hoisted because colour and opacity now share it —: every node shared between colorNode and opacityNode (density, N,
       band) gets a bare `.toVar()` at the Fn root BEFORE any branch — the ghibli-water
       zero-starve trap, now a repo law (skill table row exists).
 - [ ] **The pair**: ch4 p=0.42 trio must hold **net ≤ +0.15 ms beyond the session drift
@@ -308,6 +308,47 @@ From the Ghibli/Witness distillation — the implementable core:
       look-station while the script marches toward void — assert the underside stays
       lighter than adjacent sky through the grade (pixel sampling, the §3 rule).
 - [ ] Cold-boot check; dispose()/stats.materials audit for any new texture object.
+
+> **OUTCOME — Wave 2 SHADING COMPLETE, 2026-08-13, and it turned up a geometry fact that
+> re-aimed the whole wave.** Evidence: `act2-clouds-w2-shaded-p042.png`.
+>
+> **THE RAIL NEVER CLIMBS ABOVE THE DECK.** Measured while building this wave: at p=0.643,
+> near the end of ch5, the rig reports **eyeY 634.1** against a deck plane at **660**. The
+> camera only ever reaches INSIDE the billow band (±116 u), never above it. Defect §1.4 —
+> "from above the deck collapses to one flat tone" — is therefore a late-ch5 detail affecting
+> crests near eye level, NOT the main event, and a sun terminator on the cloud TOPS would have
+> been invisible for essentially the whole act. The plan's Wave 2 as written would have
+> shipped work nobody could see.
+>
+> **So the underside got bands of its own, which is where this deck actually lives.** The
+> references never paint undersides flat either: volume reads from the SHAPE of flat shadow
+> patches (the fish-scale stack), not from smooth shading. The underside now takes ONE
+> quantised step whose boundary follows the density contour — so each patch is lobe-shaped for
+> free — with the thick core cooler and violet-leaning and the thin shoulder bright.
+> **Note the sign:** the old term was `mix(base, top, puff.oneMinus())`, i.e. LOW density got
+> the bright tone, so thin edges glowed and thick cores went dark. That inverted read is what
+> the capture critique kept calling "flat"; this is the same idea the right way round and
+> quantised instead of smooth.
+>
+> **Tuned by overshoot, per the standing playground rule.** The first underside pass used a
+> 0.96 shade multiplier and was invisible once the grade had flattened it (outputSaturation
+> 0.72 into ACES). 0.86 with a stronger violet lean survives the grade. Both underside tones
+> stay LIGHTER than the sky behind them (rule 3, the anti-navy-shards rule).
+>
+> **Also shipped:** the gradient pseudo-normal (two extra taps of the silhouette field,
+> GUARDED normalize — a zero-length vector const-folds into a WGSL compile failure, and the
+> gradient is zero across most of a cloud's interior), one dot against `uSunDir` — a uniform
+> the deck had never read in its life — through a single 8 %-wide smoothstep for a hard
+> quantised terminator, and per-fragment `fromAbove` against the fragment's own displaced
+> height so crests flip before troughs instead of the whole sky swapping tone at once.
+>
+> **NO PERF NUMBER IS CLAIMED, and the exit gate is NOT yet evaluated.** The machine has been
+> thermally loaded since Wave 1a. A hint only, not a measurement: the playground's own counter
+> fell from ~170 to ~154 fps on an RTX across Wave 2's two extra taps — direction consistent
+> with a small cost, magnitude meaningless on that hardware. The carried cold-machine block is
+> now three measurements: Wave 1a's re-measure, the rebaked deck, and this wave's gate at ch4
+> p=0.42 (≤ +0.15 ms beyond the drift bound, judged against the station max since the discard
+> floor's credit is unproven).
 
 ### Wave 3 — the seam cloud-bank speaks the same language
 - [ ] Restyle `odyssey-cloud-bank.js` (renderOrder 12, p 0.588-0.708) with the same
