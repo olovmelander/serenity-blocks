@@ -432,7 +432,19 @@ From the Ghibli/Witness distillation — the implementable core:
 
 ## 7. Owner decisions (please pick when ready — nothing above blocks on these)
 
-1. **§7.1 Hero composition wave (imposters).** After Wave 2 lands and you've seen the sky:
+1. **§7.1 Hero composition wave — DECIDED BY THE OWNER 2026-08-13, and the approach changed.**
+   The owner supplied two Witness screenshots and asked for both the sheet upgrade and the
+   heroes. A 4-agent design pass then rejected the imposter plan outright: r181's
+   `billboarding()` is mesh-level (`SpriteUtils.js:35/61`), so under `InstanceNode` — which
+   reassigns `positionLocal` first (`NodeMaterial.js:799-808`) — the whole troupe rides the
+   camera; a transparent card cannot sort against the mountains because `renderOrder` strictly
+   dominates depth (`RenderList.js:12-31`); and a flat card has no vertical mass, which is the
+   point of a hero. **Shipped instead: real OPAQUE low-poly geometry** — merged squashed
+   icospheres, one mesh, `FrontSide`, `depthWrite`, no billboard basis, no sorting scheme, no
+   textures. It deletes all three problems rather than managing them. ⚠️ One tempting argument
+   was REFUTED in design: opaque heroes do NOT occlude the deck (from a camera below an
+   overhead sheet, everything above it is behind it along the ray), so they are purely
+   additive cost. *(Original imposter framing, superseded:)* After Wave 2 lands and you've seen the sky:
    do we add 2-3 authored cumulus + a far strata row framing the summit? Requires solving
    the instanced-billboard basis properly (r181 `billboarding()` is mesh-level; per-
    instance yaw needs a hand-rolled basis) and a deck-vs-hero sort design. ~1-2 sessions
