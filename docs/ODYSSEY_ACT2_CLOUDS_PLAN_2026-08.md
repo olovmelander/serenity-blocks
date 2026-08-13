@@ -299,8 +299,9 @@ From the Ghibli/Witness distillation — the implementable core:
 - [x] **Root-pin law** (no `If` branch exists in this material, so the trap cannot fire here; `aaW` was hoisted because colour and opacity now share it —: every node shared between colorNode and opacityNode (density, N,
       band) gets a bare `.toVar()` at the Fn root BEFORE any branch — the ghibli-water
       zero-starve trap, now a repo law (skill table row exists).
-- [ ] **The pair**: ch4 p=0.42 trio must hold **net ≤ +0.15 ms beyond the session drift
-      bound** with draws content-matched. If it reds: (a) drop the gradient taps to
+- [x] **The pair**: ch4 p=0.42 trio must hold **net ≤ +0.15 ms beyond the session drift
+      bound** with draws content-matched. **PASSES, 2026-08-13: +0.131 ms** (see the gate
+      block below). If it reds: (a) drop the gradient taps to
       one-axis, (b) vertex empty-cell collapse (design against the torn-cliff failure the
       billowGate comment documents — morph-band-coherent, amplitude-only), (c) the
       Witness two-pass opaque-core split. In that order, measured each step.
@@ -453,11 +454,89 @@ From the Ghibli/Witness distillation — the implementable core:
 >   shows the deck covering that part of the frame uniformly, so it is **not** the deck — which
 >   corrects the earlier note that called it unexplained.
 
+> **WAVE 2 EXIT GATE: RE-MEASURED AND PASSED, 2026-08-13.** The carried decision — accept
+> +0.327 ms for the look or work the ordered reserve levers — is resolved, and does not need
+> to be made. All figures Lane B, Radeon 610M (amd/rdna-2), 720p, Medium, `--chapters 3,4,5`,
+> `--only baseline,no-clouds,baseline-repeat`, draws content-matched min==max in every window.
+>
+> | station | build | cloudsMs | drift | verdict |
+> |---|---|---|---|---|
+> | ch4 p=0.42 | Wave 0 incumbent | 1.049 | 0.000 | reference |
+> | | + Waves 1a/1b/2 | 1.376 | 0.066 | +0.327, FAILED |
+> | | + regime gate | 1.311 | −0.328 | inconclusive |
+> | | **FINAL** | **1.180** | −0.066 | **+0.131 — PASSES the +0.15 gate** |
+> | ch5 p=0.569 | Wave 0 incumbent | 1.901 | 0.000 | reference |
+> | | **FINAL** | **1.835** | −0.066 | **parity (one timer tick)** |
+>
+> **Stated with its uncertainty.** +0.131 is only twice the drift bound, so the honest band is
+> ~+0.065…+0.197 and its upper end grazes the gate. At ch5 the change IS the drift bound —
+> parity, not improvement, and no claim is made in either direction.
+>
+> **Attribution, and its limit.** The 1.376 → 1.180 recovery is most plausibly the
+> `uCloudTopLit` regime gate — the plan's FIRST ordered reserve lever, shipped alongside the
+> 1.311 pair whose 0.328 drift made it unreadable. That is inference ACROSS SESSIONS, not a
+> measured attribution: tonight's frame baselines sit ~0.3–0.46 ms above the post-reboot Wave 0
+> session (ch4 10.55 vs 10.09, ch5 9.37 vs 9.11), so the absolutes are thermally loaded even
+> though the differentials are clean. **The remaining reserve levers — one-axis gradient,
+> vertex empty-cell collapse, Witness two-pass opaque-core split — are not needed and stay
+> unspent.**
+>
+> ⚠️ **THE FIRST RUN MEASURED THE WRONG GPU AND THE REPORT DID NOT SAY SO.** This machine has
+> an RTX 5080 and a Radeon 610M; Lane B's budgets are written against the integrated part, and
+> without `--low-power` the harness takes the discrete one. The frame came back at 0.262 ms and
+> `cloudsMs` at exactly **0** — on a 5080 at 720p every configuration lands inside the timer's
+> 65.536 µs quantum. Every field a reader checks (lane, quality, resolution, discipline, draws)
+> looked correct; only `adapter` betrayed it, and nothing compared it against what the lane
+> requires. The report now records `lowPower`/`powerPreference` and sets `laneAdapterMismatch`
+> with a loud warning. Same defect class as measuring Lane A at 720p: **measure the lane the
+> budget NAMES.**
+>
+> **Also shipped in this block:** `skyColourFor`'s elevation curve uses `sqrt` rather than
+> `pow(0.48)`. `applyAerial` calls it for every ground, water and tree fragment, so a general
+> pow there is a transcendental across the whole screen to buy 0.013 of mix factor. A/B on both
+> stations: ch4 identical to the digit, ch5 `cloudsMs` 2.032 → 1.835; capture-verified as
+> visually identical to within 1–2 units per band.
+
 ### Wave 3 — the seam cloud-bank speaks the same language
+- [x] **Down-payment shipped 2026-08-13** — the approach dead band and a quantised interior
+      (see the OUTCOME below). The full palette-uniform restyle is still open.
 - [ ] Restyle `odyssey-cloud-bank.js` (renderOrder 12, p 0.588-0.708) with the same
       quantised-band + drawn-edge grammar — it composites OVER the new deck and is the
       last cloud of the act. Same palette uniforms, same root-pin law. LOOK-station
       capture at p≈0.63 before/after; no perf cell (occluder is windowed and small).
+
+> **OUTCOME — THE "CHAPTER 6 BLEED" WAS THIS BANK, 2026-08-13, and Wave 3 is unblocked.**
+> Evidence: `public/playground-refs/act2-seam56-cloudbank-p060.png`.
+>
+> **The inherited diagnosis was wrong, and the reason matters.** The record said chapter 6
+> bleeds into ch5 from p=0.5814, that the sky goes mottled there, and explicitly that
+> "restyling the cloud bank will NOT fix it". All of it traced to one bisect run with
+> `?odysseyWorldNoClouds=1`, which gates the WORLD DECK. The bank is a separate system built by
+> the board and it had **no off switch at all**, so it was never removed from any frame it was
+> being blamed out of. Its window opens at p=0.588 — within 0.007 of ch6's summit ignite at
+> 0.5814 — so the two were indistinguishable by progress alone and the wrong one was charged.
+> `?odysseyNoCloudBank=1` now exists, and with it p=0.600 is clean.
+>
+> **Chapter 6 is doing exactly what it was designed to do.** `resolveSummitEarthStaging` already
+> holds stars, black hole, nebula, dust and lights at zero until past the boundary
+> (`spaceReveal`) and lets ONE object through early — the hero gas giant, the owner's "see the
+> earth shape at the top of the mountains before it gets dark". At p=0.600 it is at 30 %; at
+> p=0.63 it is visible beside the path. **There is no bleed to fix.**
+>
+> **What shipped on the bank:** (1) a 0.30 dead band on the density ramp — `tri²` was nonzero
+> from the first frame of the window, and this mesh is a 300 u lens the camera is already near,
+> so 4 % density at seamT 0.10 painted a full-screen FBM mottle that read as noise ON the sky
+> rather than weather ahead of it; the closure at the boundary is unchanged because tri = 1
+> there either way. (2) A quantised interior, so the last cloud of the act stops speaking the
+> old smooth-FBM idiom next to a deck that is now poster cumulus.
+> Capture-verified: p=0.600 clean (matches the no-bank bisect), p=0.630 a real cloud body with
+> the aurora bridge and the gas giant, p=0.648 fully enveloped.
+>
+> **Instrument note that cost time:** the capture harness's visible-mesh roster skipped UNNAMED
+> meshes, so "what is drawing my sky" was answered with a roster the culprit could not appear
+> in. It now falls back to a geometry+material description. That block is injected through a
+> template literal — a nested backtick inside it terminates the OUTER one and the page silently
+> receives a syntax error, hanging the harness with no diagnostic. Concatenate.
 
 ### Wave 4 — ch5 recovery-path hygiene (independent; any time)
 - [ ] Inside `createSkyDriftEnvironment` (module survives — ADR-0015): stop mounting the
