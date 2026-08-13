@@ -14,6 +14,7 @@ import {
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
+import { createTilingValueNoise } from './odyssey-tiling-noise.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
@@ -326,6 +327,11 @@ function bakeSunVisibility(heightAt, shadowRes) {
  * The research critic's objection is the reason for the solve: matching ONE octave's marginals
  * does not bound the SUM's distribution. Matching the sum directly is the answer to it.
  *
+ * ⚠️ RANK REMAPPING IS ONLY MONOTONIC IF TIES ARE HANDLED. This field is 64 % exact zeros and
+ * the first version ranked them individually, which turned one input value into a texel-order
+ * ramp across the tile — see `applyK`. A rank remap of a field with a large tied mass is a
+ * trap; the same applies to any future bake that thresholds or gates its source.
+ *
  * @param {Float32Array} field raw silhouette field (mutated in place)
  * @param {number} res texture resolution
  * @returns {{k:number, p10:number, p50:number, p90:number}} the solved stretch and the sum's
@@ -343,10 +349,27 @@ function matchCloudHistogram(field, res) {
         return 0.70 + (((u - 0.90) / 0.10) * (0.73 - 0.70));
     };
     const matched = new Float32Array(n);
+    // TIES MAP TO ONE VALUE — average-rank remapping, and it is load-bearing, not pedantry.
+    // MEASURED 2026-08-13: 64.3 % of this field is EXACTLY zero (the sky between the disc
+    // clusters, where the ridge term is gated off too). Giving each tied texel its own rank
+    // `r` handed those 42,172 identical inputs 42,172 DIFFERENT outputs, spanning 0.256 to
+    // 0.652 — and because `Array.prototype.sort` is stable, the order of the tie block is
+    // texel order, so the field's own "empty sky" became a RAMP in row-major order that
+    // stepped 0.394 at the wrap. The deck's whole anti-aliased alpha edge is 0.060 wide, so
+    // that was a 6.6x razor line drawn across the sky every 488 world units, plus a coverage
+    // gradient inside every tile that no threshold comment described. Averaging the rank over
+    // each tied group keeps the map monotonic and makes it a function of the VALUE, which is
+    // the only thing a histogram match is allowed to be a function of.
     const applyK = (k) => {
-        for (let r = 0; r < n; r += 1) {
-            const u = (r + 0.5) / n;
-            matched[order[r]] = 0.58 + ((targetQ(u) - 0.58) * k);
+        let r = 0;
+        while (r < n) {
+            const value = field[order[r]];
+            let end = r + 1;
+            while (end < n && field[order[end]] === value) end += 1;
+            const u = ((r + end) / 2) / n;
+            const target = 0.58 + ((targetQ(u) - 0.58) * k);
+            for (let t = r; t < end; t += 1) matched[order[t]] = target;
+            r = end;
         }
     };
     // Bilinear, wrapping — the same filtering the GPU will do.
@@ -477,29 +500,33 @@ function bakeCloudSilhouette(res, vn) {
     return out;
 }
 
+/**
+ * The deck's silhouette field, baked and calibrated — the `.a` channel of the detail texture.
+ *
+ * EXPORTED FOR ITS UNIT GUARD (odyssey-cloud-field.test.js), because this field shipped two
+ * defects that a screenshot could only show as "a straight line in the sky at ch5" and that
+ * cost three bisect sessions between them: a value noise that did not tile, and a rank remap
+ * that gave 42,172 tied texels 42,172 different values in texel order. Both are properties of
+ * the FIELD, testable in milliseconds without a GPU, and neither was testable at all while
+ * this lived inside `bakeDetailNormal` as two closures.
+ *
+ * @param {number} [res] texture resolution
+ * @returns {{field: Float32Array, stats: {k:number,p10:number,p50:number,p90:number}}}
+ */
+export function bakeOdysseyCloudField(res = 256) {
+    const field = bakeCloudSilhouette(res, createTilingValueNoise(res));
+    const stats = matchCloudHistogram(field, res);
+    return { field, stats };
+}
+
 function bakeDetailNormal(res = 256) {
-    const h = (ix, iy) => {
-        const wx = ((ix % res) + res) % res;
-        const wy = ((iy % res) + res) % res;
-        let v = (wx * 374761393) + (wy * 668265263);
-        v = Math.imul(v ^ (v >>> 13), 1274126177);
-        return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
-    };
-    const vn = (x, y, freq) => {
-        const fx = x * freq;
-        const fy = y * freq;
-        const ix = Math.floor(fx);
-        const iy = Math.floor(fy);
-        const tx = fx - ix;
-        const ty = fy - iy;
-        const ux = tx * tx * (3 - (2 * tx));
-        const uy = ty * ty * (3 - (2 * ty));
-        const a = h(ix, iy);
-        const b = h(ix + 1, iy);
-        const c = h(ix, iy + 1);
-        const d = h(ix + 1, iy + 1);
-        return (((a * (1 - ux)) + (b * ux)) * (1 - uy)) + ((((c * (1 - ux)) + (d * ux)) * uy));
-    };
+    // THE NOISE MUST TILE, and until 2026-08-13 this one did not — see odyssey-tiling-noise.js
+    // for the mechanism and the measured 48x seam step it put across the cloud silhouette.
+    // EVERY channel of this texture is sampled with RepeatWrapping by something: .rg by the
+    // ground's bump and the water's ripples, .b by the terrain's snow jitter and the deck's
+    // vertex billow, .a by all three of the deck's density octaves. One non-tiling sampler
+    // therefore drew a straight discontinuity across five surfaces at once.
+    const vn = createTilingValueNoise(res);
     const field = new Float32Array(res * res);
     for (let j = 0; j < res; j += 1) {
         for (let i = 0; i < res; i += 1) {
@@ -512,12 +539,11 @@ function bakeDetailNormal(res = 256) {
     // away. The cloud deck needs a DENSITY, and reading it off the derivative channels gives a
     // field centred on zero that no coverage threshold can ever cross: the deck rendered
     // completely empty until this was widened. One texture, one fetch path, both uses served.
-    const coarse = bakeCloudSilhouette(res, vn);
     // Rebake calibration guard: the sum the thresholds actually see must land back on the
     // measured p10/p50/p90 = 0.42/0.58/0.70, or 0.63/0.40 and the gate bands silently change
     // meaning. Logged rather than thrown — a sky that is a little off is a tuning note, not a
-    // reason to refuse to boot — and asserted in odyssey-world-lints.test.js.
-    const cloudStats = matchCloudHistogram(coarse, res);
+    // reason to refuse to boot — and asserted in odyssey-cloud-field.test.js.
+    const { field: coarse, stats: cloudStats } = bakeOdysseyCloudField(res);
     // eslint-disable-next-line no-console
     console.log('[world] cloud silhouette histogram', JSON.stringify({
         k: Number(cloudStats.k.toFixed(3)),
