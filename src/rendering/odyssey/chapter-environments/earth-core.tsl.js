@@ -1194,10 +1194,18 @@ export function createMoltenPocketMaterialTSL(
     const splashCore = oneMinus(smoothstep(lakeLineY, lakeLineY.add(0.45), vWorldY));
     const conduction = crackHeat
         .mul(oneMinus(clamp(vWorldY.sub(lakeLineY).div(6.0), 0.0, 1.0)));
-    color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.42 : 0.14))
-        .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(isColumn ? 0.5 : 0.2))
-        .add(vec3(1.05, 0.98, 0.85).mul(splashCore).mul(isColumn ? 0.6 : 0.25))
-        .add(uCrack.mul(conduction).mul(isColumn ? 0.35 : 0.15));
+    // COLUMN-ONLY (user report 2026-08-13: the lake-line node blob read as a washed-out
+    // cream egg). The waterline treatment — bleed, tongues, white-hot core, conduction —
+    // belongs to rock that STANDS IN the lava. A floating blob near the surface sat
+    // entirely inside the 9 u contact band and wore the whole stack over its whole body;
+    // the blobs keep only the ambient/bounce warmth, which is what makes the high ones
+    // read well.
+    if (isColumn) {
+        color = color.add(uHot.mul(baseBleed).mul(0.42))
+            .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(0.5))
+            .add(vec3(1.05, 0.98, 0.85).mul(splashCore).mul(0.6))
+            .add(uCrack.mul(conduction).mul(0.35));
+    }
 
     // LIMB DARKENING for the floating blobs (user report: "flat"): a sphere reads round
     // by darkening toward its silhouette; a face that stays bright to the edge is a full
@@ -1240,21 +1248,25 @@ export function createMoltenPocketMaterialTSL(
 
     const material = new THREE.MeshStandardNodeMaterial();
     material.colorNode = color;
-    material.emissiveNode = uCrack.mul(glow).mul(isColumn ? 0.10 : 0.38)
+    let emissive = uCrack.mul(glow).mul(isColumn ? 0.10 : 0.38)
         // Plan item 3: fbm-traced emissive veining on the columns, scaled by the
         // baked-bounce strength and the lake-distance falloff.
         .add(uHot.mul(pow(crackHeat, isColumn ? 2.2 : 3.0))
             .mul(isColumn ? lakeFalloff.mul(0.17).add(0.08).mul(uBakedBounce) : float(0.14)))
         // Baked accent/bounce emissive — a dim warm self-illumination on the
         // up/side faces so the rock glows softly as if lit by the removed PointLights.
-        .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025))
-        // §5.1 emissive BLEED — the base glows where the lava licks it (lake line). The
-        // tongues, the white-hot core and the vein conduction all emit, so the bloom pass
-        // gilds the whole contact event, not just a stripe.
-        .add(uHot.mul(baseBleed).mul(isColumn ? 0.30 : 0.10))
-        .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(isColumn ? 0.30 : 0.10))
-        .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(isColumn ? 0.35 : 0.14))
-        .add(uCrack.mul(conduction).mul(isColumn ? 0.20 : 0.08));
+        .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025));
+    // §5.1 emissive BLEED + splash — COLUMN-ONLY, same reasoning as the colour stack:
+    // the waterline glow belongs to rock standing IN the lava. On a floating blob at the
+    // lake line it bathed the whole ball and washed it cream.
+    if (isColumn) {
+        emissive = emissive
+            .add(uHot.mul(baseBleed).mul(0.30))
+            .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(0.30))
+            .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(0.35))
+            .add(uCrack.mul(conduction).mul(0.20));
+    }
+    material.emissiveNode = emissive;
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
     // TRUE FOR BOTH VARIANTS (user report 2026-08-13, "flat and transparent objects
