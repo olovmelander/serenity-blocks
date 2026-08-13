@@ -510,7 +510,33 @@ async function collectMetrics(win, extra = {}) {
                     submerged: bc?.oneWorld?.state?.submerged ?? null,
                     scriptName: bc?.oneWorld?.state?.scriptName ?? null,
                     actT: bc?.oneWorld?.state?.actT ?? null,
+                    // The clipmap's rings are square and centred HERE, not on the eye. Without
+                    // both of these a straight line in a capture cannot be tested against a
+                    // ring boundary, which is the one question the deck's remaining defect
+                    // class keeps asking.
+                    lodCenter: bc?.oneWorld?.state?.lodCenter
+                        ? { ...bc.oneWorld.state.lodCenter }
+                        : null,
                 },
+                // WHERE THE FRAME WAS SHOT FROM. Every geometric read of a capture — "is that
+                // line the deck's rim or a ring edge", "is the eye inside the billow band" —
+                // needs the eye and the look direction, and both were being re-derived by hand
+                // from the plan's notes one station at a time.
+                camera: (() => {
+                    const cam = bc?.camera;
+                    if (!cam) return null;
+                    const dir = new (cam.position.constructor)();
+                    cam.getWorldDirection(dir);
+                    return {
+                        x: +cam.position.x.toFixed(2),
+                        y: +cam.position.y.toFixed(2),
+                        z: +cam.position.z.toFixed(2),
+                        dirX: +dir.x.toFixed(4),
+                        dirY: +dir.y.toFixed(4),
+                        dirZ: +dir.z.toFixed(4),
+                        fov: cam.fov ?? null,
+                    };
+                })(),
                 occluders: {
                     steamQuenchVisible: bc?.steamQuench?.mesh?.visible ?? null,
                     cloudBankVisible: bc?.cloudBank?.mesh?.visible ?? null,
@@ -550,7 +576,17 @@ function resolveChapterRange(chapterPositions, chapterId) {
 
 async function captureChapter(win, boot) {
     const range = resolveChapterRange(boot.chapterPositions, CHAPTER);
-    const samples = Array.from({ length: FRAME_COUNT }, (_, index) => (
+    // NAMED STATIONS BEAT AN EVEN SPREAD when you are bisecting rather than surveying. The
+    // even spread is what a review sheet wants; a bisect wants THE SAME p as the run it is
+    // being compared against, and reaching one specific p through `--frames` alone meant
+    // choosing a frame count whose spread happened to land on it. `--locals 0.44,0.55` takes
+    // local progresses directly, and `--burst 0` drops the three motion frames, which halves
+    // the shots per run — the TDR law's whole concern.
+    const requested = String(args.locals || '')
+        .split(',')
+        .map((token) => Number.parseFloat(token))
+        .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1);
+    const samples = requested.length ? requested : Array.from({ length: FRAME_COUNT }, (_, index) => (
         FRAME_COUNT === 1 ? 0 : index / (FRAME_COUNT - 1)
     ));
 
@@ -575,6 +611,7 @@ async function captureChapter(win, boot) {
         await capturePng(win, filename, metrics);
     }
 
+    if (String(args.burst ?? '1') === '0') return;
     const burstLocalProgress = Number.isFinite(Number.parseFloat(args.burstLocal))
         ? Number.parseFloat(args.burstLocal)
         : 0.6;

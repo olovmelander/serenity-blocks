@@ -681,6 +681,11 @@ export class OdysseyBoardController {
                     // the tree could switch it off, so its total cost had never been measured
                     // — and an unmeasured cost cannot fund a water package (ADR-0016).
                     water: !readBooleanUrlFlag('odysseyWorldNoWater'),
+                    // Diagnostic re-shades of the deck, for the "keyed to something other than
+                    // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
+                    // clipmap's ring structure over the shipped deck, =alpha draws the opacity
+                    // graph alone, =flat leaves only geometry. See createOdysseyWorld.
+                    cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(
                         { length: 48 },

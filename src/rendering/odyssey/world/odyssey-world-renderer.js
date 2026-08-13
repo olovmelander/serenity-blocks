@@ -675,11 +675,27 @@ export function scatterTrees(heightAt, {
  *   had never been measured and no water work could be honestly funded. Skipping the BUILD
  *   (not just the draw) also prices its pipeline out of the cold-compile path. Same
  *   measurement-lever pattern as earth-core's ?earthCoreNoLake/NoHaze bisects.
+ * @param {'lattice'|'alpha'|'grid'|'mult'|'flat'|null} [opts.cloudDebug] DIAGNOSTIC LEVER, default null
+ *   (board flag `?odysseyWorldCloudDebug=lattice`). Re-shades the deck — same mesh, same
+ *   geometry, same draw — to answer one question per mode:
+ *   `lattice` paints the CLIPMAP's own structure over the shipped deck (morph band yellow,
+ *     the double-covered ring collars red and cyan), so a straight line in a capture can be
+ *     tested against a ring boundary instead of guessed at;
+ *   `alpha` draws the shipped opacity as an opaque greyscale sheet, which separates the
+ *     opacity graph from the colour graph;
+ *   `grid` is `alpha` with a world-space ruler over it (red = world X every 50 u, green =
+ *     world Z), which says which world axis a straight edge is an iso-line of;
+ *   `mult` puts the opacity graph's three attenuators in R/G/B (nearFade, bandFade, rim);
+ *   `flat` draws constant white at constant alpha, which leaves only geometry and draw order.
+ *   This exists because the deck's remaining defect class is "a quantity keyed to something
+ *   other than the camera", and two sessions went on bisecting those one source edit at a
+ *   time while the terms that generate them were undrawable.
  */
 export function createOdysseyWorld({
     quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
     heroes = true,
     water = true,
+    cloudDebug = null,
     skyRadius = null, railSamples = [],
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
@@ -810,6 +826,15 @@ export function createOdysseyWorld({
             // downstream reference into a leaf.
             worldXZ: origin.add(mix(local, coarse, morph)).toVar(),
             spacing: spacing.mul(morph.add(1)).toVar(),
+            // FOR INSTRUMENTS. Every lattice-derived defect this repo has shipped — the water
+            // plate's "square sections", the deck's straight ch5 diagonals — is a quantity that
+            // terraces on the ring structure, and each one cost a session to find because the
+            // structure itself was invisible. These two make it drawable (see the
+            // `cloudDebug` material's `lattice` mode): the ring index and where inside the ring the
+            // morph is. They are plain nodes; nothing pays for them unless a material reads them.
+            level: aGrid.y,
+            morph,
+            cheb,
         };
     };
 
@@ -1595,10 +1620,11 @@ export function createOdysseyWorld({
     // hard edge followed by poster paint, which is exactly the Witness cloud profile.
     const edgeA = smoothstep(vThresh, vThresh.add(aaW), density).mul(0.72);
     const coreA = smoothstep(vThresh.add(aaW).add(0.035), vThresh.add(aaW).add(0.085), density);
-    cloudMat.opacityNode = max(edgeA, coreA).mul(rim).mul(nearFade).mul(bandFade)
+    const cloudAlpha = max(edgeA, coreA).mul(rim).mul(nearFade).mul(bandFade)
         .mul(float(1).sub(uSubmerged))
         // 0.94 -> 0.985: the last 6 % of transparency was the whole sky's worth of milkiness.
         .mul(0.985);
+    cloudMat.opacityNode = cloudAlpha;
     cloudMat.transparent = true;
     cloudMat.depthWrite = false;
     // THE BLEND-BANDWIDTH FLOOR (cloud plan Wave 1a). The deck is a sky-covering sheet whose
@@ -1609,6 +1635,89 @@ export function createOdysseyWorld({
     // number rather than a guess. Same 0.004 cut the water plate already uses.
     cloudMat.alphaTest = 0.004;
     cloudMat.side = THREE.DoubleSide;
+
+    // ── DIAGNOSTIC RE-SHADES (see the `cloudDebug` option) ──────────────────────────
+    // Drawn LAST so it overwrites the shipped graph rather than forking it: the point of a
+    // diagnostic is to photograph the same mesh, the same geometry and the same draw the game
+    // submits, with only the shading swapped. Ring index cycles through three hues so adjacent
+    // rings can never be confused, the morph band burns yellow, and the flat 0.32 alpha is the
+    // measuring stick — anywhere two rings overlap composites to 0.54, so double coverage is
+    // legible as brightness without any extra term to compute.
+    // `alpha` — the shipped opacity as an OPAQUE greyscale sheet. Splits the remaining defect
+    // space in one capture: everything about cloud colour, the aerial and the sky behind is
+    // gone, so a feature that still shows here lives in the opacity graph and a feature that
+    // vanishes lives in the colour graph. `flat` goes one step further and removes the opacity
+    // graph too — constant white at constant alpha, so only GEOMETRY and draw order remain.
+    if (cloudDebug === 'alpha') {
+        cloudMat.colorNode = toOutput(vec3(1).mul(cloudAlpha.div(0.985)));
+        cloudMat.opacityNode = float(1);
+        cloudMat.transparent = false;
+        cloudMat.alphaTest = 0;
+    }
+    // `grid` — the alpha readout with a WORLD-SPACE ruler on it: red lines every 50 u of world
+    // X, green every 50 u of world Z, both brightened every 500 u. A straight screen line is a
+    // plane through the eye, so on a near-horizontal deck it is a straight line in world XZ —
+    // and this says which one, which is the difference between "iso-line of world Z" (the
+    // coverage ramp), "iso-line of X" (the billow sine) and "neither".
+    if (cloudDebug === 'grid') {
+        const rule = (coord) => {
+            const f = coord.div(50).sub(floor(coord.div(50)));
+            const fine = float(1).sub(tslStep(float(0.06), min(f, float(1).sub(f)).mul(2)));
+            const c500 = coord.div(500).sub(floor(coord.div(500)));
+            const coarse = float(1).sub(tslStep(float(0.03), min(c500, float(1).sub(c500)).mul(2)));
+            return clamp(fine.mul(0.55).add(coarse), 0, 1);
+        };
+        cloudMat.colorNode = toOutput(vec3(1).mul(cloudAlpha.div(0.985)).mul(0.55)
+            .add(vec3(rule(positionWorld.x), rule(positionWorld.z), 0)));
+        cloudMat.opacityNode = float(1);
+        cloudMat.transparent = false;
+        cloudMat.alphaTest = 0;
+    }
+    // `mult` — the opacity graph's three attenuators, one per channel: R = nearFade (a sphere
+    // around the eye), G = bandFade (two horizontal planes), B = rim (a circle on the lattice).
+    // None of the three CAN draw a straight world-space line if it is doing what its name says,
+    // so this is a falsification test: whichever channel carries the defect band is the term
+    // that is not doing what its name says, and if none of them carries it the band lives in
+    // max(edgeA, coreA) — i.e. in density, vThresh or aaW.
+    if (cloudDebug === 'mult') {
+        cloudMat.colorNode = toOutput(vec3(nearFade, bandFade, rim));
+        cloudMat.opacityNode = float(1);
+        cloudMat.transparent = false;
+        cloudMat.alphaTest = 0;
+    }
+    if (cloudDebug === 'flat') {
+        cloudMat.colorNode = toOutput(vec3(1));
+        cloudMat.opacityNode = float(0.35);
+    }
+    if (cloudDebug === 'lattice') {
+        // OVERLAY, NOT REPLACE — learnt the hard way in this very session. The first cut of
+        // this instrument swapped the whole graph for a ring-hue picture, which produced a
+        // beautiful diagram that could not be registered against the defect: two images, two
+        // different shadings, and the eye guessing whether a line in one sat where a line in
+        // the other did. Painting the marks ON TOP of the shipped deck makes it ONE frame, so
+        // "is the defect band the morph band" is answered by looking at a single pixel column.
+        const vMorph = varying(cl.morph, 'vClMorph');
+        const vCheb = varying(cl.cheb, 'vClCheb');
+        const vLevel = varying(cl.level, 'vClLevel');
+        // The three lattice features that can construct a straight line in world space, each
+        // in its own colour, all of them SQUARE iso-contours of the Chebyshev norm:
+        // yellow — the morph band, where a vertex's world position (and therefore every UV,
+        //          threshold and billow sampled from it) slides toward the coarse lattice;
+        // red    — a ring's outer collar, the band that its neighbour's hole leaves DOUBLE
+        //          COVERED, so a transparent deck blends there twice;
+        // cyan   — the inner collar of the same overlap, seen from the outer ring's side.
+        const markMorph = tslStep(float(0.02), vMorph).mul(float(1).sub(tslStep(float(0.98), vMorph)));
+        const markOuter = tslStep(float(0.875), vCheb);
+        const markInner = tslStep(float(0.5), vLevel).mul(float(1).sub(tslStep(float(0.51), vCheb)));
+        const markAny = clamp(markMorph.add(markOuter).add(markInner), 0, 1);
+        const markCol = vec3(
+            clamp(markMorph.add(markOuter), 0, 1),
+            clamp(markMorph.add(markInner), 0, 1),
+            markInner,
+        );
+        cloudMat.colorNode = toOutput(mix(cloudAerial(cloudCol, positionWorld), markCol, markAny.mul(0.75)));
+        cloudMat.opacityNode = max(cloudMat.opacityNode, markAny.mul(0.55));
+    }
 
     const cloudMesh = new THREE.Mesh(cloudGeo.geometry, cloudMat);
     cloudMesh.frustumCulled = false;
@@ -2117,7 +2226,12 @@ export function createOdysseyWorld({
     // underwater" from "the world believes it is in air". That is precisely the question an
     // apparently-wrong submerged frame asks, and answering it by re-deriving the formula in
     // the harness would let the two copies drift.
-    const state = { submerged: 0, scriptName: '', actT: 0 };
+    // `lodCenter` and `eyeY` join them for the same reason: the clipmap's square rings are
+    // centred on the RAIL GROUND TRACK, not on the eye, so nothing outside could work out
+    // where a ring boundary falls in a captured frame without re-deriving the offset.
+    const state = {
+        submerged: 0, scriptName: '', actT: 0, lodCenter: { x: 0, z: 0 }, eyeY: null,
+    };
 
     const stats = {
         quality,
@@ -2156,6 +2270,9 @@ export function createOdysseyWorld({
         update(time, railPoint, progress, eyeY = null) {
             uTime.value = time;
             uLodCenter.value.set(railPoint.x, railPoint.z);
+            state.lodCenter.x = railPoint.x;
+            state.lodCenter.z = railPoint.z;
+            state.eyeY = eyeY;
             const scriptP = 0.05 + (Math.max(0, Math.min(1, progress)) * 0.9);
             const cs = sampleColourScript(scriptP);
             uSkyHorizon.value.setRGB(...cs.skyHorizon);
