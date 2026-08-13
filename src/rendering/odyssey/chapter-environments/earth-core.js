@@ -1962,7 +1962,14 @@ function createMoltenPockets(group, uniforms, groupCenter) {
             uniforms.uPulseIntensity,
             size,
             uniforms.uBakedBounce,
-            { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, material: sharedPocketMaterial },
+            {
+                uOpacity: uniforms.uOpacity,
+                uSeam: uniforms.uSeam,
+                material: sharedPocketMaterial,
+                // A rocky BALL, not the legacy 0.2 floor-slab — the geometry-level squash
+                // was why two rounds of mesh-scale/material fixes still read flat.
+                flatten: 0.92,
+            },
         );
         // FLOATING MAGMA BLOB, not a ledge (user direction 2026-08-13: "make them sphere
         // blobs floating around instead of being flat"). The old shelf was squashed to 66%
