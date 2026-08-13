@@ -19,6 +19,7 @@ import {
     clamp,
     cos,
     float,
+    fract,
     mix,
     mod,
     oneMinus,
@@ -47,6 +48,7 @@ import {
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
     createMoltenPocketMaterialTSL,
+    magmaSurgeTSL,
     createContactShadowDecalTSL,
     createFirstHeartTSL,
 } from './earth-core.tsl.js';
@@ -406,6 +408,7 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
+    const splashFlags = new Float32Array(count);
 
     // Column centres: lava-fall splash, node-shelf clusters, and side smoke banks.
     const columns = staging
@@ -425,22 +428,56 @@ function createRisingEmbers(uniforms, count, staging = null) {
             { x: 12, z: 3 - 20, spread: 12 }, // near corridor cluster
             { x: -48, z: 3 - 96, spread: 16 }, // side smoke bank
         ];
+    // SPLASH SPARKS (2026-08-13, second user pass on the lake contact): ~30% of the storm
+    // is re-seeded in tight rings at the framing columns' bases — the SAME stations and
+    // ±AISLE_HALF_WIDTH the columnSpecs use, so the sparks pop exactly where the tongues
+    // climb — and flies a short ballistic arc instead of rising. Same draw, same material,
+    // same pipeline: the whole feature is per-instance data plus vertex ALU.
+    const splashSites = staging
+        ? [0.14, 0.42, 0.70, 0.86].flatMap((ft) => [
+            staging.lakeAt(ft, { lateral: -30, forward: 5 }),
+            staging.lakeAt(ft, { lateral: 30, forward: 5 }),
+        ])
+        : [
+            { x: 30, z: 3 - 40 }, { x: -30, z: 3 - 40 },
+            { x: 30, z: 3 - 90 }, { x: -30, z: 3 - 90 },
+        ];
+    // 0.30 -> 0.36 share on a 570 -> 640 count (user: "increase the amount a little"):
+    // sparks 171 -> 230 while the chapter-wide riser storm keeps its density (~410).
+    const splashCount = Math.floor(count * 0.36);
     for (let i = 0; i < count; i++) {
         const i3 = i * 3;
-        const col = columns[i % columns.length];
-        const theta = Math.random() * TAU;
-        const radius = Math.random() * col.spread;
-        bases[i3] = col.x + Math.cos(theta) * radius;
-        bases[i3 + 1] = LAVA_LAKE_Y + (Math.random() - 0.5) * 8;
-        bases[i3 + 2] = col.z + Math.sin(theta) * radius;
+        if (i < splashCount) {
+            const site = splashSites[i % splashSites.length];
+            const theta = Math.random() * TAU;
+            // OUTSIDE the pillar surface (green-probe finding 2026-08-13): the sites are the
+            // COLUMNS' own positions, and a 2-8 u ring sat inside their 7.5-10 u girth — the
+            // whole burst flew INSIDE the rock and exactly one spark ever grazed the
+            // silhouette. The ring hugs the surface instead: contact-tight, but in open air.
+            const radius = 9 + (Math.random() * 6);
+            bases[i3] = site.x + (Math.cos(theta) * radius);
+            bases[i3 + 1] = LAVA_LAKE_Y + 0.4;
+            bases[i3 + 2] = site.z + (Math.sin(theta) * radius);
+            splashFlags[i] = 1;
+            sizes[i] = 1.6 + (Math.random() * 2.6); // smaller and crisper than the risers
+        } else {
+            const col = columns[i % columns.length];
+            const theta = Math.random() * TAU;
+            const radius = Math.random() * col.spread;
+            bases[i3] = col.x + Math.cos(theta) * radius;
+            bases[i3 + 1] = LAVA_LAKE_Y + (Math.random() - 0.5) * 8;
+            bases[i3 + 2] = col.z + Math.sin(theta) * radius;
+            splashFlags[i] = 0;
+            sizes[i] = 3.0 + Math.random() * 5.0;
+        }
         randoms[i] = Math.random();
-        sizes[i] = 3.0 + Math.random() * 5.0;
     }
 
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: bases, itemSize: 3 },
         aRandom: { array: randoms, itemSize: 1 },
         aSize: { array: sizes, itemSize: 1 },
+        aSplash: { array: splashFlags, itemSize: 1 },
     });
 
     const aBase = attribute('aBase', 'vec3');
@@ -459,13 +496,42 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const center = vec3(cx, yPos, cz);
 
     const normalizedY = yOffset.add(25.0).div(50.0);
-    const worldSize = aSize.mul(oneMinus(normalizedY.mul(0.5))).mul(0.16);
+
+    // SPLASH ballistic arc, phase-locked to the lake's surge. Launch energy is sampled at
+    // (now − age) — the heave this spark was BORN in — so a rogue surge visibly throws a
+    // taller, faster burst and calm water barely spits; the same magmaSurgeTSL drives the
+    // molten material's waterline and tongues, which is what makes heave → tongues →
+    // sparks read as ONE event. g = 16 u/s²: heavier than true gravity, because molten
+    // rock should fall like slag, not confetti.
+    const splash = attribute('aSplash', 'float');
+    const flightT = aRandom.mul(1.2).add(1.8);
+    const lifeFrac = fract(time.div(flightT).add(aRandom.mul(7.0)));
+    const age = lifeFrac.mul(flightT);
+    // Launch high enough to LEAVE the bright zone: an additive spark over the white-hot
+    // contact band and the glowing lake contributes nothing visible (additive saturates),
+    // so the arc must carry it up against the DARK mid-column rock — peaks 3.5-10 u at
+    // g = 12, matching the 1.8-3 s flight window.
+    const surgeSpawn = magmaSurgeTSL(time.sub(age));
+    const v0y = aRandom.mul(7.0).add(9.0).mul(surgeSpawn.mul(0.7).add(0.25));
+    const dirA = aRandom.mul(TAU);
+    const v0h = aRandom.mul(2.4).add(1.4).mul(surgeSpawn.mul(0.4).add(0.6));
+    const sY = v0y.mul(age).sub(age.mul(age).mul(6.0));
+    const splashCenter = vec3(
+        aBase.x.add(cos(dirA).mul(v0h).mul(age)),
+        aBase.y.add(sY),
+        aBase.z.add(sin(dirA).mul(v0h).mul(age)),
+    );
+    const emberCenter = mix(center, splashCenter, splash);
+    // ONE life scalar drives temperature, alpha and size for BOTH populations: risers age
+    // by height, splash sparks by flight time — the ramp below never knows the difference.
+    const lifeNorm = mix(normalizedY, lifeFrac, splash);
+    const worldSize = aSize.mul(oneMinus(lifeNorm.mul(0.5))).mul(0.16);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, worldSize);
+    material.positionNode = billboardWorld(emberCenter, worldSize);
     // §5.3 temperature ramp by LIFE (white-hot → orange → red → ash, pyrestorm look):
     // fresh sparks at the lava are hottest, cooling as they rise. `life` = 1 new → 0 old.
-    const life = oneMinus(normalizedY);
+    const life = oneMinus(lifeNorm);
     const whiteHot = vec3(1.0, 0.95, 0.85);
     const orange = vec3(1.0, 0.45, 0.06);
     const red = vec3(0.8, 0.12, 0.02);
@@ -480,7 +546,15 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const glow = pow(clamp(oneMinus(dist), 0.0, 1.0), 1.8);
     const core = smoothstep(0.2, 0.0, dist.mul(0.5));
     const hotColor = mix(baseColor, vec3(1.0, 0.95, 0.85), core.mul(0.5));
-    const alpha = oneMinus(normalizedY).mul(aRandom.mul(0.4).add(0.6));
+    // Splash sparks additionally: die the moment they fall back through the lake surface
+    // (a spark that keeps glowing under the lava is a bug, not a look), and pulse a touch
+    // brighter with the LIVE surge so a heave lights the whole burst it is throwing.
+    const alpha = oneMinus(lifeNorm).mul(aRandom.mul(0.4).add(0.6))
+        .mul(mix(
+            float(1.0),
+            smoothstep(-1.4, 0.1, sY).mul(magmaSurgeTSL(time).mul(0.30).add(0.70)),
+            splash,
+        ));
     // Seam: the ember columns thin and WHITEN into rising steam (1→2 Steam Quench).
     const steamColor = vec3(0.72, 0.86, 0.9).mul(glow).mul(0.55);
     material.colorNode = mix(hotColor.mul(glow), steamColor, uniforms.uSeam.mul(0.85));
@@ -894,7 +968,7 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
-    const risingEmbers = createRisingEmbers(uniforms, 570, staging);
+    const risingEmbers = createRisingEmbers(uniforms, 640, staging);
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
 

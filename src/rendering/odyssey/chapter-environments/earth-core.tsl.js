@@ -1061,6 +1061,21 @@ export function createContactShadowDecalTSL(size = 12, uOpacity = uniform(1)) {
 // A dark obsidian shelf beside each level node, and (via createObsidianColumnTSL)
 // near-black silhouetted foreground columns at corridor corners (repoussoir). Solid
 // rock that occludes; only narrow cracks glow (bloom-eligible).
+/**
+ * The lava lake's shared SURGE phase — one closed-form scalar that every magma-contact
+ * system samples, so they read as ONE body of liquid: the molten material's waterline and
+ * tongues (below) and the splash sparks in earth-core.js's ember storm. `base` is a slow
+ * ~17 s breath; `rogue` is a pow-9 spike that fires for a couple of seconds every ~25 s —
+ * the lake HEAVES, the tongues jump, the sparks fly hardest, then it settles. Serenity
+ * with occasional drama, in five ALU. Evaluate at (now − age) to sample the heave a
+ * particle was BORN in.
+ */
+export function magmaSurgeTSL(uTime) {
+    const surgeBase = sin(uTime.mul(0.37)).mul(0.35).add(0.8);
+    const rogue = pow(clamp(sin(uTime.mul(0.25).add(1.3)), 0.0, 1.0), 9.0).mul(0.85);
+    return surgeBase.add(rogue);
+}
+
 export function createMoltenPocketMaterialTSL(
     uTime,
     uPulseIntensity = uniform(0),
@@ -1154,7 +1169,7 @@ export function createMoltenPocketMaterialTSL(
     // white under the gold. Zero new draws; the only new field is one scalar sin.
     const vWorldXZ = varying(positionWorld.xz);
     const lapPhase = vWorldXZ.x.mul(0.55).add(vWorldXZ.y.mul(0.47));
-    const surge = sin(uTime.mul(0.37)).mul(0.35).add(0.8);
+    const surge = magmaSurgeTSL(uTime);
     const lap = sin(lapPhase.add(uTime.mul(1.7))).mul(0.5)
         .add(sin(lapPhase.mul(2.3).sub(uTime.mul(2.6))).mul(0.3));
     const lakeLineY = uLakeY.add(lap.mul(1.1).mul(surge));
