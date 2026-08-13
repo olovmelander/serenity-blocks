@@ -1137,22 +1137,38 @@ export function createMoltenPocketMaterialTSL(
     color = color.add(uCrack.mul(glow.mul(0.30).add(0.10))
         .mul(isColumn ? lakeFalloff.mul(0.20).add(0.10) : lakeFalloff.mul(0.24).add(0.12)));
 
-    // §5.1 Emissive BLEED on the base near the lake line: the lava licks the lowest
-    // band so the column/shelf base glows as if it sits IN the lake.
-    // 2026-08-13 (user report "you do not see the lava lake splashing against the
-    // pillars"): the waterline now LAPS. The contact band's height breathes with two
-    // slow per-position waves, and the first ~1.6 u above the lake burns near-white
-    // under the orange bleed — the same two-tone the lava-fall splash wears, so both
-    // contacts read as one liquid. Pure ALU on the shared material: zero new draws.
+    // §5.1 THE SPLASH (user reports 2026-08-13, twice — first "you do not see the lava
+    // lake splashing against the pillars", then "now it feels a bit flat"). A uniform
+    // height band read as paint finding a height; liquid reads as liquid because it finds
+    // PATHS. Four coupled terms, almost all of them REUSING the moltenRockField values the
+    // fragment already paid for:
+    //   lap        — two slow per-position waves move the waterline;
+    //   surge      — one scalar sin breathes the lap's amplitude, so the lake has weight
+    //                and occasionally heaves rather than ticking like a metronome;
+    //   tongues    — the splash height is GATED BY crackHeat: gold fingers climb the
+    //                crevices that are already open, so the band's top edge is ragged
+    //                where the rock is broken and low where it is sealed;
+    //   conduction — the veins alone keep glowing several units above the contact,
+    //                fading with height: heat climbing OUT of the lake through the rock.
+    // A white-hot core sits in the first ~0.45 u so the contact itself blows toward
+    // white under the gold. Zero new draws; the only new field is one scalar sin.
     const vWorldXZ = varying(positionWorld.xz);
     const lapPhase = vWorldXZ.x.mul(0.55).add(vWorldXZ.y.mul(0.47));
+    const surge = sin(uTime.mul(0.37)).mul(0.35).add(0.8);
     const lap = sin(lapPhase.add(uTime.mul(1.7))).mul(0.5)
         .add(sin(lapPhase.mul(2.3).sub(uTime.mul(2.6))).mul(0.3));
-    const lakeLineY = uLakeY.add(lap.mul(1.1));
+    const lakeLineY = uLakeY.add(lap.mul(1.1).mul(surge));
     const baseBleed = pow(oneMinus(smoothstep(lakeLineY, lakeLineY.add(9.0), vWorldY)), 1.6);
-    const splashLine = oneMinus(smoothstep(lakeLineY, lakeLineY.add(1.6), vWorldY));
+    const tongueH = float(0.9).add(crackHeat.mul(2.6)).mul(surge.mul(0.5).add(0.6));
+    const splashLine = oneMinus(smoothstep(lakeLineY, lakeLineY.add(tongueH), vWorldY))
+        .mul(lap.mul(0.15).add(0.9));
+    const splashCore = oneMinus(smoothstep(lakeLineY, lakeLineY.add(0.45), vWorldY));
+    const conduction = crackHeat
+        .mul(oneMinus(clamp(vWorldY.sub(lakeLineY).div(6.0), 0.0, 1.0)));
     color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.42 : 0.14))
-        .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(isColumn ? 0.45 : 0.18));
+        .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(isColumn ? 0.5 : 0.2))
+        .add(vec3(1.05, 0.98, 0.85).mul(splashCore).mul(isColumn ? 0.6 : 0.25))
+        .add(uCrack.mul(conduction).mul(isColumn ? 0.35 : 0.15));
 
     color = color.mul(uPulseIntensity.mul(0.12).add(1.0));
 
@@ -1197,10 +1213,13 @@ export function createMoltenPocketMaterialTSL(
         // Baked accent/bounce emissive — a dim warm self-illumination on the
         // up/side faces so the rock glows softly as if lit by the removed PointLights.
         .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025))
-        // §5.1 emissive BLEED — the base glows where the lava licks it (lake line),
-        // with the lapping splash line white-hot so the bloom pass gilds the contact.
+        // §5.1 emissive BLEED — the base glows where the lava licks it (lake line). The
+        // tongues, the white-hot core and the vein conduction all emit, so the bloom pass
+        // gilds the whole contact event, not just a stripe.
         .add(uHot.mul(baseBleed).mul(isColumn ? 0.30 : 0.10))
-        .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(isColumn ? 0.30 : 0.10));
+        .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(isColumn ? 0.30 : 0.10))
+        .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(isColumn ? 0.35 : 0.14))
+        .add(uCrack.mul(conduction).mul(isColumn ? 0.20 : 0.08));
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
     material.depthWrite = isColumn;
