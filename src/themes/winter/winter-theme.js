@@ -4035,15 +4035,25 @@ export default class WinterTheme extends BaseTheme {
                     // on WebGPU it has been dead code. Same derivation as there.
                     if (typeof this.post.updateDynamic === 'function') {
                         const sd = this.stormDirector;
+                        // Deliberately gentler than the legacy path's tuning.
+                        // Those numbers were chosen for the old, far emptier
+                        // scene; the rebuilt one already carries the storm in
+                        // the aurora's colour shift, the blowing snow and the
+                        // glints, so a full-strength frost + chroma + streak
+                        // stack on top reads as a screen effect fighting the
+                        // world rather than weather inside it. Roughly half
+                        // strength, and frost is earned later and capped.
                         this.post.updateDynamic({
                             time: this.time,
-                            intensity: sd.intensity,
-                            whiteout: Math.min(1, sd.whiteout * 0.8),
-                            gust: Math.min(1, sd.gust),
-                            // Frost is "earned": absent in calm, peaks at whiteout.
-                            frost: Math.max(0, Math.min(1, ((sd.intensity - 0.45) / 0.55) + sd.whiteout * 0.5)),
-                            motionX: Math.max(-1, Math.min(1, (sd.gustDir ?? 1) * sd.gust)),
-                            motionY: -0.25,
+                            intensity: sd.intensity * 0.55,
+                            whiteout: Math.min(1, sd.whiteout * 0.45),
+                            gust: Math.min(1, sd.gust * 0.5),
+                            // Absent through calm and rising wind; only a real
+                            // whiteout brings it in, and never to full opacity.
+                            frost: Math.max(0, Math.min(0.55,
+                                ((sd.intensity - 0.62) / 0.38) * 0.35 + sd.whiteout * 0.32)),
+                            motionX: Math.max(-1, Math.min(1, (sd.gustDir ?? 1) * sd.gust * 0.5)),
+                            motionY: -0.18,
                         });
                     }
                     this.post.render();
