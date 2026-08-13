@@ -1276,7 +1276,10 @@ export function createMoltenPocketMaterialTSL(
 }
 
 /**
- * Build a single molten pocket shelf mesh (a low, irregular obsidian slab).
+ * Build a single molten pocket mesh. Historically a low flat slab (the ledge read);
+ * `options.flatten` now controls the vertical squash — the legacy 0.2 default keeps the
+ * slab for callers that want a floor glow (the selenite chapel's under-pocket), and the
+ * floating node blobs pass ~0.92 for a rocky ball.
  */
 export function createMoltenPocketTSL(
     uTime,
@@ -1300,11 +1303,17 @@ export function createMoltenPocketTSL(
     // WORSE HERE THAN ON THE COLUMNS: IcosahedronGeometry is NON-INDEXED, so all 540 vertices
     // are duplicates of 92 unique positions and an independent per-vertex jitter pulled EVERY
     // shared corner apart — the shelf was 180 disconnected triangles, not a solid ledge.
+    // THE FLATTEN WAS THE FLAT (third user report, 2026-08-13). The 0.2 vertex squash
+    // lived HERE, in the geometry — so the mesh-scale rounding shipped earlier multiplied
+    // an intrinsically flattened discus (0.2 x 0.94) and changed nothing. Parameterised:
+    // callers that want the legacy floor-slab keep the 0.2 default; the floating node
+    // blobs pass ~0.92 and jitter on Y like the other axes, so they are rocky BALLS.
+    const flattenY = options.flatten ?? 0.2;
     const jitterAt = weldedJitter(geometry, (options.seed ?? 0) + 7, 0.92, 0.16);
     for (let i = 0; i < pos.count; i += 1) {
-        const jitter = jitterAt(i); // tighter band: a rounded shelf, not spiky shards
+        const jitter = jitterAt(i); // tighter band: a rounded form, not spiky shards
         pos.setX(i, pos.getX(i) * jitter);
-        pos.setY(i, pos.getY(i) * 0.2); // flatten HARD into a low ledge
+        pos.setY(i, pos.getY(i) * flattenY * (flattenY > 0.5 ? jitter : 1));
         pos.setZ(i, pos.getZ(i) * jitter);
     }
     pos.needsUpdate = true;
