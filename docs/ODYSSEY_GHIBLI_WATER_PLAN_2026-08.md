@@ -333,6 +333,43 @@ Three hard facts (critic-verified):
 > browsers closed), and prefer `--only baseline,no-water,baseline-repeat` in ONE session so the
 > differential and its drift bound stay coupled.
 
+> **OUTCOME — Waves 0+1+2 MEASURED AND CLOSED, 2026-08-13 (cold-machine session after the
+> user's restart). The full ledger:**
+>
+> | station | pre-Ghibli | waves 1+2 ungated | + regime branch | max | waterMs total |
+> |---|---|---|---|---|---|
+> | deep p=0.115 | 13.11 | 15.47/15.47 (**over max**) | **12.909/12.982**, drift −0.066 | 14.2 ✓ | 4.52 → **2.03** |
+> | shallows p=0.16 | 6.16 | 7.80/8.19 | **6.030/6.030**, drift 0.000 | 8.5 ✓ | 3.54 → **1.77** |
+> | shoreline p=0.225 | (no cell) | 9.437/9.634, drift −0.197 | not re-measured (branch direction: saving) | 10.6 | ~0.26 (draw-mismatch caveat) |
+> | ch1 p=0.051 | — | 30.80/29.56, drift 1.245 | water never draws (act gate) | 35.0 ✓ | 0 |
+> | ch4 p=0.42 | 9.90 | 10.16/10.16, drift 0.000 | — | 7.0 aspirational (pre-existing over, §7.3) | 0.066 |
+>
+> **The water's total cost is measured for the first time** (the Wave 0 lever): ~2 ms where
+> it fills the frame, one timer tick at ch4 under the cloud deck, zero in Act I.
+>
+> **The ungated Ghibli package initially BLEW the deep budget (+2.36 ms), and the fix was
+> structural, not a downgrade.** Both hot stations are underwater frames, and every submerged
+> pixel was paying for the full topside stack — quantised ramp, fresnel, glint, whitecaps and
+> their noise, horizon dissolve, shore band — then discarding it in the final mix, because a
+> multiply-by-uniform is not dead code (the repo's logged lesson). `uSubmerged` is a uniform
+> the CPU writes each frame, so the colour graph now forks on `If(uSubmerged...)` — uniform
+> control flow, coherently skipped — with both branches alive only inside the 14 u breach
+> band. Result: **both hot stations now render the complete wave package CHEAPER than the
+> flat water they replaced.** Nothing was visually cut; captures verified both regimes
+> through the branch.
+>
+> **The LOD-seam defect (user report: "square sections with gaps") is fixed and
+> capture-verified.** Cause: the new 19–54 m waves were displacing a lattice whose cells
+> double every ring — in the morph zones the waves were sampled below Nyquist and the rings
+> tore. Fix: each wave's *geometric* amplitude fades as the local cell size approaches its
+> wavelength (full below len/5, gone past len/2.5), driven by the clipmap's own
+> morph-adjusted `spacing`, which is continuous across ring boundaries so the fade cannot
+> seam. The fragment field keeps full amplitude — the look loses nothing near the camera.
+>
+> **Instrument notes for the next session:** the first configuration of the first run after
+> boot carries cold-compile contamination (26.8 ms vs 15.5 warm — void and re-run once warm);
+> and the earlier three voided attempts stand as the thermal record — idle is not cool.
+
 ### Wave 2 — Motion (the sheet becomes liquid)
 - K2 ripple normal (prefer `detailTex` — already resident, repeat-wrapped, currently unused by
   the water) driving glint + subtle colour modulation; quantised.
@@ -373,9 +410,9 @@ Three hard facts (critic-verified):
 
 ## 6b. Wave tracker
 
-- [ ] **Wave 0** — falsifiable: worldNoWater pairs, shoreline cell, layout + px/m resolved, smoothstep proof, evidence re-captured
-- [ ] **Wave 1** — painted sea: script-plate unification, 4-stop pigment ramp, fresnel two-tone, horizon dissolve
-- [ ] **Wave 2** — motion: ripple normal, painted glint band, swell/crest decision by capture
+- [x] **Wave 0** — falsifiable: worldNoWater pairs, shoreline cell, layout + px/m resolved, smoothstep proof, evidence re-captured
+- [x] **Wave 1** — painted sea: script-plate unification, 4-stop pigment ramp, fresnel two-tone, horizon dissolve
+- [x] **Wave 2** — motion: 3-wave analytic swell + per-fragment field, whitecaps, LOD-seam fade, regime branch (see the measured ledger)
 - [ ] **Wave 3** — shore grammar: scalloped travelling foam, wet sand, animated waterline
 - [ ] **Wave 4** — signatures: line boil, sparkle cells, (optional) Ponyo horizon
 - [ ] **Wave 5** — underside per §7.1 decision

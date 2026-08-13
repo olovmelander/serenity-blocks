@@ -1,0 +1,79 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-13T13:17:50.200Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "rdna-2",
+    "device": "",
+    "description": ""
+  },
+  "resolution": "1280x720",
+  "seekProgress": 0.42,
+  "captureChapters": "3,4,5",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 160,
+      "p50": 10.15808,
+      "p95": 10.289152,
+      "p99": 20.054016,
+      "min": 9.961472,
+      "max": 21.757952,
+      "drawCalls": 48,
+      "drawCallsMin": 48,
+      "drawCallsMax": 48,
+      "triangles": 755753,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "no-water",
+      "note": "the Act II sea plate is not built at all (draws, fill, vertex and pipeline)",
+      "samples": 149,
+      "p50": 10.092544,
+      "p95": 10.223616,
+      "p99": 10.289152,
+      "min": 9.895936,
+      "max": 10.420224,
+      "drawCalls": 46,
+      "drawCallsMin": 46,
+      "drawCallsMax": 46,
+      "triangles": 725161,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 144,
+      "p50": 10.15808,
+      "p95": 10.289152,
+      "p99": 17.825792,
+      "min": 9.961472,
+      "max": 19.529728000000002,
+      "drawCalls": 48,
+      "drawCallsMin": 48,
+      "drawCallsMax": 48,
+      "triangles": 755753,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": null,
+    "waterMs": 0.066,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": 0,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}

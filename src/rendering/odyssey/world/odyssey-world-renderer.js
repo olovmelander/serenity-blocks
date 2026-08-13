@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
+    Fn, If,
     abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
     max, min, mix,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
@@ -808,7 +809,10 @@ export function createOdysseyWorld({
     // whitecaps came out as round blobs of pure noise on a surface with no wave data left in
     // it. Displacement stays in the vertex stage (it is geometry); everything the LOOK depends
     // on — normal, glint, whitecaps — is computed here, where every pixel gets the real wave.
-    const waveField = (xz) => {
+    // `ampScale(wv)` lets the two stages disagree about AMPLITUDE while sharing one phase
+    // definition — the vertex stage must fade waves its lattice cannot sample (below), the
+    // fragment stage keeps them all.
+    const waveField = (xz, ampScale = () => float(1)) => {
         let h = float(0);
         let dx = float(0);
         let dz = float(0);
@@ -817,14 +821,30 @@ export function createOdysseyWorld({
             const phase = xz.x.mul(wv.dirX * k)
                 .add(xz.y.mul(wv.dirZ * k))
                 .add(uTime.mul(wv.speed));
-            h = h.add(sin(phase).mul(wv.amp));
+            const a = ampScale(wv).mul(wv.amp);
+            h = h.add(sin(phase).mul(a));
             // d/dx and d/dz of the same sum — the gradient the old normal never had.
-            dx = dx.add(cos(phase).mul(wv.amp * k * wv.dirX));
-            dz = dz.add(cos(phase).mul(wv.amp * k * wv.dirZ));
+            dx = dx.add(cos(phase).mul(a.mul(k * wv.dirX)));
+            dz = dz.add(cos(phase).mul(a.mul(k * wv.dirZ)));
         });
         return { h, dx, dz };
     };
-    const swellVert = waveField(w.worldXZ);
+    // GEOMETRIC amplitude fades with the LATTICE, or the rings tear (user report: "square
+    // sections with gaps between them" seen from under the surface). The clipmap doubles its
+    // cell size every ring, so a wave that ring 0 samples cleanly is ALIASED in the morph
+    // zones and outer rings — adjacent vertices land on near-random phases and the seams
+    // open along the ring boundaries. Each wave's displacement therefore fades out as the
+    // local cell size approaches its wavelength (full below len/5, gone past len/2.5 — under
+    // ~2.5 samples per cycle a lattice is not sampling a wave, it is rolling dice). The
+    // driver is the clipmap's own morph-adjusted `spacing`, which is CONTINUOUS across ring
+    // boundaries — both sides of every seam compute the same fade, so the fade cannot
+    // introduce a seam of its own. The FRAGMENT field keeps full amplitude: colour, normal
+    // and caps stay detailed everywhere near the camera; only far geometry flattens, where a
+    // sub-pixel bump was never visible anyway.
+    const swellVert = waveField(
+        w.worldXZ,
+        (wv) => float(1).sub(smoothstep(float(wv.len / 5), float(wv.len / 2.5), w.spacing)),
+    );
     const swell = swellVert.h.mul(wSwellFade).toVar();
     waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
@@ -845,32 +865,6 @@ export function createOdysseyWorld({
     const wShelf = vec3(...ODYSSEY_WATER_RAMP.shelf);
     const wOpen = vec3(...ODYSSEY_WATER_RAMP.open);
     const wDeep = vec3(...ODYSSEY_WATER_RAMP.deep);
-    // exp2 absorption, not a linear lerp: near-shore metres get the resolution they need
-    // while the deep saturates instead of clipping. .toVar() — high fan-out (plan §compile).
-    const wT = clamp(
-        float(1).sub(exp2(depth.mul(-ODYSSEY_WATER_RAMP.absorptionPerMetre))),
-        0,
-        1,
-    ).toVar();
-    // QUANTISE into flat plates with an anti-aliased edge. A hard floor() posterise aliases
-    // badly at 720p on a surface this size; carrying the cell index plus a smoothstep of its
-    // fraction keeps each plate flat but resolves its boundary over ~10% of a cell.
-    const bands = float(ODYSSEY_WATER_RAMP.bands);
-    const wCell = wT.mul(bands).toVar();
-    const wStep = floor(wCell).add(smoothstep(float(0.45), float(0.55), fract(wCell)))
-        .div(bands)
-        .toVar();
-    // Four stops across the quantised driver (three equal segments).
-    const wSeg = wStep.mul(3).toVar();
-    const body = mix(
-        mix(
-            mix(wShore, wShelf, clamp(wSeg, 0, 1)),
-            wOpen,
-            clamp(wSeg.sub(1), 0, 1),
-        ),
-        wDeep,
-        clamp(wSeg.sub(2), 0, 1),
-    );
     // THE NORMAL IS THE GRADIENT NOW, plus animated ripple detail (Wave 2). The old normal
     // was built from the swell's VALUE, which is not a slope at all — it tilted +-0.0275 and
     // pointed the wrong way, so fresnel and the sun glint were effectively static. The wave
@@ -900,100 +894,110 @@ export function createOdysseyWorld({
     const wSlope = waveSlope.add(ripple.mul(wSwellFade)).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const fb = float(1).sub(max(dot(wN, viewDir), 0));
-    const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62);
     const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), wN)).mul(0.9);
-    const wVis = texture(sunVisTex, wUv).r;
-    // FRESNEL TWO-TONE, then the HORIZON DISSOLVE (Ghibli-water Wave 1).
-    // Ghibli water is not a mirror: Spirited Away's sea was painted flat and had a separately
-    // rendered reflection ADDED over it as a soft component. So the sky arrives as a colour
-    // wash through fresnel (no reflector, no image), and the far water then converges on the
-    // sky outright — in the reference the horizon is where sea and sky become "seamlessly
-    // intertwined", with silhouettes rather than a drawn line carrying the boundary.
-    let wl = mix(body, skyColourFor(float(0.22)), fres);
-    wl = wl.add(vec3(1, 0.96, 0.88).mul(spec).mul(wVis)).mul(wVis.mul(0.18).add(0.82));
-    // ── WHITECAPS (Wave 2/3) ─────────────────────────────────────────────────────────
-    // The reference is The Witness: foam is an OPAQUE FLAT WHITE SHAPE with a crisp edge,
-    // not a soft glow — so this MIXES toward white rather than adding light, and its
-    // threshold is narrow. Two drivers, because a crest alone is not where water breaks:
-    // wave HEIGHT (the top of the swell) and wave STEEPNESS (its leading face, where a real
-    // wave actually tips over). The already-scrolling detail bake breaks the band into
-    // separate caps so it reads as painted foam rather than a contour line, and the
-    // smoothstep edge — not a step — is what keeps it from crawling with aliasing at 720p.
-    // Both drivers are NORMALISED against their real maxima, so the threshold means what it
-    // says: the summed wave amplitude is 2.82 u and the summed maximum slope is 0.246 (sum of
-    // amp*k over the three waves). Driving a threshold with un-normalised slope is what blew
-    // the first version out to a solid white sea.
-    // HEIGHT is the driver, not height AND steepness. Those two fight each other: on a sine
-    // the maximum height is exactly where the slope is ZERO, so summing them lit the flanks
-    // as well as the tops and — both terms saturating — put most of the surface over the
-    // threshold, which is why the caps came out as broad soft blobs twice. Foam on the top
-    // slice of the swell is also what the reference actually shows.
-    const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
-    // The noise BREAKS the crest lines into separate caps; it must not out-vote them, or the
-    // foam detaches from the swell and reads as round blobs drifting on a flat sea (it did).
-    // High frequency (~7 u features) and a small weight is the difference between "torn foam
-    // along a wave" and "clouds on the water".
-    const capNoise = snoise3(vec3(
-        w.worldXZ.x.mul(0.14),
-        w.worldXZ.y.mul(0.14),
-        uTime.mul(0.35),
-    ));
-    const capDrive = crestNorm.add(capNoise.mul(0.30));
-    // Caps need water under them: they fade out where the sheet itself is fading into sand,
-    // so the shore band below owns the waterline and these own the open sea.
-    // A NARROW band is the whole point: the reference's foam has a drawn edge, so the
-    // transition is ~0.06 of the driver rather than the 0.20 a soft wash would use. Wide
-    // enough to stay anti-aliased at 720p, tight enough to read as a shape with a border.
-    const cap = smoothstep(float(0.50), float(0.56), capDrive)
-        .mul(smoothstep(float(0.4), float(2.5), depth))
-        .toVar();
-    wl = mix(wl, vec3(0.97, 0.99, 1.0), cap.mul(0.9));
-    // Distance is measured to the fragment, so this is a true horizon term rather than a
-    // fixed fog: 1.2 km out the sea is 80% sky. Kept below 1 so the boundary never becomes a
-    // hard line of its own — the thing it exists to dissolve. Applied AFTER the caps so far
-    // foam melts into the sky instead of shimmering as sub-pixel speckle.
-    const wHorizon = clamp(
-        length(positionWorld.sub(cameraPosition)).mul(1 / 1200),
-        0,
-        1,
-    ).pow(1.4).mul(0.8);
-    wl = mix(wl, skyColourFor(float(0.16)), wHorizon);
-    wl = wl.add(vec3(0.92, 0.97, 0.99).mul(
-        smoothstep(float(2.6), float(0.15), depth)
-            .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.55),
-    ));
-    // From BELOW the surface is a bright ceiling, not a body of water. FrontSide culled it and
-    // the camera looked straight through the sea into the sky.
-    // THE LUMINOUS CEILING (plan §3.4.2 — Sea of Thieves' wave-SSS approximation). From
-    // below, a crest transmits light: mask = crest height x sun-facing x grazing. We have no
-    // FFT, so the crest mask comes from the swell term already computed above — ~5 ALU, zero
-    // new draws, and it is what makes the breach pay off instead of merely happening.
-    const crestMask = clamp(swell.mul(1.6).add(0.35), 0, 1);
     const grazing = float(1).sub(clamp(abs(dot(wN, viewDir)), 0, 1));
-    const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
-    // WAVE 5 — SNELL'S WINDOW + TIR (the research pass's strongest converged finding, four
-    // independent sources). From below, rays within the critical angle (cos θc ≈ 0.661 at
-    // n = 1.33) TRANSMIT the sky — the bright circle overhead — and everything outside it
-    // is total internal reflection: the underside mirrors the water body and goes dark.
-    // smoothstep, not step (a hard edge aliases at 720p), and the swell-perturbed normal
-    // makes the window's rim ripple live. The old underside was one uniform bright ceiling,
-    // which is why the breach "merely happened": there was no circle of sky to rise toward.
-    const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
-    const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
-    const windowSky = skyColourFor(float(0.9)).mul(1.30)
-        .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2));
-    const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
-    const underside = mix(tirBody, windowSky, snellWindow)
-        .add(uWaterGlow.mul(sss).mul(0.55));
     // WAVE 5 — the MENISCUS: while the eye is within ~3 u of the plane, the extreme-grazing
     // sliver of the surface lights as a thin bright line — the crossing cue that makes the
     // breach one event instead of a fade. Rides `grazing`, so it IS the waterline.
     const meniscus = smoothstep(float(0.93), float(0.995), grazing).mul(uBreachNear).mul(0.9);
-    waterMat.colorNode = toOutput(applyAerial(
-        mix(wl, underside, uSubmerged).add(vec3(0.95, 0.99, 1.0).mul(meniscus)),
-        positionWorld,
-    ));
+    // ── THE REGIME BRANCH (MEASURED, and it pays for the whole Ghibli package) ────────
+    // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
+    // 14.2 max — and the tell is that both hot stations are UNDERWATER frames: every
+    // submerged pixel was paying for the full topside stack (quantised ramp, fresnel, sun
+    // glint, whitecaps with their noise, horizon dissolve, shore band) and then discarding
+    // it in the final mix, because a multiply-by-uniform is not dead code (this repo's
+    // logged lesson). uSubmerged is a UNIFORM the CPU writes each frame, so `If` on it is
+    // uniform control flow — the GPU skips the untaken side coherently, no divergence.
+    // Both branches only run inside the 14 u breach transition band (~1% of the journey).
+    // Shared prerequisites (wave field, ripple normal, spec, grazing) stay hoisted above
+    // because BOTH regimes read them.
+    const waterShaded = Fn(() => {
+        const col = vec3(0).toVar('waterRegimeCol');
+        If(uSubmerged.lessThan(0.999), () => {
+            // ── TOPSIDE: the painted sea (Wave 1) + whitecaps (Wave 2) ──
+            // exp2 absorption, not a linear lerp: near-shore metres get the resolution
+            // they need while the deep saturates instead of clipping.
+            const wT = clamp(
+                float(1).sub(exp2(depth.mul(-ODYSSEY_WATER_RAMP.absorptionPerMetre))),
+                0,
+                1,
+            ).toVar();
+            // QUANTISE into flat plates with an anti-aliased edge. A hard floor()
+            // posterise aliases badly at 720p on a surface this size.
+            const bands = float(ODYSSEY_WATER_RAMP.bands);
+            const wCell = wT.mul(bands).toVar();
+            const wStep = floor(wCell).add(smoothstep(float(0.45), float(0.55), fract(wCell)))
+                .div(bands)
+                .toVar();
+            const wSeg = wStep.mul(3).toVar();
+            const body = mix(
+                mix(
+                    mix(wShore, wShelf, clamp(wSeg, 0, 1)),
+                    wOpen,
+                    clamp(wSeg.sub(1), 0, 1),
+                ),
+                wDeep,
+                clamp(wSeg.sub(2), 0, 1),
+            );
+            // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. Ghibli
+            // water is not a mirror: the sky arrives as a colour wash, never an image.
+            const fb = float(1).sub(max(dot(wN, viewDir), 0));
+            const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62);
+            const wVis = texture(sunVisTex, wUv).r;
+            const wl = mix(body, skyColourFor(float(0.22)), fres)
+                .add(vec3(1, 0.96, 0.88).mul(spec).mul(wVis))
+                .mul(wVis.mul(0.18).add(0.82))
+                .toVar();
+            // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
+            // this MIXES toward white in a narrow (0.06) threshold band. HEIGHT is the
+            // driver (height+steepness fight each other: a sine's crest has zero slope),
+            // normalised against the real summed amplitude so the threshold means what it
+            // says; high-frequency noise breaks the crest lines into separate caps without
+            // out-voting them.
+            const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
+            const capNoise = snoise3(vec3(
+                w.worldXZ.x.mul(0.14),
+                w.worldXZ.y.mul(0.14),
+                uTime.mul(0.35),
+            ));
+            const capDrive = crestNorm.add(capNoise.mul(0.30));
+            const cap = smoothstep(float(0.50), float(0.56), capDrive)
+                .mul(smoothstep(float(0.4), float(2.5), depth));
+            wl.assign(mix(wl, vec3(0.97, 0.99, 1.0), cap.mul(0.9)));
+            // HORIZON DISSOLVE — far water converges on the sky (80% by 1.2 km, capped
+            // below 1 so the boundary never becomes a hard line of its own), applied AFTER
+            // the caps so far foam melts into sky instead of shimmering; then the static
+            // shore brightening band (proven live by the Wave 0 GPU probe).
+            const wHorizon = clamp(
+                length(positionWorld.sub(cameraPosition)).mul(1 / 1200),
+                0,
+                1,
+            ).pow(1.4).mul(0.8);
+            wl.assign(mix(wl, skyColourFor(float(0.16)), wHorizon));
+            wl.assign(wl.add(vec3(0.92, 0.97, 0.99).mul(
+                smoothstep(float(2.6), float(0.15), depth)
+                    .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.55),
+            )));
+            col.assign(wl);
+        });
+        If(uSubmerged.greaterThan(0.001), () => {
+            // ── UNDERSIDE: the luminous ceiling (Wave 5 of the seam plan, unchanged) ──
+            // Crest SSS + Snell's window + TIR; the swell-perturbed normal (shared, above)
+            // is what makes the window's rim ripple live.
+            const crestMask = clamp(swell.mul(1.6).add(0.35), 0, 1);
+            const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
+            const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
+            const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
+            const windowSky = skyColourFor(float(0.9)).mul(1.30)
+                .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2));
+            const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
+            const underside = mix(tirBody, windowSky, snellWindow)
+                .add(uWaterGlow.mul(sss).mul(0.55));
+            col.assign(mix(col, underside, uSubmerged));
+        });
+        return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
+    })();
+    waterMat.colorNode = toOutput(applyAerial(waterShaded, positionWorld));
     waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
