@@ -1174,41 +1174,15 @@ export function createEarthCoreEnvironment(options = {}) {
     });
     group.userData.columns = columns;
 
-    // 13b. OPPRESSIVE walls/ceiling (§3.3) — a few large near-black slabs pressing the
-    //      top of the corridor so the camera falls THROUGH a tight cathedral. Reuse the
-    //      obsidian-column builder as wide, short, ceiling-hung slabs near-frame top. No
-    //      contact decal (they hang from the ceiling, not the lake).
-    const ceilingSpecs = [
-        {
-            pos: staging.at(0.34, { lateral: -28, forward: 10, up: 0 }),
-            r: 14,
-            h: 22,
-        },
-        {
-            pos: staging.at(0.72, { lateral: 30, forward: 14, up: 0 }),
-            r: 16,
-            h: 24,
-        },
-    ];
-    const ceilingSlabs = ceilingSpecs.map((spec) => {
-        const slab = createObsidianColumnTSL(
-            uniforms.uTime,
-            uniforms.uPulseIntensity,
-            spec.r,
-            spec.h,
-            uniforms.uBakedBounce,
-            sharedColumnMaterial,
-        );
-        // Hang from the top of the corridor (well above the lake), inverted so the wide
-        // end reads as a ceiling vault pressing down.
-        slab.mesh.position.set(spec.pos.x, corridorHigh - spec.h * 0.4, spec.pos.z);
-        slab.mesh.rotation.z = Math.PI; // flare the wide end downward (ceiling vault)
-        slab.mesh.frustumCulled = false;
-        slab.mesh.name = 'ceiling-slab';
-        group.add(slab.mesh);
-        return slab.mesh;
-    });
-    group.userData.ceilingSlabs = ceilingSlabs;
+    // 13b. (REMOVED 2026-08-13, user report.) The two "oppressive ceiling slabs" — squat
+    //      obsidian drums hung near corridorHigh at stations 0.34/0.72 — were authored to
+    //      press the corridor top into a tight cathedral, but the steam quench now veils
+    //      the shaft top, so they floated context-free in the cream with no ceiling or
+    //      wall to belong to and read as misplaced debris; worse, the `seam < 0.94`
+    //      occluder gate snapped them off in a single frame mid-ascent. §3.3's oppression
+    //      is carried by the colonnade walls and the framing columns, which have visible
+    //      anchoring. Do not reintroduce hung set pieces above the corridor unless they
+    //      are visibly attached to something.
 
     // 13c. Tiny SHARP near-camera embers (§3.3/§5.3 scale cue) — a small set of bright,
     //      crisp sparks seeded right on the path centreline so the eye has a known small
@@ -2108,9 +2082,6 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
     if (group.userData.colonnade) group.userData.colonnade.visible = occluderVisible;
     group.userData.columns?.forEach((column) => {
         column.visible = occluderVisible;
-    });
-    group.userData.ceilingSlabs?.forEach((slab) => {
-        slab.visible = occluderVisible;
     });
 
     // Animate lava lights
