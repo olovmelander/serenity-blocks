@@ -388,6 +388,90 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 > re-measured from scratch. Expected direction is a saving (11 of the 45 draws at p=0.16 were
 > forest) but **no number is claimed here because none was measured.**
 
+> **WAVE 1 — COMPLETE 2026-08-13. The third item shipped, and the capture corrected the fix
+> twice on the way to landing it.**
+>
+> **`uSubmerged` is the eye's now (MEASURED live).** The board passes `camera.position.y`; at
+> p=0.185 the world reports `submerged: 1` where it rendered AIR before, 0.403 mid-ramp at
+> p=0.194, and 0 at p=0.201 — just past `ODYSSEY_BREACH_P = 0.20023`, exactly as computed in
+> Wave 0. The 17%-of-chapter-2 air stretch is gone. The ramp widened 9 → 14 u (the eye climbs
+> ~11 u per 0.01 of progress near the surface, so 9 u resolved in under a hundredth — a pop).
+> Both playground effects now pass the same eye the game does; each had been disagreeing with
+> its own camera by 32 u through the rail fallback.
+>
+> **Per-channel Beer–Lambert.** The aerial's single grey scalar (−0.0075, clamped 0.97) became
+> `vec3(−0.0160, −0.0082, −0.0046)` per unit (1 u = 1 m per Wave 0), red dying ~3.5x faster
+> than blue, clamped 0.995 per channel — so the hue *walks* with distance instead of every
+> channel arriving together, and nothing past ~470 u pins to 97% of one target any more.
+>
+> **"One convergence colour" was aimed at the wrong surface, and only the capture said so.**
+> The first implementation re-converged the SKY DOME onto the deep plate; the value gate came
+> back **identical to four decimals** (midWash 0.9045 → 0.9046 at p=0.130). From 100+ u down
+> the whole up-hemisphere is the WATER PLANE's underside, not the dome — and every up-ray's
+> aerial target was the same shallow plate, because a surface fragment's own `depthBelow` is
+> zero regardless of the ray that reaches it. The convergence now lives in `applyAerial`:
+> grazing rays converge on a plate that rides EYE DEPTH (`uEyeDepth`: mid plate at the
+> surface → abyss plate by ~140 u), and the up-lift is a pow-2.2 downwelling cone instead of
+> a hemisphere-wide wash. The capture corrected it a second time: with a *fixed* deep-plate
+> convergence, p=0.185 (eye ~35 u down) rendered abyss-dark — depth-awareness is what makes
+> this ONE model rather than one colour. The dome wears the same treatment for the
+> playground's longer sightlines.
+>
+> **The water plates may no longer leave the water table.** `uWaterMid` tracked the live
+> script sample, and past the last water keyframe (script-p 0.12) the sample's horizon is the
+> breach's pale AIR sky. Harmless while the ascent rendered air; load-bearing the moment the
+> eye fix made p 0.18 → 0.20 render water. The plate's sample is clamped to the script's last
+> `medium: 'water'` keyframe, computed from the table, not asserted.
+>
+> **The quench's tail no longer wears sky-white.** p=0.115 sits inside the exit window BY
+> DESIGN (the exit must outlast Earth Core's dissolve, which ends at p=0.123 and which only
+> Wave 2 may replace) — and the cumulus at that station was the veil's near-white `0xcfe6ff`
+> billow-modulated over open water. The tail now converges on the water column's own mid
+> colour as the traveller submerges (^1.5 ease; the white-out at the crossing untouched).
+> Window and density curve untouched — **§7.2 stays the owner's decision.**
+>
+> **The quench window constants moved beside the quench** (`odyssey-steam-quench.js` exports
+> both half-widths; the board imports them). Found in the process: `seam-12-dive` — the bench
+> §7.2 will be decided on — was still previewing the OLD symmetric ±0.06 window, 0.03 wider
+> on the exit than the game ships. It now imports the game's numbers.
+>
+> **MEASURED (phase-locked `--time 9`, value gate on the PNGs):** midWash at p=0.130
+> **0.9753 → 0.7068**, at p=0.167 **0.8958 → 0.3861**, and the frames show it: a downwelling
+> gradient with legible god-ray shafts at 0.130, a lit column over a dark seabed corner at
+> 0.167, a bright shallow-water frame with visible sand at 0.185. p=0.115 gates at 0.1623
+> with the veil in the water family. The breach station p=0.204 is unchanged (0.168 — it was
+> never the problem). Captures: `chapter-02-high-webgpu` (4 stations) and
+> `seam-1-2-high-webgpu` offsets 0.105/0.115/0.123/0.185/0.194/0.201.
+>
+> **Two test assertions REPLACED, not weakened** (both requirements unchanged, stated per the
+> discipline): the act-gate update-guard regex now matches the guarded block form and still
+> fails on an unguarded `update()`; the quench window test asserts the exported VALUES
+> (approach > authored seamWidth, exit ≥ seamWidth) instead of grepping board source.
+>
+> **Noted for Wave 2, not fixed here:** a faint ring silhouette inside the quench at
+> p≈0.103–0.105 (pre-existing — visible in the pre-change captures); and the board's `seamT`
+> is a LINEAR map over the now-asymmetric window, so the shader's t=0.5 white-out crossover
+> lands at **p≈0.078, 0.015 before the boundary** — an undocumented input the §7.2 re-shape
+> should take.
+>
+> **Lane B (MEASURED, four ADR-0016 pairs, every one drift 0.000 with draws min==max):**
+> the re-baseline of the committed 2-of-3 tree first, then the completed wave —
+>
+> | station | pre-wave cell | draws removed (2 of 3) | wave complete | net |
+> |---|---|---|---|---|
+> | deep p=0.115 | 14.48 (80 draws) | 13.566/13.566 (75) | **13.894/13.894** (75) | **−0.59 ms** |
+> | shallows p=0.16 | 5.96 (45 draws) | 5.439/5.439 (34) | **5.767/5.767** (34) | **−0.19 ms** |
+>
+> The completed-wave pairs are content-matched against the re-baseline pairs (identical draw
+> counts AND triangle counts: 517,347 / 490,259), so the **+0.33 ms is the measured price of
+> the per-channel extinction and directional convergence ALU** — a differential, not an
+> estimate. Acceptance ("Lane B not worse than 5.96") met: 5.77 at the governing station,
+> and the deep station ends the wave 0.59 ms cheaper than it began. The old→new cell
+> comparisons span a content change (draws differ) and are cell-value comparisons, stated as
+> such. The seam cell (p=0.105) is annotated STALE — its content changed too, and Wave 2
+> re-baselines it with its own work. Reports:
+> `gpu-split-laneb-act2-deep-p115-w1{pre,}.json`, `gpu-split-laneb-act1-underwater-w1{pre,}.json`.
+
 ### Wave 2 — The seam (needs an owner decision first, see §7)
 - Give the quench a **plateau** rather than an apex, centred on the boundary.
 - Bind the act gate to the occluder's cover instead of the constant 0.03 margin.
@@ -425,7 +509,7 @@ Check a wave off ONLY when its acceptance criteria are met and its OUTCOME block
 this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.md` is the remaining count.
 
 - [x] **Wave 0** — Make it falsifiable (seam harness, eye-height contracts, one breach constant, unit scale, two new stations)
-- [ ] **Wave 1** — Coherence (eye-driven uSubmerged, no air sky / forest underwater, one convergence colour)
+- [x] **Wave 1** — Coherence (eye-driven uSubmerged, no air sky / forest underwater, one convergence colour)
 - [ ] **Wave 2** — The seam (quench plateau, cover-bound act gate, reseeded population, occlusion not dissolve) — BLOCKED on the §7.1 owner decision
 - [ ] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
 - [ ] **Wave 4** — The water (per-channel extinction, god rays upright and counted 9, caustics min+up-face)
