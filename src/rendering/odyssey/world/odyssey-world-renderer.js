@@ -724,6 +724,11 @@ export function createOdysseyWorld({
     const uEyeDepth = uniform(1);
     // 1 while the eye is AT the surface (within ~3 u), 0 elsewhere — the meniscus window.
     const uBreachNear = uniform(0);
+    // THE CLOUD REGIME GATE (cloud plan Wave 2, exit-gate response). 1 when the eye is high
+    // enough that any part of the deck can show its sunlit TOP, 0 when it cannot. The CPU
+    // knows this exactly, so the GPU should not pay to discover it per fragment — see the
+    // If-branch on it in the deck's colour graph.
+    const uCloudTopLit = uniform(0);
     // The three water plates. Driven from the colour script's water keyframes so the ocean's
     // depth banding and the journey's palette can never drift apart (they are the same data).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
@@ -1312,9 +1317,21 @@ export function createOdysseyWorld({
     // which is a ~28.5 km period — nearly constant over the visible deck, i.e. a no-op, and
     // the research critic caught it. 0.0018 is a ~3.5 km period, which puts two or three
     // openings across a wide view. The z term tilts the streets so they do not read as bars.
+    // COVERAGE RAISED 0.63/0.40 -> 0.685/0.515 (Wave 2 exit-gate response + Witness reference).
+    // TWO reasons that point the same way, which is why this is a threshold change and not a
+    // shader trick. (1) MEASURED: the rebaked field put visibly more cloud on screen at the
+    // old thresholds, and the deck's cost went 1.049 -> 1.376 ms at ch4 with a drift bound of
+    // 0.066 — five times the bound, so real. The two new gradient taps can only account for
+    // ~0.05 ms of that by arithmetic (≈0.37 Mpx covered x 2 fetches), so the cost is COVERAGE:
+    // more covered pixels means more blended fill, and fill is what this iGPU is short of.
+    // (2) ART: the owner's Witness reference is mostly BLUE — discrete cumulus with generous
+    // sky between them, not a broken overcast. Lower coverage serves the budget and the
+    // reference with one number, which is the rare case where the cheap fix is also the right
+    // one. The inland end moves least (0.40 -> 0.515): ch5's overhead deck still reads as a
+    // layer, just not a lid.
     const cloudThreshold = mix(
-        float(0.63),
-        float(0.40),
+        float(0.685),
+        float(0.515),
         smoothstep(float(-150), float(-760), cl.worldXZ.y),
     ).add(sin(cl.worldXZ.x.mul(0.0018).add(cl.worldXZ.y.mul(0.0006))).mul(0.045));
     const vThresh = varying(cloudThreshold, 'vThresh');
@@ -1361,21 +1378,13 @@ export function createOdysseyWorld({
     // narrow smoothstep gives a hard quantised terminator. Because the normal comes from the
     // SAME field that cuts the silhouette, the terminator's edge scallops in step with the
     // outline — which is the "flat yet volumetric" trick the whole reference set turns on.
+    // The gradient sampler. GUARDED normalize downstream: a zero-length vector const-folds into
+    // a WGSL compile failure on this stack (the winter theme's logged trap), and the gradient
+    // IS zero wherever the field is locally flat — most of a cloud's interior. The terminator
+    // band is 8 % wide — a drawn line, not a gradient — and its edges are never equal, because
+    // `smoothstep(a, a, x)` is a hard WGSL compile error.
     const cTexel = float(1 / 256);
     const cSample = (uvOff) => texture(detailTex, cUvA.add(vec2(drift, 0)).add(uvOff)).a;
-    const cCentre = cSample(vec2(0, 0)).toVar();
-    const cGx = cSample(vec2(cTexel, 0)).sub(cCentre);
-    const cGz = cSample(vec2(0, cTexel)).sub(cCentre);
-    // GUARDED normalize: a zero-length vector const-folds into a WGSL compile failure on this
-    // stack (the winter theme's logged trap), and the gradient IS zero wherever the field is
-    // locally flat — which is most of a cloud's interior.
-    const cNraw = vec3(cGx.mul(-9.0), 1, cGz.mul(-9.0));
-    const cN = cNraw.div(max(length(cNraw), float(1e-5))).toVar();
-    const cSun = clamp(dot(cN, uSunDir).mul(0.5).add(0.5), 0, 1);
-    // Lit band owns ~65 % of the face (terminator biased toward the shadow side, rule 4), and
-    // the transition is 8 % wide — a drawn line, not a gradient. Edges must never be equal:
-    // `smoothstep(a, a, x)` is a hard WGSL compile error.
-    const cBand = smoothstep(float(0.44), float(0.52), cSun).toVar();
     const cloudTop = uSunColour.mul(1.06).add(uSkyZenith.mul(0.10));
     // The base tone leans on the HORIZON colour, not the shadow tint. The first version was
     // shadow-tint-dominated, which the playground (no post stack) rendered as soft grey — and
@@ -1418,8 +1427,43 @@ export function createOdysseyWorld({
     // the camera against the flat deck plane, so the entire sky swapped tone at once as the
     // rail climbed through y=660; now billow crests flip to their sunlit read before the
     // troughs do, which is a parallax reveal instead of a global colour swim.
-    const fromAboveF = smoothstep(float(-60), float(90), cameraPosition.y.sub(vCloudY));
-    const cloudCol = mix(cloudUnder, mix(cloudShade, cloudTop, cBand), fromAboveF);
+    // ── THE REGIME GATE (MEASURED; this is the water plate's lesson applied) ─────────
+    // Wave 2 shipped +0.327 ms at ch4 against a 0.066 drift bound — five times the bound, so
+    // real, and it FAILED the wave's exit gate. The first hypothesis was fill, so coverage was
+    // cut from 0.63/0.40 to 0.685/0.515: `cloudsMs` came back 1.376, IDENTICAL to the digit.
+    // That refutes fill and confirms what the research critic said about the discard floor —
+    // sub-threshold fragments still run every tap, discard only saves the blend write — so the
+    // cost is shader work on EVERY rasterised sheet fragment, cloud or sky.
+    //
+    // And most of that work is invisible: the rail's eye tops out near y=634 against a deck at
+    // 660, so below y≈484 (deck minus billow minus the fade's own 60 u) `fromAboveF` is zero
+    // for every fragment and the entire top read — two gradient taps, a normalize, a dot and a
+    // terminator — is computed and then multiplied away. A multiply by zero is NOT dead-code-
+    // eliminated (this repo's logged lesson, and the exact bug the water plate had). `uCloudTopLit`
+    // is a uniform the CPU writes, so `If` on it is uniform control flow the GPU skips coherently.
+    const cloudCol = Fn(() => {
+        // ROOT-PIN first: r181 emits a var's ASSIGNMENT at its first build site, so any shared
+        // term first built inside a branch leaves the other path — and later graph roots like
+        // `opacityNode` — reading zeros. This is the regression that broke the water's
+        // underside; it is not being repeated here.
+        density.toVar('cRootDensity');
+        aaW.toVar('cRootAaW');
+        vThresh.toVar('cRootThresh');
+        const col = vec3(0).toVar('cloudColOut');
+        col.assign(cloudUnder);
+        If(uCloudTopLit.greaterThan(0.5), () => {
+            const cCentre = cSample(vec2(0, 0)).toVar();
+            const cGx = cSample(vec2(cTexel, 0)).sub(cCentre);
+            const cGz = cSample(vec2(0, cTexel)).sub(cCentre);
+            const cNraw = vec3(cGx.mul(-9.0), 1, cGz.mul(-9.0));
+            const cN = cNraw.div(max(length(cNraw), float(1e-5)));
+            const cSun = clamp(dot(cN, uSunDir).mul(0.5).add(0.5), 0, 1);
+            const cBand = smoothstep(float(0.44), float(0.52), cSun);
+            const fromAboveF = smoothstep(float(-60), float(90), cameraPosition.y.sub(vCloudY));
+            col.assign(mix(cloudUnder, mix(cloudShade, cloudTop, cBand), fromAboveF));
+        });
+        return col;
+    })();
     cloudMat.colorNode = toOutput(applyAerial(cloudCol, positionWorld));
     // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
     // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
@@ -1990,6 +2034,10 @@ export function createOdysseyWorld({
             ));
             uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
             uBreachNear.value = Math.max(0, 1 - (Math.abs(ODYSSEY_SEA_LEVEL - submergedRefY) / 3));
+            // The deck's top read is only reachable once the eye is within the billow band:
+            // deck plane 660, billow reaches ~116 below it, and `fromAboveF` needs another
+            // 60 u before it leaves zero. Below that the GPU skips the whole top stack.
+            uCloudTopLit.value = submergedRefY > (CLOUD_DECK_Y - 116 - 60) ? 1 : 0;
             // Publish what this frame decided, for instruments (see `state` above). Written
             // LAST so a reader can never observe a half-updated frame.
             state.submerged = uSubmerged.value;

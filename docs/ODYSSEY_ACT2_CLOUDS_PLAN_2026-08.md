@@ -350,6 +350,41 @@ From the Ghibli/Witness distillation — the implementable core:
 > p=0.42 (≤ +0.15 ms beyond the drift bound, judged against the station max since the discard
 > floor's credit is unproven).
 
+> **WAVE 2 EXIT GATE: FAILED, and the diagnosis is worth more than the failure.**
+> All figures Lane B, ch4 p=0.42, draws content-matched 48/46 in every window.
+>
+> | build | cloudsMs | drift | verdict |
+> |---|---|---|---|
+> | Wave 0 (incumbent) | 1.049 | 0.000 | reference |
+> | + Waves 1a/1b/2 | **1.376** | 0.066 | **+0.327 — 5x the drift bound, REAL. Gate is +0.15. FAILS.** |
+> | + coverage 0.63/0.40 -> 0.685/0.515 | **1.376** | −0.066 | **identical to the digit — a clean NULL result** |
+> | + regime gate | 1.311 | −0.328 | inconclusive (effect 0.065 << drift 0.328) |
+>
+> **The null result is the finding.** The first hypothesis was fill, so coverage was cut hard —
+> and the cost did not move by one digit. That refutes fill and CONFIRMS the research critic's
+> objection to the discard floor: sub-threshold fragments still run every tap, and discard only
+> saves the blend write. The deck's price is shader work on EVERY rasterised sheet fragment,
+> sky or cloud, and is therefore independent of how much cloud is on screen. Anyone optimising
+> this deck later should start from that fact — it invalidates the whole "reduce coverage to
+> save fill" family of fixes.
+>
+> **The regime gate follows from it** and is shipped: `uCloudTopLit`, a CPU-written uniform,
+> skips the entire top read (two gradient taps, normalize, dot, terminator) whenever the eye
+> is below y≈484, where `fromAboveF` is provably zero for every fragment — which is most of
+> the act, since the rail tops out at 634. Same pattern that recovered 2.36 ms on the water
+> plate, same root-pin discipline, and BOTH branches capture-verified (gate-off at ch4 is
+> pixel-identical to the ungated build; gate-on at p=0.615, eyeY 598, renders correctly).
+> Its saving is UNPROVEN: the machine was thermally saturated by then (drift 0.328, p99 spikes
+> to 29 ms after six runs).
+>
+> **CARRIED, cold machine, in this order:** (1) re-measure ch4 with the gate — the only open
+> question is whether it recovers the +0.327; (2) ch5 p=0.569, where the deck is 20 % of the
+> frame and the gate is ON, so the gate cannot help there and the honest number may be worse;
+> (3) decide. If the gate does not recover it, the ordered reserve is the plan's: one-axis
+> gradient, vertex empty-cell collapse, Witness two-pass opaque-core split — or the owner
+> accepts ~+0.3 ms for the look, which is a legitimate call on a lane whose budget question
+> (§7.2) is already open.
+
 ### Wave 3 — the seam cloud-bank speaks the same language
 - [ ] Restyle `odyssey-cloud-bank.js` (renderOrder 12, p 0.588-0.708) with the same
       quantised-band + drawn-edge grammar — it composites OVER the new deck and is the
