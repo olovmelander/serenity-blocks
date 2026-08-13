@@ -11,6 +11,12 @@ import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import {
+    ONE_WORLD_APPLY_EXPOSURE,
+    ONE_WORLD_OUTPUT_SCALE,
+    ONE_WORLD_OUTPUT_SATURATION,
+    ONE_WORLD_SKY_RADIUS,
+} from './world/odyssey-world-grade.js';
 import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
@@ -137,23 +143,11 @@ function readPixelRatioOverrideFromUrl() {
 
 /** Chapters whose ground the continuous Act II world replaces. */
 const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
-/**
- * Scene-linear scale for the world's HDR output before the post stack. 1.0 leaves an ACES
- * curve no headroom and blooms the sky over everything. 0.55 was fitted while the scene fog
- * still washed the world to pastel; with the world's materials opted out of that fog the
- * whole frame came back ~40 % too dark, hence 0.82.
- */
-const ONE_WORLD_OUTPUT_SCALE = 0.82;
-/**
- * ...and the world hands that stack a FLATTER image than it wants on screen, because the
- * stack is not neutral: master grade lifts saturation 1.15x, chapter 4 lifts a further 1.10x,
- * and a 0.018 black crush plus a 1.07 S-curve sits underneath both. Fed the palette as
- * authored, the sky's low red channel came out CLAMPED AT ZERO — a pure ultramarine no
- * daylight sky has. The grade supplies the vividness; the world supplies the hue.
- */
-const ONE_WORLD_OUTPUT_SATURATION = 0.72;
-/** Sky dome radius for the board camera (near 0.1 / far 9000). */
-const ONE_WORLD_SKY_RADIUS = 3600;
+// The world's OUTPUT CONTRACT (output scale, saturation, sky radius, exposure ownership)
+// moved 2026-08-13 to world/odyssey-world-grade.js beside the world it configures, so the
+// board and the cloud playground rig grade by construction instead of by agreement — the
+// same fix the steam quench's half-widths got, and the cure for the deck's "authored flat,
+// shipped as navy shards" history.
 // The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
 // rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
 // the board and the seam-12-dive playground drive the same quench by construction. The
@@ -670,7 +664,7 @@ export class OdysseyBoardController {
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear
                     // values rather than the display-referred palette the playground wants.
-                    applyExposure: false,
+                    applyExposure: ONE_WORLD_APPLY_EXPOSURE,
                     outputScale: ONE_WORLD_OUTPUT_SCALE,
                     outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
                     // Inside the board camera's 9,000 far plane, and inside the shipped

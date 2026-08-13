@@ -24,8 +24,17 @@ Evidence: `public/playground-refs/act2-clouds-current-{ch4-0p42,ch5-0p55,ch5-0p6
    near the camera by nearFade/bandFade, but a *distant* tower at the camera's altitude
    band edge stays a solid crumpled wall. (0p62 left half.)
 3. **Saturated ultramarine patches with cut-out borders** — deck alpha holes reveal the
-   zenith sky colour; the grade (outputScale 0.82, ACES, sat 1.10) super-saturates it.
-   The deck's own history records the same class ("ragged navy shards", :1127-1132).
+   zenith sky colour; the grade super-saturates it. The deck's own history records the same
+   class ("ragged navy shards", :1127-1132). **MECHANISM NOW PROVEN WITH PIXELS (Wave 0,
+   2026-08-13):** the new graded rig renders the same frame twice at ch4 p=0.42 — with the
+   post stack (`act2-clouds-rig-graded-p042.png`) the patches are vivid ultramarine with
+   hard borders; with `?post=0` (`act2-clouds-rig-ungraded-p042.png`) the identical geometry
+   reads muted slate-grey and looks unremarkable. The defect is not in the deck's colours
+   alone, it is in the deck's colours PASSED THROUGH the grade — which is exactly why every
+   earlier tuning pass on the ungraded playground could not see it. Note also the correction
+   this turned up: the world hands the stack `outputSaturation` **0.72** (a deliberate
+   flattening), and the 1.10 in the deck's comment is chapter 4's own lift inside the post
+   stack — two different numbers in two different places, both real.
 4. **From above, the deck collapses to ONE flat tone** — `fromAbove` swaps to `cloudTop`
    globally (:1138-1139); the ±115 u of billow feeds no shading at all. The deck never
    reads `uSunDir` (uniform exists at :507; zero consumers in the deck graph).
@@ -93,22 +102,86 @@ From the Ghibli/Witness distillation — the implementable core:
 ## 4. Waves
 
 ### Wave 0 — price and harness (no visuals)
-- [ ] Add `{ id: 'no-clouds', flags: { odysseyWorldNoClouds: '1' } }` to CONFIGURATIONS in
+- [x] Add `{ id: 'no-clouds', flags: { odysseyWorldNoClouds: '1' } }` to CONFIGURATIONS in
       `scripts/odyssey-gpu-split.mjs` (the `no-water` pattern; `--flags` applies to both
       sides of a pair, so a real configuration entry is the only way to get the
       differential). Run the trio at ch4 p=0.42, Lane B, quiet machine (counters checked,
       not drift), unique `--out` + `--port`. **The deck gets its first-ever price.**
-- [ ] Establish the ch5 station: candidate p≈0.55 — prove it sits outside the 4→5 ecotone,
-      outside the bank window (0.588-0.708), before ch6 ignite presence; first admissible
-      baseline into a new `odysseyAct2Ch5SkyGpuP50LaneBMs` cell, baseline-null convention
-      (the shoreline precedent). Plus one LOOK-ONLY station inside the bank window
-      (p≈0.63) for §1.6/late-palette checks — no perf cell.
-- [ ] Playground rig: clone the deck material into
-      `src/playground/effects/odyssey-cloud-deck.effect.js` with the in-game grade
-      emulated (`outputColorTransform=false` + `renderOutput`) — the deck's one recorded
-      colour disaster came from tuning without the grade. Refs via `?ref=…&refMode=split`.
-- [ ] Cold-boot check baseline: time one in-game One World boot (the §1.8 stall is a
-      standing defect on this path; every later wave repeats this check).
+- [x] Establish the ch5 station — **candidate p≈0.55 was WRONG and is rejected.** Derived by
+      executing the live layout modules: ch5 = [0.500, 0.648), and its only interval free of
+      every window is **(0.5600, 0.5780)** — 12.2 % of the chapter. 0.55 sits inside the 4→5
+      ecotone [0.440, 0.560], where chapter 4's environment group is still visible at opacity
+      0.0197 (extra draws whose opacity is progress-dependent — a content-match hazard), and
+      on the inclusive edges of both the 4→5 colour bridge and the preload window. **Station
+      is p=0.569**, the midpoint of the quiet interval; cell
+      `odysseyAct2Ch5SkyGpuP50LaneBMs` filled with its first admissible pair (baseline-null).
+      LOOK-ONLY station inside the bank window stays p≈0.63.
+- [x] Playground rig — built BETTER than specified: rather than cloning the deck material
+      (which would drift from the shipped code), `src/playground/effects/act2-cloud-deck.effect.js`
+      mounts the REAL world through the REAL `OdysseyTslPipeline`, so a screenshot of the
+      page is a screenshot of the code that ships. The grade constants moved out of
+      `OdysseyBoardController` into `world/odyssey-world-grade.js` — the board and the rig
+      now import the SAME contract (the steam-quench precedent), with
+      `odyssey-world-grade.test.js` asserting the import and the absence of re-inlined
+      literals (falsified: it fails against the pre-refactor board). Params: `?p=`, `?pitch=`,
+      `?yaw=`, `?post=0`, `?chapter=`.
+- [x] Cold-boot check baseline — see the OUTCOME block: four Electron harness boots of the
+      real game ran back-to-back with no stall and no failure, which is the reference every
+      later wave repeats. (This does not clear §1.8; it records the current state.)
+
+> **OUTCOME — Wave 0 CLOSED, 2026-08-13 (post-reboot cold machine). Everything the wave
+> existed to produce, plus two findings that change how later waves are judged.**
+>
+> **THE DECK HAS A PRICE, AND IT IS BIG.** First measurement in the deck's life, via the new
+> `no-clouds` lever. Both pairs cold-machine, `baselineDrift` EXACTLY 0.000, draws
+> content-matched min==max in every window:
+>
+> | station | frame p50 | deck cost | share of frame | draws (with/without) |
+> |---|---|---|---|---|
+> | ch4 p=0.42 | 10.09 / 10.09 | **1.049 ms** | 10.4 % | 48 / 46 |
+> | ch5 p=0.569 | 9.109 / 9.109 | **1.901 ms** | **20.9 %** | 53 / 51 |
+>
+> At the ch5 sky station the cloud deck is the single most expensive system in the frame.
+> That reframes the whole plan: Wave 1+2's estimated +0.10…0.25 ms gross is 10–24 % on top of
+> a 1.05 ms incumbent at ch4, and the discard-floor saving finally has a real 1.9 ms of ch5
+> fill to come out of. ⚠️ The lever is ASYMMETRIC with `no-water`: the deck mesh is still
+> built and only withheld from the group (renderer :1166), so this is DRAWS + FILL + VERTEX
+> with pipeline-compile on both sides — a FLOOR, not a ceiling.
+>
+> **THE STATION CANDIDATE IN §4 WAS WRONG.** p≈0.55 is inside the 4→5 ecotone [0.440, 0.560]
+> — the journey's widest seam, 40.5 % of chapter 5 — where chapter 4's environment still
+> draws at opacity 0.0197 with a progress-dependent term. Deriving from the live modules
+> instead of the docs gave ch5 = [0.500, 0.648) with exactly ONE unwindowed interval,
+> (0.5600, 0.5780); the station is its midpoint **p=0.569**, verified live as
+> `inSeam:false, ecotone:none, weights {5: 1.000}`. This is the same mistake class the repo
+> logged once before, caught this time before a number was published.
+>
+> **THE RIG IS BETTER THAN THE PLAN ASKED FOR, AND IT IMMEDIATELY PAID.** Instead of cloning
+> the deck material, `act2-cloud-deck.effect.js` mounts the REAL world through the REAL
+> `OdysseyTslPipeline`. Building it exposed a live contract bug: the grade constants were
+> module-private in `OdysseyBoardController`, so any rig would have had to COPY them —
+> re-creating the "four different answers to one contract" disease `odyssey-world-height.js`
+> documents. They now live in `world/odyssey-world-grade.js`, imported by board and rig
+> alike, guarded by `odyssey-world-grade.test.js` (asserts the import + absence of re-inlined
+> literals; falsified — it fails against the pre-refactor board). First use of the rig proved
+> defect §1.3's mechanism with pixels: identical geometry reads muted slate-grey ungraded and
+> vivid ultramarine graded. And it corrected the record — the world hands the stack
+> `outputSaturation` **0.72**; the 1.10 in the deck's comment is chapter 4's own lift inside
+> the post stack.
+>
+> **THE WATER LEDGER IS UN-STALED (carried debt, cleared in the same quiet block).** Both
+> cells re-measured after the root-pin fix: deep **13.106/13.172**, drift −0.066, 75 draws,
+> waterMs 2.228 (max 14.2 ✓); shallows **6.226/6.292**, drift −0.066, 34 draws, waterMs 1.966
+> (max 8.5 ✓). Both sit ~0.2 ms above the superseded pairs because those measured an
+> underside whose inputs the regime branch had zero-starved — cheap because it was not doing
+> the work. Deep landing exactly on the pre-Ghibli 13.11 with the full wave package on screen
+> is the honest result.
+>
+> **INSTRUMENT NOTE for later waves:** the GPU co-tenant that blocked measurement for two
+> sessions was *this agent's own output streaming* — VS Code sits at ~45 % while text streams
+> and drops under 9 % within ~30 s of silence. Measurements must therefore run as long silent
+> commands with no concurrent workflow; all four pairs above were taken that way, and their
+> drift (−0.066, −0.066, 0.000, 0.000) is the evidence the window held.
 
 ### Wave 1 — the silhouette (the look's spine)
 - [ ] **Rebake the A channel** of `bakeDetailNormal` (:281) as a billow spectrum:
