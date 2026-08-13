@@ -1019,7 +1019,7 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this
     //     chapter so nodes frame mid-frame on a platform instead of floating in void.
-    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial);
+    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter);
     elements.moltenPockets.push(...moltenPockets);
     elements.seamBoulders.push(...moltenPockets);
 
@@ -1932,7 +1932,7 @@ function createLavaGlowTexture() {
  * @param {THREE.Vector3} groupCenter world-space anchor the group is positioned at
  * @param {THREE.Material} [sharedDecalMaterial] the ONE shared contact-shadow material
  */
-function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial = null) {
+function createMoltenPockets(group, uniforms, groupCenter) {
     // Level nodes for chapter 1 fall roughly within t ∈ [0, 0.10] along the spline
     // (see odyssey-layout DEFAULT_LEVEL_POSITIONS_BY_ID). Sample those and keep the
     // ones whose local Y sits inside the chapter's framed corridor.
@@ -1964,14 +1964,18 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial =
             uniforms.uBakedBounce,
             { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, material: sharedPocketMaterial },
         );
-        // Seat the shelf as a LEDGE clearly to one side of and below the node. The side
-        // offset (1.35×) exceeds the shelf radius, so the shelf never crosses the on-path
-        // x≈0 line — the glowing path tube passes cleanly past it instead of skewering it.
+        // FLOATING MAGMA BLOB, not a ledge (user direction 2026-08-13: "make them sphere
+        // blobs floating around instead of being flat"). The old shelf was squashed to 66%
+        // height and hung unanchored beside each node — it read as a flat plate in mid-air,
+        // the same disease as the removed ceiling slabs. Rounded, it joins the chapter's
+        // established floating-magma-ball motif (the geode clusters) and keeps its real job:
+        // marking the level node. The side offset still exceeds the blob radius, so the
+        // glowing path tube passes cleanly past it instead of skewering it.
         const sideSign = i % 2 === 0 ? 1 : -1;
         const shelfX = local.x + sideSign * (size * 2.7 + 2.0);
-        const shelfY = local.y - size * 1.05 - 0.9;
+        const shelfY = local.y - size * 0.7;
         mesh.position.set(shelfX, shelfY, local.z + sideSign * 0.6);
-        mesh.scale.set(1.0, 0.66, 0.82);
+        mesh.scale.set(1.0, 0.94, 0.9);
         mesh.rotation.y = (i * 1.31) % TAU;
         mesh.name = `molten-pocket-${i}`;
         mesh.frustumCulled = false;
@@ -1982,19 +1986,9 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedDecalMaterial =
         mesh.userData.baseScale = mesh.scale.clone();
         group.add(mesh);
         pockets.push(mesh);
-
-        // §5.1 contact-shadow AO decal nested on/under the shelf so the node reads as
-        // resting on a grounded ledge, not floating. (share-material: per-size geometry +
-        // the ONE shared decal material.)
-        const decalMesh = sharedDecalMaterial
-            ? makeSharedContactDecal(size * 2.4, sharedDecalMaterial)
-            : (() => {
-                const d = createContactShadowDecalTSL(size * 2.4, uniforms.uOpacity);
-                return d.mesh;
-            })();
-        decalMesh.position.set(shelfX, shelfY - size * 0.18, local.z);
-        decalMesh.frustumCulled = false;
-        group.add(decalMesh);
+        // (The §5.1 contact-shadow decal that sat under the shelf is GONE with the ledge
+        // read — a grounded shadow beneath a floating blob is a contradiction, and its
+        // removal returns one draw per node.)
     });
     group.userData.pockets = pockets;
     return pockets;
@@ -2195,7 +2189,6 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
     const { elements } = group.userData;
     if (elements?.rockClusters) {
         const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
-        const localProgress = group.userData.localProgress ?? 0;
         const sinkables = [
             ...(elements.rockClusters ?? []),
             ...(elements.moltenPockets ?? []),
@@ -2206,14 +2199,22 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
                 cluster.userData.baseY = cluster.position.y;
             }
             const sinkDepth = cluster.userData.seamSinkDepth ?? ((cluster.userData.size ?? 4) * 2 + 5);
+            // RETIMED 2026-08-13 (user report: "plates moving down when we go upwards").
+            // The old Math.max also took smoothstep(localProgress, 0.55, 0.76), which ran
+            // this exit beat IN FULL VIEW from 55% of the chapter — mid-ascent, the shelves
+            // and boulders visibly descended and shrank with no cause the player could see.
+            // The beat itself survives: remnants now settle only inside the seam window
+            // (uSeam, plus the p 0.078→0.083 hard-out), where the quench veils the exit.
             const seamSink = cluster.userData.seamRemnant
                 ? Math.max(
                     seam,
-                    THREE.MathUtils.smoothstep(localProgress, 0.55, 0.76),
                     THREE.MathUtils.smoothstep(group.userData.cameraProgress ?? 0, 0.078, 0.083),
                 )
                 : seam;
-            cluster.position.y = cluster.userData.baseY - seamSink * sinkDepth;
+            // FLOATING, not hung: a slow per-index bob so the blobs ride the cavern's air
+            // the way the motes ride the water. Composes with the sink around baseY.
+            const bob = Math.sin((time * 0.35) + (i * 1.7)) * 0.9;
+            cluster.position.y = cluster.userData.baseY + bob - (seamSink * sinkDepth);
             if (cluster.userData.baseScale) {
                 cluster.scale.copy(cluster.userData.baseScale)
                     .multiplyScalar(THREE.MathUtils.lerp(1, 0.08, seamSink));
