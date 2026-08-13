@@ -490,6 +490,51 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
 - Shading: world normal from derivatives, dorsal backlight, distance fade to the water colour.
 - **Acceptance:** stills at p 0.130/0.167 in which no fish reads as a flat dart; Lane B within budget.
 
+> **OUTCOME — Wave 3, DONE 2026-08-13.**
+>
+> **Swim first, as ordered — and it changed the hull mandate exactly as predicted.** The old
+> flap was a STANDING wave (one `sin(swimPhase)` for the whole body) beating 0.8–1.1 Hz while
+> covering 0.06–0.21 body-lengths/s. Replaced with three coupled closed-form terms, all
+> vertex-ALU: a **travelling** wave whose phase lags down `positionGeometry.z` (the bend
+> propagates nose→tail, amplitude growing tailward with a head-sway floor), a **tail beat
+> coupled to speed** (`beatHz = 1.3·v/L + 0.4`, cruise rates raised so the school covers
+> 0.3–1.1 BL/s), and **banking into the turn** (roll rides v·ω, signed by the circle's
+> handedness — and half the school now circles the other way; one global handedness read as a
+> carousel).
+>
+> **The sizing fix Wave 0 flagged: every fish was 5–12 m long.** Scale 1.2–2.8 → 0.38–0.73
+> over a 4.35 u hull = **1.7–3.2 m**. The capture after swim+size alone already killed the
+> "tumbling black kites" read — the hull rebuild proceeded because close passes still showed
+> the open edge-on profile.
+>
+> **The hull is CLOSED and compressed the right way.** 7 → 11 triangles: the two missing rear
+> faces (back and belly — the shape was open), lateral compression corrected (0.26 wide ×
+> 0.60 tall, was 0.32 × 0.26 — wider than tall), widest a third back, forked caudal fin
+> (two lobes), raked dorsal. **Shading:** world normal from screen-space derivatives
+> (instancing-safe, survives the vertex swim), dorsal surfaces catch down-welling light, and
+> the body hands itself to `applyAerial`, so a distant fish fades into the same per-channel
+> water convergence as everything else instead of staying ink-black at any range.
+>
+> **Reseat out of the ROCK, not out of the shaft.** Fish and motes lift above
+> `relief.sample` **only when their rail station is open water** — a station whose rail runs
+> under the world's terrain is the Act I shaft, and lifting those would feed the exact leak
+> Wave 2's reseeding owns. Mote fill is capped by a screen-space clamp (≤ ~1.2° of screen
+> however close it drifts).
+>
+> **MEASURED.** Stills at p=0.130/0.167 (phase-locked t=9): near fish read as deep-bodied
+> silhouettes with visible tail forks, distant fish as school specks — no dart. Value gate
+> holds (midWash 0.6925 / 0.3829, within noise of Wave 1's frames). **Lane B: the whole
+> package prices below one 65.536 µs timer tick** — deep p=0.115 13.894/13.894 ms p50
+> (drift 0.000, 75 draws min==max) and shallows p=0.16 5.767/5.767 (drift 0.000, 34 draws),
+> both IDENTICAL to the Wave 1 cells; the honestly-priced fill increase and the mote-clamp
+> saving net to zero at this resolution. Reports: `gpu-split-laneb-act2-deep-p115-w3.json`,
+> `gpu-split-laneb-act1-underwater-w3.json`.
+>
+> **Left open, deliberately:** the school's *choreography* ("the school crosses once,
+> banking" at the column beat) is Wave 4/5 staging, not fish anatomy; and the shaft-seeded
+> fish still exist and still leak at seam stations — that is Wave 2's reseeding, blocked on
+> §7.1.
+
 ### Wave 4 — The water itself
 - Per-channel Beer–Lambert extinction, decoupled colour/fade coefficients, quantised into bands.
 - God rays: correct the count to 9, flip them right way up, lift them out of the seabed.
@@ -511,7 +556,7 @@ this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.m
 - [x] **Wave 0** — Make it falsifiable (seam harness, eye-height contracts, one breach constant, unit scale, two new stations)
 - [x] **Wave 1** — Coherence (eye-driven uSubmerged, no air sky / forest underwater, one convergence colour)
 - [ ] **Wave 2** — The seam (quench plateau, cover-bound act gate, reseeded population, occlusion not dissolve) — BLOCKED on the §7.1 owner decision
-- [ ] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
+- [x] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
 - [ ] **Wave 4** — The water (per-channel extinction, god rays upright and counted 9, caustics min+up-face)
 - [ ] **Wave 5** — The breach (Snell's window + TIR, meniscus, audio on the same constant)
 
