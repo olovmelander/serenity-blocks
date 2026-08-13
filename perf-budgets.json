@@ -106,9 +106,9 @@
             "note": "131 pre-rebuild; 92-93 after the Wave 3b decal merge. 2026-08-12: 83 sans orbs, and CONSTANT for the first time \u2014 the +-1 flicker was the lava-floor corona sprites (frustum-culled, camera breathing; plan \u00a710.3); the fix unculls the five coronas, +5 always-on draws that are frustum-clipped (vertex-only). Baseline stays null: 83 against max 35 reds the gate; closing that gap is the carried sprite->instanced migration."
         },
         "odysseyAct1UnderwaterGpuP50LaneBMs": {
-            "baseline": 5.77,
+            "baseline": 6.09,
             "max": 8.5,
-            "note": "p=0.16, Radeon 610M/720p/Medium. 2026-08-13 act2 wave 1 COMPLETE: 5.767/5.767 ms p50, drift 0.000, 34 draws min==max both windows, 490,259 tris both \u2014 content-matched (same draws AND tris) against the 5.439 re-baseline pair, so the +0.33 ms is a true differential: the per-channel Beer-Lambert + directional convergence ALU on the world materials. Net vs the pre-wave cell: 5.96 -> 5.77 with the acceptance bar ('not worse than 5.96') met. History: 7.73 pre-luminous-ocean; 5.96 at 45 draws; 5.44 draws-removed-only. max 8.5 left as-is (predates the ~10% ratchet convention; tightening is an owner call). Reports: gpu-split-laneb-act1-underwater-w1{pre,}.json."
+            "note": "p=0.16, Radeon 610M/720p/Medium. 2026-08-13 act2 wave 4: 5.964/6.095 ms p50, drift -0.131 (two ticks; the repeat window carried an ambient p99 tail), 34 draws min==max \u2014 the flipped god rays seat their wide bright bases near the surface camera, so the shallows absorb ~+0.2 ms of the deep station's -0.98 saving. Baseline is the worse of the pair. History: 7.73 pre-luminous-ocean; 5.96 at 45 draws; 5.44 wave-1 draws-removed; 5.767 wave-1 complete (content-matched +0.33 extinction ALU); wave 3 identical. max 8.5 left as-is (predates the ~10% ratchet convention; tightening is an owner call). Reports: gpu-split-laneb-act1-underwater-w{1pre,1,3,4}.json."
         },
         "odysseyAct2SeamGpuP50LaneBMs": {
             "baseline": 15.4,
@@ -116,9 +116,9 @@
             "note": "p=0.105 (just past the 1->2 boundary), Radeon 610M/720p/Medium. FILLED 2026-08-13 by the first admissible pair ever taken at this station: 15.401/15.073 ms p50, drift 0.328, 82 draws with drawCallsMin==drawCallsMax in both windows, 563,529 tris. Baseline is the worse of the pair. THE SEAM HAD NO STATION AT ALL before this, which is why nobody noticed it is the second-most-expensive frame in the journey after ch1 - 2.6x the p=0.16 underwater cell - because BOTH worlds draw here at once (Earth Core alpha-dissolves to p=0.123 while the Act II ocean has been on since p=0.063). max 17.0 is a hold-the-line ratchet ~10% above baseline; Wave 2 is expected to LOWER the baseline, not spend against it. STALE as of act2 wave 1 (2026-08-13): the forest gate and quench exit narrowing change this station's content and no pair spans them; no number is claimed for the current tree. Wave 2 re-baselines this cell with its own changes. Report: gpu-split-laneb-act2-seam-p105.json."
         },
         "odysseyAct2DeepOceanGpuP50LaneBMs": {
-            "baseline": 13.89,
-            "max": 15.3,
-            "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. 2026-08-13 act2 wave 1 COMPLETE: 13.894/13.894 ms p50, drift 0.000, 75 draws min==max both windows, 517,347 tris both — content-matched (same draws AND tris) against the 13.566 re-baseline pair, so the +0.33 ms is the wave's extinction/convergence ALU, measured not estimated. Net vs the pre-wave cell: 14.48 -> 13.89. History: 14.483/14.090 at 80 draws; 13.566 draws-removed-only. THIS CELL EXISTS BECAUSE THE OLD ONE DID NOT GOVERN THE WORK: p=0.16 `shallows` reads ~5.8 ms while the deep half where most Act II work lands is ~2.4x that. max 15.3 is the ~10% hold-the-line ratchet on the new baseline. Reports: gpu-split-laneb-act2-deep-p115-w1{pre,}.json."
+            "baseline": 12.91,
+            "max": 14.2,
+            "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. 2026-08-13 act2 wave 4: 12.909/12.909 ms p50, drift 0.000, 75 draws min==max — wave 4 SAVED 0.98 ms (the upside-down god rays were paying ~1 ms of buried additive fill in the up-looking deep frames). History: 14.483/14.090 at 80 draws (pre-wave-1); 13.566 wave-1 draws-removed; 13.894 wave-1 complete (+0.33 extinction ALU, content-matched); wave 3 identical to wave 1 (below one tick). THIS CELL EXISTS BECAUSE THE OLD ONE DID NOT GOVERN THE WORK: p=0.16 `shallows` is ~2x cheaper than the deep half where most Act II work lands. max 14.2 is the ~10% hold-the-line ratchet on the new baseline. Reports: gpu-split-laneb-act2-deep-p115-w{1pre,1,3,4}.json."
         }
     }
 }
