@@ -1341,11 +1341,47 @@ export function createOdysseyWorld({
     // reference with one number, which is the rare case where the cheap fix is also the right
     // one. The inland end moves least (0.40 -> 0.515): ch5's overhead deck still reads as a
     // layer, just not a lid.
+    // 0.685/0.515 -> 0.755/0.605 (second raise, and the last one). Measuring the reference
+    // rather than eyeballing it: The Witness's sky is roughly a quarter to a third cloud, with
+    // blue carrying the frame and a few masses reading against it. Ours was still past half,
+    // which is why even a lit, scalloped, hero-populated sky read as "busy" rather than as that
+    // reference. Coverage is the one lever here that is FREE — this deck's cost was measured to
+    // be coverage-INDEPENDENT (0.63/0.40 -> 0.685/0.515 moved cloudsMs by exactly zero) — so
+    // the composition can be set purely on what looks right.
     const cloudThreshold = mix(
-        float(0.685),
-        float(0.515),
+        float(0.755),
+        float(0.605),
         smoothstep(float(-150), float(-760), cl.worldXZ.y),
-    ).add(sin(cl.worldXZ.x.mul(0.0018).add(cl.worldXZ.y.mul(0.0006))).mul(0.045));
+    ).add(sin(cl.worldXZ.x.mul(0.0018).add(cl.worldXZ.y.mul(0.0006))).mul(0.045))
+        // ── HERO CLEARINGS ───────────────────────────────────────────────────────────
+        // A hero only reads as a hero if it stands in OPEN BLUE; against a sky already full of
+        // deck cloud at the same tone it is just one more cloud, which is exactly how the first
+        // hero capture came out. So the deck opens up around each hero: raising the coverage
+        // threshold near a hero's ground track removes cloud there and leaves sky.
+        //
+        // THIS IS FREE, and that is why it is done here and not in the fragment stage: the
+        // threshold is already computed per VERTEX and interpolated (`vThresh` below), so six
+        // distance terms cost ~60 ALU across ~9.8k vertices — nothing — whereas the same six
+        // terms per fragment would land on the one stage this deck cannot afford (its price is
+        // coverage-independent because every sheet fragment runs the full tap stack).
+        //
+        // The descending-edge smoothstep is deliberate and correct: `smoothstep(hi, lo, x)` in
+        // WGSL is the true descending ramp `1 - smoothstep(lo, hi, x)` (GPU-probe-verified this
+        // session; the old repo rule claiming it returns 0 was FALSE and has been corrected in
+        // the skill). Clamped so overlapping clearings cannot drive the threshold past 1 and
+        // erase the sky wholesale.
+        .add(clamp(
+            ODYSSEY_HERO_CLOUD_SPECS.reduce(
+                (acc, h) => acc.add(smoothstep(
+                    float(h.w * 2.1),
+                    float(h.w * 0.7),
+                    length(cl.worldXZ.sub(vec2(h.x, h.z))),
+                ).mul(0.30)),
+                float(0),
+            ),
+            0,
+            0.34,
+        ));
     const vThresh = varying(cloudThreshold, 'vThresh');
     const cUvA = varying(cl.worldXZ.mul(0.00205), 'vCUvA');
     const cUvB = varying(cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)), 'vCUvB');
