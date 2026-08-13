@@ -1,0 +1,80 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-13T16:01:52.929Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "rdna-2",
+    "device": "",
+    "description": ""
+  },
+  "resolution": "1280x720",
+  "seekProgress": 0.569,
+  "captureChapters": "3,4,5",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 101,
+      "p50": 9.50272,
+      "p95": 9.764864,
+      "p99": 9.830400000000001,
+      "min": 9.240576,
+      "max": 17.825792000000003,
+      "drawCalls": 53,
+      "drawCallsMin": 53,
+      "drawCallsMax": 53,
+      "triangles": 750321,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "no-clouds",
+      "note": "the Act II cloud deck is not added to the world group (draws, fill, vertex)",
+      "samples": 139,
+      "p50": 7.340031999999999,
+      "p95": 7.53664,
+      "p99": 7.667712,
+      "min": 7.077888,
+      "max": 8.257536,
+      "drawCalls": 51,
+      "drawCallsMin": 51,
+      "drawCallsMax": 51,
+      "triangles": 719729,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 97,
+      "p50": 9.764864000000001,
+      "p95": 10.092544,
+      "p99": 10.354688000000001,
+      "min": 9.371648,
+      "max": 10.354688000000001,
+      "drawCalls": 53,
+      "drawCallsMin": 53,
+      "drawCallsMax": 53,
+      "triangles": 750321,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": null,
+    "waterMs": null,
+    "cloudsMs": 2.163,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": -0.262,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}
