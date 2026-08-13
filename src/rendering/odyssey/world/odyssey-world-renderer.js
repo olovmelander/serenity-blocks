@@ -278,6 +278,194 @@ function bakeSunVisibility(heightAt, shadowRes) {
     return tex;
 }
 
+/**
+ * THE CLOUD SILHOUETTE FIELD (.a of the detail bake) — cloud plan Wave 1b.
+ *
+ * WHAT WAS WRONG. This channel used to be one octave of value noise (`vn(i, j, 1/96)`), and a
+ * coverage threshold across value noise produces amoebae: soft, round-cornered, featureless
+ * blobs with no top, no bottom and no edge. That is the entire reason Act II's sky reads as
+ * salt-and-pepper static — no amount of shading can put a cloud shape into a field that has
+ * none. The Ghibli/Witness distillation is explicit that the silhouette is where all the
+ * frequency lives and the interior stays flat, so the fix belongs HERE, in the field, not in
+ * the fragment shader.
+ *
+ * WHAT IT IS NOW. A union of discs at three scales — the cauliflower construction every
+ * reference uses: 2-4 primary lobes that carry the read, secondaries riding on them, and
+ * sparse tertiary scallops. `max()` of a domed falloff means the iso-contour of the union is
+ * an arc-of-circles boundary, so ANY threshold through this field cuts a scalloped silhouette
+ * by construction, at every coverage level. Sizes and spacing are irregular by mandate
+ * (evenly-sized lobes read as soap bubbles). An inverted-ridge term fills the flanks between
+ * lobes so they are not dead flat.
+ *
+ * TILING. The texture is 256^2 and repeats every ~488 world units at the deck's coarsest UV
+ * scale, so stamped shapes WILL recur — the research critic flagged exactly this. Two defences:
+ * distances wrap toroidally (no seam at the tile edge), and the deck samples this field at
+ * three scales whose ratios are irrational-ish, so the recurrences of the three never line up.
+ *
+ * @param {number} res texture resolution
+ * @param {(x:number,y:number,freq:number)=>number} vn the caller's tiling value-noise sampler
+ * @returns {Float32Array} the silhouette field, histogram-matched (see bakeDetailNormal)
+ */
+/**
+ * HISTOGRAM-MATCH the silhouette field so the shipped calibration survives the rebake.
+ *
+ * The deck's coverage thresholds (0.63 broken cumulus / 0.40 near-solid) and the vertex gate's
+ * bands were placed against a MEASURED distribution of the summed density: p10 0.42, p50 0.58,
+ * p90 0.70. Swap the field underneath them and those numbers stop meaning what the comments
+ * say — coverage moves everywhere and every band needs re-tuning by eye, which is how a "look"
+ * change quietly becomes a fortnight.
+ *
+ * So the new field is remapped by RANK onto a target marginal, and the target's spread is
+ * SOLVED so that the quantity the thresholds actually see — the three-octave sum the fragment
+ * stage computes — lands back on the measured percentiles. Rank-remapping is monotonic, so it
+ * cannot disturb the silhouette geometry: it changes what the contour heights are called, never
+ * where the contours are.
+ *
+ * The research critic's objection is the reason for the solve: matching ONE octave's marginals
+ * does not bound the SUM's distribution. Matching the sum directly is the answer to it.
+ *
+ * @param {Float32Array} field raw silhouette field (mutated in place)
+ * @param {number} res texture resolution
+ * @returns {{k:number, p10:number, p50:number, p90:number}} the solved stretch and the sum's
+ *          achieved percentiles, for the assertion in the caller
+ */
+function matchCloudHistogram(field, res) {
+    const n = res * res;
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => field[a] - field[b]);
+    // Target marginal: piecewise-linear through the three MEASURED percentiles, extended to
+    // the tails. Expressed as an offset from the median so the stretch pivots on it.
+    const targetQ = (u) => {
+        if (u <= 0.10) return 0.386 + ((u / 0.10) * (0.42 - 0.386));
+        if (u <= 0.50) return 0.42 + (((u - 0.10) / 0.40) * (0.58 - 0.42));
+        if (u <= 0.90) return 0.58 + (((u - 0.50) / 0.40) * (0.70 - 0.58));
+        return 0.70 + (((u - 0.90) / 0.10) * (0.73 - 0.70));
+    };
+    const matched = new Float32Array(n);
+    const applyK = (k) => {
+        for (let r = 0; r < n; r += 1) {
+            const u = (r + 0.5) / n;
+            matched[order[r]] = 0.58 + ((targetQ(u) - 0.58) * k);
+        }
+    };
+    // Bilinear, wrapping — the same filtering the GPU will do.
+    const sample = (u, v) => {
+        const x = ((((u * res) % res) + res) % res);
+        const y = ((((v * res) % res) + res) % res);
+        const x0 = Math.floor(x);
+        const y0 = Math.floor(y);
+        const fx = x - x0;
+        const fy = y - y0;
+        const x1 = (x0 + 1) % res;
+        const y1 = (y0 + 1) % res;
+        const a = matched[(y0 * res) + x0];
+        const b = matched[(y0 * res) + x1];
+        const c = matched[(y1 * res) + x0];
+        const d = matched[(y1 * res) + x1];
+        return (((a * (1 - fx)) + (b * fx)) * (1 - fy)) + (((c * (1 - fx)) + (d * fx)) * fy);
+    };
+    // The fragment stage's own octave scales and offsets (odyssey-world-renderer cloud deck).
+    const sumAt = (wx, wz) => (sample(wx * 0.00205, wz * 0.00205) * 0.52)
+        + (sample((wx * 0.00560) + 0.31, (wz * 0.00560) + 0.77) * 0.32)
+        + (sample((wx * 0.01420) + 0.58, (wz * 0.01420) + 0.12) * 0.16);
+    const SAMPLES = 8192;
+    const pct = () => {
+        const vals = new Float64Array(SAMPLES);
+        let sd = 0x2545f491;
+        const r = () => {
+            sd = Math.imul(sd ^ (sd >>> 15), 2246822519);
+            sd = (sd + 0x6d2b79f5) >>> 0;
+            return ((sd ^ (sd >>> 13)) >>> 0) / 4294967296;
+        };
+        for (let i = 0; i < SAMPLES; i += 1) vals[i] = sumAt(r() * 24000, r() * 24000);
+        vals.sort();
+        return {
+            p10: vals[Math.floor(SAMPLES * 0.10)],
+            p50: vals[Math.floor(SAMPLES * 0.50)],
+            p90: vals[Math.floor(SAMPLES * 0.90)],
+        };
+    };
+    // Solve the stretch so the SUM's p90-p10 spread reproduces the measured 0.28. Averaging
+    // three octaves narrows the distribution, so k > 1 is expected.
+    let lo = 0.5;
+    let hi = 6.0;
+    let best = null;
+    for (let it = 0; it < 22; it += 1) {
+        const k = (lo + hi) / 2;
+        applyK(k);
+        best = pct();
+        if ((best.p90 - best.p10) < 0.28) lo = k; else hi = k;
+        best.k = k;
+    }
+    field.set(matched);
+    return best;
+}
+
+function bakeCloudSilhouette(res, vn) {
+    // Deterministic placement: the same sky every boot, and reproducible captures.
+    let seed = 0x9e3779b9;
+    const rnd = () => {
+        seed = Math.imul(seed ^ (seed >>> 15), 2246822519);
+        seed = (seed + 0x6d2b79f5) >>> 0;
+        return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296;
+    };
+    // DISCS ARE PLACED IN CLUSTERS, NOT SPREAD. The first cut scattered 77 discs uniformly
+    // across the tile and the field came out above threshold almost everywhere: one connected
+    // overcast mass rather than separate clouds (capture-confirmed — the sky filled in). A
+    // cloud is a CLUSTER of lobes with sky around it, so each cluster gets its own 2-4
+    // primaries, the secondaries ride those primaries' rims, and the tertiaries scallop the
+    // crown. The gaps between clusters are the sky, and they only exist if the clusters are
+    // placed sparsely on purpose.
+    // NOTE this field is a PLAN view: the deck is a horizontal sheet, so what the viewer reads
+    // as the cloud's outline is this field's contour seen from below or above. The Ghibli
+    // "flat base" rule belongs to vertical faces and does not apply here; the scalloped
+    // contour does, and that is exactly what a union of discs produces.
+    const discs = [];
+    const push = (x, y, r) => discs.push({ x: x * res, y: y * res, r: r * res });
+    const CLUSTERS = 3;
+    for (let c = 0; c < CLUSTERS; c += 1) {
+        const cx = rnd();
+        const cy = rnd();
+        const primaries = 2 + Math.floor(rnd() * 3); // 2-4 lobes carry the read
+        for (let i = 0; i < primaries; i += 1) {
+            push(cx + ((rnd() - 0.5) * 0.16), cy + ((rnd() - 0.5) * 0.16), 0.070 + (rnd() * 0.045));
+        }
+        const secondaries = 4 + Math.floor(rnd() * 4);
+        for (let i = 0; i < secondaries; i += 1) {
+            push(cx + ((rnd() - 0.5) * 0.24), cy + ((rnd() - 0.5) * 0.24), 0.032 + (rnd() * 0.030));
+        }
+        const tertiaries = 8 + Math.floor(rnd() * 6);
+        for (let i = 0; i < tertiaries; i += 1) {
+            push(cx + ((rnd() - 0.5) * 0.30), cy + ((rnd() - 0.5) * 0.30), 0.013 + (rnd() * 0.016));
+        }
+    }
+    const out = new Float32Array(res * res);
+    const half = res / 2;
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) {
+            let m = 0;
+            for (let d = 0; d < discs.length; d += 1) {
+                const disc = discs[d];
+                let dx = Math.abs(i - disc.x);
+                if (dx > half) dx = res - dx;
+                let dy = Math.abs(j - disc.y);
+                if (dy > half) dy = res - dy;
+                const dist = Math.sqrt((dx * dx) + (dy * dy));
+                if (dist < disc.r) {
+                    // sqrt dome: circular iso-contours, and a shoulder that stays fat near the
+                    // rim so the union's boundary is an arc rather than a soft ramp.
+                    const f = Math.sqrt(1 - (dist / disc.r));
+                    if (f > m) m = f;
+                }
+            }
+            // The ridge term is DETAIL ON the lobes, not a second cloud layer: gate it by the
+            // disc field so it cannot raise the gaps between clusters back above threshold.
+            const ridge = 1 - Math.abs((2 * vn(i, j, 1 / 26)) - 1);
+            out[(j * res) + i] = (0.80 * m) + (0.20 * ridge * m);
+        }
+    }
+    return out;
+}
+
 function bakeDetailNormal(res = 256) {
     const h = (ix, iy) => {
         const wx = ((ix % res) + res) % res;
@@ -313,10 +501,19 @@ function bakeDetailNormal(res = 256) {
     // away. The cloud deck needs a DENSITY, and reading it off the derivative channels gives a
     // field centred on zero that no coverage threshold can ever cross: the deck rendered
     // completely empty until this was widened. One texture, one fetch path, both uses served.
-    const coarse = new Float32Array(res * res);
-    for (let j = 0; j < res; j += 1) {
-        for (let i = 0; i < res; i += 1) coarse[(j * res) + i] = vn(i, j, 1 / 96);
-    }
+    const coarse = bakeCloudSilhouette(res, vn);
+    // Rebake calibration guard: the sum the thresholds actually see must land back on the
+    // measured p10/p50/p90 = 0.42/0.58/0.70, or 0.63/0.40 and the gate bands silently change
+    // meaning. Logged rather than thrown — a sky that is a little off is a tuning note, not a
+    // reason to refuse to boot — and asserted in odyssey-world-lints.test.js.
+    const cloudStats = matchCloudHistogram(coarse, res);
+    // eslint-disable-next-line no-console
+    console.log('[world] cloud silhouette histogram', JSON.stringify({
+        k: Number(cloudStats.k.toFixed(3)),
+        p10: Number(cloudStats.p10.toFixed(4)),
+        p50: Number(cloudStats.p50.toFixed(4)),
+        p90: Number(cloudStats.p90.toFixed(4)),
+    }));
     const data = new Uint16Array(res * res * 4);
     for (let j = 0; j < res; j += 1) {
         for (let i = 0; i < res; i += 1) {
@@ -1079,7 +1276,7 @@ export function createOdysseyWorld({
     const vertDensity = texture(detailTex, cl.worldXZ.mul(0.00205).add(vec2(cloudDrift, 0)))
         .level(0).a.mul(0.52 / 0.84)
         .add(texture(detailTex, cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)).add(vec2(cloudDrift.mul(1.7), 0)))
-            .level(0).b.mul(0.32 / 0.84))
+            .level(0).a.mul(0.32 / 0.84))
         .toVar();
     const vertThreshold = mix(
         float(0.63),
@@ -1105,19 +1302,34 @@ export function createOdysseyWorld({
     // assumed one: sampled over the deck it runs p10 0.42 / p50 0.58 / p90 0.70, so a coverage
     // control expressed as "1 - cover" sat almost entirely above the field's own range and the
     // deck rendered empty. 0.63 leaves broken cumulus over the valley; 0.40 is a near-solid sea.
+    // WIND STREETS (cloud plan Wave 1b). Coverage used to be a bare world-Z ramp, so at any
+    // given distance inland the sky had ONE density everywhere across x — a gradient of fog
+    // rather than weather. This adds a slow lateral swing so coverage opens and closes across
+    // the valley. WAVELENGTH IS THE WHOLE POINT: the approach proposal specified 0.00022,
+    // which is a ~28.5 km period — nearly constant over the visible deck, i.e. a no-op, and
+    // the research critic caught it. 0.0018 is a ~3.5 km period, which puts two or three
+    // openings across a wide view. The z term tilts the streets so they do not read as bars.
     const cloudThreshold = mix(
         float(0.63),
         float(0.40),
         smoothstep(float(-150), float(-760), cl.worldXZ.y),
-    );
+    ).add(sin(cl.worldXZ.x.mul(0.0018).add(cl.worldXZ.y.mul(0.0006))).mul(0.045));
     const vThresh = varying(cloudThreshold, 'vThresh');
     const cUvA = varying(cl.worldXZ.mul(0.00205), 'vCUvA');
     const cUvB = varying(cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)), 'vCUvB');
     const cUvC = varying(cl.worldXZ.mul(0.01420).add(vec2(0.58, 0.12)), 'vCUvC');
     const drift = uTime.mul(0.0016);
+    // ALL THREE OCTAVES READ THE SILHOUETTE FIELD (.a) — cloud plan Wave 1b. Octaves 2 and 3
+    // used to read .b, which is the terrain's value noise: lobes at the coarse scale with
+    // static sprayed over them at the fine scales, so every cloud edge dissolved into
+    // confetti exactly where the Ghibli rules want a drawn scallop. Reading .a at all three
+    // scales gives the three-tier lobe hierarchy the references describe (primaries carry the
+    // read, secondaries ride them, tertiaries scallop the crown), and the scale ratios
+    // (2.73x, 2.54x) are deliberately non-integer so the 256^2 tile's recurrences at the
+    // three octaves never coincide.
     const density = texture(detailTex, cUvA.add(vec2(drift, 0))).a.mul(0.52)
-        .add(texture(detailTex, cUvB.add(vec2(drift.mul(1.7), 0))).b.mul(0.32))
-        .add(texture(detailTex, cUvC).b.mul(0.16));
+        .add(texture(detailTex, cUvB.add(vec2(drift.mul(1.7), 0))).a.mul(0.32))
+        .add(texture(detailTex, cUvC).a.mul(0.16));
 
     // Fade the deck out at the lattice rim, or its far edge draws a horizon-wide straight
     // line across the sky — the same failure mode as a uv feather that never reaches 1.
@@ -1163,9 +1375,24 @@ export function createOdysseyWorld({
     // the layer while the deck above and below stays solid, which reads as flying between
     // cloud floors — exactly the "strata at eye height" the chapter wants.
     const bandFade = smoothstep(float(40), float(200), abs(positionWorld.y.sub(cameraPosition.y)));
-    cloudMat.opacityNode = puff.mul(rim).mul(nearFade).mul(bandFade)
+    // ── POSTER-PAINT ALPHA (cloud plan Wave 1b) ──────────────────────────────────────
+    // Was a single smoothstep to 0.94: one soft ramp from sky to cloud, which is the
+    // fog-blob edge the Ghibli/Witness distillation names as mistake #1, and a body that
+    // never reached opaque so saturated sky bled through the mass everywhere (mistake #11,
+    // and half of why the holes read ultramarine).
+    //
+    // Now TWO stops. `edgeA` is the drawn edge: it rises across the footprint-widened band
+    // — keeping the far-field band-limiting that stops the horizon aliasing into confetti —
+    // and stops at 0.72, so the silhouette has a visible rim rather than fading in. `coreA`
+    // then takes the interior to FULLY opaque a little further in. `max` of the two is a
+    // hard edge followed by poster paint, which is exactly the Witness cloud profile.
+    const aaW = puffBand.toVar();
+    const edgeA = smoothstep(vThresh, vThresh.add(aaW), density).mul(0.72);
+    const coreA = smoothstep(vThresh.add(aaW).add(0.035), vThresh.add(aaW).add(0.085), density);
+    cloudMat.opacityNode = max(edgeA, coreA).mul(rim).mul(nearFade).mul(bandFade)
         .mul(float(1).sub(uSubmerged))
-        .mul(0.94);
+        // 0.94 -> 0.985: the last 6 % of transparency was the whole sky's worth of milkiness.
+        .mul(0.985);
     cloudMat.transparent = true;
     cloudMat.depthWrite = false;
     // THE BLEND-BANDWIDTH FLOOR (cloud plan Wave 1a). The deck is a sky-covering sheet whose
