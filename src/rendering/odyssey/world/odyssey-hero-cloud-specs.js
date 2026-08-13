@@ -40,8 +40,12 @@ export const HERO_CLOUD_RULES = Object.freeze({
 });
 
 /**
- * SLICE 1 ships H1/H2/H4 (see the plan's Wave 4 outcome); H3/H5/H6 are authored and validated
- * but held back so the first measurement prices the mechanism, not the art budget.
+ * All six, slice 2. Slice 1 shipped H1/H2/H4 alone so the first measurement priced the
+ * mechanism rather than the art budget; the split is now historical.
+ *
+ * COMPOSITION: H1 stands right of the summit (the "Howl" mass), H2/H3 flank left and right,
+ * H4/H5 sit deeper to build the receding row, H6 rides the ascent. Placements are validated
+ * against the live rail by odyssey-hero-clouds.test.js, not by eye.
  */
 export const ODYSSEY_HERO_CLOUD_SPECS = Object.freeze([
     Object.freeze({
@@ -53,12 +57,7 @@ export const ODYSSEY_HERO_CLOUD_SPECS = Object.freeze([
     Object.freeze({
         id: 'H4-deep-ahead', x: -750, base: 900, z: -3150, w: 880, h: 380, yaw: 2.6, seed: 58.2,
     }),
-]);
 
-/**
- * Authored and validated, held for slice 2 so the first pair prices the mechanism alone.
- */
-export const ODYSSEY_HERO_CLOUD_SPECS_SLICE2 = Object.freeze([
     Object.freeze({
         id: 'H3-right-flank', x: 620, base: 845, z: -2150, w: 600, h: 280, yaw: -0.8, seed: 43.6,
     }),

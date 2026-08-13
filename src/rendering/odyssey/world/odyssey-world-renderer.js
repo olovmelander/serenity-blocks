@@ -1533,7 +1533,7 @@ export function createOdysseyWorld({
     //
     // The four tones below are the DECK'S OWN, referenced rather than copied, so heroes and
     // sheet cannot drift apart and there is no second colour tuning to get wrong.
-    const heroBuild = buildHeroCloudGeometry(ODYSSEY_HERO_CLOUD_SPECS);
+    const heroBuild = buildHeroCloudGeometry(ODYSSEY_HERO_CLOUD_SPECS, { tertiaries: true });
     const heroMat = new THREE.MeshBasicNodeMaterial();
     const hN = normalWorld.toVar('heroN');
     const hSun = dot(hN, uSunDir).toVar('heroSun');
@@ -1545,7 +1545,16 @@ export function createOdysseyWorld({
     const hTop = mix(cloudShade, cloudTop, hLitBand);
     const hUnderBand = smoothstep(float(-0.30), float(-0.62), hUp);
     const hUnder = mix(cloudUnderLit, cloudUnderShade, hUnderBand);
-    const heroCol = mix(hTop, hUnder, smoothstep(float(0.10), float(-0.10), hUp));
+    const hBody = mix(hTop, hUnder, smoothstep(float(0.10), float(-0.10), hUp)).toVar('heroBody');
+    // THE DRAWN EDGE (slice 2). On a closed lobe |dot(n, view)| falls to zero at the limb, so
+    // this is a contour band just inside the silhouette — the painted outline the references
+    // put on every cloud. The band is ~10 % of the silhouette RADIUS rather than a pixel: a
+    // 1 px line is sub-pixel at 2 km and aliases into confetti, which is the same mistake the
+    // deck's footprint-widened alpha edge exists to avoid.
+    const hV = normalize(cameraPosition.sub(positionWorld));
+    const hRim = float(1).sub(abs(dot(hN, hV)));
+    const hEdge = smoothstep(float(0.55), float(0.88), hRim);
+    const heroCol = mix(hBody, mix(cloudShade, uSkyHorizon, float(0.30)), hEdge.mul(0.55));
     // AIR-ONLY aerial. `applyAerial` always evaluates its submerged branch — per-channel exp,
     // two pows, three plate mixes — then multiplies by uSubmerged, and multiply-by-zero is NOT
     // dead-code-eliminated on this stack. Heroes are CPU-gated off underwater, so they must
