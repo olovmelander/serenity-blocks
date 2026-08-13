@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, clamp, cos, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length, max,
-    mix,
+    abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
+    max, min, mix,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
-    texture, uniform, uv, varying, vec2, vec3, cameraPosition,
+    step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
 
 import {
@@ -1024,9 +1024,18 @@ export function createOdysseyWorld({
             mSeed[i] = h(i * 5 + 1);
             const a = h(i * 5 + 2) * Math.PI * 2;
             const r = 6 + (h(i * 5 + 3) * 64);
-            mOrigin[i * 3] = pt.x + (Math.cos(a) * r);
-            mOrigin[i * 3 + 1] = Math.min(pt.y + ((h(i * 5 + 4) - 0.35) * 90), ODYSSEY_SEA_LEVEL - 3);
-            mOrigin[i * 3 + 2] = pt.z + (Math.sin(a) * r);
+            const mx = pt.x + (Math.cos(a) * r);
+            const mz = pt.z + (Math.sin(a) * r);
+            let my = Math.min(pt.y + ((h(i * 5 + 4) - 0.35) * 90), ODYSSEY_SEA_LEVEL - 3);
+            // WAVE 3 RESEAT — same rule as the fish: 267 motes were seeded under the seabed
+            // and early-Z rejected. Lift only at open-water stations; shaft stations are
+            // Wave 2's reseeding.
+            if (pt.y > relief.sample(pt.x, pt.z) - 2) {
+                my = Math.min(Math.max(my, relief.sample(mx, mz) + 2), ODYSSEY_SEA_LEVEL - 3);
+            }
+            mOrigin[i * 3] = mx;
+            mOrigin[i * 3 + 1] = my;
+            mOrigin[i * 3 + 2] = mz;
         }
         const moteGeo = makeQuadInstancedGeometry(MOTES, {
             aSeed: { array: mSeed, itemSize: 1 },
@@ -1043,8 +1052,14 @@ export function createOdysseyWorld({
             mO.y.add(mRise.mul(70)),
             mO.z.add(mSway.mul(0.7)),
         );
-        const moteSize = mS.mul(0.6).add(0.5); // 0.5–1.1 u — SIZE-capped, per the plan
-        moteMat.positionNode = billboardWorld(moteCenter, moteSize);
+        // 0.5–1.1 u world size, AND screen-space capped (plan Wave 3): the reseat lifts 267
+        // previously-buried motes into open water, so the additive fill they can spend is
+        // clamped — a mote may never exceed ~1.2 degrees of screen no matter how close it
+        // drifts to the eye. Far motes keep their world size (the min never binds).
+        const moteSize = mS.mul(0.6).add(0.5);
+        const moteDist = length(moteCenter.sub(cameraPosition));
+        const moteSizeClamped = min(moteSize, moteDist.mul(0.02).add(0.04));
+        moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
         const mUv = uv();
         const mRadial = float(1).sub(smoothstep(float(0.0), float(0.5), length(mUv.sub(vec2(0.5)))));
         // Transmitted light: brightness rises with depth below the surface, because the
@@ -1075,23 +1090,28 @@ export function createOdysseyWorld({
     let fishMat = null;
     if (sunkPoints.length > 2) {
         const FISH = 110;
-        // A fish-shaped wedge: elongated diamond cross-section, nose to tail along +Z.
+        // WAVE 3 HULL. The old wedge was 7 of the 9 triangles a closed shape needs (the rear
+        // back and belly were simply absent) and was WIDER (0.32) than tall (0.26) — a fish
+        // flattened along the wrong axis. This one is CLOSED and laterally compressed the way
+        // fish are (taller than wide, 0.60 vs 0.26), widest a third back from the nose, with
+        // a forked caudal fin and a raked dorsal. Still nose-to-tail along +Z, still cheap:
+        // 11 triangles, vertex-only animation.
         const fishGeo = new THREE.BufferGeometry();
         const fp = [];
         const push = (...v) => fp.push(...v);
-        // 6 triangles: a flattened rhomb (top/bottom) + tail fin. Body 2.4 long, 0.5 tall.
-        // ASPECT RATIO IS THE SPECIES. The first capture rendered these as tumbling black
-        // kites: a 1.2-long, 0.44-wide wedge reads as paper, not fish. A fish silhouette is
-        // recognised almost entirely by elongation (3.5:1 here) with the widest point a third
-        // back from the nose — the same "silhouette before detail" rule as every device in
-        // this act.
-        push(0, 0, 2.1, 0.16, 0.13, 0.7, 0.16, -0.13, 0.7); // nose upper-right
-        push(0, 0, 2.1, 0.16, -0.13, 0.7, -0.16, -0.13, 0.7); // nose lower
-        push(0, 0, 2.1, -0.16, -0.13, 0.7, -0.16, 0.13, 0.7); // nose left
-        push(0, 0, 2.1, -0.16, 0.13, 0.7, 0.16, 0.13, 0.7); // nose upper
-        push(0.16, 0.13, 0.7, 0, 0.02, -1.6, 0.16, -0.13, 0.7); // body-to-tail right
-        push(-0.16, 0.13, 0.7, -0.16, -0.13, 0.7, 0, 0.02, -1.6); // body-to-tail left
-        push(0, 0.30, -2.1, 0, 0.02, -1.6, 0, -0.26, -2.1); // tail fin (vertical blade)
+        const HX = 0.13; // half-width  (lateral compression: narrower than tall)
+        const HY = 0.30; // half-height at the deepest point of the body
+        push(0, 0, 2.1, HX, HY, 0.9, HX, -HY, 0.9); // nose right
+        push(0, 0, 2.1, HX, -HY, 0.9, -HX, -HY, 0.9); // nose belly
+        push(0, 0, 2.1, -HX, -HY, 0.9, -HX, HY, 0.9); // nose left
+        push(0, 0, 2.1, -HX, HY, 0.9, HX, HY, 0.9); // nose back
+        push(HX, HY, 0.9, 0, 0.02, -1.6, HX, -HY, 0.9); // flank right
+        push(-HX, HY, 0.9, -HX, -HY, 0.9, 0, 0.02, -1.6); // flank left
+        push(HX, HY, 0.9, -HX, HY, 0.9, 0, 0.02, -1.6); // back (was OPEN)
+        push(HX, -HY, 0.9, 0, 0.02, -1.6, -HX, -HY, 0.9); // belly (was OPEN)
+        push(0, 0.02, -1.6, 0, 0.36, -2.25, 0, 0.10, -1.95); // caudal upper lobe
+        push(0, 0.02, -1.6, 0, -0.06, -1.95, 0, -0.32, -2.25); // caudal lower lobe
+        push(0, HY, 0.85, 0, HY + 0.24, 0.35, 0, HY - 0.02, 0.15); // dorsal fin, raked aft
         fishGeo.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
         fishGeo.computeVertexNormals();
         const fInst = new THREE.InstancedBufferGeometry();
@@ -1111,11 +1131,22 @@ export function createOdysseyWorld({
             const pt = sunkPoints[Math.floor((i / FISH) * sunkPoints.length)];
             const a = fh(i * 7 + 2) * Math.PI * 2;
             const r = 14 + (fh(i * 7 + 3) * 52);
-            fOrigin[i * 3] = pt.x + (Math.cos(a) * r);
+            const x = pt.x + (Math.cos(a) * r);
+            const z = pt.z + (Math.sin(a) * r);
             // ABOVE the rail, below the surface: the band where a silhouette has light
             // behind it. Clamped to 8 u under the surface so no fish breaches.
-            fOrigin[i * 3 + 1] = Math.min(pt.y + 14 + (fh(i * 7 + 4) * 46), ODYSSEY_SEA_LEVEL - 8);
-            fOrigin[i * 3 + 2] = pt.z + (Math.sin(a) * r);
+            let y = Math.min(pt.y + 14 + (fh(i * 7 + 4) * 46), ODYSSEY_SEA_LEVEL - 8);
+            // WAVE 3 RESEAT — out of the ROCK, not out of the shaft. 40 of 110 seeded below
+            // the seabed (the sample disc lands in hillsides) and were early-Z'd invisible.
+            // Lift ONLY fish whose rail STATION is open water: a station whose rail runs
+            // under the world's terrain is the Act I shaft, and lifting those fish would put
+            // them in the cavern — the exact leak Wave 2's reseeding owns.
+            if (pt.y > relief.sample(pt.x, pt.z) - 2) {
+                y = Math.min(Math.max(y, relief.sample(x, z) + 4), ODYSSEY_SEA_LEVEL - 8);
+            }
+            fOrigin[i * 3] = x;
+            fOrigin[i * 3 + 1] = y;
+            fOrigin[i * 3 + 2] = z;
         }
         fInst.setAttribute('aSeed', new THREE.InstancedBufferAttribute(fSeed, 1));
         fInst.setAttribute('aOrigin', new THREE.InstancedBufferAttribute(fOrigin, 3));
@@ -1123,39 +1154,70 @@ export function createOdysseyWorld({
         fishMat = new THREE.MeshBasicNodeMaterial();
         const fS = attribute('aSeed', 'float');
         const fO = attribute('aOrigin', 'vec3');
+        // WAVE 3 SIZING (plan, from Wave 0's unit ruling): 1 u = 1 m, and the old scale
+        // (1.2–2.8 over a 4.2 u hull) made every fish in the chapter a 5–12 m whale. The
+        // school now spans ~1.7–3.2 m — creature-sized, not vessel-sized.
+        const fScale = fS.mul(0.35).add(0.38);
         // Slow circular cruise around each fish's own origin — a school drifts, it does not
-        // teleport. Radius and rate vary per seed so the school never phase-locks.
-        const cruiseA = uTime.mul(fS.mul(0.12).add(0.06)).add(fS.mul(40));
+        // teleport. Radius and rate vary per seed so the school never phase-locks, and HALF
+        // THE SCHOOL CIRCLES THE OTHER WAY (step on the seed): one global handedness read as
+        // a carousel, not a school.
+        const swimDir = tslStep(0.5, fS).mul(2).sub(1);
+        const cruiseRate = fS.mul(0.16).add(0.10);
+        const cruiseA = uTime.mul(cruiseRate).mul(swimDir).add(fS.mul(40));
         const cruiseR = fS.mul(9).add(5);
         const fishCenter = vec3(
             fO.x.add(cos(cruiseA).mul(cruiseR)),
             fO.y.add(sin(uTime.mul(0.4).add(fS.mul(17))).mul(1.6)),
             fO.z.add(sin(cruiseA).mul(cruiseR)),
         );
-        // ABZU swim: yaw the whole body, pivot the tail harder — both cosine, both in the
-        // vertex stage, keyed on positionGeometry.z (the instancing-safe local axis: r181's
-        // InstanceNode rewrites positionLocal before positionNode runs).
-        const swimPhase = uTime.mul(fS.mul(2.0).add(5.0)).add(fS.mul(60));
-        const tailMask = clamp(positionGeometry.z.negate().mul(0.6).add(0.5), 0, 1);
-        const yaw = sin(swimPhase).mul(0.12).add(sin(swimPhase).mul(tailMask).mul(0.35));
-        // Heading = tangent of the cruise circle, so the fish faces where it swims.
-        const heading = cruiseA.add(float(Math.PI / 2));
+        // WAVE 3 SWIM (replaces the standing-wave flap, whose one phase for the whole body
+        // was the loudest "not alive" signal there was). Three coupled terms, all closed-form
+        // per-instance, all vertex-ALU, keyed on positionGeometry.z (the instancing-safe
+        // local axis — r181's InstanceNode rewrites positionLocal before positionNode runs):
+        //   1. TAIL BEAT COUPLED TO SPEED: linear speed is cruiseR*cruiseRate; beat frequency
+        //      is ~1.3 beats per body-length of travel + an idle floor. The old code beat at
+        //      0.8–1.1 Hz while covering 0.06–0.21 body-lengths/s — treading water furiously.
+        //   2. TRAVELLING wave: the phase LAGS down the body (-z), so the bend propagates
+        //      nose to tail; amplitude grows tailward with a small head-sway floor.
+        //   3. BANKING: a body in a constant-radius turn rolls INTO it; bank angle rides
+        //      v*omega (centripetal), signed by the circle's handedness.
+        const bodyLen = fScale.mul(4.35);
+        const vLin = cruiseR.mul(cruiseRate);
+        const beatHz = vLin.div(bodyLen).mul(1.3).add(0.4);
+        const swimPhase = uTime.mul(beatHz.mul(Math.PI * 2)).add(fS.mul(60));
+        const waveAmp = clamp(float(0.9).sub(positionGeometry.z).mul(0.30), 0.06, 1.0);
+        const wave = sin(swimPhase.sub(positionGeometry.z.mul(1.6)).mul(swimDir));
+        const lx = positionGeometry.x.add(wave.mul(waveAmp).mul(0.22));
+        const bank = vLin.mul(cruiseRate).mul(0.55).mul(swimDir.negate());
+        const cb = cos(bank);
+        const sb = sin(bank);
+        const bx = lx.mul(cb).add(positionGeometry.y.mul(sb));
+        const by = positionGeometry.y.mul(cb).sub(lx.mul(sb));
+        // Heading = tangent of the cruise circle, so the fish faces where it swims — the
+        // tangent flips with the circle's handedness.
+        const heading = cruiseA.add(swimDir.mul(Math.PI / 2));
         const ch = cos(heading);
         const sh = sin(heading);
-        const lx = positionGeometry.x.add(yaw);
         const lz = positionGeometry.z;
         const rotated = vec3(
-            lx.mul(ch).sub(lz.mul(sh)),
-            positionGeometry.y,
-            lx.mul(sh).add(lz.mul(ch)),
+            bx.mul(ch).sub(lz.mul(sh)),
+            by,
+            bx.mul(sh).add(lz.mul(ch)),
         );
-        const fScale = fS.mul(1.6).add(1.2);
         fishMat.positionNode = fishCenter.add(rotated.mul(fScale));
-        // Silhouette shading: a dark body that takes only the faint down-welling light, so
-        // against the bright ceiling it reads as a SHAPE — never a lit model.
+        // WAVE 3 SHADING: still a silhouette-first body, but no longer a FLAT one. The world
+        // normal comes from screen-space derivatives (instancing-safe — it needs no normal
+        // attribute and survives the vertex-stage swim), the dorsal surface catches a touch
+        // of down-welling light, and the whole body hands itself to applyAerial so a distant
+        // fish fades into the SAME water colour as everything else instead of staying an
+        // ink-black dart at any range.
+        const fN = normalize(cross(dFdx(positionWorld), dFdy(positionWorld)));
         const fDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
-        fishMat.colorNode = mix(vec3(0.045, 0.10, 0.13), vec3(0.02, 0.05, 0.08), fDepth)
-            .mul(uOutputScale);
+        const fBase = mix(vec3(0.045, 0.10, 0.13), vec3(0.02, 0.05, 0.08), fDepth);
+        const fDorsal = clamp(fN.y, 0, 1).mul(float(1).sub(fDepth).mul(0.7).add(0.3));
+        const fLit = fBase.add(vec3(0.10, 0.22, 0.26).mul(fDorsal));
+        fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld));
         fishMat.side = THREE.DoubleSide;
         fishMat.fog = false;
         fishMesh = new THREE.Mesh(fInst, fishMat);
