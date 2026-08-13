@@ -791,7 +791,61 @@ export function createOdysseyWorld({
     /** The dawn-gold kiss the crest SSS transmits — kept OUT of the air palette on purpose. */
     const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
 
-    const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
+    // THE SKY ABOVE 28 DEGREES — where this function used to return a constant.
+    //
+    // `clamp(dirY * 1.55 + 0.26, 0, 1)` reaches 1.0 at dirY 0.477, an elevation of 28.5
+    // degrees. Every ray above that got ONE identical colour, so the entire horizon-to-zenith
+    // palette was spent on the bottom third of the sky and the top two thirds were flat BY
+    // CONSTRUCTION. Nobody saw it while the act's cameras looked along the ground; ch5 pitches
+    // the rail 18 degrees off VERTICAL, so at p=0.565 the whole frame sat above the saturation
+    // point. MEASURED there: the blue channel varied 172.8..178.9 across the entire frame
+    // (2.5 %) with red and green pinned at EXACTLY 0.
+    //
+    // ⚠️ ONE REJECTED FIX, and one correction to why it was rejected — both worth keeping.
+    // Holding the old ramp below the clamp and letting it rise gently above it looked like the
+    // conservative choice, but the ramp reaches 1.0 at 0.477, so barely 9 % of the palette was
+    // left for the ENTIRE upper hemisphere and ch5's deepest sky still measured 0/5/156 —
+    // clipped, defect intact. The binding constraint is the palette, not the curve.
+    // The correction: the first attempt was judged to have "washed the ch4 massif out to milk",
+    // and that was a MISREAD OF THE PICTURE. Measured region by region, ch4's far massif moved
+    // +5/+3/+1 and its forest 0/0/0 — aerial perspective was never affected. The whole
+    // regression was +35 red in the SKY, which dominates the top of frame and coloured the
+    // impression of everything under it. Do not re-reject a sky curve on aerial grounds
+    // without measuring the ground itself.
+    //
+    // So: a power curve that never saturates, tuned so the mid sky lands where the old ramp
+    // had it (they cross within 0.001 at dirY 0.2) and the cost is taken in the 30-50 degree
+    // band that only ch4's upper sky sees. `below` reproduces the old ramp's descent under the
+    // horizon exactly, so downward aerial rays are unchanged.
+    const SKY_ELEVATION_CURVE = 0.48;
+    // ...and the DEEP END MUST NOT SIT ON THE GAMUT EDGE. The colour the script hands over at
+    // the ch5 zenith is `#041d84` — red at 0.016 BEFORE any grading — and the stack it goes to
+    // lifts saturation twice (master 1.15, chapter 5 a further 1.12) over a black crush, so it
+    // lands clamped: the overhead sky reads as a dark navy HOLE rather than as depth, and all
+    // variation in the low channels dies at the clamp. `odyssey-world-grade.js` flattens the
+    // whole world by 0.72 for exactly this reason; the zenith needs more than the average
+    // because it IS the extreme of the palette. The pull rides t squared, so it is negligible
+    // anywhere aerial perspective can see it and full only overhead.
+    const SKY_ZENITH_GAMUT_PULL = 0.32;
+    const skyColourFor = (dirY) => {
+        const below = clamp(dirY.add(0.168).div(0.168), 0, 1);
+        const t = clamp(dirY, 0, 1).pow(SKY_ELEVATION_CURVE).mul(0.80).add(0.20)
+            .mul(below)
+            .toVar();
+        const col = mix(uSkyHorizon, uSkyZenith, t);
+        return mix(
+            col,
+            vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))),
+            t.mul(t).mul(SKY_ZENITH_GAMUT_PULL),
+        );
+    };
+    // THE CONSTANT CALL SITES ARE PINNED to the values the old ramp gave them, so this change
+    // cannot reach into Ch2's or Ch3's shipped water look while nobody is watching it. Each fed
+    // a constant, so each had exactly one answer: 0.5 and 0.9 both clamped to pure zenith, 0.4
+    // landed at 0.88. (The two remaining variable-free sites, 0.22 and 0.16, sit below the
+    // overhead term entirely and move by <0.02 under the gamut pull, so they are left alone.)
+    const skyColourSubmergedUp = uSkyZenith;
+    const skyColourSubmergedGraze = mix(uSkyHorizon, uSkyZenith, float(0.88));
     const applyAerial = (lit, wp) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
@@ -824,7 +878,7 @@ export function createOdysseyWorld({
         const banded = mix(bandShallow, uWaterDeep, smoothstep(float(0.45), float(0.92), depthBelow));
         const convergePlate = mix(uWaterMid, uWaterDeep, uEyeDepth);
         const bandedDir = mix(banded, convergePlate, grazing);
-        const waterTarget = mix(bandedDir, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
+        const waterTarget = mix(bandedDir, skyColourSubmergedUp.mul(0.45), surfaceGlow);
         // Component-wise mix against the same target: the hue WALKS with distance (red gone
         // first, blue last) instead of every channel arriving together. This is what puts
         // value structure back into the frame the steam veil used to supply.
@@ -1010,7 +1064,7 @@ export function createOdysseyWorld({
         .add(smoothstep(float(-0.15), float(0.35), skyDir.y).mul(0.22));
     const skyWater = mix(
         mix(uWaterMid, uWaterDeep, uEyeDepth),
-        mix(uWaterMid, skyColourFor(float(0.4)).mul(0.42), float(0.35)),
+        mix(uWaterMid, skyColourSubmergedGraze.mul(0.42), float(0.35)),
         clamp(downwelling, 0, 1),
     );
     skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
@@ -1279,7 +1333,7 @@ export function createOdysseyWorld({
             const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
             const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
-            const windowSky = skyColourFor(float(0.9)).mul(1.30)
+            const windowSky = skyColourSubmergedUp.mul(1.30)
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2));
             const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
             const underside = mix(tirBody, windowSky, snellWindow)
