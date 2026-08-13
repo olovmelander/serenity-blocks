@@ -1415,11 +1415,24 @@ export function createOdysseyWorld({
     // Widen the alpha edge with FOOTPRINT: a 0.06 band is a crisp cumulus edge up close and a
     // pixel-wide razor cut at 10 km, which aliases into hard confetti. Band-limiting the edge
     // is the same principle the ground's detail gate already uses.
-    const cloudFootprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
+    // THE STRAIGHT-EDGE DEFECT (found from the real spline camera at ch5, p=0.565).
+    // This was `max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)))` — a
+    // SCREEN-SPACE derivative of world position, which is continuous inside a triangle and
+    // JUMPS BY 2x at every clipmap ring boundary, because adjacent rings' triangles differ 2x
+    // in size. That discontinuity fed the alpha edge width, and since Wave 2 it also fed the
+    // underside shadow-band position through `aaW` — so each rectangular ring border became a
+    // hard step in BOTH alpha softness and colour, drawn across the sky as the straight
+    // diagonal seams the ch5 capture shows. It is the same defect class, and the same cause,
+    // as the water plate's "square sections": a lattice-derived quantity terraces at ring
+    // boundaries. The water's fix applies here unchanged — key the band to CAMERA DISTANCE,
+    // which is radial and continuous, so no ring shape can be constructed from it. Distance is
+    // also the honest proxy for the band-limiting this term exists to do (world units per
+    // pixel grows with range), and the 0.06 near / 0.11 far span is preserved exactly.
+    const cloudFootprint = length(positionWorld.xz.sub(cameraPosition.xz));
     // A LITTLE band-limiting, not a lot: the first attempt lifted the edge to 0.22 at range,
     // which stopped anti-aliasing the edge and started making it — partial coverage everywhere
     // turned the distant broken cumulus into a translucent overcast veil across the whole sky.
-    const puffBand = smoothstep(float(8), float(90), cloudFootprint).mul(0.05).add(0.06);
+    const puffBand = smoothstep(float(300), float(9000), cloudFootprint).mul(0.05).add(0.06);
     // The anti-aliased edge width, hoisted: BOTH the colour block (the underside's shadow-patch
     // step) and the opacity block (the drawn edge + opaque core) key off it, so it has to be
     // declared before either reads it.
@@ -1561,6 +1574,13 @@ export function createOdysseyWorld({
     // fragments within ~200 u of the camera's altitude opens a horizontal corridor through
     // the layer while the deck above and below stays solid, which reads as flying between
     // cloud floors — exactly the "strata at eye height" the chapter wants.
+    // ALTITUDE CORRIDOR. Fades fragments near the camera's own altitude so the paper-thin
+    // sheet is never met edge-on. NOTE FOR THE NEXT ATTEMPT AT THE CH5 STRAIGHT EDGES: this
+    // term was suspected (a constant-altitude surface projects to a straight line from a
+    // camera inside it) and widening it to 25..620 with a noise-broken threshold did NOT
+    // remove the diagonals — it only thinned the deck. Reverted. The edges ARE the deck
+    // (bisected: they vanish under ?odysseyWorldNoClouds=1 at p=0.565) but neither this nor
+    // the screen-derivative footprint was the cause.
     const bandFade = smoothstep(float(40), float(200), abs(positionWorld.y.sub(cameraPosition.y)));
     // ── POSTER-PAINT ALPHA (cloud plan Wave 1b) ──────────────────────────────────────
     // Was a single smoothstep to 0.94: one soft ramp from sky to cloud, which is the
