@@ -309,12 +309,29 @@ Three hard facts (critic-verified):
 > **Capture-verified** at p=0.210 and p=0.225 (`--keep`): a teal shallows band, a deeper blue
 > beyond it, and the far water dissolving into the sky — against one flat hue before.
 >
-> **NOT MEASURED, and therefore NOT claimed.** The machine has been at 90%+ foreign GPU load
-> since the code landed; per ADR-0016 an unmeasured cost is written as unmeasured. Wave 1 is a
-> pure-ALU change on an existing material (no new draws, fetches or pipelines) so the expected
-> delta is small, but **no number is asserted and the wave stays unchecked** until the pending
-> pairs land — together with Wave 0's `waterMs` totals, which will now be taken on this tree
-> (that prices the water we are shipping, which is the more useful baseline).
+> **NOT MEASURED, and therefore NOT claimed.** Wave 1 is a pure-ALU change on an existing
+> material (no new draws, fetches or pipelines) so the expected delta is small, but **no number
+> is asserted and the wave stays unchecked.**
+>
+> **THREE MEASUREMENT ATTEMPTS WERE MADE AND ALL THREE WERE VOIDED — the machine, not the
+> harness.** Recorded because "we tried and failed" is information, and because the failure
+> mode is one this project should recognise:
+>
+> | attempt | settle/sample | result | why void |
+> |---|---|---|---|
+> | 1 | 9 s / 14 s | 11.53 / 11.60 / 13.63 | content guard: baseline 47 draws vs repeat 75 — the first window latched a still-warming scene |
+> | 2 | 16 s / 14 s | 15.60 / 18.15 / 20.45 | content guard: repeat fell to 51 draws; p50 climbing monotonically ~5 ms across the run |
+> | 3 | 12 s / 9 s, +90 s cooldown | 15.14 / 18.68 / 24.12 | draws matched 75/75, but **baselineDrift −8.98 ms** — 2.5× the figure being measured, and only 8 frames in the first window |
+>
+> The tell is the monotonic climb *within* each run and *across* runs at a station that
+> measured **13.11 ms this morning**: the adapter is heat-saturated after a full day of
+> captures, suites and a parallel session, so every window is slower than the one before.
+> GPU *idleness* was verified before each attempt — idle is not the same as cool, and the
+> quiet-gate this project uses cannot see temperature. A drift bound larger than the signal
+> means the number is noise; publishing `waterMs = −3.5` would have been exactly the failure
+> ADR-0016 exists to prevent. **Take these pairs on a cold machine** (first run of a session,
+> browsers closed), and prefer `--only baseline,no-water,baseline-repeat` in ONE session so the
+> differential and its drift bound stay coupled.
 
 ### Wave 2 — Motion (the sheet becomes liquid)
 - K2 ripple normal (prefer `detailTex` — already resident, repeat-wrapped, currently unused by
