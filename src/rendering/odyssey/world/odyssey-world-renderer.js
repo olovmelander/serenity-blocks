@@ -829,22 +829,31 @@ export function createOdysseyWorld({
         });
         return { h, dx, dz };
     };
-    // GEOMETRIC amplitude fades with the LATTICE, or the rings tear (user report: "square
-    // sections with gaps between them" seen from under the surface). The clipmap doubles its
-    // cell size every ring, so a wave that ring 0 samples cleanly is ALIASED in the morph
-    // zones and outer rings — adjacent vertices land on near-random phases and the seams
-    // open along the ring boundaries. Each wave's displacement therefore fades out as the
-    // local cell size approaches its wavelength (full below len/5, gone past len/2.5 — under
-    // ~2.5 samples per cycle a lattice is not sampling a wave, it is rolling dice). The
-    // driver is the clipmap's own morph-adjusted `spacing`, which is CONTINUOUS across ring
-    // boundaries — both sides of every seam compute the same fade, so the fade cannot
-    // introduce a seam of its own. The FRAGMENT field keeps full amplitude: colour, normal
-    // and caps stay detailed everywhere near the camera; only far geometry flattens, where a
-    // sub-pixel bump was never visible anyway.
-    const swellVert = waveField(
-        w.worldXZ,
-        (wv) => float(1).sub(smoothstep(float(wv.len / 5), float(wv.len / 2.5), w.spacing)),
-    );
+    // PER-WAVE CAMERA-DISTANCE ENVELOPES, IDENTICAL IN BOTH STAGES (second fix; the first
+    // was wrong and the user caught it twice). The first fix faded amplitude by the clipmap's
+    // morph-adjusted `spacing` — continuous in VALUE, but its change concentrates inside the
+    // narrow morph bands at ring edges, so wave height dropped in RECTANGULAR terraces ("wave
+    // squares" seen from above), and the fragment field — still full amplitude — disagreed
+    // with the terraced geometry along the same rectangles. It also gutted the near field:
+    // ring 0's 6.4 m cells sat inside the 19 m wave's fade window, so the smallest wave ran
+    // ~60% faded everywhere and the underside lost its rolling character.
+    //
+    // Distance from the CAMERA is smooth and radial — no ring shapes anywhere — and each
+    // wave's envelope (full inside 3.5·len, gone past 5·len) closes BEFORE its wavelength
+    // becomes undersampled: the lattice reaches ~2.5 samples/cycle for a wave of length L at
+    // roughly 6.4·L from the centre, and 5·L sits safely inside that. Near the camera every
+    // wave is FULL amplitude again. Both stages use the same envelope, so geometry and
+    // shading cannot disagree, ever, by construction.
+    // 4.5L -> 6.2L, sized from the lattice itself: ring spacing at distance R is ~R/16, and
+    // 2.5 samples/cycle for a wave of length L therefore fails at ~6.4L — the envelope ends
+    // just inside it. The first cut used 3.5L->5L and flattened the far ceiling: the
+    // reference A/B proved the underside's beloved plate-mottling is the DISPLACED
+    // geometry self-occluding at glancing angles, which no normal trick can fake, so the
+    // envelopes must run as wide as sampling allows and not a metre narrower.
+    const waveEnvelope = (wv, distXZ) => float(1)
+        .sub(smoothstep(float(wv.len * 4.5), float(wv.len * 6.2), distXZ));
+    const wVertDist = length(w.worldXZ.sub(cameraPosition.xz)).toVar();
+    const swellVert = waveField(w.worldXZ, (wv) => waveEnvelope(wv, wVertDist));
     const swell = swellVert.h.mul(wSwellFade).toVar();
     waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
@@ -880,14 +889,16 @@ export function createOdysseyWorld({
     const rippleA = texture(detailTex, w.worldXZ.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))).rg;
     const rippleB = texture(detailTex, w.worldXZ.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))).rg;
     const ripple = rippleA.mul(0.9).add(rippleB.mul(0.5)).toVar();
-    // The wave field again, per fragment, from the true world position (see waveField above).
-    // Faded out with distance so sub-pixel waves cannot shimmer at the horizon — past ~500 m
-    // the dissolve term owns the look and detail here would only alias.
-    const wFragFade = clamp(
-        float(1).sub(length(positionWorld.xz.sub(cameraPosition.xz)).div(520)),
-        0,
-        1,
-    ).mul(wSwellFade).toVar();
+    // The wave field again, per fragment, from the true world position — at FULL amplitude.
+    // The envelopes above are for DISPLACEMENT only: a lattice tears when asked to sample a
+    // wave it cannot resolve, but shading is analytic per pixel and cannot tear, and it is
+    // precisely the full-amplitude fragment normal modulating the Snell window that paints
+    // the mottled light across the whole underside ceiling — the look the user named. (The
+    // one-session detour that enveloped BOTH stages flattened that ceiling; reverted.) The
+    // single global fade below only prevents sub-pixel shimmer at the horizon, where the
+    // dissolve owns the frame anyway.
+    const wFragDist = length(positionWorld.xz.sub(cameraPosition.xz)).toVar();
+    const wFragFade = clamp(float(1).sub(wFragDist.div(520)), 0, 1).mul(wSwellFade).toVar();
     const wFrag = waveField(positionWorld.xz);
     const waveH = wFrag.h.mul(wFragFade).toVar();
     const waveSlope = vec2(wFrag.dx, wFrag.dz).mul(wFragFade).toVar();
@@ -909,9 +920,24 @@ export function createOdysseyWorld({
     // logged lesson). uSubmerged is a UNIFORM the CPU writes each frame, so `If` on it is
     // uniform control flow — the GPU skips the untaken side coherently, no divergence.
     // Both branches only run inside the 14 u breach transition band (~1% of the journey).
-    // Shared prerequisites (wave field, ripple normal, spec, grazing) stay hoisted above
-    // because BOTH regimes read them.
+    // Shared prerequisites (wave field, ripple normal, spec, grazing) are defined above
+    // because BOTH regimes read them — but they must also be BUILT below, at the branch
+    // root, or the branch that runs second reads zeros. See the root-pin block.
     const waterShaded = Fn(() => {
+        // ── ROOT-PIN THE SHARED TERMS (the "flat ceiling / clear sea" regression) ──
+        // r181's WGSL builder hoists var DECLARATIONS to function scope but emits each
+        // ASSIGNMENT at the node's first build site. These terms were first built inside
+        // the TOPSIDE If, so on submerged frames (topside skipped) the underside read
+        // ZERO-initialised depth/wN/spec/grazing: the Snell window collapsed to uniform
+        // tirBody and opacityNode's depth read 0 (a semi-clear sea). A bare .toVar() here
+        // runs toStack() at creation on the Fn's root stack, so each line below is a real
+        // root statement that pins the assignment before either branch. Proven by the
+        // always-true-conditions probe: identical formulas, branches forced on, and the
+        // ceiling came back — the regime If was starving the untaken branch's inputs.
+        depth.toVar('wRootDepth');
+        wN.toVar('wRootN');
+        spec.toVar('wRootSpec');
+        grazing.toVar('wRootGrazing');
         const col = vec3(0).toVar('waterRegimeCol');
         If(uSubmerged.lessThan(0.999), () => {
             // ── TOPSIDE: the painted sea (Wave 1) + whitecaps (Wave 2) ──

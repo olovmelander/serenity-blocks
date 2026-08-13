@@ -357,6 +357,16 @@ Three hard facts (critic-verified):
 > band. Result: **both hot stations now render the complete wave package CHEAPER than the
 > flat water they replaced.** Nothing was visually cut; captures verified both regimes
 > through the branch.
+> ⚠️ **CORRECTED 2026-08-13 (same day, user report):** the branch verification above was
+> WRONG — the branch was silently starving the untaken side's inputs. r181's WGSL builder
+> hoists var declarations to function scope but emits each ASSIGNMENT at first build site;
+> the shared terms (depth/wN/spec/grazing) were first built inside the topside `If`, so on
+> submerged frames the underside read ZERO-filled vars: Snell window collapsed to uniform
+> `tirBody`, `opacityNode` read depth 0 (semi-clear sea). The deep/shallows numbers in the
+> table therefore measured a visually broken underside and are STALE. Fix: root-pin block at
+> the top of the `Fn` (bare `.toVar()` calls — `toStack()` runs at creation) building every
+> shared term before either branch. Proven by an always-true-conditions probe (identical
+> formulas, branches forced on → ceiling returned), then re-verified with real conditions.
 >
 > **The LOD-seam defect (user report: "square sections with gaps") is fixed and
 > capture-verified.** Cause: the new 19–54 m waves were displacing a lattice whose cells
@@ -365,6 +375,16 @@ Three hard facts (critic-verified):
 > wavelength (full below len/5, gone past len/2.5), driven by the clipmap's own
 > morph-adjusted `spacing`, which is continuous across ring boundaries so the fade cannot
 > seam. The fragment field keeps full amplitude — the look loses nothing near the camera.
+> ⚠️ **CORRECTED 2026-08-13 (same day, user report: squares now visible from ABOVE):** the
+> spacing-fade was continuous in VALUE but its change concentrates inside the narrow morph
+> bands at ring edges, so amplitude dropped in RECTANGULAR terraces — and it gutted the near
+> field (ring 0's 6.4 m cells sat inside the 19 m wave's fade window: ~60 % faded
+> everywhere). Replaced by per-wave CAMERA-DISTANCE envelopes (full inside 4.5·len, gone by
+> 6.2·len — just inside the lattice's ~6.4·len 2.5-samples/cycle limit): radial, no ring
+> shapes possible, near field back at full amplitude. The far-ceiling A/B against an
+> e29cfe3c reference capture also proved the underside's plate-mottling is the displaced
+> geometry self-occluding at glancing angles — the envelopes must run as wide as sampling
+> allows. Verified at 0.185 (underside), 0.206 (glancing topside), 0.225 (shoreline).
 >
 > **Instrument notes for the next session:** the first configuration of the first run after
 > boot carries cold-compile contamination (26.8 ms vs 15.5 warm — void and re-run once warm);
@@ -412,7 +432,7 @@ Three hard facts (critic-verified):
 
 - [x] **Wave 0** — falsifiable: worldNoWater pairs, shoreline cell, layout + px/m resolved, smoothstep proof, evidence re-captured
 - [x] **Wave 1** — painted sea: script-plate unification, 4-stop pigment ramp, fresnel two-tone, horizon dissolve
-- [x] **Wave 2** — motion: 3-wave analytic swell + per-fragment field, whitecaps, LOD-seam fade, regime branch (see the measured ledger)
+- [x] **Wave 2** — motion: 3-wave analytic swell + per-fragment field, whitecaps, camera-distance envelopes (replaced the terracing spacing-fade), root-pinned regime branch (ledger STALE — see the corrections in the OUTCOME; re-measure on a quiet machine)
 - [ ] **Wave 3** — shore grammar: scalloped travelling foam, wet sand, animated waterline
 - [ ] **Wave 4** — signatures: line boil, sparkle cells, (optional) Ponyo horizon
 - [ ] **Wave 5** — underside per §7.1 decision
