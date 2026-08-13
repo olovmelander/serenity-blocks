@@ -850,6 +850,13 @@ export function createRockClusterMaterialTSL(
     // the lava licks its underside, so the lowest band glows warm.
     const baseBleed = oneMinus(smoothstep(LAVA_LAKE_Y, LAVA_LAKE_Y + 10.0, vWorldY));
 
+    // LIMB DARKENING (user report 2026-08-13: the big geode reads as a flat disc). The
+    // face was emissive-vein-bright right up to the silhouette — the full-moon effect.
+    // Darkening toward the limb (the fresnel node is already the edge signal) restores
+    // the curvature read; the emissive below takes the same factor, because emissive is
+    // the dominant term at these sizes.
+    const limb = oneMinus(fresnel.mul(0.5));
+    color = color.mul(limb);
     color = color.mul(uPulseIntensity.mul(0.15).add(1.0));
     color = min(color, vec3(0.62, 0.34, 0.18));
 
@@ -862,14 +869,19 @@ export function createRockClusterMaterialTSL(
     material.emissiveNode = uHot.mul(pow(crackHeat, 3.0)).mul(0.28)
         .add(uColorPrimary.mul(glow).mul(0.08))
         .add(uHot.mul(baseBleed).mul(0.14)) // base bleed near the lake
+        .mul(limb) // curvature survives the veins (see limb above)
         .mul(oneMinus(uSeam.mul(0.7))); // hot veins quench as the waterline rises
     // Plan item 5 + seam choreography: a camera-proximity fade kills the frame-07
     // near-clip class (a geode can never fill the lens as raw planes), and the uSeam
     // term is the authored sink-and-fade so no magma sphere survives past the
     // frame-18 equivalent. uOpacity is the manager-driven ecotone bridge.
+    // NARROWED 14 -> 7 (user report: the big geode read as TRANSPARENT). A 4.5-6 u core
+    // at 14 u fills a third of the frame, and the old band had it half-faded exactly
+    // there — a huge boulder at ghost opacity. The near-clip class this fade exists for
+    // (a geode filling the LENS as raw planes) lives inside ~5 u; 3->7 still kills it.
     const camDistGeode = length(positionWorld.sub(cameraPosition));
     material.opacityNode = uOpacity
-        .mul(smoothstep(5.0, 14.0, camDistGeode))
+        .mul(smoothstep(3.0, 7.0, camDistGeode))
         .mul(oneMinus(uSeam));
     material.roughness = 0.85;
     material.metalness = 0.05;
@@ -1143,8 +1155,10 @@ export function createMoltenPocketMaterialTSL(
     const rim = viewFresnel(isColumn ? 4.0 : 3.0); // pow-4 column rim (Pyrestorm grammar)
     const coolRim = vec3(0.039, 0.102, 0.149); // ~0x0a1a26 cool shadow-side accent
     const shadowSide = oneMinus(upFace);
+    // Non-column (the floating node blobs): the warm rim is cut hard — an edge-glow on a
+    // small sphere draws a bright OUTLINE, which is a disc's signature, not a ball's.
     const warmRim = uCrack.mul(glow.mul(0.4).add(0.2))
-        .mul(isColumn ? lakeFalloff.mul(0.25).add(0.32) : float(0.42));
+        .mul(isColumn ? lakeFalloff.mul(0.25).add(0.32) : float(0.18));
     color = color.add(mix(warmRim.mul(0.55), coolRim.mul(0.5), shadowSide.mul(0.45)).mul(rim));
     // The stable half: an ember wash that follows the molten field's own glow pattern and
     // the lake distance — spatially varying (vein-shaped, NOT a flat luma lift; this
@@ -1185,6 +1199,12 @@ export function createMoltenPocketMaterialTSL(
         .add(vec3(1.05, 0.98, 0.85).mul(splashCore).mul(isColumn ? 0.6 : 0.25))
         .add(uCrack.mul(conduction).mul(isColumn ? 0.35 : 0.15));
 
+    // LIMB DARKENING for the floating blobs (user report: "flat"): a sphere reads round
+    // by darkening toward its silhouette; a face that stays bright to the edge is a full
+    // moon — a disc. The rim node is already the edge-proximity signal, so reuse it.
+    if (!isColumn) {
+        color = color.mul(oneMinus(rim.mul(0.45)));
+    }
     color = color.mul(uPulseIntensity.mul(0.12).add(1.0));
 
     // PERF (QW9): the 4 crater-accent PointLights + per-cluster magma-bounce
@@ -1237,7 +1257,13 @@ export function createMoltenPocketMaterialTSL(
         .add(uCrack.mul(conduction).mul(isColumn ? 0.20 : 0.08));
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
-    material.depthWrite = isColumn;
+    // TRUE FOR BOTH VARIANTS (user report 2026-08-13, "flat and transparent objects
+    // floating"): the pocket blobs are CLOSED spheres, and a closed sphere that does not
+    // write depth cannot occlude ITSELF — both hemispheres blend superimposed, which
+    // deletes every self-occlusion cue that makes a ball read as a ball, and lets the
+    // background bleed through. The transparency exists only for the seam fade, which the
+    // retimed sink now runs under the quench's cover where a depth-punch cannot be seen.
+    material.depthWrite = true;
     material.roughness = 0.88;
     material.metalness = 0.08;
     material.userData.emitsBloom = true;
