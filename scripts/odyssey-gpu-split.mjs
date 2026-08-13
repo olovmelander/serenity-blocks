@@ -101,6 +101,20 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldNoWater: '1' },
         note: 'the Act II sea plate is not built at all (draws, fill, vertex and pipeline)',
     },
+    // THE CLOUD DECK (Act II cloud plan, Wave 0). One transparent clipmap sheet at y=660
+    // drawing across the whole act window whose cost has NEVER been measured -- and ADR-0016
+    // is explicit that an unmeasured cost cannot fund a package, so this differential is the
+    // prerequisite for every visual wave in that plan. Note the lever is asymmetric with
+    // `no-water`: the deck mesh is still constructed and only withheld from the group
+    // (odyssey-world-renderer.js:1166), so this prices DRAWS + FILL + VERTEX, and any
+    // pipeline-compile cost stays on both sides of the pair. Run as
+    // `--only baseline,no-clouds,baseline-repeat` so the differential AND its drift bound
+    // come from ONE cooled session.
+    {
+        id: 'no-clouds',
+        flags: { odysseyWorldNoClouds: '1' },
+        note: 'the Act II cloud deck is not added to the world group (draws, fill, vertex)',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -354,6 +368,9 @@ function buildSplit(results) {
         // The Act II sea plate's TOTAL cost at this station (draws + fill + vertex + its
         // pipeline), not an increment: baseline minus the same frame with no water built.
         waterMs: delta('baseline', 'no-water'),
+        // The Act II cloud deck's cost at this station (draws + fill + vertex; the deck's
+        // pipeline compiles on BOTH sides because the material is built either way).
+        cloudsMs: delta('baseline', 'no-clouds'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),
