@@ -278,6 +278,44 @@ Three hard facts (critic-verified):
   water hue-bands (histogram instrument, exact gate values set in Wave 0); Lane B within every
   cell in §5; playground/game palette delta documented.
 
+> **OUTCOME — Wave 1, code landed 2026-08-13, PERF UNMEASURED. Stays UNCHECKED.**
+>
+> **The ramp is re-aimed at the depths that are actually on screen.** Ray-casting the real
+> height field through the real camera (CPU, no GPU needed) gives the visible bed-depth
+> distribution the old ramp was never checked against: at the shoreline station the median is
+> **49.6 m** (p25 27.2, p75 70.5) with **59% of water pixels in one band**, and just past the
+> breach — the journey's largest water view at **29.3% of frame** — the median is **133 m**,
+> beyond the old ramp's 103 m top, so essentially every pixel was pinned at the deep colour.
+> Both medians sat in the old ramp's flat upper region. That is the measured, sufficient
+> explanation for "a single flat steel-blue sheet"; it was never a missing feature.
+>
+> Replaced with `t = 1 − exp2(−depth · 0.02)` — chosen so 50 m lands at exactly t=0.5, 10 m at
+> 0.13 and 133 m at 0.84, i.e. the measured range spans the whole ramp — quantised into 4 flat
+> plates with a smoothstep-resolved edge (a bare `floor()` posterise aliases at 720p on a
+> surface this size), over a 4-stop pigment ramp: viridian → cerulean → cobalt → Prussian.
+>
+> **One table owns the sea.** The three hardcoded `vec3`s are gone; the stops live in
+> `odyssey-colour-script.js` as `ODYSSEY_WATER_RAMP` beside the rest of the palette, with the
+> absorption coefficient and band count as data. Also fixed by the same move: the script's
+> water plates DEGENERATE topside (`uWaterMid` is clamped to the last water keyframe, which at
+> ch3 equals `uWaterShallow`), so feeding the topside from the plates directly would have given
+> two identical stops — the very "1–2 flat blues" being fixed.
+>
+> **Fresnel two-tone + horizon dissolve.** The sky arrives as a colour wash (no reflector, no
+> image — Spirited Away's sea was painted flat with a reflection composited *over* it), and the
+> far water then converges on the sky: 80% by 1.2 km, capped below 1 so the horizon never
+> becomes a hard line of its own.
+>
+> **Capture-verified** at p=0.210 and p=0.225 (`--keep`): a teal shallows band, a deeper blue
+> beyond it, and the far water dissolving into the sky — against one flat hue before.
+>
+> **NOT MEASURED, and therefore NOT claimed.** The machine has been at 90%+ foreign GPU load
+> since the code landed; per ADR-0016 an unmeasured cost is written as unmeasured. Wave 1 is a
+> pure-ALU change on an existing material (no new draws, fetches or pipelines) so the expected
+> delta is small, but **no number is asserted and the wave stays unchecked** until the pending
+> pairs land — together with Wave 0's `waterMs` totals, which will now be taken on this tree
+> (that prices the water we are shipping, which is the more useful baseline).
+
 ### Wave 2 — Motion (the sheet becomes liquid)
 - K2 ripple normal (prefer `detailTex` — already resident, repeat-wrapped, currently unused by
   the water) driving glint + subtle colour modulation; quantised.
