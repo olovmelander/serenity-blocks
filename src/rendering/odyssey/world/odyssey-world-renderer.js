@@ -1066,8 +1066,21 @@ export function createOdysseyWorld({
     // instead of tearing. `.level(0)` is mandatory (WGSL forbids implicit LOD in a vertex
     // stage) and the lint in odyssey-world-lints.test.js enforces it.
     const cloudDrift = uTime.mul(0.0016);
+    // TWO octaves, RE-NORMALISED (cloud plan Wave 1a). The gate's whole job is to sink
+    // geometry exactly where the FRAGMENT stage is about to go transparent, but it was
+    // estimating that from octave A alone while the fragment sums three (A*0.52 + B*0.32 +
+    // B*0.16). One octave cannot see holes the other two carve, so billowed geometry
+    // survived into fragments that then discarded it — the torn-edge failure this gate
+    // exists to prevent, just one octave later. Adding octave B covers 84 % of the
+    // fragment sum; the weights are divided by that 0.84 so the MEAN is unchanged and the
+    // 0.63/0.40 threshold calibration below still means what it says (an un-normalised
+    // 0.84-weighted sum would sit systematically under the threshold and shift every gate
+    // band). `.level(0)` is mandatory in the vertex stage and lint-enforced.
     const vertDensity = texture(detailTex, cl.worldXZ.mul(0.00205).add(vec2(cloudDrift, 0)))
-        .level(0).a.toVar();
+        .level(0).a.mul(0.52 / 0.84)
+        .add(texture(detailTex, cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)).add(vec2(cloudDrift.mul(1.7), 0)))
+            .level(0).b.mul(0.32 / 0.84))
+        .toVar();
     const vertThreshold = mix(
         float(0.63),
         float(0.40),
@@ -1155,6 +1168,13 @@ export function createOdysseyWorld({
         .mul(0.94);
     cloudMat.transparent = true;
     cloudMat.depthWrite = false;
+    // THE BLEND-BANDWIDTH FLOOR (cloud plan Wave 1a). The deck is a sky-covering sheet whose
+    // alpha is zero or near-zero over most of its area, and every one of those fragments was
+    // still paying a full read-modify-write in the ROP — on a shared-LPDDR iGPU that is the
+    // expensive half of a transparent full-screen layer. Wave 0 measured the deck at 1.049 ms
+    // (ch4) and 1.901 ms (ch5, 20.9 % of the frame), so this is being taken out of a real
+    // number rather than a guess. Same 0.004 cut the water plate already uses.
+    cloudMat.alphaTest = 0.004;
     cloudMat.side = THREE.DoubleSide;
 
     const cloudMesh = new THREE.Mesh(cloudGeo.geometry, cloudMat);

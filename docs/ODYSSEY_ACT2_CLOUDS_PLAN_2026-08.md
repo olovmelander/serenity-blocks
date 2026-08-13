@@ -184,6 +184,40 @@ From the Ghibli/Witness distillation — the implementable core:
 > drift (−0.066, −0.066, 0.000, 0.000) is the evidence the window held.
 
 ### Wave 1 — the silhouette (the look's spine)
+
+> **WAVE 1a PARTIAL — the perf lever landed, and its funding claim is REFUTED-PENDING.**
+> Sequenced first (before the bake) so the visual work would spend a *measured* credit.
+> Shipped: the blend-bandwidth floor (`alphaTest = 0.004`, the water plate's pattern) and the
+> vertex gate's second octave, re-normalised by 0.84 so the 0.63/0.40 threshold calibration
+> survives. Visually neutral by construction, capture-confirmed at ch4 p=0.42.
+>
+> **The measurement did NOT support the plan's self-funding thesis, and the session ran out of
+> thermal headroom before it could:**
+>
+> | station | Wave 0 cloudsMs | Wave 1a cloudsMs | apparent Δ | session drift bound |
+> |---|---|---|---|---|
+> | ch4 p=0.42 | 1.049 (drift 0.000) | 0.918 (drift −0.393) | −0.131 | ±0.393 |
+> | ch5 p=0.569 | 1.901 (drift 0.000) | 2.163 (drift −0.262) | +0.262 | ±0.262 |
+>
+> The stations disagree in DIRECTION and each effect is inside its own drift bound, so nothing
+> is claimed either way. The cause is visible in the absolute numbers: baselines climbed
+> monotonically across the session (9.109 → 9.50 at ch5, 10.09 → 10.49 at ch4) — the
+> adapter heat-saturation signature the water plan already documented ("idle is not cool").
+> The Wave 0 pairs were taken minutes after a reboot at drift 0.000; these were not.
+>
+> **This is the critic's predicted failure, arriving on schedule.** Its evolve-deck defect #3
+> said the discard floor was optimistic ~2-3x because sub-threshold fragments still run every
+> tap and discard saves only the blend read-modify-write; it also warned that on a transparent
+> `depthWrite:false` material a discard can *disable* fast paths. Treat "the discard floor pays
+> for the taps" as UNPROVEN. Consequence for Wave 2: its exit gate must be judged against the
+> station MAX, not against an assumed credit that may not exist.
+>
+> **Carried action:** re-measure both stations on a genuinely cold machine (post-reboot, the
+> only condition that produced drift 0.000 today) before Wave 2's gate is evaluated. If ch5
+> still reads above 1.901 cold, revert the `alphaTest` line and keep the vertex-gate fix,
+> which stands on correctness alone (the gate now estimates the same field the fragment
+> stage actually sums).
+
 - [ ] **Rebake the A channel** of `bakeDetailNormal` (:281) as a billow spectrum:
       `A = 0.62·discs + 0.38·invertedRidgeWorley` — union-of-discs iso-contours give
       scalloped lobes by construction. Grep-verified: `.a` is consumed ONLY by the clouds
