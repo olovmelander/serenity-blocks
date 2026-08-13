@@ -18,7 +18,11 @@ import {
     billboardWorld, makeQuadInstancedGeometry,
 } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
-import { sampleColourScript, ODYSSEY_COLOUR_SCRIPT } from '../odyssey-colour-script.js';
+import {
+    sampleColourScript,
+    ODYSSEY_COLOUR_SCRIPT,
+    ODYSSEY_WATER_RAMP,
+} from '../odyssey-colour-script.js';
 
 /**
  * THE ODYSSEY ACT II WORLD.
@@ -770,10 +774,43 @@ export function createOdysseyWorld({
     const bedTex = texture(macroTex, wUv);
     const depth = float(ODYSSEY_SEA_LEVEL)
         .sub(bedTex.r.add(texture(heightTex, wUv).r.mul(bedTex.g))).toVar();
+    // ── THE PAINTED SEA (Ghibli-water Wave 1) ────────────────────────────────────────
+    // Was: two smooth mixes over hardcoded vec3s with band edges at 0-18 m and 18-103 m.
+    // MEASURED problem: the median visible bed depth is 49.6 m at the shoreline station and
+    // 133 m just past the breach, so both of the journey's largest water views sat inside
+    // that ramp's flat upper region — one colour, no structure, exactly the "flat steel-blue
+    // sheet" the capture critique found. Now: a Beer-Lambert depth driver tuned so the
+    // measured range spans the whole ramp, quantised into flat plates, over the four-stop
+    // pigment ramp the colour script owns (viridian -> cerulean -> cobalt -> Prussian).
+    const wShore = vec3(...ODYSSEY_WATER_RAMP.shore);
+    const wShelf = vec3(...ODYSSEY_WATER_RAMP.shelf);
+    const wOpen = vec3(...ODYSSEY_WATER_RAMP.open);
+    const wDeep = vec3(...ODYSSEY_WATER_RAMP.deep);
+    // exp2 absorption, not a linear lerp: near-shore metres get the resolution they need
+    // while the deep saturates instead of clipping. .toVar() — high fan-out (plan §compile).
+    const wT = clamp(
+        float(1).sub(exp2(depth.mul(-ODYSSEY_WATER_RAMP.absorptionPerMetre))),
+        0,
+        1,
+    ).toVar();
+    // QUANTISE into flat plates with an anti-aliased edge. A hard floor() posterise aliases
+    // badly at 720p on a surface this size; carrying the cell index plus a smoothstep of its
+    // fraction keeps each plate flat but resolves its boundary over ~10% of a cell.
+    const bands = float(ODYSSEY_WATER_RAMP.bands);
+    const wCell = wT.mul(bands).toVar();
+    const wStep = floor(wCell).add(smoothstep(float(0.45), float(0.55), fract(wCell)))
+        .div(bands)
+        .toVar();
+    // Four stops across the quantised driver (three equal segments).
+    const wSeg = wStep.mul(3).toVar();
     const body = mix(
-        mix(vec3(0.34, 0.70, 0.71), vec3(0.12, 0.42, 0.62), clamp(depth.div(18), 0, 1)),
-        vec3(0.05, 0.22, 0.44),
-        clamp(depth.sub(18).div(85), 0, 1),
+        mix(
+            mix(wShore, wShelf, clamp(wSeg, 0, 1)),
+            wOpen,
+            clamp(wSeg.sub(1), 0, 1),
+        ),
+        wDeep,
+        clamp(wSeg.sub(2), 0, 1),
     );
     const wN = normalize(vec3(swell.mul(-0.05), 1, swell.mul(0.04)));
     const viewDir = normalize(cameraPosition.sub(positionWorld));
@@ -781,8 +818,23 @@ export function createOdysseyWorld({
     const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62);
     const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), wN)).mul(0.9);
     const wVis = texture(sunVisTex, wUv).r;
+    // FRESNEL TWO-TONE, then the HORIZON DISSOLVE (Ghibli-water Wave 1).
+    // Ghibli water is not a mirror: Spirited Away's sea was painted flat and had a separately
+    // rendered reflection ADDED over it as a soft component. So the sky arrives as a colour
+    // wash through fresnel (no reflector, no image), and the far water then converges on the
+    // sky outright — in the reference the horizon is where sea and sky become "seamlessly
+    // intertwined", with silhouettes rather than a drawn line carrying the boundary.
     let wl = mix(body, skyColourFor(float(0.22)), fres);
     wl = wl.add(vec3(1, 0.96, 0.88).mul(spec).mul(wVis)).mul(wVis.mul(0.18).add(0.82));
+    // Distance is measured to the fragment, so this is a true horizon term rather than a
+    // fixed fog: 1.2 km out the sea is 80% sky. Kept below 1 so the boundary never becomes a
+    // hard line of its own — the thing it exists to dissolve.
+    const wHorizon = clamp(
+        length(positionWorld.sub(cameraPosition)).mul(1 / 1200),
+        0,
+        1,
+    ).pow(1.4).mul(0.8);
+    wl = mix(wl, skyColourFor(float(0.16)), wHorizon);
     wl = wl.add(vec3(0.92, 0.97, 0.99).mul(
         smoothstep(float(2.6), float(0.15), depth)
             .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.55),

@@ -140,6 +140,48 @@ export const MAX_HUE_RATE_DEG_PER_005P = 12;
  * through the water surface, a climb through a cloud deck. Those are the only two places the
  * journey is allowed to cut.
  */
+/**
+ * THE SEA'S OWN RAMP — one table owns the water's colour (Ghibli-water plan, Wave 1).
+ *
+ * The Act II water surface used to carry three hardcoded `vec3`s in the renderer, divorced
+ * from this file, so "the colour script owns the palette" was true of everything except the
+ * sea. These four stops are that palette, in the scene-referred units the world authors in
+ * (the board hands the stack `applyExposure:false` + output scale/saturation, so these are
+ * NOT display hexes — they are magnitude-matched to the ramp they replace, which was tuned
+ * in-game).
+ *
+ * The hues are the Ghibli pigment axis the research pass converged on: Ghibli backgrounds are
+ * opaque poster colour drawn from a narrow, nameable set, and the sea runs viridian in the
+ * shallows through cerulean and cobalt to a Prussian deep — teal/slate-shifted, never a
+ * saturated primary blue. Four stops, because a Ghibli sea reads as a few flat plates of
+ * colour rather than a continuous gradient; the renderer quantises between them.
+ */
+export const ODYSSEY_WATER_RAMP = Object.freeze({
+    /** Viridian shallows — where the bed is a metre or two down and the sand tints it green. */
+    shore: Object.freeze([0.42, 0.74, 0.66]),
+    /** Cerulean — the near-shore body. */
+    shelf: Object.freeze([0.19, 0.55, 0.68]),
+    /** Cobalt — open water. */
+    open: Object.freeze([0.09, 0.33, 0.55]),
+    /** Prussian — the deep, muted and green-black rather than purple-blue. */
+    deep: Object.freeze([0.045, 0.17, 0.32]),
+    /**
+     * Absorption coefficient for the depth driver, per metre: t = 1 − exp2(−depth·k).
+     *
+     * MEASURED, not chosen by eye. Ray-casting the real height field through the real camera
+     * at the two largest water views gives a median visible bed depth of 49.6 m at the ch3
+     * shoreline (p=0.225) and 133 m just past the breach (p=0.210, 29% of the frame). The old
+     * ramp's band edges (0–18 m, then 18–103 m) put BOTH medians in its flat upper region —
+     * 59% of shoreline water pixels landed in one band and nearly all post-breach pixels were
+     * pinned at the deep colour, which is precisely why the sea read as a single flat sheet.
+     * k = 0.02 puts 50 m at exactly t = 0.5, 10 m at 0.13 and 133 m at 0.84, so the visible
+     * range spans the whole ramp instead of its last sixth.
+     */
+    absorptionPerMetre: 0.02,
+    /** How many flat plates the ramp is quantised into (the toon signature). */
+    bands: 4,
+});
+
 export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
     {
         p: 0.00,
