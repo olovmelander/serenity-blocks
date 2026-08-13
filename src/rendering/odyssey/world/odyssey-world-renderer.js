@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, If,
     abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
-    max, min, mix,
+    max, min, mix, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
@@ -817,7 +817,12 @@ export function createOdysseyWorld({
     // had it (they cross within 0.001 at dirY 0.2) and the cost is taken in the 30-50 degree
     // band that only ch4's upper sky sees. `below` reproduces the old ramp's descent under the
     // horizon exactly, so downward aerial rays are unchanged.
-    const SKY_ELEVATION_CURVE = 0.48;
+    // SQRT, NOT POW. The curve wants ~0.48 and `sqrt` is 0.5 — a difference of 0.013 in t at
+    // dirY 0.2, which is nothing — but `applyAerial` calls this for EVERY ground, water and
+    // tree fragment in the frame, so a general pow here is a transcendental on the whole
+    // screen to buy two hundredths of a mix factor. Measured context: this function was the
+    // only frame-wide shader change in the session where both Lane B baselines rose ~0.4 ms.
+    // The exponent is spelled out in the name so nobody "restores" it to a pow later.
     // ...and the DEEP END MUST NOT SIT ON THE GAMUT EDGE. The colour the script hands over at
     // the ch5 zenith is `#041d84` — red at 0.016 BEFORE any grading — and the stack it goes to
     // lifts saturation twice (master 1.15, chapter 5 a further 1.12) over a black crush, so it
@@ -829,7 +834,7 @@ export function createOdysseyWorld({
     const SKY_ZENITH_GAMUT_PULL = 0.32;
     const skyColourFor = (dirY) => {
         const below = clamp(dirY.add(0.168).div(0.168), 0, 1);
-        const t = clamp(dirY, 0, 1).pow(SKY_ELEVATION_CURVE).mul(0.80).add(0.20)
+        const t = sqrt(clamp(dirY, 0, 1)).mul(0.80).add(0.20)
             .mul(below)
             .toVar();
         const col = mix(uSkyHorizon, uSkyZenith, t);

@@ -441,6 +441,17 @@ app.whenReady().then(async () => {
             configurationsRun: (ONLY ? 'restricted' : 'full'),
             quality: QUALITY,
             adapter,
+            // WHICH GPU WAS ASKED FOR, not just which one answered. This machine has both an
+            // RTX 5080 and a Radeon 610M, and Lane B's budgets are written against the
+            // INTEGRATED part — but the report recorded only `adapter`, so a Lane B run that
+            // forgot `--low-power` produced a file that looked admissible in every field a
+            // reader checks. It happened on 2026-08-13: the whole frame came back at 0.262 ms
+            // and `cloudsMs` at exactly 0, because on a 5080 at 720p every configuration lands
+            // inside the timer's 65.536 us quantum. Recording the request alongside the result
+            // makes the mismatch checkable instead of inferable.
+            lowPower: LOW_POWER,
+            powerPreference: LOW_POWER ? 'low-power' : 'high-performance',
+            laneAdapterMismatch: (LANE === 'B' && !LOW_POWER) ? 'lane B is the INTEGRATED lane; this run did not pass --low-power' : null,
             resolution: `${WIDTH}x${HEIGHT}`,
             seekProgress: SEEK,
             captureChapters: CHAPTERS,
@@ -450,6 +461,10 @@ app.whenReady().then(async () => {
         };
         await mkdir(OUT_DIR, { recursive: true });
         const file = path.join(OUT_DIR, OUT_FILE || `gpu-split-lane${LANE.toLowerCase()}.json`);
+        if (report.laneAdapterMismatch) {
+            console.warn(`[gpu-split] ⚠️  ${report.laneAdapterMismatch} — adapter reported `
+                + `${adapter?.vendor}/${adapter?.architecture}. Treat this report as INADMISSIBLE.`);
+        }
         await writeFile(file, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
         process.stdout.write(`[gpu-split] wrote ${path.relative(ROOT, file)}\n`);
         process.stdout.write(`[gpu-split] split: ${JSON.stringify(report.split)}\n`);
