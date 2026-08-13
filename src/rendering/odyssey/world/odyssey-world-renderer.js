@@ -1442,7 +1442,7 @@ export function createOdysseyWorld({
     // `smoothstep(a, a, x)` is a hard WGSL compile error.
     const cTexel = float(1 / 256);
     const cSample = (uvOff) => texture(detailTex, cUvA.add(vec2(drift, 0)).add(uvOff)).a;
-    const cloudTop = uSunColour.mul(1.06).add(uSkyZenith.mul(0.10));
+    const cloudTop = mix(uSunColour.mul(1.06).add(uSkyZenith.mul(0.10)), vec3(0.99, 0.99, 1.0), 0.22);
     // The base tone leans on the HORIZON colour, not the shadow tint. The first version was
     // shadow-tint-dominated, which the playground (no post stack) rendered as soft grey — and
     // the in-game grade (outputScale 0.82, ACES, chapter saturation 1.10) crushed into ragged
@@ -1470,12 +1470,24 @@ export function createOdysseyWorld({
     // inverted read the critique flagged. This is that term, the right way round and
     // quantised instead of smooth. Both tones stay LIGHTER than the sky behind them (rule 3),
     // which is the anti-"navy shards" rule this deck has been burnt by before.
-    const cloudUnderLit = uSkyHorizon.mul(1.10).add(uShadowTint.mul(0.12));
+    // WHITE BIAS — a cloud must stay CLOUD-coloured even when the sky is not.
+    // Found from the real spline camera at ch5 (p=0.565): every cloud tone here is derived
+    // from `uSkyHorizon`, and chapter 5's script drives that to a near-pure ultramarine, so
+    // the deck came out as pale BLUE patches on a blue sky — no longer reading as cumulus at
+    // all. Earlier chapters hid this because their horizon is already pale. Mixing each tone
+    // a third of the way to neutral white keeps the sky's hue in the clouds (they must still
+    // belong to the scene) while guaranteeing they never inherit a saturated cast wholesale.
+    const cloudWhite = vec3(0.97, 0.975, 0.99);
+    const cloudUnderLit = mix(uSkyHorizon.mul(1.10).add(uShadowTint.mul(0.12)), cloudWhite, 0.34);
     // ~0.86 of the lit band's luminance with a strong violet lean. The first pass used 0.96 and
     // the patches were invisible once the grade had flattened them (outputSaturation 0.72 into
     // an ACES curve) — the repo's standing playground rule is that colour must OVERSHOOT here,
     // and a two-band read that survives the grade needs a bigger gap than it needs on the page.
-    const cloudUnderShade = uSkyHorizon.mul(0.86).add(uShadowTint.mul(0.36)).mul(vec3(0.96, 0.98, 1.09));
+    const cloudUnderShade = mix(
+        uSkyHorizon.mul(0.86).add(uShadowTint.mul(0.36)).mul(vec3(0.96, 0.98, 1.09)),
+        cloudWhite.mul(0.86),
+        0.30,
+    );
     // The step also starts closer to the silhouette edge, so the shadow patch covers a real
     // area of each lobe instead of only its densest core.
     const underStep = smoothstep(vThresh.add(aaW).add(0.012), vThresh.add(aaW).add(0.042), density);
