@@ -385,6 +385,74 @@ From the Ghibli/Witness distillation — the implementable core:
 > accepts ~+0.3 ms for the look, which is a legitimate call on a lane whose budget question
 > (§7.2) is already open.
 
+> **OUTCOME — THE CH5 STRAIGHT-EDGE DEFECT IS CLOSED, 2026-08-13, and it was never in the
+> shader. Evidence: `public/playground-refs/act2-clouds-ch5-seam-p0565.png` (before/after at
+> the same station, same camera, phase-locked `--time 9`).**
+>
+> **THE BISECT, and what retires with it.** Four suspects fell in four captures from the REAL
+> spline camera at ch5 p=0.565 (eye y=507, deck plane 660, looking 18° off vertical — so the
+> whole visible deck lies within ~220 u of the lattice centre, a fact the new camera-pose
+> metrics made readable for the first time). Each capture re-shaded the same mesh and the same
+> draw, so nothing about registration had to be guessed:
+>
+> | instrument | question | verdict |
+> |---|---|---|
+> | `lattice` | is the band a morph band or a ring collar? | **NO** — no mark on it. Retires the whole "keyed to the lattice" family. |
+> | `alpha` | opacity graph or colour graph? | **opacity** |
+> | `mult` | nearFade / bandFade / rim? | all three flat — so it is `max(edgeA, coreA)` |
+> | `grid` | which world axis is the edge an iso-line of? | **world Z** |
+>
+> A straight screen line is a plane through the eye, so on a near-horizontal deck it is a
+> straight line in world XZ — that is what makes the `grid` answer decisive rather than
+> suggestive.
+>
+> **TWO BAKE DEFECTS, both MEASURED.** (1) The value noise did not tile: its hash wrapped the
+> lattice index at the texture resolution when a lattice at frequency 1/f has only `res·f`
+> cells across the tile, so the modulo never engaged. (2) Fixing that exposed the bigger one —
+> the histogram match ranked TIED texels individually, and 64.3 % of the silhouette field is
+> exactly zero (the sky between clusters), so 42,172 identical inputs got 42,172 different
+> outputs in *texel order*: the field's own empty sky was a row-major ramp that stepped 0.394
+> at the wrap.
+>
+> | build | interior step | u-seam | v-seam |
+> |---|---|---|---|
+> | before | 0.00471 | 0.00154 | **0.22842** |
+> | + tiling noise | 0.00473 | 0.00154 | **0.22655** |
+> | + tie-safe remap | 0.00535 | 0.00000 | **0.00682** |
+>
+> The deck's anti-aliased alpha edge is 0.06 wide and the coarse octave is weighted 0.52, so a
+> field step of 0.115 crosses it completely. 0.228 crossed it *twice over, in one texel, every
+> 488 world units of Z* — and the camera at Z=−528 with a visible span of Z −308…−748 put that
+> seam straight across the middle of the ch5 frame. That is the entire defect.
+>
+> **NO PERF CLAIM IS NEEDED — this is bake-time only.** Not one node in the deck's fragment or
+> vertex graph moved, so the carried +0.327 ms decision (§Wave 2 exit gate) is untouched by it
+> and still stands open exactly as written.
+>
+> **WHAT IT COST IN CALIBRATION, stated not buried.** Collapsing the tie block changes the
+> field's shape: the solver re-solved k 1.668 → 2.062 and the summed median moved 0.563 →
+> 0.549 (p10 0.433, p90 0.713; the spread is still 0.28 by construction, which is the quantity
+> the solver actually controls). Coverage thresholds were NOT re-tuned to mask it.
+>
+> **GUARDS, both falsified against the pre-fix build before being kept.**
+> `odyssey-tiling-noise.test.js` (periodicity + wrap-step) and `odyssey-cloud-field.test.js`
+> (seam mean, seam p99, tie-collapse, calibration), with `bakeOdysseyCloudField` exported for
+> them — neither defect was testable at all while the bake lived as two closures. ⚠️ Worth
+> keeping: the first draft of the wrap-step assertion compared texel 255 to texel **256**,
+> which the broken sampler passed at 0.1–1.2× — that pair is just another interior step of an
+> infinite field. What the GPU interpolates is 255 against **0**, where the broken sampler
+> reads 8–34×. A tiling test that does not test the wrap tests nothing.
+>
+> **ch4 p=0.42 re-shot as a regression check** (the field is global): healthy — chunky white
+> cumulus over the massif, no edges.
+>
+> **STILL OPEN AT CH5, each needing its own bisect, none of them clouds:**
+> - the sky dome is flat saturated ultramarine with no gradient — the COLOUR SCRIPT;
+> - chapter 6 bleeds in from p=0.5814 — a SEAM issue, and restyling the bank will not fix it;
+> - the white slab is the HERO CLOUD geometry seen close and near-flat. The `flat` re-shade
+>   shows the deck covering that part of the frame uniformly, so it is **not** the deck — which
+>   corrects the earlier note that called it unexplained.
+
 ### Wave 3 — the seam cloud-bank speaks the same language
 - [ ] Restyle `odyssey-cloud-bank.js` (renderOrder 12, p 0.588-0.708) with the same
       quantised-band + drawn-edge grammar — it composites OVER the new deck and is the
