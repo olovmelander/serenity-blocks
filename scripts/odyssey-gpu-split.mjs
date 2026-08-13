@@ -115,6 +115,15 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldNoClouds: '1' },
         note: 'the Act II cloud deck is not added to the world group (draws, fill, vertex)',
     },
+    // THE HERO CUMULUS (cloud plan §7.1). Opaque merged geometry, so unlike the deck this one
+    // rasterises only its own silhouette and emits no blend state -- but it is purely ADDITIVE:
+    // from a camera below an overhead sheet, a hero above it never occludes a deck fragment, so
+    // no occlusion credit may be assumed. Run as `--only baseline,no-heroes,baseline-repeat`.
+    {
+        id: 'no-heroes',
+        flags: { odysseyWorldNoHeroes: '1' },
+        note: 'the Act II hero cumulus are not added to the world group',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -371,6 +380,7 @@ function buildSplit(results) {
         // The Act II cloud deck's cost at this station (draws + fill + vertex; the deck's
         // pipeline compiles on BOTH sides because the material is built either way).
         cloudsMs: delta('baseline', 'no-clouds'),
+        heroesMs: delta('baseline', 'no-heroes'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),

@@ -90,6 +90,7 @@ export function create({
         outputScale: ONE_WORLD_OUTPUT_SCALE,
         outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
         skyRadius: ONE_WORLD_SKY_RADIUS,
+        heroes: params?.get?.('heroes') !== '0',
     });
     scene.add(world.group);
 

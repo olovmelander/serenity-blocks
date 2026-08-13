@@ -674,6 +674,7 @@ export class OdysseyBoardController {
                     // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
                     // in-game compile entirely.
                     clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
+                    heroes: !readBooleanUrlFlag('odysseyWorldNoHeroes'),
                     // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
                     // removes the sea plate entirely. The water is one ungated DoubleSide
                     // transparent clipmap drawing across the whole act window and NOTHING in

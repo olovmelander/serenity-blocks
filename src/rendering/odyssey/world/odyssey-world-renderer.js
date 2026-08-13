@@ -14,6 +14,8 @@ import {
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
+import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
+import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
     billboardWorld, makeQuadInstancedGeometry,
@@ -676,6 +678,7 @@ export function scatterTrees(heightAt, {
  */
 export function createOdysseyWorld({
     quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
+    heroes = true,
     water = true,
     skyRadius = null, railSamples = [],
 } = {}) {
@@ -1522,6 +1525,64 @@ export function createOdysseyWorld({
     cloudMesh.name = 'odyssey-world-clouds';
     if (clouds) group.add(cloudMesh);
 
+    // ── HERO CUMULUS (cloud plan §7.1, owner-approved) ───────────────────────────────
+    // Real OPAQUE geometry, not billboards. The full argument lives in odyssey-hero-clouds.js;
+    // the short version is that opaque lobes DELETE the billboard-basis problem, the
+    // transparency-sorting problem and the no-vertical-mass problem instead of managing them,
+    // and cost less on a fill-bound iGPU than any transparent alternative.
+    //
+    // The four tones below are the DECK'S OWN, referenced rather than copied, so heroes and
+    // sheet cannot drift apart and there is no second colour tuning to get wrong.
+    const heroBuild = buildHeroCloudGeometry(ODYSSEY_HERO_CLOUD_SPECS);
+    const heroMat = new THREE.MeshBasicNodeMaterial();
+    const hN = normalWorld.toVar('heroN');
+    const hSun = dot(hN, uSunDir).toVar('heroSun');
+    const hUp = hN.y.toVar('heroUp');
+    // Two flat bands on the sunlit family and two on the under family — the same quantised
+    // grammar as the deck. Edges are never equal: smoothstep(a, a, x) is a hard WGSL compile
+    // error, not a no-op.
+    const hLitBand = smoothstep(float(0.16), float(0.24), hSun);
+    const hTop = mix(cloudShade, cloudTop, hLitBand);
+    const hUnderBand = smoothstep(float(-0.30), float(-0.62), hUp);
+    const hUnder = mix(cloudUnderLit, cloudUnderShade, hUnderBand);
+    const heroCol = mix(hTop, hUnder, smoothstep(float(0.10), float(-0.10), hUp));
+    // AIR-ONLY aerial. `applyAerial` always evaluates its submerged branch — per-channel exp,
+    // two pows, three plate mixes — then multiplies by uSubmerged, and multiply-by-zero is NOT
+    // dead-code-eliminated on this stack. Heroes are CPU-gated off underwater, so they must
+    // never pay for a branch they can never show. 0.7 because the raw aerial weight at the
+    // authored ranges is 0.27-0.40, which would wash the value bands out.
+    const heroAerial = (heroLit, wp) => {
+        const to = wp.sub(cameraPosition);
+        const d = length(to);
+        const dirY = to.div(max(d, float(0.001))).y;
+        // 0.7 -> 0.42, set by capture: at the authored 1.6-2.9 km ranges the raw aerial weight
+        // is 0.27-0.40, and even scaled by 0.7 it washed the value bands into one pale mass —
+        // the heroes read as soft blobs rather than lit cumulus. 0.42 keeps the depth cue
+        // (they still sit behind the mountains tonally) while letting the lit/shadow split and
+        // the cool underside survive to the eye.
+        const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82).mul(0.42);
+        return mix(heroLit, skyColourFor(dirY), weight);
+    };
+    heroMat.colorNode = toOutput(heroAerial(heroCol, positionWorld));
+    // OPAQUE, and each of these is load-bearing: `transparent:false` keeps the mesh in the
+    // opaque queue, where hardware depth — not renderOrder — resolves it against the mountains
+    // and the deck; FrontSide culls the far half of every closed lobe, a real ~2x cut on the
+    // scarce resource; no opacityNode/alphaTest means no blend state is emitted at all.
+    heroMat.side = THREE.FrontSide;
+    // No positionNode: the geometry is already world-space and the world group's matrix is
+    // identity — the same invariant the deck relies on.
+    const heroMesh = new THREE.Mesh(heroBuild.geometry, heroMat);
+    // Deliberately UNCULLED. Culling saves one draw, but a frustum-culled world-anchored mesh
+    // flickers +-1 draw as the camera breathes — the defect that voided pairs at the ch1 station
+    // (the corona sprites, whose fix was to UNcull them) and that the gpu-split content-match
+    // guard voids runs over. A constant draw count is worth more than one culled draw.
+    heroMesh.frustumCulled = false;
+    heroMesh.matrixAutoUpdate = false;
+    heroMesh.updateMatrix();
+    // renderOrder deliberately left at 0 — it must sort with the ground, in the opaque queue.
+    heroMesh.name = 'odyssey-world-hero-clouds';
+    if (heroes) group.add(heroMesh);
+
     // ── god rays (Ch2 port) ─────────────────────────────────────────────────────────
     // The deep-ocean chapter's declared hero: descending light shafts with caustic shimmer.
     // Ported as ONE InstancedMesh of open cones seated along the SUBMERGED stretch of the
@@ -1938,7 +1999,7 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat].forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
@@ -1963,7 +2024,9 @@ export function createOdysseyWorld({
         reach: ground.reach,
         trees: trees.length,
         forestChunks: treeMeshes.length,
-        materials: clouds ? 5 : 4,
+        materials: 4 + (clouds ? 1 : 0) + (heroes ? 1 : 0),
+        heroClouds: heroes ? ODYSSEY_HERO_CLOUD_SPECS.length : 0,
+        heroTriangles: heroes ? heroBuild.triangles : 0,
         applyExposure,
         outputScale,
         outputSaturation,
@@ -2059,6 +2122,7 @@ export function createOdysseyWorld({
             // multiply by a zero uniform is NOT dead-code-eliminated — the repo has that
             // lesson logged — so the gate has to be a `visible` write on the CPU.
             if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
+            if (heroMesh) heroMesh.visible = heroes && uSubmerged.value < 0.999;
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
             // seaLevel + 3, and the lowest trunk seats at y=290.3 against sea level 287.31, so
@@ -2093,6 +2157,8 @@ export function createOdysseyWorld({
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
+            // When the mesh is in the group, group.traverse above already disposed it.
+            if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();
         },
     };
