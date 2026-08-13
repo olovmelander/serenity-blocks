@@ -1859,9 +1859,14 @@ export class OdysseyBoardController {
                 // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
                 // handoff by construction; the bridge itself stays and colours the frame
                 // around the bank (build first — see the plan's occlusion item).
+                // BISECT LEVER: ?odysseyNoCloudBank=1. The bank is a separate system from the
+                // world deck, so `odysseyWorldNoClouds` never removed it — and a 2026-08-13
+                // bisect that used only that flag concluded the mottled ch5 sky at p=0.60 was
+                // chapter SIX bleeding in, when in fact the bank's window opens at 0.588. An
+                // occluder with no off switch cannot be ruled out of a frame.
                 try {
                     const boundary56 = this.presentationLayout?.chapterPositions?.[5];
-                    if (Number.isFinite(boundary56)) {
+                    if (Number.isFinite(boundary56) && !readBooleanUrlFlag('odysseyNoCloudBank')) {
                         this.cloudBank = createCloudBank();
                         const at56 = getOdysseyPathPointAt(boundary56);
                         this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
