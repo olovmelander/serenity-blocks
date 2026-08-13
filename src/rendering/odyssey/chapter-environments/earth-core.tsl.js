@@ -1120,19 +1120,39 @@ export function createMoltenPocketMaterialTSL(
     // §4.3 View-correct fresnel rim (consistency with the geode): a warm grazing edge
     // tinted by how molten the rim already is + a small cool shadow-side term. Carves
     // the near-black silhouette out of the haze without a fixed +Z banding.
+    // HALVED 2026-08-13 (user report "the bright orange on the walls just disappears
+    // when we move angle"): on a wall-sized flat sheet a fresnel term IS the wall's
+    // colour, so the whole colonnade's orange came and went with the camera. The rim
+    // keeps only its edge-carving half; the other half is re-paid just below as a
+    // view-INDEPENDENT wash keyed to what the rock is, not where the camera stands.
     const rim = viewFresnel(isColumn ? 4.0 : 3.0); // pow-4 column rim (Pyrestorm grammar)
     const coolRim = vec3(0.039, 0.102, 0.149); // ~0x0a1a26 cool shadow-side accent
     const shadowSide = oneMinus(upFace);
     const warmRim = uCrack.mul(glow.mul(0.4).add(0.2))
         .mul(isColumn ? lakeFalloff.mul(0.25).add(0.32) : float(0.42));
-    color = color.add(mix(warmRim, coolRim.mul(0.5), shadowSide.mul(0.45)).mul(rim));
+    color = color.add(mix(warmRim.mul(0.55), coolRim.mul(0.5), shadowSide.mul(0.45)).mul(rim));
+    // The stable half: an ember wash that follows the molten field's own glow pattern and
+    // the lake distance — spatially varying (vein-shaped, NOT a flat luma lift; this
+    // chapter has fought a mid-wash before) and identical from every camera angle.
+    color = color.add(uCrack.mul(glow.mul(0.30).add(0.10))
+        .mul(isColumn ? lakeFalloff.mul(0.20).add(0.10) : lakeFalloff.mul(0.24).add(0.12)));
 
     // §5.1 Emissive BLEED on the base near the lake line: the lava licks the lowest
     // band so the column/shelf base glows as if it sits IN the lake.
-    // Tight now that the plane is correct (12 -> 9 units): a real contact gradient, brightest
-    // exactly where the rock enters the lava, which is what welds a pillar to a floor.
-    const baseBleed = pow(oneMinus(smoothstep(uLakeY, uLakeY.add(9.0), vWorldY)), 1.6);
-    color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.30 : 0.10));
+    // 2026-08-13 (user report "you do not see the lava lake splashing against the
+    // pillars"): the waterline now LAPS. The contact band's height breathes with two
+    // slow per-position waves, and the first ~1.6 u above the lake burns near-white
+    // under the orange bleed — the same two-tone the lava-fall splash wears, so both
+    // contacts read as one liquid. Pure ALU on the shared material: zero new draws.
+    const vWorldXZ = varying(positionWorld.xz);
+    const lapPhase = vWorldXZ.x.mul(0.55).add(vWorldXZ.y.mul(0.47));
+    const lap = sin(lapPhase.add(uTime.mul(1.7))).mul(0.5)
+        .add(sin(lapPhase.mul(2.3).sub(uTime.mul(2.6))).mul(0.3));
+    const lakeLineY = uLakeY.add(lap.mul(1.1));
+    const baseBleed = pow(oneMinus(smoothstep(lakeLineY, lakeLineY.add(9.0), vWorldY)), 1.6);
+    const splashLine = oneMinus(smoothstep(lakeLineY, lakeLineY.add(1.6), vWorldY));
+    color = color.add(uHot.mul(baseBleed).mul(isColumn ? 0.42 : 0.14))
+        .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(isColumn ? 0.45 : 0.18));
 
     color = color.mul(uPulseIntensity.mul(0.12).add(1.0));
 
@@ -1177,8 +1197,10 @@ export function createMoltenPocketMaterialTSL(
         // Baked accent/bounce emissive — a dim warm self-illumination on the
         // up/side faces so the rock glows softly as if lit by the removed PointLights.
         .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025))
-        // §5.1 emissive BLEED — the base glows where the lava licks it (lake line).
-        .add(uHot.mul(baseBleed).mul(isColumn ? 0.24 : 0.09));
+        // §5.1 emissive BLEED — the base glows where the lava licks it (lake line),
+        // with the lapping splash line white-hot so the bloom pass gilds the contact.
+        .add(uHot.mul(baseBleed).mul(isColumn ? 0.30 : 0.10))
+        .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(isColumn ? 0.30 : 0.10));
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
     material.depthWrite = isColumn;
