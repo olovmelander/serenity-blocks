@@ -18,7 +18,7 @@ import {
     billboardWorld, makeQuadInstancedGeometry,
 } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
-import { sampleColourScript } from '../odyssey-colour-script.js';
+import { sampleColourScript, ODYSSEY_COLOUR_SCRIPT } from '../odyssey-colour-script.js';
 
 /**
  * THE ODYSSEY ACT II WORLD.
@@ -91,6 +91,14 @@ const CLOUD_DECK_Y = 660;
 // more Oklab walks for values that do not change.
 const SHALLOWS_BODY = sampleColourScript(0.12).skyHorizon;
 const ABYSS_BODY = sampleColourScript(0.0).skyHorizon;
+// Where the script stops being water: the last keyframe whose medium is 'water' (today the
+// 'shallows' at 0.12 — computed, not asserted, so a script edit moves it). The MID water
+// plate tracks the live sample, and past this point the script's horizon is the breach's
+// pale AIR sky; with uSubmerged driven by the real eye, the p 0.18→0.20 ascent renders as
+// water, and an unclamped plate would paint that air INTO the water column.
+const WATER_SCRIPT_END = ODYSSEY_COLOUR_SCRIPT
+    .filter((k) => k.medium === 'water')
+    .reduce((last, k) => Math.max(last, k.p), 0);
 
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
@@ -497,6 +505,12 @@ export function createOdysseyWorld({
     const uOutputScale = uniform(outputScale);
     const uOutputSat = uniform(outputSaturation);
     const uSubmerged = uniform(0);
+    // How deep the EYE is (0 at the surface, 1 by ~140 u down) — set from the same eye height
+    // that drives uSubmerged. The convergence colour at infinity depends on it: at depth,
+    // long rays converge on the abyss plate, but 30 u under the surface they converge on the
+    // MID plate — capture-measured at p=0.185, a fixed deep-plate convergence rendered the
+    // near-surface ascent as abyss-dark water.
+    const uEyeDepth = uniform(1);
     // The three water plates. Driven from the colour script's water keyframes so the ocean's
     // depth banding and the journey's palette can never drift apart (they are the same data).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
@@ -506,14 +520,27 @@ export function createOdysseyWorld({
     const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
 
     const skyColourFor = (dirY) => mix(uSkyHorizon, uSkyZenith, clamp(dirY.mul(1.55).add(0.26), 0, 1));
-    const DEEP_WATER = vec3(0.020, 0.105, 0.165);
     const applyAerial = (lit, wp) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
         const air = mix(lit, skyColourFor(dirY), clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82));
-        const wT = clamp(float(1).sub(exp(d.mul(-0.0075))), 0, 0.97);
-        const surfaceGlow = smoothstep(float(-0.15), float(0.75), dirY).mul(0.5);
+        // PER-CHANNEL BEER-LAMBERT, so red dies first and distance reads as WATER rather than
+        // as blue fog: one scalar became a vec3 whose red extinguishes ~3.5x faster than blue,
+        // the one cue that separates "underwater" from "tinted air". The old 0.97 clamp is gone
+        // with it — it pinned everything past ~470 u to 97% of one target, which is why
+        // removing the steam veil exposed a frame with 97.5% of its pixels in ONE luma band.
+        // 0.995 keeps a floor of the fragment's own colour so the far field converges without
+        // ever fully degenerating to the plate.
+        const wRGB = clamp(float(1).sub(exp(d.mul(vec3(-0.0160, -0.0082, -0.0046)))), 0, 0.995);
+        // The up-lift is a DOWNWELLING cone (pow-concentrated overhead), and grazing rays
+        // converge to the DEEP plate: from 100+ u down the whole up-hemisphere is the water
+        // plane's underside, whose fragments all sit AT the surface (depthBelow = 0), so
+        // without a directional term every up-ray converged to the same shallow plate —
+        // capture-measured at p=0.130 as 90% of the frame's pixels in ONE luma band. A
+        // grazing ray is a long horizontal water column and must darken like one.
+        const surfaceGlow = clamp(dirY, 0, 1).pow(2.2).mul(0.5);
+        const grazing = float(1).sub(abs(dirY)).pow(3);
         // BANDED DEPTH, not one exponential (plan §3.4.1 — Ponyo's stacked plates). Depth is
         // shown as discrete hue steps within one temperature family, which is how every
         // adopted reference does it and why none of them need grey scattering. The band index
@@ -523,8 +550,14 @@ export function createOdysseyWorld({
         const depthBelow = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(160), 0, 1);
         const bandShallow = mix(uWaterShallow, uWaterMid, smoothstep(float(0.10), float(0.42), depthBelow));
         const banded = mix(bandShallow, uWaterDeep, smoothstep(float(0.45), float(0.92), depthBelow));
-        const waterTarget = mix(banded, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
-        const submergedCol = mix(lit.mul(vec3(0.42, 0.86, 1.0)), waterTarget, wT);
+        const convergePlate = mix(uWaterMid, uWaterDeep, uEyeDepth);
+        const bandedDir = mix(banded, convergePlate, grazing);
+        const waterTarget = mix(bandedDir, skyColourFor(float(0.5)).mul(0.45), surfaceGlow);
+        // Component-wise mix against the same target: the hue WALKS with distance (red gone
+        // first, blue last) instead of every channel arriving together. This is what puts
+        // value structure back into the frame the steam veil used to supply.
+        const litUnder = lit.mul(vec3(0.42, 0.86, 1.0));
+        const submergedCol = mix(litUnder, waterTarget, wRGB);
         return mix(air, submergedCol, uSubmerged);
     };
 
@@ -677,10 +710,20 @@ export function createOdysseyWorld({
         .add(vec3(1, 0.97, 0.9).mul(
             smoothstep(float(0.9985), float(0.9995), dot(skyDir, uSunDir)).mul(2.2),
         ));
+    // ONE COLOUR AT INFINITY. The seabed fades toward the deep plate while this dome sat
+    // 6-11x brighter behind it, so the horizon carried a hard bright/dark seam that no amount
+    // of fog tuning could hide. The dome now converges on the SAME deep plate the aerial
+    // perspective converges on (uWaterDeep), and the bright lift is a DOWNWELLING cone,
+    // pow-concentrated overhead, not a hemisphere-wide wash: surface light survives looking
+    // UP, not sideways. Capture-measured at p=0.130 (camera pitched up the rail), the flat
+    // hemisphere handed 90% of the frame's pixels one luma band; the cone is what puts a
+    // dark-to-light gradient inside the up-pitched frame the ascent actually shows.
+    const downwelling = clamp(skyDir.y, 0, 1).pow(2.2)
+        .add(smoothstep(float(-0.15), float(0.35), skyDir.y).mul(0.22));
     const skyWater = mix(
-        DEEP_WATER.mul(0.5),
-        skyColourFor(float(0.4)).mul(0.55),
-        smoothstep(float(-0.25), float(0.85), skyDir.y),
+        mix(uWaterMid, uWaterDeep, uEyeDepth),
+        mix(uWaterMid, skyColourFor(float(0.4)).mul(0.42), float(0.35)),
+        clamp(downwelling, 0, 1),
     );
     skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
     skyMat.side = THREE.BackSide;
@@ -1260,10 +1303,11 @@ export function createOdysseyWorld({
          *   only the camera moves (plan §3.1 point 4).
          * @param {number} progress 0..1 across Act II, for the colour script
          */
-        update(time, railPoint, progress) {
+        update(time, railPoint, progress, eyeY = null) {
             uTime.value = time;
             uLodCenter.value.set(railPoint.x, railPoint.z);
-            const cs = sampleColourScript(0.05 + (Math.max(0, Math.min(1, progress)) * 0.9));
+            const scriptP = 0.05 + (Math.max(0, Math.min(1, progress)) * 0.9);
+            const cs = sampleColourScript(scriptP);
             uSkyHorizon.value.setRGB(...cs.skyHorizon);
             uSkyZenith.value.setRGB(...cs.skyZenith);
             uSunColour.value.setRGB(...cs.sun);
@@ -1272,8 +1316,14 @@ export function createOdysseyWorld({
             // The depth plates come from the SCRIPT, not from constants beside it: shallow is
             // the shallows keyframe's body, mid is this sample's own body, deep is the abyss.
             // One table owns the ocean's colour, so a palette edit cannot desync the banding.
+            // The MID plate's sample is clamped to the script's last WATER keyframe: past it
+            // the horizon belongs to the breach's air sky, and the plates may never leave the
+            // water table (see WATER_SCRIPT_END above).
+            const csWater = scriptP > WATER_SCRIPT_END
+                ? sampleColourScript(WATER_SCRIPT_END)
+                : cs;
             uWaterShallow.value.setRGB(...SHALLOWS_BODY);
-            uWaterMid.value.setRGB(...cs.skyHorizon);
+            uWaterMid.value.setRGB(...csWater.skyHorizon);
             uWaterDeep.value.setRGB(...ABYSS_BODY);
             uExposure.value = cs.exposure;
             const fogScale = (applyExposure ? cs.exposure : 1) * outputScale;
@@ -1287,10 +1337,26 @@ export function createOdysseyWorld({
                 fogL + ((fogB - fogL) * outputSaturation),
             );
             fogState.density = Math.sqrt(cs.fogDensity / FOG_MATCH_DISTANCE);
+            // SUBMERSION IS THE EYE'S BUSINESS, NOT THE RAIL'S (MEASURED 2026-08-13).
+            // This read `railPoint.y + 16`, but the eye does not sit above the rail: on a
+            // climbing rail `computeFollowFrame` pulls it BACKWARDS along the tangent, so it
+            // trails BELOW its rail point — measured -22.6 u at p=0.15 easing to -7.2 at
+            // p=0.20. Bisected against the shipped spline, the rail crosses sea level at
+            // p=0.19182 and the EYE at p=0.20023, while this expression reached zero at
+            // p=0.18141. So for 0.0188 of progress — 17% of chapter 2, the entire final ascent
+            // to the breach — the world rendered AIR while the camera was still under water:
+            // air sky dome, air aerial perspective, cloud deck on, rays/motes/fish switched
+            // off, and the water plane showing its topside from below.
+            // Callers pass the real eye height; the old rail expression remains as the
+            // fallback so no existing call site changes behaviour by omission.
+            // The band widens 9 -> 14 u because the eye climbs ~11 u per 0.01 of progress near
+            // the surface: 9 u resolved in under a hundredth of progress, which pops.
+            const submergedRefY = Number.isFinite(eyeY) ? eyeY : (railPoint.y + 16);
             uSubmerged.value = Math.max(0, Math.min(
                 1,
-                (ODYSSEY_SEA_LEVEL + 4.5 - (railPoint.y + 16)) / 9,
+                (ODYSSEY_SEA_LEVEL + 2.0 - submergedRefY) / 14,
             ));
+            uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
             // Publish what this frame decided, for instruments (see `state` above). Written
             // LAST so a reader can never observe a half-updated frame.
             state.submerged = uSubmerged.value;

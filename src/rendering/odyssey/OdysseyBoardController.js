@@ -13,7 +13,11 @@ import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
-import { createSteamQuench } from './composition/odyssey-steam-quench.js';
+import {
+    STEAM_QUENCH_EXIT_HALF_WIDTH,
+    STEAM_QUENCH_HALF_WIDTH,
+    createSteamQuench,
+} from './composition/odyssey-steam-quench.js';
 import { createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
@@ -149,39 +153,10 @@ const ONE_WORLD_OUTPUT_SCALE = 0.82;
 const ONE_WORLD_OUTPUT_SATURATION = 0.72;
 /** Sky dome radius for the board camera (near 0.1 / far 9000). */
 const ONE_WORLD_SKY_RADIUS = 3600;
-// Half-width of BOTH act-edge occlusion windows, in progress units. Deliberately 2x the
-// authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
-// occluder narrower than the thing it occludes just frames it. Same principle the Ch3 shore
-// work landed on — a dissolve band must be wider than the noise it is dissolving.
-const STEAM_QUENCH_HALF_WIDTH = 0.06;
-/**
- * ...but the EXIT half-width of the 1->2 quench cannot be that same number, and this is where
- * the long-standing "cloud deck renders underwater" ghost has been living.
- *
- * MEASURED 2026-08-13, by capture A/B and by geometry. Force-hiding the quench at p=0.130 makes
- * the "blue sky with white cumulus" disappear completely and leaves a clean water column, after
- * the One World group, the whole Earth Core chapter, the r=4000 atmosphere backstop, the point
- * cloud and the ch1 corridor had each been eliminated in turn. The geometry says why: the
- * journey spline is 1,767.6 u long, so +-0.06 of progress is +-106 u -- against a quench sphere
- * of radius 110. The eye is therefore INSIDE the BackSide shell for the entire window (43.5 u
- * from its centre at p=0.130), and a BackSide sphere you are inside covers 100% of the frame
- * with frustumCulled=false and renderOrder 12. The "distant bank you approach" this module was
- * authored for never happens on the way OUT: it is a full-screen veil over the first 54% of
- * chapter 2, still ~18% opaque at p=0.130, shading (0.30,0.30,0.31) to (0.96,0.97,1.00). That
- * is the cumulus, painted 116 u under water.
- *
- * The APPROACH stays 0.06 -- that side was tuned deliberately so Act II's blue cannot read
- * through the veil while Earth Core is still on screen. The EXIT only has to outlast the
- * CO-PRESENCE window, which is chapter 1's authored `transition.seamWidth` = 0.03 (the same
- * number ChapterEnvironmentManager uses as its ecotone half-width and ONE_WORLD_ACT_MARGIN
- * matches). STEAM_QUENCH_HALF_WIDTH itself is left alone because the ch5->ch6 cloud bank
- * shares it.
- *
- * NOTE this is NOT the plan's §7.2 decision (plateau vs three beats). That decision reshapes
- * the curve AT the crossing and is still the owner's; this only stops the tail veiling half an
- * act after the crossing is over.
- */
-const STEAM_QUENCH_EXIT_HALF_WIDTH = 0.03;
+// The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
+// rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
+// the board and the seam-12-dive playground drive the same quench by construction. The
+// ch5->ch6 cloud bank still uses the symmetric STEAM_QUENCH_HALF_WIDTH for both halves.
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -2601,7 +2576,11 @@ export class OdysseyBoardController {
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are
                 // unaffected by the gate.
-                if (worldVisible) this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
+                if (worldVisible) {
+                    // The EYE decides whether we are under water, not the rail — see the
+                    // note in odyssey-world-renderer's update().
+                    this.oneWorld.update(this.time, railPoint, this._oneWorldActT, this.camera?.position?.y);
+                }
             }
 
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.

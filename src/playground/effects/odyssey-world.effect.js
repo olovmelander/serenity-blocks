@@ -70,7 +70,11 @@ export function create({ scene, camera, params }) {
         cameraRadius: 1200,
         update(time) {
             const p = railAt(time);
-            world.update(time, getOdysseyPathPointAt(p), (p - ACT_START) / (ACT_END - ACT_START));
+            const pt = getOdysseyPathPointAt(p);
+            // Pass the EYE the camera() hook below actually uses — uSubmerged is driven by
+            // the eye now, and omitting it falls back to the old rail contract, which put
+            // this playground 32 u above its own camera.
+            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y);
         },
         camera(time, cam) {
             const p = railAt(time);
