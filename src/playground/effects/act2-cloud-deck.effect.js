@@ -78,6 +78,12 @@ export function create({
     const p = Math.min(0.999, Math.max(0, readNumber(params, 'p', 0.42)));
     const pitchDeg = readNumber(params, 'pitch', 18);
     const yawDeg = readNumber(params, 'yaw', 0);
+    // Free-camera controls for ART REVIEW. The station framing answers "what does the player
+    // see here"; these answer "is the sky any good", which needs distance and angle.
+    //   ?dist=900    pull the camera BACK along its own view axis (0 = at the rail)
+    //   ?height=250  raise/lower the camera without moving the aim point
+    const backOff = readNumber(params, 'dist', 0);
+    const lift = readNumber(params, 'height', 0);
     const postEnabled = params?.get?.('post') !== '0';
     const gradeChapter = Math.round(readNumber(params, 'chapter', chapterAt(p)));
 
@@ -152,12 +158,19 @@ export function create({
             const tz = pt.z - behind.z;
             const tl = Math.hypot(tx, tz) || 1;
             // Park AT the station — this rig is for looking at one sky, not riding the journey.
-            cam.position.set(pt.x - ((tx / tl) * 30), eyeY, pt.z - ((tz / tl) * 30));
             const yaw = (yawDeg * Math.PI) / 180;
             const dirX = ((tx / tl) * Math.cos(yaw)) - ((tz / tl) * Math.sin(yaw));
             const dirZ = ((tx / tl) * Math.sin(yaw)) + ((tz / tl) * Math.cos(yaw));
             const rise = Math.tan((pitchDeg * Math.PI) / 180) * 100;
-            cam.lookAt(cam.position.x + (dirX * 100), cam.position.y + rise, cam.position.z + (dirZ * 100));
+            // The AIM point is anchored to the station, so `dist` widens the same framing
+            // instead of sliding the subject out of shot.
+            const baseX = pt.x - ((tx / tl) * 30);
+            const baseZ = pt.z - ((tz / tl) * 30);
+            const aimX = baseX + (dirX * 100);
+            const aimY = eyeY + rise;
+            const aimZ = baseZ + (dirZ * 100);
+            cam.position.set(baseX - (dirX * backOff), eyeY + lift, baseZ - (dirZ * backOff));
+            cam.lookAt(aimX, aimY, aimZ);
         },
         render() {
             if (post) post.render();
