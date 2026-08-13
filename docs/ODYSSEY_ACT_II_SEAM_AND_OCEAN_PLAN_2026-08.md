@@ -542,6 +542,43 @@ premise is measured false is rescoped in this file, annotated at the claim, orig
   substitution **only after** the coverage differential funds it.
 - **Acceptance:** red demonstrably dies with distance; caustics only on up-faces.
 
+> **OUTCOME — Wave 4, DONE 2026-08-13.**
+>
+> **The extinction bullet was consumed by Wave 1's landing** — the per-channel Beer–Lambert
+> vec3 and the Ponyo depth bands shipped there (this file, Wave 1 OUTCOME), and red
+> demonstrably dies with distance in the committed captures: at p=0.185 the near sand is
+> warm, the far column pure blue. Not re-done here; recorded so the bullet has an owner.
+>
+> **God rays: the geometry was upside down, and the first fix produced a worse image than
+> the bug.** `ConeGeometry` seats the wide base (where `vFade` is brightest) at the BOTTOM —
+> so the shafts were brightest at their deep end, the bright base buried below the seabed,
+> the thin dark apex above the surface. `rotateX(π)` puts the bright wide end at the surface
+> — and the first capture after it showed **hard bright ellipses (the open base's rim) and
+> solid additive pipes**: the flip moved the formerly-buried half of every cone in front of
+> the camera. Landed shape: a base feather (`smoothstep(0, 0.14, v)` — a shaft of light has
+> no end-cap), depth exponent 1.15 → 1.6, master 0.55 → 0.34, seat lifted so the base sits
+> just above the surface and the apex dies dark before the deepest floor. The cap now states
+> the REAL count (`min(9, …)` — the "22" was the source of four wrong research findings).
+> Capture: the deep frame reads as soft fans of surface light, brightest at the top.
+>
+> **Caustics: `min()` not `add()`, up-faces only — and the remap matters.** The summed
+> noises regressed to mid and pow'd into soft blobs; `min()` is bright only where BOTH
+> fields are bright (the intersecting-vein web). A bare `pow(3)` on the min buried the web
+> entirely (capture: flat shelf); the landed term is a `smoothstep(0.55, 0.85, min)` remap —
+> ~20% coverage of full-brightness veins — masked by `clamp(normal.y, 0, 1)` so projected
+> light can never stripe a cliff or an underhang. The web stays subtle at rail distances
+> (the per-channel convergence eats fine detail past ~50 u, as it should); the
+> noise→texture substitution stays parked per the funding rule.
+>
+> **MEASURED (Lane B pairs).** Deep p=0.115: **12.909/12.909 ms p50** (drift 0.000, 75
+> draws min==max) — Wave 4 *saved* 0.98 ms; the old rays' buried-wide-end geometry was
+> paying ~1 ms of invisible additive fill in the up-looking deep frames. Shallows p=0.16:
+> 5.964/6.095 (drift −0.131, two ticks; the repeat window carried an ambient p99 tail) —
+> the wide bases now live near the surface camera, so the shallows absorb ~+0.2 ms of the
+> deep station's saving. Both far inside their maxima (15.3 / 8.5). Value gate: midWash at
+> p=0.130 fell further, 0.6925 → **0.5986** (the fans put structure in the upper frame).
+> Reports: `gpu-split-laneb-act2-deep-p115-w4.json`, `gpu-split-laneb-act1-underwater-w4.json`.
+
 ### Wave 5 — The breach
 - Snell's window + TIR on the underside; meniscus line; audio released on the same constant.
 - **Acceptance:** the window is legible from p≈0.181 and the breach lands as one event.
@@ -557,7 +594,7 @@ this file. `grep -c '^- \[ \]' docs/ODYSSEY_ACT_II_SEAM_AND_OCEAN_PLAN_2026-08.m
 - [x] **Wave 1** — Coherence (eye-driven uSubmerged, no air sky / forest underwater, one convergence colour)
 - [ ] **Wave 2** — The seam (quench plateau, cover-bound act gate, reseeded population, occlusion not dissolve) — BLOCKED on the §7.1 owner decision
 - [x] **Wave 3** — The fish (swim wave first, then hull, then reseat + shading)
-- [ ] **Wave 4** — The water (per-channel extinction, god rays upright and counted 9, caustics min+up-face)
+- [x] **Wave 4** — The water (per-channel extinction, god rays upright and counted 9, caustics min+up-face)
 - [ ] **Wave 5** — The breach (Snell's window + TIR, meniscus, audio on the same constant)
 
 ## 7. Decisions needed from the owner

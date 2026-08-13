@@ -663,14 +663,21 @@ export function createOdysseyWorld({
     // the waterline and faded in over the first few metres of depth. A small, LOW-FAN-OUT
     // graph — the codegen lesson applies: keep it a leaf term, .toVar() the result.
     const causticUv = positionWorld.xz.mul(0.055);
+    // WAVE 4: min(), not add() — summed noises regress toward mid and pow() them into soft
+    // BLOBS; the MINIMUM of two counter-scrolling fields is bright only where BOTH are
+    // bright, which draws the sharp intersecting veins a caustic web actually has. And the
+    // web lands only on UP-FACES: projected surface light cannot paint a cliff wall or the
+    // underside of a ledge, which is where the old term striped.
+    const causticN1 = snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
+        .mul(0.5).add(0.5);
+    const causticN2 = snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15)))
+        .mul(0.5).add(0.5);
+    // smoothstep remap, not pow: min() of two fields peaks near ~0.8, so a bare pow buried
+    // the web (the first min() capture showed a FLAT shelf). The remap keeps ~20% coverage
+    // of crisp full-brightness veins.
     const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
-        .mul(clamp(
-            snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
-                .add(snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15))))
-                .mul(0.5).add(0.5),
-            0,
-            1,
-        ).pow(4.0))
+        .mul(smoothstep(float(0.55), float(0.85), min(causticN1, causticN2)))
+        .mul(clamp(normal.y, 0, 1))
         .toVar();
 
     const sunVis = texture(sunVisTex, vUv).r;
@@ -923,15 +930,21 @@ export function createOdysseyWorld({
     // path), tilted to the real ODYSSEY_WORLD_SUN rather than the old chapter's private
     // "light from above" assumption. Visible only while the camera is underwater.
     const sunkPoints = railSamples.filter((pt) => pt && pt.y < ODYSSEY_SEA_LEVEL - 6);
-    const rayCount = Math.min(22, sunkPoints.length);
+    // WAVE 4: the cap is the REAL number. Four research findings priced this system at "22
+    // cones" off the old cap while the submerged rail has ever only yielded 9 — the code's
+    // own constant was the source of the wrong number, so it now states the truth.
+    const rayCount = Math.min(9, sunkPoints.length);
     let rayMesh = null;
     let rayMat = null;
     if (rayCount > 2) {
         rayMat = new THREE.MeshBasicNodeMaterial();
         const rUv = uv();
-        // Brightest where the shaft meets the surface, feathering to nothing as it descends;
-        // soft lateral feather so the cone melts into the water instead of reading as a shape.
-        const vFade = float(1).sub(rUv.y).pow(1.15);
+        // Brightest where the shaft meets the surface, feathering to nothing as it descends —
+        // with a short feather AT the base too (first capture after the flip showed the open
+        // base's rim as a hard bright ellipse; a shaft of light has no end-cap). The depth
+        // exponent steepened 1.15 -> 1.6 so the shaft melts out by mid-depth instead of
+        // standing as a full-height pipe.
+        const vFade = float(1).sub(rUv.y).pow(1.6).mul(smoothstep(float(0.0), float(0.14), rUv.y));
         // FACING fade, not a uv.x feather. On a ConeGeometry uv.x runs around the
         // CIRCUMFERENCE, so the ported `abs(uv.x - 0.5)` lit one side of the cone and left a
         // hard seam on the other — in-game that read as solid triangular wedges, not light.
@@ -955,8 +968,11 @@ export function createOdysseyWorld({
             .mul(0.55)
             .add(0.45);
         rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
+        // 0.55 -> 0.34: the flip put the wide (formerly buried) half of every cone in front
+        // of the camera, and DoubleSide additive pays both walls — at the old master the
+        // shafts read as solid pipes.
         rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmerSafe).mul(uSubmerged)
-            .mul(0.55)
+            .mul(0.34)
             .toVar();
         rayMat.transparent = true;
         rayMat.blending = THREE.AdditiveBlending;
@@ -980,6 +996,13 @@ export function createOdysseyWorld({
             .setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDirV);
         const tilt = new THREE.Quaternion().slerp(fullTilt, 0.35);
         const rayGeo = new THREE.ConeGeometry(7, 240, 14, 1, true);
+        // WAVE 4: RIGHT WAY UP. ConeGeometry seats the wide base (uv.y=0, where vFade is
+        // brightest) at the BOTTOM and the apex at the top — so the shafts were brightest at
+        // their deep end, the bright base buried below the seabed, and the thin dark apex
+        // poking above the surface. Flipping the geometry puts the wide bright end AT the
+        // surface and tapers the shaft dark toward the floor, which is what refracted
+        // surface light does.
+        rayGeo.rotateX(Math.PI);
         rayMesh = new THREE.InstancedMesh(rayGeo, rayMat, rayCount);
         const rm4 = new THREE.Matrix4();
         const rPos = new THREE.Vector3();
@@ -988,8 +1011,9 @@ export function createOdysseyWorld({
             const pt = sunkPoints[Math.floor((i / rayCount) * sunkPoints.length)];
             const a = hash01(i * 3 + 1) * Math.PI * 2;
             const r = 18 + (hash01(i * 3 + 2) * 46);
-            // Base (wide end) at the surface, apex feathering down toward the sea floor.
-            rPos.set(pt.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL - 96, pt.z + (Math.sin(a) * r));
+            // Base (wide, bright end) just above the surface; the apex feathers down to
+            // ~SEA-236, dark before it can meet the deepest floor (~SEA-207).
+            rPos.set(pt.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL - 116, pt.z + (Math.sin(a) * r));
             const sc = 0.75 + (hash01(i * 3 + 3) * 0.7);
             rScl.set(sc, 1, sc);
             rayMesh.setMatrixAt(i, rm4.compose(rPos, tilt, rScl));
