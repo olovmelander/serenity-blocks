@@ -106,19 +106,19 @@
             "note": "131 pre-rebuild; 92-93 after the Wave 3b decal merge. 2026-08-12: 83 sans orbs, and CONSTANT for the first time \u2014 the +-1 flicker was the lava-floor corona sprites (frustum-culled, camera breathing; plan \u00a710.3); the fix unculls the five coronas, +5 always-on draws that are frustum-clipped (vertex-only). Baseline stays null: 83 against max 35 reds the gate; closing that gap is the carried sprite->instanced migration."
         },
         "odysseyAct1UnderwaterGpuP50LaneBMs": {
-            "baseline": 5.96,
+            "baseline": 5.44,
             "max": 8.5,
-            "note": "p=0.16, Radeon 610M/720p/Medium, drift -0.066 (one tick), content-matched at 45 draws \u2014 a REAL baseline. Pre-Wave-4 measured 7.73: the whole luminous-ocean package (bands, SSS ceiling, 640 motes, 110 fish, clouds-not-submitted-underwater fix) lands 1.7 ms UNDER where it started, and the old 24.6 ms p99 tail is gone (6.2). Lane A same station: 0.197 ms, drift exactly 0."
+            "note": "p=0.16, Radeon 610M/720p/Medium. RE-BASELINED 2026-08-13 (act2 wave 1, 2 of 3): the submerged far-shore forest no longer submits, so the 45-draw content the 5.96 cell was measured on no longer exists. First admissible pair on the new content: 5.439/5.439 ms p50, drift 0.000 (identical timer buckets), 34 draws min==max both windows, 490,259 tris both \u2014 the 11 departed draws are the forest chunks, exactly the 11 the plan predicted. History: 7.73 pre-luminous-ocean, 5.96 at 45 draws. max 8.5 left as-is (it predates the ~10% ratchet convention; tightening it is an owner call). Report: gpu-split-laneb-act1-underwater-w1pre.json."
         },
         "odysseyAct2SeamGpuP50LaneBMs": {
             "baseline": 15.4,
             "max": 17.0,
-            "note": "p=0.105 (just past the 1->2 boundary), Radeon 610M/720p/Medium. FILLED 2026-08-13 by the first admissible pair ever taken at this station: 15.401/15.073 ms p50, drift 0.328, 82 draws with drawCallsMin==drawCallsMax in both windows, 563,529 tris. Baseline is the worse of the pair. THE SEAM HAD NO STATION AT ALL before this, which is why nobody noticed it is the second-most-expensive frame in the journey after ch1 - 2.6x the p=0.16 underwater cell - because BOTH worlds draw here at once (Earth Core alpha-dissolves to p=0.123 while the Act II ocean has been on since p=0.063). max 17.0 is a hold-the-line ratchet ~10% above baseline; Wave 2 is expected to LOWER the baseline, not spend against it. Report: gpu-split-laneb-act2-seam-p105.json."
+            "note": "p=0.105 (just past the 1->2 boundary), Radeon 610M/720p/Medium. FILLED 2026-08-13 by the first admissible pair ever taken at this station: 15.401/15.073 ms p50, drift 0.328, 82 draws with drawCallsMin==drawCallsMax in both windows, 563,529 tris. Baseline is the worse of the pair. THE SEAM HAD NO STATION AT ALL before this, which is why nobody noticed it is the second-most-expensive frame in the journey after ch1 - 2.6x the p=0.16 underwater cell - because BOTH worlds draw here at once (Earth Core alpha-dissolves to p=0.123 while the Act II ocean has been on since p=0.063). max 17.0 is a hold-the-line ratchet ~10% above baseline; Wave 2 is expected to LOWER the baseline, not spend against it. STALE as of act2 wave 1 (2026-08-13): the forest gate and quench exit narrowing change this station's content and no pair spans them; no number is claimed for the current tree. Wave 2 re-baselines this cell with its own changes. Report: gpu-split-laneb-act2-seam-p105.json."
         },
         "odysseyAct2DeepOceanGpuP50LaneBMs": {
-            "baseline": 14.48,
-            "max": 16.0,
-            "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. FILLED 2026-08-13: 14.483/14.090 ms p50, drift 0.393, 80 draws min==max both windows, 563,457 tris. THIS CELL EXISTS BECAUSE THE OLD ONE DID NOT GOVERN THE WORK: the only shipped underwater cell is measured at p=0.16 in `shallows` near the top of the ascent and reads 5.96 ms, but the deep half where most Act II work lands measures 14.48 - 2.4x as expensive. Any 'headroom' computed against 5.96 was computed against the cheapest frame in the chapter. max 16.0 is a hold-the-line ratchet ~10% above baseline. Report: gpu-split-laneb-act2-deep-p115.json."
+            "baseline": 13.57,
+            "max": 15.0,
+            "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. RE-BASELINED 2026-08-13 (act2 wave 1, 2 of 3): the forest gate and quench exit narrowing changed this station's content (80 -> 75 draws). First admissible pair on the new content: 13.566/13.566 ms p50, drift 0.000 (identical timer buckets), 75 draws min==max both windows, 517,347 tris both. History: 14.483/14.090 at 80 draws (gpu-split-laneb-act2-deep-p115.json) - the wave's draw removals bought ~0.91 ms here. THIS CELL EXISTS BECAUSE THE OLD ONE DID NOT GOVERN THE WORK: p=0.16 `shallows` reads 5.4-6 ms while the deep half where most Act II work lands is ~2.5x that. max 15.0 is the same ~10% hold-the-line ratchet applied to the new baseline. Report: gpu-split-laneb-act2-deep-p115-w1pre.json."
         }
     }
 }
