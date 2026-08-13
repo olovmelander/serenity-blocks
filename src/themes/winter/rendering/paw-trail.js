@@ -46,6 +46,31 @@ const TILE = 32; // decay/idle bookkeeping granularity (texels per side)
 const DECAY_TICK = 0.4;
 const UPLOAD_TICK = 0.05; // ~20 Hz — how fast a fresh stamp reaches the GPU
 
+// Contact detail — see paw-trail-gpu.js. A clean analytic bevel is what reads
+// as a decal; the wobbled rim + granulated berm is what reads as displaced snow.
+const hash2 = (x, y) => {
+    const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+    return s - Math.floor(s);
+};
+
+function vnoise2(x, y) {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi);
+    const b = hash2(xi + 1, yi);
+    const c = hash2(xi, yi + 1);
+    const d = hash2(xi + 1, yi + 1);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+const rimWobble = (ang, seed) => Math.sin(ang * 3 + seed) * 0.5
+    + Math.sin(ang * 7 + seed * 1.7) * 0.3
+    + Math.sin(ang * 13 + seed * 0.6) * 0.2;
+
 export function createPawTrail({
     origin = [-1200, -1880], // world XZ of texel (0,0)
     size = [2400, 2320], // world XZ extent the map covers
@@ -163,6 +188,8 @@ export function createPawTrail({
         const iy1 = Math.min(res - 1, Math.ceil(Math.max(ay, by) + reach));
         if (ix1 < ix0 || iy1 < iy0) return;
 
+        const seed = (Math.abs(ax * 0.137 + ay * 0.219) % 6.2831853);
+
         for (let y = iy0; y <= iy1; y += 1) {
             for (let x = ix0; x <= ix1; x += 1) {
                 // Distance to the capsule's spine.
@@ -174,7 +201,9 @@ export function createPawTrail({
                 const dx = px - sx * t;
                 const dy = py - sy * t;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                const tn = dist / pad;
+                // Wobbled rim — the edge gives way irregularly, like snow.
+                const ang = Math.atan2(dy, dx);
+                const tn = (dist / pad) / (1 + 0.22 * rimWobble(ang, seed));
                 if (tn > 1 + bw) continue;
 
                 // Pit: flat floor out to floorFrac, then a steep smoothstep wall to the rim.
@@ -183,14 +212,16 @@ export function createPawTrail({
                     const q = Math.min(1, (1 - tn) / Math.max(1e-3, 1 - floorFrac));
                     pit = depth * q * q * (3 - 2 * q);
                 }
-                // Berm: the displaced volume, piled in a ring just outside the rim and biased
-                // along the heading (the paw pushes snow out the way it travels).
+                // Berm: the displaced volume, piled in a ring just outside the rim, biased
+                // along the heading (the paw pushes snow out the way it travels) and
+                // granulated so it reads as chunky broken snow rather than a smooth bead.
                 let lip = 0;
                 if (berm > 0 && tn > 1) {
                     const r = Math.sin(Math.PI * ((tn - 1) / bw));
                     if (r > 0) {
                         const along = dist > 1e-3 ? (dx * hx + dy * hy) / dist : 0;
-                        lip = berm * r * Math.max(0.25, 1 + bermDir * along);
+                        const grain = 0.72 + 0.56 * vnoise2(x * 0.42 + seed, y * 0.42 - seed);
+                        lip = berm * r * Math.max(0.25, 1 + bermDir * along) * grain;
                     }
                 }
                 if (pit <= 0.002 && lip <= 0.002) continue;
