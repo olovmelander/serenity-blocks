@@ -91,6 +91,16 @@ const CONFIGURATIONS = [
         flags: { odysseyOneWorld: '0', odysseyHideLevelNodes: '1' },
         note: 'legacy dioramas without the orb group',
     },
+    // THE SEA PLATE (Ghibli-water plan, Wave 0). One ungated DoubleSide transparent clipmap
+    // that draws across the whole act window (p 0.063-0.678) and whose total cost had never
+    // been measured because nothing could switch it off. Run as
+    // `--only baseline,no-water,baseline-repeat` so the differential AND its drift bound come
+    // from ONE cooled session.
+    {
+        id: 'no-water',
+        flags: { odysseyWorldNoWater: '1' },
+        note: 'the Act II sea plate is not built at all (draws, fill, vertex and pipeline)',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -341,6 +351,9 @@ function buildSplit(results) {
     return {
         bloomMs: delta('baseline', 'no-bloom'),
         levelNodesMs: delta('baseline', 'no-level-nodes'),
+        // The Act II sea plate's TOTAL cost at this station (draws + fill + vertex + its
+        // pipeline), not an increment: baseline minus the same frame with no water built.
+        waterMs: delta('baseline', 'no-water'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),

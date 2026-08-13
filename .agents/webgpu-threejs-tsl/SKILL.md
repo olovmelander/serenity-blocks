@@ -62,7 +62,8 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 | Instanced mask/displacement lands in wrong space | In r181, InstanceNode reassigns `positionLocal` **before** your `positionNode` runs | Use `positionGeometry` for instanced local-space masks |
 | Instanced/point particles invisible or collapsed to a dot | `positionNode = buffer.element(instanceIndex)` replaces *every vertex* with one point | `positionLocal.add(buffer.element(instanceIndex))`, or the `vertexNode` billboard pattern in `src/themes/winter/rendering/snow-renderer.js` |
 | Conditional write silently ignored | JS variable reassignment inside `If()` — TSL can't see `x = x.add(1)` | `.toVar()` + `.assign()`, or `select()` — see `docs/core-concepts.md` § Control Flow |
-| Mask/fade is constant 0 | Reversed `smoothstep(hi, lo, x)` argument order | `smoothstep(lo, hi, x)` — it does not auto-swap |
+| Shader module fails to compile at all | `smoothstep(a, a, x)` — **EQUAL** edges are a hard WGSL error ("called with 'low' equal to 'high'"), killing the whole module so the material never draws | Keep the edges distinct |
+| JS-side mask is 0 | `THREE.MathUtils.smoothstep(x, min, max)` (the **JS** helper) really does return 0 on reversed edges — `if (x <= min) return 0` | Invert the ramp: `1 - smoothstep(lo, hi, x)` |
 | Effect "disabled" but GPU cost unchanged | Multiplying by a 0-value uniform is NOT dead-code-eliminated | Gate in JS (skip the pass / swap the node), not with shader zeros |
 | Per-frame uniform upload you didn't intend | Mutating a `THREE.Color`/`Vector` inside `uniform(...)` in place still uploads every frame | Fine when intended; don't assume unchanged-value writes are free |
 | Oscillation stuck in upper half | `oscSine` already returns 0..1 | Drop the `.mul(0.5).add(0.5)` remap |
@@ -70,6 +71,18 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 | First-visit hitch despite `compileAsync` | `compileAsync` doesn't cover post-`PassNode` / first-update paths | Warm by actually rendering once (see Odyssey warm-up) |
 | Backgrounded tab burns GPU | Loop keeps computing/rendering when hidden | `shouldRenderFrame()` gate + clamp `delta` in the update loop (pattern in every theme) |
 | Works in dev, black in packaged Electron | Absolute `/assets/...` fetch resolves to filesystem root under `file://` | Use relative `./assets/...` |
+
+> **CORRECTED 2026-08-13 — reversed-edge `smoothstep` in a SHADER is fine.** This table used to
+> claim `smoothstep(hi, lo, x)` returns 0 in WGSL. It does not. TSL emits the WGSL builtin
+> verbatim (`MathNode.js:387/1018`; no entry in `WGSLNodeBuilder`'s polyfill or method tables,
+> so `getMethod` falls through to the literal name), and a GPU probe on Dawn/Chrome 151
+> compiled it clean and returned a **descending ramp exactly equal to `1 − smoothstep(lo, hi, x)`**
+> at all 32 sampled values. The false rule came from conflating three real things: the **JS**
+> `THREE.MathUtils.smoothstep` (which genuinely early-outs to 0), the **equal-edge** compile
+> error, and a since-removed Tint validation error on const reversed edges (three.js #30593,
+> fixed by gpuweb #4981). Shipped counter-example: `halcyon-apex.effect.js:187/188/202/208` are
+> four reversed-edge smoothsteps rendering the theme's sun, halo, cloud band and haze.
+> Prefer forward edges for readability; do not "fix" a working reversed one on this rule's say-so.
 
 ## Doc map — read on demand, not up front
 

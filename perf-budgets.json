@@ -119,6 +119,11 @@
             "baseline": 13.11,
             "max": 14.2,
             "note": "p=0.115 (the DEEP half of chapter 2), Radeon 610M/720p/Medium. 2026-08-13 act2 wave 5: 13.106/12.845 ms p50, drift 0.262, 75 draws min==max (the Snell window/TIR ALU, ~2-3 ticks over wave 4; a first w5 pair was VOIDED and deleted — a Chrome GPU process at 63% co-tenanted the adapter and pair-drift alone would not have caught it). History: 14.483/14.090 at 80 draws (pre-wave-1); 13.566 wave-1 draws-removed; 13.894 wave-1 complete; wave 3 identical; 12.909 wave 4 (upright god rays saved 0.98). Net across the Act II plan: -1.37 ms. max 14.2 held (~8% over baseline). Reports: gpu-split-laneb-act2-deep-p115-w{1pre,1,3,4,5}.json."
+        },
+        "odysseyAct2ShorelineGpuP50LaneBMs": {
+            "baseline": null,
+            "max": 14.0,
+            "note": "NEW 2026-08-13 (Ghibli-water plan, Wave 0). Station p=0.225, Radeon 610M/720p/Medium, --chapters 2,3. THE FRAMES THE GHIBLI WATER PLAN TARGETS HAD NO PERF STATION AT ALL: coverage was p=0.105/0.115/0.16 (the ch2 water column) and p=0.42 (ch4), so every ms spent on topside foam/ripple/sparkle would have been invisible to every budget cell. p=0.225 is PROVEN (spline + real computeFollowFrame replay) to be the first progress outside the 2->3 seam window [0.186,0.222] with the eye above water (+20.3 m) and a full-width waterline still in frame. Baseline deliberately NULL until its first admissible cooled pair (ADR-0016: an unmeasured cost is written as unmeasured, never estimated); max 14.0 is provisional, set from the neighbouring deep-ocean cell, and MUST be re-set from the first pair. Honest caveat recorded with the station: water is only ~10.7% of this frame (ch3 framing pitches +17.7 deg up) at 3.6 px/m down frame-centre, so fine-grain water detail is worth less here than colour architecture."
         }
     }
 }

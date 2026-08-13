@@ -190,6 +190,83 @@ Three hard facts (critic-verified):
 - **Acceptance:** the cost table above filled with admissible pairs; one paragraph in this
   file stating the resolved layout + px/m; captures on disk under `--keep`.
 
+> **OUTCOME — Wave 0, 2026-08-13. Four of five items closed; the perf table is the last.**
+>
+> **The lever exists and is capture-proven.** `?odysseyWorldNoWater=1` (board flag → the
+> renderer's new `water` option, the `clouds` pattern) skips building the sea mesh entirely —
+> draws, fill, vertex and pipeline. gpu-split gained a `no-water` configuration so the
+> differential and its drift bound come from ONE cooled session, reported as `waterMs`.
+> Verified at the ch3 station p=0.22: water on = blue sea across the lower frame; water off =
+> bare seabed. (A rename was forced: the local clipmap `water` became `waterGeo`, matching
+> `cloudGeo`.)
+>
+> **INSTRUMENT SCAR — the capture harness's `render.*` metrics do not measure the scene.**
+> The same two frames above reported **byte-identical** `drawCalls: 30, calls: 42,
+> triangles: 214134` with the water demonstrably present in one and absent in the other (the
+> `visibleMeshes` roster, a scene traverse, correctly showed `odyssey-world-water: 1` vs
+> absent). The water geometry is 15,296 triangles, so a truthful counter could not have missed
+> it. **Do not attribute cost from `capture-manifest`/station-JSON `render.*` numbers** — use
+> gpu-split's sampler (ADR-0016's verified instrument, whose draw counts *did* track the
+> ceiling-slab removal 92→90). The roster stays trustworthy.
+>
+> **THE FOAM BAND IS ALIVE, AND THE RULE THAT SAID OTHERWISE IS FALSE (PROVEN by GPU probe).**
+> §2 suspected `smoothstep(2.6, 0.15, depth)` was a reversed-edge no-op. It is not. TSL emits
+> the WGSL builtin verbatim (`MathNode.js:387/1018`; no polyfill or method-table entry, so
+> `WGSLNodeBuilder.getMethod` falls through to the literal name), and a Dawn/Chrome 151 probe
+> compiled it clean and returned a **descending ramp exactly `1 − smoothstep(0.15, 2.6, d)`**
+> at all 32 samples. The shipped product `smoothstep(2.6,0.15,d)·smoothstep(−0.4,0.5,d)·0.55`
+> measures 0.417 at depth 0, **peaks 0.945 at depth 0.5**, and decays to 0 by 2.6 — a
+> correctly-shaped, land-masked shore band doing exactly what its author intended.
+> **So the razor shoreline is a SCALE problem, not a dead shader** — that band is ~3–5 m wide
+> against a shore slope of 0.7–1.1, seen from 96–180 m away. Wave 3 sizes foam in metres
+> against px/m, and must not "fix" the smoothstep.
+>
+> The false rule ("reversed smoothstep returns 0 in WGSL") had propagated from
+> `HALCYON_APEX_COMBO_LOCK_PLAN.md:11` into the **auto-activating `webgpu-threejs-tsl` skill's
+> gotcha table** (all three copies) and three other plans — and was self-refuted by its own
+> theme, whose sun, halo, cloud band and horizon haze are four reversed-edge smoothsteps
+> (`halcyon-apex.effect.js:187/188/202/208`). Corrected at the skill and annotated at the
+> Halcyon claim. The three REAL traps it had conflated are now stated separately: the **JS**
+> `THREE.MathUtils.smoothstep` genuinely early-outs to 0 on reversed edges; **equal** edges are
+> a hard WGSL compile error that kills the whole module; and three.js #30593's Tint validation
+> error on const reversed edges (since removed at spec level). *Not swept:* the Stillwater and
+> Starlight plans and their `findReversedNumericSmoothsteps` tests still enforce the
+> non-requirement — out of scope here, flagged for their owners.
+>
+> **The layout ambiguity is settled: ch3 = p 0.204 → 0.352** (PROVEN by importing the real
+> modules and running the derivation; `chapterRanges[2] = {startPosition 0.204, endPosition
+> 0.352}`). The capture manifests were right and the test constant was stale. Cause:
+> `LEVEL_PHASE2_OVERRIDES` re-chapters five levels *after* the base literals are written (20/21
+> into ch4, 28/29/30 into ch5), moving each chapter's opening level — so 0.389/0.556 are the
+> pre-Phase-2 numbers and are **dead**. The test now imports `deriveOdysseyChapterPositions()`
+> instead of restating it, and one of its samples moved 0.58 → 0.52: under the true layout 0.58
+> is 54% into ch5 and cleared the 0.5814 ignite start by 0.0014, so it would have passed while
+> no longer testing "early Ch5".
+>
+> **The shoreline station is p = 0.225, and it comes with an unwelcome measurement.** It is the
+> first p that is outside the 2→3 seam window ([0.186, 0.222] at seamWidth 0.018), above water
+> (eye +20.3 m; p=0.200 is +0.71 m, independently reproducing `ODYSSEY_BREACH_P`), and still
+> shows a full-width waterline. **But water is only ~10.7% of that frame** — a lower-left wedge
+> — because ch3's framing pitches the camera +17.7° up. px/m = 623.538/D: **3.6 px/m** at the
+> shoreline down frame-centre (D=172.6 m), 6.5 px/m at the nearest visible water (95.9 m), 1.7
+> px/m at frame-left (366.8 m). **A 1 m wave crest is ~3.6 pixels.** Also corrected: the
+> shoreline is at **z ≈ −203**, not the z ≈ −250 written in `odyssey-world-height.js:131` —
+> that is where the *rail* is at p≈0.344, by which point the shore is behind you.
+>
+> **Consequence for the plan's shape (honest, and it demotes a wave).** Wave 1's "biggest
+> look-per-ms" premise assumed the ch3 topside was the big canvas. It is not: at the shipped
+> framing it is a tenth of one frame at 3.6 px/m, while the **ch2 underside is the full frame
+> for 0.11 of the journey**. Waves are NOT re-ordered here (that is §7 owner territory), but
+> Wave 1 must be judged at the breach/underside stations too, and the fine-grain Ghibli
+> devices — scalloped foam, sparkle cells, line boil — are worth less at 3.6 px/m than the
+> colour architecture is. A fresh ch2 capture (post-Wave-5, `--keep`) also **refutes
+> look-critic rank 3**: the Snell window is plainly visible as a bright disc overhead, so that
+> defect convicted a pre-Wave-5 build, exactly as the completeness critic warned.
+>
+> **Evidence now on disk under `--keep`:** `chapter-02-high-webgpu/` (4 stations, post-Wave-5)
+> and `seam-1-2-high-webgpu/` at 0.185/0.194/0.201 (+0.16). The `--keep` flag is mandatory for
+> evidence runs — the previous set was destroyed by an ordinary re-run.
+
 ### Wave 1 — The painted sea (colour architecture; biggest look-per-ms)
 - One table owns the sea: rewire the hardcoded topside ramp (`:764-768`) to the script plates,
   then author the plates' water keyframes to the pigment ramp (viridian shallows → cerulean →
