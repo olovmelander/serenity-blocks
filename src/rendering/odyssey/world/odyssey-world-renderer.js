@@ -1370,6 +1370,15 @@ export function createOdysseyWorld({
         // session; the old repo rule claiming it returns 0 was FALSE and has been corrected in
         // the skill). Clamped so overlapping clearings cannot drive the threshold past 1 and
         // erase the sky wholesale.
+        // ── FAR-FIELD MASS ───────────────────────────────────────────────────────────
+        // Opening the sky was right overhead and WRONG at range: from a pulled-back review
+        // camera (1.4 km back, 0.5 km up) the horizon went nearly bare, and the shoreline view
+        // had almost no cloud over the sea at all — while the reference keeps chunky mass all
+        // the way out. So coverage is now a function of DISTANCE as well: the raised threshold
+        // holds near the camera, where the heroes need blue to stand in, and relaxes with range
+        // so the far field fills back in. Free, like every coverage term here (this deck's cost
+        // was measured coverage-independent), and it lives in the vertex stage with the rest.
+        .sub(smoothstep(float(900), float(5200), length(cl.worldXZ.sub(uLodCenter))).mul(0.17))
         .add(clamp(
             ODYSSEY_HERO_CLOUD_SPECS.reduce(
                 (acc, h) => acc.add(smoothstep(
@@ -1512,7 +1521,23 @@ export function createOdysseyWorld({
         });
         return col;
     })();
-    cloudMat.colorNode = toOutput(applyAerial(cloudCol, positionWorld));
+    // THE DECK GETS ITS OWN, LIGHTER AERIAL — the actual reason the far field looked empty.
+    // Adding distance-based coverage barely moved it, because the far clouds were never
+    // missing: `applyAerial` caps its haze weight at 0.82, so past a few kilometres a cloud is
+    // ~80 % sky colour and simply dissolves. The reference keeps chunky mass all the way to the
+    // horizon, which needs the haze to stop eating the clouds rather than more of them.
+    // 0.52 keeps a real depth cue (far clouds still sit back) while leaving them readable, and
+    // it costs nothing — the aerial expression runs either way. The submerged branch is
+    // skipped for the same reason the heroes skip it: the deck is CPU-gated off underwater, so
+    // it must not pay for a branch it can never show (multiply-by-zero is not eliminated here).
+    const cloudAerial = (deckLit, wp) => {
+        const to = wp.sub(cameraPosition);
+        const d = length(to);
+        const dirY = to.div(max(d, float(0.001))).y;
+        const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.52);
+        return mix(deckLit, skyColourFor(dirY), weight);
+    };
+    cloudMat.colorNode = toOutput(cloudAerial(cloudCol, positionWorld));
     // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
     // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
     // distance to the EYE (not by altitude band) keeps the deck solid at range in every
