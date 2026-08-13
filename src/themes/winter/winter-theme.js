@@ -1400,6 +1400,16 @@ export default class WinterTheme extends BaseTheme {
                 renderer: this.renderer,
                 sizes: { width: window.innerWidth, height: window.innerHeight },
                 params: new URLSearchParams(window.location.search),
+                // Map the theme's own preset onto the scene's tiers so the
+                // snowflow-rebuild costs (aurora march, ground density, glints,
+                // trail shadow march) scale with the user's quality setting.
+                quality: (() => {
+                    const n = this.qualityPreset?.snowCount ?? 20000;
+                    if (n >= 20000) return 'ultra';
+                    if (n >= 15000) return 'high';
+                    if (n >= 10000) return 'medium';
+                    return 'low';
+                })(),
             });
         } else {
             this.createSkyBackground();
@@ -3998,6 +4008,16 @@ export default class WinterTheme extends BaseTheme {
             // Wonderland path: drive ONLY the composed scene + post. Skips the dozen
             // legacy per-frame update loops (the old CPU-bound systems) entirely.
             if (this.useWonderland && this.wonderland) {
+                // BACKGROUND / REDUCED-MOTION GATE. Winter was the one optimised
+                // theme missing this: behind a hidden tab it kept running four
+                // GPU compute dispatches, the trail sim and a full-screen aurora
+                // march at full rate. The rAF keeps ticking so we resume
+                // instantly; the effect already clamps its own dt, so the time
+                // jump on resume is safe.
+                if (!this.shouldRenderFrame()) {
+                    this.animationFrameId = requestAnimationFrame(animate);
+                    return;
+                }
                 // Combo "Living Blizzard": ease the storm + push its state into the live
                 // scene each frame BEFORE updating/rendering it. This branch early-returns,
                 // so the legacy `stormDirector.update` further down NEVER runs on the
@@ -4009,6 +4029,23 @@ export default class WinterTheme extends BaseTheme {
                 this.wonderland.update?.(this.time, delta);
                 if (this.post && this.qualityPreset.enablePostProcessing && !this.disablePost) {
                     if (typeof this.post.updateTime === 'function') this.post.updateTime(this.time);
+                    // The storm's POST response (frost, chromatic aberration, the
+                    // gust motion-streak, exposure dip) was shipped but never
+                    // driven on this path — only the legacy branch called it, so
+                    // on WebGPU it has been dead code. Same derivation as there.
+                    if (typeof this.post.updateDynamic === 'function') {
+                        const sd = this.stormDirector;
+                        this.post.updateDynamic({
+                            time: this.time,
+                            intensity: sd.intensity,
+                            whiteout: Math.min(1, sd.whiteout * 0.8),
+                            gust: Math.min(1, sd.gust),
+                            // Frost is "earned": absent in calm, peaks at whiteout.
+                            frost: Math.max(0, Math.min(1, ((sd.intensity - 0.45) / 0.55) + sd.whiteout * 0.5)),
+                            motionX: Math.max(-1, Math.min(1, (sd.gustDir ?? 1) * sd.gust)),
+                            motionY: -0.25,
+                        });
+                    }
                     this.post.render();
                 } else {
                     this.renderer.clear();
