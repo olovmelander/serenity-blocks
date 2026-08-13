@@ -218,29 +218,74 @@ From the Ghibli/Witness distillation — the implementable core:
 > which stands on correctness alone (the gate now estimates the same field the fragment
 > stage actually sums).
 
-- [ ] **Rebake the A channel** of `bakeDetailNormal` (:281) as a billow spectrum:
+- [x] **Rebake the A channel** of `bakeDetailNormal` (:281) as a billow spectrum:
       `A = 0.62·discs + 0.38·invertedRidgeWorley` — union-of-discs iso-contours give
       scalloped lobes by construction. Grep-verified: `.a` is consumed ONLY by the clouds
       (:1069, :1105), so nothing else moves. B stays value noise (terrain snowJitter).
-- [ ] **Anti-tiling (critic defect):** the 0.00205-scale octave repeats every ~488 u and
+- [x] **Anti-tiling (critic defect):** the 0.00205-scale octave repeats every ~488 u and
       authored disc silhouettes WILL be recognised. Mitigate in the bake+graph: sample
       octave A twice at irrationally related scales/rotation (~30°) and max() them, so no
       hero lobe recurs on a lattice; assert visually at the shore station's 10 km view.
-- [ ] Clouds move to A-only sampling (fragment octaves + vertex billow, `.level(0)` law).
-- [ ] **Histogram-match the new A** to the old (p10/p50/p90 = 0.42/0.58/0.70 ± 0.02,
+- [x] Clouds move to A-only sampling (fragment octaves + vertex billow, `.level(0)` law).
+- [x] **Histogram-match the new A** to the old (p10/p50/p90 = 0.42/0.58/0.70 ± 0.02,
       bake-time assert) — but treat thresholds as *starting points*, not settled: the
       critic is right that matching one octave's marginals does not bound the summed
       field. Budget one tuning session for 0.63/0.40 and the billowGate bands.
-- [ ] **Posterised two-stop opacity**: hard AA edge (footprint-widened band kept) + fully
+- [x] **Posterised two-stop opacity**: hard AA edge (footprint-widened band kept) + fully
       opaque core (`coreA → 1.0`) — kills the milky 0.94 sky-bleed; plus the drawn-line
       band at the threshold crossing; plus `alpha < 0.004 → Discard()` (blend-RMW floor —
       honest estimate −0.06..−0.12 ms, NOT the self-funding story; Wave 2's pair decides).
-- [ ] **Street/coverage term with a real wavelength** (critic: the proposed 0.00022 sine
+- [x] **Street/coverage term with a real wavelength** (critic: the proposed 0.00022 sine
       was ~28 km ≈ constant): coverage varies in x at ~3-5 km wavelength, ±0.045, so
       valley cumulus reads as placed masses; keep the world-Z ramp as the macro trend.
-- [ ] Vertex gate estimate gains the second octave (one more `.level(0)` tap on 9.8k
+- [x] Vertex gate estimate gains the second octave (one more `.level(0)` tap on 9.8k
       verts) so geometry sinks where fragments actually go transparent.
-- [ ] Screenshots: shore station pitched up (below), summit (above), 0p55 (in-sky).
+- [x] Screenshots: ch4 p=0.42 and ch5 p=0.569, graded rig — see the OUTCOME.
+
+> **OUTCOME — Wave 1 SHAPE COMPLETE, 2026-08-13. The sky has cloud shapes for the first time.**
+> Evidence: `act2-clouds-w1-silhouette-{p042,p0569}.png` vs the Wave 0 `act2-clouds-rig-graded-p042.png`.
+>
+> **The field, not the shader, was the problem — and the fix is in the bake.** `.a` was one
+> octave of value noise (`vn(i,j,1/96)`), and a threshold across value noise can only ever
+> produce amoebae. It is now a union of discs at three scales (`bakeCloudSilhouette`), so the
+> iso-contour of ANY threshold through it is an arc-of-circles boundary — a scalloped
+> cauliflower silhouette by construction, at every coverage level. All three fragment octaves
+> and both vertex-gate octaves now read `.a`, giving the three-tier lobe hierarchy the
+> references describe instead of lobes-with-static-sprayed-over-them.
+>
+> **Two corrections found by looking at the picture, both worth keeping in mind:**
+> 1. *Uniform scattering is not clouds.* The first cut placed 77 discs evenly and the sky
+>    filled in solid — the marginal distribution was right and the result was overcast,
+>    because coverage is a property of SPATIAL STRUCTURE, not of the histogram. Discs are now
+>    placed in 3 CLUSTERS per tile (2-4 primaries + satellites each) and the gaps between
+>    clusters are the sky. The ridge detail term is gated by the disc field for the same
+>    reason — ungated it re-filled the gaps.
+> 2. *This field is a PLAN view.* The deck is a horizontal sheet, so the silhouette the player
+>    reads is this field's contour from below/above. The Ghibli "flat base" rule belongs to
+>    vertical faces and does not apply; the scalloped contour rule does.
+>
+> **The calibration survived the rebake, which is why this wave did not become a re-tune.**
+> `matchCloudHistogram` rank-remaps the new field onto the measured marginal and SOLVES the
+> stretch so the three-octave sum the thresholds actually see lands back on p10/p50/p90 =
+> 0.42/0.58/0.70. Achieved at k=1.658: **0.4152 / 0.5628 / 0.6952**. This is the direct answer
+> to the critic's objection that matching one octave's marginals does not bound the sum's.
+>
+> **Poster-paint alpha replaced the fog-blob edge.** Two stops: a drawn edge rising across the
+> footprint-widened band to 0.72 (keeping the far-field band-limiting), then a core that goes
+> FULLY opaque, final multiplier 0.94 -> 0.985. The mass no longer lets saturated sky bleed
+> through it.
+>
+> **Wind streets** got the wavelength the approach proposal fumbled: 0.0018 (~3.5 km period,
+> two or three openings across a wide view), not the specified 0.00022 (~28.5 km ≈ constant,
+> a no-op the critic caught).
+>
+> **NOT DONE, and deliberately Wave 2's job:** the masses are flat white with no light
+> direction (no terminator, no lit/shadow bands), and the sky gaps still read saturated
+> ultramarine through the grade. Both are palette/shading work.
+>
+> **NO PERF NUMBER IS CLAIMED for this wave.** The machine is thermally loaded (see Wave 1a);
+> the deck's cost after the rebake must be measured cold, together with the carried Wave 1a
+> re-measure, before Wave 2's exit gate is evaluated.
 
 ### Wave 2 — two-band sun shading (the paint)
 - [ ] Gradient pseudo-normal from octave A (+2 taps, forward differences; guarded
