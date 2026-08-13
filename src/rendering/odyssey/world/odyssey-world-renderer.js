@@ -455,9 +455,17 @@ export function scatterTrees(heightAt, {
  *   far too hot for a pipeline that then adds bloom and an ACES curve: measured in-game, sky
  *   came out at luma 200 against 129 standalone and the massif washed to pale haze. Scene-
  *   linear output is what a tonemapper needs room to work with.
+ * @param {boolean} [opts.water] build the sea plate at all. A MEASUREMENT LEVER, not a player
+ *   setting (board flag `?odysseyWorldNoWater=1`, gpu-split configuration `no-water`): the
+ *   water surface is one ungated DoubleSide transparent clipmap that draws across the whole
+ *   act window, and until 2026-08-13 nothing in the tree could turn it off — so its total cost
+ *   had never been measured and no water work could be honestly funded. Skipping the BUILD
+ *   (not just the draw) also prices its pipeline out of the cold-compile path. Same
+ *   measurement-lever pattern as earth-core's ?earthCoreNoLake/NoHaze bisects.
  */
 export function createOdysseyWorld({
     quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
+    water = true,
     skyRadius = null, railSamples = [],
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
@@ -477,7 +485,8 @@ export function createOdysseyWorld({
         gridN: q.gridN, levels: q.levels, baseSpacing: q.baseSpacing, holeShrink: q.holeShrink,
     });
     const waterSpacing = (q.baseSpacing * q.gridN) / 32;
-    const water = buildOdysseyClipmap({
+    // `waterGeo`, not `water` — the option of that name is the build gate (matches cloudGeo).
+    const waterGeo = buildOdysseyClipmap({
         gridN: 32, levels: q.levels, baseSpacing: waterSpacing, holeShrink: 1,
     });
     // The cloud deck rides the same coarse lattice as the water: it is a smooth surface with
@@ -814,13 +823,20 @@ export function createOdysseyWorld({
     waterMat.depthWrite = false;
     waterMat.alphaTest = 0.004;
     waterMat.side = THREE.DoubleSide;
-    const waterMesh = new THREE.Mesh(water.geometry, waterMat);
-    waterMesh.frustumCulled = false;
-    waterMesh.matrixAutoUpdate = false;
-    waterMesh.updateMatrix();
-    waterMesh.renderOrder = 1;
-    waterMesh.name = 'odyssey-world-water';
-    group.add(waterMesh);
+    // MEASUREMENT LEVER (see the `water` option): when off, the mesh is never created, so the
+    // sea costs zero draws, zero vertex work, zero fill AND zero pipeline compile. The TSL
+    // node objects above are plain JS until a material they feed is rendered, so building them
+    // unconditionally keeps this gate a one-line diff with no dangling references.
+    let waterMesh = null;
+    if (water) {
+        waterMesh = new THREE.Mesh(waterGeo.geometry, waterMat);
+        waterMesh.frustumCulled = false;
+        waterMesh.matrixAutoUpdate = false;
+        waterMesh.updateMatrix();
+        waterMesh.renderOrder = 1;
+        waterMesh.name = 'odyssey-world-water';
+        group.add(waterMesh);
+    }
 
     // ── cloud deck ─────────────────────────────────────────────────────────────────
     // The single highest-value thing the chapters were doing that the world was not.

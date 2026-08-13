@@ -52,8 +52,13 @@ describe('One World ships by default', () => {
         expect(idx).toBeGreaterThan(-1);
         const before = BOARD.slice(Math.max(0, idx - 900), idx);
         expect(before).toMatch(/try\s*\{/);
-        const after = BOARD.slice(idx, idx + 2200);
-        expect(after).toMatch(/catch/);
-        expect(after).toMatch(/oneWorldEnabled = false/);
+        // REPLACED 2026-08-13 (same requirement, STRONGER assertion): this read
+        // `BOARD.slice(idx, idx + 2200)` for both `catch` and the un-suppress, so adding a
+        // comment to the option list could break it — and worse, a fixed window never
+        // actually proved the reset was INSIDE the catch. Anchor on the catch itself.
+        const catchIdx = BOARD.indexOf('catch', idx);
+        expect(catchIdx).toBeGreaterThan(idx);
+        const catchBlock = BOARD.slice(catchIdx, catchIdx + 800);
+        expect(catchBlock).toMatch(/oneWorldEnabled = false/);
     });
 });
