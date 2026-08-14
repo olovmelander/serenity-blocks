@@ -53,12 +53,31 @@
 import * as THREE from 'three';
 import { makeRng } from './odyssey-hero-clouds.js';
 
-/** Blend width of the lobe melt, as a fraction of the mass half-width. */
-const SMIN_K = 0.16;
+/**
+ * Blend width of the lobe melt, as a fraction of the mass half-width.
+ *
+ * THE SINGLE MOST IMPORTANT LOOK CONSTANT IN THIS FILE, and it is a two-sided cliff. Too small
+ * and the lobes stop merging — back to the countable balls that got the heroes retired. Too
+ * large and the mass melts into one smooth potato with no cauliflower at all, which is where
+ * 0.16 landed it: correctly ONE shape, but smoother than every reference frame. 0.105 keeps
+ * the joins continuous (the SDF gradient still turns through them) while letting each lobe
+ * push a real bulge into the silhouette.
+ */
+const SMIN_K = 0.105;
 /** Blend width of the flat-base fillet, as a fraction of the mass half-width. */
 const BASE_FILLET_K = 0.07;
-/** Silhouette crinkle: amplitude as a fraction of half-width, and its spatial frequency. */
-const CRINKLE_AMP = 0.055;
+/**
+ * Silhouette crinkle: amplitude as a fraction of half-width, and its spatial frequency.
+ *
+ * The frequency is BOUND TO THE VERTEX DENSITY, not to taste. An icosphere at the `near`
+ * detail has ~0.064·w between vertices, so a wavelength of w/3.1 = 0.32·w is sampled ~5 times
+ * — comfortably above Nyquist, which is why the amplitude can be raised without the bumps
+ * degenerating into per-vertex noise. At `far` detail the same wavelength is sampled ~1.5
+ * times and the crinkle stops being a shape and becomes irregularity; that is acceptable
+ * because those masses are a few pixels across, but it is the reason this frequency must not
+ * be raised without also raising the LOD that carries it.
+ */
+const CRINKLE_AMP = 0.085;
 const CRINKLE_FREQ = 3.1;
 /**
  * SPHERE-TRACING budget. The march steps INWARD from outside the hull by the field's own
@@ -174,7 +193,7 @@ export function buildCloudLobes(spec) {
             hx + (Math.cos(a) * seat),
             primY + (spec.h * (0.10 + (rnd() * 0.22))),
             hz + (Math.sin(a) * seat * 0.7),
-            halfW * (0.16 + (rnd() * 0.09)),
+            halfW * (0.19 + (rnd() * 0.11)),
             0.75 + (rnd() * 0.15),
         );
     }
