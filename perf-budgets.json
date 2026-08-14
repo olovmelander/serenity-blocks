@@ -139,6 +139,11 @@
             "baseline": 9.63,
             "max": 10.6,
             "note": "Station p=0.225 (ch3 shoreline), Radeon 610M/720p/Medium, --chapters 2,3. FILLED 2026-08-13 by its first admissible pair (cold-machine session, waves 1+2 on screen, pre-regime-branch): 9.437/9.634 ms p50, drift -0.197, 47 draws min==max. waterMs here is only ~0.26 (caveat: the no-water window read 49 draws vs 47, so treat as approximate) — water is ~10.7% of this frame at 3.6 px/m, which is why the plan spends colour architecture rather than fine detail here. The regime branch landed AFTER this pair and removes the underside stack from topside pixels — direction is a (small) saving, not re-measured. max 10.6 is the ~10% ratchet on the first pair. Station provenance: PROVEN outside the 2->3 seam window [0.186,0.222], eye +20.3 m above water, full-width waterline in frame. Report: gpu-split-laneb-water-shoreline-p225.json."
+        },
+        "odysseyAct2CloudFieldMsLaneB": {
+            "baseline": null,
+            "max": null,
+            "note": "THE SCULPTED CLOUD FIELD (cloud-field plan). Tracked, not gated - a differential, not a frame budget. Opt-in via ?odysseyWorldCloudField=1 until the owner-gated Wave 4 swap; the flat sheet is still the shipped sky. GATE F1 CLOSED 2026-08-14 on both stations, Lane B amd/rdna-2 --low-power, draws content-matched, warm-up pass on: ch5 p=0.569 0.328 ms against a 0.50 gate (drift -0.131); ch4 p=0.42 0.262 ms against a 0.35 gate (drift 0.066, with --flags odysseyHideLevelNodes=1 on BOTH sides to suppress a +-1 draw flicker the content-match guard correctly voided). COST LEDGER as the field grew: 14,920 tris -> 0.262 | 17,360 -> 0.197 | 30,980 -> 0.328, all at ch5. The 30,980 figure bought the LOD floor that stopped hulls reading as polygons and spent a third of the remaining headroom. CONTRAST THE SHEET IT REPLACES: 1.835 ms at the same ch5 station, coverage-INDEPENDENT - so the end state after the swap is roughly -1.5 ms, i.e. the beauty upgrade REFUNDS budget. Reports: gpu-split-laneb-field-*.json."
         }
     }
 }

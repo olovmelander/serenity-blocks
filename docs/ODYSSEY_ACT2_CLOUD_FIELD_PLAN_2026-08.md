@@ -374,6 +374,33 @@ as owner-priced D4.
 > world units is not verifiable from captures, and the drift wiring is asserted at source in
 > `odyssey-world-lints.test.js` instead.
 
+> **GATE F1 IS CLOSED ON BOTH STATIONS, 2026-08-14 — and it took an instrument fix to get
+> there.** Lane B, amd/rdna-2, `--low-power`, draws content-matched, warm-up pass on:
+>
+> | station | cloudFieldMs | gate | drift | verdict |
+> |---|---|---|---|---|
+> | ch5 p=0.569 | 0.328 | ≤ 0.50 | −0.131 | **PASSES** |
+> | ch4 p=0.42 | 0.262 | ≤ 0.35 | 0.066 | **PASSES** |
+>
+> ch4 had been unresolved since Wave 0 across four failed attempts, and each failure had a
+> different cause worth recording: two were co-tenant contamination (the owner's own browser),
+> one was the cold-compile stall, and the last was a genuine ±1 draw flicker at the station
+> which the content-match guard correctly voided (48 vs 47). The flicker is suppressed with
+> `--flags odysseyHideLevelNodes=1` on BOTH sides — the harness's own documented remedy for the
+> same defect at ch1 — which leaves the differential valid because both arms hide the same
+> thing.
+>
+> **THE HARNESS NOW RUNS A DISCARDED WARM-UP PASS.** ADR-0016 already said
+> "first-configuration-after-boot voided as cold-compile", but the harness knew that and did
+> nothing about it, so the rule was applied by hand — by a human noticing an impossible number.
+> Twice in one day a pair came back with the BASELINE carrying a p99 of 39 ms and 232 ms and
+> the differential landing NEGATIVE (−0.852, −5.374). Each configuration already gets its own
+> window and sampler reset, so the contamination is not the sampler: it is what the FIRST
+> window pays and later ones inherit warm (Vite's first module transform, the driver's cold
+> pipeline cache, first uploads). Because the reference is always measured first, the reference
+> was always the one spoiled. Measured effect of the fix: baseline p99 39 ms → 11.21 ms.
+> `warmupRun` is recorded in every report; `--warmup 0` opts out.
+
 ### Wave 4 — the atomic swap (executes D1; NOTHING ships before the owner signs)
 One commit: field default ON, sheet default OFF — RETAINED behind
 `?odysseyWorldCloudSheet=1` (ADR-0015 pattern); NEW bisect flag `odysseyWorldNoCloudField`;
