@@ -11,9 +11,20 @@ import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import {
+    ONE_WORLD_APPLY_EXPOSURE,
+    ONE_WORLD_OUTPUT_SCALE,
+    ONE_WORLD_OUTPUT_SATURATION,
+    ONE_WORLD_SKY_RADIUS,
+} from './world/odyssey-world-grade.js';
+import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
-import { createSteamQuench } from './composition/odyssey-steam-quench.js';
+import {
+    STEAM_QUENCH_EXIT_HALF_WIDTH,
+    STEAM_QUENCH_HALF_WIDTH,
+    createSteamQuench,
+} from './composition/odyssey-steam-quench.js';
 import { createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
@@ -132,28 +143,15 @@ function readPixelRatioOverrideFromUrl() {
 
 /** Chapters whose ground the continuous Act II world replaces. */
 const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
-/**
- * Scene-linear scale for the world's HDR output before the post stack. 1.0 leaves an ACES
- * curve no headroom and blooms the sky over everything. 0.55 was fitted while the scene fog
- * still washed the world to pastel; with the world's materials opted out of that fog the
- * whole frame came back ~40 % too dark, hence 0.82.
- */
-const ONE_WORLD_OUTPUT_SCALE = 0.82;
-/**
- * ...and the world hands that stack a FLATTER image than it wants on screen, because the
- * stack is not neutral: master grade lifts saturation 1.15x, chapter 4 lifts a further 1.10x,
- * and a 0.018 black crush plus a 1.07 S-curve sits underneath both. Fed the palette as
- * authored, the sky's low red channel came out CLAMPED AT ZERO — a pure ultramarine no
- * daylight sky has. The grade supplies the vividness; the world supplies the hue.
- */
-const ONE_WORLD_OUTPUT_SATURATION = 0.72;
-/** Sky dome radius for the board camera (near 0.1 / far 9000). */
-const ONE_WORLD_SKY_RADIUS = 3600;
-// Half-width of BOTH act-edge occlusion windows, in progress units. Deliberately 2x the
-// authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
-// occluder narrower than the thing it occludes just frames it. Same principle the Ch3 shore
-// work landed on — a dissolve band must be wider than the noise it is dissolving.
-const STEAM_QUENCH_HALF_WIDTH = 0.06;
+// The world's OUTPUT CONTRACT (output scale, saturation, sky radius, exposure ownership)
+// moved 2026-08-13 to world/odyssey-world-grade.js beside the world it configures, so the
+// board and the cloud playground rig grade by construction instead of by agreement — the
+// same fix the steam quench's half-widths got, and the cure for the deck's "authored flat,
+// shipped as navy shards" history.
+// The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
+// rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
+// the board and the seam-12-dive playground drive the same quench by construction. The
+// ch5->ch6 cloud bank still uses the symmetric STEAM_QUENCH_HALF_WIDTH for both halves.
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -382,6 +380,10 @@ export class OdysseyBoardController {
                 // immediately before it starts sampling, so without this exactly one
                 // settle-phase frame — the most atypical kind — can enter the window.
                 this._gpuTimestampEpoch += 1;
+                // Restart the draw-count range with the measurement window (_recordPerfCounters).
+                // NOTE: keep this AFTER the epoch bump — odyssey-gpu-profile-sampling.test.js
+                // reads the first 700 chars of this function to prove the bump is here.
+                this._drawCallsRange = null;
             };
         }
         this._gpuProfileLastSummary = 0;
@@ -550,6 +552,9 @@ export class OdysseyBoardController {
         this.selectionSequence = 0;
         this.activeSeamBoundaryId = null;
         this.seamMusicBoundaryId = null;
+        // WAVE 5: the 2->3 stinger is deferred from ecotone entry and released the frame the
+        // eye breaks the surface (ODYSSEY_BREACH_P). Null when nothing is pending.
+        this._pendingBreachStinger = null;
         this.lastCameraProgress = 0;
         this.levelData = [];
         this.progressData = null;
@@ -659,16 +664,47 @@ export class OdysseyBoardController {
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear
                     // values rather than the display-referred palette the playground wants.
-                    applyExposure: false,
+                    applyExposure: ONE_WORLD_APPLY_EXPOSURE,
                     outputScale: ONE_WORLD_OUTPUT_SCALE,
                     outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
                     // Inside the board camera's 9,000 far plane, and inside the shipped
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
                     // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
-                    // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
-                    // in-game compile entirely.
-                    clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
+                    // note): the sheet's pipeline stays out of the in-game compile when it is
+                    // not mounted.
+                    // ⚠️ POLARITY FLIPPED 2026-08-14 — the owner retired the flat sheet in
+                    // favour of the sculpted field. It is opt-IN now, so the old
+                    // `?odysseyWorldNoClouds` lever no longer has anything to switch off and
+                    // is deliberately NOT read here: a flag that silently does nothing is how
+                    // the `odysseyWorldNoHeroes` bisect produced a wrong conclusion. Use
+                    // `?odysseyWorldCloudSheet=1` to bring the sheet back, and
+                    // `?odysseyWorldNoCloudField=1` to remove the field.
+                    clouds: readBooleanUrlFlag('odysseyWorldCloudSheet'),
+                    // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
+                    // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
+                    // not cohere: the smooth lobed icosphere masses read as a different object
+                    // class next to the deck's flat painted bands, and the owner circled them
+                    // in live play twice. Retired per the ADR-0015 pattern (module + tests +
+                    // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
+                    // AND the deck's hero clearings, which ride the same option.
+                    heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
+                    // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
+                    // removes the sea plate entirely. The water is one ungated DoubleSide
+                    // transparent clipmap drawing across the whole act window and NOTHING in
+                    // the tree could switch it off, so its total cost had never been measured
+                    // — and an unmeasured cost cannot fund a water package (ADR-0016).
+                    water: !readBooleanUrlFlag('odysseyWorldNoWater'),
+                    // Diagnostic re-shades of the deck, for the "keyed to something other than
+                    // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
+                    // clipmap's ring structure over the shipped deck, =alpha draws the opacity
+                    // graph alone, =flat leaves only geometry. See createOdysseyWorld.
+                    cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
+                    // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
+                    // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
+                    // flat sheet back alongside or instead.
+                    cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(
                         { length: 48 },
@@ -997,6 +1033,17 @@ export class OdysseyBoardController {
 
         const { memory = {}, render = {}, programs } = this.renderer.info;
         this._perfCounters.calls = render.drawCalls ?? render.calls ?? 0;
+        // FLICKER INSTRUMENT: the harness's content-match check compares ONE frame's draw
+        // count per run, which cannot tell a per-frame flicker (frustum edge, timed visibility)
+        // from a one-shot settling event (async build landing inside the window). Track the
+        // range since the last __ODYSSEY_GPU_RESET__; min==max exonerates the steady state.
+        const { calls } = this._perfCounters;
+        if (this._drawCallsRange) {
+            if (calls < this._drawCallsRange.min) this._drawCallsRange.min = calls;
+            if (calls > this._drawCallsRange.max) this._drawCallsRange.max = calls;
+        } else {
+            this._drawCallsRange = { min: calls, max: calls };
+        }
         this._perfCounters.triangles = render.triangles ?? 0;
         this._perfCounters.geometries = memory.geometries ?? 0;
         this._perfCounters.textures = memory.textures ?? 0;
@@ -1831,10 +1878,20 @@ export class OdysseyBoardController {
                 // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
                 // handoff by construction; the bridge itself stays and colours the frame
                 // around the bank (build first — see the plan's occlusion item).
+                // BISECT LEVER: ?odysseyNoCloudBank=1. The bank is a separate system from the
+                // world deck, so `odysseyWorldNoClouds` never removed it — and a 2026-08-13
+                // bisect that used only that flag concluded the mottled ch5 sky at p=0.60 was
+                // chapter SIX bleeding in, when in fact the bank's window opens at 0.588. An
+                // occluder with no off switch cannot be ruled out of a frame.
                 try {
                     const boundary56 = this.presentationLayout?.chapterPositions?.[5];
-                    if (Number.isFinite(boundary56)) {
-                        this.cloudBank = createCloudBank();
+                    if (Number.isFinite(boundary56) && !readBooleanUrlFlag('odysseyNoCloudBank')) {
+                        // The act's own cloud palette, when the world built one — see
+                        // createCloudBank's `palette` option and createOdysseyWorld's
+                        // `cloudPalette`. Null on the recovery path, which is handled there.
+                        this.cloudBank = createCloudBank({
+                            palette: this.oneWorld?.cloudPalette || null,
+                        });
                         const at56 = getOdysseyPathPointAt(boundary56);
                         this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
                         this.cloudBank.mesh.visible = false; // gated in the update below
@@ -2260,6 +2317,8 @@ export class OdysseyBoardController {
         if (this.hideLevelNodes) this.nodeManager?.setAllVisible(false);
         const summary = this.gpuProfileRing.summarize();
         summary.drawCalls = this._perfCounters?.calls ?? null;
+        summary.drawCallsMin = this._drawCallsRange?.min ?? null;
+        summary.drawCallsMax = this._drawCallsRange?.max ?? null;
         summary.triangles = this._perfCounters?.triangles ?? null;
         summary.oneWorld = !!this.oneWorld;
         summary.levelNodesHidden = !!this.hideLevelNodes;
@@ -2486,7 +2545,7 @@ export class OdysseyBoardController {
         // position gate. Hidden outside its window so it costs nothing for 94% of the journey.
         if (this.steamQuench && Number.isFinite(this._steamBoundary)) {
             const lo = this._steamBoundary - STEAM_QUENCH_HALF_WIDTH;
-            const hi = this._steamBoundary + STEAM_QUENCH_HALF_WIDTH;
+            const hi = this._steamBoundary + STEAM_QUENCH_EXIT_HALF_WIDTH;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.steamQuench.mesh.visible = inWindow;
             if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
@@ -2497,6 +2556,14 @@ export class OdysseyBoardController {
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.cloudBank.mesh.visible = inWindow;
             if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
+        }
+
+        // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
+        // breaks the surface, not the frame the ecotone begins (see _handleChapterSeam).
+        if (this._pendingBreachStinger && cameraProgress >= ODYSSEY_BREACH_P) {
+            const { seamIntensity, transition } = this._pendingBreachStinger;
+            this._pendingBreachStinger = null;
+            this._playThresholdStinger('2-3', seamIntensity, transition);
         }
 
         // Update chapter environments based on camera position
@@ -2556,7 +2623,11 @@ export class OdysseyBoardController {
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are
                 // unaffected by the gate.
-                if (worldVisible) this.oneWorld.update(this.time, railPoint, this._oneWorldActT);
+                if (worldVisible) {
+                    // The EYE decides whether we are under water, not the rail — see the
+                    // note in odyssey-world-renderer's update().
+                    this.oneWorld.update(this.time, railPoint, this._oneWorldActT, this.camera?.position?.y);
+                }
             }
 
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
@@ -3018,7 +3089,17 @@ export class OdysseyBoardController {
                 direction,
                 intensity: seamIntensity,
             });
-            this._playThresholdStinger(boundaryId, seamIntensity, transition);
+            // WAVE 5: THE BREACH IS AN AUDIO MOMENT, NOT AN ECOTONE ONE. The 2->3 stinger is
+            // the surface-break, and it must land the frame the EYE breaks the surface —
+            // ODYSSEY_BREACH_P, bisected in Wave 0 — not when the camera enters the ecotone
+            // ~0.03 of progress (tens of metres of water) earlier. Deferred here, released in
+            // the update loop on the constant; travelling backwards (a re-dive) keeps the
+            // immediate stinger, because there is no breach on the way down.
+            if (boundaryId === '2-3' && direction > 0) {
+                this._pendingBreachStinger = { seamIntensity, transition };
+            } else {
+                this._playThresholdStinger(boundaryId, seamIntensity, transition);
+            }
             this._startChapterMusicBridge(resolvedBlendState.targetChapter, transition, boundaryId);
             this.pathRenderer?.triggerChapterTransition({
                 fromChapter: resolvedBlendState.sourceChapter,
@@ -3072,6 +3153,11 @@ export class OdysseyBoardController {
         } else {
             this.activeSeamBoundaryId = null;
             this.seamMusicBoundaryId = null;
+            // Left the seam without crossing the surface (scrubbed back out): the deferred
+            // breach stinger must not fire later from stale state.
+            if (this._pendingBreachStinger && cameraProgress < ODYSSEY_BREACH_P) {
+                this._pendingBreachStinger = null;
+            }
             this.cameraController?.clearSeamPhase?.();
             this.pathRenderer?.clearSeamPhase?.();
             this.thresholdDirector?.clearSeamPhase?.();

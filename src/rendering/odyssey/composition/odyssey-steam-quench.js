@@ -33,14 +33,46 @@ import {
     vec3,
 } from 'three/tsl';
 import { fbm3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { sampleColourScript } from '../odyssey-colour-script.js';
 
 /** World radius of the steam volume. Wide enough to envelop the corridor at the boundary. */
 export const STEAM_QUENCH_RADIUS = 110;
+
+/**
+ * APPROACH half-width of the occlusion window, in progress units. Deliberately 2x the
+ * authored transition seamWidth (0.03): the steam exists to HIDE the content handoff, and an
+ * occluder narrower than the thing it occludes just frames it. (The ch5->ch6 cloud bank
+ * shares this number for BOTH its halves.) Owned here, beside the volume it windows, so the
+ * board and the seam-12-dive playground drive the same quench by construction — they
+ * disagreed by 0.03 of exit window until 2026-08-13.
+ */
+export const STEAM_QUENCH_HALF_WIDTH = 0.06;
+/**
+ * ...but the EXIT half-width cannot be that same number, and this is where the long-standing
+ * "cloud deck renders underwater" ghost lived. The geometry: ±0.06 of progress is ±106 u
+ * against a 110 u BackSide sphere — the eye never leaves the shell on the way out, so the
+ * veil was a full-screen wash over the first half of chapter 2, still ~18% opaque at
+ * p=0.130. The exit only has to outlast the CO-PRESENCE window, which is chapter 1's
+ * authored `transition.seamWidth` = 0.03. NOTE this is not the plan's §7.2 decision
+ * (plateau vs three beats) — that reshapes the curve AT the crossing and is the owner's;
+ * this only stops the tail veiling half an act after the crossing is over.
+ */
+export const STEAM_QUENCH_EXIT_HALF_WIDTH = 0.03;
 
 /** Ember-lit steam on the Chapter 1 side; the fire is still behind you. */
 const STEAM_WARM = new THREE.Color(0xffb079);
 /** Cold vapour on the Act II side — the orange->cyan the profile asks for. */
 const STEAM_COOL = new THREE.Color(0xcfe6ff);
+/**
+ * What the exit tail converges to once the traveller is under water. 0xcfe6ff is near-WHITE,
+ * and a near-white veil billow-modulated over open water reads as a cumulus sky — captured at
+ * p=0.115, where the "underwater atmosphere" was this constant, not the water. The tail now
+ * converges onto the water column's own mid colour (the same script sample the world's mid
+ * water plate wears at these stations), so what remains of the veil reads as quench
+ * turbidity IN the water rather than as weather behind it. The white-out at the crossing is
+ * untouched — the ease below only takes hold well past the boundary.
+ */
+const STEAM_COOL_SUBMERGED = new THREE.Color(...sampleColourScript(0.06).skyHorizon);
 
 /**
  * @param {object} [opts]
@@ -55,7 +87,10 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const uDensity = uniform(0);
     const uWarmth = uniform(1);
     const uWarm = uniform(STEAM_WARM);
-    const uCool = uniform(STEAM_COOL);
+    // Cloned: update() lerps this toward STEAM_COOL_SUBMERGED on the exit, and a uniform
+    // holds its value BY REFERENCE — lerping the shared constant would compound frame over
+    // frame until the approach side was submerged-blue too.
+    const uCool = uniform(STEAM_COOL.clone());
 
     // Billowing, in LOCAL space so the volume churns with itself rather than with the camera.
     // Two octave-sets at different rates: the slow one is the body, the fast one the edge boil.
@@ -142,9 +177,21 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // longer and then closes quickly — the easing lives here rather than in the
             // shader so it cannot fight the alpha/brightness split above.
             const tri = 1 - Math.abs((t * 2) - 1);
-            uDensity.value = tri * tri;
+            // ASYMMETRIC ON PURPOSE (Wave 6 — the one open tuning note the One World closure
+            // recorded). Squaring kept the APPROACH clear so long that Act II's submerged blue
+            // read through the veil while Earth Core was still on screen (captured at p~0.068).
+            // The approach side now uses a gentler exponent so density arrives sooner and the
+            // reveal holds back; the exit keeps the square — leaving the weather quickly into
+            // open water is the feeling the breach wants.
+            uDensity.value = t < 0.5 ? tri ** 1.4 : tri * tri;
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
+            // Exit only (t>0.5, i.e. under water): converge the cool constant onto the water
+            // column's colour. ^1.5 keeps the first stretch past the boundary near-white so
+            // the quench's white-out beat survives; by the window's end the veil is fully in
+            // the water family and its vanish is a non-event instead of a sky switching off.
+            const submergeEase = Math.max(0, (t - 0.5) * 2) ** 1.5;
+            uCool.value.copy(STEAM_COOL).lerp(STEAM_COOL_SUBMERGED, submergeEase);
         },
         dispose() {
             mesh.geometry.dispose();

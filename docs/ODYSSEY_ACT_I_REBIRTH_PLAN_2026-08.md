@@ -106,6 +106,27 @@ What the numbers say:
   (MEASURED once — startup-trace console line, Low quality, warm Dawn cache; re-measure cold
   in Wave 0 before quoting further).
 
+  > ✅ **RE-MEASURED COLD (Wave 0, 2026-08-12). The original figure understated it by 41 %,
+  > and the ratio is the durable part.**
+  >
+  > | run | ch1 compile | One World | ratio |
+  > |---|---:|---:|---:|
+  > | **TRUE COLD** — `DawnWebGPUCache` + `DawnGraphiteCache` + `GPUCache` all deleted, High | **3,948 ms** | 68 ms | **58×** |
+  > | warm, High, chapter window 1–2 | 2,740 ms | 91 ms | 30× |
+  > | warm, High, window 1–3 | 1,898 ms | 59 ms | 32× |
+  > | warm, Low (the plan's original single sample) | 2,336 ms | 128 ms | 18× |
+  >
+  > Two things the single sample could not say. **(1) Cold is ~2× warm**: 3.9 s against a
+  > 1.9–2.7 s warm band, so the number a first-ever player pays is nearly double the one this
+  > plan first quoted as if exact. **(2) The ratio survives every condition** — quality tier,
+  > chapter window, cache state — at **18–58× the whole continuous world's compile**. Quote
+  > "Earth Core is ~4 s of a cold start and tens of times One World's compile"; never a
+  > single millisecond figure. The ≤10-material budget in §3.5 is aimed squarely at this.
+  >
+  > *Method note for whoever repeats it:* clearing `GPUCache` alone is NOT cold on this
+  > Electron — WebGPU pipelines live in `DawnWebGPUCache`/`DawnGraphiteCache`, and a
+  > GPUCache-only clear reproduced a warm 1,894 ms. All three must go.
+
 ### 0.3 What Act I looks like today (captured, 6 stations per chapter, 2026-08-12)
 
 Artifacts: `artifacts/odyssey/wave-v/chapter-01-high-webgpu/` and `chapter-02-high-webgpu/`.
@@ -123,7 +144,18 @@ single glow carry it).
 **The underwater stretch** (`chapter-02-03/04/05`): a flat royal-blue void. No vertical light
 gradient — the near-surface frame (p=0.182, 13 u down) is *darker and emptier* than the
 mid-depth frame, when the physics and every reference say the water column must brighten
-toward the light. No particulate, no life, no scale cues; the god rays read as faint streaks;
+toward the light.
+
+> ✏️ **AMENDED by Wave 0's instrumentation — the mechanism is now known, and it changes the
+> fix.** At p=0.182 the world has already switched to **air** (`uSubmerged = 0.000`, script
+> keyframe `breach`), because the submerged blend is driven by the EYE (`railPoint.y + 16`),
+> not the rail. The eye crosses the waterline at **p ≈ 0.181**, so §0.1's "breach at p≈0.190"
+> is the RAIL's crossing and the *visual* breach is ~9 progress-thousandths earlier. The
+> near-surface frame is therefore not "underwater but wrongly dark" — it is **already
+> rendering as air**, with the god rays alpha-gated off, while the composition still reads as
+> submerged. The Wave 4 band ramp must own the last few metres below the surface explicitly
+> (and the SSS ceiling is what sells them), rather than assuming the water treatment is still
+> active there. No particulate, no life, no scale cues; the god rays read as faint streaks;
 the level orbs and ribbon are the only content. "Magical luminous ocean" does not exist yet —
 which is also the opportunity: the canvas is clean and cheap.
 
@@ -135,6 +167,43 @@ which is also the opportunity: the canvas is clean and cheap.
    or the gate fails in-game too (live regression). The One World closure notes say the
    in-game underwater body "reads correctly", so the instrument is the prime suspect — but
    per ADR-0016 this is *decided by an instrumented repro, not by which explanation is
+   comfortable*: Wave 0 adds `uSubmerged` to the capture metrics JSON and re-shoots one
+   station.
+
+   > ⚠️ **REFUTED (Wave 0, 2026-08-12) — and the instrumented answer is better than the
+   > guess.** The claim above is wrong twice over; the original is preserved because the way
+   > it was wrong is the reusable part.
+   >
+   > **1. The "cumulus" is the STEAM QUENCH, doing its job.** The 1→2 occlusion window is
+   > `0.093 ± 0.06 = [0.033, 0.153]`, and the new `visibleMeshes` roster shows
+   > `odyssey-steam-quench` drawn at **exactly** p=0.093 / 0.115 / 0.137 and absent at
+   > 0.160 / 0.182 / 0.204 — the three cited "cumulus" stations are the three quench
+   > stations, at billow densities 1.00 / 0.40 / 0.07. Mottled white vapour filling a
+   > submerged frame is the shipped act-edge volume, not a leak.
+   >
+   > **2. The gate WORKS.** Measured `uSubmerged`: **1.000** at p=0.093–0.160, 0.000 at
+   > 0.182+. Cloud alpha is `×(1 − uSubmerged)`, so it is exactly zero everywhere the frame
+   > is underwater. Neither hypothesis in the original claim survives.
+   >
+   > **3. The instrument lied first, and the lie was MINE.** The first re-shoot reported
+   > `submerged = 0.00` and an empty script name at every station — which would have
+   > "confirmed" the instrument-gap hypothesis. The cause was that the exposure patch
+   > declared the `state` object and returned it but never assigned to it, so the capture was
+   > reading initial values. Fixed, re-shot, and recorded here because a plan that trusts its
+   > first instrument reading is the failure mode this whole document is organised against
+   > (ADR-0016 §1: *the instrument is verified*). One capture round bought the correction.
+   >
+   > **4. What IS real, found by the same roster:** `odyssey-world-clouds` is **submitted and
+   > rasterised at every fully-submerged station** — provably invisible (alpha 0) yet paying
+   > full fragment cost: three texture fetches per covered pixel across a sky-covering sheet,
+   > on the lane measured at 7.73 ms. `odyssey-world-godrays` is the same bug with the
+   > opposite polarity (submitted at p=0.182/0.204 where `uSubmerged = 0` zeroes its alpha).
+   > **Fix: two `mesh.visible` writes in the world's `update()`, Wave 4** — a fill saving on
+   > the weak lane for one line each, and the honest version of the defect this entry was
+   > reaching for.
+   >
+   > *(Original claim continues below, unedited.)*
+   > per ADR-0016 this is *decided by an instrumented repro, not by which explanation is
    comfortable*: Wave 0 adds `uSubmerged` to the capture metrics JSON and re-shoots one
    station.
 2. **A WebGPU validation storm on the Act I boot path** (observed live in a dev session this
@@ -309,6 +378,30 @@ Wave 1 calibrates them against the refs before anything ships):
 | +0.06 (new) | **luminous mid-water** | water | band 2 of the Ponyo stack: `#1a4a6a` body, shaft cyan `#4080a0`, spore-glow accent `#40c0c0` | new keyframe: the magical ocean's own identity, distinct from abyss and shallows |
 | +0.12 (new) | **shallows** | water | powder `#4a8ab0` body, ceiling glow `#80c0e0`, dawn-gold kiss `#e0c080` in the crest SSS only | Heron dawn-sea; gold stays in the SSS mask so the air keyframes' horizon anchor is untouched |
 | 0.18 | **breach** (existing) | air | unchanged | Act II's script takes over; continuity by construction |
+
+> ⚠️ **RESCOPED (Wave 2, 2026-08-12) — the negative-`p` column above is not implementable, and
+> two of the rows belong to a different wave.** Original table preserved; the corrections:
+>
+> **1. There is no room below zero.** `sampleColourScript` clamps its argument to `[0, 1]`
+> (`odyssey-colour-script.js`), and a shipped test asserts the script "is ordered, spans
+> 0..1". Keyframes at `p = −0.10 / −0.06 / −0.02` could never be sampled, and re-basing the
+> existing array to make room would move every Act II keyframe — a visual change to a shipped,
+> capture-verified act, which this plan has no mandate to make. **Act I gets its OWN array and
+> sampler** (`ODYSSEY_ACT1_COLOUR_SCRIPT` / `sampleAct1ColourScript(t)`, `t` = chapter-1 local
+> progress) sharing the same Oklab machinery and the same invariants. The act handoff is then
+> enforced by a TEST rather than by array adjacency, which is strictly stronger.
+>
+> **2. The two water keyframes are not Act I's to add — and not this wave's.** `+0.06`
+> (luminous mid-water) and `+0.12` (shallows) sit INSIDE Act II's existing `0.00 abyss →
+> 0.18 breach` span, so they are legal additions to the shipped array — but the world samples
+> that array every frame, so adding them CHANGES the shipped underwater look the moment they
+> land. That is exactly Wave 4's work and exactly what Wave 4's captures verify. **Moved to
+> Wave 4**, so Wave 2 can keep its "data + tests only, no visual change" contract honestly.
+>
+> **3. `seamAfter` moves from `crack` to `cathedral`.** The invariant walks consecutive pairs
+> and exempts the pair FOLLOWING a keyframe that declares it. The violent hue swing is
+> cathedral → crack (ember to quench-cool), so the declaration has to sit on `cathedral` or
+> the rate limit fires on the one transition the quench exists to hide.
 
 Invariants, extended not replaced:
 
@@ -527,14 +620,46 @@ wave's acceptance criteria pass; `grep -c '^- \[ \]'` over this file is the rema
 count. (Added 2026-08-12: the session-spanning /goal hook greps for exactly this format —
 the One World convention — and the plan shipped without it.)
 
-- [ ] **Wave 0** — Instrument truth (blocking; nothing visual until these answer)
-- [ ] **Wave 1** — The playground value study (the look is proven before any port)
-- [ ] **Wave 2** — The script grows its Act I limb (data + tests before pixels)
-- [ ] **Wave 3** — Earth Core reborn (the port, behind a dev flag until captured)
-- [ ] **Wave 4** — The ocean becomes luminous (bands, ceiling, motes)
-- [ ] **Wave 5** — Life (fish, kelp, the accompanied ascent)
-- [ ] **Wave 6** — The crack climax (the last fifth of ch1, into the shipped quench)
-- [ ] **Wave 7** — Close the books (both lanes, budget cells, index)
+- [x] **Wave 0** — Instrument truth — **DONE 2026-08-12.** Refuted its own premise (the
+  "cumulus underwater" was the steam quench; the gate works), caught a lying instrument that
+  was our own omission, found the real defect instead (clouds + god rays submitted while
+  provably invisible → Wave 4), corrected the breach to p≈0.181, measured cold compile at
+  3,948 ms (58× One World), and fixed the harness Vite-orphan leak.
+- [x] **Wave 1** — The playground value study — **DONE 2026-08-12.** 6 materials, 3
+  phase-locked angles, value gate 0.905–0.973 (needs ≥0.50), console clean. Five capture-
+  forced corrections recorded, including two that only a SECOND phase revealed.
+- [x] **Wave 2** — The script grows its Act I limb — **DONE 2026-08-12.** Rescoped first
+  (negative `p` is unsamplable — Act I got its own array + sampler). 13 tests, both new
+  invariants mutation-verified; the first hue-rate guard was INERT and was strengthened until
+  it failed for the right reason. Chroma floor calibrated 0.05 → 0.02 against the measured
+  palette.
+- [x] **Wave 3a** — Earth Core RE-LIT — **DONE 2026-08-12.** mid-wash 0.460 → 0.193 at the
+  cathedral station (true-black 0.420 → 0.806). The god-ray facing fade and the charred rock
+  re-base did nearly all of it; the acceptance's own stations were corrected (two of three sat
+  inside the quench window). Three instrument repairs were needed first. Contract untouched.
+- [x] **Wave 3b** — Earth Core consolidated (fill-first per the measured rescope) — **DONE
+  2026-08-12.** The canopy shell folded into the background shader closed it decisively:
+  **58.3 → 40.9 ms Lane B** on a cooled matched pair (conservative −16.7 ms vs a ≥5 bar),
+  cathedral mid-wash **0.134** (best of the plan), ratchet 58→56→55, materials 27→26, no
+  contract-pinned structure touched. Sprite migration + ≤35 draws carried under the
+  null-gated §8 cell as the compile goal, per the rescope.
+- [x] **Wave 4** — The ocean becomes luminous — **DONE 2026-08-12.** Bands + SSS ceiling +
+  640 size-capped motes + the two water keyframes; gradient inversion fixed and measured
+  (83.7 → 170.6 luma toward the surface); Lane B **7.73 → 5.96 ms p50** (drift 0.00) — the
+  fill fix paid for the motes with 1.77 ms to spare.
+- [x] **Wave 5** — Life — **DONE 2026-08-12.** 110-fish school, one InstancedMesh, vertex-only
+  swim, silhouettes against the light; measures ≤1 timer tick on Lane B (5.96/6.03, drift one
+  tick). One shape iteration (kites → 3.5:1 fish). Kelp + orb drift deferred to Wave 7 polish,
+  recorded in the outcome.
+- [x] **Wave 6** — The crack climax — **DONE 2026-08-12.** Asymmetric quench curve measured
+  (approach luma 61.4 → 24.6, bright share → 0.001 — the reveal holds back); god-ray tint
+  pre-seed warm→cool on the seam's clock, zero new draws. Vault-mouth opening + Heart
+  farewell deferred to 3b/polish, named in the outcome.
+- [x] **Wave 7** — Close the books — **DONE 2026-08-12.** Four cells written (one real
+  baseline — underwater Lane B 5.96 ms, 1.7 under its start — and three ADR-0016 nulls with
+  published reasons); ADR-0017 filed; the ch1 92↔93 draw flicker found by the void guard and
+  named as 3b's prerequisite; the fill-bound-not-draw-bound finding recorded where 3b will
+  read it.
 
 ### Wave 0 — Instrument truth (blocking; nothing visual until these answer)
 
@@ -554,6 +679,50 @@ the One World convention — and the plan shipped without it.)
 - **Acceptance:** metrics field present in a fresh capture JSON; one-line verdict on the
   cumulus defect recorded in this file; compile number replaces the caveated one in §0.2.
 
+#### Wave 0 OUTCOME — DONE 2026-08-12. The wave paid for itself by refuting its own premise.
+
+**1. The cumulus defect does not exist; the quench does.** Verdict recorded at the claim
+(§0.3 defect 1, original preserved): `odyssey-steam-quench` is drawn at exactly the three
+cited stations (p=0.093/0.115/0.137, densities 1.00/0.40/0.07) and nowhere else, and
+`uSubmerged` measures **1.000** across every submerged station — the gate works, and the
+"cumulus" was the shipped act-edge volume doing its job.
+
+**2. The instrument lied first, and the lie was ours.** The first re-shoot read
+`submerged = 0.00` / empty script name at every station — a result that would have
+*confirmed* the plan's instrument-gap hypothesis. Cause: the exposure patch declared and
+returned the `state` object but never assigned to it. Fixed, re-shot, and written up in
+place, because "the plausible reading confirmed the guess" is precisely how the four false
+numbers in the One World plan survived review (ADR-0016 §1).
+
+**3. One real defect found, of a different shape than the one hunted.**
+`odyssey-world-clouds` is submitted and rasterised at every fully-submerged station while
+its alpha is provably zero (three texture fetches per covered pixel of a sky-covering sheet,
+on the lane that measures 7.73 ms); `odyssey-world-godrays` is the same bug inverted at
+p≥0.182. **Two `mesh.visible` writes in the world's `update()` — assigned to Wave 4.**
+
+**4. The near-surface frame is already AIR, not dark water.** `uSubmerged` is eye-driven
+(`railPoint.y + 16`), so the visual breach lands at **p ≈ 0.181**, not the rail's 0.190.
+§0.3's "darker and emptier near the surface" is the water treatment switching off early, not
+a gradient bug — amended at the claim; it changes what Wave 4 must build.
+
+**5. Cold compile re-measured: ch1 = 3,948 ms cold (58× One World), ~2× the warm band.**
+Method note recorded: `GPUCache` alone is not cold on this Electron.
+
+**6. Harness leak fixed** (the §0.3 defect-4 item): both `odyssey-gpu-split.mjs` and
+`odyssey-chapter-capture.mjs` now kill the dev-server **process tree** on Windows, so a run
+can no longer orphan Vite and fail the next `--strictPort` boot. This session lost three
+measurement runs to that leak before it was understood.
+
+**7. Validation-storm repro: filed in-plan** (§0.3 defect 2) with its exact console
+signature and trigger — it needs the full background chapter prewarm (ch6+), which the
+Act I capture windows exclude, which is why both Phase-0 capture consoles are clean. Owner
+is the post/prewarm pipeline, outside this plan's waves.
+
+**Gates:** `npx vitest run` **331 files / 3281 tests green**; `npx eslint` clean on all three
+changed files (the repo-wide lint carries a large pre-existing debt in untouched files —
+unchanged by this wave, and not weakened to pass it). Instrument changes are diagnostics-only;
+no visual surface was modified, so no ADR-0007 capture debt is incurred.
+
 ### Wave 1 — The playground value study (the look is proven before any port)
 
 > **/goal hook:** "Act I Wave 1: playground effect `act1-earth-core` — vault + columns +
@@ -569,6 +738,58 @@ the One World convention — and the plan shipped without it.)
 - **Acceptance:** phase-locked `?t=` screenshots at 2–3 angles; console clean; material
   count ≤10 printed by the effect's own stats line; value-share gate met on the capture.
 
+#### Wave 1 OUTCOME — DONE 2026-08-12. The device works; five iterations were needed to prove it.
+
+`src/playground/effects/act1-earth-core.effect.js` (drop-in, auto-registers) plus
+`scripts/act1-value-gate.mjs`, which turns the §3.1 value gate into a number anyone can
+re-run. Captures: `artifacts/odyssey/act1-wave1/earth-core-0{1,2,3}-*.png` at phase-locked
+`?t=9/32/63`.
+
+**Acceptance, all met:**
+
+| criterion | result |
+|---|---|
+| 2–3 phase-locked angles | 3 (`t=9` across-lake, `t=32` orbit, `t=63` far) |
+| console clean | yes — only the three `[playground:boot]` marks |
+| ≤10 material objects, printed by the effect | **6** (`materials=6 (budget ≤10)`) |
+| value-share gate ≥50 % under luma 60 | **0.913 / 0.973 / 0.905** — mean luma 24.4 / 19.5 / 25.4 |
+
+**The five corrections the captures forced** (each is a rule the Wave 3 port inherits):
+
+1. **The cool accent inverted the act.** At the authored strength the crack seed painted the
+   whole upper hemisphere teal and four additive shaft cards stood metres from the lens: a
+   COOL cave with warm decorations, the exact opposite of the brief. Narrowed on both axes,
+   dimmed to 0.14, and the shafts moved out to radius 165 at 0.05 opacity. ≤2 % of frame is
+   not a description, it is a constraint that has to be enforced twice — once in the shell
+   term and once in the geometry.
+2. **Frequency is set by the radius — again.** Vein noise at 2.1 over a 240 u shell made
+   filaments tens of metres wide, which read as orange NEBULA. 11.0 restores "cracks in
+   rock". This is the third time this repo has paid for the same lesson (quench, cloud bank,
+   now the vault); it belongs in §5 as a rule, not a war story.
+3. **The key has to be ON SCREEN and it has to be the brightest thing.** First framing aimed
+   above the lake and lost it entirely; then the crust window (0.46/0.60) made the lake a
+   dark floor with smears; then the hot stop won and it became a cream beach. Final: crust is
+   the minority (0.60/0.78) and the pale stop is reached only via `pow(heat, 5)`.
+4. **A camera that orbits at radius 132 flies through the column ring (62–140).** One capture
+   was 80 % dark cylinder. The rail flies up the MIDDLE of the cathedral, so the study camera
+   belongs near the axis looking across — which is also the truer framing.
+5. **A `floor()`-selected star must be shaded WITHIN its cell.** Lighting the whole cell drew
+   each twinkle as a hard square that the sphere's curvature skewed into a diamond — a sky of
+   orange parallelograms, invisible at `t=9` because the twinkle phase was dim and obvious at
+   `t=32`. `fract` + radial falloff fixes it. **Capture more than one phase**: a single
+   phase-locked shot can hide a defect completely.
+
+**Also recorded:** the playground's mount failure reports only `"did not mount"`, and the
+underlying `create()` error is overwritten by that message — the real cause (a raw
+`THREE.Color` has no `.mul`, so the palette must be `color()` NODES) was recoverable only by
+re-running `create()` by hand through Vite's `/@id/` specifier. And a WebGPU canvas reads
+back BLACK through `drawImage`, so the gate decodes the saved PNG instead; an in-page
+measurement would have reported a flattering, meaningless 100 % dark.
+
+**Gates:** `npx vitest run` 331 files / 3281 tests green; `npx eslint` clean on both new
+files. No production surface touched — this wave is playground-only, so the in-game ACES
+verification is Wave 3's, as the plan sequences it.
+
 ### Wave 2 — The script grows its Act I limb (data + tests before pixels)
 
 > **/goal hook:** "Act I Wave 2: extend ODYSSEY_COLOUR_SCRIPT with birth/cathedral/crack +
@@ -583,6 +804,45 @@ the One World convention — and the plan shipped without it.)
   slot in a water keyframe must FAIL before it is trusted).
 - **Acceptance:** tests green with at least one new case demonstrated failing-first; no
   visual change shipped yet (data + tests only).
+
+#### Wave 2 OUTCOME — DONE 2026-08-12. Rescoped before execution; both new guards mutation-verified.
+
+`ODYSSEY_ACT1_COLOUR_SCRIPT` + `sampleAct1ColourScript(t)` + `classifyTemperature()` in
+`odyssey-colour-script.js`; 13 tests in `odyssey-act1-colour-script.test.js`. **Nothing
+renders it yet** — Wave 3 wires it — so the "no visual change" half of the contract is
+literal: `git diff` touches one source file and adds one test file.
+
+**The premise was refuted before a line was written** (correction annotated at §3.1): the
+plan's negative-`p` keyframes are unsamplable, because `sampleColourScript` clamps to [0,1]
+and a shipped test pins that span. Act I therefore got its own array on its own parameter,
+and the act handoff is asserted by test rather than by array adjacency. The two water
+keyframes moved to Wave 4, where their captures live.
+
+**Both new guards were mutation-verified, and the first attempt at one of them was INERT:**
+
+| mutation | expected | result |
+|---|---|---|
+| delete `crack.warmCoolCollision` | invariant 3 fails | ✅ 3 tests fail |
+| delete `cathedral.seamAfter` (v1 guard, `skyZenith` only) | hue-rate fails | ❌ **PASSED — the guard was inert** |
+| delete `cathedral.seamAfter` (v2 guard, both slots) | hue-rate fails | ✅ fails at **16.9°/step vs the 12° cap** |
+
+The inert version is the finding worth keeping. Act II's hue-rate test watches `skyZenith`,
+so mirroring it looked correct — but in a CAVERN the crown barely moves (5.96°/step) while
+the low band swings ember-to-vapour (23.1°/step). A guard whose exemption can be deleted
+without anything failing is decoration. The Act I test now checks both atmospheric slots.
+
+**A third calibration came from measurement, not taste.** The warm/cool chroma floor was
+authored at 0.05 and classified the entire quench palette as neutral — `#cfe6ff` measures
+Oklab chroma 0.042, `#1a2630` 0.025, `#8fa6b4` 0.033 — so the `crack` keyframe read as "all
+warm" and could not earn the exemption it needs. This act's cool tones are PALE by design
+(the Ghibli research is explicit about it), so a floor tuned for saturated colour is blind
+exactly where the rule matters. Calibrated to **0.02**, which still excludes the near-neutral
+charcoals at 0.015. Recorded at the constant.
+
+**Gates:** `npx vitest run` **332 files / 3294 tests green** (up 13); `npx eslint` clean on
+both changed files. One mutation was run against Act II's array by accident first (a
+first-match string replace) — caught because the Act I suite stayed green when it should not
+have, which is itself the reason mutations get re-run until they fail for the RIGHT reason.
 
 ### Wave 3 — Earth Core reborn (the port, behind a dev flag until captured)
 
@@ -600,6 +860,315 @@ the One World convention — and the plan shipped without it.)
   metrics); `earth-core-environment.test.js` green throughout; the 1→2 seam re-captured
   (quench still occludes; ribbon-inside-shell behaviour intact).
 
+#### Wave 3 SPLIT — 3a / 3b, decided 2026-08-12 BEFORE execution (premise check, not a retreat)
+
+The wave as written asks for two things that cannot both be honoured: **"≤35 draws"** and
+**"`earth-core-environment.test.js` green throughout"**. The contract test pins, by name, a
+structure the shipped chapter spends its 131 draws on:
+
+`firstHeart` ('first-heart') · `colonnade` ('basalt-colonnade-walls') · `seleniteChamber`
+('selenite-geode-chamber') · `visibilityTargets.{firstHeart, lavaFall, seleniteChapel}` ·
+`lavaFloor.userData.glows` **exactly 5** · `elements.rockClusters` non-empty · **≥6 geode
+clusters** projected into the camera corridor · staged **seam boulders** that sink · the
+`uSeam` choreography · a `uOpacity` bridge on **every** `opacityNode` material.
+
+A ≤35-draw rebuild deletes most of that. Deleting it means rewriting those assertions in the
+same commit that makes them fail — which is the one thing this plan's discipline forbids
+("never weaken a test to make a wave pass"), and it would also discard authored beats
+(the selenite chapel, the geode corridor) that no capture has yet judged worth losing.
+
+So the wave splits, and the split is recorded rather than quietly performed:
+
+- **Wave 3a — RE-LIGHT (this wave's real deliverable).** Keep every named structure and the
+  whole `uSeam` choreography; replace the LIGHTING and PALETTE with the Wave 1 device:
+  script-driven via `sampleAct1ColourScript`, one warm key below, darkness-gated response,
+  the starved cyan seed, the low-frequency crust. Draw count is untouched, so no test moves.
+  Acceptance keeps the in-game captures, the value-share gate under ACES, and the 1→2 seam.
+- **Wave 3b — CONSOLIDATE (new, unchecked).** Take 131 draws toward ≤35 by folding the
+  particle systems into one atlas and the rock families into instanced sets, WITH a deliberate
+  migration of `earth-core-environment.test.js` to the surviving contract — a test change made
+  in the open, reviewed on its own merits, not smuggled in beside a look change.
+
+  **3b PROGRESS (2026-08-12): 131 → 90 draws measured; ratchet installed; ≤35 still open.**
+  A headless inventory test walked the built environment and found **77 drawables / 27
+  materials**, with the top families: 20 contact-shadow decals, 10 geode clusters, 12 sprites,
+  9 obsidian columns, 6 molten pockets. The decals were the one family merge-safe BY PROOF
+  (one shared material, all parented statically to the group, shading reads only `uv()` — no
+  `positionLocal` dependence a bake would redefine), and merging them took the in-game
+  cathedral station from ~127 to **90 draws** at unchanged triangles (~245 k, the
+  pixel-identity check). `tests/unit/earth-core-drawable-budget.test.js` now pins a **≤58
+  drawable ceiling** so the win cannot silently erode. What remains for ≤35, in order of
+  yield and rising contract risk: the 12 sprites (5 are contract-pinned `lavaFloor` glows
+  with per-sprite scale animation → needs an instanced-billboard migration done in the open),
+  the 10 geode clusters and 9 columns (local-space shading → shader must move to
+  world-anchored coordinates first, a visual change owing captures), and the 6 molten
+  pockets (same). Each is exactly the "deliberate contract migration" this wave was split
+  out to negotiate.
+
+  **3b RESCOPED BY MEASUREMENT (Wave 7's finding, annotated here where 3b will read it):
+  the wave's premise — that draw consolidation is ch1's Lane B lever — is FALSE.** Draws
+  fell 131 → 92 (decal merge) and Lane B stayed ~57–58 ms; hiding the orb group too
+  (84 draws, content-matched pair via the new `--flags` passthrough) still measures
+  **58.20 / 58.46 ms**. The chapter's iGPU cost is **fill/ALU** — the stacked full-coverage
+  emissive layers (canopy + backdrop + haze + horizon) and the molten-rock field — the SAME
+  surfaces §3a identified as the value-structure problem. 3b's consolidation therefore aims
+  at **surface area and shader cost first**, with the ≤35 draw target kept as a
+  compile/startup goal, not a Lane B claim. **The measurement prerequisite is solved:** the
+  92↔93 flicker that voided every ch1 pair is IN the level-node group (proven — hiding it
+  yields matched pairs twice), so 3b can A/B with `--flags odysseyHideLevelNodes=1` on both
+  sides until the orb-side toggle is found.
+
+  **3b ACCEPTANCE AS RESCOPED — pre-registered 2026-08-12 BEFORE the work it gates, so the
+  bar cannot drift to meet the result:**
+
+  1. **Fill:** a measured Lane B reduction at the ch1 station on content-matched pairs
+     (`--flags odysseyHideLevelNodes=1` both sides, quiet), **≥ 5 ms p50** against the 58.20/
+     58.46 ms sans-orbs baseline, achieved by shrinking emissive SURFACE AREA (overhead
+     layers, duplicated horizon bands, haze) — the measured cost axis.
+  2. **Value gates hold:** in-game `midWash ≤ 0.25` at the cathedral station (p=0.031) after
+     the surface cuts, phase-locked, per-chapter session — a fill cut that un-does 3a's look
+     does not count.
+  3. **Draw/structural:** any deleted or migrated structure gets
+     `earth-core-environment.test.js` changed IN THE OPEN in the same commit with its own
+     justification, and the drawable ratchet LOWERED to the new count. The ≤35 target remains
+     tracked by §8's `odysseyAct1Ch1DrawCalls` cell (null until earned) — it is a
+     compile/startup goal now, not this wave's exit bar, per the measured rescope above.
+  4. **Suite + lint green; captures attached.**
+
+  **3b FILL PASS EXECUTED — 2026-08-12, second session. Three of four criteria met; the wave
+  stays UNCHECKED on its own pre-registered bar, and here is exactly why.**
+
+  **What landed** (all committed, suite green, no contract-pinned structure touched): the two
+  duplicate horizon planes DELETED (full-width additive fill, zero compile cost — their
+  pipelines were already shared); cloud-deck density 140 → 56 and puff sizes 28–92 u →
+  18–60 u; near-camera haze 225 → 112 billboards with sizes cut ~30 %. Drawable ratchet
+  lowered **58 → 56**.
+
+  | criterion | result |
+  |---|---|
+  | 2. value gates hold | ✅ **cathedral mid-wash 0.202** (≤ 0.25) — the cuts IMPROVED the look (0.193 → 0.145 after the first cut wave; 0.202 with all cuts) |
+  | 3. open contract changes + ratchet | ✅ nothing pinned was touched; ratchet 58 → 56 |
+  | 4. suite + lint + captures | ✅ 333 files / 3295 tests; captures attached |
+  | 1. Lane B ≥ 5 ms on matched pairs | ❌ **NOT decisively met — and not claimed.** |
+
+  **The criterion-1 record, complete:** eight post-cut samples across four sessions (52.17,
+  52.56, 52.95, 53.67, 54.07, 54.92, 55.12, 55.31 — median **53.9**) against the pre-cut pair
+  (58.20, 58.46). **Every post-cut sample beats every pre-cut sample** — the saving is real —
+  but the central estimate is **~4.5 ms**, the conservative bound 2.9, and the run-to-run
+  thermal spread (±1.5–2.2 ms even after cooling pauses) makes a 5 ms bar undecidable at this
+  sample size on this laptop. Three repair attempts were made (deck-size cut: no measurable
+  gain; cooled re-pair: short; haze halving: short); per this plan's own rule the blocker is
+  recorded and the wave left unchecked rather than the bar quietly re-read to fit ~4.5.
+
+  **Also found: the 92↔93 flicker has a SECOND source outside the orb group** — two of the
+  four sans-orbs pairs voided on an 80↔79 mismatch. The content-match guard keeps working;
+  the hunt now has two targets.
+
+  **What completes 3b, in order:** (1) the canopy/background full-screen shell merge — the
+  largest remaining fill surface, a real look change owing its own captures; (2) the sprite →
+  instanced-billboard migration with the open `earth-core-environment.test.js` change; (3)
+  re-measure the ≥5 ms bar with multi-pair cooled sessions once the flicker's second source is
+  found. The Wave 1 study's geometry port (the full rebuild) remains the endpoint the 3a/3b
+  split always pointed at.
+
+  **3b COMPLETED — 2026-08-12, third session. The canopy fold was the lever, and it was worth
+  three times the bar.**
+
+  The named next step was executed: `createMagmaCloudCanopyTSL`'s colour terms moved INSIDE
+  `createVolcanoBackgroundTSL` (compositing over the background is `mix(bg, canopy, alpha)`
+  when the background is the only thing behind it — which renderOrder made true), and the
+  canopy SHELL was deleted as a drawable: one full screen of `depthTest:false` transparent
+  fill and one material, gone, same pixels by construction.
+
+  **Criterion 1, decisively:** cooled, content-matched pair at 79 draws — **40.24 / 41.48 ms
+  p50** against the 58.20/58.46 pre-cut baseline: a **16.7 ms saving at the conservative
+  bound**, 3.3× the pre-registered ≥5 ms bar. No reading of the bar fails. Chapter 1's Lane B
+  story across the whole plan: 57.2 ms (pre-plan, with orbs) → **~40.9 ms sans-orbs** after
+  3a's re-light and 3b's fill pass — roughly **17 ms returned to the journey's worst lane**.
+
+  **Criterion 2:** the fold's capture is the plan's best frame yet — cathedral **mid-wash
+  0.134 / true-black 0.865** (gate ≤ 0.25), console clean (0 WebGPU errors). **Criterion 3:**
+  no contract-pinned structure touched; ratchet lowered again **56 → 55**; materials 27 → 26.
+  **Criterion 4:** full suite 333 files / 3295 tests green; captures attached.
+
+  **Carried out of the wave, tracked where they were always tracked:** the sprite → instanced
+  migration and the ≤35 draw target live under §8's null-gated `odysseyAct1Ch1DrawCalls` cell
+  as the compile/startup goal (per the measured rescope); the flicker hunt (two sources, both
+  outside this wave's changes) and the full geometry port remain on the §7 carried list.
+
+> ⚠️ **THE VALUE-SHARE GATE IS NEARLY VACUOUS IN-GAME — measured 2026-08-12, before executing
+> 3a.** §3.1 set the acceptance at "≥50 % of pixels under luma 60" and Wave 1 met it easily in
+> the playground. Measured against the SHIPPED chapter under the real ACES grade, it is
+> already met: **darkShare 0.751** at the p=0 station (0.587 at the seam). Wave 3a could
+> therefore have been "passed" by changing nothing, which is precisely the kind of gate this
+> plan exists not to ship.
+>
+> The histogram says why, and hands over the metric that does discriminate. A magma cavern has
+> no shortage of dark pixels — Earth Core is **42 % true-black** already. Its defect is that
+> everything between the black and the fire sits in ONE undifferentiated mid band:
+>
+> | frame | true-black (<32) | **mid-wash (32–96)** | verdict |
+> |---|---:|---:|---|
+> | shipped Earth Core, p=0, in-game ACES | 0.420 | **0.460** | the "~90 % mid-red" read, quantified |
+> | Wave 1 playground study | 0.832 | **0.147** | the target structure |
+> | shipped ocean, p=0.160, in-game | 0.000 | **0.988** | worse — not one pixel below luma 64 |
+>
+> **Wave 3a's acceptance is therefore restated: `midWash ≤ 0.25` in-game at the cathedral
+> station**, with `darkShare` kept only as a floor. `scripts/act1-value-gate.mjs` now reports
+> `trueBlack` and `midWash` alongside it. The ocean row is recorded here because it is the
+> same discovery: Wave 4's real target is 0.988 → structured, and "the near-surface frame is
+> brightest" was always a proxy for it.
+
+#### Wave 3a OUTCOME — DONE 2026-08-12, gate met, after three instrument repairs
+
+**The gate is met at the station it was written for: `midWash` 0.460 → 0.193 (≤ 0.25),
+`trueBlack` 0.420 → 0.806.** What follows is how, and what still is not.
+
+**Two levers did nearly all of it, and neither was the one the wave predicted:**
+
+1. **The god-ray cones had no facing fade** — the exact defect Act II already paid for on its
+   own ported god rays ("a shell standing in for a volume must dim where it is seen edge-on,
+   because the grazing angle IS the silhouette"). Without it they drew hard pale WEDGES across
+   the frame. Adding it: mid-wash **0.631 → 0.209** at the cathedral station, true-black
+   0.367 → 0.790, in one change. It is also the least Ghibli thing in the chapter, gone.
+2. **`moltenRockField` re-based to charred** (crust `0.07,0.03,0.012` → `0.013,0.006,0.004`,
+   cooling-river stop more than halved, the 0.05 black floor dropped to 0.012). Worth
+   0.445 → 0.283 at the mid-cavern station. The bright river stop is untouched on purpose:
+   emptying the mid band must not turn the fire grey.
+
+Also kept, smaller: the backdrop ember belt darkness-gated, molten haze halved, magma canopy
+halved, and the lava lake carrying the Wave 1 study's composition (crust as minority, rare
+pale stop, quantised glitter).
+
+**THE STATIONS IN THE ACCEPTANCE WERE WRONG, and this is a correction, not a goalpost move.**
+The wave named p ≈ 0.02 / 0.051 / 0.085. The steam quench's window is `0.093 ± 0.06 =
+[0.033, 0.153]`, so **0.051 and 0.085 are INSIDE it** — at p=0.062 the veil is ~23 % dense and
+fills the frame with bright vapour BY DESIGN. Measuring the cavern's value structure there
+measures the occlusion moment instead. The valid cavern stations are `p < 0.033`; the
+cathedral-equivalent is **p = 0.031**, and that is where the gate is now met.
+
+**What does NOT pass, stated plainly:** the two birth stations, p = 0.000 (0.479) and
+p = 0.010 (0.504). At both the camera is metres from lit rock with the lava lake filling the
+lower frame — the chapter's brightest moment by design ("we are BORN from the lava"). Whether
+they SHOULD pass is an art question this plan has not answered; the next lever if they should
+is the rock's close-range crust frequency, which reads as fine red speckle rather than crust
+at that distance (the Wave 1 "frequency is set by the radius" lesson, unapplied here).
+
+**Three instrument repairs were needed before any of this could be measured**, and they are
+the wave's most reusable output: the missing phase lock (`--time`), the stale-frame
+`capturePage` defect (two rAFs + settle before the shutter), and the overlay sweep by
+containment. The six A/B attempts made before those fixes are void and marked as such above.
+
+**Gates:** `npx vitest run` 332 files / 3294 tests green; `npx eslint` clean;
+`earth-core-environment.test.js` green throughout — **no contract test was touched**, which
+was the constraint that forced the 3a/3b split in the first place.
+
+Landed (tests green throughout, contract untouched): the backdrop's ember belt is
+darkness-gated and contrast-shaped; the molten haze is halved; the lava lake carries the Wave
+1 study's composition (crust as the minority, a rare pale stop via `pow`, quantised glitter);
+the magma cloud canopy is halved and its ceiling dropped.
+
+**Acceptance is `midWash ≤ 0.25` in-game. Best station measured 0.42; most sit at 0.65+.**
+Not met. Four attempts, each measured rather than argued:
+
+| # | lever | result |
+|---|---|---|
+| 1 | backdrop ember belt darkness-gated | inconclusive — see the instrument note below |
+| 2 | rock bounce gated by height above the lake | **marginal** (0.439 → 0.425 at p=0, but 0.550 → 0.651 at p=0.062) |
+| 3 | lake ported from the Wave 1 study | no mid-wash gain (0.425 → 0.494 at p=0) |
+| 4 | magma cloud canopy halved | no gain (0.494 → 0.436 at p=0, others flat) |
+
+**THE INSTRUMENT WAS THE FIRST BLOCKER, AND IT INVALIDATED AN EARLIER CLAIM.** Attempt 1 was
+written up as "mid-wash 0.460 → 0.289, a real improvement". It was noise: two runs of
+**functionally identical code** through `odyssey-chapter-capture.mjs` produced **0.289 / 0.466
+/ 0.233** and **0.435 / 0.698 / 0.793** at the same stations. Every animated uniform rides
+`boardController.time`, which advances with wall clock, so each run samples a different frame
+of lava, ember and haze animation — a run-to-run spread of up to **0.56**, larger than any
+art change being evaluated. Fixed: the harness now takes **`--time <seconds>`**, freezing the
+clock exactly as the playground's `?t=` does, and records `fixedTime` in the manifest. Every
+number in the table above is phase-locked; the pre-fix ones are struck.
+
+**THE REAL BLOCKER, identified from the captures:** the wash is not the backdrop, the lake or
+the canopy — it is `moltenRockField`, the shared rock shading applied to **every wall, column
+and boulder in the chapter**. In-game it renders as saturated mid-red across the entire
+silhouette with no charred anchor, and the Wave 1 study got its structure from the opposite
+choice: a near-black charred base with warmth admitted ONLY as a rim from below. Changing that
+field is not a constant tweak — it is the chapter's rock identity, it feeds the geode/colonnade
+/boulder families, and it deserves its own wave with its own captures.
+
+**ATTEMPTS 5 AND 6, and the conclusion they force.** Attempt 5 did re-author
+`moltenRockField` (crust `0.07,0.03,0.012` → `0.022,0.010,0.006`, the cooling-river stop
+halved, the 0.05 floor that held every shadowed face above black dropped to 0.012). It is the
+one change that moved the structure: **true-black 0.338 → 0.490** at the p=0.062 station, and
+the frame finally reads as charred rock with an ember path rather than as glowing rock.
+Attempt 6 re-based the chapter's fog (§3.3's "red soup": density 0.014 → 0.0065, colour to the
+script's vault base) and measured **worse** — 0.508 → 0.647 at the same station — because
+thinning the fog UNCOVERS the bright emissive geometry it was hiding. Reverted.
+
+> 🔴 **A THIRD, WORSE INSTRUMENT DEFECT — found 2026-08-12 after the above, and it
+> invalidates every per-station number in this wave.** `win.webContents.capturePage()` returns
+> the last COMPOSITED frame, not the current one. The harness settled a station, changed the
+> DOM, and photographed — getting a frame from BEFORE the settle. Station 1 therefore showed
+> the main menu (the pre-board state) and every later station showed its PREDECESSOR's view,
+> which is why hiding `#start-modal` three different ways never worked: the modal was already
+> gone from the page and still present in the photograph.
+>
+> Fixed by waiting two `requestAnimationFrame`s plus a 120 ms settle between the DOM sweep and
+> the shutter. Verified: station 1 now shows the cavern (no menu), and station 4 — the quench
+> peak — finally reads meanLuma **210** (white vapour), which is what that station has always
+> been and never once photographed.
+>
+> **Consequence, stated plainly: the six Wave 3a A/B comparisons above were made on
+> mis-aligned frames and cannot be trusted to say which lever worked.** They are kept as the
+> record of how the defect was found, not as evidence about the art. The re-baseline on the
+> fixed instrument, current code, `--time 9`:
+>
+> | station | p | midWash | trueBlack | meanLuma |
+> |---|---|---:|---:|---:|
+> | 1 | 0.000 | 0.684 | 0.119 | 69.2 |
+> | 2 | 0.031 | 0.631 | 0.367 | 35.0 |
+> | 3 | 0.062 | 0.391 | 0.302 | 65.7 |
+> | 4 | 0.093 | 0.001 | 0.000 | 210.1 (quench peak — correct) |
+>
+> Every future Act I measurement starts here.
+
+**Two instrument defects contaminated this whole wave, and both are now known:**
+
+1. **Station 1 is unusable.** Its capture repeatedly catches the MENU OVERLAY before
+   `HIDE_OVERLAYS` applies (Phase-0 defect 3, logged and not fixed) — a bright UI panel across
+   a third of the frame. Its mid-wash sat at ~0.43 in all six runs *regardless of what changed*,
+   because most of what it measures is the menu. Every comparison that included it was noise.
+   **Fix before any further art measurement:** re-shoot station 1 after settle, or drop it.
+2. **The phase lock was missing** (fixed this wave, `--time`), which invalidated attempt 1's
+   recorded improvement.
+
+**THE HONEST CONCLUSION: `midWash ≤ 0.25` is not reachable by re-lighting.** Six phase-locked
+attempts across five systems — backdrop belt, molten haze, lava lake, magma canopy, rock field,
+chapter fog — moved the best valid station from ~0.55 to ~0.51 and left the others at 0.41–0.68.
+The Wave 1 study reached **0.147** on the first serious try, and the difference is not shader
+constants: the study OWNS ITS GEOMETRY (one vault, one column family, one lake, a starved
+accent), while the shipped chapter's emissive surface area — lava fall, five basin glows, god-ray
+cones, geode clusters, molten pockets — is itself the mid band. **That retro-validates the 3a/3b
+split's premise and inverts its expectation: 3a alone cannot pass this gate, and the gate belongs
+to 3b.** Recorded here rather than by quietly lowering the threshold to whatever the re-light
+happened to reach.
+
+*(Superseded next step, kept for the record:)* **Next step, precisely:** re-author `moltenRockField`'s base toward near-black and re-admit
+warmth through the existing `bakedWarm` bounce (now height-gated) plus the fresnel rim, then
+re-measure at `--time 9`. Expect the mid-wash to fall from ~0.65 toward the study's 0.147 in
+one move, because this is the surface that owns the pixels.
+
+**A note the plan owes the reader:** Wave 1's model — the vault, tapered columns, teardrop
+Heart — lives in the PLAYGROUND only. Chapter 1 in-game still has its shipped geometry by
+design (the §3 split keeps the contract-pinned structure), so anyone comparing the two will
+correctly see "the same chapter, re-lit" rather than the study. Porting the study's GEOMETRY
+is Wave 3b, and it is the larger half of the work.
+
+**Sequencing rationale:** 3a is what makes the act beautiful and is capture-verifiable today;
+3b is what makes it cheap and needs a contract negotiation first. The measured Lane B cost
+(⚠️ see §0.2 — ch1 is the journey's worst frame) belongs to 3b, and §8's `odysseyAct1Ch1DrawCalls`
+cell is 3b's gate, not 3a's.
+
 ### Wave 4 — The ocean becomes luminous (bands, ceiling, motes)
 
 > **/goal hook:** "Act I Wave 4: banded depth ramp + SSS ceiling + capped particulate in
@@ -615,6 +1184,69 @@ the One World convention — and the plan shipped without it.)
   delta vs. this plan's §0.2 Lane B underwater baseline **≤ +0.8 ms p50 (ESTIMATE — the
   gate cell in §8 holds the truth and a miss re-scopes the mote budget, not the plan)**.
 
+#### Wave 4 OUTCOME — DONE 2026-08-12 (second pass; the first is preserved below)
+
+**All three acceptance criteria are now met, each on the fixed instrument:**
+
+1. **The gradient brightens toward the light.** At the two stations that are BOTH submerged
+   and outside the quench window (p=0.156 / p=0.172, `--time 9`): mean luma **83.7 → 170.6**
+   — the shallower frame is 2× brighter. The original stations could never have shown this
+   (one was air, one was quench), which the first-pass note below explains.
+2. **The motes are in.** One instanced additive system (640 quads, size-capped 0.5–1.1 u,
+   transmitted-light brightness ∝ depth, constant-velocity drift), ONE new material carrying
+   its own `fog = false`; drawn only while submerged via the same CPU `visible` gate as the
+   god rays; world tests + both fog lints green (51 tests).
+3. **The Lane B delta is measured, and it is a SAVING: 7.73 → 5.96 ms p50** (drift exactly
+   0.00, content-matched at 44 draws, quiet machine). The whole Wave 4 package — bands, SSS
+   ceiling, motes, and Wave 0's clouds-not-submitted-underwater fix — lands **−1.77 ms**
+   against a ≤+0.8 budget, because the fill fix more than pays for the motes. The wild p99
+   tail (24.6 ms in the Phase 0 run) is gone: p99 now 6.23 ms.
+
+Taste notes carried, not chased: the near-surface frame reads pale under the in-game grade,
+and the water sheet's far rim shows jagged crest triangles at the horizon — both are Wave 7
+polish candidates, neither blocks the wave's criteria.
+
+#### Wave 4 first-pass status (superseded, kept as the record)
+
+Landed and green: the **banded depth ramp** (three script-driven plates replacing the single
+exponential), the **crest-SSS luminous ceiling** (~5 ALU on the existing water material, zero
+new draws), the two **water keyframes** Wave 2 deferred here (`luminous-mid-water` p=0.06,
+`shallows` p=0.12 — both inside Act II's existing span, both passing every script invariant),
+and **Wave 0's measured fill defect**.
+
+**The fill fix is MEASURED, and it is the wave's one fully-verified claim.** In-game capture
+metrics, before → after, same stations:
+
+| station | `submerged` | clouds submitted | god-rays submitted | draws |
+|---|---|---|---|---|
+| p=0.160 | 1.00 | **true → false** | true | **44 → 42** |
+| p=0.182 | 0.00 | true | **true → false** | **44 → 42** |
+
+Two `mesh.visible` writes, two draws and a sky-covering sheet of zero-alpha fragments off the
+weak lane at every submerged station.
+
+**Why it is NOT checked off.** The acceptance asks that "the p=0.185 frame is now the
+BRIGHTEST of the three". Measured mean luma at the three captured depths: **170.4 (p=0.137),
+100.5 (p=0.160), 78.8 (p=0.182)** — still darkening upward. But the criterion cannot be
+judged from these stations, and Wave 0 already explained why:
+
+- **p=0.182 is not underwater.** It measures `submerged = 0.00`, script keyframe `breach` —
+  the eye crosses the waterline at p≈0.181, so that frame is AIR and the water treatment
+  (bands, god-rays) is correctly switched off in it.
+- **p=0.137 is inside the steam quench** (window 0.033–0.153), so its 170.4 is billow, not
+  water.
+
+The two remaining stations do not bracket the band progression. **Next step, precisely:**
+re-capture at **p = 0.150 / 0.165 / 0.178** — all submerged, all outside the quench — and
+compare. If the ramp still darkens upward there, the band thresholds (`0.10/0.42` and
+`0.45/0.92` on a 160 u normaliser) are the lever, not the palette. Also still owed:
+the **motes** (§3.4.3) and the **Lane B delta** against the 7.73 ms baseline, which per
+ADR-0016 must be a cooled, quiet, content-matched run — not one taken while a capture
+harness and a dev server are competing for the same GPU, as they were this session.
+
+**Gates on what landed:** `npx vitest run` 332 files / **3294 tests green**; `npx eslint`
+clean on both changed files; in-game capture taken under the real ACES grade.
+
 ### Wave 5 — Life (fish, kelp, the accompanied ascent)
 
 > **/goal hook:** "Act I Wave 5: one instanced fish/silhouette system with vertex-cosine
@@ -626,6 +1258,33 @@ the One World convention — and the plan shipped without it.)
 - **Acceptance:** captures show at least one readable creature-silhouette moment per depth
   band without hunting for it; Lane B split at p=0.16 again, cumulative Act I underwater
   delta within the §8 cell; no new console warnings.
+
+#### Wave 5 OUTCOME — DONE 2026-08-12 (acceptance met; two scope items deferred, named)
+
+**The school is in, and it costs one timer tick.** 110 fish as ONE InstancedMesh: a hand-built
+3.5:1 wedge (7 triangles), cruise + swim entirely in the vertex stage (cosine yaw with a
+tail-weighted mask on `positionGeometry` — the instancing-safe axis), each fish circling its
+own seeded origin so the school drifts without phase-locking, seated ABOVE the rail so the
+breach light is behind every silhouette. Dark body takes only down-welling light: a SHAPE
+against the luminous ceiling, never a lit model — the inverse of the old deep-ocean
+"flat dark polygons against the dark" failure.
+
+**Acceptance:**
+
+1. ✅ Readable silhouettes without hunting — the p=0.156 capture shows a dozen; fish span the
+   whole submerged band. One shape iteration was needed: the first wedge (1.2 long, 0.44 wide)
+   read as tumbling black KITES; a fish is recognised almost entirely by elongation, so the
+   3.5:1 re-cut with the widest point a third back from the nose is what made them fish.
+2. ✅ Lane B cumulative: **5.96 / 6.03 ms p50, drift −0.066 (one tick), content-matched at 45
+   draws** — the school's cost is below the timer's resolution, and the Wave 4+5 total still
+   sits 1.7 ms UNDER the pre-wave 7.73 baseline (§8 cell max 8.5).
+3. ✅ No new console warnings (the one hit is the pre-existing forest-theme prewarm timeout).
+
+**Deferred, named, not hidden:** kelp (§3.4.4's second half — shelf-zone dressing near the
+breach; nothing blocks it, it simply was not reached) and the orb helical drift (§3.4.5 —
+touches `level-node-manager.tsl.js`, a system with its own recent history; doing it casually
+alongside a fish wave is how regressions ship). Both are small, both stay on Wave 7's polish
+list.
 
 ### Wave 6 — The crack climax (the last fifth of ch1, into the shipped quench)
 
@@ -640,6 +1299,34 @@ the One World convention — and the plan shipped without it.)
   colour-script tests still green (the pre-seed lives inside the cathedral→crack keyframes,
   not ad-hoc constants).
 
+#### Wave 6 OUTCOME — DONE 2026-08-12 (two of four scope items landed and measured; two deferred, named)
+
+**1. The asymmetric density curve — the One World closure's one open quench note — is in and
+measured.** Approach side now `tri^1.4` against the exit's `tri²`, so density arrives sooner
+where the old curve leaked: at the p=0.062 approach station (phase-locked), mean luma fell
+**61.4 → 24.6** and the bright share (>96) to **0.001** — Act II's submerged blue no longer
+reads through the veil while Earth Core is still on screen, which is precisely "the reveal
+holds back". Exit unchanged by construction: leaving the weather fast into open water is the
+breach's feeling.
+
+**2. The warm→cool pre-seed, through geometry that already exists.** The chapter's god-ray
+cones walk their tint from ember `0xff8a2e` toward a steel-pulled STEAM_COOL as `uSeam`
+engages — zero new draws, zero new materials, and the target colour derives from the quench's
+own constant so the pre-seed and the occluder cannot drift. Code-verified and eased on the
+seam's own clock; **capture-occluded by design** (the walk lives at p ≈ 0.067–0.093, and by
+the first station inside that window the veil is already opaque — the effect exists for the
+moving crossing, which the seam pan shows as a continuous warm→white→cool read).
+
+**3–4. Deferred, named:** the vault-mouth opening (column lean is authored geometry —
+3b-class work) and the First Heart farewell pose (pure animation authoring; Calcifer grammar
+is already proven in the study). Wave 7 polish list.
+
+**Seam montage** (`artifacts/odyssey/wave-v/seam-1-2-high-webgpu/`): the crossing reads
+billow → full white → open water, with the ribbon and orbs riding INSIDE the shell and the
+Wave 5 fish visible through the thinning veil on the exit side — the act handoff as one
+continuous motion. Colour-script tests green (36); console clean but for the pre-existing
+forest-prewarm timeout.
+
 ### Wave 7 — Close the books (both lanes, budget cells, index)
 
 > **/goal hook:** "Act I Wave 7: cooled both-lane splits at both stations; fill or
@@ -651,6 +1338,40 @@ the One World convention — and the plan shipped without it.)
 - **Acceptance:** `perf-budgets.json` cells resolved (baseline or explicit re-budget
   decision recorded); ADR-0017 committed; this document's §0 numbers annotated where
   superseded — the One World plan's closure style, applied from birth.
+
+#### Wave 7 OUTCOME — DONE 2026-08-12. Books closed on what was measured; one flicker keeps two cells null.
+
+**The four station×lane measurements on the finished-so-far build:**
+
+| station | lane | pre-plan | now | status |
+|---|---|---:|---:|---|
+| underwater p=0.16 | A | 0.262 ms | **0.197 ms, drift 0.000** | real baseline |
+| underwater p=0.16 | B | 7.73 ms | **5.96 ms, drift one tick, 45 draws matched** | real baseline → §8 cell |
+| ch1 p=0.051 | A | 2.10 ms | 2.29–2.49 across a **VOIDED** pair | null, with reason |
+| ch1 p=0.051 | B | 57.21 ms | 56.3–59.3 across a **VOIDED** pair | null, with reason |
+
+**The void is a finding, twice over.** Both ch1 pairs failed the content-match guard the same
+way: draw calls flicker **92 ↔ 93** at the pinned station on a time-driven cadence, so a
+content-matched pair cannot exist there until the toggling drawable is found (candidates: the
+lava-fall revealables or another time-gated `visible` write; it survives the pinned seek, so
+it is clock-driven, not travel-driven). ADR-0016 worked exactly as written — two plausible
+numbers were refused, with the reason published in the report.
+
+**And the range that was refused still taught the plan something:** ch1's draws fell
+**131 → 92** (decal merge) while Lane B stayed ~57 ms — **the chapter's iGPU cost is
+fill/ALU-bound, not draw-bound.** Wave 3b's remaining consolidation must shrink emissive
+SURFACE AREA (the same surfaces 3a identified as the mid-band), not just submissions. Recorded
+in the cell notes so 3b aims at the right thing.
+
+**Also closed:** `perf-budgets.json` carries the four `odysseyAct1*` cells (one real baseline,
+three deliberate nulls with reasons); **ADR-0017 filed** (`docs/adr/0017-act-i-stays-a-diorama-
+the-ocean-deepens-in-world.md`) recording the §4 decision with its evidence; the §0.2 evidence
+table stands as the pre-plan record with this table as its successor.
+
+**Carried forward, named:** Wave 3b (the one unchecked wave — sprite migration + world-anchored
+rock shading + the ≤35 gate, now correctly aimed at fill); the ch1 draw-flicker hunt; kelp,
+orb drift, vault-mouth, Heart farewell, pale-grade + crest-rim taste notes (the polish list);
+the birth-station value question (§3a outcome).
 
 ---
 
@@ -724,6 +1445,246 @@ inadmissible report (a baseline with zero samples, no repeat agreement) and was 
 and re-run rather than quoted — the re-run's two baselines agreed byte-for-byte.
 
 ---
+
+## 10. Post-close optimization log (2026-08-12, after all waves checked)
+
+The user asked for the ~41 ms ch1 Lane B frame (sans orbs) to go lower. Discipline
+unchanged: price first, then attack the largest surface; every number a cooled,
+content-matched pair per ADR-0016.
+
+### 10.1 The frame priced by lever differentials (MEASURED)
+
+Three URL levers (`?earthCoreNo{Backdrop,Lake,Haze}=1`) gate `group.add()` in
+`createEarthCoreEnvironment`; each ran as a Lane B pair against the 40.24/41.48 ms
+sans-orbs baseline (reports: `gpu-split-laneb-act1-bisect-*.json`, commit b61baa85):
+
+| Surface removed | p50 pair (ms) | priced cost | drift bound |
+|---|---|---|---|
+| backdrop dome (bg + folded canopy) | 21.82 / 26.08 | **~15-19 ms** | 4.26 |
+| haze sprites | 38.67 / 38.47 | ~1.8-3 ms | 0.20 |
+| lava lake | 40.11 / 41.03 | ~0.5-1 ms | 0.92 |
+
+The dome is ~40 % of the whole frame, and it is ALU: after the 3b canopy fold it
+evaluates 24 analytic noise octaves per pixel, full screen (9 warp + 3 ridged conv +
+9 canopy + 3 glow).
+
+### 10.2 The backdrop bake (the attack)
+
+The chapter already owned the fix: `?earthCoreBakeNoise` (default ON) swaps analytic
+noise for a baked tileable 3D-texture fetch — shipped on `moltenRockField`, in-scene
+A/B'd imperceptible. The dome's `fbm3`/`ridged3` calls bypassed it. Change: the shared
+`fbm3`/`ridged3` take an optional noise source (defaults untouched); the dome passes a
+`[0,1]` RAW-texel sampler — deliberately NOT the rock's `*2-1` remap, because
+`fbm3`/`ridged3` build on `noise3` ([0,1], centred 0.5) and recentring would have
+thinned the canopy density smoothsteps — at coordinate scale 1/grid so baked feature
+frequency matches `noise3`'s ~1/unit lattice (the rock's `invP` scale runs 2/unit,
+which the dome's unit-sphere domain would read as a different pattern).
+
+- Lane B pair (cooled, matched, stable tree, MEASURED 2026-08-12):
+  **27.98 / 29.10 ms p50** vs the 40.24 / 41.48 ms sans-orbs baseline — a saving of
+  **>= 11.1 ms conservative** (best-baseline minus worst-new), drift bound 1.11 ms,
+  content matched at 83 draws / ~40.9k tris both runs, and `drawCallsMin == drawCallsMax
+  == 83` in both windows (the 10.3 flicker fix verified on this lane too).
+  Report: `gpu-split-laneb-act1-ch1-noorbs-bake.json`. Ch1's Lane B journey:
+  57.2 (pre-plan) -> 40.24 (3b canopy fold) -> **27.98 ms**.
+- Cathedral capture `--time 9` + midWash gate (<= 0.25): PENDING-CAPTURE
+
+First re-measure attempt returned an admissibility lesson, recorded in 10.4.
+
+### 10.3 The two-source draw flicker was ONE source, and it is dead (MEASURED)
+
+The 92<->93 (orbs) / 80<->79 (sans orbs) draw flicker that voided matched pairs was
+never two sources, and the earlier attribution "in the level-node group" was an
+offset illusion — with `odysseyCoreInstanced` default ON, every level-node drawable
+is constant-visible and `frustumCulled=false`, so orbs could only ADD a constant.
+
+Found by instrument, not by reading: (a) the GPU profile now records
+`drawCallsMin/Max` since `__ODYSSEY_GPU_RESET__` (one frame's snapshot cannot tell
+per-frame flicker from a one-shot settling event); it classified the flicker
+per-frame — live range [78,79] at the pinned cathedral station, orbs hidden.
+(b) A per-frame frustum-flip logger over all 36 frustum-culled renderables named
+exactly one flipper: a corona `Sprite` under `lava-floor`. The lake's glow sprites
+(ambient + inner + 3 basins) were the chapter's ONLY frustum-culled drawables, and
+the camera's idle breathing walks the frustum edge across whichever sits at the
+view's rim.
+
+Fix: `sprite.frustumCulled = false` on the five coronas (the cavern surrounds the
+camera; culling bought nothing). Verified live: range [83,83] over 10 s — dead
+constant. The +5 draws are frustum-clipped quads (vertex-only, no fill). Downstream:
+ch1's content-match draw number becomes ~83 sans orbs; old 78/79-draw reports remain
+comparable on time but not on draw count.
+
+### 10.5 The cells, after this round (MEASURED)
+
+The flicker fix unblocked the two cells whose notes named it as prerequisite:
+
+- `odysseyAct1Ch1GpuP50LaneAMs` — **FILLED GREEN: baseline 0.85 vs max 1.0** (first
+  admissible pair ever: 0.786/0.852 ms with orbs, drift one timer tick, 92 draws
+  `min==max` both windows; pre-rebuild 2.10 ms/131 draws — Lane A ~2.5x faster).
+  Report: `gpu-split-lanea-act1-ch1-full-postbake.json`.
+- `odysseyAct1Ch1GpuP50LaneBMs` — full-frame (with orbs) pair, MEASURED:
+  **31.06/32.44 ms p50**, drift -1.38, 92 draws `min==max` both windows
+  (`gpu-split-laneb-act1-ch1-full-postbake.json`). Orbs cost ~3 ms on this lane.
+  Against the pre-plan 57.21 ms (with orbs), the real ch1 frame is **45 % faster**.
+  RE-BUDGETED (user-approved): **baseline 32.44 / max 35.0** — a hold-the-line
+  ratchet ~8 % above the worse of the pair, to be TIGHTENED as the carried levers
+  land (haze trim, sprite->instanced migration). The 5.0 aspiration predated any
+  pricing of the lane and is retired.
+- `odysseyAct1Ch1DrawCalls` — 83 sans orbs / 92 with orbs, CONSTANT for the first
+  time; stays null against max 35 until the carried sprite->instanced migration.
+
+### 10.4 Measurement admissibility lesson (instrument scar #4)
+
+The first bake re-measure returned a report with ZERO samples per configuration and
+exit 0. Cause: source files were edited while the harness's own Vite dev server was
+serving the sampling Electron page — HMR reloaded the module graph mid-run and tore
+down the mode (`window.odysseyMode` undefined; reproduced deliberately in Chrome).
+The report was discarded as inadmissible. Rule adopted: **no working-tree edits while
+a measurement harness is running** — the harness serves the live tree, so an edit
+anywhere in the module graph invalidates the run silently.
+
+### 10.6 Post-bake re-pricing, and the sky-last dome (round 2 of "lower")
+
+Re-priced against the 27.98/29.10 sans-orbs baseline
+(`gpu-split-laneb-act1-postbake-*.json`):
+
+- **Dome residual: 7.6-9.3 ms** (19.79/20.38 without it, drift 0.59) — the baked
+  fetches, the colour chain, and full-screen rasterization.
+- **Haze: pair INADMISSIBLE** (27.72 vs 22.28 — the runs disagree by 5.4 ms; thermal
+  ramp after only 60 s of cooling behind the noBackdrop run). Voided, not averaged.
+  The clean pre-bake price (1.8-3 ms, drift 0.20) stands — fill cost is
+  bake-independent.
+
+~~The dome attack with zero look-change risk: `volcano-background` shipped at
+renderOrder -90 — sky-last (renderOrder 50) is pixel-identical and lets early-z
+skip the occluded fragments.~~
+
+> 🔴 **TRIED, MEASURED A FALSE WIN, REVERTED — the capture gate earned its keep.**
+> Sky-last measured beautifully: 22.22/22.61 ms p50, drift -0.39 (after one noisy
+> pair was re-run cooled), 83 draws constant. But the `--time 9` captures came back
+> DARKER (station 3 trueBlack 0.297 -> 0.892), and a live renderOrder toggle showed
+> the vault rendering BLACK at 50: the "pixel-identical" premise required the dome
+> to be in the OPAQUE pass, and it is not — the chapter fade system flips these
+> materials `transparent = true` post-creation, so renderOrder moved the dome
+> within the TRANSPARENT pass, where drawn late it is depth-killed. The 5.4-6.9 ms
+> "saving" was the price of not drawing the dome at all — it matches the
+> `?earthCoreNoBackdrop` differential, which is exactly what it accidentally was.
+> Reverted to -90 with a DO-NOT comment at the site; restoration capture-verified
+> (all four stations back to the 10.2 values within phase noise). The report
+> `gpu-split-laneb-act1-ch1-noorbs-skylast.json` is retained as the record of what
+> a depth-killed dome costs, i.e. a second, independent confirmation of the dome's
+> residual price. FUTURE LEVER, properly scoped: make the dome genuinely opaque
+> outside fade windows (drive `transparent` from the fade state), THEN sky-last
+> becomes available — expected ~5-7 ms, gated on transition captures.
+
+- Lane B pair: **struck** — measured a scene that was not the scene.
+
+## 11. Pillar defects - three user reports, three root causes (2026-08-12)
+
+User report, verbatim: *"looks quite dark on the sides of the pillars now and around in the
+environment? And can we align the pillars perfectly in the scene? And they do not feel solid,
+like the bottom is not attached to the pillar and the pillars are not full circle attached
+around, you can see inside them at some angles."*
+
+Diagnosed by three parallel investigations plus adversarial verification (the solidity
+diagnosis survived a refutation pass unrefuted). Every root cause below is MEASURED.
+
+### 11.1 "Not solid / see inside / bottom not attached" - an open hull (PROVEN)
+
+`createObsidianColumnTSL` roughened its cylinder with an INDEPENDENT `Math.random()` per
+vertex. CylinderGeometry duplicates coincident vertices in two places - the radial UV seam,
+and both cap rims (the cap fan's rim vertices are separate from the side-wall ring at the
+same positions). Independent jitter pulls each copy to a different radius.
+
+Measured on the shipped geometry (live, in-game): 188 vertices for 110 unique positions;
+**42 duplicate groups covering 120 of 188 vertices (64%), 40 of them torn open**; worst
+radial split **0.78 units = 11.5% of the radius**, matching the +-6% jitter band's 12% worst
+case. An independent build script counted **86 boundary edges on a hull that should have
+none** (open perimeter 290.9). Because the material is FrontSide, back faces are culled, so
+each tear showed the BACKGROUND through the pillar - exactly "you can see inside them" - and
+the unwelded bottom cap is "the bottom is not attached".
+
+**The same bug, worse, in `createMoltenPocketTSL`**: IcosahedronGeometry is NON-INDEXED, so
+all 540 vertices are duplicates of 92 unique positions - 100% torn. The molten shelves were
+180 disconnected triangles, not ledges.
+
+Fix: `weldedJitter()` - one deterministic jitter per UNIQUE quantised position, applied to
+every copy. Same +-6% silhouette irregularity, closed shell, and seeded so captures are
+reproducible (the old `Math.random()` denied every A/B this chapter ever ran).
+**Verified in-game: worst seam gap 0.000000 across all 9 columns / 360 coincident classes.**
+
+An angle-bucket key was tried first and is WRONG: three.js lays these rings out as sin/cos of
+theta, so every vertex angle sits exactly on a half-segment boundary and float noise
+(sin(2*PI) = -2.4e-16, not 0) tips `Math.round` the other way. It closed gaps from 0.78 to
+0.33 - not to zero. The position is the reliable identity.
+
+`weldCoincidentNormals()` then averages normals across welded positions behind a 60-degree
+smoothing guard, so the seam has no lighting crease while the cap/wall rim stays a hard edge.
+**Verified: smooth-pair divergence 0.000000, 342 hard-edge pairs preserved.** The first
+implementation averaged IN PLACE and so never converged (0.29 residual, ~44 degrees); the fix
+is two-pass.
+
+### 11.2 "Align the pillars perfectly" - a degenerate staging frame (PROVEN)
+
+Not the placement literals: `createEarthCoreStaging.frame()` derived its horizontal basis
+from the path tangent, and chapter 1 is a VERTICAL SHAFT. Measured |tangent.xz| = 0.24 at
+ft 0.15, 0.016 at ft 0.20, and 0.000-0.044 for ft >= 0.30 - and the `1e-4` guard only catches
+full degeneracy, so **station ft=0.14 got a "valid" heading 78 degrees off every later
+station**. Its bracketing pair straddled the rail along Z (z = -16 vs +30) while the other
+three straddled along X. The lateral drift also fanned the aisle 46 -> 69 units (+48%).
+
+Fix: a vertical shaft has no meaningful path-relative horizontal frame, so the frame is now
+the CONSTANT camera basis - screen-right (-0.736, 0, 0.677) in world XZ, steady within
++-2.5 degrees across the chapter. `lateral` now means screen-right and `forward` screen-up
+for EVERY set piece (columns, colonnade walls, ceiling slabs, seats, geode clusters), so the
+whole room stays mutually aligned; rotating only the columns would have put the aisle 43
+degrees off its own back wall. Aisle half-width is constant (30) with a shared forward nudge,
+so left and right are exact mirrors. Heights, radii and both giants are unchanged.
+**Verified: the cathedral station now reads as a symmetric colonnade to the vanishing point.**
+
+### 11.3 "Dark on the sides and around" - a value floor of literal zero
+
+Wave 3a emptied the luma 32-96 band to kill a red mid-wash, and overshot: a pillar face
+turned away from the lake fell to pure black, and the lake's own crust colour was `0x050206`
+multiplied by a temperature ramp reaching zero - so the floor the pillars stand on was
+literally void, which is the other half of why they read as unattached.
+
+Fixes, all structure rather than brightness (the plan's own device):
+
+- a two-tone HEMISPHERE ambient fill on the rock (warm magma bounce from below, cool charred
+  vault from above) so side faces gain FORM as they turn, never a flat lift;
+- crust `0x050206` -> `0x1a0b06` (dark warm rock, still the darkest value on the lake ladder)
+  plus a 0.34 floor under the cool ramp, so the lake reads as a surface at its cold end;
+- **a real space bug fixed**: the material reads `positionWorld` but compared against
+  `LAVA_LAKE_Y`, a chapter-LOCAL constant (-10), while the group sits at world y -30. The
+  "lava licks the base" gradient was landing 30 units UP the shaft as a flat wash across the
+  whole lower third. Callers now pass the world lake height as `uLakeY`; the gradient is
+  tightened to 9 units and strengthened, so it reads as contact.
+
+### 11.4 Capture results, and what is NOT fixed
+
+`--time 9`, four stations, before -> after:
+
+| station | midWash | trueBlack | meanLuma |
+|---|---|---|---|
+| 1 (p 0.000) | 0.452 -> **0.179** | 0.461 -> 0.146 | 37.3 -> 108.7 |
+| 2 (cathedral, p 0.031) | 0.139 -> **0.173** | 0.859 -> 0.825 | 20.2 -> 21.7 |
+| 3 (p 0.062) | 0.281 -> 0.298 | 0.290 -> 0.280 | 82.5 -> 82.0 |
+| 4 (quench peak) | 0.001 -> 0.001 | 0.005 -> 0.005 | 209.5 unchanged |
+
+Cathedral mid-wash **0.173, inside the <= 0.25 gate**. Station 1 got much brighter, and an
+attribution run proves why: with the lake lift temporarily reverted the numbers were
+identical (meanLuma 109.8 both ways), so it is not the re-lighting - the re-aligned columns
+no longer block that frame, exposing the open lake.
+
+**Open, recorded honestly:**
+
+- **Station 1 now reads as a flat orange lava wash.** Brighter is what the user asked for,
+  but a featureless orange sheet is not a composition; it needs an art pass (a column or
+  ledge back at that frame edge, or lake structure at grazing angles).
+- **Station 3's cream-white vault is PRE-EXISTING** (meanLuma 82.5 before these fixes, 82.0
+  after) and looks wrong for a magma cavern. Outside this report; not touched.
+- The rock still reads as high-frequency crackle at close range rather than as stone.
 
 ## Sources
 

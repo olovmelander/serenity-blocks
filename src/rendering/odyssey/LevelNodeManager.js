@@ -671,6 +671,12 @@ export class LevelNodeManager {
             // Inner sphere acts as the solid core, hiding the path line that passes through
             innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
             innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
+            // Same convention as innerCoreMesh/lock/star (see _createSharedIndicators): this
+            // mesh rides a group whose position BOBS every frame, so default frustum culling
+            // flips its draw on/off at the frustum edge — the 92<->93 draw flicker that voids
+            // the gpu-split harness's content-matched pairs. The orbs hug the camera path, so
+            // culling them bought nothing.
+            innerMesh.frustumCulled = false;
             // Suspend a smaller themed core inside the clear glass shell (snow-globe read).
             innerMesh.scale.setScalar(INNER_CORE_DISPLAY_SCALE);
             group.add(innerMesh);

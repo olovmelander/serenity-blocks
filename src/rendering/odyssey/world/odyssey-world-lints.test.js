@@ -143,6 +143,24 @@ describe('every world material opts out of scene fog', () => {
     // looking exactly like a palette bug. The world's materials carry their own aerial
     // perspective (applyAerial), so every one of them MUST set fog = false. This pins the
     // opt-out list to the constructor list, so a sixth material cannot ship half-fogged.
+    // ⚠️ SOURCE-LEVEL, and the reason is an instrument limit worth knowing: capturing the same
+    // station twice in the SAME build at the SAME --time still differs in ~23 % of ground-band
+    // pixels (measured 2026-08-14; camera position and direction are identical, fov differs by
+    // 0.007 %). So an image A/B ACROSS RUNS has a ~23 % noise floor and cannot verify motion of
+    // a few tens of world units — three attempts to prove the cloud drift that way measured
+    // nothing but that floor. Until the harness can capture two times in ONE session, the
+    // wiring is asserted here and the amplitude is asserted by the arithmetic in the constants.
+    it('the cloud field actually applies its drift to the vertex position', () => {
+        const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
+        expect(source).toMatch(/fieldMat\.positionNode\s*=\s*positionLocal\.add\(cfOffset\)/);
+        // ...and that the colour graph reads the DRIFTED position, not the original one. A
+        // positionNode moves the vertex while `positionWorld` still resolves to where it used
+        // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
+        // place — silently, and only visibly once the drift amplitude grew.
+        expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
+        expect(source).toMatch(/heroAerial\(fieldCol, cfWorld\)/);
+    });
+
     it('the fog opt-out list names every material the renderer constructs', () => {
         const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
         const constructed = [...source.matchAll(/const\s+(\w+)\s*=\s*new\s+THREE\.\w*NodeMaterial\(/g)]

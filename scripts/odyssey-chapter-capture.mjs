@@ -44,6 +44,24 @@ const HEIGHT = Math.max(240, Number.parseInt(args.height || process.env.ODYSSEY_
 const SHOW_WINDOW = args.show || process.env.ODYSSEY_CAPTURE_SHOW === '1';
 const KEEP_EXISTING = args.keep || process.env.ODYSSEY_CAPTURE_KEEP === '1';
 const FORCE_WEBGL = args.forceWebgl || args['force-webgl'] || process.env.ODYSSEY_CAPTURE_FORCE_WEBGL === '1';
+// PHASE LOCK. Without it this harness is not comparable run to run: every animated uniform
+// rides `boardController.time`, which advances with wall clock, so the same station sampled
+// twice shows a different frame of lava, ember and haze animation. Measured 2026-08-12 with
+// functionally identical code, the value-structure metric moved 0.233 -> 0.793 at one station
+// between runs — larger than any art change being evaluated. `--time 9` freezes the clock the
+// way the playground's `?t=` does, which is what makes an A/B mean anything.
+const FIXED_TIME = Number.isFinite(Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME))
+    ? Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME)
+    : null;
+/**
+ * Extra frozen clocks to re-shoot each station at, camera untouched — `--times 9,40,90`.
+ * Their purpose is motion evidence, so they are deliberately NOT a substitute for `--time`:
+ * the station's own frame still uses that, and these are additional.
+ */
+const EXTRA_TIMES = String(args.times || '')
+    .split(',')
+    .map((token) => Number.parseFloat(token))
+    .filter((value) => Number.isFinite(value));
 const SEAM = parseSeam(args.seam || process.env.ODYSSEY_CAPTURE_SEAM || '');
 const CHAPTER = SEAM ? null : parseChapter(args.chapter || args.ch || process.env.ODYSSEY_CAPTURE_CHAPTER || '');
 const MODE = SEAM ? 'seam' : 'chapter';
@@ -184,14 +202,36 @@ function startDevServer() {
     return proc;
 }
 
+/**
+ * Kill a spawned dev server AND ITS CHILDREN.
+ *
+ * On Windows the server is `cmd.exe /d /s /c npm.cmd run dev ...`, so `proc.kill()` reaps
+ * the cmd wrapper and leaves node/Vite holding the port. The next `--strictPort` run then
+ * dies with "dev server did not start in 90s", which reads as a harness bug rather than as
+ * the leak it is; the 2026-08-12 Act I measurement session lost three runs to exactly this
+ * before the orphans were swept by hand. `taskkill /T` walks the tree.
+ */
+function killProcessTree(proc) {
+    if (!proc || proc.killed || !proc.pid) return;
+    if (process.platform === 'win32') {
+        try {
+            spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+        } catch {
+            proc.kill('SIGKILL');
+        }
+        return;
+    }
+    proc.kill('SIGTERM');
+}
+
 async function stopDevServer() {
     if (!devServerProcess) return;
     const proc = devServerProcess;
     devServerProcess = null;
     if (!proc.killed) {
-        proc.kill('SIGTERM');
+        killProcessTree(proc);
         await delay(800);
-        if (!proc.killed) proc.kill('SIGKILL');
+        if (!proc.killed && process.platform !== 'win32') proc.kill('SIGKILL');
     }
 }
 
@@ -265,6 +305,43 @@ const HIDE_OVERLAYS = `
             if (computed.position !== 'fixed') return;
             const rect = element.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return;
+            hideElement(element);
+        });
+        // SELECTOR LISTS GO STALE; GEOMETRY DOES NOT. The named list above missed whatever
+        // shows the mode cards at journey position 0, so EVERY run's first station captured
+        // the main menu over the board — and its value metrics were mostly UI, which silently
+        // polluted six phase-locked A/Bs before anyone looked at the image. Sweep by geometry
+        // instead: anything positioned, outside the board container, that covers a meaningful
+        // slice of the viewport is chrome by definition in a capture.
+        // THE DECISIVE SWEEP: hide every top-level subtree that does NOT contain the board.
+        // Selector lists and position-based heuristics both missed the mode-card menu (it is
+        // laid out in normal flow inside a full-page wrapper), so six A/B runs measured UI.
+        // Containment is the only property that cannot go stale: exactly one subtree holds the
+        // canvas we came to photograph; everything else is chrome.
+        const boardEl = document.querySelector('#odyssey-board-3d')
+            || document.querySelector('canvas#odyssey-board-canvas')
+            || document.querySelector('#odyssey-board-3d canvas');
+        if (boardEl) {
+            Array.from(document.body.children).forEach((child) => {
+                if (child.contains(boardEl)) return;
+                if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') return;
+                hideElement(child);
+            });
+        }
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        document.querySelectorAll('body *').forEach((element) => {
+            if (element.closest('#odyssey-board-3d')) return;
+            if (element.tagName === 'CANVAS') return;
+            const computed = window.getComputedStyle(element);
+            if (computed.position !== 'fixed' && computed.position !== 'absolute') return;
+            if (computed.display === 'none' || computed.visibility === 'hidden') return;
+            const rect = element.getBoundingClientRect();
+            if (rect.width < 40 || rect.height < 40) return;
+            const covered = (Math.min(rect.right, vw) - Math.max(rect.left, 0))
+                * (Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
+            if (covered <= 0) return;
+            if (covered / (vw * vh) < 0.01) return;
             hideElement(element);
         });
         document.body.classList.remove('startup-shell-active', 'start-modal-open', 'serenity-hub-open');
@@ -363,7 +440,15 @@ async function settleAtPosition(win, position, options = {}) {
             bc.environmentManager?.update(1 / 60, bc.camera, pos, directorState);
             bc.pathRenderer?.update?.(1 / 60, directorState);
             bc.thresholdDirector?.update?.(1 / 60, bc.camera, directorState);
-            bc.renderOnce?.(1 / 60);
+            // Freeze the animation clock BEFORE the render so every uniform driven off
+            // bc.time resolves to the same phase on every run; delta 0 keeps it frozen.
+            const fixedTime = ${FIXED_TIME === null ? 'null' : FIXED_TIME};
+            if (fixedTime !== null) {
+                bc.time = fixedTime;
+                bc.renderOnce?.(0);
+            } else {
+                bc.renderOnce?.(1 / 60);
+            }
             return true;
         })();
     `);
@@ -372,7 +457,94 @@ async function settleAtPosition(win, position, options = {}) {
     await execute(win, HIDE_OVERLAYS);
 }
 
+/**
+ * Advance ONLY the animation clock and re-render, leaving the camera untouched.
+ *
+ * THE INSTRUMENT MOTION VERIFICATION NEEDED, and the reason it did not exist is worth
+ * recording. Comparing two captures from two RUNS cannot show motion of a few tens of world
+ * units: measured 2026-08-14, the same station in the same build at the same `--time` differs
+ * in 23.6 % of ground-band pixels. Nor can `--time` be varied across runs, because it also
+ * feeds the director's focal pulse — so the camera moves too, and an "obvious" cloud drift
+ * turned out to be camera breathing.
+ *
+ * Re-rendering inside ONE session removes the cross-run noise floor — same window, same
+ * pipeline state — and `settleAtPosition` is deliberately NOT re-run.
+ *
+ * ⚠️ IT DOES NOT PIN THE CAMERA, despite the stubs below trying to. `renderFrame` re-poses the
+ * camera from the director and the director's focal pulse reads `bc.time`, so advancing the
+ * clock moves the view as well as the content. MEASURED: with every cloud animation set to
+ * zero, silhouette area still varied 21.55 % across three clocks. So this probe CANNOT be
+ * used to prove that something moved by comparing one clock against another.
+ *
+ * What it CAN do, and what it was worth building for, is a PAIRED comparison: shoot the same
+ * clocks twice with a feature on and off. The camera behaves identically in both arms, so the
+ * difference between the arms is the feature. That is how the cloud drift was evidenced
+ * (sky changed +12 points with clouds present; the bare-rock control was identical).
+ */
+async function renderAtTime(win, time) {
+    await execute(win, `
+        (() => {
+            const bc = window.odysseyMode?.boardController;
+            if (!bc) return false;
+            // ⚠️ THE CAMERA MUST BE PINNED, or this probe measures the camera.
+            // renderFrame() calls cameraController.update() and re-applies the director state,
+            // and the director's focal pulse is a function of bc.time — so simply advancing
+            // the clock and re-rendering moves the FOV. Measured before pinning: a "static"
+            // bare-rock control changed 9-30 % of its pixels between two clocks, which is the
+            // camera, not the rock. Neutralising both entry points for the duration of the
+            // render leaves the clock as the only thing that changed.
+            const cc = bc.cameraController;
+            const savedUpdate = cc && cc.update;
+            const savedSetDirector = cc && cc.setDirectorState;
+            if (cc) { cc.update = () => {}; cc.setDirectorState = () => {}; }
+            try {
+                bc.time = ${time};
+                // ADVANCE THE WORLD EXPLICITLY. renderFrame only calls oneWorld.update()
+                // inside its runPositionWork block, which is THROTTLED once the camera is
+                // settled -- so setting bc.time and re-rendering can leave the world's own
+                // uTime uniform exactly where it was, with every time-driven cloud term
+                // frozen. Not subtle: a probe with the drift amplitude cranked to 3000 world
+                // units produced almost no movement, which reads as "the feature is broken"
+                // when it is really "the clock never reached it". Re-driving with the SAME
+                // rail point and progress changes nothing except the clock.
+                // (No backticks in this comment: the whole block is injected through a
+                // template literal and a backtick here terminates it.)
+                const st = bc.oneWorld && bc.oneWorld.state;
+                if (bc.oneWorld && st && st.lodCenter) {
+                    bc.oneWorld.update(
+                        bc.time,
+                        { x: st.lodCenter.x, y: 0, z: st.lodCenter.z },
+                        st.actT,
+                        bc.camera && bc.camera.position ? bc.camera.position.y : null,
+                    );
+                }
+                bc.renderOnce?.(0);
+            } finally {
+                if (cc) { cc.update = savedUpdate; cc.setDirectorState = savedSetDirector; }
+            }
+            return true;
+        })();
+    `);
+    await execute(win, `new Promise((r) => requestAnimationFrame(
+        () => requestAnimationFrame(() => setTimeout(r, 90)),
+    ))`).catch(() => {});
+    return true;
+}
+
 async function capturePng(win, filename, metrics = {}) {
+    // HIDE IMMEDIATELY BEFORE THE SHUTTER. Sweeping during `settleAtPosition` is not enough:
+    // `#start-modal` re-shows itself asynchronously while the mode finishes activating, which
+    // is after the settle sweep and before the first frame is photographed. That is why
+    // station 1 — and ONLY station 1 — carried the main menu in every run, quietly turning its
+    // value metrics into a measurement of UI.
+    await execute(win, HIDE_OVERLAYS).catch(() => {});
+    // AND GIVE THE COMPOSITOR TIME TO ACT ON IT. `capturePage()` returns the last composited
+    // frame, so a DOM change made microseconds earlier is not in it — which is why hiding the
+    // modal at the shutter still photographed the modal. Two rAFs plus a short settle is the
+    // difference between changing the page and photographing the changed page.
+    await execute(win, `new Promise((r) => requestAnimationFrame(
+        () => requestAnimationFrame(() => setTimeout(r, 120)),
+    ))`).catch(() => {});
     const image = await win.webContents.capturePage();
     await writeFile(path.join(ARTIFACT_DIR, filename), image.toPNG());
     await writeFile(
@@ -408,6 +580,70 @@ async function collectMetrics(win, extra = {}) {
                 seamProgress: director?.seamProgress ?? null,
                 loadedChapters: [...(bc?.environmentManager?.environments?.keys?.() || [])].sort((a, b) => a - b),
                 debugOverlayPresent: !!document.getElementById('odyssey-aaa-debug-overlay'),
+                // WHAT IS ACTUALLY ON SCREEN. A capture that shows an unexpected surface
+                // used to leave only speculation about which object drew it — the Act I
+                // plan's Phase 0 logged a "cloud deck renders underwater" defect that was
+                // really the steam quench doing its job. These three blocks make the frame
+                // self-describing: what the world believes, which act-edge volume is live,
+                // and the visible-mesh roster (traverseVisible already honours the whole
+                // parent chain, so this is the drawn set, not the authored set).
+                world: {
+                    present: !!bc?.oneWorld,
+                    groupVisible: bc?.oneWorld?.group?.visible ?? null,
+                    submerged: bc?.oneWorld?.state?.submerged ?? null,
+                    scriptName: bc?.oneWorld?.state?.scriptName ?? null,
+                    actT: bc?.oneWorld?.state?.actT ?? null,
+                    // The clipmap's rings are square and centred HERE, not on the eye. Without
+                    // both of these a straight line in a capture cannot be tested against a
+                    // ring boundary, which is the one question the deck's remaining defect
+                    // class keeps asking.
+                    lodCenter: bc?.oneWorld?.state?.lodCenter
+                        ? { ...bc.oneWorld.state.lodCenter }
+                        : null,
+                },
+                // WHERE THE FRAME WAS SHOT FROM. Every geometric read of a capture — "is that
+                // line the deck's rim or a ring edge", "is the eye inside the billow band" —
+                // needs the eye and the look direction, and both were being re-derived by hand
+                // from the plan's notes one station at a time.
+                camera: (() => {
+                    const cam = bc?.camera;
+                    if (!cam) return null;
+                    const dir = new (cam.position.constructor)();
+                    cam.getWorldDirection(dir);
+                    return {
+                        x: +cam.position.x.toFixed(2),
+                        y: +cam.position.y.toFixed(2),
+                        z: +cam.position.z.toFixed(2),
+                        dirX: +dir.x.toFixed(4),
+                        dirY: +dir.y.toFixed(4),
+                        dirZ: +dir.z.toFixed(4),
+                        fov: cam.fov ?? null,
+                    };
+                })(),
+                occluders: {
+                    steamQuenchVisible: bc?.steamQuench?.mesh?.visible ?? null,
+                    cloudBankVisible: bc?.cloudBank?.mesh?.visible ?? null,
+                },
+                visibleMeshes: (() => {
+                    const names = [];
+                    bc?.scene?.traverseVisible?.((o) => {
+                        if (!(o.isMesh || o.isInstancedMesh || o.isSprite)) return;
+                        // UNNAMED MESHES ARE NOT INVISIBLE, they are just invisible to THIS.
+                        // The ch6 void-sky backstop paints the entire frame during the 5->6
+                        // summit ignite and never appeared in this roster, so a capture that
+                        // asked "what is drawing my sky" got an answer with the culprit
+                        // missing. Fall back to a geometry+material description so an unnamed
+                        // mesh is still accounted for rather than silently dropped.
+                        // NOTE the concatenation: this whole block is injected through a
+                        // template literal, so a nested backtick template here terminates the
+                        // OUTER one and the page silently receives a syntax error.
+                        names.push(o.name || ('<unnamed ' + (o.geometry?.type || '?') + ' '
+                            + (o.material?.type || '?') + '>'));
+                    });
+                    const counts = {};
+                    names.forEach((n) => { counts[n] = (counts[n] || 0) + 1; });
+                    return counts;
+                })(),
                 render: {
                     drawCalls: info.render?.drawCalls ?? null,
                     calls: info.render?.calls ?? null,
@@ -434,7 +670,17 @@ function resolveChapterRange(chapterPositions, chapterId) {
 
 async function captureChapter(win, boot) {
     const range = resolveChapterRange(boot.chapterPositions, CHAPTER);
-    const samples = Array.from({ length: FRAME_COUNT }, (_, index) => (
+    // NAMED STATIONS BEAT AN EVEN SPREAD when you are bisecting rather than surveying. The
+    // even spread is what a review sheet wants; a bisect wants THE SAME p as the run it is
+    // being compared against, and reaching one specific p through `--frames` alone meant
+    // choosing a frame count whose spread happened to land on it. `--locals 0.44,0.55` takes
+    // local progresses directly, and `--burst 0` drops the three motion frames, which halves
+    // the shots per run — the TDR law's whole concern.
+    const requested = String(args.locals || '')
+        .split(',')
+        .map((token) => Number.parseFloat(token))
+        .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1);
+    const samples = requested.length ? requested : Array.from({ length: FRAME_COUNT }, (_, index) => (
         FRAME_COUNT === 1 ? 0 : index / (FRAME_COUNT - 1)
     ));
 
@@ -457,8 +703,18 @@ async function captureChapter(win, boot) {
             `local-${String(Math.round(localProgress * 1000)).padStart(4, '0')}.png`,
         ].join('-');
         await capturePng(win, filename, metrics);
+
+        // `--times 9,40,90` shoots the SAME station at several frozen clocks without touching
+        // the camera — the only way this harness can evidence motion (see renderAtTime).
+        for (let t = 0; t < EXTRA_TIMES.length; t += 1) {
+            await renderAtTime(win, EXTRA_TIMES[t]);
+            await capturePng(win, filename.replace(/\.png$/, `-t${EXTRA_TIMES[t]}.png`), {
+                ...metrics, motionProbeTime: EXTRA_TIMES[t],
+            });
+        }
     }
 
+    if (String(args.burst ?? '1') === '0') return;
     const burstLocalProgress = Number.isFinite(Number.parseFloat(args.burstLocal))
         ? Number.parseFloat(args.burstLocal)
         : 0.6;
@@ -553,33 +809,61 @@ async function captureSeam(win, boot) {
         800,
         Number.parseInt(args.duration || process.env.ODYSSEY_CAPTURE_SEAM_DURATION || '3000', 10),
     );
-    const defaultOffsets = '0,300,600,850,1200,1800,2600,3200';
-    const offsets = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || defaultOffsets)
+    // ── SEAM SAMPLING IS BY POSITION, NOT BY WALL CLOCK ──────────────────────────
+    //
+    // THE OLD SCHEME NEVER SAMPLED THE SEAM (measured 2026-08-13, and it invalidates
+    // every prior seam assessment). It started a `panToPosition(end, 3000)` and then
+    // shuttered at wall-clock offsets 0,300,600,…  But one shutter — HIDE_OVERLAYS +
+    // collectMetrics + capturePage over IPC — costs far more than the ~300 ms between
+    // those offsets, so the schedule slipped past the whole 3 s pan: the recorded
+    // `currentPosition` went 0.05301 at the first shutter and **0.13249 at the second**,
+    // i.e. the camera had already teleported past the p=0.093 boundary, and every later
+    // frame re-shot the far side. `inSeam` was false in all eight samples. The pan logic
+    // itself is fine — it animates correctly in a live browser; it is the *shutter
+    // schedule* that cannot keep a deadline.
+    //
+    // So the seam is now sampled the way chapter stations already are, and those work:
+    // pin an explicit position, settle it, shoot it. Deterministic, reproducible, and
+    // independent of how slow a capture round-trip happens to be. Offsets are expressed
+    // as PROGRESS values; `--offsets` still overrides them, now in p.
+    const defaultStations = [
+        boundary - 0.030, // the act gate opens here today (margin 0.03) — the leak point
+        boundary - 0.020,
+        boundary - 0.010,
+        boundary - 0.006, // quench plateau opens (~p 0.0874 for the 1→2 seam)
+        boundary,
+        boundary + 0.004, // quench plateau closes (~p 0.0970)
+        boundary + 0.010,
+        boundary + 0.020,
+        boundary + 0.030, // Earth Core's dissolve is still running out here
+    ];
+    const stations = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || '')
         .split(',')
-        .map((entry) => Number.parseInt(entry.trim(), 10))
-        .filter((entry) => Number.isFinite(entry) && entry >= 0)
+        .map((entry) => Number.parseFloat(entry.trim()))
+        .filter((entry) => Number.isFinite(entry) && entry >= 0 && entry <= 1);
+    const seamStations = (stations.length ? stations : defaultStations)
+        .map((entry) => Math.min(1, Math.max(0, entry)))
         .sort((left, right) => left - right);
 
-    await startFrameSamplerAndPan(win, start, end, durationMs);
-    const startedAt = Date.now();
-    for (const offset of offsets) {
-        const waitMs = Math.max(0, startedAt + offset - Date.now());
-        if (waitMs > 0) await delay(waitMs);
-        await execute(win, HIDE_OVERLAYS);
+    for (const stationPosition of seamStations) {
+        await settleAtPosition(win, stationPosition, { settleMs: 260 });
         const metrics = await collectMetrics(win, {
             mode: 'seam',
             seam: `${SEAM.source}-${SEAM.target}`,
-            atMs: offset,
+            stationPosition,
             boundaryPosition: boundary,
             startPosition: start,
             endPosition: end,
-            durationMs,
         });
-        const filename = `seam-${SEAM.source}-${SEAM.target}-${String(offset).padStart(4, '0')}ms.png`;
+        const tag = stationPosition.toFixed(4).replace('.', 'p');
+        const filename = `seam-${SEAM.source}-${SEAM.target}-${tag}.png`;
         await capturePng(win, filename, metrics);
     }
 
-    await delay(Math.max(0, durationMs + 300 - (Date.now() - startedAt)));
+    // The frame-time sample still wants a real moving camera, so it keeps the pan — but
+    // it runs AFTER the stills, on its own, where a slipped schedule costs nothing.
+    await startFrameSamplerAndPan(win, start, end, durationMs);
+    await delay(durationMs + 300);
     const seamMetrics = await stopFrameSampler(win);
     await writeFile(
         path.join(ARTIFACT_DIR, `seam-${SEAM.source}-${SEAM.target}-frame-metrics.json`),
@@ -633,6 +917,7 @@ async function run() {
             seam: SEAM ? `${SEAM.source}-${SEAM.target}` : null,
             targetChapters: TARGET_CHAPTERS,
             quality: QUALITY,
+            fixedTime: FIXED_TIME,
             backend: BACKEND_LABEL,
             frameCount: FRAME_COUNT,
             viewport: { width: WIDTH, height: HEIGHT },

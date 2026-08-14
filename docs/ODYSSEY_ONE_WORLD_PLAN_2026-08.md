@@ -528,6 +528,26 @@ it is a WGSL validation error, i.e. a black chapter, not a warning.
 > camera's far plane once reach is large, and the sky renders **black**. Size the dome
 > independently and widen the far plane deliberately.
 
+> **SECOND CONSEQUENCE — THE INFINITE PENINSULA (found by the owner 2026-08-14, fixed same
+> day).** A 26 km lattice shows whatever the height field does at 26 km, and the height field
+> had no north coast: `shelfT`/`inlandT` saturate past z=-900 and never come back down, so the
+> land ran at a constant 97.7 u above sea level to the horizon. The macro bake (±4500,
+> ClampToEdge) then extruded the land crossing its northern boundary — 7.5% of the boundary
+> was dry — out to the lattice reach. From the layout editor the "island" was a peninsula
+> stretching forever behind the peaks.
+>
+> Fixed in `odyssey-world-height.js`: a NORTH_SHORE taper (z=-2600 → -3400) releases the
+> shelf+inland rise back to the abyss, mirroring what `lateral` already does in x. The window
+> is pinned by three constraints (rail max north z=-743.5; last massif halo dies z≈-2483;
+> must complete inside the ±4500 plate so the edge clamp extrudes OCEAN — the clamp becomes
+> the ally). Interior heights are bit-identical (northT is exactly 1 south of -2600); crowns,
+> rail clearance and seating untouched. Guarded by four tests in `odyssey-world-height.test.js`
+> ("the landmass is an island"), negative-checked by reverting the one-line taper. Verified
+> in-game via the free camera at the owner's framing: open ocean with swell to the horizon
+> behind the peak, sandy north shore, ~530 u treeless coastal heath band between the tree
+> disc's edge (z≈-2370) and the waterline (z≈-2900) — accepted as natural; widening the tree
+> scatter to the shore was declined for Lane B triangle-budget reasons.
+
 <details><summary>Original reasoning (superseded)</summary>
 
 #### The far range: pre-baked LUTs, not a per-frame raymarch

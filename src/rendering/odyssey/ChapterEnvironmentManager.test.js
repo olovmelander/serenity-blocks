@@ -6,6 +6,7 @@ import {
     vi,
 } from 'vitest';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
+import { deriveOdysseyChapterPositions } from '../../core/odyssey/data/odyssey-layout.js';
 
 describe('ChapterEnvironmentManager atmosphere seams', () => {
     const chapterPositions = [0, 0.13, 0.21, 0.36, 0.5, 0.65, 0.81, 0.94, 1];
@@ -62,8 +63,14 @@ describe('ChapterEnvironmentManager atmosphere seams', () => {
 });
 
 describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
-    // Live layout: ch5 0.556 -> ch6 0.648 -> ch7 0.815.
-    const chapterPositions = [0, 0.093, 0.204, 0.389, 0.556, 0.648, 0.815, 0.944, 1];
+    // THE LIVE LAYOUT IS DERIVED, NOT A LITERAL (corrected 2026-08-13). This array was a
+    // hand-copied PRE-Phase-2 constant claiming ch4 starts at 0.389 and ch5 at 0.556; the
+    // shipped boot derives 0.352 and 0.500, because LEVEL_PHASE2_OVERRIDES re-chapters five
+    // levels (20/21 into ch4, 28/29/30 into ch5) after the base literals are written, moving
+    // each chapter's opening level. The stale copy contradicted the game's own capture
+    // manifests and cost a plan a day of ambiguity, so the test now imports the derivation
+    // instead of restating it — a literal here can only ever drift again.
+    const chapterPositions = deriveOdysseyChapterPositions();
     const makeManager = () => new ChapterEnvironmentManager(
         new THREE.Scene(),
         { setClearColor: vi.fn() },
@@ -74,8 +81,12 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
         const manager = makeManager();
 
         // Early Ch5: nothing yet — Space must not be present while the player is still
-        // climbing toward the summit.
-        expect(manager._earthIgniteBoost(0.58)).toBe(0);
+        // climbing toward the summit. Sample moved 0.58 -> 0.52 with the layout correction
+        // above: under the stale array (ch5 starting 0.556) 0.58 was 16% into the chapter and
+        // genuinely "early"; under the derived one (ch5 = 0.500-0.648) it is 54% in and clears
+        // the 0.5814 ignite start by 0.0014 — the assertion would have passed while no longer
+        // testing what it says. 0.52 is 14% in, which is what "early Ch5" means here.
+        expect(manager._earthIgniteBoost(0.52)).toBe(0);
         // Rising as the camera crests...
         expect(manager._earthIgniteBoost(0.612)).toBeGreaterThan(0);
         // ...and SATURATED well before the boundary, so it does not compound with the

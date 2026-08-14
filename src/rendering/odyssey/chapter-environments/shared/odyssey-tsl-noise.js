@@ -103,12 +103,12 @@ export function fbm2(pInput, octaves = 5) {
 }
 
 /** Fractal Brownian motion over 3D value noise (lacunarity 2.03, like GLSL fbm3). */
-export function fbm3(pInput, octaves = 5) {
+export function fbm3(pInput, octaves = 5, n = noise3) {
     let value = float(0.0);
     let amplitude = float(0.5);
     let coord = vec3(pInput);
     for (let i = 0; i < octaves; i += 1) {
-        value = value.add(noise3(coord).mul(amplitude));
+        value = value.add(n(coord).mul(amplitude));
         coord = coord.mul(2.03);
         amplitude = amplitude.mul(0.5);
     }
@@ -116,13 +116,13 @@ export function fbm3(pInput, octaves = 5) {
 }
 
 /** Ridged multifractal — sharp filaments/crests (lacunarity 2.05, like GLSL ridged3). */
-export function ridged3(pInput, octaves = 5) {
+export function ridged3(pInput, octaves = 5, n = noise3) {
     let value = float(0.0);
     let amplitude = float(0.5);
     let coord = vec3(pInput);
     for (let i = 0; i < octaves; i += 1) {
-        const n = float(1.0).sub(abs(noise3(coord).mul(2.0).sub(1.0)));
-        value = value.add(amplitude.mul(n).mul(n));
+        const fold = float(1.0).sub(abs(n(coord).mul(2.0).sub(1.0)));
+        value = value.add(amplitude.mul(fold).mul(fold));
         coord = coord.mul(2.05);
         amplitude = amplitude.mul(0.5);
     }
