@@ -102,7 +102,12 @@ const CLOUD_DECK_Y = 660;
  * ellipsoid with no lobe read at all. The Witness exposed this to artists per cloud for
  * exactly this reason; one global value is the probe's simplification.
  */
-const FIELD_CENTROID_BEND = 0.55;
+const FIELD_CENTROID_BEND = 0.30;
+// 0.55 -> 0.30 once the SCULPTOR shipped (Wave 1). The bend existed to unify shading across
+// lobes that were geometrically separate spheres; the sculptor's normals now come from the
+// smooth-min field's own gradient, which is already continuous through every join. Left at
+// 0.55 the bend was smoothing away the lobe definition the sculptor had just been built to
+// create — the same term doing useful work before, and harm after.
 /** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
 const FIELD_MIE_GAIN = 0.10;
 
