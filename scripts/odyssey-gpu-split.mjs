@@ -115,14 +115,19 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldNoClouds: '1' },
         note: 'the Act II cloud deck is not added to the world group (draws, fill, vertex)',
     },
-    // THE HERO CUMULUS (cloud plan §7.1). Opaque merged geometry, so unlike the deck this one
-    // rasterises only its own silhouette and emits no blend state -- but it is purely ADDITIVE:
-    // from a camera below an overhead sheet, a hero above it never occludes a deck fragment, so
-    // no occlusion credit may be assumed. Run as `--only baseline,no-heroes,baseline-repeat`.
+    // THE HERO CUMULUS (cloud plan §7.1) — RETIRED BY THE OWNER 2026-08-14, so the polarity
+    // FLIPPED: heroes are opt-in (?odysseyWorldHeroes=1) and the baseline is heroless. The old
+    // `no-heroes` configuration would now measure baseline-vs-baseline and report exactly 0,
+    // which is the wrong kind of true. Historical reports gpu-split-laneb-heroes-*.json were
+    // measured under the old polarity (baseline INCLUDED heroes). The measured law survives in
+    // perf-budgets.json: opaque merged geometry rasterises only its own silhouette, emits no
+    // blend state, and cost 1-2 timer ticks — but it is purely ADDITIVE (a hero above an
+    // overhead sheet never occludes a deck fragment). Run as
+    // `--only baseline,heroes,baseline-repeat`; heroesMs is now the cost of ADDING them.
     {
-        id: 'no-heroes',
-        flags: { odysseyWorldNoHeroes: '1' },
-        note: 'the Act II hero cumulus are not added to the world group',
+        id: 'heroes',
+        flags: { odysseyWorldHeroes: '1' },
+        note: 'the retired Act II hero cumulus added back to the world group',
     },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
@@ -380,13 +385,21 @@ function buildSplit(results) {
         // The Act II cloud deck's cost at this station (draws + fill + vertex; the deck's
         // pipeline compiles on BOTH sides because the material is built either way).
         cloudsMs: delta('baseline', 'no-clouds'),
-        heroesMs: delta('baseline', 'no-heroes'),
+        // Polarity flip 2026-08-14 with the heroes' retirement: the lever ADDS them now, so
+        // the heroes' cost is the `heroes` configuration minus baseline — which is exactly
+        // delta('heroes', 'baseline'), since delta(from, to) is byId[from] - byId[to]. ⚠️ The
+        // first cut of this flip ALSO negated the result ("delta() is baseline-minus-config" —
+        // a misreading of the helper), a double flip that would have published the heroes as a
+        // SAVING; three independent review lenses caught it before a report was written.
+        // Positive still means cost, like every other figure in this split.
+        heroesMs: delta('heroes', 'baseline'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),
         baselineDriftVoidReason: driftMismatch,
         note: 'Differential, not per-pass: each figure is baseline p50 minus that '
-            + 'configuration p50. Overlapping costs are attributed to whichever system is '
+            + 'configuration p50 — except heroesMs, whose lever ADDS a retired system, so it '
+            + 'is the heroes configuration minus baseline (positive still means cost). Overlapping costs are attributed to whichever system is '
             + 'removed first, and baselineDriftMs bounds how much of any figure could be '
             + 'drift rather than signal. baselineDriftMs is null when the two baselines did '
             + 'not render comparable scenes — see baselineDriftVoidReason.',

@@ -1,4 +1,6 @@
 /**
+ * ⚠️ RETIRED 2026-08-14 — retained per the ADR-0015 pattern, opt-in via ?odysseyWorldHeroes=1.
+ *
  * ACT II HERO CUMULUS — the geometry (cloud plan §7.1 slice 1).
  *
  * WHY GEOMETRY AND NOT A BILLBOARD. Three approaches were designed and judged against the
