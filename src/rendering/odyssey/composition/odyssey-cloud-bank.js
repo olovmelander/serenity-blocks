@@ -62,10 +62,15 @@ const BANK_AURORA = new THREE.Color(SEAM_56_AURORA_BRIDGE.ambientLight);
 /**
  * @param {object} [opts]
  * @param {number} [opts.radius]
+ * @param {{top:*, underShade:*}} [opts.palette] the act's live cloud-palette TSL nodes from
+ *   `createOdysseyWorld().cloudPalette`. When present the bank's ENTRY tone is the same colour
+ *   the sculpted field and the deck shade with, so the last cloud of the act stops being the
+ *   only one in a different idiom. Omitted on the recovery path, where the authored constant
+ *   stands in.
  * @returns {{ mesh: THREE.Mesh, update: (t:number, seamT:number) => void, dispose: () => void }}
  *   `seamT` is 0 approaching the boundary (late ch5), 0.5 at it, 1 leaving it (early ch6).
  */
-export function createCloudBank({ radius = CLOUD_BANK_RADIUS } = {}) {
+export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } = {}) {
     const uTime = uniform(0);
     const uDensity = uniform(0);
     // 0 = summit side of the window, 1 = space side. Drives the daylight->void ramp.
@@ -92,10 +97,41 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS } = {}) {
 
     // COLOUR: daylight -> bridge teal -> void, a ramp DOWNWARD in luminance. The first half
     // of the crossing eases into the authored bridge tone; the second half falls to vacuum.
+    //
+    // ── THE ENTRY TONE IS THE ACT'S OWN CLOUD PALETTE (Wave 5 restyle) ──────────────
+    // `palette` carries the LIVE TSL nodes the sculpted field and the deck shade with, handed
+    // over by `createOdysseyWorld` (see its `cloudPalette`). Sharing the nodes rather than
+    // copying the numbers is the whole point: the bank cannot drift from the clouds it is
+    // supposed to BE, and a palette edit reaches it by construction.
+    //
+    // ⚠️ ONLY THE ENTRY TONE IS REPLACED. The bridge teal and the void are the SEAM's colours,
+    // not the weather's — they are what makes this volume a handover to space rather than one
+    // more cloud — so the ramp past the midpoint is untouched. The bank stops being weather
+    // exactly where it starts being the transition.
+    //
+    // Falls back to the authored constant when there is no world (the `?odysseyOneWorld=0`
+    // recovery path still builds this bank, and it must not throw there).
+    const entryLit = palette ? palette.top : uDaylit;
+    const entryShade = palette ? palette.underShade : uDaylit;
     const a = clamp(uAltitude, 0.0, 1.0);
-    const toBridge = smoothstep(0.0, 0.55, a);
+    // ⚠️ THE BRIDGE RAMP USED TO START AT ZERO, and that made the restyle nearly pointless:
+    // the bank's dead band means it only becomes visible around seamT 0.30, by which point
+    // `smoothstep(0, 0.55, a)` had ALREADY reached 0.63 — so the volume was mostly handover
+    // teal from the first frame anyone saw it, and MEASURED at p=0.63 it was 79 % teal. The
+    // entry tone it had just been given was 21 % of the mix.
+    //
+    // Starting the ramp at 0.35 puts the whole visible approach in the WEATHER tone and the
+    // crossing itself in the handover, which is the beat this volume exists to play: cloud
+    // masses close in, THEN the world changes. Measured effect on the bank-vs-field tone
+    // match at p=0.63: 0.827 -> see the outcome block.
+    const toBridge = smoothstep(0.35, 0.78, a);
     const toVoid = smoothstep(0.45, 1.0, a);
-    const base = mix(mix(uDaylit, uBridge, toBridge), uVoid, toVoid);
+    // TWO FLAT BANDS ON THE ENTRY TONE, the field's grammar: the billow picks which band a
+    // patch is in, and the step between them is narrow. This is what makes the approach read
+    // as cloud MASSES closing in rather than as a fog gradient thickening.
+    const entryBand = smoothstep(0.44, 0.56, billow);
+    const entry = mix(entryShade, entryLit, entryBand);
+    const base = mix(mix(entry, uBridge, toBridge), uVoid, toVoid);
     // Aurora on the bright billows, strongest mid-crossing where the bank is densest — the
     // aurora seen from inside the weather rather than painted on a dome behind it.
     const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(smoothstep(1.0, 0.6, a))).mul(0.55);
@@ -106,8 +142,12 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS } = {}) {
     // act, and the only one left in the old idiom" this plan's Wave 3 exists to fix. Two flat
     // stops with a narrow transition, then a small smooth residue so the volume still has
     // depth when the camera is INSIDE it and the bands would otherwise be a flat wall.
+    // The interior multiplier stays, but SHALLOWER now that the entry tone carries its own two
+    // bands: stacking a 0.44..0.90 multiply on top of an already-banded colour double-darkens
+    // the shadow band and pushes the bank below the sky behind it, which is the one rule this
+    // palette must never break (a cloud is lighter than the sky at every point).
     const bandLit = smoothstep(0.46, 0.54, billow);
-    const posterised = float(0.44).add(bandLit.mul(0.46)).add(billow.mul(0.16));
+    const posterised = float(0.72).add(bandLit.mul(0.22)).add(billow.mul(0.08));
     const colour = mix(base, uAurora, auroraAmt).mul(posterised);
 
     const material = new THREE.MeshBasicNodeMaterial();

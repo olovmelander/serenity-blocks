@@ -1879,7 +1879,12 @@ export class OdysseyBoardController {
                 try {
                     const boundary56 = this.presentationLayout?.chapterPositions?.[5];
                     if (Number.isFinite(boundary56) && !readBooleanUrlFlag('odysseyNoCloudBank')) {
-                        this.cloudBank = createCloudBank();
+                        // The act's own cloud palette, when the world built one — see
+                        // createCloudBank's `palette` option and createOdysseyWorld's
+                        // `cloudPalette`. Null on the recovery path, which is handled there.
+                        this.cloudBank = createCloudBank({
+                            palette: this.oneWorld?.cloudPalette || null,
+                        });
                         const at56 = getOdysseyPathPointAt(boundary56);
                         this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
                         this.cloudBank.mesh.visible = false; // gated in the update below
