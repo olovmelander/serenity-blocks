@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -94,6 +97,97 @@ describe('geometry', () => {
         expect(perRingB / perRingA).toBeGreaterThan(0.9);
         expect(perRingB / perRingA).toBeLessThan(1.1);
         expect(b.triangles / a.triangles).toBeLessThan(1.6);
+    });
+});
+
+// ── STAGE DISCIPLINE (the third "square sections" defect, 2026-08-14) ─────────────────
+//
+// `clipmapXZ` returns `worldXZ = origin + mix(local, coarse, morph)`, and BOTH `origin` and
+// `coarse` contain a `floor()`. In the VERTEX stage the grid coordinates are exact integers
+// and the fold is seamless. But a FRAGMENT-stage node that reads `w.worldXZ` does not reuse
+// the vertex result: r181 auto-varyings the raw `position` ATTRIBUTE and re-executes the whole
+// chain per fragment, so the `floor()` runs on INTERPOLATED grid coordinates and goes
+// piecewise-constant. Inside each ring's morph band — a SQUARE ANNULUS around the LOD centre —
+// the shading coordinate then freezes across 2-cell blocks while the geometry glides smoothly
+// past it, and the surface is painted in axis-aligned tiles of `2 * spacing * 2^ring`.
+//
+// This has now shipped three times (the water plate's original "square sections", the ch5 deck
+// diagonals, and the underside ceiling the owner photographed), it produces no error and no
+// warning, and each sighting cost a session to trace. It is invisible to every other test in
+// this repo, which is exactly the bar this file's header sets.
+//
+// The rule: a fragment-stage node reads `positionWorld` (a real interpolated varying — three
+// defines it as `modelWorldMatrix.mul(positionLocal).xyz.toVarying(...)`, and this water
+// displaces VERTICALLY ONLY, so its .xz IS the smooth clipmap coordinate), or it reads an
+// explicit `varying()`. It never reads `w.worldXZ`.
+//
+// Governing write-up: docs/ODYSSEY_GHIBLI_WATER_PLAN_2026-08.md §Wave 2b.
+describe('clipmap stage discipline in the water material', () => {
+    const RENDERER = join(dirname(fileURLToPath(import.meta.url)), 'odyssey-world-renderer.js');
+    /**
+     * Source with comments removed, so the prose ABOUT this rule cannot satisfy or break it.
+     *
+     * ⚠️ Block comments are replaced by their OWN NEWLINES, not by nothing. Collapsing them
+     * shortens the array, and since `lineNumber` is an index into it, every reported offender
+     * points at unrelated code: the water material sits below 17 JSDoc blocks worth 272
+     * newlines, so a real violation at renderer:1461 was reported as 1211 — cloud code. A
+     * lint that misdirects the next reader by 250 lines is worse than one printing no number.
+     */
+    const codeLines = readFileSync(RENDERER, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ''))
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, ''));
+
+    // The only stage the clipmap fold may be read from is the vertex stage. Each entry is a
+    // legitimate vertex-stage consumer; a new one is a deliberate one-line addition here, and
+    // the reviewer's job is to confirm it really does run in the vertex stage.
+    const VERTEX_STAGE_READERS = [
+        /^\s*const wVertUv = /, // bed UV for the shallow-water taper (.level(0) fetch)
+        /^\s*const wVertDist = /, // per-wave camera-distance envelope input
+        /^\s*const swellVert = /, // the displacement field itself
+        /^\s*waterMat\.positionNode = /, // the displacement, written to geometry
+        /^\s*const wUv = varying\(/, // handed to the fragment stage EXPLICITLY
+    ];
+
+    it('reads the clipmap fold only from the vertex stage', () => {
+        const offenders = codeLines
+            .map((line, index) => ({ line, lineNumber: index + 1 }))
+            .filter(({ line }) => line.includes('w.worldXZ'))
+            .filter(({ line }) => !VERTEX_STAGE_READERS.some((allowed) => allowed.test(line)));
+
+        expect(
+            offenders.map(({ lineNumber, line }) => `${lineNumber}: ${line.trim()}`),
+            'A fragment-stage node is reading the clipmap fold `w.worldXZ`. That re-runs its '
+            + 'floor() on interpolated attributes and paints the water in axis-aligned morph-band '
+            + 'squares — silently. Use positionWorld.xz, or hand the value across in a varying().',
+        ).toEqual([]);
+    });
+
+    it('still has the vertex-stage readers it is meant to have', () => {
+        // Guards the opposite failure: an allowlist that passes because the code it describes
+        // was deleted or renamed, leaving the rule above asserting nothing at all.
+        VERTEX_STAGE_READERS.forEach((allowed) => {
+            expect(
+                codeLines.some((line) => allowed.test(line) && line.includes('w.worldXZ')),
+                `No line matches ${allowed} — the allowlist has drifted from the source.`,
+            ).toBe(true);
+        });
+    });
+
+    it('shades the sea from the interpolated world position', () => {
+        // The positive half of the contract. Without this, "no w.worldXZ in the fragment" could
+        // be satisfied by deleting the ripple normal outright, which is how the ceiling's
+        // mottling would quietly disappear again.
+        const source = codeLines.join('\n');
+        ['const rippleA = ', 'const rippleB = '].forEach((decl) => {
+            const line = codeLines.find((candidate) => candidate.includes(decl));
+            expect(line, `${decl} not found`).toBeTruthy();
+            expect(line, `${decl}must sample on positionWorld.xz`).toContain('positionWorld.xz');
+        });
+        // The whitecap break-up noise, and the crest term the underside's SSS rides.
+        expect(source).toMatch(/const capNoise = snoise3\(vec3\(\s*positionWorld\.x/);
+        expect(source).toContain("varying(swell, 'vSwell')");
+        expect(source).toMatch(/const crestMask = clamp\(vSwell\./);
     });
 });
 
