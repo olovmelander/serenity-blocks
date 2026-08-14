@@ -674,7 +674,14 @@ export class OdysseyBoardController {
                     // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
                     // in-game compile entirely.
                     clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
-                    heroes: !readBooleanUrlFlag('odysseyWorldNoHeroes'),
+                    // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
+                    // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
+                    // not cohere: the smooth lobed icosphere masses read as a different object
+                    // class next to the deck's flat painted bands, and the owner circled them
+                    // in live play twice. Retired per the ADR-0015 pattern (module + tests +
+                    // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
+                    // AND the deck's hero clearings, which ride the same option.
+                    heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
                     // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
                     // removes the sea plate entirely. The water is one ungated DoubleSide
                     // transparent clipmap drawing across the whole act window and NOTHING in

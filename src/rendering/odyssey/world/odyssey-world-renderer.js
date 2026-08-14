@@ -694,6 +694,13 @@ export function scatterTrees(heightAt, {
  *   far too hot for a pipeline that then adds bloom and an ACES curve: measured in-game, sky
  *   came out at luma 200 against 129 standalone and the massif washed to pale haze. Scene-
  *   linear output is what a tonemapper needs room to work with.
+ * @param {boolean} [opts.heroes] mount the Act II hero cumulus AND the deck's hero-clearing
+ *   coverage term (both ride this one option — see the clearings comment for the phantom-hole
+ *   trap that made this mandatory). Default FALSE: the owner retired the heroes 2026-08-14 as
+ *   an art-direction call — two cloud MODELS in one sky do not cohere — after they measured
+ *   1-2 timer ticks (perf was never the issue). Module, specs and tests are RETAINED per the
+ *   ADR-0015 pattern; `?odysseyWorldHeroes=1` in-game or `?heroes=1` on the playground rig restores
+ *   the full system.
  * @param {boolean} [opts.water] build the sea plate at all. A MEASUREMENT LEVER, not a player
  *   setting (board flag `?odysseyWorldNoWater=1`, gpu-split configuration `no-water`): the
  *   water surface is one ungated DoubleSide transparent clipmap that draws across the whole
@@ -719,7 +726,11 @@ export function scatterTrees(heightAt, {
  */
 export function createOdysseyWorld({
     quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
-    heroes = true,
+    // Default FALSE since the owner's 2026-08-14 retirement — and the default matters more
+    // than it looks: the playground rig mounts this world too, and a rig that defaults heroes
+    // ON while the board passes false is the "second, quieter opinion" disease the grade
+    // contract file documents. One default, shared by every caller; opt back in explicitly.
+    heroes = false,
     water = true,
     cloudDebug = null,
     skyRadius = null, railSamples = [],
@@ -1458,38 +1469,35 @@ export function createOdysseyWorld({
     // reference. Coverage is the one lever here that is FREE — this deck's cost was measured to
     // be coverage-INDEPENDENT (0.63/0.40 -> 0.685/0.515 moved cloudsMs by exactly zero) — so
     // the composition can be set purely on what looks right.
-    const cloudThreshold = mix(
+    const cloudThresholdBase = mix(
         float(0.755),
         float(0.605),
         smoothstep(float(-150), float(-760), cl.worldXZ.y),
     ).add(sin(cl.worldXZ.x.mul(0.0018).add(cl.worldXZ.y.mul(0.0006))).mul(0.045))
-        // ── HERO CLEARINGS ───────────────────────────────────────────────────────────
-        // A hero only reads as a hero if it stands in OPEN BLUE; against a sky already full of
-        // deck cloud at the same tone it is just one more cloud, which is exactly how the first
-        // hero capture came out. So the deck opens up around each hero: raising the coverage
-        // threshold near a hero's ground track removes cloud there and leaves sky.
-        //
-        // THIS IS FREE, and that is why it is done here and not in the fragment stage: the
-        // threshold is already computed per VERTEX and interpolated (`vThresh` below), so six
-        // distance terms cost ~60 ALU across ~9.8k vertices — nothing — whereas the same six
-        // terms per fragment would land on the one stage this deck cannot afford (its price is
-        // coverage-independent because every sheet fragment runs the full tap stack).
-        //
-        // The descending-edge smoothstep is deliberate and correct: `smoothstep(hi, lo, x)` in
-        // WGSL is the true descending ramp `1 - smoothstep(lo, hi, x)` (GPU-probe-verified this
-        // session; the old repo rule claiming it returns 0 was FALSE and has been corrected in
-        // the skill). Clamped so overlapping clearings cannot drive the threshold past 1 and
-        // erase the sky wholesale.
         // ── FAR-FIELD MASS ───────────────────────────────────────────────────────────
         // Opening the sky was right overhead and WRONG at range: from a pulled-back review
         // camera (1.4 km back, 0.5 km up) the horizon went nearly bare, and the shoreline view
         // had almost no cloud over the sea at all — while the reference keeps chunky mass all
         // the way out. So coverage is now a function of DISTANCE as well: the raised threshold
-        // holds near the camera, where the heroes need blue to stand in, and relaxes with range
-        // so the far field fills back in. Free, like every coverage term here (this deck's cost
-        // was measured coverage-independent), and it lives in the vertex stage with the rest.
-        .sub(smoothstep(float(900), float(5200), length(cl.worldXZ.sub(uLodCenter))).mul(0.17))
-        .add(clamp(
+        // holds near the camera and relaxes with range so the far field fills back in. Free,
+        // like every coverage term here (this deck's cost was measured coverage-independent),
+        // and it lives in the vertex stage with the rest.
+        .sub(smoothstep(float(900), float(5200), length(cl.worldXZ.sub(uLodCenter))).mul(0.17));
+    // ── HERO CLEARINGS — GATED ON THE SAME LEVER AS THE HERO MESH ────────────────────
+    // A hero only reads as a hero if it stands in OPEN BLUE, so the deck opens up around each
+    // hero's ground track (per VERTEX — six distance terms across ~9.8k verts are free, where
+    // the same terms per fragment would land on the one stage this deck cannot afford). The
+    // descending smoothstep(hi, lo, x) is the true descending ramp (GPU-probe-verified);
+    // the clamp stops overlapping clearings erasing the sky wholesale.
+    //
+    // ⚠️ This term MUST ride the `heroes` option. It used to be unconditional, which was a
+    // phantom-hole trap: with the meshes off (heroes retired 2026-08-14, opt-in via
+    // `?odysseyWorldHeroes=1`)
+    // the deck kept six absolute-world bald discs with nothing standing in them — full-clear
+    // diameters 840-1232 u, and H1/H3 sit 945 u apart so their clearings MERGE into one
+    // ~2.3 km hole directly over the summit, the exact frame the composition points at.
+    const cloudThreshold = heroes
+        ? cloudThresholdBase.add(clamp(
             ODYSSEY_HERO_CLOUD_SPECS.reduce(
                 (acc, h) => acc.add(smoothstep(
                     float(h.w * 2.1),
@@ -1500,7 +1508,8 @@ export function createOdysseyWorld({
             ),
             0,
             0.34,
-        ));
+        ))
+        : cloudThresholdBase;
     const vThresh = varying(cloudThreshold, 'vThresh');
     const cUvA = varying(cl.worldXZ.mul(0.00205), 'vCUvA');
     const cUvB = varying(cl.worldXZ.mul(0.00560).add(vec2(0.31, 0.77)), 'vCUvB');
@@ -1812,7 +1821,11 @@ export function createOdysseyWorld({
     cloudMesh.name = 'odyssey-world-clouds';
     if (clouds) group.add(cloudMesh);
 
-    // ── HERO CUMULUS (cloud plan §7.1, owner-approved) ───────────────────────────────
+    // ── HERO CUMULUS (cloud plan §7.1 — RETIRED BY THE OWNER 2026-08-14) ─────────────
+    // Approved 2026-08-13, retired the next day as an art-direction call: two cloud MODELS in
+    // one sky do not cohere. Everything below is RETAINED and gated on `heroes` (default
+    // false); `?odysseyWorldHeroes=1` restores it. The mount gate is `if (heroes)` at the
+    // group.add below — do not read this block as shipping-by-default.
     // Real OPAQUE geometry, not billboards. The full argument lives in odyssey-hero-clouds.js;
     // the short version is that opaque lobes DELETE the billboard-basis problem, the
     // transparency-sorting problem and the no-vertical-mass problem instead of managing them,
@@ -2455,7 +2468,11 @@ export function createOdysseyWorld({
         },
         dispose() {
             group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-            [groundMat, waterMat, skyMat, treeMat, cloudMat].forEach((m) => m.dispose());
+            // heroMat included 2026-08-14: it was missing from this list for as long as the
+            // heroes shipped, leaking the compiled hero material on every world dispose; with
+            // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
+            // escape hatch still renders it and must not leak (the SB-15 teardown class).
+            [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();

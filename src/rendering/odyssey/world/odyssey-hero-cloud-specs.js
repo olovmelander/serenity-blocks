@@ -1,6 +1,12 @@
 /**
  * ACT II HERO CUMULUS — placements (cloud plan §7.1, owner-approved 2026-08-13).
  *
+ * ⚠️ RETIRED BY THE OWNER 2026-08-14 (art direction: two cloud models in one sky do not
+ * cohere). This module is RETAINED per the ADR-0015 pattern but NOTHING HERE SHIPS BY
+ * DEFAULT: the renderer's `heroes` option defaults false, so edits to these placements are
+ * invisible in-game unless you pass `?odysseyWorldHeroes=1` (or `?heroes=1` on the
+ * playground rig). See the plan's §7.1 retirement note before re-mounting.
+ *
  * The cloud DECK is a horizontal sheet: its silhouette is a plan-view contour, so scaling it up
  * gives bigger popcorn, never a cumulus with vertical mass. The owner's Witness reference is a
  * FEW BIG clouds standing in generous blue — discrete objects with tops, sides and flat-ish

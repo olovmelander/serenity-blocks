@@ -96,7 +96,10 @@ export function create({
         outputScale: ONE_WORLD_OUTPUT_SCALE,
         outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
         skyRadius: ONE_WORLD_SKY_RADIUS,
-        heroes: params?.get?.('heroes') !== '0',
+        // Opt-IN since the 2026-08-14 retirement, matching the board's polarity — a rig that
+        // shows heroes by default previews a sky the game does not ship. `?heroes=1` restores
+        // them here exactly as `?odysseyWorldHeroes=1` does in-game.
+        heroes: params?.get?.('heroes') === '1',
     });
     scene.add(world.group);
 

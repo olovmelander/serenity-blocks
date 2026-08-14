@@ -20,7 +20,10 @@ Evidence: `public/playground-refs/act2-clouds-current-{ch4-0p42,ch5-0p55,ch5-0p6
 1. **The sky at ch5 reads as salt-and-pepper static** — the deck's alpha is three octaves
    of value noise through a threshold (`odyssey-world-renderer.js:1105-1121`). No shape
    grammar exists anywhere: no lobes, no flat bases, no composition. (0p62 capture.)
-2. **A giant white slab hangs edge-on** — the deck's ±116 u billow towers are protected
+2. **A giant white slab hangs edge-on** *(diagnosis REFUTED 2026-08-13 — the slab was the
+   HERO CLOUD seen close and near-flat, proven by the `flat` re-shade; and MOOTED 2026-08-14
+   by the heroes' retirement, §7.1 — it can only recur under `?odysseyWorldHeroes=1`)* —
+   the deck's ±116 u billow towers are protected
    near the camera by nearFade/bandFade, but a *distant* tower at the camera's altitude
    band edge stays a solid crumpled wall. (0p62 left half.)
 3. **Saturated ultramarine patches with cut-out borders** — deck alpha holes reveal the
@@ -450,7 +453,9 @@ From the Ghibli/Witness distillation — the implementable core:
 > **STILL OPEN AT CH5, each needing its own bisect, none of them clouds:**
 > - the sky dome is flat saturated ultramarine with no gradient — the COLOUR SCRIPT;
 > - chapter 6 bleeds in from p=0.5814 — a SEAM issue, and restyling the bank will not fix it;
-> - the white slab is the HERO CLOUD geometry seen close and near-flat. The `flat` re-shade
+> - *(CLOSED 2026-08-14: the heroes were retired, §7.1 — this defect left with them and can
+>   only recur under the `?odysseyWorldHeroes=1` escape hatch.)*
+>   the white slab is the HERO CLOUD geometry seen close and near-flat. The `flat` re-shade
 >   shows the deck covering that part of the frame uniformly, so it is **not** the deck — which
 >   corrects the earlier note that called it unexplained.
 
@@ -579,7 +584,26 @@ From the Ghibli/Witness distillation — the implementable core:
 
 ## 7. Owner decisions (please pick when ready — nothing above blocks on these)
 
-1. **§7.1 Hero composition wave — DECIDED BY THE OWNER 2026-08-13, and the approach changed.**
+1. **§7.1 Hero composition wave — RETIRED BY THE OWNER 2026-08-14.** One day after approving
+   them, the owner circled the shipped heroes in two live-play screenshots and named the real
+   problem: **two cloud MODELS in one sky do not cohere.** The smooth lobed icosphere masses
+   read as a different object class beside the deck's flat painted bands — the exact
+   "last cloud in the old language" argument this plan makes about the bank in §1.6, applied in
+   reverse to geometry that was newer and shinier than the deck instead of older and softer.
+   Perf was never the issue (1-2 timer ticks, the cell's numbers stand as history). Retired per
+   the ADR-0015 pattern (that ADR's text governs the One World escape hatch; the pattern —
+   retired paths stay restorable behind a flag, loudly — is what applies): module, specs,
+   tests and the build path are all RETAINED; `?odysseyWorldHeroes=1`
+   (game) / `?heroes=1` (rig) restores the system, and the deck's hero-clearing coverage term
+   now RIDES THE SAME OPTION — it used to be unconditional, which would have left six
+   absolute-world bald discs (H1+H3 merging into one ~2.3 km hole over the summit) with
+   nothing standing in them. The gpu-split `no-heroes` configuration flipped polarity to
+   `heroes`, with `heroesMs` measured as the heroes configuration minus baseline — the
+   argument ORDER carries the sign; it must NOT also be negated (a first cut did both, a
+   double flip that would have published the heroes as a saving).
+   *(Original decision record, superseded but preserved — the opaque-geometry findings inside
+   it remain the standing refutation of billboard imposters:)* **DECIDED BY THE OWNER
+   2026-08-13, and the approach changed.**
    The owner supplied two Witness screenshots and asked for both the sheet upgrade and the
    heroes. A 4-agent design pass then rejected the imposter plan outright: r181's
    `billboarding()` is mesh-level (`SpriteUtils.js:35/61`), so under `InstanceNode` — which
