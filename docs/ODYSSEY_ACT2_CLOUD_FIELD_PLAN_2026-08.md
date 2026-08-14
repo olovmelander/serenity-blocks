@@ -345,6 +345,46 @@ Restyle `odyssey-cloud-bank.js` onto `makeActCloudPalette`; interior tones align
 whiteout shell so ch5's beat foreshadows the 5→6 envelopment; `SEAM_56_AURORA_BRIDGE`
 midpoint untouched. Captures p=0.600/0.630/0.648. No perf cell (windowed, small).
 
+> **OUTCOME — WAVE 5 SHIPPED, 2026-08-14. The bank speaks the field's language, and the fix
+> that mattered was the RAMP, not the palette.** Evidence: `w5-bank2-p063.png`,
+> `w5-bank2-p0648.png`, `w5-void-p068.png`.
+>
+> **The palette is SHARED, not copied.** `createOdysseyWorld` exposes `cloudPalette` — the live
+> TSL nodes the deck and the sculpted field shade with — and the board hands them to
+> `createCloudBank`. Handing over NODES rather than numbers makes drift impossible: a palette
+> edit reaches the bank by construction, and no second tuning pass can disagree with the first
+> (the "four answers to one contract" disease). The recovery path, where no world exists, falls
+> back to the authored constant.
+>
+> **AND THE MEASUREMENT CAUGHT THAT THE PALETTE ALONE BARELY HELPED.** Bank-vs-field tone at
+> p=0.63, both sampled in the SAME frame:
+>
+> | build | bank/field brightness | bank blue-cast (field: −3.3) |
+> |---|---|---|
+> | before restyle | 0.800 | 35.5 |
+> | shared entry tone only | 0.827 | 25.1 |
+> | **+ delayed bridge ramp** | **0.965** | **−2.1** |
+>
+> The entry tone moved the number by 0.027 because it was barely in the mix: the dead band
+> means the bank first becomes visible around seamT 0.30, and `smoothstep(0, 0.55, a)` had
+> ALREADY reached 0.63 by then — the volume was 79 % handover-teal in the first frame anyone
+> saw it. **A shared palette is worthless if the ramp spends it before the volume is on
+> screen.** Starting the bridge at 0.35 puts the whole visible approach in the WEATHER tone and
+> the crossing itself in the handover.
+>
+> ⚠️ **THIS CHANGES AN AUTHORED BEAT, and the owner should know.** The bank used to darken into
+> `SEAM_56_AURORA_BRIDGE`'s teal BEFORE the boundary; it now stays cloud-white through the
+> approach, is a bright sunlit interior at the crossing, and darkens to the void after. Checked
+> at p=0.68: black space, nebula and gas giant, bank faded — the handover still works, and by
+> p=0.708 the bank is off. The aurora bridge itself is untouched and still visible as its own
+> element. The new reading ("inside a sunlit cloud, then out into the dark") is arguably more
+> physical, but it IS a different beat and is flagged rather than buried.
+>
+> **REMAINING, and it is the honest limit of a restyle:** the bank is still FBM mottle where the
+> field is sculpted silhouette. Tone and grammar now agree; TEXTURE does not. Making it agree
+> fully would mean the bank stops being a fly-through volume, which is the one thing it exists
+> to be — so this is where the two systems should meet, not a defect to chase.
+
 ### Wave 6 — optional, priced, owner-gated
 D3 water coupling (`uCloudOverhead` spec-dim free; projected cloud shadow +0.2-0.4 ms EST,
 high tier only, own pair). Parked with revival conditions: A's rim shell (ONLY if the

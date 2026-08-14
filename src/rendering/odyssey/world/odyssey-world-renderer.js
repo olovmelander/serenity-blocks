@@ -2469,6 +2469,31 @@ export function createOdysseyWorld({
         heightAt: relief.sample,
         fog: fogState,
         /**
+         * THE ACT'S CLOUD PALETTE, as live TSL nodes — shared, never copied.
+         *
+         * The seam cloud bank is built by the BOARD, in its own module, with its own material,
+         * and until 2026-08-14 it carried its own authored tones. That was survivable while
+         * everything was soft FBM; once the field became sculpted poster cumulus the bank was
+         * the last system speaking the old language, and a frame at p=0.63 shows both at once
+         * — the exact "two cloud models in one sky" complaint that retired the heroes, with
+         * the roles reversed.
+         *
+         * Handing over the NODES rather than copying the numbers is what makes drift
+         * impossible: these are the very expressions the deck and the field shade with, driven
+         * by the same colour-script uniforms, so a palette edit reaches the bank by
+         * construction and no second tuning pass can disagree with the first. (The alternative
+         * — re-deriving the same arithmetic CPU-side for the bank — is the "four different
+         * answers to one contract" disease `odyssey-world-height.js` documents.)
+         */
+        cloudPalette: {
+            top: cloudTop,
+            shade: cloudShade,
+            underLit: cloudUnderLit,
+            underShade: cloudUnderShade,
+            skyHorizon: uSkyHorizon,
+            sunColour: uSunColour,
+        },
+        /**
          * @param {number} time seconds
          * @param {{x:number,y:number,z:number}} railPoint the GROUND-TRACK point — never the
          *   camera eye. Centring the lattice on the eye makes the ground change shape when
