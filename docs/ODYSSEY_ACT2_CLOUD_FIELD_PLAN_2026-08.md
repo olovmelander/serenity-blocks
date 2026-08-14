@@ -284,6 +284,29 @@ icosphere-merge + bent normals + AO, same idiom.
 > `odyssey-world-ground`. The old plan's §1.2 claim and its "closed by the hero retirement"
 > annotation are both withdrawn there. Nothing in the cloud work can close it.
 
+> **SURVEY — THE WHOLE ACT ON THE FIELD, 2026-08-14 (field on, sheet OFF).** Four stations,
+> which is what the D1 decision needs rather than the two the sculptor was built against.
+>
+> | station | verdict |
+> |---|---|
+> | ch3 p≈0.22 shore | **GOOD.** Scattered cumulus across a pale sky; the same frame with every cloud system off is BARE, so the field genuinely populates the shore view the sheet used to. |
+> | ch4 p=0.42 | **GOOD.** Lobed masses at honest distance, lit crowns, flat bases. |
+> | ch5 p=0.565 | **GOOD** after the zenith masses and the tuning pass; three distinct clouds, generous blue. |
+> | ch5 p=0.63 (bank window) | **CLASHES.** See below. |
+>
+> **THE SEAM IS THE ONE FAILURE, and it is the plan's own Wave 5 arriving early.** At p=0.63
+> the `odyssey-cloud-bank` is inside its 0.588-0.708 window, and its smooth-FBM mottle fills the
+> sky BEHIND sculpted masses. Two cloud languages in one frame — precisely the complaint that
+> retired the heroes, now with the roles reversed: the bank is the one in the old idiom. The
+> field cannot fix this; the bank must be restyled onto the same palette and grammar (Wave 5),
+> and **that work is now a prerequisite of the Wave 4 swap rather than a follow-up to it.**
+>
+> **Not a cloud defect, recorded so it is not re-investigated:** the white blobs on the sea at
+> the shore station are the WATER's own foam pattern — present with every cloud system off.
+>
+> **Still unresolved for D1:** ch4's F1 gate. Two attempts were voided by a co-tenant (the
+> owner's own browser session, twice). The ch5 gate passed at 0.393 ms against 0.50.
+
 ### Wave 2 — the paint + palette extraction
 Extract `makeActCloudPalette` from the deck's tone block (renderer :1611-1656); the deck
 consumes it — PURE refactor, source-import + no-reinlined-literals test (the refactor law);
