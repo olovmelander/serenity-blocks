@@ -87,8 +87,8 @@ const CRINKLE_FREQ = 3.1;
  * field a NON-exact distance (it can locally exceed a Lipschitz constant of 1), and a full
  * step could tunnel through a thin scallop.
  */
-const MARCH_STEPS = 24;
-const MARCH_BISECT = 14;
+const MARCH_STEPS = 18;
+const MARCH_BISECT = 11;
 const MARCH_SAFETY = 0.75;
 
 /**
@@ -100,7 +100,46 @@ const MARCH_SAFETY = 0.75;
  * and would have shipped a quarter of the intended geometry.
  * near 6 -> 980, mid 3 -> 320, far 1 -> 80 faces.
  */
-export const CLOUD_FIELD_LOD_DETAIL = Object.freeze({ near: 6, mid: 3, far: 1 });
+export const CLOUD_FIELD_LOD_DETAIL = Object.freeze({ near: 6, mid: 4, far: 3 });
+
+/**
+ * ⚠️ THE FLOOR IS NOT AN OPTIMISATION KNOB. `far` was detail 1 — EIGHTY faces — and at 80
+ * faces a hull's facets span ~25 degrees of its own sphere, so the SILHOUETTE is a visible
+ * polygon however smooth its normals are (and ours are smooth: they come from the field
+ * gradient, not from the triangles). The owner photographed the result: a small mass reading
+ * as a flat angular shard with a hard crease down it, "sharp" where every other cloud was
+ * round. Detail 3 (320 faces) is the floor at which a hull stops showing straight edges at the
+ * sizes this field actually renders.
+ *
+ * The deeper rule, learnt twice now — first on the zenith masses, then here — is that detail
+ * must follow ANGULAR size, not world distance. A 300 u mass at 1500 u still covers ~11
+ * degrees, which is ~250 px at 720p; calling it "far" because of its distance and handing it
+ * 80 faces is how a cloud becomes a shard. `assignCloudFieldLod` below does that arithmetic
+ * rather than trusting the label in the spec table.
+ */
+
+/**
+ * Choose a LOD tier from a mass's worst-case ANGULAR size against the rail.
+ *
+ * @param {object} spec
+ * @param {ReadonlyArray<{x:number,y:number,z:number}>} railSamples
+ * @returns {'near'|'mid'|'far'}
+ */
+export function assignCloudFieldLod(spec, railSamples) {
+    let nearest = Infinity;
+    railSamples.forEach((pt) => {
+        const d = Math.hypot(spec.x - pt.x, (spec.base - pt.y), spec.z - pt.z);
+        if (d < nearest) nearest = d;
+    });
+    if (!Number.isFinite(nearest) || nearest <= 0) return 'near';
+    // Radians subtended at closest approach. The thresholds are where a hull of each tier
+    // stops resolving: ~1280 faces carries a 20-degree mass, ~500 carries 8, below that the
+    // 320-face floor applies and nothing goes coarser.
+    const subtended = spec.w / nearest;
+    if (subtended > 0.35) return 'near';
+    if (subtended > 0.14) return 'mid';
+    return 'far';
+}
 
 function hash3(x, y, z) {
     let h = ((x | 0) * 374761393) + ((y | 0) * 668265263) + ((z | 0) * 2147483647);
@@ -442,11 +481,17 @@ export function sculptCloudMass(spec, detail) {
  * @param {ReadonlyArray<object>} specs each with a `lod` key naming a CLOUD_FIELD_LOD_DETAIL entry
  * @returns {{ geometry: THREE.BufferGeometry, triangles: number, masses: number }}
  */
-export function buildCloudFieldGeometry(specs) {
-    const parts = specs.map((spec) => sculptCloudMass(
-        spec,
-        CLOUD_FIELD_LOD_DETAIL[spec.lod] ?? CLOUD_FIELD_LOD_DETAIL.mid,
-    ));
+export function buildCloudFieldGeometry(specs, railSamples = null) {
+    const parts = specs.map((spec) => {
+        // The spec's `lod` is a floor the author can raise, never a ceiling: when the rail is
+        // known, a mass that subtends MORE than its label claims is promoted. A hand-authored
+        // table cannot keep this correct as placements move, and getting it wrong is visible
+        // (see the note on CLOUD_FIELD_LOD_DETAIL).
+        const measured = railSamples ? assignCloudFieldLod(spec, railSamples) : spec.lod;
+        const rank = { far: 0, mid: 1, near: 2 };
+        const tier = (rank[measured] ?? 0) > (rank[spec.lod] ?? 0) ? measured : spec.lod;
+        return sculptCloudMass(spec, CLOUD_FIELD_LOD_DETAIL[tier] ?? CLOUD_FIELD_LOD_DETAIL.mid);
+    });
     let verts = 0;
     parts.forEach((p) => { verts += p.position.length / 3; });
 

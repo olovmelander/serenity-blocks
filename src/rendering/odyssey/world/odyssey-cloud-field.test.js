@@ -111,16 +111,26 @@ describe('cloud field composition', () => {
     // These bounds are what keeps a later "just one more cloud" from silently spending it.
     it('stays inside the triangle and bake budget the gate was written against', () => {
         const t0 = Date.now();
-        const build = buildCloudFieldGeometry(ODYSSEY_CLOUD_FIELD_SPECS);
+        // WITH the rail, because that is what ships: `buildCloudFieldGeometry` promotes a
+        // mass's LOD when it subtends more than its authored label claims, so measuring
+        // without the rail measures a build the game never makes.
+        const build = buildCloudFieldGeometry(ODYSSEY_CLOUD_FIELD_SPECS, RAIL);
         const ms = Date.now() - t0;
         expect(build.masses).toBe(ODYSSEY_CLOUD_FIELD_SPECS.length);
-        // 16,000 -> 20,000 when the composition gained its size hierarchy and clustered
-        // satellites (38 -> 52 masses). RAISED AGAINST A MEASUREMENT, not to make a red test
-        // green: the field measured 0.262 ms at 14,920 triangles against a 0.50 ms gate, so
-        // there is real headroom, and the pair is re-run whenever this bound moves. The bound
-        // exists to stop "just one more cloud" spending that headroom invisibly.
-        expect(build.triangles).toBeLessThan(20000);
-        // Generous against CI jitter; the measured figure on this machine is ~125 ms.
+        // 16,000 -> 20,000 -> 34,000, each raise RE-MEASURED rather than nudged to turn a red
+        // test green. The ledger, all Lane B ch5 p=0.569 with drift inside a tick:
+        //   14,920 tris -> 0.262 ms   (38 masses)
+        //   17,360 tris -> 0.197 ms   (52 masses, satellites are far-LOD and tiny on screen)
+        //   30,980 tris -> 0.328 ms   (LOD floor raised so no hull shows straight edges)
+        // against a 0.50 ms gate. The last raise bought the biggest visible fix in the field's
+        // life and spent a third of the remaining headroom; the next one has much less room,
+        // which is exactly what this bound exists to make someone notice.
+        expect(build.triangles).toBeLessThan(34000);
+        // Generous against CI jitter; the measured figure on this machine is ~330 ms, up from
+        // ~125 ms when the LOD floor doubled the geometry. That is one-time world-build cost
+        // traded for clouds that stop reading as polygons; if it ever needs winning back, the
+        // sphere-trace loop is the hot path (38 field evaluations per vertex), not the bake
+        // structure.
         expect(ms).toBeLessThan(900);
         build.geometry.dispose();
     });
