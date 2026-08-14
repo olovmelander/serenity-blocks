@@ -100,13 +100,28 @@ export function create({
         // shows heroes by default previews a sky the game does not ship. `?heroes=1` restores
         // them here exactly as `?odysseyWorldHeroes=1` does in-game.
         heroes: params?.get?.('heroes') === '1',
+        // Forest plan Wave 0b: `?forestPaint=1` swaps the incumbent facet-normal forest for
+        // the blob-normal + banded-ramp probe. This rig is where that verdict has to be
+        // taken — the flat playground page is how the cloud deck was authored "soft grey"
+        // and shipped as "navy shards".
+        forestPaint: params?.get?.('forestPaint') === '1',
+        // The roster ships since the swap; `?forestV1=1` previews the retired cone forest.
+        forestV2: params?.get?.('forestV1') !== '1',
     });
     scene.add(world.group);
 
     const only = params?.get?.('worldOnly');
     if (only) {
         const wanted = only.split(',').map((t) => t.trim()).filter(Boolean);
-        world.group.traverse((o) => { if (o.isMesh) o.visible = wanted.some((w) => o.name.includes(w)); });
+        world.group.traverse((o) => {
+            if (!o.isMesh) return;
+            const keep = wanted.some((w) => o.name.includes(w));
+            o.visible = keep;
+            // Also record the intent: the renderer rewrites `.visible` on forest meshes every
+            // frame for its CPU distance/submerged gate, so a one-shot write alone is silently
+            // undone and the forest stays on screen no matter what this filter says.
+            o.userData.filterVisible = keep;
+        });
     }
 
     // The renderer must stay LINEAR: tonemapping is manual ACES inside the post graph, exactly

@@ -695,6 +695,27 @@ export class OdysseyBoardController {
                     // the tree could switch it off, so its total cost had never been measured
                     // — and an unmeasured cost cannot fund a water package (ADR-0016).
                     water: !readBooleanUrlFlag('odysseyWorldNoWater'),
+                    // Bisect lever for the Act II forest plan's Wave 0a:
+                    // ?odysseyWorldNoForest=1 removes the forest entirely. Exactly the same
+                    // argument as the water lever above, and the forest is the larger unpriced
+                    // system of the two — 15,427 trees in 40 chunks, never once measured as a
+                    // differential because nothing could turn it off. Opt-OUT (the forest
+                    // ships), so `no-forest` REMOVES and forestMs is baseline minus
+                    // configuration. docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md §5 Wave 0a.
+                    forest: !readBooleanUrlFlag('odysseyWorldNoForest'),
+                    // Forest plan Wave 0b — the PAINT PROBE, opt-in and shipping nothing:
+                    // ?odysseyWorldForestPaint=1 swaps the incumbent facet-normal forest for
+                    // blob normals + the banded ramp. Here as well as on the graded playground
+                    // rig because owner decision D0 may want the verdict taken in the real
+                    // game, and a probe only reachable from a rig invites "but does it hold
+                    // up in-game" as an unanswerable question.
+                    forestPaint: readBooleanUrlFlag('odysseyWorldForestPaint'),
+                    // The zoned species roster is the SHIPPED forest since the 2026-08-14
+                    // swap. `?odysseyWorldForestV1=1` restores the incumbent cone forest
+                    // (ADR-0015: retained, one flag from restoration). The migration flag
+                    // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
+                    // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
+                    forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
                     // Diagnostic re-shades of the deck, for the "keyed to something other than
                     // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity

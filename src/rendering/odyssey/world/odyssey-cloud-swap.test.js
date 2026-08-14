@@ -65,7 +65,10 @@ describe('the sculpted cloud field is the shipped Act II sky', () => {
     // `.visible` write.
     it('gates the field underwater on the CPU, like the sheet and the heroes before it', () => {
         expect(RENDERER).toMatch(
-            /fieldProbeMesh\.visible = uSubmerged\.value < 0\.999/,
+            // Loose on the `authored(...) &&` prefix that the `?worldOnly=` fix added: what
+            // this pins is the LAW — the gate is a CPU `.visible` write driven by uSubmerged,
+            // not a multiply by a zero uniform — and that law is untouched by the prefix.
+            /fieldProbeMesh\.visible = [^;]*uSubmerged\.value < 0\.999/,
         );
     });
 });
