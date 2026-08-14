@@ -671,9 +671,16 @@ export class OdysseyBoardController {
                     // r=4000 atmosphere backstop so the world's sky paints in front of it.
                     skyRadius: ONE_WORLD_SKY_RADIUS,
                     // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
-                    // note): ?odysseyWorldNoClouds=1 keeps the deck's pipeline out of the
-                    // in-game compile entirely.
-                    clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
+                    // note): the sheet's pipeline stays out of the in-game compile when it is
+                    // not mounted.
+                    // ⚠️ POLARITY FLIPPED 2026-08-14 — the owner retired the flat sheet in
+                    // favour of the sculpted field. It is opt-IN now, so the old
+                    // `?odysseyWorldNoClouds` lever no longer has anything to switch off and
+                    // is deliberately NOT read here: a flag that silently does nothing is how
+                    // the `odysseyWorldNoHeroes` bisect produced a wrong conclusion. Use
+                    // `?odysseyWorldCloudSheet=1` to bring the sheet back, and
+                    // `?odysseyWorldNoCloudField=1` to remove the field.
+                    clouds: readBooleanUrlFlag('odysseyWorldCloudSheet'),
                     // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
                     // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
                     // not cohere: the smooth lobed icosphere masses read as a different object
@@ -693,10 +700,10 @@ export class OdysseyBoardController {
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity
                     // graph alone, =flat leaves only geometry. See createOdysseyWorld.
                     cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
-                    // WAVE 0 PRICE PROBE for the cloud-field plan: ?odysseyWorldCloudField=1
-                    // mounts ~28 probe masses on the retired hero builder + material (zero new
-                    // shader code) so the mechanism can be priced before the sculptor exists.
-                    cloudField: readBooleanUrlFlag('odysseyWorldCloudField'),
+                    // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
+                    // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
+                    // flat sheet back alongside or instead.
+                    cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(

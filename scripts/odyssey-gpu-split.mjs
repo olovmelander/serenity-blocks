@@ -112,8 +112,8 @@ const CONFIGURATIONS = [
     // `--only baseline,no-clouds,baseline-repeat` so the differential AND its drift bound
     // come from ONE cooled session.
     {
-        id: 'no-clouds',
-        flags: { odysseyWorldNoClouds: '1' },
+        id: 'cloud-sheet',
+        flags: { odysseyWorldCloudSheet: '1' },
         note: 'the Act II cloud deck is not added to the world group (draws, fill, vertex)',
     },
     // THE HERO CUMULUS (cloud plan §7.1) — RETIRED BY THE OWNER 2026-08-14, so the polarity
@@ -135,17 +135,17 @@ const CONFIGURATIONS = [
     // Argument order carries the sign — never also negate (the heroes cell's double-flip).
     // Run as `--only baseline,cloud-field,baseline-repeat`.
     {
-        id: 'cloud-field',
-        flags: { odysseyWorldCloudField: '1' },
-        note: 'the 34 sculpted cloud-field masses added to the world',
+        id: 'no-cloud-field',
+        flags: { odysseyWorldNoCloudField: '1' },
+        note: 'the shipped sculpted cloud field withheld from the world group',
     },
     // HALF the probe masses — the second point on the cost curve. Run all four as
     // `--only baseline,cloud-field-half,cloud-field,baseline-repeat` to get both in one
     // thermal window, which is the only way the two are comparable.
     {
         id: 'cloud-field-half',
-        flags: { odysseyWorldCloudField: '1', odysseyWorldCloudFieldCount: '17' },
-        note: '17 sculpted masses — half the field, for the cost curve',
+        flags: { odysseyWorldCloudFieldCount: '26' },
+        note: 'half the sculpted field, for the cost curve',
     },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
@@ -402,7 +402,12 @@ function buildSplit(results) {
         waterMs: delta('baseline', 'no-water'),
         // The Act II cloud deck's cost at this station (draws + fill + vertex; the deck's
         // pipeline compiles on BOTH sides because the material is built either way).
-        cloudsMs: delta('baseline', 'no-clouds'),
+        // ⚠️ POLARITY FLIPPED 2026-08-14 with the sheet's retirement. The sheet is opt-IN now,
+        // so its lever ADDS it and the cost is configuration minus baseline — the same shape
+        // as heroesMs. Leaving `no-clouds` in place would have been a lever with nothing to
+        // switch off, which is exactly how a dead `odysseyWorldNoHeroes` produced a confident
+        // wrong answer once already.
+        cloudsMs: delta('cloud-sheet', 'baseline'),
         // Polarity flip 2026-08-14 with the heroes' retirement: the lever ADDS them now, so
         // the heroes' cost is the `heroes` configuration minus baseline — which is exactly
         // delta('heroes', 'baseline'), since delta(from, to) is byId[from] - byId[to]. ⚠️ The
@@ -411,16 +416,23 @@ function buildSplit(results) {
         // SAVING; three independent review lenses caught it before a report was written.
         // Positive still means cost, like every other figure in this split.
         heroesMs: delta('heroes', 'baseline'),
-        // Same polarity as heroesMs: the lever ADDS the system, so cost = config - baseline.
-        cloudFieldMs: delta('cloud-field', 'baseline'),
-        cloudFieldHalfMs: delta('cloud-field-half', 'baseline'),
+        // ...and cloudFieldMs flips the OTHER way for the same reason: the field is shipped
+        // now, so its lever REMOVES it and the cost is baseline minus configuration.
+        cloudFieldMs: delta('baseline', 'no-cloud-field'),
+        // NOT `baseline - cloud-field-half`. `cloud-field-half` truncates the spec table to
+        // its first 26 masses, so that subtraction would price the UPPER 26 (the satellites,
+        // which are far-LOD and tiny) and read as 'half the field is nearly free'. The cost
+        // curve wants the cost OF a half field, so it is measured against the field's absence.
+        // Requires `no-cloud-field` in the same run; `delta` returns null rather than guessing.
+        cloudFieldHalfMs: delta('cloud-field-half', 'no-cloud-field'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),
         baselineDriftVoidReason: driftMismatch,
         note: 'Differential, not per-pass: each figure is baseline p50 minus that '
-            + 'configuration p50 — except heroesMs and cloudFieldMs, whose levers ADD a system, '
-            + 'so they are the configuration minus baseline (positive still means cost). Overlapping costs are attributed to whichever system is '
+            + 'configuration p50 — except heroesMs and cloudsMs, whose levers ADD a retired '
+            + 'system, so they are the configuration minus baseline. Positive always '
+            + 'means cost. Overlapping costs are attributed to whichever system is '
             + 'removed first, and baselineDriftMs bounds how much of any figure could be '
             + 'drift rather than signal. baselineDriftMs is null when the two baselines did '
             + 'not render comparable scenes — see baselineDriftVoidReason.',
