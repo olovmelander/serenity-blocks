@@ -64,6 +64,7 @@ if (args.flags) {
         if (k) EXTRA_FLAGS[k.trim()] = v.trim();
     });
 }
+const BREAK = String.fromCharCode(10);
 const OUT_DIR = path.join(ROOT, 'reports', 'odyssey-perf');
 
 // Each configuration removes ONE system. baseline must run first and last: a drifting
@@ -447,6 +448,35 @@ app.whenReady().then(async () => {
             process.stdout.write(`[gpu-split] restricted to: ${selected.map((c) => c.id).join(', ')}
 `);
         }
+        // ── WARM-UP PASS, DISCARDED (added 2026-08-14 after it voided two pairs in one day)
+        // ADR-0016 already says "first-configuration-after-boot voided as cold-compile", but
+        // the harness knew that and did nothing about it, so the rule had to be applied by
+        // hand — by noticing an impossible number. Twice in one day a pair came back with the
+        // BASELINE carrying a p99 of 39 ms and 232 ms and the differential landing NEGATIVE
+        // (-0.852 and -5.374): adding geometry cannot speed up a frame, so both were discarded
+        // and re-run.
+        //
+        // Each configuration already gets its own BrowserWindow and its own sampler reset, so
+        // the contamination is not the sampler — it is everything the FIRST window pays that
+        // later ones inherit warm: Vite's first transform of the module graph, the driver's
+        // cold pipeline cache, first texture uploads. The reference is always measured first,
+        // so the reference is always the one spoiled.
+        //
+        // Running the first configuration once and throwing the result away moves that cost
+        // off every published number. It costs one window (~30 s) and buys a pair that does
+        // not have to be re-run. `--warmup 0` opts out.
+        if (String(args.warmup ?? '1') !== '0' && selected.length > 0) {
+            process.stdout.write(`[gpu-split] warm-up (discarded)...${BREAK}`);
+            const warm = await Promise.race([
+                runConfiguration(selected[0]),
+                wait(320000).then(() => null),
+            ]);
+            const ws = warm && warm.summary;
+            process.stdout.write(ws
+                ? `[gpu-split]   warm-up p50 ${fmt(ws.p50)} p99 ${fmt(ws.p99)} - DISCARDED${BREAK}`
+                : `[gpu-split]   warm-up produced no samples - DISCARDED${BREAK}`);
+        }
+
         for (const config of selected) {
             process.stdout.write(`[gpu-split] ${config.id}...\n`);
             // A configuration that never becomes ready must not take the whole run with it:
@@ -482,6 +512,7 @@ app.whenReady().then(async () => {
             // and `cloudsMs` at exactly 0, because on a 5080 at 720p every configuration lands
             // inside the timer's 65.536 us quantum. Recording the request alongside the result
             // makes the mismatch checkable instead of inferable.
+            warmupRun: String(args.warmup ?? '1') !== '0',
             lowPower: LOW_POWER,
             powerPreference: LOW_POWER ? 'low-power' : 'high-performance',
             laneAdapterMismatch: (LANE === 'B' && !LOW_POWER) ? 'lane B is the INTEGRATED lane; this run did not pass --low-power' : null,
