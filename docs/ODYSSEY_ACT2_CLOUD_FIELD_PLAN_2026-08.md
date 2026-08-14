@@ -57,6 +57,42 @@ plan's Wave 5.
    Wave 0b exists to falsify this for two sessions' cost, against a Ghibli/Dedene ramp bar
    (2-3 value bands, warm-lit/blue-shadow, flat bases).
 
+## 1b. THE REFERENCE BAR — measured from the owner's three Witness screenshots (2026-08-14)
+
+`public/playground-refs/witness_clouds_{1,2,3}.{png,jpg}`. Sampled in the clean sky band of
+each: "sky" = darkest decile, "lit" = brightest decile, "shade" = the dark quintile of the
+cloud-bright pixels. **These are the acceptance criteria for Wave 0b — the probe is judged
+against numbers, not vibes.**
+
+| metric | ref1 | ref2 | ref3 | TARGET BAND |
+|---|---|---|---|---|
+| cloud lum / sky lum | 2.55 | 2.89 | 2.22 | **2.2 - 2.9** |
+| shade lum / lit lum | 0.895 | 0.737 | 0.921 | **0.74 - 0.92 (very low contrast)** |
+| shade hue vs lit (norm R) | −0.032 | −0.256 | −0.014 | **R DOWN** |
+| shade hue vs lit (norm B) | +0.042 | +0.244 | +0.034 | **B UP — cooler, never darker** |
+| localised edge width (norm to 1280w) | 6.0 px | 3.3 px | 5.0 px | **3 - 6 px** |
+
+**THE FINDING THAT RE-PRICES THE WHOLE PLAN'S RISK: our shipped deck already measures 4.0 px
+on the identical edge metric — inside the Witness band.** The research's headline worry ("no
+precedent proves a hard opaque silhouette reads puffy"; The Witness spends a blended edge
+pass, Sea of Thieves a quarter-res blur) is therefore MUCH smaller than it looked: their edges
+are not meaningfully softer than what this renderer already produces. Consequence: the parked
+rim SHELL (§6 Wave 6) and the MSAA/A2C option (D4) drop from "likely needed" to "probably
+never", and Wave 3's dithered near-dissolve is the only softening the plan should budget for.
+
+**And the palette is already close.** Our underside uses 0.86 shade/lit (inside 0.74-0.92);
+our shadow band is already a cool hue shift, not a darkening (the §3 rule, independently
+confirmed by all three refs); our cloud/sky ratio measured 2.2-5.3 at ch5 — the low end is on
+target and the high end is the deep zenith, which the sky fix already improved.
+
+**So the gap is ENTIRELY the silhouette and the third dimension.** Not the edges, not the
+tones. The refs show rounded multi-lobed cauliflower masses with flat bases, near-white lit
+crowns, and almost no interior detail — every bit of the read lives in the OUTLINE and in the
+soft turn of form between lobes. That is exactly what a plan-view sheet contour cannot make
+and what smin-sculpted geometry with centroid-bent normals is built to make. Wave 0b must
+therefore be judged on SHAPE first; if the numbers above are hit and the shape still fails,
+the sculptor (Wave 1), not the paint, is the answer — and vice versa.
+
 ## 2. Why the sheet cannot be "improved into" this look
 
 The sheet is a horizontal clipmap: its silhouette is a PLAN-VIEW contour (popcorn from
@@ -111,6 +147,74 @@ below y≈484 (most of the act), and at eye height it presents paper-thin billow
   spline stations. **Owner decision D0: does quantised paint on lobed geometry clear the
   coherence bar AT ALL?** No → pivot back to evolve-the-deck; sunk cost two sessions.
 - Export `makeRng` from `odyssey-hero-clouds.js` (one line; module stays retired).
+
+> **OUTCOME — WAVE 0 COMPLETE, 2026-08-14. F1 PASSES at ch5; D0 PASSES; the gap is the
+> GEOMETRY, exactly as §1b predicted from the references.**
+> Evidence: `artifacts/odyssey/act2-clouds-ch5-bisect/w0b-paint-{ch4,ch5}.png`,
+> `probe-field-ch5.png`; reports `gpu-split-laneb-field-{probe,curve}-*.json`.
+>
+> **0a — THE MECHANISM IS CHEAP, AND THE PRICE CURVE IS SUBLINEAR.** Lane B, amd/rdna-2,
+> `--low-power`, draws content-matched (+1 exactly as designed), `baselineDrift` **EXACTLY
+> 0.000** — the gold standard this repo only sees on a genuinely quiet machine:
+>
+> | config | p50 | Δ vs baseline |
+> |---|---|---|
+> | baseline (sheet only) | 9.3716 | — |
+> | + 14 probe masses | 9.6338 | **0.262** |
+> | + 28 probe masses | 9.7649 | **0.393** |
+> | baseline-repeat | 9.3716 | drift **0.000** |
+>
+> **Gate F1 at ch5 is ≤ 0.50. Measured 0.393. PASSES.** Fitting the two points:
+> **~0.131 ms fixed + ~0.0094 ms per mass** — doubling the masses added only 0.131 ms, so the
+> cost is dominated by a per-draw/pipeline constant, not by mass count. Extrapolated to Wave
+> 1's ~46 masses at UNIFORM FULL DETAIL ≈ 0.56 ms, just over gate — **which promotes the LOD
+> chain from an optimisation to a load-bearing part of the design.** Author far-ring masses at
+> LOD2 or the gate is missed by construction.
+>
+> ⚠️ **TWO EARLIER PAIRS WERE INADMISSIBLE AND ARE NOT THE RESULT.** A first run reported
+> 0.721 (ch5) / 0.590 (ch4) at drift 0.328 / −0.262, and a later ch4 attempt returned
+> drift 0.852 with **negative** deltas (−0.328, −0.459) — physically impossible, since adding
+> geometry cannot speed a frame; its baseline decayed 11.73 → 10.88 mid-run. Both were
+> co-tenant-contaminated. The lesson is the one this repo keeps re-learning: **judge the pair
+> by its drift before quoting its delta.** ch4's F1 (≤ 0.35) is therefore still **UNRESOLVED**
+> and must be re-measured in a quiet window before Wave 1's gate is evaluated.
+>
+> **0b — THE PAINT CLEARS THE BAR; D0 PASSES.** The Witness stack shipped into the probe
+> material: centroid-bent normals (`aMassCentre` attribute, bend 0.55), wrap diffuse
+> (w = 0.75) banded 0.42..0.62, correct-sign Mie, the shipped fresnel drawn edge, hero aerial.
+> Measured sky-band-only with cloud/sky separated by blue-dominance (the ONLY comparison that
+> is apples-to-apples; two earlier attempts were contaminated — a whole-frame mask caught the
+> references' autumn foliage as "cloud shadow", and a naive box caught sky in the dark tail):
+>
+> | metric | refs | probe @ch5 | probe @ch4 | shipped deck |
+> |---|---|---|---|---|
+> | shade/lit | 0.63-0.72 | **0.676 ✓** | 0.606 (just under) | 0.759 (flatter than refs) |
+> | cloud/sky | 1.76-2.05 | 2.55 | 1.40 | 2.40 |
+> | hue B shift | −0.028..+0.025 | −0.003 ✓ | −0.136 | +0.029 ✓ |
+>
+> The contrast target is HIT, and better placed than the shipped deck. Remaining palette
+> deltas are small and station-dependent (cloud/sky runs high at ch5's deep zenith and low at
+> ch4's pale sky — a sky-gradient interaction, not a cloud-tone defect).
+>
+> **AND THE SHAPE VERDICT, which is what §1b said to judge on.** At ch4 (masses at honest
+> distance) the probe reads as multi-lobed puffy 3-D cumulus with lit crowns, shaded
+> undersides and cauliflower bumps — a different object class from the sheet, in the right
+> direction. **But the lobes are still individually countable in places: it is a cluster of
+> spheres wearing good paint, not yet one merged mass.** That residual is precisely the
+> smin-union + smax-flat-base + domain-warp that Wave 1 exists to build, and precisely what
+> §1b predicted ("if the numbers land and the shape still fails, the sculptor is the answer").
+> The centroid bend at 0.55 unifies the shading but cannot unify a silhouette that is
+> geometrically a bag of balls.
+>
+> ⚠️ **The ch5 frame also reproduces the WHITE SLAB** — a probe mass at minimum clearance seen
+> huge and near-flat, the same artefact that got the heroes retired. It is a CLEARANCE defect,
+> not a paint defect, and it is the direct evidence for Wave 1's SDF-clearance classes
+> replacing the heroes' centre-distance rule.
+>
+> **CARRIED INTO WAVE 1:** (1) re-measure ch4 F1 on a quiet machine; (2) LOD chain is
+> mandatory, not optional; (3) clearance must be SDF-at-rail per class; (4) the probe's
+> `?odysseyWorldCloudFieldCount=` override and the `cloud-field-half` configuration stay as
+> the cost-curve instrument for every later wave.
 
 ### Wave 1 — the sculptor
 `odyssey-cloud-field.js` + `odyssey-cloud-field-specs.js` (frozen, import-free): roles

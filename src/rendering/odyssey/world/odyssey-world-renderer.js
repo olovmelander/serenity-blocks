@@ -16,6 +16,7 @@ import {
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
+import { buildProbeFieldSpecs } from './odyssey-cloud-field-probe.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
@@ -93,6 +94,16 @@ const RELIEF_EXTENT = 9000;
  * summit — the three readings Ch3, Ch5 and Ch4 used to build separately.
  */
 const CLOUD_DECK_Y = 660;
+
+/**
+ * How far the cloud-field normal is bent from the lobe's own radial normal toward the MASS
+ * centre (plan Wave 0b). 0 = the retired heroes' bag-of-soap-bubbles; 1 = a featureless
+ * ellipsoid with no lobe read at all. The Witness exposed this to artists per cloud for
+ * exactly this reason; one global value is the probe's simplification.
+ */
+const FIELD_CENTROID_BEND = 0.55;
+/** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
+const FIELD_MIE_GAIN = 0.10;
 
 // The two fixed ends of the water banding, read ONCE from the colour script so the plates
 // and the keyframes can never drift. Sampling the script for them per frame would be three
@@ -701,6 +712,12 @@ export function scatterTrees(heightAt, {
  *   1-2 timer ticks (perf was never the issue). Module, specs and tests are RETAINED per the
  *   ADR-0015 pattern; `?odysseyWorldHeroes=1` in-game or `?heroes=1` on the playground rig restores
  *   the full system.
+ * @param {boolean} [opts.cloudField] WAVE 0 PRICE PROBE for the cloud-field plan (board flag
+ *   `?odysseyWorldCloudField=1`, gpu-split configuration `cloud-field`). Mounts ~28 probe
+ *   masses built by the RETIRED hero builder and shaded by the RETIRED hero material — zero
+ *   new shader code — so the differential prices the MECHANISM (triangles, opaque draws,
+ *   rasterised silhouette) before the real sculptor exists. See
+ *   docs/ODYSSEY_ACT2_CLOUD_FIELD_PLAN_2026-08.md §5 Wave 0a; nothing here survives Wave 1.
  * @param {boolean} [opts.water] build the sea plate at all. A MEASUREMENT LEVER, not a player
  *   setting (board flag `?odysseyWorldNoWater=1`, gpu-split configuration `no-water`): the
  *   water surface is one ungated DoubleSide transparent clipmap that draws across the whole
@@ -731,6 +748,8 @@ export function createOdysseyWorld({
     // ON while the board passes false is the "second, quieter opinion" disease the grade
     // contract file documents. One default, shared by every caller; opt back in explicitly.
     heroes = false,
+    cloudField = false,
+    cloudFieldCount = 0,
     water = true,
     cloudDebug = null,
     skyRadius = null, railSamples = [],
@@ -1892,6 +1911,86 @@ export function createOdysseyWorld({
     heroMesh.name = 'odyssey-world-hero-clouds';
     if (heroes) group.add(heroMesh);
 
+    // ── CLOUD FIELD PROBE — THE WITNESS PAINT STACK (plan Wave 0b) ──────────────────
+    // Wave 0a priced the MECHANISM with `heroMat` verbatim — zero new shader code, so the
+    // 0.393 ms it measured at ch5 is triangles + opaque draws + rasterised silhouette and
+    // nothing else. THIS material is the other probe: does the PAINT clear the reference bar
+    // measured from the owner's Witness screenshots (plan §1b)? Three things `heroMat` lacks,
+    // in the order the research ranks them:
+    //
+    // 1. THE CENTROID-BENT NORMAL FIELD — the load-bearing one, and the reason the retired
+    //    heroes read as a bag of soap bubbles. The Witness blends each vertex normal toward
+    //    `normalize(pos - cloudCentroid)` so a clump of lobes shades as ONE soft mass;
+    //    per-lobe radial normals shade every lobe as its own sphere, which IS the "different
+    //    object class" read that got the heroes retired.
+    // 2. WRAP DIFFUSE instead of a hard band on dot(N, sun). The references measure shade/lit
+    //    at 0.74-0.92 — a very low-contrast, soft turn of form — and a hard terminator on a
+    //    sphere cannot produce that. Bands are kept, but placed ON the wrapped term so they
+    //    land inside the soft falloff rather than replacing it.
+    // 3. FAKE FORWARD (MIE) SCATTER, the silver lining. ⚠️ SIGN: `uSunDir` points TOWARD the
+    //    sun (the ground's `ndl = max(dot(normal, uSunDir), 0)` proves it) and `cfV` points
+    //    fragment->eye, so the view ray travels along `-cfV`. Forward scatter fires when the
+    //    view looks INTO the sun, i.e. as `dot(cfV, uSunDir)` approaches -1. A design draft had
+    //    this inverted and would have lit the ANTI-sun side of every cloud.
+    //
+    // Constructed unconditionally, like every other material here: TSL nodes are plain JS
+    // until a material they feed is rendered, so this costs nothing when the probe is off and
+    // it keeps the fog opt-out list (lint-enforced) able to name it.
+    const cfCentre = attribute('aMassCentre', 'vec3');
+    const cfGeoN = normalWorld.toVar('fieldGeoN');
+    const cfRadial = positionWorld.sub(cfCentre);
+    // Guarded: a vertex exactly at the centre would const-fold a zero-length normalize
+    // into a WGSL compile failure (the winter theme's logged trap).
+    const cfBent = cfRadial.div(max(length(cfRadial), float(1e-4)));
+    const cfN = normalize(mix(cfGeoN, cfBent, float(FIELD_CENTROID_BEND))).toVar('fieldN');
+    const cfV = normalize(cameraPosition.sub(positionWorld)).toVar('fieldV');
+    // Wrap diffuse: (dot(N,L) + w) / (1 + w) — the GPU-Gems scatter approximation the
+    // Witness reuses from its vegetation. w=0.75 keeps the whole mass lit and moves the
+    // terminator far around the limb, which is what "no hard terminator" looks like.
+    const cfWrap = clamp(dot(cfN, uSunDir).add(0.75).div(1.75), 0, 1).toVar('fieldWrap');
+    // TWO bands on the wrapped term, deliberately WIDE (0.42..0.62) so the step is a soft
+    // turn rather than the deck's 8% drawn line. Edges are never equal.
+    const cfBand = smoothstep(float(0.42), float(0.62), cfWrap);
+    const cfBody = mix(cloudUnderShade, cloudTop, cfBand).toVar('fieldBody');
+    // The underside stays its own family, keyed to the BENT normal's up component so the
+    // whole mass turns together instead of each lobe flipping on its own.
+    const cfUnder = mix(cloudUnderLit, cloudUnderShade, smoothstep(float(-0.20), float(-0.70), cfN.y));
+    const cfLit = mix(cfBody, cfUnder, smoothstep(float(0.05), float(-0.25), cfN.y)).toVar('fieldLit');
+    // Mie: peaks when the view looks into the sun; attenuated by an N.L thickness proxy
+    // (the cloud is optically thinner where it faces edge-on), then QUANTISED into the
+    // grammar so it reads as a painted rim rather than a bloom.
+    const cfMie = clamp(dot(cfV, uSunDir).add(0.9).mul(-10), 0, 1).pow(4)
+        .mul(clamp(float(1.25).sub(abs(dot(cfN, uSunDir))), 0, 1));
+    const cfRim = float(1).sub(abs(dot(cfN, cfV)));
+    const cfEdge = smoothstep(float(0.55), float(0.88), cfRim);
+    const fieldCol = mix(cfLit, mix(cloudShade, uSkyHorizon, float(0.30)), cfEdge.mul(0.55))
+        .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
+    const fieldMat = new THREE.MeshBasicNodeMaterial();
+    fieldMat.colorNode = toOutput(heroAerial(fieldCol, positionWorld));
+    fieldMat.side = THREE.FrontSide;
+
+    let fieldProbeMesh = null;
+    let fieldProbeBuild = null;
+    if (cloudField) {
+        // The COUNT is overridable so Wave 0a can measure a cost CURVE rather than a single
+        // point. Two counts answer the question a single number cannot: is the price linear in
+        // mass count (so composition and LOD are the levers) or dominated by something else?
+        fieldProbeBuild = buildHeroCloudGeometry(
+            buildProbeFieldSpecs(railSamples, cloudFieldCount || undefined),
+            { tertiaries: true, massCentres: true },
+        );
+        // Built only when asked — an unmounted 40k-triangle geometry is still a CPU build and
+        // a GPU upload nobody requested.
+        fieldProbeMesh = new THREE.Mesh(fieldProbeBuild.geometry, fieldMat);
+        // Same three invariants as the heroes: unculled (a breathing +-1 draw voids pairs via
+        // the content-match guard), static matrix, opaque queue.
+        fieldProbeMesh.frustumCulled = false;
+        fieldProbeMesh.matrixAutoUpdate = false;
+        fieldProbeMesh.updateMatrix();
+        fieldProbeMesh.name = 'odyssey-world-cloud-field-probe';
+        group.add(fieldProbeMesh);
+    }
+
     // ── god rays (Ch2 port) ─────────────────────────────────────────────────────────
     // The deep-ocean chapter's declared hero: descending light shafts with caustic shimmer.
     // Ported as ONE InstancedMesh of open cones seated along the SUBMERGED stretch of the
@@ -2308,7 +2407,7 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat, fieldMat].forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
@@ -2341,6 +2440,8 @@ export function createOdysseyWorld({
         materials: 4 + (clouds ? 1 : 0) + (heroes ? 1 : 0),
         heroClouds: heroes ? ODYSSEY_HERO_CLOUD_SPECS.length : 0,
         heroTriangles: heroes ? heroBuild.triangles : 0,
+        cloudFieldProbe: cloudField,
+        cloudFieldProbeTriangles: fieldProbeBuild ? fieldProbeBuild.triangles : 0,
         applyExposure,
         outputScale,
         outputSaturation,
@@ -2440,6 +2541,9 @@ export function createOdysseyWorld({
             // lesson logged — so the gate has to be a `visible` write on the CPU.
             if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
             if (heroMesh) heroMesh.visible = heroes && uSubmerged.value < 0.999;
+            // Same underwater gate as the heroes — the probe shares their material and their
+            // altitude band, so it must share their CPU `.visible` write too.
+            if (fieldProbeMesh) fieldProbeMesh.visible = uSubmerged.value < 0.999;
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
             // seaLevel + 3, and the lowest trunk seats at y=290.3 against sea level 287.31, so
@@ -2472,7 +2576,7 @@ export function createOdysseyWorld({
             // heroes shipped, leaking the compiled hero material on every world dispose; with
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
-            [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat].forEach((m) => m.dispose());
+            [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat, fieldMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();

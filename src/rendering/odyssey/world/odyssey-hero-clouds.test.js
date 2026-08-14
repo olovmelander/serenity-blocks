@@ -93,6 +93,13 @@ describe('hero cloud gating (source-level, the ×0-uniform lesson)', () => {
     });
 
     it('opts the hero material out of scene fog (the 4x-recurring trap)', () => {
-        expect(rendererSource).toMatch(/heroMat\].forEach\(\(m\) => \{ m\.fog = false; \}\)/);
+        // Asserts MEMBERSHIP, not position. This used to pin `heroMat` as the LAST name in the
+        // array, which broke the moment a later material was appended — a brittleness, not a
+        // stronger guarantee. The claim being made is "the hero material opts out of scene
+        // fog"; that is what is checked now, and `odyssey-world-lints.test.js` separately
+        // asserts the list names EVERY constructed material, which is the stronger invariant.
+        const fogOptOut = rendererSource.match(/\[([^\]]+)\]\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
+        expect(fogOptOut, 'the fog opt-out forEach must exist').toBeTruthy();
+        expect(fogOptOut[1].split(',').map((n) => n.trim())).toContain('heroMat');
     });
 });

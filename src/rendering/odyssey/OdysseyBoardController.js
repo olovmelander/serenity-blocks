@@ -693,6 +693,11 @@ export class OdysseyBoardController {
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity
                     // graph alone, =flat leaves only geometry. See createOdysseyWorld.
                     cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
+                    // WAVE 0 PRICE PROBE for the cloud-field plan: ?odysseyWorldCloudField=1
+                    // mounts ~28 probe masses on the retired hero builder + material (zero new
+                    // shader code) so the mechanism can be priced before the sculptor exists.
+                    cloudField: readBooleanUrlFlag('odysseyWorldCloudField'),
+                    cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(
                         { length: 48 },

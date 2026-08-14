@@ -34,8 +34,14 @@
 import * as THREE from 'three';
 import { HERO_CLOUD_RULES } from './odyssey-hero-cloud-specs.js';
 
-/** Deterministic per-hero RNG: the same sky every boot, and reproducible captures. */
-function makeRng(seed) {
+/**
+ * Deterministic per-hero RNG: the same sky every boot, and reproducible captures.
+ *
+ * EXPORTED for the cloud-field work (plan Wave 0): the field probe needs the identical
+ * sequence so its geometry is byte-reproducible across runs, and a second copy of eight lines
+ * of hash arithmetic is exactly the kind of duplicate this repo has been burnt by.
+ */
+export function makeRng(seed) {
     let s = Math.floor((seed * 2654435761) % 2147483647) || 1;
     return () => {
         s = Math.imul(s ^ (s >>> 15), 2246822519);
@@ -67,12 +73,24 @@ function lobeGeometry(cx, cy, cz, radius, ySquash, detail) {
  * Build the merged, world-space hero cloud geometry.
  *
  * @param {ReadonlyArray<{id:string,x:number,base:number,z:number,w:number,h:number,yaw:number,seed:number}>} specs
- * @param {{ tertiaries?: boolean }} [opts] slice control — slice 1 ships without crown scallops
+ * @param {{ tertiaries?: boolean, massCentres?: boolean }} [opts] slice control — slice 1 ships
+ *   without crown scallops. `massCentres` additionally emits an `aMassCentre` attribute: the
+ *   MASS's centre repeated per vertex, which is what the Witness normal field needs (see
+ *   below) and which cannot be reconstructed after the merge, because the lobe counts are
+ *   RNG-driven and the per-spec vertex mapping is gone.
  * @returns {{ geometry: THREE.BufferGeometry, triangles: number, lobes: number }}
  */
 export function buildHeroCloudGeometry(specs, opts = {}) {
     const withTertiaries = opts.tertiaries === true;
+    const withCentres = opts.massCentres === true;
     const parts = [];
+    // Parallel to `parts`: the mass centre each part belongs to. THE WITNESS NORMAL FIELD.
+    // Their engine programmer's note is the whole reason this exists — vertex normals blended
+    // toward a vector field computed by subtracting vertex positions from the CLOUD CENTROID
+    // is what makes a clump of separate lobes shade as ONE soft mass instead of as a bag of
+    // soap bubbles. Per-lobe radial normals (what this builder emits on their own) are exactly
+    // the bag of bubbles.
+    const partCentres = [];
     let lobes = 0;
 
     specs.forEach((spec) => {
@@ -82,10 +100,15 @@ export function buildHeroCloudGeometry(specs, opts = {}) {
         const sinY = Math.sin(spec.yaw);
         // Place in the hero's own frame, then yaw into world — so `yaw` re-orients a hero's
         // lobe arrangement without re-authoring its numbers.
+        // The mass centre the Witness field points away from: the primaries' shared centre
+        // height, on the spec's own axis. Not the bounding-box centre — the crown scallops
+        // would drag it upward and flatten the field exactly where the lobes need it most.
+        const massCentre = [spec.x, spec.base + (spec.h * 0.42), spec.z];
         const place = (lx, ly, lz, r, sq, detail) => {
             const wx = spec.x + ((lx * cosY) - (lz * sinY));
             const wz = spec.z + ((lx * sinY) + (lz * cosY));
             parts.push(lobeGeometry(wx, ly, wz, r, sq, detail));
+            partCentres.push(massCentre);
             lobes += 1;
         };
 
@@ -153,10 +176,19 @@ export function buildHeroCloudGeometry(specs, opts = {}) {
     parts.forEach((g) => { vertCount += g.attributes.position.count; });
     const position = new Float32Array(vertCount * 3);
     const normal = new Float32Array(vertCount * 3);
+    const massCentre = withCentres ? new Float32Array(vertCount * 3) : null;
     let off = 0;
-    parts.forEach((g) => {
+    parts.forEach((g, i) => {
         position.set(g.attributes.position.array, off);
         normal.set(g.attributes.normal.array, off);
+        if (massCentre) {
+            const c = partCentres[i];
+            for (let v = 0; v < g.attributes.position.count; v += 1) {
+                massCentre[off + (v * 3)] = c[0];
+                massCentre[off + (v * 3) + 1] = c[1];
+                massCentre[off + (v * 3) + 2] = c[2];
+            }
+        }
         off += g.attributes.position.count * 3;
         g.dispose();
     });
@@ -164,6 +196,9 @@ export function buildHeroCloudGeometry(specs, opts = {}) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+    if (massCentre) {
+        geometry.setAttribute('aMassCentre', new THREE.BufferAttribute(massCentre, 3));
+    }
     geometry.computeBoundingSphere();
     return { geometry, triangles: vertCount / 3, lobes };
 }
