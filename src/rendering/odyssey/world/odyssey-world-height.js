@@ -142,6 +142,35 @@ const INLAND_TO_Z = -900;
 const LAND_X = -220;
 const LAND_HALF_WIDTH = 2400;
 
+/**
+ * THE NORTH COAST — what makes the landmass an ISLAND instead of a peninsula.
+ *
+ * Without it, `shelfT` and `inlandT` saturate at 1 past z=-900 and simply STAY there: the
+ * ground ran at a constant 385 (97.7 above sea level) for every z from -900 to the lattice
+ * horizon at 26 km — measured identical at z=-3000, -9000 and -26214. Worse, the macro bake
+ * only covers ±4500 and is ClampToEdge, so the land crossing the plate's northern boundary
+ * (7.5% of the boundary was dry) was EXTRUDED another ~21,700 u by the sampler. That is the
+ * "infinitely long land stretch behind the mountain" the owner photographed from the layout
+ * editor (2026-08-14).
+ *
+ * The numbers are set by three hard constraints, north to south:
+ *   - the rail's northernmost point is z = -743.5 (p=0.831) — the coast must stay far behind it;
+ *   - the last massif influence ends at z ≈ -2483 (far-left's footprint + its 1.25x relief
+ *     halo), and inside a footprint the pedestal blends against the LOCAL ground, so the
+ *     ground must not move there — the taper starts 117 u beyond it;
+ *   - the baked plate ends at ±4500 and its edge clamp extrudes whatever value crosses the
+ *     boundary to the horizon, so the coast must COMPLETE well inside the plate. Underwater
+ *     by z=-3400 leaves 1100 u of margin, and turns the clamp into an ally: a boundary that
+ *     is ocean everywhere extrudes OCEAN to the horizon, which is exactly the island-in-a-sea
+ *     reading the world wants.
+ *
+ * Slope check (the clipmap's own continuity bar): the full rise is at most SHELF_RISE +
+ * INLAND_RISE = 305 u released over 800 u of z — peak smoothstep slope ≈ 0.57, gentler than
+ * the south shelf the rail already flies over.
+ */
+const NORTH_SHORE_FROM_Z = -2600;
+const NORTH_SHORE_TO_Z = -3400;
+
 /** The Ch3 basin — an inland lake bowl, sited past the shoreline rather than in the surf. */
 const BASIN_X = -150;
 const BASIN_Z = -520;
@@ -217,7 +246,11 @@ export function odysseyWorldMacro(x, z) {
     const inlandT = smoothstep01(INLAND_FROM_Z, INLAND_TO_Z, z);
     const lateralN = (x - LAND_X) / LAND_HALF_WIDTH;
     const lateral = Math.max(0, 1 - (lateralN * lateralN));
-    const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral);
+    // The north coast: 1 across the whole inhabited landmass, easing to 0 across
+    // NORTH_SHORE_FROM_Z..TO_Z so the island returns to open ocean in -z exactly as
+    // `lateral` already returns it to ocean in x. See the constant block above.
+    const northT = smoothstep01(NORTH_SHORE_TO_Z, NORTH_SHORE_FROM_Z, z);
+    const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral * northT);
 
     // The Ch3 basin, scooped out so the chapter-3 lake has somewhere to sit.
     const bx = (x - BASIN_X) / BASIN_RX;
