@@ -164,8 +164,11 @@ const FIELD_FADE_FAR = 165;
  * joins between them never tear open.
  *
  * ⚠️ The baked normals are NOT re-derived under the swell, so shading lags the shape by the
- * displacement's own gradient. At 0.10 that error sits below the two-band quantisation; anyone
- * raising it further must re-check that claim.
+ * displacement's own gradient. Re-checked by capture at 0.34: the error stays under the
+ * two-band quantisation because the displacement is RADIAL about the lobe centre, which is
+ * very nearly the surface normal on a lobe — so it mostly moves the surface along its own
+ * normal, which does not rotate it. A displacement with a large TANGENTIAL component would
+ * not be this forgiving.
  *
  * ⚠️ NOT VERIFIED FROM CAPTURES, and the reason is a hard limit of the harness rather than
  * laziness. Cloud motion cannot be isolated in a screenshot here: advancing the clock also
@@ -178,7 +181,7 @@ const FIELD_FADE_FAR = 165;
  * with clouds, rock control identical); no equivalent exists for breathing, so this amplitude
  * was set by eye in the live browser, not by measurement, and is recorded as such.
  */
-const FIELD_BREATH_AMP = 0.18;
+const FIELD_BREATH_AMP = 0.34;
 const FIELD_BREATH_PERIOD_MIN = 34;
 const FIELD_BREATH_PERIOD_MAX = 78;
 
@@ -2059,8 +2062,16 @@ export function createOdysseyWorld({
     );
     // Guarded divide: a vertex exactly at its lobe centre cannot happen on a surface, but a
     // zero-length normalize const-folds into a WGSL compile failure rather than a warning.
+    // TWO TERMS, NOT ONE. A single sine is a pulse: every lobe reaches its maximum, holds
+    // nothing, and returns by the identical path, which the eye reads as mechanical breathing
+    // rather than as a cloud growing. A second, faster harmonic at 1.63x with its own phase
+    // offset breaks the period so no lobe repeats the same excursion twice in a row, and the
+    // sum still stays inside FIELD_BREATH_AMP because the weights total 1.
+    const cfSwell = sin(uTime.mul(cfBreathW).add(cfLobe.w)).mul(0.68)
+        .add(sin(uTime.mul(cfBreathW.mul(1.63)).add(cfLobe.w.mul(2.3))).mul(0.32))
+        .mul(FIELD_BREATH_AMP);
     const cfBreath = cfLobeRel.div(max(cfLobeDist, float(1e-4)))
-        .mul(cfLobeDist.mul(sin(uTime.mul(cfBreathW).add(cfLobe.w)).mul(FIELD_BREATH_AMP)));
+        .mul(cfLobeDist.mul(cfSwell));
     // ⚠️ NOT A SHARED `.toVar()`, AND THE VERTEX POSITION IS ASSIGNED FIRST. This cost a
     // session to find and it is the repo's own logged r181 trap wearing a new face: a var's
     // ASSIGNMENT is emitted at its FIRST BUILD SITE, and three builds `positionNode` BEFORE it

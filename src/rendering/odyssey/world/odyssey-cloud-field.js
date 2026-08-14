@@ -571,7 +571,7 @@ export function cloudFieldSdf(specs, x, y, z, lobeCache = null) {
  * @param {Record<string, number>} margins per-`role` surface clearance in world units
  * @returns {Array<{id:string, problem:string}>} empty when the field is legal
  */
-export function validateCloudFieldClearance(specs, railSamples, margins, driftAmplitude = 0) {
+export function validateCloudFieldClearance(specs, railSamples, margins, driftAmplitude = 0, breathFraction = 0) {
     const problems = [];
     specs.forEach((spec) => {
         const lobes = buildCloudLobes(spec);
@@ -580,7 +580,13 @@ export function validateCloudFieldClearance(specs, railSamples, margins, driftAm
         // The margin therefore has to cover the WORST excursion, not the authored position —
         // otherwise raising the drift amplitude for visibility silently spends the safety
         // budget the clearance rules exist to protect.
-        const margin = (margins[spec.role] ?? margins.default ?? 0) + driftAmplitude;
+        // Breathing extends the surface OUTWARD as well: a lobe swelling by `breathFraction`
+        // of its own radius pushes the hull out by roughly that fraction of a lobe radius,
+        // which for this grammar is ~0.25 of the half-width. Small next to the drift term, but
+        // it is the same class of mistake to leave it out — an animated surface must clear the
+        // rail at its largest, not at the size the bake happened to produce.
+        const swell = breathFraction * 0.25 * (spec.w / 2);
+        const margin = (margins[spec.role] ?? margins.default ?? 0) + driftAmplitude + swell;
         let worst = Infinity;
         railSamples.forEach((pt) => {
             const d = cloudMassSdf(spec, lobes, pt.x, pt.y, pt.z, false);
