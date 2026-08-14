@@ -517,7 +517,11 @@ export function createArcticFox(scene, {
             const flick = Math.sin(fx.earFlick * Math.PI) * 0.2;
             for (let i = 0; i < fx.earBones.length; i += 1) {
                 const side = i % 2 === 0 ? 1 : -1;
-                addWorldRotation(fx.earBones[i], _AX_X, listening * -0.12 - flick * 0.45);
+                // _AX_RIGHT, not a world-X axis: the ears pitch about the BODY's right
+                // axis for the same reason the head does (see the axis note above) —
+                // this line still referenced the deleted _AX_X, so it threw a
+                // ReferenceError on every frame a fox with ear bones was animated.
+                addWorldRotation(fx.earBones[i], _AX_RIGHT, listening * -0.12 - flick * 0.45);
                 addWorldRotation(fx.earBones[i], _AX_Y, flick * side);
             }
         }

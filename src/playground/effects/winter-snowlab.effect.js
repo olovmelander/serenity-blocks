@@ -26,7 +26,6 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
-    abs,
     attribute,
     cameraPosition,
     clamp,
@@ -146,7 +145,8 @@ const tslNoised = Fn(([p]) => {
     const deriv = ga
         .add(gb.sub(ga).mul(u.x))
         .add(gc.sub(ga).mul(u.y))
-        .add(ga.sub(gb).sub(gc).add(gd).mul(u.x).mul(u.y))
+        .add(ga.sub(gb).sub(gc).add(gd).mul(u.x)
+            .mul(u.y))
         .add(du.mul(vec2(u.y, u.x).mul(k3).add(vec2(k1, k2))));
     return vec3(value, deriv.x, deriv.y);
 });
@@ -219,7 +219,7 @@ function trailPathX(z) {
     return -1.0 + Math.sin(z * 0.045) * 5.0 + Math.sin(z * 0.013 + 1.7) * 3.0;
 }
 
-export function create({ scene, camera, params }) {
+export function create({ scene, params }) {
     const readF = (key, dflt) => {
         const v = parseFloat(params.get(key));
         return Number.isFinite(v) ? v : dflt;
@@ -316,7 +316,8 @@ export function create({ scene, camera, params }) {
             .mul(along.oneMinus())
             .mul(float(0.32).add(uTime.mul(0.23).sin().mul(0.1)));
 
-        return base.add(glow).add(glowWide).add(moon).add(halo).add(aur);
+        return base.add(glow).add(glowWide).add(moon).add(halo)
+            .add(aur);
     });
 
     // ------------------------------------------------------------------ dome
@@ -340,7 +341,7 @@ export function create({ scene, camera, params }) {
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
-    const count = pos.count;
+    const { count } = pos;
     const trailComp = new Float32Array(count); // compaction 0..1 (trench)
     const trailBerm = new Float32Array(count); // loose displaced mass 0..1
 
@@ -408,7 +409,8 @@ export function create({ scene, camera, params }) {
         // must be HARD: when both layers coexist everywhere their perpendicular
         // bearings weave into corduroy — the exact read snowflow warns against.
         const exposureF = smoothstep(
-            0.3, 0.7,
+            0.3,
+            0.7,
             tslNoised(worldXZ.mul(0.0055).add(vec2(5.7, 2.9))).x.mul(0.5).add(0.5),
         );
         const scour = smoothstep(-0.15, 0.45, tslNoised(worldXZ.mul(0.021)).x)
@@ -423,10 +425,12 @@ export function create({ scene, camera, params }) {
         const prS = rotN(worldXZ, cS, sS);
         const sas = ridged3(vec2(prS.x.mul(1 / 2.3), prS.y.mul(stretch.div(2.3))));
         const ampS = float(0.085).mul(mix(0.15, 1.0, exposureF)).mul(scour)
-            .mul(fadeS).mul(uSastrugi);
+            .mul(fadeS)
+            .mul(uSastrugi);
         const gradS = rotTN(
             vec2(sas.g.x.mul(1 / 2.3), sas.g.y.mul(stretch.div(2.3))),
-            cS, sS,
+            cS,
+            sS,
         ).mul(ampS);
 
         // Wind ripples: λ0.42 m transverse corrugation, strongest in hollows.
@@ -439,7 +443,8 @@ export function create({ scene, camera, params }) {
         const ampR = float(0.018).mul(mix(1.0, 0.1, exposureF)).mul(fadeR).mul(uSastrugi);
         const gradR = rotTN(
             vec2(rip.yz.x.mul(2.9 / 0.42), rip.yz.y.mul(1 / 0.42)),
-            cR, sR,
+            cR,
+            sR,
         ).mul(ampR);
 
         // Grain: λ0.115 m — keeps the normal field alive under the camera.
@@ -566,7 +571,8 @@ export function create({ scene, camera, params }) {
             .add(glintOctave(0.185, 1500.0, vec2(53.1, 17.9)).mul(1.35).mul(fadeGb));
         const glints = moonRadiance.mul(9.0)
             .mul(glintSum).mul(graze).mul(lightGate)
-            .mul(uGlint).mul(0.55)
+            .mul(uGlint)
+            .mul(0.55)
             .mul(mix(1.0, 0.3, comp));
 
         // --- ambient: hemisphere from the shared sky + snow bounce -----------
@@ -574,7 +580,8 @@ export function create({ scene, camera, params }) {
         const skyHor = skyColor(normalize(vec3(uSunDir.x, 0.12, uSunDir.z)));
         const hemi = mix(skyHor, skyUp, N.y.mul(0.5).add(0.5)).mul(uAmbient).mul(7.0);
         const bounce = skyUp.mul(0.28).mul(clamp(N.y.negate().mul(0.5).add(0.5), 0.0, 1.0))
-            .mul(albedo).mul(uAmbient).mul(7.0);
+            .mul(albedo).mul(uAmbient)
+            .mul(7.0);
         const skySpecDir = reflect(V.negate(), N);
         const Fr = float(0.028).add(
             max(roughness.oneMinus(), 0.028).sub(0.028)
@@ -590,7 +597,8 @@ export function create({ scene, camera, params }) {
         const caveTint = mix(vec3(1.0), deepTint, ao.oneMinus().mul(0.95));
 
         const lit = direct.add(sss.mul(albedo)).add(spec).add(ambient).add(glints)
-            .mul(ao).mul(caveTint);
+            .mul(ao)
+            .mul(caveTint);
 
         // --- aerial perspective through the same sky -------------------------
         const viewVec = positionWorld.sub(cameraPosition);
@@ -600,7 +608,7 @@ export function create({ scene, camera, params }) {
         // warm band smears across the whole ground plane.
         const fogAmt = exp(
             dist.sub(28.0).max(0.0).mul(-0.0045)
-                .mul(exp(positionWorld.y.mul(-0.045)))
+                .mul(exp(positionWorld.y.mul(-0.045))),
         ).oneMinus().clamp(0.0, 1.0);
         const fogDir = normalize(viewVec);
         const fogTint = skyColor(normalize(vec3(fogDir.x, fogDir.y.max(0.015), fogDir.z)));
