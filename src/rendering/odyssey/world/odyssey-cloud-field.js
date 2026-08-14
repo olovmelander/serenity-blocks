@@ -170,46 +170,86 @@ export function buildCloudLobes(spec) {
         });
     };
 
+    // ── MEASURED AGAINST THE REFERENCES, not chosen by feel ──────────────────────────
+    // Silhouettes profiled from the owner's Witness frames vs ours (2026-08-14):
+    //   aspect W/H   refs 1.81-2.35   ours 1.06-1.51   -> ours too TALL
+    //   top bumps    refs 7-10        ours 2-5         -> ours too FEW
+    //   roughness    refs 0.13-0.18   ours 0.17-0.31   -> ours too DEEP
+    // i.e. the reference read is MANY SHALLOW bumps on a WIDE, LOW mass; ours was a few deep
+    // lumps on a round one. Everything below follows from those three numbers.
+    //
+    // ⚠️ THE RESOLUTION FLOOR IS THE BINDING CONSTRAINT, and it is why "just add more, smaller
+    // lobes" fails. An icosphere at `near` detail has ~0.064*w between vertices, so a lobe
+    // smaller than about 0.1*w (= 0.2*halfW) cannot be represented AT ALL — it costs bake time
+    // and changes nothing. The old tertiaries at 0.08-0.14*halfW were entirely below that
+    // floor: invisible detail, paid for. Bump SIZE is therefore pinned near the floor and the
+    // count is what rises.
     const nPrim = 2 + Math.floor(rnd() * 2);
     const primR = [];
     const primPos = [];
-    const primSquash = 0.62 + (rnd() * 0.10);
+    // Flatter primaries (0.62-0.72 -> 0.50-0.58) and a wider spread: the aspect ratio is set
+    // here, before a single bump is placed.
+    const primSquash = 0.50 + (rnd() * 0.08);
     for (let i = 0; i < nPrim; i += 1) {
-        const r = halfW * (0.34 + (rnd() * 0.12));
-        const lx = (rnd() - 0.5) * spec.w * 0.40;
-        const lz = (rnd() - 0.5) * spec.w * 0.22;
+        const r = halfW * (0.32 + (rnd() * 0.11));
+        // ⚠️ THE FIRST PRIMARY IS PINNED TO THE ORIGIN, and this is load-bearing rather than
+        // stylistic. Every ray in this module is traced from the mass centre outward, so that
+        // centre MUST be inside the field. Widening the spread to 0.58*w for the aspect ratio
+        // made it possible for all primaries to land off-centre with none covering the origin
+        // — mass A11 did exactly that and the star-shape guard threw (sdf +3.49). Anchoring
+        // one lobe at the origin makes the premise true by construction, and it composes
+        // better anyway: a core with satellites, rather than a ring around a hole.
+        const lx = i === 0 ? 0 : (rnd() - 0.5) * spec.w * 0.58;
+        const lz = i === 0 ? 0 : (rnd() - 0.5) * spec.w * 0.30;
         primR.push(r);
         primPos.push([lx, lz]);
         push(lx, primY, lz, r, primSquash);
     }
 
-    const nSec = 4 + Math.floor(rnd() * 3);
+    // SECONDARIES ARE THE SILHOUETTE. Placed on a GOLDEN-ANGLE ring rather than at random
+    // angles: random placement clumps, and a clump of lobes merges into one bump, which is
+    // exactly how 12 lobes used to produce 5 bumps. Even spacing turns each lobe into its own
+    // arc on the outline. Seated at 0.78-1.02 of the primary radius so they break the rim
+    // instead of sitting inside it.
+    // ⚠️ LOBE COUNT IS BOUNDED FROM BOTH SIDES, and the first attempt violated the upper one.
+    // For a lobe to read as its OWN bump the gap between neighbouring centres must be at least
+    // its radius; for it to be REPRESENTABLE the radius must exceed the vertex spacing
+    // (~0.064*w at `near`, i.e. ~0.13*halfW). On a rim of radius ~0.35*halfW those two
+    // conditions leave room for roughly 8, not 14: at 14 the spacing falls to 0.157*halfW
+    // against radii of 0.17-0.24, so neighbours overlapped into a smooth ring — MEASURED as 14
+    // lobes producing only 6 bumps and ambient occlusion collapsing to a 0.47 floor because
+    // there were no valleys left between them. Fewer, better-spaced lobes give more bumps than
+    // more crowded ones. The reference band is 7-10; this targets its low end deliberately,
+    // because that is what the vertex budget can actually carry.
+    const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+    const nSec = 8 + Math.floor(rnd() * 3);
     for (let i = 0; i < nSec; i += 1) {
         const host = i % nPrim;
         const [hx, hz] = primPos[host];
-        const a = rnd() * Math.PI * 2;
-        const seat = primR[host] * (0.55 + (rnd() * 0.35));
+        const a = (i * GOLDEN) + (rnd() * 0.35);
+        const seat = primR[host] * (0.78 + (rnd() * 0.24));
         push(
             hx + (Math.cos(a) * seat),
-            primY + (spec.h * (0.10 + (rnd() * 0.22))),
-            hz + (Math.sin(a) * seat * 0.7),
-            halfW * (0.19 + (rnd() * 0.11)),
-            0.75 + (rnd() * 0.15),
+            primY + (spec.h * (0.02 + (rnd() * 0.20))),
+            hz + (Math.sin(a) * seat * 0.72),
+            halfW * (0.185 + (rnd() * 0.065)),
+            0.68 + (rnd() * 0.16),
         );
     }
 
-    const nTer = 6 + Math.floor(rnd() * 4);
+    // CROWN SCALLOPS, still crown-only, but sized AT the resolution floor rather than under it.
+    const nTer = 5 + Math.floor(rnd() * 3);
     for (let i = 0; i < nTer; i += 1) {
         const host = i % nPrim;
         const [hx, hz] = primPos[host];
-        const a = rnd() * Math.PI * 2;
-        const seat = primR[host] * (0.4 + (rnd() * 0.5));
+        const a = (i * GOLDEN * 1.7) + (rnd() * 0.4);
+        const seat = primR[host] * (0.45 + (rnd() * 0.45));
         push(
             hx + (Math.cos(a) * seat),
-            Math.max(spec.base + (spec.h * 0.52), primY + (spec.h * (0.28 + (rnd() * 0.2)))),
-            hz + (Math.sin(a) * seat * 0.7),
-            halfW * (0.08 + (rnd() * 0.06)),
-            0.85,
+            Math.max(spec.base + (spec.h * 0.50), primY + (spec.h * (0.22 + (rnd() * 0.18)))),
+            hz + (Math.sin(a) * seat * 0.72),
+            halfW * (0.115 + (rnd() * 0.055)),
+            0.80,
         );
     }
     return lobes;
@@ -375,7 +415,12 @@ export function sculptCloudMass(spec, detail) {
         let occ = 0;
         let weight = 0;
         for (let i = 1; i <= 3; i += 1) {
-            const h = (i / 3) * halfW * 0.35;
+            // RADIUS TUNED TO THE CREVICES THAT EXIST. The re-authored lobe grammar trades a
+            // few deep valleys for many shallow ones, and a 0.35*halfW probe steps clean over
+            // the shallow kind — measured: minimum AO rose 0.087 -> 0.470, i.e. the term had
+            // quietly stopped finding anything. A shorter probe reads the crevices the new
+            // silhouette actually has. Sample distance must follow the geometry, not habit.
+            const h = (i / 3) * halfW * 0.16;
             const w = 1 / (2 ** i);
             const free = Math.max(0, h - Math.abs(sdf(px + (nx * h), py + (ny * h), pz + (nz * h))));
             occ += (w * free) / h;

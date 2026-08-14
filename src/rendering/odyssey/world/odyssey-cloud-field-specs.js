@@ -43,7 +43,7 @@ export const CLOUD_FIELD_CLEARANCE = Object.freeze({
 /**
  * The field. `lod` selects an icosphere subdivision from `CLOUD_FIELD_LOD_DETAIL`
  * (near 980 / mid 320 / far 80 faces), so the triangle budget is legible from this table
- * alone: 10 near + 12 mid + 16 far = 9800 + 3840 + 1280 = 14,920 triangles.
+ * alone: 12 near + 10 mid + 30 far = 11,760 + 3200 + 2400 = 17,360 triangles.
  *
  * ⚠️ LOD IS LOAD-BEARING, NOT AN OPTIMISATION. Wave 0 measured ~0.131 ms fixed + ~0.0094 ms
  * per mass at ch5; 34 masses at uniform NEAR detail would blow gate F1 on triangles alone.
@@ -84,10 +84,10 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
         id: 'O04', role: 'overhead', lod: 'mid', x: 2250, base: 880, z: -1900, w: 580, h: 260, yaw: 0.2, seed: 149.4,
     }),
     Object.freeze({
-        id: 'O05', role: 'overhead', lod: 'mid', x: -2600, base: 925, z: -2750, w: 610, h: 275, yaw: 1.7, seed: 164.8,
+        id: 'O05', role: 'overhead', lod: 'near', x: -2600, base: 925, z: -2750, w: 1080, h: 330, yaw: 1.7, seed: 164.8,
     }),
     Object.freeze({
-        id: 'O06', role: 'overhead', lod: 'mid', x: 250, base: 955, z: -3850, w: 640, h: 290, yaw: -2.6, seed: 180.3,
+        id: 'O06', role: 'overhead', lod: 'near', x: 250, base: 955, z: -3850, w: 1150, h: 350, yaw: -2.6, seed: 180.3,
     }),
     Object.freeze({
         id: 'O07', role: 'overhead', lod: 'mid', x: -1650, base: 900, z: -3950, w: 560, h: 255, yaw: 0.6, seed: 195.1,
@@ -140,6 +140,62 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
     }),
     Object.freeze({
         id: 'Z04', role: 'overhead', lod: 'near', x: 330, base: 1470, z: -180, w: 410, h: 195, yaw: -0.6, seed: 649.1,
+    }),
+
+    // ── SATELLITES — the size hierarchy, and the clustering ──────────────────────────
+    // MEASURED COMPLAINT, not a hunch: every mass in the first composition subtended a similar
+    // angle and they were spread evenly, which reads as wallpaper. Real cumulus fields have a
+    // power-law size distribution — a few anchors, several mid, MANY small — and they clump,
+    // leaving real lanes of open sky between groups. Both are here:
+    //   * O05 and O06 were promoted to 1080-1150 wide `near` anchors;
+    //   * these fourteen are 210-380 wide and deliberately CLUSTERED in fours around four
+    //     anchor points, each cluster spanning ~900 u, rather than scattered.
+    // The shared BASE altitude is kept on purpose — cumulus condense at one level, and every
+    // reference frame shows their bottoms lining up. Height varies; the floor does not.
+    Object.freeze({
+        id: 'A01', role: 'strata', lod: 'far', x: -2180, base: 905, z: -2380, w: 330, h: 125, yaw: 0.7, seed: 701.1,
+    }),
+    Object.freeze({
+        id: 'A02', role: 'strata', lod: 'far', x: -2950, base: 918, z: -2280, w: 265, h: 100, yaw: 2.4, seed: 716.3,
+    }),
+    Object.freeze({
+        id: 'A03', role: 'strata', lod: 'far', x: -2420, base: 940, z: -3220, w: 380, h: 145, yaw: -1.2, seed: 731.8,
+    }),
+    Object.freeze({
+        id: 'A04', role: 'strata', lod: 'far', x: -3180, base: 898, z: -3060, w: 240, h: 92, yaw: 1.9, seed: 747.2,
+    }),
+
+    Object.freeze({
+        id: 'A05', role: 'strata', lod: 'far', x: 690, base: 972, z: -3420, w: 350, h: 132, yaw: -0.3, seed: 762.6,
+    }),
+    Object.freeze({
+        id: 'A06', role: 'strata', lod: 'far', x: -220, base: 946, z: -3380, w: 275, h: 105, yaw: 1.5, seed: 778.1,
+    }),
+    Object.freeze({
+        id: 'A07', role: 'strata', lod: 'far', x: 640, base: 990, z: -4290, w: 310, h: 118, yaw: 2.8, seed: 793.5,
+    }),
+    Object.freeze({
+        id: 'A08', role: 'strata', lod: 'far', x: -160, base: 962, z: -4380, w: 225, h: 88, yaw: -2.0, seed: 809.0,
+    }),
+
+    Object.freeze({
+        id: 'A09', role: 'strata', lod: 'far', x: 1980, base: 930, z: -1520, w: 300, h: 115, yaw: 0.4, seed: 824.4,
+    }),
+    Object.freeze({
+        id: 'A10', role: 'strata', lod: 'far', x: 2640, base: 952, z: -1180, w: 250, h: 96, yaw: -1.6, seed: 839.9,
+    }),
+    Object.freeze({
+        id: 'A11', role: 'strata', lod: 'far', x: 2200, base: 968, z: -2320, w: 365, h: 138, yaw: 2.1, seed: 855.3,
+    }),
+    Object.freeze({
+        id: 'A12', role: 'strata', lod: 'far', x: 2880, base: 912, z: -2060, w: 210, h: 82, yaw: 0.9, seed: 870.7,
+    }),
+
+    Object.freeze({
+        id: 'A13', role: 'strata', lod: 'far', x: -1420, base: 1005, z: -1180, w: 285, h: 108, yaw: -0.8, seed: 886.2,
+    }),
+    Object.freeze({
+        id: 'A14', role: 'strata', lod: 'far', x: -820, base: 1028, z: -1620, w: 340, h: 128, yaw: 1.3, seed: 901.6,
     }),
 
     // ── STRATA — the far row that inhabits the horizon ────────────────────────────────
