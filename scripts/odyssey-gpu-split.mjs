@@ -147,6 +147,34 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldCloudFieldCount: '26' },
         note: 'half the sculpted field, for the cost curve',
     },
+    // THE FOREST (Act II forest plan, Wave 0a). The largest content system in the world file
+    // — 15,412 trees / 40 InstancedMesh chunks / ~462k triangles at high quality — and the
+    // last big one whose cost has NEVER been measured as a differential, for the same reason
+    // the water's had not been: nothing in the tree could switch it off. ADR-0016 makes this
+    // pair the prerequisite for the whole overhaul. The lever is the `no-water` shape, not
+    // the deck's: the forest is never built, so this prices DRAWS + FILL + VERTEX + PIPELINE
+    // together. That matters here more than it did for the sea plate — the forest's own
+    // header law is that its cost is VERTEX, not fill, so a gate that left 40 meshes
+    // constructed and merely hidden would price the wrong half of it.
+    // Run at the forest-facing stations, one thermal window each:
+    //   --seek 0.225 --chapters 2,3   --only baseline,no-forest,baseline-repeat
+    //   --seek 0.42  --chapters 3,4,5 --only baseline,no-forest,baseline-repeat
+    // and always with --out, so a non-canonical station cannot clobber the Act II baselines.
+    {
+        id: 'no-forest',
+        flags: { odysseyWorldNoForest: '1' },
+        note: 'the Act II forest is not scattered or built at all (draws, fill, vertex and pipeline)',
+    },
+    // THE RETIRED CONE FOREST (swap 2026-08-14). The roster ships, so baseline CONTAINS it and
+    // `forestMs` prices the NEW forest; this lever restores the incumbent, priced against the
+    // forest's absence like every whole-forest configuration. The old `forest-v2` id is
+    // retired WITH its flag — a configuration driving a flag nobody reads would collect a p50
+    // identical to baseline and report a real cost as zero (the heroes' lesson).
+    {
+        id: 'forest-v1',
+        flags: { odysseyWorldForestV1: '1' },
+        note: 'the retired incumbent cone forest restored in place of the roster',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -425,6 +453,15 @@ function buildSplit(results) {
         // curve wants the cost OF a half field, so it is measured against the field's absence.
         // Requires `no-cloud-field` in the same run; `delta` returns null rather than guessing.
         cloudFieldHalfMs: delta('cloud-field-half', 'no-cloud-field'),
+        // The Act II forest's TOTAL cost at this station (draws + fill + vertex + its
+        // pipeline). The forest SHIPS, so its lever REMOVES it and the cost is baseline minus
+        // configuration — the same polarity as waterMs and cloudFieldMs, and the opposite of
+        // the two retired systems above. Argument order carries the sign; never also negate.
+        // Since the swap, baseline's forest IS the roster — so this prices the shipped
+        // five-species forest. Its Lane B value at p=0.225 is 2.621 ms (D5-accepted).
+        forestMs: delta('baseline', 'no-forest'),
+        // The retired incumbent's price, for regression comparisons only.
+        forestV1Ms: delta('forest-v1', 'no-forest'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),

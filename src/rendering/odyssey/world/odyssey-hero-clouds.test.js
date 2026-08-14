@@ -81,7 +81,10 @@ describe('hero cloud gating (source-level, the ×0-uniform lesson)', () => {
     it('gates the mesh with a real CPU .visible write', () => {
         // Multiplying by a zero uniform is NOT dead-code-eliminated on this stack, so the gate
         // must be a `.visible` write or the draw is still submitted and shaded.
-        expect(rendererSource).toMatch(/heroMesh\.visible\s*=\s*heroes\s*&&/);
+        // Loose on the `authored(...) &&` prefix the `?worldOnly=` fix added: the LAW being
+        // pinned is that the gate is a CPU `.visible` write which consults `heroes`, and that
+        // is unchanged. Pinning the exact operand order would fail on a correct refactor.
+        expect(rendererSource).toMatch(/heroMesh\.visible\s*=[^;]*heroes\s*&&/);
     });
 
     it('keeps the material opaque — the whole sorting argument rests on it', () => {
