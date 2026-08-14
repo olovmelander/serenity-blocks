@@ -119,14 +119,18 @@ const FIELD_MIE_GAIN = 0.10;
  * the per-mass seed alone it is constant across every vertex of a mass, so the whole hull
  * moves as one body for free.
  *
- * Periods are minutes, not seconds: at 600-5000 u away a 34 u drift is a slow parallax slide,
- * which is what cumulus do. The `?t=` capture flag freezes `update()`'s dt, so drift is
- * verified with TWO captures at different times, never in-page (the repo's edge-crawl law).
+ * AMPLITUDE IS SET BY WHAT THE EYE CAN RESOLVE, not by what sounds physical. The first values
+ * (34 u over 90-240 s) were arithmetically defensible and visually nothing: at 1500 u away
+ * that is ~1.3 degrees of arc per MINUTE, below the threshold at which anyone would call a
+ * sky alive. 145 u over 70-165 s is ~5.5 degrees of swing, most of it covered in a quarter
+ * period — a calm parallax slide you can actually see. The clearance validator accounts for
+ * this amplitude, because a drifting mass must clear the rail at its CLOSEST excursion, not
+ * at the position the spec table happens to name.
  */
-const FIELD_DRIFT_XZ = 34;
-const FIELD_DRIFT_Y = 7;
-const FIELD_DRIFT_PERIOD_MIN = 90;
-const FIELD_DRIFT_PERIOD_MAX = 240;
+const FIELD_DRIFT_XZ = 145;
+const FIELD_DRIFT_Y = 26;
+const FIELD_DRIFT_PERIOD_MIN = 70;
+const FIELD_DRIFT_PERIOD_MAX = 165;
 /**
  * NEAR-DISSOLVE band, world units from the eye to the fragment.
  *
@@ -174,7 +178,7 @@ const FIELD_FADE_FAR = 165;
  * with clouds, rock control identical); no equivalent exists for breathing, so this amplitude
  * was set by eye in the live browser, not by measurement, and is recorded as such.
  */
-const FIELD_BREATH_AMP = 0.10;
+const FIELD_BREATH_AMP = 0.18;
 const FIELD_BREATH_PERIOD_MIN = 34;
 const FIELD_BREATH_PERIOD_MAX = 78;
 
@@ -1286,6 +1290,19 @@ export function createOdysseyWorld({
     const swell = swellVert.h.mul(wSwellFade).toVar();
     waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
+    // The other two clipmap-derived quantities the fragment stage needs, carried ACROSS the
+    // stage boundary explicitly rather than recomputed (same reason as `wUv` above and the
+    // cloud deck's cUvA/B/C — see the block at `rippleA`).
+    //
+    // `vSwell` is the DISPLACED HEIGHT the vertex stage actually applied. Interpolating it is
+    // not the "varyings are destroyed by ring-doubling" trap that forced the wave FIELD into
+    // the fragment stage: that trap is about the full-amplitude field, whose long waves a
+    // coarse ring cannot carry. This one is enveloped per wave precisely so the lattice can
+    // always sample it, so its linear interpolation IS the rendered triangle — which is what
+    // crest lighting must agree with. (Re-evaluating it per fragment, as this did, sampled the
+    // staircased `w.worldXZ` AND a staircased `wVertDist`, so the crest term terraced twice.)
+    const vSwell = varying(swell, 'vSwell');
+    const vSwellFade = varying(wSwellFade, 'vSwellFade');
     // Bed height from the macro BAKE — the analytic fold in a fragment-referenced varying was
     // the single largest cause of the minutes-long first compile (see bakeMacroTexture).
     const bedTex = texture(macroTex, wUv);
@@ -2044,7 +2061,23 @@ export function createOdysseyWorld({
     // zero-length normalize const-folds into a WGSL compile failure rather than a warning.
     const cfBreath = cfLobeRel.div(max(cfLobeDist, float(1e-4)))
         .mul(cfLobeDist.mul(sin(uTime.mul(cfBreathW).add(cfLobe.w)).mul(FIELD_BREATH_AMP)));
-    const cfOffset = cfDrift.add(cfBreath).toVar('cfOffset');
+    // ⚠️ NOT A SHARED `.toVar()`, AND THE VERTEX POSITION IS ASSIGNED FIRST. This cost a
+    // session to find and it is the repo's own logged r181 trap wearing a new face: a var's
+    // ASSIGNMENT is emitted at its FIRST BUILD SITE, and three builds `positionNode` BEFORE it
+    // builds varyings. Written as a shared `toVar` that the `cfWorld` varying happened to
+    // reference first in source order, the assignment landed inside the varying's block and
+    // `positionNode` read an unassigned var — ZERO. The clouds therefore never moved, while
+    // the COLOUR graph (which reads the varying) was correctly using the drifted position, so
+    // nothing looked wrong in code and nothing moved on screen.
+    //
+    // PROVEN, not guessed: with the drift's time term replaced by a constant 3000 world units
+    // — a shift that should have swept the sky clean — the frame was pixel-for-pixel the same
+    // cloud count (71,251 vs 71,475). A displacement that large changing nothing can only mean
+    // the displacement is not reaching the vertex.
+    //
+    // The rule that follows is cheap: build it as a PLAIN EXPRESSION, so each consumer inlines
+    // its own copy. A few duplicated ALU beats a silent zero.
+    const cfOffset = cfDrift.add(cfBreath);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
     const cfRadial = cfWorld.sub(cfCentre);
@@ -2076,6 +2109,9 @@ export function createOdysseyWorld({
         .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
     const fieldMat = new THREE.MeshBasicNodeMaterial();
     fieldMat.colorNode = toOutput(heroAerial(fieldCol, cfWorld));
+    // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
+    // its definition. This line reading zero while the colour graph read the right value is
+    // exactly what "the clouds do not move" looked like.
     fieldMat.positionNode = positionLocal.add(cfOffset);
     // THE STIPPLE DISSOLVE. `fade` is 0 at the near edge and 1 beyond the far edge, and the
     // hash is a per-pixel threshold — so a mass fades out as a shrinking scatter of kept

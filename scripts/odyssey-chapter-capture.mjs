@@ -499,6 +499,25 @@ async function renderAtTime(win, time) {
             if (cc) { cc.update = () => {}; cc.setDirectorState = () => {}; }
             try {
                 bc.time = ${time};
+                // ADVANCE THE WORLD EXPLICITLY. renderFrame only calls oneWorld.update()
+                // inside its runPositionWork block, which is THROTTLED once the camera is
+                // settled -- so setting bc.time and re-rendering can leave the world's own
+                // uTime uniform exactly where it was, with every time-driven cloud term
+                // frozen. Not subtle: a probe with the drift amplitude cranked to 3000 world
+                // units produced almost no movement, which reads as "the feature is broken"
+                // when it is really "the clock never reached it". Re-driving with the SAME
+                // rail point and progress changes nothing except the clock.
+                // (No backticks in this comment: the whole block is injected through a
+                // template literal and a backtick here terminates it.)
+                const st = bc.oneWorld && bc.oneWorld.state;
+                if (bc.oneWorld && st && st.lodCenter) {
+                    bc.oneWorld.update(
+                        bc.time,
+                        { x: st.lodCenter.x, y: 0, z: st.lodCenter.z },
+                        st.actT,
+                        bc.camera && bc.camera.position ? bc.camera.position.y : null,
+                    );
+                }
                 bc.renderOnce?.(0);
             } finally {
                 if (cc) { cc.update = savedUpdate; cc.setDirectorState = savedSetDirector; }

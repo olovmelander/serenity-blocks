@@ -571,11 +571,16 @@ export function cloudFieldSdf(specs, x, y, z, lobeCache = null) {
  * @param {Record<string, number>} margins per-`role` surface clearance in world units
  * @returns {Array<{id:string, problem:string}>} empty when the field is legal
  */
-export function validateCloudFieldClearance(specs, railSamples, margins) {
+export function validateCloudFieldClearance(specs, railSamples, margins, driftAmplitude = 0) {
     const problems = [];
     specs.forEach((spec) => {
         const lobes = buildCloudLobes(spec);
-        const margin = margins[spec.role] ?? margins.default ?? 0;
+        // ⚠️ DRIFT EATS CLEARANCE. A mass validated where the spec table places it can still
+        // reach the rail once it is animated, because the drift swings it about that point.
+        // The margin therefore has to cover the WORST excursion, not the authored position —
+        // otherwise raising the drift amplitude for visibility silently spends the safety
+        // budget the clearance rules exist to protect.
+        const margin = (margins[spec.role] ?? margins.default ?? 0) + driftAmplitude;
         let worst = Infinity;
         railSamples.forEach((pt) => {
             const d = cloudMassSdf(spec, lobes, pt.x, pt.y, pt.z, false);
