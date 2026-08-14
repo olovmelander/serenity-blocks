@@ -143,6 +143,40 @@ const FIELD_DRIFT_PERIOD_MAX = 240;
  */
 const FIELD_FADE_NEAR = 55;
 const FIELD_FADE_FAR = 165;
+/**
+ * LOBE BREATHING — the reshaping that makes a cloud read as alive rather than as a moved prop.
+ *
+ * ⚠️ THIS IS A DELIBERATE, OWNER-GRANTED EXCEPTION to the look rules' "silhouettes never boil",
+ * and the distinction the rule was protecting is preserved in HOW it is done. Per-VERTEX noise
+ * boils: neighbouring points on one lobe move independently, the outline shimmers, and the
+ * stable readable silhouette the sculptor exists to produce is destroyed. Per-LOBE swelling
+ * billows: every vertex the sculptor assigned to a lobe moves together, radially about that
+ * lobe's own centre, so the mass changes SHAPE while each arc of its outline stays coherent.
+ * That is what a growing cumulus does.
+ *
+ * The displacement rides the vertex's distance from its lobe centre, so it scales with lobe
+ * size for free — big lobes swell more in world units, the same fraction in appearance. Phase
+ * walks with lobe INDEX (baked), so adjacent lobes breathe nearly in step and the smooth-min
+ * joins between them never tear open.
+ *
+ * ⚠️ The baked normals are NOT re-derived under the swell, so shading lags the shape by the
+ * displacement's own gradient. At 0.10 that error sits below the two-band quantisation; anyone
+ * raising it further must re-check that claim.
+ *
+ * ⚠️ NOT VERIFIED FROM CAPTURES, and the reason is a hard limit of the harness rather than
+ * laziness. Cloud motion cannot be isolated in a screenshot here: advancing the clock also
+ * moves the CAMERA (renderFrame re-poses it from the director, whose focal pulse reads the
+ * clock), and an attempt to pin it by stubbing `cameraController.update`/`setDirectorState`
+ * did NOT hold. Proof: with drift AND breathing both set to zero, the silhouette area still
+ * varied 21.55 % across three clocks — HIGHER than the 19.50 % measured with breathing at
+ * 0.14. The whole signal was the camera. DRIFT is verified by a different comparison that
+ * does control for this (clouds-on vs clouds-off at the SAME clocks: sky changed +12 points
+ * with clouds, rock control identical); no equivalent exists for breathing, so this amplitude
+ * was set by eye in the live browser, not by measurement, and is recorded as such.
+ */
+const FIELD_BREATH_AMP = 0.10;
+const FIELD_BREATH_PERIOD_MIN = 34;
+const FIELD_BREATH_PERIOD_MAX = 78;
 
 // The two fixed ends of the water banding, read ONCE from the colour script so the plates
 // and the keyframes can never drift. Sampling the script for them per frame would be three
@@ -1998,7 +2032,20 @@ export function createOdysseyWorld({
     // graph reading `positionWorld` would shade, fog and fade the mass at the place it used to
     // be. Everything downstream reads `cfWorld` instead; the geometry is already world-space
     // and the world group's matrix is identity, which is what makes this a plain add.
-    const cfWorld = varying(positionLocal.add(cfDrift), 'cfWorld');
+    // THE BREATH. `aLobe` carries the dominant lobe's centre (xyz) and its baked phase (w).
+    const cfLobe = attribute('aLobe', 'vec4');
+    const cfLobeRel = positionLocal.sub(cfLobe.xyz);
+    const cfLobeDist = length(cfLobeRel);
+    const cfBreathW = float(6.2831853).div(
+        float(FIELD_BREATH_PERIOD_MIN)
+            .add(cfSeed.mul(FIELD_BREATH_PERIOD_MAX - FIELD_BREATH_PERIOD_MIN)),
+    );
+    // Guarded divide: a vertex exactly at its lobe centre cannot happen on a surface, but a
+    // zero-length normalize const-folds into a WGSL compile failure rather than a warning.
+    const cfBreath = cfLobeRel.div(max(cfLobeDist, float(1e-4)))
+        .mul(cfLobeDist.mul(sin(uTime.mul(cfBreathW).add(cfLobe.w)).mul(FIELD_BREATH_AMP)));
+    const cfOffset = cfDrift.add(cfBreath).toVar('cfOffset');
+    const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
     const cfRadial = cfWorld.sub(cfCentre);
     // Guarded: a vertex exactly at the centre would const-fold a zero-length normalize
@@ -2029,7 +2076,7 @@ export function createOdysseyWorld({
         .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
     const fieldMat = new THREE.MeshBasicNodeMaterial();
     fieldMat.colorNode = toOutput(heroAerial(fieldCol, cfWorld));
-    fieldMat.positionNode = positionLocal.add(cfDrift);
+    fieldMat.positionNode = positionLocal.add(cfOffset);
     // THE STIPPLE DISSOLVE. `fade` is 0 at the near edge and 1 beyond the far edge, and the
     // hash is a per-pixel threshold — so a mass fades out as a shrinking scatter of kept
     // pixels instead of a wall sliding through the camera. Beyond FIELD_FADE_FAR the fade is

@@ -374,6 +374,10 @@ export function sculptCloudMass(spec, detail) {
     const normal = new Float32Array(count * 3);
     const centre = new Float32Array(count * 3);
     const colour = new Float32Array(count * 3);
+    // xyz = the DOMINANT lobe's centre for this vertex, w = that lobe's breathing phase.
+    // Per-LOBE, deliberately: see the note on breathing in odyssey-world-renderer.js. A cloud
+    // that reshapes per VERTEX boils; one that reshapes per LOBE billows.
+    const lobeInfo = new Float32Array(count * 4);
 
     const sdf = (x, y, z) => cloudMassSdf(spec, lobes, x, y, z);
     // The star-shaped assumption in one line: every ray is traced from this point outward, so
@@ -465,13 +469,31 @@ export function sculptCloudMass(spec, detail) {
             occ += (w * free) / h;
             weight += w;
         }
+        // Which lobe owns this vertex — the nearest one by its own surface distance. The
+        // phase walks with the lobe INDEX rather than jumping randomly, so neighbours breathe
+        // nearly in step and the smooth-min joins between them never tear.
+        let bestLobe = 0;
+        let bestD = Infinity;
+        for (let l = 0; l < lobes.length; l += 1) {
+            const lo = lobes[l];
+            const ldx = px - lo.x;
+            const ldy = (py - lo.y) / lo.squash;
+            const ldz = pz - lo.z;
+            const ld = Math.abs(Math.sqrt((ldx * ldx) + (ldy * ldy) + (ldz * ldz)) - lo.r);
+            if (ld < bestD) { bestD = ld; bestLobe = l; }
+        }
+        lobeInfo[v * 4] = lobes[bestLobe].x;
+        lobeInfo[(v * 4) + 1] = lobes[bestLobe].y;
+        lobeInfo[(v * 4) + 2] = lobes[bestLobe].z;
+        lobeInfo[(v * 4) + 3] = (bestLobe * 0.9) + (massRandom * 6.2831853);
+
         colour[v * 3] = Math.max(0, Math.min(1, 1 - (occ / Math.max(weight, 1e-6))));
         colour[(v * 3) + 1] = Math.max(0, Math.min(1, (py - spec.base) / Math.max(spec.h, 1e-3)));
         colour[(v * 3) + 2] = massRandom;
     }
 
     return {
-        position, normal, centre, colour, triangles: count / 3,
+        position, normal, centre, colour, lobeInfo, triangles: count / 3,
     };
 }
 
@@ -499,13 +521,17 @@ export function buildCloudFieldGeometry(specs, railSamples = null) {
     const normal = new Float32Array(verts * 3);
     const centre = new Float32Array(verts * 3);
     const colour = new Float32Array(verts * 3);
+    const lobeInfo = new Float32Array(verts * 4);
     let off = 0;
+    let off4 = 0;
     parts.forEach((p) => {
         position.set(p.position, off);
         normal.set(p.normal, off);
         centre.set(p.centre, off);
         colour.set(p.colour, off);
+        lobeInfo.set(p.lobeInfo, off4);
         off += p.position.length;
+        off4 += p.lobeInfo.length;
     });
 
     const geometry = new THREE.BufferGeometry();
@@ -513,6 +539,7 @@ export function buildCloudFieldGeometry(specs, railSamples = null) {
     geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
     geometry.setAttribute('aMassCentre', new THREE.BufferAttribute(centre, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colour, 3));
+    geometry.setAttribute('aLobe', new THREE.BufferAttribute(lobeInfo, 4));
     geometry.computeBoundingSphere();
     return { geometry, triangles: verts / 3, masses: specs.length };
 }

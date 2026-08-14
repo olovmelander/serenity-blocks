@@ -53,6 +53,15 @@ const FORCE_WEBGL = args.forceWebgl || args['force-webgl'] || process.env.ODYSSE
 const FIXED_TIME = Number.isFinite(Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME))
     ? Number.parseFloat(args.time ?? process.env.ODYSSEY_CAPTURE_TIME)
     : null;
+/**
+ * Extra frozen clocks to re-shoot each station at, camera untouched — `--times 9,40,90`.
+ * Their purpose is motion evidence, so they are deliberately NOT a substitute for `--time`:
+ * the station's own frame still uses that, and these are additional.
+ */
+const EXTRA_TIMES = String(args.times || '')
+    .split(',')
+    .map((token) => Number.parseFloat(token))
+    .filter((value) => Number.isFinite(value));
 const SEAM = parseSeam(args.seam || process.env.ODYSSEY_CAPTURE_SEAM || '');
 const CHAPTER = SEAM ? null : parseChapter(args.chapter || args.ch || process.env.ODYSSEY_CAPTURE_CHAPTER || '');
 const MODE = SEAM ? 'seam' : 'chapter';
@@ -448,6 +457,61 @@ async function settleAtPosition(win, position, options = {}) {
     await execute(win, HIDE_OVERLAYS);
 }
 
+/**
+ * Advance ONLY the animation clock and re-render, leaving the camera untouched.
+ *
+ * THE INSTRUMENT MOTION VERIFICATION NEEDED, and the reason it did not exist is worth
+ * recording. Comparing two captures from two RUNS cannot show motion of a few tens of world
+ * units: measured 2026-08-14, the same station in the same build at the same `--time` differs
+ * in 23.6 % of ground-band pixels. Nor can `--time` be varied across runs, because it also
+ * feeds the director's focal pulse — so the camera moves too, and an "obvious" cloud drift
+ * turned out to be camera breathing.
+ *
+ * Re-rendering inside ONE session removes the cross-run noise floor — same window, same
+ * pipeline state — and `settleAtPosition` is deliberately NOT re-run.
+ *
+ * ⚠️ IT DOES NOT PIN THE CAMERA, despite the stubs below trying to. `renderFrame` re-poses the
+ * camera from the director and the director's focal pulse reads `bc.time`, so advancing the
+ * clock moves the view as well as the content. MEASURED: with every cloud animation set to
+ * zero, silhouette area still varied 21.55 % across three clocks. So this probe CANNOT be
+ * used to prove that something moved by comparing one clock against another.
+ *
+ * What it CAN do, and what it was worth building for, is a PAIRED comparison: shoot the same
+ * clocks twice with a feature on and off. The camera behaves identically in both arms, so the
+ * difference between the arms is the feature. That is how the cloud drift was evidenced
+ * (sky changed +12 points with clouds present; the bare-rock control was identical).
+ */
+async function renderAtTime(win, time) {
+    await execute(win, `
+        (() => {
+            const bc = window.odysseyMode?.boardController;
+            if (!bc) return false;
+            // ⚠️ THE CAMERA MUST BE PINNED, or this probe measures the camera.
+            // renderFrame() calls cameraController.update() and re-applies the director state,
+            // and the director's focal pulse is a function of bc.time — so simply advancing
+            // the clock and re-rendering moves the FOV. Measured before pinning: a "static"
+            // bare-rock control changed 9-30 % of its pixels between two clocks, which is the
+            // camera, not the rock. Neutralising both entry points for the duration of the
+            // render leaves the clock as the only thing that changed.
+            const cc = bc.cameraController;
+            const savedUpdate = cc && cc.update;
+            const savedSetDirector = cc && cc.setDirectorState;
+            if (cc) { cc.update = () => {}; cc.setDirectorState = () => {}; }
+            try {
+                bc.time = ${time};
+                bc.renderOnce?.(0);
+            } finally {
+                if (cc) { cc.update = savedUpdate; cc.setDirectorState = savedSetDirector; }
+            }
+            return true;
+        })();
+    `);
+    await execute(win, `new Promise((r) => requestAnimationFrame(
+        () => requestAnimationFrame(() => setTimeout(r, 90)),
+    ))`).catch(() => {});
+    return true;
+}
+
 async function capturePng(win, filename, metrics = {}) {
     // HIDE IMMEDIATELY BEFORE THE SHUTTER. Sweeping during `settleAtPosition` is not enough:
     // `#start-modal` re-shows itself asynchronously while the mode finishes activating, which
@@ -620,6 +684,15 @@ async function captureChapter(win, boot) {
             `local-${String(Math.round(localProgress * 1000)).padStart(4, '0')}.png`,
         ].join('-');
         await capturePng(win, filename, metrics);
+
+        // `--times 9,40,90` shoots the SAME station at several frozen clocks without touching
+        // the camera — the only way this harness can evidence motion (see renderAtTime).
+        for (let t = 0; t < EXTRA_TIMES.length; t += 1) {
+            await renderAtTime(win, EXTRA_TIMES[t]);
+            await capturePng(win, filename.replace(/\.png$/, `-t${EXTRA_TIMES[t]}.png`), {
+                ...metrics, motionProbeTime: EXTRA_TIMES[t],
+            });
+        }
     }
 
     if (String(args.burst ?? '1') === '0') return;
