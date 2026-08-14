@@ -78,12 +78,14 @@ export function auroraActivity(t, intensity = 0, flare = 0) {
     const i = Math.min(1.5, Math.max(0, intensity));
     // Only the EXCESS over the theme's resting intensity (~0.62) counts as a
     // storm — see the matching note in aurora-volume.js. Keep the two in step.
-    return Math.min(1.35, Math.max(0,
+    return Math.min(1.35, Math.max(
+        0,
         0.06
         + (Math.sin(t * 0.035) * 0.18)
         + (Math.sin((t * 0.0213) + 1.3) * 0.14)
         + (Math.max(0, i - 0.62) * 0.9)
-        + (flare * 0.5)));
+        + (flare * 0.5),
+    ));
 }
 
 /**

@@ -150,7 +150,7 @@ function gradedAxis(halfExtent, cells, nearCell) {
     const half = cells / 2;
     const total = (r) => (Math.abs(r - 1) < 1e-9
         ? nearCell * half
-        : nearCell * ((r ** half) - 1) / (r - 1));
+        : (nearCell * ((r ** half) - 1)) / (r - 1));
     let lo = 1.0;
     let hi = 1.25;
     for (let i = 0; i < 64; i += 1) {
@@ -637,7 +637,7 @@ function buildFacetedSnowDrifts({
                     // Ray height above this receiver at distance d, in height-field units.
                     const rayH = hC.add(tanEl.mul(d).div(uTrailHeight));
                     occl = max(occl, smoothstep(0.0, 0.22, hs.sub(rayH))
-                .mul(1.0 - ((s - 1) / MARCH_TAPS) * 0.56));
+                        .mul(1.0 - ((s - 1) / MARCH_TAPS) * 0.56));
                 }
                 trailShade.assign(float(1.0).sub(occl.mul(uTrailShadow)));
             }); // end trail gate
@@ -1195,30 +1195,30 @@ export function create({
 
     return {
         cameraRadius: 0.001,
-        camera(time, camera) {
+        camera(time, cam) {
             // Debug framing hook (see window.__winterDebug.setCamera) — the shipping camera is
             // ~1 km from the far treeline, so ground detail like the fox trails can only be
             // judged up close. Inert unless a capture session sets it.
             if (camOverride) {
-                if (camera.fov !== undefined) {
-                    camera.fov = camOverride.fov;
-                    camera.updateProjectionMatrix();
+                if (cam.fov !== undefined) {
+                    cam.fov = camOverride.fov;
+                    cam.updateProjectionMatrix();
                 }
-                camera.position.set(...camOverride.pos);
-                camera.lookAt(...camOverride.look);
+                cam.position.set(...camOverride.pos);
+                cam.lookAt(...camOverride.look);
                 return;
             }
             // Wide eye-level framing: big snow-pines frame both corners, the cracked
             // ice fills the lower third, treeline + peaks recede.
-            if (camera.fov !== undefined && Math.abs(camera.fov - 55) > 0.01) {
-                camera.fov = 55;
-                camera.updateProjectionMatrix();
+            if (cam.fov !== undefined && Math.abs(cam.fov - 55) > 0.01) {
+                cam.fov = 55;
+                cam.updateProjectionMatrix();
             }
             // The far range sits ~10 km out — the theme camera ships with
             // far=8000, which would clip it to nothing.
-            if (camera.far < 15000) {
-                camera.far = 15000;
-                camera.updateProjectionMatrix();
+            if (cam.far < 15000) {
+                cam.far = 15000;
+                cam.updateProjectionMatrix();
             }
 
             // Ease the raw pointer so the look-around glides (no per-frame jitter).
@@ -1257,7 +1257,7 @@ export function create({
             const shakeGain = reduceMotion ? 0 : 1;
             const trauma = ((stormReact?.trauma ?? 0) * shakeGain) ** 1.7;
             const kickZ = (stormReact?.kick ?? 0) * 26 * shakeGain;
-            camera.position.set(
+            cam.position.set(
                 swayX + parallaxX,
                 Math.max(camRestY - 32, camRestY + bobY + breathY + parallaxY),
                 760 + dollyZ + breathZ - kickZ,
@@ -1267,10 +1267,10 @@ export function create({
             // mountains + sky keep the upper half of the frame.
             const lookX = Math.sin(time * 0.16 + 0.7) * 14 + parallaxX * 0.4;
             const lookY = camRestY + 42 + Math.cos(time * 0.21) * 5 + breathLook + parallaxY * 0.35;
-            camera.lookAt(lookX, lookY, -1900);
+            cam.lookAt(lookX, lookY, -1900);
             if (trauma > 0.0001) {
-                camera.rotateZ((Math.sin(time * 23.0) + Math.sin(time * 14.3 + 1.7) * 0.6) * 0.07 * trauma);
-                camera.rotateX(Math.sin(time * 19.0 + 1.3) * 0.045 * trauma);
+                cam.rotateZ((Math.sin(time * 23.0) + Math.sin(time * 14.3 + 1.7) * 0.6) * 0.07 * trauma);
+                cam.rotateX(Math.sin(time * 19.0 + 1.3) * 0.045 * trauma);
             }
         },
         update(time) {

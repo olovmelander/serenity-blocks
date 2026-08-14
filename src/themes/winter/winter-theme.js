@@ -4050,8 +4050,10 @@ export default class WinterTheme extends BaseTheme {
                             gust: Math.min(1, sd.gust * 0.5),
                             // Absent through calm and rising wind; only a real
                             // whiteout brings it in, and never to full opacity.
-                            frost: Math.max(0, Math.min(0.55,
-                                ((sd.intensity - 0.62) / 0.38) * 0.35 + sd.whiteout * 0.32)),
+                            frost: Math.max(0, Math.min(
+                                0.55,
+                                ((sd.intensity - 0.62) / 0.38) * 0.35 + sd.whiteout * 0.32,
+                            )),
                             motionX: Math.max(-1, Math.min(1, (sd.gustDir ?? 1) * sd.gust * 0.5)),
                             motionY: -0.18,
                         });
