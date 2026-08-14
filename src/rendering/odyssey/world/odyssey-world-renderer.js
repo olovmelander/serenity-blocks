@@ -2055,7 +2055,7 @@ export function createOdysseyWorld({
         const fieldSpecs = cloudFieldCount > 0
             ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
             : ODYSSEY_CLOUD_FIELD_SPECS;
-        fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs);
+        fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs, railSamples);
         fieldProbeMesh = new THREE.Mesh(fieldProbeBuild.geometry, fieldMat);
         // Same three invariants as the heroes: unculled (a breathing +-1 draw voids pairs via
         // the content-match guard), static matrix, opaque queue.
