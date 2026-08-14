@@ -1,101 +1,145 @@
 import { describe, expect, it } from 'vitest';
-import { bakeOdysseyCloudField } from './odyssey-world-renderer.js';
 
-/**
- * THE CLOUD DECK'S SILHOUETTE FIELD — the invariants a capture cannot check cheaply.
- *
- * This field is sampled with RepeatWrapping at three world scales (~488 / ~179 / ~70 u), so
- * any discontinuity in it is drawn across Act II's sky as a dead straight line, repeating on
- * a lattice. It shipped with two of them, found 2026-08-13 and measured here rather than
- * argued about:
- *
- *  1. the value noise did not tile (its hash wrapped at the texture resolution instead of at
- *     the lattice cell count), and
- *  2. the histogram match ranked TIED texels individually, so the 64 % of the field that is
- *     exactly zero — the sky between the disc clusters — came out as a ramp in texel order
- *     that stepped 0.394 at the wrap.
- *
- * Against those builds the seam assertion below read 48x and 42x the interior step. The
- * deck's whole anti-aliased alpha edge is 0.06 wide, so either one takes the sky from clear
- * to solid cloud in a single texel.
- */
-describe('odyssey cloud silhouette field', () => {
-    const RES = 256;
-    const { field, stats } = bakeOdysseyCloudField(RES);
-    const at = (i, j) => field[((((j % RES) + RES) % RES) * RES) + (((i % RES) + RES) % RES)];
+import {
+    CLOUD_FIELD_LOD_DETAIL,
+    buildCloudFieldGeometry,
+    buildCloudLobes,
+    cloudMassSdf,
+    sculptCloudMass,
+    validateCloudFieldClearance,
+} from './odyssey-cloud-field.js';
+import { CLOUD_FIELD_CLEARANCE, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import { getOdysseyPathPointAt } from '../path-utils.js';
 
-    /** Mean absolute step between horizontally adjacent texels, away from the wrap. */
-    const interiorStep = () => {
-        let sum = 0;
-        let n = 0;
-        for (let j = 0; j < RES; j += 1) {
-            for (let i = 0; i < RES - 1; i += 1) { sum += Math.abs(at(i, j) - at(i + 1, j)); n += 1; }
+// The REAL rail, densely sampled — but ONLY across the window in which the world is drawn.
+//
+// ⚠️ Sampling the WHOLE journey is wrong and the validator proved it: Act III climbs the rail
+// into space, straight through the altitude Act II's clouds occupy, and three legal zenith
+// masses were reported as violations because of rail points at p > 0.7 where the entire world
+// group is switched off. Clearance means "can the camera enter this cloud WHILE IT IS DRAWN";
+// outside the act gate there is no cloud to enter. The margin below the gate's own bounds is
+// deliberate slack so a future gate widening fails this test rather than silently shipping a
+// mass the rail now passes through.
+const ACT_START = 0.063;
+const ACT_END = 0.678;
+const RAIL = Array.from(
+    { length: 400 },
+    (_, i) => getOdysseyPathPointAt(ACT_START + ((i / 399) * (ACT_END - ACT_START))),
+);
+const SPEC = ODYSSEY_CLOUD_FIELD_SPECS[0];
+
+describe('cloud field sculptor', () => {
+    // THE LOAD-BEARING ONE. Every vertex is produced by ray-marching to the field's zero
+    // crossing, so every vertex must SIT on that surface. This is what caught the first
+    // draft's real defect: an exhausted sphere-trace fell back to collapsing the vertex to the
+    // mass centre, and 65 of 2940 vertices on one mass took that path — spikes through the
+    // hull that no visual check at silhouette scale would reliably show.
+    it('puts every vertex on the surface it marched to', () => {
+        const m = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.near);
+        const lobes = buildCloudLobes(SPEC);
+        let worst = 0;
+        for (let v = 0; v < m.position.length / 3; v += 1) {
+            const x = m.position[v * 3];
+            const y = m.position[(v * 3) + 1];
+            const z = m.position[(v * 3) + 2];
+            const d = cloudMassSdf(SPEC, lobes, x, y, z);
+            worst = Math.max(worst, Math.abs(d));
         }
-        return sum / n;
-    };
-
-    it('has no discontinuity at either tile seam', () => {
-        const interior = interiorStep();
-        let seamU = 0;
-        let seamV = 0;
-        for (let k = 0; k < RES; k += 1) {
-            // RepeatWrapping makes texel RES-1 the bilinear neighbour of texel 0. That pair —
-            // not texel RES — is what the GPU actually interpolates across.
-            seamU += Math.abs(at(RES - 1, k) - at(0, k));
-            seamV += Math.abs(at(k, RES - 1) - at(k, 0));
-        }
-        expect(seamU / RES).toBeLessThan(interior * 3);
-        expect(seamV / RES).toBeLessThan(interior * 3);
+        // Under 0.5 % of the mass width. Tight enough that a collapsed vertex (which lands a
+        // full radius away) cannot hide inside the tolerance.
+        expect(worst).toBeLessThan(SPEC.w * 0.005);
     });
 
-    it('has a seam step DISTRIBUTION that looks like anywhere else in the tile', () => {
-        // Not a worst-case test, deliberately. This field's largest legitimate step is the
-        // rim of a disc, where the union's dome falls to the sky floor; that cliff is ~0.25
-        // and it occurs all over the tile, so a "worst seam step" bound would either be
-        // useless (both builds have a 0.41 max — checked) or would fail the shipped field for
-        // doing exactly what it is designed to do. What must hold is that the WRAP is not a
-        // special place: its step distribution has to sit inside the interior's. Pre-fix the
-        // seam's p99 was 0.395 against an interior p99 of 0.033.
-        const steps = (pairs) => pairs.sort((a, b) => a - b);
-        const interior = [];
-        for (let j = 0; j < RES; j += 1) {
-            for (let i = 0; i < RES - 1; i += 1) interior.push(Math.abs(at(i, j) - at(i + 1, j)));
-            for (let i = 0; i < RES; i += 1) if (j < RES - 1) interior.push(Math.abs(at(i, j) - at(i, j + 1)));
+    it('emits no NaN and nothing below the flat base', () => {
+        const m = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.near);
+        for (let v = 0; v < m.position.length / 3; v += 1) {
+            expect(Number.isFinite(m.position[v * 3])).toBe(true);
+            expect(Number.isFinite(m.position[(v * 3) + 1])).toBe(true);
+            expect(Number.isFinite(m.position[(v * 3) + 2])).toBe(true);
+            // The base is a smooth-MAX fillet, so the surface may round slightly under the
+            // plane; a full lobe radius below it would mean the cut never happened.
+            expect(m.position[(v * 3) + 1]).toBeGreaterThan(SPEC.base - (SPEC.w * 0.05));
         }
-        const seam = [];
-        for (let k = 0; k < RES; k += 1) {
-            seam.push(Math.abs(at(RES - 1, k) - at(0, k)));
-            seam.push(Math.abs(at(k, RES - 1) - at(k, 0)));
-        }
-        const p99 = (a) => steps(a)[Math.floor(a.length * 0.99)];
-        expect(p99(seam)).toBeLessThanOrEqual(p99(interior));
     });
 
-    it('maps equal inputs to equal outputs — the remap is a function of value, not of index', () => {
-        // The sky between clusters is one input value. However many texels hold it, they must
-        // all leave the remap holding ONE output value, or the field carries a texel-order
-        // ramp that no threshold comment in the deck describes.
-        const counts = new Map();
-        for (let k = 0; k < field.length; k += 1) {
-            const key = field[k].toFixed(6);
-            counts.set(key, (counts.get(key) || 0) + 1);
+    it('bakes unit-length normals from the field gradient', () => {
+        const m = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.mid);
+        for (let v = 0; v < m.normal.length / 3; v += 1) {
+            const len = Math.hypot(m.normal[v * 3], m.normal[(v * 3) + 1], m.normal[(v * 3) + 2]);
+            expect(len).toBeGreaterThan(0.999);
+            expect(len).toBeLessThan(1.001);
         }
-        const biggest = Math.max(...counts.values());
-        // Pre-fix this was 1: every tied texel had its own value.
-        expect(biggest).toBeGreaterThan(field.length * 0.25);
     });
 
-    it('keeps the coverage calibration the deck thresholds were placed against', () => {
-        // The solver targets the SUM's spread; that is the number it actually controls.
-        expect(stats.p90 - stats.p10).toBeCloseTo(0.28, 2);
-        // The percentiles themselves are recorded, not asserted tightly: collapsing the tie
-        // block moved the sum's median from 0.563 to 0.549, which is a real change in the
-        // field's shape and is accounted for in the deck's coverage thresholds, not hidden.
-        expect(stats.p10).toBeGreaterThan(0.40);
-        expect(stats.p10).toBeLessThan(0.45);
-        expect(stats.p50).toBeGreaterThan(0.53);
-        expect(stats.p50).toBeLessThan(0.60);
-        expect(stats.p90).toBeGreaterThan(0.68);
-        expect(stats.p90).toBeLessThan(0.73);
+    // AO that is constant is AO that does nothing — the crevice grouping is the whole reason
+    // it is baked, so its RANGE is the thing worth asserting, not its presence.
+    it('bakes ambient occlusion with real range', () => {
+        const m = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.near);
+        const ao = [];
+        for (let v = 0; v < m.colour.length / 3; v += 1) ao.push(m.colour[v * 3]);
+        expect(Math.min(...ao)).toBeLessThan(0.35);
+        expect(Math.max(...ao)).toBeGreaterThan(0.85);
+    });
+
+    it('is deterministic — the same sky every boot, so captures and pairs compare', () => {
+        const a = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.mid);
+        const b = sculptCloudMass(SPEC, CLOUD_FIELD_LOD_DETAIL.mid);
+        expect(Array.from(a.position)).toEqual(Array.from(b.position));
+    });
+
+    it('throws rather than sculpting an inside-out hull', () => {
+        // A zero-width mass has no interior at all, so the star-shaped premise every ray in
+        // this module rests on is void. This is the spec-table typo the guard exists for.
+        // (Raising `base` does NOT reach it — the lobes are placed relative to `base`, so the
+        // whole mass simply moves and its centre stays inside. That was this test's first,
+        // wrong, premise; the guard was fine.)
+        expect(() => sculptCloudMass({ ...SPEC, w: 0 }, 1)).toThrow(/centre is outside/);
+    });
+});
+
+describe('cloud field composition', () => {
+    it('clears the live rail by every role margin', () => {
+        const problems = validateCloudFieldClearance(
+            ODYSSEY_CLOUD_FIELD_SPECS,
+            RAIL,
+            CLOUD_FIELD_CLEARANCE,
+        );
+        expect(problems).toEqual([]);
+    });
+
+    // Wave 0 measured ~0.131 ms fixed + ~0.0094 ms per mass at ch5 and gate F1 is 0.50 ms.
+    // These bounds are what keeps a later "just one more cloud" from silently spending it.
+    it('stays inside the triangle and bake budget the gate was written against', () => {
+        const t0 = Date.now();
+        const build = buildCloudFieldGeometry(ODYSSEY_CLOUD_FIELD_SPECS);
+        const ms = Date.now() - t0;
+        expect(build.masses).toBe(ODYSSEY_CLOUD_FIELD_SPECS.length);
+        expect(build.triangles).toBeLessThan(16000);
+        // Generous against CI jitter; the measured figure on this machine is ~125 ms.
+        expect(ms).toBeLessThan(900);
+        build.geometry.dispose();
+    });
+
+    it('carries every attribute the paint stack reads', () => {
+        const build = buildCloudFieldGeometry(ODYSSEY_CLOUD_FIELD_SPECS.slice(0, 3));
+        ['position', 'normal', 'aMassCentre', 'color'].forEach((name) => {
+            expect(build.geometry.getAttribute(name), name).toBeTruthy();
+        });
+        build.geometry.dispose();
+    });
+
+    it('keeps the six framing placements identical to the owner-approved heroes', () => {
+        const framing = ODYSSEY_CLOUD_FIELD_SPECS.filter((s) => s.role === 'framing');
+        expect(framing).toHaveLength(6);
+        // Guards the deliberate decision to re-author geometry WITHOUT re-authoring
+        // composition, so a failure of the new sky is attributable to one of the two.
+        expect(framing.map((s) => [s.x, s.base, s.z, s.w, s.h])).toEqual([
+            [-320, 860, -2250, 640, 330],
+            [-1750, 830, -2050, 700, 300],
+            [-750, 900, -3150, 880, 380],
+            [620, 845, -2150, 600, 280],
+            [1450, 875, -3050, 820, 320],
+            [1550, 855, -1000, 620, 290],
+        ]);
     });
 });

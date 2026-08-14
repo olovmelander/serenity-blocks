@@ -16,7 +16,8 @@ import {
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
-import { buildProbeFieldSpecs } from './odyssey-cloud-field-probe.js';
+import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
+import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
@@ -712,12 +713,14 @@ export function scatterTrees(heightAt, {
  *   1-2 timer ticks (perf was never the issue). Module, specs and tests are RETAINED per the
  *   ADR-0015 pattern; `?odysseyWorldHeroes=1` in-game or `?heroes=1` on the playground rig restores
  *   the full system.
- * @param {boolean} [opts.cloudField] WAVE 0 PRICE PROBE for the cloud-field plan (board flag
- *   `?odysseyWorldCloudField=1`, gpu-split configuration `cloud-field`). Mounts ~28 probe
- *   masses built by the RETIRED hero builder and shaded by the RETIRED hero material — zero
- *   new shader code — so the differential prices the MECHANISM (triangles, opaque draws,
- *   rasterised silhouette) before the real sculptor exists. See
- *   docs/ODYSSEY_ACT2_CLOUD_FIELD_PLAN_2026-08.md §5 Wave 0a; nothing here survives Wave 1.
+ * @param {boolean} [opts.cloudField] mount the SCULPTED cloud field (board flag
+ *   `?odysseyWorldCloudField=1`, gpu-split configuration `cloud-field`). 34 authored masses
+ *   sculpted from a smooth-min SDF with flat bases and SDF-gradient normals — see
+ *   odyssey-cloud-field.js. Opt-in until the plan's Wave 4 owner-gated swap; the sheet is
+ *   still the shipped sky. docs/ODYSSEY_ACT2_CLOUD_FIELD_PLAN_2026-08.md §5.
+ * @param {number} [opts.cloudFieldCount] slice the field to its first N masses. The cost-curve
+ *   instrument: two counts in one thermal window separate the per-draw constant from the
+ *   per-mass price.
  * @param {boolean} [opts.water] build the sea plate at all. A MEASUREMENT LEVER, not a player
  *   setting (board flag `?odysseyWorldNoWater=1`, gpu-split configuration `no-water`): the
  *   water surface is one ungated DoubleSide transparent clipmap that draws across the whole
@@ -1972,22 +1975,22 @@ export function createOdysseyWorld({
     let fieldProbeMesh = null;
     let fieldProbeBuild = null;
     if (cloudField) {
-        // The COUNT is overridable so Wave 0a can measure a cost CURVE rather than a single
-        // point. Two counts answer the question a single number cannot: is the price linear in
-        // mass count (so composition and LOD are the levers) or dominated by something else?
-        fieldProbeBuild = buildHeroCloudGeometry(
-            buildProbeFieldSpecs(railSamples, cloudFieldCount || undefined),
-            { tertiaries: true, massCentres: true },
-        );
-        // Built only when asked — an unmounted 40k-triangle geometry is still a CPU build and
-        // a GPU upload nobody requested.
+        // Built only when asked — an unmounted geometry is still a CPU bake and a GPU upload
+        // nobody requested. `cloudFieldCount` slices the spec table so the Wave 0 cost-curve
+        // instrument still works against the REAL field: two counts answer what one number
+        // cannot, namely whether the price tracks mass count (so composition and LOD are the
+        // levers) or is dominated by the per-draw constant. Wave 0 measured the latter.
+        const fieldSpecs = cloudFieldCount > 0
+            ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
+            : ODYSSEY_CLOUD_FIELD_SPECS;
+        fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs);
         fieldProbeMesh = new THREE.Mesh(fieldProbeBuild.geometry, fieldMat);
         // Same three invariants as the heroes: unculled (a breathing +-1 draw voids pairs via
         // the content-match guard), static matrix, opaque queue.
         fieldProbeMesh.frustumCulled = false;
         fieldProbeMesh.matrixAutoUpdate = false;
         fieldProbeMesh.updateMatrix();
-        fieldProbeMesh.name = 'odyssey-world-cloud-field-probe';
+        fieldProbeMesh.name = 'odyssey-world-cloud-field';
         group.add(fieldProbeMesh);
     }
 
@@ -2440,8 +2443,9 @@ export function createOdysseyWorld({
         materials: 4 + (clouds ? 1 : 0) + (heroes ? 1 : 0),
         heroClouds: heroes ? ODYSSEY_HERO_CLOUD_SPECS.length : 0,
         heroTriangles: heroes ? heroBuild.triangles : 0,
-        cloudFieldProbe: cloudField,
-        cloudFieldProbeTriangles: fieldProbeBuild ? fieldProbeBuild.triangles : 0,
+        cloudField,
+        cloudFieldMasses: fieldProbeBuild ? fieldProbeBuild.masses : 0,
+        cloudFieldTriangles: fieldProbeBuild ? fieldProbeBuild.triangles : 0,
         applyExposure,
         outputScale,
         outputSaturation,

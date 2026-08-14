@@ -229,6 +229,61 @@ validator's instrument — fixes A's centre-distance defect). Gates: fieldMs ≤
 silhouette bar (flat bases, 3-scale lobes, no soap bubbles). **F2:** blobby →
 icosphere-merge + bent normals + AO, same idiom.
 
+> **OUTCOME — WAVE 1 SHIPPED, 2026-08-14. The masses are single merged shapes; the bag of
+> balls is gone.** Evidence: `artifacts/odyssey/act2-clouds-ch5-bisect/w1-sculpt-ch4.png`,
+> `w1-zenith2-ch5.png`. Opt-in (`?odysseyWorldCloudField=1`); the sheet is still the shipped sky.
+>
+> **THE POLYGONISER IS NOT MARCHING CUBES, and the substitution is the wave's main technical
+> result.** A cumulus mass is STAR-SHAPED about its own centre, so the surface is found by
+> ray-marching an icosphere's directions inward from outside the hull. That yields, for free,
+> what an MC mesh must be repaired into having: a closed watertight hull, an exact triangle
+> count per LOD (which is what the measured per-mass price is budgeted against), and — the
+> load-bearing one — normals taken from the SDF GRADIENT, which is continuous ACROSS a
+> smooth-min join. That gradient IS the melt: no shader-side normal blend can manufacture it
+> from per-lobe radial normals, which is exactly what the retired heroes had. Trade-off
+> written down: no overhangs. The references show none at silhouette scale.
+>
+> **SHIPPED:** `odyssey-cloud-field.js` (smin union k=0.16·halfW, smax flat-base fillet,
+> 3-D value-noise crinkle, sphere-traced surface, gradient normals, analytic SDF ambient
+> occlusion, height and per-mass seed baked to vertex colour) + `odyssey-cloud-field-specs.js`
+> (38 masses in four roles; the six FRAMING placements are the owner-approved hero positions
+> verbatim, so a failure of the new sky is attributable to geometry OR composition, never both)
+> + `odyssey-cloud-field.test.js` (10 tests). **38 masses, 14,920 triangles, bake 162 ms**
+> against a 250 ms budget, zero clearance failures.
+>
+> **THREE DEFECTS THE TESTS AND VALIDATOR CAUGHT, all of which would have shipped:**
+> 1. *Vertex collapse.* When the sphere trace exhausted its step budget the first draft
+>    collapsed the vertex to the mass CENTRE — 65 of 2940 vertices on one mass, punching spikes
+>    through the hull. Running out of steps does not mean the ray missed; the bracket
+>    [0, lastOutside] is always valid and bisection closes it.
+> 2. *The NaN that walked through the guard.* A zero-width spec divides by `w` in the crinkle
+>    and yields NaN, and `NaN >= 0` is FALSE — so the "is the centre inside?" guard passed a
+>    NaN field straight into geometry. Written `!(d < 0)` now.
+> 3. *Clearance validated over the WRONG rail.* The validator sampled the whole journey, and
+>    Act III climbs through Act II's cloud altitude — reporting three legal zenith masses as
+>    violations. Clearance means "can the camera enter this cloud WHILE IT IS DRAWN"; the rail
+>    is now sampled across the act gate only.
+> Also corrected: three's `IcosahedronGeometry(r, detail)` is **20·(detail+1)²** faces, not
+> 20·4^detail. The first draft believed "detail 3" was 1280 triangles; it is 320, and the field
+> would have shipped at a quarter of its intended geometry.
+>
+> **ANGULAR SIZE, NOT WORLD SIZE, IS WHAT LOD AND WIDTH MUST BE CHOSEN AGAINST.** The ch5
+> station's first sculpted capture showed an EMPTY sky — every authored mass sat 900+ u away in
+> plan, outside the narrow cone an 18°-off-vertical camera sees. Four ZENITH masses were added
+> against the rail's own track; at base 1015-1080 / w 540-620 they filled the frame with two
+> featureless white potatoes showing their flat bases and visible polygon edges. At 900-1100 u
+> up and w 410-500 (~25° instead of ~70°), on `near` LOD, they read as distinct clouds.
+>
+> **WHAT IS STILL SHORT OF THE REFERENCES:** lobe DEFINITION. The masses are correctly single
+> shapes but smoother than the reference cauliflower — `SMIN_K` melts generously and
+> `CRINKLE_AMP` is subtle. That is a two-constant tuning pass, and it belongs with Wave 2's
+> paint session where the owner can judge both at once.
+>
+> ⚠️ **THE WHITE SLAB IS THE MOUNTAIN, and both earlier answers were wrong.** Bisected with
+> deck, heroes AND field all off: the slab survives, and the mesh roster names
+> `odyssey-world-ground`. The old plan's §1.2 claim and its "closed by the hero retirement"
+> annotation are both withdrawn there. Nothing in the cloud work can close it.
+
 ### Wave 2 — the paint + palette extraction
 Extract `makeActCloudPalette` from the deck's tone block (renderer :1611-1656); the deck
 consumes it — PURE refactor, source-import + no-reinlined-literals test (the refactor law);
