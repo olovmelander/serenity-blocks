@@ -173,6 +173,82 @@ describe('the sea', () => {
     });
 });
 
+describe('the landmass is an island', () => {
+    // Before 2026-08-14 the shelf/inland ramps saturated past z=-900 and never came back
+    // down: the "island" was an infinite peninsula running 26 km north at a constant 97.7 u
+    // above sea level, and the owner photographed it from the layout editor. Worse than the
+    // shape itself: the macro bake covers only ±4500 with ClampToEdgeWrapping, so any LAND
+    // crossing the plate boundary is extruded to the lattice horizon by the sampler. These
+    // guards hold the fix from both ends — the coast exists, and the boundary the clamp
+    // extrudes is ocean everywhere.
+
+    it('returns to open ocean north of the coast', () => {
+        // The rail's northernmost point is z=-743.5 and the last massif halo dies at
+        // z≈-2483, so everything past -3400 must be honestly underwater — including the
+        // relief bake's worst case (±150 at the 0.16 base weight = ±24 u around the macro).
+        for (let x = -4400; x <= 4400; x += 200) {
+            for (let z = -3400; z >= -4400; z -= 200) {
+                expect(
+                    odysseyWorldHeight(x, z),
+                    `expected open water at (${x}, ${z})`,
+                ).toBeLessThan(ODYSSEY_SEA_LEVEL - 100);
+            }
+        }
+    });
+
+    it('keeps the entire baked-plate boundary underwater, so the edge clamp extrudes ocean', () => {
+        // RELIEF_EXTENT is 9000 (renderer-side), so the plate boundary is the ±4500 square.
+        // Every land sample here becomes a 21,700 u streak of land on the horizon.
+        const HALF_PLATE = 4500;
+        const offenders = [];
+        for (let t = -HALF_PLATE; t <= HALF_PLATE; t += 90) {
+            [[t, -HALF_PLATE], [t, HALF_PLATE], [-HALF_PLATE, t], [HALF_PLATE, t]].forEach(([x, z]) => {
+                if (odysseyWorldHeight(x, z) >= ODYSSEY_SEA_LEVEL - 100) {
+                    offenders.push({ x, z, h: +odysseyWorldHeight(x, z).toFixed(1) });
+                }
+            });
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    it('did not eat the inhabited land — the interior heights are exactly the pre-coast field', () => {
+        // The taper must be 1 (not 0.999) everywhere anything stands: the whole rail, every
+        // massif footprint + relief halo, the tree disc (centre -620, radius 1750). All of
+        // that lies south of z=-2483; assert the coast term cannot have touched it by
+        // checking values that only hold if northT is exactly 1.
+        expect(odysseyWorldMacro(-220, -1500)).toBeCloseTo(386.1, 1); // bare inland plateau
+        expect(odysseyWorldMacro(-220, -2400)).toBeCloseTo(385.0, 1); // last land before the coast
+        const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
+        expect(odysseyWorldMacro(hero.x, hero.z)).toBeGreaterThan(1000); // crown untouched
+    });
+
+    it('has a real north shore, not a cliff — the coast slope stays under the mesh bar', () => {
+        // Same bar as the global continuity test (slope < 4), applied where the new taper
+        // actually releases its 305 u.
+        //
+        // ⚠️ THE z STRIDE MUST EQUAL THE MEASUREMENT WINDOW. This test first advanced z by 47
+        // while differencing over 6, so it inspected 132 u of the 987 u it iterates (13.4%)
+        // and left 41 u blind between probes — and a cliff that lands in a gap is invisible.
+        // MEASURED, on this exact loop: replacing the taper with a hard step
+        // (`northT = z > -3000 ? 1 : 0`), a 305 u VERTICAL WALL, reported 0.3004 and PASSED.
+        // Worse, 0.3004 is the same figure a FULL REVERT of the coast produces, at the same
+        // point — proof the taper never entered the measurement at all. It also inverted the
+        // test's sensitivity: a mild 100 u narrowing was caught at 4.33 while a severe 20 u
+        // narrowing passed. Contiguous probes cost 7,348 iterations (~8 ms) and restore it:
+        // the shipped coast measures 0.7882 (5x headroom), the wall 50.81, the 20 u taper
+        // 22.00. Do not re-widen the stride to "speed this up".
+        let worstSlope = 0;
+        const step = 6;
+        for (let x = -2400; x <= 1800; x += 97) {
+            for (let z = -2500; z >= -3500; z -= step) {
+                const d = Math.abs(odysseyWorldHeight(x, z + step) - odysseyWorldHeight(x, z));
+                worstSlope = Math.max(worstSlope, d / step);
+            }
+        }
+        expect(worstSlope).toBeLessThan(4);
+    });
+});
+
 describe('the field is well-behaved', () => {
     it('is finite and bounded everywhere the clipmap can reach', () => {
         for (let x = -6000; x <= 6000; x += 400) {
