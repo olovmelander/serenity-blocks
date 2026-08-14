@@ -20,9 +20,15 @@ Evidence: `public/playground-refs/act2-clouds-current-{ch4-0p42,ch5-0p55,ch5-0p6
 1. **The sky at ch5 reads as salt-and-pepper static** — the deck's alpha is three octaves
    of value noise through a threshold (`odyssey-world-renderer.js:1105-1121`). No shape
    grammar exists anywhere: no lobes, no flat bases, no composition. (0p62 capture.)
-2. **A giant white slab hangs edge-on** *(diagnosis REFUTED 2026-08-13 — the slab was the
-   HERO CLOUD seen close and near-flat, proven by the `flat` re-shade; and MOOTED 2026-08-14
-   by the heroes' retirement, §7.1 — it can only recur under `?odysseyWorldHeroes=1`)* —
+2. **A giant white slab hangs edge-on** *(TWO WRONG DIAGNOSES, both corrected 2026-08-14 by a
+   bisect with EVERY cloud system off — deck, heroes and field. The slab is still there, and
+   the visible-mesh roster shows the only large opaque surface left: **`odyssey-world-ground`.
+   IT IS THE SNOW-CAPPED MOUNTAIN SUMMIT**, seen close and near-flat from the ch5 climb. It was
+   never the deck's billow towers (2026-08-13's first answer) and never the hero cloud
+   (2026-08-13's second answer, which this plan then recorded as "closed by the retirement" —
+   that annotation was wrong and is withdrawn here). Whether it is a DEFECT at all is now an
+   open art question rather than a cloud bug: a snowfield filling the upper frame while you
+   climb past it may simply be the mountain.)* —
    the deck's ±116 u billow towers are protected
    near the camera by nearFade/bandFade, but a *distant* tower at the camera's altitude
    band edge stays a solid crumpled wall. (0p62 left half.)
@@ -453,8 +459,10 @@ From the Ghibli/Witness distillation — the implementable core:
 > **STILL OPEN AT CH5, each needing its own bisect, none of them clouds:**
 > - the sky dome is flat saturated ultramarine with no gradient — the COLOUR SCRIPT;
 > - chapter 6 bleeds in from p=0.5814 — a SEAM issue, and restyling the bank will not fix it;
-> - *(CLOSED 2026-08-14: the heroes were retired, §7.1 — this defect left with them and can
->   only recur under the `?odysseyWorldHeroes=1` escape hatch.)*
+> - *(WITHDRAWN 2026-08-14: this was wrong. A bisect with deck, heroes AND the new cloud field
+>   all off leaves the slab on screen, and the mesh roster names `odyssey-world-ground` — it is
+>   the MOUNTAIN. The `flat` re-shade proved the DECK was uniform there, which is true and does
+>   not identify the slab. Do not re-close this against a cloud system.)*
 >   the white slab is the HERO CLOUD geometry seen close and near-flat. The `flat` re-shade
 >   shows the deck covering that part of the frame uniformly, so it is **not** the deck — which
 >   corrects the earlier note that called it unexplained.

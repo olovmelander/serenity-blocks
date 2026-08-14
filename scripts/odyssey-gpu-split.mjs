@@ -136,15 +136,15 @@ const CONFIGURATIONS = [
     {
         id: 'cloud-field',
         flags: { odysseyWorldCloudField: '1' },
-        note: '~28 opaque probe masses added on the retired hero builder + material',
+        note: 'the 34 sculpted cloud-field masses added to the world',
     },
     // HALF the probe masses — the second point on the cost curve. Run all four as
     // `--only baseline,cloud-field-half,cloud-field,baseline-repeat` to get both in one
     // thermal window, which is the only way the two are comparable.
     {
         id: 'cloud-field-half',
-        flags: { odysseyWorldCloudField: '1', odysseyWorldCloudFieldCount: '14' },
-        note: '14 opaque probe masses — half the field, for the cost curve',
+        flags: { odysseyWorldCloudField: '1', odysseyWorldCloudFieldCount: '17' },
+        note: '17 sculpted masses — half the field, for the cost curve',
     },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
