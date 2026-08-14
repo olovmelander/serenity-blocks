@@ -129,6 +129,23 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldHeroes: '1' },
         note: 'the retired Act II hero cumulus added back to the world group',
     },
+    // THE CLOUD FIELD (cloud-field plan Wave 0a). Opt-in, like `heroes`: the baseline is the
+    // shipped sheet, so `fieldMs` is the cost of ADDING a sky's worth of opaque cloud geometry.
+    // Argument order carries the sign — never also negate (the heroes cell's double-flip).
+    // Run as `--only baseline,cloud-field,baseline-repeat`.
+    {
+        id: 'cloud-field',
+        flags: { odysseyWorldCloudField: '1' },
+        note: '~28 opaque probe masses added on the retired hero builder + material',
+    },
+    // HALF the probe masses — the second point on the cost curve. Run all four as
+    // `--only baseline,cloud-field-half,cloud-field,baseline-repeat` to get both in one
+    // thermal window, which is the only way the two are comparable.
+    {
+        id: 'cloud-field-half',
+        flags: { odysseyWorldCloudField: '1', odysseyWorldCloudFieldCount: '14' },
+        note: '14 opaque probe masses — half the field, for the cost curve',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -393,13 +410,16 @@ function buildSplit(results) {
         // SAVING; three independent review lenses caught it before a report was written.
         // Positive still means cost, like every other figure in this split.
         heroesMs: delta('heroes', 'baseline'),
+        // Same polarity as heroesMs: the lever ADDS the system, so cost = config - baseline.
+        cloudFieldMs: delta('cloud-field', 'baseline'),
+        cloudFieldHalfMs: delta('cloud-field-half', 'baseline'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),
         baselineDriftVoidReason: driftMismatch,
         note: 'Differential, not per-pass: each figure is baseline p50 minus that '
-            + 'configuration p50 — except heroesMs, whose lever ADDS a retired system, so it '
-            + 'is the heroes configuration minus baseline (positive still means cost). Overlapping costs are attributed to whichever system is '
+            + 'configuration p50 — except heroesMs and cloudFieldMs, whose levers ADD a system, '
+            + 'so they are the configuration minus baseline (positive still means cost). Overlapping costs are attributed to whichever system is '
             + 'removed first, and baselineDriftMs bounds how much of any figure could be '
             + 'drift rather than signal. baselineDriftMs is null when the two baselines did '
             + 'not render comparable scenes — see baselineDriftVoidReason.',
