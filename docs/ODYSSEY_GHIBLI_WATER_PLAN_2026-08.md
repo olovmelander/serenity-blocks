@@ -400,6 +400,110 @@ Three hard facts (critic-verified):
 - **Acceptance:** two motion-burst captures 0.5 s apart show the glint field visibly moving;
   crest mask visible in stills; pairs at p=0.16 + shoreline within budget.
 
+### Wave 2b — The morph-band squares (diagnosed 2026-08-14, fix planned)
+
+> ⚠️ References in this section are by SYMBOL, not line number. The line numbers this section
+> was drafted with (`renderer.js:2357`, `~1183`, `~1213-14`, `~1505-07`) had already rotted by
+> 150-340 lines before it was committed — the Act II cloud work inserted above them, and
+> `:2357` came to land in the god-ray mote material. A line number in a doc is a claim with a
+> short shelf life in this file.
+
+**Symptom** (owner screenshot, ch2 underwater up-view): the ceiling reads as soft axis-aligned
+squares/sections "in the waves — not exactly where the path spline comes up from the water, but
+more on the sides." The squares sit in square annuli around the breach point and some show a
+diagonal split.
+
+**Root cause — fragment-stage re-evaluation of the clipmap morph math.** `clipmapXZ` builds
+`worldXZ = origin + mix(local, coarse, morph)` from `attribute('position')`. In the vertex
+stage the grid coordinates are exact integers, `coarse = floor(gridXZ·0.5)·2·spacing` snaps
+cleanly, and the morph is C0-continuous — the *geometry* is seamless. But when a
+**fragment-stage node reads `w.worldXZ` directly**, r181 auto-varyings the raw *attribute* and
+re-executes every downstream op per fragment — including the `floor()` — on *interpolated*
+grid coordinates. `floor` of an interpolated value is piecewise-constant: inside every ring's
+morph band (Chebyshev 0.70 → ring edge — a **square annulus**), the fragment's `worldXZ`
+freezes across 2-cell blocks and jumps at even grid lines while the geometry glides smoothly
+past it. Shading and geometry disagree in axis-aligned blocks of `2·spacing·2^ring` — 12.8 m
+(ring 0, at 72–102 m from the rail), 25.6 m (ring 1, 143–205 m), 51.2 m (ring 2, 286–410 m).
+The diagonal splits in the screenshot are the alternating quad diagonals of the lattice
+(odyssey-clipmap.js:97-100) showing through the per-triangle seams.
+
+Why "on the sides, not at the breach": `uLodCenter` follows the **rail point**
+(the `uLodCenter.value.set(railPoint...)` write in the per-frame update), so ring 0's clean inner core (morph = 0, no artifact) sits
+exactly where the spline breaches, and the morph annuli surround it.
+
+This is the **third lattice-derived defect of the same species** (after the water plate's
+first "square sections" and the deck's ch5 straight diagonals — see the instruments note at
+clipmapXZ). The in-file repair idiom already exists twice: `wUv` goes through an explicit
+`varying()` (`const wUv = varying(...)`), and the cloud deck's `cUvA/B/C` were given the same
+treatment. Four water readers were simply never converted:
+
+1. `rippleA`/`rippleB` — detail-normal UVs → `ripple` → `wN` → Snell-window rim,
+   spec, grazing, meniscus. **This is the whole underside look**, hence the squares.
+2. `capNoise` (≈1309-10) — topside whitecap break-up noise.
+3. `swell` re-read in `crestMask` (≈1337) — underside crest SSS (re-evaluates
+   `waveField(w.worldXZ, envelope(wVertDist))` per fragment, `wVertDist` staircased too).
+4. `wSwellFade` (≈1225, 1229) — shallow-water fade, re-fetched per fragment via `wVertUv`.
+
+**Fix (surgical; follows the file's own idiom; strictly cheaper, never dearer):**
+
+- `rippleA`/`rippleB`: sample with `positionWorld.xz` instead of `w.worldXZ`. The swell
+  displaces **vertically only**, so `positionWorld.xz` is byte-identical to the geometry's
+  smooth worldXZ, correctly interpolated — and `positionWorld` is already resident in the
+  fragment (the `bedTex`/`depth` block). Same trick the per-fragment wave field (`wFrag`) already uses.
+- `capNoise`: `positionWorld.x` / `positionWorld.z`.
+- `crestMask`: read `varying(swell, 'vSwell')` — interpolates the *true displaced height*, so
+  crest SSS shades the geometry that actually exists (do NOT recompute the enveloped field per
+  fragment; that re-opens a two-stage disagreement).
+- `wSwellFade` fragment uses: `varying(wSwellFade, 'vSwellFade')` (the vertex fetch keeps its
+  `.level(0)`).
+
+Side effect: the fragment shader stops emitting the clipmap morph chain entirely (its only
+remaining fragment readers are these four), so the fix is a small win, not a cost.
+
+Known non-targets: `cloudDist` (≈1523) also reads `cl.worldXZ` raw in the fragment, but the
+staircase jump (≤ ~100 m) lands inside a kilometre-wide rim smoothstep — invisible; leave it.
+Ch2's own diorama ceiling (deep-ocean.tsl.js PlaneGeometry 48×48, per-vertex `varying(elevation)`
+at 6.25 u cells vs ~12.5 u noise) is a *uniform* grid — it cannot make side-annuli squares; if
+small uniform diamonds persist after this fix, that varying is the second suspect.
+
+**Acceptance:** (1) BEFORE capture at the owner's framing (submerged, pitched up, squares on
+frame-left) with the lattice instrument overlaid — confirm the squares align with the morph
+annuli; (2) same capture after the fix — annuli gone, mottled ceiling continuous; (3) topside
+shoreline + open-sea stations unchanged (whitecaps keep their phase — same world coordinate,
+now honestly interpolated); (4) budgets re-checked only on the quiet machine, counters not
+drift (the Wave 2 ledger is stale). ⚠ Short per-station sessions — the capture constraint.
+
+**OUTCOME — SHIPPED, CAPTURE-VERIFIED, AND OWNER-CONFIRMED 2026-08-14.** All four readers
+converted as planned; the owner confirmed the squares are gone in-game on the fixed build.
+
+*The A/B is a true one, and the first attempt at it was not.* The obvious baseline — the
+existing `chapter-02-high-webgpu` set from 2026-08-13 13:47 — is CONFOUNDED: four sky/cloud
+commits landed after it (27fa7d5d "the dome spent its whole palette below 28 degrees" moves
+`skyColourFor`, which the water reads for fresnel, horizon dissolve AND the submerged Snell
+window), so its frames differ for reasons that have nothing to do with this fix. The baseline
+that counts was re-captured from the SAME working tree with only these four edits reverted
+(file-copy revert, not `git stash` — the tree carries unrelated uncommitted work from the
+cloud sessions). Preserved as `artifacts/odyssey/wave-v/chapter-02-TRUEBEFORE-wave2b/` next to
+`chapter-02-AFTER-wave2b/`; the stale 13:47 set is `chapter-02-BEFORE-wave2b/`.
+
+Both runs: `--chapter 2 --frames 4 --time 9 --burst 0`, High, WebGPU, 1280x720, phase-locked.
+
+- **ch2 local 0.667 (p=0.167, `submerged: 1`) — the defect station.** TRUEBEFORE shows the
+  owner's artifact plainly: hard-edged quadrilateral facets stepping down frame-left, straight
+  boundaries cutting the ceiling into plates. AFTER: the facets are gone and the ceiling reads
+  as continuous flowing crest bands with live mottling. The reported defect is closed.
+- **ch2 local 1.000 (p=0.204, breach/topside).** Unchanged — same sky, cumulus, mountain,
+  treeline, and the same whitecap phase and distribution on the sea. The caps kept their
+  positions because the world coordinate did not change, only its honesty; their edges are no
+  longer staircased.
+- **Cost:** identical at the defect station — 38 draw calls, 489,772 triangles, both runs. The
+  fragment shader stops emitting the clipmap morph chain, so this is a small win at worst; no
+  GPU-timer claim is made here (the machine had a co-tenant, and the Wave 2 ledger is stale
+  regardless — that re-measure is still owed on a quiet machine).
+- Capture console clean: no WebGPU validation errors, no shader-compile failures, no NaN. The
+  two log hits are an unrelated CSP warning and an unrelated `forest` theme prewarm timeout.
+- `npm run lint` clean on the file. ⚠️ The suite figure originally recorded here ("240/240") matches no suite in this repo and could not be reproduced; it is replaced with a MEASURED one, taken at commit time with this change applied alone to 1942eb7c: **338 files / 3338 tests green** (3338 rather than the tree's 3342 because the north-coast change's four island tests are not part of this change).
+
 ### Wave 3 — The shore grammar (the Totoro edge)
 - Scalloped foam: static shore band + 1–2 travelling rings (K7), broken by noise (K6's AA'd
   threshold), thresholded to flat white, widths from Wave 0's px/m; dark-offset second sample
@@ -433,6 +537,7 @@ Three hard facts (critic-verified):
 - [x] **Wave 0** — falsifiable: worldNoWater pairs, shoreline cell, layout + px/m resolved, smoothstep proof, evidence re-captured
 - [x] **Wave 1** — painted sea: script-plate unification, 4-stop pigment ramp, fresnel two-tone, horizon dissolve
 - [x] **Wave 2** — motion: 3-wave analytic swell + per-fragment field, whitecaps, camera-distance envelopes (replaced the terracing spacing-fade), root-pinned regime branch (ledger STALE — see the corrections in the OUTCOME; re-measure on a quiet machine)
+- [x] **Wave 2b** — morph-band squares: fragment reads of raw `w.worldXZ` re-ran the clipmap `floor()` on interpolated attributes → square annuli on the underside; fixed with `positionWorld.xz` + two varyings, capture-verified against a same-tree TRUEBEFORE (2026-08-14)
 - [ ] **Wave 3** — shore grammar: scalloped travelling foam, wet sand, animated waterline
 - [ ] **Wave 4** — signatures: line boil, sparkle cells, (optional) Ponyo horizon
 - [ ] **Wave 5** — underside per §7.1 decision

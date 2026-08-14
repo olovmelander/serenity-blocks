@@ -1342,8 +1342,26 @@ export function createOdysseyWorld({
     // centred on zero (bakeDetailNormal), NOT a 0..1 normal map — subtracting 0.5 from them
     // injects a large constant slope over the whole sea, which is exactly how the first cut
     // of this term turned the ocean solid white.
-    const rippleA = texture(detailTex, w.worldXZ.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))).rg;
-    const rippleB = texture(detailTex, w.worldXZ.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))).rg;
+    // ── NEVER SAMPLE `w.worldXZ` FROM THE FRAGMENT STAGE (the "square sections", 3rd sighting) ──
+    // `w.worldXZ` is the clipmap fold: `origin + mix(local, coarse, morph)`, and both `origin`
+    // and `coarse` contain a `floor()`. Reading that node here does NOT reuse the vertex result
+    // — r181 auto-varyings the raw `position` ATTRIBUTE and re-executes the whole chain per
+    // fragment, so the `floor()` runs on INTERPOLATED grid coordinates and turns
+    // piecewise-constant. Inside each ring's morph band (Chebyshev 0.70..1.0 — a SQUARE ANNULUS
+    // around uLodCenter) the shading coordinate then freezes across 2-cell blocks and steps at
+    // even grid lines while the geometry glides smoothly past it: axis-aligned tiles of
+    // 2*spacing*2^ring — 12.8 m at 72-102 m out, 25.6 m at 143-205 m, 51.2 m at 286-410 m —
+    // with the lattice's alternating quad diagonals splitting them. Since uLodCenter tracks the
+    // RAIL POINT, ring 0's unmorphed core sits exactly at the breach and the tiles ring it: the
+    // owner's report was "squares on the sides, not where the path comes out of the water".
+    //
+    // `positionWorld.xz` is the fix and costs nothing: this swell displaces VERTICALLY ONLY, so
+    // the fragment's interpolated world XZ is byte-identical to the smooth clipmap coordinate —
+    // just honestly interpolated, with no `floor()` downstream of the interpolator. It is also
+    // already resident (`wFragDist`/`wFrag` below use it), and dropping these reads takes the
+    // morph chain out of the fragment shader entirely.
+    const rippleA = texture(detailTex, positionWorld.xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))).rg;
+    const rippleB = texture(detailTex, positionWorld.xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))).rg;
     const ripple = rippleA.mul(0.9).add(rippleB.mul(0.5)).toVar();
     // The wave field again, per fragment, from the true world position — at FULL amplitude.
     // The envelopes above are for DISPLACEMENT only: a lattice tears when asked to sample a
@@ -1354,11 +1372,11 @@ export function createOdysseyWorld({
     // single global fade below only prevents sub-pixel shimmer at the horizon, where the
     // dissolve owns the frame anyway.
     const wFragDist = length(positionWorld.xz.sub(cameraPosition.xz)).toVar();
-    const wFragFade = clamp(float(1).sub(wFragDist.div(520)), 0, 1).mul(wSwellFade).toVar();
+    const wFragFade = clamp(float(1).sub(wFragDist.div(520)), 0, 1).mul(vSwellFade).toVar();
     const wFrag = waveField(positionWorld.xz);
     const waveH = wFrag.h.mul(wFragFade).toVar();
     const waveSlope = vec2(wFrag.dx, wFrag.dz).mul(wFragFade).toVar();
-    const wSlope = waveSlope.add(ripple.mul(wSwellFade)).toVar();
+    const wSlope = waveSlope.add(ripple.mul(vSwellFade)).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), wN)).mul(0.9);
@@ -1437,9 +1455,12 @@ export function createOdysseyWorld({
             // says; high-frequency noise breaks the crest lines into separate caps without
             // out-voting them.
             const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
+            // Same world coordinate as before, taken from the fragment's own interpolated
+            // position rather than the clipmap fold (see the `rippleA` block): identical cap
+            // phase, minus the morph-band staircase.
             const capNoise = snoise3(vec3(
-                w.worldXZ.x.mul(0.14),
-                w.worldXZ.y.mul(0.14),
+                positionWorld.x.mul(0.14),
+                positionWorld.z.mul(0.14),
                 uTime.mul(0.35),
             ));
             const capDrive = crestNorm.add(capNoise.mul(0.30));
@@ -1466,7 +1487,7 @@ export function createOdysseyWorld({
             // ── UNDERSIDE: the luminous ceiling (Wave 5 of the seam plan, unchanged) ──
             // Crest SSS + Snell's window + TIR; the swell-perturbed normal (shared, above)
             // is what makes the window's rim ripple live.
-            const crestMask = clamp(swell.mul(1.6).add(0.35), 0, 1);
+            const crestMask = clamp(vSwell.mul(1.6).add(0.35), 0, 1);
             const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
             const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
