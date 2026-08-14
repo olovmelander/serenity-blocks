@@ -327,6 +327,53 @@ asserted). Whiteout beat: CPU SDF eval → `uWhiteout` → camera-attached BackS
 through ACES at 720p → widen clearance to under-pass + whiteout-only; MSAA/A2C stays parked
 as owner-priced D4.
 
+> **OUTCOME — WAVE 3 SHIPPED, 2026-08-14. Drift and dissolve cost 0.262 ms TOTAL for the whole
+> field; the instrument, not the code, was the hard part.**
+>
+> **Rigid drift.** A bounded Lissajous keyed to the per-mass seed the sculptor baked into
+> `color.b`, so the offset is CONSTANT across a mass's vertices and the hull translates as one
+> body — the look rules' "silhouettes never boil" holds by construction, not by tuning.
+> Periods 90-240 s, ±34 u lateral / ±7 u vertical: a slow parallax slide at 600-5000 u, which
+> is what cumulus do. Three incommensurate terms keep every mass inside a small volume forever,
+> so drift can never walk a cloud into the rail and invalidate the clearance the validator
+> signed off.
+>
+> **⚠️ THE DRIFTED POSITION IS CARRIED EXPLICITLY, and this was a real trap.** `positionNode`
+> moves the vertex, but `positionWorld` still resolves from the ORIGINAL local position — so a
+> colour graph reading `positionWorld` shades, fogs and fades the mass at the place it used to
+> be. Silently, and only visible once the amplitude grows. Everything downstream now reads a
+> `cfWorld` varying instead, and the lint asserts it.
+>
+> **Dissolve by DITHER, not by transparency.** Turning the material transparent would buy the
+> whole cost model that makes the sheet expensive (1.8 ms, coverage-independent, every fragment
+> paying a blend read-modify-write). r181 applies `opacityNode` then discards on `alphaTest`
+> INDEPENDENTLY of `transparent` (NodeMaterial.js:872-890), so a per-pixel stipple keeps the
+> mesh in the opaque queue and emits no blend state.
+>
+> **PERF, Lane B ch5 p=0.569, drift EXACTLY 0.000, draws content-matched 53/54:**
+> baseline 9.4372 / field 9.6993 / repeat 9.4372 → **cloudFieldMs 0.262 against a 0.50 gate.**
+> The feared early-Z loss from the discard did not materialise into a budget problem. ⚠️ The
+> plan's gate as written ("fieldMs unchanged ≤ 2 ticks") CANNOT be evaluated: no pre-Wave-3
+> pair exists for the SCULPTED field (Wave 0's 0.393 was the 28-mass probe at 40,720 tris), so
+> only the total is claimed, not the increment. The first attempt at this pair was voided by
+> its own guard: baseline p99 232 ms — a cold-compile stall on the first configuration, exactly
+> what ADR-0016 says to void — producing an impossible −5.374 delta.
+>
+> **⚠️ THE NEAR-DISSOLVE IS CURRENTLY DEAD CODE, and it is shipped knowingly.** It fades within
+> 55-165 u of the eye; `CLOUD_FIELD_CLEARANCE` keeps every mass ≥260 u from the rail, so the
+> camera can never reach the band. It is the safety net that LETS masses come closer later —
+> the enabler for an authored fly-through — and it is measured to cost nothing on top of the
+> 0.262 ms total. Recorded rather than quietly left for someone to rediscover.
+>
+> **⚠️ AN INSTRUMENT LIMIT WORTH MORE THAN THE FEATURE: cross-run captures have a ~23 % pixel
+> noise floor.** Capturing the SAME station twice in the SAME build at the SAME `--time` differs
+> in 23.6 % of ground-band pixels — camera position and direction identical, fov differing by
+> 0.007 %. THREE attempts to verify drift by image A/B measured nothing but that floor (one of
+> them "proved" motion that was camera breathing, since `--time` also drives the director's
+> focal pulse). Until the harness can capture two times in ONE session, motion of a few tens of
+> world units is not verifiable from captures, and the drift wiring is asserted at source in
+> `odyssey-world-lints.test.js` instead.
+
 ### Wave 4 — the atomic swap (executes D1; NOTHING ships before the owner signs)
 One commit: field default ON, sheet default OFF — RETAINED behind
 `?odysseyWorldCloudSheet=1` (ADR-0015 pattern); NEW bisect flag `odysseyWorldNoCloudField`;

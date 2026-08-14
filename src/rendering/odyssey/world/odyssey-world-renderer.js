@@ -4,7 +4,7 @@ import {
     abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
     max, min, mix, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
-    step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
+    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
 
 import {
@@ -110,6 +110,39 @@ const FIELD_CENTROID_BEND = 0.30;
 // create — the same term doing useful work before, and harm after.
 /** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
 const FIELD_MIE_GAIN = 0.10;
+/**
+ * RIGID DRIFT (plan Wave 3). Amplitudes in world units and the period band in seconds.
+ *
+ * The masses TRANSLATE; they never deform. The look rules are explicit that silhouettes must
+ * never boil, and a per-vertex wobble is exactly that — it also destroys the one thing the
+ * sculptor exists to provide, a stable readable outline. Because the offset is a function of
+ * the per-mass seed alone it is constant across every vertex of a mass, so the whole hull
+ * moves as one body for free.
+ *
+ * Periods are minutes, not seconds: at 600-5000 u away a 34 u drift is a slow parallax slide,
+ * which is what cumulus do. The `?t=` capture flag freezes `update()`'s dt, so drift is
+ * verified with TWO captures at different times, never in-page (the repo's edge-crawl law).
+ */
+const FIELD_DRIFT_XZ = 34;
+const FIELD_DRIFT_Y = 7;
+const FIELD_DRIFT_PERIOD_MIN = 90;
+const FIELD_DRIFT_PERIOD_MAX = 240;
+/**
+ * NEAR-DISSOLVE band, world units from the eye to the fragment.
+ *
+ * The field is OPAQUE, so a mass the camera approaches is a hard white wall — the exact
+ * "white slab" failure the heroes' MIN_RAIL_DIST existed to dodge by keeping every mass far
+ * away. A fade lets masses live closer to the rail without that risk.
+ *
+ * ⚠️ IT DISSOLVES BY DITHER, NOT BY TRANSPARENCY. Turning the material transparent would put
+ * it in the blend queue and buy the whole cost model that makes the SHEET expensive
+ * (1.8 ms, coverage-independent, every fragment paying a read-modify-write). r181 applies
+ * `opacityNode` to `diffuseColor.a` and then discards on `alphaTest` INDEPENDENTLY of the
+ * `transparent` flag (NodeMaterial.js:872-890), so a stipple keeps the mesh in the cheap
+ * opaque path and emits no blend state at all.
+ */
+const FIELD_FADE_NEAR = 55;
+const FIELD_FADE_FAR = 165;
 
 // The two fixed ends of the water banding, read ONCE from the colour script so the plates
 // and the keyframes can never drift. Sampling the script for them per frame would be three
@@ -1945,13 +1978,34 @@ export function createOdysseyWorld({
     // until a material they feed is rendered, so this costs nothing when the probe is off and
     // it keeps the fog opt-out list (lint-enforced) able to name it.
     const cfCentre = attribute('aMassCentre', 'vec3');
+    // `color.b` is the per-mass random the sculptor baked; it is CONSTANT across a mass, which
+    // is what makes the offset below a rigid body translation rather than a deformation.
+    const cfSeed = attribute('color', 'vec3').z;
+    const cfPhase = cfSeed.mul(6.2831853);
+    const cfPeriod = float(FIELD_DRIFT_PERIOD_MIN)
+        .add(cfSeed.mul(FIELD_DRIFT_PERIOD_MAX - FIELD_DRIFT_PERIOD_MIN));
+    const cfW = float(6.2831853).div(cfPeriod);
+    // A bounded Lissajous, not a straight translation: three incommensurate terms keep a mass
+    // inside a small volume forever, so drift can never walk a cloud into the rail or out of
+    // the composition the clearance validator signed off.
+    const cfDrift = vec3(
+        sin(uTime.mul(cfW).add(cfPhase)).mul(FIELD_DRIFT_XZ),
+        sin(uTime.mul(cfW.mul(0.61)).add(cfPhase.mul(1.7))).mul(FIELD_DRIFT_Y),
+        cos(uTime.mul(cfW.mul(0.83)).add(cfPhase.mul(0.6))).mul(FIELD_DRIFT_XZ * 0.82),
+    ).toVar('cfDrift');
+    // THE DRIFTED WORLD POSITION, carried explicitly. `positionNode` replaces the vertex
+    // position, but `positionWorld` is built from the ORIGINAL local position — so a colour
+    // graph reading `positionWorld` would shade, fog and fade the mass at the place it used to
+    // be. Everything downstream reads `cfWorld` instead; the geometry is already world-space
+    // and the world group's matrix is identity, which is what makes this a plain add.
+    const cfWorld = varying(positionLocal.add(cfDrift), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
-    const cfRadial = positionWorld.sub(cfCentre);
+    const cfRadial = cfWorld.sub(cfCentre);
     // Guarded: a vertex exactly at the centre would const-fold a zero-length normalize
     // into a WGSL compile failure (the winter theme's logged trap).
     const cfBent = cfRadial.div(max(length(cfRadial), float(1e-4)));
     const cfN = normalize(mix(cfGeoN, cfBent, float(FIELD_CENTROID_BEND))).toVar('fieldN');
-    const cfV = normalize(cameraPosition.sub(positionWorld)).toVar('fieldV');
+    const cfV = normalize(cameraPosition.sub(cfWorld)).toVar('fieldV');
     // Wrap diffuse: (dot(N,L) + w) / (1 + w) — the GPU-Gems scatter approximation the
     // Witness reuses from its vegetation. w=0.75 keeps the whole mass lit and moves the
     // terminator far around the limb, which is what "no hard terminator" looks like.
@@ -1974,7 +2028,20 @@ export function createOdysseyWorld({
     const fieldCol = mix(cfLit, mix(cloudShade, uSkyHorizon, float(0.30)), cfEdge.mul(0.55))
         .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
     const fieldMat = new THREE.MeshBasicNodeMaterial();
-    fieldMat.colorNode = toOutput(heroAerial(fieldCol, positionWorld));
+    fieldMat.colorNode = toOutput(heroAerial(fieldCol, cfWorld));
+    fieldMat.positionNode = positionLocal.add(cfDrift);
+    // THE STIPPLE DISSOLVE. `fade` is 0 at the near edge and 1 beyond the far edge, and the
+    // hash is a per-pixel threshold — so a mass fades out as a shrinking scatter of kept
+    // pixels instead of a wall sliding through the camera. Beyond FIELD_FADE_FAR the fade is
+    // 1 and `step` keeps every fragment, so nothing is discarded and nothing is paid at range.
+    const cfEyeDist = length(cameraPosition.sub(cfWorld));
+    const cfFade = smoothstep(float(FIELD_FADE_NEAR), float(FIELD_FADE_FAR), cfEyeDist);
+    const cfHash = fract(sin(dot(screenUV.mul(vec2(1927.0, 1083.0)), vec2(12.9898, 78.233)))
+        .mul(43758.5453));
+    fieldMat.opacityNode = tslStep(cfHash, cfFade);
+    // alphaTest WITHOUT `transparent`: r181 discards on it regardless, so the mesh stays in
+    // the opaque queue and emits no blend state.
+    fieldMat.alphaTest = 0.5;
     fieldMat.side = THREE.FrontSide;
 
     let fieldProbeMesh = null;
