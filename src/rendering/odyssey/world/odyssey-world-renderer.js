@@ -764,7 +764,13 @@ export function scatterTrees(heightAt, {
  * @param {Array<{x:number,y:number,z:number}>} [opts.railSamples] points along the journey
  *   rail, sampled by the CALLER (the world deliberately does not know the path). Used to seat
  *   the underwater god-ray shafts along the submerged stretch; empty means no shafts.
- * @param {boolean} [opts.clouds] BISECT LEVER, default true. When false the cloud deck's mesh
+ * @param {boolean} [opts.clouds] the flat cloud SHEET. ⚠️ DEFAULT FALSE since the owner
+ *   retired it on 2026-08-14 in favour of the sculpted field — see `cloudField`. Retained per
+ *   the ADR-0015 pattern and restorable with `?odysseyWorldCloudSheet=1`; the material and
+ *   geometry are still built, so the escape hatch is one flag and not a revert. Its measured
+ *   price at the moment of retirement was 1.180 ms (ch4) / 1.835 ms (ch5), COVERAGE-INDEPENDENT,
+ *   against the field's 0.393 ms — so the swap refunds roughly 1.4 ms at ch5.
+ *   Historically this was a bisect lever, default true. When false the cloud deck's mesh
  *   never enters the scene, so its pipeline is never compiled — the material and geometry are
  *   still constructed (that part is proven safe headless). Exists because every IN-GAME One
  *   World boot after the deck landed stalls before readiness while the playground renders the
@@ -792,8 +798,9 @@ export function scatterTrees(heightAt, {
  *   1-2 timer ticks (perf was never the issue). Module, specs and tests are RETAINED per the
  *   ADR-0015 pattern; `?odysseyWorldHeroes=1` in-game or `?heroes=1` on the playground rig restores
  *   the full system.
- * @param {boolean} [opts.cloudField] mount the SCULPTED cloud field (board flag
- *   `?odysseyWorldCloudField=1`, gpu-split configuration `cloud-field`). 34 authored masses
+ * @param {boolean} [opts.cloudField] the SCULPTED cloud field — DEFAULT TRUE since
+ *   2026-08-14; this is the shipped Act II sky. Removed for bisects with
+ *   `?odysseyWorldNoCloudField=1` (gpu-split configuration `no-cloud-field`). 52 authored masses
  *   sculpted from a smooth-min SDF with flat bases and SDF-gradient normals — see
  *   odyssey-cloud-field.js. Opt-in until the plan's Wave 4 owner-gated swap; the sheet is
  *   still the shipped sky. docs/ODYSSEY_ACT2_CLOUD_FIELD_PLAN_2026-08.md §5.
@@ -824,13 +831,13 @@ export function scatterTrees(heightAt, {
  *   time while the terms that generate them were undrawable.
  */
 export function createOdysseyWorld({
-    quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = true,
+    quality = 'high', applyExposure = true, outputScale = 1, outputSaturation = 1, clouds = false,
     // Default FALSE since the owner's 2026-08-14 retirement — and the default matters more
     // than it looks: the playground rig mounts this world too, and a rig that defaults heroes
     // ON while the board passes false is the "second, quieter opinion" disease the grade
     // contract file documents. One default, shared by every caller; opt back in explicitly.
     heroes = false,
-    cloudField = false,
+    cloudField = true,
     cloudFieldCount = 0,
     water = true,
     cloudDebug = null,

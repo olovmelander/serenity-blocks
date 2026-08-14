@@ -414,6 +414,81 @@ SB-15 class); cold-boot ×4 (old plan §1.8). Gate: ch5 station ≤ 9.3716 (stal
 AND net ≈ −1.4 ms. **F5 (shore overhead read) judged on the p=0.225 capture BEFORE the swap
 commit** — rejection leaves the sheet shipping untouched.
 
+> **OUTCOME — WAVE 4 SHIPPED, 2026-08-14. The flat sheet is retired, the sculpted field is
+> Act II's sky, and the station is CHEAPER than the sky it replaced.** Owner authorisation for
+> D1, verbatim: *"Now i am very happy with the clouds, now we can drop the old flat layer."*
+> Evidence: `SWAP-acceptance.png` (five stations), `gpu-split-laneb-swap-ch5-p0569.json`.
+>
+> **What ships.** `clouds = false`, `cloudField = true`. The sheet is RETAINED per ADR-0015 —
+> module, material and mount all intact behind `?odysseyWorldCloudSheet=1` — and
+> `?odysseyWorldNoCloudField=1` is the new bisect lever.
+>
+> **DEVIATION FROM THIS PLAN, stated rather than buried.** The plan said *"`odysseyWorldNoClouds`
+> keeps meaning the SHEET so every historical report stays readable."* It does NOT: that flag is
+> no longer read at all. Keeping it would have left a lever that switches off something already
+> off, and this feature has already produced one confident wrong conclusion exactly that way —
+> the `odysseyWorldNoHeroes` bisect "cleared" the heroes because the flag reached a path that no
+> longer drew them. A dead lever reports innocence, not absence. Historical reports stay readable
+> through the retirement note on the ledger cell instead, which is where a reader of an old
+> report will already be looking.
+>
+> **The price, and the two numbers are NOT the same measurement.** Lane B, ch5 p=0.569, drift
+> −0.066, draws content-matched per configuration:
+>
+> | configuration | p50 (ms) | draws |
+> |---|---|---|
+> | **baseline — shipped: field only** | **8.2575** | 52 |
+> | + flat sheet added back | 10.2892 | 54 |
+> | field removed | 8.0609 | 51 |
+>
+> - **MEASURED, station-over-time:** 9.3716 → 8.2575, i.e. **1.114 ms cheaper**. But that span
+>   also contains the hero cumulus retiring (54 → 52 draws), so it is not the swap's price.
+> - **ESTIMATE, swap-only:** the sheet costs 2.032 ms added on top of the field; the field costs
+>   0.197 ms. Replacing one with the other is worth ~1.835 ms **assuming the two costs are
+>   additive** — there is no sheet-ONLY configuration in the run, so this is a model. The pair
+>   that would measure it is sheet-only vs baseline.
+>
+> Gate: ch5 station ≤ 9.3716 → **8.2575, passes**. The "net ≈ −1.4 ms" gate was written as a
+> single number and the honest answer splits in two; both admissible figures bracket it.
+> ⚠️ p99 ran 35–39 ms across ALL FOUR configurations — a co-tenant, not the field. The p50
+> ordering is physically sensible and the drift is one tick, so the differentials stand and the
+> absolute p99 does not.
+>
+> **Cold-boot check — it passes, and it also REFUTES the reason it was scheduled.** Old plan §1.8
+> records a standing blocker: *every in-game One World boot after the deck landed stalls before
+> readiness*. Any wave touching the deck pipeline had to re-check it, and retiring the deck was
+> the obvious suspect-remover. Production build, 4 cold boots on the shipped default: 4/4 reached
+> readiness, `cloudField` on, 52 masses / 31,340 triangles, sheet off. **Then 2 boots with the
+> sheet RESTORED also reached readiness** — so the stall does not reproduce on either
+> configuration, and the swap cannot be credited with closing §1.8. §1.8 stays open and its cause
+> stays unknown. (One unrelated console error in every boot: a `ThemeManager` forest-theme prewarm
+> timeout, pre-existing and nothing to do with the sky.)
+>
+> **Dispose audit (the SB-15 class): clean by construction, not by patch.** The field geometry is
+> built only inside `if (cloudField)` and added to `group`, so `group.traverse` disposes it; the
+> material is in the shared dispose list. This is the case the heroes needed an explicit
+> `if (!heroes) heroBuild.geometry.dispose()` guard for, because they built their geometry
+> unconditionally — the field never can leak that way.
+>
+> **A lever bug found in my own flip, before it measured anything.** `cloudFieldHalfMs` was left
+> as `baseline − cloud-field-half`. Since `cloud-field-half` TRUNCATES the table to its first 26
+> masses, that subtraction prices the UPPER 26 — the satellites, which are far-LOD and tiny — and
+> would have read as "half the field is nearly free". It is now
+> `cloud-field-half − no-cloud-field`: the cost OF a half field, measured against its absence.
+>
+> **New policy test** (`odyssey-cloud-swap.test.js`, 6 assertions): the defaults, the two flag
+> polarities and their inverses, the sheet still being buildable rather than merely off, the
+> underwater `.visible` gate, and the gpu-split lever signs. Mutation-checked — flipping the
+> default back and sign-flipping `cloudFieldMs` fails exactly those two tests and nothing else.
+>
+> ⚠️ **Working-tree caveat on the captures.** Two other sessions had uncommitted work live in
+> this tree while the acceptance frames were taken: a north-coast/island height change and the
+> water's clipmap-fold fix. Neither is committed here — only the swap's own hunks were staged.
+> The perf figures are immune (paired on/off inside one boot), and the visual verdicts are about
+> cloud silhouettes, but the TERRAIN in `SWAP-acceptance.png` is not necessarily what `main`
+> renders.
+
+
 ### Wave 5 — the bank speaks the field's language (old plan's Wave 3)
 Restyle `odyssey-cloud-bank.js` onto `makeActCloudPalette`; interior tones aligned with the
 whiteout shell so ch5's beat foreshadows the 5→6 envelopment; `SEAM_56_AURORA_BRIDGE`
