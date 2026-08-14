@@ -152,12 +152,12 @@ describe('every world material opts out of scene fog', () => {
     // wiring is asserted here and the amplitude is asserted by the arithmetic in the constants.
     it('the cloud field actually applies its drift to the vertex position', () => {
         const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
-        expect(source).toMatch(/fieldMat\.positionNode\s*=\s*positionLocal\.add\(cfDrift\)/);
+        expect(source).toMatch(/fieldMat\.positionNode\s*=\s*positionLocal\.add\(cfOffset\)/);
         // ...and that the colour graph reads the DRIFTED position, not the original one. A
         // positionNode moves the vertex while `positionWorld` still resolves to where it used
         // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
         // place — silently, and only visibly once the drift amplitude grew.
-        expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfDrift\)/);
+        expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
         expect(source).toMatch(/heroAerial\(fieldCol, cfWorld\)/);
     });
 
