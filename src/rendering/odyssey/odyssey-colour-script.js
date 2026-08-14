@@ -140,6 +140,48 @@ export const MAX_HUE_RATE_DEG_PER_005P = 12;
  * through the water surface, a climb through a cloud deck. Those are the only two places the
  * journey is allowed to cut.
  */
+/**
+ * THE SEA'S OWN RAMP — one table owns the water's colour (Ghibli-water plan, Wave 1).
+ *
+ * The Act II water surface used to carry three hardcoded `vec3`s in the renderer, divorced
+ * from this file, so "the colour script owns the palette" was true of everything except the
+ * sea. These four stops are that palette, in the scene-referred units the world authors in
+ * (the board hands the stack `applyExposure:false` + output scale/saturation, so these are
+ * NOT display hexes — they are magnitude-matched to the ramp they replace, which was tuned
+ * in-game).
+ *
+ * The hues are the Ghibli pigment axis the research pass converged on: Ghibli backgrounds are
+ * opaque poster colour drawn from a narrow, nameable set, and the sea runs viridian in the
+ * shallows through cerulean and cobalt to a Prussian deep — teal/slate-shifted, never a
+ * saturated primary blue. Four stops, because a Ghibli sea reads as a few flat plates of
+ * colour rather than a continuous gradient; the renderer quantises between them.
+ */
+export const ODYSSEY_WATER_RAMP = Object.freeze({
+    /** Viridian shallows — where the bed is a metre or two down and the sand tints it green. */
+    shore: Object.freeze([0.42, 0.74, 0.66]),
+    /** Cerulean — the near-shore body. */
+    shelf: Object.freeze([0.19, 0.55, 0.68]),
+    /** Cobalt — open water. */
+    open: Object.freeze([0.09, 0.33, 0.55]),
+    /** Prussian — the deep, muted and green-black rather than purple-blue. */
+    deep: Object.freeze([0.045, 0.17, 0.32]),
+    /**
+     * Absorption coefficient for the depth driver, per metre: t = 1 − exp2(−depth·k).
+     *
+     * MEASURED, not chosen by eye. Ray-casting the real height field through the real camera
+     * at the two largest water views gives a median visible bed depth of 49.6 m at the ch3
+     * shoreline (p=0.225) and 133 m just past the breach (p=0.210, 29% of the frame). The old
+     * ramp's band edges (0–18 m, then 18–103 m) put BOTH medians in its flat upper region —
+     * 59% of shoreline water pixels landed in one band and nearly all post-breach pixels were
+     * pinned at the deep colour, which is precisely why the sea read as a single flat sheet.
+     * k = 0.02 puts 50 m at exactly t = 0.5, 10 m at 0.13 and 133 m at 0.84, so the visible
+     * range spans the whole ramp instead of its last sixth.
+     */
+    absorptionPerMetre: 0.02,
+    /** How many flat plates the ramp is quantised into (the toon signature). */
+    bands: 4,
+});
+
 export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
     {
         p: 0.00,
@@ -154,6 +196,32 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         fogDensity: 0.0042,
         wind: 0.15,
         seamAfter: true, // the breach: the change happens through the water surface
+    },
+    {
+        p: 0.06,
+        name: 'luminous-mid-water',
+        medium: 'water',
+        skyZenith: 0x123a52,
+        skyHorizon: 0x1a4a6a,
+        sun: 0x4080a0,
+        groundLit: 0x1d5068,
+        groundShadow: 0x0a2432,
+        exposure: 1.12,
+        fogDensity: 0.0034,
+        wind: 0.22,
+    },
+    {
+        p: 0.12,
+        name: 'shallows',
+        medium: 'water',
+        skyZenith: 0x2f6f9e,
+        skyHorizon: 0x4a8ab0,
+        sun: 0x80c0e0,
+        groundLit: 0x5d95b4,
+        groundShadow: 0x1d465e,
+        exposure: 1.08,
+        fogDensity: 0.0016,
+        wind: 0.32,
     },
     {
         p: 0.18,
@@ -284,4 +352,148 @@ export function sampleColourScript(p) {
 /** The keyframes, for tooling and tests. */
 export function getColourScriptKeyframes() {
     return ODYSSEY_COLOUR_SCRIPT;
+}
+
+// ── ACT I ────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE ACT I SCRIPT — Earth Core, in its own array on its own domain.
+ *
+ * Act I could not be added to the array above: `sampleColourScript` clamps to [0, 1] and a
+ * shipped test pins that the script spans exactly that, so the "extend it downward with
+ * negative p" design in the plan was unimplementable. Re-basing the Act II keyframes to make
+ * room would have moved a shipped, capture-verified act. So Act I gets its own table on its
+ * own parameter — chapter-1 local progress, 0 at birth, 1 at the crack — sharing every piece
+ * of machinery above (Oklab interpolation, the slot list, the invariants).
+ *
+ * The SLOT NAMES are deliberately unchanged, because a cavern is a room with a sky:
+ *   skyZenith   → the vault crown (the darkness the whole act is built on)
+ *   skyHorizon  → the vault low band, where the lake's bounce lives
+ *   sun         → THE KEY: the lava lake / the veins it lights
+ *   groundLit   → rock facing the key
+ *   groundShadow→ rock that is not
+ *
+ * Values are Wave 1's capture-calibrated palette, not the plan's first proposal — the study
+ * moved almost every one of them (see the Wave 1 outcome). They are authored for the FLAT
+ * playground; the in-game port overshoots, per the standing NoToneMapping-vs-ACES rule.
+ */
+export const ODYSSEY_ACT1_COLOUR_SCRIPT = Object.freeze([
+    {
+        t: 0.00,
+        name: 'birth',
+        medium: 'magma',
+        skyZenith: 0x0a0810,
+        skyHorizon: 0x2a1208,
+        sun: 0xff6a28,
+        groundLit: 0x3a1c10,
+        groundShadow: 0x0d0b12,
+        exposure: 1.10,
+        fogDensity: 0.0028,
+        wind: 0.10,
+    },
+    {
+        t: 0.55,
+        name: 'cathedral',
+        medium: 'magma',
+        skyZenith: 0x0d0b12,
+        skyHorizon: 0x241008,
+        sun: 0xff8040,
+        groundLit: 0x2e1710,
+        groundShadow: 0x0b0910,
+        exposure: 1.05,
+        fogDensity: 0.0022,
+        wind: 0.16,
+        // The quench owns the next transition. Declared HERE, not on `crack`: the rate limit
+        // is checked on the pair FOLLOWING the declaration, and cathedral -> crack is the
+        // ember-to-vapour swing the occlusion moment exists to hide.
+        seamAfter: true,
+    },
+    {
+        t: 1.00,
+        name: 'crack',
+        medium: 'steam',
+        skyZenith: 0x1a2630,
+        skyHorizon: 0xcfe6ff,
+        sun: 0xffb079,
+        groundLit: 0x8fa6b4,
+        groundShadow: 0x22303c,
+        exposure: 1.00,
+        fogDensity: 0.0040,
+        wind: 0.35,
+        // THE ONE PLACE WARM AND COOL SHARE A FRAME. Everywhere else in the act that is a
+        // bug (see INVARIANT 3); here it is the entire point — fire meeting water — and the
+        // steam quench is drawn over it. Exactly one keyframe may declare this.
+        warmCoolCollision: true,
+    },
+]);
+
+const ACT1_LAB_CACHE = ODYSSEY_ACT1_COLOUR_SCRIPT.map((k) => {
+    const out = {};
+    COLOUR_SLOTS.forEach((slot) => { out[slot] = hexToOklab(k[slot]); });
+    return out;
+});
+
+/**
+ * Sample the Act I script at chapter-1 local progress `t` (0 = birth, 1 = the crack).
+ * Same easing and same Oklab path as `sampleColourScript`; separate domain.
+ * @param {number} t
+ */
+export function sampleAct1ColourScript(t) {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+    const keys = ODYSSEY_ACT1_COLOUR_SCRIPT;
+
+    let i = 0;
+    while (i < keys.length - 2 && clamped > keys[i + 1].t) i += 1;
+    const a = keys[i];
+    const b = keys[i + 1] ?? keys[i];
+    const span = b.t - a.t;
+    const raw = span > 1e-6 ? (clamped - a.t) / span : 0;
+    const localT = Math.max(0, Math.min(1, raw));
+    const e = localT * localT * (3 - (2 * localT));
+
+    const result = { name: a.name, nextName: b.name, medium: a.medium };
+    COLOUR_SLOTS.forEach((slot) => {
+        const lab = mixOklab(ACT1_LAB_CACHE[i][slot], ACT1_LAB_CACHE[i + 1]?.[slot] ?? ACT1_LAB_CACHE[i][slot], e);
+        result[slot] = oklabToLinearRgb(lab);
+        result[`${slot}Lab`] = lab;
+    });
+    SCALAR_SLOTS.forEach((slot) => {
+        result[slot] = a[slot] + (((b[slot] ?? a[slot]) - a[slot]) * e);
+    });
+    return result;
+}
+
+/**
+ * INVARIANT 3 — WARM/COOL EXCLUSIVITY, as a function so both scripts can be checked.
+ *
+ * The research behind this act found the same discipline in every adopted reference: a zone
+ * is one temperature family plus one accent, and warm never shares a frame with cool except
+ * at a declared collision. Wave 1 proved how fast that inverts in practice — an unstarved
+ * cyan seed turned the molten cathedral into a cool cave with warm decorations in a single
+ * capture. This makes it mechanical instead of a matter of taste.
+ *
+ * CHROMA FLOOR, CALIBRATED AGAINST THE ACTUAL PALETTE (do not raise it back to 0.05).
+ * This act's cool tones are PALE by design — the quench's shipped `#cfe6ff` measures Oklab
+ * chroma 0.042, its vault-cool `#1a2630` 0.025, its lit rock `#8fa6b4` 0.033. A floor set for
+ * saturated colour (0.05) classified every one of them as neutral, so the crack keyframe read
+ * as "all warm" and the rule was blind in precisely the place it exists to watch. 0.02 sees
+ * them while still excluding the near-neutral charcoals (`#0d0b12` at 0.015), which carry a
+ * nominal hue that means nothing at that saturation.
+ *
+ * @param {object} keyframe
+ * @returns {{warm: string[], cool: string[]}} offending slots by temperature, chroma-gated
+ */
+export const ACT1_CHROMA_FLOOR = 0.02;
+
+export function classifyTemperature(keyframe, chromaFloor = ACT1_CHROMA_FLOOR) {
+    const warm = [];
+    const cool = [];
+    COLOUR_SLOTS.forEach((slot) => {
+        const lab = hexToOklab(keyframe[slot]);
+        if (oklabChroma(lab) <= chromaFloor) return;
+        const hue = oklabHue(lab);
+        if (hue >= 0 && hue <= 90) warm.push(slot);
+        else if (hue >= 180 && hue <= 280) cool.push(slot);
+    });
+    return { warm, cool };
 }

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
+    STEAM_QUENCH_EXIT_HALF_WIDTH,
+    STEAM_QUENCH_HALF_WIDTH,
     STEAM_QUENCH_RADIUS,
     createSteamQuench,
 } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
@@ -98,10 +100,15 @@ describe('steam quench board wiring', () => {
     });
 
     it('is WIDER than the crossfade it hides — an occluder that is narrower just frames it', () => {
-        const half = Number(BOARD.match(/const STEAM_QUENCH_HALF_WIDTH = ([\d.]+);/)[1]);
+        // REPLACED 2026-08-13 (same requirement, stronger assertion): the constants moved to
+        // odyssey-steam-quench.js and are asserted by VALUE instead of by source regex. The
+        // approach must out-span the authored crossfade; the exit must still cover the
+        // co-presence window (= the authored seamWidth), which is what stops Earth Core's
+        // dissolve tail showing bare.
         const seam = ODYSSEY_CHAPTER_PROFILES.find((c) => c.id === 1)?.transition?.seamWidth;
         expect(seam).toBeGreaterThan(0);
-        expect(half).toBeGreaterThan(seam);
+        expect(STEAM_QUENCH_HALF_WIDTH).toBeGreaterThan(seam);
+        expect(STEAM_QUENCH_EXIT_HALF_WIDTH).toBeGreaterThanOrEqual(seam);
     });
 
     it('is hidden outside its window, so it costs nothing for most of the journey', () => {

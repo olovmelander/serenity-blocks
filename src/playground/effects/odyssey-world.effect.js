@@ -11,6 +11,7 @@
  */
 
 import { createOdysseyWorld } from '../../rendering/odyssey/world/odyssey-world-renderer.js';
+import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathPointAt,
@@ -69,7 +70,11 @@ export function create({ scene, camera, params }) {
         cameraRadius: 1200,
         update(time) {
             const p = railAt(time);
-            world.update(time, getOdysseyPathPointAt(p), (p - ACT_START) / (ACT_END - ACT_START));
+            const pt = getOdysseyPathPointAt(p);
+            // Pass the EYE the camera() hook below actually uses — uSubmerged is driven by
+            // the eye now, and omitting it falls back to the old rail contract, which put
+            // this playground 32 u above its own camera.
+            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y);
         },
         camera(time, cam) {
             const p = railAt(time);
@@ -79,7 +84,7 @@ export function create({ scene, camera, params }) {
             const tx = pt.x - behind.x;
             const tz = pt.z - behind.z;
             const tl = Math.hypot(tx, pt.y - behind.y, tz) || 1;
-            cam.position.set(pt.x - ((tx / tl) * 30), pt.y + 16, pt.z - ((tz / tl) * 30));
+            cam.position.set(pt.x - ((tx / tl) * 30), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y, pt.z - ((tz / tl) * 30));
 
             // Look ALONG the rail with the pitch CLAMPED. Aiming straight at a point further
             // down the path pitches ~37 degrees up through Ch5's climb and the whole world

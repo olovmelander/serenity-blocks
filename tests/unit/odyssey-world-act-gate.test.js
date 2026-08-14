@@ -94,7 +94,10 @@ describe('the world is gated to Act II', () => {
     });
 
     it('skips the world update while hidden, but leaves heightAt and fog readable', () => {
-        expect(BOARD).toMatch(/if \(worldVisible\) this\.oneWorld\.update\(/);
+        // REPLACED 2026-08-13 (same requirement, new shape): the update call grew a fourth
+        // argument (the real eye height, for eye-driven uSubmerged) and became a guarded
+        // block. The assertion still requires the gate — an unguarded update() fails it.
+        expect(BOARD).toMatch(/if \(worldVisible\) \{[^}]*this\.oneWorld\.update\(/);
         // The fog handover and the orb ground-sampler read plain data off the world and must
         // keep working regardless of whether it draws.
         expect(BOARD).toMatch(/const worldFog = this\.oneWorld\.fog;/);

@@ -15,6 +15,24 @@ import {
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
 const CHAPTER_1_LOOK_FADE_RANGE = 0.035;
+// THE EYE STARTED INSIDE THE LAVA (user report 2026-08-12; recorded but never actioned in the
+// Act I plan's own Phase 0 table, "birth - below the lava lake plane").
+//
+// Nothing in this controller ever bounded the camera's world Y. The eye is pulled BACKWARDS
+// along the path tangent by `followDistance` (see computeFollowFrame), and chapter 1 is a
+// near-vertical shaft, so "backwards" is straight DOWN: -24 * 0.789 ~= -19 units at p=0, which
+// the +6.7 followOffset.y and +4.6 camUp lifts do not repay. Replaying the shipped LUT maths:
+// the eye bottoms out at y = -40.86 at the steady followDistance 24, and at **-44.01** during
+// the first second while the director is still lerping down from the constructor's 28 - i.e.
+// up to 4 units UNDER the lake, and `startPosition` is p=0, so the Odyssey's very first frame
+// was inside the lava. It dips again around p ~ 0.005 on the spline's S-bend.
+//
+// Fixed as a hard positional floor rather than by retuning camUp, because the violation is
+// worst exactly when followDistance is still time-varying at boot, and a tuned constant cannot
+// cover a moving target. Scoped to chapter 1: this function serves all eight chapters, and
+// chapter 7's group legitimately sits at negative Y.
+const CHAPTER_1_LAVA_SURFACE_Y = -40; // world; chapterRange.start.y (-30) + LAVA_LAKE_Y (-10)
+const CHAPTER_1_EYE_CLEARANCE = 6; // eye stays this far above the lava, never in or on it
 const FREE_CAMERA_WORLD_UP = new THREE.Vector3(0, 1, 0);
 const PATH_FRAME_GRAVITY_UP = new THREE.Vector3(0, 1, 0);
 const ACT_TRAVEL_SPEEDS = Object.freeze({
@@ -175,7 +193,16 @@ function resolveChapterFraming(chapterId) {
 const CHAPTER_1_BASE = CHAPTER_FRAMING_OVERRIDES[1];
 const CHAPTER_1_START_FRAMING = Object.freeze({
     ...DEFAULT_CHAPTER_FRAMING,
-    downLookScale: 1.05,
+    // 1.05 -> 1.40: THE OPENING SHOT NOW SHOWS THE FLOOR IT IS BORN FROM (user request
+    // 2026-08-12: "an angle so that you see the first level orb as well as the lava floor").
+    // With the eye floored above the lava the view still pitched 23.7 degrees UP, which put
+    // the lake behind the bottom edge entirely (the nearest floor sample projected to NDC y
+    // -1.75). Deepening the start-only down-look levels the opening to ~0 degrees: measured
+    // NDC, the first orb sits at (-0.21, +0.29) and the lava reads across the lower half
+    // (-0.70 at 15 units out, -0.35 at 30, -0.14 at 80). This value is start-only — the
+    // framing lerps to the chapter base (0.65) over in-chapter progress 0.12 -> 0.34, so the
+    // ascent is untouched.
+    downLookScale: 1.4,
     lookForward: 1.8,
     lookUp: -2.8,
     camUp: 4.8,
@@ -397,6 +424,9 @@ export class OdysseyCameraController {
             : [...DEFAULT_CHAPTER_POSITIONS];
         this.chapterBoundaryPositions = buildChapterBoundaryPositions(this.chapterPositions);
         this.chapter1EndPosition = this.chapterPositions[1] ?? 0.125;
+        // Minimum world Y for the eye while inside chapter 1 (see the constant's note).
+        // Settable so earth-core can publish the real plane if the chapter is ever re-anchored.
+        this.chapterOneEyeFloorY = CHAPTER_1_LAVA_SURFACE_Y + CHAPTER_1_EYE_CLEARANCE;
         this.startPosition = Number.isFinite(options.startPosition)
             ? options.startPosition
             : (this.levelPositions[0] ?? this.chapterPositions[0] ?? 0);
@@ -1702,6 +1732,21 @@ export class OdysseyCameraController {
             camPos.addScaledVector(tangent, forwardOffset * seamDirection);
         }
 
+        // Chapter 1's lava floor. Placed here, at the one point where the eye position is
+        // finalised, so every entry that reaches the rail inherits it - the follow lerp,
+        // travelToPosition's direct seek, setFollowMode, applyLayout and the capture harness.
+        // `Math.max` keeps the position continuous; it only binds for p < ~0.006, where the
+        // eye would otherwise be in the lake. The LOOK target is deliberately not clamped:
+        // gazing down into the lava is the chapter's opening image ("born from lava").
+        // Free/spectator mode writes camera.position directly and is intentionally left
+        // unbounded - it is an authoring tool (OdysseyLayoutEditor) and must reach anywhere.
+        let eyeLift = 0;
+        if (clampedPosition < this.chapter1EndPosition
+            && Number.isFinite(this.chapterOneEyeFloorY)) {
+            eyeLift = Math.max(0, this.chapterOneEyeFloorY - camPos.y);
+            camPos.y += eyeLift;
+        }
+
         const lookAheadDistance = this.cinematicConfig.lookAheadEnabled
             ? this.cinematicConfig.lookAheadDistance
             : 0.01;
@@ -1727,6 +1772,15 @@ export class OdysseyCameraController {
             .addScaledVector(cameraUp, framing.lookUp);
 
         lookTarget.add(this.getLookAtOffset(clampedPosition));
+
+        // The floor TRANSLATES the eye; it must not re-aim it. Lifting the eye against a
+        // fixed look target would rotate the view downward, and the chapter's opening look
+        // is already pushed 26 units down (CHAPTER_1_LOOK_DOWN) — that combination swung the
+        // First Heart out of the top of frame (NDC y 2.08, caught by
+        // earth-core-environment.test.js). Raising the target by the same amount preserves
+        // the view DIRECTION exactly, so the opening composition is unchanged and the camera
+        // simply sits higher.
+        if (eyeLift > 0) lookTarget.y += eyeLift;
 
         return {
             camPos,

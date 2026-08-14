@@ -26,6 +26,69 @@
 /** Sea level. Ch2's ceiling and Ch3's water surface are the same world plane in the shipped build. */
 export const ODYSSEY_SEA_LEVEL = 287.31;
 
+/**
+ * THE WORLD'S UNIT SCALE. **1 world unit = 1 metre.**
+ *
+ * Nobody had ever written this down (Act II plan §7.3), and four separate proposals had already
+ * been authored against four different assumptions — absorption coefficients in metres, creature
+ * sizes in metres, e-folds in units. Publishing it is not a preference, it is a precondition:
+ * every physical coefficient in the water column is meaningless without it.
+ *
+ * It is fixed at 1 m/u by the geometry that already shipped and is pinned by tests: the open
+ * ocean floor sits ODYSSEY_ABYSS_DEPTH = 207 u below the surface, which is an ocean-shelf depth
+ * at 1 m/u and an implausible 52 m at 0.25 m/u; and the massifs stand ~500 u above their foot
+ * datum, i.e. 500 m peaks.
+ *
+ * CONSEQUENCE, recorded because it is a real defect and not a rounding error: the Deep Ocean
+ * fish are 5.0-11.8 u long, so at this scale **every fish in the chapter is 5-12 m — whale-shark
+ * scale**. That is a Wave 3 sizing fix, not a licence to redefine the unit.
+ */
+export const ODYSSEY_METRES_PER_UNIT = 1;
+
+/**
+ * How far the eye sits above the rail point it is following.
+ *
+ * THE ONE CONTRACT. There were four different answers in the tree (Act II plan Wave 0): the world
+ * renderer's `railPoint.y + 16` behind `uSubmerged`, `+16` in the world playground effect, `+8`
+ * in the seam-dive playground effect, and the real camera — which does not sit above the rail at
+ * all. `computeFollowFrame` pulls the eye BACKWARDS along the tangent by `followDistance`, so on
+ * a climbing rail the eye trails BELOW its rail point; measured in chapter 1 the offset is about
+ * -11 to -13 u, not +16. Every playground capture taken against the old numbers was therefore a
+ * capture of a different scene from the game.
+ *
+ * This constant is the playgrounds' stand-in for that real offset, so all three agree. MEASURED
+ * across the submerged ascent (2026-08-13): the offset is not constant — it runs -22.6 u at
+ * p=0.15, -15.6 at p=0.17, -11.5 at p=0.19 and -7.2 at p=0.20, tightening as the rail flattens
+ * toward the surface. -16 is the mid of that span, which is why this is a STAND-IN and not a
+ * definition. The renderer's own use of it — deciding whether the camera is under water — is
+ * corrected in Wave 1 to read the actual eye, which is the only fully correct answer.
+ */
+export const ODYSSEY_EYE_RAIL_OFFSET_Y = -16;
+
+/**
+ * THE BREACH. **The one progress value at which the journey leaves the water.**
+ *
+ * Three different "the surface" lived in the tree and every one of them was used as if it were
+ * the breach. Recomputed from the shipped spline and the real `computeFollowFrame` eye
+ * (MEASURED 2026-08-13, bisection to 1e-5, script archived in the Act II plan's provenance):
+ *
+ * | event                              | p        |
+ * |------------------------------------|----------|
+ * | the RAIL crosses sea level         | 0.19182  |
+ * | **the EYE crosses sea level**      | **0.20023** |
+ * | `uSubmerged` (rail + 16) reaches 0 | 0.18141  |
+ *
+ * The eye is what the player is, so the eye is the breach. The gap between the last two is the
+ * defect Wave 1 fixes: the world declares AIR at 0.18141 while the camera stays under until
+ * 0.20023 — **0.0188 of progress, 17% of chapter 2 (0.093-0.204), the entire final ascent** —
+ * during which it renders an air sky, air aerial perspective, the cloud deck, and switches the
+ * rays, motes and fish off while the viewer is still looking through water.
+ *
+ * Anything staged on the breach — audio release, Snell's window, the meniscus, the colour script
+ * handoff — hangs off THIS constant and nothing else.
+ */
+export const ODYSSEY_BREACH_P = 0.20023;
+
 /** The datum the canonical peaks' feet sit on. */
 export const ODYSSEY_MASSIF_FOOT_Y = 297.5;
 
@@ -78,6 +141,35 @@ const INLAND_FROM_Z = -300;
 const INLAND_TO_Z = -900;
 const LAND_X = -220;
 const LAND_HALF_WIDTH = 2400;
+
+/**
+ * THE NORTH COAST — what makes the landmass an ISLAND instead of a peninsula.
+ *
+ * Without it, `shelfT` and `inlandT` saturate at 1 past z=-900 and simply STAY there: the
+ * ground ran at a constant 385 (97.7 above sea level) for every z from -900 to the lattice
+ * horizon at 26 km — measured identical at z=-3000, -9000 and -26214. Worse, the macro bake
+ * only covers ±4500 and is ClampToEdge, so the land crossing the plate's northern boundary
+ * (7.5% of the boundary was dry) was EXTRUDED another ~21,700 u by the sampler. That is the
+ * "infinitely long land stretch behind the mountain" the owner photographed from the layout
+ * editor (2026-08-14).
+ *
+ * The numbers are set by three hard constraints, north to south:
+ *   - the rail's northernmost point is z = -743.5 (p=0.831) — the coast must stay far behind it;
+ *   - the last massif influence ends at z ≈ -2483 (far-left's footprint + its 1.25x relief
+ *     halo), and inside a footprint the pedestal blends against the LOCAL ground, so the
+ *     ground must not move there — the taper starts 117 u beyond it;
+ *   - the baked plate ends at ±4500 and its edge clamp extrudes whatever value crosses the
+ *     boundary to the horizon, so the coast must COMPLETE well inside the plate. Underwater
+ *     by z=-3400 leaves 1100 u of margin, and turns the clamp into an ally: a boundary that
+ *     is ocean everywhere extrudes OCEAN to the horizon, which is exactly the island-in-a-sea
+ *     reading the world wants.
+ *
+ * Slope check (the clipmap's own continuity bar): the full rise is at most SHELF_RISE +
+ * INLAND_RISE = 305 u released over 800 u of z — peak smoothstep slope ≈ 0.57, gentler than
+ * the south shelf the rail already flies over.
+ */
+const NORTH_SHORE_FROM_Z = -2600;
+const NORTH_SHORE_TO_Z = -3400;
 
 /** The Ch3 basin — an inland lake bowl, sited past the shoreline rather than in the surf. */
 const BASIN_X = -150;
@@ -154,7 +246,11 @@ export function odysseyWorldMacro(x, z) {
     const inlandT = smoothstep01(INLAND_FROM_Z, INLAND_TO_Z, z);
     const lateralN = (x - LAND_X) / LAND_HALF_WIDTH;
     const lateral = Math.max(0, 1 - (lateralN * lateralN));
-    const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral);
+    // The north coast: 1 across the whole inhabited landmass, easing to 0 across
+    // NORTH_SHORE_FROM_Z..TO_Z so the island returns to open ocean in -z exactly as
+    // `lateral` already returns it to ocean in x. See the constant block above.
+    const northT = smoothstep01(NORTH_SHORE_TO_Z, NORTH_SHORE_FROM_Z, z);
+    const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral * northT);
 
     // The Ch3 basin, scooped out so the chapter-3 lake has somewhere to sit.
     const bx = (x - BASIN_X) / BASIN_RX;
