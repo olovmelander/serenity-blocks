@@ -249,6 +249,15 @@ describe('density stays an art lever, not a perf regression channel', () => {
      * COLLAPSE — a scatter bug that empties the island — and 0.55 is far enough below 0.58 to be
      * uncomfortable. If a fourth reduction lands, this should become a shape assertion (stands
      * exist, every species survives, the rail corridor stays dense) rather than another count.
+     *
+     * THE FOURTH REDUCTION LANDED (2026-08-15, the archipelago carve), and this block kept its
+     * own promise: the comp-count floor is RETIRED and the shape suite below replaces it. What
+     * the owner keeps asking for is fewer trees that COMPOSE better, and a count floor is the
+     * one gate that reads that request as damage. The counts that remain here are the perf
+     * ceilings (growth is still a regression), a loose comp band as a collapse guard — which
+     * doubles as the tripwire defending the carve's FROZEN percentile thresholds against silent
+     * terrain/upstream drift — and a LOW floor at 0.30 (pure collapse; the carve's kill
+     * fractions transfer only statistically to a spacing-24 build).
      */
     it('never grows past the incumbent count, and never collapses', () => {
         // Incumbent, read from the live build: 15,427 high / 6,028 low.
@@ -261,8 +270,126 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // measure the culler's efficiency while claiming to measure the forest's existence.
         expect(HIGH.stats.trees).toBeLessThan(15427 * 1.15);
         expect(LOW.stats.trees).toBeLessThan(6028 * 1.15);
-        expect(COMPOSITION.stats.trees).toBeGreaterThan(15427 * 0.55);
-        expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.55);
+        // The collapse guard AND the frozen-threshold tripwire: the carve's per-area
+        // thresholds are percentile-calibrated offline, so if terrain or any upstream stage
+        // drifts, the kill fractions silently change — and the first symptom is this band.
+        expect(COMPOSITION.stats.trees).toBeGreaterThan(5350);
+        expect(COMPOSITION.stats.trees).toBeLessThan(6600);
+        expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.30);
+    });
+
+    /**
+     * THE SHAPE SUITE — what "there is still a forest here" actually means, replacing the
+     * retired count floor. A carve is not a dilution: the count falls while every one of these
+     * holds, and a uniform thinning to the same count fails them. Measured on the incumbent
+     * carpet as the negative control: contrast 1.71 (fails 2.0), meadow windows 2 (fails 5).
+     */
+    it('keeps real stands: density contrast, not confetti', () => {
+        // p90/p50 over occupied 120 u cells of the SHIPPED set — the composed look is dense
+        // stands against open ground, which is high contrast; a carpet is ~1.7, confetti ~1.
+        const cells = new Map();
+        HIGH.placements.forEach((t) => {
+            const k = `${Math.floor(t.x / 120)}|${Math.floor(t.z / 120)}`;
+            cells.set(k, (cells.get(k) || 0) + 1);
+        });
+        const v = [...cells.values()].sort((a, b) => a - b);
+        const contrast = v[Math.floor(0.9 * (v.length - 1))] / v[Math.floor(0.5 * (v.length - 1))];
+        expect(contrast).toBeGreaterThan(2.0);
+    });
+
+    it('carves rather than dilutes: in-stand spacing is preserved', () => {
+        // Median nearest-neighbour distance among SHIPPED trees with >= 3 neighbours within
+        // 30 u (i.e. trees inside stands). The carve leaves stand interiors untouched, so this
+        // sits where the pre-carve forest put it (11.1 u); a rate-based thinning of the same
+        // total would stretch it. Bounded both ways: closer means clumping artifacts.
+        const grid = new Map();
+        HIGH.placements.forEach((t) => {
+            const k = `${Math.floor(t.x / 30)}|${Math.floor(t.z / 30)}`;
+            if (!grid.has(k)) grid.set(k, []);
+            grid.get(k).push(t);
+        });
+        const nn = [];
+        HIGH.placements.forEach((t) => {
+            const gi = Math.floor(t.x / 30);
+            const gj = Math.floor(t.z / 30);
+            let neighbours = 0;
+            let best = Infinity;
+            for (let a = -1; a <= 1; a += 1) {
+                for (let b = -1; b <= 1; b += 1) {
+                    const bucket = grid.get(`${gi + a}|${gj + b}`);
+                    if (!bucket) continue;
+                    for (const u of bucket) {
+                        if (u === t) continue;
+                        const d = Math.hypot(u.x - t.x, u.z - t.z);
+                        if (d <= 30) neighbours += 1;
+                        if (d < best) best = d;
+                    }
+                }
+            }
+            if (neighbours >= 3) nn.push(best);
+        });
+        nn.sort((a, b) => a - b);
+        expect(nn.length).toBeGreaterThan(2000); // stands EXIST at scale
+        const p50 = nn[Math.floor(nn.length / 2)];
+        expect(p50).toBeGreaterThan(10.0);
+        expect(p50).toBeLessThan(12.3);
+    });
+
+    it('opens real meadows: empty windows inside the forest', () => {
+        // 150 u windows with ZERO trees whose surroundings are forest (>= 5 of 8 neighbouring
+        // windows hold >= 3 trees) — holes inside the canopy, not coastline. The COMP set,
+        // because most carved ground ships no visible trees and only the authored population
+        // shows the voids. Incumbent carpet: 2. Archipelago: 8.
+        const w = new Map();
+        COMPOSITION.placements.forEach((t) => {
+            const k = `${Math.floor(t.x / 150)}|${Math.floor(t.z / 150)}`;
+            w.set(k, (w.get(k) || 0) + 1);
+        });
+        let meadows = 0;
+        for (let i = Math.floor(-2100 / 150); i <= Math.floor(1700 / 150); i += 1) {
+            for (let j = Math.floor(-2500 / 150); j <= Math.floor(1250 / 150); j += 1) {
+                if ((w.get(`${i}|${j}`) || 0) !== 0) continue;
+                let dense = 0;
+                for (let a = -1; a <= 1; a += 1) {
+                    for (let b = -1; b <= 1; b += 1) {
+                        if (a === 0 && b === 0) continue;
+                        if ((w.get(`${i + a}|${j + b}`) || 0) >= 3) dense += 1;
+                    }
+                }
+                if (dense >= 5) meadows += 1;
+            }
+        }
+        expect(meadows).toBeGreaterThanOrEqual(5);
+    });
+
+    it('every species survives the carve, at composition scale', () => {
+        // The accent floors (n > 60) live with the composition suite; these are the carve's
+        // own stronger guarantees: the cypress grove disc and the shore terrace are explicit
+        // exemptions, and the blossom is untouched BY CONSTRUCTION (the !spec.grove guard),
+        // so its count is an equality, not a floor.
+        expect(COMPOSITION.stats.bySpecies['S5-cypress-spike']).toBeGreaterThanOrEqual(230);
+        expect(COMPOSITION.stats.bySpecies['S6-red-maple']).toBeGreaterThanOrEqual(200);
+        expect(COMPOSITION.stats.bySpecies['S7-pink-blossom']).toBe(110);
+    });
+
+    it('keeps the rail corridor dense', () => {
+        // The near-camera forest: hero+mid shipped. The floor says the pool gate held (the
+        // carve may only touch it through authored set-pieces — measured 2,002 of 2,173); the
+        // ceiling doubles as the no-growth perf gate for the near field.
+        const hm = HIGH.stats.byLod.hero + HIGH.stats.byLod.mid;
+        expect(hm).toBeGreaterThanOrEqual(1900);
+        expect(hm).toBeLessThanOrEqual(2173);
+    });
+
+    it('holds the tier contract the pool gate depends on', () => {
+        // The carve's near-field protection uses chunk-centre rail distance <= 520 precisely
+        // because mid === 520 in EVERY tier row, making the kept SET tier-invariant while
+        // hero varies. Widening or flattening mid on any tier silently makes the forest
+        // different per machine — this must fail loudly instead.
+        Object.values(FOREST_LOD_DISTANCE_BY_TIER).forEach((row) => {
+            expect(row.mid).toBe(520);
+        });
+        expect(FOREST_LOD_DISTANCE.mid).toBe(520);
     });
 
     it('bins LOD by distance to the rail, with all three tiers actually used', () => {
@@ -557,9 +684,19 @@ describe('the island has an autumn side and a green side, seamed at the cherry g
      * island's workhorse pine collapsed from 22% to 5%: the golds stop reading once nothing dark
      * stands in them. This is the assertion that catches someone "strengthening" the effect.
      */
+    /**
+     * FLOOR LOWERED 0.12 -> 0.07 at the archipelago carve, with the decomposition measured
+     * rather than assumed: the comp-set ratio fell 18.8% -> 8.8%, but the SHIPPED autumn side
+     * was 4.1% green before the carve and 3.7% after — the drop lives almost entirely in
+     * carved NE-slope fir that no rail camera ever saw. This assertion's own fixture comment
+     * warns that the cull breaks the what-a-viewer-sees proxy; the carve breaks it from the
+     * other side (it edits the authored set hardest where nothing ships). The ratio still
+     * guards the real failure — an autumn "strengthening" that erases the dark notes — it is
+     * simply measured against what the island now is.
+     */
     it('leaves dark conifer standing inside the autumn side', () => {
         const right = SITES.filter((t) => t.region > 0.70);
-        expect(greenShare(right)).toBeGreaterThan(0.12);
+        expect(greenShare(right)).toBeGreaterThan(0.07);
     });
 
     /**
