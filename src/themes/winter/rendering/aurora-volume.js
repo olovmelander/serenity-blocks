@@ -291,8 +291,17 @@ export function createAuroraVolume(params = {}) {
     const violetMask = smoothstep(0.0, 0.10, altN).oneMinus()
         .mul(clamp(activity.sub(0.72).mul(2.4), 0.0, 1.0));
 
+    // Green → crimson must never AVERAGE: a linear RGB lerp between green and
+    // red passes through olive — the residual "still a bit yellow" band, and it
+    // got wider when the crown was pushed lower + fully opaque. Real bands are
+    // distinct emissions with a darker seam between them, so: an S-curve on the
+    // mix squeezes the blend zone into a thin seam, and a sin-shaped dip dims
+    // that seam ~40% — the eye reads "green ends, crimson begins" across dark
+    // sky instead of a mustard gradient.
+    const crownX = smoothstep(0.18, 0.82, crownMask);
+    const bandDip = float(1.0).sub(sin(crownX.mul(3.14159265)).mul(0.42));
     const tint = mix(
-        mix(mix(greenBody, crimsonCrown, crownMask), pinkFringe, fringeMask.mul(0.85)),
+        mix(mix(greenBody, crimsonCrown, crownX).mul(bandDip), pinkFringe, fringeMask.mul(0.85)),
         violetBase,
         violetMask.mul(0.7),
     );
