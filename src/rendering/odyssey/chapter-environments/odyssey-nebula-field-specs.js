@@ -60,7 +60,10 @@ export const ODYSSEY_NEBULA_FIELD_SPECS = Object.freeze([
     // ── THE PILLAR — the vertical landmark, pointing AT the black hole (rule 8);
     // its dense head faces the accretion key up-left, wisps streaming away ────────
     Object.freeze({
-        id: 'N5-pillar', role: 'pillar', paint: 'warm', lod: 'near', x: 190, base: -280, z: -1060, w: 210, h: 640, yaw: 2.6, seed: 84.5,
+        // x −60: pulled off the hero veil's sightline (they stacked from the rig
+        // camera at x 190) into the centre-left gap between the BH (upper left) and
+        // the veil (right) — the mid-chapter vertical landmark stands alone.
+        id: 'N5-pillar', role: 'pillar', paint: 'warm', lod: 'near', x: -60, base: -280, z: -1060, w: 210, h: 640, yaw: 2.6, seed: 84.5,
     }),
     // ── THE HERO VEIL — one colossal cool mass, far right, soft and dim (rule 6's
     // big+soft), the cathedral wall the whole chapter hangs against ───────────────
