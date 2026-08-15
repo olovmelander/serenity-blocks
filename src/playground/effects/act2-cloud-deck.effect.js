@@ -112,6 +112,8 @@ export function create({
         // is taken on — a lever whose visual effect nobody has ever seen is a lever nobody
         // can sanity-check.
         flatGround: params?.get?.('flatGround') === '1',
+        // `?noVisCull=1` restores the trees the rail cannot see — the A/B this rig exists for.
+        visibilityCull: params?.get?.('noVisCull') !== '1',
     });
     scene.add(world.group);
 

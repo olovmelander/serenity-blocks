@@ -75,7 +75,11 @@ describe('the painted ground ships and can be flattened for measurement', () => 
         expect(posThenBranch).toBeGreaterThan(0);
         expect(branch).toBeGreaterThan(posThenBranch);
         // One assignment of colorNode, outside the branch, fed by whichever colour was built.
-        expect(RENDERER).toMatch(/groundMat\.colorNode = toOutput\(applyAerial\(groundColour, positionWorld\)\);/);
+        // Matched loosely on the ARGUMENT LIST: what this test protects is that a single
+        // assignment consumes `groundColour`, not how many tuning parameters applyAerial takes.
+        // It first failed when the ground gained its own aerial rate and ceiling — a real
+        // change, but not the one this assertion exists to catch.
+        expect(RENDERER).toMatch(/groundMat\.colorNode = toOutput\(applyAerial\(groundColour, positionWorld/);
         expect(RENDERER).not.toMatch(/groundMat\.colorNode = toOutput\(applyAerial\(lit,/);
     });
 

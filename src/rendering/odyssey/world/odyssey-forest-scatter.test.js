@@ -41,6 +41,21 @@ const run = (opts = {}) => scatterZonedForest(heightAt, { rail: RAIL, ...opts })
 // would dominate the suite's runtime for no extra confidence.
 const HIGH = run();
 const LOW = run({ spacing: 24 });
+/**
+ * COMPOSITION is tested WITHOUT the visibility cull, and the distinction is not pedantry.
+ *
+ * These suites assert species SHARES as a proxy for what a viewer sees. The rail-visibility cull
+ * breaks that proxy: it removes only trees no camera can ever see, so it changes the placed
+ * population without changing a single pixel — measured at 0.00% at four stations. Run against
+ * the culled set, "the autumn side keeps 12% dark conifer" reads 7% and fails, having detected
+ * nothing that anybody could look at.
+ *
+ * So the composition rules are checked on the full scatter (what the SPECIES RULE does) and the
+ * cull is checked separately on its own terms (odyssey-forest-visibility.test.js). Mixing them
+ * would leave both weaker: a composition gate that trips on a perf change, and a cull with no
+ * gate of its own.
+ */
+const COMPOSITION = run({ visibilityCull: false });
 /** The roster's green half — everything that is not a gold, a red or a blossom. */
 const GREEN_SPECIES = new Set([
     'S1-shore-broadleaf', 'S2-workhorse-pine', 'S3-subalpine-fir', 'S5-cypress-spike',
@@ -78,12 +93,12 @@ describe('the zoned scatter keeps the incumbent\'s measured rejections', () => {
 
 describe('the zone field composes an island rather than confetti', () => {
     it('places every species, and none of them everywhere', () => {
-        const ids = Object.keys(HIGH.stats.bySpecies);
+        const ids = Object.keys(COMPOSITION.stats.bySpecies);
         expect(ids.length).toBe(ODYSSEY_FOREST_SPECIES.length);
         ids.forEach((id) => {
             const spec = getForestSpecies(id);
-            const n = HIGH.stats.bySpecies[id];
-            const share = n / HIGH.stats.trees;
+            const n = COMPOSITION.stats.bySpecies[id];
+            const share = n / COMPOSITION.stats.trees;
             // ⚠️ PRESENCE, then share — split when the grove species arrived. A destination
             // grove at 0.7% of 15,000 trees is ~110 trees, which is a real grove and exactly
             // its design; a 1% share floor would force it to stop being rare. Accent species
@@ -207,12 +222,32 @@ describe('the draw budget holds — draw calls are the rebuild structural claim'
 });
 
 describe('density stays an art lever, not a perf regression channel', () => {
-    it('lands within 15% of the incumbent count on both quality lanes', () => {
+    /**
+     * ASYMMETRIC ON PURPOSE, since 2026-08-15. This gate exists to stop density becoming a
+     * quiet perf regression channel, and a tree count that GROWS is the regression it is
+     * guarding against — so the ceiling stays tight at the incumbent +15%.
+     *
+     * Downward, two owner-directed art decisions have deliberately removed trees: clearings
+     * that break the canopy (~12% of the plantable area, the aerial's most visible difference
+     * from the reference) and a far-side thin-out along the region axis, where 26% of the
+     * forest sat in ground the rail never approaches. Both measured NEGATIVE cost. A symmetric
+     * floor would have made the cheaper, owner-approved island fail a perf guard, which is the
+     * gate reading its own units backwards. The floor still exists — a forest that collapses is
+     * an art defect — it is just set below where those two decisions land.
+     */
+    it('never grows past the incumbent count, and never collapses', () => {
         // Incumbent, read from the live build: 15,427 high / 6,028 low.
-        expect(HIGH.stats.trees).toBeGreaterThan(15427 * 0.85);
+        //
+        // The two halves read DIFFERENT populations, because they guard different risks. The
+        // ceiling is a PERF gate, so it reads what is actually drawn — the shipped, culled set.
+        // The floor is an ART gate ("is there still a forest here"), so it reads the authored
+        // population, which the rail-visibility cull deliberately does not represent: that cull
+        // removes only trees no camera can ever see, and asserting a floor against it would
+        // measure the culler's efficiency while claiming to measure the forest's existence.
         expect(HIGH.stats.trees).toBeLessThan(15427 * 1.15);
-        expect(LOW.stats.trees).toBeGreaterThan(6028 * 0.85);
         expect(LOW.stats.trees).toBeLessThan(6028 * 1.15);
+        expect(COMPOSITION.stats.trees).toBeGreaterThan(15427 * 0.70);
+        expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.70);
     });
 
     it('bins LOD by distance to the rail, with all three tiers actually used', () => {
@@ -440,7 +475,7 @@ describe('the island has an autumn side and a green side, seamed at the cherry g
         1,
         ((((t.x * AXIS[0]) + (t.z * AXIS[1])) - SPLIT) / FEATHER) + 0.5,
     ));
-    const SITES = HIGH.placements.map((t) => ({ ...t, region: regionOf(t) }));
+    const SITES = COMPOSITION.placements.map((t) => ({ ...t, region: regionOf(t) }));
     const greenShare = (list) => list.filter((t) => GREEN_SPECIES.has(t.speciesId)).length
         / Math.max(1, list.length);
 
@@ -482,16 +517,17 @@ describe('the island has an autumn side and a green side, seamed at the cherry g
         // The owner's earlier request, kept at a third of its old width so it reads as a
         // shoreline rather than as the belt that replaced it.
         const shoreAt = buildShoreDistance(heightAt, ODYSSEY_SEA_LEVEL);
-        const edge = HIGH.placements.filter((t) => shoreAt(t.x, t.z) < 45);
+        const edge = COMPOSITION.placements.filter((t) => shoreAt(t.x, t.z) < 45);
         expect(edge.length).toBeGreaterThan(150);
         expect(greenShare(edge)).toBeGreaterThan(0.80);
     });
 
     it('keeps the owner-requested red maple alive on the island', () => {
-        expect(HIGH.stats.bySpecies['S6-red-maple'] || 0).toBeGreaterThan(200);
+        expect(COMPOSITION.stats.bySpecies['S6-red-maple'] || 0).toBeGreaterThan(200);
     });
 
     it('keeps the gold birch a real mass, not a garnish', () => {
-        expect((HIGH.stats.bySpecies['S4-gold-birch'] || 0) / HIGH.stats.trees).toBeGreaterThan(0.10);
+        expect((COMPOSITION.stats.bySpecies['S4-gold-birch'] || 0) / COMPOSITION.stats.trees)
+            .toBeGreaterThan(0.10);
     });
 });
