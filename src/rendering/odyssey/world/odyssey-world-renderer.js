@@ -15,6 +15,18 @@ import {
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
+import {
+    GROUND_ATLAS_WORLD, bakeGroundAtlas, bakeGroundSunFields,
+} from './odyssey-ground-bakes.js';
+import {
+    ODYSSEY_GROUND_DISTANCE,
+    ODYSSEY_GROUND_DRYNESS,
+    ODYSSEY_GROUND_LUMA,
+    ODYSSEY_GROUND_MOISTURE,
+    ODYSSEY_GROUND_PALETTE,
+    ODYSSEY_GROUND_SHADE,
+    ODYSSEY_GROUND_STRATA,
+} from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
@@ -90,6 +102,60 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
 });
 
 const RELIEF_EXTENT = 9000;
+
+// ── ground paint constants (ground plan §4) ──────────────────────────────────────
+// The measured palette, shadow models, strata and distance windows live in
+// odyssey-ground-palette.js; what follows is the handful of numbers that describe how those
+// tables are APPLIED here, kept beside the graph that reads them.
+
+/** Where atlas detail melts to pure macro paint. Aliased so the graph reads in one line. */
+const GROUND_MELT = ODYSSEY_GROUND_DISTANCE.detailMelt;
+/**
+ * Per-material mesostructure amplitude — a weighted sum, never one global grain.
+ *
+ * The bar records TWO grass grammars and they are not compatible: Firewatch alternates 2.5-3x
+ * inside a single patch (dark base, light tips), while Witness grass is FLAT to +-7 luma and
+ * gets all its interest from metre-scale patch hue variegation. The first cut ran the Firewatch
+ * amplitude on top of a patchy moisture field and got neither — the massif station read as
+ * mottled smudge. The Witness is the stated target, so the tooth is quiet and the patches speak.
+ * Paths and sand hills hold +-5..12 luma with no gravel noise anywhere in either game.
+ */
+const GROUND_TOOTH = Object.freeze({
+    grass: 0.18, rock: 0.12, sand: 0.10, snow: 0.08,
+});
+/** Regional temperature drift. Neither pole BRIGHTENS blue — the cool end pulls red down. */
+const GROUND_ZONE_WARM = Object.freeze([1.07, 1.00, 0.91]);
+const GROUND_ZONE_COOL = Object.freeze([0.93, 0.98, 1.00]);
+/** The painted contact lip where grass meets sand or rock: darker AND warmer, never grey. */
+const GROUND_EDGE_TINT = Object.freeze([0.80, 0.72, 0.55]);
+const GROUND_EDGE_AMT = 0.55;
+/** Wind-swept lighter bands. Deliberately small: this is a Ghibli stroke, not a strobe. */
+const GROUND_WIND_LIFT = 0.055;
+/**
+ * Snow's ice-blue shadow, from mountain-language.js — the ONE shadow colour here that is prior
+ * art rather than a measurement (no reference frame contains snow). Authored luma-neutral
+ * (0.2126/0.7152/0.0722 weights sum to 0.997) so it shifts hue only and cannot claim a second
+ * share of the value drop that `value` owns.
+ */
+const GROUND_SNOW_SHADE = Object.freeze([0.87, 1.01, 1.24]);
+/**
+ * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
+ *
+ * (A `GROUND_AO_STRENGTH` multiply over the whole lit result lived beside this. It is gone:
+ * wide occlusion reaches the image through the per-material AMBIENT instead, which darkens the
+ * sky fill that occlusion actually blocks and leaves direct sun alone. The multiply was a
+ * second owner of the same measurement and drove a hollow in shadow to 0.195 against the
+ * measured 0.27-0.32 band.)
+ */
+const GROUND_AO_FLOOR = 0.56;
+/**
+ * Absolute brightness of full sun, chosen so the sunlit island lands where the shipped graph
+ * had it (`sunColour * 0.98 + shadowTint * 0.36`). It multiplies the whole value ramp, so the
+ * measured shade:lit ratio is unaffected — one owner, one number.
+ */
+const GROUND_LIT_GAIN = 1.16;
+/** How much of the journey's ambient HUE survives into ground shade. See the graph's note. */
+const GROUND_AMBIENT_CHROMA = 0.25;
 /**
  * Altitude of the one cloud deck, in world units. Chosen against the RAIL, not against a
  * chapter: the path leaves the shore at ~300, crosses 424 entering the ascent, tops Ch5's
@@ -314,58 +380,6 @@ function bakeMacroTexture(res = 512) {
         }
     }
     const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-    return tex;
-}
-
-function bakeSunVisibility(heightAt, shadowRes) {
-    const len = Math.hypot(...ODYSSEY_WORLD_SUN);
-    const [sx, sy, sz] = ODYSSEY_WORLD_SUN.map((v) => v / len);
-    const horiz = Math.hypot(sx, sz) || 1e-4;
-    const dirX = sx / horiz;
-    const dirZ = sz / horiz;
-    const rise = sy / horiz;
-    const step = RELIEF_EXTENT / shadowRes;
-    const origin = -RELIEF_EXTENT / 2;
-
-    const raw = new Float32Array(shadowRes * shadowRes);
-    for (let j = 0; j < shadowRes; j += 1) {
-        const z0 = origin + (j * step);
-        for (let i = 0; i < shadowRes; i += 1) {
-            const x0 = origin + (i * step);
-            const h0 = heightAt(x0, z0);
-            let shadow = 0;
-            let t = step * 1.5;
-            for (let k = 0; k < 42; k += 1) {
-                const terrain = heightAt(x0 + (dirX * t), z0 + (dirZ * t));
-                const ray = h0 + (rise * t);
-                if (terrain > ray) {
-                    shadow = Math.max(shadow, Math.min(1, ((terrain - ray) / (1 + (t * 0.05))) * 0.5));
-                    if (shadow >= 1) break;
-                }
-                t *= 1.115;
-            }
-            raw[(j * shadowRes) + i] = 1 - shadow;
-        }
-    }
-    const at = (i, j) => raw[(Math.max(0, Math.min(shadowRes - 1, j)) * shadowRes)
-        + Math.max(0, Math.min(shadowRes - 1, i))];
-    const data = new Uint16Array(shadowRes * shadowRes);
-    for (let j = 0; j < shadowRes; j += 1) {
-        for (let i = 0; i < shadowRes; i += 1) {
-            let sum = 0;
-            for (let dj = -1; dj <= 1; dj += 1) {
-                for (let di = -1; di <= 1; di += 1) sum += at(i + di, j + dj);
-            }
-            data[(j * shadowRes) + i] = THREE.DataUtils.toHalfFloat(sum / 9);
-        }
-    }
-    const tex = new THREE.DataTexture(data, shadowRes, shadowRes, THREE.RedFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -1016,6 +1030,10 @@ export function createOdysseyWorld({
     // `?odysseyWorldForestV1=1`: builders, scatter and material all stay, one flag from
     // restoration, so a failure of the new forest is attributable rather than unfalsifiable.
     forestV2 = true,
+    // MEASUREMENT ONLY (ground plan Wave 0a). Same geometry, same draws, same triangles —
+    // only the ground's fragment mesostructure is withheld, so `baseline - flat-ground`
+    // prices exactly the stack the overhaul spends against. Never shipped on.
+    flatGround = false,
     cloudDebug = null,
     skyRadius = null, railSamples = [],
 } = {}) {
@@ -1023,7 +1041,14 @@ export function createOdysseyWorld({
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const relief = buildReliefBake(q.reliefRes);
-    const sunVisTex = bakeSunVisibility(relief.sample, q.shadowRes);
+    // The world plate: sun visibility (R, unchanged) plus the three fields that ARE the
+    // painting — wide occlusion, moisture, and the island's colour zone. Deciles are logged so
+    // a rebake cannot silently flatten a field the whole palette hangs off.
+    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes);
+    const sunVisTex = sunFields.tex;
+    const groundAtlas = bakeGroundAtlas();
+    const groundTex = groundAtlas.tex;
+    const atlasAvg = groundAtlas.avg;
     const detailTex = bakeDetailNormal();
     const macroTex = bakeMacroTexture();
     const heightTex = relief.tex;
@@ -1244,106 +1269,370 @@ export function createOdysseyWorld({
     const aux = texture(heightTex, vUv);
     const baseNormal = normalize(vec3(aux.g.mul(vWeight).add(vMDx).negate(), 1, aux.b.mul(vWeight).add(vMDz).negate()));
     const footprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
-    const detailScales = [{ world: 26, amp: 0.34 }, { world: 7.5, amp: 0.20 }]
-        .slice(0, q.detailScales);
-    let bump = vec2(0, 0);
-    detailScales.forEach(({ world: wl, amp }) => {
-        const gate = float(1).sub(smoothstep(float(wl / 6), float(wl / 1.5), footprint));
-        bump = bump.add(texture(detailTex, positionWorld.xz.div(wl)).rg.mul(amp).mul(gate));
-    });
-    // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
-    // with the detail rather than surviving as shading over a lattice too coarse to show it.
-    const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
-    const gully = max(curvature, 0);
-    const crest = max(curvature.negate(), 0);
-    const flatness = clamp(baseNormal.y, 0, 1);
-    const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
+    /**
+     * THE WORLD PLATE (ground plan Wave 1) — one fetch, four fields.
+     *
+     * This used to be a single-channel sun-visibility read. R still is, byte for byte and
+     * math for math, because the water material reads the same texture and a silent change
+     * there would be a second, quieter opinion about where the sun is. G, B and A were three
+     * unused channel slots on a fetch the ground fragment was ALREADY paying for, and they now
+     * carry the painting: wide-radius occlusion, the moisture field that places every material
+     * between its two palette poles, and the island's regional colour zone. Widening a texture
+     * that is already sampled is free per pixel — the same trick the relief bake's curvature
+     * channel used when it stopped being "a literal zero".
+     */
+    const plate = texture(sunVisTex, vUv).toVar();
+    const sunVis = plate.r;
+    const wideAo = plate.g;
+    const zone = plate.a;
 
-    const height = positionWorld.y;
-    // Biome follows the LANDFORM; only lighting sees the grain. Driving both from the detailed
-    // normal makes grass and rock track the surface noise, which reads as camouflage blotching.
-    const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
-    const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
-        .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
+    let groundColour;
+    if (flatGround) {
+        /**
+         * THE PRICING LEVER (ground plan Wave 0a) — `?odysseyWorldFlatGround=1`.
+         *
+         * The ground fragment stack had never been priced, for the same reason the water, the
+         * cloud deck and the forest each went unpriced until their own Wave 0: nothing in the
+         * tree could switch it off, and ADR-0016 says an unmeasured cost cannot fund a package.
+         * The ground cannot use the `no-water` shape (never built) — the clipmap IS the world,
+         * so removing it would remove the station's content and measure a different scene while
+         * the content-match guard still passed. So this takes the cloud DECK's asymmetric
+         * shape, moved to the fragment stage: identical geometry, identical positionNode,
+         * identical draws and triangles by construction, with only the disputed part withheld.
+         *
+         * What it withholds is exactly what an overhaul spends against — the detail bump
+         * octaves, the atlas fetch, the biome mixes, curvature, strata, the caustic web and
+         * the two-model shadow — leaving a constant albedo under the baked sun. Recorded
+         * caveat, same as the deck's: pipeline compile stays on both sides, so the number is a
+         * floor, not a ceiling.
+         */
+        const flatNdl = max(dot(baseNormal, uSunDir), 0);
+        groundColour = vec3(0.42, 0.41, 0.38)
+            .mul(uSunColour.mul(flatNdl.mul(sunVis).mul(0.92).add(0.06)));
+    } else {
+        /**
+         * ONE bump octave, not two — the overhaul's own de-duplication.
+         *
+         * The 7.5 u octave existed because the 26 u one alone left the near field smooth, and
+         * before this wave there was nothing else in the graph to fill that band. The atlas
+         * now does: it tiles every 22 u with marks down to ~2 u, per material, mean-transparent.
+         * Two systems describing the same frequencies is a second owner, and on this lane it is
+         * a second owner with a price — the fetch is paid on every ground fragment in the frame.
+         * MEASURED: dropping it is where a third of the overhaul's cost came back.
+         */
+        const detailScales = [{ world: 26, amp: 0.34 }].slice(0, q.detailScales);
+        let bump = vec2(0, 0);
+        detailScales.forEach(({ world: wl, amp }) => {
+            const gate = float(1).sub(smoothstep(float(wl / 6), float(wl / 1.5), footprint));
+            bump = bump.add(texture(detailTex, positionWorld.xz.div(wl)).rg.mul(amp).mul(gate));
+        });
+        // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
+        // with the detail rather than surviving as shading over a lattice too coarse to show it.
+        const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
+        const gully = max(curvature, 0);
+        const crest = max(curvature.negate(), 0);
+        const flatness = clamp(baseNormal.y, 0, 1);
+        const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
 
-    const wSand = float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL - 2), float(ODYSSEY_SEA_LEVEL + 26), height));
-    // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
-    // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
-    // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
-    // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
-    // slope; both port directly here, the jitter riding a low-frequency read of the detail
-    // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
-    // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
-    const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
-    const snowHeight = height.add(snowJitter).toVar();
-    const wSnow = smoothstep(float(620), float(730), snowHeight)
-        .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
-    const wRock = clamp(max(
-        smoothstep(float(0.17), float(0.40), slope),
-        smoothstep(float(470), float(640), snowHeight).mul(0.75),
-    ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
-    // THE VIVIDNESS PASS (owner direction, 2026-08-14, against the Witness autumn reference).
-    // Measured before the change: our sand screened at sat 0.29 against the reference golden
-    // ground's 0.75, our mountain rock at 0.146 against their warm 0.65, our grass slope at
-    // 0.20. The authored albedos were the washout — rock at (0.36,0.34,0.33) is sat 0.08 by
-    // construction, and no grade can put back what the palette never had. Authored OVERSHOT
-    // per the standing law (the world hands the stack a flatter image than the screen shows):
-    //   grass — warm lime lean, sat ~0.70 authored (was 0.50)
-    //   sand  — golden amber, sat ~0.62 (was 0.33): the Witness beach is GOLD, not tan
-    //   rock  — warm cream-grey, sat ~0.28 (was 0.08): pale stays pale, grey stops being grey
-    //   snow  — warmed off the blue-white so the peaks read sunlit rather than glacial
-    let albedo = vec3(0.26, 0.44, 0.13);
-    albedo = mix(albedo, vec3(0.80, 0.62, 0.30), wSand);
-    albedo = mix(albedo, vec3(0.47, 0.41, 0.34), wRock);
-    albedo = mix(albedo, vec3(0.97, 0.96, 0.93), wSnow);
-    const grain = positionWorld.xz.mul(0.036);
-    albedo = albedo.mul(grain.x.sin().mul(grain.y.cos()).mul(0.5).add(0.5)
-        .mul(0.07)
-        .mul(detailGate)
-        .add(0.985));
+        const height = positionWorld.y;
+        // Biome follows the LANDFORM; only lighting sees the grain. Driving both from the
+        // detailed normal makes grass and rock track the surface noise, which reads as
+        // camouflage blotching.
+        const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
+        const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
+            .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
 
-    // CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
-    // causticProjection): two counter-scrolling gradient noises sharpened to bright
-    // veins. World-space UVs, so the port is the term itself, unchanged. Gated to below
-    // the waterline and faded in over the first few metres of depth. A small, LOW-FAN-OUT
-    // graph — the codegen lesson applies: keep it a leaf term, .toVar() the result.
-    const causticUv = positionWorld.xz.mul(0.055);
-    // WAVE 4: min(), not add() — summed noises regress toward mid and pow() them into soft
-    // BLOBS; the MINIMUM of two counter-scrolling fields is bright only where BOTH are
-    // bright, which draws the sharp intersecting veins a caustic web actually has. And the
-    // web lands only on UP-FACES: projected surface light cannot paint a cliff wall or the
-    // underside of a ledge, which is where the old term striped.
-    const causticN1 = snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
-        .mul(0.5).add(0.5);
-    const causticN2 = snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15)))
-        .mul(0.5).add(0.5);
-    // smoothstep remap, not pow: min() of two fields peaks near ~0.8, so a bare pow buried
-    // the web (the first min() capture showed a FLAT shelf). The remap keeps ~20% coverage
-    // of crisp full-brightness veins.
-    const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
-        .mul(smoothstep(float(0.55), float(0.85), min(causticN1, causticN2)))
-        .mul(clamp(normal.y, 0, 1))
-        .toVar();
+        /**
+         * THE ATLAS (Wave 2) — one fetch, four material mesostructures, mean-transparent.
+         *
+         * `tile / avg` is the Wolfire division The Witness adopted for exactly this problem:
+         * the mean of the ratio is 1 by construction, so tiled detail can add texture to the
+         * painted colour and can never shift it. Everything below that reads the atlas reads
+         * it through that ratio — including the boundary breakup, so even the material borders
+         * are drawn by the same field that draws the grain.
+         */
+        const atlas = texture(groundTex, positionWorld.xz.div(float(GROUND_ATLAS_WORLD))).toVar();
+        // DISTANCE DISCIPLINE (rule 7). "From far away, the grain melts away and the structure
+        // is mostly a solid color, accented by lighting." The melt is a look requirement first;
+        // that it also caps the atlas's bandwidth to the near field is the bonus.
+        const detailMelt = float(1)
+            .sub(smoothstep(float(GROUND_MELT[0]), float(GROUND_MELT[1]), footprint)).toVar();
+        const tooth = atlas.a.div(float(atlasAvg[3])).toVar();
+        // Signed and mean-zero, so a boundary it perturbs wanders without drifting.
+        const edgeBreak = tooth.sub(1).toVar();
 
-    const sunVis = texture(sunVisTex, vUv).r;
-    const ndl = max(dot(normal, uSunDir), 0);
-    // Cavity occlusion: sunVis already knows what the massifs shadow, but it is baked at a
-    // resolution that cannot see a gully. This is the small-scale half of the same term.
-    const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
-    const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
-        .add(uShadowTint.mul(0.36))).mul(cavity)
-        .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
-        // ALPENGLOW: high snow that faces the sun takes a warm kiss. In mountain-language it
-        // is pow(ndl, 1.6) gated by height; here it rides the same wSnow the albedo uses, so
-        // it can never bleed onto rock or meadow, and it is multiplied by the baked sun
-        // visibility so a shadowed crown stays cold.
-        .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
-            .mul(wSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)));
+        /**
+         * BIOME WEIGHTS, with AUTHORED BOUNDARIES rather than cross-fades.
+         *
+         * The playdough tell named by every reference read is `smoothstep(height)` producing a
+         * soft gradient smear between materials; real turf gives way to sand in lobed, wandering
+         * shapes with a semi-crisp edge, and biome A appears as discrete islands inside B near
+         * the border (the ecotone the Witness's landscape architects describe as "one or two
+         * dominant species from one landscape… overlapping another"). Perturbing each driver by
+         * the atlas produces both at once, for zero extra fetches.
+         *
+         * The swing stays SMALLER than the band it perturbs — the dissolve law this repo paid
+         * for once already: a band narrower than its own noise swing tears into confetti.
+         */
+        // The beach is a BAND, not a region. Measured on the first captures: with the shipped
+        // 24 u height ramp the whole shoreline plain came out half sand, which is why darkening
+        // the grass palette by 38% moved that plain's screen luma by 1.6% — it was barely grass.
+        // 11 u of height on this shore is a beach a person could walk across; the swing stays
+        // under the band width, per the dissolve law.
+        const wSand = float(1).sub(smoothstep(
+            float(ODYSSEY_SEA_LEVEL - 2),
+            float(ODYSSEY_SEA_LEVEL + 11),
+            height.add(edgeBreak.mul(4)),
+        ));
+        // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
+        // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
+        // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
+        // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
+        // slope; both port directly here, the jitter riding a low-frequency read of the detail
+        // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
+        // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
+        const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
+        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9)).toVar();
+        const wSnow = smoothstep(float(620), float(730), snowHeight)
+            .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
+        const wRock = clamp(max(
+            smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035))),
+            smoothstep(float(470), float(640), snowHeight).mul(0.75),
+        ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
+
+        /**
+         * The four weights, made EXPLICIT. Algebraically identical to the sequential `mix`
+         * chain that shipped before — snow over rock over sand over grass — but addressable,
+         * which is what lets the paint, the mesostructure, the strata and the two shadow
+         * models all read the same numbers instead of each re-deriving its own opinion about
+         * what material a fragment is.
+         */
+        const kSnow = wSnow.toVar();
+        const kRock = wRock.mul(float(1).sub(kSnow)).toVar();
+        const kSand = wSand.mul(float(1).sub(wRock)).mul(float(1).sub(kSnow)).toVar();
+        const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
+
+        /**
+         * MOISTURE picks the point on each material's two-pole axis. The baked field carries
+         * the landscape logic (hollows collect, low ground is damp, the shore wets its margin,
+         * sun-facing slopes dry out); the WET BAND is the one term the bake cannot know,
+         * because it is a function of the drawn waterline rather than of the height field —
+         * ref3's waterline sand measures 0.7x the dry hill above it, and ref2's wet rock 0.5x.
+         * `max`, not a sum: the two are alternative sources of the same wetness, so one owner
+         * wins rather than both adding.
+         */
+        const wetBand = smoothstep(float(ODYSSEY_SEA_LEVEL + 11), float(ODYSSEY_SEA_LEVEL + 0.5), height);
+        const moist = clamp(max(plate.b, wetBand.mul(0.94)), 0, 1).toVar();
+        // SHAPED, not linear. A linear read put the whole shoreline plain on the golden pole,
+        // because the midpoint of a two-pole lerp is already half-way to gold and the midpoint
+        // is where most of the island sits. Ref1's lawn is GREEN with golden patches — so green
+        // is the default and gold arrives only where the field says the ground is truly dry.
+        const dryness = smoothstep(
+            float(ODYSSEY_GROUND_DRYNESS[0]),
+            float(ODYSSEY_GROUND_DRYNESS[1]),
+            moist,
+        ).toVar();
+        const poles = (mat) => mix(
+            vec3(...ODYSSEY_GROUND_PALETTE[mat].damp),
+            vec3(...ODYSSEY_GROUND_PALETTE[mat].dry),
+            dryness.mul(float(ODYSSEY_GROUND_MOISTURE[mat])),
+        );
+        let albedo = poles('grass').mul(kGrass)
+            .add(poles('sand').mul(kSand))
+            .add(poles('rock').mul(kRock))
+            .add(poles('snow').mul(kSnow));
+
+        // REGIONAL PERSONALITY. The Witness gave each area of the island its own palette and
+        // interpolated the light colour as the player walked between them; this is the cheap
+        // scalar version of that. Neither pole brightens blue — the cool end pulls RED down
+        // instead, which is the same relative shift without lifting a channel.
+        albedo = albedo.mul(mix(vec3(...GROUND_ZONE_COOL), vec3(...GROUND_ZONE_WARM), zone));
+
+        /**
+         * MESOSTRUCTURE, per material and at the measured AMOUNT.
+         *
+         * The grammar differs by family, which is the whole point of a four-channel atlas —
+         * and so does the amplitude, which the bar states in deciles: Firewatch grass
+         * alternates 2.5-3x inside a single patch (dark base, light tips), while paths and
+         * sand hills hold +-5..12 luma and show no gravel noise anywhere in either reference
+         * game. A single global grain amount cannot be right for both, so it is a weighted sum
+         * of four authored amounts. The `mix(1, ratio, t)` form keeps the Wolfire mean of 1 at
+         * every distance, so melting the detail away cannot brighten or darken the island.
+         */
+        const toothMat = atlas.r.div(float(atlasAvg[0])).mul(kGrass)
+            .add(atlas.g.div(float(atlasAvg[1])).mul(kRock))
+            .add(atlas.b.div(float(atlasAvg[2])).mul(kSand))
+            .add(tooth.mul(kSnow));
+        const toothAmt = float(GROUND_TOOTH.grass).mul(kGrass)
+            .add(float(GROUND_TOOTH.rock).mul(kRock))
+            .add(float(GROUND_TOOTH.sand).mul(kSand))
+            .add(float(GROUND_TOOTH.snow).mul(kSnow));
+        albedo = albedo.mul(mix(float(1), toothMat, detailMelt.mul(toothAmt)));
+
+        /**
+         * THE CONTACT BAND. Ghibli paints a darker, WARMER lip where grass meets a path or a
+         * beach — grass roots darken at contacts, and the edge is a painted occlusion band
+         * rather than a gradient. The product of two weights peaks exactly at the boundary and
+         * is zero in both interiors, so this needs no mask of its own.
+         */
+        const contact = clamp(kGrass.mul(kSand.add(kRock)).mul(4), 0, 1);
+        albedo = albedo.mul(mix(vec3(1), vec3(...GROUND_EDGE_TINT), contact.mul(GROUND_EDGE_AMT).mul(detailGate)));
+
+        /**
+         * WIND, at no cost. The Ghibli meadow signature is lighter stroke bands sweeping across
+         * a slope; the forest's travelling gust line proved the mechanism here — a static field
+         * plus a time-varying PHASE, so motion is a sine and not a second texture.
+         */
+        const gust = sin(uTime.mul(0.32).add(positionWorld.x.mul(0.0016)).add(positionWorld.z.mul(0.0011)));
+        const sweep = smoothstep(float(0.30), float(0.92), tooth.mul(0.52).add(gust.mul(0.5).add(0.5).mul(0.48)));
+        albedo = albedo.mul(sweep.mul(kGrass).mul(detailMelt).mul(GROUND_WIND_LIFT).add(1));
+
+        /**
+         * STRATA (Wave 3) — rock's shape language, shaded because a heightfield cannot sculpt it.
+         *
+         * The bar is numeric: a captured cliff face steps 132->203, 128->221, 122->218 in its
+         * deciles — two or three FLAT value bands per form, not a gradient. The Witness got that
+         * from hand-sculpted planes ("hard edges are not evil… faceting became a powerful tool
+         * to help define the form"); we get it from quantised world height, warped by the atlas
+         * so the strata wobble like sediment instead of drawing a contour map, and hashed per
+         * band so adjacent slabs differ in value AND temperature (brighter bands run warmer —
+         * the "top light, front mid, undercut dark" the reference ledges show).
+         *
+         * Its own distance gate, deliberately looser than `detailGate`: strata are a landform
+         * feature and must survive to the far massif, where the micro bump must not.
+         */
+        const strataFade = float(1).sub(smoothstep(float(6), float(18), footprint));
+        const strataAmt = smoothstep(
+            float(ODYSSEY_GROUND_STRATA.slope[0]),
+            float(ODYSSEY_GROUND_STRATA.slope[1]),
+            slope,
+        ).mul(kRock).mul(strataFade);
+        const strataCell = height.add(edgeBreak.mul(float(ODYSSEY_GROUND_STRATA.warp)))
+            .div(float(ODYSSEY_GROUND_STRATA.band));
+        const bandStep = fract(floor(strataCell).mul(0.1731).add(zone.mul(0.37))).sub(0.5)
+            .mul(float(ODYSSEY_GROUND_STRATA.step)).mul(strataAmt);
+        albedo = albedo.mul(vec3(
+            bandStep.mul(1.25).add(1),
+            bandStep.add(1),
+            bandStep.mul(0.7).add(1),
+        ));
+
+        // (Far pre-desaturation lived here. It measured NEGATIVE twice and is retired — see the
+        // palette's `presat` note. Distance discipline is owned by the detail melt above and by
+        // aerial perspective below, both of which measured positive.)
+
+        /**
+         * CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
+         * causticProjection), and RE-CUT (Wave 4) to obey this file's own header law.
+         *
+         * It shipped as two `snoise3` evaluations per fragment: the only procedural noise left
+         * in the graph, paid on every land pixel in the frame to light a shelf most frames
+         * cannot see. "Detail comes from a TILED TEXTURE, not procedural noise: ~1 ALU against
+         * ~100, worth 6.5 ms" — so the two noises become ONE scrolled fetch, and the second
+         * decorrelated field comes from a different channel of the same fetch. The shape is
+         * preserved exactly where it matters: min(), not add(), because summed fields regress
+         * toward the mean and pow() them into soft blobs, while the MINIMUM of two fields is
+         * bright only where both are, which is what draws the sharp intersecting veins a caustic
+         * web actually has. The threshold breathes on a sine so a rigidly translating tile does
+         * not read as a sliding decal.
+         *
+         * The `.a` channel is the cloud silhouette, histogram-matched to a narrow 0.42..0.70
+         * band, so it is stretched back to full range before the minimum — an unstretched
+         * narrow field would win every min() and flatten the web.
+         */
+        const causticUv = positionWorld.xz.mul(0.055).add(vec2(uTime.mul(0.004), uTime.mul(-0.003)));
+        const causticTex = texture(detailTex, causticUv);
+        const causticWeb = min(causticTex.b, clamp(causticTex.a.sub(0.42).mul(3.57), 0, 1));
+        const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
+            .mul(smoothstep(sin(uTime.mul(0.7)).mul(0.04).add(0.52), float(0.80), causticWeb))
+            // Projected surface light cannot paint a cliff wall or the underside of a ledge.
+            .mul(clamp(normal.y, 0, 1))
+            .toVar();
+
+        /**
+         * THE TWO SHADOW MODELS (G1) — the bar's most load-bearing measurement, and the ground
+         * twin of the forest's foliage-shade law.
+         *
+         * Vegetation, soil and sand keep chromaticity and saturation EXACTLY and lose only
+         * value (ref2's leaf ground: sat 0.76 lit, 0.74 shaded, identical norms, luma x0.57);
+         * rock instead DESATURATES toward neutral (ref2's ledge 0.33 -> 0.06). Desaturating a
+         * warm colour raises its relative blue on its own, so `desat` OWNS the measured hue
+         * shift and no blue tint is added anywhere — the one-owner law. Snow is the documented
+         * exception: it takes mountain-language's ice-blue shadow, authored luma-neutral so it
+         * shifts hue without also claiming a second share of the value drop.
+         *
+         * Every colour term below is luma-preserving BY CONSTRUCTION, so the measured shade:lit
+         * RATIO is produced in exactly one place — `value`.
+         */
+        const ndl = max(dot(normal, uSunDir), 0);
+        // Lambert, S-shaped. The shoulders group the terminator into masses (the Ghibli law);
+        // the middle keeps the mid-tones a rolling landform needs. See the palette's terminator
+        // note for the two remaps that tried to replace Lambert and measured worse than it.
+        const lightAmt = smoothstep(
+            float(ODYSSEY_GROUND_SHADE.terminator[0]),
+            float(ODYSSEY_GROUND_SHADE.terminator[1]),
+            clamp(ndl.mul(sunVis), 0, 1),
+        ).toVar();
+        const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
+        const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
+        const shadeChroma = mix(albedo, vec3(albLuma), mineralW.mul(float(ODYSSEY_GROUND_SHADE.mineral.desat)));
+        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(0.8));
+        const shadeCol = shadeIce.mul(mix(vec3(...ODYSSEY_GROUND_SHADE.deepTint), vec3(1), lightAmt));
+        const surface = mix(shadeCol, albedo, lightAmt);
+
+        // Cavity occlusion: the baked plate's AO already knows what the landform shadows, but it
+        // is baked at a radius that cannot see a gully. This is the small-scale half of the same
+        // term, and the split is by RADIUS so neither owns the other's job.
+        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
+        // THE AMBIENT owns the floor — the one thing Lambert cannot supply and the one thing the
+        // shipped graph had wrong (0.06 against the references' 0.27-0.32). It is per-material
+        // (rock takes less sky than a meadow does) and deepens where the baked occlusion says
+        // the sky cannot see in, which is how a hollow in shadow reaches the measured deep band
+        // without a second darkening term fighting the first.
+        const openness = smoothstep(float(GROUND_AO_FLOOR), float(1), wideAo);
+        const ambient = mix(
+            float(ODYSSEY_GROUND_SHADE.deepAmbient),
+            mix(
+                float(ODYSSEY_GROUND_SHADE.vegetation.ambient),
+                float(ODYSSEY_GROUND_SHADE.mineral.ambient),
+                mineralW,
+            ),
+            openness,
+        ).toVar();
+        const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN));
+        // The journey's ambient still reaches the ground — the colour script drives it — but
+        // NORMALISED to luma 1 and pulled most of the way to neutral first, because a saturated
+        // cool fill light is precisely what the measurement refutes for vegetation shade.
+        const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
+        const lightCol = mix(
+            mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA)),
+            uSunColour,
+            lightAmt,
+        );
+        // Rim: unlit-compatible fake translucency on snow only, cool and weak.
+        const viewDir = normalize(cameraPosition.sub(positionWorld));
+        const rim = float(1).sub(abs(dot(normal, viewDir))).pow(4)
+            .mul(kSnow)
+            .mul(0.14);
+        // NOTE the wide occlusion is NOT multiplied in here. It reaches the image through
+        // `ambient` above, which is the one-owner form: occlusion darkens the part of the light
+        // that occlusion actually blocks (the sky fill) and leaves direct sun alone. Multiplying
+        // it over the whole result as well drove a hollow in shadow to 0.195 against the
+        // measured 0.27-0.32 band, and dimmed sunlit hollows that the sun plainly reaches.
+        groundColour = surface.mul(lightCol).mul(value).mul(cavity)
+            .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
+            // ALPENGLOW: high snow that faces the sun takes a warm kiss, riding the same kSnow
+            // the albedo uses so it can never bleed onto rock or meadow, and multiplied by the
+            // baked sun visibility so a shadowed crown stays cold.
+            .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
+                .mul(kSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)))
+            .add(vec3(0.72, 0.82, 0.95).mul(rim));
+    }
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
     };
-    groundMat.colorNode = toOutput(applyAerial(lit, positionWorld));
+    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -3334,12 +3623,13 @@ export function createOdysseyWorld({
             // heroes shipped, leaking the compiled hero material on every world dispose; with
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
-            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat].forEach((m) => m.dispose());
+            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat]
+                .forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
+            [heightTex, sunVisTex, groundTex, detailTex, macroTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

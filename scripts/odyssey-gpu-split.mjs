@@ -170,6 +170,18 @@ const CONFIGURATIONS = [
     // forest's absence like every whole-forest configuration. The old `forest-v2` id is
     // retired WITH its flag — a configuration driving a flag nobody reads would collect a p50
     // identical to baseline and report a real cost as zero (the heroes' lesson).
+    // THE GROUND'S FRAGMENT STACK (ground plan Wave 0a) — asymmetric, like the cloud deck's:
+    // the geometry is built identically and only the disputed fragment work is withheld, so
+    // draws and triangles agree EXACTLY on both sides and the content-match guard passes by
+    // construction rather than by luck. Prices detail-bump octaves, the atlas fetch, the biome
+    // mixes, curvature, strata, the caustic web and the two-model shadow. Caveat for the cell:
+    // pipeline compile stays on both sides, so the figure is a floor, not a ceiling.
+    {
+        id: 'flat-ground',
+        flags: { odysseyWorldFlatGround: '1' },
+        note: 'the ground keeps its geometry and loses its fragment mesostructure '
+            + '(constant albedo under the baked sun)',
+    },
     {
         id: 'forest-v1',
         flags: { odysseyWorldForestV1: '1' },
@@ -462,6 +474,10 @@ function buildSplit(results) {
         forestMs: delta('baseline', 'no-forest'),
         // The retired incumbent's price, for regression comparisons only.
         forestV1Ms: delta('forest-v1', 'no-forest'),
+        // The ground's FRAGMENT cost — the stack that had never been priced. The ground ships
+        // (it is the world), so its lever REMOVES the disputed work and the cost is baseline
+        // minus configuration, the same polarity as waterMs, cloudFieldMs and forestMs.
+        groundFragMs: delta('baseline', 'flat-ground'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),

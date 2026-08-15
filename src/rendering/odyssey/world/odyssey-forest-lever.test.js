@@ -92,7 +92,11 @@ describe('the forest ships by default and can be switched off for measurement', 
      */
     it('builds treeMat unconditionally so the fog and dispose lists still cover it', () => {
         expect(RENDERER).toMatch(/const treeMat = new THREE\.MeshBasicNodeMaterial\(\);/);
-        const list = /\[groundMat, waterMat, skyMat, treeMat, [^\]]*\]\.forEach/;
+        // `\s*` before `.forEach`, not a bare dot: the assertion is about the LIST still
+        // covering treeMat, and wrapping the chain onto the next line to satisfy max-len is a
+        // formatting change that must not read as a missing material. (It did once — the
+        // ground plan's dispose line grew past 120 columns and this test failed on the wrap.)
+        const list = /\[groundMat, waterMat, skyMat, treeMat, [^\]]*\]\s*\.forEach/;
         expect(RENDERER).toMatch(new RegExp(`${list.source}\\(\\(m\\) => \\{ m\\.fog = false; \\}\\)`));
         expect(RENDERER).toMatch(new RegExp(`${list.source}\\(\\(m\\) => m\\.dispose\\(\\)\\)`));
     });
