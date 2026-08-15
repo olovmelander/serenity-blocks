@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    scatterZonedForest, shadeColourFor,
+    buildShoreDistance, scatterZonedForest, shadeColourFor,
 } from './odyssey-forest-scatter.js';
 import {
     FOREST_BANDS, FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES, getForestSpecies,
@@ -419,32 +419,76 @@ describe('the scatter is deterministic, because a forest that reshuffles cannot 
  * of this reversal took it to 0.2% of the island by moving its band; a species that exists only
  * in the table is the defect this repo has shipped before (the cypress, at weight 0.18).
  */
-describe('the shore composes green edge, gold body, green upslope', () => {
-    const bandOf = (lo, hi) => HIGH.placements.filter((t) => t.y >= lo && t.y < hi);
+/**
+ * THE ISLAND'S TWO SIDES (owner direction, 2026-08-15 — the third shape, and the one that holds).
+ *
+ * Two earlier shapes were rejected on pictures, and the assertions here are written so neither
+ * can come back unnoticed. Autumn AT the waterline died when the ground turned green under it.
+ * A green fringe BANDED (first by altitude, then by distance to water) died because a band has a
+ * characteristic width and therefore reads as a contour line at some viewing distance — the
+ * owner's words were "I dont like this belt and contour line".
+ *
+ * What ships is REGIONAL, which is what the references do: the island has an autumn side and a
+ * green side, the cherry grove sits on the seam, and the seam wanders. A region has no width, so
+ * there is no distance at which it can read as a band.
+ */
+describe('the island has an autumn side and a green side, seamed at the cherry grove', () => {
+    const AXIS = [0.891, -0.455];
+    const SPLIT = 295;
+    const FEATHER = 420;
+    const regionOf = (t) => Math.max(0, Math.min(
+        1,
+        ((((t.x * AXIS[0]) + (t.z * AXIS[1])) - SPLIT) / FEATHER) + 0.5,
+    ));
+    const SITES = HIGH.placements.map((t) => ({ ...t, region: regionOf(t) }));
     const greenShare = (list) => list.filter((t) => GREEN_SPECIES.has(t.speciesId)).length
         / Math.max(1, list.length);
 
-    it('keeps the water edge GREEN', () => {
-        const fringe = bandOf(0, 306);
-        expect(fringe.length).toBeGreaterThan(300);
-        expect(greenShare(fringe)).toBeGreaterThan(0.85);
+    it('keeps the LEFT side green', () => {
+        const left = SITES.filter((t) => t.region < 0.30);
+        expect(left.length).toBeGreaterThan(1000);
+        expect(greenShare(left)).toBeGreaterThan(0.85);
     });
 
-    it('keeps the autumn body immediately above it', () => {
-        // The inverse assertion, and the one the first cut of the reversal failed: a shore that
-        // is green all the way up to the treeline has not been rebalanced, it has been repainted.
-        const body = bandOf(308, 326);
-        expect(body.length).toBeGreaterThan(300);
-        expect(greenShare(body)).toBeLessThan(0.45);
+    it('makes the RIGHT side read autumn', () => {
+        const right = SITES.filter((t) => t.region > 0.70);
+        expect(right.length).toBeGreaterThan(1000);
+        expect(greenShare(right)).toBeLessThan(0.45);
     });
 
-    it('leaves the upslope green without needing a clause for it', () => {
-        expect(greenShare(bandOf(340, 420))).toBeGreaterThan(0.75);
+    /**
+     * ...but NOT a monoculture. At full strength the autumn side measured 1% green and the
+     * island's workhorse pine collapsed from 22% to 5%: the golds stop reading once nothing dark
+     * stands in them. This is the assertion that catches someone "strengthening" the effect.
+     */
+    it('leaves dark conifer standing inside the autumn side', () => {
+        const right = SITES.filter((t) => t.region > 0.70);
+        expect(greenShare(right)).toBeGreaterThan(0.12);
+    });
+
+    /**
+     * The seam is where the cherry grove is — that is the whole composition, and it is the one
+     * relationship a future palette edit could break silently.
+     */
+    it('seams the two sides at the cherry grove', () => {
+        const blossom = SITES.filter((t) => t.speciesId === 'S7-pink-blossom');
+        expect(blossom.length).toBeGreaterThan(60);
+        const mean = blossom.reduce((a, t) => a + t.region, 0) / blossom.length;
+        expect(mean).toBeGreaterThan(0.25);
+        expect(mean).toBeLessThan(0.75);
+    });
+
+    it('keeps a green apron at the water on BOTH sides', () => {
+        // The owner's earlier request, kept at a third of its old width so it reads as a
+        // shoreline rather than as the belt that replaced it.
+        const shoreAt = buildShoreDistance(heightAt, ODYSSEY_SEA_LEVEL);
+        const edge = HIGH.placements.filter((t) => shoreAt(t.x, t.z) < 45);
+        expect(edge.length).toBeGreaterThan(150);
+        expect(greenShare(edge)).toBeGreaterThan(0.80);
     });
 
     it('keeps the owner-requested red maple alive on the island', () => {
-        const maple = HIGH.stats.bySpecies['S6-red-maple'] || 0;
-        expect(maple).toBeGreaterThan(200);
+        expect(HIGH.stats.bySpecies['S6-red-maple'] || 0).toBeGreaterThan(200);
     });
 
     it('keeps the gold birch a real mass, not a garnish', () => {

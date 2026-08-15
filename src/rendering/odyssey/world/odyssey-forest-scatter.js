@@ -75,35 +75,137 @@ const FOREST_BAND_FLOOR = 0.42;
  */
 const FOREST_FIT_WEIGHT = 0.45;
 /**
- * THE SHORE COMPOSITION — green edge, gold body, green upslope (owner reversal, 2026-08-15).
+ * THE ISLAND HAS TWO SIDES (owner direction, 2026-08-15 — the third and final shape).
  *
- * The waterline shipped on 2026-08-14 as an AUTUMN mix at the owner's request: gold birch and
- * red maple boosted below y=325. With the ground overhaul landed the owner reversed it, and
- * the reason is an interaction rather than a change of taste — the old shoreline was an
- * olive-tan plain the autumn canopy sat WITH, the new one is a green meadow with a narrow gold
- * beach, and the same canopy sat ON it, flattening the place the ground had gained the most.
+ * THE ROAD HERE, because each step was rejected on a picture and each rejection taught the
+ * next one something:
  *
- * IT TOOK THREE MEASUREMENTS TO GET THE MECHANISM RIGHT, and the last one is the interesting
- * one, so all three are recorded:
+ *  1. Autumn AT the waterline (2026-08-14, owner-requested). Correct against the old olive-tan
+ *     ground; wrong the moment the ground overhaul put a green meadow under it.
+ *  2. Green at the waterline, banded by ALTITUDE. Crisp in its own terms (88% green below
+ *     +19 u) and inconsistent in the only view that matters: measured, the green/gold boundary
+ *     sat between 70 m and 332 m from the sea depending on local gradient, so a steep headland
+ *     wore gold down to the sand. The owner spotted exactly that from 700 u up.
+ *  3. Green at the waterline, banded by DISTANCE TO WATER. Consistent — and a belt at a
+ *     constant distance from the coast is a ribbon parallel to the shore, i.e. the CONTOUR LINE
+ *     this file's own band comment forbids. Wobbling its edges softened the read without
+ *     changing its nature. Rejected: "I dont like this belt and contour line".
  *
- *  1. Moving the boost onto the green species took the water's edge from 12% green to 99% —
- *     and the WHOLE ISLAND from 66% to 92%, because the shore band holds 30% of all trees.
- *     Gold birch fell 26% -> 7% and the owner-requested red maple to 0.2%. The autumn shore
- *     existed ONLY because a boost put it there; removing that boost deletes the autumn
- *     instead of rebalancing it.
- *  2. A height histogram then showed the autumn was never spread across the island at all —
- *     it lives between y 290 and 326, and everything above 326 is already 86-92% green with no
- *     clause at all. So the fix is a band edge, not a repaint: greens below, gold above.
- *  3. And the green half needs NO boost of its own. A mutation test proved it: zeroing the
- *     green-fringe boost changed nothing, because the greens are weight-1.0 workhorses and the
- *     autumn species are weight-0.55 accents — below the autumn band the greens already win on
- *     weight. That constant was inert, so it is gone rather than kept as decoration.
+ * What the references actually do is none of these. The Witness gives PLACES their own
+ * palettes — "different locations on the island would have very different color palettes…
+ * this would help cement the locations' individual personalities" — so the island is divided
+ * into REGIONS, and a species belongs to a region rather than to an offset from a feature. A
+ * region has no characteristic width, so it cannot read as a band at any distance or altitude.
  *
- * What remains is one clause: the autumn species outbid the greens between these two heights.
+ * So: one axis across the island, autumn on one side, green on the other, and the cherry grove
+ * sitting on the seam between them. The axis is not arbitrary — it is the screen-right vector
+ * of the aerial the owner marked up (world (0.891, -0.455) at p=0.30), and the split constant
+ * is the projection of the blossom grove's own measured centroid (x 38, z -573) onto it, so
+ * "autumn to the right of the cherry trees" is literally what the arithmetic says.
  */
-const FOREST_AUTUMN_LO = 306;
-const FOREST_AUTUMN_HI = 326;
-const FOREST_AUTUMN_BOOST = 0.42;
+/** The square the shore field covers — the world bakes use the same extent. */
+const SHORE_EXTENT = 9000;
+const FOREST_REGION_AXIS = Object.freeze([0.891, -0.455]);
+/** Where the seam crosses that axis: the blossom grove's measured centroid projects to 295. */
+const FOREST_REGION_SPLIT = 295;
+/**
+ * How wide the hand-over is. Wide on purpose — a region boundary is a gradient of mixture, not
+ * an edge, and the two sides interleave across it the way the reference's zones do.
+ */
+const FOREST_REGION_FEATHER = 420;
+/** The seam wanders, so even a soft boundary never reads as a ruled line. */
+const FOREST_REGION_WANDER_CELL = 900;
+const FOREST_REGION_WANDER_SALT = 91;
+const FOREST_REGION_WANDER_AMP = 300;
+/**
+ * A short green apron at the water survives from step 2, at a third of its old width. The owner
+ * asked for green at the water's edge and that request is not withdrawn by this one; at this
+ * width it is a shoreline rather than a belt (invisible as a band from 700 u, where a 330 m one
+ * was the whole complaint).
+ *
+ * It HOLDS to 45 m and then hands over, rather than ramping from zero at the waterline. A linear
+ * ramp is weakest exactly where the apron is supposed to be strongest — measured, it let the
+ * near-shore green share fall to 79% when the whole point of the term is that the water's edge
+ * is green.
+ */
+const FOREST_SHORE_GREEN = 45;
+const FOREST_SHORE_FADE = 95;
+/**
+ * How hard the autumn side is autumn — swept, not picked. Measured right-side green share at
+ * each value: 0.42 -> 1% (a birch monoculture that also drove the island's pine from 22% to 5%),
+ * 0.30 -> 16%, 0.24 -> 26%, 0.18 -> 37%. 0.24 gives a side that unmistakably reads autumn
+ * (66% gold birch) while keeping a quarter of it dark conifer, which is what the reference's
+ * autumn area does too — the golds read BECAUSE something dark is standing in them.
+ */
+const FOREST_AUTUMN_BOOST = 0.24;
+
+/**
+ * DISTANCE TO THE WATERLINE, in metres, as a sampled field.
+ *
+ * A two-pass chamfer transform over a coarse land mask. Coarse on purpose: the band edges are
+ * 120 m and 330 m, so 23 u texels put a dozen texels across the narrowest feature, and the
+ * mask costs one height lookup per texel rather than the marching a true geodesic needs.
+ *
+ * Chamfer weights 5/7 (the classic integer approximation of 1 and sqrt(2), scaled by 5) keep
+ * diagonal distance honest to ~2%; a naive 1/1 city-block transform would make the band
+ * diamond-shaped around headlands, which is the same class of artefact as banding by height.
+ */
+export function buildShoreDistance(heightAt, seaLevel, res = 384) {
+    // The same square the world bakes span; the island sits well inside it.
+    const step = SHORE_EXTENT / res;
+    const origin = -SHORE_EXTENT / 2;
+    const BIG = 1e9;
+    const d = new Float32Array(res * res);
+    for (let j = 0; j < res; j += 1) {
+        const z = origin + (j * step);
+        for (let i = 0; i < res; i += 1) {
+            d[(j * res) + i] = heightAt(origin + (i * step), z) > seaLevel ? BIG : 0;
+        }
+    }
+    const N = 5;
+    const D = 7;
+    const at = (i, j) => ((i < 0 || j < 0 || i >= res || j >= res) ? BIG : d[(j * res) + i]);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) {
+            const k = (j * res) + i;
+            d[k] = Math.min(
+                d[k],
+                at(i - 1, j) + N,
+                at(i, j - 1) + N,
+                at(i - 1, j - 1) + D,
+                at(i + 1, j - 1) + D,
+            );
+        }
+    }
+    for (let j = res - 1; j >= 0; j -= 1) {
+        for (let i = res - 1; i >= 0; i -= 1) {
+            const k = (j * res) + i;
+            d[k] = Math.min(
+                d[k],
+                at(i + 1, j) + N,
+                at(i, j + 1) + N,
+                at(i + 1, j + 1) + D,
+                at(i - 1, j + 1) + D,
+            );
+        }
+    }
+    const scale = step / N;
+    return (x, z) => {
+        const gx = Math.max(0, Math.min(res - 1.001, (x - origin) / step));
+        const gz = Math.max(0, Math.min(res - 1.001, (z - origin) / step));
+        const i0 = Math.floor(gx);
+        const j0 = Math.floor(gz);
+        const fx = gx - i0;
+        const fz = gz - j0;
+        const i1 = Math.min(res - 1, i0 + 1);
+        const j1 = Math.min(res - 1, j0 + 1);
+        const a = d[(j0 * res) + i0];
+        const b = d[(j0 * res) + i1];
+        const c = d[(j1 * res) + i0];
+        const e = d[(j1 * res) + i1];
+        return ((((a * (1 - fx)) + (b * fx)) * (1 - fz)) + (((c * (1 - fx)) + (e * fx)) * fz)) * scale;
+    };
+}
 
 /**
  * Exponent skewing each tree's position on its species' hue ramp toward the `crown` end.
@@ -167,7 +269,7 @@ function bandFit(species, y) {
  * varies over ~500 u, i.e. several canopy diameters, which is the width §1b R5 measured on the
  * reference island (2-10 canopy diameters per zone).
  */
-function pickSpecies(x, y, z, species, zoneCell) {
+function pickSpecies(x, y, z, species, zoneCell, shoreDist) {
     let best = null;
     let bestScore = -Infinity;
     for (let i = 0; i < species.length; i += 1) {
@@ -195,8 +297,21 @@ function pickSpecies(x, y, z, species, zoneCell) {
         // The autumn body: gold birch and red maple outbid the greens for one terrace above
         // the water, and nowhere else. See FOREST_AUTUMN_LO for the two mechanisms that were
         // tried first and what each of them measured.
-        const autumnBoost = (s.autumnBand && y >= FOREST_AUTUMN_LO && y < FOREST_AUTUMN_HI)
-            ? FOREST_AUTUMN_BOOST : 0;
+        // WHICH SIDE OF THE ISLAND IS THIS? A smooth regional gradient, seam wandering, with
+        // the short green apron at the water as the one remaining distance term.
+        const wander = (patchNoise(x, z, FOREST_REGION_WANDER_CELL, FOREST_REGION_WANDER_SALT)
+            - 0.5) * FOREST_REGION_WANDER_AMP;
+        const along = (x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1]);
+        const region = Math.max(0, Math.min(
+            1,
+            ((along - (FOREST_REGION_SPLIT + wander)) / FOREST_REGION_FEATHER) + 0.5,
+        ));
+        const apronT = Math.max(0, Math.min(
+            1,
+            (shoreDist - FOREST_SHORE_GREEN) / (FOREST_SHORE_FADE - FOREST_SHORE_GREEN),
+        ));
+        const apron = apronT * apronT * (3 - (2 * apronT));
+        const autumnBoost = s.autumnBand ? FOREST_AUTUMN_BOOST * region * apron : 0;
         // THE GROVE CLAUSE (D4): same shape as the anchor's — rare almost everywhere,
         // decisive inside the top slice of its own patch — but stronger, because a blossom
         // grove is a DESTINATION: five trees of pink scattered thin is noise, a grove you
@@ -307,6 +422,9 @@ export function scatterZonedForest(heightAt, {
     framing = ODYSSEY_FOREST_FRAMING,
 } = {}) {
     const placements = [];
+    // Built once for the whole scatter: 384² height lookups plus two linear passes, against
+    // 15,000 sites that would each otherwise need their own estimate of where the sea is.
+    const shoreAt = buildShoreDistance(heightAt, seaLevel);
     const steps = Math.ceil((radius * 2) / spacing);
     const heroD2 = FOREST_LOD_DISTANCE.hero ** 2;
     const midD2 = FOREST_LOD_DISTANCE.mid ** 2;
@@ -329,7 +447,7 @@ export function scatterZonedForest(heightAt, {
             const falloff = 1 - Math.max(0, (y - (snowStart - 130)) / 130);
             if (hash2(i, j, 4) > (0.35 + (mask * 0.95)) * Math.max(0.12, falloff)) continue;
 
-            const spec = pickSpecies(x, y, z, species, zoneCell);
+            const spec = pickSpecies(x, y, z, species, zoneCell, shoreAt(x, z));
             if (!spec) continue;
             const stage = pickStage(spec, hash2(i, j, 8));
 
