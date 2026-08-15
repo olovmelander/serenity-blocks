@@ -74,6 +74,36 @@ const FOREST_BAND_FLOOR = 0.42;
  * stands prefer to sit, not enough to own an altitude outright.
  */
 const FOREST_FIT_WEIGHT = 0.45;
+/**
+ * THE SHORE COMPOSITION — green edge, gold body, green upslope (owner reversal, 2026-08-15).
+ *
+ * The waterline shipped on 2026-08-14 as an AUTUMN mix at the owner's request: gold birch and
+ * red maple boosted below y=325. With the ground overhaul landed the owner reversed it, and
+ * the reason is an interaction rather than a change of taste — the old shoreline was an
+ * olive-tan plain the autumn canopy sat WITH, the new one is a green meadow with a narrow gold
+ * beach, and the same canopy sat ON it, flattening the place the ground had gained the most.
+ *
+ * IT TOOK THREE MEASUREMENTS TO GET THE MECHANISM RIGHT, and the last one is the interesting
+ * one, so all three are recorded:
+ *
+ *  1. Moving the boost onto the green species took the water's edge from 12% green to 99% —
+ *     and the WHOLE ISLAND from 66% to 92%, because the shore band holds 30% of all trees.
+ *     Gold birch fell 26% -> 7% and the owner-requested red maple to 0.2%. The autumn shore
+ *     existed ONLY because a boost put it there; removing that boost deletes the autumn
+ *     instead of rebalancing it.
+ *  2. A height histogram then showed the autumn was never spread across the island at all —
+ *     it lives between y 290 and 326, and everything above 326 is already 86-92% green with no
+ *     clause at all. So the fix is a band edge, not a repaint: greens below, gold above.
+ *  3. And the green half needs NO boost of its own. A mutation test proved it: zeroing the
+ *     green-fringe boost changed nothing, because the greens are weight-1.0 workhorses and the
+ *     autumn species are weight-0.55 accents — below the autumn band the greens already win on
+ *     weight. That constant was inert, so it is gone rather than kept as decoration.
+ *
+ * What remains is one clause: the autumn species outbid the greens between these two heights.
+ */
+const FOREST_AUTUMN_LO = 306;
+const FOREST_AUTUMN_HI = 326;
+const FOREST_AUTUMN_BOOST = 0.42;
 
 /**
  * Exponent skewing each tree's position on its species' hue ramp toward the `crown` end.
@@ -162,11 +192,11 @@ function pickSpecies(x, y, z, species, zoneCell) {
         // top slice of its own patch field: rare almost everywhere, decisive in a few tight
         // stands — rows and clusters, the way the reference plants them.
         const anchorBoost = (s.role === 'anchor' && patch > 0.78) ? 0.85 : 0;
-        // THE WATERLINE AUTUMN MIX (owner-requested): ref2's composition puts its golds and
-        // reds AT the pond's edge. Species flagged `waterline` get a boost below y=325 — the
-        // measured shore band — so the water's edge mixes gold birch, red maple and the green
-        // shore broadleaf instead of belonging to one species.
-        const waterlineBoost = (s.waterline && y < 325) ? 0.42 : 0;
+        // The autumn body: gold birch and red maple outbid the greens for one terrace above
+        // the water, and nowhere else. See FOREST_AUTUMN_LO for the two mechanisms that were
+        // tried first and what each of them measured.
+        const autumnBoost = (s.autumnBand && y >= FOREST_AUTUMN_LO && y < FOREST_AUTUMN_HI)
+            ? FOREST_AUTUMN_BOOST : 0;
         // THE GROVE CLAUSE (D4): same shape as the anchor's — rare almost everywhere,
         // decisive inside the top slice of its own patch — but stronger, because a blossom
         // grove is a DESTINATION: five trees of pink scattered thin is noise, a grove you
@@ -182,7 +212,7 @@ function pickSpecies(x, y, z, species, zoneCell) {
         // a quarter of it: firs prefer the heights without forbidding anything else there. The
         // reference island works the same way — its zones are regions, not contour lines.
         const score = patch + (fit * FOREST_FIT_WEIGHT) + ((s.weight - 1) * 0.35)
-            + anchorBoost + waterlineBoost + groveBoost;
+            + anchorBoost + autumnBoost + groveBoost;
         if (score > bestScore) { bestScore = score; best = s; }
     }
     return best;
