@@ -93,6 +93,16 @@ const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
     33: 0.593,
     34: 0.611,
     35: 0.630,
+    // ⚠️ SPACE-LENGTHENING SCOUT RESULT (Wave 1 attempt, 2026-08-15): re-spacing
+    // levels 37-55 so ch6 ends at 0.845 (its +18% share taken from ch7/ch8, ch1-ch5
+    // untouched) FAILS against the spline itself — the 6→7 helical sweep begins
+    // immediately after 0.815 (rail turn 25.6° inside the widened window vs the
+    // corridor test's max 3°, and the BH hero leaves frame at ndcX −1.70 by p=0.829).
+    // The old boundary sits exactly where the rail starts bending, BY design. Ch6
+    // cannot absorb far-side share without either re-authoring cp17-20 (lever C,
+    // arc-length-pinned optimisation + APPROACH re-solve) or adding ch6 levels
+    // (lever B, level-id renumber = save-data migration). Do not re-try the cheap
+    // re-space; it is measured dead.
     36: 0.648,
     37: 0.667,
     38: 0.685,
