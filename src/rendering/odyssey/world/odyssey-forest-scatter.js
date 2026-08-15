@@ -198,6 +198,212 @@ const FOREST_GLADE_CELL = 620;
 const FOREST_GLADE_SALT = 137;
 const FOREST_GLADE_EDGE = 0.68;
 const FOREST_GLADE_OPEN = 0.766;
+
+/**
+ * THE ARCHIPELAGO (owner direction, 2026-08-15: "we can reduce a bigger amount of trees, we
+ * just need to have the composition and the placement feel right").
+ *
+ * The island stops being a carpet with regional colour and becomes an archipelago of big
+ * closed stands with real meadows between them. This is a CARVE, not a dilution: interior
+ * stand density is untouched (in-stand nearest-neighbour p50 moves 11.1 -> 11.2 u) while the
+ * count falls 26% -- the removal all lands in shaped voids. Three parts, evaluated per site in
+ * archKeep() below, in this order:
+ *
+ *   SET-PIECES  Authored shapes that override everything else, because a composition needs
+ *               moments and a field cannot author a moment: a hero meadow the ch4 rail skirts
+ *               (with one witness broadleaf standing alone in it), a lone-tree hill, and two
+ *               gold-finger meadows that interlock the north seam so the colour boundary
+ *               reads as bays and peninsulas instead of a front.
+ *   POOL GATE   The near field never carves: per-tree rail distance <= 520, else fine-chunk
+ *               centre distance <= 520 -- which is EXACTLY the non-far LOD set (0 mismatches
+ *               measured), and tier-invariant because every tier row keeps mid === 520 (a
+ *               contract test pins this; hero varies per tier and must not key the SET).
+ *   WOODS       A two-octave patch field with a per-area HARD threshold: above it forest,
+ *               below it meadow, a feathered treeline rim on the woods side and a sparse
+ *               pioneer fringe (P_SINGLE) just past the edge on the open side.
+ *
+ * !! THE THRESHOLDS ARE FROZEN PERCENTILES, NOT TUNABLES -- and that is how the rate stays
+ * exact. Each area's threshold was calibrated offline as the (1 - kill)-quantile of the woods
+ * field over that area's own eligible pool, so the kill fraction is exact BY CONSTRUCTION and
+ * the mean-preservation trap (a modulation factor that silently changes the rate -- this file
+ * has shipped that bug once already; see the stand-bite note) structurally cannot occur.
+ * The cost is a calibration dependency: the numbers below are quantiles of the CURRENT
+ * terrain and the CURRENT upstream pipeline (density mask, three-term thin, glade, every salt
+ * above). Changing ANY of those, or any FOREST_ARCH constant, requires re-emitting this table
+ * via the sim that authored it -- one run prints it:
+ *     node <scratchpad>/painter-arch.mjs   (kept with the plan; prints "thresholds: {...}")
+ * Do not hand-tune a threshold: a hand-tuned quantile is just a number that used to be true.
+ *
+ * The kill fractions that produced these thresholds are the owner's density dial per area
+ * (RAIL 0 / SEAM 0.22 / ETIP 0.44 / EMASS 0.42 / NE 0.60 / NW 0.48 / WEND 0.42 / WMID 0.40).
+ * "Reduce more later" = raise fractions, re-run the sim, transcribe the new table, and check
+ * the nested-subset property (a deeper cut removes a superset -- measured 0 violations).
+ *
+ * MEASURED (2026-08-15, digit-for-digit against the shipped implementation): shipped
+ * 6,442 -> 4,739 (-26.4%), composition 8,952 -> 5,974, hero+mid 2,173 -> 2,002, draws 34 -> 34,
+ * 120 u-cell density contrast p90/p50 1.71 -> 2.35, >=55 u meadow gaps 7 -> 20, apron 99%
+ * green, maple 251 / cypress 188 / blossom 110 shipped. Salts 47/53/61/67/73 are new; the
+ * ledger of taken salts lives with the sim.
+ */
+const FOREST_ARCH_SALT_WOODS_A = 47;
+const FOREST_ARCH_SALT_WOODS_B = 53;
+const FOREST_ARCH_SALT_RIM = 61;
+const FOREST_ARCH_SALT_SINGLE = 67;
+const FOREST_ARCH_SALT_SETPIECE = 73;
+const FOREST_ARCH_OCT_A = 0.62;
+const FOREST_ARCH_OCT_B = 0.38;
+const FOREST_ARCH_CELL_B = 190;
+/** Field-units of feathered treeline below each threshold (extra kills, ramped). */
+const FOREST_ARCH_RIM = 0.05;
+/** Field-units past the threshold where pioneer singles may stand, and their survival rate. */
+const FOREST_ARCH_SINGLE_BAND = 0.055;
+const FOREST_ARCH_P_SINGLE = 0.16;
+/** The near field the carve never touches -- see the pool-gate note in the header. */
+const FOREST_ARCH_POOL_RAIL_D = 520;
+/** Per-area woods-field cell size (WEND is the small-stand end of the island). */
+const FOREST_ARCH_AREA = Object.freeze({
+    RAIL: Object.freeze({ cellA: 430 }),
+    SEAM: Object.freeze({ cellA: 430 }),
+    ETIP: Object.freeze({ cellA: 430 }),
+    EMASS: Object.freeze({ cellA: 430 }),
+    NE: Object.freeze({ cellA: 430 }),
+    NW: Object.freeze({ cellA: 430 }),
+    WEND: Object.freeze({ cellA: 280 }),
+    WMID: Object.freeze({ cellA: 430 }),
+});
+/**
+ * FROZEN quantiles -- never recompute at runtime, never hand-tune. See the header.
+ * Full precision on purpose: freezing the sim's 3-decimal PRINTS instead flipped six
+ * borderline far-LOD trees (one sat 0.0002 inside the pioneer band with the rounded
+ * threshold and outside it with the true quantile) -- a quantile is a boundary, and a
+ * boundary transcribed at display precision is a slightly different boundary.
+ */
+const FOREST_ARCH_T_BY_AREA = Object.freeze({
+    RAIL: Infinity,
+    SEAM: 0.5461778533329178,
+    ETIP: 0.7412547903338985,
+    EMASS: 0.5112268141142399,
+    NE: 0.4815023785335493,
+    NW: 0.45078295363170506,
+    WEND: 0.5706738537333954,
+    WMID: 0.5088732705474063,
+});
+/** The ch4 hero meadow: an ellipse in the rail's frame, core empty, rim feathered. */
+const FOREST_ARCH_MEADOW = Object.freeze({
+    cx: -432, cz: -277, ux: -0.25, uz: -0.97, a: 190, b: 130, core: 0.72,
+});
+/** One mature shore broadleaf stands alone in the meadow -- snapped to a real placement. */
+const FOREST_ARCH_WITNESS = Object.freeze({ x: -468.7, z: -418.4, keepR: 10 });
+const FOREST_ARCH_LONE = Object.freeze({
+    cx: -997.3, cz: -884.4, r: 110, keepR: 14,
+});
+/** Two meadow bites that interlock the seam: one from the green side, one from the gold. */
+const FOREST_ARCH_FINGERS = Object.freeze([
+    Object.freeze({ cx: -536, cz: -1412, r: 150 }),
+    Object.freeze({ cx: -395, cz: -1708, r: 140 }),
+]);
+/** The cypress grove is punctuation; the carve must not eat the black notes. */
+const FOREST_ARCH_CYPRESS = Object.freeze({ cx: -1086, cz: -1753, r: 240 });
+/**
+ * The autumn shore TERRACE: autumnBoost pays where region AND apron are high, i.e. one
+ * terrace above the green apron (shore 45..200 u). Protected so the owner's red-maple run
+ * and the gold shoreline stay a continuous painted band under the finale camera.
+ */
+const FOREST_ARCH_TERRACE = Object.freeze({
+    region: 0.55, shoreLo: 45, shoreHi: 200, zMin: -1400,
+});
+
+/** The two-octave woods field the thresholds are quantiles OF. */
+function forestWoodsAt(x, z, cellA) {
+    return (FOREST_ARCH_OCT_A * patchNoise(x, z, cellA, FOREST_ARCH_SALT_WOODS_A))
+        + (FOREST_ARCH_OCT_B * patchNoise(x, z, FOREST_ARCH_CELL_B, FOREST_ARCH_SALT_WOODS_B));
+}
+
+/**
+ * Which named area is this site in? Ruled boundaries, deliberately: the thresholds were
+ * calibrated per THESE areas, so a wobbled boundary needs a re-emitted table (the plan holds
+ * a salt-79 wobble in reserve if the aerial shows the seams).
+ */
+function forestAreaOf(x, z, dRail) {
+    if (dRail <= FOREST_ARCH_POOL_RAIL_D) return 'RAIL';
+    const along = (x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1]);
+    if (z < -1500) return along > FOREST_REGION_SPLIT ? 'NE' : 'NW';
+    if (x > 700) return 'ETIP';
+    if (along > FOREST_REGION_SPLIT + 420) return 'EMASS';
+    if (Math.abs(along - FOREST_REGION_SPLIT) <= 420) return 'SEAM';
+    if (x < -1200) return 'WEND';
+    return 'WMID';
+}
+
+/**
+ * The archipelago predicate. Order matters and is the sim's, verified digit-for-digit:
+ * set-pieces override the pool gate (the hero meadow lives ON the rail corridor), the pool
+ * gate overrides the woods field, exemptions sit between them. Reads only (x, z) and fields --
+ * never speciesId or lod -- so filtering the final placements array is exactly equivalent to
+ * this in-loop rejection (every downstream mechanism is site-local; the call site's
+ * !spec.grove guard is the blossom exemption, matching the glade's own idiom).
+ */
+function archKeep(x, z, dRail, shoreDist, rail) {
+    const rx = Math.round(x);
+    const rz = Math.round(z);
+    {
+        const dd = Math.hypot(x - FOREST_ARCH_LONE.cx, z - FOREST_ARCH_LONE.cz);
+        if (dd < FOREST_ARCH_LONE.keepR) return true;
+        if (dd < FOREST_ARCH_LONE.r * 0.8) return false;
+        if (dd < FOREST_ARCH_LONE.r) {
+            const rim = (dd - (FOREST_ARCH_LONE.r * 0.8)) / (FOREST_ARCH_LONE.r * 0.2);
+            if (hash2(rx, rz, FOREST_ARCH_SALT_SETPIECE) > ((rim * 0.9) + 0.1)) return false;
+        }
+    }
+    {
+        const px = x - FOREST_ARCH_MEADOW.cx;
+        const pz = z - FOREST_ARCH_MEADOW.cz;
+        const lu = ((px * FOREST_ARCH_MEADOW.ux) + (pz * FOREST_ARCH_MEADOW.uz))
+            / FOREST_ARCH_MEADOW.a;
+        const lv = ((px * -FOREST_ARCH_MEADOW.uz) + (pz * FOREST_ARCH_MEADOW.ux))
+            / FOREST_ARCH_MEADOW.b;
+        const e = Math.sqrt((lu * lu) + (lv * lv));
+        if (e < 1) {
+            const wd = Math.hypot(x - FOREST_ARCH_WITNESS.x, z - FOREST_ARCH_WITNESS.z);
+            if (wd < FOREST_ARCH_WITNESS.keepR) return true;
+            if (e < FOREST_ARCH_MEADOW.core) return false;
+            const rim = (e - FOREST_ARCH_MEADOW.core) / (1 - FOREST_ARCH_MEADOW.core);
+            if (hash2(rx, rz, FOREST_ARCH_SALT_SETPIECE) > ((rim * 0.85) + 0.15)) return false;
+        }
+    }
+    for (let f = 0; f < FOREST_ARCH_FINGERS.length; f += 1) {
+        const fin = FOREST_ARCH_FINGERS[f];
+        const dd = Math.hypot(x - fin.cx, z - fin.cz);
+        if (dd < fin.r * 0.75) return false;
+        if (dd < fin.r) {
+            const rim = (dd - (fin.r * 0.75)) / (fin.r * 0.25);
+            if (hash2(rx, rz, FOREST_ARCH_SALT_SETPIECE) > ((rim * 0.85) + 0.15)) return false;
+        }
+    }
+    if (dRail <= FOREST_ARCH_POOL_RAIL_D) return true;
+    if (rail.length) {
+        const ccx = (Math.floor(x / FOREST_CHUNK) + 0.5) * FOREST_CHUNK;
+        const ccz = (Math.floor(z / FOREST_CHUNK) + 0.5) * FOREST_CHUNK;
+        if (railDist2(ccx, ccz, rail)
+            <= FOREST_ARCH_POOL_RAIL_D * FOREST_ARCH_POOL_RAIL_D) return true;
+    }
+    if (Math.hypot(x - FOREST_ARCH_CYPRESS.cx, z - FOREST_ARCH_CYPRESS.cz)
+        < FOREST_ARCH_CYPRESS.r) return true;
+    if (forestRegionAt(x, z) > FOREST_ARCH_TERRACE.region && z > FOREST_ARCH_TERRACE.zMin
+        && shoreDist >= FOREST_ARCH_TERRACE.shoreLo
+        && shoreDist < FOREST_ARCH_TERRACE.shoreHi) return true;
+    const area = forestAreaOf(x, z, dRail);
+    const T = FOREST_ARCH_T_BY_AREA[area];
+    if (!Number.isFinite(T)) return true;
+    const W = forestWoodsAt(x, z, FOREST_ARCH_AREA[area].cellA);
+    if (W > T + FOREST_ARCH_SINGLE_BAND) return false;
+    if (W > T) return hash2(rx, rz, FOREST_ARCH_SALT_SINGLE) < FOREST_ARCH_P_SINGLE;
+    if (W > T - FOREST_ARCH_RIM) {
+        const rim = (W - (T - FOREST_ARCH_RIM)) / FOREST_ARCH_RIM;
+        if (hash2(rx, rz, FOREST_ARCH_SALT_RIM) < rim * 0.8) return false;
+    }
+    return true;
+}
 const FOREST_SHORE_GREEN = 45;
 const FOREST_SHORE_FADE = 95;
 /**
@@ -335,6 +541,22 @@ function bandFit(species, y) {
 }
 
 /**
+ * Which side of the island is this? 0 = the green west, 1 = the autumn east, seamed at the
+ * cherry grove with a wandering boundary. ONE definition, shared by pickSpecies (which paints
+ * with it) and the archipelago stage (whose shore terrace protects with it) — the two must
+ * never disagree about where the autumn side begins.
+ */
+function forestRegionAt(x, z) {
+    const wander = (patchNoise(x, z, FOREST_REGION_WANDER_CELL, FOREST_REGION_WANDER_SALT)
+        - 0.5) * FOREST_REGION_WANDER_AMP;
+    const along = (x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1]);
+    return Math.max(0, Math.min(
+        1,
+        ((along - (FOREST_REGION_SPLIT + wander)) / FOREST_REGION_FEATHER) + 0.5,
+    ));
+}
+
+/**
  * Pick a species for a site. The zone patch is what makes stands rather than confetti: it
  * varies over ~500 u, i.e. several canopy diameters, which is the width §1b R5 measured on the
  * reference island (2-10 canopy diameters per zone).
@@ -369,13 +591,7 @@ function pickSpecies(x, y, z, species, zoneCell, shoreDist) {
         // tried first and what each of them measured.
         // WHICH SIDE OF THE ISLAND IS THIS? A smooth regional gradient, seam wandering, with
         // the short green apron at the water as the one remaining distance term.
-        const wander = (patchNoise(x, z, FOREST_REGION_WANDER_CELL, FOREST_REGION_WANDER_SALT)
-            - 0.5) * FOREST_REGION_WANDER_AMP;
-        const along = (x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1]);
-        const region = Math.max(0, Math.min(
-            1,
-            ((along - (FOREST_REGION_SPLIT + wander)) / FOREST_REGION_FEATHER) + 0.5,
-        ));
+        const region = forestRegionAt(x, z);
         const apronT = Math.max(0, Math.min(
             1,
             (shoreDist - FOREST_SHORE_GREEN) / (FOREST_SHORE_FADE - FOREST_SHORE_GREEN),
@@ -585,7 +801,8 @@ export function scatterZonedForest(heightAt, {
              * bake marches terrain only so trees cast nothing, and this world has no reflector.
              */
             if (visibilityCull && !railSeesForestSite(x, z)) continue;
-            const spec = pickSpecies(x, y, z, species, zoneCell, shoreAt(x, z));
+            const shoreDistHere = shoreAt(x, z);
+            const spec = pickSpecies(x, y, z, species, zoneCell, shoreDistHere);
             if (!spec) continue;
 
             // CLEARINGS — the aerial's most visible difference from the reference island.
@@ -608,6 +825,12 @@ export function scatterZonedForest(heightAt, {
                     if (hash2(i, j, 23) < rim) continue;
                 }
             }
+
+            // THE ARCHIPELAGO CARVE -- see the FOREST_ARCH header. After the glade so the
+            // stage order matches the sim the thresholds were calibrated in; before the
+            // stage pick so a carved site costs nothing further. The blossom grove is exempt
+            // exactly as it is from the glade; framing trees never enter this loop.
+            if (!spec.grove && !archKeep(x, z, dRail, shoreDistHere, rail)) continue;
 
             const stage = pickStage(spec, hash2(i, j, 8));
 
