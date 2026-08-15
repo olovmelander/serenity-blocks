@@ -56,6 +56,8 @@ import {
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
+import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
+import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
@@ -326,6 +328,38 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── WAVE 0 BISECT LEVERS (docs/ODYSSEY_CH6_SPACE_OVERHAUL_PLAN_2026-08.md §5) ──
+// One URL flag per cost family so gpu-split can price the incumbent tier by tier:
+//   ?odysseyCh6NoDome=1    — the per-fragment-FBM void sky dome
+//   ?odysseyCh6NoHeroes=1  — the NDC-marched hero triad (black hole / gas giant / galaxy)
+//   ?odysseyCh6NoNebula=1  — both additive FBM nebula tiers + the pillar
+//   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
+//   ?odysseyCh6NoStars=1   — both instanced starfield tiers
+// Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
+// differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
+// never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
+// and the aurora bridge (3 curtains) are deliberately unlevered: both are below the
+// 65.536 µs timer tick on Lane A and the garland is the chapter's on-law template.
+function readCh6UrlFlag(name) {
+    if (typeof window === 'undefined') return false;
+    try {
+        const value = new URLSearchParams(window.location?.search || '').get(name);
+        return value === '1' || value === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function resolveCh6BisectLevers() {
+    return {
+        dome: !readCh6UrlFlag('odysseyCh6NoDome'),
+        heroes: !readCh6UrlFlag('odysseyCh6NoHeroes'),
+        nebula: !readCh6UrlFlag('odysseyCh6NoNebula'),
+        dust: !readCh6UrlFlag('odysseyCh6NoDust'),
+        stars: !readCh6UrlFlag('odysseyCh6NoStars'),
+    };
+}
+
 export function createCosmicExpanseEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'cosmic-expanse-environment';
@@ -370,49 +404,70 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.userData.corridorFrame = corridorFrame;
 
     const particleCount = options.particleCount || 1000;
+    const bisect = resolveCh6BisectLevers();
+    group.userData.ch6Bisect = bisect;
 
-    // 0. Nebula void dome
-    const voidSky = createVoidSky(uniforms);
-    group.add(voidSky);
-    group.userData.voidSky = voidSky;
+    // 0. Nebula void dome. The BAKED dome ships (Wave 2 swap); the retired FBM dome
+    // stays restorable behind `?odysseyCh6ProceduralDome=1` (ADR-0015 escape hatch,
+    // gpu-split configuration `ch6-procedural-dome` — its differential is the cost of
+    // ADDING the old dome back).
+    const voidSky = !bisect.dome ? null
+        : (readCh6UrlFlag('odysseyCh6ProceduralDome')
+            ? createVoidSky(uniforms)
+            : createBakedVoidSky(uniforms));
+    if (voidSky) {
+        group.add(voidSky);
+        group.userData.voidSky = voidSky;
+    }
 
     // 1. The black hole — the act's DESTINATION OMEN. Starts far/small in the upper
     // third and LOOMS larger as the camera approaches the 6→7 seam (driven by uApproach
     // in update(): scale 1.25→3.0, z -900→-640, y 20→70 so it rides the upper third and
     // never sits as a tiny dot on the bottom edge — the #1 Space hero fix). Initial pose
     // matches APPROACH.*A so the first frame / smoke test agrees with the march.
-    const blackHole = createBlackHole(uniforms);
-    blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
-    blackHole.rotation.x = -1.12;
-    blackHole.scale.setScalar(APPROACH.bhScaleA);
-    group.add(blackHole);
-    group.userData.blackHole = blackHole;
+    const blackHole = bisect.heroes ? createBlackHole(uniforms) : null;
+    if (blackHole) {
+        blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
+        blackHole.rotation.x = -1.12;
+        blackHole.scale.setScalar(APPROACH.bhScaleA);
+        group.add(blackHole);
+        group.userData.blackHole = blackHole;
+    }
 
     // 1b. Hero gas giant
-    const heroPlanet = createHeroPlanet(uniforms);
-    group.add(heroPlanet);
-    group.userData.heroPlanet = heroPlanet;
+    const heroPlanet = bisect.heroes ? createHeroPlanet(uniforms) : null;
+    if (heroPlanet) {
+        group.add(heroPlanet);
+        group.userData.heroPlanet = heroPlanet;
+    }
 
     // 1c. Distant galaxy / quasar — a sharp, persistent deep-space focal anchor
     // up and to the right of the hero, so Space always has a bright far point.
-    const galaxy = createDistantGalaxy(uniforms);
-    group.add(galaxy);
-    group.userData.galaxy = galaxy;
+    const galaxy = bisect.heroes ? createDistantGalaxy(uniforms) : null;
+    if (galaxy) {
+        group.add(galaxy);
+        group.userData.galaxy = galaxy;
+    }
 
     // 2. Matter spiralling into the void (aligned to the disk plane). Tracks the BH
     // omen's transform each frame in update() so the infall stays seated on the hole as
     // it looms (starts at the BH entry pose).
-    const debris = createSuctionParticles(uniforms, particleCount);
-    debris.position.copy(blackHole.position);
-    debris.rotation.x = -1.12;
-    debris.scale.copy(blackHole.scale);
-    group.add(debris);
-    group.userData.debris = debris;
+    const debris = bisect.dust ? createSuctionParticles(uniforms, particleCount) : null;
+    if (debris) {
+        // Initial pose = the BH entry pose (APPROACH.*A) rather than a copy of the hole's
+        // transform, so the infall stays seated even when the hero tier is bisected out
+        // (update() only re-seats it when BOTH exist).
+        debris.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
+        debris.rotation.x = -1.12;
+        debris.scale.setScalar(APPROACH.bhScaleA);
+        group.add(debris);
+        group.userData.debris = debris;
+    }
 
     // 6. Crisp pinpoint starfield — TWO depth tiers so Space reads DEEP + CLEAR
     // with sharp hot-white pinpoints (the opposite of Sky's haze): a sparse, far
     // shell of small hard pinpoints + a nearer tier of brighter, fewer stars.
-    const starsFar = createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
+    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
         radiusMin: 200,
         radiusSpan: 130,
         sizeBase: 0.7,
@@ -420,10 +475,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
         coreExp: 2.6,
         name: 'void-stars-far',
     });
-    group.add(starsFar);
-    group.userData.starsFar = starsFar;
+    if (starsFar) {
+        group.add(starsFar);
+        group.userData.starsFar = starsFar;
+    }
 
-    const starsNear = createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
+    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
         radiusMin: 120,
         radiusSpan: 70,
         // B3b — crisper punch-through near tier so stars read OVER the brightest cloud:
@@ -437,8 +494,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
         brightWeight: 0.7,
         name: 'void-stars-near',
     });
-    group.add(starsNear);
-    group.userData.starsNear = starsNear;
+    if (starsNear) {
+        group.add(starsNear);
+        group.userData.starsNear = starsNear;
+    }
 
     // 2b. Nebula volume — WISPY, color-varied, parallax-tiered (B3b). The flat-pink
     // smoke that dominated 75% of the chapter is broken into fewer/smaller/dimmer near
@@ -446,7 +505,18 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // camera travel reveals parallax depth (near + far + void-dome backstop = 3 planes).
     // B3 (Overdraw): count CAPPED + per-sprite size/alpha nudged up so the same cloud mass
     // reads with ~⅔ the billboards (fewer-bigger — less overdraw, no uniform-haze regression).
-    const nebulaVolume = createNebulaVolume(
+    // WAVE 3 SWAP: the sculpted nebula FIELD ships; the additive sprite tiers + the
+    // billboard pillar are the retired incumbent, restorable as a TRUE swap (field
+    // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
+    // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
+    const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
+    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL(uniforms) : null;
+    if (nebulaField) {
+        corridor.add(nebulaField.mesh);
+        group.userData.nebulaField = nebulaField.mesh;
+    }
+
+    const nebulaVolume = !(bisect.nebula && nebulaSprites) ? null : createNebulaVolume(
         uniforms,
         Math.min(NEBULA_NEAR_CAP, Math.max(30, Math.floor(particleCount * 0.26))),
         {
@@ -461,13 +531,15 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-points',
         },
     );
-    corridor.add(nebulaVolume);
-    group.userData.nebulaVolume = nebulaVolume;
+    if (nebulaVolume) {
+        corridor.add(nebulaVolume);
+        group.userData.nebulaVolume = nebulaVolume;
+    }
 
     // 2c. FAR nebula tier — large, very dim, deep, drifting much slower for parallax.
     // B3 (Overdraw): the far tier's huge sprites (the biggest fill cost) get the deepest
     // count cut + cap; size/alpha bumped slightly so the deep backdrop body still reads.
-    const nebulaFar = createNebulaVolume(
+    const nebulaFar = !(bisect.nebula && nebulaSprites) ? null : createNebulaVolume(
         uniforms,
         Math.min(NEBULA_FAR_CAP, Math.max(20, Math.floor(particleCount * 0.3))),
         {
@@ -483,15 +555,17 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-far',
         },
     );
-    corridor.add(nebulaFar);
-    group.userData.nebulaFar = nebulaFar;
+    if (nebulaFar) {
+        corridor.add(nebulaFar);
+        group.userData.nebulaFar = nebulaFar;
+    }
 
     // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams-v3 /
     // blood-moon density). TWO tiers for parallax: a NEAR tier of brighter iridescent
     // motes that fills the corridor with twinkling life, plus a FAR tier of fine dim dust
     // for deep parallax. Both INSTANCED + CAPPED + scaled off particleCount; the near tier
     // drifts faster than the far for a strong parallax read as the camera dollies.
-    const dustNear = createCosmicDust(
+    const dustNear = !bisect.dust ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_NEAR_CAP, Math.max(120, Math.floor(particleCount * 0.40))),
         {
@@ -508,10 +582,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-near',
         },
     );
-    corridor.add(dustNear);
-    group.userData.dustNear = dustNear;
+    if (dustNear) {
+        corridor.add(dustNear);
+        group.userData.dustNear = dustNear;
+    }
 
-    const dustFar = createCosmicDust(
+    const dustFar = !bisect.dust ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_FAR_CAP, Math.max(160, Math.floor(particleCount * 0.5))),
         {
@@ -528,14 +604,18 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-far',
         },
     );
-    corridor.add(dustFar);
-    group.userData.dustFar = dustFar;
+    if (dustFar) {
+        corridor.add(dustFar);
+        group.userData.dustFar = dustFar;
+    }
 
     // 2d. Hero nebula PILLAR — a one-time Pillars-of-Creation reveal off the mid-act
     // path, faded in via uApproach (mid-chapter beat). Capped to ONE.
-    const nebulaPillar = createNebulaPillar(uniforms, corridorFrame);
-    group.add(nebulaPillar);
-    group.userData.nebulaPillar = nebulaPillar;
+    const nebulaPillar = (bisect.nebula && nebulaSprites) ? createNebulaPillar(uniforms, corridorFrame) : null;
+    if (nebulaPillar) {
+        group.add(nebulaPillar);
+        group.userData.nebulaPillar = nebulaPillar;
+    }
 
     // 2f. ASTEROID GARLAND (creative plan asset 4): 12 dark silhouette rocks crossing
     // the corridor diagonally through the dead-air stretch (progress 0.35–0.65 of the
@@ -552,9 +632,11 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // ~18% local progress, becoming the first crimson nebula filaments.
     // 2h. STREAK-MOTE TIER (creative plan asset 6): a sparse rail-hugging tier of
     // slightly elongated quads that sell forward speed through the long middle act.
-    const streakMotes = createStreakMotes(uniforms, 90);
-    corridor.add(streakMotes);
-    group.userData.streakMotes = streakMotes;
+    const streakMotes = bisect.dust ? createStreakMotes(uniforms, 90) : null;
+    if (streakMotes) {
+        corridor.add(streakMotes);
+        group.userData.streakMotes = streakMotes;
+    }
 
     // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
     // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
@@ -563,17 +645,19 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const auroraBridge = createAuroraFilamentBridge(uniforms);
     group.add(auroraBridge);
     group.userData.auroraBridge = auroraBridge;
+    // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
+    // only what was actually built.
     group.userData.entryContinuity = {
-        stars: [starsFar, starsNear],
-        destination: [blackHole, debris],
+        stars: [starsFar, starsNear].filter(Boolean),
+        destination: [blackHole, debris].filter(Boolean),
         // EARTH AT THE SUMMIT: the gas giant is staged on its own GLOBAL-progress reveal
         // so it can rise over the still-bright Ch5 sky (see SUMMIT_EARTH_REVEAL). Every
         // other Space element — the galaxy included — stays behind the post-boundary
         // gate, so nothing but the earth bleeds into the daylight frame.
-        earth: [heroPlanet],
-        heroes: [galaxy],
-        nebula: [nebulaVolume, nebulaFar],
-        clutter: [dustNear, dustFar, asteroids, streakMotes],
+        earth: [heroPlanet].filter(Boolean),
+        heroes: [galaxy].filter(Boolean),
+        nebula: [nebulaVolume, nebulaFar].filter(Boolean),
+        clutter: [dustNear, dustFar, asteroids, streakMotes].filter(Boolean),
         // The carried aurora filaments self-gate on uApproach, which is 0 through all of
         // Ch5 — i.e. fully green and fully alive. Without this they would hang in the
         // daylight sky the moment the early ignite makes the chapter visible.
@@ -616,6 +700,16 @@ export function createCosmicExpanseEnvironment(options = {}) {
     });
 
     return group;
+}
+
+function createBakedVoidSky(uniforms) {
+    // WAVE 2 (Space overhaul): the shipped dome. One texture fetch per fragment from
+    // a seeded CPU bake, replacing the ~15 per-fragment FBM fields that Wave 0
+    // measured at 13.37 ms of the 17.04 ms Lane B reef frame (78%, plus the whole
+    // frame tail). Same contract as the FBM dome: renderOrder −100, BackSide,
+    // depthWrite off, uVoidSkyOpacity staging.
+    const { mesh } = createBakedVoidSkyTSL(uniforms.uTime, uniforms.uEnergy, uniforms.uVoidSkyOpacity);
+    return mesh;
 }
 
 function createVoidSky(uniforms) {
@@ -1499,6 +1593,17 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
     if (group.userData.voidSky) {
         group.userData.voidSky.visible = voidSkyOpacity > 0.002;
+    }
+
+    // The sculpted nebula field stages itself OUTSIDE the entryContinuity buckets:
+    // setOpacityScale would flip its opaque material transparent and write the dead
+    // `material.opacity` (opacityNode owns opacity in r181). Same staging product,
+    // delivered as a uniform driving the dithered opaque dissolve.
+    const nebulaFieldMesh = group.userData.nebulaField;
+    if (nebulaFieldMesh?.userData?.uReveal) {
+        const fieldReveal = entryState.nebulaReveal * spaceReveal * chapterOpacity;
+        nebulaFieldMesh.userData.uReveal.value = fieldReveal;
+        nebulaFieldMesh.visible = fieldReveal > 0.002;
     }
 
     const entryTargets = group.userData.entryContinuity;
