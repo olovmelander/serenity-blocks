@@ -277,10 +277,16 @@ const FOREST_ARCH_AREA = Object.freeze({
  * borderline far-LOD trees (one sat 0.0002 inside the pioneer band with the rounded
  * threshold and outside it with the true quantile) -- a quantile is a boundary, and a
  * boundary transcribed at display precision is a slightly different boundary.
+ *
+ * RE-EMITTED 2026-08-15 after the broadleaf ceiling, which removes 16 sites UPSTREAM of this
+ * stage and therefore changes the pool these are quantiles of. Only SEAM moved (0.5461778 ->
+ * 0.5469368) and that is the check that the re-emission was sound rather than noise: every one
+ * of the ceiling's 16 trees falls in the SEAM area, so exactly one threshold had any reason to
+ * move. The other seven are byte-identical.
  */
 const FOREST_ARCH_T_BY_AREA = Object.freeze({
     RAIL: Infinity,
-    SEAM: 0.5461778533329178,
+    SEAM: 0.5469368243510903,
     ETIP: 0.7412547903338985,
     EMASS: 0.5112268141142399,
     NE: 0.4815023785335493,
@@ -520,6 +526,31 @@ function patchNoise(x, z, cell, salt) {
  * A band is a soft window, not a hard cut: a hard altitude boundary draws a CONTOUR LINE
  * across the island in species, which is the one thing a zone boundary must never look like.
  */
+/**
+ * THE BROADLEAF CEILING (owner-reported, 2026-08-15, circled on three editor screenshots:
+ * "remove these lod trees fully to the left that is not a spruces... a bit high on the
+ * mountain").
+ *
+ * FOREST_BAND_FLOOR below is deliberately generous — altitude should modulate rather than
+ * dictate, and that floor is what stopped the journey running 100% one species. But a floor
+ * that never reaches zero lets a species win ANYWHERE its patch field is strong, however
+ * absurd the altitude, and the owner found where that lands: thirteen SHORE broadleaf standing
+ * at y=483..515 on the massif's west shoulder, 190 m above their own 288..325 band, reading as
+ * flat green plates on an alpine face. Above y=420 the leaf trees actually OUTNUMBERED the
+ * conifers (22 to 20) — on a mountain.
+ *
+ * Conifers are deliberately NOT ceilinged. A fir on a high ridge IS the treeline, the
+ * subalpine fir legitimately reaches y=613 up there, and keeping it is the owner's own
+ * criterion ("that is not a spruces"). So this is a BUILDER rule, not an altitude rule: it
+ * encodes the distinction the owner drew by eye, which is between kinds of tree rather than
+ * between heights.
+ *
+ * The blossom grove is exempt — the same exemption it already holds from the glade and the
+ * archipelago carve. It is the authored showpiece, its high trees are hero-LOD beside the
+ * rail, and the owner circled the far green clump three times and never the pink one.
+ */
+const FOREST_BROADLEAF_CEILING = 95;
+
 function bandFit(species, y) {
     const band = FOREST_BANDS[species.band];
     if (!band) return 0;
@@ -811,6 +842,15 @@ export function scatterZonedForest(heightAt, {
             const shoreDistHere = shoreAt(x, z);
             const spec = pickSpecies(x, y, z, species, zoneCell, shoreDistHere);
             if (!spec) continue;
+            // THE BROADLEAF CEILING — see the constant. Enforced HERE, on the winner, rather
+            // than as a zeroed `bandFit`, and the difference is the whole request: zeroing the
+            // fit removes the broadleaf from the contest, so the site is handed to whichever
+            // conifer scored next and thirteen misplaced leaf trees quietly become thirteen new
+            // firs. That is a substitution; the owner asked for a removal. Dropping the winning
+            // site leaves the ground open, which is also what a real treeline does — it thins
+            // toward bare rock rather than swapping species at a contour.
+            if (spec.builder === 'broadleaf' && !spec.grove
+                && y > FOREST_BANDS[spec.band].hi + FOREST_BROADLEAF_CEILING) continue;
 
             // CLEARINGS — the aerial's most visible difference from the reference island.
             //

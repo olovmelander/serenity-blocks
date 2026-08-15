@@ -85,7 +85,11 @@ export function create({ scene, camera, params }) {
      * the autumn side) on the RIGHT, west (the green end) on the left.
      */
     const AERIAL = params?.get?.('worldAerial') === '1';
-    const AERIAL_CENTRE = { x: -225, y: 300, z: -625 };
+    const AERIAL_CENTRE = {
+        x: Number(params?.get?.('aerialX') ?? -225),
+        y: Number(params?.get?.('aerialY') ?? 300),
+        z: Number(params?.get?.('aerialZ') ?? -625),
+    };
     const aerialH = Number(params?.get?.('aerialH') || 1500);
     const aerialR = Number(params?.get?.('aerialR') || 2600);
     const aerialYaw = Number(params?.get?.('aerialYaw') || 0);
