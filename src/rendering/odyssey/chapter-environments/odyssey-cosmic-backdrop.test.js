@@ -109,7 +109,7 @@ describe('ch6 baked cosmic backdrop (Space overhaul Wave 2)', () => {
     });
 
     it('exposes the defaults the calibration story depends on', () => {
-        expect(COSMIC_BACKDROP_DEFAULTS.width).toBe(512);
+        expect(COSMIC_BACKDROP_DEFAULTS.width).toBe(1024);
         expect(COSMIC_BACKDROP_DEFAULTS.floorBottom.every((c) => c >= 1 / 255)).toBe(true);
     });
 });

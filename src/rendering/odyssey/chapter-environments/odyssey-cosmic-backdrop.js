@@ -33,8 +33,12 @@ import * as THREE from 'three/webgpu';
 import { texture as textureNode, uniform, uv, vec2 } from 'three/tsl';
 
 export const COSMIC_BACKDROP_DEFAULTS = Object.freeze({
-    width: 512,
-    height: 256,
+    // 1024×512 (~260 ms CPU, once, at chapter creation inside the warmup path): at
+    // 512×256 one texel spanned ~4.7° of longitude and the dome rendered as giant
+    // soft blobs — the "blurry wash" the owner flagged. The world bake's 400 ms
+    // budget class is the precedent; this is a look-critical one-time cost.
+    width: 1024,
+    height: 512,
     seed: 61.7,
     // Base floor gradient, bottom → top. ⚠️ Floors are chosen to survive 8-bit
     // quantisation (≥ 1/255 per authored channel): "nothing in a Ghibli frame is

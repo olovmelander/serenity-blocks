@@ -642,8 +642,14 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
     // "aurora gone" fix). The builder existed (createAuroraFilamentBridge, below) but was never
     // added to the group. It self-gates via uApproach so it's present at the handoff.
+    // MISPLACEMENT FIX (owner report 2026-08-15, "the aurora feels misplaced"): the
+    // curtains are authored in the -Z corridor convention (x spread, y overhead,
+    // depth down -Z) but were parented to the chapter GROUP — the exact 43-84 deg
+    // off-axis bug the `cosmic-corridor` frame was built to fix, and every other
+    // ambient field moved there; the bridge never did. Corridor-parented, the
+    // greeting curtains actually hang over the camera's entry stretch.
     const auroraBridge = createAuroraFilamentBridge(uniforms);
-    group.add(auroraBridge);
+    corridor.add(auroraBridge);
     group.userData.auroraBridge = auroraBridge;
     // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
     // only what was actually built.
@@ -1335,15 +1341,18 @@ export function createAuroraFilamentBridge(uniforms) {
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
 
+    // Seats are CORRIDOR-LOCAL (entry ≈ z +150, exit ≈ z −150): the three curtains
+    // span the first half of the travel so the camera passes UNDER them while they
+    // are still green — the 5→6 greeting — instead of watching them off to one side.
     [
         {
-            x: -60, y: 70, z: -140, w: 460, h: 92, rotZ: 0.05,
+            x: -60, y: 70, z: 60, w: 460, h: 92, rotZ: 0.05,
         },
         {
-            x: 40, y: 84, z: -220, w: 540, h: 88, rotZ: -0.04,
+            x: 40, y: 84, z: -30, w: 540, h: 88, rotZ: -0.04,
         },
         {
-            x: -10, y: 92, z: -320, w: 500, h: 80, rotZ: 0.03,
+            x: -10, y: 92, z: -120, w: 500, h: 80, rotZ: 0.03,
         },
     ].forEach((cfg) => {
         const filament = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h, 1, 1), material);
