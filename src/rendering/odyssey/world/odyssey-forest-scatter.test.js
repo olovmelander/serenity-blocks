@@ -427,42 +427,45 @@ describe('density stays an art lever, not a perf regression channel', () => {
 });
 
 /**
- * THE HERO BAND IS A QUALITY TIER, and the measurement that made it one.
+ * THE HERO BAND IS 200 EVERYWHERE — an owner decision, and the history that led to it.
  *
- * The owner asked for the band at 200. On the integrated lane that measured 11.08 p50 /
- * 11.47 p95 against a 10.6 max — over by 0.87 — where 120 measured 9.76 / 9.90. So 200 ships
- * on High and above and the weak tiers keep 120, which is the only version of "more
- * high-detail trees" that a 610M can also run.
+ * The band first shipped as a quality tier: on the pre-carve island (6,442 trees), hero 200
+ * measured 11.08 p50 / 11.47 p95 on the integrated lane against a 10.6 max, so 200 went to
+ * High and above while the weak tiers kept 120. The owner flattened it to 200 on every tier
+ * on 2026-08-15, AFTER the archipelago carve removed 26% of the forest — which retires that
+ * measurement rather than contradicting it. The carved island at 200 has not been paired on
+ * Lane B; if that station's gate ever trips, the split is a table edit away.
  *
- * These assertions exist because a tier table is easy to flatten by accident (one careless
- * edit and every tier reads the same), and the flattening is invisible: the game still runs,
- * it just quietly stops giving good hardware the thing it was given for.
+ * The first assertion is the same guard the tier split had, pointing the other way: the
+ * previous table was easy to flatten by accident, and this one is easy to UN-flatten by
+ * accident — a stray per-tier edit would silently give some machines a different forest.
+ * Either state is fine only when it is deliberate, so the current state is pinned.
  */
-describe('the hero band scales with the quality tier', () => {
-    it('gives High and above the wider band, and the weak tiers the safe one', () => {
-        expect(FOREST_LOD_DISTANCE_BY_TIER.High.hero).toBeGreaterThan(FOREST_LOD_DISTANCE_BY_TIER.Medium.hero);
-        expect(FOREST_LOD_DISTANCE_BY_TIER.Medium.hero).toBe(FOREST_LOD_DISTANCE.hero);
-        ['Ultra', 'Extreme'].forEach((t) => {
-            expect(forestLodDistanceForTier(t).hero).toBe(FOREST_LOD_DISTANCE_BY_TIER.High.hero);
-        });
-        ['Minimal', 'Low'].forEach((t) => {
-            expect(forestLodDistanceForTier(t).hero).toBe(FOREST_LOD_DISTANCE.hero);
+describe('the hero band is flattened to 200, deliberately', () => {
+    it('every tier reads the same 200, matching the base default', () => {
+        expect(FOREST_LOD_DISTANCE.hero).toBe(200);
+        Object.values(FOREST_LOD_DISTANCE_BY_TIER).forEach((row) => {
+            expect(row.hero).toBe(FOREST_LOD_DISTANCE.hero);
         });
     });
 
-    it('falls back to the CONSERVATIVE band for an unknown tier', () => {
-        // An unrecognised name must not silently buy the expensive setting.
+    it('an unknown tier gets the same band as everyone else', () => {
         expect(forestLodDistanceForTier(undefined).hero).toBe(FOREST_LOD_DISTANCE.hero);
         expect(forestLodDistanceForTier('Nonsense').hero).toBe(FOREST_LOD_DISTANCE.hero);
     });
 
-    it('actually changes how many trees are hero, not just the table', () => {
-        const med = run({ lodDistance: forestLodDistanceForTier('Medium') });
-        const high = run({ lodDistance: forestLodDistanceForTier('High') });
-        expect(high.stats.byLod.hero).toBeGreaterThan(med.stats.byLod.hero * 1.4);
-        // ...and it must not blow the draw budget doing it: hero chunks are a quarter the area
-        // of far chunks, so a wider band buys triangles AND batches.
-        expect(high.stats.draws).toBeLessThan(med.stats.draws + 6);
+    it('the band actually widens the hero population, without blowing the draws', () => {
+        // The mechanism check the tier tests used to carry, decoupled from tier names: 200
+        // must buy substantially more hero trees than the old 120 would, and hero chunks are
+        // a quarter the area of far chunks, so the wider band buys triangles AND batches.
+        const narrow = run({ lodDistance: { hero: 120, mid: 520 } });
+        const wide = run({ lodDistance: forestLodDistanceForTier('Medium') });
+        expect(wide.stats.byLod.hero).toBeGreaterThan(narrow.stats.byLod.hero * 1.4);
+        expect(wide.stats.draws).toBeLessThan(narrow.stats.draws + 6);
+        // hero+mid TOTAL is band-independent (non-far is defined by mid, which is pinned at
+        // 520 by the pool-gate contract) — the band only promotes within the corridor.
+        expect(wide.stats.byLod.hero + wide.stats.byLod.mid)
+            .toBe(narrow.stats.byLod.hero + narrow.stats.byLod.mid);
     });
 });
 
