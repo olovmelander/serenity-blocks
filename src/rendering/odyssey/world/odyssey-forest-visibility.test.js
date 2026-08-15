@@ -89,8 +89,17 @@ describe('the baked mask still matches the world it was baked from', () => {
 });
 
 describe('the cull removes the invisible and only the invisible', () => {
+    /**
+     * ⚠️ THE RATIOS HERE MOVED WHEN THE EDGE THINNING LANDED, AND THE CULL DID NOT CHANGE.
+     *
+     * Both this bound and the `far` bound below are shares of the composition set, and the
+     * owner-directed edge thinning now removes its trees from the same far, rail-distant ground
+     * the mask was already condemning. The two overlap, so the cull has less left to take and its
+     * SHARE falls (0.66 -> 0.72) while the work it does is identical in kind. Rebased with the
+     * reason recorded rather than left as a mystery for whoever next sees this number drift.
+     */
     it('removes a large share of the forest', () => {
-        expect(CULLED.stats.trees).toBeLessThan(FULL.stats.trees * 0.70);
+        expect(CULLED.stats.trees).toBeLessThan(FULL.stats.trees * 0.76);
         expect(CULLED.stats.trees).toBeGreaterThan(FULL.stats.trees * 0.40);
     });
 
@@ -110,7 +119,8 @@ describe('the cull removes the invisible and only the invisible', () => {
     it('never takes a hero tree, and barely touches mid', () => {
         expect(CULLED.stats.byLod.hero).toBe(FULL.stats.byLod.hero);
         expect(CULLED.stats.byLod.mid / FULL.stats.byLod.mid).toBeGreaterThan(0.90);
-        expect(CULLED.stats.byLod.far).toBeLessThan(FULL.stats.byLod.far * 0.60);
+        // Rebased with the thinning overlap above — the mask's own behaviour is unchanged.
+        expect(CULLED.stats.byLod.far).toBeLessThan(FULL.stats.byLod.far * 0.70);
     });
 
     /**

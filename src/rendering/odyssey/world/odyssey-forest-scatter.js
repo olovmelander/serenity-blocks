@@ -139,21 +139,61 @@ const FOREST_REGION_WANDER_AMP = 300;
  * which is a rounding error, not a clearing.
  */
 /**
- * THE FAR SIDE THINS OUT (owner direction, 2026-08-15, marked on an aerial).
+ * THE ISLAND THINS TOWARD ITS EDGES, AND INTO STANDS (owner direction, 2026-08-15, marked on an
+ * editor screenshot: "remove half of the distant autumn trees to the far right… also some trees
+ * to the left… work with the composition to get natural forests").
  *
- * Measured along the same region axis the composition uses: the forest runs from -1218 to 1810,
- * and 26% of every tree on the island sits beyond 1000 — the far right of the marked frame, and
- * the part of the island the RAIL never approaches. That coincidence is the justification: this
- * is the one place where thinning is both a composition call and a free LOD, because nothing
- * here is ever seen closer than an aerial.
+ * Replaces a one-term thin that ran along the region axis. That term could reduce the east, but
+ * it could not answer the rest of the brief, because REDUCING and COMPOSING are different jobs:
+ * thinning a uniform carpet evenly just produces a sparser uniform carpet. So this is three
+ * terms, one per sentence of the brief.
  *
- * Progressive rather than a cut-off. A hard edge in density is a line, and this file has spent
- * three iterations learning what lines look like from the air.
+ *  1. RAIL FALLOFF — gentle and symmetric. The journey's surroundings stay dense and the
+ *     extremities thin out, which is both what the owner circled at BOTH ends and what a real
+ *     forest does at an exposed coast. Reviewed first: the two circled areas measured 1,051 and
+ *     1,538 trees and were 100% `far` LOD, i.e. both are defined by being far from the journey.
+ *     One falloff in that quantity therefore answers both circles without two hand-carved rules.
+ *  2. AUTUMN EXTRA — the east mass is the densest ground on the island AND the half the owner
+ *     asked to halve, so it carries an additional term on the region axis. Symmetric thinning
+ *     alone gave the opposite balance to the brief (-66% west against -29% east), because west
+ *     trees are simply further from the rail.
+ *  3. STANDS — a smooth field that decides WHERE the removal falls: hard between groves, gentle
+ *     inside them, so the far island becomes woods with open ground between rather than thinner
+ *     confetti.
+ *
+ * ⚠️ THE STAND TERM IS MEAN-PRESERVING, and that is the whole trick. Its factor averages to 1
+ * over the field, so the distance terms alone decide HOW MANY trees go and the stand field
+ * decides only WHICH. The first cut multiplied by a factor whose mean was 0.35 and silently
+ * cancelled two thirds of the reduction it was meant to be shaping — the east came out at -0%
+ * while the arithmetic said -28%.
+ *
+ * ⚠️ AND THE STAND CELL MUST REPEAT WITHIN THE REGIONS IT MODULATES. The first cut used 780-900 u
+ * cells; the east mass spans barely one of those, so across that whole area the "field" was a
+ * single constant that happened to be high, and it spared everything. A field that does not
+ * repeat inside the area it shapes is not a field, it is a coin flip.
+ *
+ * MEASURED at these values: the east mass the owner asked to halve is down **52%** and the west
+ * green end **26%** ("some"), the island goes 7,672 -> 6,442, and hero+mid is untouched at 2,173
+ * of 2,174 — the near-camera forest the player actually walks through is not part of this at all.
+ *
+ * ⚠️ AND THE MAPLE'S POPULATION IS DEFENDED BY ITS WEIGHT, NOT BY AN EXEMPTION HERE. The autumn
+ * side carries the extra thin, so a density operation aimed at the gold MASS cut the
+ * owner-requested red maple to 46 trees island-wide. Exempting it was tried first and distorted
+ * exactly what it was meant to protect — the maple survived everything and went from 14% of the
+ * east to 37% of it. Thinning decides HOW MANY trees stand somewhere; the species weights decide
+ * WHICH they are. Each lever keeps its own job (maple weight 0.55 -> 0.95, now 434 island-wide).
  */
-const FOREST_FAR_THIN_NEAR = 900;
-const FOREST_FAR_THIN_FAR = 1550;
-/** How much of the far side is removed at full strength — a third of it survives. */
-const FOREST_FAR_THIN_MAX = 0.65;
+const FOREST_THIN_RAIL_NEAR = 520;
+const FOREST_THIN_RAIL_FAR = 1450;
+const FOREST_THIN_RAIL_MAX = 0.30;
+/** The autumn side's extra, applied only where it is already far from the journey. */
+const FOREST_THIN_AUTUMN_MAX = 1.60;
+const FOREST_THIN_AUTUMN_SPAN = 700;
+/** Grove scale. Small enough to repeat many times inside the east and west masses. */
+const FOREST_THIN_STAND_CELL = 300;
+const FOREST_THIN_STAND_SALT = 71;
+/** How strongly stands redistribute the removal. 0 = even thinning, 1 = groves and gaps. */
+const FOREST_THIN_STAND_BITE = 0.90;
 const FOREST_GLADE_CELL = 620;
 const FOREST_GLADE_SALT = 137;
 const FOREST_GLADE_EDGE = 0.68;
@@ -341,7 +381,19 @@ function pickSpecies(x, y, z, species, zoneCell, shoreDist) {
             (shoreDist - FOREST_SHORE_GREEN) / (FOREST_SHORE_FADE - FOREST_SHORE_GREEN),
         ));
         const apron = apronT * apronT * (3 - (2 * apronT));
-        const autumnBoost = s.autumnBand ? FOREST_AUTUMN_BOOST * region * apron : 0;
+        // `autumnGain` lets one species lean on the region harder than the others (the red
+        // maple does; see its entry). Region-shaped, so it cannot leak onto the green side the
+        // way a raised `weight` did — and because it is multiplied by `apron` like every autumn
+        // term, a species that leans hard on the region leans AWAY from the water for free.
+        //
+        // A shore PENALTY was built here first, when the maple was being defended by its global
+        // weight and was winning the waterline on band fit alone. Measured out at 98% green with
+        // the penalty removed against 99% with it: once the maple's advantage became regional,
+        // the penalty had nothing left to push against, so it is gone rather than left standing
+        // as a tuned-looking constant that no longer does anything.
+        const autumnBoost = s.autumnBand
+            ? FOREST_AUTUMN_BOOST * (s.autumnGain || 1) * region * apron
+            : 0;
         // THE GROVE CLAUSE (D4): same shape as the anchor's — rare almost everywhere,
         // decisive inside the top slice of its own patch — but stronger, because a blossom
         // grove is a DESTINATION: five trees of pink scattered thin is noise, a grove you
@@ -374,6 +426,11 @@ function pickStage(species, r) {
 }
 
 /** Squared distance from a site to the nearest sampled rail point, in the XZ plane. */
+/** Clamp to [0, 1] — used by the thinning terms below. */
+function clamp01(v) {
+    return Math.max(0, Math.min(1, v));
+}
+
 function railDist2(x, z, rail) {
     let best = Infinity;
     for (let i = 0; i < rail.length; i += 1) {
@@ -434,6 +491,10 @@ export function shadeColourFor(crown, role) {
 export function scatterZonedForest(heightAt, {
     // ADR-0015: one flag from restoration. `?odysseyWorldNoVisCull=1` puts every tree back.
     visibilityCull = true,
+    /** 'hero' | 'mid' | 'far' — pin every tree to one LOD. Experiment lever; see below. */
+    forceLod = null,
+    /** { hero, mid } distances for this quality tier — see forestLodDistanceForTier. */
+    lodDistance = null,
     cx = -220,
     cz = -620,
     radius = 1750,
@@ -458,8 +519,11 @@ export function scatterZonedForest(heightAt, {
     // 15,000 sites that would each otherwise need their own estimate of where the sea is.
     const shoreAt = buildShoreDistance(heightAt, seaLevel);
     const steps = Math.ceil((radius * 2) / spacing);
-    const heroD2 = FOREST_LOD_DISTANCE.hero ** 2;
-    const midD2 = FOREST_LOD_DISTANCE.mid ** 2;
+    // Per-QUALITY-TIER since 2026-08-15: the owner's hero band of 200 measured +1.57 ms p95 on
+    // the integrated lane and put that station over its max, so the distance is a tier setting
+    // rather than a constant. Defaults to the conservative pair when no tier is supplied.
+    const heroD2 = (lodDistance?.hero ?? FOREST_LOD_DISTANCE.hero) ** 2;
+    const midD2 = (lodDistance?.mid ?? FOREST_LOD_DISTANCE.mid) ** 2;
 
     for (let j = 0; j < steps; j += 1) {
         for (let i = 0; i < steps; i += 1) {
@@ -478,15 +542,34 @@ export function scatterZonedForest(heightAt, {
             const mask = hash2(Math.floor(x / 140), Math.floor(z / 140), 3);
             const falloff = 1 - Math.max(0, (y - (snowStart - 130)) / 130);
             if (hash2(i, j, 4) > (0.35 + (mask * 0.95)) * Math.max(0.12, falloff)) continue;
-            // The far side thins with distance along the region axis — see FOREST_FAR_THIN_NEAR.
-            // Placed BEFORE the species pick so the skipped sites cost nothing at all.
-            const farT = Math.max(0, Math.min(
-                1,
-                (((x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1])) - FOREST_FAR_THIN_NEAR)
-                / (FOREST_FAR_THIN_FAR - FOREST_FAR_THIN_NEAR),
-            ));
-            const farThin = farT * farT * (3 - (2 * farT)) * FOREST_FAR_THIN_MAX;
-            if (hash2(i, j, 29) < farThin) continue;
+            // THE ISLAND THINS TOWARD ITS EDGES, AND INTO STANDS — see FOREST_THIN_RAIL_NEAR
+            // for the three terms and the two mistakes that shaped them. Placed BEFORE the
+            // species pick so a skipped site costs nothing at all.
+            const dRail = rail.length ? Math.sqrt(railDist2(x, z, rail)) : 0;
+            const rt = clamp01((dRail - FOREST_THIN_RAIL_NEAR)
+                / (FOREST_THIN_RAIL_FAR - FOREST_THIN_RAIL_NEAR));
+            const railThin = rt * rt * (3 - (2 * rt)) * FOREST_THIN_RAIL_MAX;
+            const alongAxis = (x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1]);
+            const autumnSide = clamp01((alongAxis - FOREST_REGION_SPLIT) / FOREST_THIN_AUTUMN_SPAN);
+            const at = clamp01((dRail - 500) / 900);
+            const autumnThin = autumnSide * (at * at * (3 - (2 * at))) * FOREST_THIN_AUTUMN_MAX;
+            const standField = patchNoise(x, z, FOREST_THIN_STAND_CELL, FOREST_THIN_STAND_SALT);
+            const thin = clamp01((railThin + autumnThin)
+                * clamp01(1 + (FOREST_THIN_STAND_BITE * (1 - (2 * standField)))));
+            // ACCENT SPECIES ARE EXEMPT, which is why this sits after the species pick.
+            // The red maple is owner-requested by name and is scattered island-wide at 3-4%,
+            // so a thin aimed at the autumn MASS took it to 47 trees island-wide — deleting a
+            // named species as a side effect of reducing a different one. Rare species are
+            // punctuation; they are not what "too many trees" ever meant.
+            // NO SPECIES EXEMPTION, and it sits BEFORE the species pick on purpose. Exempting
+            // rare species from a density operation was tried and distorted the composition it
+            // was meant to protect: the red maple survived everything and went from 14% of the
+            // east to 37% of it. Thinning decides HOW MANY trees stand here; the species table's
+            // weights decide WHICH. Entangling them makes each unable to express its own job —
+            // so the maple's population is defended by its weight (see the species table), not
+            // by an exception here.
+            if (hash2(i, j, 29) < thin) continue;
+
             /**
              * THE RAIL CANNOT SEE THIS SITE. Act II's camera is pinned to a spline over a fixed
              * height field, so "is a canopy here ever visible" is decidable geometry rather than
@@ -504,6 +587,7 @@ export function scatterZonedForest(heightAt, {
             if (visibilityCull && !railSeesForestSite(x, z)) continue;
             const spec = pickSpecies(x, y, z, species, zoneCell, shoreAt(x, z));
             if (!spec) continue;
+
             // CLEARINGS — the aerial's most visible difference from the reference island.
             //
             // Ours was a continuous carpet from the air; theirs is broken by open ground and
@@ -638,7 +722,15 @@ export function scatterZonedForest(heightAt, {
         }
         // Framing trees are hero REGARDLESS of their chunk's bin — the plan's rule. They all
         // stand within ~30 u of the rail, so in practice this confirms rather than overrides.
-        p.lod = p.framing ? 'hero' : chunkLod.get(ck);
+        // `forceLod` is an EXPERIMENT LEVER, not a quality setting: it pins every tree to one
+        // tier so the look of hero-everywhere can be felt in the real game rather than argued
+        // about from a triangle count. It deliberately bypasses the distance bins, so the
+        // chunk-size table below reads the forced tier too — which is the point, and also the
+        // sting: hero chunks are 420 u against far's 1,680, so forcing hero multiplies the
+        // DRAW count as well as the triangles. Projected 2.27 M triangles against a shipped
+        // 314 k, i.e. ~18 ms of forest alone on the integrated lane, where the whole frame
+        // budget is 10.6. Expect it to be unusable there and fine on a discrete GPU.
+        p.lod = forceLod || (p.framing ? 'hero' : chunkLod.get(ck));
     });
 
     // ── bucketing: one InstancedMesh per (chunk, species, LOD) ──

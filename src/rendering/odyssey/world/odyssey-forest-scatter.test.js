@@ -4,7 +4,13 @@ import {
     buildShoreDistance, scatterZonedForest, shadeColourFor,
 } from './odyssey-forest-scatter.js';
 import {
-    FOREST_BANDS, FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES, getForestSpecies,
+    FOREST_BANDS,
+    FOREST_LOD_DISTANCE,
+    FOREST_LOD_DISTANCE_BY_TIER,
+    forestLodDistanceForTier,
+    FOREST_VALUE_ROLES,
+    ODYSSEY_FOREST_SPECIES,
+    getForestSpecies,
 } from './odyssey-forest-species.js';
 import {
     ODYSSEY_SEA_LEVEL,
@@ -234,6 +240,15 @@ describe('density stays an art lever, not a perf regression channel', () => {
      * floor would have made the cheaper, owner-approved island fail a perf guard, which is the
      * gate reading its own units backwards. The floor still exists — a forest that collapses is
      * an art defect — it is just set below where those two decisions land.
+     *
+     * LOWERED AGAIN 0.70 -> 0.55 on 2026-08-15 for a third owner-directed reduction: "remove half
+     * of the distant autumn trees to the far right… also some trees to the left". Measured at
+     * -52% east and -26% west, taking the authored island to 8,952 (0.58 of the incumbent). This
+     * is the third time this floor has moved for an art decision, which is worth naming: the
+     * floor is tracking the owner's taste, not defending a property. What it still catches is a
+     * COLLAPSE — a scatter bug that empties the island — and 0.55 is far enough below 0.58 to be
+     * uncomfortable. If a fourth reduction lands, this should become a shape assertion (stands
+     * exist, every species survives, the rail corridor stays dense) rather than another count.
      */
     it('never grows past the incumbent count, and never collapses', () => {
         // Incumbent, read from the live build: 15,427 high / 6,028 low.
@@ -246,8 +261,8 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // measure the culler's efficiency while claiming to measure the forest's existence.
         expect(HIGH.stats.trees).toBeLessThan(15427 * 1.15);
         expect(LOW.stats.trees).toBeLessThan(6028 * 1.15);
-        expect(COMPOSITION.stats.trees).toBeGreaterThan(15427 * 0.70);
-        expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.70);
+        expect(COMPOSITION.stats.trees).toBeGreaterThan(15427 * 0.55);
+        expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.55);
     });
 
     it('bins LOD by distance to the rail, with all three tiers actually used', () => {
@@ -271,10 +286,56 @@ describe('density stays an art lever, not a perf regression channel', () => {
             const cz = (Math.floor(p.z / 420) + 0.5) * 420;
             return Math.sqrt(Math.min(...RAIL.map((r) => ((cx - r.x) ** 2) + ((cz - r.z) ** 2))));
         };
-        HIGH.placements.filter((p) => p.lod === 'hero').slice(0, 300)
-            .forEach((p) => expect(centreDist(p)).toBeLessThanOrEqual(150 + 1e-6));
-        HIGH.placements.filter((p) => p.lod === 'far').slice(0, 300)
-            .forEach((p) => expect(centreDist(p)).toBeGreaterThan(700 - 1e-6));
+        // Bounds READ FROM THE CONSTANT, not copied from it. This test hardcoded 150/700 and
+        // failed the moment the hero band moved 120 -> 200 — detecting an owner-directed edit
+        // to the very number it exists to describe, which is a test measuring its own copy of
+        // the source of truth. Framing trees are excluded because they are hero by decree
+        // regardless of distance (the plan's rule), so they are not evidence about binning.
+        const scattered = HIGH.placements.filter((p) => !p.framing);
+        scattered.filter((p) => p.lod === 'hero').slice(0, 300)
+            .forEach((p) => expect(centreDist(p)).toBeLessThanOrEqual(FOREST_LOD_DISTANCE.hero + 1e-6));
+        scattered.filter((p) => p.lod === 'far').slice(0, 300)
+            .forEach((p) => expect(centreDist(p)).toBeGreaterThan(FOREST_LOD_DISTANCE.mid - 1e-6));
+    });
+});
+
+/**
+ * THE HERO BAND IS A QUALITY TIER, and the measurement that made it one.
+ *
+ * The owner asked for the band at 200. On the integrated lane that measured 11.08 p50 /
+ * 11.47 p95 against a 10.6 max — over by 0.87 — where 120 measured 9.76 / 9.90. So 200 ships
+ * on High and above and the weak tiers keep 120, which is the only version of "more
+ * high-detail trees" that a 610M can also run.
+ *
+ * These assertions exist because a tier table is easy to flatten by accident (one careless
+ * edit and every tier reads the same), and the flattening is invisible: the game still runs,
+ * it just quietly stops giving good hardware the thing it was given for.
+ */
+describe('the hero band scales with the quality tier', () => {
+    it('gives High and above the wider band, and the weak tiers the safe one', () => {
+        expect(FOREST_LOD_DISTANCE_BY_TIER.High.hero).toBeGreaterThan(FOREST_LOD_DISTANCE_BY_TIER.Medium.hero);
+        expect(FOREST_LOD_DISTANCE_BY_TIER.Medium.hero).toBe(FOREST_LOD_DISTANCE.hero);
+        ['Ultra', 'Extreme'].forEach((t) => {
+            expect(forestLodDistanceForTier(t).hero).toBe(FOREST_LOD_DISTANCE_BY_TIER.High.hero);
+        });
+        ['Minimal', 'Low'].forEach((t) => {
+            expect(forestLodDistanceForTier(t).hero).toBe(FOREST_LOD_DISTANCE.hero);
+        });
+    });
+
+    it('falls back to the CONSERVATIVE band for an unknown tier', () => {
+        // An unrecognised name must not silently buy the expensive setting.
+        expect(forestLodDistanceForTier(undefined).hero).toBe(FOREST_LOD_DISTANCE.hero);
+        expect(forestLodDistanceForTier('Nonsense').hero).toBe(FOREST_LOD_DISTANCE.hero);
+    });
+
+    it('actually changes how many trees are hero, not just the table', () => {
+        const med = run({ lodDistance: forestLodDistanceForTier('Medium') });
+        const high = run({ lodDistance: forestLodDistanceForTier('High') });
+        expect(high.stats.byLod.hero).toBeGreaterThan(med.stats.byLod.hero * 1.4);
+        // ...and it must not blow the draw budget doing it: hero chunks are a quarter the area
+        // of far chunks, so a wider band buys triangles AND batches.
+        expect(high.stats.draws).toBeLessThan(med.stats.draws + 6);
     });
 });
 
