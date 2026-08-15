@@ -32,13 +32,21 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute,
+    cameraPosition,
     clamp,
     cos,
+    dot,
+    float,
+    fract,
     length,
     mix,
     mod,
+    normalWorld,
+    normalize,
     oneMinus,
+    positionWorld,
     pow,
+    screenCoordinate,
     sin,
     smoothstep,
     uniform,
@@ -652,6 +660,11 @@ export function createCosmicExpanseEnvironment(options = {}) {
         corridor.add(streakMotes);
         group.userData.streakMotes = streakMotes;
     }
+
+    // The comet (Wave 5): the reef's authored moment — unlevered, two opaque draws.
+    const comet = createComet();
+    corridor.add(comet);
+    group.userData.comet = comet;
 
     // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
     // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
@@ -1425,7 +1438,7 @@ function createStreakMotes(uniforms, count) {
         aSeed: { array: seeds, itemSize: 1 },
     });
 
-    const { uTime } = uniforms;
+    const { uTime, uApproach } = uniforms;
     const aBase = attribute('aBase', 'vec3');
     const aSeed = attribute('aSeed', 'float');
 
@@ -1436,17 +1449,22 @@ function createStreakMotes(uniforms, count) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(center, 2.6);
     // Elongated streak mask along the travel diagonal (fixed angle in quad space).
+    // THE DIVE STRETCH (Wave 5): as the BH dive begins (uApproach past bhDiveStart)
+    // the streaks elongate ~2.3x and brighten — the acceleration read for the fall.
+    // Deliberately NOT a speed change: mod(time*speed(t)) phase-jumps when speed
+    // varies, so the length carries the speed statement instead.
+    const diveT = smoothstep(0.7, 1.0, uApproach ?? uniform(0));
     const STREAK_COS = Math.cos(-0.5);
     const STREAK_SIN = Math.sin(-0.5);
     const p0 = uv().sub(0.5);
     const px = p0.x.mul(STREAK_COS).sub(p0.y.mul(STREAK_SIN));
     const py = p0.x.mul(STREAK_SIN).add(p0.y.mul(STREAK_COS));
     const streak = pow(
-        clamp(oneMinus(length(vec2(px.mul(2.0), py.mul(7.0)))), 0.0, 1.0),
+        clamp(oneMinus(length(vec2(px.mul(2.0), py.mul(mix(float(7.0), float(3.0), diveT))))), 0.0, 1.0),
         1.4,
     );
     material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
-    material.opacityNode = streak.mul(0.34);
+    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34));
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -1456,6 +1474,75 @@ function createStreakMotes(uniforms, count) {
     mesh.name = 'cosmic-streak-motes';
     mesh.frustumCulled = false;
     return mesh;
+}
+
+// ── THE COMET (Wave 5, §3.2 "the comet moment"; the level is literally named
+// Comet Chase) — a sculpted opaque head + dithered opaque tail sweeping a long chord
+// through the reef stretch. Unlevered like the garland: two draws, opaque queue.
+// Staging follows the nebula-field pattern: OUTSIDE the entryContinuity buckets
+// (setOpacityScale would flip these opaque materials transparent and dead-write
+// opacity), on a shared uReveal ticked by update() = staging × reef-window × chord
+// end-fade, dissolved by the same screen-space hash dither.
+const COMET_PATH = Object.freeze({
+    a: new THREE.Vector3(250, 70, -330),
+    b: new THREE.Vector3(-270, -50, -790),
+    periodSec: 70,
+});
+
+function cometDither(uReveal) {
+    const hash = fract(
+        sin(dot(screenCoordinate.xy.floor(), vec2(12.9898, 78.233))).mul(43758.5453),
+    );
+    return uReveal.sub(hash).add(0.5);
+}
+
+function createComet() {
+    const uReveal = uniform(0);
+    const group = new THREE.Group();
+    group.name = 'comet-chase';
+
+    const keyDir = normalize(uniform(new THREE.Vector3(-0.48, 0.36, -0.62)));
+    const N = normalize(normalWorld);
+    const V = normalize(cameraPosition.sub(positionWorld));
+
+    // Head: 2-band ice paint on the chapter's causal key + a drawn fresnel edge —
+    // the asteroid template's language in the witnesses' tiny+sharp register.
+    const headMat = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
+    headMat.transparent = false;
+    headMat.depthWrite = true;
+    headMat.alphaTest = 0.5;
+    const wrap = float(0.72);
+    const d = dot(N, keyDir).add(wrap).div(wrap.add(1));
+    const band = smoothstep(0.42, 0.54, d);
+    const base = mix(vec3(0.23, 0.30, 0.49), vec3(0.81, 0.91, 0.95), band);
+    const edge = vec3(0.95, 0.98, 1.0).mul(clamp(oneMinus(dot(N, V)), 0, 1).pow(2.5).mul(0.5));
+    headMat.colorNode = base.add(edge);
+    headMat.opacityNode = cometDither(uReveal);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), headMat);
+    head.name = 'comet-head';
+    group.add(head);
+
+    // Tail: an open cone pointing opposite the travel, colour cooling and dither
+    // thinning toward the tip (uv().y runs tip→base on ConeGeometry).
+    const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    tailMat.transparent = false;
+    tailMat.depthWrite = true;
+    tailMat.alphaTest = 0.5;
+    const along = uv().y;
+    tailMat.colorNode = mix(vec3(0.35, 0.52, 0.66), vec3(0.85, 0.94, 0.97), along);
+    tailMat.opacityNode = cometDither(uReveal.mul(smoothstep(0.05, 0.75, along)));
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
+    tail.name = 'comet-tail';
+    // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
+    // the (fixed) chord direction and the open base hugs the head.
+    const dir = COMET_PATH.b.clone().sub(COMET_PATH.a).normalize();
+    tail.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+    tail.position.copy(dir.clone().multiplyScalar(-52));
+    group.add(tail);
+
+    group.userData.uReveal = uReveal;
+    group.userData.materials = [headMat, tailMat];
+    return group;
 }
 
 function createDistantGalaxy(uniforms) {
@@ -1664,6 +1751,23 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         const fieldReveal = entryState.nebulaReveal * spaceReveal * chapterOpacity;
         nebulaFieldMesh.userData.uReveal.value = fieldReveal;
         nebulaFieldMesh.visible = fieldReveal > 0.002;
+    }
+
+    // The comet sweeps its chord on a fixed period, alive only through the reef
+    // window (chapter-local ~0.28-0.74) and dither-faded at the chord's ends so it
+    // enters and leaves as a distant glint, never a pop.
+    const comet = group.userData.comet;
+    if (comet?.userData?.uReveal) {
+        const s = (time % COMET_PATH.periodSec) / COMET_PATH.periodSec;
+        comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);
+        const endFade = THREE.MathUtils.smoothstep(s, 0, 0.1)
+            * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1));
+        const reefWindow = THREE.MathUtils.smoothstep(approach, 0.28, 0.38)
+            * (1 - THREE.MathUtils.smoothstep(approach, 0.62, 0.74));
+        const cometReveal = entryState.clutterReveal * spaceReveal * chapterOpacity
+            * reefWindow * endFade;
+        comet.userData.uReveal.value = cometReveal;
+        comet.visible = cometReveal > 0.02;
     }
 
     const entryTargets = group.userData.entryContinuity;
