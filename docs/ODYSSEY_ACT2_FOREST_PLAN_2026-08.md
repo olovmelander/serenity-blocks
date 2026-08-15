@@ -1417,6 +1417,56 @@ green upslope, maple alive, birch still a mass), mutation-checked: moving the ba
 or zeroing the autumn boost each fail 5 of them.
 
 
+---
+
+## 10. THE ISLAND'S TWO SIDES — the shore composition, third and final shape (2026-08-15)
+
+§9's distance-banded shore was itself rejected, on a picture, one iteration later: *"I dont
+like this belt and contour line, I want the autumn leaves more to the right and the green ones
+like to the left of the cherry trees."* Recording the whole ladder, because each rung failed for
+a different and instructive reason:
+
+| shape | why it was tried | how it failed |
+|---|---|---|
+| Autumn AT the waterline (2026-08-14) | owner request, matches ref2's pond edge | correct against the old olive-tan ground; wrong the moment a green meadow went under it |
+| Green fringe banded by ALTITUDE | the obvious reversal | crisp in its own terms (88% green below +19 u), inconsistent in the only view that matters — the boundary sat 70..332 m from the sea depending on gradient, a **4.8x spread**, so steep headlands wore gold to the sand |
+| Green fringe banded by DISTANCE TO WATER | fixes the inconsistency | and creates a ribbon parallel to the coast — the CONTOUR LINE this file's own band comment forbids. Wobbling the edges softened the read without changing its nature |
+| **REGIONAL: an autumn side and a green side** | what the references actually do | ships |
+
+**The lesson underneath all three failures: a band has a characteristic width, so it reads as a
+band at some viewing distance.** Altitude bands read as contours from the air; distance bands
+read as ribbons along the coast. A REGION has no width, so there is no distance at which it can
+stripe. That is also exactly what the research said the reference does and what §1 quoted at the
+start — "different locations on the island would have very different color palettes… this would
+help cement the locations' individual personalities" — a species belongs to a PLACE, not to an
+offset from a feature. Three iterations to arrive at the thing the research had already written
+down is worth admitting plainly.
+
+**What ships.** One axis across the island (world `(0.891, -0.455)` — the screen-right vector of
+the aerial the owner marked up), autumn on one side, green on the other, seam feathered over
+420 u and wandering on a 900 u field so it is never a ruled line. The split constant (295) is
+the blossom grove's own measured centroid projected onto that axis, so "autumn to the right of
+the cherry trees" is literally what the arithmetic says. A 45 m green apron at the water
+survives from the previous shape at a third of its width — the owner's earlier request is not
+withdrawn by this one, and at that width it is a shoreline rather than a belt.
+
+**Strength was swept, not picked.** Right-side green share at each boost: 0.42 → 1%, 0.30 → 16%,
+**0.24 → 26% (ships)**, 0.18 → 37%. Full strength made the autumn side a birch monoculture and
+collapsed the island's workhorse pine from 22% to 5% — the golds stop reading once nothing dark
+stands in them, which is why a test now asserts a FLOOR on green inside the autumn side as well
+as a ceiling.
+
+**Cost.** +9k triangles (+3%), because the swap trades cheap conifers for broadleaves. Measured
+back-to-back in one thermal state: committed belt 10.29 p50 / 10.68 p95, regional 10.75 p95 —
+**one timer tick**, matching the triangle model at the repo's ~0.8 ms/100k rate.
+
+⚠️ **Separately, and not caused by this change:** at p95 the shoreline station is over its 10.6
+max in a warm machine either way (the committed tree measures 10.68). The max was derived from
+cooler readings the same day. That is an owner decision — re-derive the cell on a settled
+machine, or reclaim before anything else lands in Act II — and it is deliberately left open
+rather than resolved by raising the number.
+
+
 ## 8. Files
 
 | File | Change |
