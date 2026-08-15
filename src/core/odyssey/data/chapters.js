@@ -201,9 +201,14 @@ export const CHAPTER_CONFIGS = [
         id: 6,
         name: 'Space & Cosmic Expanse',
         subtitle: 'Push into the void',
-        levelRange: [36, 44],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'release', 'boss'],
-        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 7, 10],
+        // SPACE LENGTHENED (Space overhaul Wave 1, D1 2026-08-15): 9 → 13 levels,
+        // all inside the chapter's unchanged p-window 0.648-0.815 (denser stations,
+        // more played time; no boundary, seam band or camera fit moves). The four new
+        // beats form a second movement: the quiet shallows release, a rising test
+        // pair, a breath, then the dive into the black hole as the closing boss.
+        levelRange: [36, 48],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'reinforce', 'test', 'test', 'release', 'boss', 'release', 'boss'],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 10, 7, 10, 7, 10],
 
         themes: {
             primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
@@ -241,7 +246,7 @@ export const CHAPTER_CONFIGS = [
         id: 7,
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Surrender to abstraction',
-        levelRange: [45, 51],
+        levelRange: [49, 55],
         arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'test', 'release', 'boss'],
         targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 10],
 
@@ -281,7 +286,7 @@ export const CHAPTER_CONFIGS = [
         id: 8,
         name: 'Urban Dreams Encore',
         subtitle: 'Bonus chapter',
-        levelRange: [52, 55],
+        levelRange: [56, 59],
         arcBeats: ['encore', 'encore', 'encore', 'encore'],
         targetDifficultyCurve: [7, 8, 9, 10],
 

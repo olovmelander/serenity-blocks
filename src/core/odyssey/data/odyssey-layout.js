@@ -93,36 +93,41 @@ const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
     33: 0.593,
     34: 0.611,
     35: 0.630,
-    // ⚠️ SPACE-LENGTHENING SCOUT RESULT (Wave 1 attempt, 2026-08-15): re-spacing
-    // levels 37-55 so ch6 ends at 0.845 (its +18% share taken from ch7/ch8, ch1-ch5
-    // untouched) FAILS against the spline itself — the 6→7 helical sweep begins
-    // immediately after 0.815 (rail turn 25.6° inside the widened window vs the
-    // corridor test's max 3°, and the BH hero leaves frame at ndcX −1.70 by p=0.829).
-    // The old boundary sits exactly where the rail starts bending, BY design. Ch6
-    // cannot absorb far-side share without either re-authoring cp17-20 (lever C,
-    // arc-length-pinned optimisation + APPROACH re-solve) or adding ch6 levels
-    // (lever B, level-id renumber = save-data migration). Do not re-try the cheap
-    // re-space; it is measured dead.
+    // ── SPACE LENGTHENED (Space overhaul Wave 1, D1 2026-08-15): ch6 = 13 levels
+    // (36-48) packed INSIDE the unchanged 0.648-0.815 window; ch7 = 49-55 and
+    // ch8 = 56-59 keep the OLD 45-55 positions verbatim. No chapter boundary moves,
+    // so every seam band, station and camera fit survives; players get 4 more space
+    // levels and denser stations. Save-data ids ≥45 migrated +4 (SAVE_VERSION 2).
+    //
+    // ⚠️ Historical scout result (kept — do not re-try): re-spacing ch6's p-window to
+    // 0.845 by taking far-side share FAILS against the spline — the 6→7 helical
+    // sweep begins immediately after 0.815 (rail turn 25.6° vs corridor max 3°; BH
+    // hero ndcX −1.70 by p=0.829). The boundary sits where the rail bends BY design;
+    // growing the p-window needs re-authoring cp17-20 under the pinned arc length.
     36: 0.648,
-    37: 0.667,
-    38: 0.685,
-    39: 0.704,
-    40: 0.722,
-    41: 0.741,
-    42: 0.759,
-    43: 0.778,
-    44: 0.796,
-    45: 0.815,
-    46: 0.833,
-    47: 0.852,
-    48: 0.870,
-    49: 0.889,
-    50: 0.907,
-    51: 0.926,
-    52: 0.944,
-    53: 0.963,
-    54: 0.981,
-    55: 1.000,
+    37: 0.661,
+    38: 0.674,
+    39: 0.686,
+    40: 0.699,
+    41: 0.712,
+    42: 0.725,
+    43: 0.738,
+    44: 0.751,
+    45: 0.764,
+    46: 0.776,
+    47: 0.789,
+    48: 0.802,
+    49: 0.815,
+    50: 0.833,
+    51: 0.852,
+    52: 0.870,
+    53: 0.889,
+    54: 0.907,
+    55: 0.926,
+    56: 0.944,
+    57: 0.963,
+    58: 0.981,
+    59: 1.000,
 });
 
 export const ODYSSEY_LAYOUT_DATA = Object.freeze({
