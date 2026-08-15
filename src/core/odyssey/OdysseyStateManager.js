@@ -12,7 +12,52 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
-const SAVE_VERSION = 1;
+// v2 (2026-08-15, space lengthening): chapter 6 grew 36-44 → 36-48, so every level
+// id ≥ 42 shifted +4 (the Event Horizon finale trilogy became 46-48; old ch7/ch8
+// 45-55 became 49-59). v1 saves must renumber or a finished-the-game save silently
+// re-points mid-ch7 — every id in a 55-level v1 save is still "valid" in a 59-level
+// world, so the version gate is load-bearing, not advisory.
+const SAVE_VERSION = 2;
+const V2_SHIFT_FROM_ID = 42;
+const V2_SHIFT = 4;
+
+/**
+ * Migrate a raw odyssey progress document IN PLACE to the current SAVE_VERSION and
+ * return it. Pure data-shape work (no registry access) so the Steam cloud-sync layer
+ * can migrate cloud documents BEFORE merging them — merging a v1 document by raw id
+ * would alias old ch7 arrivals onto the new ch6 levels (false unlocks, kept stars).
+ */
+export function migrateOdysseyProgressData(data) {
+    if (!data || typeof data !== 'object') return data;
+    const version = Number(data.version) || 1;
+    if (version >= SAVE_VERSION) return data;
+
+    if (version < 2) {
+        const shiftId = (id) => {
+            const numeric = Number(id);
+            if (!Number.isFinite(numeric)) return numeric;
+            return numeric >= V2_SHIFT_FROM_ID ? numeric + V2_SHIFT : numeric;
+        };
+        if (Array.isArray(data.unlockedLevels)) {
+            // Numeric ids in the array form.
+            data.unlockedLevels = data.unlockedLevels.map(shiftId);
+        }
+        if (data.completedLevels && typeof data.completedLevels === 'object') {
+            // STRING keys in the map form — the type asymmetry is the trap here.
+            const migrated = {};
+            Object.entries(data.completedLevels).forEach(([key, value]) => {
+                migrated[String(shiftId(key))] = value;
+            });
+            data.completedLevels = migrated;
+        }
+        if (Number.isFinite(Number(data.currentLevel))) {
+            data.currentLevel = shiftId(data.currentLevel);
+        }
+    }
+
+    data.version = SAVE_VERSION;
+    return data;
+}
 
 /**
  * @typedef {Object} LevelCompletion
@@ -146,8 +191,7 @@ export class OdysseyStateManager {
      * @param {Object} data - Old save data
      */
     migrateSaveData(data) {
-        // Add migration logic as save format evolves
-        // For now, just log the migration
+        migrateOdysseyProgressData(data);
         console.log('[OdysseyState] Migration complete');
     }
 

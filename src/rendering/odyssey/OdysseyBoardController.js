@@ -3041,7 +3041,11 @@ export class OdysseyBoardController {
     updateProgress(progressData) {
         this.progressData = progressData;
         this.nodeManager?.updateFromProgress(progressData);
-        this.pathRenderer?.setProgress(progressData.furthestLevel / 56);
+        // totalLevels + 1, computed — the old literal 56 quietly under-reported the
+        // trail once the space lengthening took the roster from 55 to 59 levels.
+        this.pathRenderer?.setProgress(
+            progressData.furthestLevel / (this.levelData.length + 1 || 60),
+        );
     }
 
     getLayoutData() {

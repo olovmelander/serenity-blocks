@@ -1,6 +1,7 @@
 import steamService from './steam-service.js';
 import { STEAM_EVENTS, STEAM_STORAGE_KEYS } from './steam-config.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
@@ -377,7 +378,10 @@ export class SteamCloudSyncManager {
     _applyOdyssey(data) {
         if (!data) return;
         try {
-            localStorage.setItem(ODYSSEY_STORAGE_KEY, JSON.stringify(data));
+            // Migrate BEFORE writing: this path bypasses OdysseyStateManager.load()
+            // entirely, so an un-migrated cloud doc written raw would sit on disk
+            // with stale level numbering until the next load happened to run.
+            localStorage.setItem(ODYSSEY_STORAGE_KEY, JSON.stringify(migrateOdysseyProgressData(data)));
         } catch (err) {
             console.warn('[SteamCloud] Failed to apply Odyssey data:', err.message);
         }
@@ -438,6 +442,13 @@ export class SteamCloudSyncManager {
     }
 
     _mergeOdyssey(localData, cloudData) {
+        // Version-gate BOTH sides before any id-keyed merge. Without this, a v1
+        // cloud doc merged by raw id aliases old ch7 arrivals onto the new ch6
+        // levels (false unlocks, kept stars), and the spread below would inherit
+        // `version` from the CLOUD side — stamping version:1 onto an already-
+        // migrated local save so the +4 shift ran a second time on the next load.
+        migrateOdysseyProgressData(localData);
+        migrateOdysseyProgressData(cloudData);
         const merged = { ...localData, ...cloudData };
 
         const localUnlocked = new Set(localData.unlockedLevels || []);

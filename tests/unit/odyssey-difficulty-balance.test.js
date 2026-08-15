@@ -20,7 +20,10 @@ function countOccupiedCells(boardGrid) {
 describe('Odyssey difficulty balance', () => {
     it('applies the derived model without replacing authored objective types or finale outliers', () => {
         const firstSprint = getLevel(4);
-        expect(firstSprint.metadata.difficultyModel.scalar).toBeCloseTo(0.211, 3);
+        // Re-baselined at the space lengthening: MAIN_ARC_LAST_LEVEL 51 → 55 shrinks
+        // the micro-term amplitude (levelId/55) a hair for early levels; macro is
+        // unchanged (LOGISTIC_MIDPOINT held at 34).
+        expect(firstSprint.metadata.difficultyModel.scalar).toBeCloseTo(0.21, 3);
         expect(firstSprint.mechanics.speed.startLevel).toBe(3);
         expect(firstSprint.victory.primary).toEqual({ type: 'lines', target: 22 });
         expect(firstSprint.victory.failure).toEqual({ type: 'time', value: 270 });
@@ -31,7 +34,7 @@ describe('Odyssey difficulty balance', () => {
         expect(chapterOneBoss.victory.primary.target).toBe(40);
         expect(chapterOneBoss.stars.three).toEqual({ lines: 40, cascades: 3, bonuses: 1 });
 
-        const finale = getLevel(51);
+        const finale = getLevel(55);
         expect(finale.metadata.difficultyModel.scalar).toBe(1);
         expect(finale.mechanics.baseMode).toBe('infinity');
         expect(finale.mechanics.board.rows).toBe(100);
@@ -41,17 +44,17 @@ describe('Odyssey difficulty balance', () => {
     });
 
     it('keeps chapter 6 and chapter 7 peaks hard while adding release space around them', () => {
-        const eventHorizon = getLevel(42);
-        const singularityGate = getLevel(43);
-        const singularity = getLevel(44);
+        const eventHorizon = getLevel(46);
+        const singularityGate = getLevel(47);
+        const singularity = getLevel(48);
         expect(singularityGate.role).toBe('release');
         expect(singularityGate.emotionalBeat).toBe('release');
         expect(singularityGate.victory.failure.type).toBe('top-out');
         expect(singularityGate.mechanics.speed.startLevel).toBeLessThan(eventHorizon.mechanics.speed.startLevel);
         expect(singularityGate.metadata.difficulty).toBeLessThan(singularity.metadata.difficulty);
 
-        const voltageStorm = getLevel(48);
-        const chromaticImpasto = getLevel(49);
+        const voltageStorm = getLevel(52);
+        const chromaticImpasto = getLevel(53);
         expect(voltageStorm.victory.failure.type).toBe('top-out');
         expect(voltageStorm.modifiers.active).not.toContain('time-attack');
         expect(voltageStorm.victory.primary.target).toBeLessThan(25);
@@ -61,7 +64,7 @@ describe('Odyssey difficulty balance', () => {
     });
 
     it('maintains an increasing main-arc chapter peak curve with explicit release beats', () => {
-        const mainArcLevels = LEVEL_CONFIGS.filter((level) => level.id <= 51);
+        const mainArcLevels = LEVEL_CONFIGS.filter((level) => level.id <= 55);
         const peaks = new Map();
         for (const level of mainArcLevels) {
             const currentPeak = peaks.get(level.chapter) || 0;
