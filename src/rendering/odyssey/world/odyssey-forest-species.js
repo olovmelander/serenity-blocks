@@ -113,6 +113,10 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         builder: 'broadleaf',
         role: 'workhorse',
         band: 'shore',
+        // THE WATER'S EDGE IS GREEN (owner reversal, 2026-08-15) — and this species needs no
+        // flag to make that true. It carries the shore on its weight alone; what changed is
+        // that the autumn species stopped outbidding it there. See the scatter's
+        // FOREST_AUTUMN_LO note, including the mutation test that retired the flag.
         // The rounded olive lumps that fill the Witness shore and lowland — leaned toward
         // their bright lime-chartreuse in the vividness pass (B pulled hard down: chroma in
         // foliage lives in the R:G ratio and the ABSENCE of blue).
@@ -147,6 +151,8 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         builder: 'conifer',
         role: 'workhorse',
         band: 'lowland',
+        // Shares the green water's edge with the shore broadleaf (owner reversal, 2026-08-15),
+        // on weight rather than on a flag — see that species' note.
         // ⚠️ "Stay away from Christmas-tree shaped" (Orsi Spanyol) — the tier jitter and the
         // droop below are what buy that, and they are not decoration.
         crown: Object.freeze([0.138, 0.235, 0.100]),
@@ -205,9 +211,13 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         builder: 'broadleaf',
         role: 'pastel',
         band: 'lowland',
-        // Part of the waterline autumn mix (see the scatter's waterline clause): ref2 plants
-        // its golds right at the pond's edge, not only upslope.
-        waterline: true,
+        // (Was `waterline: true` — part of the autumn mix at the water's edge, 2026-08-14.
+        // REVERSED by the owner on 2026-08-15 after the ground overhaul: against the old
+        // olive-tan shoreline the golds read as a warm band, but against the new green meadow
+        // they sat on top of it and flattened the one place the ground gained the most. The
+        // gold birch keeps its lowland band and its share of the island — it simply no longer
+        // outbids the greens for the last few metres before the sea.)
+        autumnBand: true,
         // The pale accent. Placed as STANDS by the zone field, never as per-tree jitter — a
         // gold tree every twentieth trunk is noise; a grove of them is a place.
         // ⚠️ Its trunk is the measured exception: reference "white" trunks are canopy-TINTED
@@ -283,6 +293,16 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         id: 'S6-red-maple',
         builder: 'broadleaf',
         role: 'workhorse',
+        // STAYS on the shore band, and that is deliberate after a measurement.
+        //
+        // The 2026-08-15 reversal first moved it to `lowland` on the theory that a shore-banded
+        // species returns to the shore by band fit whatever the boost says. True — but measured,
+        // it deleted the species: red maple fell from 7% of the island to 0.2%, because in the
+        // lowland it loses every site to the pine. The owner asked for this species by name.
+        // So it keeps the shore band and simply no longer carries the waterline boost: the
+        // greens outbid it across most of the water's edge, and it wins the few patch cores
+        // where its own zone field is strongest. A handful of deep-red trees at the shore is
+        // what the reference has; a wall of them was the thing being reversed.
         band: 'shore',
         // THE DEEP-RED MAPLE (owner-requested, 2026-08-14). Authored against ref2's measured
         // tree: lit rgb(100.7, 18.6, 9.3), HSV sat 0.907, luma 35 — near-black crimson, the
@@ -300,8 +320,8 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         crownH: 0.82,
         trunkR: 0.075,
         trunkH: 1.15,
-        // An accent at the water, not a forest: ref2 has a couple of maples among many golds.
-        waterline: true,
+        // (Was `waterline: true`. Reversed with the gold birch's — see that entry.)
+        autumnBand: true,
         weight: 0.55,
         stages: Object.freeze([
             Object.freeze({

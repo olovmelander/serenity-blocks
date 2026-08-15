@@ -41,6 +41,10 @@ const run = (opts = {}) => scatterZonedForest(heightAt, { rail: RAIL, ...opts })
 // would dominate the suite's runtime for no extra confidence.
 const HIGH = run();
 const LOW = run({ spacing: 24 });
+/** The roster's green half — everything that is not a gold, a red or a blossom. */
+const GREEN_SPECIES = new Set([
+    'S1-shore-broadleaf', 'S2-workhorse-pine', 'S3-subalpine-fir', 'S5-cypress-spike',
+]);
 
 describe('the zoned scatter keeps the incumbent\'s measured rejections', () => {
     it('never places a tree below the shoreline or above the tree line', () => {
@@ -85,7 +89,12 @@ describe('the zone field composes an island rather than confetti', () => {
             // its design; a 1% share floor would force it to stop being rare. Accent species
             // (grove/waterline-flagged) must simply EXIST in force; everything else keeps the
             // 1% floor that catches a dead species.
-            const accent = spec.grove || spec.waterline || spec.role === 'anchor';
+            // Accent = RARE BY DESIGN. Classified on the rarity knobs (`grove`, the anchor
+            // role, a sub-1.0 weight) and no longer on `waterline`, which since the
+            // 2026-08-15 shore reversal marks two weight-1.0 workhorses — a placement flag,
+            // not a rarity one. Reading rarity off a placement flag made this floor say
+            // "presence in force is enough" about the two commonest trees on the island.
+            const accent = spec.grove || spec.role === 'anchor' || spec.weight < 1;
             if (accent) expect(n, id).toBeGreaterThan(60);
             else expect(share, id).toBeGreaterThan(0.01);
             expect(share, id).toBeLessThan(0.60);
@@ -384,5 +393,61 @@ describe('the scatter is deterministic, because a forest that reshuffles cannot 
         const same = HIGH.placements
             .filter((p, i) => wide.placements[i] && wide.placements[i].speciesId === p.speciesId);
         expect(same.length).toBeLessThan(HIGH.placements.length * 0.95);
+    });
+});
+
+/**
+ * THE SHORE COMPOSITION (owner decision, reversed 2026-08-15 — and reversed decisions are
+ * exactly the ones a test has to hold).
+ *
+ * The waterline shipped on 2026-08-14 as an AUTUMN mix, at the owner's request: gold birch and
+ * red maple boosted below y=325. After the ground overhaul landed, the owner reversed it —
+ * against the new green meadow the gold canopy sat ON the ground instead of with it, and
+ * flattened the one place the ground had gained the most.
+ *
+ * What ships now is a THREE-BAND composition rather than a repaint, and each band is asserted
+ * here because two of them were discovered by measurement after the obvious fix failed:
+ *
+ *  1. below 306 — the green fringe. The greens carry the water's edge.
+ *  2. 306..326 — the autumn body. Moving the boost to the greens alone took this strip to
+ *     87-100% green and the island's gold birch from 26% to 7%: the autumn shore existed ONLY
+ *     because a boost put it there, so removing that boost deletes the autumn rather than
+ *     rebalancing it. The band above the fringe therefore keeps its own boost.
+ *  3. above 326 — already 86-92% green with no clause at all.
+ *
+ * And the red maple must survive. It is an owner-requested species by name, and the first cut
+ * of this reversal took it to 0.2% of the island by moving its band; a species that exists only
+ * in the table is the defect this repo has shipped before (the cypress, at weight 0.18).
+ */
+describe('the shore composes green edge, gold body, green upslope', () => {
+    const bandOf = (lo, hi) => HIGH.placements.filter((t) => t.y >= lo && t.y < hi);
+    const greenShare = (list) => list.filter((t) => GREEN_SPECIES.has(t.speciesId)).length
+        / Math.max(1, list.length);
+
+    it('keeps the water edge GREEN', () => {
+        const fringe = bandOf(0, 306);
+        expect(fringe.length).toBeGreaterThan(300);
+        expect(greenShare(fringe)).toBeGreaterThan(0.85);
+    });
+
+    it('keeps the autumn body immediately above it', () => {
+        // The inverse assertion, and the one the first cut of the reversal failed: a shore that
+        // is green all the way up to the treeline has not been rebalanced, it has been repainted.
+        const body = bandOf(308, 326);
+        expect(body.length).toBeGreaterThan(300);
+        expect(greenShare(body)).toBeLessThan(0.45);
+    });
+
+    it('leaves the upslope green without needing a clause for it', () => {
+        expect(greenShare(bandOf(340, 420))).toBeGreaterThan(0.75);
+    });
+
+    it('keeps the owner-requested red maple alive on the island', () => {
+        const maple = HIGH.stats.bySpecies['S6-red-maple'] || 0;
+        expect(maple).toBeGreaterThan(200);
+    });
+
+    it('keeps the gold birch a real mass, not a garnish', () => {
+        expect((HIGH.stats.bySpecies['S4-gold-birch'] || 0) / HIGH.stats.trees).toBeGreaterThan(0.10);
     });
 });

@@ -1373,6 +1373,50 @@ retires 0a's cell into a v2 note.
   (3 seeded mesh variants per species×LOD, per-tree lean) stays either way. Owner picks:
   accept ~3.2 (revise D5), or revert the limbs.
 
+---
+
+## 9. OWNER REVERSAL — the waterline goes green (2026-08-15)
+
+The autumn waterline requested on 2026-08-14 ("the full autumn mix down at the waterline") was
+REVERSED by the owner the day after the ground overhaul landed: *"I just think we made the
+wrong decision earlier with moving the orange and yellow autumn trees all the way down to the
+coastline, I want the greener trees back close to the water."*
+
+**The decision was not wrong when it was taken — its context changed.** Against the old
+shoreline (an olive-tan plain that read close to the canopy's own value) the autumn mix was a
+warm band on warm ground. The ground overhaul replaced that with a green meadow and a narrow
+gold beach, and the same canopy then sat ON the ground rather than with it, flattening the one
+place the ground had gained the most. This is worth recording as a shape rather than an
+incident: **a species roster is tuned against the ground it stands on, so a ground change can
+invalidate a roster decision that was correct on its own terms.**
+
+### What shipped, and the two cuts that did not
+
+| cut | change | measured |
+|---|---|---|
+| 1 | move the `waterline` boost from the autumn species onto the greens | water's edge 12% -> **99% green**, but the WHOLE ISLAND 66% -> 92%, gold birch 26% -> 7%, red maple -> 0.2% |
+| 2 | ...and move the red maple's band off the shore | maple deleted outright; a species that exists only in the table (the cypress lesson, at weight 0.18) |
+| 3 (ships) | one band edge: the autumn species outbid the greens between y 306 and 326, and nowhere else | fringe **84-94% green**, body **13-16% green** (gold 65-72%), upslope 86-92% green, island 77% green with gold at 20% and maple at 3% |
+
+Three things were learned that generalise:
+
+1. **The autumn shore existed only because a boost put it there.** Removing that boost does not
+   rebalance the shore, it deletes the autumn — the greens are weight-1.0 workhorses and the
+   autumn species weight-0.55 accents, so the greens win everywhere by default. Any "swap which
+   species is favoured" change has to check what the DEFAULT ranking already does.
+2. **A height histogram beat three rounds of guessing.** The autumn was never spread across the
+   island: it lives between y 290 and 326, and everything above 326 was already 86-92% green
+   with no clause at all. The fix was therefore a band edge (306), not a repaint.
+3. **The green fringe needs no clause of its own, and a mutation test proved it.** Zeroing the
+   green-fringe boost changed nothing measurable, so the constant and both of its species flags
+   were deleted rather than kept as decoration — a lever that does nothing reports innocence,
+   not absence.
+
+Guarded by five new assertions in `odyssey-forest-scatter.test.js` (green edge, gold body,
+green upslope, maple alive, birch still a mass), mutation-checked: moving the band edge to 326
+or zeroing the autumn boost each fail 5 of them.
+
+
 ## 8. Files
 
 | File | Change |
