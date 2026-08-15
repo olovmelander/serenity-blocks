@@ -33,18 +33,26 @@ describe('ch6 sculpted nebula field (Space overhaul Wave 3)', () => {
         expect(validateNebulaFieldClearance()).toEqual([]);
     });
 
-    it('sculpts five masses into ONE opaque draw', () => {
-        const field = createNebulaFieldTSL({});
+    it('sculpts the composed field into TWO opaque role draws (warm + cool)', () => {
+        const field = createNebulaFieldTSL();
         expect(field.masses).toBe(ODYSSEY_NEBULA_FIELD_SPECS.length);
-        expect(field.mesh.isMesh).toBe(true);
-        expect(field.material.transparent).toBe(false);
-        expect(field.material.depthWrite).toBe(true);
-        // Dithered opaque dissolve, never a blend state.
-        expect(field.material.alphaTest).toBeGreaterThan(0);
-        expect(field.material.opacityNode).toBeTruthy();
-        // Triangle budget legible from the specs table: 3 near + 2 mid ≈ 3,940 faces.
-        expect(field.triangles).toBeGreaterThan(2000);
-        expect(field.triangles).toBeLessThan(8000);
+        // §3b re-composition: one draw per PAINT ROLE — the warm workhorses and the
+        // dim cool giant must be separable materials (the forest species-role idea).
+        expect(field.parts).toHaveLength(2);
+        field.parts.forEach(({ mesh, material }) => {
+            expect(mesh.isMesh).toBe(true);
+            expect(material.transparent).toBe(false);
+            expect(material.depthWrite).toBe(true);
+            // Dithered opaque dissolve, never a blend state.
+            expect(material.alphaTest).toBeGreaterThan(0);
+            expect(material.opacityNode).toBeTruthy();
+        });
+        // Size hierarchy is real: 1 hero + 2 medium + 2 witnesses + pillar.
+        const widths = ODYSSEY_NEBULA_FIELD_SPECS.map((s) => s.w).sort((a, b) => a - b);
+        expect(widths[widths.length - 1] / widths[0]).toBeGreaterThan(6);
+        // Triangle budget legible from the specs table: 4 near + 2 mid ≈ 4,920 faces.
+        expect(field.triangles).toBeGreaterThan(3000);
+        expect(field.triangles).toBeLessThan(9000);
     });
 
     it('stages its reveal via uReveal, outside the entryContinuity buckets', () => {
@@ -75,9 +83,11 @@ describe('ch6 sculpted nebula field (Space overhaul Wave 3)', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 200 });
         group.userData.chapterOpacity = 0.5;
         updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.55);
-        const mesh = group.userData.nebulaField;
-        expect(mesh.material.transparent).toBe(false);
-        expect(mesh.userData.uReveal.value).toBeCloseTo(0.5, 1);
+        const fieldGroup = group.userData.nebulaField;
+        fieldGroup.children.forEach((child) => {
+            expect(child.material.transparent).toBe(false);
+        });
+        expect(fieldGroup.userData.uReveal.value).toBeCloseTo(0.5, 1);
     });
 
     it('gpu-split drives the swap lever the chapter reads', () => {
