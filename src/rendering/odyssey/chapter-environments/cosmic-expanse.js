@@ -115,21 +115,36 @@ export const COSMIC_EXPANSE_CONFIG = {
 //   galaxy      ndc (+0.50, +0.26) -> (+0.57, +0.38)  upper-RIGHT anchor, 1213 -> 958
 // Worst-case |ndcX| across all aspect ratios is 0.75 (galaxy at 4:3); nothing clips.
 const APPROACH = {
-    // Black hole: the destination omen. Holds the upper-left third and LOOMS (scale
-    // 1.2 -> 2.6, distance 1271 -> 885) as the camera closes on the 6->7 seam.
+    // Black hole: the destination omen, in TWO phases (owner direction 2026-08-15:
+    // "the path goes straight into the black hole — it IS the transition"). Phase 1
+    // (ease 0 → DIVE_START): holds the upper-left third and LOOMS, the Journey
+    // north-star. Phase 2 (DIVE_START → 1): converges onto the camera's EXIT RAY —
+    // C sits 700 u down the measured boundary flight axis (camera local (73,65,−52)
+    // aiming at (707,242,−289), probed via the real-controller replay) — so the rail
+    // flies STRAIGHT INTO the horizon as the Lensing Engage threshold takes over.
+    bhDiveStart: 0.7,
     bhScaleA: 1.2,
     bhScaleB: 2.6,
+    bhScaleC: 3.4,
     bhXa: 392,
     bhXb: 607,
+    bhXc: 700,
     bhZa: -842,
     bhZb: -647,
+    bhZc: -285,
     bhYa: 586,
     bhYb: 387,
+    bhYc: 240,
     planetA: {
         x: 756, y: 322, z: -277, s: 34 / 28,
     },
+    // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
+    // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge
+    // moved the planet along the view axis and its ndc barely changed) when the BH
+    // dive took the exit axis: the giant must stay clear of the dive line
+    // (separation ≥ 0.2 asserted). Distance held ~756 so apparent size is unchanged.
     planetB: {
-        x: 805, y: 110, z: -221, s: 60 / 28,
+        x: 855, y: 60, z: -89, s: 60 / 28,
     },
     galaxyA: {
         x: 750, y: 743, z: 106, s: 155,
@@ -1524,15 +1539,27 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const { blackHole, debris } = group.userData;
     if (blackHole) {
-        // Ever-present DESTINATION OMEN: looms larger + rides up into the upper third as
-        // the camera approaches the seam (the #1 Space hero-starvation fix).
-        const bhScale = THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, ease);
-        blackHole.scale.setScalar(bhScale);
-        blackHole.position.set(
-            THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, ease),
-            THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, ease),
-            THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, ease),
-        );
+        // Ever-present DESTINATION OMEN, two phases: loom in the upper-left third
+        // (the north star), then DIVE onto the exit flight axis — the rail flies
+        // straight into the horizon and the 6→7 threshold takes over.
+        const { bhDiveStart } = APPROACH;
+        if (ease < bhDiveStart) {
+            const t = ease / bhDiveStart;
+            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, t));
+            blackHole.position.set(
+                THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, t),
+                THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, t),
+                THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, t),
+            );
+        } else {
+            const t = THREE.MathUtils.smoothstep((ease - bhDiveStart) / (1 - bhDiveStart), 0, 1);
+            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleB, APPROACH.bhScaleC, t));
+            blackHole.position.set(
+                THREE.MathUtils.lerp(APPROACH.bhXb, APPROACH.bhXc, t),
+                THREE.MathUtils.lerp(APPROACH.bhYb, APPROACH.bhYc, t),
+                THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
+            );
+        }
         // Subtle precession of the whole assembly.
         blackHole.rotation.z -= delta * 0.04;
     }
