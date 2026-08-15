@@ -215,7 +215,12 @@ export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bak
 
     const material = new THREE.MeshBasicNodeMaterial();
     const drift = uv().add(vec2(time.mul(0.0004), 0));
-    material.colorNode = textureNode(bake.texture, drift).rgb.mul(energy.mul(0.5).add(0.7));
+    // §3b rule 4 (three grayscale value bands): the dome must sit ONE BAND BELOW the
+    // sculpted masses or depth collapses — the 0.62 drop is the band separation, not
+    // a tasteful dim. Checked against the masses in grayscale captures.
+    material.colorNode = textureNode(bake.texture, drift).rgb
+        .mul(energy.mul(0.5).add(0.7))
+        .mul(0.62);
     material.opacityNode = uOpacity;
     material.side = THREE.BackSide;
     material.depthWrite = false;
