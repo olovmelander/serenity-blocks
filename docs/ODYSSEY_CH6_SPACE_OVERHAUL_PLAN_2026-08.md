@@ -273,6 +273,50 @@ noise, no breathing terms, far tiers static.**
 
 ---
 
+## 3b. THE COMPOSITION CONTRACT (added 2026-08-15 eve — second research round, cited)
+
+The first research round settled *how to draw things cheaply*; this one settles *where
+things go*. Sources: Bungie sky artist Tony Arechiga (80.lv), Jesse van Dijk (Destiny),
+Jenova Chen + Matt Nava (Journey GDC), Alex Beachum (Outer Wilds), Chesley Bonestell /
+John Harris / Moebius / Roger Dean, James Gurney's scale writing, NASA/ESA pillar
+science, Uncharted 2 pacing, roller-coaster sequencing theory. Full citations in the
+research transcript; the twelve rules, binding on the Wave 1 re-composition:
+
+1. **One dominant mass per view, never two rivals** (Bonestell's invariant).
+2. **One always-visible north star that grows only with progress** — the black hole is
+   Journey's mountain.
+3. **Every major object visible SMALL and EARLY from far away** before its close
+   encounter (Outer Wilds sightline funneling).
+4. **Three value bands checked in grayscale**: dome / sculpted masses / near objects
+   must occupy separable value ranges (Arechiga). The dome must be DIMMER, cooler,
+   simpler than the masses — today they compete.
+5. **Prove the dome is behind something**: ≥1 mass and the asteroid stream must
+   overlap dome features in-ride (the only cure for wallpaper syndrome).
+6. **Big+soft vs tiny+sharp — delete the middle** (Gurney): haze and soft edges on
+   giants only, crisp detail on near asteroids only, no mid-scale detail band.
+7. **Asteroids are witnesses, not filler**: uneven clusters sweeping near-camera;
+   the parallax-speed ratio IS the scale statement.
+8. **One causal light unifies the nebulas**: every dense head points at one
+   illuminator, wisps streaming away (real pillars all point at their ionizing star).
+9. **Hang the giant low + diagonal, framed under a passable nebula arch**
+   (Bonestell × Roger Dean's proscenium).
+10. **Heartbeat pacing with authored emptiness**: density peaks alternate with
+    genuinely sparse drift; the quiet leg after a peak is load-bearing.
+11. **Save one element and one palette state for the finale, keep the finale SHORT**
+    (Chen cut Journey's ending to a third; maximalist stacking = anticlimax).
+12. **Break even spacing**: masses distributed 1 hero / 2 medium / 2 small at
+    irregular intervals with varied silhouettes (the "cosmic corridor" failure is
+    equal-size equal-space stations).
+
+**Verdict on the shipped Wave 3 layout against this contract:** same-size masses
+(breaks 12), same paint roles (needs the forest's species-role system), dome competes
+with masses in hue+value (breaks 4), BH swallowed between two friendly masses at the
+reef (breaks 1+2), no quiet beat reads (breaks 10), asteroids evenly-spaced grey
+filler (breaks 7). **The re-composition executes WITH Wave 1** — beats are placed
+along the FINAL path length, so specs are re-authored once, not twice.
+New refs for `?ref=` use: Webb Pillars weic2216b, Cosmic Cliffs weic2205a, Hubble
+Mystic Mountain heic1007a, Orion heic0601a (ESA/NASA image pages).
+
 ## 4. Hard look rules (the checklist every wave's screenshots answer to)
 
 1. Never pure black — void floor at the black-lift family; shadow floors non-black.
