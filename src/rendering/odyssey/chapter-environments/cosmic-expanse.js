@@ -1278,22 +1278,46 @@ function createAsteroidGarland() {
     const seats = new Float32Array(count * 3);
     const scales = new Float32Array(count);
     const spins = new Float32Array(count * 3);
+    // §3b rule 7 (witnesses, not filler): three UNEVEN clusters replacing the old
+    // even-lerp diagonal — a tight close pass of small sharp rocks, a mid swarm, and
+    // a sparse far trio of the biggest. Near = small + crisp, far = large (the
+    // parallax-speed ratio against the slow giants IS the scale statement). Seats
+    // are SEEDED (the old Math.random re-rolled the garland every build, which also
+    // made capture A/Bs incomparable).
+    let rngState = 421;
+    const rng = () => {
+        rngState = Math.imul(rngState ^ (rngState >>> 15), 0x2545f491) >>> 0;
+        return rngState / 4294967296;
+    };
+    const clusters = [
+        {
+            n: 5, x: -110, y: -30, z: -240, spread: 42, sMin: 2.5, sMax: 5,
+        },
+        {
+            n: 4, x: 150, y: 70, z: -430, spread: 58, sMin: 4, sMax: 8,
+        },
+        {
+            n: 3, x: 30, y: 130, z: -720, spread: 75, sMin: 9, sMax: 15,
+        },
+    ];
+    const seatOf = [];
+    clusters.forEach((c) => {
+        for (let k = 0; k < c.n; k += 1) seatOf.push(c);
+    });
     for (let i = 0; i < count; i += 1) {
-        const t = i / (count - 1);
+        const c = seatOf[i];
         // Diagonal garland: low-left near → high-right far (with the hero march), a few
         // pulled tight to the corridor for the close passes. Now that the garland really
         // does sit on the camera's lane (corridor frame), the close rocks are held off the
         // rail laterally so they graze the frame instead of eclipsing it, and the biggest
         // ones are kept to the far end of the run.
-        const tight = i % 4 === 0;
-        seats[i * 3] = THREE.MathUtils.lerp(-70, 190, t) + (Math.random() - 0.5) * 30;
-        seats[i * 3 + 1] = THREE.MathUtils.lerp(-40, 110, t) + (Math.random() - 0.5) * 24;
-        seats[i * 3 + 2] = THREE.MathUtils.lerp(-260, -640, t)
-            + (tight ? 60 : (Math.random() - 0.5) * 60);
-        scales[i] = tight ? 3 + Math.random() * 3 : 5 + Math.random() * 10;
-        spins[i * 3] = (Math.random() - 0.5) * 0.3;
-        spins[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
-        spins[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+        seats[i * 3] = c.x + (rng() - 0.5) * 2 * c.spread;
+        seats[i * 3 + 1] = c.y + (rng() - 0.5) * 2 * c.spread * 0.6;
+        seats[i * 3 + 2] = c.z + (rng() - 0.5) * 2 * c.spread;
+        scales[i] = c.sMin + rng() * (c.sMax - c.sMin);
+        spins[i * 3] = (rng() - 0.5) * 0.3;
+        spins[i * 3 + 1] = (rng() - 0.5) * 0.3;
+        spins[i * 3 + 2] = (rng() - 0.5) * 0.3;
         _asteroidDummy.position.set(seats[i * 3], seats[i * 3 + 1], seats[i * 3 + 2]);
         _asteroidDummy.rotation.set(0, 0, 0);
         _asteroidDummy.scale.setScalar(scales[i]);
