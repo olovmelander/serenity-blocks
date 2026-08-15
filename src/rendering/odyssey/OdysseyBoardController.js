@@ -716,6 +716,14 @@ export class OdysseyBoardController {
                     // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
                     // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
                     forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
+                    // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
+                    // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
+                    // every draw and withholds only the ground's fragment mesostructure, so
+                    // `baseline - flat-ground` prices the stack the overhaul spends against.
+                    // The ground could not use the forest's or water's shape (never built) —
+                    // the clipmap IS the world, so removing it measures a different scene.
+                    // docs/ODYSSEY_ACT2_GROUND_PLAN_2026-08.md §5 Wave 0a.
+                    flatGround: readBooleanUrlFlag('odysseyWorldFlatGround'),
                     // Diagnostic re-shades of the deck, for the "keyed to something other than
                     // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity

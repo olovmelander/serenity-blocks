@@ -107,6 +107,11 @@ export function create({
         forestPaint: params?.get?.('forestPaint') === '1',
         // The roster ships since the swap; `?forestV1=1` previews the retired cone forest.
         forestV2: params?.get?.('forestV1') !== '1',
+        // Ground plan Wave 0a: `?flatGround=1` is the pricing lever's look, reachable here so
+        // an A/B against the painted ground can be taken on the SAME graded rig the verdict
+        // is taken on — a lever whose visual effect nobody has ever seen is a lever nobody
+        // can sanity-check.
+        flatGround: params?.get?.('flatGround') === '1',
     });
     scene.add(world.group);
 
