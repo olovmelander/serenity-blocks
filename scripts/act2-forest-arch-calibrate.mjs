@@ -1,4 +1,14 @@
 /**
+ * THE ARCHIPELAGO'S CALIBRATION SIM — run from the repo root: node scripts/act2-forest-arch-calibrate.mjs
+ *
+ * This file AUTHORED the FOREST_ARCH_T_BY_AREA table in odyssey-forest-scatter.js: it
+ * calibrates each area's woods-field threshold as a percentile of that area's own eligible
+ * pool, prints the table at full precision, and measures the resulting carve. If ANY upstream
+ * stage changes (terrain weights, the density mask, the three-term thin, the glade, a salt,
+ * a kill fraction), re-run this and transcribe the FULL-PRECISION thresholds verbatim — the
+ * 3-decimal display values once flipped six borderline trees. Never hand-tune the table.
+ */
+/**
  * THE PAINTER — "ARCHIPELAGO": the island stops being a carpet with regional colour and
  * becomes an archipelago of big closed stands with real meadows between them.
  *
@@ -18,11 +28,11 @@
  */
 import {
     scatterZonedForest, buildShoreDistance, FOREST_CHUNK_BY_LOD,
-} from 'file:///C:/Users/olovm/serenity-blocks/src/rendering/odyssey/world/odyssey-forest-scatter.js';
+} from '../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import {
     odysseyWorldDetailWeight, odysseyWorldMacro, odysseyWorldRelief,
-} from 'file:///C:/Users/olovm/serenity-blocks/src/rendering/odyssey/world/odyssey-world-height.js';
-import { getOdysseyPathPointAt } from 'file:///C:/Users/olovm/serenity-blocks/src/rendering/odyssey/path-utils.js';
+} from '../src/rendering/odyssey/world/odyssey-world-height.js';
+import { getOdysseyPathPointAt } from '../src/rendering/odyssey/path-utils.js';
 
 const heightAt = (x, z) => odysseyWorldMacro(x, z)
     + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
@@ -69,8 +79,10 @@ function areaOf(x, z, d) {
     return 'WMID';
 }
 
-const comp = scatterZonedForest(heightAt, { rail, visibilityCull: false });
-const ship = scatterZonedForest(heightAt, { rail, visibilityCull: true });
+// archCarve OFF: the quantile pools must come from the UN-carved population, or a re-run
+// would calibrate on top of the very carve it is calibrating and the thresholds would ratchet.
+const comp = scatterZonedForest(heightAt, { rail, visibilityCull: false, archCarve: false });
+const ship = scatterZonedForest(heightAt, { rail, visibilityCull: true, archCarve: false });
 const tag = (t) => {
     const d = railDist(t.x, t.z);
     return { ...t, d, area: areaOf(t.x, t.z, d) };
@@ -95,8 +107,12 @@ const AREA_CFG = {
     WMID: { kill: 0.40, cellA: 430 },
 };
 // set-pieces
-const MEADOW = { cx: -432, cz: -277, ux: -0.25, uz: -0.97, a: 190, b: 130, core: 0.72 };
-const LONE = { cx: -997.3, cz: -884.4, r: 110, keepR: 14 };
+const MEADOW = {
+    cx: -432, cz: -277, ux: -0.25, uz: -0.97, a: 190, b: 130, core: 0.72,
+};
+const LONE = {
+    cx: -997.3, cz: -884.4, r: 110, keepR: 14,
+};
 const FINGERS = [
     { cx: -536, cz: -1412, r: 150 }, // green-side bite, seam s=-1500
     { cx: -395, cz: -1708, r: 140 }, // autumn-side bite, seam s=-1700
@@ -106,7 +122,9 @@ const CYP = { cx: -1086, cz: -1753, r: 240 };
 // The autumn shore TERRACE: autumnBoost = gain*region*apron pays where apron is HIGH, i.e.
 // one terrace ABOVE the green apron — shore 95..200u. Protect [45,200) so the owner's red
 // maple run and the gold shoreline stay a continuous painted band under the finale camera.
-const TERRACE = { region: 0.55, shoreLo: 45, shoreHi: 200, zMin: -1400 };
+const TERRACE = {
+    region: 0.55, shoreLo: 45, shoreHi: 200, zMin: -1400,
+};
 // Stage A never kills the near field: fine-chunk-centre rail distance <= 520 is EXACTLY the
 // non-far LOD set (tier-invariant; hero/mid split varies by tier but far does not).
 const FOREST_CHUNK = 420;
@@ -150,6 +168,9 @@ for (const [a, cfg] of Object.entries(AREA_CFG)) {
     T_BY_AREA[a] = vals.length ? vals[Math.floor((1 - cfg.kill) * (vals.length - 1))] : Infinity;
 }
 console.log(`thresholds: ${JSON.stringify(Object.fromEntries(Object.entries(T_BY_AREA).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(3) : 'off'])))}`);
+// FULL precision is what gets transcribed into FOREST_ARCH_T_BY_AREA — the 3-decimal display
+// values above once flipped six borderline trees.
+console.log(`FULL-PRECISION thresholds: ${JSON.stringify(T_BY_AREA)}`);
 
 // ── the predicate ──
 function painterKeep(t) {
