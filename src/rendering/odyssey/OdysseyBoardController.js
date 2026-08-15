@@ -661,6 +661,10 @@ export class OdysseyBoardController {
                 const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
                 this.oneWorld = createOdysseyWorld({
                     quality: weakLane ? 'low' : 'high',
+                    // The forest's hero band is a TIER setting: 200 on High and above, 120 at
+                    // Medium and below, because 200 measured +1.57 ms p95 on the integrated
+                    // lane and took that station over its max. See FOREST_LOD_DISTANCE_BY_TIER.
+                    qualityTier: this.qualityName,
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear
                     // values rather than the display-referred palette the playground wants.
@@ -729,6 +733,14 @@ export class OdysseyBoardController {
                     // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
                     // attributable in one reload rather than unfalsifiable.
                     visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                    // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
+                    // the look can be FELT in the real game. Costs ~18 ms of forest on the
+                    // integrated lane against a 10.6 ms whole-frame budget, so it is a test
+                    // lever and not a quality option. Accepts hero | mid | far.
+                    forestLod: (() => {
+                        const v = readUrlValue('odysseyForestLod');
+                        return ['hero', 'mid', 'far'].includes(v) ? v : null;
+                    })(),
                     // Diagnostic re-shades of the deck, for the "keyed to something other than
                     // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity

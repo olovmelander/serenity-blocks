@@ -31,7 +31,7 @@ import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
-import { getForestSpecies } from './odyssey-forest-species.js';
+import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
@@ -1040,6 +1040,12 @@ export function createOdysseyWorld({
     // was measured at 0.00% of pixels changed across four rail stations, for 0.20 ms p50 — and
     // `?odysseyWorldNoVisCull=1` restores every tree (ADR-0015).
     visibilityCull = true,
+    // EXPERIMENT: pin every tree to one LOD tier. `?odysseyForestLod=hero` is the "what would
+    // high-detail trees everywhere feel like" lever. Not a quality setting — it ignores
+    // distance entirely, so it costs ~18 ms of forest on the integrated lane.
+    forestLod = null,
+    /** Quality tier name — selects the forest's hero/mid LOD distances. */
+    qualityTier = null,
     // MEASUREMENT ONLY (ground plan Wave 0a). Same geometry, same draws, same triangles —
     // only the ground's fragment mesostructure is withheld, so `baseline - flat-ground`
     // prices exactly the stack the overhaul spends against. Never shipped on.
@@ -3378,6 +3384,8 @@ export function createOdysseyWorld({
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
             visibilityCull,
+            forceLod: forestLod,
+            lodDistance: forestLodDistanceForTier(qualityTier),
         });
         // One geometry per (species, LOD) — growth stages ride the instance matrix, because a
         // stage is defined as pure height/width multipliers (see the scatter's header).

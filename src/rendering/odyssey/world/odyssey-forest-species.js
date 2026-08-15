@@ -322,7 +322,26 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         trunkH: 1.15,
         // (Was `waterline: true`. Reversed with the gold birch's — see that entry.)
         autumnBand: true,
-        weight: 0.55,
+        // THE MAPLE IS DEFENDED BY ITS AUTUMN GAIN, NOT BY ITS WEIGHT — and the difference is
+        // the whole composition. The maple lives on the autumn side, which carries the extra
+        // edge thinning, so a density operation aimed at the gold MASS cut this species to 46
+        // trees island-wide as a side effect. Two wrong fixes preceded this one:
+        //
+        //  1. Exempting it from the thin. That distorted exactly what it was meant to protect —
+        //     the maple survived everything around it and went from 14% of the east to 37%.
+        //  2. Raising `weight` 0.55 -> 0.95. It restored the count, and the MAP showed why it
+        //     was still wrong: weight is global, so the maple became competitive on the green
+        //     side too and turned 20% of the far WEST — the end the owner asked to keep green —
+        //     deep red. A count can be right while the composition it produces is wrong, which
+        //     is the argument for reviewing this file as a map and never as a total.
+        //
+        // `autumnGain` is region-shaped: it pays only where `region` is high, so the maple gets
+        // its population back ON the autumn side and stays a rarity on the green one.
+        // MEASURED at these values: 357 maples island-wide, 10% of the far-east autumn mass and
+        // 0% of the far-west green end — where the raised weight had put 20%. The gain's response
+        // is steep (1.5 -> 108 trees, 2.2 -> 357, 3.1 -> 1,026), so it is a narrow band.
+        weight: 0.62,
+        autumnGain: 2.2,
         stages: Object.freeze([
             Object.freeze({
                 id: 'young', h: 0.64, w: 0.70, freq: 0.40,
@@ -408,11 +427,67 @@ export const FOREST_LOD_BUDGET = Object.freeze({
  * 12-20 triangle far tier, which is where a forest starts reading as cardboard. The hero count
  * is unchanged across all four rows because hero chunks are decided on the fine grid and the
  * same chunks qualify either way — the lever is entirely the mid/far boundary.
+ *
+ * ── HERO 120 -> 200 (owner direction, 2026-08-15) ──
+ *
+ * Asked after pricing the extreme: hero-EVERYWHERE projects to 2,269k triangles, ~18 ms of
+ * forest alone against a 10.6 ms whole-frame budget, and it doubles the draw count as a second
+ * effect (hero chunks are 420 u where far chunks are 1,680, so forcing the tier also quarters
+ * the batch size). That is not a tuning question. Extending the hero BAND is, and it puts the
+ * detail where a viewer can actually resolve it.
+ *
+ * Swept against the shoreline station's real headroom (0.70 ms = ~87k triangles) before
+ * choosing, on the shipped, visibility-culled forest:
+ *
+ *   hero<=120 -> 351 hero, 314k tris, ~2.51 ms   <- previous
+ *   hero<=160 -> 475 hero, 352k tris, ~2.81 ms   (+0.30)
+ *   hero<=200 -> 629 hero, 399k tris, ~3.19 ms   (+0.68)  <- shipped, owner's choice
+ *   hero<=260 -> 886 hero, 476k tris, ~3.81 ms   (+1.29)  over headroom
+ *
+ * 200 nearly doubles the hero population and spends nearly all of the margin to do it. That is
+ * the owner's call, taken with the sweep in hand; 160 was the conservative row and is one edit
+ * away if a station ever needs the 0.38 ms back. The projection uses this repo's measured
+ * ~0.8 ms/100k rate — see the ledger for what the pair actually measured after the change.
  */
 export const FOREST_LOD_DISTANCE = Object.freeze({
     hero: 120,
     mid: 520,
 });
+
+/**
+ * ...AND 200 SHIPS, BUT NOT ON EVERY MACHINE — because the pair said so.
+ *
+ * The owner asked for the hero band at 200. Measured at the shoreline station on a rested
+ * machine, Lane B (Radeon 610M, 720p, Medium, --low-power):
+ *
+ *   hero 120 -> 9.76 p50 / 9.90 p95     (max 10.6, 0.70 ms of margin)
+ *   hero 200 -> 11.08 p50 / 11.47 p95   (+1.32 / +1.57 — OVER the max by 0.87)
+ *
+ * The projection that preceded it said +0.68 and was wrong twice over, which is worth keeping
+ * because both errors are the same shape — a model of the code rather than the code. It swept
+ * PER-TREE distance while the scatter bins LOD by CHUNK CENTRE (932 hero trees, not the 629
+ * predicted), and it used a mean of 276 triangles per hero tree taken across every species and
+ * stage rather than the placed distribution (really 350). Estimates steer; pairs decide.
+ *
+ * So the band is a QUALITY TIER rather than a constant. The integrated lane is expected to run
+ * Medium and keeps 120, which measured comfortably inside budget; High and above get the 200
+ * the owner asked for, on hardware that can pay for it. That is also the only version of "more
+ * high-detail trees" that survives contact with the 610M — a single global value has to serve
+ * the weakest machine, and therefore serves nobody well.
+ */
+export const FOREST_LOD_DISTANCE_BY_TIER = Object.freeze({
+    Minimal: Object.freeze({ hero: 120, mid: 520 }),
+    Low: Object.freeze({ hero: 120, mid: 520 }),
+    Medium: Object.freeze({ hero: 120, mid: 520 }),
+    High: Object.freeze({ hero: 200, mid: 520 }),
+    Ultra: Object.freeze({ hero: 200, mid: 520 }),
+    Extreme: Object.freeze({ hero: 200, mid: 520 }),
+});
+
+/** The tier's distances, falling back to the conservative default for an unknown name. */
+export function forestLodDistanceForTier(tier) {
+    return FOREST_LOD_DISTANCE_BY_TIER[tier] || FOREST_LOD_DISTANCE;
+}
 
 /**
  * THE FRAMING TREES (Wave 6, owner-directed finalisation 2026-08-14) — the cloud field's
