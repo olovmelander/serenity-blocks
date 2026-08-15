@@ -386,6 +386,22 @@ export class OdysseyCorridorField {
 
         if (feel === 'cosmic') {
             const blackHole = profile.id === 7;
+            // CH6 SHEETS RETIRED (Space overhaul, owner call 2026-08-15): with the baked
+            // void dome + sculpted nebula field shipping, chapter 6's two near-fullscreen
+            // additive FBM sheets are a redundant wash over an already-authored cosmos —
+            // in the composition rig they buried every sculpted silhouette. Ch7 keeps its
+            // deep-violet pocket wash (its own look still leans on it); the crisp
+            // pinpoint mote starfield stays for both. Restorable for A/B via
+            // `?odysseyCh6CorridorSheets=1`.
+            const ch6SheetsRestored = (() => {
+                if (typeof window === 'undefined') return false;
+                try {
+                    const v = new URLSearchParams(window.location?.search || '').get('odysseyCh6CorridorSheets');
+                    return v === '1' || v === 'true';
+                } catch {
+                    return false;
+                }
+            })();
             // POCKETED nebula: low coverage + high contrast so large areas read as deep
             // clear vacuum and the nebula concentrates into a few brighter bands/pockets
             // (vs the old uniform edge-to-edge purple haze). Black Hole keeps a deeper
@@ -402,10 +418,12 @@ export class OdysseyCorridorField {
                     sheet(primary, shadow, 0.5, 1.4, 0.03, true, 0.5, 700, 0.7, 0, null, { pocket: 1, coverage: 0.44, contrast: 1.8 }),
                     sheet(0x2a0f33, shadow, 0.55, 0.9, 0.015, true, 0.44, 900, 0.55, 0, null, { pocket: 1, coverage: 0.5, contrast: 1.6 }),
                 ]
-                : [
-                    sheet(primary, shadow, 0.5, 1.5, 0.025, true, 0.4, 700, 0.7, 0, null, { pocket: 1, coverage: 0.3, contrast: 2.6 }),
-                    sheet(0x101a3a, shadow, 0.55, 0.85, 0.012, true, 0.26, 900, 0.55, 0, null, { pocket: 1, coverage: 0.36, contrast: 2.2 }),
-                ];
+                : (ch6SheetsRestored
+                    ? [
+                        sheet(primary, shadow, 0.5, 1.5, 0.025, true, 0.4, 700, 0.7, 0, null, { pocket: 1, coverage: 0.3, contrast: 2.6 }),
+                        sheet(0x101a3a, shadow, 0.55, 0.85, 0.012, true, 0.26, 900, 0.55, 0, null, { pocket: 1, coverage: 0.36, contrast: 2.2 }),
+                    ]
+                    : []);
             /* eslint-enable max-len */
             // Black Hole: drifting dust motes + faint lensing haze, deep-violet wash.
             // Space: dense MULTI-DEPTH crisp pinpoint starfield (true-black vacuum stays
