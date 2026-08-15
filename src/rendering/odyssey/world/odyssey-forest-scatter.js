@@ -707,6 +707,13 @@ export function shadeColourFor(crown, role) {
 export function scatterZonedForest(heightAt, {
     // ADR-0015: one flag from restoration. `?odysseyWorldNoVisCull=1` puts every tree back.
     visibilityCull = true,
+    /**
+     * The archipelago carve (ADR-0015: one flag from restoration). false is for the
+     * CALIBRATION SIM only — scripts/act2-forest-arch-calibrate.mjs must build its quantile
+     * pools from the UN-carved population, or a re-run would calibrate on top of the very
+     * carve it is calibrating and the thresholds would ratchet.
+     */
+    archCarve = true,
     /** 'hero' | 'mid' | 'far' — pin every tree to one LOD. Experiment lever; see below. */
     forceLod = null,
     /** { hero, mid } distances for this quality tier — see forestLodDistanceForTier. */
@@ -830,7 +837,7 @@ export function scatterZonedForest(heightAt, {
             // stage order matches the sim the thresholds were calibrated in; before the
             // stage pick so a carved site costs nothing further. The blossom grove is exempt
             // exactly as it is from the glade; framing trees never enter this loop.
-            if (!spec.grove && !archKeep(x, z, dRail, shoreDistHere, rail)) continue;
+            if (archCarve && !spec.grove && !archKeep(x, z, dRail, shoreDistHere, rail)) continue;
 
             const stage = pickStage(spec, hash2(i, j, 8));
 
