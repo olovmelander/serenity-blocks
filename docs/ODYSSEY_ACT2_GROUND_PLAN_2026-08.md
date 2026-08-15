@@ -548,6 +548,72 @@ rewrites its own predictions teaches nothing the next time.
   3.48 -> 2.49). An inert term at 40% of the whole stack's price, and the reason this overhaul
   lands at net +0.13 ms instead of the +1.05 ms its first cut measured.
 
+### The three open items, closed (2026-08-15, second pass)
+
+§7 left three things named rather than fixed. All three were taken, and two of them turned out
+to be misdiagnosed by their own description — which is the argument for measuring a complaint
+before acting on it.
+
+**1. "The upper massif reads as sand dune, not stone."** Two separate faults wearing one symptom.
+
+The first was real and is fixed: the authored rock sat at chromaticity **.403/.342/.255**
+against the references' .348/.338/.314 (ref1 white rock) and .365/.343/.293 (ref2 pale ledge).
+Its blue fraction was far too low, putting it chromatically nearer our own SAND (.467/.364/.168)
+than stone — a material reads by hue family before anything else. Re-authored to ~.368/.342/.290
+at IDENTICAL luma (verified to four decimals), so the G3 ladder and every measurement taken
+against it are untouched. The re-captured cone screens at **.351/.335/.314, a bullseye on ref1**,
+at sat 0.105.
+
+The second was a misdiagnosis, and the measurement caught it: **that pale cone is not rock at
+all, it is the SNOW CAP.** Its screened chromaticity matches the snow pole even more closely
+than the rock one. So no rock edit could ever have fixed it. What a real snowy peak has, and
+what a heightfield cannot give it, is ribs — wind strips convex ground and fills hollows — so
+snow is now stripped by the `crest` curvature term it was already computing. That helps, and
+it is honestly only a partial fix: `curvature` is scaled by the RELIEF detail weight and the
+massif's shape comes from the MACRO field, which has no baked curvature, so the ribs are weak
+exactly where they are wanted most. The real answer is Wave 6's parked "instanced rock outcrops
+on ridgelines", which is also what The Witness did (§1.4: steep terrain was never the
+heightfield — "make the walls steep by putting mesh objects in there").
+
+**2. "There are no clearings or paths."** Clearings shipped; paths did not.
+
+The aerial's most visible difference from the reference was a continuous canopy where theirs is
+broken by open ground. Note the existing thinning mask could not have produced this: it thins
+the canopy EVENLY, and an evenly thinner forest is still a carpet. A clearing is a HOLE with an
+edge — one low-frequency field, thresholded to empty its core and feathered at the rim so the
+boundary is a treeline rather than a cut.
+
+The thresholds are measured against the field's own distribution rather than guessed: it runs
+p50 0.510 / p80 0.706 / p88 0.766 over the plantable disc, so 0.766 opens ~12% of the area. The
+first guess (0.87) sat past p92 and removed 3% — a rounding error, not a clearing.
+
+Grove species are EXEMPT, which is why the cull sits after species selection. Glades and groves
+are both patch-driven and they collided: the first cut ate the cherry groves from 110 trees to
+~43, deleting the island's showpiece to make holes. A blossom grove standing IN a clearing is
+better than either alone.
+
+**And this is the item that paid for the other two:** −978 trees, −19k triangles (−6.2%).
+
+**3. "The very high aerials wash out."** Fixed, and the obvious lever was the wrong one.
+
+The first attempt lowered the aerial CEILING for land (0.82 → 0.58) and did almost nothing —
+because from 1,500 u the terrain below is 1,500-3,000 u away and the mix is 27-40%, far under
+either ceiling. What bleaches an aerial view is the RATE, not the cap. Land now gets its own
+rate (0.62) as well as its own ceiling; water keeps 1.0 on both, because its haze is doing a job
+land's never has to (converging on the same plate the sky dome converges on, so the horizon
+carries no seam — land is an island and never reaches that distance).
+
+MEASURED on the high aerial: the distant massif went **sat 0.121 → 0.245**, landing on ref1's
+measured 0.25, and luma 145 → 129 — away from milk, toward colour. The rate is held at 0.62
+rather than lower because Sable's law is in this plan for a reason: with flat shading the
+distance gradient is nearly the only depth cue there is, so this trades some haze for colour and
+must not trade all of it. The rail stations are unchanged in reading.
+
+**Cost of all three together:** the station measured **10.16 p50 / 10.49 p95 at drift EXACTLY
+0.000, 54 draws** — better than the committed tree measured warm on the same machine
+(10.29 / 10.68), and back under the 10.6 max with 0.11 ms of margin at p95. The clearings paid
+for the regional composition, the rock re-hue and the aerial work together.
+
 ### Boot time — the second ledger, measured
 
 The plan said every bake addition carries a load-time assert because cold start is a standing

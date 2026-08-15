@@ -58,9 +58,16 @@ export const ODYSSEY_GROUND_PALETTE = Object.freeze({
     // Ref2 pale ledge 132/124/106 (sat 0.20), ref4 canyon rock 169/145/104 (sat 0.32-0.38).
     // Rock is the LOW-saturation family — that contrast against 0.56-0.79 vegetation IS the
     // material identity (G2), so pushing rock saturation up to match the trees would delete it.
+    // ...and rock must not be SAND. Measured on the ascent capture, where the massif read as a
+    // dune rather than as stone: the authored rock sat at chromaticity .403/.342/.255, against
+    // the references' .348/.338/.314 (ref1 white rock) and .365/.343/.293 (ref2 pale ledge).
+    // Its blue fraction was far too low, which put it chromatically nearer our own SAND
+    // (.467/.364/.168) than stone — a material reads by its hue family before anything else.
+    // Re-authored to ~.368/.342/.290 at IDENTICAL luma, so the G3 value ladder and every
+    // measurement taken against it are untouched: this moves hue only.
     rock: Object.freeze({
-        damp: Object.freeze([0.37, 0.31, 0.25]),
-        dry: Object.freeze([0.60, 0.51, 0.38]),
+        damp: Object.freeze([0.336, 0.317, 0.280]),
+        dry: Object.freeze([0.557, 0.517, 0.439]),
         shade: 'mineral',
     }),
     // Warmed off blue-white so peaks read sunlit; the damp pole is old/compacted snow.
@@ -176,9 +183,11 @@ export const ODYSSEY_GROUND_STRATA = Object.freeze({
     /**
      * Value step between adjacent strata. 0.16 measured as invisible on the massif capture —
      * +-8% of value on a pale rock is below the threshold where an eye reads a band at all —
-     * against the bar's 30-45 luma out of ~200, which is +-13..18%. Authored at the bar.
+     * against the bar's 30-45 luma out of ~200, which is +-13..18%. 0.36 then measured a 23-luma
+     * range on a captured cliff, still short of the bar and still reading as mottle rather than
+     * as strata. Raised again toward the measurement rather than toward taste.
      */
-    step: 0.36,
+    step: 0.50,
     /** How far the atlas warps a band boundary, in world units. Wider than the noise swing. */
     warp: 30,
     /**

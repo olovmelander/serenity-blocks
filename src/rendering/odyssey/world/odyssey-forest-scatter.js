@@ -5,6 +5,7 @@ import {
     ODYSSEY_FOREST_FRAMING,
     ODYSSEY_FOREST_SPECIES,
 } from './odyssey-forest-species.js';
+import { railSeesForestSite } from './odyssey-forest-visibility.js';
 
 /**
  * ACT II FOREST — the zoned scatter (forest plan Wave 2).
@@ -128,6 +129,35 @@ const FOREST_REGION_WANDER_AMP = 300;
  * near-shore green share fall to 79% when the whole point of the term is that the water's edge
  * is green.
  */
+/**
+ * CLEARINGS. `OPEN` is the threshold above which the canopy stops entirely; `EDGE` is where it
+ * starts thinning toward that, so a glade has a feathered treeline instead of a shaved circle.
+ * The cell is deliberately large — a clearing you can see across from the air, not a gap between
+ * trunks — and the thresholds are MEASURED against the field's own distribution rather than
+ * guessed: over the plantable disc this field runs p50 0.510 / p80 0.706 / p88 0.766, so 0.766
+ * is the value that opens ~12% of the area. The first guess (0.87) sat past p92 and removed 3%,
+ * which is a rounding error, not a clearing.
+ */
+/**
+ * THE FAR SIDE THINS OUT (owner direction, 2026-08-15, marked on an aerial).
+ *
+ * Measured along the same region axis the composition uses: the forest runs from -1218 to 1810,
+ * and 26% of every tree on the island sits beyond 1000 — the far right of the marked frame, and
+ * the part of the island the RAIL never approaches. That coincidence is the justification: this
+ * is the one place where thinning is both a composition call and a free LOD, because nothing
+ * here is ever seen closer than an aerial.
+ *
+ * Progressive rather than a cut-off. A hard edge in density is a line, and this file has spent
+ * three iterations learning what lines look like from the air.
+ */
+const FOREST_FAR_THIN_NEAR = 900;
+const FOREST_FAR_THIN_FAR = 1550;
+/** How much of the far side is removed at full strength — a third of it survives. */
+const FOREST_FAR_THIN_MAX = 0.65;
+const FOREST_GLADE_CELL = 620;
+const FOREST_GLADE_SALT = 137;
+const FOREST_GLADE_EDGE = 0.68;
+const FOREST_GLADE_OPEN = 0.766;
 const FOREST_SHORE_GREEN = 45;
 const FOREST_SHORE_FADE = 95;
 /**
@@ -402,6 +432,8 @@ export function shadeColourFor(crown, role) {
  * @returns {{placements: Array, buckets: Map, stats: object}}
  */
 export function scatterZonedForest(heightAt, {
+    // ADR-0015: one flag from restoration. `?odysseyWorldNoVisCull=1` puts every tree back.
+    visibilityCull = true,
     cx = -220,
     cz = -620,
     radius = 1750,
@@ -446,9 +478,53 @@ export function scatterZonedForest(heightAt, {
             const mask = hash2(Math.floor(x / 140), Math.floor(z / 140), 3);
             const falloff = 1 - Math.max(0, (y - (snowStart - 130)) / 130);
             if (hash2(i, j, 4) > (0.35 + (mask * 0.95)) * Math.max(0.12, falloff)) continue;
-
+            // The far side thins with distance along the region axis — see FOREST_FAR_THIN_NEAR.
+            // Placed BEFORE the species pick so the skipped sites cost nothing at all.
+            const farT = Math.max(0, Math.min(
+                1,
+                (((x * FOREST_REGION_AXIS[0]) + (z * FOREST_REGION_AXIS[1])) - FOREST_FAR_THIN_NEAR)
+                / (FOREST_FAR_THIN_FAR - FOREST_FAR_THIN_NEAR),
+            ));
+            const farThin = farT * farT * (3 - (2 * farT)) * FOREST_FAR_THIN_MAX;
+            if (hash2(i, j, 29) < farThin) continue;
+            /**
+             * THE RAIL CANNOT SEE THIS SITE. Act II's camera is pinned to a spline over a fixed
+             * height field, so "is a canopy here ever visible" is decidable geometry rather than
+             * a guess about where players look — baked offline by scripts/bake-forest-visibility.
+             *
+             * MEASURED before it shipped: this removes ~44% of the island's trees and changes
+             * 0.00% of pixels at four rail stations, worth 0.20 ms p50 on Lane B. Every tree it
+             * takes is `far` LOD; it touches 8 trees across the near-camera species.
+             *
+             * The three ways unseen geometry usually still matters — silhouette, shadow,
+             * reflection — were each checked rather than assumed: a canopy that pokes over a
+             * ridge counts as VISIBLE (the bake tests at 16 u, taller than any stage), the sun
+             * bake marches terrain only so trees cast nothing, and this world has no reflector.
+             */
+            if (visibilityCull && !railSeesForestSite(x, z)) continue;
             const spec = pickSpecies(x, y, z, species, zoneCell, shoreAt(x, z));
             if (!spec) continue;
+            // CLEARINGS — the aerial's most visible difference from the reference island.
+            //
+            // Ours was a continuous carpet from the air; theirs is broken by open ground and
+            // walked lines, and that open ground is a large part of why the reference reads as
+            // a PLACE rather than as coverage. The `mask` above thins the canopy evenly, which
+            // is not the same thing at all: an evenly thinner forest is still a carpet.
+            //
+            // A clearing is a HOLE with an edge. One low-frequency field, thresholded hard
+            // enough to empty its core and feathered at the rim so the boundary is a treeline
+            // rather than a cut. It costs nothing — it removes trees — which is the rare case
+            // where the composition fix and the budget move the same way.
+            const glade = patchNoise(x, z, FOREST_GLADE_CELL, FOREST_GLADE_SALT);
+            if (!spec.grove) {
+                if (glade > FOREST_GLADE_OPEN) continue;
+                if (glade > FOREST_GLADE_EDGE) {
+                    const rim = (glade - FOREST_GLADE_EDGE)
+                        / (FOREST_GLADE_OPEN - FOREST_GLADE_EDGE);
+                    if (hash2(i, j, 23) < rim) continue;
+                }
+            }
+
             const stage = pickStage(spec, hash2(i, j, 8));
 
             // Snow rides the SAME shell as a per-instance amount, not a second mesh: a nested

@@ -1467,6 +1467,29 @@ machine, or reclaim before anything else lands in Act II — and it is deliberat
 rather than resolved by raising the number.
 
 
+### The far side thins out (owner direction, marked on an aerial)
+
+Measured along the same region axis the composition uses: the forest spans `along` -1218..1810,
+and **26% of every tree on the island sat beyond 1000** — the far right of the marked frame, and
+ground the RAIL never approaches. That coincidence is the justification: this is the one place
+where thinning is both a composition call and a free LOD, because nothing there is ever seen
+closer than from the air. Progressive (900 -> 1550, keeping a third at full strength) rather
+than a cut-off, because a hard edge in density is a line and this file has spent three
+iterations learning what lines look like from above.
+
+Result: -1,482 trees, -29k triangles. Its cost at the shoreline station is **nothing, in both
+directions** — 10.16 p50 / 10.49 p95 before and after — because that camera sits on the GREEN
+side and the thinned ground is off-screen or already far-LOD from there. Recorded as a
+non-saving rather than banked as one; it should pay at stations that face the far side, and
+nobody has measured those.
+
+The density gate in `odyssey-forest-scatter.test.js` became ASYMMETRIC in the same change. It
+exists to stop density becoming a quiet perf regression channel, and a count that GROWS is the
+regression — so the ceiling stayed tight while the floor moved below two owner-directed
+removals (clearings, far-side thinning) that both measured negative cost. A symmetric floor
+would have failed the cheaper island on a perf guard, which is a gate reading its own units
+backwards.
+
 ## 8. Files
 
 | File | Change |

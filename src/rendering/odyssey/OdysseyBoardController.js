@@ -724,6 +724,11 @@ export class OdysseyBoardController {
                     // the clipmap IS the world, so removing it measures a different scene.
                     // docs/ODYSSEY_ACT2_GROUND_PLAN_2026-08.md §5 Wave 0a.
                     flatGround: readBooleanUrlFlag('odysseyWorldFlatGround'),
+                    // The rail-visibility cull SHIPS (it removes only trees no camera can ever
+                    // see, measured at 0.00% of pixels across four stations). ADR-0015:
+                    // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
+                    // attributable in one reload rather than unfalsifiable.
+                    visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
                     // Diagnostic re-shades of the deck, for the "keyed to something other than
                     // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity

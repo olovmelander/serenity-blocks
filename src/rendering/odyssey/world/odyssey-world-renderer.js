@@ -139,6 +139,12 @@ const GROUND_WIND_LIFT = 0.055;
  */
 const GROUND_SNOW_SHADE = Object.freeze([0.87, 1.01, 1.24]);
 /**
+ * How hard convex ground strips its own snow. Wind scours ribs and fills hollows, so a peak's
+ * structure shows as stone on the crests — the one cue that separates a snowy MOUNTAIN from a
+ * smooth white cone when the silhouette cannot help.
+ */
+const GROUND_SNOW_CREST_STRIP = 0.75;
+/**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
  *
  * (A `GROUND_AO_STRENGTH` multiply over the whole lit result lived beside this. It is gone:
@@ -1030,6 +1036,10 @@ export function createOdysseyWorld({
     // `?odysseyWorldForestV1=1`: builders, scatter and material all stay, one flag from
     // restoration, so a failure of the new forest is attributable rather than unfalsifiable.
     forestV2 = true,
+    // The rail-visibility cull: drop trees the journey's camera can never see. Ships ON — it
+    // was measured at 0.00% of pixels changed across four rail stations, for 0.20 ms p50 — and
+    // `?odysseyWorldNoVisCull=1` restores every tree (ADR-0015).
+    visibilityCull = true,
     // MEASUREMENT ONLY (ground plan Wave 0a). Same geometry, same draws, same triangles —
     // only the ground's fragment mesostructure is withheld, so `baseline - flat-ground`
     // prices exactly the stack the overhaul spends against. Never shipped on.
@@ -1171,11 +1181,45 @@ export function createOdysseyWorld({
     // overhead term entirely and move by <0.02 under the gamut pull, so they are left alone.)
     const skyColourSubmergedUp = uSkyZenith;
     const skyColourSubmergedGraze = mix(uSkyHorizon, uSkyZenith, float(0.88));
-    const applyAerial = (lit, wp) => {
+    /**
+     * How much of a distant surface the air is allowed to replace.
+     *
+     * 0.82 is the WATER's number and it earns it: the sea runs to the horizon, so its far
+     * fragments must converge on the same plate the sky dome converges on or the horizon carries
+     * a seam (the "ONE COLOUR AT INFINITY" note on the dome below). LAND never reaches that
+     * distance — this is an island, the ocean is what meets the sky — so the ceiling that
+     * prevents a seam for water only bleaches terrain for land.
+     *
+     * MEASURED from the air, which is the view that exposed it: the distant peak screened at
+     * chromaticity .309/.331/.360 against the reference's .282/.342/.377 and saturation 0.14
+     * against a 0.18-0.53 bar, and the very high aerials read as milk. At rail distance the mix
+     * is only 5-21% and this ceiling is never reached, so lowering it for the GROUND is
+     * surgical: it changes what is far away and nothing that is near.
+     */
+    const AERIAL_CEIL_WATER = 0.82;
+    const AERIAL_CEIL_LAND = 0.58;
+    /**
+     * ...and the CEILING was not the binding constraint, which is worth recording because it
+     * was the obvious lever and it did almost nothing. From 1,500 u up, the terrain below is
+     * 1,500-3,000 u away and the mix is 27-40% — far under either ceiling. What bleaches an
+     * aerial view is the RATE, not the cap. So land gets both: a lower cap for the far tail and
+     * a scaled rate for everything before it. Water keeps 1.0 on both, because its haze is
+     * doing a job (converging on the plate the sky converges on) that land's never has to.
+     *
+     * Held at 0.62 rather than lower on purpose. Sable's law is in this plan for a reason —
+     * with flat shading the distance gradient is nearly the only depth cue there is — so this
+     * trades some haze for colour and must not trade all of it.
+     */
+    const AERIAL_RATE_LAND = 0.62;
+    const applyAerial = (lit, wp, ceil = AERIAL_CEIL_WATER, rate = 1) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
-        const air = mix(lit, skyColourFor(dirY), clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82));
+        const air = mix(
+            lit,
+            skyColourFor(dirY),
+            clamp(float(1).sub(exp(d.mul(uAerialK.negate()))).mul(float(rate)), 0, ceil),
+        );
         // PER-CHANNEL BEER-LAMBERT, so red dies first and distance reads as WATER rather than
         // as blue fog: one scalar became a vec3 whose red extinguishes ~3.5x faster than blue,
         // the one cue that separates "underwater" from "tinted air". The old 0.97 clamp is gone
@@ -1393,8 +1437,20 @@ export function createOdysseyWorld({
         // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
         const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
         const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9)).toVar();
+        /**
+         * SNOW, MINUS THE RIBS. The summit read as a sand dune in the ascent capture, and the
+         * diagnosis was not the rock palette at all — measured, the pale cone screens at
+         * norm .351/.335/.314, which is the SNOW pole. It is a smooth, bright, near-uniform
+         * cone, and a heightfield cannot give it silhouette the way a sculpted peak would.
+         *
+         * What a real snowy peak has, and what the reference massif shows on its own ridges, is
+         * ROCK BREAKING THROUGH where the form is convex: wind strips the ribs and fills the
+         * hollows. `crest` is exactly that convexity and is already computed for the cavity
+         * term, so this costs one multiply and turns a blank cone into a ribbed one.
+         */
         const wSnow = smoothstep(float(620), float(730), snowHeight)
-            .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
+            .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)))
+            .mul(float(1).sub(crest.mul(float(GROUND_SNOW_CREST_STRIP))));
         const wRock = clamp(max(
             smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035))),
             smoothstep(float(470), float(640), snowHeight).mul(0.75),
@@ -1632,7 +1688,7 @@ export function createOdysseyWorld({
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
     };
-    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld));
+    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -3321,6 +3377,7 @@ export function createOdysseyWorld({
             spacing: q.treeSpacing,
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
+            visibilityCull,
         });
         // One geometry per (species, LOD) — growth stages ride the instance matrix, because a
         // stage is defined as pure height/width multipliers (see the scatter's header).
