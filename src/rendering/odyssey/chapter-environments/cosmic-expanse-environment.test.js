@@ -156,7 +156,10 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
                 .toBeGreaterThan(0.95);
             expect(group.userData.starsNear.material.opacity).toBeLessThan(0.01);
             expect(group.userData.galaxy.material.opacity).toBeLessThan(0.01);
-            expect(group.userData.nebulaVolume.material.opacity).toBeLessThan(0.01);
+            // Wave 3: the sculpted field stages via its own uniform (setOpacityScale
+            // must never touch its opaque material) — held shut in the summit window.
+            expect(group.userData.nebulaField.userData.uReveal.value).toBeLessThan(0.01);
+            expect(group.userData.nebulaField.visible).toBe(false);
             expect(group.userData.auroraBridge.visible).toBe(false);
             expect(group.userData.voidSky.visible).toBe(false);
             expect(group.userData.diskLight.intensity).toBe(0);

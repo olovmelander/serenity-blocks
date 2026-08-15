@@ -187,6 +187,62 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldForestV1: '1' },
         note: 'the retired incumbent cone forest restored in place of the roster',
     },
+    // ── CH6 SPACE (ODYSSEY_CH6_SPACE_OVERHAUL_PLAN_2026-08.md, Wave 0) ──────────────
+    // Ch6 has NEVER had a station or a budget cell; these five levers price the diorama
+    // tier by tier before the Painted-Cosmos overhaul touches anything. Each tier is
+    // never BUILT under its flag (the `no-water` lever shape: draws + fill + vertex +
+    // pipeline together — the tiers are additive-blended sprites, so fill is the
+    // suspected whale and an asymmetric hide-only lever would price the wrong half).
+    // Stations (all with --chapters 5,6,7 and --out, so they cannot clobber Act II):
+    //   entry --seek 0.665 · reef --seek 0.73 · fall --seek 0.80
+    // Run per station, ONE thermal window:
+    //   --only baseline,ch6-no-dome,ch6-no-nebula,ch6-no-dust,ch6-no-stars,ch6-no-heroes,baseline-repeat
+    // The content-match guard only judges baseline/baseline-repeat; differential rows
+    // are EXPECTED to change draws — verify each row's draw count actually drops, or the
+    // lever is dead and reports innocence, not absence.
+    {
+        id: 'ch6-no-dome',
+        flags: { odysseyCh6NoDome: '1' },
+        note: 'ch6 void-sky dome not built (per-fragment FBM backdrop — the Act I whale pattern)',
+    },
+    {
+        id: 'ch6-no-nebula',
+        flags: { odysseyCh6NoNebula: '1' },
+        note: 'ch6 nebula tiers (110 near + 90 far domain-warped-FBM additive sprites) + pillar not built',
+    },
+    {
+        id: 'ch6-no-dust',
+        flags: { odysseyCh6NoDust: '1' },
+        note: 'ch6 dust tiers + 500 suction debris + 90 streak motes not built',
+    },
+    {
+        id: 'ch6-no-stars',
+        flags: { odysseyCh6NoStars: '1' },
+        note: 'ch6 starfield tiers (~1200 far + ~350 near instanced quads) not built',
+    },
+    {
+        id: 'ch6-no-heroes',
+        flags: { odysseyCh6NoHeroes: '1' },
+        note: 'ch6 hero triad (black hole assembly, gas giant + rings, galaxy) not built',
+    },
+    // THE RETIRED FBM DOME (Space overhaul Wave 2 swap). The baked dome ships, so the
+    // baseline IS the bake and this lever ADDS the old per-fragment-FBM dome back in
+    // its place — the differential is the cost of the retired system (argument order
+    // carries the sign: configuration minus baseline, like `cloud-sheet`).
+    {
+        id: 'ch6-procedural-dome',
+        flags: { odysseyCh6ProceduralDome: '1' },
+        note: 'the retired FBM void dome restored in place of the baked backdrop',
+    },
+    // THE RETIRED NEBULA SPRITES (Space overhaul Wave 3 swap). A TRUE swap lever —
+    // sprites on means the sculpted field is withheld — so this single differential
+    // is the swap's whole price in one thermal window (unlike the cloud sheet, whose
+    // add-back stacked on top of the field and left the swap price an ESTIMATE).
+    {
+        id: 'ch6-nebula-sprites',
+        flags: { odysseyCh6NebulaSprites: '1' },
+        note: 'the retired additive nebula sprite tiers + billboard pillar restored in place of the sculpted field',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
