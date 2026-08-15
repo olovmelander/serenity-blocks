@@ -661,9 +661,10 @@ export class OdysseyBoardController {
                 const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
                 this.oneWorld = createOdysseyWorld({
                     quality: weakLane ? 'low' : 'high',
-                    // The forest's hero band is a TIER setting: 200 on High and above, 120 at
-                    // Medium and below, because 200 measured +1.57 ms p95 on the integrated
-                    // lane and took that station over its max. See FOREST_LOD_DISTANCE_BY_TIER.
+                    // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
+                    // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
+                    // is 26% smaller than when 200 measured over-budget on the integrated
+                    // lane); the plumbing stays so a tier split is a table edit, not a rewire.
                     qualityTier: this.qualityName,
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear

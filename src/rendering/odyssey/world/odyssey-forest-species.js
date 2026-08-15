@@ -448,9 +448,11 @@ export const FOREST_LOD_BUDGET = Object.freeze({
  * the owner's call, taken with the sweep in hand; 160 was the conservative row and is one edit
  * away if a station ever needs the 0.38 ms back. The projection uses this repo's measured
  * ~0.8 ms/100k rate — see the ledger for what the pair actually measured after the change.
+ * (2026-08-15: the base default is now 200 too — the owner flattened the tier split; see the
+ * tier table's note below for the history and the restore path.)
  */
 export const FOREST_LOD_DISTANCE = Object.freeze({
-    hero: 120,
+    hero: 200,
     mid: 520,
 });
 
@@ -469,16 +471,20 @@ export const FOREST_LOD_DISTANCE = Object.freeze({
  * predicted), and it used a mean of 276 triangles per hero tree taken across every species and
  * stage rather than the placed distribution (really 350). Estimates steer; pairs decide.
  *
- * So the band is a QUALITY TIER rather than a constant. The integrated lane is expected to run
- * Medium and keeps 120, which measured comfortably inside budget; High and above get the 200
- * the owner asked for, on hardware that can pay for it. That is also the only version of "more
- * high-detail trees" that survives contact with the 610M — a single global value has to serve
- * the weakest machine, and therefore serves nobody well.
+ * The band FIRST shipped as a quality tier (120 on Medium and below, 200 on High and above),
+ * because a single global value has to serve the weakest machine. FLATTENED TO 200 EVERYWHERE
+ * on 2026-08-15 by owner direction ("push the hero band to 200 so that we get more high
+ * quality trees, just do it") — taken AFTER the archipelago carve removed 26% of the forest,
+ * which retires the measurement above rather than contradicting it: 11.08/11.47 priced a
+ * 6,442-tree island, and the carved island is 4,739 with the SAME corridor. The carved
+ * forest at hero 200 has not been paired on Lane B; if the shoreline station's gate trips
+ * on the 610M, the tier split above is one edit away (rows are kept identical, not deleted,
+ * so restoring it is a value change and not an archaeology dig).
  */
 export const FOREST_LOD_DISTANCE_BY_TIER = Object.freeze({
-    Minimal: Object.freeze({ hero: 120, mid: 520 }),
-    Low: Object.freeze({ hero: 120, mid: 520 }),
-    Medium: Object.freeze({ hero: 120, mid: 520 }),
+    Minimal: Object.freeze({ hero: 200, mid: 520 }),
+    Low: Object.freeze({ hero: 200, mid: 520 }),
+    Medium: Object.freeze({ hero: 200, mid: 520 }),
     High: Object.freeze({ hero: 200, mid: 520 }),
     Ultra: Object.freeze({ hero: 200, mid: 520 }),
     Extreme: Object.freeze({ hero: 200, mid: 520 }),
