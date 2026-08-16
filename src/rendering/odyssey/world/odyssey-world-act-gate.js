@@ -47,9 +47,17 @@ export function isWorldVisibleAtProgress(progress, actStart, actEnd) {
  * How far before the act edge the world begins receding, as a fraction of the sky chapter's
  * span, and how much of the gate margin it has fully closed by. FRACTIONS on purpose: the
  * ascent (Wave 1A) re-maps every chapter's p, and these have to carry without an edit.
+ *
+ * ⚠️ THE CLOSE IS 0 — THE RECESSION FINISHES AT THE BOUNDARY, NOT AT THE GATE, AND THAT IS
+ * THE WHOLE POINT. Wave 1B first ran it to 0.85 of the margin, which put it in the SAME
+ * window as the chapter ecotone crossfade (0.618-0.678 at the 5->6 seam). Two large
+ * brightness changes in one window do not average, they compound: the measured cliff simply
+ * moved from the gate to one sample earlier (-89.3 became -91.5), and widening the ramp
+ * nearly 3x barely touched it (-86.1) because the ramp was never what was dropping.
+ * Staggering them is the fix — the world does its leaving BEFORE the crossfade does its own.
  */
-export const ONE_WORLD_DEPARTURE_LEAD = 0.30;
-export const ONE_WORLD_DEPARTURE_CLOSE = 0.85;
+export const ONE_WORLD_DEPARTURE_LEAD = 0.55;
+export const ONE_WORLD_DEPARTURE_CLOSE = 0.0;
 
 /**
  * THE DEPARTURE FADE — the other half of "when does the world leave".

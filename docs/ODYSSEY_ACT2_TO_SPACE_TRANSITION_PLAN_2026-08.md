@@ -420,6 +420,36 @@ annotated at the claim.
 > it exactly what to do: re-shape the crossfade against MEASURED luma rather than alpha, and
 > put the perceptual midpoint on the boundary.
 
+> **WAVE 2 IS NOW ARITHMETIC, NOT TASTE (measured 2026-08-16).** Three different departure
+> schedules were captured — lead 0.30/close 0.85, lead 0.85, and lead 0.55/close 0.0
+> (staggered so the world finishes leaving before the crossfade starts). They score −91.5,
+> −86.1 and −83.7. Moving the world fade around barely touches the cliff, which proves the
+> world fade is not what drops there. **The chapter ecotone crossfade is.**
+>
+> Fitting the composite against the measured samples gives `luma ≈ 26 + 356 · w5`, where
+> `w5 = 1 − smootherstep(raw)` is chapter 5's ecotone weight. From that:
+>
+> - to hold a per-0.01p step under the 45-luma budget, `w5` may move at most **0.126** per sample;
+> - a monotonic 1 → 0 ramp across the seam's **0.060** width averages **0.167** per sample, and
+>   its steepest point is necessarily worse than its average.
+>
+> **So no reshaping of the alpha curve can meet the budget.** It is not a curve problem. Two
+> levers actually move it, and Wave 2 should pick one:
+>
+> 1. **Widen the 5→6 seam.** ≥0.079 for the average alone to fit, so realistically ~2× today's
+>    0.06. ⚠️ `transition.seamWidth` for chapters 1 and 5 is also what `ONE_WORLD_ACT_MARGIN`
+>    is documented to mirror, and the gate's own comment forbids raising that to 0.06 because
+>    it reaches p=0.033 in Chapter 1. Widening the 5→6 seam therefore means giving the two act
+>    edges INDEPENDENT margins first.
+> 2. **Close the endpoint gap — the artist's answer, and F1's.** Chapter 5 arrives at the
+>    boundary at ~198 luma against space's ~26. The seam brightens (+64.5) before it darkens,
+>    which is backwards for a climb toward vacuum. If the sky loses its top end across the
+>    ascent — as it physically should — the gap the crossfade has to carry shrinks and the
+>    budget comes within reach without touching seam widths at all.
+>
+> Lever 2 is the recommendation: it fixes F1 and the cliff with one change, and it is the only
+> one of the two that makes the transition more *correct* rather than merely smoother.
+
 ### Wave 2 — Re-phase the schedule
 - Move the perceptual midpoint onto the boundary: widen `spaceGateBand` (F5) so space
   arrives *across* the crossfade rather than in its first sixth, and pull the world's new
