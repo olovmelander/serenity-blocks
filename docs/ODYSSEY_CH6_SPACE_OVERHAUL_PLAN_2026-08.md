@@ -1,6 +1,13 @@
 # Odyssey Ch6 "Cosmic Expanse" — the Painted Cosmos overhaul (2026-08)
 
-**Status: PLANNED 2026-08-15. No wave has started.**
+**Status: ~~PLANNED 2026-08-15. No wave has started.~~ → Waves 0/1/2/3/4/5 plus the
+§3b re-composition SHIPPED 2026-08-15/16.** See the WAVE OUTCOME blocks in §5 and
+`git log -- src/rendering/odyssey/chapter-environments/cosmic-expanse.js`
+(`960335d3`, `dff08702`, `e9ccc0f6`, `c5f8b66d`, `98704055`, `ef19f9b4`), plus
+`ca0ed7de` (Wave 1, 13 levels). **OPEN:** Wave 6 (grade / seams), owner D1's remaining
+half (lever-C spline growth), D3 (budget cell maxima, still `null`), D4 (reference-set
+blessing), and the owner's own in-game look verdicts. This header was missed in the
+`f9d4fba8` annotation pass that added the outcome blocks — found by the §7 sweep.
 Owner asks: (1) significantly longer, grander space sequence before the black hole;
 (2) planets / stars / auroras / nebulas / cosmic phenomena redesigned to the Act I/II
 stylized direction (Ghibli, The Witness, Firewatch, Europa, Journey); (3) more vivid,
@@ -28,7 +35,7 @@ ch6 is, like ch1, a diorama outside the One World by decision:
 | Fact | Value | Source |
 |---|---|---|
 | Chapter id / module | 6 → `cosmic-expanse` | `chapter-environments/registry.js:28` |
-| Span | p 0.648 → 0.815 (0.167 — already the longest chapter; 9 levels) | derived, `odyssey-layout.js:223-250` |
+| Span | p 0.648 → 0.815 (0.167 — already the longest chapter; ~~9 levels~~ **13 levels, ids 36–48, since Wave 1 `ca0ed7de` — the p-window is UNCHANGED, the levels are packed denser**) | derived, ~~`odyssey-layout.js:223-250`~~ **now `:238-265`; `ca0ed7de` added +15 lines inside `DEFAULT_LEVEL_POSITIONS_BY_ID` above it. The old range was exact at this doc's own commit `a3fffd3c`.** |
 | Neighbours | ch5 `sky-drift` (bright daylight after Wave C) · ch7 `black-hole-transcendence` | registry |
 | One World | **NOT a member** — ch2–5 only; ch6 owns its frame as a diorama | `OdysseyBoardController.js:145`; One World plan §3.0.1 |
 | World act gate | world stops drawing at p ≈ 0.678 (margin **0.03 — do NOT raise to 0.06**) | `world/odyssey-world-act-gate.js:29,37-44` |
@@ -45,8 +52,14 @@ All of it `MeshBasicNodeMaterial`, almost all of it **AdditiveBlending + depthWr
 
 - **Void sky dome** — SphereGeometry(2400), per-fragment FBM galactic backdrop, every frame (`cosmic-expanse.tsl.js:59-162`).
 - **Hero triad**, NDC-solved against a camera replay, marching A→B by `uApproach`
-  (`cosmic-expanse.js:115-138`, `:1398-1465`): black hole omen (~7 meshes: horizon
-  sphere, Keplerian ring disk, fresnel shell, photon ring, 3 glow rings), gas giant
+  (`cosmic-expanse.js:115-138`, `:1398-1465`): black hole omen (~~~7 meshes~~ **6
+  meshes with TWO glow rings, not 3 — ⚠️ this was WRONG THE DAY IT WAS TYPED, not
+  overhaul drift: `createBlackHoleTSL()` performs exactly six adds and
+  `const glowColors = [0xff7b3a, 0x7f3cff]` has always had two entries (verified at
+  `a3fffd3c~1`, and `git log -S glowColors` returns only the file's creation). The "3"
+  was probably copied from the gas giant's "3 ring belts" later in this same
+  sentence, which IS correct.**: horizon sphere, Keplerian ring disk, fresnel shell,
+  photon ring, 2 glow rings), gas giant
   "the earth" (banded storm sphere + fresnel halo + 3 ring belts, one material via
   `aRingColor`), distant galaxy (1 additive spiral billboard).
 - **Nebula tiers** — 110 near + 90 far instanced billboard quads, each running
@@ -128,7 +141,11 @@ builds *on top of* this machinery; no wave may rewrite it wholesale.
   retired.
 - **A per-fragment-FBM backdrop dome is the whale.** Act I's dome cost 15–19 ms on
   Lane B until its noise was baked (`odyssey-act1` §10). Ch6's void dome is the same
-  pattern, unmeasured.
+  pattern, ~~unmeasured~~ **MEASURED 2026-08-15 (Wave 0) and the law CONFIRMED: 13.37
+  of 17.04 ms Lane B at reef p=0.73 — 78 % of the frame, and it owned the tail
+  (p95 26.35 → 3.80 without it; drift 0.000, draws constant per configuration).
+  RETIRED in Wave 2 for the baked equirect backdrop, re-baselining the cell to
+  4.13 ms; the FBM path survives only behind `?odysseyCh6ProceduralDome=1`.**
 - **The cloud-field idiom is proven**: 52 sculpted opaque masses, SDF-gradient normals,
   baked AO/seed in vertex colour, 2–3 band wrap paint, quantised Mie, dithered opaque
   dissolve, rigid seeded drift — **one draw, 0.197 ms**.
@@ -317,6 +334,22 @@ along the FINAL path length, so specs are re-authored once, not twice.
 New refs for `?ref=` use: Webb Pillars weic2216b, Cosmic Cliffs weic2205a, Hubble
 Mystic Mountain heic1007a, Orion heic0601a (ESA/NASA image pages).
 
+> **RE-COMPOSITION OUTCOME (2026-08-15, `185aca0b` + `e9ccc0f6`, ledger `29001cd8`).**
+> Specs re-authored against all twelve rules: **1 colossal cool HERO VEIL** (980 u,
+> far right at z −1390 — it never rivals the upper-left black hole), 2 warm medium
+> reef masses, **2 small sharp witnesses** near the rail, and the pillar re-aimed at
+> the black hole as the causal light; irregular depths, **8.5× size spread**. Paint
+> split into two ROLES — warm workhorse vs the dim, wide-banded, low-ember cool giant
+> (Gurney's big+soft against tiny+sharp) — as two materials, **two draws**. The baked
+> dome dropped a grayscale value band (×0.62) so depth stops collapsing. The asteroid
+> garland became **three uneven SEEDED clusters** (the old even-lerp diagonal was the
+> documented cosmic-corridor failure; the old `Math.random` seats also re-rolled every
+> build, making capture A/Bs incomparable), and the pillar moved off the veil's
+> sightline. Measured perf-neutral: **2.82/2.56 ms, 63 draws** (drift 0.262 — quote as
+> a band, not a point). Rail clearance is a CI assertion (SDF-at-rail ≥ 120 u).
+> ⚠️ The dome's ×0.62 later proved **insufficient in-game** — see the ground-truth
+> pass in §5's Wave 6 note.
+
 ## 4. Hard look rules (the checklist every wave's screenshots answer to)
 
 1. Never pure black — void floor at the black-lift family; shadow floors non-black.
@@ -391,6 +424,25 @@ means same-bucket = "below resolution", never "zero").
 - Gate: capture sweep of 5→6→7 shows no pops, heroes framed, earth beat intact
   (owner-praised — protected); all layout tests green. No look changes yet.
 
+> **WAVE 1 OUTCOME (2026-08-15, `ae95c622` scout + `ca0ed7de` ship).** Lever A was
+> tried FIRST and reverted on evidence (see D1) — the cheap re-space is measured dead.
+> Shipped lever B: **ch6 = 13 levels (ids 36–48), 59 total**, four new levels between
+> Stellar Shockwave and the finale trilogy — *Nebula Reef*, *Pillars of Creation*,
+> *Comet Chase*, *Silent Drift* — named for the re-composed environment's beats, with
+> the trilogy renumbered 46–48 so it still closes the chapter beside the dive. The
+> owner's constraint (**nobody else shrinks**) is honoured: ch7/ch8 keep their exact
+> path positions under new ids 49–59, and ch6's p-window is untouched, so no APPROACH
+> re-solve or seam retune was needed after all. **Save compatibility is the real work
+> here:** `SAVE_VERSION` 2 with an exported pure migration (ids ≥42 shift +4 across
+> *numeric* `unlockedLevels`, *string-keyed* `completedLevels`, and `currentLevel`),
+> called at BOTH steam-cloud-sync sites — a v1 cloud doc merged raw would alias old
+> ch7 arrivals onto the new ch6 levels, and the merge spread inherited `version` from
+> the cloud side (double-migration). Leaderboard prefix bumped `_v1_`→`_v2_`.
+> `MAIN_ARC_LAST_LEVEL` 51→55 with `LOGISTIC_MIDPOINT` held at 34 so ids 1–41 keep
+> their exact macro difficulty. **3388/3388 tests green** — 6 audit-predicted pins
+> re-baselined, 5 new migration tests. Full blast-radius audit: session transcript,
+> agent `afbe0c93336c74878`.
+
 ### Wave 2 — The baked backdrop
 - `odyssey-cosmic-backdrop.js`: seeded TSL bake to a cubemap RT at chapter load
   (space-3d recipe: star layers + posterized FBM nebula bands + painted milky-way
@@ -454,6 +506,12 @@ means same-bucket = "below resolution", never "zero").
 > window). NOTE for a later wave: the corridor-field's own additive FBM backdrop
 > sheets (`odyssey-corridor-field.js`) still wash the rig frame — a separate system
 > with no ch6 lever; candidate for the same retirement treatment.
+> **DISCHARGED FOUR MINUTES LATER (`dff08702`):** ch6's corridor sheets are retired —
+> the cosmic branch yields `sheets: []` for chapter 6, restorable with
+> `?odysseyCh6CorridorSheets=1`. Ch7 keeps its deep-violet wash; the pinpoint mote
+> starfield stays for both. ⚠️ The restore flag is a LOCAL escape hatch only — it was
+> never registered as a gpu-split configuration, so the corridor field remains
+> UNPRICED for ch6 (the one system in this chapter still carrying no measurement).
 > Suites: 91/91 chapter-environment tests green (3 old sprite-contract assertions
 > updated to the new shipped system). Report: `gpu-split-ch6-reef-laneB-nebula-swap.json`.
 
@@ -466,6 +524,17 @@ means same-bucket = "below resolution", never "zero").
 - Gate: hero close-ups at `?t=` phase-locked stations vs refs; framing tests green;
   `uApproach` march re-verified after Wave 1's retiming.
 
+> **WAVE 4 OUTCOME (2026-08-15, `eadc915e`).** Gas giant: the continuous diffuse ramp
+> became THREE flat value bands with ~8 % soft thresholds plus a thin warm terminator
+> line; the night side is a cool-indigo HUE shift with a non-black floor, never a
+> multiply toward black. The world-space sun stays, so the terminator-swim fix is
+> preserved. Accretion disc: the radial hot→cool gradient became three flat painted
+> rings, Doppler asymmetry kept as an authored brightness statement. Same draws,
+> trivial ALU delta, 87/87 chapter tests green at the time. **NOT shipped from this
+> wave's bullets:** the galaxy repaint (still the original spiral billboard), and the
+> glow-ring count was never re-justified against the one-key rule — the sweep found
+> the doc's own count was wrong anyway (2 rings, not 3; see §0.2).
+
 ### Wave 5 — Alive: stars, streaks, aurora, comet
 - Near-star batch: quantised blackbody ramp, hashed twinkle (vertex stage),
   velocity-keyed streak stretch replacing the separate streak-mote system where it can
@@ -477,6 +546,23 @@ means same-bucket = "below resolution", never "zero").
 - Gate: motion verified at source (wiring/uniforms), not by frame-diffing captures
   (~23 % pixel noise floor between runs); overdraw of ribbons measured.
 
+> **WAVE 5 OUTCOME (2026-08-15/16, `98704055` + `96d69938`).** Shipped: **the comet**
+> (sculpted opaque ice head, 2-band paint on the causal key + drawn edge, with a
+> dithered opaque cone tail) sweeping a 70 s chord through the reef window,
+> dither-faded at the chord ends so it enters and leaves as a distant glint — staged
+> like the nebula field, outside the entryContinuity buckets on its own `uReveal`.
+> And **the dive stretch**: the streak motes elongate ~2.3× and brighten as the BH
+> dive begins. That is deliberately a LENGTH change, not a speed change —
+> `mod(time*speed(t))` phase-jumps when speed varies.
+> ⚠️ **The comet's tail shipped with BOTH gradients inverted** and was fixed the next
+> morning: `ConeGeometry`'s `uv.y` is 0 at the BASE (hugging the head) and 1 at the
+> TIP — *measured, not assumed* — so the first draft dissolved the tail at the nucleus
+> and went solid-bright at its trailing end. The geometry assumption is now pinned by
+> a test so a three.js change fails loudly. **NOT shipped from this wave's bullets:**
+> the near-star quantised-blackbody batch with hashed twinkle, and the aurora oval
+> crown on the gas giant (the aurora work that DID happen was the misplacement fix in
+> `dff08702` — re-parenting the bridge to the corridor).
+
 ### Wave 6 — Light, grade, and the seams
 - Lighting audit to the one-key statement; ascent altitude ramps wired into the 5→6
   bridge endpoints; 6→7 handoff retimed (BH loom curve over the longer span, threshold
@@ -484,6 +570,31 @@ means same-bucket = "below resolution", never "zero").
 - Gate: full 5→6→7 per-chapter capture review (⚠️ **short per-chapter sessions only —
   full-journey capture TDR-bluescreens this machine**); value-share checks at stations;
   fog-optout + framing + staging + layout suites green.
+
+> **WAVE 6 PARTIAL — the GROUND-TRUTH pass (2026-08-16, `ef19f9b4`).** A real-board
+> ch6 capture WITH the post stack found two defects the flat NoToneMapping rig is
+> structurally incapable of showing, both fixed and re-verified by a second capture:
+> **(1) the dissolve read as TV STATIC.** A pure screen-space hash covered every
+> silhouette in crawling noise, and the chapter sits at partial reveal across stations
+> 7–11 and again at the ch7 handoff — invisible in the rig because `uReveal` was
+> pinned to 1 there. The threshold is now mostly the sculptor's per-vertex HEIGHT
+> (`colour.g`) plus 25 % grain, so masses materialise base-upward with a grainy
+> leading edge. **(2) the baked dome came back vivid magenta.** The post stack lifts
+> saturation twice over a black crush, so ×0.62 was nowhere near enough; now
+> desaturated 34 % toward its own luma and dimmed to ×0.45.
+> **MEASURED value bands after the fix, at the hero station: void 0.8 / dome 7.0–22.8
+> / masses 75.4** — rule 4 satisfied with the void floor above pure black.
+> ⚠️ **Two harness invalidation traps paid for here** (both now in project memory):
+> editing the tree mid-capture lets HMR tear the board down — the output is N good
+> stations then BYTE-IDENTICAL frames with all-null sidecar metadata, and the tell is
+> station mtimes collapsing from ~10 s apart to 1–3 s; and `--keep` + `--times` leaves
+> stale SUFFIXED frames that a later glob will happily measure instead of the new run.
+> A near-miss "ch6 renders nothing in-game" report came from exactly this.
+> `scripts/odyssey-ch6-visibility-probe.mjs` (new) settles such questions in one run —
+> it reported 31 draws / 229 k tris at the supposedly dead station.
+> **STILL OPEN in this wave:** the lighting audit to the one-key statement, the ascent
+> altitude ramps into the 5→6 bridge, the 6→7 retime, and the ch6 grade-table pass —
+> plus the owner's own in-game verdicts, which no capture can substitute for.
 
 ### Wave 7 — Ledger close-out
 - Final gpu-split ledger (both lanes, one thermal window per comparison), budget cell
@@ -504,8 +615,17 @@ measured (playbook rule: nothing funded by an ESTIMATE).
 | ch6 Lane A (entry/reef/fall stations) | ~~NULL~~ **0.72 ms (reef, Wave 0)** | owner D3 | RTX 5080 1080p |
 | ch6 Lane B (same stations, `--low-power`, 720p) | ~~NULL~~ **17.04 ms (reef, Wave 0)** — dome 13.37 of it | owner D3 | the lane that matters; Act II shoreline p95 is already brushing its max — ch6 must be self-funding. **Wave 0 shows it will be: the bake alone recovers ~13 ms Lane B.** |
 | ch6 draws | 69 measured (reef; 20 = hero triad) | ≤ today | sculpt merges + sprite retirement vs new halo/aurora draws |
-| Backdrop bake | — | ≤ 150 ms | inside warmup plan; startup-trace measured |
+| Backdrop bake | — | ~~≤ 150 ms~~ **≤ 300 ms** | inside warmup plan; startup-trace measured. **CEILING RAISED `dff08702` for a LOOK reason, not a perf one: at 512×256 one texel spanned ~4.7° of longitude and the dome read as blurry blobs. Measured here: 1024×512 = 226–260 ms CPU once at chapter creation, vs ~58 ms at 512×256. World-bake precedent for this class is 400 ms. The test bound (`bakeMs < 2000`) is a resolution/octave-explosion guard, NOT a budget gate.** |
 | First-visit hitch | 560 ms (5080) | ≤ 560 ms | bake must not regress it |
+
+**CLOSING LEDGER (2026-08-16).** Lane B, the lane that matters, across the whole
+overhaul at the reef station p=0.73: **17.04 → 4.13 (dome bake) → 2.62 (sprite→sculpt
+swap) → 2.82 (re-composition, drift 0.262)**, and the shipped final state measured at
+the fall station p=0.78: **3.28/3.28 ms, drift EXACTLY 0.000, 69 draws min==max**
+(`gpu-split-ch6-fall-laneB-closeout.json`). The chapter began the week as the worst
+frame in the journey outside ch1 and ends it at roughly a third of the Act II
+shoreline cell — while gaining a baked sky, six sculpted masses, a comet, repainted
+heroes and four more levels. Cell maxima remain `null` pending owner D3.
 
 Funding thesis (to be proven in Wave 0/2/3, not assumed): retiring the per-frame FBM
 dome + 200 per-fragment-FBM additive sprites pays for the sculpted masses, halo shell
@@ -518,6 +638,19 @@ precedents as the reason to believe.
   reference bar? (Cheapest falsifier first.)
 - **D1 (gates Wave 1):** length lever — A re-space / B add levels / A+B (recommended) /
   C spline edit; and the target span (proposal: ch6 ≈ 0.22–0.24 of the journey).
+  > **DECIDED 2026-08-15 — lever B ALONE, and the owner ruled out shrinking anyone
+  > else.** Lever A was attempted and REVERTED as *measured dead* (`ae95c622`, which
+  > landed comment-only): the 6→7 helical sweep begins immediately after 0.815, so a
+  > widened window catches a 25.6° rail turn against the corridor test's 3° max and
+  > throws the BH hero to ndcX −1.70 by p=0.829. The finding is pinned at
+  > `odyssey-layout.js:103-106` — **do not re-try the cheap re-space.** `ca0ed7de`
+  > shipped B alone: 13 levels (36–48) packed inside the UNCHANGED 0.648–0.815 window,
+  > ids ≥42 renumbered +4 behind a SAVE_VERSION 2 migration, so no boundary, seam
+  > band, station or camera fit moved. **STILL OPEN:** the 0.22–0.24 target span was
+  > NOT reached (the span is still 0.167 — B adds played time, not traversal length),
+  > and lever C (re-authoring cp17–20 under the pinned arc length) is the only route
+  > left and is untaken; the control points are byte-identical. Note `c5f8b66d` moved
+  > the black-hole HERO onto the camera exit axis — it did not move the rail.
 - **D2 (gates Wave 3 swap):** retire the additive nebula tiers + procedural dome once
   the sculpted field + bake meet the bar and the cell — atomic, flagged, revertable.
 - **D3 (gates the budget):** ch6 Lane A/B cell maxima after Wave 0's measurement.
