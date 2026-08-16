@@ -6,20 +6,20 @@ import {
     ODYSSEY_FOREST_SPECIES,
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
-import { ODYSSEY_NORTH_LAKE } from './odyssey-world-height.js';
+import { ODYSSEY_NORTH_LAKE, odysseyNorthLakeRn } from './odyssey-world-height.js';
 
 /**
  * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
- * is `y < seaLevel + 3`, which knows nothing about a lake at 374 u — without this, the
- * scatter plants trees on the carved basin floor and they stand hip-deep in the painted
- * surface. Inside the lake ellipse, dry ground is ground ABOVE the waterline (+1.5 for
- * the trunk flare); the east headland that rises through the disc keeps its trees.
+ * is `y < seaLevel + 3`, which knows nothing about a lake far above it — without this,
+ * the scatter plants trees on the carved basin floor and they stand hip-deep in the
+ * painted surface. Inside the lake's lobed footprint, dry ground is ground ABOVE the
+ * waterline (+1.5 for the trunk flare); shore ground that rises through the discs
+ * keeps its trees. The lobe metric is the lake's own export, so this can never
+ * disagree with the carve.
  */
 function siteInNorthLake(x, z, y) {
     if (y > ODYSSEY_NORTH_LAKE.waterY + 1.5) return false;
-    const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
-    const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
-    return ((lx * lx) + (lz * lz)) <= 1;
+    return odysseyNorthLakeRn(x, z) <= 1;
 }
 
 /**
@@ -317,7 +317,7 @@ const FOREST_ARCH_T_BY_AREA = Object.freeze({
     SEAM: 0.5783012033777011,
     ETIP: 0.6269598341870908,
     EMASS: 0.8244496408416748,
-    NE: 0.44623904591067837,
+    NE: 0.4133245879329702,
     NW: 0.44261230923999884,
     WEND: 0.5732750837682767,
     WMID: 0.5042125928823078,
@@ -436,9 +436,7 @@ function archKeep(x, z, dRail, shoreDist, rail) {
     if (Math.hypot(x - FOREST_ARCH_CYPRESS.cx, z - FOREST_ARCH_CYPRESS.cz)
         < FOREST_ARCH_CYPRESS.r) return true;
     {
-        const lakeLx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
-        const lakeLz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
-        const lakeRn = Math.sqrt((lakeLx * lakeLx) + (lakeLz * lakeLz));
+        const lakeRn = odysseyNorthLakeRn(x, z);
         if (lakeRn >= FOREST_ARCH_LAKESHORE.rnLo && lakeRn <= FOREST_ARCH_LAKESHORE.rnHi) {
             return true;
         }
@@ -878,12 +876,9 @@ export function scatterZonedForest(heightAt, {
             // trees the thinned base scatter still placed there. Zero thin inside the ring
             // restores full stand density: the grove ringing the water is the one big shape
             // that makes a distant lake read as a place.
-            const inLakeshoreRing = (() => {
-                const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
-                const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
-                const rn = Math.sqrt((lx * lx) + (lz * lz));
-                return rn >= FOREST_ARCH_LAKESHORE.rnLo && rn <= FOREST_ARCH_LAKESHORE.rnHi;
-            })();
+            const lakeRnHere = odysseyNorthLakeRn(x, z);
+            const inLakeshoreRing = lakeRnHere >= FOREST_ARCH_LAKESHORE.rnLo
+                && lakeRnHere <= FOREST_ARCH_LAKESHORE.rnHi;
             if (!inLakeshoreRing && hash2(i, j, 29) < thin) continue;
 
             /**
