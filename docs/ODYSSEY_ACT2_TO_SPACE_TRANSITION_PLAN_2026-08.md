@@ -230,6 +230,58 @@ frame at `actEnd + 0.03` still vanishes in one frame. **Wave 1B (the fade) and W
 ascent) are complementary, not alternatives** — the ascent makes the departure *earned*, the
 fade makes it *seamless*. Shipping either alone leaves the report open.
 
+### 2.7 WAVE 1A ATTEMPTED AND BACKED OUT — what the ascent actually costs
+
+Built, measured, and reverted 2026-08-16. Nothing of it is shipped; all of it is here.
+
+**The climb works, and it is cheap to author well.** Seven control points constructed from a
+gradient schedule (76° easing to the corridor's own 24°, segment lengths converging on its
+76 u spacing) plus a rigid translation of the whole space run. Measured: apex 729 → **1503**,
+clearance stops closing and grows monotonically, and the turn rate through the seam
+**improved** (14.45 → 9.05 °/step) because a kink was replaced by a longer arc. The level
+re-map is solvable exactly: ids 1-28 hold their world seats to **0.029 u**.
+
+**Three things it breaks, all real:**
+
+1. **The corridor guard is arc-relative.** `odyssey-path-layout.test.js` bounds turn at
+   3°/0.003 p. p is arc-normalised, so a longer journey makes the *same physical curve* read
+   worse — the untouched ch6 corridor goes 2.39° → 3.06° on arithmetic alone. That bound
+   wants re-expressing per unit ARC before any re-layout, or it will keep failing for the
+   wrong reason.
+2. **Chapter 6-8 must be re-mapped ARC-PRESERVING, not proportionally.** All the added length
+   is before the boundary. A proportional re-map stretched the space run and pulled the known
+   6→7 hairpin *inside* chapter 6, spiking its turn rate to **32.7°**. `new_p = (old_arc +
+   added) / newTotal` keeps their extents exact.
+3. **The forest occlusion cull mostly dies.** A rail high enough to clear the weather can see
+   the whole island, and a mask can only cull what terrain hides: the cull fell from ~21 % of
+   the forest to ~4.6 % (94.1 % of cells visible). That is ~1200 more trees standing in the
+   act whose Lane B p95 is already closest to its ceiling. **Unmeasured** — it needs a Lane B
+   pass, and it may be the real price of the ascent.
+
+**And the thing that stopped it: THE CLOUD CEILING IS 1935, NOT 1085.**
+
+The first attempt targeted 1085, read off four `A0x` specs. There are 52 masses, and the
+`Z01-Z04` "overhead" group bases at **1470-1700 and tops at 1935** — with **Z02 sitting 35 u
+laterally from the rail at the boundary**, i.e. directly above it. The capture after the
+climb still showed a white ceiling, because the rail at 1503 was underneath Z02's 1610 base.
+
+Solving the climb against the *measured* ceiling costs **+1725 arc (+98 %)**, which makes
+chapter 5 **57 % of the whole journey**. That is not a transition, that is a new act.
+
+**The cheap way through, and the recommendation.** Only ONE mass is the problem — the next
+nearest above-camera mass is 565 u away and reads correctly as distant high cloud. So:
+keep the moderate climb (**+626 arc, apex 1503, ch5 at 37 % of the journey**) and **move Z02
+laterally** so the rail threads past it instead of under it. Z02 keeps its authored
+`overhead` role for early chapter 5 — where the eye is at 600-800 and it still reads
+base-first at ~25° — and stops being a lid at the top of the climb.
+⚠️ Respect what that spec's own comment records: these four were raised from base 1015-1080
+*because* at close range an overhead mass shows its featureless flat base and fills the frame
+with "white potatoes". Move Z02 sideways, do not lower it.
+
+**Owner call needed on the journey-length trade** (D0): +626 arc takes chapter 5 from 14.8 %
+to 37 % of the traversal. The levels are re-spaced, not added, exactly as directed — but the
+sky becomes the longest act in the game.
+
 ---
 
 ## 3. DESIGN — what "seamless" should mean here
