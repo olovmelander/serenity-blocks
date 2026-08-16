@@ -34,6 +34,7 @@ import {
     attribute,
     cameraPosition,
     clamp,
+    color as tslColor,
     cos,
     dot,
     float,
@@ -239,6 +240,20 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     handoverBeforeBoundary: 0.0, // p = 0.74010 — the boundary itself
     handoverAfterBoundary: 0.373, // p = 0.78610 — clear of the last two stations
 });
+
+/**
+ * Level trim on the carried Ch5 aurora bridge, applied after the hue fix above. 0.65 rather
+ * than a deeper cut because switching to managed `color()` already removes most of the
+ * excess on its own; this only takes the remaining edge off so the curtains sit behind the
+ * cloud limb instead of competing with it.
+ */
+const BRIDGE_LEVEL = 0.65;
+/**
+ * How much of the bridge's chroma survives (1 = untouched, 0 = greyscale). The curtains are
+ * additive and were measuring 99-100 % saturation across ~44 % of the non-black pixels at
+ * p=0.7501, against a cloud-limb frame whose mean lit saturation is 38 %.
+ */
+const BRIDGE_CHROMA = 0.55;
 
 const _approachVec = new THREE.Vector3();
 
@@ -1467,16 +1482,42 @@ export function createAuroraFilamentBridge(uniforms) {
     // Recolor completes across the first ~12% of the chapter; the filaments stretch as
     // they recolor (handled by the plane scale below) and are gone by ~18%.
     const recolor = clamp(uApproach.mul(3.2), 0.0, 1.0);
-    const green = vec3(0.24, 1.0, 0.56); // #3DFF8E (Ch5's last aurora green)
-    const crimson = mix(vec3(0.78, 0.12, 0.22), vec3(0.91, 0.28, 0.36), strands); // #C71F37→#E8485C
-    const color = mix(green, crimson, recolor);
+    // ⚠️ THESE WERE LINEAR LITERALS WRITTEN AS IF THEY WERE THE sRGB HEXES BESIDE THEM.
+    // `vec3()` is consumed as a LINEAR working-space value, but #3DFF8E linearises to
+    // (0.047, 1.000, 0.270) — the shipped (0.24, 1.0, 0.56) carried ~5x the red and ~2x the
+    // blue the author named. Same slip on both crimsons.
+    //
+    // MEASURED consequence (capture arm-limb-v2, p=0.7501): 19.8 % of the frame — about 44 %
+    // of every non-black pixel — sat at hue 152, saturation 99-100 %, against a limb frame
+    // whose mean lit saturation is 38 %. The post stack's saturation lift (MASTER 1.15 x ch6
+    // 1.06) then clipped the red channel to literal 0. This carried-Ch5 aurora, not the
+    // nebula field, IS the green wall in that frame; the field's own reveal there is ~0.056.
+    //
+    // `color()` routes through THREE.Color's colour management, so these now MEAN the hexes.
+    const green = tslColor(0x3dff8e); // Ch5's last aurora green
+    const crimson = mix(tslColor(0xc71f37), tslColor(0xe8485c), strands);
+    // A modest level cut on top. The bridge is additive, so out = colour x alpha and this is
+    // numerically identical to trimming the alpha ceiling — but it belongs in colorNode,
+    // because the opacityNode is one of the eight bound by the materialOpacity re-arm
+    // contract. Cutting alpha alone would fix the LEVEL and leave the hue clipping.
+    const toned = mix(green, crimson, recolor);
+    // ⚠️ THE HUE FIX ABOVE MAKES THIS MORE VIVID, NOT LESS — it was mis-read once already.
+    // The shipped (0.24, 1.0, 0.56) was an accidentally PALE green; the hex it claimed to be
+    // linearises to (0.047, 1.000, 0.270), which is further from grey. Correcting the slip is
+    // right because the code should mean what it says, but on its own it INCREASES the clash.
+    // The desaturation is the term that actually calms the frame, so the two ship together.
+    const graded = mix(
+        vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))),
+        toned,
+        BRIDGE_CHROMA,
+    ).mul(BRIDGE_LEVEL);
     const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
     // Linger as a visible aurora across most of the crossing, then dissolve into nebula filaments
     // (was smoothstep(0.22,0.44) → gone by ~18% local progress, too brief to read as the hero aurora).
     const alive = oneMinus(smoothstep(0.5, 0.85, uApproach));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(strands.add(0.4));
+    material.colorNode = graded.mul(strands.add(0.4));
     material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;

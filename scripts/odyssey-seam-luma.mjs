@@ -9,15 +9,24 @@
  * It reads the `meanLuma` the capture harness now writes into every frame sidecar, so it
  * needs no PNG decoder and works on any capture already on disk.
  *
- *   node scripts/odyssey-seam-luma.mjs                       # newest seam-5-6 capture
+ * ⚠️ PASS `--dir` AND `--boundary`. Both defaults are traps: `resolveDir()` returns the
+ * ALPHABETICALLY last `seam-5-6*` directory rather than the newest, so an arm named
+ * `seam-5-6-v2` silently becomes the graded run; and the default boundary is pre-ascent.
+ *
+ *   node scripts/odyssey-seam-luma.mjs --dir <artifact dir>  # ALWAYS name the dir
  *   node scripts/odyssey-seam-luma.mjs --dir <artifact dir>
- *   node scripts/odyssey-seam-luma.mjs --max-step 45 --boundary 0.648
+ *   node scripts/odyssey-seam-luma.mjs --dir <arm> --boundary 0.7401   # ALWAYS pass both
  *
  * Exits non-zero when a threshold is violated, so a wave gate can be a command.
  *
  * BASELINE AT AUDIT TIME (2026-08-16, the defect this exists to retire):
  *   maxStep 89.3 at p=0.678 (the One World act gate), and 74% of the total change
  *   concentrated in the final third of the window.
+ *
+ * ⚠️ THE 0.678 ABOVE IS PRE-ASCENT and is preserved only as the historical record.
+ * The ascent moved every boundary: ch6 is now 0.7401 and the One World act gate (worldOff)
+ * is 0.7623. Progress after the limb rebuild, same metric, arm-limb-v2:
+ *   maxStep -27.4, tailShare 15.8%, endLuma 22.5 — 3 of 4 gates pass; 2 rising steps remain.
  */
 /* eslint-disable no-console */
 import { readdir, readFile } from 'fs/promises';
@@ -44,6 +53,12 @@ const ARTIFACT_ROOT = path.join(ROOT, 'artifacts', 'odyssey', 'wave-v');
 // systems actually under measurement instead of just the ecotone's own half-width.
 const MAX_STEP = Number(args['max-step'] ?? 45);
 const STEP_REFERENCE_DP = 0.01;
+// ⚠️ 0.648 IS THE PRE-ASCENT BOUNDARY and is kept ONLY as a fallback for old captures.
+// The live 5->6 boundary is 0.7401, and 0.648 now sits BELOW the window's first station
+// (0.6801) — which silently turns the "no rising steps after the boundary" check into "no
+// rising steps anywhere", reporting 7 rises where the real count against the boundary is 2.
+// ALWAYS pass --boundary explicitly. Deriving it here was considered and rejected: this
+// script must stay able to score archived captures taken under a different layout.
 const BOUNDARY = Number(args.boundary ?? 0.648);
 // How much of the total change is allowed to land in the last third of the window.
 const MAX_TAIL_SHARE = Number(args['max-tail-share'] ?? 0.5);
@@ -51,6 +66,7 @@ const MAX_TAIL_SHARE = Number(args['max-tail-share'] ?? 0.5);
 // drags Act II's brightness past the sampled range scores a perfect smooth curve — measured
 // 2026-08-16, a 2.5x cloud-bank exit "passed" at maxStep 38.8 while leaving the last frame at
 // luma 201 instead of space's ~26, i.e. it removed the cliff by never arriving.
+// (Post-ascent, space settles at ~22.5 rather than ~26 — measured at p=0.8001, arm-limb-v2.)
 const MAX_END_LUMA = Number(args['max-end-luma'] ?? 60);
 
 async function resolveDir() {
@@ -61,7 +77,7 @@ async function resolveDir() {
     return path.join(ARTIFACT_ROOT, seams[seams.length - 1].name);
 }
 
-/** p is encoded in the filename as e.g. seam-5-6-0p6480.json */
+/** p is encoded in the filename as e.g. seam-5-6-0p7401.json */
 function progressFromName(name) {
     const m = name.match(/(\d)p(\d+)/);
     if (!m) return null;

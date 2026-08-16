@@ -152,7 +152,8 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     const limbFloor = oneMinus(smoothstep(-0.34, -0.06, elev)).mul(0.30);
     const limbProfile = clamp(limbCore.add(limbFloor), 0.0, 1.0);
 
-    // Alpha: billow-shaped only while thin; fully opaque at peak. Structure lives in colour.
+    // Alpha: billow-shaped only while thin, and at peak density as opaque as the limb mask
+    // allows — which is NOT the whole frame any more. Structure lives in colour.
     //
     // THE 1.25 GAIN IS GONE. It hard-clamped every fragment with d >= 0.8 to a fully opaque
     // wall: at p=0.7401 and p=0.7441 the arithmetic is t=0.5333, d=0.9333, and
@@ -195,7 +196,19 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // crossing itself in the handover, which is the beat this volume exists to play: cloud
     // masses close in, THEN the world changes. Measured effect on the bank-vs-field tone
     // match at p=0.63: 0.827 -> see the outcome block.
-    const toBridge = smoothstep(0.35, 0.78, a);
+    //
+    // ⚠️ UPPER EDGE STRETCHED 0.78 -> 1.05, and it is THE SAME LESSON AS `toVoid` BELOW, one
+    // ramp earlier. BANK_BRIDGE is linear luma 0.0193 against an entry of 1.023 — a 53:1
+    // drop — so essentially all of this volume's luminance travel is compressed into this
+    // one window. Ending it at 0.78 meant the limb was 73 % bridge-toned by a=0.633 while it
+    // still carried density 0.517: a nearly black band, and an alpha-blended one, so it
+    // OCCLUDED the space arriving behind it instead of lighting the frame.
+    //
+    // MEASURED (arm-limb-v3): that produced a trough at p=0.7561 — luma 14.06 between 26.07
+    // and 21.42 — and the recovery out of it was the last failing rising step (+12.3 per
+    // 0.01p at p=0.7621). Stretching the edge keeps the band lit while it still has body:
+    // at a=0.633 the bridge mix falls 0.729 -> 0.358.
+    const toBridge = smoothstep(0.35, 1.05, a);
     // ⚠️ THE TINT MUST NOT OUTRUN THE DENSITY. What the eye sees is the PRODUCT
     // `density * (1 - toVoid)`, and two decaying terms multiplied fall faster than either
     // alone — which is why reshaping the exit density three separate ways barely moved the
@@ -244,6 +257,21 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // the 40-55 % of frame above the band costs no blend work at all. Precedent: the
     // sculpted cloud field at odyssey-world-renderer.js:2721-2724.
     material.alphaTest = 0.004;
+    // ...but alphaTest ALONE saves only the blend, and blend was never the expensive half.
+    // MEASURED on Lane B at p=0.7401 (reports/odyssey-perf/gpu-split-seam56-limb-laneB-p7401
+    // .json, baselineDriftMs 0): the bank cost 3.86 ms of an 8.32 ms frame — 46 % — because
+    // NodeMaterial assigns colorNode BEFORE the alphaTest discard, so all seven FBM octaves
+    // ran on every rasterised fragment including the sky being thrown away. At r=620 the
+    // camera is inside the shell at every station, so that is the whole viewport.
+    //
+    // maskNode is emitted at the TOP of setupDiffuseColor, ahead of colorNode, so this kills
+    // those fragments before the noise is ever evaluated. It deliberately reads ONLY
+    // limbProfile and the density uniform — both FBM-free — or the saving would not exist.
+    //
+    // It is a CONSERVATIVE bound: the true alpha also carries `alphaShape`, which is <= 1,
+    // so this keeps every fragment alphaTest might still discard and discards none it would
+    // keep. The region is spatially coherent, so whole waves retire together.
+    material.maskNode = limbProfile.mul(d).greaterThan(0.004);
     // Sits exactly where the 5->6 fog lerp is mid-flight; it carries its own ramp. The
     // scene-fog trap has cost this repo four sessions — this volume must not join them.
     material.fog = false;
@@ -283,7 +311,13 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
             // disabling the bank entirely turns that step into -4.4). Linear out gives
             // 0.833 -> 0.667 -> 0.5 instead.
             //
-            // ⚠️ THE WINDOW IS DELIBERATELY LEFT SYMMETRIC, and density is NOT the remaining
+            // ⚠️ THE WINDOW IS STILL SYMMETRIC, but the two claims below are SUPERSEDED and are
+            // kept for the record of what was tried. `toVoid` was re-based to
+            // smoothstep(0.45, 1.6, a) in a4f0a2b1, and the exit is no longer linear — it is
+            // the two-term envelope in this function. Density is also no longer "not the
+            // lever": the dead band went 0.30 -> 0.06 as part of the limb rebuild.
+            //
+            // THE WINDOW IS DELIBERATELY LEFT SYMMETRIC, and density is NOT the remaining
             // lever. Widening the exit was tried first and reverted: `toVoid` below keys off
             // RAW window progress (smoothstep(0.45, 1.0, uAltitude)) and silently assumes the
             // peak sits at t=0.5, so a longer exit put the bank BELOW its own tint threshold
@@ -297,6 +331,12 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
             // (0.652->0.658 went -52.5 to -29.2, endLuma 26.2 to 16.4) and left the spike
             // itself at -83.0 vs -81.4. The next change has to be `toVoid`, re-based on the
             // peak and slowed to run out with the density rather than ahead of it.
+            //
+            // ⚠️ EVERY p VALUE IN THE BLOCK ABOVE IS PRE-ASCENT, and the `toVoid` re-base it
+            // asks for was DONE (a4f0a2b1). The window is now 0.7401 +/- 0.06, so the
+            // densities once quoted at p 0.658/0.668/0.678 occur at roughly 0.716/0.728/0.740.
+            // Preserved verbatim because the REASONING — that the tint, not the density,
+            // removes the bank — is what led to the re-base and is still true.
             // POST-LIMB ENVELOPE (Act II->Space section 8.5).
             //
             // The dead band was 0.30 because a full-screen FBM mottle read as noise on a

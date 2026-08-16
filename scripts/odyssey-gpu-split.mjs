@@ -252,6 +252,26 @@ const CONFIGURATIONS = [
         flags: { odysseyCh6NoAurora: '1' },
         note: 'ch6 hero auroral crown withheld — curtain mesh AND the gas-giant surface term',
     },
+    // THE 5->6 SEAM LIMB. `odysseyNoCloudBank=1` skips createCloudBank entirely
+    // (OdysseyBoardController.js), so this prices the whole object — draws, fill, vertex AND
+    // its pipeline compile — the same lever SHAPE as `no-water`, not a material swap.
+    //
+    // ⚠️ The seam has NEVER been priced. `render.gpuMs` in the chapter-capture sidecars reads
+    // 0 at all 18 stations and always has: that harness sends `odysseyOverlay=0`, which makes
+    // isOdysseyAAADebugEnabled() false, so the renderer is built with trackTimestamp:false and
+    // no query pool ever exists. It is a constructor default being mistaken for a measurement.
+    // THIS script is the correct instrument — it sets odysseyGpuProfile=1, which arms both
+    // switches, discards a warm-up, and voids on content mismatch.
+    //
+    // Seek 0.7401 (the boundary) for the worst frame — the rising branch peaks at density 1.0
+    // there. Seek 0.7941 for the direction question: the new envelope still has density 0.0386
+    // where the old one was exactly 0, and the camera is INSIDE the r=620 ellipsoid where it
+    // was outside the r=150 one.
+    {
+        id: 'no-cloud-bank',
+        flags: { odysseyNoCloudBank: '1' },
+        note: 'the ch5->6 limb bank is never built (draws + fill + vertex + pipeline compile)',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 

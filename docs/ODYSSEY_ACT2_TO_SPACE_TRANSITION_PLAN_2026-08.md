@@ -681,3 +681,57 @@ The default 0.648 is the pre-ascent boundary and sits below the first station; a
 `resolveDir()` returns the **alphabetically** last `seam-5-6*` directory, not the newest —
 a new arm named `seam-5-6-v2` silently becomes the graded run.
 
+
+### 8.7 CLOSED — all four gates pass, and the seam is priced for the first time
+
+`arm-limb-v6`, scored with `--boundary 0.7401`:
+
+| gate | audit baseline | v6 | limit |
+|---|---|---|---|
+| maxStep | −86.5 (wall) / +95.5 (no bank) | **−24.4** | 45 |
+| tailShare | 31.3% | **11.8%** | 50% |
+| postBoundary rises | 7 | **0** | 0 |
+| endLuma | 18.9 | **19.7** | 60 |
+
+**LANE B, MEASURED — the seam had never been priced.** `render.gpuMs` in the chapter-capture
+sidecars reads 0 at all 18 stations and always did: that harness sends `odysseyOverlay=0`,
+which makes `isOdysseyAAADebugEnabled()` false, so the renderer is built with
+`trackTimestamp:false` and no query pool is ever created. ⚠️ **That zero is a constructor
+default, not a measurement.** `scripts/odyssey-gpu-split.mjs` is the correct instrument and
+now carries a `no-cloud-bank` lever.
+
+    node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power \
+      --quality Medium --seek 0.7401 --chapters 5,6 \
+      --only baseline,no-cloud-bank,baseline-repeat --out <name>.json
+
+| | frame p50 | bank's share | control (no bank) |
+|---|---|---|---|
+| alphaTest only | 8.32 ms | **3.86 ms** (46% of frame) | 4.46 ms |
+| + `maskNode` | **6.23 ms** | **1.77 ms** | 4.46 ms |
+
+Both runs: `baselineDriftMs: 0`, `baselineDriftVoidReason: null`, draws 54 vs 53 (exactly one,
+so the lever is live rather than reporting innocence). The control landing on 4.46 ms in BOTH
+runs is what makes them comparable.
+
+⚠️ **`alphaTest` DOES NOT SAVE SHADER — it saves only blend.** NodeMaterial assigns `colorNode`
+before the alphaTest discard, so all seven FBM octaves ran on every rasterised fragment
+including the 40–55% of frame being thrown away. `material.maskNode` is emitted at the top of
+`setupDiffuseColor`, ahead of `colorNode`; reading only `limbProfile` and the density uniform
+(both noise-free) makes the discard happen before any noise is sampled. Worth **2.09 ms**, and
+capture-verified image-identical: max station luma delta 0.893, inside the ~1.25–1.7 noise floor.
+
+**THE WOBBLE — HYPOTHESIS REFUTED.** It was not "cloud lumps drifting past the horizon".
+The limb's own contribution has exactly ONE turning point across 18 stations, and its
+correlation with the mask's screen coverage is **−0.005**. The oscillation was chapter 6's
+arrival curve beating against the bank's decay curve — two smooth unimodal curves whose peaks
+sat 0.022 of p apart. Camera pitch (monotone 25.4°→14.9°) and shell position (monotone in,
+monotone out, never exits) both ruled out.
+
+**THE GREEN WALL WAS NOT THE NEBULA.** It is `createAuroraFilamentBridge` — the carried Ch5
+aurora — and it carried a linear/sRGB authoring slip: `vec3(0.24, 1.0, 0.56)` commented
+`#3DFF8E`, which actually linearises to `(0.047, 1.000, 0.270)`. ⚠️ **Fixing the slip makes it
+MORE saturated, not less** — the shipped value was an accidentally pale green, and this was
+mis-read once during the fix. The correction ships with a desaturation term
+(`BRIDGE_CHROMA 0.55`) and a level trim (`BRIDGE_LEVEL 0.65`), because the hue fix alone
+worsens the clash it was meant to solve.
+
