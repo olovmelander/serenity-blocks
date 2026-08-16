@@ -41,45 +41,39 @@ import {
 // mass's lit side agrees on where the light lives.
 const NEBULA_KEY_DIR = Object.freeze([-0.48, 0.36, -0.62]);
 
-// ⚠️ WAVE 6 LIGHTING AUDIT (2026-08-16) — THIS KEY IS APPLIED IN THE WRONG SPACE.
-// `N` below is `normalWorld` and this mesh is parented to the CORRIDOR group, so its
-// world normals carry the corridor rotation — but this constant is corridor-LOCAL and is
-// dotted against them raw, never transformed. The slip is 45.8 deg.
+// WAVE 6 LIGHTING AUDIT (2026-08-16) — FIXED; the owner flipped it to the default.
+//
+// This constant is authored in the CORRIDOR frame, but `N` below is `normalWorld` and the
+// mesh is parented to the corridor group, so for the whole life of the field the key was
+// dotted against world normals raw and never transformed — a 45.8 deg slip.
 //
 // MEASURED against the chapter's designated key. Plan §3.4 names the ACCRETION point
 // light (the black hole) as ch6's one key — NOT the world sun, which the hero planet
-// joined as a deliberate Wave 0.2 trade to stop its terminator swimming. So the right
-// question is how well these masses track the black hole:
+// joined as a deliberate Wave 0.2 trade to stop its terminator swimming:
 //
-//        approach      0.0     0.5     1.0
-//   as applied       55.8    67.7    95.5   deg off the BH
-//   as authored      25.7    35.5    57.1   deg off the BH
+//        approach            0.0     0.5     1.0
+//   was (applied raw)       55.8    67.7    95.5   deg off the BH
+//   now (authored frame)    25.7    35.5    57.1   deg off the BH
 //
-// The authored intent was sound — a raking key leaning loosely toward the omen ahead,
-// which is §3b rule 8's causal light. The application throws ~30 deg of that away at
-// every station, and by the exit the masses are lit from nearly a right angle to the
-// thing the whole chapter is falling into.
-// The correction is OPT-IN (`?odysseyCh6OneKey=1`, ADD-back polarity like the procedural
-// dome): the lever rotates this constant into the world frame, recovering ~30 deg of
-// alignment with the accretion key at every station.
+// The authored intent was always sound — a raking key leaning toward the omen ahead,
+// which is §3b rule 8's causal light. Only the frame was wrong, and by the chapter exit
+// the masses had been lit from nearly a right angle to the thing they are falling into.
 //
-// A/B CAPTURED at all 8 stations (2026-08-16). The fix moves 2.6% of pixels and it moves
-// them the right way: the warm workhorse keeps its violet body and warm crest, the cool
-// giant keeps its low-contrast role, §3b rule 4's value ladder holds, and the lit sides
-// lean back toward the omen ahead — rule 8's causal light. RECOMMENDED to become the
-// default; left opt-in only because the shipped look was owner-approved with the slip.
+// A/B at all 8 stations: 2.6% of pixels move and they move the right way — the warm
+// workhorse keeps its violet body and warm crest, the cool giant keeps its low-contrast
+// role, and rule 4's value ladder holds. `?odysseyCh6LegacyKeyFrame=1` restores the slip
+// (ADD-back polarity, like the procedural dome) so the comparison stays one flag away.
 //
-// ⚠️ A FIRST A/B TESTED THE WRONG FIX and its verdict does NOT apply here. It put the
-// masses on ODYSSEY_WORLD_SUN, which plan §3.4 never asks for (§3.4 names the ACCRETION
-// light as ch6's key; the hero planet's use of the world sun is a separate, deliberate
-// Wave 0.2 trade). That variant moved 5.2% of pixels and flattened the masses face-on
-// into a saturated orange shape that competed with the hero. Rejected on both grounds.
+// ⚠️ A FIRST A/B TESTED THE WRONG FIX and its verdict does not apply: it put the masses on
+// ODYSSEY_WORLD_SUN, which §3.4 never asks for. That variant moved 5.2% and flattened them
+// face-on into a saturated orange shape competing with the hero (rule 1). Rejected.
+//
 // The CORRECTION the audit actually calls for: the same authored direction, rotated out
 // of the corridor frame it was written in and into the world frame the normals live in.
 // Not the world sun — see the note above on why that was the wrong fix to test.
-function resolveKeyDir(oneKey, corridorQuaternion) {
+function resolveKeyDir(authoredFrame, corridorQuaternion) {
     const v = new THREE.Vector3(...NEBULA_KEY_DIR).normalize();
-    if (oneKey && corridorQuaternion) v.applyQuaternion(corridorQuaternion).normalize();
+    if (authoredFrame && corridorQuaternion) v.applyQuaternion(corridorQuaternion).normalize();
     return v;
 }
 
@@ -127,7 +121,7 @@ export function validateNebulaFieldClearance(
     return violations;
 }
 
-function buildRoleMaterial(uReveal, role, oneKey = false, corridorQuaternion = null) {
+function buildRoleMaterial(uReveal, role, authoredFrame = true, corridorQuaternion = null) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.transparent = false;
     material.depthWrite = true;
@@ -138,7 +132,7 @@ function buildRoleMaterial(uReveal, role, oneKey = false, corridorQuaternion = n
     const ao = attribute('color', 'vec3').x;
     const N = normalize(normalWorld);
     const V = normalize(cameraPosition.sub(positionWorld));
-    const L = normalize(uniform(resolveKeyDir(oneKey, corridorQuaternion)));
+    const L = normalize(uniform(resolveKeyDir(authoredFrame, corridorQuaternion)));
 
     // Two-band wrap paint, band interiors flat, lit ramp over-extended past 1.
     const wrap = float(0.72);
@@ -180,7 +174,7 @@ function buildRoleMaterial(uReveal, role, oneKey = false, corridorQuaternion = n
     return material;
 }
 
-export function createNebulaFieldTSL({ oneKey = false, corridorQuaternion = null } = {}) {
+export function createNebulaFieldTSL({ authoredFrame = true, corridorQuaternion = null } = {}) {
     const uReveal = uniform(0);
     const group = new THREE.Group();
     group.name = 'nebula-field';
@@ -192,7 +186,7 @@ export function createNebulaFieldTSL({ oneKey = false, corridorQuaternion = null
         const specs = ODYSSEY_NEBULA_FIELD_SPECS.filter((s) => s.paint === paint);
         if (!specs.length) return;
         const built = buildCloudFieldGeometry(specs);
-        const material = buildRoleMaterial(uReveal, PAINT_ROLES[paint], oneKey, corridorQuaternion);
+        const material = buildRoleMaterial(uReveal, PAINT_ROLES[paint], authoredFrame, corridorQuaternion);
         const mesh = new THREE.Mesh(built.geometry, material);
         mesh.name = `nebula-field-${paint}`;
         // Merged meshes spanning the corridor: the camera lives inside their bounds

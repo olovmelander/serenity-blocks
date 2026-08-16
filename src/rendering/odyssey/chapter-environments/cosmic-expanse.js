@@ -360,11 +360,11 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
 //   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
-//   ?odysseyCh6OneKey=1    — ADD-BACK polarity, NOT a remove: applies the nebula masses'
-//                            key in the frame it was AUTHORED in (rotated out of corridor
-//                            space into world), which is what the Wave 6 audit found is
-//                            missing. Recovers ~30 deg of alignment with the accretion
-//                            key at every station. Owner A/B verdict pending.
+//   ?odysseyCh6LegacyKeyFrame=1 — ADD-BACK polarity: restores the Wave 6 lighting slip,
+//                            i.e. the masses' corridor-local key dotted against world
+//                            normals raw (55.8-95.5 deg off the accretion key). The
+//                            SHIPPED default now applies that key in the frame it was
+//                            authored in (25.7-57.1 deg). Owner flipped it 2026-08-16.
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
 // differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
 // never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
@@ -388,7 +388,7 @@ function resolveCh6BisectLevers() {
         dust: !readCh6UrlFlag('odysseyCh6NoDust'),
         stars: !readCh6UrlFlag('odysseyCh6NoStars'),
         aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
-        oneKey: readCh6UrlFlag('odysseyCh6OneKey'),
+        authoredKeyFrame: !readCh6UrlFlag('odysseyCh6LegacyKeyFrame'),
     };
 }
 
@@ -542,7 +542,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
-    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({ oneKey: bisect.oneKey, corridorQuaternion: corridorFrame.quaternion }) : null;
+    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
+        authoredFrame: bisect.authoredKeyFrame,
+        corridorQuaternion: corridorFrame.quaternion,
+    }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
         group.userData.nebulaField = nebulaField.mesh;
