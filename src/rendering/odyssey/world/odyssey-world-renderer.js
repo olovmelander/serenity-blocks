@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 
 import {
+    ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     odysseyWorldDetailWeight,
     odysseyWorldMacro,
@@ -1736,6 +1737,44 @@ export function createOdysseyWorld({
     groundMesh.updateMatrix();
     groundMesh.name = 'odyssey-world-ground';
     group.add(groundMesh);
+
+    // ── THE NORTH LAKE (north-island plan Wave 1) ───────────────────────────────────
+    // A PAINTED lake, per the owner's direction: it is only ever seen from the climb rail
+    // ~1000 u away, so it is one opaque flat disc — a sky-mirror colour family plus one
+    // big analytic sun-glint streak. No reflector, no ripples, no blend state; the
+    // SHORELINE IS DRAWN BY THE DEPTH BUFFER where the basin rim and the east headland
+    // rise through the disc, so the waterline is organic for free (relief supplies the
+    // irregularity — see ODYSSEY_NORTH_LAKE in odyssey-world-height.js).
+    const lakeMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const lakeRel = vec2(
+            positionWorld.x.sub(ODYSSEY_NORTH_LAKE.x),
+            positionWorld.z.sub(ODYSSEY_NORTH_LAKE.z),
+        );
+        // Sun azimuth in the ground plane; the glint is a streak ALONG it — elongated
+        // toward the light, soft across it, the way every painted reference draws water.
+        const sunAz = normalize(vec2(uSunDir.x, uSunDir.z));
+        const glintAlong = dot(lakeRel, sunAz);
+        const glintAcross = dot(lakeRel, vec2(sunAz.y.negate(), sunAz.x));
+        const glint = smoothstep(float(26), float(7), abs(glintAcross))
+            .mul(smoothstep(float(185), float(40), abs(glintAlong)));
+        // The mirror family: between horizon and zenith, slightly deepened so the water
+        // reads a step darker than the sky it reflects (the value ladder, in miniature).
+        const lakeBase = mix(uSkyHorizon, uSkyZenith, float(0.55)).mul(0.92);
+        const lakeCol = lakeBase.add(uSunColour.mul(glint).mul(0.30));
+        lakeMat.colorNode = toOutput(applyAerial(lakeCol, positionWorld));
+        lakeMat.side = THREE.FrontSide;
+    }
+    const lakeGeo = new THREE.CircleGeometry(1, 48);
+    lakeGeo.rotateX(-Math.PI / 2);
+    const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
+    lakeMesh.position.set(ODYSSEY_NORTH_LAKE.x, ODYSSEY_NORTH_LAKE.waterY, ODYSSEY_NORTH_LAKE.z);
+    lakeMesh.scale.set(ODYSSEY_NORTH_LAKE.rx, 1, ODYSSEY_NORTH_LAKE.rz);
+    lakeMesh.frustumCulled = false;
+    lakeMesh.matrixAutoUpdate = false;
+    lakeMesh.updateMatrix();
+    lakeMesh.name = 'odyssey-world-north-lake';
+    group.add(lakeMesh);
 
     // ── sky ──
     const skyMat = new THREE.MeshBasicNodeMaterial();
@@ -3531,7 +3570,7 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat].forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
@@ -3762,7 +3801,7 @@ export function createOdysseyWorld({
             // heroes shipped, leaking the compiled hero material on every world dispose; with
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
-            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat]
+            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat]
                 .forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();

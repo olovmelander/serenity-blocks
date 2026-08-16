@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
     ODYSSEY_MASSIFS,
     ODYSSEY_MASSIF_FOOT_Y,
+    ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     massifTerm,
     odysseyWaterDepth,
+    odysseyWorldDetailWeight,
     odysseyWorldHeight,
     odysseyWorldMacro,
+    odysseyWorldRelief,
     smoothMax,
 } from './odyssey-world-height.js';
 import { ODYSSEY_PEAK_SPECS, PEAK_CONE_RADIUS_FRAC } from './odyssey-peak-specs.js';
@@ -233,6 +236,33 @@ describe('the landmass is an island', () => {
         expect(odysseyWorldMacro(-220, -2400)).toBeCloseTo(385.0, 1); // last land before the coast
         const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
         expect(odysseyWorldMacro(hero.x, hero.z)).toBeGreaterThan(1000); // crown untouched
+    });
+
+    it('holds the north lake: floor under water, rim above it, and a compact footprint', () => {
+        // North-island plan Wave 1. The bowl must be EXACTLY zero at rn >= 1 — the compact
+        // profile is what keeps the plateau pin above honest (a Gaussian tail moved it by
+        // -1.7 u from 300 u away). The waterline itself is drawn by the depth buffer, so
+        // the contract is about the terrain the disc meets: open water across the west
+        // body, a rim that never lets the flat surface spill.
+        const L = ODYSSEY_NORTH_LAKE;
+        const height = (x, z) => odysseyWorldMacro(x, z)
+            + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+        // The open-water body (west half, inside rn 0.45): comfortably submerged.
+        for (let a = 90; a <= 270; a += 30) {
+            const x = L.x + Math.cos((a * Math.PI) / 180) * L.rx * 0.4;
+            const z = L.z + Math.sin((a * Math.PI) / 180) * L.rz * 0.4;
+            expect(height(x, z), `open water at azimuth ${a}`).toBeLessThan(L.waterY - 2);
+        }
+        // The rim at rn 1.05: no azimuth lets the surface spill past the bowl.
+        for (let a = 0; a < 360; a += 15) {
+            const x = L.x + Math.cos((a * Math.PI) / 180) * L.rx * 1.05;
+            const z = L.z + Math.sin((a * Math.PI) / 180) * L.rz * 1.05;
+            expect(height(x, z), `rim at azimuth ${a}`).toBeGreaterThan(L.waterY);
+        }
+        // Compactness itself is guarded by the plateau pin in the test above: (-220, -1500)
+        // sits at rn 1.35 and is held to 0.05 u, so any profile that grows a tail past
+        // rn = 1 fails THAT assertion — no separate (and inevitably tautological) check
+        // of "the world without the lake" is needed here.
     });
 
     it('has a real north shore, not a cliff — the coast slope stays under the mesh bar', () => {
