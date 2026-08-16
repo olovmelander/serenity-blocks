@@ -6,6 +6,7 @@ import {
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     massifTerm,
+    odysseyNorthLakeRn,
     odysseyWaterDepth,
     odysseyWorldDetailWeight,
     odysseyWorldHeight,
@@ -242,27 +243,34 @@ describe('the landmass is an island', () => {
         expect(odysseyWorldMacro(hero.x, hero.z)).toBeGreaterThan(1000); // crown untouched
     });
 
-    it('holds the north lake: floor under water, rim above it, and a compact footprint', () => {
-        // North-island plan Wave 1. The bowl must be EXACTLY zero at rn >= 1 — the compact
-        // profile is what keeps the plateau pin above honest (a Gaussian tail moved it by
-        // -1.7 u from 300 u away). The waterline itself is drawn by the depth buffer, so
-        // the contract is about the terrain the disc meets: open water across the west
-        // body, a rim that never lets the flat surface spill.
+    it('holds the north lake: floors under water, rims above it, and a compact footprint', () => {
+        // North-island plan Wave 1, tripled + sculpted (owner direction): the lake is now
+        // a two-lobe bean joined by smoothMax. Each lobe's bowl is EXACTLY zero at its own
+        // rn >= 1 — the compact profile is what keeps the plateau pin above honest (a
+        // Gaussian tail moved it by -1.7 u from 300 u away). The waterline is drawn by the
+        // depth buffer, so the contract is about the terrain the discs meet: open water
+        // inside every lobe, and a rim that never lets the flat surface spill — SKIPPING
+        // ring points that fall inside the OTHER lobe, which are the waist's open water.
         const L = ODYSSEY_NORTH_LAKE;
         const height = (x, z) => odysseyWorldMacro(x, z)
             + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
-        // The open-water body (west half, inside rn 0.45): comfortably submerged.
-        for (let a = 90; a <= 270; a += 30) {
-            const x = L.x + Math.cos((a * Math.PI) / 180) * L.rx * 0.4;
-            const z = L.z + Math.sin((a * Math.PI) / 180) * L.rz * 0.4;
-            expect(height(x, z), `open water at azimuth ${a}`).toBeLessThan(L.waterY - 2);
-        }
-        // The rim at rn 1.05: no azimuth lets the surface spill past the bowl.
-        for (let a = 0; a < 360; a += 15) {
-            const x = L.x + Math.cos((a * Math.PI) / 180) * L.rx * 1.05;
-            const z = L.z + Math.sin((a * Math.PI) / 180) * L.rz * 1.05;
-            expect(height(x, z), `rim at azimuth ${a}`).toBeGreaterThan(L.waterY);
-        }
+        L.lobes.forEach((lb, li) => {
+            // The open-water body of each lobe (rn 0.4): comfortably submerged.
+            for (let a = 0; a < 360; a += 30) {
+                const x = lb.x + Math.cos((a * Math.PI) / 180) * lb.rx * 0.4;
+                const z = lb.z + Math.sin((a * Math.PI) / 180) * lb.rz * 0.4;
+                expect(height(x, z), `lobe ${li} open water at azimuth ${a}`)
+                    .toBeLessThan(L.waterY - 2);
+            }
+            // The rim at rn 1.05: no azimuth outside the union lets the surface spill.
+            for (let a = 0; a < 360; a += 15) {
+                const x = lb.x + Math.cos((a * Math.PI) / 180) * lb.rx * 1.05;
+                const z = lb.z + Math.sin((a * Math.PI) / 180) * lb.rz * 1.05;
+                if (odysseyNorthLakeRn(x, z) < 1) continue; // the waist — open water
+                expect(height(x, z), `lobe ${li} rim at azimuth ${a}`)
+                    .toBeGreaterThan(L.waterY);
+            }
+        });
         // Compactness itself is guarded by the plateau pin in the test above: (-700, -1900)
         // sits outside every compact profile and is held to 0.05 u, so any profile that
         // grows a tail fails THAT assertion — no separate (and inevitably tautological)

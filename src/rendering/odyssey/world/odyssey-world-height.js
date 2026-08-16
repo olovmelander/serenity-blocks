@@ -216,12 +216,46 @@ const BASIN_DEPTH = 42;
 // maple mass at the east and north shores.
 // The pocket is real terrain: the probed shelf floor runs 343-356 here (the massif skirt
 // stands high over the west shore, the plateau rolls at the north and east), so the
-// water sits at 354 — below every natural rim azimuth — and the bowl only deepens the
+// water sits at 354 — below every natural rim azimuth — and the bowls only deepen the
 // middle rather than fighting a slope.
+//
+// TRIPLED AND SCULPTED (owner direction 2026-08-16): two overlapping lobes joined by the
+// module's own smoothMax make a bean — the main body in the rail-visible pocket, a
+// north-west arm bending around the conifer point toward the deep plateau (its far end
+// slips over the visual horizon from the rail, which is exactly how a big lake reads).
+// `odysseyNorthLakeRn` below is THE lake metric: the scatter's underwater kill, the
+// lakeshore ring, the contrast-gate exclusion and the tests all call it, so the
+// geometry has one owner and the calibrate-script mirror can no longer drift.
 export const ODYSSEY_NORTH_LAKE = Object.freeze({
-    x: 280, z: -1500, rx: 240, rz: 190, waterY: 354,
+    waterY: 354,
+    lobes: Object.freeze([
+        Object.freeze({
+            x: 280, z: -1500, rx: 310, rz: 250, depth: 48,
+        }),
+        Object.freeze({
+            x: -30, z: -1770, rx: 300, rz: 235, depth: 42,
+        }),
+        // The WAIST: the first two-lobe build read as two separate lakes — the neck's
+        // floor stood 6 u above the water (per-lobe rn-0.4 probes never sample it).
+        // This small lobe carves the neck itself, so the bean is one body of water.
+        Object.freeze({
+            x: 130, z: -1640, rx: 180, rz: 150, depth: 36,
+        }),
+    ]),
 });
-const NORTH_LAKE_DEPTH = 34;
+
+/** Normalized lake-ellipse distance: min over lobes; < 1 is inside the carve. */
+export function odysseyNorthLakeRn(x, z) {
+    let best = Infinity;
+    const { lobes } = ODYSSEY_NORTH_LAKE;
+    for (let i = 0; i < lobes.length; i += 1) {
+        const lb = lobes[i];
+        const lx = (x - lb.x) / lb.rx;
+        const lz = (z - lb.z) / lb.rz;
+        best = Math.min(best, Math.sqrt((lx * lx) + (lz * lz)));
+    }
+    return best;
+}
 
 /**
  * THE NORTH HILLS (north-island plan Wave 2). Three soft swells that break the plateau's
@@ -239,7 +273,13 @@ const NORTH_HILLS = Object.freeze([
     // inside the waterline.
     Object.freeze({ x: 380, z: -1220, r: 160, h: 24 }),
     Object.freeze({ x: -1020, z: -1350, r: 280, h: 36 }), // links west toward the ridge
-    Object.freeze({ x: 620, z: -1480, r: 160, h: 22 }),
+    Object.freeze({ x: 600, z: -1450, r: 190, h: 30 }),
+    // Behind the lake's north-west arm: the far shore rises into a hill instead of
+    // running flat to the coast taper.
+    Object.freeze({ x: -160, z: -2160, r: 220, h: 40 }),
+    // The south-east shore's own lift: the tripled main lobe reaches ground the east
+    // swell cannot, and this closes the last low arc.
+    Object.freeze({ x: 560, z: -1720, r: 150, h: 22 }),
 ]);
 
 function smoothstep01(edge0, edge1, x) {
@@ -321,12 +361,18 @@ export function odysseyWorldMacro(x, z) {
     const bz = (z - BASIN_Z) / BASIN_RZ;
     const basin = Math.exp(-((bx * bx) + (bz * bz))) * -BASIN_DEPTH;
 
-    // The north lake's bowl: flat-ish floor, feathered rim, EXACT zero outside rn=1
-    // (see the constant block — the compact profile is what keeps the plateau pin honest).
-    const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
-    const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
-    const lakeRn = Math.sqrt((lx * lx) + (lz * lz));
-    const lakeBowl = (1 - smoothstep01(0.5, 1.0, lakeRn)) * -NORTH_LAKE_DEPTH;
+    // The north lake's bowls: flat-ish floors, feathered rims, EXACT zero outside rn=1
+    // per lobe (the compact profile is what keeps the plateau pin honest). The lobes join
+    // through smoothMax so the shoreline waist is a smooth curve, not a crease.
+    let lakeCarve = 0;
+    for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
+        const lb = ODYSSEY_NORTH_LAKE.lobes[i];
+        const lx = (x - lb.x) / lb.rx;
+        const lz = (z - lb.z) / lb.rz;
+        const rn = Math.sqrt((lx * lx) + (lz * lz));
+        lakeCarve = smoothMax(lakeCarve, (1 - smoothstep01(0.5, 1.0, rn)) * lb.depth, 8);
+    }
+    const lakeBowl = -lakeCarve;
 
     // The north hills: the same compact grammar, positive.
     let hills = 0;

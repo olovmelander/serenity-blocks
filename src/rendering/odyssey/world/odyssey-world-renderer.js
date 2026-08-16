@@ -1738,26 +1738,32 @@ export function createOdysseyWorld({
     groundMesh.name = 'odyssey-world-ground';
     group.add(groundMesh);
 
-    // ── THE NORTH LAKE (north-island plan Wave 1) ───────────────────────────────────
-    // A PAINTED lake, per the owner's direction: it is only ever seen from the climb rail
-    // ~1000 u away, so it is one opaque flat disc — a sky-mirror colour family plus one
-    // big analytic sun-glint streak. No reflector, no ripples, no blend state; the
-    // SHORELINE IS DRAWN BY THE DEPTH BUFFER where the basin rim and the east headland
-    // rise through the disc, so the waterline is organic for free (relief supplies the
-    // irregularity — see ODYSSEY_NORTH_LAKE in odyssey-world-height.js).
+    // ── THE NORTH LAKE (north-island plan Wave 1, tripled + sculpted per owner) ─────
+    // A PAINTED lake: it is only ever seen from the climb rail ~1000 u away, so it is
+    // opaque flat discs — a sky-mirror colour family plus one big analytic sun-glint
+    // streak. No reflector, no ripples, no blend state; the SHORELINE IS DRAWN BY THE
+    // DEPTH BUFFER where the carve's rims rise through the discs, so the lobed waterline
+    // is organic for free. ONE DISC PER LOBE, each stepped 2 cm lower than the last —
+    // coplanar overlapping discs would z-fight in the waist, and 2 cm is invisible at
+    // range while giving the depth test a clean answer.
     const lakeMat = new THREE.MeshBasicNodeMaterial();
     {
+        // The glint is computed against the UNION's midpoint so one streak crosses the
+        // whole bean rather than each lobe growing its own.
+        const lakeLobes = ODYSSEY_NORTH_LAKE.lobes;
+        const glintCx = lakeLobes.reduce((s, lb) => s + lb.x, 0) / lakeLobes.length;
+        const glintCz = lakeLobes.reduce((s, lb) => s + lb.z, 0) / lakeLobes.length;
         const lakeRel = vec2(
-            positionWorld.x.sub(ODYSSEY_NORTH_LAKE.x),
-            positionWorld.z.sub(ODYSSEY_NORTH_LAKE.z),
+            positionWorld.x.sub(glintCx),
+            positionWorld.z.sub(glintCz),
         );
         // Sun azimuth in the ground plane; the glint is a streak ALONG it — elongated
         // toward the light, soft across it, the way every painted reference draws water.
         const sunAz = normalize(vec2(uSunDir.x, uSunDir.z));
         const glintAlong = dot(lakeRel, sunAz);
         const glintAcross = dot(lakeRel, vec2(sunAz.y.negate(), sunAz.x));
-        const glint = smoothstep(float(26), float(7), abs(glintAcross))
-            .mul(smoothstep(float(185), float(40), abs(glintAlong)));
+        const glint = smoothstep(float(34), float(9), abs(glintAcross))
+            .mul(smoothstep(float(320), float(60), abs(glintAlong)));
         // The mirror family: between horizon and zenith, slightly deepened so the water
         // reads a step darker than the sky it reflects (the value ladder, in miniature).
         const lakeBase = mix(uSkyHorizon, uSkyZenith, float(0.55)).mul(0.92);
@@ -1765,16 +1771,18 @@ export function createOdysseyWorld({
         lakeMat.colorNode = toOutput(applyAerial(lakeCol, positionWorld));
         lakeMat.side = THREE.FrontSide;
     }
-    const lakeGeo = new THREE.CircleGeometry(1, 48);
-    lakeGeo.rotateX(-Math.PI / 2);
-    const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
-    lakeMesh.position.set(ODYSSEY_NORTH_LAKE.x, ODYSSEY_NORTH_LAKE.waterY, ODYSSEY_NORTH_LAKE.z);
-    lakeMesh.scale.set(ODYSSEY_NORTH_LAKE.rx, 1, ODYSSEY_NORTH_LAKE.rz);
-    lakeMesh.frustumCulled = false;
-    lakeMesh.matrixAutoUpdate = false;
-    lakeMesh.updateMatrix();
-    lakeMesh.name = 'odyssey-world-north-lake';
-    group.add(lakeMesh);
+    ODYSSEY_NORTH_LAKE.lobes.forEach((lb, li) => {
+        const lakeGeo = new THREE.CircleGeometry(1, 48);
+        lakeGeo.rotateX(-Math.PI / 2);
+        const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
+        lakeMesh.position.set(lb.x, ODYSSEY_NORTH_LAKE.waterY - (li * 0.02), lb.z);
+        lakeMesh.scale.set(lb.rx, 1, lb.rz);
+        lakeMesh.frustumCulled = false;
+        lakeMesh.matrixAutoUpdate = false;
+        lakeMesh.updateMatrix();
+        lakeMesh.name = `odyssey-world-north-lake-${li}`;
+        group.add(lakeMesh);
+    });
 
     // ── sky ──
     const skyMat = new THREE.MeshBasicNodeMaterial();

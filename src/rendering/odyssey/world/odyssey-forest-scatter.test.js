@@ -13,8 +13,8 @@ import {
     getForestSpecies,
 } from './odyssey-forest-species.js';
 import {
-    ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
+    odysseyNorthLakeRn,
     odysseyWorldDetailWeight,
     odysseyWorldMacro,
     odysseyWorldRelief,
@@ -315,9 +315,7 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // are judged by capture, not by p90/p50.
         const cells = new Map();
         HIGH.placements.forEach((t) => {
-            const lx = (t.x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
-            const lz = (t.z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
-            if (Math.sqrt((lx * lx) + (lz * lz)) <= 1.35) return;
+            if (odysseyNorthLakeRn(t.x, t.z) <= 1.35) return;
             const k = `${Math.floor(t.x / 120)}|${Math.floor(t.z / 120)}`;
             cells.set(k, (cells.get(k) || 0) + 1);
         });
@@ -328,7 +326,15 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // set's p90/p50 dilutes (measured 1.96 after threshold re-emission) without any
         // change to the carved areas' kill rates. The carpet negative control reads 1.71,
         // so 1.9 still separates stands from carpet.
-        expect(contrast).toBeGreaterThan(1.9);
+        //
+        // ⚠️ 1.9 -> 1.85 WHEN THE LAKE TRIPLED (owner-directed, 2026-08-16): the bean now
+        // occupies what was the NE autumn mass's densest heart, so the REMAINING field's
+        // top decile genuinely fell (measured 1.885). That is the owner's composition
+        // choice, not a scatter defect — the block comment above predicted this floor
+        // tracks taste and exists to catch COLLAPSE, and 1.85 still clears the 1.71
+        // carpet control. If it must fall a third time, replace the global ratio with
+        // per-area ratios so one region's re-composition stops taxing the whole island.
+        expect(contrast).toBeGreaterThan(1.85);
     });
 
     it('carves rather than dilutes: in-stand spacing is preserved', () => {
