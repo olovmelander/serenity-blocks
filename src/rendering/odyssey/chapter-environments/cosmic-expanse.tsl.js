@@ -369,7 +369,7 @@ export function createBlackHoleTSL(uTime, uEnergy) {
  */
 export const HERO_PLANET_RADIUS = 28;
 
-export function createHeroPlanetSurfaceTSL(uTime, { aurora = true } = {}) {
+export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal } = {}) {
     const time = uTime ?? uniform(0);
     // Richer, higher-contrast gas-giant palette so the hero reads as a crisp
     // focal point against the deep void instead of a dim banded ball: warm
@@ -453,7 +453,7 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true } = {}) {
     // hero's APPROACH march is most of the chapter. `n` is planet-fixed so the oval stays
     // on the pole through the spin; `dTerm` is handed in rather than recomputed so the
     // oval can never disagree with the terminator it is masked by.
-    if (aurora) color = color.add(auroraSurfaceTerm(n, dTerm, time));
+    if (aurora) color = color.add(auroraSurfaceTerm(n, dTerm, time, undefined, uAuroraReveal));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -647,8 +647,14 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     // right of and slightly nearer than the black hole rather than half-clipped.
     group.position.set(-62, 46, -640);
 
-    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora });
+    // ONE darkness gate for BOTH aurora halves (surface oval + standing crown): the
+    // chapter ticks this to its spaceReveal each frame, so no aurora can glow while
+    // the sky is still daylight (owner report 2026-08-16). Starts at 0 — the safe
+    // initial state — and the playground's standalone builders default to 1.
+    const uAuroraReveal = uniform(0);
+    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora, uAuroraReveal });
     group.add(planet.mesh);
+    group.userData.uAuroraReveal = uAuroraReveal;
 
     const decor = [];
 
@@ -660,7 +666,13 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     // Levered so gpu-split can price BOTH halves in one differential: the lever also
     // drops the surface term above, because half a price is not a price.
     if (aurora) {
-        const crown = createPlanetAuroraCrown(HERO_PLANET_RADIUS, uTime);
+        const crown = createPlanetAuroraCrown(
+            HERO_PLANET_RADIUS,
+            uTime,
+            undefined,
+            undefined,
+            uAuroraReveal,
+        );
         group.add(crown);
         decor.push(crown);
     }
