@@ -6,6 +6,21 @@ import {
     ODYSSEY_FOREST_SPECIES,
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
+import { ODYSSEY_NORTH_LAKE } from './odyssey-world-height.js';
+
+/**
+ * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
+ * is `y < seaLevel + 3`, which knows nothing about a lake at 374 u — without this, the
+ * scatter plants trees on the carved basin floor and they stand hip-deep in the painted
+ * surface. Inside the lake ellipse, dry ground is ground ABOVE the waterline (+1.5 for
+ * the trunk flare); the east headland that rises through the disc keeps its trees.
+ */
+function siteInNorthLake(x, z, y) {
+    if (y > ODYSSEY_NORTH_LAKE.waterY + 1.5) return false;
+    const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
+    const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
+    return ((lx * lx) + (lz * lz)) <= 1;
+}
 
 /**
  * ACT II FOREST — the zoned scatter (forest plan Wave 2).
@@ -288,14 +303,18 @@ const FOREST_ARCH_AREA = Object.freeze({
  * re-seated on the longer curve and the massif footY datum moved 0.0556u, so every area's
  * eligible pool changed and ALL seven thresholds moved. Transcribed at full precision from
  * scripts/act2-forest-arch-calibrate.mjs, per the header's law.
+ *
+ * RE-EMITTED AGAIN 2026-08-16 for the north lake (north-island plan Wave 1): the basin +
+ * lake exclusion removes NW/NE/SEAM pool sites, so exactly those three thresholds moved —
+ * the other four are byte-identical, which is the check the re-emission was sound.
  */
 const FOREST_ARCH_T_BY_AREA = Object.freeze({
     RAIL: Infinity,
-    SEAM: 0.5783012033777011,
+    SEAM: 0.5847260989174075,
     ETIP: 0.6269598341870908,
     EMASS: 0.8244496408416748,
-    NE: 0.4493666230596651,
-    NW: 0.44261230923999884,
+    NE: 0.45171214783398395,
+    NW: 0.43436810246721713,
     WEND: 0.5732750837682767,
     WMID: 0.5042125928823078,
 });
@@ -792,6 +811,7 @@ export function scatterZonedForest(heightAt, {
             const y = heightAt(x, z);
             // The incumbent's rejections, preserved verbatim — each was measured, not guessed.
             if (y < seaLevel + 3 || y > snowStart) continue;
+            if (siteInNorthLake(x, z, y)) continue;
             const e = 4;
             const slope = Math.hypot(
                 (heightAt(x + e, z) - heightAt(x - e, z)) / (2 * e),
@@ -948,6 +968,7 @@ export function scatterZonedForest(heightAt, {
         if (!spec) return;
         const y = heightAt(f.x, f.z);
         if (y < seaLevel + 3) return;
+        if (siteInNorthLake(f.x, f.z, y)) return;
         const stage = spec.stages.find((st) => st.id === 'old') ?? spec.stages[0];
         const jitter = 1 + ((hash2(fi, 977, 9) - 0.5) * 0.10);
         const hueT = spec.crownAlt ? hash2(fi, 977, 11) ** 1.7 : 0;

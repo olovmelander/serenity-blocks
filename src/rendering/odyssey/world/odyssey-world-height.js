@@ -178,6 +178,30 @@ const BASIN_RX = 430;
 const BASIN_RZ = 330;
 const BASIN_DEPTH = 42;
 
+/**
+ * THE NORTH LAKE (north-island plan Wave 1, owner-directed 2026-08-16). The 1C flyby made
+ * the plateau behind the hero massif primary real estate — the climb's bank looks down
+ * across it at p ≈ 0.55–0.68 — and the owner marked this shelf for a lake.
+ *
+ * A COMPACT bowl, not a Gaussian like the Ch3 basin: the world-height suite pins the bare
+ * plateau at (−220, −1500) to 0.05 u, and a Gaussian's tail still moves that probe by
+ * −1.7 u from 300 u away. This profile is EXACTLY zero at rn ≥ 1 (the closing-taper law
+ * the north coast paid for, enforced by construction), so the pin — at rn 1.35 — is
+ * untouched by arithmetic, not by tolerance.
+ *
+ * `waterY` is the painted surface's seat (renderer-side). The floor carves to ~366–374
+ * under relief; the rim stays at the plateau's own 384–390, so the waterline is drawn by
+ * the DEPTH BUFFER where terrain rises through the disc — an organic shoreline for free,
+ * with relief supplying the irregularity.
+ */
+// waterY 374, not the first draft's 378: the plateau's own west edge sits at ~377, and a
+// waterline above it SPILLS — the flat disc would hang past the bowl over lower ground.
+// 374 tucks the surface under every rim azimuth (probed at rn 1.05: 36/36 above water).
+export const ODYSSEY_NORTH_LAKE = Object.freeze({
+    x: -480, z: -1560, rx: 200, rz: 160, waterY: 374,
+});
+const NORTH_LAKE_DEPTH = 24;
+
 function smoothstep01(edge0, edge1, x) {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * (3 - (2 * t));
@@ -257,7 +281,14 @@ export function odysseyWorldMacro(x, z) {
     const bz = (z - BASIN_Z) / BASIN_RZ;
     const basin = Math.exp(-((bx * bx) + (bz * bz))) * -BASIN_DEPTH;
 
-    const ground = land + basin;
+    // The north lake's bowl: flat-ish floor, feathered rim, EXACT zero outside rn=1
+    // (see the constant block — the compact profile is what keeps the plateau pin honest).
+    const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
+    const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
+    const lakeRn = Math.sqrt((lx * lx) + (lz * lz));
+    const lakeBowl = (1 - smoothstep01(0.5, 1.0, lakeRn)) * -NORTH_LAKE_DEPTH;
+
+    const ground = land + basin + lakeBowl;
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
