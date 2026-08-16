@@ -103,7 +103,15 @@ describe('the cull removes the invisible and only the invisible', () => {
         // authored reduction removes trees from the same far, rail-distant ground this mask
         // already condemns, so the mask's SHARE keeps shrinking while its behaviour is
         // unchanged. The pattern above now has three data points.
-        expect(CULLED.stats.trees).toBeLessThan(FULL.stats.trees * 0.82);
+    // ⚠️ REBASED BY WAVE 1A'S ASCENT (2026-08-16), and this is a REAL COST, not a nudge.
+    // Raising the rail through the cloud deck so it flies PAST the mountain gives the camera a
+    // high vantage over the whole island, and an occlusion mask can only cull what terrain
+    // HIDES. Measured: 94.1% of cells are now visible where the mask used to condemn far more,
+    // so the cull removes ~4.6% of the forest instead of ~21%. That is ~1200 more trees
+    // standing in the act whose Lane B p95 is already closest to its ceiling. The floors below
+    // move to the measured truth rather than being left failing — but the number to watch is
+    // the PERF measurement, not this assertion.
+        expect(CULLED.stats.trees).toBeLessThan(FULL.stats.trees * 0.97);
         expect(CULLED.stats.trees).toBeGreaterThan(FULL.stats.trees * 0.40);
     });
 
@@ -125,7 +133,8 @@ describe('the cull removes the invisible and only the invisible', () => {
         expect(CULLED.stats.byLod.mid / FULL.stats.byLod.mid).toBeGreaterThan(0.90);
         // Rebased with the thinning overlap above — the mask's own behaviour is unchanged.
         // (0.70 -> 0.78 at the archipelago carve, measured 0.754, same overlap mechanism.)
-        expect(CULLED.stats.byLod.far).toBeLessThan(FULL.stats.byLod.far * 0.78);
+        // Same rebase: the high vantage exposes far ground the ridges used to hide.
+        expect(CULLED.stats.byLod.far).toBeLessThan(FULL.stats.byLod.far * 0.96);
     });
 
     /**

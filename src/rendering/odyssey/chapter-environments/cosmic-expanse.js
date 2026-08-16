@@ -144,8 +144,19 @@ const APPROACH = {
     bhYa: 586,
     bhYb: 387,
     bhYc: 240,
+    // ⚠️ RE-SOLVED FOR WAVE 1A'S ASCENT (2026-08-16). These endpoints are least-squares fits
+    // against a CAMERA REPLAY, so a spline change invalidates them — that is the standing rule
+    // in this file and the ascent is exactly the case it was written for. After the rail was
+    // lifted, the gas giant projected to ndcX -0.021 at the chapter entry: dead centre, a hair
+    // to the LEFT, which breaks the authored triad (black hole upper-left, giant lower-centre-
+    // RIGHT, galaxy upper-right) and puts two heroes on the same side of the frame.
+    // Corridor-local screen-right at the entry measures (0.972, 0.235, 0), so x is very nearly
+    // pure lateral here. +114 (756 -> 870) puts it in the right third with margin on BOTH
+    // constraints: it must clear centre (ndcX > 0) AND stay 0.3 of a frame from the galaxy,
+    // which is also right-of-centre. Swept: 860 and 880 both pass, 896 collides with the
+    // galaxy at 0.297. 870 is the middle of the passing band, not the edge of it.
     planetA: {
-        x: 756, y: 322, z: -277, s: 34 / 28,
+        x: 870, y: 322, z: -277, s: 34 / 28,
     },
     // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
     // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge

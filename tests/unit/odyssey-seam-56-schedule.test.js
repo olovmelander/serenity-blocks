@@ -33,20 +33,26 @@ describe('Act II -> Space (5->6) seam schedule', () => {
 
     it('reads the chapter boundaries the seam actually runs on', () => {
         // Pinned so a layout edit that moves the seam is a deliberate, visible act.
-        expect(ch5).toBeCloseTo(0.5, 6);
-        expect(ch6).toBeCloseTo(0.648, 6);
-        expect(ch7).toBeCloseTo(0.815, 6);
+        // POST-ASCENT (Wave 1A). Chapter 5 more than doubled its share of the traversal —
+        // 0.148 -> 0.371 — because the climb past the cloud deck lives inside it.
+        expect(ch5).toBeCloseTo(0.3692, 4);
+        expect(ch6).toBeCloseTo(0.7401, 4);
+        expect(ch7).toBeCloseTo(0.8634, 4);
         // 0.556 is LEVEL 31, not chapter 5's start. The seam's code comments said otherwise
         // for a long time; this assertion is here so that story cannot come back.
         expect(ch5).not.toBeCloseTo(0.556, 3);
+        expect(ch5).not.toBeCloseTo(0.5, 3); // the PRE-ascent value
     });
 
-    it('places the earth ignite where the comments now claim (0.5873 -> 0.6258)', () => {
+    it('places the earth ignite across the ascent (0.5880 -> 0.6845)', () => {
         const skySpan = ch6 - ch5;
         const summitStart = ch6 - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
         const summitEnd = ch6 - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
-        expect(summitStart).toBeCloseTo(0.5873, 4);
-        expect(summitEnd).toBeCloseTo(0.6258, 4);
+        // The window WIDENED 0.039 -> 0.097 as a free consequence of the ascent:
+        // SUMMIT_EARTH_REVEAL is expressed as fractions of the ch5 span, and that span grew.
+        // The gas giant now fades up across the whole climb instead of in a blink.
+        expect(summitStart).toBeCloseTo(0.5880, 3);
+        expect(summitEnd).toBeCloseTo(0.6845, 3);
 
         // ...and the staging function must agree with that arithmetic, not drift from it.
         const staging = resolveSummitEarthStaging(summitStart, ch5, ch6, ch7);
@@ -57,11 +63,11 @@ describe('Act II -> Space (5->6) seam schedule', () => {
 
     it('opens the space gate over a window far narrower than the crossfade it sits in', () => {
         const gateEnd = ch6 + (ch7 - ch6) * SUMMIT_EARTH_REVEAL.spaceGateBand;
-        expect(gateEnd).toBeCloseTo(0.658, 4);
+        expect(gateEnd).toBeCloseTo(0.7475, 3);
         // F5 in the plan: space arrives over 0.010 of progress. Recorded, not endorsed —
         // Wave 2 is expected to widen it, and when it does this number must be updated
         // deliberately rather than discovered later.
-        expect(gateEnd - ch6).toBeCloseTo(0.010, 3);
+        expect(gateEnd - ch6).toBeCloseTo(0.0074, 3);
     });
 
     it('KEEPS THE WORLD DRAWING AFTER THE CROSSFADE ENDS — the cliff, pinned', () => {
@@ -69,7 +75,7 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         // fails when it is fixed. The One World is fully visible right up to
         // actEnd + margin and then flips off in a single frame.
         const worldOff = ch6 + ONE_WORLD_ACT_MARGIN;
-        expect(worldOff).toBeCloseTo(0.678, 6);
+        expect(worldOff).toBeCloseTo(0.7623, 4);
 
         const actStart = positions[1];
         expect(isWorldVisibleAtProgress(worldOff - 1e-4, actStart, ch6)).toBe(true);

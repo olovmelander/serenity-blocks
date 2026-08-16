@@ -22,11 +22,16 @@
  * present for exactly the window in which the neighbouring chapter is co-present, and no
  * wider.
  *
+ * ⚠️ SCALED 0.03 -> 0.0222 BY WAVE 1A, for the same reason every seamWidth was: `p` is
+ * arc-normalised over the whole curve, the ascent lengthened it 1767.65 -> 2393.89, and a
+ * fixed 0.03 therefore bought 35% more world than it was authored to. The value tracks
+ * the act edges' seamWidth, so it scales with them.
+ *
  * DO NOT raise this to the journey's widest seam (Ch4's 0.06). That reaches p=0.033, which is
  * only ~35% into Chapter 1, and leaves the defect this gate exists to fix in place — the
  * first attempt at the fix did precisely that and changed nothing about the captured frame.
  */
-export const ONE_WORLD_ACT_MARGIN = 0.03;
+export const ONE_WORLD_ACT_MARGIN = 0.0222;
 
 /**
  * @param {number} progress camera progress along the whole journey, 0..1

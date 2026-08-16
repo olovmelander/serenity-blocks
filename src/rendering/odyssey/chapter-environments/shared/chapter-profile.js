@@ -76,7 +76,7 @@ export const ODYSSEY_NODE_STYLES = Object.freeze({
 });
 
 export const DEFAULT_ODYSSEY_TRANSITION = Object.freeze({
-    seamWidth: 0.018,
+    seamWidth: 0.0133,
     beatDurationMs: 850,
     preloadDistance: 0.05,
     fxPreset: 'standard',
@@ -109,6 +109,24 @@ export const ODYSSEY_CAMERA_PROFILES = Object.freeze({
  * The eight chapter profiles. `atmosphere` mirrors the current authored values in
  * core/odyssey/data/chapters.js so Phase 2 can adopt these without changing the look.
  * `path` / `node` / `transitionOut` are forward-looking declarations for P3–P6.
+ */
+/**
+ * ⚠️ SEAM WIDTHS ARE IN `p`, AND WAVE 1A's ASCENT CHANGED WHAT `p` IS WORTH.
+ *
+ * `p` is arc-length normalised over the WHOLE curve, so a fixed seamWidth buys
+ * `seamWidth x totalArc` world units. The ascent took the total 1767.65 -> 2393.89, which
+ * silently made EVERY seam in the journey 35% wider in world terms while every authored
+ * number stayed put. Measured consequence before the correction: chapter 4 dropped to 19%
+ * seam-free — it spent four fifths of itself with two environments co-present, i.e. double
+ * render cost, purely because a later part of the journey got longer.
+ *
+ * All of them are therefore scaled by 0.7384 (= 1767.65 / 2393.89), which preserves each
+ * seam's original WORLD extent exactly. Applied uniformly on purpose: chapters 1-4 compressed
+ * in p and 6-8 were re-mapped arc-preserving, so they compressed too — every chapter's p-span
+ * shrank by the same factor, and so must every seam.
+ *
+ * ⚠️ THE REAL FIX IS TO AUTHOR THESE IN ARC UNITS and derive p from the live total, so the
+ * next re-layout cannot repeat this silently. Recorded rather than done.
  */
 export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
     {
@@ -146,7 +164,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // (0.018 default → 0.03, the 3→4 model) so the ember→steam veils and the
             // orange→cyan transformation play across multiple frames instead of
             // popping at the 16→17 equivalent.
-            seamWidth: 0.03,
+            seamWidth: 0.0222,
             stinger: 'steam-quench',
             crossfadeDurationMs: 3000,
         },
@@ -239,7 +257,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '3-4',
         transition: {
             id: '3-4',
-            seamWidth: 0.03,
+            seamWidth: 0.0222,
             preloadDistance: 0.06,
             stinger: 'ridgeline-rise',
             crossfadeDurationMs: 3000,
@@ -280,7 +298,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '4-5',
         transition: {
             id: '4-5',
-            seamWidth: 0.06,
+            seamWidth: 0.0443,
             stinger: 'summit-liftoff',
             crossfadeDurationMs: 3500,
         },
@@ -323,7 +341,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // 5->6 carries the aurora out of Sky before Space fully asserts itself.
             // Keep the widened seam so the handoff has room, but Chapter 6 now stages its
             // own star/hero/clutter reveal instead of pre-igniting everything in Sky.
-            seamWidth: 0.03,
+            seamWidth: 0.0222,
             preloadDistance: 0.06,
             stinger: 'atmosphere-edge',
             crossfadeDurationMs: 4000,
@@ -363,7 +381,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '6-7',
         transition: {
             id: '6-7',
-            seamWidth: 0.03,
+            seamWidth: 0.0222,
             beatDurationMs: 1100,
             preloadDistance: 0.07,
             fxPreset: 'heavy',
@@ -402,7 +420,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '7-8',
         transition: {
             id: '7-8',
-            seamWidth: 0.022,
+            seamWidth: 0.0162,
             beatDurationMs: 900,
             preloadDistance: 0.06,
             fxPreset: 'neon',
