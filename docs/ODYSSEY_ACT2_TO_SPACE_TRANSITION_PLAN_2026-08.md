@@ -587,6 +587,53 @@ extents — and re-pin the total.
 > project has already paid for. Whichever session takes this wave: regenerate, never
 > nudge, and land it as one commit.
 
+> ### 1C ATTEMPTED, GEOMETRY SOLVED, BUILD BACKED OUT (2026-08-16 night)
+> The flyby was built end-to-end, measured, and then **reverted** — the geometry is
+> right and is preserved in `scripts/odyssey-ascent-flyby-*.mjs`; the re-map's blast
+> radius is what stopped it. Everything below is measured, not estimated.
+>
+> **THE GEOMETRY THAT WORKS — apply this, do not re-derive it:**
+> shift the space run by **(−60, 0, −350)** and regenerate the climb with a flyby
+> waypoint 170 u from the massif axis on bearing 0.30, at y 1000, 8 resampled points.
+> Result: **closest approach 442.7 → 141.7 u** at y 1052 (three times closer than the
+> owner's 150–200 ask), climb bank **5.43°/5.3u** against a 3.47 baseline, ch6 corridor
+> guard **IMPROVES to 3.76** (limit 5.2), ground clearance 46.4 (baseline 46.3),
+> world-seat drift for ids 1–28 of **0.113 u**, total arc 2393.89 → **2532.66**.
+>
+> **WHY THE OBVIOUS VERSION IS IMPOSSIBLE (measured frontier, corridor frozen):**
+> the massif sits ~443 u off *every* point of the climb, so reaching it and returning
+> to a fixed cp20 forces a hairpin — 268 u costs a 12°/step corner, 203 u costs 14.4°,
+> 165 u costs 19.7°. **Do not attempt a frozen-corridor flyby.** Letting the climb
+> CONTINUE north and translating the space run removes the U-turn entirely; that is
+> the whole trick, and it is Wave 1A's own pattern.
+> The cloud limb needs no work: it is seated at `getOdysseyPathPointAt(boundary)`
+> (`OdysseyBoardController.js:1946`), so it rides the moved rail — "keep the cloud
+> transition" survives by construction.
+>
+> **WHAT BLOCKED THE LANDING — 13 tests across 6 files, all re-baselines, none a
+> geometry defect:** massif `footY` ×5 (`odyssey-world-height.js:93,105,108,111,115`)
+> are derived from `getChapterPathRange(3).center.y − 30`, whose drift budget is spent
+> monotonically per re-authoring (0.0009 → 0.0261 → **0.0556** vs a 0.05 tolerance);
+> forest scatter (4) and forest visibility (1); earth-core (1);
+> ChapterEnvironmentManager (1); ch6 hero framing (2).
+>
+> **THE TRIAD IS ONE FIT, NOT THREE.** A feasibility sweep proved no single static
+> `planetA` satisfies both the summit window and the boundary composition once the
+> camera banks — the giant needs a pre-boundary keyframe, solved at
+> **`planetSummit { x: 875, y: 175, z: −275 }`** (147 u from planetA, framed across all
+> five derived stations). And `planetA` itself has **no feasible band** until the galaxy
+> moves: measured entry ndc — planet −0.021, galaxy **0.286**, and the test needs
+> planet > 0 *and* ≥0.3 clear of the galaxy, i.e. planet < −0.014. Re-solve
+> `galaxyA` first, then `planetA`, then `planetSummit`
+> (`scripts/odyssey-ch6-approach-resolve.mjs` does all three).
+>
+> **Solver traps already paid for:** `getPoint` (parameter) vs `getPointAt` (arc) — the
+> mix-up left a 167 u gap into the frozen tail against 81 u elsewhere; projecting points
+> BEHIND the camera returns large finite NDC that reads as a near-miss (seven ghost
+> "solutions"); and both the summit stations and the arc-length window must be DERIVED,
+> since scoring ch6 at its old p values on a longer curve reads 17° for a corridor
+> nobody touched.
+
 ### Wave 1D — PREMATURE AURORA/BH: FIXED (`fbd8bc81`, 2026-08-16)
 Owner report: the black hole and Northern Lights appear in the bright sky, disappear,
 then reappear in space. Measured (ascent sweep probe, new
