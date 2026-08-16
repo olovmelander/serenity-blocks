@@ -56,7 +56,7 @@ export function isWorldVisibleAtProgress(progress, actStart, actEnd) {
  * nearly 3x barely touched it (-86.1) because the ramp was never what was dropping.
  * Staggering them is the fix — the world does its leaving BEFORE the crossfade does its own.
  */
-export const ONE_WORLD_DEPARTURE_LEAD = 0.55;
+export const ONE_WORLD_DEPARTURE_LEAD = 0.30;
 export const ONE_WORLD_DEPARTURE_CLOSE = 0.0;
 
 /**

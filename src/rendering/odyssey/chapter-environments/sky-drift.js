@@ -37,9 +37,16 @@ import {
     createNoctilucentVeilTSL,
     createIceCrystalsTSL,
     SKY_DRIFT_SUN_DIR,
+    setSkyDriftApproachDim,
 } from './sky-drift.tsl.js';
 import { createCanonicalMountainRangeTSL } from './shared/canonical-mountain-range.js';
 import { createCloudSeaDeckTSL } from './mountain-peaks.tsl.js';
+
+// How much of chapter 5's span the approach dim occupies, and how far it pulls the sky down
+// by the boundary. FRACTIONS of the chapter, so a re-layout carries them. The floor is the
+// lever the owner tunes: 1.0 disables this entirely and restores the pre-Wave-2 handover.
+const SKY_APPROACH_DIM_SPAN = 0.25;
+const SKY_APPROACH_DIM_FLOOR = 0.35;
 
 /**
  * Sky Drift environment configuration
@@ -466,6 +473,25 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
         // now the sunlit cloud-sea payoff, not a night sky.
         dusk = Math.min(THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1), 0.1);
         uniforms.uDusk.value = dusk;
+
+        // ── THE APPROACH DIM (Act II -> Space, Wave 2) ───────────────────────────────
+        // Ch5 used to hand over to deep space at ~198 luma against space's ~26, and the
+        // measured seam says no crossfade curve can carry that gap: chapter 5's ecotone
+        // weight would have to move at most 0.126 per 0.01p, while a monotonic ramp across
+        // the 0.060 seam averages 0.167. The gap itself has to close, so the sky drains as
+        // the rail climbs out of the atmosphere — which is also what it should physically do.
+        //
+        // ⚠️ This is NOT the dusk script coming back. `uDusk` stays capped at 0.1 and the
+        // "sunlit cloud-sea payoff, not a night sky" decision above is untouched: this only
+        // scales OUTPUT, only across the last quarter of the chapter, and is exactly 1.0
+        // everywhere before that.
+        const dimT = THREE.MathUtils.clamp(
+            (cameraProgress - (tEnd - span * SKY_APPROACH_DIM_SPAN)) / Math.max(1e-5, span * SKY_APPROACH_DIM_SPAN),
+            0,
+            1,
+        );
+        const eased = dimT * dimT * (3 - 2 * dimT);
+        setSkyDriftApproachDim(1 - (1 - SKY_APPROACH_DIM_FLOOR) * eased);
     }
 
     // The low sun SINKS toward the horizon as the dusk deepens (the dome's sun terms

@@ -450,6 +450,37 @@ annotated at the claim.
 > Lever 2 is the recommendation: it fixes F1 and the cliff with one change, and it is the only
 > one of the two that makes the transition more *correct* rather than merely smoother.
 
+> **WAVE 2 PROGRESS (2026-08-16) — a bug of mine found, and the real culprit isolated.**
+>
+> **1. Wave 1B faded the world toward the WRONG COLOUR.** It passed `scene.fog.color`, on the
+> reasoning that distant things take the sky's colour. True in atmosphere, wrong here:
+> chapter 5's fog is `0xbcd8ec`, a bright pale blue at ~212 luma, so "receding" BRIGHTENED the
+> world into a flat pale sheet — p=0.618 went from 133.8 to **197.8** luma. That is why
+> widening the ramp, staggering it, and dimming chapter 5 all failed to move the cliff: the
+> frame was saturated with fog-coloured world and none of those levers touched it. The rail is
+> leaving the atmosphere, so the target is now the void it is entering (`0x05060f`).
+> Result: `tailShare` **80.7 % → 61.1 %**, and p=0.618 back to 119.6.
+>
+> **2. THE LATE CLIFF IS THE SEAM CLOUD BANK.** Isolated by capturing with
+> `?odysseyNoCloudBank=1`: the −81.5 step at p=0.668 **disappears** (−4.4), and `tailShare`
+> collapses to **10.6 %**. The bank is a 300 u lens close in front of the camera whose density
+> is a *squared* dead-banded triangle, so on the way out it dumps a full-screen cloud mass
+> across two samples. It never "pops" — it reaches zero before its own visibility flag — but
+> its exit is steep and it lands exactly where everything else is leaving.
+>
+> **So Wave 2's target is the bank's exit envelope, not the ecotone curve.** The earlier
+> arithmetic (no alpha curve can carry a 356-K gap across a 0.060 seam) still stands and still
+> rules out reshaping the crossfade alone — but the bank, not chapter 5's environment, is what
+> supplies most of that K. Give it an ASYMMETRIC envelope: quick in, slow out, so its
+> departure is spread across the space the world's recession has already vacated.
+> ⚠️ Do not simply remove it — with the bank off the whole approach collapses to luma 3-10 at
+> the boundary. It is carrying the frame; it just leaves too fast.
+>
+> Also landed, UNVERIFIED: a narrow approach dim on chapter 5 (`SKY_APPROACH_DIM_*`, last 25 %
+> of the chapter, floor 0.35). It measured no effect, but it was tested only while the frame
+> was saturated by the fog-colour bug above, so its value is unknown rather than nil. Set the
+> floor to 1.0 to disable.
+
 ### Wave 2 — Re-phase the schedule
 - Move the perceptual midpoint onto the boundary: widen `spaceGateBand` (F5) so space
   arrives *across* the crossfade rather than in its first sixth, and pull the world's new
