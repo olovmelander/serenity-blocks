@@ -176,6 +176,60 @@ file.** The `__tmp-*.test.js` probe pattern is the cheap way to do that.
 The 0.556 that appears in the seam's own code comments is level 31's position, which is what
 made the false story feel corroborated. It is a stale comment, not a data bug (§2.2).
 
+### 2.6 THE MOUNTAIN POP — owner-reported, and the same cliff wearing its worst face
+
+> *"the mountain currently vanishes abruptly from one frame to another... we should fly past
+> the mountain gracefully as we head into space."*
+
+This is §2.2's binary act gate, seen on the largest object in frame. In the capture the
+white massif holds the left edge through p=0.668 and is simply absent at 0.678. But
+measuring the pathing turns it from "the gate is abrupt" into something worse:
+
+**The camera never leaves Act II at all. It is deleted out from under it.**
+
+| quantity | value |
+|---|---|
+| hero massif centre / radius / crown | `(-182.7, -1059.3)` · r=**603** · **y = 1017.5** |
+| cloud deck base (tops ~1000-1085) | ~**898-940** |
+| camera at the boundary p=0.648 | `(-184, 656, -593)` |
+| camera at the act gate p=0.678 | `(-148, 688, -619)` |
+| **apex of the ENTIRE Act II path** | **y = 729, at p = 0.718** |
+
+At the moment Act II is switched off the camera is **330 u below the mountain's summit** and
+only **442 u from its centre — inside the 603 u footprint** — and **~210 u below the cloud
+base**. The Act II apex (729) never clears the crown (1017.5) or the cloud deck (~900)
+*anywhere in the act*. That is why every frame in §1 looks up at a cloud **ceiling**: the
+journey transitions to deep space from underneath the weather, while still inside a
+mountain's skirt.
+
+Worse, the clearance is **closing**, not opening. Ground under the rail rises 375 → 427 over
+p 0.65→0.70 while the camera rises 658 → 711: clearance peaks at 291 u around p=0.67 and
+then *shrinks*. The rail flies parallel to a rising mountainside into the boundary.
+
+**Why one control point is responsible.** The seam sits in a single unbroken span:
+
+| CP | position | governs p |
+|---|---|---|
+| 14 | (-211, 447, -504) | 0.515 |
+| 15 | (-210, **622**, -572) | 0.621 |
+| 16 | (-96, **733**, -654) | 0.722 |
+
+There is **no control point between p=0.621 and p=0.722** — the whole 5→6 transition is
+interpolated across one long, nearly-linear climb of 111 u over 0.10 of the journey. The
+seam has no authored shape because nothing is authoring it.
+
+**The owner's proposal is correct and this audit supports it quantitatively.** To fly *past*
+the mountain rather than through its deletion, the rail must reach above the crown (1017.5)
+and ideally above the cloud tops (~1085) before the boundary — a climb of roughly
+**450-550 u that currently does not exist**.
+
+⚠️ **BUT THE SPLINE ALONE WILL NOT KILL THE POP, and this is the one thing not to get wrong.**
+Elevation changes the massif from a wall ahead into a landmass falling away below; it does
+not change the fact that a still-visible object is removed by a boolean. Whatever remains in
+frame at `actEnd + 0.03` still vanishes in one frame. **Wave 1B (the fade) and Wave 1A (the
+ascent) are complementary, not alternatives** — the ascent makes the departure *earned*, the
+fade makes it *seamless*. Shipping either alone leaves the report open.
+
 ---
 
 ## 3. DESIGN — what "seamless" should mean here
@@ -214,7 +268,32 @@ annotated at the claim.
   `cosmic-expanse.js:183-186`** (they claim 0.610/0.634; the truth is 0.587/0.626), so the
   next person to retime this seam is not reading fiction.
 
-### Wave 1 — Kill the cliff (the one that matters)
+### Wave 1A — The ascent: fly past the mountain (owner-directed)
+- **Elevate the rail through the ch5 tail.** Insert control points into the empty
+  0.621→0.722 span so the climb is authored rather than interpolated. Target: clear the
+  hero massif crown (1017.5) and the cloud tops (~1085) *before* p=0.648 — apex on the
+  order of **1150-1250**, against today's 729.
+- **Lift the remainder of the path with it.** CP17-19 currently sit at y 763-813; if only
+  the ch5 tail rises, the camera *descends* on entering space. Space content is authored in
+  the corridor frame and travels with the rail, so raising the tail and the space run
+  together moves the diorama with the camera and leaves the One World where it is — which
+  is precisely the "fly away from it" read being asked for.
+- **Extend Act II's path** to hold the longer climb (the owner's point 2), and
+  **redistribute the EXISTING levels** along it (point 3 — no new levels; ch5's 8 levels,
+  ids 28-35, re-spaced over the longer sky run).
+- ⚠️ **ARC LENGTH IS LOAD-BEARING.** Total is ~1767.65 and pinned by
+  `odyssey-path-layout.test.js`. Lengthening re-maps every chapter's p→world. The law from
+  the ch6 lever-C scout applies verbatim: recompute ALL level positions so every other
+  chapter lands on **identical world seats** (`p_new = old_arclength_to_seat / new_total`),
+  then re-pin the test to the new total.
+- ⚠️ **Re-solve the ch6 hero `APPROACH` NDC fits** — they are least-squares solutions
+  against a camera replay, and a spline change invalidates the replay. Also re-check
+  corridor smoothness (<3°), the 6→7 hairpin (rail turn 17.1°, aim-pitch floor), and Ch4's
+  hero-peak clearance, which CP14/15 were tuned for.
+- Gate: capture the seam again; the massif must read as *receding below* rather than
+  *ahead*, and the cloud deck must pass beneath the camera before the boundary.
+
+### Wave 1B — Kill the cliff (the one that matters)
 - Give the One World group a **progress-driven opacity/dissolve ramp** that reaches 0 at
   or before `actEnd + margin`. The binary gate stays exactly as it is, as the correctness
   backstop it was written to be — it will simply never again be the thing the eye sees.
@@ -262,7 +341,12 @@ opaque dissolve keeps it out of the blend queue but does not make it free.
 
 ## 6. OWNER DECISIONS
 
-- **D1 (gates Wave 1):** is a dissolve acceptable on the world, or must the recession be
+- **D0 (gates Wave 1A, NEW):** the ascent re-times the whole journey. Redistributing ch5's
+  levels along a longer sky path changes where every later level sits in `p`, and the
+  arc-length re-pin touches a test that guards Ch1-Ch4 to 0.01 u. Confirm the appetite for
+  a journey-wide re-map before the spline is touched — this is the largest-blast-radius
+  change in the plan, and it is the one the owner has explicitly asked for.
+- **D1 (gates Wave 1B):** is a dissolve acceptable on the world, or must the recession be
   purely optical (fog/contrast) with no dithered edge? The dissolve is cheaper and proven
   in ch6; the optical route is prettier and dearer.
 - **D2 (gates Wave 2):** how big should this beat be? "Smooth" and "impactful" pull in
