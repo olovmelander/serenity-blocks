@@ -197,10 +197,31 @@ const BASIN_DEPTH = 42;
 // waterY 374, not the first draft's 378: the plateau's own west edge sits at ~377, and a
 // waterline above it SPILLS — the flat disc would hang past the bowl over lower ground.
 // 374 tucks the surface under every rim azimuth (probed at rn 1.05: 36/36 above water).
+//
+// ⚠️ THE SITE IS OWNER-DIRECTED (2026-08-16, from the capture frames): "the lake on the
+// edge of the orange autumn trees, significantly larger." The autumn birch/maple mass
+// lives on the plateau's north-east (the region divide crosses ~(-435,-1500) to
+// (-537,-1700) up here, autumn to its east), which is ALSO the one plateau band the
+// settled rail camera provably frames — a pure-red debug disc at the earlier
+// circle-site (-450,-1790) never entered ANY 0.63-0.69 frame, while the drift mass
+// shows in all of them. West shore in green meadow, east shore under the orange trees.
+// Three earlier sites and two lying probe cameras are recorded in git history; the
+// lesson that survives: site set-pieces from capture pixels and owner direction, never
+// from a reimplemented camera.
+// FINAL SITE, triangulated with colour-coded debug discs through the DENSE-station rail
+// capture (sparse station lists leave sequence-dependent residual camera lag — see the
+// capture-harness traps): the disc at (100, 400, −1300) is the one that shows, in the
+// hollow at the massif's NE foot, at the west edge of the big autumn drift mass. The
+// lake fills that hollow: massif and conifers over the west shore, the orange birch and
+// maple mass at the east and north shores.
+// The pocket is real terrain: the probed shelf floor runs 343-356 here (the massif skirt
+// stands high over the west shore, the plateau rolls at the north and east), so the
+// water sits at 354 — below every natural rim azimuth — and the bowl only deepens the
+// middle rather than fighting a slope.
 export const ODYSSEY_NORTH_LAKE = Object.freeze({
-    x: -480, z: -1560, rx: 200, rz: 160, waterY: 374,
+    x: 280, z: -1500, rx: 240, rz: 190, waterY: 354,
 });
-const NORTH_LAKE_DEPTH = 24;
+const NORTH_LAKE_DEPTH = 34;
 
 /**
  * THE NORTH HILLS (north-island plan Wave 2). Three soft swells that break the plateau's
@@ -212,9 +233,13 @@ const NORTH_LAKE_DEPTH = 24;
  * release at z = -2600.
  */
 const NORTH_HILLS = Object.freeze([
-    Object.freeze({ x: -860, z: -1780, r: 300, h: 48 }), // NW backdrop swell
-    Object.freeze({ x: -330, z: -1950, r: 250, h: 58 }), // behind the lake from the climb's view
+    Object.freeze({ x: -860, z: -1560, r: 300, h: 48 }), // NW backdrop swell
+    // Rim swells behind the lake's north and east shores: silhouette behind the water
+    // plus the rim lift the low east shelf needs, edges probed to contribute nothing
+    // inside the waterline.
+    Object.freeze({ x: 380, z: -1220, r: 160, h: 24 }),
     Object.freeze({ x: -1020, z: -1350, r: 280, h: 36 }), // links west toward the ridge
+    Object.freeze({ x: 620, z: -1480, r: 160, h: 22 }),
 ]);
 
 function smoothstep01(edge0, edge1, x) {

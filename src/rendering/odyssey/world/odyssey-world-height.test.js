@@ -230,9 +230,13 @@ describe('the landmass is an island', () => {
         // massif footprint + relief halo, the tree disc (centre -620, radius 1750). All of
         // that lies south of z=-2483; assert the coast term cannot have touched it by
         // checking values that only hold if northT is exactly 1.
-        // 386.1 -> 386.16 with Wave 1C's footY datum re-derive (297.5 -> 297.5556): this
-        // point sits inside a massif halo, so it carries the datum. (-220, -2400) does not.
-        expect(odysseyWorldMacro(-220, -1500)).toBeCloseTo(386.16, 1); // bare inland plateau
+        // ⚠️ PIN RE-SITED (-220,-1500) -> (-700,-1900), DELIBERATELY (north-island, owner
+        // direction 2026-08-16): the lake grew to rx 320 and its outer feather reaches the
+        // old probe point. The new point is a PURER pin — outside every massif halo, every
+        // hill and the lake, it is the bare pre-coast field to the digit
+        // (80 + 305 x lateral(x=-700) = 372.8 exactly), so it guards the same claim with
+        // less incidental coupling. It remains the lake/hill profiles' compactness guard.
+        expect(odysseyWorldMacro(-700, -1900)).toBeCloseTo(372.8, 1); // bare inland plateau
         expect(odysseyWorldMacro(-220, -2400)).toBeCloseTo(385.0, 1); // last land before the coast
         const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
         expect(odysseyWorldMacro(hero.x, hero.z)).toBeGreaterThan(1000); // crown untouched
@@ -259,10 +263,10 @@ describe('the landmass is an island', () => {
             const z = L.z + Math.sin((a * Math.PI) / 180) * L.rz * 1.05;
             expect(height(x, z), `rim at azimuth ${a}`).toBeGreaterThan(L.waterY);
         }
-        // Compactness itself is guarded by the plateau pin in the test above: (-220, -1500)
-        // sits at rn 1.35 and is held to 0.05 u, so any profile that grows a tail past
-        // rn = 1 fails THAT assertion — no separate (and inevitably tautological) check
-        // of "the world without the lake" is needed here.
+        // Compactness itself is guarded by the plateau pin in the test above: (-700, -1900)
+        // sits outside every compact profile and is held to 0.05 u, so any profile that
+        // grows a tail fails THAT assertion — no separate (and inevitably tautological)
+        // check of "the world without the lake" is needed here.
     });
 
     it('has a real north shore, not a cliff — the coast slope stays under the mesh bar', () => {
