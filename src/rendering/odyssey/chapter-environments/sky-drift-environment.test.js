@@ -90,7 +90,13 @@ describe('Sky Drift chapter environment (creative plan ch5)', () => {
 
         // Even after the Sky->Space boundary, a not-yet-passed summit must remain fully
         // readable. Aurora recedes here, but the mountain ring is camera-pass gated only.
-        const afterBoundary = tEnd + (tEnd - tStart) * 0.16;
+        // ⚠️ ABSOLUTE, not a fraction of the chapter. This was `(tEnd - tStart) * 0.16`, which
+        // meant 0.024 past the boundary when chapter 5 spanned 0.148. Wave 1A's ascent widened
+        // chapter 5 to 0.371, so the same fraction now lands 0.059 past it — deep into Space,
+        // where the ring has legitimately receded because it is camera-pass gated. The claim
+        // is "just after the boundary the summit is still readable", so say that in absolute
+        // progress and it keeps meaning it.
+        const afterBoundary = tEnd + 0.024;
         updateSkyDriftEnvironment(group, 0.016, 2.5, null, afterBoundary, null);
         (group.userData.summitRingOpacityUniforms || []).forEach((target) => {
             expect(target.value).toBeCloseTo(target.__odysseyBaseOpacity ?? 0.9, 5);

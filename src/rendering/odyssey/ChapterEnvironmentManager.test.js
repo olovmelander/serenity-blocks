@@ -5,6 +5,7 @@ import {
     it,
     vi,
 } from 'vitest';
+import { getActiveOdysseyChapterPositions } from './path-utils.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { deriveOdysseyChapterPositions } from '../../core/odyssey/data/odyssey-layout.js';
 
@@ -86,14 +87,20 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
         // genuinely "early"; under the derived one (ch5 = 0.500-0.648) it is 54% in and clears
         // the 0.5814 ignite start by 0.0014 — the assertion would have passed while no longer
         // testing what it says. 0.52 is 14% in, which is what "early Ch5" means here.
-        expect(manager._earthIgniteBoost(0.52)).toBe(0);
+        // DERIVED, not literal. Every p here dated from the pre-ascent layout (ch5 0.500-0.648).
+        // Wave 1A re-spaced chapter 5 to 0.3692-0.7401, so the old literals land in different
+        // parts of the ignite entirely. The claims are about WHERE IN CHAPTER 5 the boost sits,
+        // so express them that way and they survive the next re-layout too.
+        const cp = getActiveOdysseyChapterPositions();
+        const at = (f) => cp[4] + (cp[5] - cp[4]) * f;
+        expect(manager._earthIgniteBoost(at(0.14))).toBe(0);
         // Rising as the camera crests...
-        expect(manager._earthIgniteBoost(0.612)).toBeGreaterThan(0);
+        expect(manager._earthIgniteBoost(at(0.68))).toBeGreaterThan(0);
         // ...and SATURATED well before the boundary, so it does not compound with the
         // earth's own reveal ramp (which would leave the planet reaching full opacity
         // only at the boundary, exactly when the sky starts going dark).
-        expect(manager._earthIgniteBoost(0.62)).toBe(1);
-        expect(manager._earthIgniteBoost(0.6479)).toBe(1);
+        expect(manager._earthIgniteBoost(at(0.97))).toBe(1);
+        expect(manager._earthIgniteBoost(cp[5] - 0.0005)).toBe(1);
     });
 
     it('releases the boost once the normal crossfade has taken over', () => {
@@ -101,12 +108,15 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
 
         // Held through the ecotone (which completes ~6% into the Space span) so the
         // release is a no-op rather than a dip...
-        expect(manager._earthIgniteBoost(0.652)).toBe(1);
-        expect(manager._earthIgniteBoost(0.66)).toBe(1);
+        // Derived for the same reason as above: these are "just past the boundary" and
+        // "well into space", not the specific numbers the old layout happened to give them.
+        const cp2 = getActiveOdysseyChapterPositions();
+        expect(manager._earthIgniteBoost(cp2[5] + 0.004)).toBe(1);
+        expect(manager._earthIgniteBoost(cp2[5] + 0.012)).toBe(1);
         // ...then gone, so chapter 6 can never be pinned visible across 7 and 8.
-        expect(manager._earthIgniteBoost(0.70)).toBe(0);
-        expect(manager._earthIgniteBoost(0.85)).toBe(0);
-        expect(manager._earthIgniteBoost(0.97)).toBe(0);
+        expect(manager._earthIgniteBoost(cp2[6])).toBe(0);
+        expect(manager._earthIgniteBoost(cp2[7])).toBe(0);
+        expect(manager._earthIgniteBoost(0.99)).toBe(0);
     });
 
     it('is inert without a resolved layout', () => {
@@ -120,9 +130,15 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
 
     it('only boosts chapter 6 at the 5-6 seam', () => {
         const manager = makeManager();
+        // DERIVED. p=0.62 was inside the ignite under the pre-ascent layout; after Wave 1A it
+        // is only 68% of the way through a much longer chapter 5 and the boost has not
+        // saturated there. Ask for a progress the boost is definitely AT, so the test measures
+        // "which chapter gets boosted" rather than "is 0.62 still a good number".
+        const cp = getActiveOdysseyChapterPositions();
+        const saturated = cp[5] - 0.0005;
         [1, 2, 3, 4, 5, 7].forEach((chapterId) => {
-            expect(manager._seamInBoostFor(chapterId, 0.62)).toBe(0);
+            expect(manager._seamInBoostFor(chapterId, saturated)).toBe(0);
         });
-        expect(manager._seamInBoostFor(6, 0.62)).toBe(1);
+        expect(manager._seamInBoostFor(6, saturated)).toBe(1);
     });
 });

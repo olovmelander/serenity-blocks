@@ -19,6 +19,7 @@ import {
 } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import {
+    getActiveOdysseyChapterPositions,
     getChapterPathRange,
     getOdysseyPathCurve,
 } from '../../src/rendering/odyssey/path-utils.js';
@@ -29,6 +30,7 @@ import {
 import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
+    SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
 
 // Chapters 5-7 run the BEYOND act camera language (followDistance 42, fovBase 66).
@@ -198,7 +200,17 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         // The ask: "see the earth shape at the top of the mountains BEFORE it gets dark."
         // The Ch5 backdrop fade only begins at ch6Start, so every sample here is still
         // full daylight. The gas giant must already be on screen.
-        const summitSamples = [0.612, 0.620, 0.628, 0.636, 0.644];
+        // DERIVED, not literal. These were five p values inside the old ignite window
+        // (summitStart 0.5873 -> summitEnd 0.6258). Wave 1A's ascent re-spaced chapter 5, so
+        // the window is now 0.588 -> 0.6845 and the old samples land in its first 25% where
+        // the earth is legitimately still faint. The claim is "across the ignite, the earth is
+        // framed and shown", so derive the samples FROM the ignite.
+        const cpAll = getActiveOdysseyChapterPositions();
+        const skySpan = cpAll[5] - cpAll[4];
+        const igniteStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
+        const igniteEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+        const summitSamples = [0.30, 0.45, 0.60, 0.80, 1.0]
+            .map((f) => igniteStart + (igniteEnd - igniteStart) * f);
         summitSamples.forEach((progress) => {
             expect(progress).toBeLessThan(ch6Start);
             const frame = frameAt(controller, chapterPositions, 5, progress);

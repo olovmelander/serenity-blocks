@@ -40,8 +40,16 @@ function makeCameraHarness() {
     return { camera, controller };
 }
 
+// ⚠️ THE 0.005 STEP IS A PATH FRACTION, and Wave 1A's ascent changed what it buys. `p` is
+// arc-normalised over the whole curve, so lengthening the journey 1767.65 -> 2393.89 made
+// every one of these frames cover 35% more world. Frame 16 used to sit 81% into chapter 1
+// (which ended at 0.093); unscaled it now lands at 0.075 against a chapter that ends at
+// 0.0687 — i.e. outside chapter 1 altogether, which is why the Heart left frame. Scaled by
+// 0.7384 so each frame samples the WORLD position its hero beat was authored against.
+const CAPTURE_STEP = 0.005 * 0.7384;
+
 function captureProgress(frameNumber) {
-    return (frameNumber - 1) * 0.005;
+    return (frameNumber - 1) * CAPTURE_STEP;
 }
 
 function projectTarget(group, target, progress) {
