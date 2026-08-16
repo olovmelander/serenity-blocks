@@ -171,7 +171,11 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
             group.userData.chapterOpacity = 1;
             // Camera is null here, so `approach` falls back to the progress value — which
             // is exactly the pre-boundary case: chapter-local reveals are all still 0.
-            updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.638);
+            // DERIVED mid-summit-window (was the literal 0.638, which the north-island
+            // Wave 0 retime moved outside the window).
+            const midSummit = positions[5] - (positions[5] - positions[4])
+                * ((SUMMIT_EARTH_REVEAL.startBeforeBoundary + SUMMIT_EARTH_REVEAL.endBeforeBoundary) / 2);
+            updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, midSummit);
 
             expect(group.userData.heroPlanet.userData.planet.material.opacity)
                 .toBeGreaterThan(0.95);

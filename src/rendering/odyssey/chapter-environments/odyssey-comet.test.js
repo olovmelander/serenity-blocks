@@ -10,7 +10,20 @@
  */
 import * as THREE from 'three/webgpu';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCosmicExpanseEnvironment, updateCosmicExpanseEnvironment } from './cosmic-expanse.js';
+import {
+    SUMMIT_EARTH_REVEAL,
+    createCosmicExpanseEnvironment,
+    updateCosmicExpanseEnvironment,
+} from './cosmic-expanse.js';
+import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
+
+// DERIVED mid-summit-window probe. This used to be the literal 0.638, which the
+// north-island Wave 0 retime moved OUTSIDE the window — where `spaceReveal` returns 1
+// by design (the manager gates the chapter's opacity there instead). Deriving it keeps
+// the probe meaning "inside the summit window" through any future retime.
+const CP = deriveOdysseyChapterPositions();
+const MID_SUMMIT = CP[5] - (CP[5] - CP[4])
+    * ((SUMMIT_EARTH_REVEAL.startBeforeBoundary + SUMMIT_EARTH_REVEAL.endBeforeBoundary) / 2);
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -80,7 +93,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
         });
 
         // Pre-boundary (the Ch5 summit window): the space gate holds it shut.
-        updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.638);
+        updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, MID_SUMMIT);
         expect(comet.userData.uReveal.value).toBe(0);
         expect(comet.visible).toBe(false);
 

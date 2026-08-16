@@ -225,17 +225,20 @@ export const APPROACH = {
 //
 // Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
 export const SUMMIT_EARTH_REVEAL = Object.freeze({
-    // 0.41 of the Ch5 span before the boundary => p = 0.5873, just as the camera crests.
-    // ⚠️ THESE TWO COMMENTS USED TO SAY 0.610 AND 0.634 AND WERE WRONG (fixed 2026-08-16 by
-    // the Act II->Space transition audit). They were computed from `skySpan = 0.648 - 0.556`,
-    // but 0.556 is LEVEL 31's path position, not chapter 5's start. Chapter 5 starts at
-    // level 28, p = 0.500, so skySpan is 0.148 and the real window is 0.5873 -> 0.6258.
-    // The CODE was always right — it derives the span from `chapterPositions` at runtime —
-    // so nothing shipped wrong; but anyone retiming this seam from the comments was reading
-    // numbers that do not exist. Verified by importing the modules, never by parsing source
-    // (a regex over levels.js mis-pairs id/chapter and invents a plausible false table).
-    startBeforeBoundary: 0.41,
-    // Fully present by p = 0.6258 — comfortably before the 5->6 backdrop fade begins.
+    // ⚠️ RETIMED 0.41 -> 0.28 (north-island plan Wave 0, owner playtest 2026-08-16). At
+    // 0.41 the ignite started at p 0.5881 — INSIDE the massif flyby's in-frame pass
+    // (0.545–0.648) — so the D3-sized giant faded up mid-mountain-beat and read as
+    // arriving "so early" (the owner's words). 0.28 starts the ignite at p 0.6408, as the
+    // crown exits the frame: mountain first, then the world blooms into the emptied sky
+    // at the crest, then the first stars. Beats stop competing.
+    //
+    // (History: these comments once said 0.610/0.634, computed from skySpan = 0.648−0.556
+    // — but 0.556 is LEVEL 31's position, not chapter 5's start. The CODE always derived
+    // from chapterPositions at runtime; only the prose lied. Derive facts by importing the
+    // modules, never by parsing source.)
+    startBeforeBoundary: 0.28,
+    // Fully present 15% of the sky span before the boundary (p = 0.6935) — comfortably
+    // before the 5->6 backdrop fade begins.
     endBeforeBoundary: 0.15,
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
