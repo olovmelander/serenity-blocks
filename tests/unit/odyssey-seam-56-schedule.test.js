@@ -61,13 +61,49 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         expect(resolveSummitEarthStaging(summitEnd, ch5, ch6, ch7).earthReveal).toBeCloseTo(1, 6);
     });
 
-    it('opens the space gate over a window far narrower than the crossfade it sits in', () => {
+    it('opens the space gate as a ramp, not a flip — and stays under the worldOff ceiling', () => {
         const gateEnd = ch6 + (ch7 - ch6) * SUMMIT_EARTH_REVEAL.spaceGateBand;
-        expect(gateEnd).toBeCloseTo(0.7475, 3);
-        // F5 in the plan: space arrives over 0.010 of progress. Recorded, not endorsed —
-        // Wave 2 is expected to widen it, and when it does this number must be updated
-        // deliberately rather than discovered later.
-        expect(gateEnd - ch6).toBeCloseTo(0.0074, 3);
+        // WIDENED 0.06 -> 0.16 (Act II->Space §8.3 step 3). The old 0.0074-wide gate was a
+        // binary flip: the bank-off capture arm measures +96.2 luma per 0.01p at p=0.7441,
+        // and that pop is invisible today only because the cloud bank is a fully opaque
+        // wall in front of it. The previous version of this test predicted its own
+        // replacement ("Wave 2 is expected to widen it"); this is that update.
+        expect(gateEnd).toBeCloseTo(0.7598, 3);
+        expect(gateEnd - ch6).toBeCloseTo(0.0197, 3);
+
+        // THE CEILING, which nothing asserted before and which is the reason 0.16 was
+        // chosen over 0.175. `gateEnd` must stay below `worldOff`; the band that puts it
+        // exactly there is (worldOff - ch6) / (ch7 - ch6) = 0.18004. A future re-layout
+        // changes ch6/ch7 and therefore moves this ceiling, so it is DERIVED, not pinned.
+        const bandCeiling = ONE_WORLD_ACT_MARGIN / (ch7 - ch6);
+        expect(bandCeiling).toBeCloseTo(0.18004, 4);
+        expect(SUMMIT_EARTH_REVEAL.spaceGateBand).toBeLessThan(bandCeiling);
+        // ...with real margin, not a hair. 0.175 would leave 0.00062 and would not survive
+        // another arc-length change; 0.16 leaves 0.0025.
+        expect(bandCeiling - SUMMIT_EARTH_REVEAL.spaceGateBand).toBeGreaterThan(0.002);
+    });
+
+    it('completes the hand-off before the metric window closes, and not one station early', () => {
+        // Act II->Space §8.3 step 2. The void dome and nebula field are driven by a
+        // camera-y `approach` ramp still climbing inside the sampled window — that climb is
+        // the +6.7 and +4.7 luma per 0.01p tail rises the seam metric fails on. The
+        // hand-off raises them to full BEFORE the metric's window ends.
+        const spaceSpan = ch7 - ch6;
+        const start = ch6 - spaceSpan * SUMMIT_EARTH_REVEAL.handoverBeforeBoundary;
+        const end = ch6 + spaceSpan * SUMMIT_EARTH_REVEAL.handoverAfterBoundary;
+        expect(start).toBeCloseTo(0.7401, 3);
+        expect(end).toBeCloseTo(0.7861, 3);
+
+        // ⚠️ It deliberately does NOT start before the boundary any more. Every reveal it
+        // raises is multiplied by `spaceReveal`, which is exactly 0 below ch6Start, so a
+        // pre-boundary hand-off is arithmetically inert — measured: the bank-off arm read
+        // luma 1.78 at p=0.7221 both with and without it. Filling the pre-boundary trough
+        // is the cloud LIMB's job, not this one's.
+        expect(start).toBeCloseTo(ch6, 6);
+        expect(end).toBeGreaterThan(ch6);
+        // And it must be complete before the seam metric's window closes at p=0.8001,
+        // otherwise the tail rises it exists to remove are still inside the measurement.
+        expect(end).toBeLessThan(0.8001);
     });
 
     it('KEEPS THE WORLD DRAWING AFTER THE CROSSFADE ENDS — the cliff, pinned', () => {
