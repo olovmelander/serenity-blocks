@@ -313,7 +313,9 @@ const FOREST_ARCH_T_BY_AREA = Object.freeze({
     SEAM: 0.5847260989174075,
     ETIP: 0.6269598341870908,
     EMASS: 0.8244496408416748,
-    NE: 0.45171214783398395,
+    // NE re-emitted for the north hills (Wave 2): the swells move a few NE pool sites
+    // between bands. The single moved threshold is the soundness check, as ever.
+    NE: 0.45148985122192087,
     NW: 0.43436810246721713,
     WEND: 0.5732750837682767,
     WMID: 0.5042125928823078,

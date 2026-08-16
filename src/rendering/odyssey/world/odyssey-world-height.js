@@ -202,6 +202,21 @@ export const ODYSSEY_NORTH_LAKE = Object.freeze({
 });
 const NORTH_LAKE_DEPTH = 24;
 
+/**
+ * THE NORTH HILLS (north-island plan Wave 2). Three soft swells that break the plateau's
+ * pancake horizon behind the lake — the owner's "add hills". Same COMPACT profile as the
+ * lake bowl (exactly zero at rn >= 1), for the same reason: the plateau pin and the lake's
+ * own rim/water contract must be untouched by arithmetic. Sited so no swell reaches the
+ * lake's waterline ring (H2's edge stops 20 u short of the north rim — a shore that RISES
+ * beyond the water without lifting it), and all complete well south of the coast taper's
+ * release at z = -2600.
+ */
+const NORTH_HILLS = Object.freeze([
+    Object.freeze({ x: -860, z: -1780, r: 300, h: 48 }), // NW backdrop swell
+    Object.freeze({ x: -330, z: -1950, r: 250, h: 58 }), // behind the lake from the climb's view
+    Object.freeze({ x: -1020, z: -1350, r: 280, h: 36 }), // links west toward the ridge
+]);
+
 function smoothstep01(edge0, edge1, x) {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * (3 - (2 * t));
@@ -288,7 +303,15 @@ export function odysseyWorldMacro(x, z) {
     const lakeRn = Math.sqrt((lx * lx) + (lz * lz));
     const lakeBowl = (1 - smoothstep01(0.5, 1.0, lakeRn)) * -NORTH_LAKE_DEPTH;
 
-    const ground = land + basin + lakeBowl;
+    // The north hills: the same compact grammar, positive.
+    let hills = 0;
+    for (let i = 0; i < NORTH_HILLS.length; i += 1) {
+        const hh = NORTH_HILLS[i];
+        const hn = Math.hypot(x - hh.x, z - hh.z) / hh.r;
+        hills += (1 - smoothstep01(0.25, 1.0, hn)) * hh.h;
+    }
+
+    const ground = land + basin + lakeBowl + hills;
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
