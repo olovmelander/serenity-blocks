@@ -360,6 +360,11 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
 //   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
+//   ?odysseyCh6OneKey=1    — ADD-BACK polarity, NOT a remove: puts the nebula masses on
+//                            ODYSSEY_WORLD_SUN so the whole chapter shades to ONE key.
+//                            The shipped default keeps the corridor-local key the field
+//                            was approved with, which the Wave 6 audit measured at 92.2
+//                            deg from the hero's. Owner A/B verdict pending.
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
 // differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
 // never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
@@ -383,6 +388,7 @@ function resolveCh6BisectLevers() {
         dust: !readCh6UrlFlag('odysseyCh6NoDust'),
         stars: !readCh6UrlFlag('odysseyCh6NoStars'),
         aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
+        oneKey: readCh6UrlFlag('odysseyCh6OneKey'),
     };
 }
 
@@ -536,7 +542,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
-    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL(uniforms) : null;
+    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({ oneKey: bisect.oneKey }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
         group.userData.nebulaField = nebulaField.mesh;

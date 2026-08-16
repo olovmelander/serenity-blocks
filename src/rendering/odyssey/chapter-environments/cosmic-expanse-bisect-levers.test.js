@@ -121,6 +121,21 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(dark.userData.heroPlanet.userData.planet).toBeDefined();
     });
 
+    it('?odysseyCh6OneKey=1 re-keys the masses without touching anything else', () => {
+        // Wave 6 lighting audit. The masses are lit 92.2 deg off the hero by a key that is
+        // in the wrong SPACE (corridor-local vector, world-space normals, corridor-parented
+        // mesh). The A/B says keep it - raking gives the masses their form - so this lever
+        // exists to make that comparison one flag away, and must stay ADD-BACK polarity:
+        // absent means the shipped raking key, present means the hero's sun.
+        const shipped = buildWithSearch('');
+        const oneKey = buildWithSearch('?odysseyCh6OneKey=1');
+        // The field must still be there under the lever - this re-keys, it does not remove.
+        expect(shipped.userData.nebulaField).toBeDefined();
+        expect(oneKey.userData.nebulaField).toBeDefined();
+        expect(oneKey.userData.nebulaField.children.length)
+            .toBe(shipped.userData.nebulaField.children.length);
+    });
+
     it('?odysseyCh6NoStars=1 removes both starfield tiers', () => {
         const group = buildWithSearch('?odysseyCh6NoStars=1');
         expect(group.userData.starsFar).toBeUndefined();

@@ -688,6 +688,50 @@ means same-bucket = "below resolution", never "zero").
 > altitude ramps into the 5→6 bridge, the 6→7 retime, and the ch6 grade-table pass —
 > plus the owner's own in-game verdicts, which no capture can substitute for.
 
+> **WAVE 6 — THE LIGHTING AUDIT (2026-08-16, `59855dd7`+).** Done, and it found that the
+> chapter declares **FOUR** key directions, not one:
+>
+> | key | used by | vs `ODYSSEY_WORLD_SUN` |
+> |---|---|---|
+> | `ODYSSEY_WORLD_SUN` (-0.46, 0.36, 0.61) | hero terminator, limb, atmosphere rim, auroral crown | — (the real key) |
+> | `NEBULA_KEY_DIR` (-0.48, 0.36, -0.62), corridor-local | the nebula masses — the chapter's visual bulk | **92.2°** |
+> | profile `lightDir` (0.6, 0.3, -0.7) | **nothing** | 136.6°, and **INERT** |
+> | a fixed view-space key | asteroid rocks | already a documented knowing exception |
+>
+> **The masses' key is in the wrong SPACE.** `N` is `normalWorld`, the mesh is parented to
+> the corridor group, and the key is a corridor-LOCAL constant dotted against those world
+> normals raw. Three lines of evidence that it is a slip and not an art choice: the
+> mismatch is structural; z-flipping the constant lands **0.9°** from the world sun (a
+> hand-picked direction does not land that close to a canonical constant by chance); and
+> the comment's "accretion key" story fails measurement — it sits 25.7° from the black
+> hole at entry and drifts to 57.1° by the exit, so it never tracked the disc.
+>
+> **BUT THE A/B SAYS KEEP THE SLIP, so it is now a knowing exception rather than a bug to
+> fix.** Captured both ways at all 8 stations behind a new ADD-BACK lever
+> (`?odysseyCh6OneKey=1`): the correction moves 6.6–8.9 % of pixels across the second half
+> and moves them the wrong way. On the hero's sun the masses light nearly face-on — the
+> warm workhorse flattens into one big saturated orange shape that competes with the hero
+> for dominance (rule 1) and loses the violet shade band that gives it form, and rule 4's
+> value ladder collapses. The 92.2° key RAKES them, and raking is what makes the bands.
+> Recorded at the constant in `odyssey-nebula-field.js`; lever kept so the comparison
+> stays one flag away. **Owner may still overrule — the A/B is the evidence, not a verdict.**
+>
+> ⚠️ **The profile's `lightDir` is a DEAD DECLARATION.** Every ch6 surface is unlit
+> `MeshBasic` with hand-authored shading (the only `MeshStandardMaterial` mentions in the
+> chapter are comments explaining why it is *not* used), so that direction lights nothing.
+> Anyone "fixing" ch6 lighting by tuning it will see no change and lose an afternoon.
+>
+> **THE 6→7 RETIME AND THE SEAM_56 RETUNE ARE NO-OPS BY CONSTRUCTION** — struck from this
+> wave, not skipped. Both were written when D1 was expected to WIDEN the chapter's
+> p-window. D1 landed the other way: Wave 1-B grew ch6 from 9 to 13 levels **inside the
+> unchanged 0.648–0.815 window** (verified in `levels.js` and `odyssey-layout.js`). The BH
+> loom, `SEAM_56_*` and `spaceGateBand` are all chapter-fractional, so an unchanged span
+> means unchanged absolute windows. There is no longer span to retime against.
+>
+> **STILL OPEN after this pass:** the ascent altitude ramps into the 5→6 bridge, and the
+> owner's in-game verdicts (dome pocket brightness, cool-giant value, the aurora's
+> edge-on read, and now the one-key A/B).
+
 ### Wave 7 — Ledger close-out
 - Final gpu-split ledger (both lanes, one thermal window per comparison), budget cell
   ratchet proposal, flags documented, plan annotated **at the claim** with outcomes
