@@ -46,15 +46,15 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         expect(ch5).not.toBeCloseTo(0.5, 3); // the PRE-ascent value
     });
 
-    it('places the earth ignite across the ascent (0.5881 -> 0.6935)', () => {
+    it('places the earth ignite at the crest (0.6408 -> 0.6935), after the massif pass', () => {
         const skySpan = ch6 - ch5;
         const summitStart = ch6 - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
         const summitEnd = ch6 - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
-        // The window WIDENED 0.039 -> 0.097 as a free consequence of the ascent, then
-        // widened again slightly under Wave 1C's flyby re-map: SUMMIT_EARTH_REVEAL is
-        // expressed as fractions of the ch5 span, and that span keeps growing with the
-        // climb. The gas giant now fades up across the whole climb instead of in a blink.
-        expect(summitStart).toBeCloseTo(0.5881, 3);
+        // RETIMED by the north-island plan Wave 0 (owner playtest 2026-08-16): at the old
+        // 0.5881 start the giant faded up INSIDE the massif flyby's in-frame pass
+        // (0.545-0.648) and competed with the mountain beat. It now ignites as the crown
+        // exits the frame, so each beat owns its moment: mountain -> world -> stars.
+        expect(summitStart).toBeCloseTo(0.6408, 3);
         expect(summitEnd).toBeCloseTo(0.6935, 3);
 
         // ...and the staging function must agree with that arithmetic, not drift from it.

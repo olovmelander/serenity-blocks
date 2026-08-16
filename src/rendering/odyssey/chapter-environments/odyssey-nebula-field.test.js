@@ -11,9 +11,17 @@ import {
     ODYSSEY_NEBULA_FIELD_SPECS,
 } from './odyssey-nebula-field-specs.js';
 import {
+    SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
 } from './cosmic-expanse.js';
+import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
+
+// DERIVED mid-summit-window probe (was the literal 0.638, which the north-island Wave 0
+// retime moved outside the window — see odyssey-comet.test.js for the full note).
+const CP = deriveOdysseyChapterPositions();
+const MID_SUMMIT = CP[5] - (CP[5] - CP[4])
+    * ((SUMMIT_EARTH_REVEAL.startBeforeBoundary + SUMMIT_EARTH_REVEAL.endBeforeBoundary) / 2);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SPLIT = fs.readFileSync(
@@ -68,7 +76,7 @@ describe('ch6 sculpted nebula field (Space overhaul Wave 3)', () => {
         });
 
         // Pre-boundary (summit window): the space gate holds the field at zero.
-        updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.638);
+        updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, MID_SUMMIT);
         expect(mesh.userData.uReveal.value).toBe(0);
         expect(mesh.visible).toBe(false);
 
