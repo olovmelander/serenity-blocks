@@ -390,6 +390,36 @@ annotated at the claim.
   was for the ch6 nebula field.
 - Gate: the −89.3 step is gone; no step exceeds the Wave 0 threshold.
 
+> **WAVE 1B OUTCOME (2026-08-16, `ccf33ceb`) — the boolean cliff is gone, and it uncovered
+> the next one.**
+>
+> The One World now RECEDES before the gate fires. What fades is **colour, not alpha**: every
+> world material is an unlit `MeshBasicNodeMaterial` with hand-authored colour and the module
+> already carries `applyAerial` for the same reason, so pulling that colour toward the sky is
+> what distance actually looks like — and it avoids every cost fading alpha would bring
+> (nothing leaves the opaque queue, no render-order change, no blend state, and the
+> `opacityNode`-is-a-dead-write trap never arises). One hook did it: `toOutput()` already
+> wrapped 14 of the 16 `colorNode` sites. The ramp lives beside the gate in
+> `odyssey-world-act-gate.js` because the two are one decision, and it is expressed in
+> FRACTIONS so Wave 1A's re-layout carries it unedited. The gate is untouched and keeps its
+> original correctness job.
+>
+> **MEASURED: the step at the act gate collapses from −89.3 to −13.1.** That specific defect —
+> the mountain vanishing between two frames — is fixed. 13 new tests pin the contract
+> (closed BEFORE the flag flips, exactly zero across all of Act II, monotonic, holds under a
+> different layout). 3526/3526 green.
+>
+> **⚠️ THE SEAM METRIC STILL FAILS, and the reason is worth more than the fix.** A −91.5 step
+> simply moved one sample earlier. Widening the ramp nearly 3× (lead 0.30 → 0.85) changed it
+> only to −86.1, which is the diagnosis: **the departure fade is not what drops there.** The
+> remaining cliff is the chapter ecotone crossfade behaving exactly as **F2** predicted —
+> bright ch5 (~195 luma) alpha-blended against dark ch6 (~26) collapses perceptually late no
+> matter how linear its alpha is. Wave 1B removed the system that was masking it.
+>
+> So Wave 2 is no longer optional polish; it is the remaining half of the cliff, and F2 tells
+> it exactly what to do: re-shape the crossfade against MEASURED luma rather than alpha, and
+> put the perceptual midpoint on the boundary.
+
 ### Wave 2 — Re-phase the schedule
 - Move the perceptual midpoint onto the boundary: widen `spaceGateBand` (F5) so space
   arrives *across* the crossfade rather than in its first sixth, and pull the world's new
