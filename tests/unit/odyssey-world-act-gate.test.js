@@ -6,7 +6,10 @@ import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/pa
 import {
     ONE_WORLD_ACT_MARGIN,
     ONE_WORLD_DEPARTURE_LEAD,
+    ONE_WORLD_THIN_LEAD,
+    ONE_WORLD_THIN_MAX,
     isWorldVisibleAtProgress,
+    worldAtmosphericThin,
     worldDepartureFade,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import {
@@ -159,5 +162,56 @@ describe('the world RECEDES before the gate fires (Wave 1B)', () => {
         const altFade = (p) => worldDepartureFade(p, alt.skyStart, alt.actEnd);
         expect(altFade(alt.actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(1, 6);
         expect(altFade(alt.skyStart)).toBe(0);
+    });
+});
+
+describe('the SKY thins with altitude before the world leaves (Wave 3 / F3)', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const actEnd = cp[5];
+    const skyStart = cp[4];
+    const thin = (p) => worldAtmosphericThin(p, skyStart, actEnd);
+    const thinStart = actEnd - (actEnd - skyStart) * ONE_WORLD_THIN_LEAD;
+
+    it('leaves the deck at full form through everything below the climb', () => {
+        // F3's fix must not quietly flatten the deck for the whole act — the thinning is
+        // an ALTITUDE read, and below the climb there is no altitude story to tell.
+        for (let i = 0; i <= 20; i += 1) {
+            const p = cp[1] + ((thinStart - cp[1]) * (i / 20));
+            expect(thin(p), `p=${p.toFixed(3)} must be untouched`).toBe(0);
+        }
+    });
+
+    it('opens EARLIER than the departure fade, and never completes', () => {
+        // The thinning is the sky losing body while the world below is still vivid; the
+        // fade is the whole world leaving. Order matters: thin first, then fade.
+        expect(ONE_WORLD_THIN_LEAD).toBeGreaterThan(ONE_WORLD_DEPARTURE_LEAD);
+        // A deck at zero would hand the limb bank nothing to cross — the cap is the
+        // difference between thinning the sky and deleting it.
+        expect(thin(actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+        expect(ONE_WORLD_THIN_MAX).toBeLessThan(1);
+        expect(thin(actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+    });
+
+    it('is monotonic and smooth across the climb', () => {
+        let prev = -1;
+        for (let i = 0; i <= 60; i += 1) {
+            const p = skyStart + ((actEnd - skyStart) * (i / 60));
+            const v = thin(p);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            expect(v).toBeLessThanOrEqual(ONE_WORLD_THIN_MAX + 1e-9);
+            prev = v;
+        }
+    });
+
+    it('survives a re-layout, because it is expressed in fractions', () => {
+        const alt = { skyStart: 0.3882, actEnd: 0.701 };
+        const altThin = (p) => worldAtmosphericThin(p, alt.skyStart, alt.actEnd);
+        expect(altThin(alt.skyStart)).toBe(0);
+        expect(altThin(alt.actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+    });
+
+    it('degrades to zero on an unreadable layout', () => {
+        expect(worldAtmosphericThin(NaN, skyStart, actEnd)).toBe(0);
+        expect(worldAtmosphericThin(0.7, undefined, actEnd)).toBe(0);
     });
 });

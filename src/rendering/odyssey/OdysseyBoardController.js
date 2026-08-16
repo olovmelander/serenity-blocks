@@ -19,7 +19,7 @@ import {
 } from './world/odyssey-world-grade.js';
 import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
-import { isWorldVisibleAtProgress, worldDepartureFade } from './world/odyssey-world-act-gate.js';
+import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_HALF_WIDTH,
@@ -2708,6 +2708,18 @@ export class OdysseyBoardController {
                     this.oneWorld.setDepartureFade(
                         worldDepartureFade(cameraProgress, skyStart, actEnd),
                         ONE_WORLD_DEPARTURE_TARGET,
+                    );
+                }
+
+                // ── ATMOSPHERIC THINNING (Wave 3 / F3) ───────────────────────────────
+                // The deck loses contrast, saturation and apparent scale as the rail
+                // climbs, instead of holding full cumulus form to the last drawn frame.
+                // Same shape as the fade above: schedule derived from the act edge, in
+                // fractions, so a re-layout carries it.
+                if (typeof this.oneWorld.setAtmosphericThin === 'function') {
+                    const skyStart = this.presentationLayout.chapterPositions[4];
+                    this.oneWorld.setAtmosphericThin(
+                        worldAtmosphericThin(cameraProgress, skyStart, actEnd),
                     );
                 }
 

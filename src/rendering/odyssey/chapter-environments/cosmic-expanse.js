@@ -192,8 +192,16 @@ export const APPROACH = {
     // parallax. Solved by the same resolver, all five derived stations inside |ndc| 0.87.
     // (The transition plan once recorded {875, 175, -275}; that pose was solved before the
     // look-ahead re-scale and now reads ndcY 0.908 at the third station — re-solved.)
+    //
+    // `s` is OWNER DECISION D3 (2026-08-16): the gas giant gets to be genuinely BIG at the
+    // summit. 3.4 vs planetA's 1.214 puts a ~4.3° disc over the mountains (2.8x the entry's
+    // apparent size at the summit distance of ~1250 u); the travel to planetA across
+    // [summitEnd, ch6Start] carries the scale with it, so the giant settles into the
+    // Wave-4-approved entry framing exactly at the boundary. F4 ("the hero reads as set
+    // dressing... a small striped disc indistinguishable from a level orb") is what this
+    // number exists to kill.
     planetSummit: {
-        x: 900, y: 150, z: -250,
+        x: 900, y: 150, z: -250, s: 3.4,
     },
     galaxyB: {
         x: 942, y: 449, z: 39, s: 250,
@@ -263,6 +271,14 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     // rises at p=0.7941/0.8001.
     handoverBeforeBoundary: 0.0, // p = 0.74010 — the boundary itself
     handoverAfterBoundary: 0.373, // p = 0.78610 — clear of the last two stations
+    // STARS BEFORE DARK (Wave 3). The NEAR star tier is deliberately not baked into the
+    // void dome precisely so it can arrive while there is still blue sky — this is the
+    // opacity ceiling it may reach before the boundary. The window is [summitEnd,
+    // ch6Start]: zero through the whole earth-ignite (nothing but the earth may bleed
+    // into full daylight), then the first stars fade up across the final climb as the
+    // zenith deepens, and the normal `starReveal x spaceReveal` staging takes over past
+    // the boundary via max() — it can only ever arrive EARLIER, never dip.
+    starsBeforeDark: 0.5,
 });
 
 /**
@@ -801,7 +817,11 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
     // only what was actually built.
     group.userData.entryContinuity = {
-        stars: [starsFar, starsNear].filter(Boolean),
+        // The near tier is on its own key: STARS BEFORE DARK stages it against global
+        // progress before the boundary, which the far tier must never join (a whole
+        // starfield in daylight reads as noise; a few bright early stars read as dusk).
+        stars: [starsFar].filter(Boolean),
+        starsNear: [starsNear].filter(Boolean),
         destination: [blackHole, debris].filter(Boolean),
         // EARTH AT THE SUMMIT: the gas giant is staged on its own GLOBAL-progress reveal
         // so it can rise over the still-bright Ch5 sky (see SUMMIT_EARTH_REVEAL). Every
@@ -1869,6 +1889,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // arrives exactly on the authored entry composition at the boundary. Driven by
         // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
         // above contributes planetA and this lerp owns the approach.
+        let planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
         const { planetSummit } = APPROACH;
         if (planetSummit && Number.isFinite(staging.summitEnd)
             && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress)) {
@@ -1879,9 +1900,11 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                     THREE.MathUtils.lerp(planetSummit.y, heroPlanet.position.y, toEntry),
                     THREE.MathUtils.lerp(planetSummit.z, heroPlanet.position.z, toEntry),
                 );
+                // D3: the giant is BIG at the summit and settles to the approved entry
+                // size exactly as it settles into the entry composition.
+                planetScale = THREE.MathUtils.lerp(planetSummit.s ?? planetScale, planetScale, toEntry);
             }
         }
-        const planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
         heroPlanet.scale.setScalar(planetScale);
         heroPlanet.rotation.y += delta * 0.025;
         heroPlanet.rotation.z = Math.sin(time * 0.08) * 0.025;
@@ -2001,6 +2024,20 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         entryTargets.stars.forEach((object) => setOpacityScale(
             object,
             entryState.starReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        // STARS BEFORE DARK (Wave 3): the near tier alone may arrive pre-boundary,
+        // fading up across [summitEnd, ch6Start] to a capped ceiling while the sky is
+        // still blue. max() with the normal staging so the boundary hand-off can only
+        // ever be earlier, never a dip.
+        const starsEarly = (Number.isFinite(staging.summitEnd)
+            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress))
+            ? rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5])
+                * SUMMIT_EARTH_REVEAL.starsBeforeDark
+            : 0;
+        (entryTargets.starsNear || []).forEach((object) => setOpacityScale(
+            object,
+            Math.max(entryState.starReveal * spaceReveal, starsEarly),
             chapterOpacity,
         ));
         entryTargets.destination.forEach((object) => setOpacityScale(
