@@ -1,6 +1,8 @@
 # Odyssey — the Act II → Space transition (5→6) overhaul (2026-08)
 
-**Status: AUDITED 2026-08-16, NOT STARTED.** Owner asked for a visual + technical audit of
+**Status: IN PROGRESS 2026-08-16 — Waves 0, 1A, 1B, 1D, 2 and the §8 limb rework are
+DONE; Wave 1C (the massif flyby) LANDED `f96b4ca1` with all four seam gates green at the
+new boundary 0.7543; Waves 3–4 in flight.** Owner asked for a visual + technical audit of
 the Act II → deep space seam and a plan to perfect it. This document is that audit and
 that plan. Every number below is measured from an in-game graded capture or read out of
 the shipped code — nothing here is an estimate.
@@ -633,6 +635,36 @@ extents — and re-pin the total.
 > "solutions"); and both the summit stations and the arc-length window must be DERIVED,
 > since scoring ch6 at its old p values on a longer curve reads 17° for a corridor
 > nobody touched.
+
+> ### 1C APPLIED AND LANDED (`f96b4ca1`, 2026-08-16)
+> The recorded geometry was applied verbatim via `odyssey-ascent-flyby-emit.mjs --write`
+> and every number above reproduced exactly (closest 141.7 at y 1052, bank 5.43°, guard
+> 3.76, arc 2532.66, drift 0.113). The full suite counted **19** re-baselines, not 13 —
+> the plan's list was per-file where the runner counts per-test — across exactly the
+> predicted files, none a geometry defect. Two deviations from the block above, both
+> measured: (1) `lookAheadDistance` was re-scaled 0.01477 → 0.01396 (Wave 1A's own rule;
+> earth-core frame 1 read ndcY 1.31 without it), which moved every station camera a hair
+> and (2) therefore the recorded `planetSummit {875, 175, −275}` now reads ndcY 0.908 at
+> the third summit station — the same resolver re-solved the triad against the live
+> camera: **galaxyA {810, 663, 186}** (entry 0.35, dist 1214 vs 1215), **planetA
+> {880, 352, −207}** (entry 0.03/−0.14, moved 77 u, size held), **planetSummit
+> {900, 150, −250}** (all five stations ≤ 0.87). The galaxy solver's 0.46 entry margin
+> proved EMPTY over a ±600 u box post-flyby (the entry tangent banks); the shipped
+> tests' real frontier is coupled, so the solver now sweeps at 0.33 and lets the planet
+> enforce its half. The forest carve thresholds were re-emitted (all 7 moved — the 48
+> rail samples all re-seat on a longer curve) and the visibility mask re-baked (94.2 %
+> visible).
+>
+> **GATES, measured on this tree:** seam-luma at `--boundary 0.7543` — maxStep −22.0
+> (limit 45), tailShare 10.5 %, postBoundary 0, endLuma 23.6; capture preserved as
+> `artifacts/odyssey/wave-v/seam-5-6-1c-gate-t9`. The flyby itself: the massif fills the
+> left third of frame at p=0.575 and the left half at p=0.620, vivid, with the island
+> falling away below — the in-frame pass runs **p ≈ 0.545 → 0.648** (crown exits the
+> left edge at 0.648, camera crests ABOVE the crown at ~0.66). ⚠️ The seam capture
+> window (boundary ± 0.06 = 0.6943+) starts AFTER the pass — judge the flyby from the
+> 0.545–0.658 stations, not from the seam window, or you will conclude it never happened.
+> The limb crossing and the space arrival are unchanged (trough 20.8 at 0.7303, rise to
+> 45.7 at the boundary, painted cosmos composed at 0.8143).
 
 ### Wave 1D — PREMATURE AURORA/BH: FIXED (`fbd8bc81`, 2026-08-16)
 Owner report: the black hole and Northern Lights appear in the bright sky, disappear,
