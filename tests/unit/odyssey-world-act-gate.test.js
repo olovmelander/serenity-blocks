@@ -54,9 +54,16 @@ describe('the world is gated to Act II', () => {
         expect(seamWidthOf(5)).toBe(MARGIN);
     });
 
-    it('hides the world at the frame where the defect was captured (p=0.051, mid Chapter 1)', () => {
-        // The regression test for my own first attempt: margin 0.06 leaves this visible.
-        expect(visibleAt(0.051)).toBe(false);
+    it('hides the world at the frame where the defect was captured (mid Chapter 1)', () => {
+        // The regression test for the first attempt at this fix: margin 0.06 leaves it visible.
+        //
+        // DERIVED, not a literal. The capture was at p=0.051 when chapter 2 began at 0.093 —
+        // i.e. 54.8% of the way through chapter 1. Wave 1A's ascent lengthened the journey
+        // (1767.65 -> 2276.62) so every p re-normalised and that literal now points somewhere
+        // else entirely. The defect is a fact about a WORLD position mid-chapter-1, so express
+        // it that way and it survives the next re-layout too.
+        const midChapter1 = cp[1] * 0.548;
+        expect(visibleAt(midChapter1)).toBe(false);
     });
 
     it('keeps the world through the act-edge seams, so the handoff never shows a gap', () => {
