@@ -22,6 +22,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { BLOOD_MOON_TETROMINOS } from './blood-moon-tetrominos.js';
 import {
@@ -192,6 +193,13 @@ export default class BloodMoonTheme extends BaseTheme {
         this.pointerY = 0;
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
+
+        // Impact shake. The theme owns its own sway/parallax, so the rig contributes
+        // only the shake; `cameraBase` is the scratch this frame's sway is written into
+        // (and what the nebula layer follows, so it does not cancel the shake).
+        this.cameraRig = null;
+        this.cameraBase = { x: 0, y: 0, z: 1200 };
+
         this.effectTimeouts = new Set();
         this.qualityPreset = QUALITY_PRESETS.High;
         this.pendingComboCount = 0;
@@ -284,6 +292,14 @@ export default class BloodMoonTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 50000);
         this.camera.position.set(0, 0, 1200);
         this.camera.lookAt(0, 0, 0);
+        this.cameraRig = new ThemeCameraRig(this.camera, {
+            focus: { x: 0, y: 0, z: 0 },
+            // The theme's own orbit has a ~105 s period, so over a few seconds it barely
+            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
+            // feels alive at a glance, without flattening that slow cinematic drift.
+            breathe: true,
+            pointer: false, // the theme already applies its own mouse parallax
+        });
 
         // Crimson lighting from moon
         const moonLight = new THREE.PointLight(0xcc1a2e, 2, 3000);
@@ -791,18 +807,23 @@ export default class BloodMoonTheme extends BaseTheme {
             const parallaxY = -this.smoothedPointerY * 60.0;
 
             // Orbital sway + mouse parallax - creates parallax with starfield/nebula
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
                 + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4
                 + parallaxX;
-            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
+            this.cameraBase.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
                 + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3
                 + parallaxY;
-            this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+            this.cameraBase.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
             // LookAt drift for dynamic framing (also nudged by mouse at 0.4x)
             const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
             const lookOffsetY = Math.cos(cameraTime * 0.5) * 100 + parallaxY * 0.4;
-            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
+
+            // The rig writes the final position and does the lookAt, layering impact
+            // shake on top of the sway above. Aiming at the drifting target (rather than
+            // a fixed point) is what turns a shake offset into visible view rotation.
+            this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
+            this.cameraRig.apply(delta, this.cameraBase);
         }
 
         // Pulse glow layers with moon pulse intensity
@@ -819,9 +840,10 @@ export default class BloodMoonTheme extends BaseTheme {
             cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
             if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
 
-            // Sync base position with camera, add drift offset
-            cloud.position.x = (this.camera?.position.x || 0) * 0.3 + cloud.userData.driftOffset;
-            cloud.position.y = (this.camera?.position.y || 0) * 0.2;
+            // Sync base position with the camera's PRE-SHAKE sway, not its final
+            // position: following the shake too would cancel most of it on this layer.
+            cloud.position.x = this.cameraBase.x * 0.3 + cloud.userData.driftOffset;
+            cloud.position.y = this.cameraBase.y * 0.2;
 
             cloud.userData.pulsePhase += 0.005;
             // Pulse: -1 to 1 for subtle breathing
@@ -1008,6 +1030,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
     handlePieceLock() {
         this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
+        this.cameraRig?.shakeLock();
         // Star twinkle boost on piece lock
         if (this.starfield && this.starfield.material.uniforms) {
             this.starfield.material.uniforms.uEventBoost.value = Math.min(this.starfield.material.uniforms.uEventBoost.value + 0.8, 2.0);
@@ -1020,6 +1043,9 @@ export default class BloodMoonTheme extends BaseTheme {
 
         if (comboCount > 0) {
             this.pendingComboCount = comboCount;
+            // Shake on the combo itself in case it arrives without a clear; the clear
+            // below fires a fuller one and the larger of the two wins.
+            this.cameraRig?.shakeClear(1, comboCount);
         }
     }
 
@@ -1039,6 +1065,8 @@ export default class BloodMoonTheme extends BaseTheme {
     onLineClear(lineCount, comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.moonPulseIntensity = Math.min(0.6 + comboCount * 0.2, 1.5);
+        // Both counts resolved here, so this is the accurate hit of the resolution.
+        this.cameraRig?.shakeClear(lineCount, comboCount);
 
         // Star twinkle boost scales with combo
         if (this.starfield && this.starfield.material.uniforms) {

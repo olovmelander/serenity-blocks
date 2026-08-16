@@ -24,6 +24,7 @@ import { mrt, vec3 } from 'three/tsl';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
 import { CosmicNoirPost } from './cosmic-noir-post.js';
@@ -353,14 +354,16 @@ const ADAPTIVE_PIXEL_RATIO_CAPS = {
 
 // Reactive envelope channels + decay rates. Hoisted to module scope so the per-frame
 // updateReactiveEnvelope() does not allocate a fresh object + Object.keys() array every frame.
-const REACTIVE_ENVELOPE_KEYS = ['pulse', 'bloom', 'spark', 'atmosphere', 'star', 'shake'];
+// Camera shake is NOT a channel here: it lives in the shared ThemeCameraRig, which
+// runs its own envelope on theme time. Keeping a duplicate here would decay on a
+// second, unrelated curve.
+const REACTIVE_ENVELOPE_KEYS = ['pulse', 'bloom', 'spark', 'atmosphere', 'star'];
 const REACTIVE_ENVELOPE_DECAY_RATES = {
     pulse: 3.0,
     bloom: 2.6,
     spark: 3.4,
     atmosphere: 2.2,
     star: 4.2,
-    shake: 8.0,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,7 +478,6 @@ export default class CosmicNoirTheme extends BaseTheme {
             spark: 0,
             atmosphere: 0,
             star: 0,
-            shake: 0,
         };
 
         // Planet drift animation (Lissajous curves for organic movement)
@@ -519,6 +521,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.pointerY = 0;
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
+
+        // Impact shake. The theme owns its own orbit/parallax, so the rig contributes
+        // only the shake; `cameraBase` is the scratch this frame's orbit is written into.
+        this.cameraRig = null;
+        this.cameraBase = { x: 0, y: 0, z: 1200 };
 
         this.qualityPreset = QUALITY_PRESETS.High;
         this.activeQualityLevel = 'High';
@@ -2104,6 +2111,14 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 50000);
         this.camera.position.set(0, 0, 1200);
         this.camera.lookAt(0, 0, 0);
+        this.cameraRig = new ThemeCameraRig(this.camera, {
+            focus: { x: 0, y: 0, z: 0 },
+            // The theme's own orbit runs at 105-209 s periods, so over a few seconds it
+            // barely reads as motion. The rig adds a faster 18/27 s float on top so the
+            // frame feels alive at a glance, without flattening that slow deep-space drift.
+            breathe: true,
+            pointer: false, // the theme already applies its own mouse parallax
+        });
 
         // Key light - cinematic side lighting to reveal planet texture
         const planetLight = new THREE.PointLight(0x9ea3be, 2.2, 3500);
@@ -3794,21 +3809,25 @@ export default class CosmicNoirTheme extends BaseTheme {
             const ct018 = cameraTime * 0.18;
 
             // Orbital sway - creates parallax with starfield/nebula
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
                 + Math.cos(ct07) * orbitRadiusX * 0.4;
-            this.camera.position.y = Math.cos(ct08) * orbitRadiusY
+            this.cameraBase.y = Math.cos(ct08) * orbitRadiusY
                 + Math.sin(ct05) * orbitRadiusY * 0.3;
 
             // Deep z-breathing: sweeping from far out to EXTREMELY close
             // Base 800, primary ±600 -> Min theoretically 200 (inside atmosphere)
-            this.camera.position.z = 800
+            this.cameraBase.z = 800
                 + Math.sin(ct05) * 600
                 + Math.sin(ct018 + 1.2) * 200;
 
             // Safety clamp: Prevent clipping into planet (radius 240)
             // Surface skim distance: ~280
-            if (this.camera.position.length() < 280) {
-                this.camera.position.setLength(280);
+            const baseLength = Math.hypot(this.cameraBase.x, this.cameraBase.y, this.cameraBase.z);
+            if (baseLength < 280 && baseLength > 0) {
+                const lift = 280 / baseLength;
+                this.cameraBase.x *= lift;
+                this.cameraBase.y *= lift;
+                this.cameraBase.z *= lift;
             }
 
             // Smooth pointer tracking (frame-rate independent damping)
@@ -3819,21 +3838,21 @@ export default class CosmicNoirTheme extends BaseTheme {
             const parallaxY = -this.smoothedPointerY * 60.0;
 
             // Apply mouse parallax after the safety clamp so it always perturbs the camera
-            this.camera.position.x += parallaxX;
-            this.camera.position.y += parallaxY;
+            this.cameraBase.x += parallaxX;
+            this.cameraBase.y += parallaxY;
 
             // LookAt drift for dynamic framing (also nudged by mouse at 0.4x).
             // Reuse `ct05` from the y-orbit above - same scaled time.
             const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
             const lookOffsetY = Math.cos(ct05) * 100 + parallaxY * 0.4;
 
-            if (this.reactiveEnvelope.shake > 0) {
-                const shakeAmplitude = this.reactiveEnvelope.shake * 3.0;
-                this.camera.position.x += (this.rand() - 0.5) * shakeAmplitude;
-                this.camera.position.y += (this.rand() - 0.5) * shakeAmplitude;
-            }
-
-            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
+            // The rig writes the final position and does the lookAt, layering impact
+            // shake on top. It replaces the old reactiveEnvelope.shake jitter, which was
+            // ±1.5 units at most on a camera ~800 out — under 2 px, and only ever fired
+            // at combo >= 6. It is also deterministic, where that drew from the seeded
+            // RNG stream mid-frame and shifted every later particle draw.
+            this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
+            this.cameraRig.apply(delta, this.cameraBase);
         }
 
         if (
@@ -4370,6 +4389,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     handlePieceLock() {
         this.planetPulseIntensity = Math.min(this.planetPulseIntensity + 0.12, 0.45);
         this.starEventBoost = 2.0; // Strong flash on lock
+        this.cameraRig?.shakeLock();
         this.pushReactiveEnvelope({
             pulse: 0.12,
             star: 0.2,
@@ -4382,6 +4402,9 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (comboCount > 0) {
             this.pendingComboCount = comboCount;
+            // Shake on the combo itself in case it arrives without a clear; the clear
+            // fires a fuller one and the larger of the two wins.
+            this.cameraRig?.shakeClear(1, comboCount);
             this.pushReactiveEnvelope({
                 pulse: Math.min(0.05 + comboCount * 0.05, 0.5),
                 bloom: Math.min(0.04 + comboCount * 0.05, 0.55),
@@ -4424,8 +4447,10 @@ export default class CosmicNoirTheme extends BaseTheme {
             spark: Math.min(0.14 + comboCount * 0.12, 1.0),
             atmosphere: Math.min(0.12 + comboCount * 0.1, 1.0),
             star: Math.min(0.08 + comboCount * 0.06, 1.0),
-            shake: comboCount >= 6 ? Math.min(0.2 + comboCount * 0.08, 1.0) : 0,
         });
+        // Camera shake now fires on EVERY clear (scaled by lines and chain) rather than
+        // only at combo >= 6, and goes through the shared rig.
+        this.cameraRig?.shakeClear(lineCount, comboCount);
         const usingSparkCompute = Boolean(
             this.isWebGPU
             && this.flags.useCompute
@@ -4788,7 +4813,6 @@ export default class CosmicNoirTheme extends BaseTheme {
             spark: 0,
             atmosphere: 0,
             star: 0,
-            shake: 0,
         };
         this.time = 0;
         this.fixedElapsed = 0;
