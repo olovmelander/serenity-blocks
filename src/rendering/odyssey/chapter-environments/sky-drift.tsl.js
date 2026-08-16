@@ -75,29 +75,6 @@ import { fbm2 } from './shared/odyssey-tsl-noise.js';
 import { ODYSSEY_SUN } from './shared/chapter-profile.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
-/**
- * THE APPROACH DIM (Act II -> Space, Wave 2).
- *
- * Chapter 5 hands over to deep space at ~198 luma against space's ~26. Fitting the measured
- * seam gives `luma ~= 26 + 356 * w5`, and from that a per-0.01p step under the 45-luma budget
- * needs chapter 5's ecotone weight to move at most 0.126 per sample — while a monotonic
- * 1 -> 0 ramp across the seam's 0.060 width AVERAGES 0.167. So no crossfade curve can carry
- * that handover; the endpoint gap itself has to close. This is that.
- *
- * ⚠️ IT IS NARROW ON PURPOSE. `uDusk` is capped at 0.1 by an explicit earlier decision —
- * "Ch5 is now the sunlit cloud-sea payoff, not a night sky" — and this does NOT re-open it.
- * The dusk script, the aurora staging and the palette are all untouched. This only pulls the
- * OUTPUT down over the last stretch of the chapter, where the rail is climbing out of the
- * atmosphere and the sky physically should be losing its top end. Multiply-by-1 everywhere
- * else, so 80% of the chapter is bit-for-bit unchanged.
- */
-const uApproachDim = uniform(1);
-
-/** @param {number} v 1 = full daylight, lower = the sky draining toward space. */
-export function setSkyDriftApproachDim(v) {
-    uApproachDim.value = Math.min(Math.max(Number.isFinite(v) ? v : 1, 0), 1);
-}
-
 // Shared forward-aim sun direction. Ch5 has no on-screen space objects, so the sun is
 // the single on-camera hero/anchor/light source: it reads on the DEFAULT forward aim
 // (B7 adds a CHAPTER_LOOK biasing the aim up-and-right so the disc sits upper-right).
@@ -174,7 +151,7 @@ export function createSkyGradientTSL(options = {}) {
     color = color.min(vec3(0.96, 0.97, 1.0)).add(duskRef);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = (color).mul(uApproachDim);
+    material.colorNode = color;
     material.opacityNode = uOpacity;
     material.side = THREE.BackSide;
     material.depthWrite = false;
@@ -239,7 +216,7 @@ export function createSunGlowTSL(uTime = uniform(0)) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(aBase, size);
-    material.colorNode = (aTint).mul(uApproachDim);
+    material.colorNode = aTint;
     // Soft radial falloff feathered to 0 well before the quad edge (no card edge).
     const dist = length(uv().sub(0.5));
     const glow = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.8);
@@ -342,7 +319,7 @@ export function createCloudSheetTSL(uTime, {
     const color = mix(uTint, uLit, lit);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = (color).mul(uApproachDim);
+    material.colorNode = color;
     // Capped opacity — these are atmosphere veils, not foreground panels.
     material.opacityNode = density.mul(edge).mul(mix(float(0.08), float(0.16), duskT));
     material.transparent = true;
@@ -433,7 +410,7 @@ function createSharedCloudMaterialTSL(uTime, uDusk, uFade = null) {
     const color = mix(uTint, uLit, lit);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = (color).mul(uApproachDim);
+    material.colorNode = color;
     // PAINTERLY-ASCENT REPALETTE (Wave C): opacity up (0.08–0.16 → 0.38–0.5) and NormalBlending
     // (was Additive) so the whitened strata read as soft solid white cloud wisps occluding the blue
     // sky, not faint additive violet haze.
@@ -550,7 +527,7 @@ function createGodRayFanMaterial(uTime, uDusk) {
     // Low additive floor (0.16) keeps the shaft visible without a bright core. The
     // fans belong to the Act I sun: they die with it as the dusk deepens.
     const fanAlive = oneMinus(smoothstep(0.3, 0.55, uDusk));
-    material.colorNode = (color.mul(stripes.add(0.16))).mul(uApproachDim);
+    material.colorNode = color.mul(stripes.add(0.16));
     material.opacityNode = radial.mul(lengthFade).mul(0.1).mul(fanAlive);
     material.transparent = true;
     material.depthWrite = false;
@@ -728,7 +705,7 @@ export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cf
     material.colorNode = min(
         color.mul(strands.add(0.55)).mul(float(1.55).mul(intensity)).mul(staged),
         vec3(0.95),
-    ).mul(uApproachDim);
+    );
     const opacityNode = curtainMask.mul(strands.mul(0.7).add(0.22))
         .mul(float(0.72).mul(intensity))
         .mul(staged)
@@ -898,7 +875,7 @@ export function createSkyWispTSL(uTime = uniform(0), count = 280) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(center, size);
     // Warm-light wisp tint (matches the sun-lit cloud highlight, not pure white).
-    material.colorNode = (vec3(0.66, 0.72, 0.9)).mul(uApproachDim);
+    material.colorNode = vec3(0.66, 0.72, 0.9);
     // Soft radial feather → no card edge; capped low (additive-soft).
     const dist = length(uv().sub(0.5));
     const glow = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.6);
@@ -952,7 +929,7 @@ export function createLenticularCloudTSL(uTime = uniform(0), options = {}) {
     const color = mix(base, top, smoothstep(0.25, 0.8, vUv.y));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = (color).mul(uApproachDim);
+    material.colorNode = color;
     material.opacityNode = lens.mul(breath).mul(0.62);
     material.transparent = true;
     material.depthWrite = false;
@@ -1004,8 +981,7 @@ export function createNoctilucentVeilTSL(uTime = uniform(0), options = {}) {
     const reveal = smoothstep(0.8, 0.94, uDusk);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    // #9FD8FF→#BFE8FF
-    material.colorNode = mix(vec3(0.62, 0.85, 1.0), vec3(0.75, 0.91, 1.0), herring).mul(uApproachDim);
+    material.colorNode = mix(vec3(0.62, 0.85, 1.0), vec3(0.75, 0.91, 1.0), herring); // #9FD8FF→#BFE8FF
     material.opacityNode = filaments.mul(edge).mul(reveal).mul(0.5);
     material.transparent = true;
     material.depthWrite = false;
@@ -1060,7 +1036,7 @@ export function createIceCrystalsTSL(uTime = uniform(0), count = 160, options = 
     material.positionNode = billboardWorld(center, 0.7);
     // Crystals catch the act's light: warm sun-glint early, aurora green-cool late.
     const crystalTint = mix(vec3(1.0, 0.88, 0.7), vec3(0.55, 0.95, 0.8), smoothstep(0.3, 0.6, uDusk));
-    material.colorNode = (crystalTint).mul(uApproachDim);
+    material.colorNode = crystalTint;
     const dist = length(uv().sub(0.5));
     const sparkle = pow(oneMinus(dist.mul(2.0)).max(0.0), 3.0);
     const twinkle = sin(uTime.mul(2.4).add(aSeed.mul(7.0))).mul(0.4).add(0.6);
@@ -1110,8 +1086,7 @@ export function createDarkWispsTSL(uTime = uniform(0), count = 10) {
     const drift = sin(uTime.mul(0.06).add(aSeed)).mul(14.0);
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(vec3(aBase.x.add(drift), aBase.y, aBase.z), aSize);
-    // ink-shadow shred, visibly below the rail
-    material.colorNode = vec3(0.035, 0.048, 0.095).mul(uApproachDim);
+    material.colorNode = vec3(0.035, 0.048, 0.095); // ink-shadow shred, visibly below the rail
     const dist = length(uv().sub(0.5));
     const shred = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.4);
     const breakup = fbm2(uv().mul(3.4).add(aSeed), 4).mul(0.5).add(0.5);
