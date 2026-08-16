@@ -1522,15 +1522,19 @@ function createComet() {
     head.name = 'comet-head';
     group.add(head);
 
-    // Tail: an open cone pointing opposite the travel, colour cooling and dither
-    // thinning toward the tip (uv().y runs tip→base on ConeGeometry).
+    // Tail: an open cone pointing opposite the travel. ⚠️ ORIENTATION MEASURED, not
+    // assumed: on ConeGeometry `uv().y` is 0 at the BASE (local −Y, the end hugging
+    // the head) and 1 at the TIP (local +Y, the trailing end) — probed directly, and
+    // the first draft had both gradients inverted, painting a tail that dissolved at
+    // the nucleus and went solid-bright at its far end. Bright + dense where it
+    // leaves the head, cooling and dithering away as it trails.
     const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     tailMat.transparent = false;
     tailMat.depthWrite = true;
     tailMat.alphaTest = 0.5;
     const along = uv().y;
-    tailMat.colorNode = mix(vec3(0.35, 0.52, 0.66), vec3(0.85, 0.94, 0.97), along);
-    tailMat.opacityNode = cometDither(uReveal.mul(smoothstep(0.05, 0.75, along)));
+    tailMat.colorNode = mix(vec3(0.85, 0.94, 0.97), vec3(0.35, 0.52, 0.66), along);
+    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along))));
     const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
     tail.name = 'comet-tail';
     // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
