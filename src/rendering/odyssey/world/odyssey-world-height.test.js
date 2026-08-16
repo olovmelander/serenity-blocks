@@ -11,6 +11,7 @@ import {
     smoothMax,
 } from './odyssey-world-height.js';
 import { ODYSSEY_PEAK_SPECS, PEAK_CONE_RADIUS_FRAC } from './odyssey-peak-specs.js';
+import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -145,10 +146,20 @@ describe('the rail clears the world', () => {
 
 describe('the sea', () => {
     it('breaches at the chapter 2 to 3 boundary, not before or long after', () => {
-        // The shipped build crosses the water surface at p ~0.192. The world must actually be
-        // underwater before that and above it after, or the breach moment stops being a moment.
-        const before = getOdysseyPathPointAt(0.16);
-        const after = getOdysseyPathPointAt(0.24);
+        // The world must be underwater before the ch2->ch3 boundary and above it after, or
+        // the breach stops being a moment.
+        //
+        // DERIVED, not hardcoded. This used to sample p=0.16 and p=0.24 around a boundary
+        // that sat at 0.204. Wave 1A's ascent lengthened the journey 1767.65 -> 2276.62, so
+        // every p re-normalised (the boundary is now ~0.159) and the literal 0.16 landed on
+        // the wrong side of it. The breach is a fact about the BOUNDARY, so ask the layout
+        // where the boundary is.
+        const boundary = getChapterPathRange(3).start;
+        const span = 0.04;
+        const boundaryP = deriveOdysseyChapterPositions()[2];
+        const before = getOdysseyPathPointAt(Math.max(0, boundaryP - span));
+        const after = getOdysseyPathPointAt(Math.min(1, boundaryP + span));
+        expect(boundary.y).toBeGreaterThan(0);
         expect(before.y).toBeLessThan(ODYSSEY_SEA_LEVEL);
         expect(after.y).toBeGreaterThan(ODYSSEY_SEA_LEVEL);
     });
