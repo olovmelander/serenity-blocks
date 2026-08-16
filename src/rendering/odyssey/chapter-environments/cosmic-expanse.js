@@ -1839,6 +1839,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         heroPlanet.scale.setScalar(planetScale);
         heroPlanet.rotation.y += delta * 0.025;
         heroPlanet.rotation.z = Math.sin(time * 0.08) * 0.025;
+        // THE AURORA DARKNESS GATE (owner report 2026-08-16). The crown's own night
+        // mask only knows the PLANET's terminator; during the ascent the planet's
+        // night side faces a bright daylight sky and the curtains blazed at full
+        // effect from p≈0.62 (measured). The earth is the ONE element allowed before
+        // the boundary — its aurora is not. Both aurora halves share this uniform
+        // and arrive with the dark, exactly like every other space element.
+        const auroraGate = heroPlanet.userData.uAuroraReveal;
+        if (auroraGate) auroraGate.value = spaceReveal;
     }
 
     const { nebulaVolume, nebulaFar } = group.userData;

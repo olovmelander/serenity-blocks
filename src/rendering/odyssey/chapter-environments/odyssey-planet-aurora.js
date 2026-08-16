@@ -234,9 +234,18 @@ export function buildAuroraCrownGeometry(radius, spec = AURORA_OVAL) {
  * chapter compile the SAME graph, and so the aurora->filament bridge can adopt these
  * exact nodes later (Wave 5's "shared contract").
  */
-export function createAuroraCrownMaterial(uTime, uLightDir) {
+export function createAuroraCrownMaterial(uTime, uLightDir, uReveal) {
     const time = uTime ?? uniform(0);
     const light = uLightDir ?? uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
+    // THE DARKNESS GATE (owner report 2026-08-16: "Northern Lights render way too
+    // early"). The night mask above only gates by the PLANET's terminator — but during
+    // the ascent the planet's night side faces the camera against a bright DAYLIGHT
+    // sky, so the curtains blazed at full effect from p≈0.62 (measured eff 0.26→1.0
+    // across the climb while spaceReveal was still 0). The chapter ticks this to its
+    // own spaceReveal so the aurora arrives WITH the dark, like every other space
+    // element; it defaults to 1 so the playground probe and standalone use are
+    // unchanged. Shared with auroraSurfaceTerm so the two halves cannot drift apart.
+    const reveal = uReveal ?? uniform(1);
 
     const aRing = attribute('aRing', 'vec4');
     const coords = uv();
@@ -293,7 +302,7 @@ export function createAuroraCrownMaterial(uTime, uLightDir) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;
     const shape = foot.mul(fade).mul(rays).mul(clump);
-    const alpha = shape.mul(aRing.x).mul(night).mul(float(0.9));
+    const alpha = shape.mul(aRing.x).mul(night).mul(reveal).mul(float(0.9));
     // The materialOpacity factor re-arms setOpacityScale's otherwise-dead write (header).
     material.opacityNode = clamp(alpha, 0.0, 1.0).mul(materialOpacity);
     material.transparent = true;
@@ -316,9 +325,9 @@ export function createAuroraCrownMaterial(uTime, uLightDir) {
 /**
  * The +1-draw crown mesh, ready to add to the hero-planet group.
  */
-export function createPlanetAuroraCrown(radius, uTime, uLightDir, spec = AURORA_OVAL) {
+export function createPlanetAuroraCrown(radius, uTime, uLightDir, spec = AURORA_OVAL, uReveal) {
     const geometry = buildAuroraCrownGeometry(radius, spec);
-    const material = createAuroraCrownMaterial(uTime, uLightDir);
+    const material = createAuroraCrownMaterial(uTime, uLightDir, uReveal);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-aurora-crown';
     // The hero is a single group that is culled (or not) as a whole; the crown must never
@@ -336,8 +345,11 @@ export function createPlanetAuroraCrown(radius, uTime, uLightDir, spec = AURORA_
  * @param {Node} dTerm    the surface's existing world-space N.L, reused rather than
  *                        recomputed so the two halves cannot drift apart.
  */
-export function auroraSurfaceTerm(nLocal, dTerm, uTime, spec = AURORA_OVAL) {
+export function auroraSurfaceTerm(nLocal, dTerm, uTime, spec = AURORA_OVAL, uReveal) {
     const time = uTime ?? uniform(0);
+    // Same darkness gate as the crown (see createAuroraCrownMaterial) — one uniform
+    // drives both halves so the painted oval can never glow while the curtains are dark.
+    const reveal = uReveal ?? uniform(1);
     const cosInner = Math.cos(spec.surfaceInner);
     const cosOuter = Math.cos(spec.surfaceOuter);
     // |n.y| folds both caps into one band test — the north and south ovals are the same
@@ -384,5 +396,5 @@ export function auroraSurfaceTerm(nLocal, dTerm, uTime, spec = AURORA_OVAL) {
     // Deliberately quiet. This term is UNDER the curtains and additive over an already
     // shaded cap; at 0.55 (first revision) it rendered as a solid mint puddle that read
     // as a landing light. The standing half is what the eye is meant to catch.
-    return glow.mul(band.mul(night).mul(arc).mul(ribs).mul(0.30));
+    return glow.mul(band.mul(night).mul(arc).mul(ribs).mul(reveal).mul(0.30));
 }
