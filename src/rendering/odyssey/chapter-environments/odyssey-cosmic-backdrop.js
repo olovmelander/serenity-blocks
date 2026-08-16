@@ -30,7 +30,9 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { texture as textureNode, uniform, uv, vec2 } from 'three/tsl';
+import {
+    dot, float, mix, texture as textureNode, uniform, uv, vec2, vec3,
+} from 'three/tsl';
 
 export const COSMIC_BACKDROP_DEFAULTS = Object.freeze({
     // 1024×512 (~260 ms CPU, once, at chapter creation inside the warmup path): at
@@ -216,11 +218,15 @@ export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bak
     const material = new THREE.MeshBasicNodeMaterial();
     const drift = uv().add(vec2(time.mul(0.0004), 0));
     // §3b rule 4 (three grayscale value bands): the dome must sit ONE BAND BELOW the
-    // sculpted masses or depth collapses — the 0.62 drop is the band separation, not
-    // a tasteful dim. Checked against the masses in grayscale captures.
-    material.colorNode = textureNode(bake.texture, drift).rgb
-        .mul(energy.mul(0.5).add(0.7))
-        .mul(0.62);
+    // sculpted masses or depth collapses. RE-TUNED 2026-08-16 against a GROUND-TRUTH
+    // capture (real board, real grade): 0.62 alone was measured too hot — the game's
+    // post stack lifts saturation twice over a black crush, so the baked pockets came
+    // back as vivid magenta competing with the masses in both value AND chroma, which
+    // the flat NoToneMapping rig cannot show. Now dimmer AND desaturated toward its
+    // own luma, so the backdrop reads as depth rather than as a rival subject.
+    const baked = textureNode(bake.texture, drift).rgb.mul(energy.mul(0.5).add(0.7));
+    const bakedLuma = dot(baked, vec3(0.2126, 0.7152, 0.0722));
+    material.colorNode = mix(baked, vec3(bakedLuma), float(0.34)).mul(0.45);
     material.opacityNode = uOpacity;
     material.side = THREE.BackSide;
     material.depthWrite = false;

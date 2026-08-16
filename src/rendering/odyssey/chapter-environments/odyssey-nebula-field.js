@@ -118,12 +118,23 @@ function buildRoleMaterial(uReveal, role) {
 
     material.colorNode = base.add(interior).add(edge).add(lining);
 
-    // Screen-space hash dither against the SHARED uReveal — silhouette-only
-    // fragments on opaque meshes, not a full-screen cost.
-    const hash = fract(
+    // SPATIALLY COHERENT DISSOLVE (fixed 2026-08-16 from ground-truth capture). A
+    // pure screen-space hash reads as STATIC on these masses: the chapter spends
+    // stations 7-11 at partial reveal and again fades at the ch7 handoff, and the
+    // real-game frames showed the whole silhouette crawling with white noise — a
+    // defect the flat-lit rig could not show because it was pinned at reveal 1.
+    // The sculptor already stores normalised height per vertex in colour.g, so the
+    // threshold is mostly that height plus a little grain: the mass MATERIALISES
+    // from its base upward with a grainy leading edge, which reads as authored
+    // weather rather than noise, and still never leaves the opaque queue.
+    const height = attribute('color', 'vec3').g;
+    const grain = fract(
         sin(dot(screenCoordinate.xy.floor(), vec2(12.9898, 78.233))).mul(43758.5453),
     );
-    material.opacityNode = uReveal.sub(hash).add(0.5);
+    const dissolveThreshold = height.mul(0.75).add(grain.mul(0.25));
+    // 1.15 gain guarantees full coverage at reveal 1 (threshold peaks at 1.0), and
+    // reveal 0 stays fully discarded because alphaTest is 0.5.
+    material.opacityNode = uReveal.mul(1.15).sub(dissolveThreshold).add(0.5);
     return material;
 }
 
