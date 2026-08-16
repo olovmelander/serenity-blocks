@@ -184,8 +184,36 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
             // separate them (it has one now: ?odysseyNoCloudBank=1).
             // A dead band holds the bank at zero until it is close enough to read as a mass;
             // the closure at the boundary is unchanged, because tri = 1 there either way.
-            const shaped = Math.max(0, (tri - BANK_APPROACH_DEAD_BAND) / (1 - BANK_APPROACH_DEAD_BAND));
-            uDensity.value = shaped * shaped;
+            // ENTRY AND EXIT ANSWER DIFFERENT PROBLEMS, so they are shaped differently.
+            //
+            // The entry keeps the dead band and the square: the approach must be EMPTY, not
+            // faint, for the reasons above. The EXIT gets neither, and that is the fix for the
+            // largest remaining step in the 5->6 transition. Worked by hand from the shipped
+            // curve, bank density fell 0.58 -> 0.275 -> 0.082 across p 0.658/0.668/0.678 —
+            // the dead band and the square compound on the way out, so a 300 u lens filling
+            // the frame lost two thirds of itself between two samples (-81.4 luma measured;
+            // disabling the bank entirely turns that step into -4.4). Linear out gives
+            // 0.833 -> 0.667 -> 0.5 instead.
+            //
+            // ⚠️ THE WINDOW IS DELIBERATELY LEFT SYMMETRIC, and density is NOT the remaining
+            // lever. Widening the exit was tried first and reverted: `toVoid` below keys off
+            // RAW window progress (smoothstep(0.45, 1.0, uAltitude)) and silently assumes the
+            // peak sits at t=0.5, so a longer exit put the bank BELOW its own tint threshold
+            // and it stayed bridge-bright into space (window ended at luma 201 vs ~26).
+            //
+            // AND THE TINT, NOT THE DENSITY, IS WHAT ACTUALLY REMOVES THE BANK. Tabulated
+            // against the shipped curve, `toVoid` reaches 0.71 by p=0.678 while density still
+            // has 0.03 of window left — so the mass is fully void-coloured long before it
+            // thins out, and no density shape can spread a decline the COLOUR ramp has already
+            // finished. Measured: this linearised exit flattens every step except the spike
+            // (0.652->0.658 went -52.5 to -29.2, endLuma 26.2 to 16.4) and left the spike
+            // itself at -83.0 vs -81.4. The next change has to be `toVoid`, re-based on the
+            // peak and slowed to run out with the density rather than ahead of it.
+            const rising = t <= 0.5;
+            const shaped = rising
+                ? Math.max(0, (tri - BANK_APPROACH_DEAD_BAND) / (1 - BANK_APPROACH_DEAD_BAND))
+                : tri;
+            uDensity.value = rising ? shaped * shaped : shaped;
             uAltitude.value = t;
         },
         dispose() {
