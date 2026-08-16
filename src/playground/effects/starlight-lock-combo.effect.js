@@ -8,18 +8,27 @@
 // sky ~220 ms later. No independent effect storm; every seal originates at the
 // piece's actual cell centers.
 //
-// Deterministic: implements seek(time) (phase-locked replay from 0) and reset(rng)
-// so ?t= captures are pixel-reproducible within a session. The director's full
-// grammar (line clears / Tetris / T-spin / B2B / combo / perfect clear) is proven
-// renderer-free in tests/unit/starlight-reaction-director.test.js; this effect proves
-// the lock VISUAL. Kept intentionally lean (backdrop + seal, no compute/shockwave/
-// meteor pools) so it is a single TDR-safe capture.
+// The script then lands a 6-chain double clear, and the REAL theme CameraDirector
+// drives the camera — so the impact-shake ladder (a faint lock tap vs a combo slam)
+// is provable here instead of only in numbers.
 //
-//   /playground.html?effect=starlight-lock-combo&orbit=0&t=0.75
+// Deterministic: implements seek(time) (phase-locked replay from 0) and reset(rng)
+// so ?t= captures are pixel-reproducible within a session — the camera director's
+// idle float and shake phase are both seeded, never Math.random(). The director's
+// full grammar (line clears / Tetris / T-spin / B2B / combo / perfect clear) is
+// proven renderer-free in tests/unit/starlight-reaction-director.test.js. Kept
+// intentionally lean (backdrop + seal, no compute/shockwave/meteor pools) so it is
+// a single TDR-safe capture.
+//
+//   /playground.html?effect=starlight-lock-combo&orbit=0&t=0.75  (lock seal)
+//   /playground.html?effect=starlight-lock-combo&orbit=0&t=2.31  (combo shake peak)
+//   /playground.html?effect=starlight-lock-combo&orbit=0&t=2.80  (settled A/B pair)
+import * as THREE from 'three';
 import { createNebulaSky } from '../../themes/starlight/rendering/nebula-sky.js';
 import { createDeepStarfield } from '../../themes/starlight/rendering/deep-starfield.js';
 import { createStellarSeal, SEAL_LIFETIME } from '../../themes/starlight/rendering/stellar-seal.js';
 import { StarlightReactionDirector } from '../../themes/starlight/sim/starlight-reaction-director.js';
+import { CameraDirector } from '../../themes/starlight/composition/camera-director.js';
 
 export const meta = {
     id: 'starlight-lock-combo',
@@ -59,11 +68,16 @@ const PIECE_L = {
     accent: [0.72, 0.85, 1.0], // blue-white
 };
 
-// Scripted resolution sequence (phase-relative seconds). Locks only → proves the
-// ordinary-lock cue; timings chosen so t≈0.75 lands on the first seal's hot core.
+// Scripted resolution sequence (phase-relative seconds). Two ordinary locks, then a
+// 6-chain double clear — so the effect covers both halves of its name and the camera
+// shake ladder (lock tap vs combo slam) can be compared at phase-locked times.
+// t≈0.75 lands on the first seal's hot core; t≈2.31 lands on the combo's shake peak.
 const SCRIPT = [
     { t: 0.55, kind: 'lock', piece: PIECE_T },
     { t: 1.70, kind: 'lock', piece: PIECE_L },
+    {
+        t: 2.30, kind: 'combo', comboCount: 6, lineCount: 2, clearedRows: [17, 18],
+    },
 ];
 
 export function create({
@@ -76,10 +90,11 @@ export function create({
     scene.add(starfield.mesh);
     scene.add(seal.mesh);
 
-    // Camera-punch offsets (delta-normalized decay), applied in camera(). The lock cue
-    // never punches, but the director may request one for non-lock cues.
-    let camFov = 0;
-    let camDolly = 0;
+    // The REAL theme camera director drives the camera here (same rest framing the
+    // theme uses), so camera cues — above all the impact shake — are proven by this
+    // effect rather than approximated. idlePhase is pinned for reproducible captures.
+    const cameraDirector = new CameraDirector(camera, new THREE.Vector3(0, 0, 0), { idlePhase: 0 });
+    cameraDirector.snapToRest();
 
     // Adapters: the director talks to the world only through these. For the lean lock
     // proof, `seal` + `wave` are the live paths; the rest are lightweight/tracked so a
@@ -97,9 +112,12 @@ export function create({
         echo: () => {},
         meteor: () => {},
         sign: () => {},
-        camera: (kind, amount) => {
-            if (kind === 'fovPunch') camFov += amount;
-            else if (kind === 'dolly' || kind === 'vertigo') camDolly += amount;
+        // Mirrors the production bridge in starlight-reaction-adapters.js.
+        camera: (kind, amount, extra) => {
+            if (kind === 'fovPunch') cameraDirector.fovPunch(amount);
+            else if (kind === 'vertigo') cameraDirector.vertigo(amount);
+            else if (kind === 'shake') cameraDirector.shake(amount, extra ?? 120);
+            else cameraDirector.dolly(amount);
         },
         fx: (field, value) => { if (field in _fx) _fx[field] = Math.max(_fx[field], value); },
         aurora: () => {},
@@ -128,14 +146,22 @@ export function create({
         while (firedIdx < SCRIPT.length && SCRIPT[firedIdx].t <= p) {
             const a = SCRIPT[firedIdx];
             firedIdx += 1;
-            if (a.kind === 'lock') director.onPieceLock({ piece: a.piece });
+            if (a.kind === 'lock') {
+                director.onPieceLock({ piece: a.piece });
+            } else if (a.kind === 'combo') {
+                director.onCombo({ comboCount: a.comboCount });
+                director.onLineClear({ lineCount: a.lineCount, clearedRows: a.clearedRows });
+            }
         }
     };
 
     // One integration step: `p` drives the cue systems, `absTime` the backdrop drift.
+    // The camera director advances here (not in camera()) because the harness calls
+    // camera() BEFORE update()/seek() — so the shake would lag a frame otherwise.
     const runStep = (p, dt, absTime) => {
         fireActionsUpTo(p);
         director.update(dt);
+        cameraDirector.update(dt);
         seal.update(p);
         nebula.update(absTime);
         starfield.update(absTime);
@@ -144,17 +170,10 @@ export function create({
     const resetCues = () => {
         director.reset();
         seal.clear();
+        cameraDirector.snapToRest();
         phase = 0;
         firedIdx = 0;
-        camFov = 0;
-        camDolly = 0;
         _fx.bloomPunch = 0; _fx.flashPunch = 0; _fx.chromaPunch = 0; _fx.vignettePunch = 0;
-    };
-
-    const decayCam = (dt) => {
-        const k = Math.exp(-6 * dt); // delta-normalized settle
-        camFov *= k;
-        camDolly *= k;
     };
 
     // Seed one deterministic frame so a t=0 (or first) screenshot isn't empty-black.
@@ -181,7 +200,6 @@ export function create({
                 runStep(phase, step, time); // backdrop on monotonic global time (smooth live drift)
                 if (phase >= LOOP_PERIOD - 1e-9) resetCues();
             }
-            decayCam(d);
             setProj();
         },
 
@@ -207,12 +225,9 @@ export function create({
             starfield.update(0);
         },
 
-        camera(time, cam) {
-            const fov = 40 + camFov;
-            if (Math.abs(cam.fov - fov) > 1e-3) { cam.fov = fov; cam.updateProjectionMatrix(); }
-            cam.position.set(0, 0.4, 14 - camDolly);
-            cam.lookAt(0, 0, 0);
-        },
+        // Present so the harness skips its default orbit rig; the camera itself is
+        // written by cameraDirector.update() inside runStep().
+        camera() {},
 
         resize() { setProj(); },
 
@@ -222,13 +237,28 @@ export function create({
                 loopPeriod: LOOP_PERIOD,
                 sealLifetime: SEAL_LIFETIME,
                 script: SCRIPT.map((a) => ({ t: a.t, kind: a.kind })),
-                recommendedCaptureTimes: [0.7, 1.85],
+                // 0.7 = first seal's hot core; 2.31 = the combo's shake peak;
+                // 2.80 = the same scene fully settled (the shake A/B pair).
+                recommendedCaptureTimes: [0.7, 1.85, 2.31, 2.8],
             };
         },
 
         getDiagnostics() {
             return {
-                phase, firedIdx, fx: { ..._fx }, director: director.getDiagnostics(),
+                phase,
+                firedIdx,
+                fx: { ..._fx },
+                director: director.getDiagnostics(),
+                shakeAmplitude: cameraDirector.currentShakeAmplitude(),
+                cameraPosition: {
+                    x: camera.position.x, y: camera.position.y, z: camera.position.z,
+                },
+                cameraQuaternion: {
+                    x: camera.quaternion.x,
+                    y: camera.quaternion.y,
+                    z: camera.quaternion.z,
+                    w: camera.quaternion.w,
+                },
             };
         },
 
