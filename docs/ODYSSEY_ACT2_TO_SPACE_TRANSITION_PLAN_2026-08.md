@@ -282,7 +282,7 @@ annotated at the claim.
   **redistribute the EXISTING levels** along it (point 3 — no new levels; ch5's 8 levels,
   ids 28-35, re-spaced over the longer sky run).
 - ⚠️ **ARC LENGTH IS LOAD-BEARING.** Total is ~1767.65 and pinned by
-  `odyssey-path-layout.test.js`. Lengthening re-maps every chapter's p→world. The law from
+  `src/rendering/odyssey/odyssey-path-layout.test.js`. Lengthening re-maps every chapter's p→world. The law from
   the ch6 lever-C scout applies verbatim: recompute ALL level positions so every other
   chapter lands on **identical world seats** (`p_new = old_arclength_to_seat / new_total`),
   then re-pin the test to the new total.
