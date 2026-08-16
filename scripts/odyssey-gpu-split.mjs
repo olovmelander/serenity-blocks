@@ -196,7 +196,7 @@ const CONFIGURATIONS = [
     // Stations (all with --chapters 5,6,7 and --out, so they cannot clobber Act II):
     //   entry --seek 0.665 · reef --seek 0.73 · fall --seek 0.80
     // Run per station, ONE thermal window:
-    //   --only baseline,ch6-no-dome,ch6-no-nebula,ch6-no-dust,ch6-no-stars,ch6-no-heroes,baseline-repeat
+    //   --only baseline,ch6-no-dome,ch6-no-nebula,ch6-no-dust,ch6-no-stars,ch6-no-heroes,ch6-no-aurora,baseline-repeat
     // The content-match guard only judges baseline/baseline-repeat; differential rows
     // are EXPECTED to change draws — verify each row's draw count actually drops, or the
     // lever is dead and reports innocence, not absence.
@@ -242,6 +242,15 @@ const CONFIGURATIONS = [
         id: 'ch6-nebula-sprites',
         flags: { odysseyCh6NebulaSprites: '1' },
         note: 'the retired additive nebula sprite tiers + billboard pillar restored in place of the sculpted field',
+    },
+    // THE AURORAL CROWN (Space overhaul Wave 5). Unlike the two swap levers above this
+    // one is a plain REMOVE — the crown is new, so baseline-minus-lever is its own price.
+    // The lever drops BOTH halves (the +1-draw curtain mesh and the gas giant's surface
+    // term), because pricing only the mesh would miss the hero's extra fragment ALU.
+    {
+        id: 'ch6-no-aurora',
+        flags: { odysseyCh6NoAurora: '1' },
+        note: 'ch6 hero auroral crown withheld — curtain mesh AND the gas-giant surface term',
     },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];

@@ -546,6 +546,75 @@ means same-bucket = "below resolution", never "zero").
 - Gate: motion verified at source (wiring/uniforms), not by frame-diffing captures
   (~23 % pixel noise floor between runs); overdraw of ribbons measured.
 
+> **WAVE 5 OUTCOME (2026-08-16).** The comet and the velocity-keyed streak stretch
+> shipped earlier (98704055); this closes the other two items.
+>
+> **The stellar ramp** (`odyssey-stellar-ramp.js`): the two hand-mixed palettes and the
+> bare `Math.random() > 0.3` split are gone, replaced by a 6-class quantised blackbody
+> ladder (M→B, Charity's table, each colour normalised so its brightest channel is 1.0).
+> The three per-class gains are the point: `emissive` pushes hot classes past 1.0 so they
+> clip into bloom, `sizeGain` makes M giants the biggest thing in the field, and
+> `coreGain` rides the core EXPONENT so those giants are also the softest — size alone
+> just makes a bigger dot. Weights follow the visible sky, not a mass function. The field
+> is now SEEDED off the tier name, so two builds are byte-identical (the garland lesson,
+> e9ccc0f6 — under `Math.random` no two captures of this chapter were comparable).
+> `coreGain` travels in `aColor.w` rather than a 5th instanced attribute: the geometry
+> already binds 7 vertex buffers and 8 is the ceiling.
+>
+> **The auroral crown** (`odyssey-planet-aurora.js`): two halves, one look — an additive
+> term folded into the gas giant's own surface graph (0 draws, carries the read when the
+> pole is edge-on, which in-game is most of the chapter) plus a curtain mesh that breaks
+> the silhouette. Four ribbon strips on two poles, ONE indexed geometry, ONE material,
+> **+1 draw / ~1k tris**. Both poles are authored and each is masked by its own N·L, so
+> whichever cap is dark is the one that glows — a re-framing of the hero cannot strand it.
+> Crown vertices carry the RADIAL direction as their normal (a deliberate lie) so the
+> crown's night mask is numerically identical to the surface's terminator. Both halves
+> share `auroraArc`, so the painted oval breaks where the curtains break. Palette is
+> winter's photo-verified emerald, ported as literals.
+>
+> **EXIT GATE MEASURED (Lane B, fall station p=0.78, adapter amd/rdna-2, `--low-power`):
+> baseline 3.21/3.21 ms p50, `ch6-no-aurora` 3.21, baselineDrift EXACTLY 0.000, 70 draws
+> min==max. The crown costs 0.00 ms p50 — below the 65.536 µs tick — for +1 draw.**
+> Priced with a TRUE remove lever (`?odysseyCh6NoAurora=1`) that withholds BOTH halves.
+> Report: `ch6-wave5-aurora-laneb-fall-v3.json`.
+>
+> **THREE THINGS ONLY MEASUREMENT CAUGHT, none of which a clean build would have shown:**
+> (1) the crown first billed **+2 draws** — three splits every transparent `DoubleSide`
+> object into a back-face and a front-face pass, so one mesh billed twice;
+> `forceSinglePass = true` fixes it and provably changes no pixel, because additive
+> blending is commutative and `depthWrite` is already off. **NINE more ch6 materials are
+> still double-sided without that flag** (aurora bridge ×3, streak motes, photon ring,
+> glow rings, 3 ring belts) — an unpriced draw-count win, left for its own pass.
+> (2) the rib counts were authored at PROBE scale (34/26) where the hero fills the frame;
+> in the graded capture the giant is ~90 px across, which put ribs at ~3 px and read as a
+> dotted LED strip that would shimmer in motion. Halved to 18/13. **Judge rib counts from
+> a chapter capture, not from the probe.**
+> (3) a first hue reading of the in-game crown came back 211.5° (blue) and looked like a
+> grade defect. It was contamination: that region is also where the planet's blue
+> atmosphere halo peaks. Differencing the phase-locked lever A/B isolates the crown's own
+> contribution at **hue 144.4°, inside winter's verified 133.9–145.3° band** — no defect.
+> ⚠️ The full-frame diff is useless for this: it is swamped by the ~23 % run-to-run pixel
+> noise this wave's own gate line warns about (280k "changed" pixels at ±1 LSB). Threshold
+> hard and restrict to the object.
+>
+> **DELIBERATE DEVIATION.** The brief's "velocity-keyed streak stretch *replacing the
+> separate streak-mote system*" is NOT done, and is not recommended: the motes are
+> corridor-parented and rush the camera while the stars are a static shell, so the merge
+> is a real refactor to reclaim **1 draw of 70** on a 3.21 ms chapter — unmeasurable
+> against a 65.536 µs tick. The dive-stretch half of that item shipped in 98704055.
+>
+> **OPEN, for the owner.** At the shipped framing the hero's pole is edge-on, so the
+> aurora reads as a polar fringe under the south limb rather than as an oval. Giving the
+> giant a real axial tilt would fix that and is physically natural, but it changes the
+> Wave-4-approved silhouette and needs the spin moved to an inner node (spinning a tilted
+> group about world +y precesses the tilt ~90–130° across a traverse). Not done.
+>
+> Guards: 22 new tests across `odyssey-planet-aurora.test.js` and
+> `odyssey-stellar-ramp.test.js`, plus the lever in `cosmic-expanse-bisect-levers.test.js`.
+> Three integration laws were mutation-tested — dropping `materialOpacity`, reverting the
+> axial rise to radial, and reverting the seeded field to `Math.random` each killed
+> exactly one test.
+
 > **WAVE 5 OUTCOME (2026-08-15/16, `98704055` + `96d69938`).** Shipped: **the comet**
 > (sculpted opaque ice head, 2-band paint on the causal key + drawn edge, with a
 > dithered opaque cone tail) sweeping a 70 s chord through the reef window,
