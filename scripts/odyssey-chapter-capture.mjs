@@ -549,10 +549,42 @@ async function capturePng(win, filename, metrics = {}) {
     await writeFile(path.join(ARTIFACT_DIR, filename), image.toPNG());
     await writeFile(
         path.join(ARTIFACT_DIR, filename.replace(/\.png$/, '.json')),
-        JSON.stringify(metrics, null, 2),
+        JSON.stringify({ ...metrics, ...frameLuma(image) }, null, 2),
         'utf8',
     );
     console.log(`[chapter-capture] wrote ${filename}`);
+}
+
+/**
+ * MEAN FRAME LUMA, recorded into every sidecar.
+ *
+ * The Act II -> Space transition is judged on how the frame's brightness travels across the
+ * seam (docs/ODYSSEY_ACT2_TO_SPACE_TRANSITION_PLAN_2026-08.md §1): the shipped defect is that
+ * 74% of the change lands in the final third of the window, ending in a single -89 luma step
+ * where the One World act gate flips. That is a property of the PIXELS, so it has to be
+ * measured from them — and the harness is the only place that already holds a decoded bitmap,
+ * which is why this lives here rather than in a separate analyser that would need a PNG
+ * decoder Node does not ship.
+ *
+ * Rec.709 luma on the raw BGRA bitmap, subsampled on a fixed stride: this is a curve-shape
+ * metric across frames, not a colourimetric measurement, and the stride keeps it free.
+ */
+function frameLuma(image) {
+    try {
+        const { width, height } = image.getSize();
+        if (!width || !height) return { meanLuma: null };
+        const buf = image.toBitmap(); // BGRA
+        const stride = 4 * 4; // every 4th pixel
+        let sum = 0;
+        let n = 0;
+        for (let i = 0; i + 3 < buf.length; i += stride) {
+            sum += 0.0722 * buf[i] + 0.7152 * buf[i + 1] + 0.2126 * buf[i + 2];
+            n += 1;
+        }
+        return { meanLuma: n ? Number((sum / n).toFixed(3)) : null, lumaSamples: n };
+    } catch (error) {
+        return { meanLuma: null, lumaError: String(error && error.message) };
+    }
 }
 
 async function collectMetrics(win, extra = {}) {
