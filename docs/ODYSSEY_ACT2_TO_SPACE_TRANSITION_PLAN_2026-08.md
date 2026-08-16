@@ -268,15 +268,26 @@ climb still showed a white ceiling, because the rail at 1503 was underneath Z02'
 Solving the climb against the *measured* ceiling costs **+1725 arc (+98 %)**, which makes
 chapter 5 **57 % of the whole journey**. That is not a transition, that is a new act.
 
-**The cheap way through, and the recommendation.** Only ONE mass is the problem — the next
-nearest above-camera mass is 565 u away and reads correctly as distant high cloud. So:
-keep the moderate climb (**+626 arc, apex 1503, ch5 at 37 % of the journey**) and **move Z02
-laterally** so the rail threads past it instead of under it. Z02 keeps its authored
-`overhead` role for early chapter 5 — where the eye is at 600-800 and it still reads
-base-first at ~25° — and stops being a lid at the top of the climb.
-⚠️ Respect what that spec's own comment records: these four were raised from base 1015-1080
-*because* at close range an overhead mass shows its featureless flat base and fills the frame
-with "white potatoes". Move Z02 sideways, do not lower it.
+**~~The cheap way through: move Z02 laterally, since only ONE mass roofs the rail.~~
+TRIED 2026-08-16 AND FALSIFIED BY CAPTURE — reverted.** Moving Z02 300 u along the climb's
+perpendicular changed the frames not at all, because the scan behind that recommendation
+asked the wrong question. It tested whether a mass's horizontal FOOTPRINT contains the rail;
+but the camera looks *up and forward*, so a mass 1,300 u away and 400 u up still fills the
+top of frame. Counted properly, **26 of 52 masses top out above the rail**, and Z02 still
+subtends ~40° from its new seat. The ceiling is the POPULATION, not one cloud, and no
+single-mass edit can move it. Z02 was restored; authored art should not carry a change that
+bought nothing.
+
+**WHAT THE ASCENT DID ACHIEVE, and it is not nothing.** The capture shows the rail climbing
+*through* the deck and breaking out: by **p≈0.755** the cloud tops are BELOW the horizon line
+and the frame is open sky with the aurora above. That is the beat the owner asked for, and it
+exists now where before the journey never rose above the weather at all. The frames that
+still read as "ceiling" (p 0.71-0.744) are the climb *inside* the deck, which is correct.
+
+**So the blocker was never the clouds — it is still §2.2.** The break-out lands at p≈0.755,
+the boundary at 0.7401, and the One World is deleted at **0.7701** — one sample after the
+payoff. The ascent buys a genuine "above the weather" moment and the act gate throws it away
+a frame later. **Wave 1B is now the highest-value work in this plan, not Wave 1A.**
 
 **Owner call needed on the journey-length trade** (D0): +626 arc takes chapter 5 from 14.8 %
 to 37 % of the traversal. The levels are re-spaced, not added, exactly as directed — but the
