@@ -6,6 +6,7 @@ import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/pa
 import {
     ONE_WORLD_ACT_MARGIN,
     isWorldVisibleAtProgress,
+    worldDepartureFade,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import {
     DEFAULT_ODYSSEY_TRANSITION,
@@ -108,5 +109,53 @@ describe('the world is gated to Act II', () => {
         // The fog handover and the orb ground-sampler read plain data off the world and must
         // keep working regardless of whether it draws.
         expect(BOARD).toMatch(/const worldFog = this\.oneWorld\.fog;/);
+    });
+});
+
+describe('the world RECEDES before the gate fires (Wave 1B)', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const actEnd = cp[5];
+    const skyStart = cp[4];
+    const fade = (p) => worldDepartureFade(p, skyStart, actEnd);
+
+    it('is fully closed BEFORE the visibility flag flips — the whole point', () => {
+        // The cliff was: full strength, then nothing, in one frame. The recession must have
+        // finished while the world is still allowed to draw, so the boolean has nothing
+        // visible left to hide. If this ever regresses, the -89 luma step comes back.
+        const gateFires = actEnd + ONE_WORLD_ACT_MARGIN;
+        expect(fade(gateFires)).toBeCloseTo(1, 6);
+        expect(fade(gateFires - 1e-4)).toBeGreaterThan(0.999);
+        expect(isWorldVisibleAtProgress(gateFires - 1e-4, cp[1], actEnd)).toBe(true);
+    });
+
+    it('leaves the whole of Act II untouched', () => {
+        // A no-op everywhere it matters: nothing before the last 30% of the sky chapter may
+        // dim by even a fraction, or the act quietly loses contrast for the whole journey.
+        for (let i = 0; i <= 20; i += 1) {
+            const p = cp[1] + ((skyStart - cp[1]) * (i / 20));
+            expect(fade(p), `p=${p.toFixed(3)} must be untouched`).toBe(0);
+        }
+        expect(fade(skyStart)).toBe(0);
+    });
+
+    it('is monotonic and smooth across the departure', () => {
+        let prev = -1;
+        for (let i = 0; i <= 60; i += 1) {
+            const p = skyStart + ((actEnd + ONE_WORLD_ACT_MARGIN - skyStart) * (i / 60));
+            const v = fade(p);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            prev = v;
+        }
+        // Smoothstep ends: no step at either edge of the ramp.
+        expect(fade(actEnd - (actEnd - skyStart) * 0.30)).toBeCloseTo(0, 6);
+    });
+
+    it('survives a re-layout, because it is expressed in fractions', () => {
+        // Wave 1A moves every chapter boundary. Feed it a completely different layout and the
+        // contract must still hold: closed before the gate, zero through the act.
+        const alt = { skyStart: 0.3882, actEnd: 0.701 };
+        const altFade = (p) => worldDepartureFade(p, alt.skyStart, alt.actEnd);
+        expect(altFade(alt.actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(1, 6);
+        expect(altFade(alt.skyStart)).toBe(0);
     });
 });

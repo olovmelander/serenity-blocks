@@ -19,7 +19,7 @@ import {
 } from './world/odyssey-world-grade.js';
 import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
-import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
+import { isWorldVisibleAtProgress, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_HALF_WIDTH,
@@ -2666,6 +2666,29 @@ export class OdysseyBoardController {
                 const worldVisible = isWorldVisibleAtProgress(cameraProgress, actStart, actEnd);
                 this.oneWorld.group.visible = worldVisible;
                 this._oneWorldVisible = worldVisible;
+
+                // ── THE DEPARTURE FADE (Wave 1B) ─────────────────────────────────────
+                // The gate above is a BOOLEAN, and until now it was also the artistic end of
+                // Act II — the world drew at full strength right up to actEnd + margin and
+                // then stopped between two frames. Measured at the 5->6 seam: a -89 luma step
+                // at p=0.678, with 74% of the whole transition's brightness change landing in
+                // its final fifth. That flag is what the owner sees as the mountain popping.
+                //
+                // So the world now RECEDES into the sky before the flag ever fires. The ramp
+                // is derived from the act edge, never hardcoded, so a re-layout carries it:
+                // it opens 30% of the sky chapter before the boundary and is fully closed at
+                // 85% of the margin — comfortably ahead of the gate, which keeps its job as
+                // the correctness backstop and simply never has anything visible left to hide.
+                if (typeof this.oneWorld.setDepartureFade === 'function') {
+                    const skyStart = this.presentationLayout.chapterPositions[4];
+                    // Recede INTO whatever the sky currently is — the 5->6 colour bridge is
+                    // already driving that toward space, so the world dissolves into the tone
+                    // the frame is becoming rather than toward an authored constant.
+                    this.oneWorld.setDepartureFade(
+                        worldDepartureFade(cameraProgress, skyStart, actEnd),
+                        this.scene?.fog?.color ?? null,
+                    );
+                }
 
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are
