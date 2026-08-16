@@ -538,6 +538,68 @@ annotated at the claim.
   not just opacity. **Owner decision D3.**
 - Gate: reference-driven review against blessed refs, per chapter convention.
 
+### Wave 1C — THE MASSIF FLYBY (owner-directed 2026-08-16, after playing Wave 1A)
+Owner: *"Adjust the ascending path so it routes much closer to the mountainside,
+bypassing the peak in close proximity"* — and, explicitly, **keep the cloud
+transition** (the §8 limb hand-off is praised and is a hard gate here, not a casualty).
+
+**The measured geometry (2026-08-16 eve).** The hero massif sits at (−182.7, −1059.3),
+crown 1017.5, radius 603, cone exponent 1.7 — which makes it a narrow spire near the
+top: its rock surface is only ~9 u from the axis at y=1000, ~60 u at y=900, ~115 u at
+y=800. The Wave 1A ascent passes the crown at **~443 u abeam** at crown height
+(ascent point 4, (−41.5, 1023.9, −639)) — the owner's screenshot shows exactly that:
+a mountain admired from across the valley, not flown past.
+
+**Why a nudge cannot do it (worked, not guessed):** with the ascent's endpoints and
+total length FIXED (corridor join direction + 76 u spacing; the level re-map), the
+climb's horizontal budget is ~549 u against a net 374 u of required displacement —
+excursion capacity ≈ **87 u** toward the massif and back. Closest approach improves
+443 → ~356 u: still a valley view. Hugging at 150–200 u needs ~270 u of approach —
+**the ascent must grow again**, via the exact procedure 5ce1c909 proved: regenerate
+the climb from a schedule (never nudge one point), then re-map — ids 1–28 nearest-point
+world seats, 29–35 re-spaced along the climb, 36–59 arc-preserving so ch6–8 keep their
+extents — and re-pin the total.
+
+**The flyby design to regenerate from:**
+- Heading schedule swings the mid-climb toward the massif's east flank, closest
+  approach **150–200 u from the axis at y ≈ 950–1050** (rock is ≤ 60 u there — real
+  clearance, real proximity; the deck bases at ~900 so the flyby happens at cloud-top
+  height with the summit spire above), then arcs back out.
+- The corridor join point (160.8, 1205.5, −719.5) and arrival direction stay
+  BYTE-IDENTICAL — the translated space run must not move again.
+- ⚠️ Verify the §8 cloud LIMB's anchoring before regenerating: if the limb is seated
+  against the current rail line, the flyby bend re-routes the camera around it. The
+  limb crossing is a gate ("keep the cloud transition"), same rank as the seam-luma
+  gates.
+- Re-solve the ch6 `APPROACH` NDC fits (again — any spline change invalidates the
+  replay), re-run the corridor guard (arc-stepped), the world rail-clearance suite
+  against the massif's own height function, hero framing, and all four §8.7 seam
+  gates via `scripts/odyssey-seam-luma.mjs`.
+- Gate: a seam capture in which the mountainside visibly SWEEPS PAST on one side of
+  the frame during the climb — parallax against the rock face is the whole point —
+  with the limb crossing and the space arrival unchanged.
+
+> ⚠️ **Coordination note (2026-08-16): two sessions share this working tree.** The
+> visibility fix below (`fbd8bc81`) was landed by the second session; the flyby was
+> deliberately DESIGNED-NOT-BUILT in the same sitting because Wave 1A's gates had
+> just been passed against the current geometry, and concurrent re-authoring of the
+> same seven control points by two sessions is the shared-worktree failure mode the
+> project has already paid for. Whichever session takes this wave: regenerate, never
+> nudge, and land it as one commit.
+
+### Wave 1D — PREMATURE AURORA/BH: FIXED (`fbd8bc81`, 2026-08-16)
+Owner report: the black hole and Northern Lights appear in the bright sky, disappear,
+then reappear in space. Measured (ascent sweep probe, new
+`scripts/odyssey-ch6-ascent-sweep-probe.mjs`): the planet-aurora crown ran eff
+0.26 → 1.0 across p 0.62–0.74 while `spaceReveal` was 0 — its night mask knows the
+PLANET's terminator, not the SKY, and during the ascent the planet's night side faces
+the camera in daylight. The "disappear" beat is the cloud limb occluding it; the
+"black hole" in the owner's screenshot is the path ribbon (the real BH measured 0 at
+every pre-boundary station). Fix: one `uAuroraReveal` uniform through BOTH aurora
+halves (the shared-contract principle), ticked to `spaceReveal` — the earth is the one
+element allowed before the boundary; its aurora now arrives with the dark. Verified by
+5 derived-station unit tests, the sweep probe, and a 0.68–0.80 seam capture.
+
 ### Wave 4 — Grade, measure, close
 - Full 5→6 capture review, value-band checks, the four suites (fog-optout, framing,
   staging, layout), Lane B at a seam station, ledger + doc sweep.
