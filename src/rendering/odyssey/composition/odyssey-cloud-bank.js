@@ -28,10 +28,14 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    cameraPosition,
     clamp,
     float,
     mix,
+    normalize,
+    oneMinus,
     positionLocal,
+    positionWorld,
     smoothstep,
     uniform,
     vec3,
@@ -39,8 +43,29 @@ import {
 import { fbm3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { SEAM_56_AURORA_BRIDGE } from '../chapter-environments/shared/seam-bridges.js';
 
-/** World radius of the bank (before the Y squash). The journey's largest transition. */
-export const CLOUD_BANK_RADIUS = 150;
+/**
+ * World radius of the bank (before the Y squash). The journey's largest transition.
+ *
+ * 150 -> 620 (Act II->Space section 8.5). At 150 the eye left the shell entirely by
+ * p=0.7941 (normalised ellipsoid coordinate 1.112, and 1.236 by 0.8001) — MEASURED as the
+ * bank contributing exactly zero there: mean frame luma matched the bank-off arm to within
+ * 0.08 and 0.01 luma. At 620 the eye is inside at every one of the 18 seam stations
+ * (e = 0.025..0.515), which is what lets the limb keep working through the whole window.
+ *
+ * It is also what turns this from a volume you DISSOLVE INSIDE into one you GO PAST: the
+ * limb surface along the forward horizon ray sits ~682 u away at p=0.6801 and closes to
+ * ~510 u by p=0.8001, so it has real parallax against the stars behind it.
+ */
+export const CLOUD_BANK_RADIUS = 620;
+/**
+ * Noise cells across the shell, held CONSTANT as the radius changes.
+ *
+ * The frequency was a bare literal (0.07, hand-fitted to r=150 for ~10 cells). Scaling the
+ * radius 4.1x without re-basing it samples the FBM at |positionLocal| = 620 * 0.07 = 43.4
+ * in noise space, which reads as a per-pixel hash, not weather. Frequency is now DERIVED
+ * from the radius so the two cannot drift apart again.
+ */
+export const CLOUD_BANK_NOISE_CELLS = 10.5;
 /** Vertical squash — a stratus lens, not a sphere. */
 export const CLOUD_BANK_Y_SCALE = 0.35;
 /**
@@ -48,7 +73,7 @@ export const CLOUD_BANK_Y_SCALE = 0.35;
  * begins to appear. See `update` — without it the bank is faintly present across its whole
  * window and paints noise over a clean sky long before it reads as anything.
  */
-export const BANK_APPROACH_DEAD_BAND = 0.30;
+export const BANK_APPROACH_DEAD_BAND = 0.06;
 
 /** Entry side: Ch5's bright cloud-cathedral daylight. */
 const BANK_DAYLIT = new THREE.Color(0xdfeaf6);
@@ -58,6 +83,13 @@ const BANK_BRIDGE = new THREE.Color(SEAM_56_AURORA_BRIDGE.fogColor);
 const BANK_VOID = new THREE.Color(0x05060f);
 /** Aurora lift on the bright billows in the dense half (the bridge's ambient teal). */
 const BANK_AURORA = new THREE.Color(SEAM_56_AURORA_BRIDGE.ambientLight);
+/**
+ * Overall level of the limb band. The bank used to derive its brightness from filling the
+ * frame; a horizon band has to be given one.
+ */
+const BANK_LIMB_GAIN = 0.42;
+/** Peak alpha of the band. Replaces the old 1.25 gain, which clamped the shell opaque. */
+const BANK_LIMB_ALPHA_GAIN = 0.95;
 
 /**
  * @param {object} [opts]
@@ -79,21 +111,60 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     const uBridge = uniform(BANK_BRIDGE);
     const uVoid = uniform(BANK_VOID);
     const uAurora = uniform(BANK_AURORA);
+    const uLimbGain = uniform(BANK_LIMB_GAIN);
 
-    // Frequency set by the radius (the quench's lesson: 0.028 at r=110 was three cells of
-    // flat blur across the whole volume). r=150 -> 0.07 gives ~10 cells across the view.
-    // The mesh's Y squash stretches this field horizontally into strata for free.
-    const p = positionLocal.mul(0.07);
+    // Frequency DERIVED from the radius (the quench's lesson: 0.028 at r=110 was three
+    // cells of flat blur across the whole volume). ~10.5 cells across the shell at any
+    // radius. The mesh's Y squash stretches this field horizontally into strata for free.
+    const p = positionLocal.mul(CLOUD_BANK_NOISE_CELLS / radius);
     const slow = fbm3(p.add(vec3(0.0, uTime.mul(0.02), 0.0)), 4);
     const fast = fbm3(p.mul(3.1).add(vec3(uTime.mul(0.06), 0.0, uTime.mul(0.045))), 3);
     const billowRaw = clamp(slow.mul(0.72).add(fast.mul(0.42)), 0.0, 1.0);
     const billow = smoothstep(0.22, 0.78, billowRaw);
     const veil = smoothstep(0.28, 0.86, billow);
 
+    // ---- THE LIMB MASK (Act II->Space section 8.5) --------------------------------
+    // The one change that stops this volume filling the frame.
+    //
+    // The rail used to fly UNDER the cloud deck, so a shell the camera sits inside was the
+    // right instrument: an occlusion moment has to occlude. After the ascent the rail exits
+    // ABOVE the weather, and the same shell became a white wall — MEASURED at mean frame
+    // luma 188 at p=0.7341, brighter than anything Act II's own sky reaches, followed by a
+    // -86.5 per 0.01p cliff.
+    //
+    // The camera is STILL inside the shell (that is what gives the clouds their scale and
+    // their parallax); the shell simply stops painting above the horizon. With the eye
+    // inside a BackSide shell every screen pixel maps to exactly one fragment, so
+    // `viewDir.y` IS the sine of that pixel's view elevation — a direct "cloud at the
+    // horizon, clear sky above" control rather than a proxy for one.
+    //
+    // An eye-DISTANCE fade cannot do this job. It only correlates with elevation for one
+    // eye position and inverts as the camera traverses the volume; by p=0.7501 the eye is
+    // ~6 u from the shell centre, at which point nearly every fragment is "near".
+    const viewDir = normalize(positionWorld.sub(cameraPosition));
+    const elev = viewDir.y;
+    // A band straddling the horizon, plus a weaker floor below it — the deck you are now
+    // looking down ON. Above elev ~0.30 the mask is zero and the sky belongs to the stars.
+    // Written with oneMinus, never a reversed smoothstep: edge0 > edge1 is undefined and
+    // has silently evaluated to 0 in this repo before.
+    const limbCore = smoothstep(-0.30, -0.06, elev)
+        .mul(oneMinus(smoothstep(0.06, 0.30, elev)));
+    const limbFloor = oneMinus(smoothstep(-0.34, -0.06, elev)).mul(0.30);
+    const limbProfile = clamp(limbCore.add(limbFloor), 0.0, 1.0);
+
     // Alpha: billow-shaped only while thin; fully opaque at peak. Structure lives in colour.
+    //
+    // THE 1.25 GAIN IS GONE. It hard-clamped every fragment with d >= 0.8 to a fully opaque
+    // wall: at p=0.7401 and p=0.7441 the arithmetic is t=0.5333, d=0.9333, and
+    // clamp(0.9333^2 * 1.25) = 1.0 exactly. That is why the bank read as an occluder rather
+    // than as weather, and it is what was HIDING the chapter-6 arrival pop behind it.
     const d = clamp(uDensity, 0.0, 1.0);
     const alphaShape = mix(veil, float(1.0), d);
-    const opacity = clamp(alphaShape.mul(d).mul(1.25), 0.0, 1.0);
+    const opacity = clamp(
+        limbProfile.mul(alphaShape).mul(d).mul(BANK_LIMB_ALPHA_GAIN),
+        0.0,
+        1.0,
+    );
 
     // COLOUR: daylight -> bridge teal -> void, a ramp DOWNWARD in luminance. The first half
     // of the crossing eases into the authored bridge tone; the second half falls to vacuum.
@@ -143,7 +214,7 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     const base = mix(mix(entry, uBridge, toBridge), uVoid, toVoid);
     // Aurora on the bright billows, strongest mid-crossing where the bank is densest — the
     // aurora seen from inside the weather rather than painted on a dome behind it.
-    const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(smoothstep(1.0, 0.6, a))).mul(0.55);
+    const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(smoothstep(1.0, 0.6, a))).mul(0.35);
     // INTERIOR FORM IN THE COLOUR TERM, never the alpha (the torn-curtain lesson) — but
     // QUANTISED, so the bank speaks the deck's language. The deck is now poster cumulus with
     // two flat value bands and a drawn edge (cloud plan Waves 1-2); a smooth `0.42 + 0.72 *
@@ -157,7 +228,10 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // palette must never break (a cloud is lighter than the sky at every point).
     const bandLit = smoothstep(0.46, 0.54, billow);
     const posterised = float(0.72).add(bandLit.mul(0.22)).add(billow.mul(0.08));
-    const colour = mix(base, uAurora, auroraAmt).mul(posterised);
+    // The limb is now the only bright thing left in frame, so its LEVEL is an art lever in
+    // its own right rather than whatever the density envelope happens to produce. Applied
+    // last, after the bands and the aurora, so it scales the finished tone.
+    const colour = mix(base, uAurora, auroraAmt).mul(posterised).mul(uLimbGain);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;
@@ -165,6 +239,11 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.BackSide;
+    // Discard the clear sky above the limb outright. r181 applies opacityNode to
+    // diffuseColor.a and discards on alphaTest independently of the `transparent` flag, so
+    // the 40-55 % of frame above the band costs no blend work at all. Precedent: the
+    // sculpted cloud field at odyssey-world-renderer.js:2721-2724.
+    material.alphaTest = 0.004;
     // Sits exactly where the 5->6 fog lerp is mid-flight; it carries its own ramp. The
     // scene-fog trap has cost this repo four sessions — this volume must not join them.
     material.fog = false;
@@ -218,11 +297,29 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
             // (0.652->0.658 went -52.5 to -29.2, endLuma 26.2 to 16.4) and left the spike
             // itself at -83.0 vs -81.4. The next change has to be `toVoid`, re-based on the
             // peak and slowed to run out with the density rather than ahead of it.
+            // POST-LIMB ENVELOPE (Act II->Space section 8.5).
+            //
+            // The dead band was 0.30 because a full-screen FBM mottle read as noise on a
+            // clean sky. A band confined to the horizon has no such failure mode, and 0.30
+            // is precisely why the bank contributed almost nothing before p~0.700 — the
+            // measured live-vs-bank-off delta there is only +0.5, +0.6 and +0.9 luma. At
+            // 0.06 the limb is present across the whole approach, which is what lets it
+            // FALL while chapter 6 rises.
+            //
+            // The exit is the load-bearing half: a fast body so the mass clears, plus a
+            // long low tail so the band does not vanish while space is still arriving.
             const rising = t <= 0.5;
-            const shaped = rising
-                ? Math.max(0, (tri - BANK_APPROACH_DEAD_BAND) / (1 - BANK_APPROACH_DEAD_BAND))
-                : tri;
-            uDensity.value = rising ? shaped * shaped : shaped;
+            if (rising) {
+                const shaped = Math.max(
+                    0,
+                    (tri - BANK_APPROACH_DEAD_BAND) / (1 - BANK_APPROACH_DEAD_BAND),
+                );
+                uDensity.value = shaped * shaped;
+            } else {
+                const u = (t - 0.5) / 0.5;
+                const fall = 1 - u;
+                uDensity.value = 0.86 * (fall ** 2.4) + 0.14 * (fall ** 0.6);
+            }
             uAltitude.value = t;
         },
         dispose() {

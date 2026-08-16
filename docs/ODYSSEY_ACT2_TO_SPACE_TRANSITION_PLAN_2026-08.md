@@ -592,3 +592,92 @@ opaque dissolve keeps it out of the blend queue but does not make it free.
   byte-identical frames with null sidecars (the tell is station mtimes collapsing).
 - Read the plan's own design section for which light/key/schedule is authoritative before
   auditing against a constant you assumed (ch6 Wave 6 burned a full capture A/B on this).
+
+---
+
+## 8. THE CLOUD BANK REWORK — measured A/B, and the design that survived it (2026-08-16)
+
+### 8.1 Both failure states, measured on one tree
+
+Two same-tree, post-ascent seam captures (`chapterPositions[5] = 0.7401` in both boot
+blocks), differing only by `odysseyNoCloudBank=1`. Preserved as
+`artifacts/odyssey/wave-v/arm-live-t9` and `arm-bankoff-t9`.
+
+| p | bank OFF | bank ON | step OFF | step ON |
+|---|---|---|---|---|
+| 0.6801 | 78.73 | 79.19 | | |
+| 0.6901 | 66.02 | 66.59 | −12.7 | −12.6 |
+| 0.7001 | 44.22 | 45.07 | −21.8 | −21.5 |
+| 0.7101 | 15.69 | 50.76 | −28.5 | **+5.7** |
+| 0.7161 | 4.66 | 80.12 | −18.4 | **+48.9** |
+| 0.7221 | 1.77 | 129.81 | −4.8 | **+82.8** |
+| 0.7281 | 1.87 | 167.41 | +0.2 | +62.7 |
+| 0.7341 | 2.56 | **188.17** | +1.2 | +34.6 |
+| 0.7401 | 2.64 | 184.07 | +0.1 | −6.8 |
+| 0.7441 | 41.13 | 176.65 | **+96.2** | −18.5 |
+| 0.7501 | 37.86 | 153.20 | −5.4 | −39.1 |
+| 0.7561 | 27.72 | 111.46 | −16.9 | −69.6 |
+| 0.7621 | 24.99 | 59.53 | −4.5 | **−86.5** |
+| 0.7701 | 19.16 | 10.92 | −7.3 | −60.8 |
+| 0.7781 | 11.27 | 7.38 | −9.9 | −4.4 |
+| 0.7861 | 11.05 | 8.58 | −0.3 | +1.5 |
+| 0.7941 | 16.31 | 16.28 | **+6.6** | +9.6 |
+| 0.8001 | 18.91 | 18.87 | **+4.3** | +4.3 |
+
+**Findings that decide the design:**
+
+1. The two arms are **identical to p=0.7001** (within 0.9 luma) and **identical again at
+   p=0.7941/0.8001** (16.31/16.28, 18.91/18.87 — the bank contributes *literally zero*
+   there, because at r=150 the eye is outside the shell: e=1.112 and 1.236).
+2. **Bank-off's descent already passes.** Every step is inside the 45/0.01p budget.
+3. Bank-off fails on exactly two things: a **dead zone** (luma <3 across p=0.7221→0.7401)
+   and a **+96.2/0.01p pop** at 0.7441 where `spaceReveal` flips ch6 on.
+4. **The bank is an occluder, not a light.** Its opacity is a hard-clamped 1.0 at both
+   0.7401 and 0.7441 (t=0.5333, d=0.9333, `clamp(0.9333² × 1.25) = 1.0`). It is not adding
+   brightness so much as **hiding the +96.2 pop**. ⚠️ Any change that makes it transparent
+   *exposes* that pop — predicted ~+90/0.01p, worse than today's −86.5.
+
+⚠️ **The correct model for this seam is `L = A·L_bank + (1−A)·B_measured`.** An additive
+model over a fixed background gives wrong answers at the decisive step and was the single
+reason one of three candidate designs had to be rejected.
+
+### 8.2 Verdict: THE LIMB HAND-OFF
+
+Full scored verdict, including the two rejected designs and their fatal flaws:
+**`docs/research/act2-cloud-bank-rework-verdict-2026-08-16.json`**.
+
+The governing insight: **space arriving after the boundary is a rise BY CONSTRUCTION**
+unless something luminous is simultaneously falling. So the seam must be a *hand-off* —
+a falling limb (the clouds you go past) against a rising cosmos — not a fade.
+
+Rejected, with reasons worth keeping:
+- **Delete the bank.** Breaks `expect(ch6).toBeLessThan(gateEnd)`
+  (`odyssey-seam-56-schedule.test.js:101`) — an ORDERING invariant, not a tunable number.
+  And it forfeits the owner's stated goal: *"go past the fluffy clouds out in space"*
+  requires clouds to be gone past. A monotone fade to black is metric-green / brief-red.
+- **Tune the existing bank in place.** At r=150 the FBM is sampled on a fixed object-space
+  shell, so the noise is frozen while the eye moves through it — zero parallax, it
+  dissolves around you rather than being passed.
+
+### 8.3 Execution order (the order is load-bearing)
+
+1. Time-locked three-arm baseline — both captures on disk had `fixedTime: null`.
+2. **Fix the tail rises AT SOURCE.** `cosmic-expanse.js` `voidSkyOpacity` (:1785) and
+   `fieldReveal` (:1797-1802) both multiply `entryState.nebulaReveal`, driven off a
+   camera-y `approach` still climbing *inside* the sampled window. `Math.max(…, seamHandover)`.
+3. **Widen `spaceGateBand` 0.06 → 0.16.** ⚠️ HARD CEILING 0.18004, from
+   `worldOff = 0.7401 + ONE_WORLD_ACT_MARGIN(0.0222)`. 0.16 leaves 0.0025 of margin.
+4. Let the world sky recede into the authored `edge-of-space` keyframe — `scriptP` caps at
+   0.95, so the p=1.00 keyframe (skyHorizon `0x1b3f79`) has **never been sampled**.
+5-7. Re-scale the bank to a limb shell (r 150 → 620, noise re-based), add an **elevation**
+   mask (`normalize(positionWorld − cameraPosition).y`), retire the 1.25 gain that clamped
+   it opaque, `alphaTest = 0.004`.
+8. Free draws: `forceSinglePass` on the ch6 aurora bridge and streak motes (−4 draws).
+9-11. Comment sweep, full gate, and the **never-measured** Lane B seam cell (`gpuMs` reads
+   0 at all 18 stations today).
+
+⚠️ **`scripts/odyssey-seam-luma.mjs` must be run with `--dir` AND `--boundary 0.7401`.**
+The default 0.648 is the pre-ascent boundary and sits below the first station; and
+`resolveDir()` returns the **alphabetically** last `seam-5-6*` directory, not the newest —
+a new arm named `seam-5-6-v2` silently becomes the graded run.
+

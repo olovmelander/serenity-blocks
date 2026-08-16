@@ -40,6 +40,7 @@ import {
     fract,
     length,
     mix,
+    materialOpacity,
     mod,
     normalWorld,
     normalize,
@@ -206,7 +207,37 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
     // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
-    spaceGateBand: 0.06,
+    //
+    // 0.06 -> 0.16 (Act II->Space §8.3 step 3). At 0.06 the gate was 0.0074 of p wide and
+    // `spaceReveal` read as a BINARY FLIP: the bank-off arm measures +96.2 luma per 0.01p at
+    // p=0.7441, and today that pop is invisible only because the cloud bank is a fully
+    // opaque wall in front of it (its alpha hard-clamps to 1.0 at both 0.7401 and 0.7441).
+    // Widening it to 0.16 spreads the same arrival over 0.0197 of p.
+    //
+    // ⚠️ HARD CEILING 0.18004. `gateEnd` must stay below
+    // `worldOff = ch6Start + ONE_WORLD_ACT_MARGIN (0.0222)` = 0.7623, and must stay ABOVE
+    // ch6Start — both are ORDERING invariants in odyssey-seam-56-schedule.test.js:86,:101,
+    // not tunable numbers. (0.7623 - 0.7401) / 0.1233 = 0.18004. 0.16 leaves 0.0025 of
+    // margin; 0.175 leaves 0.00062, which is not enough to survive another re-layout.
+    spaceGateBand: 0.16,
+    // The 5->6 HAND-OFF WINDOW, as fractions of the Space span either side of the boundary.
+    // Space arriving after the boundary is a rise BY CONSTRUCTION, so the systems that make
+    // up "space" must begin arriving BEFORE it, while the bank is still falling. Only used
+    // to raise `nebulaReveal` (never to lower it) — see `spaceArrival` in updateCosmicExpanse.
+    //
+    // ⚠️ RETIMED after the limb landed, and the pre-boundary half PROVED WASTED. These
+    // reveals are all multiplied by `spaceReveal`, which is exactly 0 below ch6Start — so
+    // a hand-off starting at p=0.71013 bought nothing: the bank-off arm measured luma 1.78
+    // at p=0.7221 both before and after it was added. What it DID do was drive the nebula
+    // to ~0.9 by p=0.7501, which capture-review showed as a saturated green field flooding
+    // the frame — a +23.1 luma per 0.01p rise, the largest remaining defect at that point.
+    //
+    // The trough it was meant to fill is now the LIMB's job (measured: p=0.7221 goes 1.78
+    // -> 26.16 with the limb in). So the hand-off keeps only the half that was ever load-
+    // bearing: saturating before the metric window closes, which is what removes the tail
+    // rises at p=0.7941/0.8001.
+    handoverBeforeBoundary: 0.0, // p = 0.74010 — the boundary itself
+    handoverAfterBoundary: 0.373, // p = 0.78610 — clear of the last two stations
 });
 
 const _approachVec = new THREE.Vector3();
@@ -316,6 +347,20 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
     // the Ch5 summit while only the earth is allowed to show: without this the nebula
     // and dust billboard stacks would pay their full fill cost for nothing. The material
     // opacities are still written every call so nothing can pop back at a stale value.
+    //
+    // ⚠️ THE `material.opacity` WRITE BELOW IS A DEAD WRITE UNLESS THE MATERIAL'S
+    // `opacityNode` READS `materialOpacity` BACK. In r181 NodeMaterial resolves alpha as
+    // `this.opacityNode ? float(this.opacityNode) : materialOpacity` (NodeMaterial.js:872),
+    // so ASSIGNING an opacityNode REPLACES the uniform this function drives. Every
+    // opacityNode in this module therefore ends in `.mul(materialOpacity)`, and
+    // cosmic-expanse-environment.test.js pins that so a new material cannot opt out.
+    //
+    // MEASURED, 2026-08-16 (Act II->Space §8.4): while the re-arm was missing, the ONLY
+    // live effect of this whole function was the `root.visible` threshold on the next
+    // line — a binary flip at 0.2%. The seam metric proved it: across a 10x change in
+    // `spaceReveal` (0.107 -> 1.0 at p=0.7441..0.7621) mean frame luma moved 41.5 -> 43.9,
+    // i.e. not at all. Widening the space gate 0.06 -> 0.16 changed the pop by +1.8 luma
+    // because the ramp was never reaching a fragment.
     root.visible = opacity > 0.002;
     root.traverse((child) => {
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -935,7 +980,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
     const vAlpha = varying(sin(time.mul(0.3).add(aPhase)).mul(breathe).add(alphaBase));
     // Cap opacity at 0.6 (additive, soft) so even stacked wisps never approach white
     // blowout — the new internal structure carries the richness, not raw opacity.
-    material.opacityNode = clamp(density.mul(vAlpha).mul(2.0), 0.0, 0.6);
+    material.opacityNode = clamp(density.mul(vAlpha).mul(2.0), 0.0, 0.6).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1049,7 +1094,7 @@ function createSuctionParticles(uniforms, count) {
     // glow = pow(1 - dist*2, 1.4) round-discarded at dist > 0.5; alpha = progress.
     const dist = length(uv().sub(0.5));
     const glow = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.4);
-    material.opacityNode = glow.mul(progress);
+    material.opacityNode = glow.mul(progress).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1171,7 +1216,9 @@ function createVoidStars(uniforms, count, opts = {}) {
     // A small constant emissive floor (near tier) keeps the brightest pinpoints reading
     // OVER bright nebula cloud rather than washing out against it. Capped via core math.
     const floorTerm = fall.mul(fall).mul(emissiveFloor);
-    material.opacityNode = core.add(halo).add(spike).add(floorTerm).mul(vAlpha);
+    material.opacityNode = core.add(halo).add(spike).add(floorTerm)
+        .mul(vAlpha)
+        .mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1296,7 +1343,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
         moteCore.add(moteHalo).add(glint).mul(vEnergy).mul(alphaBase),
         0.0,
         0.85,
-    );
+    ).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1430,11 +1477,16 @@ export function createAuroraFilamentBridge(uniforms) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(strands.add(0.4));
-    material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive);
+    material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
+    // r181 splits a transparent DoubleSide material into a back-face pass and a front-face
+    // pass (Renderer.js:3131), so this material bills TWICE. Blending here is Additive with
+    // depthWrite off, which makes the two passes order-independent — the split buys nothing
+    // and forceSinglePass reclaims it for free. Precedent: odyssey-planet-aurora.js:301-309.
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
 
     // Seats are CORRIDOR-LOCAL (entry ≈ z +150, exit ≈ z −150): the three curtains
@@ -1508,11 +1560,16 @@ function createStreakMotes(uniforms, count) {
         1.4,
     );
     material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
-    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34));
+    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
+    // r181 splits a transparent DoubleSide material into a back-face pass and a front-face
+    // pass (Renderer.js:3131), so this material bills TWICE. Blending here is Additive with
+    // depthWrite off, which makes the two passes order-independent — the split buys nothing
+    // and forceSinglePass reclaims it for free. Precedent: odyssey-planet-aurora.js:301-309.
+    material.forceSinglePass = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'cosmic-streak-motes';
@@ -1561,7 +1618,7 @@ function createComet() {
     const base = mix(vec3(0.23, 0.30, 0.49), vec3(0.81, 0.91, 0.95), band);
     const edge = vec3(0.95, 0.98, 1.0).mul(clamp(oneMinus(dot(N, V)), 0, 1).pow(2.5).mul(0.5));
     headMat.colorNode = base.add(edge);
-    headMat.opacityNode = cometDither(uReveal);
+    headMat.opacityNode = cometDither(uReveal).mul(materialOpacity);
     const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), headMat);
     head.name = 'comet-head';
     group.add(head);
@@ -1578,7 +1635,7 @@ function createComet() {
     tailMat.alphaTest = 0.5;
     const along = uv().y;
     tailMat.colorNode = mix(vec3(0.85, 0.94, 0.97), vec3(0.35, 0.52, 0.66), along);
-    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along))));
+    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along)))).mul(materialOpacity);
     const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
     tail.name = 'comet-tail';
     // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
@@ -1667,6 +1724,31 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         chapterPositions?.[6],
     );
     const { spaceReveal } = staging;
+
+    // THE 5->6 HAND-OFF (Act II->Space §8.3 step 2).
+    //
+    // `nebulaReveal` is driven by `approach`, a CAMERA-Y ramp that is pinned at 0 through
+    // the whole ascent and is still climbing well inside chapter 6 — measured 0.478 at
+    // p=0.7941 and 0.786 at p=0.8001. That climb IS the two tail rises the seam metric
+    // fails on (+6.7 and +4.7 luma per 0.01p in the bank-off arm): the void dome and the
+    // nebula field are still fading UP while the transition is supposed to have settled.
+    //
+    // Fixing that here, at source, rather than masking it with cloud-bank opacity: the
+    // residual arc needed to cancel these rises optically survives with under 0.3 luma of
+    // margin against ~1.5 of capture noise, i.e. it is not a real mechanism.
+    //
+    // ⚠️ Math.max, never a replacement — this may only ever make space arrive EARLIER.
+    const spaceSpan = (Number.isFinite(chapterPositions?.[6]) && Number.isFinite(chapterPositions?.[5]))
+        ? chapterPositions[6] - chapterPositions[5]
+        : 0.167;
+    const seamHandover = Number.isFinite(chapterPositions?.[5])
+        ? rampBetween(
+            cameraProgress,
+            chapterPositions[5] - spaceSpan * SUMMIT_EARTH_REVEAL.handoverBeforeBoundary,
+            chapterPositions[5] + spaceSpan * SUMMIT_EARTH_REVEAL.handoverAfterBoundary,
+        )
+        : 0;
+    const spaceArrival = Math.max(entryState.nebulaReveal, seamHandover);
     group.userData.summitEarthStaging = staging;
     // The earth, once shown from the summit, never dips back out (the ask was that we
     // "still see it" once space darkens) — hence max() against the staged hero reveal.
@@ -1782,7 +1864,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
 
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
-    const voidSkyOpacity = entryState.nebulaReveal * spaceReveal * chapterOpacity;
+    // `spaceArrival` (not raw nebulaReveal) — see THE 5->6 HAND-OFF above.
+    const voidSkyOpacity = spaceArrival * spaceReveal * chapterOpacity;
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
@@ -1796,7 +1879,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // delivered as a uniform driving the dithered opaque dissolve.
     const nebulaFieldMesh = group.userData.nebulaField;
     if (nebulaFieldMesh?.userData?.uReveal) {
-        const fieldReveal = entryState.nebulaReveal * spaceReveal * chapterOpacity;
+        const fieldReveal = spaceArrival * spaceReveal * chapterOpacity;
         nebulaFieldMesh.userData.uReveal.value = fieldReveal;
         nebulaFieldMesh.visible = fieldReveal > 0.002;
     }
