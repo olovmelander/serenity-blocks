@@ -488,6 +488,38 @@ annotated at the claim.
 > aimed at the handover's brightness has to target the world deck or the bank; dimming the
 > chapter environment moves almost nothing.
 
+> **WAVE 2 — THE TINT RE-BASE LANDED, AND THE NEXT BLOCKER IS THE METRIC'S OWN WINDOW.**
+>
+> What the eye sees is the PRODUCT `density * (1 - toVoid)`, and two decaying terms multiplied
+> fall faster than either alone — which is why reshaping the exit density three different ways
+> barely moved the spike. `toVoid` ended at 1.0, so the bank was 78 % void-tinted while it
+> still had a third of its density left and the product collapsed mid-exit. Stretching the
+> ramp's upper edge to 1.6 flattens the modelled worst step 0.272 → 0.198 (−27 %).
+> **Measured: −83.0 → −72.7**, against a prediction of ~−68. The model is now trustworthy;
+> across the session the spike has gone −89.3 → −81.4 → −83.0 → **−72.7**.
+>
+> **THE REMAINING LIMIT IS STRUCTURAL, AND IT IS PARTLY MINE.** The bank's window runs to
+> boundary + 0.06 (p=0.708), but the seam capture — and therefore `endLuma` — stops at
+> boundary + 0.03 (p=0.678). So only 3 of the bank's ~6 exit samples are ever seen, and the
+> arithmetic is unforgiving:
+>
+> | exit spread over | density/sample | ≈ luma/sample |
+> |---|---|---|
+> | 3 samples (what the metric sees) | 0.333 | **~67** |
+> | 6 samples | 0.167 | ~33 |
+> | 12 samples | 0.083 | ~17 |
+>
+> **The bank alone forces ≥66-luma steps if it must be fully gone by p=0.678** — which is
+> exactly the wall the last four attempts kept hitting. Every fix that gave it more room
+> (asymmetric window, longer exit) then failed `endLuma`, because the metric judges a window
+> narrower than the transition actually occupies.
+>
+> So the next move is NOT another envelope tweak. It is to widen the seam capture to cover the
+> systems being measured — the harness derives its window from the ecotone's `seamWidth`
+> (±0.03) while the bank legitimately spans ±0.06 — and only then decide whether the bank
+> should leave inside 0.03 or be allowed the room it was authored with. ⚠️ Widening the window
+> also means re-baselining every number in §1, so it is a deliberate act, not a tweak.
+
 ### Wave 2 — Re-phase the schedule
 - Move the perceptual midpoint onto the boundary: widen `spaceGateBand` (F5) so space
   arrives *across* the crossfade rather than in its first sixth, and pull the world's new

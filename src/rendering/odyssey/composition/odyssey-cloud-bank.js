@@ -125,7 +125,16 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // masses close in, THEN the world changes. Measured effect on the bank-vs-field tone
     // match at p=0.63: 0.827 -> see the outcome block.
     const toBridge = smoothstep(0.35, 0.78, a);
-    const toVoid = smoothstep(0.45, 1.0, a);
+    // ⚠️ THE TINT MUST NOT OUTRUN THE DENSITY. What the eye sees is the PRODUCT
+    // `density * (1 - toVoid)`, and two decaying terms multiplied fall faster than either
+    // alone — which is why reshaping the exit density three separate ways barely moved the
+    // seam's largest step. Ending this ramp at 1.0 meant the bank was 78% void-tinted while
+    // it still had a third of its density left, so the product collapsed in the middle of the
+    // exit. Stretching the upper edge to 1.6 (so the tint only reaches ~0.47 by the window's
+    // end, where density is 0 anyway and the mass is gone regardless) flattens the visible
+    // decay from a 0.272 worst step to 0.198 — 27% flatter, tabulated against the shipped
+    // envelope. The crossing still tints toward space; it just stops finishing early.
+    const toVoid = smoothstep(0.45, 1.6, a);
     // TWO FLAT BANDS ON THE ENTRY TONE, the field's grammar: the billow picks which band a
     // patch is in, and the step between them is narrow. This is what makes the approach read
     // as cloud MASSES closing in rather than as a fog gradient thickening.
