@@ -34,7 +34,16 @@ const args = Object.fromEntries(
 
 const ROOT = process.cwd();
 const ARTIFACT_ROOT = path.join(ROOT, 'artifacts', 'odyssey', 'wave-v');
+// ⚠️ PER UNIT PROGRESS, NOT PER SAMPLE. The first version budgeted a raw sample-to-sample
+// delta, which silently made the score depend on how the capture was configured: widen the
+// window or drop the frame count and the same footage scores worse, with nothing in the
+// output saying why. That is the same defect as the corridor-smoothness guard this project
+// already carries (3 deg per 0.003 p, which reads worse purely because a longer journey makes
+// 0.003 p cover more ground). The budget is now luma per 0.01 of progress, so window width and
+// sample count cannot move it — which is what let the seam capture be widened to cover the
+// systems actually under measurement instead of just the ecotone's own half-width.
 const MAX_STEP = Number(args['max-step'] ?? 45);
+const STEP_REFERENCE_DP = 0.01;
 const BOUNDARY = Number(args.boundary ?? 0.648);
 // How much of the total change is allowed to land in the last third of the window.
 const MAX_TAIL_SHARE = Number(args['max-tail-share'] ?? 0.5);
@@ -80,14 +89,23 @@ async function main() {
         process.exit(2);
     }
 
-    let maxStep = { d: 0 };
+    let maxStep = { rate: 0 };
     let total = 0;
     const steps = [];
     for (let i = 1; i < samples.length; i += 1) {
         const d = samples[i].luma - samples[i - 1].luma;
-        steps.push({ from: samples[i - 1].p, to: samples[i].p, d });
+        const dp = Math.max(1e-6, samples[i].p - samples[i - 1].p);
+        // Normalised to a reference span so uneven sampling cannot flatter or punish a run.
+        const rate = d * (STEP_REFERENCE_DP / dp);
+        steps.push({
+            from: samples[i - 1].p, to: samples[i].p, d, rate,
+        });
         total += Math.abs(d);
-        if (Math.abs(d) > Math.abs(maxStep.d)) maxStep = { d, at: samples[i].p };
+        if (Math.abs(rate) > Math.abs(maxStep.rate)) {
+            maxStep = {
+                rate, d, at: samples[i].p, dp,
+            };
+        }
     }
 
     for (const s of samples) {
@@ -101,17 +119,23 @@ async function main() {
     const tailShare = total > 0 ? tail / total : 0;
 
     // Monotonic after the boundary: leaving the world should not brighten again.
-    const rises = steps.filter((s) => s.from >= BOUNDARY && s.d > 1.0);
+    // A magnitude floor, because the widened window now includes the flat space tail where
+    // frames sit around luma 15 and run-to-run noise is worth ~1. Without it the check fires
+    // on a 1.1-luma wobble between two black frames and calls the transition non-monotonic.
+    const rises = steps.filter((s) => s.from >= BOUNDARY && s.rate > 3.0);
 
     console.log('');
     const pct = (v) => `${(v * 100).toFixed(1)}%`;
-    console.log(`  maxStep       ${maxStep.d.toFixed(1)} at p=${(maxStep.at ?? 0).toFixed(4)}   (limit ${MAX_STEP})`);
+    console.log(`  maxStep       ${maxStep.rate.toFixed(1)} luma per 0.01p at p=${(maxStep.at ?? 0).toFixed(4)}`
+        + `   (raw ${(maxStep.d ?? 0).toFixed(1)} over dp=${(maxStep.dp ?? 0).toFixed(4)})   (limit ${MAX_STEP})`);
     console.log(`  tailShare     ${pct(tailShare)} of movement in the last third   (limit ${pct(MAX_TAIL_SHARE)})`);
     console.log(`  postBoundary  ${rises.length} rising step(s) after p=${BOUNDARY}   (limit 0)`);
     console.log(`  endLuma       ${samples[samples.length - 1].luma.toFixed(1)}   (limit ${MAX_END_LUMA} — must actually reach space)`);
 
     const failures = [];
-    if (Math.abs(maxStep.d) > MAX_STEP) failures.push(`maxStep ${maxStep.d.toFixed(1)} exceeds ${MAX_STEP}`);
+    if (Math.abs(maxStep.rate) > MAX_STEP) {
+        failures.push(`maxStep ${maxStep.rate.toFixed(1)} luma/0.01p exceeds ${MAX_STEP}`);
+    }
     if (tailShare > MAX_TAIL_SHARE) {
         failures.push(`tailShare ${(tailShare * 100).toFixed(1)}% exceeds ${(MAX_TAIL_SHARE * 100).toFixed(0)}%`);
     }
