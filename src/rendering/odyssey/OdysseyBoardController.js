@@ -70,6 +70,10 @@ import {
     compileGroupThroughPost,
 } from './warmup/post-target-compile.js';
 
+// Chapter 6's own fog tone — the void the world recedes into. Not the live fog: see the note
+// at the call site for why fading toward the CURRENT sky brightened the world instead.
+const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
+
 // Dynamic-resolution (DRS) tuning. The odyssey board pins a static pixel ratio at
 // init/resize; here we wire the existing frame-time policy so render scale sheds under
 // load and recovers when headroom returns. The policy itself enforces 6s-down/12s-up
@@ -2681,12 +2685,20 @@ export class OdysseyBoardController {
                 // the correctness backstop and simply never has anything visible left to hide.
                 if (typeof this.oneWorld.setDepartureFade === 'function') {
                     const skyStart = this.presentationLayout.chapterPositions[4];
-                    // Recede INTO whatever the sky currently is — the 5->6 colour bridge is
-                    // already driving that toward space, so the world dissolves into the tone
-                    // the frame is becoming rather than toward an authored constant.
+                    // ⚠️ RECEDE INTO THE VOID, NOT INTO THE LIVE FOG. The first version passed
+                    // `scene.fog.color`, reasoning that aerial perspective means distant things
+                    // take the sky's colour. True in atmosphere — and wrong here, because
+                    // chapter 5's fog is 0xbcd8ec, a bright pale blue at ~212 luma. "Receding"
+                    // therefore BRIGHTENED the world into a flat pale sheet: measured, p=0.618
+                    // went from 133.8 to 197.8 luma, and the frame stayed saturated with
+                    // fog-coloured world right up to the crossfade, which is why widening,
+                    // staggering and dimming all failed to move the cliff.
+                    //
+                    // The rail is leaving the atmosphere, so the correct target is the void the
+                    // journey is entering, not the sky it is leaving.
                     this.oneWorld.setDepartureFade(
                         worldDepartureFade(cameraProgress, skyStart, actEnd),
-                        this.scene?.fog?.color ?? null,
+                        ONE_WORLD_DEPARTURE_TARGET,
                     );
                 }
 
