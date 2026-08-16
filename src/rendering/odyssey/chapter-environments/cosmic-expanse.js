@@ -68,6 +68,7 @@ import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { pickStellarClass } from './odyssey-stellar-ramp.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -358,6 +359,7 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoNebula=1  — both additive FBM nebula tiers + the pillar
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
+//   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
 // differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
 // never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
@@ -380,6 +382,7 @@ function resolveCh6BisectLevers() {
         nebula: !readCh6UrlFlag('odysseyCh6NoNebula'),
         dust: !readCh6UrlFlag('odysseyCh6NoDust'),
         stars: !readCh6UrlFlag('odysseyCh6NoStars'),
+        aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
     };
 }
 
@@ -458,7 +461,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     }
 
     // 1b. Hero gas giant
-    const heroPlanet = bisect.heroes ? createHeroPlanet(uniforms) : null;
+    const heroPlanet = bisect.heroes ? createHeroPlanet(uniforms, bisect) : null;
     if (heroPlanet) {
         group.add(heroPlanet);
         group.userData.heroPlanet = heroPlanet;
@@ -761,11 +764,13 @@ function createBlackHole(uniforms) {
     return group;
 }
 
-function createHeroPlanet(uniforms) {
+function createHeroPlanet(uniforms, bisect = {}) {
     // TSL builder: banded gas-giant surface + plain atmosphere/ring decor. Returns
     // { group, planet }. group.userData.planet is set so update() can spin it. Initial
     // pose matches APPROACH.planetA (update() lerps it onward) so the first frame agrees.
-    const { group, planet } = createHeroPlanetTSL(uniforms.uTime);
+    const { group, planet } = createHeroPlanetTSL(uniforms.uTime, {
+        aurora: bisect.aurora !== false,
+    });
     group.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
     group.scale.setScalar(APPROACH.planetA.s);
     group.userData.planet = planet;
@@ -843,7 +848,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
 
     const time = uniforms.uTime;
     const aBase = attribute('aBase', 'vec3');
-    const aColor = attribute('aColor', 'vec3');
+    const aColor = attribute('aColor', 'vec4');
     const aSize = attribute('aSize', 'float');
     const aPhase = attribute('aPhase', 'float');
 
@@ -1044,45 +1049,53 @@ function createVoidStars(uniforms, count, opts = {}) {
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const twinkles = new Float32Array(count);
-    const colors = new Float32Array(count * 3);
+    // rgb = class colour x its emissive push, w = its core-exponent gain. The core gain
+    // travels in the alpha slot rather than in a fifth instanced attribute ON PURPOSE:
+    // this geometry already binds position/normal/uv + 4 instanced buffers, and 8 is the
+    // vertex-buffer ceiling (see the note in odyssey-tsl-billboard.js about the
+    // 6-attribute billboard that overflowed it).
+    const colors = new Float32Array(count * 4);
 
-    // Crisp deep-space palette: dominated by hot blue-white pinpoints (the
-    // opposite of Sky's pale haze), with a minority of warm gold / cool violet
-    // stars for stellar variety. Whites are pushed slightly HOT (>1) so the
-    // brightest pinpoints punch through and bloom cleanly.
-    const hotPalette = [
-        new THREE.Color(1.15, 1.15, 1.2), // hot white-blue
-        new THREE.Color(1.1, 1.12, 1.2),
-        new THREE.Color(0xcfe0ff),
-        new THREE.Color(0xfff0d0),
-        new THREE.Color(0xd8c4ff),
-    ];
-    const tintPalette = [
-        new THREE.Color(0x9fc0ff),
-        new THREE.Color(0x6fa6ff),
-        new THREE.Color(0xffd9a0),
-        new THREE.Color(0xffb98a),
-        new THREE.Color(0xc59cff),
-    ];
+    // WAVE 5 — THE STELLAR RAMP. Two hand-mixed palettes and a bare `Math.random() > 0.3`
+    // split used to live here; see odyssey-stellar-ramp.js for why a quantised blackbody
+    // ladder replaced them, and why the three per-class gains are the part that matters.
+    // SEEDED (the same lesson the asteroid garland paid for in e9ccc0f6): under bare
+    // Math.random the whole field re-rolled on every reload, so no two captures of this
+    // chapter were ever comparable. `name` seeds it, so the near and far tiers differ.
+    let rngState = 1013904223;
+    for (let i = 0; i < name.length; i += 1) rngState = Math.imul(rngState ^ name.charCodeAt(i), 2654435761) >>> 0;
+    const rng = () => {
+        rngState = Math.imul(rngState ^ (rngState >>> 15), 2246822519);
+        rngState = (rngState + 0x6d2b79f5) >>> 0;
+        return ((rngState ^ (rngState >>> 13)) >>> 0) / 4294967296;
+    };
 
     for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = radiusMin + Math.random() * radiusSpan;
+        const theta = rng() * Math.PI * 2;
+        const phi = Math.acos(2 * rng() - 1);
+        const r = radiusMin + rng() * radiusSpan;
         positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = r * Math.cos(phi);
         positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        twinkles[i] = rng() * Math.PI * 2;
+
+        // `brightWeight` (the near tier's punch dial) now biases the DRAW toward the hot
+        // end of the ladder instead of toward a second flat palette: one extra sample,
+        // keep the hotter of the two. Same knob, but it means something physical.
+        let cls = pickStellarClass(rng);
+        if (brightWeight > 0 && rng() < brightWeight) {
+            const other = pickStellarClass(rng);
+            if (other.kelvin > cls.kelvin) cls = other;
+        }
         // Sparse big-star distribution: most stars tiny, a few large — squaring the
         // random keeps the field reading as fine pinpoints with rare bright anchors.
-        sizes[i] = sizeBase + Math.random() * Math.random() * sizeSpan;
-        twinkles[i] = Math.random() * Math.PI * 2;
-
-        const useHot = Math.random() > (1.0 - 0.7 - brightWeight * 0.25);
-        const palette = useHot ? hotPalette : tintPalette;
-        const color = palette[Math.floor(Math.random() * palette.length)];
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        // The class gain rides on top, so a rare M giant is genuinely the biggest thing
+        // in the field and a B star the hardest.
+        sizes[i] = (sizeBase + rng() * rng() * sizeSpan) * cls.sizeGain;
+        colors[i * 4] = cls.color[0] * cls.emissive;
+        colors[i * 4 + 1] = cls.color[1] * cls.emissive;
+        colors[i * 4 + 2] = cls.color[2] * cls.emissive;
+        colors[i * 4 + 3] = cls.coreGain;
     }
 
     // Instanced billboard quads (THREE.Points renders as 1px on WebGPU).
@@ -1090,7 +1103,7 @@ function createVoidStars(uniforms, count, opts = {}) {
         aBase: { array: positions, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
         aTwinkle: { array: twinkles, itemSize: 1 },
-        aColor: { array: colors, itemSize: 3 },
+        aColor: { array: colors, itemSize: 4 },
     });
 
     const time = uniforms.uTime;
@@ -1106,7 +1119,7 @@ function createVoidStars(uniforms, count, opts = {}) {
     const size = aSize.mul(twinkle).mul(0.62);
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(aBase, size);
-    material.colorNode = aColor;
+    material.colorNode = aColor.xyz;
     // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center, a
     // faint thin halo for a glow seat, plus a subtle 4-point diffraction glint along
     // the sprite axes so the brightest stars read as hot pinpoints. All feathered to
@@ -1114,7 +1127,10 @@ function createVoidStars(uniforms, count, opts = {}) {
     const p = uv().sub(0.5);
     const dist = length(p);
     const fall = oneMinus(dist.mul(2.0)).max(0.0);
-    const core = pow(fall, coreExp).mul(coreMult);
+    // The class's core gain rides the EXPONENT, not the brightness: a high gain is a
+    // tighter, harder pinpoint and a low gain a soft one. That is what tells a big dim
+    // red giant apart from a near blue-white — size alone just makes a bigger dot.
+    const core = pow(fall, aColor.w.mul(coreExp)).mul(coreMult);
     const halo = pow(fall, 1.2).mul(0.14);
     // Diffraction spikes: bright along x≈0 and y≈0, decaying with radius — a thin
     // hot cross that sells the "pinpoint star" sparkle without bloating the sprite. The

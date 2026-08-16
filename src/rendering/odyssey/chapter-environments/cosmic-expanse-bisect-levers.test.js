@@ -101,6 +101,26 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(group.userData.entryContinuity.clutter).toHaveLength(1);
     });
 
+    it('?odysseyCh6NoAurora=1 withholds BOTH halves of the hero crown', () => {
+        // Half a lever is not a lever: the curtain mesh is a draw, but the disc term is
+        // extra fragment ALU inside the hero's own material, and a differential that
+        // priced only one of them would under-report the feature.
+        const lit = buildWithSearch('');
+        const dark = buildWithSearch('?odysseyCh6NoAurora=1');
+        const crowns = (group) => {
+            let n = 0;
+            group.userData.heroPlanet.traverse((c) => {
+                if (c.name === 'hero-planet-aurora-crown') n += 1;
+            });
+            return n;
+        };
+        expect(crowns(lit)).toBe(1);
+        expect(crowns(dark)).toBe(0);
+        // The hero itself must still be there — this lever is not NoHeroes wearing a hat.
+        expect(dark.userData.heroPlanet).toBeDefined();
+        expect(dark.userData.heroPlanet.userData.planet).toBeDefined();
+    });
+
     it('?odysseyCh6NoStars=1 removes both starfield tiers', () => {
         const group = buildWithSearch('?odysseyCh6NoStars=1');
         expect(group.userData.starsFar).toBeUndefined();
@@ -127,5 +147,6 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(SPLIT).toMatch(/id:\s*'ch6-no-dust',\s*flags:\s*\{\s*odysseyCh6NoDust:\s*'1'/);
         expect(SPLIT).toMatch(/id:\s*'ch6-no-stars',\s*flags:\s*\{\s*odysseyCh6NoStars:\s*'1'/);
         expect(SPLIT).toMatch(/id:\s*'ch6-no-heroes',\s*flags:\s*\{\s*odysseyCh6NoHeroes:\s*'1'/);
+        expect(SPLIT).toMatch(/id:\s*'ch6-no-aurora',\s*flags:\s*\{\s*odysseyCh6NoAurora:\s*'1'/);
     });
 });
