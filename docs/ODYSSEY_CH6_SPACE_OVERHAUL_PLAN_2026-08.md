@@ -4,7 +4,9 @@
 §3b re-composition SHIPPED 2026-08-15/16.** See the WAVE OUTCOME blocks in §5 and
 `git log -- src/rendering/odyssey/chapter-environments/cosmic-expanse.js`
 (`960335d3`, `dff08702`, `e9ccc0f6`, `c5f8b66d`, `98704055`, `ef19f9b4`), plus
-`ca0ed7de` (Wave 1, 13 levels). **OPEN:** Wave 6 (grade / seams), owner D1's remaining
+`ca0ed7de` (Wave 1, 13 levels) and `2f219c09` (**Wave 5 COMPLETED 2026-08-16** —
+the stellar ramp and the auroral crown, the two items the 09:43 sweep correctly
+recorded as outstanding 50 minutes earlier). **OPEN:** Wave 6 (grade / seams), owner D1's remaining
 half (lever-C spline growth), D3 (budget cell maxima, still `null`), D4 (reference-set
 blessing), and the owner's own in-game look verdicts. This header was missed in the
 `f9d4fba8` annotation pass that added the outcome blocks — found by the §7 sweep.
@@ -546,8 +548,45 @@ means same-bucket = "below resolution", never "zero").
 - Gate: motion verified at source (wiring/uniforms), not by frame-diffing captures
   (~23 % pixel noise floor between runs); overdraw of ribbons measured.
 
-> **WAVE 5 OUTCOME (2026-08-16).** The comet and the velocity-keyed streak stretch
-> shipped earlier (98704055); this closes the other two items.
+> **WAVE 5 OUTCOME (2026-08-15/16, `98704055` + `96d69938`).** Shipped: **the comet**
+> (sculpted opaque ice head, 2-band paint on the causal key + drawn edge, with a
+> dithered opaque cone tail) sweeping a 70 s chord through the reef window,
+> dither-faded at the chord ends so it enters and leaves as a distant glint — staged
+> like the nebula field, outside the entryContinuity buckets on its own `uReveal`.
+> And **the dive stretch**: the streak motes elongate ~2.3× and brighten as the BH
+> dive begins. That is deliberately a LENGTH change, not a speed change —
+> `mod(time*speed(t))` phase-jumps when speed varies.
+> ⚠️ **The comet's tail shipped with BOTH gradients inverted** and was fixed the next
+> morning: `ConeGeometry`'s `uv.y` is 0 at the BASE (hugging the head) and 1 at the
+> TIP — *measured, not assumed* — so the first draft dissolved the tail at the nucleus
+> and went solid-bright at its trailing end. The geometry assumption is now pinned by
+> a test so a three.js change fails loudly. ~~**NOT shipped from this wave's bullets:**
+> the near-star quantised-blackbody batch with hashed twinkle, and the aurora oval
+> crown on the gas giant (the aurora work that DID happen was the misplacement fix in
+> `dff08702` — re-parenting the bridge to the corridor).~~ **TRUE WHEN WRITTEN
+> (09:43), SUPERSEDED 50 MINUTES LATER by `2f219c09`, which shipped both — see the
+> outcome block below. The two were built in a PARALLEL SESSION on this same working
+> tree; that concurrency is also the real story behind `2c14094f`, see the note there.**
+
+> **WAVE 5 COMPLETION (2026-08-16, `2f219c09`) — the two items the block above
+> correctly recorded as outstanding.**
+>
+> ⚠️ **A CONCURRENCY NOTE, because the git history reads misleadingly without it.**
+> `04bf062c` (the §7 sweep, 09:43:49) committed a 113-line `odyssey-stellar-ramp.js`
+> that its own message described as not shipped, and `2c14094f` (09:44:50) then deleted
+> it as *"unreviewed agent-written dead code"* written by *"a sweep agent, which had
+> write tools"*, drawing the lesson *"give verification agents read-only tools."*
+> **That attribution is wrong, and the lesson does not address the real cause.** No
+> sweep agent wrote that file: a SECOND SESSION was working the Wave 5 remainder in the
+> SAME working tree, its half-finished file was sitting there unwired, and the sweep's
+> `git add` captured it. The deleted blob is byte-identical to what that session had
+> written minutes earlier. Every factual observation in the revert was correct
+> (unreferenced, untested, unreviewed, contradicting the commit message) and deleting it
+> was the right call on the evidence available — but the hazard to guard against is
+> **two concurrent sessions committing from one working tree**, which read-only agents
+> would not have prevented. The revert also named the conditions for bringing it back —
+> *"wired into createVoidStars, with tests and a capture"* — and `2f219c09` meets all
+> three, so this is that deliberate resurrection, not a re-introduction of dead code.
 >
 > **The stellar ramp** (`odyssey-stellar-ramp.js`): the two hand-mixed palettes and the
 > bare `Math.random() > 0.3` split are gone, replaced by a 6-class quantised blackbody
@@ -615,22 +654,6 @@ means same-bucket = "below resolution", never "zero").
 > axial rise to radial, and reverting the seeded field to `Math.random` each killed
 > exactly one test.
 
-> **WAVE 5 OUTCOME (2026-08-15/16, `98704055` + `96d69938`).** Shipped: **the comet**
-> (sculpted opaque ice head, 2-band paint on the causal key + drawn edge, with a
-> dithered opaque cone tail) sweeping a 70 s chord through the reef window,
-> dither-faded at the chord ends so it enters and leaves as a distant glint — staged
-> like the nebula field, outside the entryContinuity buckets on its own `uReveal`.
-> And **the dive stretch**: the streak motes elongate ~2.3× and brighten as the BH
-> dive begins. That is deliberately a LENGTH change, not a speed change —
-> `mod(time*speed(t))` phase-jumps when speed varies.
-> ⚠️ **The comet's tail shipped with BOTH gradients inverted** and was fixed the next
-> morning: `ConeGeometry`'s `uv.y` is 0 at the BASE (hugging the head) and 1 at the
-> TIP — *measured, not assumed* — so the first draft dissolved the tail at the nucleus
-> and went solid-bright at its trailing end. The geometry assumption is now pinned by
-> a test so a three.js change fails loudly. **NOT shipped from this wave's bullets:**
-> the near-star quantised-blackbody batch with hashed twinkle, and the aurora oval
-> crown on the gas giant (the aurora work that DID happen was the misplacement fix in
-> `dff08702` — re-parenting the bridge to the corridor).
 
 ### Wave 6 — Light, grade, and the seams
 - Lighting audit to the one-key statement; ascent altitude ramps wired into the 5→6
