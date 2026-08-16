@@ -38,6 +38,11 @@ const MAX_STEP = Number(args['max-step'] ?? 45);
 const BOUNDARY = Number(args.boundary ?? 0.648);
 // How much of the total change is allowed to land in the last third of the window.
 const MAX_TAIL_SHARE = Number(args['max-tail-share'] ?? 0.5);
+// The transition must actually COMPLETE inside the window. Without this a change that simply
+// drags Act II's brightness past the sampled range scores a perfect smooth curve — measured
+// 2026-08-16, a 2.5x cloud-bank exit "passed" at maxStep 38.8 while leaving the last frame at
+// luma 201 instead of space's ~26, i.e. it removed the cliff by never arriving.
+const MAX_END_LUMA = Number(args['max-end-luma'] ?? 60);
 
 async function resolveDir() {
     if (args.dir) return path.resolve(ROOT, String(args.dir));
@@ -103,6 +108,7 @@ async function main() {
     console.log(`  maxStep       ${maxStep.d.toFixed(1)} at p=${(maxStep.at ?? 0).toFixed(4)}   (limit ${MAX_STEP})`);
     console.log(`  tailShare     ${pct(tailShare)} of movement in the last third   (limit ${pct(MAX_TAIL_SHARE)})`);
     console.log(`  postBoundary  ${rises.length} rising step(s) after p=${BOUNDARY}   (limit 0)`);
+    console.log(`  endLuma       ${samples[samples.length - 1].luma.toFixed(1)}   (limit ${MAX_END_LUMA} — must actually reach space)`);
 
     const failures = [];
     if (Math.abs(maxStep.d) > MAX_STEP) failures.push(`maxStep ${maxStep.d.toFixed(1)} exceeds ${MAX_STEP}`);
@@ -110,6 +116,10 @@ async function main() {
         failures.push(`tailShare ${(tailShare * 100).toFixed(1)}% exceeds ${(MAX_TAIL_SHARE * 100).toFixed(0)}%`);
     }
     if (rises.length) failures.push(`${rises.length} rising step(s) after the boundary`);
+    const endLuma = samples[samples.length - 1].luma;
+    if (endLuma > MAX_END_LUMA) {
+        failures.push(`window ends at luma ${endLuma.toFixed(1)}, above ${MAX_END_LUMA} — the transition never completes`);
+    }
 
     console.log('');
     if (failures.length) {
