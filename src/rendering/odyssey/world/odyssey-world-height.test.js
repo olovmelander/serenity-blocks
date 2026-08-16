@@ -227,7 +227,9 @@ describe('the landmass is an island', () => {
         // massif footprint + relief halo, the tree disc (centre -620, radius 1750). All of
         // that lies south of z=-2483; assert the coast term cannot have touched it by
         // checking values that only hold if northT is exactly 1.
-        expect(odysseyWorldMacro(-220, -1500)).toBeCloseTo(386.1, 1); // bare inland plateau
+        // 386.1 -> 386.16 with Wave 1C's footY datum re-derive (297.5 -> 297.5556): this
+        // point sits inside a massif halo, so it carries the datum. (-220, -2400) does not.
+        expect(odysseyWorldMacro(-220, -1500)).toBeCloseTo(386.16, 1); // bare inland plateau
         expect(odysseyWorldMacro(-220, -2400)).toBeCloseTo(385.0, 1); // last land before the coast
         const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
         expect(odysseyWorldMacro(hero.x, hero.z)).toBeGreaterThan(1000); // crown untouched

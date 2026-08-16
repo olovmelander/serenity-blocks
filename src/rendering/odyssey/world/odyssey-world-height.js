@@ -90,7 +90,7 @@ export const ODYSSEY_EYE_RAIL_OFFSET_Y = -16;
 export const ODYSSEY_BREACH_P = 0.20023;
 
 /** The datum the canonical peaks' feet sit on. */
-export const ODYSSEY_MASSIF_FOOT_Y = 297.5;
+export const ODYSSEY_MASSIF_FOOT_Y = 297.5556;
 
 /** How deep the open ocean floor sits below sea level, far from the landmass. */
 export const ODYSSEY_ABYSS_DEPTH = 207;
@@ -102,17 +102,17 @@ export const ODYSSEY_ABYSS_DEPTH = 207;
  */
 export const ODYSSEY_MASSIFS = Object.freeze([
     Object.freeze({
-        id: 'hero', x: -182.7, z: -1059.3, radius: 603, height: 720, exponent: 1.7, footY: 297.5,
+        id: 'hero', x: -182.7, z: -1059.3, radius: 603, height: 720, exponent: 1.7, footY: 297.5556,
     }),
     Object.freeze({
-        id: 'left-main', x: -412.7, z: -979.3, radius: 414, height: 360, exponent: 1.6, footY: 297.5,
+        id: 'left-main', x: -412.7, z: -979.3, radius: 414, height: 360, exponent: 1.6, footY: 297.5556,
     }),
     Object.freeze({
-        id: 'right-main', x: 47.3, z: -1009.3, radius: 405, height: 340, exponent: 1.6, footY: 297.5,
+        id: 'right-main', x: 47.3, z: -1009.3, radius: 405, height: 340, exponent: 1.6, footY: 297.5556,
     }),
     // NOTE the different datum: the shipped far-left flank sits 50u lower than the others.
     Object.freeze({
-        id: 'far-left', x: -1892.7, z: -1639.3, radius: 675, height: 430, exponent: 1.55, footY: 247.5,
+        id: 'far-left', x: -1892.7, z: -1639.3, radius: 675, height: 430, exponent: 1.55, footY: 247.5556,
     }),
 ]);
 

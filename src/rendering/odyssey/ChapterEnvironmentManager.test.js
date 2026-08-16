@@ -110,9 +110,15 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
         // release is a no-op rather than a dip...
         // Derived for the same reason as above: these are "just past the boundary" and
         // "well into space", not the specific numbers the old layout happened to give them.
+        // Wave 1C finished the derivation: the old +0.004/+0.012 were absolute p offsets,
+        // and the flyby re-map shrank the Space span in p until +0.012 fell past the 10%
+        // hold band while meaning the same world position. Probe as span fractions — 8%
+        // sits after the ecotone completes (~6%) and inside the hold (10%), which is the
+        // exact claim this test makes.
         const cp2 = getActiveOdysseyChapterPositions();
-        expect(manager._earthIgniteBoost(cp2[5] + 0.004)).toBe(1);
-        expect(manager._earthIgniteBoost(cp2[5] + 0.012)).toBe(1);
+        const spaceSpan = cp2[6] - cp2[5];
+        expect(manager._earthIgniteBoost(cp2[5] + spaceSpan * 0.03)).toBe(1);
+        expect(manager._earthIgniteBoost(cp2[5] + spaceSpan * 0.08)).toBe(1);
         // ...then gone, so chapter 6 can never be pinned visible across 7 and 8.
         expect(manager._earthIgniteBoost(cp2[6])).toBe(0);
         expect(manager._earthIgniteBoost(cp2[7])).toBe(0);

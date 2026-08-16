@@ -50,118 +50,90 @@ const DEFAULT_CONTROL_POINTS = Object.freeze([
     // and the rail breaks out of the cloud deck around p=0.755 — the journey has never risen
     // above the weather before. The turn rate through the seam IMPROVED (14.45 -> 9.05
     // deg/step over p 0.55-0.85) because a kink was replaced by a longer arc.
-    Object.freeze({ x: -186.4, y: 723.9, z: -581.4 }),
-    Object.freeze({ x: -151.4, y: 827.2, z: -595.3 }),
-    Object.freeze({ x: -102.8, y: 929.7, z: -614.6 }),
-    Object.freeze({ x: -41.5, y: 1023.9, z: -639 }),
-    Object.freeze({ x: 25.1, y: 1100.7, z: -665.5 }),
-    Object.freeze({ x: 93.8, y: 1160.5, z: -692.9 }),
-    Object.freeze({ x: 160.8, y: 1205.5, z: -719.5 }),
-    // ── CH6 SPACE CORRIDOR (re-authored 2026-08; TRANSLATED by Wave 1A) ──────────
-    // Every point from here on is translated by ONE rigid offset, so the corridor's shape is
-    // bit-for-bit what it was: the 6->7 hairpin, the banking climb and the aim-pitch floor all
-    // survive because no relative geometry changed. Only the whole run moved, up and out, to
-    // meet the top of the ascent. Space is authored in the CORRIDOR frame and rides the rail,
-    // so translating it carries the diorama with the camera and leaves the One World behind —
-    // which IS the "fly past the mountain" read.
-    //
-    // ARC LENGTH IS LOAD-BEARING and CHANGED DELIBERATELY: 1767.65 -> 2393.89 (+626.24).
-    // Every level position below was REGENERATED to absorb it:
-    //   * ids 1-28 keep their WORLD seats (max drift 0.029u, nearest-point against the old
-    //     curve). 28 is included on purpose: it is chapter 5's first level, and
-    //     getChapterPathRange(4).center — which the massifs are sited from — is the midpoint
-    //     of ch4.start and ch5.start. Moving 28 re-sites the mountains.
-    //   * ids 29-35 are re-spaced along the longer sky climb. No levels were ADDED; they are
-    //     spread out, per owner direction. Chapter 5 goes 14.8% -> 37% of the traversal.
-    //   * ids 36-59 are ARC-PRESERVING: new_p = (old_arc + added) / newTotal. All the added
-    //     length is before the boundary, so chapters 6-8 keep their exact arc extents. A
-    //     proportional re-map instead stretched them and pulled the 6->7 hairpin INSIDE
-    //     chapter 6, spiking its turn rate to 32.7 deg (measured).
-    // Do not hand-edit one of these without regenerating the rest.
-    Object.freeze({ x: 218.7, y: 1235.9, z: -758.6 }),
-    Object.freeze({ x: 276.6, y: 1266.2, z: -797.7 }),
-    Object.freeze({ x: 368.1, y: 1301.5, z: -847.4 }),
-    Object.freeze({ x: 378.8, y: 1315.8, z: -833.9 }),
-    Object.freeze({ x: 316, y: 1343.2, z: -781.9 }),
-    Object.freeze({ x: 309.7, y: 1363.9, z: -779.6 }),
-    Object.freeze({ x: 317.7, y: 1372.9, z: -789.6 }),
-    Object.freeze({ x: 314.7, y: 1402.9, z: -784.6 }),
-    Object.freeze({ x: 314.7, y: 1442.9, z: -819.6 }),
-    Object.freeze({ x: 309.7, y: 1462.9, z: -824.6 }),
-    Object.freeze({ x: 319.7, y: 1482.9, z: -834.6 }),
-    Object.freeze({ x: 314.7, y: 1502.9, z: -829.6 }),
+    Object.freeze({ x: -200.1, y: 684.1, z: -615.8 }),
+    Object.freeze({ x: -189.0, y: 744.5, z: -661.7 }),
+    Object.freeze({ x: -177.4, y: 804.2, z: -708.4 }),
+    Object.freeze({ x: -165.6, y: 862.7, z: -756.4 }),
+    Object.freeze({ x: -153.8, y: 916.9, z: -809.5 }),
+    Object.freeze({ x: -141.1, y: 969.2, z: -864.1 }),
+    Object.freeze({ x: -118.2, y: 1017.3, z: -918.2 }),
+    Object.freeze({ x: -74.3, y: 1055.4, z: -968.0 }),
+    Object.freeze({ x: -34.9, y: 1100.7, z: -1015.5 }),
+    Object.freeze({ x: 33.8, y: 1160.5, z: -1042.9 }),
+    Object.freeze({ x: 100.8, y: 1205.5, z: -1069.5 }),
+    Object.freeze({ x: 158.7, y: 1235.9, z: -1108.6 }),
+    Object.freeze({ x: 216.6, y: 1266.2, z: -1147.7 }),
+    Object.freeze({ x: 308.1, y: 1301.5, z: -1197.4 }),
+    Object.freeze({ x: 318.8, y: 1315.8, z: -1183.9 }),
+    Object.freeze({ x: 256.0, y: 1343.2, z: -1131.9 }),
+    Object.freeze({ x: 249.7, y: 1363.9, z: -1129.6 }),
+    Object.freeze({ x: 257.7, y: 1372.9, z: -1139.6 }),
+    Object.freeze({ x: 254.7, y: 1402.9, z: -1134.6 }),
+    Object.freeze({ x: 254.7, y: 1442.9, z: -1169.6 }),
+    Object.freeze({ x: 249.7, y: 1462.9, z: -1174.6 }),
+    Object.freeze({ x: 259.7, y: 1482.9, z: -1184.6 }),
+    Object.freeze({ x: 254.7, y: 1502.9, z: -1179.6 }),
 ]);
 
 const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
     1: 0,
-    2: 0.014,
-    3: 0.0273,
-    4: 0.0414,
-    5: 0.0546,
-    6: 0.0687,
-    7: 0.0819,
-    8: 0.0961,
-    9: 0.1093,
-    10: 0.1233,
-    11: 0.1366,
-    12: 0.1508,
-    13: 0.164,
-    14: 0.1779,
-    15: 0.1914,
-    16: 0.2055,
-    17: 0.2188,
-    18: 0.2326,
-    19: 0.2458,
-    20: 0.2598,
-    21: 0.2732,
-    22: 0.2871,
-    23: 0.3006,
-    24: 0.3145,
-    25: 0.3277,
-    26: 0.3412,
-    27: 0.3551,
-    28: 0.3692,
-    29: 0.4156,
-    30: 0.4619,
-    31: 0.5083,
-    32: 0.5547,
-    33: 0.601,
-    34: 0.6474,
-    35: 0.6937,
-    // ── SPACE LENGTHENED (Space overhaul Wave 1, D1 2026-08-15): ch6 = 13 levels
-    // (36-48) packed INSIDE the unchanged 0.648-0.815 window; ch7 = 49-55 and
-    // ch8 = 56-59 keep the OLD 45-55 positions verbatim. No chapter boundary moves,
-    // so every seam band, station and camera fit survives; players get 4 more space
-    // levels and denser stations. Save-data ids ≥45 migrated +4 (SAVE_VERSION 2).
-    //
-    // ⚠️ Historical scout result (kept — do not re-try): re-spacing ch6's p-window to
-    // 0.845 by taking far-side share FAILS against the spline — the 6→7 helical
-    // sweep begins immediately after 0.815 (rail turn 25.6° vs corridor max 3°; BH
-    // hero ndcX −1.70 by p=0.829). The boundary sits where the rail bends BY design;
-    // growing the p-window needs re-authoring cp17-20 under the pinned arc length.
-    36: 0.7401,
-    37: 0.7497,
-    38: 0.7593,
-    39: 0.7681,
-    40: 0.7777,
-    41: 0.7873,
-    42: 0.7969,
-    43: 0.8065,
-    44: 0.8161,
-    45: 0.8257,
-    46: 0.8346,
-    47: 0.8442,
-    48: 0.8538,
-    49: 0.8634,
-    50: 0.8767,
-    51: 0.8907,
-    52: 0.904,
-    53: 0.918,
-    54: 0.9313,
-    55: 0.9454,
-    56: 0.9586,
-    57: 0.9727,
-    58: 0.986,
+    2: 0.0132,
+    3: 0.0258,
+    4: 0.0393,
+    5: 0.0516,
+    6: 0.0649,
+    7: 0.0774,
+    8: 0.0908,
+    9: 0.1033,
+    10: 0.1167,
+    11: 0.1291,
+    12: 0.1427,
+    13: 0.1551,
+    14: 0.1682,
+    15: 0.1807,
+    16: 0.1943,
+    17: 0.2068,
+    18: 0.2198,
+    19: 0.2323,
+    20: 0.2457,
+    21: 0.2587,
+    22: 0.2716,
+    23: 0.284,
+    24: 0.2973,
+    25: 0.3097,
+    26: 0.3223,
+    27: 0.3356,
+    28: 0.3489,
+    29: 0.3996,
+    30: 0.4503,
+    31: 0.501,
+    32: 0.5516,
+    33: 0.6023,
+    34: 0.653,
+    35: 0.7037,
+    36: 0.7543,
+    37: 0.7634,
+    38: 0.7725,
+    39: 0.7808,
+    40: 0.7899,
+    41: 0.799,
+    42: 0.808,
+    43: 0.8171,
+    44: 0.8262,
+    45: 0.8353,
+    46: 0.8437,
+    47: 0.8527,
+    48: 0.8618,
+    49: 0.8709,
+    50: 0.8835,
+    51: 0.8967,
+    52: 0.9093,
+    53: 0.9225,
+    54: 0.9351,
+    55: 0.9484,
+    56: 0.9609,
+    57: 0.9742,
+    58: 0.9868,
     59: 1,
 });
 

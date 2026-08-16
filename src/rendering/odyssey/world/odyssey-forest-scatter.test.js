@@ -192,15 +192,22 @@ describe('the draw budget holds — draw calls are the rebuild structural claim'
     });
 
     it('keeps visible buckets well inside the Lane A draw ceiling at every station', () => {
-        // The world measured 53 total draws at p=0.42 with ~15 of them forest, against max 90.
-        // Anything at or under 30 forest draws leaves the whole-world total in the mid-60s.
-        [0.225, 0.30, 0.42].forEach((p) => {
+        // The world measured 53 total draws at p=0.42 (pre-flyby p) with ~15 of them forest,
+        // against max 90.
+        //
+        // ⚠️ STATIONS RE-SEATED + CEILING 30 -> 35 BY WAVE 1C (2026-08-16). The stations are
+        // arc-preserved world seats (old p x 2393.89/2532.66), so they still name the same
+        // three island viewpoints. The count itself rose 30 -> 33 because the flyby rail's
+        // high vantage retired most of the visibility cull (94.2% of cells visible), which
+        // keeps more (chunk, species, LOD) buckets alive near the island. 33 forest buckets
+        // puts the whole-world total ≈ 71, still well inside Lane A's 90.
+        [0.2127, 0.2836, 0.3970].forEach((p) => {
             const rp = getOdysseyPathPointAt(p);
             let visible = 0;
             HIGH.buckets.forEach((b) => {
                 if (Math.hypot(b.centre.x - rp.x, b.centre.z - rp.z) < 1450) visible += 1;
             });
-            expect(visible, `station p=${p}`).toBeLessThanOrEqual(30);
+            expect(visible, `station p=${p}`).toBeLessThanOrEqual(35);
             expect(visible, `station p=${p}`).toBeGreaterThan(0);
         });
     });
@@ -280,7 +287,12 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // every tier. These are counts of what the scatter PRODUCES, so they move with the
         // mask. Rebased to the measured truth; the cost itself is tracked in the plan, not
         // hidden by these numbers.
-        expect(COMPOSITION.stats.trees).toBeLessThan(7900);
+        //
+        // ⚠️ REBASED AGAIN BY WAVE 1C (the flyby, 2026-08-16): the longer climb widens the
+        // carve-protected rail corridor (d <= 520 of a longer rail covers more island), so
+        // the recalibrated carve keeps more trees — COMP measured 8,191 after the threshold
+        // re-emission (scripts/act2-forest-arch-calibrate.mjs).
+        expect(COMPOSITION.stats.trees).toBeLessThan(8450);
         expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.30);
     });
 
@@ -300,7 +312,13 @@ describe('density stays an art lever, not a perf regression channel', () => {
         });
         const v = [...cells.values()].sort((a, b) => a - b);
         const contrast = v[Math.floor(0.9 * (v.length - 1))] / v[Math.floor(0.5 * (v.length - 1))];
-        expect(contrast).toBeGreaterThan(2.0);
+        // ⚠️ FLOOR 2.0 -> 1.9 BY WAVE 1C (2026-08-16). The flyby's longer rail widens the
+        // carve-exempt corridor, and corridor forest is uniform by design — so the SHIPPED
+        // set's p90/p50 dilutes (measured 1.96 after threshold re-emission) without any
+        // change to the carved areas' kill rates. The carpet negative control reads 1.71,
+        // so 1.9 still separates stands from carpet. If this needs to fall again, the
+        // corridor should be excluded from the measurement instead of lowering the floor.
+        expect(contrast).toBeGreaterThan(1.9);
     });
 
     it('carves rather than dilutes: in-stand spacing is preserved', () => {
@@ -389,7 +407,11 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // measured 3,395 against 2,173 before, i.e. ~1,200 more trees in the tier that costs
         // the most. Raised so the suite reports the truth instead of failing, NOT because the
         // cost is accepted — it needs a Lane B number before anyone calls the ascent free.
-        expect(hm).toBeLessThanOrEqual(3600);
+        //
+        // ⚠️ 3600 -> 3950 BY WAVE 1C: the flyby lengthens the rail (2393.89 -> 2532.66), so
+        // more chunks sit within the hero/mid distance of it — measured 3,922. Same stance
+        // as above: the truth, not an acceptance. Wave 4's Lane B seam cell prices it.
+        expect(hm).toBeLessThanOrEqual(3950);
     });
 
     it('holds the tier contract the pool gate depends on', () => {

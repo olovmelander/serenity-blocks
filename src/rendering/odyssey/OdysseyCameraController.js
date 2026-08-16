@@ -575,7 +575,8 @@ export class OdysseyCameraController {
             // opening frame, where chapter 1's starting level slid to ndcY -1.02 against a
             // -1.0 floor. Scaled by 0.7384 to keep the same world look-ahead it was tuned for.
             // Note `followDistance` needs no such treatment: it is already in world units.
-            lookAheadDistance: 0.01477, // world-equivalent of the pre-ascent 0.02
+            // RE-SCALED for Wave 1C's flyby (2393.89 -> 2532.66): 0.02 * 1767.65/2532.66.
+            lookAheadDistance: 0.01396, // world-equivalent of the pre-ascent 0.02
         };
 
         // Breathing animation state
