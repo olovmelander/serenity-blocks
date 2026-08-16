@@ -2602,6 +2602,15 @@ export class OdysseyBoardController {
             if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
         }
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
+            // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
+            // (-81.5 luma at p=0.668; `?odysseyNoCloudBank=1` turns that into -4.4). The
+            // obvious fix — a longer, asymmetric exit window like the steam quench's — was
+            // TRIED AND REVERTED: the bank's own colour ramp keys `toVoid` off raw window
+            // progress (`smoothstep(0.45, 1.0, uAltitude)`), which silently assumes the peak
+            // sits at t=0.5. Stretching the exit put p=0.678 at t=0.43, BELOW the tint
+            // threshold, so the bank stayed fully bridge-coloured into space and the frame
+            // ended at luma 201 instead of ~26. Fixing the exit means re-basing that colour
+            // ramp on the peak first; the window is not the only thing that assumes symmetry.
             const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
             const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
