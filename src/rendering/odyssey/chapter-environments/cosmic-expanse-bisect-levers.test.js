@@ -121,18 +121,18 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(dark.userData.heroPlanet.userData.planet).toBeDefined();
     });
 
-    it('?odysseyCh6OneKey=1 re-keys the masses without touching anything else', () => {
-        // Wave 6 lighting audit. The masses are lit 92.2 deg off the hero by a key that is
-        // in the wrong SPACE (corridor-local vector, world-space normals, corridor-parented
-        // mesh). The A/B says keep it - raking gives the masses their form - so this lever
-        // exists to make that comparison one flag away, and must stay ADD-BACK polarity:
-        // absent means the shipped raking key, present means the hero's sun.
+    it('?odysseyCh6LegacyKeyFrame=1 restores the Wave 6 lighting slip, and nothing else', () => {
+        // POLARITY MATTERS HERE. The SHIPPED default now applies the masses' key in the
+        // corridor frame it was authored in (25.7-57.1 deg off the accretion key); this
+        // lever restores the slip that dotted a corridor-local constant against world
+        // normals raw (55.8-95.5 deg off). Absent = fixed, present = legacy. If that ever
+        // inverts, the chapter silently ships the bug again and every capture A/B lies.
         const shipped = buildWithSearch('');
-        const oneKey = buildWithSearch('?odysseyCh6OneKey=1');
-        // The field must still be there under the lever - this re-keys, it does not remove.
+        const legacy = buildWithSearch('?odysseyCh6LegacyKeyFrame=1');
+        // It re-keys; it must not remove or add anything.
         expect(shipped.userData.nebulaField).toBeDefined();
-        expect(oneKey.userData.nebulaField).toBeDefined();
-        expect(oneKey.userData.nebulaField.children.length)
+        expect(legacy.userData.nebulaField).toBeDefined();
+        expect(legacy.userData.nebulaField.children.length)
             .toBe(shipped.userData.nebulaField.children.length);
     });
 

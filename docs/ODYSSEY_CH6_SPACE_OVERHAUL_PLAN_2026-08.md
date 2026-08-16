@@ -710,12 +710,15 @@ means same-bucket = "below resolution", never "zero").
 > and by the exit the masses are lit from nearly a right angle to the thing the chapter is
 > falling into.
 >
-> **A/B says TAKE the fix** (`?odysseyCh6OneKey=1`, ADD-back polarity, now rotating the key
-> into its authored frame). Captured at all 8 stations: **2.6 % of pixels move, and they
-> move the right way** — the warm workhorse keeps its violet body and warm crest, the cool
-> giant keeps its low-contrast role, rule 4's value ladder holds, and the lit sides lean
-> back toward the omen. **Recommended as the new default; left opt-in only because the
-> shipped look was owner-approved with the slip in place.**
+> **A/B said TAKE the fix, and the owner flipped it — it is now the SHIPPED default.**
+> Captured at all 8 stations: **2.6 % of pixels move, and they move the right way** — the
+> warm workhorse keeps its violet body and warm crest, the cool giant keeps its
+> low-contrast role, rule 4's value ladder holds, and the lit sides lean back toward the
+> omen. Polarity is now inverted: `?odysseyCh6LegacyKeyFrame=1` **restores the slip**
+> (ADD-back, like the procedural dome) so the comparison stays one flag away, and a
+> re-polarisation guard in `cosmic-expanse-bisect-levers.test.js` fails loudly if that
+> ever flips back — otherwise the chapter would ship the bug again silently and every
+> capture A/B taken afterwards would lie.
 > The rejected world-sun variant moved 5.2 % and flattened the masses face-on into a
 > saturated orange shape competing with the hero (rule 1) — wrong by the plan AND by eye.
 >
