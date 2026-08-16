@@ -476,10 +476,17 @@ annotated at the claim.
 > ⚠️ Do not simply remove it — with the bank off the whole approach collapses to luma 3-10 at
 > the boundary. It is carrying the frame; it just leaves too fast.
 >
-> Also landed, UNVERIFIED: a narrow approach dim on chapter 5 (`SKY_APPROACH_DIM_*`, last 25 %
-> of the chapter, floor 0.35). It measured no effect, but it was tested only while the frame
-> was saturated by the fog-colour bug above, so its value is unknown rather than nil. Set the
-> floor to 1.0 to disable.
+> ~~Also landed, UNVERIFIED: a narrow approach dim on chapter 5 (last 25 %, floor 0.35).~~
+> **REMOVED 2026-08-16 after a chapter-5 capture showed why it could never work.** Its tail
+> frames get BRIGHTER, not dimmer, across exactly the window the dim covers (local
+> 0778 → 0889 → 1000 = 154.5 → 169.2 → 182.8 luma). Those frames are filled by the One World
+> cloud deck and the seam bank; the dim only touched chapter 5's OWN sky materials, which are
+> not what is bright there. It was 11 wrapped `colorNode` sites and a driver for a provable
+> no-op, and it was only ever landed while the fog-colour bug was masking the measurement.
+>
+> **The lesson is the reusable part:** at the ch5 tail the frame is NOT chapter 5. Anything
+> aimed at the handover's brightness has to target the world deck or the bank; dimming the
+> chapter environment moves almost nothing.
 
 ### Wave 2 — Re-phase the schedule
 - Move the perceptual midpoint onto the boundary: widen `spaceGateBand` (F5) so space
