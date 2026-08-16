@@ -50,6 +50,31 @@ const DEFAULT_PLAYER = 0;
 const COMBO_TIERS = Object.freeze([4, 7, 10]); // resonance milestone thresholds
 const MAX_BEATS = 64; // hard cap so a pathological event storm can't grow the queue unbounded
 
+/**
+ * Camera-shake ladder — [peak amplitude in world units, duration in ms].
+ *
+ * Amplitude is read by CameraDirector.shake() as a positional offset, but the
+ * post-shake lookAt() turns it into view ROTATION, so on the theme's rig (14u back,
+ * 40° FOV) one unit ≈ 110 px of 1080p screen height. That conversion is why the
+ * pre-existing values (0.012 on a lock ≈ 1.3 px) were inaudible: the whole ladder
+ * sat below the perceptual floor against a distant sky.
+ *
+ * Ordering is the design: a bare lock is the faintest tap in the game, every line
+ * clear out-punches it, and a clear escalates with BOTH line count and combo.
+ */
+const SHAKE = Object.freeze({
+    LOCK: [0.045, 90], // ~5 px — felt as a tap, never as a jolt (fires every piece)
+    TSPIN: [0.13, 130],
+    TETRIS: [0.22, 150],
+    APEX: [0.3, 190],
+    PERFECT: [0.3, 200],
+    CLEAR_MS: 120,
+    CLEAR_PER_LINE: 0.055,
+    CLEAR_COMBO_STEP: 0.018, // per combo past the first
+    CLEAR_COMBO_MAX: 0.08,
+    CLEAR_MAX: 0.2, // ~22 px — the ceiling for an ordinary clear
+});
+
 const noop = () => {};
 const DEFAULT_ADAPTERS = Object.freeze({
     seal: noop, // (cells:[{x,y,z}], opts) — cell-centered stellar seal (the lock hero)
@@ -310,7 +335,7 @@ export class StarlightReactionDirector {
         this._at(0, () => this.adapters.ring(centroid, {
             color: accent || [0.72, 0.84, 1.0], maxRadius: 1.05, alpha: 0.45, width: 0.09, lifetime: 0.42,
         }));
-        this._at(0, () => this.adapters.camera('shake', 0.012, 90)); // subtle percussive tap
+        this._at(0, () => this.adapters.camera('shake', ...SHAKE.LOCK)); // subtle percussive tap
         // Release: energy transfers into the sky ~220 ms later (one shallow wave).
         this._at(0.22, () => this.adapters.wave(centroid, { boost: 0.4, speed: 1.6, sigma: 34 }));
         this._at(0.22, () => this.adapters.fx('bloomPunch', 0.05));
@@ -357,11 +382,11 @@ export class StarlightReactionDirector {
             this._at(0.16, () => this.adapters.meteor('shower', { count: 3 }));
             this._at(0.14, () => this.adapters.camera('vertigo', 0.7));
         }
-        // Subtle percussive shake on any combo (or a multi-line clear), scaling with both.
-        if (combo >= 1 || n >= 2) {
-            const shakeAmp = Math.min(0.045, 0.014 * n + (combo >= 4 ? 0.012 : 0) + (combo >= 7 ? 0.014 : 0));
-            this._at(0, () => this.adapters.camera('shake', shakeAmp, 110));
-        }
+        // Percussive impact — fires on every clear and grows with BOTH the line count
+        // and the combo, so a long chain escalates while staying above the lock tap.
+        const comboBonus = Math.min(SHAKE.CLEAR_COMBO_MAX, Math.max(0, combo - 1) * SHAKE.CLEAR_COMBO_STEP);
+        const shakeAmp = Math.min(SHAKE.CLEAR_MAX, SHAKE.CLEAR_PER_LINE * n + comboBonus);
+        this._at(0, () => this.adapters.camera('shake', shakeAmp, SHAKE.CLEAR_MS));
         // Constellation signs scattered across the sky, count scaling with the combo.
         this._comboSigns(combo);
     }
@@ -394,7 +419,7 @@ export class StarlightReactionDirector {
         this._at(converge, () => this.adapters.meteor('fireball', {}));
         this._at(converge + 0.05, () => this.adapters.meteor('shower', { count: 3 }));
         this._at(converge, () => this.adapters.camera('fovPunch', -2.0 * strength));
-        this._at(converge, () => this.adapters.camera('shake', 0.042 * strength, 150));
+        this._at(converge, () => this.adapters.camera('shake', SHAKE.TETRIS[0] * strength, SHAKE.TETRIS[1]));
         this._at(converge, () => this.adapters.fx('flashPunch', 0.5 * strength));
         this._at(converge, () => this.adapters.fx('bloomPunch', 0.18 * strength));
     }
@@ -415,7 +440,7 @@ export class StarlightReactionDirector {
             origin,
             1,
         );
-        this._at(0, () => this.adapters.camera('shake', 0.03, 130));
+        this._at(0, () => this.adapters.camera('shake', ...SHAKE.TSPIN));
         this._at(0, () => this.adapters.fx('chromaPunch', 0.08));
         this._recordSpecial(player, r, { kind: CUE.TSPIN, origin, strength: 1.0 });
     }
@@ -430,7 +455,7 @@ export class StarlightReactionDirector {
         this._comboSigns(10); // three earned signs across the sky
         this._at(0.18, () => this.adapters.meteor('shower', { count: 6 }));
         this._at(0.18, () => this.adapters.camera('fovPunch', -2.5));
-        this._at(0.18, () => this.adapters.camera('shake', 0.055, 180));
+        this._at(0.18, () => this.adapters.camera('shake', ...SHAKE.APEX));
         this._at(0.18, () => this.adapters.aurora(0.5, 1200));
         this._at(0.18, () => this.adapters.fx('flashPunch', 0.4));
         this._at(0.18, () => this.adapters.fx('bloomPunch', 0.26));
@@ -446,7 +471,7 @@ export class StarlightReactionDirector {
         this._spread((o, s) => this.adapters.impulse(o, 5.0 * s, IMPULSE.RADIAL), origin, 2, 0.25, 0.05);
         this._spread((o, s) => this.adapters.echo(o, { maxRadius: 3.4 * s, alpha: 0.55 * s }), origin, 2, 0.25);
         this._spread((o, s) => this.adapters.wave(o, { boost: 0.9 * s, speed: 1.5, sigma: 22 }), origin, 2, 0.25, 0.05);
-        this._at(0.25, () => this.adapters.camera('shake', 0.05, 170));
+        this._at(0.25, () => this.adapters.camera('shake', ...SHAKE.PERFECT));
         this._at(0.25, () => this.adapters.aurora(0.6, 1600));
         this._at(0.25, () => this.adapters.fx('flashPunch', 0.5));
     }
