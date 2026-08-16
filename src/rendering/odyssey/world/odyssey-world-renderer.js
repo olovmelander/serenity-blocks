@@ -1690,9 +1690,30 @@ export function createOdysseyWorld({
                 .mul(kSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)))
             .add(vec3(0.72, 0.82, 0.95).mul(rim));
     }
+    // ── THE DEPARTURE FADE (Act II -> Space, Wave 1B) ────────────────────────────
+    // The One World used to LEAVE BY BOOLEAN. `isWorldVisibleAtProgress` writes `.visible`
+    // and nothing else, so at actEnd + 0.03 the ground, water, cloud deck, forest and
+    // god-rays all stopped existing between two frames — a measured -89 luma step, 74% of
+    // the seam's whole brightness change landing in its last fifth. The mountain vanishing
+    // in front of the camera is that flag, seen on the biggest object in the frame.
+    //
+    // This recedes it instead. Note what it fades: COLOUR, not alpha. Every world material
+    // is an unlit MeshBasicNodeMaterial with hand-authored colour, so pulling that colour
+    // toward the sky is (a) exactly what distance does — this module already has
+    // `applyAerial` for the same reason — and (b) free of every cost that fading alpha
+    // would bring: nothing leaves the opaque queue, no render order changes, no blend
+    // state appears, and the `opacityNode`-is-a-dead-write trap never comes up.
+    //
+    // At uWorldFade = 0 this is a bit-for-bit no-op, so the whole of Act II is untouched.
+    // The binary gate STAYS exactly as it is: it remains the correctness backstop that
+    // stops Act II painting over chapters that own their own frame (Earth Core's magma
+    // cathedral was the proof case). It simply no longer has anything visible left to hide.
+    const uWorldFade = uniform(0);
+    const uWorldFadeColour = uniform(new THREE.Color(0x09283f));
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
-        return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
+        const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
+        return mix(graded, uWorldFadeColour, uWorldFade);
     };
     groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
 
@@ -2769,7 +2790,12 @@ export function createOdysseyWorld({
         const rayShimmerSafe = clamp(rayShimmer.mul(0.5).add(0.5), 0, 1).pow(1.35)
             .mul(0.55)
             .add(0.45);
-        rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
+        // Bypasses toOutput (no grade on the shafts), so it takes the departure fade directly.
+        rayMat.colorNode = mix(
+            uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale),
+            uWorldFadeColour,
+            uWorldFade,
+        );
         // 0.55 -> 0.34: the flip put the wide (formerly buried) half of every cone in front
         // of the camera, and DoubleSide additive pays both walls — at the old master the
         // shafts read as solid pipes.
@@ -2891,9 +2917,13 @@ export function createOdysseyWorld({
         // Transmitted light: brightness rises with depth below the surface, because the
         // background darkens with depth — the same inverse the vault's ember gate uses.
         const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
-        moteMat.colorNode = mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
-            .mul(mDepth.mul(0.9).add(0.35))
-            .mul(uOutputScale);
+        moteMat.colorNode = mix(
+            mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
+                .mul(mDepth.mul(0.9).add(0.35))
+                .mul(uOutputScale),
+            uWorldFadeColour,
+            uWorldFade,
+        );
         moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged).mul(0.42);
         moteMat.transparent = true;
         moteMat.depthWrite = false;
@@ -3531,6 +3561,16 @@ export function createOdysseyWorld({
         state,
         heightAt: relief.sample,
         fog: fogState,
+        /**
+         * THE DEPARTURE FADE (Wave 1B). `setDepartureFade(t, colour)` pulls the whole world
+         * toward `colour` as t goes 0 -> 1, so Act II recedes instead of being switched off.
+         * The caller owns the schedule; see OdysseyBoardController, which derives it from the
+         * act edge so it completes BEFORE the visibility gate fires.
+         */
+        setDepartureFade(t, colour = null) {
+            uWorldFade.value = Math.min(Math.max(t, 0), 1);
+            if (colour) uWorldFadeColour.value.copy(colour);
+        },
         /**
          * THE ACT'S CLOUD PALETTE, as live TSL nodes — shared, never copied.
          *
