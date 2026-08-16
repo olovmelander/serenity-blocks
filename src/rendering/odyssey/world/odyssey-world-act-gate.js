@@ -92,3 +92,27 @@ export function worldDepartureFade(progress, skyStart, actEnd) {
     const t = Math.min(Math.max((progress - start) / Math.max(1e-5, end - start), 0), 1);
     return t * t * (3 - 2 * t);
 }
+
+/**
+ * ATMOSPHERIC THINNING (Act II -> Space, Wave 3 / F3). Real atmosphere thins, recedes and
+ * loses contrast with altitude; the sculpted cloud deck instead held full cumulus form to
+ * the last drawn frame, which is the audit's F3. This ramp drives the deck's paint toward
+ * a flat haze family and shrinks each mass toward its own centre as the rail climbs, so
+ * "leaving the weather" is something the clouds DO rather than something that happens to
+ * the frame.
+ *
+ * Distinct from `worldDepartureFade` on purpose: the fade is the whole WORLD leaving into
+ * the void; the thinning is the SKY losing body while the world below is still vivid — it
+ * opens earlier (0.40 of the sky span, as the climb enters the deck band around y~900)
+ * and never completes (max 0.85), because a deck at zero would hand the limb bank nothing
+ * to cross. FRACTIONS, so a re-layout carries it unedited.
+ */
+export const ONE_WORLD_THIN_LEAD = 0.40;
+export const ONE_WORLD_THIN_MAX = 0.85;
+export function worldAtmosphericThin(progress, skyStart, actEnd) {
+    if (!Number.isFinite(progress) || !Number.isFinite(skyStart) || !Number.isFinite(actEnd)) return 0;
+    const skySpan = Math.max(1e-5, actEnd - skyStart);
+    const start = actEnd - skySpan * ONE_WORLD_THIN_LEAD;
+    const t = Math.min(Math.max((progress - start) / Math.max(1e-5, actEnd - start), 0), 1);
+    return t * t * (3 - 2 * t) * ONE_WORLD_THIN_MAX;
+}

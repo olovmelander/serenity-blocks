@@ -233,5 +233,14 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         // ...while the rest of Space is still held out of the daylight frame.
         expect(env.userData.starsNear.material.opacity).toBeLessThan(0.01);
         expect(env.userData.voidSky.visible).toBe(false);
+
+        // OWNER DECISION D3 (Wave 3): the giant is genuinely BIG at the summit — the
+        // last update above ran at igniteEnd, where the summit keyframe still owns the
+        // pose — and it settles back to the approved entry scale AT the boundary, where
+        // the entry-composition thirds are asserted.
+        expect(env.userData.heroPlanet.scale.x).toBeGreaterThan(2.5);
+        const entryFrame = frameAt(controller, chapterPositions, 6, ch6Start);
+        heroesAt(env, entryFrame.camPos, ch6Start);
+        expect(env.userData.heroPlanet.scale.x).toBeCloseTo(34 / 28, 3);
     });
 });

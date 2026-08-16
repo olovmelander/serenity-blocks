@@ -186,6 +186,13 @@ const FIELD_CENTROID_BEND = 0.30;
 /** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
 const FIELD_MIE_GAIN = 0.10;
 /**
+ * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
+ * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
+ * a mass ends the climb at ~74% of its authored size — visibly losing scale, still a cloud.
+ * The pull rides INSIDE cfOffset so the vertex position and the cfWorld varying agree.
+ */
+const FIELD_THIN_SHRINK = 0.30;
+/**
  * RIGID DRIFT (plan Wave 3). Amplitudes in world units and the period band in seconds.
  *
  * The masses TRANSLATE; they never deform. The look rules are explicit that silhouettes must
@@ -1710,6 +1717,12 @@ export function createOdysseyWorld({
     // cathedral was the proof case). It simply no longer has anything visible left to hide.
     const uWorldFade = uniform(0);
     const uWorldFadeColour = uniform(new THREE.Color(0x09283f));
+    // ── ATMOSPHERIC THINNING (Wave 3 / F3) — consumed only by the cloud FIELD. ──────
+    // 0 = full cumulus form; toward 1 the paint collapses into a flat haze family and
+    // each mass shrinks toward its own centre (see the field material). Driven by the
+    // board from `worldAtmosphericThin` in odyssey-world-act-gate.js — the schedule
+    // lives beside the departure fade because the two are halves of one departure.
+    const uWorldThin = uniform(0);
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
@@ -2674,7 +2687,14 @@ export function createOdysseyWorld({
     //
     // The rule that follows is cheap: build it as a PLAIN EXPRESSION, so each consumer inlines
     // its own copy. A few duplicated ALU beats a silent zero.
-    const cfOffset = cfDrift.add(cfBreath);
+    //
+    // ATMOSPHERIC THINNING (Wave 3): a third offset term pulls every vertex toward its own
+    // mass centre as `uWorldThin` rises, shrinking the mass in place (same centres, smaller
+    // bodies — the deck opens sky between masses instead of holding full form to the end).
+    // Written as another PLAIN term inside cfOffset so the vertex position and the `cfWorld`
+    // varying stay in the exact agreement the note above paid for.
+    const cfThinPull = positionLocal.sub(cfCentre).mul(uWorldThin.mul(-FIELD_THIN_SHRINK));
+    const cfOffset = cfDrift.add(cfBreath).add(cfThinPull);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
     const cfRadial = cfWorld.sub(cfCentre);
@@ -2704,8 +2724,13 @@ export function createOdysseyWorld({
     const cfEdge = smoothstep(float(0.55), float(0.88), cfRim);
     const fieldCol = mix(cfLit, mix(cloudShade, uSkyHorizon, float(0.30)), cfEdge.mul(0.55))
         .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
+    // ATMOSPHERIC THINNING (Wave 3 / F3): the paint half. As `uWorldThin` rises the whole
+    // Witness band structure (lit/shade/underside/Mie) collapses toward one flat, low-sat
+    // haze family — contrast and saturation leave together, which is what altitude does to
+    // cumulus. Applied BEFORE the aerial so distance still grades the thinned colour.
+    const fieldThinned = mix(fieldCol, mix(cloudShade, uSkyHorizon, float(0.65)), uWorldThin);
     const fieldMat = new THREE.MeshBasicNodeMaterial();
-    fieldMat.colorNode = toOutput(heroAerial(fieldCol, cfWorld));
+    fieldMat.colorNode = toOutput(heroAerial(fieldThinned, cfWorld));
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -3570,6 +3595,15 @@ export function createOdysseyWorld({
         setDepartureFade(t, colour = null) {
             uWorldFade.value = Math.min(Math.max(t, 0), 1);
             if (colour) uWorldFadeColour.value.copy(colour);
+        },
+        /**
+         * ATMOSPHERIC THINNING (Wave 3 / F3). `setAtmosphericThin(t)` collapses the cloud
+         * field's paint toward a flat haze family and shrinks each mass toward its centre
+         * as t goes 0 -> 1. The caller owns the schedule (`worldAtmosphericThin`, beside
+         * the departure fade in odyssey-world-act-gate.js). Touches ONLY the cloud field.
+         */
+        setAtmosphericThin(t) {
+            uWorldThin.value = Math.min(Math.max(t, 0), 1);
         },
         /**
          * THE ACT'S CLOUD PALETTE, as live TSL nodes — shared, never copied.
