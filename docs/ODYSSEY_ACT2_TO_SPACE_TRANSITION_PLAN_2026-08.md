@@ -20,8 +20,10 @@ hide it.
 - **Space** = chapter 6, `cosmic-expanse`, a diorama OUTSIDE One World by decision
   (One World plan §3.0.1 — do not "fix" the suppression).
 - **The seam** = the 5→6 boundary at **p = 0.648**.
-- Chapter boundaries, derived from level data (`deriveOdysseyChapterPositions`):
-  ch4 0.389 · **ch5 0.556** · **ch6 0.648** · ch7 0.815.
+- Chapter boundaries, derived from level data (`deriveOdysseyChapterPositions`), verified
+  2026-08-16 by importing the real modules (NOT by parsing the source — see §2.5):
+  `[0, 0.093, 0.204, 0.352, 0.5, 0.648, 0.815, 0.944, 1]`, i.e.
+  ch4 0.352 · **ch5 0.500** · **ch6 0.648** · ch7 0.815.
 
 ---
 
@@ -70,14 +72,20 @@ hide it.
 
 | # | mechanism | source | starts | ends |
 |---|---|---|---|---|
-| 1 | Earth ignite (`SUMMIT_EARTH_REVEAL`) | `cosmic-expanse.js:182` | 0.610 | 0.634 |
+| 1 | Earth ignite (`SUMMIT_EARTH_REVEAL`) | `cosmic-expanse.js:182` | **0.587** | **0.626** |
 | 2 | Chapter ecotone crossfade (`seamProgress`) | `ChapterEnvironmentManager` | 0.618 | **0.670** |
 | 3 | Space content gate (`spaceGateBand` 0.06) | `cosmic-expanse.js:190` | 0.648 | **0.658** |
 | 4 | **One World act gate** (binary) | `odyssey-world-act-gate.js:29` | — | **0.678** |
 
 Derivations (so a future re-layout can re-check them):
-- `summitStart = ch6 − (ch6 − ch5) × 0.41 = 0.648 − 0.092×0.41 = 0.6103`
-- `summitEnd = ch6 − 0.092×0.15 = 0.6342`
+- `summitStart = ch6 − (ch6 − ch5) × 0.41 = 0.648 − 0.148×0.41 = 0.5873`
+- `summitEnd = ch6 − 0.148×0.15 = 0.6258`
+- ⚠️ **The code's own comments at `cosmic-expanse.js:183-186` claim 0.610 and 0.634.**
+  Those come from `skySpan = 0.648 − 0.556`, and **0.556 is not ch5's start** — it is level
+  31's path position. Ch5 starts at level 28, p = 0.500. The CODE is correct (it derives
+  from `chapterPositions` at runtime); only the comments are wrong, by 23 and 8
+  thousandths. Anyone retiming this seam from the comments would be tuning against
+  numbers that do not exist. Fixing the comments is a Wave 0 task.
 - `gateEnd = ch6 + (ch7 − ch6) × 0.06 = 0.648 + 0.167×0.06 = 0.6580`
 - `worldOff = ch6 + ONE_WORLD_ACT_MARGIN = 0.648 + 0.03 = 0.6780`
 
@@ -122,16 +130,17 @@ midpoint; it is that one endpoint is reached by a step function.
 
 ### 2.4 Secondary findings
 
-- **F1 — the seam brightens before it darkens.** +64.5 luma over 0.618→0.642. Partly the
-  camera cresting into open sky, partly the earth ignite adding light. Whatever the cause,
-  the first half of a "descent into night" reads as a sunrise.
+- **F1 — the seam brightens before it darkens.** +64.5 luma over 0.618→0.642. **Not the
+  earth ignite**: with the corrected schedule that ramp is ~91 % complete by the first
+  captured frame (0.618), so the brightening is the camera cresting into open sky. The
+  first half of a "descent into night" reads as a sunrise.
 - **F2 — alpha crossfade between unequal luminances is perceptually back-loaded.** Act II
   ≈195, space ≈26. A 50 % alpha blend still reads ≈110, i.e. "bright sky". A linear
   crossfade therefore *always* looks like a late collapse, even with no cliff.
 - **F3 — cloud silhouettes survive to the last frame.** At p=0.668 the sky is full of
   cumulus shapes; at 0.678 there are none. Real atmosphere thins, recedes and loses
   contrast with altitude; this deck holds full form and then leaves.
-- **F4 — the hero reads as set dressing.** The gas giant is fully present by p=0.634 but at
+- **F4 — the hero reads as set dressing.** The gas giant is fully present by p=0.626 but at
   the shipped framing it is a small striped disc, visually indistinguishable from a level
   orb. The "see the earth from the summit" beat does not land.
 - **F5 — `spaceGateBand` is very tight.** Space content goes 0→100 % over 0.010 of global
@@ -140,17 +149,32 @@ midpoint; it is that one endpoint is reached by a step function.
   chapter spans and one is an absolute constant (`ONE_WORLD_ACT_MARGIN`). A future layout
   change moves three of them and not the fourth.
 
-### 2.5 A hazard found while tracing this, worth its own check
+### 2.5 The chapter-position hazard: INVESTIGATED AND REFUTED
 
-`getActiveOdysseyChapterPositions()` is the single source the seam staging reads
-(`cosmic-expanse.js:1642`). It is derived correctly from level data at module load
-(ch5 = 0.556), **but `setOdysseyPathLayout(this.presentationLayout)` overwrites it at
-runtime** (`OdysseyBoardController.js:602`, `:3077`), and the presentation layout can be
-fed a `layoutOverride`. A stale saved layout would silently shift `summitStart` — at
-ch5 = 0.500 instead of 0.556 the earth ignite would begin at p = 0.587 rather than 0.610,
-23 thousandths early. A previously-noted boot log reporting ch4/ch5 as 0.352/0.500 matches
-that signature exactly. **Not reproduced in this audit** (the derived values are correct);
-flagged for Wave 0 to prove one way or the other.
+A prior note in this project claimed ch4/ch5 chapter positions had "drifted", with the boot
+reporting 0.352/0.500 while level data said 0.389/0.556 — two disagreeing sources. **That is
+wrong, and this audit settles it.** Verified by importing `LEVEL_CONFIGS`, `CHAPTER_CONFIGS`
+and `deriveOdysseyChapterPositions` directly:
+
+- every chapter's `levelRange` matches its `chapter:` fields — **all eight OK, no drift**;
+- `deriveOdysseyChapterPositions()` returns
+  `[0, 0.093, 0.204, 0.352, 0.5, 0.648, 0.815, 0.944, 1]`;
+- so the boot's 0.352/0.500 **were the correct values all along**.
+
+There is also no persistence path for a stale layout: no `localStorage` layout key exists,
+and `layoutOverride` is only ever set in-memory by the editor apply path
+(`OdysseyBoardController.js:3071`), so it cannot survive a reload.
+
+⚠️ **METHOD NOTE, because this cost real time and produced a confidently wrong intermediate
+result.** The "drift" was reproduced *from a regex over `levels.js`* — `id:\s*(\d+),.*?chapter:\s*(\d+)`
+with DOTALL, which happily pairs one object's `id` with a *later* object's `chapter` and
+produced a plausible, entirely fictional table (ch4 = 22-30, ch5 = 31-35). Acting on it
+appeared to expose a difficulty "sawtooth" and a 5-level mis-assignment; all of it was an
+artifact. **Derive facts about level data by importing the modules, never by parsing the
+file.** The `__tmp-*.test.js` probe pattern is the cheap way to do that.
+
+The 0.556 that appears in the seam's own code comments is level 31's position, which is what
+made the false story feel corroborated. It is a stale comment, not a data bug (§2.2).
 
 ---
 
@@ -184,9 +208,11 @@ annotated at the claim.
 - A luma-monotonicity check over the capture: assert no single sample-to-sample step
   exceeds N luma, and that the curve is monotonically decreasing after the boundary.
   This is the metric the whole overhaul is judged by, so it lands first.
-- **Settle §2.5**: log `getActiveOdysseyChapterPositions()` at boot on a clean profile and
-  with a saved layout override. If a stale override can shift the seam, that is a bug in
-  its own right and it outranks everything else here.
+- ~~Settle §2.5 (the suspected chapter-position drift).~~ **DONE during the audit —
+  refuted.** No drift, no persistence path, boot values were correct. What remains is the
+  small real defect it uncovered: **fix the wrong schedule comments at
+  `cosmic-expanse.js:183-186`** (they claim 0.610/0.634; the truth is 0.587/0.626), so the
+  next person to retime this seam is not reading fiction.
 
 ### Wave 1 — Kill the cliff (the one that matters)
 - Give the One World group a **progress-driven opacity/dissolve ramp** that reaches 0 at
