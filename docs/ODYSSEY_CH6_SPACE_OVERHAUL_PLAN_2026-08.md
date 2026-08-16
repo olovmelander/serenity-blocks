@@ -688,45 +688,47 @@ means same-bucket = "below resolution", never "zero").
 > altitude ramps into the 5→6 bridge, the 6→7 retime, and the ch6 grade-table pass —
 > plus the owner's own in-game verdicts, which no capture can substitute for.
 
-> **WAVE 6 — THE LIGHTING AUDIT (2026-08-16, `59855dd7`+).** Done, and it found that the
-> chapter declares **FOUR** key directions, not one:
+> **WAVE 6 — THE LIGHTING AUDIT (2026-08-16, `e3a7003f` corrected by `<this commit>`).**
+> ⚠️ **The first version of this block was framed against the wrong key and is corrected
+> here at the claim.** It called `ODYSSEY_WORLD_SUN` "the real key" and reported the
+> masses as 92.2° off it. But **§3.4 of this very plan names the ACCRETION point light as
+> ch6's one key** — the hero planet's use of the world sun is a separate, deliberate Wave
+> 0.2 trade to stop its terminator swimming. Measuring against the world sun answered a
+> question the plan never asked, and the A/B run from it tested a fix nobody wanted.
 >
-> | key | used by | vs `ODYSSEY_WORLD_SUN` |
-> |---|---|---|
-> | `ODYSSEY_WORLD_SUN` (-0.46, 0.36, 0.61) | hero terminator, limb, atmosphere rim, auroral crown | — (the real key) |
-> | `NEBULA_KEY_DIR` (-0.48, 0.36, -0.62), corridor-local | the nebula masses — the chapter's visual bulk | **92.2°** |
-> | profile `lightDir` (0.6, 0.3, -0.7) | **nothing** | 136.6°, and **INERT** |
-> | a fixed view-space key | asteroid rocks | already a documented knowing exception |
+> **The real finding, measured against the black hole.** The masses' key is applied in the
+> wrong SPACE: `N` is `normalWorld`, the mesh is corridor-parented, and the key is a
+> corridor-LOCAL constant dotted against those world normals raw. The slip is **45.8°**:
 >
-> **The masses' key is in the wrong SPACE.** `N` is `normalWorld`, the mesh is parented to
-> the corridor group, and the key is a corridor-LOCAL constant dotted against those world
-> normals raw. Three lines of evidence that it is a slip and not an art choice: the
-> mismatch is structural; z-flipping the constant lands **0.9°** from the world sun (a
-> hand-picked direction does not land that close to a canonical constant by chance); and
-> the comment's "accretion key" story fails measurement — it sits 25.7° from the black
-> hole at entry and drifts to 57.1° by the exit, so it never tracked the disc.
+> | | entry | mid | exit |
+> |---|---|---|---|
+> | as applied | 55.8° | 67.7° | **95.5°** off the BH |
+> | as authored (key rotated into world) | 25.7° | 35.5° | 57.1° off the BH |
 >
-> **BUT THE A/B SAYS KEEP THE SLIP, so it is now a knowing exception rather than a bug to
-> fix.** Captured both ways at all 8 stations behind a new ADD-BACK lever
-> (`?odysseyCh6OneKey=1`): the correction moves 6.6–8.9 % of pixels across the second half
-> and moves them the wrong way. On the hero's sun the masses light nearly face-on — the
-> warm workhorse flattens into one big saturated orange shape that competes with the hero
-> for dominance (rule 1) and loses the violet shade band that gives it form, and rule 4's
-> value ladder collapses. The 92.2° key RAKES them, and raking is what makes the bands.
-> Recorded at the constant in `odyssey-nebula-field.js`; lever kept so the comparison
-> stays one flag away. **Owner may still overrule — the A/B is the evidence, not a verdict.**
+> The authored intent was sound — a raking key leaning loosely toward the omen ahead,
+> which is rule 8's causal light. The application throws ~30° of it away at every station,
+> and by the exit the masses are lit from nearly a right angle to the thing the chapter is
+> falling into.
 >
-> ⚠️ **The profile's `lightDir` is a DEAD DECLARATION.** Every ch6 surface is unlit
-> `MeshBasic` with hand-authored shading (the only `MeshStandardMaterial` mentions in the
-> chapter are comments explaining why it is *not* used), so that direction lights nothing.
-> Anyone "fixing" ch6 lighting by tuning it will see no change and lose an afternoon.
+> **A/B says TAKE the fix** (`?odysseyCh6OneKey=1`, ADD-back polarity, now rotating the key
+> into its authored frame). Captured at all 8 stations: **2.6 % of pixels move, and they
+> move the right way** — the warm workhorse keeps its violet body and warm crest, the cool
+> giant keeps its low-contrast role, rule 4's value ladder holds, and the lit sides lean
+> back toward the omen. **Recommended as the new default; left opt-in only because the
+> shipped look was owner-approved with the slip in place.**
+> The rejected world-sun variant moved 5.2 % and flattened the masses face-on into a
+> saturated orange shape competing with the hero (rule 1) — wrong by the plan AND by eye.
 >
-> **THE 6→7 RETIME AND THE SEAM_56 RETUNE ARE NO-OPS BY CONSTRUCTION** — struck from this
-> wave, not skipped. Both were written when D1 was expected to WIDEN the chapter's
-> p-window. D1 landed the other way: Wave 1-B grew ch6 from 9 to 13 levels **inside the
-> unchanged 0.648–0.815 window** (verified in `levels.js` and `odyssey-layout.js`). The BH
-> loom, `SEAM_56_*` and `spaceGateBand` are all chapter-fractional, so an unchanged span
-> means unchanged absolute windows. There is no longer span to retime against.
+> ⚠️ **The profile's `lightDir` (0.6, 0.3, -0.7) is a DEAD DECLARATION.** Every ch6 surface
+> is unlit `MeshBasic` with hand-authored shading (the only `MeshStandardMaterial` mentions
+> are comments explaining why it is *not* used), so it lights nothing. Anyone "fixing" ch6
+> lighting by tuning it will see no change and lose an afternoon.
+>
+> **THE 6→7 RETIME AND THE SEAM_56 RETUNE ARE NO-OPS BY CONSTRUCTION** — struck, not
+> skipped. Both were written when D1 was expected to WIDEN the p-window. D1 landed the
+> other way: Wave 1-B grew ch6 to 13 levels **inside the unchanged 0.648–0.815 window**
+> (verified in `levels.js` and `odyssey-layout.js`). The BH loom, `SEAM_56_*` and
+> `spaceGateBand` are chapter-fractional, so an unchanged span means unchanged windows.
 >
 > **STILL OPEN after this pass:** the ascent altitude ramps into the 5→6 bridge, and the
 > owner's in-game verdicts (dome pocket brightness, cool-giant value, the aurora's
