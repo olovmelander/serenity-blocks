@@ -256,12 +256,36 @@ Three principles:
 Every wave ends with: seam capture → luma curve re-measured → tests green → this plan
 annotated at the claim.
 
-### Wave 0 — Instrument before touching anything
-- A seam-schedule test that pins all four endpoints (0.610 / 0.618–0.670 / 0.658 / 0.678)
-  as *derived* values, so any future re-layout that desynchronises them fails loudly.
-- A luma-monotonicity check over the capture: assert no single sample-to-sample step
-  exceeds N luma, and that the curve is monotonically decreasing after the boundary.
-  This is the metric the whole overhaul is judged by, so it lands first.
+### Wave 0 — Instrument before touching anything ✅ **DONE 2026-08-16**
+- ✅ **`tests/unit/odyssey-seam-56-schedule.test.js`** (5 tests) pins all four endpoints as
+  *derived* values — nothing is a literal, because Wave 1A deliberately re-maps every
+  chapter's p→world and these assertions must survive that by re-deriving. It also asserts
+  the ORDER (ignite → boundary → space gate → world off) and pins the cliff itself as
+  current behaviour, so Wave 1B has a test that fails when the defect is fixed.
+- ✅ **The seam continuity metric.** `frameLuma()` in the capture harness now records
+  `meanLuma` into every frame sidecar (Rec.709 over the decoded bitmap — the harness is the
+  only place that already holds pixels, so no PNG decoder is needed), and
+  **`scripts/odyssey-seam-luma.mjs`** turns a capture into a pass/fail gate:
+
+  ```
+  node scripts/odyssey-seam-luma.mjs            # newest seam-5-6 capture
+  ```
+
+  **BASELINE, measured 2026-08-16 — the defect, as a failing command:**
+
+  ```
+  maxStep       -89.4 at p=0.6780   (limit 45)      <- the One World act gate
+  tailShare     63.3% of movement in the last third (limit 50%)
+  postBoundary  0 rising step(s) after p=0.648      (limit 0)   PASS
+  FAIL: maxStep -89.4 exceeds 45; tailShare 63.3% exceeds 50%     exit 1
+  ```
+
+  The tool independently reproduced the hand-derived §1 curve to two decimals, which
+  cross-validates the audit. Note the two tail figures measure different windows: §1's 74 %
+  is the last **two** samples (0.020 of progress); the tool's 63.3 % is the last **third**
+  of the steps, and that is the canonical gate number.
+  ⚠️ Captures taken before this change carry no `meanLuma`; the tool exits 2 and says so
+  rather than silently passing on an empty sample set.
 - ~~Settle §2.5 (the suspected chapter-position drift).~~ **DONE during the audit —
   refuted.** No drift, no persistence path, boot values were correct. What remains is the
   small real defect it uncovered: **fix the wrong schedule comments at
