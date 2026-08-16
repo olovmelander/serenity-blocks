@@ -232,13 +232,22 @@ MARCH.forEach(({ ease, st }, i) => {
 // fit; a spline edit invalidates all three together.)
 const GAL_B = APPROACH.galaxyB;
 let bestGal = null;
+let galFeasible = 0;
 const galDistToday = projectAt(ST_ENTRY, toWorld(new THREE.Vector3(GAL_A.x, GAL_A.y, GAL_A.z))).dist;
-for (let gx = GAL_A.x - 300; gx <= GAL_A.x + 500; gx += 20) {
-    for (let gy = GAL_A.y - 300; gy <= GAL_A.y + 300; gy += 20) {
-        for (let gz = GAL_A.z - 300; gz <= GAL_A.z + 300; gz += 20) {
+// Box widened 2026-08-16 (Wave 1C): the ±300 box emptied after the look-ahead re-scale
+// (0.01477 -> 0.01396) moved every station camera's aim slightly nearer.
+for (let gx = GAL_A.x - 600; gx <= GAL_A.x + 700; gx += 20) {
+    for (let gy = GAL_A.y - 500; gy <= GAL_A.y + 400; gy += 20) {
+        for (let gz = GAL_A.z - 500; gz <= GAL_A.z + 500; gz += 20) {
             const g = { x: gx, y: gy, z: gz };
             const e = projectAt(ST_ENTRY, toWorld(new THREE.Vector3(g.x, g.y, g.z)));
-            if (e.behind || !(e.x > 0.46) || !(e.y > 0.08)) continue;
+            // 0.46 -> 0.33 (Wave 1C): the flyby's new entry tangent banks the early-march
+            // cameras, so a galaxy right enough for 0.46 overflows 0.86 at 4:3 by station
+            // 2-3 — measured: the 0.46 band is EMPTY over a ±600 u box. The shipped test's
+            // real frontier is coupled (galaxy > 0.25, planet > 0, separation > 0.3), so a
+            // galaxy at ~0.35 with the planet squeezed into (0, galaxy-0.31) is legal; the
+            // planet sweep below enforces its half of the couple against the SOLVED galaxy.
+            if (e.behind || !(e.x > 0.33) || !(e.y > 0.08)) continue;
             let framed = true;
             for (let i = 0; i < MARCH.length && framed; i += 1) {
                 const { ease, st } = MARCH[i];
@@ -250,13 +259,14 @@ for (let gx = GAL_A.x - 300; gx <= GAL_A.x + 500; gx += 20) {
                 if (r.behind || Math.max(Math.abs(r.x), Math.abs(r.y)) > 0.86) framed = false;
             }
             if (!framed) continue;
+            galFeasible += 1;
             const err = Math.abs(e.dist - galDistToday);
             if (!bestGal || err < bestGal.err) bestGal = { g, err, e };
         }
     }
 }
 if (bestGal) {
-    console.log(`\nSOLVED galaxyA: { x: ${bestGal.g.x}, y: ${bestGal.g.y}, z: ${bestGal.g.z}, s: 155 },`);
+    console.log(`\nSOLVED galaxyA (${galFeasible} feasible points): { x: ${bestGal.g.x}, y: ${bestGal.g.y}, z: ${bestGal.g.z}, s: 155 },`);
     console.log(`   entry ndc ${bestGal.e.x.toFixed(2)}, ${bestGal.e.y.toFixed(2)}  dist ${bestGal.e.dist.toFixed(0)} (was ${galDistToday.toFixed(0)})`);
     galEntry.x = bestGal.e.x;
 } else {

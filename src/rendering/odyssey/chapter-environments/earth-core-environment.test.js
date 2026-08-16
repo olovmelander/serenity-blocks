@@ -46,7 +46,8 @@ function makeCameraHarness() {
 // (which ended at 0.093); unscaled it now lands at 0.075 against a chapter that ends at
 // 0.0687 — i.e. outside chapter 1 altogether, which is why the Heart left frame. Scaled by
 // 0.7384 so each frame samples the WORLD position its hero beat was authored against.
-const CAPTURE_STEP = 0.005 * 0.7384;
+// RE-SCALED for Wave 1C's flyby (total 2393.89 -> 2532.66): 1767.65 / 2532.66 = 0.6979.
+const CAPTURE_STEP = 0.005 * 0.6979;
 
 function captureProgress(frameNumber) {
     return (frameNumber - 1) * CAPTURE_STEP;

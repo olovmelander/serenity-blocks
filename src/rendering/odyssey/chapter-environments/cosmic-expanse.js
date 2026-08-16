@@ -125,7 +125,9 @@ export const COSMIC_EXPANSE_CONFIG = {
 //   gas giant   ndc (+0.14, -0.32) -> (+0.21, -0.23)  lower-CENTRE-right, 1047 -> 756
 //   galaxy      ndc (+0.50, +0.26) -> (+0.57, +0.38)  upper-RIGHT anchor, 1213 -> 958
 // Worst-case |ndcX| across all aspect ratios is 0.75 (galaxy at 4:3); nothing clips.
-const APPROACH = {
+// Exported for scripts/odyssey-ch6-approach-resolve.mjs, which must read the LIVE values —
+// a re-solve against transcribed (stale) coordinates is how the first run fit the wrong pose.
+export const APPROACH = {
     // Black hole: the destination omen, in TWO phases (owner direction 2026-08-15:
     // "the path goes straight into the black hole — it IS the transition"). Phase 1
     // (ease 0 → DIVE_START): holds the upper-left third and LOOMS, the Journey
@@ -157,8 +159,16 @@ const APPROACH = {
     // constraints: it must clear centre (ndcX > 0) AND stay 0.3 of a frame from the galaxy,
     // which is also right-of-centre. Swept: 860 and 880 both pass, 896 collides with the
     // galaxy at 0.297. 870 is the middle of the passing band, not the edge of it.
+    // ⚠️ RE-SOLVED AGAIN FOR WAVE 1C'S FLYBY (2026-08-16), same standing rule: the flyby
+    // re-authored the climb and translated the space run, which rotated the entry tangent
+    // (the camera now banks in at 5.43°), and the old triad broke two ways — the planet
+    // read ndcX -0.02 at entry (needs > 0) and the galaxy at 0.29 left the planet no legal
+    // band (needs > 0 AND 0.3 clear of the galaxy). Solved by scripts/
+    // odyssey-ch6-approach-resolve.mjs with the galaxy moved FIRST (entry 0.35), then the
+    // planet against the widened band (entry 0.03, -0.14; moved 77 u, distance 1151 -> 1147
+    // so apparent size holds).
     planetA: {
-        x: 870, y: 322, z: -277, s: 34 / 28,
+        x: 880, y: 352, z: -207, s: 34 / 28,
     },
     // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
     // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge
@@ -168,8 +178,22 @@ const APPROACH = {
     planetB: {
         x: 855, y: 60, z: -89, s: 60 / 28,
     },
+    // Wave 1C: moved right-of-centre to re-open the planet's band (see planetA note).
+    // Entry ndc (0.35, 0.27), distance 1214 vs 1215 before — apparent size preserved.
     galaxyA: {
-        x: 750, y: 743, z: 106, s: 155,
+        x: 810, y: 663, z: 186, s: 155,
+    },
+    // ⚠️ THE TRIAD IS ONE FIT, NOT THREE — and the summit needed its own keyframe (Wave
+    // 1C). A feasibility sweep proved NO single static planetA satisfies both the Ch5
+    // summit window and the boundary composition once the flyby banks the camera: the
+    // solved planetA reads ndc 1.12-1.24 across the ignite stations. So the giant holds
+    // THIS pose through the summit window and travels to planetA across
+    // [summitEnd, ch6Start] in update() — a short pre-boundary drift that reads as
+    // parallax. Solved by the same resolver, all five derived stations inside |ndc| 0.87.
+    // (The transition plan once recorded {875, 175, -275}; that pose was solved before the
+    // look-ahead re-scale and now reads ndcY 0.908 at the third station — re-solved.)
+    planetSummit: {
+        x: 900, y: 150, z: -250,
     },
     galaxyB: {
         x: 942, y: 449, z: 39, s: 250,
@@ -310,12 +334,14 @@ function rampBetween(value, start, end) {
  * @param {number} ch5Start global progress where chapter 5 begins
  * @param {number} ch6Start global progress where chapter 6 begins (the Space boundary)
  * @param {number} ch7Start global progress where chapter 7 begins
- * @returns {{earthReveal: number, spaceReveal: number, summitStart: number}}
+ * @returns {{earthReveal: number, spaceReveal: number, summitStart: number, summitEnd: number}}
  */
 export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start) {
     if (!Number.isFinite(progress) || !Number.isFinite(ch5Start) || !Number.isFinite(ch6Start)
         || ch6Start <= ch5Start) {
-        return { earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN };
+        return {
+            earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN, summitEnd: Number.NaN,
+        };
     }
     const skySpan = ch6Start - ch5Start;
     const summitStart = ch6Start - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
@@ -330,7 +356,9 @@ export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start
         ? rampBetween(progress, ch6Start, gateEnd)
         : 1;
 
-    return { earthReveal, spaceReveal, summitStart };
+    return {
+        earthReveal, spaceReveal, summitStart, summitEnd,
+    };
 }
 
 export function resolveCosmicEntryContinuity(progress) {
@@ -1835,6 +1863,24 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             THREE.MathUtils.lerp(APPROACH.planetA.y, APPROACH.planetB.y, ease),
             THREE.MathUtils.lerp(APPROACH.planetA.z, APPROACH.planetB.z, ease),
         );
+        // THE SUMMIT KEYFRAME (Wave 1C). Pre-boundary the giant sits at planetSummit —
+        // the only pose that stays framed across the whole ignite window once the flyby
+        // banks the camera — then travels to planetA across [summitEnd, ch6Start] so it
+        // arrives exactly on the authored entry composition at the boundary. Driven by
+        // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
+        // above contributes planetA and this lerp owns the approach.
+        const { planetSummit } = APPROACH;
+        if (planetSummit && Number.isFinite(staging.summitEnd)
+            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress)) {
+            const toEntry = rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5]);
+            if (toEntry < 1) {
+                heroPlanet.position.set(
+                    THREE.MathUtils.lerp(planetSummit.x, heroPlanet.position.x, toEntry),
+                    THREE.MathUtils.lerp(planetSummit.y, heroPlanet.position.y, toEntry),
+                    THREE.MathUtils.lerp(planetSummit.z, heroPlanet.position.z, toEntry),
+                );
+            }
+        }
         const planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
         heroPlanet.scale.setScalar(planetScale);
         heroPlanet.rotation.y += delta * 0.025;

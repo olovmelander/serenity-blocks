@@ -283,16 +283,21 @@ const FOREST_ARCH_AREA = Object.freeze({
  * 0.5469368) and that is the check that the re-emission was sound rather than noise: every one
  * of the ceiling's 16 trees falls in the SEAM area, so exactly one threshold had any reason to
  * move. The other seven are byte-identical.
+ *
+ * RE-EMITTED 2026-08-16 after Wave 1C (the massif flyby re-map). The rail's 48 p-samples all
+ * re-seated on the longer curve and the massif footY datum moved 0.0556u, so every area's
+ * eligible pool changed and ALL seven thresholds moved. Transcribed at full precision from
+ * scripts/act2-forest-arch-calibrate.mjs, per the header's law.
  */
 const FOREST_ARCH_T_BY_AREA = Object.freeze({
     RAIL: Infinity,
-    SEAM: 0.5469368243510903,
-    ETIP: 0.7412547903338985,
-    EMASS: 0.5112268141142399,
-    NE: 0.4815023785335493,
-    NW: 0.45078295363170506,
-    WEND: 0.5706738537333954,
-    WMID: 0.5088732705474063,
+    SEAM: 0.5783012033777011,
+    ETIP: 0.6269598341870908,
+    EMASS: 0.8244496408416748,
+    NE: 0.4493666230596651,
+    NW: 0.44261230923999884,
+    WEND: 0.5732750837682767,
+    WMID: 0.5042125928823078,
 });
 /** The ch4 hero meadow: an ellipse in the rail's frame, core empty, rim feathered. */
 const FOREST_ARCH_MEADOW = Object.freeze({

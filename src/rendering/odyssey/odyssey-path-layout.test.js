@@ -142,13 +142,15 @@ describe('odyssey path layout', () => {
         // and slid chapters 1-5 by up to 54u, silently breaking the Ch4 hero-peak
         // clearance guarded above. Pin the length so that regression cannot recur quietly.
         //
-        // ⚠️ RE-PINNED 1767.6 -> 2393.9 BY WAVE 1A (the ascent), deliberately. That is the
-        // cost of climbing the rail out of the atmosphere so it flies PAST the mountain
-        // instead of being deleted beside it. Every level position was regenerated to absorb
-        // it — ids 1-28 hold their world seats to 0.029u, 29-35 re-space along the longer
-        // climb, 36-59 are arc-preserving — so the invariant this test protects (nothing
-        // moves UNINTENTIONALLY) still holds. See odyssey-layout.js for the derivation.
-        expect(getOdysseyPathCurve().getLength()).toBeCloseTo(2393.9, 0);
+        // ⚠️ RE-PINNED 1767.6 -> 2393.9 BY WAVE 1A (the ascent), then 2393.9 -> 2532.7 BY
+        // WAVE 1C (the massif flyby), deliberately both times. 1C lets the climb continue
+        // north past the peak (closest approach 442.7 -> 141.7u) and rigidly translates the
+        // space run (-60, 0, -350) to meet it — no hairpin, corridor shape preserved
+        // bit-for-bit. Every level position was regenerated to absorb it — ids 1-28 hold
+        // their world seats to 0.113u, 29-35 re-space along the longer climb, 36-59 are
+        // arc-preserving — so the invariant this test protects (nothing moves
+        // UNINTENTIONALLY) still holds. See scripts/odyssey-ascent-flyby-emit.mjs.
+        expect(getOdysseyPathCurve().getLength()).toBeCloseTo(2532.7, 0);
     });
 
     it('uses the same sampled curve in the path renderer and shared path helpers', async () => {

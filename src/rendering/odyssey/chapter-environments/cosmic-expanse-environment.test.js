@@ -161,7 +161,9 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
 
         it('degrades safely without a resolved layout', () => {
             expect(resolveSummitEarthStaging(0.62, undefined, undefined, undefined))
-                .toEqual({ earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN });
+                .toEqual({
+                    earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN, summitEnd: Number.NaN,
+                });
         });
 
         it('shows the gas giant but nothing else during the summit window', () => {

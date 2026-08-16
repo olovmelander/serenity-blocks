@@ -33,26 +33,29 @@ describe('Act II -> Space (5->6) seam schedule', () => {
 
     it('reads the chapter boundaries the seam actually runs on', () => {
         // Pinned so a layout edit that moves the seam is a deliberate, visible act.
-        // POST-ASCENT (Wave 1A). Chapter 5 more than doubled its share of the traversal —
-        // 0.148 -> 0.371 — because the climb past the cloud deck lives inside it.
-        expect(ch5).toBeCloseTo(0.3692, 4);
-        expect(ch6).toBeCloseTo(0.7401, 4);
-        expect(ch7).toBeCloseTo(0.8634, 4);
+        // POST-FLYBY (Wave 1C, after Wave 1A's ascent). The climb now continues north past
+        // the massif (closest approach 141.7u) and the space run is rigidly translated to
+        // meet it, so the whole curve grew 2393.89 -> 2532.66 and every boundary
+        // re-normalised. Chapter 5's share of the traversal is now 0.405.
+        expect(ch5).toBeCloseTo(0.3489, 4);
+        expect(ch6).toBeCloseTo(0.7543, 4);
+        expect(ch7).toBeCloseTo(0.8709, 4);
         // 0.556 is LEVEL 31, not chapter 5's start. The seam's code comments said otherwise
         // for a long time; this assertion is here so that story cannot come back.
         expect(ch5).not.toBeCloseTo(0.556, 3);
         expect(ch5).not.toBeCloseTo(0.5, 3); // the PRE-ascent value
     });
 
-    it('places the earth ignite across the ascent (0.5880 -> 0.6845)', () => {
+    it('places the earth ignite across the ascent (0.5881 -> 0.6935)', () => {
         const skySpan = ch6 - ch5;
         const summitStart = ch6 - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
         const summitEnd = ch6 - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
-        // The window WIDENED 0.039 -> 0.097 as a free consequence of the ascent:
-        // SUMMIT_EARTH_REVEAL is expressed as fractions of the ch5 span, and that span grew.
-        // The gas giant now fades up across the whole climb instead of in a blink.
-        expect(summitStart).toBeCloseTo(0.5880, 3);
-        expect(summitEnd).toBeCloseTo(0.6845, 3);
+        // The window WIDENED 0.039 -> 0.097 as a free consequence of the ascent, then
+        // widened again slightly under Wave 1C's flyby re-map: SUMMIT_EARTH_REVEAL is
+        // expressed as fractions of the ch5 span, and that span keeps growing with the
+        // climb. The gas giant now fades up across the whole climb instead of in a blink.
+        expect(summitStart).toBeCloseTo(0.5881, 3);
+        expect(summitEnd).toBeCloseTo(0.6935, 3);
 
         // ...and the staging function must agree with that arithmetic, not drift from it.
         const staging = resolveSummitEarthStaging(summitStart, ch5, ch6, ch7);
@@ -68,18 +71,19 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         // and that pop is invisible today only because the cloud bank is a fully opaque
         // wall in front of it. The previous version of this test predicted its own
         // replacement ("Wave 2 is expected to widen it"); this is that update.
-        expect(gateEnd).toBeCloseTo(0.7598, 3);
-        expect(gateEnd - ch6).toBeCloseTo(0.0197, 3);
+        expect(gateEnd).toBeCloseTo(0.7730, 3);
+        expect(gateEnd - ch6).toBeCloseTo(0.0187, 3);
 
         // THE CEILING, which nothing asserted before and which is the reason 0.16 was
         // chosen over 0.175. `gateEnd` must stay below `worldOff`; the band that puts it
-        // exactly there is (worldOff - ch6) / (ch7 - ch6) = 0.18004. A future re-layout
-        // changes ch6/ch7 and therefore moves this ceiling, so it is DERIVED, not pinned.
+        // exactly there is (worldOff - ch6) / (ch7 - ch6) = 0.19039 post-flyby (it was
+        // 0.18004 pre-1C — the flyby's added arc shrank the ch6-ch7 span in p). A future
+        // re-layout changes ch6/ch7 and therefore moves this ceiling, so it is DERIVED,
+        // not pinned.
         const bandCeiling = ONE_WORLD_ACT_MARGIN / (ch7 - ch6);
-        expect(bandCeiling).toBeCloseTo(0.18004, 4);
+        expect(bandCeiling).toBeCloseTo(0.19039, 4);
         expect(SUMMIT_EARTH_REVEAL.spaceGateBand).toBeLessThan(bandCeiling);
-        // ...with real margin, not a hair. 0.175 would leave 0.00062 and would not survive
-        // another arc-length change; 0.16 leaves 0.0025.
+        // ...with real margin, not a hair. Post-flyby 0.16 leaves 0.0304 of ceiling.
         expect(bandCeiling - SUMMIT_EARTH_REVEAL.spaceGateBand).toBeGreaterThan(0.002);
     });
 
@@ -91,8 +95,8 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         const spaceSpan = ch7 - ch6;
         const start = ch6 - spaceSpan * SUMMIT_EARTH_REVEAL.handoverBeforeBoundary;
         const end = ch6 + spaceSpan * SUMMIT_EARTH_REVEAL.handoverAfterBoundary;
-        expect(start).toBeCloseTo(0.7401, 3);
-        expect(end).toBeCloseTo(0.7861, 3);
+        expect(start).toBeCloseTo(0.7543, 3);
+        expect(end).toBeCloseTo(0.7978, 3);
 
         // ⚠️ It deliberately does NOT start before the boundary any more. Every reveal it
         // raises is multiplied by `spaceReveal`, which is exactly 0 below ch6Start, so a
@@ -101,9 +105,10 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         // is the cloud LIMB's job, not this one's.
         expect(start).toBeCloseTo(ch6, 6);
         expect(end).toBeGreaterThan(ch6);
-        // And it must be complete before the seam metric's window closes at p=0.8001,
-        // otherwise the tail rises it exists to remove are still inside the measurement.
-        expect(end).toBeLessThan(0.8001);
+        // And it must be complete before the seam metric's window closes at
+        // boundary + 0.06 = 0.8143, otherwise the tail rises it exists to remove are
+        // still inside the measurement.
+        expect(end).toBeLessThan(ch6 + 0.06);
     });
 
     it('KEEPS THE WORLD DRAWING AFTER THE CROSSFADE ENDS — the cliff, pinned', () => {
@@ -111,7 +116,7 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         // fails when it is fixed. The One World is fully visible right up to
         // actEnd + margin and then flips off in a single frame.
         const worldOff = ch6 + ONE_WORLD_ACT_MARGIN;
-        expect(worldOff).toBeCloseTo(0.7623, 4);
+        expect(worldOff).toBeCloseTo(0.7765, 4);
 
         const actStart = positions[1];
         expect(isWorldVisibleAtProgress(worldOff - 1e-4, actStart, ch6)).toBe(true);
