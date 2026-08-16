@@ -30,6 +30,7 @@ import {
     scatterZonedForest, buildShoreDistance, FOREST_CHUNK_BY_LOD,
 } from '../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import {
+    ODYSSEY_NORTH_LAKE,
     odysseyWorldDetailWeight, odysseyWorldMacro, odysseyWorldRelief,
 } from '../src/rendering/odyssey/world/odyssey-world-height.js';
 import { getOdysseyPathPointAt } from '../src/rendering/odyssey/path-utils.js';
@@ -154,10 +155,19 @@ const mismatch = compT.filter((t) => (chunkCentreD(t.x, t.z) <= 520) !== (t.lod 
 console.log(`chunk-centre-rule vs lod!==far mismatches (excl framing): ${mismatch}`);
 
 // ── calibration: per-area threshold on the COMP pool (exempt trees excluded) ──
+// Mirrors FOREST_ARCH_LAKESHORE in the shipped carve — edit BOTH (north-island Wave 3).
+const LAKESHORE = { rnLo: 0.95, rnHi: 1.30 };
+const lakeshoreRing = (x, z) => {
+    const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
+    const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
+    const rn = Math.sqrt((lx * lx) + (lz * lz));
+    return rn >= LAKESHORE.rnLo && rn <= LAKESHORE.rnHi;
+};
 const isExempt = (t) => t.framing
     || t.speciesId === 'S7-pink-blossom'
     || chunkCentreD(t.x, t.z) <= 520
     || Math.hypot(t.x - CYP.cx, t.z - CYP.cz) < CYP.r
+    || lakeshoreRing(t.x, t.z)
     || (regionAt(t.x, t.z) > TERRACE.region && t.z > TERRACE.zMin
         && shoreAt(t.x, t.z) >= TERRACE.shoreLo && shoreAt(t.x, t.z) < TERRACE.shoreHi);
 const T_BY_AREA = {};

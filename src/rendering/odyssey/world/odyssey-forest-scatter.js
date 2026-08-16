@@ -310,13 +310,15 @@ const FOREST_ARCH_AREA = Object.freeze({
  */
 const FOREST_ARCH_T_BY_AREA = Object.freeze({
     RAIL: Infinity,
-    SEAM: 0.5847260989174075,
+    // Re-emitted 2026-08-16 for the north-island lake at its FINAL owner-directed site
+    // (280, -1500) + the lakeshore ring + the rim swells: SEAM returned to its 1C value
+    // (the lake left the SEAM band entirely) and NE/NW carry the lake, ring and hills.
+    // The other four are byte-identical — the soundness check, as ever.
+    SEAM: 0.5783012033777011,
     ETIP: 0.6269598341870908,
     EMASS: 0.8244496408416748,
-    // NE re-emitted for the north hills (Wave 2): the swells move a few NE pool sites
-    // between bands. The single moved threshold is the soundness check, as ever.
-    NE: 0.45148985122192087,
-    NW: 0.43436810246721713,
+    NE: 0.44623904591067837,
+    NW: 0.44261230923999884,
     WEND: 0.5732750837682767,
     WMID: 0.5042125928823078,
 });
@@ -336,6 +338,18 @@ const FOREST_ARCH_FINGERS = Object.freeze([
 ]);
 /** The cypress grove is punctuation; the carve must not eat the black notes. */
 const FOREST_ARCH_CYPRESS = Object.freeze({ cx: -1086, cz: -1753, r: 240 });
+/**
+ * THE LAKESHORE RING (north-island plan Wave 3). An annulus of the lake's own normalized
+ * ellipse metric, exempt from the Stage A carve AND from the distance thins (see the site
+ * loop), so full stand density survives as a readable grove ringing the water — the one
+ * big shape that makes a distant lake read as a PLACE instead of a puddle. rnLo starts
+ * just outside the waterline (underwater sites are already killed at placement); rnHi
+ * 1.30, tightened from 1.45 because the wider band's uniform density diluted the island's
+ * p90/p50 stand contrast below its 1.9 floor.
+ * ⚠️ Mirrored in scripts/act2-forest-arch-calibrate.mjs — edit BOTH or the thresholds
+ * calibrate against a different pool than the shipped carve cuts.
+ */
+const FOREST_ARCH_LAKESHORE = Object.freeze({ rnLo: 0.95, rnHi: 1.30 });
 /**
  * The autumn shore TERRACE: autumnBoost pays where region AND apron are high, i.e. one
  * terrace above the green apron (shore 45..200 u). Protected so the owner's red-maple run
@@ -421,6 +435,14 @@ function archKeep(x, z, dRail, shoreDist, rail) {
     }
     if (Math.hypot(x - FOREST_ARCH_CYPRESS.cx, z - FOREST_ARCH_CYPRESS.cz)
         < FOREST_ARCH_CYPRESS.r) return true;
+    {
+        const lakeLx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
+        const lakeLz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
+        const lakeRn = Math.sqrt((lakeLx * lakeLx) + (lakeLz * lakeLz));
+        if (lakeRn >= FOREST_ARCH_LAKESHORE.rnLo && lakeRn <= FOREST_ARCH_LAKESHORE.rnHi) {
+            return true;
+        }
+    }
     if (forestRegionAt(x, z) > FOREST_ARCH_TERRACE.region && z > FOREST_ARCH_TERRACE.zMin
         && shoreDist >= FOREST_ARCH_TERRACE.shoreLo
         && shoreDist < FOREST_ARCH_TERRACE.shoreHi) return true;
@@ -849,7 +871,20 @@ export function scatterZonedForest(heightAt, {
             // weights decide WHICH. Entangling them makes each unable to express its own job —
             // so the maple's population is defended by its weight (see the species table), not
             // by an exception here.
-            if (hash2(i, j, 29) < thin) continue;
+            //
+            // THE LAKESHORE RING skips the thin entirely (north-island Wave 3). The distance
+            // thins exist to fade the island toward ground "the rail never approaches" — the
+            // 1C flyby approaches it now, and a carve exemption alone protected only the ~80
+            // trees the thinned base scatter still placed there. Zero thin inside the ring
+            // restores full stand density: the grove ringing the water is the one big shape
+            // that makes a distant lake read as a place.
+            const inLakeshoreRing = (() => {
+                const lx = (x - ODYSSEY_NORTH_LAKE.x) / ODYSSEY_NORTH_LAKE.rx;
+                const lz = (z - ODYSSEY_NORTH_LAKE.z) / ODYSSEY_NORTH_LAKE.rz;
+                const rn = Math.sqrt((lx * lx) + (lz * lz));
+                return rn >= FOREST_ARCH_LAKESHORE.rnLo && rn <= FOREST_ARCH_LAKESHORE.rnHi;
+            })();
+            if (!inLakeshoreRing && hash2(i, j, 29) < thin) continue;
 
             /**
              * THE RAIL CANNOT SEE THIS SITE. Act II's camera is pinned to a spline over a fixed
