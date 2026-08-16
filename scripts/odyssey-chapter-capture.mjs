@@ -858,16 +858,37 @@ async function captureSeam(win, boot) {
     // pin an explicit position, settle it, shoot it. Deterministic, reproducible, and
     // independent of how slow a capture round-trip happens to be. Offsets are expressed
     // as PROGRESS values; `--offsets` still overrides them, now in p.
+    // ⚠️ THE WINDOW MUST COVER THE SYSTEMS BEING MEASURED, NOT JUST THE ECOTONE.
+    //
+    // These used to stop at boundary ±0.030, which is the ecotone's own half-width — and that
+    // silently invalidated a whole line of seam work. At the 5→6 seam the biggest contributor
+    // to the handover is the cloud bank, whose window runs to boundary ±0.060, so only half
+    // its exit was ever photographed. Every attempt to give that exit more room then "failed"
+    // the continuity metric, because the metric stopped looking while the bank was still on
+    // screen: the tool was marking down the fix. Widened to ±0.060 to cover it, and sampled
+    // finer through the middle where the change actually happens.
+    //
+    // The continuity metric normalises per 0.01 of progress precisely so this widening does
+    // not silently re-scale its scores — see scripts/odyssey-seam-luma.mjs.
     const defaultStations = [
-        boundary - 0.030, // the act gate opens here today (margin 0.03) — the leak point
-        boundary - 0.020,
-        boundary - 0.010,
+        boundary - 0.060, // the cloud bank's window opens here (5→6)
+        boundary - 0.050,
+        boundary - 0.040,
+        boundary - 0.030, // the act gate's margin — the old edge of this list
+        boundary - 0.024,
+        boundary - 0.018,
+        boundary - 0.012,
         boundary - 0.006, // quench plateau opens (~p 0.0874 for the 1→2 seam)
         boundary,
         boundary + 0.004, // quench plateau closes (~p 0.0970)
         boundary + 0.010,
-        boundary + 0.020,
+        boundary + 0.016,
+        boundary + 0.022,
         boundary + 0.030, // Earth Core's dissolve is still running out here
+        boundary + 0.038,
+        boundary + 0.046,
+        boundary + 0.054,
+        boundary + 0.060, // the cloud bank's window closes here
     ];
     const stations = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || '')
         .split(',')
