@@ -1,8 +1,12 @@
 # Odyssey — the Act II → Space transition (5→6) overhaul (2026-08)
 
-**Status: IN PROGRESS 2026-08-16 — Waves 0, 1A, 1B, 1D, 2 and the §8 limb rework are
-DONE; Wave 1C (the massif flyby) LANDED `f96b4ca1` with all four seam gates green at the
-new boundary 0.7543; Waves 3–4 in flight.** Owner asked for a visual + technical audit of
+**Status: COMPLETE 2026-08-16 — every wave is DONE.** Waves 0, 1A, 1B, 1D, 2 and the §8
+limb rework landed first; Wave 1C (the massif flyby) landed `f96b4ca1`; Wave 3 landed
+`c241309b` (atmospheric thinning, stars before dark, the D3 summit giant); Wave 4 closed
+same day — all four seam-luma gates green at the new boundary **0.7543** (maxStep −21.7,
+tailShare 10.5 %, 0 post-boundary rises, endLuma 23.6), the value ladder verified
+(void < dome < masses via `scripts/odyssey-seam-value-bands.mjs`), and the seam's Lane B
+cell measured for the first time (§5). Owner asked for a visual + technical audit of
 the Act II → deep space seam and a plan to perfect it. This document is that audit and
 that plan. Every number below is measured from an in-game graded capture or read out of
 the shipped code — nothing here is an estimate.
@@ -26,6 +30,11 @@ hide it.
   2026-08-16 by importing the real modules (NOT by parsing the source — see §2.5):
   `[0, 0.093, 0.204, 0.352, 0.5, 0.648, 0.815, 0.944, 1]`, i.e.
   ch4 0.352 · **ch5 0.500** · **ch6 0.648** · ch7 0.815.
+  ⚠️ **THAT ARRAY IS THE PRE-ASCENT, AUDIT-TIME BASELINE** — §§1–2 were measured against
+  it and it is preserved for them. After Waves 1A + 1C (`f96b4ca1`) the derived positions
+  are `[0, 0.0649, 0.1427, 0.2457, 0.3489, 0.7543, 0.8709, 0.9609, 1]`, i.e.
+  ch4 0.2457 · **ch5 0.3489** · **ch6 (the seam) 0.7543** · ch7 0.8709. Anything you run
+  TODAY runs on these.
 
 ---
 
@@ -540,6 +549,24 @@ annotated at the claim.
   not just opacity. **Owner decision D3.**
 - Gate: reference-driven review against blessed refs, per chapter convention.
 
+> **WAVE 3 LANDED (`c241309b`, 2026-08-16), all three beats, capture-verified at t=9.**
+> (1) `worldAtmosphericThin` (odyssey-world-act-gate.js, beside the departure fade —
+> lead 0.40 of the sky span, cap **0.85** so the limb bank always has clouds to cross)
+> collapses the cloud FIELD's paint toward one flat haze family and shrinks each mass
+> ~26 % toward its own centre via a third plain term inside `cfOffset`, so the vertex
+> and the `cfWorld` varying stay in the agreement the r181 lint enforces (the lint now
+> pins the new shape). (2) Stars before dark: the NEAR tier alone fades up across
+> [summitEnd, ch6Start] to `SUMMIT_EARTH_REVEAL.starsBeforeDark = 0.5`, handed to the
+> normal staging via max() — never a dip; new derived-station suite
+> `tests/unit/odyssey-stars-before-dark.test.js`. (3) **D3 is DECIDED and in code**:
+> `planetSummit.s = 3.4` — a ~4.3° ringed world over the mountains, 2.8× the entry
+> apparent size, settling to the approved entry scale exactly at the boundary; pinned in
+> the hero-framing suite. Seam gates after all three: maxStep −21.7, tailShare 10.5 %,
+> 0 rises, endLuma 23.6. Review frames: `artifacts/odyssey/wave-v/seam-5-6-wave3-final-t9`
+> and the 0.605–0.725 beauty stations, judged against the blessed D4 ref (the read —
+> world falling away below, sky presence above, horizon haze — is delivered; the ref's
+> warm dusk grade was not adopted and remains a possible future owner ask).
+
 ### Wave 1C — THE MASSIF FLYBY (owner-directed 2026-08-16, after playing Wave 1A)
 Owner: *"Adjust the ascending path so it routes much closer to the mountainside,
 bypassing the peak in close proximity"* — and, explicitly, **keep the cloud
@@ -679,9 +706,20 @@ halves (the shared-contract principle), ticked to `spaceReveal` — the earth is
 element allowed before the boundary; its aurora now arrives with the dark. Verified by
 5 derived-station unit tests, the sweep probe, and a 0.68–0.80 seam capture.
 
-### Wave 4 — Grade, measure, close
+### Wave 4 — Grade, measure, close ✅ **DONE 2026-08-16**
 - Full 5→6 capture review, value-band checks, the four suites (fog-optout, framing,
   staging, layout), Lane B at a seam station, ledger + doc sweep.
+
+> **CLOSED.** Capture review: `seam-5-6-wave3-final-t9` (18 stations, boundary ± 0.06)
+> plus the flyby pass stations 0.545–0.658 (the pass is NOT inside the seam window — see
+> the 1C landing note). Gates: seam-luma **PASS** (maxStep −21.7 / tail 10.5 % / 0 rises /
+> end 23.6 at `--boundary 0.7543`); value ladder **PASS** at +0.022/+0.030/+0.038
+> (void p20 = 0.0 < dome p70 16–38 < masses p99 171–195) via the new
+> `scripts/odyssey-seam-value-bands.mjs` — percentile bands, because the first draft
+> measured screen THIRDS and learned the p=0.7763 frame carries the dome at the top and
+> the receding limb at the bottom. Full suite 3,562/3,562 green. Lane B: §5. Doc sweep:
+> 12 stale candidates, 3 confirmed after adversarial re-check (75 % false positives —
+> the §Wave-4 warning about this doc held), all annotated at their claims.
 
 ---
 
@@ -694,6 +732,20 @@ deserves its own Lane B cell. Wave 0 creates it with a NULL baseline until measu
 ⚠️ Wave 1 makes the world *fade* rather than disappear, which means it is drawn (at
 non-zero cost) for longer than today. That cost must be measured, not assumed — a dithered
 opaque dissolve keeps it out of the blend queue but does not make it free.
+
+> **MEASURED (Wave 4, 2026-08-16) — the seam cell has a number.** Lane B, Medium, iGPU
+> (adapter verified `amd/rdna-2`, `--low-power`), `--seek 0.7543`:
+> **baseline p50 7.01 ms** (p95 7.27, p99 7.47), 60 draws; no-cloud-bank 5.05 ms /
+> 59 draws (the lever is live — exactly one draw), so the bank's share is **1.96 ms**
+> against a `baselineDriftMs` of 0.197. Consistent with §8.7's 1.77 ms at the old
+> station. Report: `reports/odyssey-perf/act2-space-seam-post-1c-r2.json`.
+> ⚠️ The FIRST run of this measurement (`…-post-1c.json`) is preserved as a specimen of
+> the co-tenant trap: the user's browsers took the GPU mid-run and "removing the bank"
+> read **+5.4 ms** with 226 ms spikes and drift −1.704 — physically impossible, caught
+> only by the drift bound and the repeat baseline. Never trust a seam cell whose drift
+> is not ≈ 0.2 ms on this machine, and never kill the user's browsers to get one.
+> This cell also prices Wave 1C's forest consequence: hero+mid 3,922 trees (ceiling
+> 3,950) are inside this 7.01 ms baseline.
 
 ---
 
@@ -712,9 +764,14 @@ opaque dissolve keeps it out of the blend queue but does not make it free.
   recommendation: keep the total magnitude, front-load it, and buy the drama back in Wave 3.
 - **D3 (gates Wave 3):** does the gas giant get to be *big* at the summit? Making it land
   means changing its apparent size, which touches the Wave-4-approved hero framing and the
-  solved `APPROACH` NDC fits.
+  solved `APPROACH` NDC fits. **DECIDED YES (2026-08-16) and in code:** `planetSummit.s = 3.4`
+  (cosmic-expanse.js), scale carried by the summit keyframe and settling to the approved
+  entry size at the boundary — see the Wave 3 landing note.
 - **D4:** bless a reference frame for "leaving atmosphere" so Wave 3 can be judged against
-  something rather than argued about.
+  something rather than argued about. **DECIDED (2026-08-16):**
+  `public/playground-refs/ch6-ascent-dusk-laputa050.jpg` is the blessed ref; Wave 3 was
+  judged against its READ (world below, sky presence above, horizon haze), not its warm
+  dusk grade, which was not adopted.
 
 ---
 
@@ -817,10 +874,12 @@ Rejected, with reasons worth keeping:
 9-11. Comment sweep, full gate, and the **never-measured** Lane B seam cell (`gpuMs` reads
    0 at all 18 stations today).
 
-⚠️ **`scripts/odyssey-seam-luma.mjs` must be run with `--dir` AND `--boundary 0.7401`.**
+⚠️ **`scripts/odyssey-seam-luma.mjs` must be run with `--dir` AND `--boundary`.**
 The default 0.648 is the pre-ascent boundary and sits below the first station; and
 `resolveDir()` returns the **alphabetically** last `seam-5-6*` directory, not the newest —
-a new arm named `seam-5-6-v2` silently becomes the graded run.
+a new arm named `seam-5-6-v2` silently becomes the graded run. (0.7401 was the §8-era
+boundary; **since Wave 1C the boundary is 0.7543** — same rule, new number, and the same
+flag feeds the new `scripts/odyssey-seam-value-bands.mjs` ladder check.)
 
 
 ### 8.7 CLOSED — all four gates pass, and the seam is priced for the first time
