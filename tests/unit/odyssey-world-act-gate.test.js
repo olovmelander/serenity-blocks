@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import {
     ONE_WORLD_ACT_MARGIN,
+    ONE_WORLD_DEPARTURE_LEAD,
     isWorldVisibleAtProgress,
     worldDepartureFade,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
@@ -146,8 +147,9 @@ describe('the world RECEDES before the gate fires (Wave 1B)', () => {
             expect(v).toBeGreaterThanOrEqual(prev);
             prev = v;
         }
-        // Smoothstep ends: no step at either edge of the ramp.
-        expect(fade(actEnd - (actEnd - skyStart) * 0.30)).toBeCloseTo(0, 6);
+        // Smoothstep ends: no step at either edge of the ramp. Uses the exported constant,
+        // not a literal — the lead is a tuning value and this assertion is about the SHAPE.
+        expect(fade(actEnd - (actEnd - skyStart) * ONE_WORLD_DEPARTURE_LEAD)).toBeCloseTo(0, 6);
     });
 
     it('survives a re-layout, because it is expressed in fractions', () => {
