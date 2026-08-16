@@ -33,6 +33,7 @@ import {
     NEBULA_FIELD_CLEARANCE,
     ODYSSEY_NEBULA_FIELD_SPECS,
 } from './odyssey-nebula-field-specs.js';
+import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 
 // One key light for the field, corridor-local: the accretion key lives up-left-ahead
 // (the BH omen's marched poses, seen from the corridor frame). Authored constant —
@@ -40,6 +41,40 @@ import {
 // band threshold's notice. This is also §3b rule 8's causal illuminator: every
 // mass's lit side agrees on where the light lives.
 const NEBULA_KEY_DIR = Object.freeze([-0.48, 0.36, -0.62]);
+
+// ⚠️ WAVE 6 LIGHTING AUDIT (2026-08-16) — THE ABOVE CONSTANT IS IN THE WRONG SPACE.
+// `N` below is `normalWorld` and this mesh is parented to the CORRIDOR group, so its
+// world normals carry the corridor rotation — but this key is corridor-LOCAL and is
+// dotted against them raw, never transformed. Measured consequence: the masses are lit
+// from 92.2 deg away from ODYSSEY_WORLD_SUN, which is where the hero planet's
+// terminator, its auroral crown and the gas giant's limb all agree the light is. The
+// chapter has had TWO suns, roughly perpendicular, since the field shipped.
+//
+// Three lines of evidence that this is a frame slip and not an art choice:
+//   1. the space mismatch is structural (world normals, local light, rotated parent);
+//   2. z-flipping this constant lands 0.9 deg from ODYSSEY_WORLD_SUN — a hand-picked
+//      direction does not land that close to a canonical constant by chance, so the
+//      author meant "the world sun, written in the -Z corridor convention";
+//   3. the comment's "accretion key" reading does not survive measurement: this
+//      direction sits 25.7 deg from the black hole at chapter entry and drifts to
+//      57.1 deg by the exit, so it never tracked the accretion disc.
+//
+// The correction is OPT-IN (`?odysseyCh6OneKey=1`, ADD-back polarity like the procedural
+// dome) — AND THE A/B SAYS KEEP THE SLIP. Captured both ways at all 8 ch6 stations
+// (2026-08-16): the corrected key moves 6.6-8.9% of pixels across the second half, and it
+// moves them the WRONG WAY. Lighting the masses from the hero's sun puts them nearly
+// face-on: the warm workhorse flattens into one big saturated orange shape that competes
+// with the hero for dominance (§3b rule 1) and loses the violet shade band that gives it
+// form, while the value ladder §3b rule 4 asks for collapses. The 92.2 deg key RAKES the
+// masses, and raking is what produces the bands.
+//
+// So this is now a KNOWING EXCEPTION, not an accident — the same disposition as the
+// asteroid rocks' view-space key in cosmic-expanse.tsl.js ("the trade was made
+// knowingly"). What changed is only that it is honest: this is an authored raking key
+// chosen for form, NOT "the accretion key" (it never tracked the black hole), and the
+// chapter deliberately runs two illuminators. Do not "fix" it to match the hero without
+// re-judging the masses' form; the lever is kept so the comparison is one flag away.
+const NEBULA_KEY_WORLD_SUN = Object.freeze([...ODYSSEY_WORLD_SUN]);
 
 // Palette ROLES (probe-derived, deep-space register; overshoot intentional — colour
 // verdicts are taken through the grade, never in the flat playground).
@@ -85,7 +120,7 @@ export function validateNebulaFieldClearance(
     return violations;
 }
 
-function buildRoleMaterial(uReveal, role) {
+function buildRoleMaterial(uReveal, role, oneKey = false) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.transparent = false;
     material.depthWrite = true;
@@ -96,7 +131,7 @@ function buildRoleMaterial(uReveal, role) {
     const ao = attribute('color', 'vec3').x;
     const N = normalize(normalWorld);
     const V = normalize(cameraPosition.sub(positionWorld));
-    const L = normalize(uniform(new THREE.Vector3(...NEBULA_KEY_DIR)));
+    const L = normalize(uniform(new THREE.Vector3(...(oneKey ? NEBULA_KEY_WORLD_SUN : NEBULA_KEY_DIR))));
 
     // Two-band wrap paint, band interiors flat, lit ramp over-extended past 1.
     const wrap = float(0.72);
@@ -138,7 +173,7 @@ function buildRoleMaterial(uReveal, role) {
     return material;
 }
 
-export function createNebulaFieldTSL() {
+export function createNebulaFieldTSL({ oneKey = false } = {}) {
     const uReveal = uniform(0);
     const group = new THREE.Group();
     group.name = 'nebula-field';
@@ -150,7 +185,7 @@ export function createNebulaFieldTSL() {
         const specs = ODYSSEY_NEBULA_FIELD_SPECS.filter((s) => s.paint === paint);
         if (!specs.length) return;
         const built = buildCloudFieldGeometry(specs);
-        const material = buildRoleMaterial(uReveal, PAINT_ROLES[paint]);
+        const material = buildRoleMaterial(uReveal, PAINT_ROLES[paint], oneKey);
         const mesh = new THREE.Mesh(built.geometry, material);
         mesh.name = `nebula-field-${paint}`;
         // Merged meshes spanning the corridor: the camera lives inside their bounds
