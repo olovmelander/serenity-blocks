@@ -40,7 +40,9 @@ import { getChapterProfile } from './chapter-environments/shared/chapter-profile
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
 import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
-import { buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples } from './odyssey-warmup-plan.js';
+import {
+    buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples, buildRenderWarmOrder,
+} from './odyssey-warmup-plan.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -66,6 +68,8 @@ import { gpuResilience } from '../../utils/gpu-context-resilience.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import {
     beginPostTargetCompile,
+    beginWarmTargetRender,
+    createWarmRenderTarget,
     endPostTargetCompile,
     compileGroupThroughPost,
 } from './warmup/post-target-compile.js';
@@ -543,6 +547,10 @@ export class OdysseyBoardController {
         this.lastPositionWorkAtMs = 0;
         this.lastActiveChapter = 1; // last resolved active chapter (gates BH ch7 work).
         this.cameraSettledThreshold = 0.0008;
+        // Player-driven scroll velocity (progress units/sec) below which background work may run.
+        // Compared against travelModel.inputVelocity, which excludes the cinematic auto-drift —
+        // see _isScrollIdle for why the positional test cannot be used for this.
+        this.scrollIdleThreshold = 0.004;
         this.globalEnvProgressThreshold = 0.0005;
         this.globalEnvMaxIntervalMs = 33;
         this.lastGlobalEnvUpdateTime = 0;
@@ -1205,6 +1213,36 @@ export class OdysseyBoardController {
         return Math.abs(targetPosition - currentPosition) <= this.cameraSettledThreshold;
     }
 
+    /**
+     * Is the PLAYER driving the camera? Deliberately distinct from {@link _isCameraSettled},
+     * which asks whether the camera POSITION is static — a different question with a different
+     * right answer, and conflating them is what broke background scheduling.
+     *
+     * The journey auto-drifts forward by design (`idleAutoDrift`, see
+     * OdysseyCameraController.updateTravelCurrent), and `updateFollow` lerps `currentPosition`
+     * toward that moving target. A lerp chasing a constant-velocity target settles at a CONSTANT
+     * steady-state lag — measured at |target - current| = 0.000885 against a 0.0008 threshold, so
+     * `_isCameraSettled()` could never return true while the journey drifted. Since
+     * `_canRunBackgroundTask` gated on it, every background path (chapter creation, prewarm
+     * compiles, render-warm) was throttled for the entire session: chapters compiled and ready at
+     * 15.9s were not render-warmed until 44s.
+     *
+     * What backpressure actually wants is "is the player scrolling?", and the travel model already
+     * separates that out: `inputVelocity` holds ONLY the player-driven component and decays as
+     * exp(-dt * 2.4). One wheel notch (~0.216) therefore falls below this threshold after ~1.7s of
+     * coasting, which is the backpressure the old positional test was reaching for.
+     * @private
+     */
+    _isScrollIdle() {
+        const cc = this.cameraController;
+        if (!cc) return true;
+        if (cc.isAnimating) return false;
+        const inputVelocity = cc.travelModel?.inputVelocity;
+        // Fall back to the positional test if the travel model is absent (non-follow modes/tests).
+        if (!Number.isFinite(inputVelocity)) return this._isCameraSettled();
+        return Math.abs(inputVelocity) <= this.scrollIdleThreshold;
+    }
+
     /** @private true when recent frames are smooth enough to steal main-thread time for bg work. */
     _isFrameHealthy() {
         if (typeof document !== 'undefined' && document.hidden) return true; // nothing to stutter
@@ -1218,11 +1256,18 @@ export class OdysseyBoardController {
         // build. Starvation escape: if the board is idle+settled but stays frame-unhealthy for a
         // sustained window (e.g. a weak GPU whose ch1 alone exceeds budget), force one pass so
         // loading always completes (otherwise chapters never prebuild → first scroll hard-hitches).
-        if (!(this._isInteractionIdle() && this._isCameraSettled())) return false;
-        if (this._isFrameHealthy()) {
+        const playerBusy = !(this._isInteractionIdle() && this._isScrollIdle());
+        if (!playerBusy && this._isFrameHealthy()) {
             this._bgGateBlockedSince = 0;
             return true;
         }
+        // Starvation escape now covers BOTH block reasons, not just frame health. Measured
+        // 2026-08-17: on a board with zero input for 25s the camera still reported UNSETTLED —
+        // idle drift leaves a residual |target - current| of ~0.00089 against a 0.0008 threshold,
+        // 11% over, permanently. The old hard `return false` on that branch had no escape, so a
+        // hair-trigger threshold silently throttled every background path (creation, prewarm,
+        // render-warm) for the whole session: chapters 6/7 were compiled and ready at 15.9s but
+        // not render-warmed until 44s. A sustained block must always eventually yield one pass.
         if (!this._bgGateBlockedSince) this._bgGateBlockedSince = performance.now();
         if (performance.now() - this._bgGateBlockedSince > 8000) {
             this._bgGateBlockedSince = 0;
@@ -1360,11 +1405,19 @@ export class OdysseyBoardController {
                 : (chapterPositions.length || 8),
         );
         const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
-        const order = [];
-        for (let ch = 1; ch <= total; ch += 1) order.push(ch);
-        // Warm the chapters nearest the player's position first.
-        order.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
+        // Warm the chapters nearest the player first, and NEVER enqueue a chapter the
+        // configuration will never create (One World suppresses 2-5) — see buildRenderWarmOrder
+        // for the ~36s dead-wait that cost.
+        const order = buildRenderWarmOrder({
+            total,
+            focus,
+            suppressed: this.environmentManager?.suppressedChapters,
+        });
         this._bgRenderWarmPending = order.length;
+        if (order.length === 0) {
+            this._bgRenderWarmComplete = true;
+            return;
+        }
 
         let idx = 0;
         const step = () => {
@@ -1403,21 +1456,24 @@ export class OdysseyBoardController {
             this._bgRenderWarmPending = Math.max(0, order.length - idx);
             const env = this.environmentManager?.environments?.get(ch);
             if (!env) {
-                // Not created yet. Normally it background-loads shortly — but in capture/restricted
-                // startup the deferred chapters are NEVER created (eviction + background loading are
-                // forced off) while `order` still spans the full journey, so an UNBOUNDED wait here
-                // hangs the sweep forever → _bgRenderWarmComplete never sets → the adaptive controller
-                // stays frozen all session (the freeze gate in _tickAdaptiveQuality). Bound it like the
-                // prewarm wait below: after a grace window, SKIP a chapter that never materialises so
-                // the sweep always reaches completion (session-review finding 2026-07-05).
+                // Not created yet — it is still background-loading. Do NOT sleep in place: a
+                // chapter that is not ready must never block one that IS. Rotate it to the back
+                // of the sweep and move on, so a slow create costs its own turn rather than
+                // stalling every chapter behind it (the head-of-line blocking that let the
+                // player out-scroll the warm). Bounded rotations so a chapter that never
+                // materialises (capture/restricted startup) still lets the sweep COMPLETE —
+                // _bgRenderWarmComplete gates the adaptive controller, so it must always be
+                // reachable (session-review finding 2026-07-05).
                 if (!this._bgWarmMissWaits) this._bgWarmMissWaits = {};
                 this._bgWarmMissWaits[ch] = (this._bgWarmMissWaits[ch] || 0) + 1;
-                if (this._bgWarmMissWaits[ch] <= 30) { // ~30 × 300ms = 9s for a real bg create to land
-                    setTimeout(step, 300);
-                    return;
-                }
-                idx += 1; // give up on this never-created chapter — advance so the sweep can finish
-                setTimeout(step, 60);
+                idx += 1;
+                // A generous bound is safe now that a miss ROTATES instead of blocking: an
+                // un-created chapter costs one cheap timer turn, not 9s of everyone else's time.
+                // It must stay bounded so the sweep can always COMPLETE (capture/restricted
+                // startup never creates the deferred chapters at all).
+                if (this._bgWarmMissWaits[ch] <= 40) order.push(ch);
+                this._bgRenderWarmPending = Math.max(0, order.length - idx);
+                setTimeout(step, 120);
                 return;
             }
             // Do NOT render-warm until this chapter's async compile (prewarm) has RESOLVED.
@@ -1430,7 +1486,19 @@ export class OdysseyBoardController {
             if (!env.prewarmed) {
                 if (!this._bgWarmWaits) this._bgWarmWaits = {};
                 this._bgWarmWaits[ch] = (this._bgWarmWaits[ch] || 0) + 1;
-                if (this._bgWarmWaits[ch] <= 30) { // ~30 × 200ms = 6s for the compile to land
+                // WAIT FOR THE COMPILE. Measured repeatedly (2026-08-17): warming a chapter whose
+                // compile has landed costs ~4ms; warming one whose compile has NOT costs ~490ms,
+                // because the render then creates the pipelines synchronously on the main thread —
+                // a visible hitch wherever the sweep happens to be. Rotating is free, so the
+                // sweep should simply wait; the bound exists only so a stuck/rejected compile can
+                // never leave _bgRenderWarmComplete false forever (the adaptive controller gates
+                // on it). ~30 x 200ms = 6s, matching the original grace — but non-blocking now.
+                if (this._bgWarmWaits[ch] <= 30) {
+                    // Head-of-line rule again: a chapter still compiling must not hold up a
+                    // chapter that is already compiled and ready to warm.
+                    idx += 1;
+                    order.push(ch);
+                    this._bgRenderWarmPending = Math.max(0, order.length - idx);
                     setTimeout(step, 200);
                     return;
                 }
@@ -1438,9 +1506,15 @@ export class OdysseyBoardController {
             }
             idx += 1;
             if (!env._renderWarmed) {
+                const warmStart = performance.now();
                 const warmed = this._renderWarmChapterOffscreen(ch, env);
                 if (warmed) {
                     env._renderWarmed = true;
+                    // The signal that matters is WHEN a chapter became safe to scroll into, not
+                    // just that the sweep finished — this is the line to read when a transition
+                    // hitches again.
+                    const warmMs = Math.round(performance.now() - warmStart);
+                    console.log(`[OdysseyWarmup] render-warmed chapter ${ch} in ${warmMs}ms`);
                 } else {
                     // The offscreen warm threw setPipeline(undefined) — a compile-vs-warm race
                     // (ch3/5/8 on a cold GPU). Do NOT mark it warmed; RE-QUEUE it (bounded) so a
@@ -1491,7 +1565,13 @@ export class OdysseyBoardController {
         // rendering would otherwise hit the canvas and FLASH the warming chapter's full-screen
         // sky dome (BackSide, renderOrder -100) for a frame. The live loop warms it in the
         // no-post fallback instead.
-        const saved = this._beginPostTargetCompile();
+        // Pre-reveal (loop idle) the scene-pass target itself is bindable and is the most exact
+        // warm. Once the rAF loop is live that binding is forbidden — it would alias a texture as
+        // both sampled binding and render attachment and poison the device — so fall back to a
+        // PRIVATE format-matched target. Before this fallback existed the warm simply returned
+        // false here, which made the whole post-reveal sweep inert (chapters 6/7/8 ended sessions
+        // with _renderWarmed === false and six failed attempts each).
+        const saved = this._beginPostTargetCompile() || this._beginWarmTargetRender();
         if (!saved) return false;
         let succeeded = false;
         const prevVisible = group.visible;
@@ -1592,6 +1672,44 @@ export class OdysseyBoardController {
     }
 
     /**
+     * Bind the private warm target so a render-warm can run while the rAF loop is live.
+     * @private
+     */
+    _beginWarmTargetRender() {
+        return beginWarmTargetRender(
+            this.renderer,
+            this._getWarmRenderTarget(),
+            this.postProcessingStack?.scenePass,
+        );
+    }
+
+    /**
+     * The private warm target, built lazily and reused for the whole session (one small
+     * allocation). Shared by the render-warm AND the background compile path.
+     *
+     * Only a real clone FAILURE latches (`_warmTargetFailed`). A missing scenePass must not, and
+     * that distinction is load-bearing: the startup compile pool is kicked BEFORE post is built,
+     * so the first callers legitimately see no scenePass — caching that as failure would silently
+     * disable the warm target for the whole session.
+     * @private
+     */
+    _getWarmRenderTarget() {
+        if (this._warmRenderTarget) return this._warmRenderTarget;
+        if (this._warmTargetFailed) return null;
+        // The startup compile pool is kicked BEFORE post is built, so a missing scenePass here is
+        // normal and must NOT be cached as a permanent failure — that would silently disable the
+        // render-warm fallback for the whole session. Only a real clone failure latches.
+        const scenePass = this.postProcessingStack?.scenePass;
+        if (!scenePass) return null;
+        this._warmRenderTarget = createWarmRenderTarget(scenePass) || null;
+        if (!this._warmRenderTarget) {
+            this._warmTargetFailed = true;
+            console.warn('[OdysseyWarmup] no private warm target — background warm/compile degraded');
+        }
+        return this._warmRenderTarget;
+    }
+
+    /**
      * Is the rAF loop live? Binding the post scene-pass target for a compileAsync while it is
      * hands WebGPU the same texture as both a sampled binding and a render attachment inside one
      * encoder, which kills the device permanently (see warmup/post-target-compile.js).
@@ -1615,6 +1733,10 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
+            // Background compiles (loop live) bind the private target so they build POST-format
+            // pipelines asynchronously, instead of canvas-format ones that leave the real compile
+            // to land synchronously in the render-warm.
+            this._getWarmRenderTarget(),
         );
     }
 
@@ -3418,6 +3540,9 @@ export class OdysseyBoardController {
         resetOdysseyPathLayout();
         this.layoutEditor?.dispose?.();
         this.layoutEditor = null;
+        // Private render-warm target (see _beginWarmTargetRender). Owned solely by the board.
+        this._warmRenderTarget?.dispose?.();
+        this._warmRenderTarget = undefined;
         if (this._perfSpikeContextCollector && typeof window !== 'undefined') {
             window.perfMonitor?.setSpikeContextCollector?.(null);
             this._perfSpikeContextCollector = null;
