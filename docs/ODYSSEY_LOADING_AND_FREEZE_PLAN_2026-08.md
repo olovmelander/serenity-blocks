@@ -535,3 +535,76 @@ instead of hanging the session silently. Before that, a wedged GPU hung the harn
 
 **First action next session, on a fresh boot:** `--runs 2 --settle-ms 6000 --scroll-ms 12000` as a
 smoke test, then a real `--runs 5`. Until that passes, treat the harness as unproven.
+
+---
+
+## 12. The One World build, profiled — and a golden suite so it can be moved safely
+
+### It reproduces headless, with no GPU at all
+
+`createOdysseyWorld({ quality: 'high' })` runs to completion in plain Node — these are pure CPU
+texture and geometry generators. That makes the largest block on the critical path measurable and
+verifiable **without** a working WebGPU device, which matters because that device is exactly what
+becomes unreliable when perf work goes wrong.
+
+```
+createOdysseyWorld TOTAL      1419.0 ms
+  reported bakeMs.relief       711.1 ms   <- the five texture bakes
+  remainder                   ~706   ms   <- clipmap + water/cloud lattices, forest scatter,
+                                             cloud-field geometry
+```
+
+So the ~1220 ms loading-screen longtask from §3 (RC-3) splits almost exactly in half: **half is
+texture painting, half is geometry construction.** Both are deterministic — repeated invocations
+are byte-identical.
+
+### Why that matters more than it looks
+
+The fix for RC-3 is to move this work either **off the main thread** (a worker: the bakes touch no
+GPU and no DOM, so they are worker-safe by construction) or **off runtime entirely** (precompute to
+an asset at build time). Both are ordinary engineering. The hard part was never the move — it is
+proving the pixels did not shift, on a codebase where the bakes paint the colour structure of two
+thirds of the journey.
+
+Determinism turns that into a solved problem: **a byte-identical hash is a stronger guarantee than
+a screenshot**, because it admits no tolerance at all. So the prerequisite for the load-time fix is
+a golden suite, not a capture rig.
+
+### `tests/unit/odyssey-world-bakes-golden.test.js` (9 tests, added)
+
+Pins `bakeGroundAtlas`, `bakeGroundSunFields` and `bakeOdysseyCloudField` by SHA, plus the
+structural invariants that a hash alone would not explain (no channel flat or blown; the sun plate
+contains both lit and shadowed texels; the cloud histogram stays ordered — the deck's coverage
+bands are calibrated against those deciles).
+
+Until now **nothing asserted these bakes' output at all**, on a codebase that has already been
+bitten twice by exactly that gap: the ch5 "razor edges" were two defects in the BAKE (noise that
+never tiled, and a rank-remap of tied texels), not in the shader, and were only found by
+hand-shading a comparison deck.
+
+Mutation-checked: perturbing one grass term by 0.0001 fails the atlas hash. (A first attempt
+mutated `GROUND_ATLAS_WORLD` and correctly did *not* fail — that constant is the shader's tiling
+scale, not a bake input.)
+
+The sun-fields test uses a synthetic relief rather than the real one, deliberately, so it pins the
+shadowing LOGIC independently of the terrain. Two constraints make that relief non-arbitrary: the
+bake spans 9000 units over `shadowRes` texels (~141 units/texel at res 64), so features must be far
+coarser than that; and `ODYSSEY_WORLD_SUN` sits ~25° above the horizon, so slopes must exceed ~25°
+or nothing self-shadows. A gentler first draft produced a uniformly lit plate — correctly, which is
+why the test now documents both bounds.
+
+### Recommended next step for load time
+
+With the goldens in place, take RC-3 in this order:
+
+1. **Split `computeX(res) -> TypedArray` from the `DataTexture` wrapping** in the five bakes. Pure
+   extraction; the goldens prove byte-identity.
+2. **Move the compute into a worker**, main thread wraps the returned arrays. ~711 ms leaves the
+   critical path and the loading screen stops freezing (it currently cannot animate through a
+   1220 ms longtask). Keep a synchronous fallback.
+3. **Then consider the geometry half** (~706 ms) the same way, which is the larger and more
+   invasive job — forest scatter and clipmap construction.
+
+Precomputing to a shipped asset is the alternative to (2). It saves the same time but adds binary
+assets and a code/asset drift risk; the worker keeps one source of truth. Prefer the worker unless
+the asset is wanted for other reasons.
