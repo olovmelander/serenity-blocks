@@ -1396,12 +1396,26 @@ export class OdysseyBoardController {
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
-        // ONE compile session for the whole batch. Each chapter used to bind and unbind the
-        // compile target for itself, so a 3-chapter batch paid that fixed first-compile setup
-        // THREE times (~3s of the post-reveal stall). Binding once and compiling the groups
-        // sequentially inside it pays it once. Sequential, not concurrent, deliberately: the
-        // saving comes from sharing one prepared context, and concurrency was separately measured
-        // to be a non-lever (see the plan doc's negative result).
+        // One binding + SEQUENTIAL compiles for the batch. Two honest notes from the follow-up
+        // profiling (2026-08-17, plan doc §16), which corrected this block's original rationale:
+        //
+        // 1. The binding is only guaranteed to be captured by the FIRST compileAsync — its sync
+        //    phase reads the currently-bound target, and between awaited compiles the live rAF
+        //    loop rebinds targets for its own frames. So this is "first compile gets the post
+        //    context for free", not a shared session. (The original "fixed per-binding setup paid
+        //    three times" story did not survive profiling: cross-run isolated profiles show a
+        //    conserved ~3-4s of CONCURRENT session work — theme warm, chapter creation, Dawn's
+        //    compile queue — landing on whichever await happens to be open, not a per-binding
+        //    cost. The theme warm is now sequenced out of this window, see
+        //    main.js _deferThemeWarmWhileOdysseyLoads.)
+        //
+        // 2. Sequential stays: it avoids stacking three Dawn pipeline-compile bursts, and
+        //    concurrency was separately measured to be a non-lever (plan doc §14).
+        //
+        // r181 trap worth knowing here: compileAsync(scene, camera, group) PROJECTS THE WHOLE
+        // first argument (Renderer.js:897) — `group` only contributes lights. Every "targeted"
+        // chapter compile therefore walks the full visible scene; the per-chapter cost comes from
+        // the chapter being force-visible during its own prewarm, not from targeting.
         const sharedSaved = this._beginPostTargetCompile() || this._beginWarmTargetRender();
         try {
             for (const ch of batch) {

@@ -2878,6 +2878,16 @@ class SerenityBlocks {
                 return;
             }
 
+            // If the player went straight into Odyssey, its board is background-building
+            // chapters and compiling their shaders for the first ~20s after reveal. Warming a
+            // SECOND WebGPU scene concurrently doubles up the exact contention that shows as
+            // multi-second mid-play freezes (profiled 2026-08-17: a conserved ~3-4s of session
+            // work landing on whichever compile await was open). Yield the window: wait for the
+            // board's pipeline to go quiet, capped so this can never hang the warm forever.
+            // Skipping the warm entirely would also be safe — the loading-overlay resume
+            // safety-net makes an unwarmed first entry identical to the no-warm path.
+            await this._deferThemeWarmWhileOdysseyLoads(25000);
+
             // Warm the selected theme regardless of its performance class. Heavy WebGPU
             // themes avoid a ~0.4-0.8s cold-build freeze on first entry; light themes are
             // already fast, but warming them too keeps first-entry uniform for ALL ~70
@@ -2899,6 +2909,27 @@ class SerenityBlocks {
             console.log(`[Main] First-entry theme warm-up ${warmed ? 'complete' : 'skipped'}: ${themeName}`);
         } catch (error) {
             console.warn('[Main] Initial theme warm-up failed (non-fatal):', error);
+        }
+    }
+
+    /**
+     * Wait (bounded) while the active Odyssey board is still background-building, so the
+     * first-entry theme warm-up does not compile a second WebGPU scene on top of it.
+     * Resolves immediately when the current mode is not Odyssey, when the mode cannot
+     * report quiet, or once it does. @private
+     * @param {number} [maxWaitMs] hard cap on the wait
+     * @returns {Promise<void>}
+     */
+    async _deferThemeWarmWhileOdysseyLoads(maxWaitMs = 25000) {
+        const startedAt = Date.now();
+        for (;;) {
+            if (this.gameModeManager?.getCurrentModeId?.() !== 'odyssey') return;
+            const mode = this.gameModeManager?.getCurrentMode?.();
+            if (typeof mode?.isBackgroundPipelineQuiet !== 'function') return;
+            if (mode.isBackgroundPipelineQuiet()) return;
+            if (Date.now() - startedAt > maxWaitMs) return;
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((resolve) => { setTimeout(resolve, 500); });
         }
     }
 

@@ -431,6 +431,23 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
+     * Is the board's post-reveal background pipeline (chapter creation + shader prewarm +
+     * render-warm) finished? Startup work elsewhere (main.js's first-entry THEME pre-warm — a
+     * whole second WebGPU scene compile) uses this to stay out of the contested window: profiled
+     * 2026-08-17, concurrent session work landed as a conserved ~3-4s cost absorbed by whichever
+     * chapter compile await happened to be open, i.e. visible mid-play jank. `false` while the
+     * board is still building — that IS the contested window. `_bgRenderWarmComplete` is
+     * guaranteed to become true (the sweep's rotations are bounded), so waiting on this cannot
+     * hang; callers should still cap their wait.
+     * @returns {boolean} true when background loading has gone quiet
+     */
+    isBackgroundPipelineQuiet() {
+        const bc = this.boardController;
+        if (!bc || !bc.isActive) return false;
+        return bc._bgRenderWarmComplete === true;
+    }
+
+    /**
      * Called when user starts a level
      */
     async onStart() {
