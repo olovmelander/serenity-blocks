@@ -677,3 +677,67 @@ watch what happens around p≈0.75. If it reads as a natural pause, make it the 
 One World took). If it reads as a wall, the fix is to make the hold *expressive* rather than to
 abandon it — ease the camera to rest and let the vista breathe, which is precisely what the
 launch-star flight is doing.
+
+---
+
+## 14. Concurrency was NOT the lever — a negative result that relocates the target
+
+### The hypothesis
+
+The two post-reveal stalls (RC-2) looked like a bursting problem: the prewarm drain fires up to
+**3** `compileAsync` calls at once, and under One World exactly **3** chapters (6/7/8) are separate
+environments — so "bounded concurrency" had quietly degenerated to "all at once". Background
+chapter creation likewise ran back to back with only a 60 ms gap, which is shorter than the
+frame-health EMA's own latency (~120 ms at 60 fps), making that gate close to decorative.
+
+Both looked like textbook scheduling bugs of the kind already fixed this session.
+
+### The measurement
+
+Prewarm concurrency 3 → 1, and the creation gap 60 ms → 400 ms. Post-reveal stall (>250 ms, after
+reveal), two runs each:
+
+| | run 1 | run 2 | worst gap |
+|---|---|---|---|
+| Before (3 / 60 ms) | 12 401 ms | 7 992 ms | 4 100 ms |
+| After (1 / 400 ms) | 10 246 ms | 10 639 ms | 3 948 ms |
+
+**No improvement.** Same medians, same worst case, and *more* individual stalls. Both changes were
+reverted — an unsupported change is not kept just because its reasoning sounded good. (Same
+discipline that reverted RC-7 in §9.)
+
+### What it actually revealed
+
+With concurrency pinned to 1, the log is unambiguous:
+
+```
+@ 18446ms   <stall 3682ms>
+@ 19630ms   [OdysseyBoard] Prewarmed chapter 8 shaders
+```
+
+**One chapter's compile, entirely on its own, starves the GPU for ~3.7 s.** Concurrency was never
+the dominant term — the cost of compiling a single chapter is. Splitting the burst just produced
+more, smaller stalls plus the same big one, and delayed readiness into the bargain.
+
+### Why this reframes Wave 2
+
+Wave 2 was written as "split `createChapterEnvironment` into resumable steps". That is necessary
+but **not sufficient**: even with creation perfectly time-sliced, the compile remains one
+indivisible ~3.7 s operation, because `renderer.compileAsync(scene, camera, group)` compiles a
+whole chapter group in a single call into the driver.
+
+The work has to happen somewhere. Behind a loading screen it is a long load; during play it is a
+stall; the only third option is to make it genuinely incremental. So Wave 2 needs a second half:
+
+**Compile PER MATERIAL, not per chapter.** Walk a chapter's materials and compile them in small
+groups with a yield between, so the largest indivisible unit becomes one material's pipeline rather
+than one chapter's. That is the only shape in which this cost can be spread across frames at all.
+
+Worth checking first, since it may shrink the problem rather than reschedule it: how many distinct
+pipelines does a chapter actually build, and how much of that 3.7 s is one pathological material?
+The material-share pass noted in the fast-start comment (~−44 pipeline variants) suggests the count
+is high and reducible.
+
+The prewarm concurrency is now tunable (`?odysseyPrewarmConcurrency=N`, default 3 = unchanged) so
+the next A/B on this is a flag rather than a code change — and it should be run through the
+repeated-measures harness (§11), not two runs, given the spread visible in the table above.
