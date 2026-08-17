@@ -237,6 +237,14 @@ async function runOnce(variant, tag) {
     await win.webContents.executeJavaScript(scrollDriver('backward', END_P, 0, SCROLL_MS), true)
         .catch((e) => console.log(`  backward driver threw: ${e?.message}`));
     await sleep(2000);
+    // SECOND forward pass — the discriminator for path-locked costs (2026-08-17): a cost that
+    // recurs here fires on EVERY forward crossing (warming can never fix it; the crossing itself
+    // must get cheap). A cost absent here is once-per-session (and, if a pre-reveal warm crossing
+    // failed to pay it, something RE-ARMED it in between).
+    console.log('  phase: forward2 pass');
+    await win.webContents.executeJavaScript(scrollDriver('forward2', 0, END_P, SCROLL_MS), true)
+        .catch((e) => console.log(`  forward2 driver threw: ${e?.message}`));
+    await sleep(2000);
     console.log('  phase: collecting');
 
     const raw = await win.webContents.executeJavaScript(`
@@ -251,6 +259,8 @@ async function runOnce(variant, tag) {
           warmup: w ? {
             mode: w.mode, sampleCount: w.sampleCount, totalMs: Math.round(w.totalMs),
             variantsMs: Math.round(w.variantsMs || 0),
+            driveMs: Math.round(w.driveMs || 0),
+            driveGaps: w.driveGaps || [],
             slowestSamples: (w.samples || []).slice().sort((a, b) => b.totalMs - a.totalMs)
               .slice(0, 5).map((x) => ({ p: x.progress, ms: x.totalMs })),
           } : null,
@@ -284,6 +294,7 @@ function summarize(raw, consoleLines, variant, tag) {
         boardInitMs: num(/OdysseyStartup\] total (\d+)ms/),
         boardVisibleMs: num(/board visible (\d+)ms after overlay show/),
         forward: phase('forward'),
+        forward2: phase('forward2'),
         backward: phase('backward'),
         renderWarmedAll: Object.keys(warmed).length > 0 && Object.values(warmed).every(Boolean),
         renderWarmed: warmed,
@@ -302,6 +313,15 @@ function summarize(raw, consoleLines, variant, tag) {
             .slice(0, 12)
             .map((g) => ({
                 phase: g.phase, p: g.p, ms: g.ms, at: g.at,
+            })),
+        // JS-vs-GPU classification per gap: the longtask overlap tells whether a gap is
+        // main-thread work (GC / live-only update) or GPU starvation (no matching longtask).
+        topLongtasks: (raw.longtasks || [])
+            .filter((l) => l.ms > 80 && l.phase !== 'boot')
+            .sort((a, b) => b.ms - a.ms)
+            .slice(0, 12)
+            .map((l) => ({
+                phase: l.phase, ms: l.ms, at: l.at,
             })),
         errorLines: consoleLines
             .filter((l) => /setPipeline|not of type 'GPURenderPipeline'|includes writable usage/.test(l))
@@ -395,6 +415,7 @@ async function main() {
             fwdTotalStallMs: aggregate(rs, (r) => r.forward.totalStallMs),
             fwdGaps100: aggregate(rs, (r) => r.forward.gaps100),
             fwdWorstMs: aggregate(rs, (r) => r.forward.worstMs),
+            fwd2TotalStallMs: aggregate(rs, (r) => r.forward2?.totalStallMs),
             bwdTotalStallMs: aggregate(rs, (r) => r.backward.totalStallMs),
             warmedAll: rs.filter((r) => r.renderWarmedAll).length,
             sweepComplete: rs.filter((r) => r.bgRenderWarmComplete).length,
@@ -407,6 +428,7 @@ async function main() {
         console.log(`  fwd stall total ms ${fmt(s.fwdTotalStallMs)}`);
         console.log(`  fwd gaps >100ms    ${fmt(s.fwdGaps100)}`);
         console.log(`  fwd worst gap ms   ${fmt(s.fwdWorstMs)}`);
+        console.log(`  fwd2 stall total   ${fmt(s.fwd2TotalStallMs)}`);
         console.log(`  bwd stall total ms ${fmt(s.bwdTotalStallMs)}`);
         console.log(`  warmed-all runs    ${s.warmedAll}/${rs.length}`);
         console.log(`  sweep complete     ${s.sweepComplete}/${rs.length}`);

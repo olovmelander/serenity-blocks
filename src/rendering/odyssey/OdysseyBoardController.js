@@ -3249,10 +3249,21 @@ export class OdysseyBoardController {
                 cc.currentPosition = fastStartPosition;
                 cc.targetPosition = Math.min(1, 0.21);
                 let driveFrames = 0;
+                warmupStats.driveGaps = [];
                 // ~84 frames at the live velocity cap; hard bound so a stalled lerp can't
                 // hold the overlay hostage.
                 while (cc.currentPosition < 0.205 && driveFrames < 300) {
+                    const frameStart = performance.now();
                     this.renderFrame(1 / 60);
+                    const frameMs = performance.now() - frameStart;
+                    // Which drive frames are expensive, and WHERE: the discriminator for whether
+                    // the drive actually triggers the live pass's path-locked costs.
+                    if (frameMs > 100 && warmupStats.driveGaps.length < 20) {
+                        warmupStats.driveGaps.push({
+                            p: +cc.currentPosition.toFixed(4),
+                            ms: Math.round(frameMs),
+                        });
+                    }
                     driveFrames += 1;
                     if (driveFrames % 6 === 0) {
                         // eslint-disable-next-line no-await-in-loop
