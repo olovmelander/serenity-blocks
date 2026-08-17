@@ -936,3 +936,50 @@ whole journey pays only ~1.8 s of small hitches. Both protocols are now named an
 **patient** (settle 12 s — steady-state traverse cost) and **eager** (settle 6 s — drop-in freeze
 window, the Wave 2 target). Wave 2 should be judged on the EAGER protocol, where its problem
 actually lives.
+
+---
+
+## 18. Phase A implementation report — two iterations, honest verdict: NOT graduated
+
+Implemented per the masterplan: motion warm (opt-in `?odysseyMotionWarm=1` — 12 authored samples
+across p=0→0.21, then iteration 2's continuous-drive leg through the real follow/seam path),
+bloom-variant warming under fast-start, deep-reveal ported into both chapter warm paths, the
+warm-scrub throttle bypass, and the `world` trace span. Plus harness upgrades this work forced:
+per-run `topGaps` (gap-at-p), captured `errorLines`, and warm-scrub cost breakdowns.
+
+### Measured (patient protocol, process-per-run)
+
+| | base | motion v2 | verdict |
+|---|---|---|---|
+| fwd stall total | 2 178 ms | 1 673 ms | resolved — better |
+| fwd gaps >100 ms | 6 | 4 | resolved — better |
+| fwd worst gap | ~491 ms | ~480 ms | unchanged |
+| board visible | 4 276 ms | **8 100 ms** | resolved — WORSE |
+| validation errors | 0 | 4 (warm-before-compile race, self-healing) | gate violation |
+
+Criterion was ≤600 ms stall / ≤150 ms worst — **not met**. Motion warm stays opt-in.
+
+### What the diagnostics established (the real yield of Phase A)
+
+1. **The band's core is path-locked and warm-resistant.** The four stubborn gaps sit at
+   p≈0.031 / 0.043 / 0.046 / 0.138–0.140 with near-identical costs across every run
+   (e.g. 340–370 ms at p≈0.0312, three runs, ±0.0002 in p) and move in wall time with the
+   protocol — deterministic path work, not background tail.
+2. **They survive BOTH teleport samples and a real continuous crossing behind the overlay, yet
+   the live crossing pays them exactly once** (backward = 0). Conclusion: **the warm's restore
+   re-arms them** — the post-warm reset (camera to start, `clearSeamPhase()`,
+   `updateVisibility(start)`) tears down whatever the crossings build. The steam-quench gap
+   (p≈0.004) does NOT re-arm and was genuinely eliminated by the drive — which is what isolates
+   the restore as the mechanism for the others.
+3. The scrub's own cost: p=0 first render ~2 s under deep-reveal; variants only 157 ms; drive
+   ~0.9 s. The +3.8 s board-visible is real and would need Phase C's overlaps (~−2 s) to offset.
+4. The 4 validation errors are the KNOWN compile-vs-warm race (`setPipeline` on ch6/7),
+   re-provoked because deep-reveal makes chapter compiles bigger/slower; the sweep's bounded
+   retries self-heal (all chapters warmed in every run) but the gate stands.
+
+### Next aim (named target)
+
+Find what `clearSeamPhase()` / the restore tears down at those four p's and either keep it armed
+across the restore, or rebuild it off-thread. Only after that is the motion warm's remaining
+value (steam quench + totals −500 ms) worth its board-visible cost — or cheaper: keep the drive
+but END the warm at the reveal position without a full state reset.

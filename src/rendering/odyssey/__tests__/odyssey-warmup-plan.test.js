@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-    buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples, buildRenderWarmOrder,
+    ODYSSEY_MOTION_WARM_SAMPLES,
+    buildChapterWarmSamples,
+    buildJourneyWarmSamples,
+    buildMotionWarmSamples,
+    buildPointWarmSamples,
+    buildRenderWarmOrder,
 } from '../odyssey-warmup-plan.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 
@@ -110,5 +115,66 @@ describe('buildRenderWarmOrder (post-reveal background render-warm sweep)', () =
         expect(buildRenderWarmOrder({ total: 4, focus: 1, suppressed: [1, 2, 3, 4] })).toEqual([]);
         expect(buildRenderWarmOrder({ total: 0 })).toEqual([]);
         expect(buildRenderWarmOrder()).toEqual([]);
+    });
+});
+
+describe('buildMotionWarmSamples (Phase A — the traverse band)', () => {
+    // The measured first-visible-frame reveals the scrub exists to cover (masterplan F1).
+    const REVEALS = [
+        { name: 'steam quench', p: 0.0049 },
+        { name: 'lava fall', p: 0.0306 },
+        { name: 'One World act gate', p: 0.0427 },
+        { name: 'breach seam band start', p: 0.043 },
+        { name: 'forest chunk uploads', p: 0.19 },
+    ];
+
+    it('covers every measured reveal: some sample lies AT or PAST each threshold', () => {
+        const samples = buildMotionWarmSamples({ position: 0 });
+        REVEALS.forEach(({ name, p }) => {
+            const covering = samples.find((s) => s >= p);
+            expect(covering, `${name} (p=${p}) must be covered`).toBeDefined();
+        });
+        // And the scrub actually crosses each threshold rather than jumping the whole band
+        // in one step — no gap between consecutive samples exceeds 0.04 inside the band.
+        for (let i = 1; i < samples.length; i += 1) {
+            if (samples[i] <= 0.1) expect(samples[i] - samples[i - 1]).toBeLessThanOrEqual(0.04);
+        }
+    });
+
+    it('starts at the reveal position and ascends', () => {
+        const samples = buildMotionWarmSamples({ position: 0 });
+        expect(samples[0]).toBe(0);
+        expect([...samples].sort((a, b) => a - b)).toEqual(samples);
+    });
+
+    it('drops authored points already BEHIND a mid-band reveal position', () => {
+        const samples = buildMotionWarmSamples({ position: 0.04 });
+        expect(samples[0]).toBe(0.04);
+        expect(samples.every((s) => s >= 0.04)).toBe(true);
+        expect(samples).toContain(0.045);
+    });
+
+    it('uses a relative sweep for a deep resume — authored early points are far behind', () => {
+        const samples = buildMotionWarmSamples({ position: 0.6 });
+        expect(samples[0]).toBe(0.6);
+        expect(samples.every((s) => s >= 0.6 && s <= 0.81)).toBe(true);
+        expect(samples.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('clamps a resume near the journey end instead of sampling past 1', () => {
+        const samples = buildMotionWarmSamples({ position: 0.95 });
+        expect(samples.every((s) => s <= 1)).toBe(true);
+        expect(samples[samples.length - 1]).toBe(1);
+    });
+
+    it('fails safe on garbage input — a plain point sample, never a throw', () => {
+        expect(buildMotionWarmSamples({ position: Number.NaN })[0]).toBe(0);
+        expect(buildMotionWarmSamples({})[0]).toBe(0);
+    });
+
+    it('keeps the scrub bounded — this runs behind the overlay, not forever', () => {
+        expect(buildMotionWarmSamples({ position: 0 }).length).toBeLessThanOrEqual(
+            ODYSSEY_MOTION_WARM_SAMPLES.length + 1,
+        );
     });
 });
