@@ -432,38 +432,62 @@ export function odysseyWorldMacro(x, z) {
     // shore MEANDER is added to every lobe's radius, so the carve boundary (and therefore
     // the waterline the depth buffer draws) wanders inside the disc instead of tracing an
     // ellipse. One noise evaluation per sample, shared by the lobes.
-    const lakeInset = northLakeShoreInset(x, z);
-    let lakeCarve = 0;
+    //
+    // ⚠️ THE REJECT TEST COMES FIRST, AND IT IS WHY THE BAKE IS STILL FAST. This function
+    // runs once per texel of the macro plate (589k-1M samples at boot) and the shore noise
+    // is two value-noise octaves — by far the most expensive term here. Only 2.0% of the
+    // ±4500 plate is within any lobe, so the noise is evaluated only where it can matter.
+    // The rejection is EXACT rather than a heuristic: the inset is strictly positive
+    // (floor 0.06), so raw rn >= 1 gives rn_eff > 1, and the wall ramp is exactly 0 there.
+    // Squared radii, so the far case costs no sqrt either.
+    let lakeBowl = 0;
+    let nearestLobeRn2 = Infinity;
     for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
         const lb = ODYSSEY_NORTH_LAKE.lobes[i];
         const lx = (x - lb.x) / lb.rx;
         const lz = (z - lb.z) / lb.rz;
-        const rn = Math.sqrt((lx * lx) + (lz * lz)) + lakeInset;
-        // ⚠️ A POWER RAMP, NOT A SMOOTHSTEP, AND THAT IS THE WHOLE SHORELINE.
-        //
-        // smoothstep has ZERO derivative at both ends, so a smoothstep bowl approaches its
-        // rim tangentially: measured on the previous build, 9 u inside the boundary the
-        // carve was only 1.3 u deep — a 0.15 slope. The lake floor therefore met the flat
-        // water plane at a grazing angle, and the intersection of two near-parallel
-        // surfaces snaps to whatever the terrain MESH does — straight triangle-edge
-        // segments and hard corners. That is the "sharp edge to the right" the owner saw,
-        // and no amount of shore meander fixes it, because the meander moves the boundary
-        // while the grazing crossing follows the mesh either way.
-        //
-        // `t^0.6` instead: 9 u inside the rim the carve is 10.7 u deep (slope 1.2), so the
-        // floor CUTS the water plane and the waterline lands where the field says it does
-        // — the meander, not the triangulation. The inner crease where the ramp meets the
-        // flat floor sits well under water. Compactness is unchanged: t is 0 at rn >= 1.
-        const wall = Math.max(0, Math.min(1, (1 - rn) / (1 - NORTH_LAKE_WALL_START)));
-        lakeCarve = smoothMax(lakeCarve, (wall ** NORTH_LAKE_WALL_POW) * lb.depth, 8);
+        const rn2 = (lx * lx) + (lz * lz);
+        if (rn2 < nearestLobeRn2) nearestLobeRn2 = rn2;
     }
-    const lakeBowl = -lakeCarve;
+    if (nearestLobeRn2 < 1) {
+        const lakeInset = northLakeShoreInset(x, z);
+        let lakeCarve = 0;
+        for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
+            const lb = ODYSSEY_NORTH_LAKE.lobes[i];
+            const lx = (x - lb.x) / lb.rx;
+            const lz = (z - lb.z) / lb.rz;
+            const rn = Math.sqrt((lx * lx) + (lz * lz)) + lakeInset;
+            // ⚠️ A POWER RAMP, NOT A SMOOTHSTEP, AND THAT IS THE WHOLE SHORELINE.
+            //
+            // smoothstep has ZERO derivative at both ends, so a smoothstep bowl approaches its
+            // rim tangentially: measured on the previous build, 9 u inside the boundary the
+            // carve was only 1.3 u deep — a 0.15 slope. The lake floor therefore met the flat
+            // water plane at a grazing angle, and the intersection of two near-parallel
+            // surfaces snaps to whatever the terrain MESH does — straight triangle-edge
+            // segments and hard corners. That is the "sharp edge to the right" the owner saw,
+            // and no amount of shore meander fixes it, because the meander moves the boundary
+            // while the grazing crossing follows the mesh either way.
+            //
+            // `t^0.6` instead: 9 u inside the rim the carve is 10.7 u deep (slope 1.2), so the
+            // floor CUTS the water plane and the waterline lands where the field says it does
+            // — the meander, not the triangulation. The inner crease where the ramp meets the
+            // flat floor sits well under water. Compactness is unchanged: t is 0 at rn >= 1.
+            const wall = Math.max(0, Math.min(1, (1 - rn) / (1 - NORTH_LAKE_WALL_START)));
+            lakeCarve = smoothMax(lakeCarve, (wall ** NORTH_LAKE_WALL_POW) * lb.depth, 8);
+        }
+        lakeBowl = -lakeCarve;
+    }
 
-    // The north hills: the same compact grammar, positive.
+    // The north hills: the same compact grammar, positive — and the same exact reject,
+    // since smoothstep01(0.25, 1, hn) is 1 (contribution 0) for every hn >= 1.
     let hills = 0;
     for (let i = 0; i < NORTH_HILLS.length; i += 1) {
         const hh = NORTH_HILLS[i];
-        const hn = Math.hypot(x - hh.x, z - hh.z) / hh.r;
+        const dx = x - hh.x;
+        const dz = z - hh.z;
+        const d2 = (dx * dx) + (dz * dz);
+        if (d2 >= hh.r * hh.r) continue;
+        const hn = Math.sqrt(d2) / hh.r;
         hills += (1 - smoothstep01(0.25, 1.0, hn)) * hh.h;
     }
 
@@ -483,9 +507,14 @@ export function odysseyWorldMacro(x, z) {
     let rise = 0;
     for (let i = 0; i < ODYSSEY_MASSIFS.length; i += 1) {
         const m = ODYSSEY_MASSIFS[i];
-        const d = Math.hypot(x - m.x, z - m.z);
-        const cone = Math.max(0, 1 - (d / m.radius));
-        if (cone <= 0) continue;
+        // Squared reject before the sqrt: the cone is exactly 0 at d >= radius, and this
+        // loop runs once per massif per macro texel at boot.
+        const mdx = x - m.x;
+        const mdz = z - m.z;
+        const md2 = (mdx * mdx) + (mdz * mdz);
+        if (md2 >= m.radius * m.radius) continue;
+        const d = Math.sqrt(md2);
+        const cone = 1 - (d / m.radius);
         const t = Math.max(0, Math.min(1, cone / 0.35));
         const pedestalBlend = t * t * (3 - (2 * t));
         const pedestal = pedestalBlend * (m.footY - ground);
@@ -501,8 +530,13 @@ export function odysseyWorldDetailWeight(x, z) {
     let strongest = 0;
     for (let i = 0; i < ODYSSEY_MASSIFS.length; i += 1) {
         const m = ODYSSEY_MASSIFS[i];
-        const d = Math.hypot(x - m.x, z - m.z);
-        strongest = Math.max(strongest, Math.max(0, 1 - (d / (m.radius * 1.25))));
+        // Same exact reject: the halo term is 0 beyond 1.25x the footprint.
+        const wdx = x - m.x;
+        const wdz = z - m.z;
+        const wd2 = (wdx * wdx) + (wdz * wdz);
+        const halo = m.radius * 1.25;
+        if (wd2 >= halo * halo) continue;
+        strongest = Math.max(strongest, 1 - (Math.sqrt(wd2) / halo));
     }
     // The base weight is deliberately low. Relief is what gives the massif its character, but
     // away from the peaks it is also the only thing that can push terrain up through the rail,
